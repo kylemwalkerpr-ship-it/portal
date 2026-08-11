@@ -227,7 +227,13 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/content-studio/jobs — bulk admin actions
- * Body: { action: 'bulk_abandon'|'bulk_monitor'|'bulk_approve'|'bulk_reaudit', ids: string[], dryRun? }
+ * Body: {
+ *   action: 'bulk_abandon'|'bulk_monitor'|'bulk_approve'|'bulk_reaudit'|
+ *           'clear_drafts'|'clear_stuck'|'clear_failed'|'rerun_resume'|
+ *           'refresh_pr'|'bulk_delete'|'archive_resolved',
+ *   ids: string[],
+ *   dryRun?
+ * }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -241,14 +247,217 @@ export async function POST(request: NextRequest) {
     const ids: string[] = Array.isArray(body.ids)
       ? body.ids.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 25)
       : []
-    if (!action.startsWith('bulk_') || !ids.length) {
+
+    // Accept both old-style 'bulk_*' and new-style queue maintenance actions.
+    // Status-scoped ops (clear_*, archive_*) are allowed without explicit ids
+    // when their target filter resolves rows from the DB directly.
+    const isBulk = action.startsWith('bulk_')
+    const isQueueAction =
+      action === 'clear_drafts' ||
+      action === 'clear_stuck' ||
+      action === 'clear_failed' ||
+      action === 'rerun_resume' ||
+      action === 'refresh_pr' ||
+      action === 'bulk_delete' ||
+      action === 'archive_resolved'
+    if (!isBulk && !isQueueAction) {
       return NextResponse.json(
-        { error: 'bulk action and ids[] required (max 25)' },
+        { error: 'Unknown action. Supported: bulk_abandon, bulk_monitor, bulk_approve, bulk_reaudit, clear_drafts, clear_stuck, clear_failed, rerun_resume, refresh_pr, bulk_delete, archive_resolved' },
+        { status: 400 },
+      )
+    }
+    if (!ids.length && isBulk) {
+      return NextResponse.json(
+        { error: 'bulk action requires ids[] (max 25)' },
         { status: 400 },
       )
     }
 
     const supabase = sb()
+
+    // ── Status-scoped actions: operate on entire status buckets ──
+    if (action === 'clear_drafts' || action === 'clear_stuck' || action === 'clear_failed') {
+      const now = new Date().toISOString()
+      let statusFilter: string[]
+      if (action === 'clear_drafts') statusFilter = ['pending']
+      else if (action === 'clear_stuck') statusFilter = ['drafting', 'pending']
+      else statusFilter = ['failed']
+
+      const targetIds = ids.length
+        ? ids
+        : (await supabase
+            .from('content_jobs')
+            .select('id')
+            .in('status', statusFilter)
+            .order('created_at', { ascending: false })
+            .limit(500)
+            .then((r) => (r.data ?? []).map((j: { id: string }) => j.id)))
+
+      if (!targetIds.length) {
+        return NextResponse.json({
+          ok: true,
+          action,
+          message: `No jobs in [${statusFilter.join(', ')}] to clear`,
+          processed: 0, succeeded: 0, failed: 0, results: [],
+        })
+      }
+
+      const results: Array<{ id: string; ok: boolean; error?: string }> = []
+      for (const jid of targetIds.slice(0, 500)) {
+        const { error } = await supabase
+          .from('content_jobs')
+          .update({ status: 'closed', closed_at: now })
+          .eq('id', jid)
+        results.push({ id: jid, ok: !error, error: error?.message })
+      }
+      const okCount = results.filter((r) => r.ok).length
+      return NextResponse.json({
+        ok: okCount === results.length,
+        action,
+        message: `Cleared ${okCount}/${results.length} jobs from [${statusFilter.join(', ')}]`,
+        processed: results.length,
+        succeeded: okCount,
+        failed: results.length - okCount,
+        results,
+      })
+    }
+
+    // ── Archive: move closed/merged jobs to content_jobs_archive ──
+    if (action === 'archive_resolved') {
+      const now = new Date().toISOString()
+      const sourceIds = ids.length
+        ? ids
+        : (await supabase
+            .from('content_jobs')
+            .select('id')
+            .in('status', ['closed', 'merged'])
+            .order('created_at', { ascending: false })
+            .limit(500)
+            .then((r) => (r.data ?? []).map((j: { id: string }) => j.id)))
+
+      if (!sourceIds.length) {
+        return NextResponse.json({
+          ok: true, action,
+          message: 'No resolved (closed/merged) jobs to archive',
+          processed: 0, succeeded: 0, failed: 0, results: [],
+        })
+      }
+
+      // Try to insert into archive, then delete from source
+      const results: Array<{ id: string; ok: boolean; error?: string }> = []
+      for (const jid of sourceIds.slice(0, 500)) {
+        try {
+          const { data: job } = await supabase.from('content_jobs').select('*').eq('id', jid).single()
+          if (!job) { results.push({ id: jid, ok: false, error: 'not found' }); continue }
+
+          // Insert into archive (ignore if table doesn't exist yet — soft-fail)
+          try {
+            await supabase.from('content_jobs_archive').insert({
+              ...job,
+              archived_at: now,
+            })
+          } catch {
+            // archive table may not exist yet — skip insert, still delete from source
+          }
+
+          const { error: delErr } = await supabase.from('content_jobs').delete().eq('id', jid)
+          if (delErr) throw delErr
+          results.push({ id: jid, ok: true })
+        } catch (e) {
+          results.push({ id: jid, ok: false, error: e instanceof Error ? e.message : 'archive failed' })
+        }
+      }
+
+      const okCount = results.filter((r) => r.ok).length
+      return NextResponse.json({
+        ok: okCount === results.length,
+        action,
+        message: `Archived ${okCount}/${results.length} resolved jobs`,
+        processed: results.length, succeeded: okCount,
+        failed: results.length - okCount, results,
+      })
+    }
+
+    // ── Hard delete (admin-only purge) ──
+    if (action === 'bulk_delete') {
+      const results: Array<{ id: string; ok: boolean; error?: string }> = []
+      for (const jid of ids.slice(0, 100)) {
+        const { error } = await supabase.from('content_jobs').delete().eq('id', jid)
+        results.push({ id: jid, ok: !error, error: error?.message })
+      }
+      const okCount = results.filter((r) => r.ok).length
+      return NextResponse.json({
+        ok: okCount === results.length, action,
+        processed: results.length, succeeded: okCount,
+        failed: results.length - okCount, results,
+      })
+    }
+
+    // ── Bulk rerun (regenerate per-id) ──
+    if (action === 'rerun_resume') {
+      const results: Array<{ id: string; ok: boolean; error?: string; newJobId?: string }> = []
+      for (const jid of ids.slice(0, 10)) {
+        try {
+          const { data: job } = await supabase.from('content_jobs').select('*').eq('id', jid).single()
+          if (!job) { results.push({ id: jid, ok: false, error: 'not found' }); continue }
+          const userId = job.user_id || 'admin'
+          const result = await runSeoFactoryPipeline({
+            topic: job.topic,
+            title: job.title || job.topic,
+            primaryKeyword: job.primary_keyword || job.topic,
+            region: job.region || 'US',
+            contentType: job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide',
+            tone: job.tone || 'educational',
+            shipMode: (job.ship_mode || 'pr') as any,
+            dryRun: Boolean(body.dryRun),
+            minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 55,
+            maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
+            userId,
+            sourceJobId: jid,
+          })
+          await supabase
+            .from('content_jobs')
+            .update({ status: 'closed', closed_at: new Date().toISOString(), error_message: `Superseded by regenerate → ${result.jobId || 'new job'}` })
+            .eq('id', jid)
+          results.push({ id: jid, ok: result.ok, newJobId: result.jobId || undefined, error: result.shipError })
+        } catch (e) {
+          results.push({ id: jid, ok: false, error: e instanceof Error ? e.message : 'regenerate failed' })
+        }
+      }
+      const okCount = results.filter((r) => r.ok).length
+      return NextResponse.json({ ok: okCount === results.length, action, processed: results.length, succeeded: okCount, failed: results.length - okCount, results })
+    }
+
+    // ── Bulk refresh PR ──
+    if (action === 'refresh_pr') {
+      const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
+      const results: Array<{ id: string; ok: boolean; error?: string }> = []
+      for (const jid of ids.slice(0, 25)) {
+        try {
+          const { data: job } = await supabase.from('content_jobs').select('*').eq('id', jid).single()
+          if (!job?.pr_number) { results.push({ id: jid, ok: true }); continue }
+          const repo = String(job.target_repo || '').replace(/^https?:\/\/github\.com\//, '')
+          if (!repo.includes('/') || !token) { results.push({ id: jid, ok: true }); continue }
+          const [owner, name] = repo.split('/')
+          const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${job.pr_number}`, {
+            headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'yousafe-portal-seo-factory' },
+          })
+          if (!ghRes.ok) { results.push({ id: jid, ok: false, error: `GitHub ${ghRes.status}` }); continue }
+          const pr = await ghRes.json()
+          const patch: Record<string, unknown> = { pr_url: pr.html_url || job.pr_url }
+          if (pr.merged) { patch.status = 'merged'; patch.merged_at = pr.merged_at || new Date().toISOString(); patch.error_message = null }
+          else if (pr.state === 'closed' && !pr.merged) { patch.status = 'closed'; patch.closed_at = new Date().toISOString() }
+          await supabase.from('content_jobs').update(patch).eq('id', jid)
+          results.push({ id: jid, ok: true })
+        } catch (e) {
+          results.push({ id: jid, ok: false, error: e instanceof Error ? e.message : 'PR refresh failed' })
+        }
+      }
+      const okCount = results.filter((r) => r.ok).length
+      return NextResponse.json({ ok: okCount === results.length, action, processed: results.length, succeeded: okCount, failed: results.length - okCount, results })
+    }
+
+    // ── Legacy bulk_* actions (id-level, max 25) ──
     const results: Array<{ id: string; ok: boolean; error?: string; detail?: unknown }> = []
 
     for (const id of ids) {
@@ -1329,6 +1538,51 @@ export async function PATCH(request: NextRequest) {
     console.error('[content-studio/jobs PATCH]', err)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error' },
+      { status: 500 },
+    )
+  }
+}
+
+/**
+ * DELETE /api/content-studio/jobs?id=<uuid> — hard-delete a single job.
+ * Also supports ?status=closed,merged for bulk cleanup (admin only).
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    const status = searchParams.get('status')
+    const supabase = sb()
+
+    if (id) {
+      const { error } = await supabase.from('content_jobs').delete().eq('id', id)
+      if (error) throw error
+      return NextResponse.json({ ok: true, deleted: id })
+    }
+
+    if (status) {
+      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean)
+      if (!statuses.length) {
+        return NextResponse.json({ error: 'status parameter requires at least one value' }, { status: 400 })
+      }
+      const { error, count } = await supabase
+        .from('content_jobs')
+        .delete({ count: 'exact' })
+        .in('status', statuses)
+      if (error) throw error
+      return NextResponse.json({ ok: true, deleted: count ?? 0, statuses })
+    }
+
+    return NextResponse.json({ error: 'id or status parameter required' }, { status: 400 })
+  } catch (err) {
+    console.error('[content-studio/jobs DELETE]', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Delete failed' },
       { status: 500 },
     )
   }
