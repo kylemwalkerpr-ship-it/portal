@@ -316,8 +316,13 @@ async function openAiCompatFetch(
   // GPT-5.x / o-series reasoning models require max_completion_tokens
   // instead of max_tokens (OpenAI rejects max_tokens on these models).
   const isReasoningModel = isReasoningModelId(p.model)
+  // Only apply opts.model override for OpenAI / custom providers (where the
+  // model name is meaningful). Non-OpenAI providers (NVIDIA, Baseten, Groq,
+  // Gemini, etc.) always use their own p.model so an OpenAI-specific model
+  // like 'gpt-5.6-sol' doesn't break the cascade.
+  const effectiveModel = opts.model && (p.label === 'openai' || p.label === 'custom') ? opts.model : p.model
   const body: Record<string, unknown> = {
-    model: opts.model || p.model,
+    model: effectiveModel,
     ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
     ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
     messages: [
@@ -401,7 +406,8 @@ async function openAiCompatibleComplete(
 ): Promise<ContentAiResult> {
   // gpt-5.6 bare → gpt-5.6-sol (GPT-5.6 flagship alias).
   // Terra = strong/balanced, Luna = efficient/high-volume.
-  const model = (opts.model || p.model).replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
+  // Only apply opts.model override for OpenAI/custom providers.
+  const model = (opts.model && (p.label === 'openai' || p.label === 'custom') ? opts.model : p.model).replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
   const patched = { ...p, model }
   return withRetry(p.label, async () => {
     // A cut-off completion is recoverable: continue from the partial text ONCE
@@ -815,7 +821,7 @@ async function* openAiCompatibleStream(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: opts.model || p.model,
+        model: (opts.model && (p.label === 'openai' || p.label === 'custom') ? opts.model : p.model),
         stream: true,
         ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
         ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),

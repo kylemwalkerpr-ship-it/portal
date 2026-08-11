@@ -4921,7 +4921,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             completedJob={generationReviewJob}
             selectedJob={selectedJob}
             setSelectedJob={setSelectedJob}
-            onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('draft') } }}
+            onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('approve') } }}
             selectTab={selectTab}
             error={error}
             setError={setError}

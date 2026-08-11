@@ -39,11 +39,19 @@ function withDeadline<T>(ms: number, label: string, promise: Promise<T>): Promis
 }
 
 async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promise<string> {
+  // GPT-5.6 Sol is the senior editor / quality reviewer. It has flagship
+  // reasoning capability and evaluates gate compliance with higher accuracy
+  // than Terra (Research) or Luna (high-volume drafting). The provider
+  // cascade (auto) tries configured providers in order; each will use its
+  // own default model unless overridden, so Sol only applies to OpenAI.
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,
     maxTokens,
     temperature: 0.2,
+    // GPT Sol is the reviewer — pass model override for OpenAI providers.
+    // Non-OpenAI providers ignore this and use their own default.
+    model: 'gpt-5.6-sol',
   }))
   const text = (result?.text || '').trim()
   if (!text) throw new Error('AI fix returned empty content')
