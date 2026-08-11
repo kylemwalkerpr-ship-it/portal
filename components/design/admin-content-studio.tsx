@@ -1808,6 +1808,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   interlinkStage: string; setInterlinkStage: (v: string) => void
   selectedBrief?: AISuggestion | null
   setActionNotice?: (msg: string) => void
+  /** Discover-stage intelligence fed into the full-brief generator. */
+  radarMeta?: Record<string, unknown> | null
+  completedWorkSlugs?: Array<{ slug: string; topic: string }>
 }>(function BriefAssemblyPanel(
   {
     generating, onGenerate,
@@ -1825,6 +1828,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     interlinkStage, setInterlinkStage,
     selectedBrief,
     setActionNotice,
+    radarMeta,
+    completedWorkSlugs,
   },
   ref,
 ) {
@@ -1854,6 +1859,53 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
   const [suggestingKeywords, setSuggestingKeywords] = React.useState(false)
+
+  // AI-powered full-brief generation — GPT Luna ingests ALL Discover intel
+  // (radar gaps, GSC demand, LLM visibility, backlink gaps, completed work,
+  // verified interlinks) and produces a maximally prescriptive brief so the
+  // drafting AI has zero room to hallucinate.
+  const [briefGenerating, setBriefGenerating] = React.useState(false)
+  const handleGenerateBrief = async () => {
+    if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
+    setBriefGenerating(true)
+    try {
+      const gscData = (gscStatus && typeof gscStatus === 'object') ? gscStatus as Record<string, unknown> : {}
+      const r = (radarMeta && typeof radarMeta === 'object') ? radarMeta as Record<string, unknown> : {}
+      const res = await fetch('/api/content-studio/suggest-brief', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic, region, contentType, primaryKeyword: title || topic, audience,
+          gscImpressions: gscData.impressions || 0,
+          gscPosition: gscData.position || 0,
+          gscClicks: gscData.clicks || 0,
+          radarGaps: Array.isArray(r.gapOpportunities) ? r.gapOpportunities : [],
+          llmVisibility: r.llmVisibility || null,
+          backlinkGaps: Array.isArray(r.backlinkGaps) ? r.backlinkGaps : [],
+          completedWork: completedWorkSlugs || [],
+          interlinks: briefInterlinks || [],
+        }),
+      })
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>
+      if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
+      if (typeof data.suggestedH1 === 'string' && data.suggestedH1.trim()) setTitle(data.suggestedH1)
+      if (Array.isArray(data.h2Outline) && data.h2Outline.length) setH2s(data.h2Outline.map(String))
+      if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
+        const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
+        setKeywords(all.join(', '))
+      }
+      if (Array.isArray(data.sources) && data.sources.length) setSources(data.sources.map(String))
+      if (typeof data.targetSlug === 'string' && data.targetSlug.trim()) setTargetSlug(data.targetSlug)
+      if (typeof data.recommendedTone === 'string') setTone(data.recommendedTone as Tone)
+      if (typeof data.recommendedAudience === 'string') setAudience(data.recommendedAudience)
+      if (typeof data.minWords === 'number' && data.minWords > 0) setMinWords(data.minWords)
+      if (typeof data.maxWords === 'number' && data.maxWords > 0) setMaxWords(data.maxWords)
+      if (data.kwH2Map && typeof data.kwH2Map === 'object') setKwH2Map(data.kwH2Map as Record<string, string>)
+      setActionNotice?.(`🧠 Full brief ready: ${String(data.reasoning || '').slice(0, 120)}`)
+    } catch (err) {
+      setActionNotice?.(`Brief generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally { setBriefGenerating(false) }
+  }
 
   // AI-powered keyword suggestion — analyzes topic + GSC + competition
   const handleAiSuggest = async () => {
@@ -2073,6 +2125,24 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
               title={!topic.trim() ? 'Enter a topic first' : 'AI analyzes your topic + GSC + content type to suggest optimal short & long-tail keywords'}
             >
               {suggestingKeywords ? '⏳ AI analyzing…' : '🤖 AI Suggest Keywords'}
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateBrief}
+              disabled={briefGenerating || !topic.trim() || generating}
+              style={{
+                padding: '4px 12px', borderRadius: 6, border: `1px solid ${E.inkBlack}`,
+                background: briefGenerating ? E.inkBlack : 'transparent',
+                color: briefGenerating ? E.ivory : E.inkBlack,
+                cursor: briefGenerating || !topic.trim() ? 'not-allowed' : 'pointer',
+                fontSize: 10, fontWeight: 700, fontFamily: E.mono,
+                opacity: briefGenerating ? 0.85 : 1,
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease',
+              }}
+              title={!topic.trim() ? 'Enter a topic first' : 'GPT Luna reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief'}
+            >
+              {briefGenerating ? '🧠 GPT Luna building brief…' : '🧠 Generate Full Brief'}
             </button>
           </div>
           <textarea
@@ -4926,6 +4996,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               autoInterlinkBusy={autoInterlinkBusy}
               selectedBrief={selectedBrief}
               setActionNotice={setActionNotice}
+              radarMeta={radarMeta}
             />
 
           {/* Next-stage CTA: visible when on Research tab with a topic pinned */}
