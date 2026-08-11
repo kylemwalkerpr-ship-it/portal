@@ -23,12 +23,11 @@ export async function POST(req: NextRequest) {
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
-    // Use the admin's selected provider, defaulting to whatever is configured
-    // (rather than hardcoding 'openai' which fails with no OPENAI_API_KEY).
+    // Use the admin's selected provider, defaulting to whatever is configured.
+    // The provider cascade (auto) tries each configured provider in order;
+    // each uses its own default model — we do NOT override with an
+    // OpenAI-specific model name that would break NVIDIA/Baseten/etc.
     const aiProvider = String(body.aiProvider || 'auto').trim() || 'auto'
-    // Terra is the Research/Plan workhorse — strong output at lower cost.
-    // Admin can override via body.model; bare 'gpt-5.6' aliases to 'gpt-5.6-sol'.
-    const model = String(body.model || 'gpt-5.6-terra').trim() || 'gpt-5.6-terra'
 
     // GSC live data
     const gscImpressions = Number(body.gscImpressions) || 0
@@ -147,7 +146,6 @@ export async function POST(req: NextRequest) {
 
     const ai = await generateContentText({
       aiProvider,
-      model,
       system,
       prompt,
       maxTokens: 1600,

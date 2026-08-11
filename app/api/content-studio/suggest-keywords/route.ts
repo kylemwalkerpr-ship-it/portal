@@ -73,8 +73,7 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean).join('\n')
 
     const ai = await generateContentText({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
+      aiProvider: 'auto',
       system,
       prompt,
       maxTokens: 900,
