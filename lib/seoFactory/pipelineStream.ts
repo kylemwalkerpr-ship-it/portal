@@ -595,6 +595,8 @@ export async function* runSeoFactoryPipelineStream(
     // focus-rotation → stall behavior is regression-tested with mocked
     // providers. The generator emits the same progress/delta/attempt events
     // and a final `done` event carries the updated state back to the pipeline.
+    // Critically-thin drafts (<200 words) are handled inside runDepthRescue
+    // with an immediate skip + progress message — no pipeline guard needed.
     for await (const ev of runDepthRescue({
       content,
       audit,

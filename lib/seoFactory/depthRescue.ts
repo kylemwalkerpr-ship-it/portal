@@ -98,6 +98,12 @@ export interface DepthRescueOptions {
  *  best draft so far instead of letting the whole stream time out. */
 export const RESCUE_MAX_MS = 220000
 
+/** Below this word count, depth rescue skips expansion entirely — the draft
+ *  is too thin for the expand/append model to bridge the gap. A 36-word
+ *  draft cannot be expanded to 2200; it needs full regeneration. The
+ *  pipeline yields a "critically thin" progress message and moves on. */
+export const CRITICALLY_THIN_WORDS = 200
+
 export async function* runDepthRescue(
   opts: DepthRescueOptions,
 ): AsyncGenerator<DepthRescueEvent> {
@@ -134,6 +140,31 @@ export async function* runDepthRescue(
   const rescueStart = now()
   let expandPasses = 0
   let attempts = 0
+
+  // ── Critically-thin guard: skip rescue for drafts too small to expand ──
+  // A 36-word draft cannot be expanded to a 2200-word article — the model
+  // would need a ~6100% word-count increase. These drafts need full
+  // regeneration, not depth rescue. Save the token budget for viable cases.
+  if (countBodyWords(content) < CRITICALLY_THIN_WORDS) {
+    yield {
+      type: 'progress',
+      stage: 'refine',
+      message: `Depth rescue skipped: draft is critically thin at ${countBodyWords(content)} words (below ${CRITICALLY_THIN_WORDS}-word viable floor). Regenerate the draft instead of expanding.`,
+    }
+    yield {
+      type: 'done',
+      content,
+      audit,
+      provider,
+      model,
+      expandPasses: 0,
+      attempts: 0,
+      stallCount: 0,
+      timeMs: 0,
+      budgetMs: RESCUE_MAX_MS,
+    }
+    return
+  }
 
   while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
     if (now() - rescueStart > RESCUE_MAX_MS) {

@@ -13,6 +13,7 @@ import { runDepthRescue, RESCUE_MAX_MS, APPEND_FOCUSES, type DepthRescueEvent } 
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
+import type { ContentAiResult } from '@/lib/contentAiProvider'
 
 const CONTENT_TYPE = 'legal_guide'
 const PRIMARY = 'student visa'
@@ -260,5 +261,58 @@ describe('runDepthRescue', () => {
     expect(rescueLines.length).toBe(2)
     expect(rescueLines[0].message).toContain('Depth rescue 1/10')
     expect(rescueLines[1].message).toContain('Depth rescue 2/10')
+  })
+
+  it('skips rescue for critically-thin drafts (below 200 words) and yields done immediately', async () => {
+    const THIN = '# Barely there'
+    const audit = auditContent({
+      content: THIN,
+      contentType: CONTENT_TYPE,
+      primaryKeyword: PRIMARY,
+      indexable: true,
+      ownershipBlockers: OWNERSHIP_BLOCKERS,
+    })
+
+    const events: DepthRescueEvent[] = []
+    let done: (DepthRescueEvent & { type: 'done' }) | null = null
+    const generateText = jest.fn<Promise<ContentAiResult>, any[]>().mockRejectedValue(new Error('should not be called'))
+
+    for await (const ev of runDepthRescue({
+      content: THIN,
+      audit,
+      title: 'Test',
+      topic: 'Test',
+      primaryKeyword: 'test',
+      region: 'US',
+      contentType: 'article',
+      minWords: 2200,
+      targetWords: 2500,
+      maxWords: 6000,
+      minAudit: 60,
+      indexable: true,
+      ownershipBlockers: [],
+      generateText,
+    })) {
+      events.push(ev)
+      if (ev.type === 'done') done = ev
+    }
+
+    // Should yield a progress message about being critically thin
+    const skipMsg = events.find(
+      (e): e is Extract<DepthRescueEvent, { type: 'progress' }> =>
+        e.type === 'progress' && e.message.includes('critically thin'),
+    )
+    expect(skipMsg).toBeDefined()
+    expect(skipMsg!.message).toContain('critically thin')
+
+    // Should yield an immediate done with zero passes
+    expect(done).not.toBeNull()
+    expect(done!.expandPasses).toBe(0)
+    expect(done!.attempts).toBe(0)
+    expect(done!.content).toBe(THIN) // unchanged
+    expect(done!.timeMs).toBe(0)
+
+    // Verify generateText was NEVER called — the guard short-circuits
+    expect(generateText).not.toHaveBeenCalled()
   })
 })
