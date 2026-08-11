@@ -136,11 +136,11 @@ describe('runDepthRescue', () => {
 
     const progress = events.filter((e) => e.type === 'progress' && e.message.includes('Depth rescue 1/10'))
     expect(progress.length).toBe(1)
-    // First pass used the full-rewrite expand prompt (16k budget)
-    // maxTokens is now calculated: Math.min(16384, Math.max(2000, (minWords - currentWords) * 3))
-    // should be within the 2000-16384 band
-    expect(calls[0].maxTokens).toBeGreaterThanOrEqual(2000)
-    expect(calls[0].maxTokens).toBeLessThanOrEqual(16384)
+    // First pass uses the full-rewrite expand prompt.
+    // maxTokens = Math.min(24576, Math.max(8000, currentWords * 5 + deficit * 6))
+    // For this test: 500*5 + 1300*6 = 10300, within 8000-24576 band.
+    expect(calls[0].maxTokens).toBeGreaterThanOrEqual(8000)
+    expect(calls[0].maxTokens).toBeLessThanOrEqual(24576)
     expect(calls[0].prompt).toMatch(/DEPTH EXPANSION PASS/)
 
     expect(done).not.toBeNull()
@@ -168,9 +168,9 @@ describe('runDepthRescue', () => {
 
     // Pass 2 + 3 used the append prompt with the first two rotating focuses
     const appendCall = calls[1]
-    // maxTokens is now calculated: Math.min(8000, Math.max(1500, (minWords - currentWords) * 3))
-    expect(appendCall.maxTokens).toBeGreaterThanOrEqual(1500)
-    expect(appendCall.maxTokens).toBeLessThanOrEqual(8000)
+    // append maxTokens = Math.min(8192, Math.max(3000, (minWords - currentWords) * 8 + 2000))
+    expect(appendCall.maxTokens).toBeGreaterThanOrEqual(3000)
+    expect(appendCall.maxTokens).toBeLessThanOrEqual(8192)
     expect(appendCall.prompt).toMatch(/APPEND SECTIONS ONLY/)
     expect(appendCall.prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[0]}`)
     expect(calls[2].prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[1]}`)

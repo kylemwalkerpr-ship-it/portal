@@ -169,9 +169,15 @@ export async function* runDepthRescue(
             draft: content,
             h2Outline,
           }),
-          // Cap tokens to ~2x the word deficit (prevents 6,000-word dumps
-          // when the model only needed to add 300 words).
-          maxTokens: Math.min(contentType === 'marketplace_gig' ? 4000 : 16384, Math.max(2000, (minWords - currentWords) * 3)),
+          // Full rewrite: the model must reproduce the existing article (~5
+          // tokens per word) AND add new substance. Never cap below 8000
+          // tokens — a 2000-word draft needs ~10k tokens just to reproduce.
+          // Cap at 24576 to keep the stream within Cloudflare Worker limits.
+          // Marketplace gigs stay concise — cap at 4000 tokens (their
+          // maxExpand is also 1, so they get one tight rewrite).
+          maxTokens: contentType === 'marketplace_gig'
+            ? 4000
+            : Math.min(24576, Math.max(8000, currentWords * 5 + (minWords - currentWords) * 6)),
           temperature: 0.42,
           aiProvider,
         })
@@ -197,7 +203,11 @@ export async function* runDepthRescue(
             h2Outline,
             focus,
           }),
-          maxTokens: Math.min(8000, Math.max(1500, (minWords - currentWords) * 3)),
+          // Append-only: the model writes NEW sections, not a full rewrite.
+          // The prompt asks for 700+ words (≈2,800 tokens). Floor at 3,000
+          // tokens so a 72-word deficit still gets a full section written.
+          // Scale up to 8,192 for larger gaps.
+          maxTokens: Math.min(8192, Math.max(3000, (minWords - currentWords) * 8 + 2000)),
           temperature: 0.45,
           aiProvider,
         })
