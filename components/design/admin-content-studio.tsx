@@ -61,7 +61,7 @@ import {
   inputStyle,
 } from './studio-ui-shared'
 import { QueueStats, QueueTable } from './studio-queue'
-import { DefendPanel, ReviewDraftsPanel } from './studio-review-panels'
+import { ReviewDraftsPanel } from './studio-review-panels'
 
 
 const C = E
@@ -5265,16 +5265,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             gateByJob={gateByJob}
             selectedJobId={selectedJob?.id ?? null}
             onOpenJob={(j) => { setSelectedJob(j) }}
-          />
-          <DefendPanel
-            selectedJob={selectedJob}
-            gateFor={selectedJob ? (gateByJob.get(selectedJob.id) ?? null) : null}
-            jobs={jobs}
-            gateByJob={gateByJob}
-            onOpenJob={(j) => { setSelectedJob(j) }}
-            setActionNotice={setActionNotice}
             reviewAuditResult={reviewAuditResult}
-            onApprove={() => selectTab('approve')}
+            setActionNotice={setActionNotice}
           />
           {/* AI-enabled inline editor — fix blockers interactively */}
           {selectedJob?.content && (

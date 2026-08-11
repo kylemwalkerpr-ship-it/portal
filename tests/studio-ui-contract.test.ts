@@ -13,14 +13,14 @@
  *   · QueueStats/Table — metric cards, table headers, status/gate badges,
  *                        PR links, select-all aria
  *   · ReviewDraftsPanel— studio-review-drafts + studio-review-draft-{id} testids
- *   · DefendPanel      — studio-defend-panel, empty state, gate badge, blockers
+ *   · ReviewDraftsPanel — studio-review-drafts, document vault, inline gate info
  */
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { StudioStageNav } from '@/components/design/studio-stage-nav'
 import { ChapterIntro } from '@/components/design/studio-chapter-intro'
 import { QueueStats, QueueTable } from '@/components/design/studio-queue'
-import { DefendPanel, ReviewDraftsPanel } from '@/components/design/studio-review-panels'
+import { ReviewDraftsPanel } from '@/components/design/studio-review-panels'
 import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-shared'
 
 /* ── fixtures ─────────────────────────────────────────────────────────── */
@@ -256,7 +256,8 @@ describe('ReviewDraftsPanel — drafts document list', () => {
       }),
     )
     expect(html).toContain('data-testid="studio-review-drafts"')
-    expect(html).toContain('No drafted documents yet')
+    expect(html).toContain('Document Vault')
+    expect(html).toContain('No pending drafts')
   })
 
   it('renders per-draft cards with id-scoped testids and an Open in editor action', () => {
@@ -278,53 +279,34 @@ describe('ReviewDraftsPanel — drafts document list', () => {
   })
 })
 
-/* ── DefendPanel ──────────────────────────────────────────────────────── */
+/* ── ReviewDraftsPanel — vault empty state ───────────────────────────── */
 
-describe('DefendPanel — gate state + blockers', () => {
-  it('renders the empty state when no draft is selected', () => {
+describe('ReviewDraftsPanel — document vault', () => {
+  it('renders the vault empty state when no drafts exist', () => {
     const html = renderToStaticMarkup(
-      React.createElement(DefendPanel, {
-        selectedJob: null,
-        gateFor: null,
+      React.createElement(ReviewDraftsPanel, {
         jobs: [],
         gateByJob,
+        selectedJobId: null,
         onOpenJob: () => undefined,
       }),
     )
-    expect(html).toContain('data-testid="studio-defend-panel"')
-    expect(html).toContain('No draft selected')
+    expect(html).toContain('data-testid="studio-review-drafts"')
+    expect(html).toContain('Document Vault')
   })
 
-  it('surfaces the gate score badge and blocker remediation for a failed gate', () => {
+  it('renders draft documents with gate scores and Open in editor buttons', () => {
     const html = renderToStaticMarkup(
-      React.createElement(DefendPanel, {
-        selectedJob: drafting,
-        gateFor: { score: 33, passed: false },
+      React.createElement(ReviewDraftsPanel, {
         jobs: [drafting],
-        gateByJob,
+        gateByJob: new Map([[drafting.id, { score: 48, passed: false }]]),
+        selectedJobId: null,
         onOpenJob: () => undefined,
-        reviewAuditResult: {
-          score: 33,
-          ok: false,
-          blockers: 2,
-          warnings: 1,
-          summary: 'Depth and voice blockers remain.',
-          annotations: [
-            { code: 'missing_disclaimer', severity: 'blocker', message: 'Add a disclaimer.', fix: 'Insert disclaimer.' },
-            { code: 'outcome_promise', severity: 'blocker', message: 'Remove guarantee language.', fix: 'Rewrite.' },
-          ],
-          shipReady: false,
-          depthGate: { ok: false, message: 'Below depth floor.' },
-        },
       }),
     )
-    expect(html).toContain('data-testid="studio-defend-panel"')
-    expect(html).toContain('Score 33/100') // gate score badge
-    expect(html).toContain('Ship gate blocked — Below depth floor.')
-    expect(html).toContain('BLOCKER · MISSING_DISCLAIMER')
-    expect(html).toContain('Add a disclaimer.')
-    expect(html).toContain('BLOCKER · OUTCOME_PROMISE')
-    expect(html).toContain('Remove guarantee language.')
-    expect(html).toContain('Open in inline editor →')
+    expect(html).toContain('data-testid="studio-review-drafts"')
+    expect(html).toContain('DOCUMENT VAULT')
+    expect(html).toContain('Open in editor →')
+    expect(html).toContain('48') // gate score
   })
 })
