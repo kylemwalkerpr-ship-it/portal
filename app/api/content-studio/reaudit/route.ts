@@ -38,12 +38,14 @@ function withDeadline<T>(ms: number, label: string, promise: Promise<T>): Promis
   }
 }
 
-async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promise<string> {
+async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewModel?: string): Promise<string> {
   // GPT-5.6 Sol is the senior editor / quality reviewer. It has flagship
   // reasoning capability and evaluates gate compliance with higher accuracy
   // than Terra (Research) or Luna (high-volume drafting). The provider
   // cascade (auto) tries configured providers in order; each will use its
-  // own default model unless overridden, so Sol only applies to OpenAI.
+  // own default model unless overridden, so the model choice only applies
+  // to OpenAI-compatible providers.
+  const effectiveModel = reviewModel || 'gpt-5.6-sol'
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,
@@ -51,7 +53,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promis
     temperature: 0.2,
     // GPT Sol is the reviewer — pass model override for OpenAI providers.
     // Non-OpenAI providers ignore this and use their own default.
-    model: 'gpt-5.6-sol',
+    model: effectiveModel,
   }))
   const text = (result?.text || '').trim()
   if (!text) throw new Error('AI fix returned empty content')
@@ -180,8 +182,11 @@ export async function PATCH(request: NextRequest) {
       indexable?: boolean
       requiredShortKeywords?: string[]
       requiredLongTailKeywords?: string[]
+      /** Override the review model (gpt-5.6-sol by default). Set to
+       *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
+      reviewModel?: string
     }
-    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = body
+    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, reviewModel } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -218,7 +223,7 @@ ${warningList}
 5. Keep all original headings, interlinks, and key facts intact
 6. Return the COMPLETE fixed article, nothing else`
 
-      fixedContent = await callAiFix(sys, prompt, 16384)
+      fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
 
     } else if (action === 'fix_one' && annotation) {
       const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.'
@@ -238,7 +243,7 @@ ${content}
 ## Instructions
 Fix ONLY this specific issue. Keep everything else exactly the same. Return the COMPLETE article.`
 
-      fixedContent = await callAiFix(sys, prompt, 8192)
+      fixedContent = await callAiFix(sys, prompt, 8192, reviewModel)
 
     } else if (action === 'fix_warnings' && warnings && warnings.length) {
       // Warnings-only sweep. Many quality warnings (tone_whilst, emdash_spam,
@@ -246,7 +251,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       // inline evidence, so they were never fixable before. The sweep prompt
       // lists them with their remediation and asks for minimal edits.
       const sys = 'You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.'
-      fixedContent = await callAiFix(sys, buildWarningsFixPrompt(content, warnings), 16384)
+      fixedContent = await callAiFix(sys, buildWarningsFixPrompt(content, warnings), 16384, reviewModel)
 
     } else {
       return NextResponse.json({ error: 'Invalid action or missing annotations/warnings' }, { status: 400 })

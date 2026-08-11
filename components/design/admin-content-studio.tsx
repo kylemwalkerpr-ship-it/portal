@@ -2309,6 +2309,7 @@ function DraftWorkspace({
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
+  const [reviewModel, setReviewModel] = React.useState('gpt-5.6-sol')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -2557,6 +2558,8 @@ function DraftWorkspace({
               contentType={completedJob?.content_type}
               primaryKeyword={completedJob?.primary_keyword ?? undefined}
               indexable={completedJob?.indexable}
+              reviewModel={reviewModel}
+              onReviewModelChange={setReviewModel}
             />
           </div>
         ) : (
@@ -3035,6 +3038,7 @@ function JobDetail({
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const [aiProvider, setAiProvider] = React.useState<string>('auto')
+  const [reviewModel, setReviewModel] = React.useState<string>('gpt-5.6-sol')
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
 
@@ -3348,7 +3352,7 @@ function JobDetail({
           </div>
           {loading
             ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div>
-            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} />}
+            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />}
         </div>
 
         {/* ── Dedicated action groups ── */}
@@ -3872,6 +3876,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
   const [aiProvider, setAiProvider] = React.useState('auto')
+  const [reviewModel, setReviewModel] = React.useState('gpt-5.6-sol')
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')
@@ -5283,6 +5288,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 contentType={selectedJob.content_type}
                 primaryKeyword={selectedJob.primary_keyword ?? undefined}
                 indexable={selectedJob.indexable}
+                reviewModel={reviewModel}
+                onReviewModelChange={setReviewModel}
                 onScoreChange={async (_s) => {
                   void fetchGateRuns()
                   const latestContent = latestJobContentRef.current

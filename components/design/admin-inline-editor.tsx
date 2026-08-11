@@ -62,6 +62,11 @@ type Props = {
   contentType?: string
   primaryKeyword?: string
   indexable?: boolean
+  /** Review model override — defaults to gpt-5.6-sol (senior editor).
+   *  gpt-5.6-terra is the faster, lower-cost alternative for non-critical
+   *  fixes. Sent to the reaudit API as the reviewModel field. */
+  reviewModel?: string
+  onReviewModelChange?: (m: string) => void
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -73,7 +78,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, onReviewModelChange }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -172,7 +177,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, onChange, onScoreChange, contentType, primaryKeyword, indexable])
+  }, [content, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ALL annotations via AI (clicking again while running cancels the request)
   const handleFixAll = useCallback(async () => {
@@ -216,7 +221,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, annotations, fixingAll, onChange, onScoreChange, contentType, primaryKeyword, indexable])
+  }, [content, annotations, fixingAll, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
@@ -259,7 +264,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, fixingOne, onChange, onScoreChange, contentType, primaryKeyword, indexable])
+  }, [content, fixingOne, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ALL warnings via AI — evidence-less quality warnings AND indexability
   // warnings (schema/meta/internal-links) included. The sweep prompt lists
@@ -310,7 +315,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, warningItems, fixingWarnings, onChange, onScoreChange, contentType, primaryKeyword, indexable])
+  }, [content, warningItems, fixingWarnings, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
@@ -356,6 +361,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(contentType ? { contentType } : {}),
     ...(primaryKeyword ? { primaryKeyword } : {}),
     ...(typeof indexable === 'boolean' ? { indexable } : {}),
+    ...(reviewModel ? { reviewModel } : {}),
   }
 
   const allBusy = busy || fixingAll || fixingWarnings || disabled
@@ -497,6 +503,28 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           style={btnStyle({ bg: '#FFFBEB', border: C.gold, color: C.gold, disabled: saving || allBusy })}>
           {saving ? 'Saving...' : 'Save'}
         </button>
+
+        {/* Review model selector — GPT Sol (senior editor) vs Terra (fast/cheap).
+            Only OpenAI providers use the model override, so this applies to the
+            OpenAI path; the provider cascade falls back normally for others. */}
+        {onReviewModelChange && (
+          <select
+            value={reviewModel || 'gpt-5.6-sol'}
+            onChange={(e) => onReviewModelChange(e.target.value)}
+            disabled={allBusy}
+            aria-label="Review AI model"
+            style={{
+              padding: '5px 10px', borderRadius: 6,
+              border: `1px solid ${C.border}`, background: C.surface,
+              fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+              color: C.text, cursor: allBusy ? 'not-allowed' : 'pointer',
+              opacity: allBusy ? 0.5 : 1,
+            }}
+          >
+            <option value="gpt-5.6-sol">GPT Sol · Senior Editor</option>
+            <option value="gpt-5.6-terra">GPT Terra · Fast Review</option>
+          </select>
+        )}
 
         {/* Status indicators */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
