@@ -218,7 +218,7 @@ export function buildFactorySystemPrompt(opts: {
     '   - Short disclaimer: educational only, not legal advice',
     '6) Authority: use precise immigration entities (forms, visas, agencies, subclasses). No fluff.',
     '7) Professional voice: calm, accurate, no outcome guarantees, no salesy bait.',
-    `8) HARD MINIMUM ${minWords} words of body prose (not counting YAML, JSON-LD, or code fences). Aim for ~${target} words. HARD MAX ${maxWords} words — do NOT exceed or you will be penalized by the SEO audit.`,
+    `8) HARD MINIMUM ${minWords} words of body prose (not counting YAML, JSON-LD, or code fences). Aim for ~${target} words. This is a measured gate: the audit rejects any page under ${minWords} words, so write until you are comfortably ABOVE it. Going over ${maxWords} is a soft warning only — under-delivering is the hard failure. When in doubt between too short and slightly long, choose slightly long.`,
     `9) Content type: ${contentType}`,
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
@@ -446,10 +446,19 @@ export function buildDepthExpandPrompt(opts: {
   maxWords?: number
   currentWords: number
   draft: string
+  h2Outline?: string[]
 }): string {
   const deficit = Math.max(0, opts.minWords - opts.currentWords)
   const maxWords = opts.maxWords ?? 99999
   const draftSlice = opts.draft.length > 14000 ? opts.draft.slice(0, 14000) + '\n\n[…truncated…]' : opts.draft
+  const outlineBlock =
+    opts.h2Outline && opts.h2Outline.length
+      ? [
+          '',
+          'EXPAND EXACTLY THESE PLANNED SECTIONS (the approved brief outline — do not rename or drop any):',
+          ...opts.h2Outline.map((h, i) => `${i + 1}. ## ${h}`),
+        ].join('\n')
+      : ''
   return [
     '## DEPTH EXPANSION PASS (mandatory — previous draft was REJECTED as thin)',
     `Topic: ${opts.topic}`,
@@ -459,13 +468,13 @@ export function buildDepthExpandPrompt(opts: {
     `CURRENT body word count: ${opts.currentWords}`,
     `HARD MINIMUM: ${opts.minWords} body words of real prose (YAML + JSON-LD + code fences do NOT count)`,
     `TARGET: ~${opts.targetWords} words`,
-    `HARD MAX: ${maxWords} words — do NOT exceed. Long output is penalized by the SEO audit.`,
-    `You must ADD about ${deficit + 200} more words of substance — but stay under ${maxWords} total. Short output will be discarded again.`,
+    `This is a measured gate: the audit counts every body word and REJECTS the page below ${opts.minWords}. Under-delivering is the ONLY failure that matters. If you pass ${opts.targetWords} words the audit is satisfied.`,
+    `You must ADD at least ${deficit + 250} more words of substance than the current draft. Do not stop writing until the total body prose clears ${opts.minWords} words.`,
     '',
     'RULES:',
     '1) Return the COMPLETE page (YAML front matter + full body + FAQ + Sources + JSON-LD + disclaimer).',
     '2) KEEP accurate facts from the draft; EXPAND every thin section — do not shrink.',
-    '3) Each H2 body (not the heading) should be ~180–350 words with concrete steps, documents, risks, or examples.',
+    '3) Each H2 body (not the heading) should be ~180–350 words with concrete steps, documents, risks, or examples. Stub sections are rejected.',
     '4) Required sections if missing or thin:',
     '   - ## In 60 seconds (3–5 direct bullets)',
     '   - Opening answer paragraph',
@@ -478,14 +487,15 @@ export function buildDepthExpandPrompt(opts: {
     '   - ## FAQ (6 Q&A, each answer 50–90 words, self-contained)',
     '   - ## Sources (official https URLs only)',
     '   - Disclaimer: educational only, not legal advice',
+    outlineBlock,
     '5) Practitioner voice: second person, plain English, NO AI clichés, NO outcome guarantees.',
     '6) Do NOT wrap in markdown code fences. Raw markdown only.',
-    '7) Before you finish, mentally count: if under ' + opts.minWords + ' words of body prose, keep writing.',
+    '7) Before you finish, mentally count your body prose words: if under ' + opts.minWords + ', keep writing. A 2000-word page does not clear a 2200-word floor — the audit will reject it again.',
     '',
     '## PREVIOUS DRAFT (expand this — do not replace with a shorter page)',
     draftSlice,
     '',
-    'Write the FULL expanded page now. Front matter first. Make it long enough to clear the floor.',
+    'Write the FULL expanded page now. Front matter first. Write until the body prose is comfortably above the hard minimum.',
   ].join('\n')
 }
 
@@ -500,24 +510,46 @@ export function buildDepthAppendPrompt(opts: {
   currentWords: number
   existingH2s: string[]
   draftExcerpt: string
+  h2Outline?: string[]
+  /** Rotating focus — each rescue pass targets a different gap so repeated
+   *  appends add NEW substance instead of repeating the same sections. */
+  focus?: string
 }): string {
-  const need = Math.max(400, opts.minWords - opts.currentWords + 150)
+  const deficit = Math.max(0, opts.minWords - opts.currentWords)
+  // Demand at least the full remaining deficit, plus headroom so a
+  // single successful append can clear the floor in one pass.
+  const need = Math.max(500, deficit + 200)
+  const focusLine = opts.focus
+    ? `FOCUS THIS PASS ON: ${opts.focus}. Do not repeat sections you already wrote in a previous pass — pick a different angle.`
+    : 'Write sections you have NOT already covered.'
+  const outlineBlock =
+    opts.h2Outline && opts.h2Outline.length
+      ? [
+          '',
+          'If any of these planned outline sections are missing or thin in the current draft, cover THOSE first:',
+          ...opts.h2Outline.map((h, i) => `${i + 1}. ## ${h}`),
+        ].join('\n')
+      : ''
   return [
     '## APPEND SECTIONS ONLY (depth rescue)',
     `Primary keyword: ${opts.primaryKeyword}`,
     `Region: ${opts.region}`,
-    `Current body words: ${opts.currentWords}. Need ~${need} MORE words.`,
+    `Current body words: ${opts.currentWords}. You MUST add at least ${need} MORE words this pass — the gate needs ${opts.minWords} total and the audit re-measures after every pass.`,
     'Return ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing sections).',
     'Existing H2 titles (do not repeat these headings):',
     ...(opts.existingH2s.length ? opts.existingH2s.map((h) => `- ${h}`) : ['- (none parsed)']),
     '',
-    'Write 3–5 NEW H2 sections, each 200–400 words, covering gaps such as:',
+    focusLine,
+    '',
+    'Write 3–6 NEW H2 sections, each 200–400 words (aim for ~700+ words total this pass), covering gaps such as:',
     '- Document checklist deep dive',
     '- Step-by-step filing process',
     '- Timelines and what happens after filing',
     '- Common refusals / mistakes and how to avoid them',
     '- Regional or dependent-family nuances',
     '- Practical preparation checklist before you apply',
+    '- Costs, fees, or logistics (official schedules only, no invented numbers)',
+    outlineBlock,
     '',
     'Voice: calm practitioner, second person, official-source minded, no guarantees, no AI filler.',
     'Raw markdown only. No code fences.',

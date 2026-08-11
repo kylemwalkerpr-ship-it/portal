@@ -303,8 +303,10 @@ export async function* runSeoFactoryPipelineStream(
             contentType,
             minWords,
             targetWords,
+            maxWords,
             currentWords: countBodyWords(content),
             draft: content,
+            h2Outline: input.h2Outline as string[] | undefined,
           })
         : buildFactoryUserPrompt({
             title,
@@ -421,15 +423,46 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     // ── PASS 2: Depth rescue (expand/append until floor met) ──────────────
-    const maxExpand = contentType === 'marketplace_gig' ? 1 : 5
+    // The floor is a HARD ship gate, so the rescue keeps working until it is
+    // met or the budget is genuinely exhausted. Never `break` on a single
+    // provider failure (the provider cascade retries internally) and never
+    // `break` on one no-growth append — rotate the append focus so each pass
+    // adds NEW substance. Only stall out after several consecutive
+    // no-growth passes (a model that keeps returning thin output won't be
+    // brute-forced forever).
+    const APPEND_FOCUSES = [
+      'Step-by-step process and timelines',
+      'Document checklist deep dive',
+      'Common refusals / mistakes and avoidance',
+      'Regional or dependent-family nuances',
+      'Practical preparation checklist before you apply',
+      'Costs, fees, or logistics (official schedules only)',
+    ]
+    const maxExpand = contentType === 'marketplace_gig' ? 1 : 10
+    const maxStallPasses = 3
+    let stallPasses = 0
+    let lastWords = countBodyWords(content)
+    // Wall-clock guard: each AI pass can take 30–120s (provider cascade), and
+    // the route caps this stream at ~300s. If the rescue has run too long, save
+    // the best draft so far instead of letting the whole stream time out.
+    const rescueStart = Date.now()
+    const RESCUE_MAX_MS = 220000
     while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
+      if (Date.now() - rescueStart > RESCUE_MAX_MS) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Depth rescue time budget reached at ${countBodyWords(content)}/${minWords} words — keeping best draft`,
+        }
+        break
+      }
       expandPasses++
       attempts++
       const currentWords = countBodyWords(content)
       yield {
         type: 'progress',
         stage: 'refine',
-        message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words…`,
+        message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words (${Math.max(0, minWords - currentWords)} to add)…`,
       }
       try {
         if (expandPasses === 1) {
@@ -443,8 +476,10 @@ export async function* runSeoFactoryPipelineStream(
               contentType,
               minWords,
               targetWords,
+              maxWords,
               currentWords,
               draft: content,
+              h2Outline: input.h2Outline as string[] | undefined,
             }),
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 16384,
             temperature: 0.42,
@@ -458,6 +493,7 @@ export async function* runSeoFactoryPipelineStream(
             yield { type: 'delta', text: content.slice(0, 500), attempt: attempts }
           }
         } else {
+          const focus = APPEND_FOCUSES[(expandPasses - 2) % APPEND_FOCUSES.length]
           const ai = await generateContentText({
             system:
               'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
@@ -468,8 +504,10 @@ export async function* runSeoFactoryPipelineStream(
               currentWords,
               existingH2s: extractH2Titles(content),
               draftExcerpt: content,
+              h2Outline: input.h2Outline as string[] | undefined,
+              focus,
             }),
-            maxTokens: 6000,
+            maxTokens: 8000,
             temperature: 0.45,
             aiProvider: input.aiProvider,
           })
@@ -478,17 +516,15 @@ export async function* runSeoFactoryPipelineStream(
             content = merged
             provider = ai.provider
             model = ai.model
-          } else {
-            break
           }
         }
       } catch (e) {
+        // Provider cascade already retried internally; keep the rescue alive.
         yield {
           type: 'progress',
           stage: 'refine',
-          message: `Depth rescue failed: ${e instanceof Error ? e.message : 'error'}`,
+          message: `Depth rescue pass ${expandPasses} failed (${e instanceof Error ? e.message.slice(0, 140) : 'error'}) — continuing with a different section focus`,
         }
-        break
       }
       audit = auditContent({
         content,
@@ -506,6 +542,18 @@ export async function* runSeoFactoryPipelineStream(
         draft: content,
       }
       if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
+      const grew = countBodyWords(content) > lastWords
+      lastWords = countBodyWords(content)
+      if (!grew) stallPasses++
+      else stallPasses = 0
+      if (stallPasses >= maxStallPasses) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Depth rescue stalled at ${lastWords}/${minWords} after ${expandPasses} passes — moving on`,
+        }
+        break
+      }
     }
 
     // ── PASS 3: Quality refine after depth rescue ────────────────────────

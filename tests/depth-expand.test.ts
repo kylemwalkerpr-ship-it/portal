@@ -1,4 +1,5 @@
 import {
+  buildDepthAppendPrompt,
   buildDepthExpandPrompt,
   mergeAppendedSections,
   extractH2Titles,
@@ -22,6 +23,50 @@ describe('depth expand helpers', () => {
     expect(p).toMatch(/1800/)
     expect(p).toMatch(/DEPTH EXPANSION/)
     expect(p).toMatch(/PREVIOUS DRAFT/)
+  })
+
+  it('buildDepthExpandPrompt carries h2Outline and demands the deficit', () => {
+    const p = buildDepthExpandPrompt({
+      title: 'Test',
+      topic: 'student visa',
+      primaryKeyword: 'student visa',
+      region: 'US',
+      contentType: 'legal_guide',
+      minWords: 2200,
+      targetWords: 2500,
+      maxWords: 2800,
+      currentWords: 1660,
+      draft: '# x\n\nshort',
+      h2Outline: ['Eligibility Requirements', 'Application Process'],
+    })
+    // The planned outline is threaded into the prompt so expansion follows it
+    expect(p).toMatch(/Eligibility Requirements/)
+    expect(p).toMatch(/Application Process/)
+    // The exact remaining deficit is demanded so the model knows the floor
+    expect(p).toMatch(/1660/)
+    expect(p).toMatch(/2200/)
+    // Under-delivering is framed as the only real failure (no mixed signal)
+    expect(p).toMatch(/Under-delivering is the ONLY failure/)
+  })
+
+  it('buildDepthAppendPrompt demands the full remaining deficit with focus', () => {
+    const p = buildDepthAppendPrompt({
+      primaryKeyword: 'student visa',
+      region: 'US',
+      minWords: 2200,
+      currentWords: 1660,
+      existingH2s: ['Eligibility'],
+      draftExcerpt: 'short',
+      h2Outline: ['Eligibility Requirements', 'Application Process'],
+      focus: 'Document checklist deep dive',
+    })
+    // Must demand the whole deficit plus headroom, never a token 100-word nudge
+    expect(p).toMatch(/at least 740 MORE words/)
+    expect(p).toMatch(/2200 total/)
+    // The rotating focus and planned outline are threaded in
+    expect(p).toMatch(/FOCUS THIS PASS ON: Document checklist deep dive/)
+    expect(p).toMatch(/Application Process/)
+    expect(p).not.toMatch(/Need ~400 MORE words/) // old soft target
   })
 
   it('mergeAppendedSections inserts before script', () => {
