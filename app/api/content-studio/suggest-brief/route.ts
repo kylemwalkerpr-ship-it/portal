@@ -100,6 +100,12 @@ export async function POST(req: NextRequest) {
       '8. The h2Outline order must follow search intent flow: answer-first → evidence → process → FAQ.',
       '9. Prefer keywords with clear informational or commercial intent — avoid terms without a search volume signal.',
       '10. Return ONLY valid JSON — no markdown wrapper, no explanations outside the JSON.',
+      '',
+      'QUALITY WARNING PREVENTION (these checks are enforced at draft time — the brief must preempt them):',
+      '11. ANTI-WALL-OF-TEXT: design H2s so each section is 2-4 short paragraphs (1-3 sentences). No prose block may exceed 180 characters without a visual break — split into bullets, a table, a numbered step, or a checkpoint. Use the h2Outline to guarantee scannability: mix explanatory H2s with checklist, comparison, and FAQ H2s.',
+      '12. CONCRETE WORKED EXAMPLE: every long-form page (≥1,000 words) MUST include at least one concrete example with a named individual, their real-world situation, the step they took, and the result. Your h2Outline MUST contain an "Example" or "Worked Example" H2 section. Example markers like "For example," or "For instance," must appear in the body.',
+      '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline.',
+      '14. SCHEMA FAQ JSON-LD: include 4-6 FAQ questions as H2 sections in the h2Outline. At minimum: eligibility, timeline, required documents, costs, DIY-vs-attorney, and denial/reapply questions. The drafting system wraps these in FAQPage JSON-LD (`{"@type":"FAQPage"}`) so the page qualifies for AI-overview rich results.',
     ].join('\n')
 
     const prompt = [
