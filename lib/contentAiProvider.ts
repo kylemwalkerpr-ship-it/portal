@@ -240,7 +240,7 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
       return await fn()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      const retryable = /\b(503|429|524)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted/i.test(msg)
+      const retryable = /\b(503|429|524)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(msg)
       if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
       // Exponential backoff: 1.5s → 3s → 6s (with ±20% jitter)
       const baseMs = 1500 * 2 ** (attempt - 1)
@@ -288,11 +288,17 @@ function buildContinuationPrompt(partial: string): string {
   )
 }
 
+/** Reasoning-capable models accept max_completion_tokens + reasoning_content. */
+function isReasoningModelId(model: string): boolean {
+  return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(model)
+}
+
 /** One-shot OpenAI-compatible chat completion fetch (complete + continuation). */
 async function openAiCompatFetch(
   p: OpenAiCompat,
   opts: ContentAiOptions,
   userContent: string,
+  patch?: { disableThinking?: boolean },
 ): Promise<{ text: string; finishReason?: string | null }> {
   const url = p.baseURL.replace(/\/$/, '') + '/chat/completions'
   const headers: Record<string, string> = {
@@ -307,7 +313,7 @@ async function openAiCompatFetch(
   const maxTokens = resolveMaxTokens(p, opts)
   // GPT-5.x / o-series reasoning models require max_completion_tokens
   // instead of max_tokens (OpenAI rejects max_tokens on these models).
-  const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
+  const isReasoningModel = isReasoningModelId(p.model)
   const body: Record<string, unknown> = {
     model: p.model,
     ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
@@ -321,11 +327,55 @@ async function openAiCompatFetch(
     ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
     ...(p.extraBody || {}),
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
+  // Empty-content rescue: re-ask the SAME prompt with thinking OFF so a
+  // reasoning model that spent its whole budget on chain-of-thought is forced
+  // to emit final prose instead of bouncing the entire provider cascade.
+  if (patch?.disableThinking) {
+    if (body.chat_template_kwargs && typeof body.chat_template_kwargs === 'object') {
+      body.chat_template_kwargs = {
+        ...(body.chat_template_kwargs as Record<string, unknown>),
+        // DeepSeek-family templates read `thinking`; GLM/Nemotron read
+        // `enable_thinking`. Neutralize BOTH so the rescue re-ask cannot
+        // silently re-enable chain-of-thought and return empty again.
+        thinking: false,
+        enable_thinking: false,
+      }
+    }
+    delete body.reasoning_budget
+    // ExtraBody-less reasoning endpoints (custom OpenAI-compatible) expect the
+    // flag at the top level. Harmless when ignored; a strict 400 still fails
+    // the same way as the empty content it replaces, so nothing regresses.
+    if (!p.extraBody) body.enable_thinking = false
+  }
+  // Per-fetch deadline — a hung upstream must fail fast so the cascade can
+  // move on instead of burning the whole per-candidate budget.
+  const timeoutMs =
+    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let raceTimer: ReturnType<typeof setTimeout> | undefined
+  let res: Response
+  try {
+    res = await Promise.race([
+      fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }),
+      new Promise<never>((_, reject) => {
+        raceTimer = setTimeout(
+          () => reject(new Error(`${p.label} timed out after ${Math.round(timeoutMs / 1000)}s`)),
+          timeoutMs,
+        )
+      }),
+    ])
+  } finally {
+    // Clear BOTH timers so a hung fetch that resolves via abort does not leave
+    // a pending handle behind (jest/workers flag it as an open handle).
+    clearTimeout(timer)
+    if (raceTimer) clearTimeout(raceTimer)
+  }
   if (!res.ok) {
     const errBody = await res.text().catch(() => '')
     throw new Error(formatProviderFailure(p.label, res.status, errBody))
@@ -354,6 +404,15 @@ async function openAiCompatibleComplete(
     const first = await openAiCompatFetch(p, opts, opts.prompt)
     let text = first.text
     let finishReason = first.finishReason
+    // Reasoning models (DeepSeek V4 Flash / Nemotron / GLM) occasionally spend
+    // the ENTIRE budget on reasoning_content and emit no final prose. Re-ask
+    // the same prompt with thinking OFF so the model is forced to write the
+    // article text instead of bouncing the whole cascade.
+    if (!text.trim() && isReasoningModelId(p.model)) {
+      const plain = await openAiCompatFetch(p, opts, opts.prompt, { disableThinking: true })
+      text = plain.text
+      finishReason = plain.finishReason
+    }
     if (finishReason === 'length' && text.trim()) {
       const cont = await openAiCompatFetch(p, opts, buildContinuationPrompt(text))
       text = (text + '\n\n' + cont.text).trim()
@@ -742,10 +801,10 @@ async function* openAiCompatibleStream(
   // (OpenAI rejects max_tokens on these models). DeepSeek V4 / GLM / Nemotron
   // are also reasoning-capable — they consume part of the budget on
   // reasoning_content, so they get the completion-token param for headroom.
-  const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
+  const isReasoningModel = isReasoningModelId(p.model)
 
   /** Open one SSE request for a given user prompt and return the response. */
-  const streamOnce = async (userContent: string): Promise<Response> => {
+  const streamOnce = async (userContent: string, disableThinking = false): Promise<Response> => {
     const res = await fetch(url, {
       method: 'POST',
       headers,
@@ -762,6 +821,10 @@ async function* openAiCompatibleStream(
         // Separate reasoning budget keeps thinking ON without starving content.
         ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
         ...(p.extraBody || {}),
+        ...(disableThinking && p.extraBody?.chat_template_kwargs
+          ? { chat_template_kwargs: { ...(p.extraBody.chat_template_kwargs as Record<string, unknown>), enable_thinking: false } }
+          : {}),
+        ...(disableThinking ? { reasoning_budget: undefined } : {}),
       }),
     })
     if (!res.ok) {
@@ -799,6 +862,17 @@ async function* openAiCompatibleStream(
       yield { type: 'delta', text: '\n\n' }
     }
     for await (const delta of parseOpenAiSse((await streamOnce(contPrompt)).body)) {
+      full += delta
+      yield { type: 'delta', text: delta }
+    }
+  }
+  // Reasoning models (DeepSeek V4 Flash / Nemotron / GLM) occasionally stream
+  // ONLY reasoning_content deltas and never emit final prose. Re-open once
+  // with thinking OFF so the model is forced to write the article text.
+  if (!full.trim() && isReasoningModel) {
+    const retryPrompt =
+      opts.prompt + '\n\n(Previous attempt produced no visible text — write the complete answer now, without a reasoning chain.)'
+    for await (const delta of parseOpenAiSse((await streamOnce(retryPrompt, true)).body)) {
       full += delta
       yield { type: 'delta', text: delta }
     }
