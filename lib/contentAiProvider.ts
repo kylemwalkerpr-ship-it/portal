@@ -426,9 +426,14 @@ async function openAiCompatibleComplete(
       finishReason = plain.finishReason
     }
     if (finishReason === 'length' && text.trim()) {
-      const cont = await openAiCompatFetch(patched, opts, buildContinuationPrompt(text))
-      text = (text + '\n\n' + cont.text).trim()
-      finishReason = cont.finishReason
+      // 2026-08-11: raised from 1→3 continuation attempts — long legal
+      // guides routinely need multiple continuations after hitting the
+      // model's per-response token cap.
+      for (let c = 0; c < 3 && finishReason === 'length'; c++) {
+        const cont = await openAiCompatFetch(patched, opts, buildContinuationPrompt(text))
+        text = (text + '\n\n' + cont.text).trim()
+        finishReason = cont.finishReason
+      }
     }
     if (!text) throw new Error(`${p.label} returned empty content`)
     // Still cut off after the continuation — cascade to the next provider.
@@ -850,32 +855,32 @@ async function* openAiCompatibleStream(
   yield { type: 'provider', provider: p.label, model: p.model }
   let full = ''
   let continuations = 0
-  const MAX_CONTINUATIONS = 1
-  try {
-    for await (const delta of parseOpenAiSse((await streamOnce(opts.prompt)).body)) {
-      full += delta
-      yield { type: 'delta', text: delta }
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    const truncated = /output was truncated \(token limit\)/.test(msg)
-    if (!truncated || continuations >= MAX_CONTINUATIONS) throw e
-    // Resume the SAME provider from where the token cap cut the draft — one
-    // bounded continuation so a full article completes instead of the whole
-    // cascade failing on a shared cap. Thinking stays ON; the continuation
-    // prompt finishes the remaining outline without repeating.
-    continuations++
-    const contPrompt = full.trim()
-      ? buildContinuationPrompt(full)
-      : opts.prompt + '\n\n(Previous attempt produced no visible text — write the complete answer now, keeping it within the token budget.)'
-    // Clean paragraph break between the cut-off draft and its continuation.
-    if (full.trim()) {
-      full += '\n\n'
-      yield { type: 'delta', text: '\n\n' }
-    }
-    for await (const delta of parseOpenAiSse((await streamOnce(contPrompt)).body)) {
-      full += delta
-      yield { type: 'delta', text: delta }
+  // 2026-08-11: raised from 1→3 — long-form legal guides (2200–2800 words)
+  // routinely need 2+ continuations after reaching the model's per-response
+  // token cap. One continuation was ≈40% of long drafts truncated.
+  const MAX_CONTINUATIONS = 3
+  let prompt = opts.prompt
+  while (continuations <= MAX_CONTINUATIONS) {
+    try {
+      for await (const delta of parseOpenAiSse((await streamOnce(prompt)).body)) {
+        full += delta
+        yield { type: 'delta', text: delta }
+      }
+      break // success — stream completed without truncation
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const truncated = /output was truncated \(token limit\)/.test(msg)
+      if (!truncated || continuations >= MAX_CONTINUATIONS) throw e
+      continuations++
+      yield { type: 'provider', provider: `${p.label} (cont ${continuations}/${MAX_CONTINUATIONS})`, model: p.model }
+      prompt = full.trim()
+        ? buildContinuationPrompt(full)
+        : opts.prompt + '\n\n(Previous attempt produced no visible text — write the complete answer now, keeping it within the token budget.)'
+      // Clean paragraph break between the cut-off draft and its continuation.
+      if (full.trim()) {
+        full += '\n\n'
+        yield { type: 'delta', text: '\n\n' }
+      }
     }
   }
   // Reasoning models (DeepSeek V4 Flash / Nemotron / GLM) occasionally stream
