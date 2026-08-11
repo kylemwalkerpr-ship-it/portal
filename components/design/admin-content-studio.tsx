@@ -39,6 +39,30 @@ import AdminInlineEditor from './admin-inline-editor'
 import { StudioStageNav } from './studio-stage-nav'
 import { ChapterIntro } from './studio-chapter-intro'
 import { studioTokens as E } from './studio-tokens'
+import {
+  CardHeader,
+  QUEUE_FILTERS,
+  canonicalMergeStem,
+  formatDate,
+  gateBadge,
+  GscMini,
+  jobWebPath,
+  statusBadge,
+  type CannibalMergeRecord,
+  type ContentJob,
+  type ContentType,
+  type GscMiniStats,
+  type JobStatus,
+  type MergeUrlHit,
+  type QueueSummary,
+  type Region,
+  type Tone,
+  btnGhost,
+  inputStyle,
+} from './studio-ui-shared'
+import { QueueStats, QueueTable } from './studio-queue'
+import { DefendPanel, ReviewDraftsPanel } from './studio-review-panels'
+
 
 const C = E
 
@@ -70,40 +94,10 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   gemini: 'gemini-2.5-flash',
   openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
 }
-
-// ── Types ──
-// marketplace_gig intentionally excluded — studio never creates marketplace content.
-// Marketplace pages are fed exclusively by service providers from their dashboard.
-type ContentType = 'blog_post' | 'article' | 'regional_page'
-type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
-type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
-type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
 type StudioTab = StudioStage
 
 function isStudioTab(value: string | null): value is StudioTab {
   return isStudioStage(value)
-}
-
-interface ContentJob {
-  id: string; title: string; topic: string; content_type: ContentType
-  tone: Tone; region: Region; target_repo: string; status: JobStatus
-  source_job_id: string | null
-  regeneration_reason?: string | null
-  regeneration_mode?: string | null
-  lineage?: Record<string, unknown> | null
-  slug: string | null; content: string | null; branch_name: string | null
-  content_path: string | null; pr_url: string | null; pr_number: number | null
-  canonical_url?: string | null
-  owner_host?: string | null
-  merged_at: string | null; closed_at: string | null; error_message: string | null
-  ai_provider: string | null; ai_model?: string | null; word_count: number | null; seo_score: number | null
-  audit_json?: {
-    model?: string; score?: number; grade?: string; attempts?: number
-    /** Depth-rescue attempt stats persisted by the pipeline (survive reloads). */
-    rescue?: DepthRescueStats
-  } | null
-  primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
-  created_at: string; updated_at: string
 }
 
 interface ContentStudioProps {
@@ -113,12 +107,6 @@ interface ContentStudioProps {
 interface InterlinkSuggestion {
   label: string; url: string; site: string; kind: string; priority: number
   matchedOn: string[]; note?: string
-}
-
-interface GscMiniStats {
-  clicks: number; impressions: number; ctr: number; position: number
-  topQuery: string; topQueryClicks: number
-  source: 'live' | 'snapshot' | null
 }
 
 interface AISuggestion {
@@ -246,10 +234,6 @@ function fmtDur(ms: number): string {
   const s = Math.round((ms % 60000) / 1000)
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m ${s}s`
 }
-function formatDate(iso: string) {
-  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
-  catch { return iso }
-}
 function timeAgo(iso: string): string {
   try {
     const diff = Date.now() - new Date(iso).getTime()
@@ -278,24 +262,6 @@ function progressFromEvents(events: GenerationActivity[], active: boolean): numb
     if (e.level === 'error') return 100
   }
   return Math.min(100, p)
-}
-
-function statusBadge(status: JobStatus) {
-  const map: Record<JobStatus, { label: string; bg: string; fg: string; dot: string }> = {
-    pending:    { label: 'Queued',     bg: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
-    drafting:   { label: 'Drafting',   bg: '#FEF3C7', fg: '#D97706', dot: '#F59E0B' },
-    publishing: { label: 'Opening PR', bg: '#DBEAFE', fg: '#3B82F6', dot: '#60A5FA' },
-    pr_created: { label: 'PR Ready',   bg: '#DBEAFE', fg: '#2563EB', dot: '#3B82F6' },
-    merged:     { label: 'Merged',     bg: '#D1FAE5', fg: '#166534', dot: '#10B981' },
-    closed:     { label: 'Closed',     bg: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
-    failed:     { label: 'Failed',     bg: '#FEE2E2', fg: '#DC2626', dot: '#EF4444' },
-  }
-  const s = map[status]
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: s.bg, color: s.fg, whiteSpace: 'nowrap' }}>
-      <span style={{ width: 5, height: 5, borderRadius: 999, background: s.dot }} />{s.label}
-    </span>
-  )
 }
 
 function statusStepper(status: JobStatus) {
@@ -333,41 +299,15 @@ function statusStepper(status: JobStatus) {
   )
 }
 
-function gateBadge(score: number | null | undefined, passed: boolean | null | undefined) {
-  if (score == null) return <span style={{ fontSize: 10, color: C.textDim }}>—</span>
-  const ok = passed !== false
-  return (
-    <span
-      title={`Compliance gate ${score}/100 — ${ok ? 'passed' : 'blocked (YMYL/AEO/GEO requirements)'}`}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 999,
-        fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap', cursor: 'help',
-        background: ok ? '#ECFDF5' : '#FEF2F2', color: ok ? C.green : C.red,
-      }}
-    >
-      {ok ? '✓ PASS' : '✕ BLOCK'} {score}
-    </span>
-  )
-}
-
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted,
   textTransform: 'uppercase', marginBottom: 5, fontFamily: C.mono,
-}
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 11px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`,
-  background: C.surface, color: C.text, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box',
 }
 const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
   padding: '7px 14px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
   background: bg, color: fg, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
   display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
 })
-const btnGhost: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: C.radiusXs, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-  background: C.surface, color: C.text, border: `1px solid ${C.border}`, fontFamily: 'inherit',
-  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
-}
 
 // ── Editorial toolbar button styles ─────────────────────────────────────────────
 const actionBtnStyle = (color: string): React.CSSProperties => ({
@@ -392,33 +332,6 @@ const actionGhostStyle = (): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 })
 
-// ── Cannibalization merge records (shared with Command Center) ──
-interface CannibalMergeRecord {
-  clusterId: string
-  source: 'portal' | 'command_center'
-  stem: string
-  terms: string[]
-  winnerUrl: string
-  loserUrls: string[]
-  redirectsCreated: number
-  prUrl?: string
-  prNumber?: number
-  status: 'merged' | 'skipped'
-  message?: string
-  mergedAt: number
-}
-
-interface MergeUrlHit {
-  role: 'winner' | 'loser'
-  clusterId: string
-  stem: string
-  winnerUrl: string
-  redirectsCreated: number
-  prUrl?: string
-  prNumber?: number
-  mergedAt: number
-}
-
 function normMergePath(u: string): string {
   try {
     const p = new URL(u)
@@ -429,16 +342,6 @@ function normMergePath(u: string): string {
   } catch {
     return u.trim().toLowerCase()
   }
-}
-function canonicalMergeStem(q: string): string {
-  return q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
-    .split(' ').slice(0, 4).join(' ')
-}
-function jobWebPath(j: ContentJob): string {
-  if (!j.slug) return ''
-  const slug = j.slug.replace(/^\/+|\/+$/g, '')
-  return slug ? `/${slug.toLowerCase()}` : ''
 }
 
 type LogLevel = 'success' | 'info' | 'warn' | 'error'
@@ -501,19 +404,6 @@ async function consumeSseResponse(
   if (buffer.trim()) consume(buffer)
   if (!finalResult) throw new Error('Generation stream ended before a final result was received')
   return finalResult
-}
-
-// ── Section header — used by every card ──
-function CardHeader({ icon, title, sub, right }: { icon: string; title: string; sub?: string; right?: React.ReactNode }) {
-  return (
-    <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>{icon} {title}</div>
-        {sub && <div style={{ marginTop: 1, fontSize: 10.5, color: C.textMuted }}>{sub}</div>}
-      </div>
-      {right}
-    </div>
-  )
 }
 
 // ── Live generation activity ──
@@ -636,245 +526,6 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
         <p key={si} style={{ margin: 0, fontSize: 8.5, color: C.textDim, lineHeight: 1.35 }}>• {sig}</p>
       ))}
     </button>
-  )
-}
-
-// ── STAGE INTRO ──
-// Editorial spread that opens each stage card. Mirrors a research
-// workflow header: roman numeral, serif title, scope chips, and a "next
-// stage" affordance to drive linearity. Also renders the seven-stage
-// compass rail so the admin never loses place.
-// ── VI · DEFEND PANEL ──
-// Surfaces the gate state for the selected job and lists blockers with
-// remediation guidance. Renders inline-editor / re-audit actions.
-function DefendPanel({
-  selectedJob, gateFor, jobs, gateByJob, onOpenJob, setActionNotice,
-  reviewAuditResult, onApprove,
-}: {
-  selectedJob: ContentJob | null
-  gateFor: { score: number | null; passed: boolean | null } | null | undefined
-  jobs: ContentJob[]
-  gateByJob: Map<string, { score: number | null; passed: boolean | null }>
-  onOpenJob: (j: ContentJob) => void
-  setActionNotice?: (msg: string) => void
-  reviewAuditResult?: {
-    score: number; ok: boolean; blockers: number; warnings: number
-    summary: string; annotations?: Array<{ code: string; severity: string; message: string; fix: string }>
-    shipReady?: boolean | null
-    depthGate?: { ok: boolean; message: string } | null
-  } | null
-  onApprove?: () => void
-}) {
-  const empty = !selectedJob
-  const score = (gateFor?.score ?? null) as number | null
-  const passed = (gateFor?.passed ?? null) as boolean | null
-  const ok = passed === true || (score != null && score >= 90)
-  const blockers = (reviewAuditResult?.annotations || [])
-    .filter(a => a.severity === 'blocker')
-    .map(a => ({ code: a.code, reason: a.message }))
-  return (
-    <div data-testid="studio-defend-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {empty && (
-        <div style={{
-          padding: '40px 32px', background: E.paper,
-          border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center',
-        }}>
-          <div style={{ fontFamily: C.serif, fontSize: 22, color: E.ink, marginBottom: 8 }}>No draft selected</div>
-          <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
-            Open a job from chapter IV · Draft to defend it here. The defense surfaces each gate blocker with the exact remediation guidance.
-          </p>
-        </div>
-      )}
-      {selectedJob && (
-        <>
-          <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-                  STAGE IV · REVIEW
-                </div>
-                <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
-                  {selectedJob.title}
-                </h3>
-              </div>
-              <div style={{
-                padding: '6px 14px', borderRadius: 0, fontFamily: C.serif, fontSize: 14, fontWeight: 700,
-                background: ok ? '#0f7a3a' : (score != null && score >= 70 ? '#b87a00' : '#a32525'),
-                color: E.ivory,
-              }}>
-                {ok ? '✓ GATE CLEARED' : score != null ? `Score ${score}/100` : 'No gate yet'}
-              </div>
-            </div>
-            <div style={{ fontSize: 12, color: E.inkMuted, fontFamily: C.mono }}>
-              {selectedJob.region} · {(selectedJob.content_type || '').toUpperCase()} · slug <b>{selectedJob.slug || '—'}</b>
-            </div>
-          </div>
-          {reviewAuditResult && (reviewAuditResult.warnings > 0 || reviewAuditResult.shipReady === false) && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '11px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 0 }}>
-              {reviewAuditResult.shipReady === false && (
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#B45309' }}>
-                  {reviewAuditResult.depthGate && !reviewAuditResult.depthGate.ok
-                    ? `Ship gate blocked — ${reviewAuditResult.depthGate.message}`
-                    : 'Ship gate blocked — resolve remaining blockers in the editor'}
-                </div>
-              )}
-              {reviewAuditResult.warnings > 0 && (
-                <div style={{ fontSize: 11, color: '#92400E' }}>
-                  {reviewAuditResult.warnings} warning{reviewAuditResult.warnings === 1 ? '' : 's'} (quality + indexability) — do not block shipping; fix them in the editor below for best reader engagement and AI-overview eligibility.
-                </div>
-              )}
-            </div>
-          )}
-          {blockers.length === 0 ? (
-            <div style={{
-              padding: 18, background: '#e9f7ee', border: '1px solid #0f7a3a', borderRadius: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-            }}>
-              <div style={{ fontFamily: C.serif, color: '#0a4d24', fontSize: 14 }}>
-                ✓ All quality blockers cleared. Ready to advance to V · Approve.
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => onOpenJob(selectedJob)}
-                  style={{
-                    padding: '8px 18px', background: 'transparent', color: '#0f7a3a',
-                    border: '1px solid #0f7a3a', borderRadius: 0, cursor: 'pointer',
-                    fontFamily: C.serif, fontSize: 13, fontWeight: 600,
-                  }}
-                >
-                  Review in editor →
-                </button>
-                {onApprove && (
-                  <button
-                    type="button"
-                    onClick={onApprove}
-                    style={{
-                      padding: '8px 18px', background: E.gold, color: E.ivory,
-                      border: 'none', borderRadius: 0, cursor: 'pointer',
-                      fontFamily: C.serif, fontSize: 13, fontWeight: 700,
-                    }}
-                  >
-                    Next: Approve →
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {blockers.map((b, i) => (
-                <div key={i} style={{
-                  padding: 14, background: '#fff5f0', borderLeft: '4px solid #a32525',
-                }}>
-                  <div style={{ fontFamily: C.mono, fontSize: 10, color: '#a32525', fontWeight: 700, letterSpacing: '0.14em' }}>
-                    BLOCKER · {(b.code || 'unknown').toUpperCase()}
-                  </div>
-                  <p style={{ margin: '4px 0', fontFamily: C.serif, color: '#3a0a0a', fontSize: 14 }}>{b.reason || 'No reason recorded.'}</p>
-
-                </div>
-              ))}
-              <button
-                onClick={() => onOpenJob(selectedJob)}
-                style={{
-                  alignSelf: 'flex-start',
-                  padding: '10px 20px',
-                  background: E.gold, color: E.ivory,
-                  fontFamily: C.serif, fontSize: 14, fontWeight: 600,
-                  border: 'none', borderRadius: 0, cursor: 'pointer',
-                }}
-              >
-                Open in inline editor →
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-// ── REVIEW · DRAFTS DOCUMENT LIST ──
-// Every drafted job appears here as a document the admin can open and revise
-// with the full AI editor (Re-audit · Fix all · Fix per issue · Fix warnings ·
-// Save · Draft history). Drafts graduate to V · Approve only after gates clear.
-function ReviewDraftsPanel({
-  jobs, gateByJob, selectedJobId, onOpenJob,
-}: {
-  jobs: ContentJob[]
-  gateByJob: Map<string, { score: number | null; passed: boolean | null }>
-  selectedJobId: string | null
-  onOpenJob: (j: ContentJob) => void
-}) {
-  const drafts = jobs.filter((j) => j.content && ['pending', 'drafting', 'publishing', 'pr_created'].includes(j.status))
-  const STATUS_LABEL: Record<string, { label: string; fg: string; bg: string }> = {
-    pending: { label: 'Pending', fg: '#92400E', bg: '#FEF3C7' },
-    drafting: { label: 'Drafting', fg: '#B45309', bg: '#FEF3C7' },
-    publishing: { label: 'Publishing', fg: '#1D4ED8', bg: '#DBEAFE' },
-    pr_created: { label: 'PR open', fg: '#166534', bg: '#DCFCE7' },
-  }
-  if (drafts.length === 0) {
-    return (
-      <div data-testid="studio-review-drafts" style={{ padding: '28px 24px', background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center' }}>
-        <div style={{ fontFamily: C.serif, fontSize: 18, color: E.ink, marginBottom: 6 }}>No drafted documents yet</div>
-        <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
-          Drafts from IV · Draft land here as documents you can read, revise, and re-audit before approval.
-        </p>
-      </div>
-    )
-  }
-  return (
-    <div data-testid="studio-review-drafts" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }}>
-        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-          DRAFTS · {drafts.length} DOCUMENT{drafts.length === 1 ? '' : 'S'}
-        </div>
-        <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono }}>click a document to open the AI editor</div>
-      </div>
-      {drafts.map((j) => {
-        const g = gateByJob.get(j.id)
-        const score = g?.score ?? j.seo_score ?? null
-        const st = STATUS_LABEL[j.status] || { label: j.status, fg: E.inkMuted, bg: E.parchment }
-        const active = selectedJobId === j.id
-        return (
-          <div
-            key={j.id}
-            data-testid={`studio-review-draft-${j.id}`}
-            onClick={() => onOpenJob(j)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
-              background: active ? '#FFFBEB' : E.ivory, border: `1px solid ${active ? E.gold : E.hairline}`,
-              borderRadius: 0, cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {j.title}
-              </div>
-              <div style={{ fontSize: 10.5, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
-                {j.region} · {(j.content_type || '').toUpperCase()} · {j.word_count ?? 0} words · {new Date(j.updated_at).toLocaleString()}
-              </div>
-            </div>
-            {score != null && (
-              <div style={{ width: 40, height: 40, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: C.mono, fontWeight: 800, fontSize: 13, flexShrink: 0,
-                background: score >= 90 ? '#F0FDF4' : score >= 70 ? '#FFFBEB' : '#FEF2F2',
-                color: score >= 90 ? '#166534' : score >= 70 ? '#B45309' : '#B91C1C',
-                border: `1px solid ${score >= 90 ? '#BBF7D0' : score >= 70 ? '#FDE68A' : '#FECACA'}` }}>
-                {score}
-              </div>
-            )}
-            <span style={{ padding: '3px 8px', fontSize: 9.5, fontWeight: 700, fontFamily: C.mono, background: st.bg, color: st.fg, whiteSpace: 'nowrap' }}>{st.label}</span>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenJob(j) }}
-              style={{ padding: '7px 14px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}
-            >
-              Open in editor →
-            </button>
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
@@ -2888,374 +2539,6 @@ function Step2Investigate(props: Omit<React.ComponentProps<typeof CreateWizard>,
         }
       `}</style>
       <CreateWizard {...props} stepScope={'investigate' as const} />
-    </div>
-  )
-}
-
-// ── QUEUE TAB ──
-const QUEUE_FILTERS: Array<{ key: 'all' | 'active' | 'pr_created' | 'merged' | 'failed'; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'active', label: 'In progress' },
-  { key: 'pr_created', label: 'PR ready' },
-  { key: 'merged', label: 'Merged' },
-  { key: 'failed', label: 'Failed' },
-]
-
-type QueueSummary = {
-  total?: number
-  [status: string]: number | undefined
-}
-
-function QueueStats({ jobs, total: totalOverride, summary }: {
-  jobs: ContentJob[]
-  total?: number
-  summary?: QueueSummary | null
-}) {
-  const count = (status: string, fallback: number) =>
-    typeof summary?.[status] === 'number' ? Number(summary[status]) : fallback
-  const total = totalOverride ?? summary?.total ?? jobs.length
-  const merged = count('merged', jobs.filter(j => j.status === 'merged').length)
-  const failed = count('failed', jobs.filter(j => j.status === 'failed').length)
-  const closed = count('closed', jobs.filter(j => j.status === 'closed').length)
-  const inProgress = summary?.total != null || totalOverride != null
-    ? Math.max(0, total - merged - failed - closed)
-    : jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length
-  const prReady = count('pr_created', jobs.filter(j => j.status === 'pr_created').length)
-  const cards = [
-    { label: 'Total jobs', value: total, color: C.cyan, icon: '📋' },
-    { label: 'In progress', value: inProgress, color: C.orange, icon: '⚙️' },
-    { label: 'PR ready', value: prReady, color: C.blue, icon: '🔀' },
-    { label: 'Merged', value: merged, color: C.green, icon: '✅' },
-    { label: 'Failed', value: failed, color: C.red, icon: '⚠️' },
-  ]
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
-      {cards.map(c => (
-        <div key={c.label} style={{
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, boxShadow: C.shadowCard,
-          padding: '12px 14px', borderTop: `3px solid ${c.color}`, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 20 }}>{c.icon}</span>
-          <div>
-            <div style={{ fontSize: 9, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.mono }}>{c.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: C.text, fontFamily: C.serif }}>{c.value}</div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId, onLoadMore, selectedIds, onToggleSelect, onToggleSelectAll, onBulkAction, bulkBusy, bulkAction }: {
-  jobs: ContentJob[]
-  total?: number
-  summary?: QueueSummary | null
-  onSelect: (j: ContentJob) => void
-  loading: boolean
-  mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
-  gateByJob?: Map<string, { score: number; passed: boolean }>
-  focusJobId?: string | null
-  onLoadMore?: () => void
-  selectedIds?: Set<string>
-  onToggleSelect?: (jobId: string) => void
-  onToggleSelectAll?: (ids: string[]) => void
-  onBulkAction?: (kind: string) => void
-  bulkBusy?: boolean
-  bulkAction?: string | null
-}) {
-  const [filter, setFilter] = React.useState<'all' | 'active' | 'pr_created' | 'merged' | 'failed'>('all')
-  const [search, setSearch] = React.useState('')
-  const [showAll, setShowAll] = React.useState(false)
-
-  const mergeHitFor = (j: ContentJob): MergeUrlHit | null => {
-    const path = jobWebPath(j)
-    if (path) {
-      const hit = mergeIndex.byPath.get(path)
-      if (hit) return hit
-    }
-    const stemKey = canonicalMergeStem(j.primary_keyword ?? j.topic ?? '')
-    if (stemKey) {
-      const hit = mergeIndex.byStem.get(stemKey)
-      if (hit) return hit
-    }
-    return null
-  }
-
-  const applyQuery = (list: ContentJob[]) => {
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      list = list.filter(j =>
-        (j.id || '').toLowerCase().includes(q) ||
-        (j.source_job_id || '').toLowerCase().includes(q) ||
-        (j.title || '').toLowerCase().includes(q) ||
-        (j.topic || '').toLowerCase().includes(q) ||
-        (j.primary_keyword || '').toLowerCase().includes(q) ||
-        (j.region || '').toLowerCase().includes(q))
-    }
-    return list
-  }
-
-  const countFor = (key: 'all' | 'active' | 'pr_created' | 'merged' | 'failed') => {
-    // Status totals come from the database-wide summary when there is no
-    // search term. The table window is intentionally small, but its badges
-    // must never pretend that the window is the whole queue.
-    if (!search.trim() && summary) {
-      if (key === 'all') return total ?? summary.total ?? jobs.length
-      if (key === 'merged') return summary.merged ?? 0
-      if (key === 'failed') return summary.failed ?? 0
-      if (key === 'pr_created') return summary.pr_created ?? 0
-      if (key === 'active') {
-        const all = total ?? summary.total ?? jobs.length
-        return Math.max(0, all - (summary.merged ?? 0) - (summary.closed ?? 0) - (summary.failed ?? 0))
-      }
-    }
-    if (key === 'all') return jobs.length
-    let list = jobs
-    if (key === 'active') list = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status))
-    else if (key === 'pr_created') list = jobs.filter(j => j.status === 'pr_created')
-    else if (key === 'merged') list = jobs.filter(j => j.status === 'merged')
-    else if (key === 'failed') list = jobs.filter(j => j.status === 'failed')
-    return applyQuery(list).length
-  }
-
-  const filtered = React.useMemo(() => {
-    let list = jobs
-    if (filter === 'active') list = list.filter(j => !['merged', 'closed', 'failed'].includes(j.status))
-    else if (filter === 'pr_created') list = list.filter(j => j.status === 'pr_created')
-    else if (filter === 'merged') list = list.filter(j => j.status === 'merged')
-    else if (filter === 'failed') list = list.filter(j => j.status === 'failed')
-    list = applyQuery(list)
-    return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }, [jobs, filter, search])
-
-  const visible = filtered.slice(0, showAll ? 200 : 12)
-
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
-      <CardHeader
-        icon="📋" title="Job queue"
-        sub="Every launch, PR and merge — filter, search, then click a row for full control."
-        right={
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 Search title, topic, keyword…"
-              style={{ ...inputStyle, width: 210, padding: '6px 10px' }}
-            />
-          </div>
-        }
-      />
-      <div style={{ padding: '10px 16px 0', display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {QUEUE_FILTERS.map(f => (
-          <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
-            padding: '4px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9.5, fontWeight: 700,
-            fontFamily: C.mono, background: filter === f.key ? C.navy : C.surface2, color: filter === f.key ? '#FFF' : C.textMuted,
-          }}>
-            {f.label} {countFor(f.key)}
-          </button>
-        ))}
-      </div>
-      <div style={{ overflowX: 'auto', marginTop: 6 }}>
-        {loading ? (
-          <div style={{ padding: 28, textAlign: 'center', fontSize: 12, color: C.textDim }}>Loading jobs…</div>
-        ) : visible.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>📭</div>
-            <div style={{ fontSize: 12, color: C.textMuted }}>
-              {jobs.length === 0 ? 'No jobs yet — head to the Create tab and launch your first piece.' : 'No jobs match this filter / search.'}
-            </div>
-          </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                <th style={{ padding: '9px 8px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'center', whiteSpace: 'nowrap', width: 32 }}>
-                  <input
-                    type="checkbox"
-                    aria-label="Select all visible jobs"
-                    checked={visible.length > 0 && visible.every((j) => selectedIds?.has(j.id))}
-                    onChange={() => onToggleSelectAll?.(visible.map((j) => j.id))}
-                    disabled={!visible.length || bulkBusy}
-                  />
-                </th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Piece</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Type</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Region</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Status</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Gate</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>SEO</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>PR</th>
-                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map(j => {
-                const hit = mergeHitFor(j)
-                const g = gateByJob?.get(j.id)
-                const checked = Boolean(selectedIds?.has(j.id))
-                return (
-                  <tr key={j.id} onClick={(e) => {
-                    // Don't open the detail modal if the checkbox was clicked.
-                    const target = e.target as HTMLElement
-                    if (target?.tagName === 'INPUT' || target?.dataset?.checkbox === 'true') return
-                    onSelect(j)
-                  }} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border2}`, transition: 'background 0.12s', background: j.id === focusJobId ? '#EFF6FF' : 'transparent' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#FAFAF7' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = j.id === focusJobId ? '#EFF6FF' : 'transparent' }}>
-                    <td style={{ padding: '9px 8px', textAlign: 'center', width: 32 }} onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        data-checkbox="true"
-                        aria-label={`Select job ${j.title || j.id}`}
-                        checked={checked}
-                        disabled={bulkBusy}
-                        onChange={() => onToggleSelect?.(j.id)}
-                      />
-                    </td>
-                    <td style={{ padding: '9px 12px', maxWidth: 240 }}>
-                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title || '(untitled)'}</div>
-                      <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.topic?.slice(0, 60)}</div>
-                      {j.source_job_id && <div style={{ marginTop: 3, color: C.blue, fontSize: 9, fontFamily: C.mono, fontWeight: 700 }}>↻ REGENERATION · replaces {j.source_job_id.slice(0, 8)}…</div>}
-                    </td>
-                    <td style={{ padding: '9px 12px', color: C.textMuted, fontSize: 10, whiteSpace: 'nowrap' }}>{j.content_type?.replace('_', ' ')}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 10, whiteSpace: 'nowrap' }}>{j.region}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
-                        {statusBadge(j.status)}
-                        {hit && (
-                          <span
-                            title={hit.role === 'winner'
-                              ? `Cluster winner — ${hit.redirectsCreated} redirect${hit.redirectsCreated === 1 ? '' : 's'} point here${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`
-                              : `Merged — page 301s into ${hit.winnerUrl}${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 999,
-                              fontSize: 9, fontWeight: 700, fontFamily: C.mono,
-                              background: hit.role === 'winner' ? '#D1FAE5' : '#FEF3C7',
-                              color: hit.role === 'winner' ? '#065F46' : '#92400E',
-                            }}
-                          >
-                            {hit.role === 'winner' ? '★ WINNER' : '⚡ MERGED'}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '9px 12px' }}>{gateBadge(g?.score, g?.passed)}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 10, fontFamily: C.mono }}>{j.seo_score != null ? `${j.seo_score}%` : '—'}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      {j.pr_url
-                        ? <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>PR #{j.pr_number} ↗</a>
-                        : <span style={{ color: C.textDim }}>—</span>}
-                    </td>
-                    <td style={{ padding: '9px 12px', fontSize: 10, color: C.textMuted, whiteSpace: 'nowrap' }}>{formatDate(j.created_at)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {filtered.length > 12 && (
-        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" onClick={() => setShowAll(!showAll)} style={btnGhost}>
-            {showAll ? '▲ Show fewer' : `▼ Show all ${filtered.length} matching`}
-          </button>
-          {typeof total === 'number' && total > 0 && jobs.length < total && onLoadMore && (
-            <button type="button" onClick={onLoadMore} style={btnGhost}>
-              Load more ({total - jobs.length} remaining)
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── INSIGHTS TAB pieces ──
-function GscMini() {
-  const [stats, setStats] = React.useState<GscMiniStats | null>(null)
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-
-  const fetchGsc = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/content-studio/gsc/data', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: 28 }),
-      })
-      const data = await res.json()
-      if (res.ok && data.totals) {
-        const top = data.rows?.[0]
-        setStats({
-          clicks: data.totals.clicks ?? 0,
-          impressions: data.totals.impressions ?? 0,
-          ctr: data.totals.ctr ?? 0,
-          position: data.totals.position ?? 0,
-          topQuery: top?.keys?.[0] ?? '—',
-          topQueryClicks: top?.clicks ?? 0,
-          source: data.source === 'snapshot' ? 'snapshot' : 'live',
-        })
-      } else if (data.source === 'snapshot') {
-        setStats({
-          clicks: data.totals?.clicks ?? 0,
-          impressions: data.totals?.impressions ?? 0,
-          ctr: 0, position: 0,
-          topQuery: data.rows?.[0]?.keys?.[0] ?? '—',
-          topQueryClicks: data.rows?.[0]?.clicks ?? 0,
-          source: 'snapshot',
-        })
-      } else { setError(data.error || 'No data') }
-    } catch { setError('Failed to load') } finally { setLoading(false) }
-  }
-
-  React.useEffect(() => { fetchGsc() }, [])
-
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
-      <CardHeader
-        icon="📊" title="GSC overview (28d)"
-        sub="Live Search Console when credentials work, snapshot otherwise."
-        right={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {stats && stats.source && (
-              <span title={stats.source === 'live' ? 'Scored from live Search Console data' : 'Committed snapshot — connect GSC for live numbers'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: stats.source === 'live' ? C.greenSoft : '#FFFBEB', color: stats.source === 'live' ? C.green : '#92400E' }}>
-                {stats.source === 'live' ? '● LIVE' : '◐ SNAPSHOT'}
-              </span>
-            )}
-            <button type="button" onClick={fetchGsc} disabled={loading} style={{ ...btnGhost, padding: '4px 10px' }}>
-              {loading ? '…' : '↻'}
-            </button>
-          </div>
-        }
-      />
-      {stats ? (
-        <div style={{ padding: '10px 16px 14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
-            {[
-              { label: 'Clicks', value: stats.clicks.toLocaleString(), color: C.green },
-              { label: 'Impressions', value: stats.impressions.toLocaleString(), color: C.blue },
-              { label: 'CTR', value: stats.source === 'snapshot' && stats.ctr === 0 ? '—' : `${stats.ctr.toFixed(1)}%`, color: C.purple },
-              { label: 'Avg Pos', value: stats.source === 'snapshot' && stats.position === 0 ? '—' : stats.position.toFixed(1), color: C.orange },
-            ].map(m => (
-              <div key={m.label} style={{ background: C.surface2, borderRadius: C.radiusXs, padding: '8px 10px', textAlign: 'center' }}>
-                <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{m.label}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: m.color, fontFamily: C.serif, marginTop: 2 }}>{m.value}</div>
-              </div>
-            ))}
-          </div>
-          {stats.topQuery !== '—' && (
-            <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
-              #1 query: <strong style={{ color: C.text }}>{stats.topQuery}</strong> ({stats.topQueryClicks.toLocaleString()} clicks)
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ padding: '14px 16px', fontSize: 10.5, color: C.textDim, fontFamily: C.mono }}>
-          {loading ? 'Loading…' : error || 'No data yet'}
-        </div>
-      )}
     </div>
   )
 }
