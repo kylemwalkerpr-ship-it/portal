@@ -89,4 +89,25 @@ describe('buildFactoryUserPrompt · model guidance threading', () => {
     expect(prompt).toMatch(/REVISION REQUIRED/)
     expect(prompt).toMatch(/RANKING MODEL GUIDANCE/)
   })
+
+  it('carries the current draft into a refine pass so fixes accumulate (no blind regeneration)', () => {
+    const draft = '# H-1B visa\n\n## Eligibility\n\nApplicants must meet the specialty occupation standard.'
+    const prompt = buildFactoryUserPrompt({
+      ...basePromptOpts,
+      refineNotes: 'BLOCKER: ai_slop — remove machine phrasing. BLOCKER: missing_disclaimer — add the disclaimer.',
+      draft,
+    })
+    expect(prompt).toMatch(/REVISION REQUIRED/)
+    expect(prompt).toMatch(/EXISTING DRAFT — REVISE, DO NOT REWRITE FROM SCRATCH/)
+    // The draft body is included so the model edits the real text instead of
+    // regenerating from scratch and re-introducing the same blockers.
+    expect(prompt).toContain(draft)
+    // Sanity: the factory brief is still present alongside the revision contract.
+    expect(prompt).toMatch(/Primary keyword \(must appear naturally in title \+ first H2\)/)
+  })
+
+  it('omits the draft block when there is no existing draft (first pass)', () => {
+    const prompt = buildFactoryUserPrompt({ ...basePromptOpts, refineNotes: 'Fix depth' })
+    expect(prompt).not.toMatch(/EXISTING DRAFT/)
+  })
 })

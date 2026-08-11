@@ -316,10 +316,14 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
   let body = sanitizeAiSlop(rawBody || `# ${title}\n\nEditorial draft for ${opts.primaryKeyword || title}.`)
   fm = ensureIndexable(fm)
 
-  // Drop model-emitted JSON-LD / scripts — estate layout emits schema
-  body = body
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/```json[\s\S]*?```/gi, '')
+  // KEEP model-emitted JSON-LD blocks (application/ld+json) — the audit
+  // credits Article/FAQPage schema only from the content string, and markdown
+  // destinations ship the body as-is, so stripping them meant schema checks
+  // always bled points and markdown pages shipped WITHOUT schema. Only strip
+  // other scripts (tracking, inline JS) and fenced JSON that is not schema.
+  // Caseworks renderTarget still drops JSON-LD because its layout emits schema,
+  // so there is no duplication risk on that estate host.
+  body = body.replace(/<script(?![^>]*application\/ld\+json)[^>]*>[\s\S]*?<\/script>/gi, '')
 
   if (!hasGovCitation(body)) {
     const sources = REGION_SOURCES[region] || REGION_SOURCES.US

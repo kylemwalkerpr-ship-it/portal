@@ -332,6 +332,10 @@ export async function* runSeoFactoryPipelineStream(
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
             refineNotes,
+            // REVISE THE EXISTING DRAFT, don't regenerate from scratch — fixes
+            // must accumulate across iterations or the same blockers (AI slop,
+            // repetitive sentence starts, missing disclaimer) reappear every pass.
+            draft: content || undefined,
           })
 
       const generationPrompt =
@@ -676,13 +680,19 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     // ── PASS 3: Quality refine after depth rescue ────────────────────────
-    // Depth rescue can introduce new quality issues (AI slop from appended sections).
-    if (!meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
+    // Depth rescue can introduce new quality issues (AI slop from appended
+    // sections), and a thin draft still carries voice/schema/disclaimer
+    // blockers. Run the quality pass whenever content is substantial, EVEN IF
+    // depth is still short — otherwise the non-depth blockers that dragged a
+    // score to 33 are never fixed (the old gate skipped the whole pass below
+    // the word floor).
+    if (!meetsShipQuality(audit) && countBodyWords(content) >= Math.max(400, Math.floor(minWords * 0.4))) {
       stalledCount = 0
       for (let j = 0; j <= Math.min(1, maxRefine); j++) {
         attempts++
         const prevBlockers = audit.blockers.length
         const prevScore = audit.score
+        const prevWords = countBodyWords(content)
 
         const q = evaluateContentQuality({
           content,
@@ -720,12 +730,39 @@ export async function* runSeoFactoryPipelineStream(
               opportunityAction: input.opportunityAction,
               writeHint: input.writeHint,
               refineNotes,
+              // Revise the existing draft — fixes must accumulate, not restart.
+              draft: content || undefined,
             }),
-            maxTokens: contentType === 'marketplace_gig' ? 4000 : 6000,
+            // A full 2200+ word legal guide needs room: 6000 truncated the
+            // revision and the discarded result made quality fixes never land.
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
             temperature: 0.35,
             aiProvider: input.aiProvider,
           })
-          if (countBodyWords(ai.text) >= minWords) {
+          const aiWords = countBodyWords(ai.text)
+          // Accept when the revision clears the floor, OR when it materially
+          // improves the blockers (voice/schema/disclaimer) without shrinking
+          // the draft below where it started. Depth can still be topped up by
+          // the post-refine expand below.
+          const fixedBlockers = auditContent({
+            content: ai.text,
+            contentType,
+            primaryKeyword,
+            indexable: plan.indexable,
+            ownershipBlockers: plan.blockers,
+            // Apples-to-apples with the refineNotes the model was told to fix:
+            // keyword coverage must count toward the blocker comparison too.
+            requiredShortKeywords,
+            requiredLongTailKeywords,
+          })
+          const blockerReduced = fixedBlockers.blockers.length < prevBlockers
+          const stillUnderFloor = aiWords < minWords
+          // When still under the floor, never accept a shrink (depth is the
+          // binding constraint); the −200 tolerance only applies once the
+          // revision already clears the floor, so we can't spiral into a
+          // single huge expand from a shrunken base.
+          const notShrunk = stillUnderFloor ? aiWords >= prevWords : aiWords >= prevWords - 200
+          if (aiWords >= minWords || (blockerReduced && notShrunk)) {
             content = ai.text
             provider = ai.provider
             model = ai.model
@@ -765,6 +802,69 @@ export async function* runSeoFactoryPipelineStream(
         } else {
           stalledCount = Math.max(0, stalledCount - 1)
         }
+      }
+    }
+
+    // ── PASS 3b: Final depth top-up on the quality-fixed draft ───────────
+    // The quality pass above fixes voice/schema/disclaimer on the current
+    // draft. If depth is STILL short, expand exactly that fixed draft (one
+    // more measured pass) so the non-depth fixes aren't thrown away by the
+    // depth gate — the old flow ran depth first and skipped quality entirely
+    // when the floor wasn't met, which is how a 33-score draft could ship.
+    if (!meetsDepthFloor(audit) && countBodyWords(content) >= Math.max(200, Math.floor(minWords * 0.2))) {
+      const before = countBodyWords(content)
+      try {
+        const expand = await generateContentText({
+          system,
+          prompt: buildDepthExpandPrompt({
+            title,
+            topic,
+            primaryKeyword,
+            region,
+            contentType,
+            minWords,
+            targetWords,
+            maxWords,
+            currentWords: countBodyWords(content),
+            draft: content,
+            h2Outline: input.h2Outline as string[] | undefined,
+          }),
+          maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
+          temperature: 0.4,
+          aiProvider: input.aiProvider,
+        })
+        if (countBodyWords(expand.text) > before) {
+          content = expand.text
+          provider = expand.provider
+          model = expand.model
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: `Final depth top-up: ${before} → ${countBodyWords(content)} words`,
+          }
+        }
+      } catch (e) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Final depth top-up skipped: ${e instanceof Error ? e.message.slice(0, 120) : 'error'}`,
+        }
+      }
+      audit = auditContent({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+      attempts++
+      yield {
+        type: 'attempt',
+        attempt: attempts,
+        score: audit.score,
+        wordCount: audit.wordCount,
+        goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+        draft: content,
       }
     }
 
@@ -824,12 +924,29 @@ export async function* runSeoFactoryPipelineStream(
               opportunityAction: input.opportunityAction,
               writeHint: input.writeHint,
               refineNotes,
+              // Revise the scaffolded draft — never regenerate from scratch.
+              draft: content || undefined,
             }),
-            maxTokens: contentType === 'marketplace_gig' ? 4000 : 6000,
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
             temperature: 0.3,
             aiProvider: input.aiProvider,
           })
-          if (countBodyWords(ai.text) >= minWords) {
+          const aiWords = countBodyWords(ai.text)
+          const fixedBlockers = auditContent({
+            content: ai.text,
+            contentType,
+            primaryKeyword,
+            indexable: plan.indexable,
+            ownershipBlockers: plan.blockers,
+            requiredShortKeywords,
+            requiredLongTailKeywords,
+          })
+          const blockerReduced = fixedBlockers.blockers.length < audit.blockers.length
+          const stillUnderFloor = aiWords < minWords
+          const notShrunk = stillUnderFloor
+            ? aiWords >= countBodyWords(content)
+            : aiWords >= countBodyWords(content) - 200
+          if (aiWords >= minWords || (blockerReduced && notShrunk)) {
             content = ai.text
             provider = ai.provider
             model = ai.model
