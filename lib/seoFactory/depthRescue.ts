@@ -21,6 +21,21 @@ import {
 import { countBodyWords } from './contentDepth'
 import type { ContentAiResult } from '@/lib/contentAiProvider'
 
+/** Depth-rescue attempt stats — how many expansion rounds a draft needed, how
+ *  many consecutive no-growth passes stalled it, and the wall-clock time it
+ *  consumed against the budget. Emitted on the `done` event, re-broadcast as a
+ *  structured pipeline `rescue` event, and persisted on the job's audit_json. */
+export interface DepthRescueStats {
+  expandPasses: number
+  attempts: number
+  /** Consecutive no-growth passes before the loop terminated (stall or finish). */
+  stallCount: number
+  /** Wall-clock time the rescue actually ran (ms). */
+  timeMs: number
+  /** The wall-clock budget the rescue is allowed (ms) — for UI budget bars. */
+  budgetMs: number
+}
+
 export type DepthRescueEvent =
   | { type: 'progress'; stage: string; message: string }
   | { type: 'delta'; text: string; attempt: number }
@@ -32,15 +47,7 @@ export type DepthRescueEvent =
       goodEnough: boolean
       draft: string
     }
-  | {
-      type: 'done'
-      content: string
-      audit: SeoFactoryAudit
-      provider: string
-      model: string
-      expandPasses: number
-      attempts: number
-    }
+  | ({ type: 'done'; content: string; audit: SeoFactoryAudit; provider: string; model: string } & DepthRescueStats)
 
 /** Rotating append focus — each rescue pass targets a different gap so repeated
  *  appends add NEW substance instead of repeating the same sections. */
@@ -245,5 +252,8 @@ export async function* runDepthRescue(
     model,
     expandPasses,
     attempts,
+    stallCount: stallPasses,
+    timeMs: now() - rescueStart,
+    budgetMs: RESCUE_MAX_MS,
   }
 }

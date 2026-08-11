@@ -19,6 +19,7 @@
  */
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
+import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import {
   extractMetricValues,
@@ -129,7 +130,11 @@ interface ContentJob {
   owner_host?: string | null
   merged_at: string | null; closed_at: string | null; error_message: string | null
   ai_provider: string | null; ai_model?: string | null; word_count: number | null; seo_score: number | null
-  audit_json?: { model?: string; score?: number; grade?: string; attempts?: number } | null
+  audit_json?: {
+    model?: string; score?: number; grade?: string; attempts?: number
+    /** Depth-rescue attempt stats persisted by the pipeline (survive reloads). */
+    rescue?: DepthRescueStats
+  } | null
   primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
   created_at: string; updated_at: string
 }
@@ -2758,6 +2763,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 // Replaces the old dark LiveGenerationPanel with a proper document editor.
 function DraftWorkspace({
   generating, generationEvents, generationStartedAt, generationChars, generationText,
+  rescueStats,
   completedJob, selectedJob, setSelectedJob,
   onContinueToReview, selectTab, error, setError,
 }: {
@@ -2766,6 +2772,7 @@ function DraftWorkspace({
   generationStartedAt: number | null
   generationChars: number
   generationText: string
+  rescueStats: DepthRescueStats | null
   completedJob: ContentJob | null
   selectedJob: ContentJob | null
   setSelectedJob: (j: ContentJob | null) => void
@@ -2815,6 +2822,9 @@ function DraftWorkspace({
   // expand/append passes with growing word counts stay visible during AND after
   // streaming (the empty-state log alone disappears the moment deltas arrive).
   const auditRecords = generationEvents.filter((e) => e.stage === 'audit' || e.stage === 'refine')
+  // Live rescue stats take priority; fall back to the completed job's persisted
+  // stats (audit_json.rescue) so the strip survives reloads and queue re-opens.
+  const effectiveRescue = rescueStats ?? completedJob?.audit_json?.rescue ?? null
 
   return (
     <>
@@ -3015,24 +3025,47 @@ function DraftWorkspace({
         {/* ── Depth rescue · attempt feed — realtime expand/append record ──
             Mirrors the rescue loop's progress + attempt events (word counts
             per pass) so the queue shows the draft growing pass by pass. */}
-        {auditRecords.length > 0 && (
+        {(auditRecords.length > 0 || effectiveRescue) && (
           <div data-testid="studio-rescue-feed" style={{
             marginTop: 14, padding: '10px 14px', background: '#FFFDF5',
             border: `1px solid ${E.hairline}`, borderRadius: 0,
           }}>
-            <div style={{ fontSize: 9, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 6 }}>
-              ⏱ DEPTH RESCUE · ATTEMPT FEED — expand/append passes with word counts
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {auditRecords.slice(-6).map((e) => (
-                <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontFamily: C.mono, fontSize: 10 }}>
-                  <span style={{ color: E.inkDim, minWidth: 70 }}>{fmtTime(e.ts)}</span>
-                  <span style={{ color: e.level === 'success' ? '#166534' : e.level === 'warn' ? '#D97706' : '#2563EB', flex: 1 }}>
-                    {e.message}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+              <div style={{ fontSize: 9, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+                ⏱ DEPTH RESCUE · ATTEMPT FEED — expand/append passes with word counts
+              </div>
+              {/* Depth-rescue attempt stats — expansion rounds needed, stall count,
+                  and the time budget consumed. Live from the `rescue` event, or
+                  read back from the completed job's persisted audit_json.rescue. */}
+              {effectiveRescue && (
+                <div data-testid="studio-rescue-stats" style={{ display: 'flex', gap: 12, alignItems: 'center', fontFamily: C.mono, fontSize: 9.5, color: E.inkSoft }}>
+                  <span title="Expansion/append rounds the depth rescue needed">
+                    <span style={{ color: E.ink, fontWeight: 700 }}>{effectiveRescue.expandPasses}</span> pass{effectiveRescue.expandPasses === 1 ? '' : 'es'}
+                  </span>
+                  <span
+                    title="Consecutive no-growth passes before the rescue moved on"
+                    style={{ color: effectiveRescue.stallCount > 0 ? E.ember : E.inkMuted, fontWeight: effectiveRescue.stallCount > 0 ? 700 : 500 }}
+                  >
+                    {effectiveRescue.stallCount} stall{effectiveRescue.stallCount === 1 ? '' : 's'}
+                  </span>
+                  <span title="Rescue time budget consumed (budget cap when the draft is saved early)">
+                    ⏳ {fmtDur(effectiveRescue.timeMs)} / {fmtDur(effectiveRescue.budgetMs)}
                   </span>
                 </div>
-              ))}
+              )}
             </div>
+            {auditRecords.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {auditRecords.slice(-6).map((e) => (
+                  <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontFamily: C.mono, fontSize: 10 }}>
+                    <span style={{ color: E.inkDim, minWidth: 70 }}>{fmtTime(e.ts)}</span>
+                    <span style={{ color: e.level === 'success' ? '#166534' : e.level === 'warn' ? '#D97706' : '#2563EB', flex: 1 }}>
+                      {e.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -4712,6 +4745,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generationText, setGenerationText] = React.useState('')
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
+  // Depth-rescue (PASS 2) stats — expansion rounds, stalls, time budget, set
+  // from the structured `rescue` SSE event and surfaced in the Draft queue.
+  const [rescueStats, setRescueStats] = React.useState<DepthRescueStats | null>(null)
 
   // Merge index + merge history (Ship Ledger) + engine status + gates
   const [mergeIndex, setMergeIndex] = React.useState<{ byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }>({ byPath: new Map(), byStem: new Map() })
@@ -5359,6 +5395,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setGenerationStartedAt(Date.now())
     setGenerationChars(0)
     setGenerationText('')
+    setRescueStats(null)
     setGenerationEvents([{ id: `start-${Date.now()}`, ts: Date.now(), stage: 'connect', message: 'Connecting to the SEO generation pipeline…', level: 'info' }])
 
     const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
@@ -5447,6 +5484,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           fetchJobs().catch(() => {})
         }
         else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+        else if (event.type === 'rescue') {
+          const s = event.stats
+          setRescueStats(s)
+          record('refine', `Depth rescue complete · ${s.expandPasses} expand/append pass${s.expandPasses === 1 ? '' : 'es'}${s.stallCount > 0 ? ` · ${s.stallCount} stall${s.stallCount === 1 ? '' : 's'}` : ''} · ${fmtDur(s.timeMs)} used`, s.stallCount > 0 ? 'warn' : 'success')
+        }
         else if (event.type === 'delta') {
           const chunk = String(event.text || '')
           streamChars += chunk.length
@@ -5764,6 +5806,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             generationStartedAt={generationStartedAt}
             generationChars={generationChars}
             generationText={generationText}
+            rescueStats={rescueStats}
             completedJob={generationReviewJob}
             selectedJob={selectedJob}
             setSelectedJob={setSelectedJob}

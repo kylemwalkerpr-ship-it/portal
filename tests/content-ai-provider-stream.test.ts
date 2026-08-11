@@ -2,7 +2,7 @@ jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
 }))
 
-import { generateContentTextStream } from '@/lib/contentAiProvider'
+import { generateContentTextStream, NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT } from '@/lib/contentAiProvider'
 
 describe('content AI · NVIDIA Nemotron streaming', () => {
   const originalKey = process.env.NVIDIA_API_KEY
@@ -88,5 +88,59 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
     expect(texts.join('').includes('private chain-of-thought')).toBe(false)
     expect(texts.join('').includes('still thinking')).toBe(false)
     expect(events.at(-1)).toMatchObject({ type: 'done', text: 'The real answer.', provider: 'nvidia-nemotron', model: 'nvidia/nemotron-3-ultra-550b-a55b' })
+  })
+
+  it('resumes the SAME provider when a stream truncates at the token limit — no cascade bounce', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    const bodies: Array<Record<string, unknown>> = []
+    let call = 0
+
+    global.fetch = jest.fn(async (_input, init) => {
+      call++
+      bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
+      const chunks =
+        call === 1
+          ? [
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'Part one of the draft.' } }] })}\n\n`,
+              // The signal that the model hit its token cap mid-article.
+              `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+          : [
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'Part two continues.' } }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+      return new Response(chunks, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write a concise factual answer.',
+      prompt: 'Explain the topic fully.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    // One continuation, not a bounce to another provider.
+    expect(call).toBe(2)
+    // The second request is the continuation prompt carrying the partial draft.
+    const secondUser =
+      (bodies[1].messages as Array<{ role: string; content: string }>)?.find((m) => m.role === 'user')?.content || ''
+    expect(secondUser).toContain('CONTINUE WRITING THE DRAFT')
+    expect(secondUser).toContain('Part one of the draft.')
+    // The separate reasoning budget is sent so thinking stays ON without
+    // starving content (NVIDIA NIM `reasoning_budget` from the operator example).
+    expect(bodies[0].reasoning_budget).toBe(NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT)
+    // Both parts stream (with a clean paragraph break) and the done payload
+    // carries the recovered full text.
+    const texts = events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text)
+    expect(texts).toEqual(['Part one of the draft.', '\n\n', 'Part two continues.'])
+    expect(events.at(-1)).toMatchObject({ type: 'done', text: 'Part one of the draft.\n\nPart two continues.', provider: 'nvidia-nemotron', model: 'nvidia/nemotron-3-ultra-550b-a55b' })
   })
 })

@@ -57,6 +57,20 @@ const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
 const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
 const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
 const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+/** Default separate reasoning budget for NVIDIA NIM models that ACCEPT the
+ *  `reasoning_budget` body param. Verified live: only Nemotron accepts it —
+ *  NVIDIA DeepSeek V4 Flash returns 400 "Unsupported parameter(s)" for it, so
+ *  GLM/DeepSeek must never send it (they rely on the continuation retry).
+ *  Set the matching NVIDIA_*_REASONING_BUDGET env to '0' to disable. */
+export const NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT = 8192
+
+/** Parse a reasoning-budget env: absent → default; explicit '0' → disabled (undefined). */
+function reasoningBudgetFromEnv(name: string): number | undefined {
+  const raw = (process.env[name] || '').trim()
+  if (!raw) return NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
 // Raised from 16384: DeepSeek V4 Flash is a reasoning model that spends part of
 // the budget on reasoning_content. With thinking disabled (extraBody below) the
 // full budget goes to the article, but a 32768 cap leaves headroom for long
@@ -94,6 +108,14 @@ type OpenAiCompat = {
   topP?: number
   /** Cap max_tokens for this provider (NVIDIA allows 16384). */
   maxTokensCap?: number
+  /**
+   * Separate reasoning budget for NVIDIA NIM reasoning models (the documented
+   * `reasoning_budget` body field from NVIDIA's own integration example).
+   * Thinking-mode models otherwise burn max_completion_tokens on
+   * reasoning_content first, truncating the article with finish_reason:'length'.
+   * A dedicated budget keeps reasoning bounded so content keeps its headroom.
+   */
+  reasoningBudget?: number
 }
 
 /**
@@ -253,60 +275,93 @@ function extractMessageText(content: unknown): string {
   return ''
 }
 
+/** Build a continuation prompt that resumes a draft cut off at the token cap. */
+function buildContinuationPrompt(partial: string): string {
+  const tail = partial.trim().slice(-2200)
+  return (
+    'CONTINUE WRITING THE DRAFT BELOW. The previous response was cut off at the token limit. ' +
+    'Continue from exactly where it stopped and COMPLETE the remaining sections of the original outline. ' +
+    'Do NOT repeat any text already present. Return ONLY the continuation — no new title, no front matter, ' +
+    'and no closing summary of the whole piece unless the outline asked for one.\n\n' +
+    'DRAFT SO FAR (last 2200 chars):\n' +
+    (tail || '(no draft text was produced — restart the full write but keep it within the token budget)')
+  )
+}
+
+/** One-shot OpenAI-compatible chat completion fetch (complete + continuation). */
+async function openAiCompatFetch(
+  p: OpenAiCompat,
+  opts: ContentAiOptions,
+  userContent: string,
+): Promise<{ text: string; finishReason?: string | null }> {
+  const url = p.baseURL.replace(/\/$/, '') + '/chat/completions'
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${p.apiKey}`,
+  }
+  // OpenRouter free-tier attribution (same as chatProvider)
+  if (p.label === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
+    headers['X-Title'] = 'YouSafe Content Studio'
+  }
+  const maxTokens = resolveMaxTokens(p, opts)
+  // GPT-5.x / o-series reasoning models require max_completion_tokens
+  // instead of max_tokens (OpenAI rejects max_tokens on these models).
+  const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
+  const body: Record<string, unknown> = {
+    model: p.model,
+    ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
+    ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+    messages: [
+      { role: 'system', content: opts.system },
+      { role: 'user', content: userContent },
+    ],
+    ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
+    // Separate reasoning budget keeps thinking ON without starving content.
+    ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
+    ...(p.extraBody || {}),
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    throw new Error(formatProviderFailure(p.label, res.status, errBody))
+  }
+  const json = (await res.json()) as {
+    choices?: Array<{
+      message?: { content?: unknown; reasoning_content?: string }
+      finish_reason?: string
+    }>
+  }
+  const choice = json.choices?.[0]
+  // Consume ONLY final prose. Reasoning models return the chain in
+  // reasoning_content and the answer in content — reasoning must never
+  // become the article. If content is absent the model failed to answer.
+  return { text: extractMessageText(choice?.message?.content), finishReason: choice?.finish_reason }
+}
+
 async function openAiCompatibleComplete(
   p: OpenAiCompat,
   opts: ContentAiOptions,
 ): Promise<ContentAiResult> {
   return withRetry(p.label, async () => {
-    const url = p.baseURL.replace(/\/$/, '') + '/chat/completions'
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${p.apiKey}`,
+    // A cut-off completion is recoverable: continue from the partial text ONCE
+    // on the same provider instead of bouncing to the next (which usually hits
+    // the same shared cap and is what made whole cascades fail on long guides).
+    const first = await openAiCompatFetch(p, opts, opts.prompt)
+    let text = first.text
+    let finishReason = first.finishReason
+    if (finishReason === 'length' && text.trim()) {
+      const cont = await openAiCompatFetch(p, opts, buildContinuationPrompt(text))
+      text = (text + '\n\n' + cont.text).trim()
+      finishReason = cont.finishReason
     }
-    // OpenRouter free-tier attribution (same as chatProvider)
-    if (p.label === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
-      headers['X-Title'] = 'YouSafe Content Studio'
-    }
-    const maxTokens = resolveMaxTokens(p, opts)
-    // GPT-5.x / o-series reasoning models require max_completion_tokens
-    // instead of max_tokens (OpenAI rejects max_tokens on these models).
-    const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
-    const body: Record<string, unknown> = {
-      model: p.model,
-      ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
-      ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.prompt },
-      ],
-      ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
-      ...(p.extraBody || {}),
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '')
-      throw new Error(formatProviderFailure(p.label, res.status, errBody))
-    }
-    const json = (await res.json()) as {
-      choices?: Array<{
-        message?: { content?: unknown; reasoning_content?: string }
-        finish_reason?: string
-      }>
-    }
-    const choice = json.choices?.[0]
-    const msg = choice?.message
-    // Consume ONLY final prose. Reasoning models return the chain in
-    // reasoning_content and the answer in content — reasoning must never
-    // become the article. If content is absent the model failed to answer.
-    const text = extractMessageText(msg?.content)
     if (!text) throw new Error(`${p.label} returned empty content`)
-    // Never silently accept a cut-off completion — cascade to the next provider instead.
-    if (choice?.finish_reason === 'length') {
+    // Still cut off after the continuation — cascade to the next provider.
+    if (finishReason === 'length') {
       throw new Error(`${p.label} output was truncated (token limit) — trying next provider`)
     }
     return { text, provider: p.label, model: p.model }
@@ -347,6 +402,11 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
     model: env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
+    // Separate reasoning budget (mirrors the operator's own working NIM example:
+    // max_tokens 16384 + reasoning_budget 16384). VERIFIED live that Nemotron
+    // accepts it (DeepSeek/GLM do NOT — see getters above). Reasoning is capped
+    // at 8192 so the 16k completion budget is actually spent on the article.
+    reasoningBudget: reasoningBudgetFromEnv('NVIDIA_NEMOTRON_REASONING_BUDGET'),
     // Thinking mode ON — reasoning improves factual/structured output. The SSE
     // parser consumes ONLY delta.content, so reasoning chains never leak into
     // the article (see parseOpenAiSse). Segmented writing keeps each run small
@@ -368,6 +428,9 @@ export function getNvidiaGlmProvider(): OpenAiCompat | null {
     model: env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
+    // NOTE: NO reasoning_budget here — NVIDIA rejects it for GLM with a 400
+    // ("Unsupported parameter(s): `reasoning_budget`"). Truncation recovery for
+    // GLM comes from the bounded continuation retry in openAiCompatibleStream.
     // Thinking mode ON — reasoning improves quality. GLM 5.2 uses enable_thinking
     // (z-ai-style) rather than `thinking` (DeepSeek-style). The parser skips
     // reasoning_content deltas, so only final prose lands in the article.
@@ -388,6 +451,9 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
     model: env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
+    // NOTE: NO reasoning_budget here — NVIDIA DeepSeek V4 Flash returns a 400
+    // for `reasoning_budget` ("Unsupported parameter(s)"). Truncation recovery
+    // comes from the bounded continuation retry instead.
     // Thinking mode ON — reasoning improves factual/structured output. The SSE
     // parser skips reasoning_content deltas, so only final prose lands in the
     // article. Segmented writing keeps each run within the token budget.
@@ -677,33 +743,65 @@ async function* openAiCompatibleStream(
   // are also reasoning-capable — they consume part of the budget on
   // reasoning_content, so they get the completion-token param for headroom.
   const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: p.model,
-      stream: true,
-      ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
-      ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.prompt },
-      ],
-      ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
-      ...(p.extraBody || {}),
-    }),
-  })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(formatProviderFailure(`${p.label} stream`, res.status, body))
+
+  /** Open one SSE request for a given user prompt and return the response. */
+  const streamOnce = async (userContent: string): Promise<Response> => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: p.model,
+        stream: true,
+        ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
+        ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+        messages: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: userContent },
+        ],
+        ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
+        // Separate reasoning budget keeps thinking ON without starving content.
+        ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
+        ...(p.extraBody || {}),
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(formatProviderFailure(`${p.label} stream`, res.status, body))
+    }
+    if (!res.body) throw new Error(`${p.label} stream: empty body`)
+    return res
   }
-  if (!res.body) throw new Error(`${p.label} stream: empty body`)
 
   yield { type: 'provider', provider: p.label, model: p.model }
   let full = ''
-  for await (const delta of parseOpenAiSse(res.body)) {
-    full += delta
-    yield { type: 'delta', text: delta }
+  let continuations = 0
+  const MAX_CONTINUATIONS = 1
+  try {
+    for await (const delta of parseOpenAiSse((await streamOnce(opts.prompt)).body)) {
+      full += delta
+      yield { type: 'delta', text: delta }
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const truncated = /output was truncated \(token limit\)/.test(msg)
+    if (!truncated || continuations >= MAX_CONTINUATIONS) throw e
+    // Resume the SAME provider from where the token cap cut the draft — one
+    // bounded continuation so a full article completes instead of the whole
+    // cascade failing on a shared cap. Thinking stays ON; the continuation
+    // prompt finishes the remaining outline without repeating.
+    continuations++
+    const contPrompt = full.trim()
+      ? buildContinuationPrompt(full)
+      : opts.prompt + '\n\n(Previous attempt produced no visible text — write the complete answer now, keeping it within the token budget.)'
+    // Clean paragraph break between the cut-off draft and its continuation.
+    if (full.trim()) {
+      full += '\n\n'
+      yield { type: 'delta', text: '\n\n' }
+    }
+    for await (const delta of parseOpenAiSse((await streamOnce(contPrompt)).body)) {
+      full += delta
+      yield { type: 'delta', text: delta }
+    }
   }
   if (!full.trim()) throw new Error(`${p.label} stream returned empty content`)
   yield { type: 'done', text: full.trim(), provider: p.label, model: p.model }

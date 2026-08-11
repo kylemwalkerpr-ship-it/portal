@@ -146,6 +146,11 @@ describe('runDepthRescue', () => {
     // The rewrite grew the draft — provider/model tracked from the result
     expect(done!.provider).toBe('mock-provider')
     expect(done!.model).toBe('mock-expand')
+    // Stats contract: a clean single-pass rescue reports zero stalls, elapsed
+    // time, and the exact budget cap the UI renders a budget bar against.
+    expect(done!.stallCount).toBe(0)
+    expect(done!.timeMs).toBeGreaterThanOrEqual(0)
+    expect(done!.budgetMs).toBe(RESCUE_MAX_MS)
   })
 
   it('thin rewrite rolls into append passes with rotating focus until the floor is met', async () => {
@@ -199,6 +204,9 @@ describe('runDepthRescue', () => {
     expect(stall).toBeDefined()
     expect(done).not.toBeNull()
     expect(done!.expandPasses).toBe(3)
+    // All three passes were no-growth, so the stall counter must read 3 — this
+    // is the number surfaced on the Draft stage stats strip.
+    expect(done!.stallCount).toBe(3)
     // Best draft kept — the loop never replaced content with a non-grow result
     expect(countBodyWords(done!.content)).toBe(countBodyWords(buildDraft(400)))
   })
@@ -219,5 +227,33 @@ describe('runDepthRescue', () => {
     expect(countBodyWords(done!.content)).toBeLessThan(MIN_WORDS)
     // The single grow (400 → 600) was kept as the best draft.
     expect(countBodyWords(done!.content)).toBe(countBodyWords(buildDraft(600)))
+    // The done stats report elapsed time beyond the budget cap.
+    expect(done!.timeMs).toBeGreaterThan(RESCUE_MAX_MS)
+    expect(done!.budgetMs).toBe(RESCUE_MAX_MS)
+  })
+
+  it('reports expansion rounds, attempts, stalls and time budget on done', async () => {
+    const appendA = buildAppendSection('Regional Nuances for Dependents', 1200)
+    const { gen } = makeGenerate([
+      { growTo: 700 }, // pass 1: rewrite still short (400 → 700)
+      { append: appendA }, // pass 2: append crosses the floor (700 + 1200 > 1800)
+    ])
+    const { events, done } = await drain(baseOpts({ generateText: gen }))
+
+    expect(done).not.toBeNull()
+    // Two expand/append rounds were needed before the floor was met.
+    expect(done!.expandPasses).toBe(2)
+    expect(done!.attempts).toBe(2)
+    expect(done!.stallCount).toBe(0)
+    expect(done!.timeMs).toBeGreaterThanOrEqual(0)
+    expect(done!.budgetMs).toBe(RESCUE_MAX_MS)
+    // The rescue also surfaced a progress line per round for the Draft feed.
+    const rescueLines = events.filter(
+      (e): e is Extract<DepthRescueEvent, { type: 'progress' }> =>
+        e.type === 'progress' && e.message.startsWith('Depth rescue '),
+    )
+    expect(rescueLines.length).toBe(2)
+    expect(rescueLines[0].message).toContain('Depth rescue 1/10')
+    expect(rescueLines[1].message).toContain('Depth rescue 2/10')
   })
 })

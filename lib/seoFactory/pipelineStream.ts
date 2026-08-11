@@ -25,7 +25,7 @@ import {
 } from './prompts'
 import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
-import { runDepthRescue } from './depthRescue'
+import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { stripNoIndex } from './siteHealthFixes'
@@ -37,6 +37,7 @@ export type PipelineStreamEvent =
   | { type: 'job'; jobId: string }
   | { type: 'delta'; text: string; attempt: number; draft?: string }
   | { type: 'attempt'; attempt: number; score: number; wordCount: number; goodEnough: boolean; draft?: string }
+  | { type: 'rescue'; stats: DepthRescueStats }
   | { type: 'ship'; ship: ShipResult | null; shipError: string | null; shipMode: string }
   | { type: 'final'; result: PipelineResult }
   | { type: 'error'; error: string }
@@ -286,6 +287,11 @@ export async function* runSeoFactoryPipelineStream(
     let expandPasses = 0
     let stalledCount = 0
     const maxStalled = 2
+    // Depth-rescue stats (PASS 2) — surfaced to the Draft queue and persisted on
+    // the job so the admin always sees how many expansion rounds a draft needed.
+    let rescueStallCount = 0
+    let rescueTimeMs = 0
+    let rescueBudgetMs = 0
 
     // ── PASS 1: Main refine loop (depth + quality) ───────────────────────
     for (let i = 0; i <= maxRefine; i++) {
@@ -584,6 +590,21 @@ export async function* runSeoFactoryPipelineStream(
         model = ev.model
         expandPasses = ev.expandPasses
         attempts = ev.attempts
+        rescueStallCount = ev.stallCount
+        rescueTimeMs = ev.timeMs
+        rescueBudgetMs = ev.budgetMs
+        // Structured stats event so the Draft stage can surface expansion rounds,
+        // stall count, and the time budget without parsing log lines.
+        yield {
+          type: 'rescue',
+          stats: {
+            expandPasses: ev.expandPasses,
+            attempts: ev.attempts,
+            stallCount: ev.stallCount,
+            timeMs: ev.timeMs,
+            budgetMs: ev.budgetMs,
+          },
+        }
         break
       }
       yield ev
@@ -1070,7 +1091,20 @@ export async function* runSeoFactoryPipelineStream(
         canonical_url: plan.canonicalUrl,
         owner_host: plan.host,
         primary_keyword: primaryKeyword,
-        audit_json: { ...audit, attempts, model, minAudit },
+        audit_json: {
+          ...audit,
+          attempts,
+          model,
+          minAudit,
+          rescue: expandPasses > 0
+            ? {
+                expandPasses,
+                stallCount: rescueStallCount,
+                timeMs: rescueTimeMs,
+                budgetMs: rescueBudgetMs,
+              }
+            : undefined,
+        },
         gsc_json: {
           source: gscBrief.source,
           mode: gscBrief.mode,

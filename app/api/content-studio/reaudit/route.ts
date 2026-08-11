@@ -1,25 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
-import { buildWarningsFixPrompt, findingToAnnotations, mergeWarnings, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
+import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
-import { assertContentDepth } from '@/lib/seoFactory/contentDepth'
-import { auditContent } from '@/lib/seoFactory/audit'
+import { evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
 
-export type ReauditResponse = {
-  ok: boolean; score: number; summary: string
-  annotations: InlineAnnotation[]; blockers: number; warnings: number
-  fixedContent?: string
-  appliedRepairs?: string[]
-  /** True when BOTH the quality gate and the Google depth floor pass — the
-   *  two gates that gate ship. Warnings never block; this makes that visible. */
-  shipReady?: boolean
-  depthGate?: { ok: boolean; message: string }
-  /** Merged quality + audit warnings (audit covers indexability: schema,
-   *  meta description, internal links, AI-answer block…). Every entry is
-   *  AI-fixable via the fix_warnings action. */
-  warningsData?: Array<{ code: string; message: string; fix?: string }>
-}
+export type { ReauditResponse }
 
 // ---------- AI-powered fix endpoints ----------
 
@@ -64,23 +49,6 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promis
   return text
 }
 
-/** Google depth floor — the OTHER hard ship gate. The editor previously only
- *  ran the quality gate, so a draft could read "100/100 PASSED" while ship was
- *  refused on depth. Shared by POST + PATCH so both report the true blocker. */
-function checkDepthGate(content: string, contentType?: string, indexable?: boolean): { ok: boolean; message: string } {
-  try {
-    assertContentDepth({ content, contentType: contentType || 'legal_guide', indexable })
-    return { ok: true, message: 'Depth floor met' }
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error
-        ? e.message.replace(/^Ship refused — content depth \(Google SEO floor\):\n- /, '')
-        : 'Content below the Google depth floor',
-    }
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
@@ -104,37 +72,17 @@ export async function POST(request: NextRequest) {
       contentType,
     })
     const effective = repaired.content
-    const result = evaluateContentQuality({
-      content: effective,
-      contentType,
-      primaryKeyword,
-      indexable,
-      requiredShortKeywords,
-      requiredLongTailKeywords,
-    })
-    const annotations: InlineAnnotation[] = []
-    for (const b of result.blockers) annotations.push(...findingToAnnotations(effective, b))
-    for (const w of result.warnings) annotations.push(
-      ...findingToAnnotations(effective, { ...w, severity: 'warning' as const }),
-    )
-    // Merge quality + audit warnings so indexability warnings (schema_article,
-    // schema_faq, meta_description, internal_links, ai_answer_block…) are ALSO
-    // resolvable from the editor — not just the voice/tone warnings.
-    const audit = auditContent({
-      content: effective,
-      contentType: contentType || 'legal_guide',
-      primaryKeyword,
-      indexable,
-    })
-    const warningsData = mergeWarnings(result.warnings, audit.warnings)
-    const depthGate = checkDepthGate(effective, contentType, indexable)
+    // Contract evaluation (quality gate + audit + warningsData merge + depth
+    // gate + shipReady) is shared with PATCH — see lib/seoFactory/reauditContract.
     const response: ReauditResponse = {
-      ok: result.ok, score: result.humanScore, summary: result.summary,
-      annotations: annotations.slice(0, 60), blockers: result.blockers.length,
-      warnings: warningsData.length,
-      warningsData,
-      shipReady: result.ok && depthGate.ok,
-      depthGate,
+      ...evaluateReauditContract({
+        content: effective,
+        contentType,
+        primaryKeyword,
+        indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+      }),
     }
     if (repaired.applied.length && effective !== content) {
       response.fixedContent = effective
@@ -205,13 +153,17 @@ ${warningList}
 
     } else if (action === 'fix_one' && annotation) {
       const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.'
+      // Document-level warnings (schema, meta description, internal links,
+      // AI-answer block…) anchor at line 1 with no highlighted text. Give the
+      // model concrete context instead of an empty quote so the fix is precise.
+      const snippet = annotation.highlightedText.trim() || content.split('\n').find((l) => /^#{1,3}\s/.test(l.trim()))?.trim() || content.slice(0, 80)
       const prompt = `## Article
 
 ${content}
 
 ## Issue to Fix
 - Line ${annotation.line}: [${annotation.code}] ${annotation.message}
-- Problematic text: "${annotation.highlightedText}"
+- Problematic text: "${snippet}"
 - Suggested fix: ${annotation.fix}
 
 ## Instructions
@@ -250,40 +202,18 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
     })
     fixedContent = repaired.content
 
-    // Re-evaluate the fixed content
-    const reResult = evaluateContentQuality({
-      content: fixedContent,
-      contentType,
-      primaryKeyword,
-      indexable,
-      requiredShortKeywords,
-      requiredLongTailKeywords,
-    })
-    const reAnnotations: InlineAnnotation[] = []
-    for (const b of reResult.blockers) reAnnotations.push(...findingToAnnotations(fixedContent, b))
-    for (const w of reResult.warnings) reAnnotations.push(
-      ...findingToAnnotations(fixedContent, { ...w, severity: 'warning' as const }),
-    )
-    const reAudit = auditContent({
-      content: fixedContent,
-      contentType: contentType || 'legal_guide',
-      primaryKeyword,
-      indexable,
-    })
-    const reWarningsData = mergeWarnings(reResult.warnings, reAudit.warnings)
-
-    const depthGate = checkDepthGate(fixedContent, contentType, indexable)
+    // Re-evaluate the fixed content — contract evaluation (quality gate +
+    // audit + warningsData merge + depth gate + shipReady) shared with POST.
     const response: ReauditResponse = {
-      ok: reResult.ok,
-      score: reResult.humanScore,
-      summary: reResult.summary,
-      annotations: reAnnotations.slice(0, 60),
-      blockers: reResult.blockers.length,
-      warnings: reWarningsData.length,
-      warningsData: reWarningsData,
+      ...evaluateReauditContract({
+        content: fixedContent,
+        contentType,
+        primaryKeyword,
+        indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+      }),
       fixedContent,
-      shipReady: reResult.ok && depthGate.ok,
-      depthGate,
     }
     if (repaired.applied.length) response.appliedRepairs = repaired.applied
     return NextResponse.json(response)

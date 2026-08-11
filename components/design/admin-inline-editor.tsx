@@ -417,7 +417,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           evidence-less warnings produced no annotation and no button, so the
           admin saw "2 warnings" with no way to resolve them. */}
       {auditResult && auditResult.warnings > 0 && warningsData.length > 0 && (
-        <div style={{
+        <div data-testid="studio-warnings-block" style={{
           display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px',
           borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A',
         }}>

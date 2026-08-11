@@ -213,6 +213,8 @@ test.describe('Stage III · Draft — depth-rescue attempt feed', () => {
       { delayMs: 0, event: { type: 'progress', stage: 'refine', message: 'Depth rescue 3/10 · 1400/1800 words (400 to add)…' } },
       { delayMs: 300, event: { type: 'delta', text: '## Common Mistakes\n\nApplicants often forget the biometric appointment step.' } },
       { delayMs: 1400, event: { type: 'attempt', attempt: 3, score: 90, wordCount: 1400, goodEnough: true } },
+      // ── Structured rescue stats (pipeline emits right after PASS 2 done) ──
+      { delayMs: 400, event: { type: 'rescue', stats: { expandPasses: 3, attempts: 3, stallCount: 0, timeMs: 4200, budgetMs: 220000 } } },
       { delayMs: 800, event: { type: 'final', result: { jobId: 'mock-rescue-001', status: 'drafting' } } },
       { delayMs: 0, event: '[DONE]' },
     ])
@@ -278,6 +280,13 @@ test.describe('Stage III · Draft — depth-rescue attempt feed', () => {
     await expect(
       rescueFeed(page).getByText(/threshold met/),
     ).toBeVisible({ timeout: 8000 })
+
+    // ── Depth-rescue stats strip: rounds, stalls, time budget ──
+    const stats = page.getByTestId('studio-rescue-stats')
+    await expect(stats).toBeVisible({ timeout: 8000 })
+    await expect(stats).toContainText('3 passes')
+    await expect(stats).toContainText('0 stalls')
+    await expect(stats).toContainText('4.2s / 3m 40s')
 
     // ── Word counts strictly grow across passes (400 → 700 → 1400) ──
     // The feed persists after the stream completes, so no teardown race.
