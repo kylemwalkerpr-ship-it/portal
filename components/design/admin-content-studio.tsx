@@ -2810,6 +2810,11 @@ function DraftWorkspace({
   const hasCompleted = Boolean(completedJob && !generating)
   const gatePassed = completedJob?.audit_json && (completedJob.audit_json.score ?? 0) >= 90
   const wordCount = completedJob?.word_count || (draftContent ? draftContent.split(/\s+/).filter(Boolean).length : 0)
+  // Depth-rescue / audit activity — recorded from SSE progress (stage 'refine')
+  // and attempt (stage 'audit') events. Shown as a persistent realtime feed so
+  // expand/append passes with growing word counts stay visible during AND after
+  // streaming (the empty-state log alone disappears the moment deltas arrive).
+  const auditRecords = generationEvents.filter((e) => e.stage === 'audit' || e.stage === 'refine')
 
   return (
     <>
@@ -3004,6 +3009,30 @@ function DraftWorkspace({
             >
               ← Go to Research & Plan
             </button>
+          </div>
+        )}
+
+        {/* ── Depth rescue · attempt feed — realtime expand/append record ──
+            Mirrors the rescue loop's progress + attempt events (word counts
+            per pass) so the queue shows the draft growing pass by pass. */}
+        {auditRecords.length > 0 && (
+          <div data-testid="studio-rescue-feed" style={{
+            marginTop: 14, padding: '10px 14px', background: '#FFFDF5',
+            border: `1px solid ${E.hairline}`, borderRadius: 0,
+          }}>
+            <div style={{ fontSize: 9, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 6 }}>
+              ⏱ DEPTH RESCUE · ATTEMPT FEED — expand/append passes with word counts
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {auditRecords.slice(-6).map((e) => (
+                <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontFamily: C.mono, fontSize: 10 }}>
+                  <span style={{ color: E.inkDim, minWidth: 70 }}>{fmtTime(e.ts)}</span>
+                  <span style={{ color: e.level === 'success' ? '#166534' : e.level === 'warn' ? '#D97706' : '#2563EB', flex: 1 }}>
+                    {e.message}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
