@@ -234,6 +234,34 @@ export function applyDeterministicRepairs(opts: {
     applied.push('whilst_normalized')
   }
 
+  // ── Meta description: inject description: into YAML front matter ────
+  // The audit checks fm.description || fm.metaDescription in the front matter
+  // (120–170 chars). If missing or too short, inject one using the same
+  // metaDescriptionFrom helper the schema_article repair already relies on.
+  const fmBlock = b.match(/^---\n([\s\S]*?)\n---/)
+  if (fmBlock) {
+    const fmBody = fmBlock[1]
+    const existingDesc = fmBody.match(/^description:\s*(.+)$/m)
+    if (!existingDesc || (existingDesc[1] && existingDesc[1].length < 100)) {
+      const kw = (opts.primaryKeyword || opts.title || 'Immigration guide').trim()
+      const desc = metaDescriptionFrom(opts.title || '', b, kw)
+      if (existingDesc) {
+        // Replace the existing short description
+        b = b.replace(existingDesc[0], `description: ${desc}`)
+      } else {
+        // Inject after the title line (or after --- if no title)
+        const titleLine = fmBody.match(/^title:\s*.+$/m)
+        if (titleLine) {
+          b = b.replace(titleLine[0], `${titleLine[0]}\ndescription: ${desc}`)
+        } else {
+          // No title — inject right after the opening ---
+          b = b.replace(/^---\n/, `---\ndescription: ${desc}\n`)
+        }
+      }
+      applied.push('meta_description')
+    }
+  }
+
   // ── Schema JSON-LD injection (Article + FAQPage) ────────────────────
   // The audit checks for "@type":"Article" and "@type":"FAQPage" in the
   // content body. The editorial contract tells models NOT to emit raw

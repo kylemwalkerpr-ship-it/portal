@@ -184,6 +184,7 @@ export async function POST(request: Request) {
       minWords: body.minWords != null ? Number(body.minWords) : undefined,
       maxWords: body.maxWords != null ? Number(body.maxWords) : undefined,
       targetSlug: body.targetSlug ? String(body.targetSlug) : undefined,
+      metaDescription: body.metaDescription ? String(body.metaDescription).trim().slice(0, 160) : undefined,
       kwH2Map: body.kwH2Map && typeof body.kwH2Map === 'object' ? Object.fromEntries(Object.entries(body.kwH2Map).map(([k, v]) => [String(k), String(v)])) : undefined,
       userId,
     }

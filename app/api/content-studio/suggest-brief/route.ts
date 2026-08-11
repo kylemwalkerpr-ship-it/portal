@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
       '  "sources": ["https://gov-or-edu-source.gov/page"]  // 3–5 authoritative URLs to cite',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
       '  "targetSlug": "kebab-case-slug-for-this-page",',
+      '  "metaDescription": "140–160 character SEO meta description (compelling benefit + primary keyword, no clickbait)",',
       '  "recommendedTone": "professional | educational | authoritative | persuasive",',
       '  "recommendedAudience": "1-sentence description of the ideal reader",',
       '  "minWords": 2200,',
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
       '12. CONCRETE WORKED EXAMPLE: every long-form page (≥1,000 words) MUST include at least one concrete example with a named individual, their real-world situation, the step they took, and the result. Your h2Outline MUST contain an "Example" or "Worked Example" H2 section. Example markers like "For example," or "For instance," must appear in the body.',
       '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline.',
       '14. SCHEMA FAQ JSON-LD: include 4-6 FAQ questions as H2 sections in the h2Outline. At minimum: eligibility, timeline, required documents, costs, DIY-vs-attorney, and denial/reapply questions. The drafting system wraps these in FAQPage JSON-LD (`{"@type":"FAQPage"}`) so the page qualifies for AI-overview rich results.',
+      '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
     ].join('\n')
 
     const prompt = [
@@ -181,6 +183,7 @@ export async function POST(req: NextRequest) {
       sources: Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6) : [],
       interlinkTargets: Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets.slice(0, 8) : [],
       targetSlug: String(parsed.targetSlug || ''),
+      metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),
       recommendedAudience: String(parsed.recommendedAudience || ''),
       minWords: Number(parsed.minWords) || 2200,
