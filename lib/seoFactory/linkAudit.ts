@@ -371,6 +371,50 @@ export async function auditLinksLive(
   return findings
 }
 
+/**
+ * Mechanically strip dead / placeholder / invented links from content.
+ * Preserves the link text (anchor text) but removes the URL. Used by the
+ * review/reaudit pipeline so the AI editor never sees hallucinated URLs
+ * and the ship gate never blocks on DEAD_INTERNAL_LINK.
+ */
+export function stripDeadLinks(
+  content: string,
+  deadUrls: string[] | Set<string>,
+): { content: string; stripped: number } {
+  const dead = new Set(
+    Array.from(deadUrls).map((u) =>
+      u
+        .trim()
+        .replace(/^https?:\/\/legal\.yousafeconsultancy\.com/i, '')
+        .replace(/^https?:\/\/yousafeconsultancy\.com/i, ''),
+    ),
+  )
+  let stripped = 0
+  // Strip markdown links: [text](DEAD_URL) -> text
+  let result = content.replace(
+    /\[([^\]]*)\]\((\S+?)(?:\s+"[^"]*")?\)/g,
+    (match, text, url) => {
+      const cleanUrl = url.trim()
+      const isDead =
+        dead.has(cleanUrl) ||
+        dead.has(cleanUrl.replace(/\/$/, '')) ||
+        dead.has('/' + cleanUrl.replace(/^\//, '')) ||
+        Array.from(dead).some(
+          (d) =>
+            d &&
+            cleanUrl.startsWith(d) &&
+            (cleanUrl.length === d.length || cleanUrl[d.length] === '/' || cleanUrl[d.length] === '#'),
+        )
+      if (isDead) {
+        stripped++
+        return text
+      }
+      return match
+    },
+  )
+  return { content: result, stripped }
+}
+
 /** Keep only estate URLs that are verified live (registry → brief → prompt). */
 export async function filterLiveInternalUrls(urls: string[]): Promise<string[]> {
   if (urls.length === 0) return []

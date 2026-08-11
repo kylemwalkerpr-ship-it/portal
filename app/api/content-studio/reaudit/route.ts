@@ -3,7 +3,7 @@ import { generateContentText } from '@/lib/contentAiProvider'
 import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
-import { auditLinksLive } from '@/lib/seoFactory/linkAudit'
+import { auditLinksLive, stripDeadLinks } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
 
@@ -61,22 +61,45 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promis
 
 /** Best-effort live link audit: structural checks already run in the quality
  *  gate; this adds real HTTP verification of internal links so dead or
- *  invented links (2026-08 example.com incident) block ship with evidence. */
-async function mergeLinkAudit(response: ReauditResponse, content: string): Promise<void> {
+ *  invented links (2026-08 example.com incident) block ship with evidence.
+ *  After the audit, mechanically strips every dead link so the AI editor
+ *  and ship gate never see a URL that doesn't resolve. */
+async function mergeLinkAudit(response: ReauditResponse, content: string): Promise<string> {
+  let effective = content
   try {
     const findings = await auditLinksLive(content)
-    if (!findings.length) return
+    if (!findings.length) return effective
     const blockers = findings.filter((f) => f.severity === 'blocker')
     const warnings = findings.filter((f) => f.severity === 'warning')
-    if (blockers.length) {
+
+    // ── Mechanical strip: remove every dead/unreachable/placeholder URL ──
+    const deadUrls = findings
+      .filter((f) => f.code === 'dead_internal_link' || f.code === 'placeholder_link' || f.code === 'unreachable_internal_link')
+      .map((f) => f.url)
+    if (deadUrls.length > 0) {
+      const { content: cleaned, stripped } = stripDeadLinks(content, deadUrls)
+      if (stripped > 0) {
+        effective = cleaned
+        response.appliedRepairs = [...(response.appliedRepairs || []), `stripped ${stripped} dead link${stripped === 1 ? '' : 's'}`]
+      }
+    }
+
+    // Re-count after strip — only dead links we couldn't mechanically fix
+    const remainingBlockers = blockers.filter(
+      (f) => !deadUrls.includes(f.url),
+    )
+    const remainingWarnings = warnings.filter(
+      (f) => !deadUrls.includes(f.url),
+    )
+    if (remainingBlockers.length) {
       response.ok = false
       response.shipReady = false
     }
-    response.blockers = (response.blockers || 0) + blockers.length
-    response.warnings = (response.warnings || 0) + warnings.length
+    response.blockers = (response.blockers || 0) + remainingBlockers.length
+    response.warnings = (response.warnings || 0) + remainingWarnings.length
     response.warningsData = [
       ...(response.warningsData || []),
-      ...[...blockers, ...warnings].map((f) => ({
+      ...[...remainingBlockers, ...remainingWarnings].map((f) => ({
         code: f.code,
         message: f.message,
         fix: f.code === 'placeholder_link'
@@ -87,8 +110,10 @@ async function mergeLinkAudit(response: ReauditResponse, content: string): Promi
       })),
     ]
     response.linkAudit = findings
+    return effective
   } catch {
     // Live audit is best-effort; the structural gate still enforces placeholders.
+    return effective
   }
 }
 
@@ -114,7 +139,7 @@ export async function POST(request: NextRequest) {
       indexable,
       contentType,
     })
-    const effective = repaired.content
+    let effective = repaired.content
     // Contract evaluation (quality gate + audit + warningsData merge + depth
     // gate + shipReady) is shared with PATCH — see lib/seoFactory/reauditContract.
     const response: ReauditResponse = {
@@ -127,7 +152,7 @@ export async function POST(request: NextRequest) {
         requiredLongTailKeywords,
       }),
     }
-    await mergeLinkAudit(response, effective)
+    effective = await mergeLinkAudit(response, effective)
     if (repaired.applied.length && effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = repaired.applied
@@ -259,7 +284,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       }),
       fixedContent,
     }
-    await mergeLinkAudit(response, fixedContent)
+    fixedContent = await mergeLinkAudit(response, fixedContent)
     if (repaired.applied.length) response.appliedRepairs = repaired.applied
     return NextResponse.json(response)
   } catch (error) {
