@@ -23,6 +23,9 @@ export async function POST(req: NextRequest) {
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
+    // Use the admin's selected provider, defaulting to whatever is configured
+    // (rather than hardcoding 'openai' which fails with no OPENAI_API_KEY).
+    const aiProvider = String(body.aiProvider || 'auto').trim() || 'auto'
 
     // GSC live data
     const gscImpressions = Number(body.gscImpressions) || 0
@@ -140,7 +143,7 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean).join('\n')
 
     const ai = await generateContentText({
-      aiProvider: 'openai',
+      aiProvider,
       system,
       prompt,
       maxTokens: 1600,

@@ -1875,7 +1875,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic, region, contentType, primaryKeyword: title || topic, audience,
+          topic, region, contentType, primaryKeyword: title || topic, audience, aiProvider,
           gscImpressions: gscData.impressions || 0,
           gscPosition: gscData.position || 0,
           gscClicks: gscData.clicks || 0,

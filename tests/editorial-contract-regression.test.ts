@@ -96,10 +96,19 @@ describe('editorialContract · guardrail regression', () => {
 
 describe('prompts.ts · system-prompt guardrail regression', () => {
   const plan = {
+    matched: null as any,
+    matchScore: 0,
     host: 'legal' as const,
+    repo: 'caseworks' as any,
+    filePath: 'app/us/guardrail-test/page.tsx',
     canonicalUrl: 'https://legal.yousafeconsultancy.com/us/guardrail-test/',
     indexable: true,
+    action: 'create',
+    intentClass: 'legal_guide',
     contentType: 'article',
+    warnings: [],
+    blockers: [],
+    ymy: false,
     routingSource: 'registry_host' as const,
   }
 
