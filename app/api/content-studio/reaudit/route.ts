@@ -1,75 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { evaluateContentQuality, type QualityFinding } from '@/lib/seoFactory/contentQualityGate'
-import { buildTargetedSweepPrompt } from '@/lib/seoFactory/contentQualityGate'
+import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
+import { buildWarningsFixPrompt, findingToAnnotations, mergeWarnings, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
-
-export type InlineAnnotation = {
-  id: string; line: number; col: number; endLine: number; endCol: number
-  length: number; severity: 'blocker' | 'warning'; code: string
-  message: string; fix: string; highlightedText: string
-}
+import { assertContentDepth } from '@/lib/seoFactory/contentDepth'
+import { auditContent } from '@/lib/seoFactory/audit'
 
 export type ReauditResponse = {
   ok: boolean; score: number; summary: string
   annotations: InlineAnnotation[]; blockers: number; warnings: number
   fixedContent?: string
   appliedRepairs?: string[]
-}
-
-function indexToLineCol(content: string, index: number) {
-  const before = content.slice(0, index)
-  const line = (before.match(/\n/g) || []).length + 1
-  const lastNl = before.lastIndexOf('\n')
-  return { line, col: lastNl === -1 ? index + 1 : index - lastNl }
-}
-
-function findingToAnnotations(content: string, f: QualityFinding): InlineAnnotation[] {
-  const results: InlineAnnotation[] = []
-  const evidence = (f as any).evidence || ''
-  const search = evidence.slice(0, 80) || f.message.split(':')[0] || ''
-
-  if (f.code === 'sentence_start_repetition' && evidence) {
-    const prefix = evidence.replace(/\u2026$/, '').trim()
-    if (prefix.length >= 3) {
-      const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const regex = new RegExp(
-        `(?:^|[.!?]\\s+)(${escaped}\\S*(?:\\s+\\S+){0,5})`, 'gim'
-      )
-      let m: RegExpExecArray | null; let n = 0
-      while ((m = regex.exec(content)) !== null && n < 12) {
-        const si = m.index + m[0].indexOf(m[1])
-        const ht = m[1].slice(0, 80)
-        const { line, col } = indexToLineCol(content, si)
-        const ep = indexToLineCol(content, si + ht.length)
-        results.push({
-          id: `${f.code}-${n}`, line, col, endLine: ep.line, endCol: ep.col,
-          length: ht.length, severity: 'blocker', code: f.code,
-          message: f.message, fix: f.fix || 'Vary this sentence opening.',
-          highlightedText: ht,
-        })
-        n++
-      }
-    }
-  } else if (evidence && evidence.length >= 3) {
-    const lower = content.toLowerCase(); const le = evidence.toLowerCase()
-    let idx = 0; let n = 0
-    while (idx < lower.length && n < 6) {
-      const found = lower.indexOf(le, idx)
-      if (found === -1) break
-      const ht = content.slice(found, found + evidence.length)
-      const { line, col } = indexToLineCol(content, found)
-      const ep = indexToLineCol(content, found + evidence.length)
-      results.push({
-        id: `${f.code}-${n}`, line, col, endLine: ep.line, endCol: ep.col,
-        length: evidence.length, severity: f.severity || 'warning', code: f.code,
-        message: f.message, fix: f.fix || 'Review and fix.',
-        highlightedText: ht,
-      })
-      n++; idx = found + 1
-    }
-  }
-  return results
+  /** True when BOTH the quality gate and the Google depth floor pass — the
+   *  two gates that gate ship. Warnings never block; this makes that visible. */
+  shipReady?: boolean
+  depthGate?: { ok: boolean; message: string }
+  /** Merged quality + audit warnings (audit covers indexability: schema,
+   *  meta description, internal links, AI-answer block…). Every entry is
+   *  AI-fixable via the fix_warnings action. */
+  warningsData?: Array<{ code: string; message: string; fix?: string }>
 }
 
 // ---------- AI-powered fix endpoints ----------
@@ -115,6 +64,23 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promis
   return text
 }
 
+/** Google depth floor — the OTHER hard ship gate. The editor previously only
+ *  ran the quality gate, so a draft could read "100/100 PASSED" while ship was
+ *  refused on depth. Shared by POST + PATCH so both report the true blocker. */
+function checkDepthGate(content: string, contentType?: string, indexable?: boolean): { ok: boolean; message: string } {
+  try {
+    assertContentDepth({ content, contentType: contentType || 'legal_guide', indexable })
+    return { ok: true, message: 'Depth floor met' }
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error
+        ? e.message.replace(/^Ship refused — content depth \(Google SEO floor\):\n- /, '')
+        : 'Content below the Google depth floor',
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
@@ -151,10 +117,24 @@ export async function POST(request: NextRequest) {
     for (const w of result.warnings) annotations.push(
       ...findingToAnnotations(effective, { ...w, severity: 'warning' as const }),
     )
+    // Merge quality + audit warnings so indexability warnings (schema_article,
+    // schema_faq, meta_description, internal_links, ai_answer_block…) are ALSO
+    // resolvable from the editor — not just the voice/tone warnings.
+    const audit = auditContent({
+      content: effective,
+      contentType: contentType || 'legal_guide',
+      primaryKeyword,
+      indexable,
+    })
+    const warningsData = mergeWarnings(result.warnings, audit.warnings)
+    const depthGate = checkDepthGate(effective, contentType, indexable)
     const response: ReauditResponse = {
       ok: result.ok, score: result.humanScore, summary: result.summary,
       annotations: annotations.slice(0, 60), blockers: result.blockers.length,
-      warnings: result.warnings.length,
+      warnings: warningsData.length,
+      warningsData,
+      shipReady: result.ok && depthGate.ok,
+      depthGate,
     }
     if (repaired.applied.length && effective !== content) {
       response.fixedContent = effective
@@ -171,17 +151,20 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as {
-      action: 'fix_all' | 'fix_one'
+      action: 'fix_all' | 'fix_one' | 'fix_warnings'
       content: string
       annotations?: InlineAnnotation[]
       annotation?: InlineAnnotation
+      /** Warnings-only payload for the fix_warnings sweep (evidence-less
+       *  warnings included — these previously had no fix path at all). */
+      warnings?: Array<{ code: string; message: string; fix?: string }>
       contentType?: string
       primaryKeyword?: string
       indexable?: boolean
       requiredShortKeywords?: string[]
       requiredLongTailKeywords?: string[]
     }
-    const { action, content, annotations, annotation, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = body
+    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -236,8 +219,16 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
 
       fixedContent = await callAiFix(sys, prompt, 8192)
 
+    } else if (action === 'fix_warnings' && warnings && warnings.length) {
+      // Warnings-only sweep. Many quality warnings (tone_whilst, emdash_spam,
+      // missing_second_person, wall_of_text, missing_reader_path…) carry no
+      // inline evidence, so they were never fixable before. The sweep prompt
+      // lists them with their remediation and asks for minimal edits.
+      const sys = 'You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.'
+      fixedContent = await callAiFix(sys, buildWarningsFixPrompt(content, warnings), 16384)
+
     } else {
-      return NextResponse.json({ error: 'Invalid action or missing annotations' }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid action or missing annotations/warnings' }, { status: 400 })
     }
 
     // Sanity: never let a truncated/partial rewrite silently replace the article.
@@ -273,15 +264,26 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
     for (const w of reResult.warnings) reAnnotations.push(
       ...findingToAnnotations(fixedContent, { ...w, severity: 'warning' as const }),
     )
+    const reAudit = auditContent({
+      content: fixedContent,
+      contentType: contentType || 'legal_guide',
+      primaryKeyword,
+      indexable,
+    })
+    const reWarningsData = mergeWarnings(reResult.warnings, reAudit.warnings)
 
+    const depthGate = checkDepthGate(fixedContent, contentType, indexable)
     const response: ReauditResponse = {
       ok: reResult.ok,
       score: reResult.humanScore,
       summary: reResult.summary,
       annotations: reAnnotations.slice(0, 60),
       blockers: reResult.blockers.length,
-      warnings: reResult.warnings.length,
+      warnings: reWarningsData.length,
+      warningsData: reWarningsData,
       fixedContent,
+      shipReady: reResult.ok && depthGate.ok,
+      depthGate,
     }
     if (repaired.applied.length) response.appliedRepairs = repaired.applied
     return NextResponse.json(response)

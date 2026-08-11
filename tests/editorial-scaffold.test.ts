@@ -1,4 +1,4 @@
-import { ensureEditorialScaffold } from '@/lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, ensureEditorialScaffold } from '@/lib/seoFactory/editorialScaffold'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
 
@@ -131,5 +131,19 @@ describe('ensureEditorialScaffold', () => {
     })
     expect(out).not.toMatch(/tracker\.js/)
     expect(out).toMatch(/application\/ld\+json/)
+  })
+})
+
+describe('applyDeterministicRepairs — warning micro-fixes', () => {
+  it('normalises whilst → while so the tone_whilst warning is mechanically cleared', () => {
+    const draft = '# Guide\n\nYou must apply whilst the window is open.'
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    expect(applied).toContain('whilst_normalized')
+    expect(content).not.toMatch(/whilst/)
+    expect(content).toMatch(/apply while the window/)
   })
 })

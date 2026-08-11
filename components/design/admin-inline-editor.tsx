@@ -56,6 +56,12 @@ export type DraftVersion = {
 type Props = {
   content: string; jobId: string; onChange: (v: string) => void
   disabled?: boolean; onScoreChange?: (s: number | null) => void
+  /** Job brief context — threaded into re-audit/fix calls so the depth gate
+   *  and quality gate run against the REAL content type (blog floor ≠ legal
+   *  guide floor), not a legal_guide default. */
+  contentType?: string
+  primaryKeyword?: string
+  indexable?: boolean
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -67,7 +73,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -84,6 +90,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [fixElapsed, setFixElapsed] = useState(0)
+  const [fixingWarnings, setFixingWarnings] = useState(false)
+  const [shipReady, setShipReady] = useState<boolean | null>(null)
+  const [depthGate, setDepthGate] = useState<{ ok: boolean; message: string } | null>(null)
+  // Merged quality + audit warnings (schema/meta/internal-links included).
+  const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fixAbortRef = useRef<AbortController | null>(null)
@@ -136,7 +147,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const res = await fetch('/api/content-studio/reaudit', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -149,7 +160,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
+      setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setShowAnnotations(true)
+      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      setDepthGate(data.depthGate || null)
       onScoreChange?.(data.score)
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · auto-fixed: ${data.appliedRepairs.join(', ')}`
@@ -158,7 +172,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, onChange, onScoreChange])
+  }, [content, onChange, onScoreChange, contentType, primaryKeyword, indexable])
 
   // Fix ALL annotations via AI (clicking again while running cancels the request)
   const handleFixAll = useCallback(async () => {
@@ -179,7 +193,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 260_000,
-        body: JSON.stringify({ action: 'fix_all', content, annotations }),
+        body: JSON.stringify({ action: 'fix_all', content, annotations, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -202,7 +216,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, annotations, fixingAll, onChange, onScoreChange])
+  }, [content, annotations, fixingAll, onChange, onScoreChange, contentType, primaryKeyword, indexable])
 
   // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
@@ -222,7 +236,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 140_000,
-        body: JSON.stringify({ action: 'fix_one', content, annotation }),
+        body: JSON.stringify({ action: 'fix_one', content, annotation, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -245,7 +259,58 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, fixingOne, onChange, onScoreChange])
+  }, [content, fixingOne, onChange, onScoreChange, contentType, primaryKeyword, indexable])
+
+  // Fix ALL warnings via AI — evidence-less quality warnings AND indexability
+  // warnings (schema/meta/internal-links) included. The sweep prompt lists
+  // every warning with its remediation and asks for minimal edits, so the
+  // "2 warnings, no way to resolve them" dead end disappears.
+  const handleFixWarnings = useCallback(async () => {
+    const warnList = warningItems.length ? warningItems : dedupeWarnings(annotations)
+    if (!warnList.length) return
+    if (fixingWarnings) {
+      fixAbortRef.current?.abort()
+      return
+    }
+    const seq = ++fixSeqRef.current
+    const controller = new AbortController()
+    fixAbortRef.current = controller
+    setFixingWarnings(true); setError(null); setNotice(null); setFixElapsed(0)
+    const startedAt = Date.now()
+    const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
+    try {
+      const res = await fetchWithTimeout('/api/content-studio/reaudit', {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        timeoutMs: 260_000,
+        body: JSON.stringify({ action: 'fix_warnings', content, warnings: warnList, ...briefMeta }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (seq !== fixSeqRef.current) return
+      if (data.fixedContent) {
+        onChange(data.fixedContent); setDirty(true)
+      }
+      setAuditResult(data)
+      setAnnotations(data.annotations || [])
+      setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      setDepthGate(data.depthGate || null)
+      onScoreChange?.(data.score)
+      setNotice(`Warnings sweep applied - ${data.warnings ?? 0} warning(s) remain`)
+    } catch (err) {
+      if (seq !== fixSeqRef.current) return
+      setError(err instanceof Error ? err.message : 'Warnings fix failed')
+    } finally {
+      clearInterval(tick)
+      if (seq === fixSeqRef.current) {
+        fixAbortRef.current = null
+        setFixingWarnings(false)
+        setFixElapsed(0)
+      }
+    }
+  }, [content, warningItems, fixingWarnings, onChange, onScoreChange, contentType, primaryKeyword, indexable])
 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
@@ -280,8 +345,20 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   }, [onChange])
 
   const sc = auditResult ? scoreColor(auditResult.score) : C.textMuted
+  // Merged warning list from the server (quality + audit); fall back to the
+  // annotation-derived list for older responses.
+  const warningsData = React.useMemo(() => {
+    const fromState = warningItems.filter((w) => w && w.code)
+    return fromState.length ? fromState : dedupeWarnings(annotations)
+  }, [warningItems, annotations])
+  // Brief context spread into every re-audit/fix body so gates use the real type.
+  const briefMeta = {
+    ...(contentType ? { contentType } : {}),
+    ...(primaryKeyword ? { primaryKeyword } : {}),
+    ...(typeof indexable === 'boolean' ? { indexable } : {}),
+  }
 
-  const allBusy = busy || fixingAll || disabled
+  const allBusy = busy || fixingAll || fixingWarnings || disabled
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -307,7 +384,73 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             </div>
           </div>
           <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, textAlign: 'right' }}>
-            {auditResult.summary}
+            {/* The gate summary counts quality warnings only; the banner count
+                below is the merged quality + audit (indexability) total, so
+                strip the stale parenthetical to avoid two contradicting counts. */}
+            {String(auditResult.summary || '').replace(/·\s*\d+\s*warning\(s\)/, '').trim()}
+          </div>
+        </div>
+      )}
+
+      {/* Ship-readiness strip — the editor now runs the SAME depth gate the
+          ship path enforces, so "100/100 but refused" never happens silently.
+          Warnings are explicitly non-blocking; blockers + depth are the gates. */}
+      {auditResult && shipReady !== null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+          borderRadius: 8, fontSize: 11.5,
+          background: shipReady ? '#F0FDF4' : '#FFF7ED',
+          border: `1px solid ${shipReady ? '#BBF7D0' : '#FED7AA'}`,
+        }}>
+          <span style={{ fontWeight: 800, color: shipReady ? C.green : '#B45309', whiteSpace: 'nowrap' }}>
+            {shipReady ? '✓ Ship gate: ready' : 'Ship gate: blocked'}
+          </span>
+          <span style={{ color: C.textMuted, flex: 1, lineHeight: 1.4 }}>
+            {shipReady
+              ? 'Quality + depth floors pass. Warnings do not block shipping — clear them for the best reader engagement and AI-overview eligibility.'
+              : (depthGate && !depthGate.ok ? depthGate.message : 'Quality blockers remain — resolve them in the issues panel.')}
+          </span>
+        </div>
+      )}
+
+      {/* Warnings block — every warning is listed with an AI fix path. Before,
+          evidence-less warnings produced no annotation and no button, so the
+          admin saw "2 warnings" with no way to resolve them. */}
+      {auditResult && auditResult.warnings > 0 && warningsData.length > 0 && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px',
+          borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 800, fontFamily: C.mono, letterSpacing: '0.08em', color: '#92400E', textTransform: 'uppercase' }}>
+              {warningsData.length} quality warning{warningsData.length === 1 ? '' : 's'}
+            </span>
+            <button
+              type="button"
+              disabled={busy || disabled || !warningsData.length}
+              onClick={handleFixWarnings}
+              style={btnStyle({
+                bg: fixingWarnings ? '#FEE2E2' : '#FFF7ED',
+                border: fixingWarnings ? C.red : '#D97706',
+                color: fixingWarnings ? C.red : '#92400E',
+                disabled: busy || disabled || !warningsData.length,
+              })}
+            >
+              {fixingWarnings
+                ? `Fixing warnings… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''} (click to cancel)`
+                : `Fix all warnings (${warningsData.length})`}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {warningsData.map((w) => (
+              <div key={w.code} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11 }}>
+                <span style={{ fontFamily: C.mono, fontWeight: 700, color: '#92400E', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{w.code}</span>
+                <span style={{ color: C.textMuted, flex: 1 }}>{w.message}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: C.textDim }}>
+            Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Use <strong>Fix all warnings</strong> or the per-issue AI Fix in the issues panel.
           </div>
         </div>
       )}
@@ -524,6 +667,20 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       </div>
     </div>
   )
+}
+
+/** Collapse warning annotations to one entry per code (evidence-less warnings
+ *  now synthesize a document-level annotation, so this never returns empty). */
+function dedupeWarnings(anns: InlineAnnotation[]): Array<{ code: string; message: string; fix: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ code: string; message: string; fix: string }> = []
+  for (const a of anns) {
+    if (a.severity !== 'warning') continue
+    if (seen.has(a.code)) continue
+    seen.add(a.code)
+    out.push({ code: a.code, message: a.message, fix: a.fix })
+  }
+  return out
 }
 
 function btnStyle({ bg, border, color, disabled }: { bg: string; border: string; color: string; disabled?: boolean }) {

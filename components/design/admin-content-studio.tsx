@@ -849,6 +849,8 @@ function DefendPanel({
   reviewAuditResult?: {
     score: number; ok: boolean; blockers: number; warnings: number
     summary: string; annotations?: Array<{ code: string; severity: string; message: string; fix: string }>
+    shipReady?: boolean | null
+    depthGate?: { ok: boolean; message: string } | null
   } | null
   onApprove?: () => void
 }) {
@@ -896,6 +898,22 @@ function DefendPanel({
               {selectedJob.region} · {(selectedJob.content_type || '').toUpperCase()} · slug <b>{selectedJob.slug || '—'}</b>
             </div>
           </div>
+          {reviewAuditResult && (reviewAuditResult.warnings > 0 || reviewAuditResult.shipReady === false) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '11px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 0 }}>
+              {reviewAuditResult.shipReady === false && (
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#B45309' }}>
+                  {reviewAuditResult.depthGate && !reviewAuditResult.depthGate.ok
+                    ? `Ship gate blocked — ${reviewAuditResult.depthGate.message}`
+                    : 'Ship gate blocked — resolve remaining blockers in the editor'}
+                </div>
+              )}
+              {reviewAuditResult.warnings > 0 && (
+                <div style={{ fontSize: 11, color: '#92400E' }}>
+                  {reviewAuditResult.warnings} warning{reviewAuditResult.warnings === 1 ? '' : 's'} (quality + indexability) — do not block shipping; fix them in the editor below for best reader engagement and AI-overview eligibility.
+                </div>
+              )}
+            </div>
+          )}
           {blockers.length === 0 ? (
             <div style={{
               padding: 18, background: '#e9f7ee', border: '1px solid #0f7a3a', borderRadius: 0,
@@ -960,6 +978,91 @@ function DefendPanel({
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ── REVIEW · DRAFTS DOCUMENT LIST ──
+// Every drafted job appears here as a document the admin can open and revise
+// with the full AI editor (Re-audit · Fix all · Fix per issue · Fix warnings ·
+// Save · Draft history). Drafts graduate to V · Approve only after gates clear.
+function ReviewDraftsPanel({
+  jobs, gateByJob, selectedJobId, onOpenJob,
+}: {
+  jobs: ContentJob[]
+  gateByJob: Map<string, { score: number | null; passed: boolean | null }>
+  selectedJobId: string | null
+  onOpenJob: (j: ContentJob) => void
+}) {
+  const drafts = jobs.filter((j) => j.content && ['pending', 'drafting', 'publishing', 'pr_created'].includes(j.status))
+  const STATUS_LABEL: Record<string, { label: string; fg: string; bg: string }> = {
+    pending: { label: 'Pending', fg: '#92400E', bg: '#FEF3C7' },
+    drafting: { label: 'Drafting', fg: '#B45309', bg: '#FEF3C7' },
+    publishing: { label: 'Publishing', fg: '#1D4ED8', bg: '#DBEAFE' },
+    pr_created: { label: 'PR open', fg: '#166534', bg: '#DCFCE7' },
+  }
+  if (drafts.length === 0) {
+    return (
+      <div data-testid="studio-review-drafts" style={{ padding: '28px 24px', background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center' }}>
+        <div style={{ fontFamily: C.serif, fontSize: 18, color: E.ink, marginBottom: 6 }}>No drafted documents yet</div>
+        <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
+          Drafts from IV · Draft land here as documents you can read, revise, and re-audit before approval.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div data-testid="studio-review-drafts" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+          DRAFTS · {drafts.length} DOCUMENT{drafts.length === 1 ? '' : 'S'}
+        </div>
+        <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono }}>click a document to open the AI editor</div>
+      </div>
+      {drafts.map((j) => {
+        const g = gateByJob.get(j.id)
+        const score = g?.score ?? j.seo_score ?? null
+        const st = STATUS_LABEL[j.status] || { label: j.status, fg: E.inkMuted, bg: E.parchment }
+        const active = selectedJobId === j.id
+        return (
+          <div
+            key={j.id}
+            data-testid={`studio-review-draft-${j.id}`}
+            onClick={() => onOpenJob(j)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
+              background: active ? '#FFFBEB' : E.ivory, border: `1px solid ${active ? E.gold : E.hairline}`,
+              borderRadius: 0, cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {j.title}
+              </div>
+              <div style={{ fontSize: 10.5, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
+                {j.region} · {(j.content_type || '').toUpperCase()} · {j.word_count ?? 0} words · {new Date(j.updated_at).toLocaleString()}
+              </div>
+            </div>
+            {score != null && (
+              <div style={{ width: 40, height: 40, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: C.mono, fontWeight: 800, fontSize: 13, flexShrink: 0,
+                background: score >= 90 ? '#F0FDF4' : score >= 70 ? '#FFFBEB' : '#FEF2F2',
+                color: score >= 90 ? '#166534' : score >= 70 ? '#B45309' : '#B91C1C',
+                border: `1px solid ${score >= 90 ? '#BBF7D0' : score >= 70 ? '#FDE68A' : '#FECACA'}` }}>
+                {score}
+              </div>
+            )}
+            <span style={{ padding: '3px 8px', fontSize: 9.5, fontWeight: 700, fontFamily: C.mono, background: st.bg, color: st.fg, whiteSpace: 'nowrap' }}>{st.label}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenJob(j) }}
+              style={{ padding: '7px 14px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}
+            >
+              Open in editor →
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -2877,6 +2980,9 @@ function DraftWorkspace({
               jobId={completedJob?.id || ''}
               onChange={(text) => setDraftContent(text)}
               disabled={generating}
+              contentType={completedJob?.content_type}
+              primaryKeyword={completedJob?.primary_keyword ?? undefined}
+              indexable={completedJob?.indexable}
             />
           </div>
         ) : (
@@ -3989,7 +4095,7 @@ function JobDetail({
           </div>
           {loading
             ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div>
-            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} />}
+            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} />}
         </div>
 
         {/* ── Dedicated action groups ── */}
@@ -4588,6 +4694,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [reviewAuditResult, setReviewAuditResult] = React.useState<{
     score: number; ok: boolean; blockers: number; warnings: number
     summary: string; annotations?: Array<{ code: string; severity: string; message: string; fix: string }>
+    shipReady?: boolean | null
+    depthGate?: { ok: boolean; message: string } | null
   } | null>(null)
 
   // Ref to avoid stale closure in onScoreChange callbacks — always points to latest content.
@@ -4947,7 +5055,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         const res = await fetch('/api/content-studio/reaudit', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: selectedJob.content }),
+          body: JSON.stringify({
+            content: selectedJob.content,
+            contentType: selectedJob.content_type,
+            primaryKeyword: selectedJob.primary_keyword ?? undefined,
+            indexable: selectedJob.indexable,
+          }),
         })
         const data = await res.json().catch(() => ({})) as any
         if (!res.ok) return
@@ -4958,6 +5071,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           warnings: data.warnings ?? 0,
           summary: data.summary ?? '',
           annotations: data.annotations ?? [],
+          shipReady: typeof data.shipReady === 'boolean' ? data.shipReady : null,
+          depthGate: data.depthGate || null,
         })
       } catch { /* best-effort */ }
     }
@@ -6037,6 +6152,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             next="V · Approve"
             onJump={selectTab}
           />
+          <ReviewDraftsPanel
+            jobs={jobs}
+            gateByJob={gateByJob}
+            selectedJobId={selectedJob?.id ?? null}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+          />
           <DefendPanel
             selectedJob={selectedJob}
             gateFor={selectedJob ? (gateByJob.get(selectedJob.id) ?? null) : null}
@@ -6059,6 +6180,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 onChange={(v: string) => {
                   setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
                 }}
+                contentType={selectedJob.content_type}
+                primaryKeyword={selectedJob.primary_keyword ?? undefined}
+                indexable={selectedJob.indexable}
                 onScoreChange={async (_s) => {
                   void fetchGateRuns()
                   // Re-fetch detailed gate result so DefendPanel sees updated blockers
@@ -6068,7 +6192,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                       const res = await fetch('/api/content-studio/reaudit', {
                         method: 'POST', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ content: latestContent }),
+                        body: JSON.stringify({
+                          content: latestContent,
+                          contentType: selectedJob?.content_type,
+                          primaryKeyword: selectedJob?.primary_keyword ?? undefined,
+                          indexable: selectedJob?.indexable,
+                        }),
                       })
                       const data = await res.json().catch(() => ({})) as any
                       if (res.ok) {

@@ -227,6 +227,13 @@ export function applyDeterministicRepairs(opts: {
     applied.push('dashes')
   }
 
+  // whilst → while clears the tone_whilst warning deterministically (mechanical).
+  const noWhilst = b.replace(/\bwhilst\b/g, 'while')
+  if (noWhilst !== b) {
+    b = noWhilst
+    applied.push('whilst_normalized')
+  }
+
   const out = fm
     ? `---\n${fm}\n---\n\n${b.trim()}\n`
     : `${b.trim()}\n`
