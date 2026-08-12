@@ -41,18 +41,21 @@ function withDeadline<T>(ms: number, label: string, promise: Promise<T>): Promis
 async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewModel?: string): Promise<string> {
   // GPT-5.6 Sol is the senior editor / quality reviewer. It has flagship
   // reasoning capability and evaluates gate compliance with higher accuracy
-  // than Terra (Research) or Luna (high-volume drafting). The provider
-  // cascade (auto) tries configured providers in order; each will use its
-  // own default model unless overridden, so the model choice only applies
-  // to OpenAI-compatible providers.
+  // than Terra (Research) or Luna (high-volume drafting).
   const effectiveModel = reviewModel || 'gpt-5.6-sol'
+  // GPT Sol/Terra/Luna are the ONLY responsible review models — pin the
+  // OpenAI provider so the model override actually applies. Without this,
+  // generateContentText falls back to the default cascade (NVIDIA DeepSeek
+  // first), which IGNORES the gpt-5.6 model override and runs the fix on a
+  // completely different model. Pin only for gpt-5.6* models; a legacy/custom
+  // reviewModel still cascades normally.
+  const aiProvider = /^gpt-5\.6/i.test(effectiveModel) ? 'openai' : undefined
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,
     maxTokens,
     temperature: 0.2,
-    // GPT Sol is the reviewer — pass model override for OpenAI providers.
-    // Non-OpenAI providers ignore this and use their own default.
+    aiProvider,
     model: effectiveModel,
   }))
   const text = (result?.text || '').trim()
