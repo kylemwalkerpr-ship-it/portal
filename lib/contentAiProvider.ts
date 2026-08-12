@@ -1567,6 +1567,18 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   const errors: string[] = []
   const candidates = orderedCompleters(opts, prefer)
 
+  // Early-fail: if the admin explicitly selected a provider but it isn't
+  // in the cascade (missing API key), throw immediately with a clear
+  // diagnostic instead of silently cycling through every other backend.
+  if (explicit && !candidates.some((c) => c.label === prefer)) {
+    const configured = candidates.map((c) => c.label).join(', ') || 'none'
+    throw new Error(
+      `Selected AI provider "${prefer}" is not configured. ` +
+      `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
+      `Currently available providers: ${configured}.`,
+    )
+  }
+
   if (!candidates.length) {
     throw new Error(
       'No content AI provider configured. Set NVIDIA_API_KEY (DeepSeek primary) and/or Cloudflare AI token as fallback.',
