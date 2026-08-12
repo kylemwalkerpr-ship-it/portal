@@ -92,6 +92,9 @@ export interface ContentAiOptions {
   aiProvider?: string
   /** Override the provider's default model (e.g. 'gpt-5.6-terra' for Research). */
   model?: string
+  /** Per-call deadline override (ms). Brief generation uses 45s; depth
+   *  rescue uses the default 180s. When unset, COMPLETE_TIMEOUT_MS applies. */
+  timeoutMs?: number
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -1576,7 +1579,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       continue
     }
     try {
-      return await withDeadline(c.label, COMPLETE_TIMEOUT_MS, c.run())
+      return await withDeadline(c.label, opts.timeoutMs ?? COMPLETE_TIMEOUT_MS, c.run())
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       errors.push(`${c.label}: ${msg}`)

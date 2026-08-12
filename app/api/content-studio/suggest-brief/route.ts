@@ -24,6 +24,11 @@ import {
  * Every field the generate-stream route needs is populated from live intel.
  */
 export async function POST(req: NextRequest) {
+  // Belt-and-suspenders: if the AI cascade fails to respect the per-call
+  // timeoutMs (e.g. a stuck TCP connection), abort the whole request after
+  // 60s so the client sees a clean error instead of an infinite spinner.
+  const controller = new AbortController()
+  const globalTimer = setTimeout(() => controller.abort(), 60_000)
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
@@ -182,12 +187,16 @@ export async function POST(req: NextRequest) {
       'Produce the complete editorial brief JSON now.',
     ].filter(Boolean).join('\n')
 
+    // 45s deadline — brief generation is a structured JSON response, not a
+    // long-form draft. If the provider hasn't responded by then, it's likely
+    // stalled (overloaded endpoint, quota exhaustion, or network partition).
     const ai = await generateContentText({
       aiProvider,
       system,
       prompt,
       maxTokens: 1600,
       temperature: 0.3,
+      timeoutMs: 45_000,
     })
 
     // Strip markdown code fences + extract JSON object from model response.
@@ -274,7 +283,10 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (err) {
+    clearTimeout(globalTimer)
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
+  } finally {
+    clearTimeout(globalTimer)
   }
 }
