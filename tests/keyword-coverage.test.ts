@@ -9,7 +9,7 @@
  *   4. evaluateContentQuality() blocks when a long-tail hit count > 2.
  *   5. passing coverage lets the gate clear; insufficient brief size also blocks.
  */
-import { partitionKeywords, KEYWORD_REQUIREMENTS } from '@/lib/seoEngine/planner'
+import { partitionKeywords, mergeBriefKeywords, KEYWORD_REQUIREMENTS } from '@/lib/seoEngine/planner'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 
 describe('partitionKeywords', () => {
@@ -51,6 +51,52 @@ describe('partitionKeywords', () => {
     expect(out.short).toContain('f 1 visa')
     expect(out.longTail).toContain('f 1 visa interview')
     expect(out.longTail).toContain('f 1 visa interview questions')
+  })
+
+  // 2026-08-12 regression: a LONG primary (≥4 words) like "study abroad
+  // statement of purpose" previously produced ZERO synthesized shorts because
+  // "guide ${pt}" was always ≥5 words. The quality gate then hard-blocked
+  // every draft with "only 4 short keywords; need at least 5".
+  it('synthesizes ≥5 short keywords from a LONG primary using word-window heads', () => {
+    const out = partitionKeywords([], 'study abroad statement of purpose')
+    expect(out.short.length).toBeGreaterThanOrEqual(KEYWORD_REQUIREMENTS.SHORT_MIN)
+    for (const term of out.short) {
+      expect(term.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(3)
+    }
+    // The trailing 3-word window "statement of purpose" must appear as a head
+    expect(out.short.some((t) => t.includes('statement of purpose'))).toBe(true)
+  })
+
+  it('skips stopword-fragile heads like "of purpose" while keeping real heads', () => {
+    const out = partitionKeywords([], 'study abroad statement of purpose')
+    expect(out.short.some((t) => t === 'of purpose')).toBe(false)
+    expect(out.short.some((t) => t === 'study abroad guide')).toBe(true)
+  })
+})
+
+describe('mergeBriefKeywords — brief floor guarantee', () => {
+  it('fills a 4-short model list up to ≥5 with partitioner synthesis', () => {
+    const merged = mergeBriefKeywords({
+      modelShort: ['study abroad', 'sop writing', 'sop sample', 'sop tips'],
+      modelLong: ['how to write study abroad sop'],
+      primaryTerm: 'study abroad statement of purpose',
+    })
+    expect(merged.short.length).toBeGreaterThanOrEqual(KEYWORD_REQUIREMENTS.SHORT_MIN)
+    expect(merged.longTail.length).toBeGreaterThanOrEqual(KEYWORD_REQUIREMENTS.LONG_TAIL_MIN)
+    // The primary keyword is never a required coverage keyword (title/H1 covers it)
+    expect(merged.short.some((s) => s.toLowerCase().includes('study abroad statement of purpose'))).toBe(false)
+    expect(merged.longTail.some((s) => s.toLowerCase() === 'study abroad statement of purpose')).toBe(false)
+  })
+
+  it('keeps model terms first and de-duplicates', () => {
+    const merged = mergeBriefKeywords({
+      modelShort: ['study abroad sop', 'study abroad sop', 'sop sample'],
+      modelLong: ['how to write a study abroad statement of purpose', 'how to write a study abroad statement of purpose'],
+      primaryTerm: 'study abroad statement of purpose',
+    })
+    const seen = new Set(merged.short.concat(merged.longTail).map((s) => s.toLowerCase()))
+    expect(seen.size).toBe(merged.short.length + merged.longTail.length)
+    expect(merged.short[0]).toBe('study abroad sop')
   })
 })
 
@@ -126,7 +172,9 @@ describe('content quality gate — keyword coverage', () => {
       'f-1 visa interview questions for students',
       'f-1 visa interview questions for students step by step',
     ]
-    const in60 = Array.from({ length: 6 }, () => '- f1 visa').join('\n')
+    // Stuff a NON-primary short keyword ('f-1 documents') — the primary is
+    // exempt from per-keyword caps (it has its own keyword_stuffing check).
+    const in60 = Array.from({ length: 6 }, () => '- f-1 documents').join('\n')
     const body = makeCompliantBody(short, longTail).replace('## In 60 seconds\n', `## In 60 seconds\n${in60}\n`)
     const r = evaluateContentQuality({
       content: body,
@@ -154,5 +202,59 @@ describe('content quality gate — keyword coverage', () => {
       requiredLongTailKeywords: longTail,
     })
     expect(r.blockers.find((b) => b.code === 'insufficient_short_keywords')).toBeTruthy()
+  })
+
+  // 2026-08-12 regression: the primary keyword used to land in the required
+  // long-tail array (≥4 words → long-tail bucket) with a 2-hit cap. Natural
+  // title + H1 + intro usage blew the cap and blocked every valid article
+  // about a long primary ("study abroad statement of purpose" ×11). The
+  // primary now has its own keyword_stuffing check, so per-keyword caps
+  // must skip it.
+  it('does NOT cap the primary keyword at 2 hits (long-tail) or 4 hits (short)', () => {
+    const longTail = [
+      'study abroad statement of purpose', // == primary, must be exempt
+      'how to apply study abroad',
+      'study abroad requirements 2026',
+      'study abroad documents checklist',
+    ]
+    const short = ['f1 visa', 'f-1 documents', 'f 1 requirements', 'f1 eligibility', 'f1 application']
+    // Primary appears 11× in the body (title + H1 + repeated natural usage)
+    const body = makeCompliantBody(short, longTail).replace(
+      /# F-1 visa documents checklist 2026/,
+      '# study abroad statement of purpose — ' + 'study abroad statement of purpose '.repeat(10).trim(),
+    )
+    const r = evaluateContentQuality({
+      content: body,
+      primaryKeyword: 'study abroad statement of purpose',
+      indexable: true,
+      requiredShortKeywords: short,
+      requiredLongTailKeywords: longTail,
+    })
+    // The long-tail density violation for the PRIMARY must NOT appear — the
+    // primary is exempt. But OTHER long-tails over the cap still block.
+    const primaryDensity = r.blockers.filter((b) =>
+      b.code === 'long_tail_density_violation' && b.message.includes('study abroad statement of purpose'),
+    )
+    expect(primaryDensity).toEqual([])
+  })
+
+  it('still blocks a NON-primary short keyword over the 4-hit cap', () => {
+    const short = ['f1 visa', 'f-1 documents', 'f 1 requirements', 'f1 eligibility', 'f1 application']
+    const longTail = [
+      'how to apply f-1 visa',
+      'f-1 visa interview requirements',
+      'f-1 visa interview questions for students',
+      'f-1 visa interview questions for students step by step',
+    ]
+    const in60 = Array.from({ length: 6 }, () => '- f-1 documents').join('\n')
+    const body = makeCompliantBody(short, longTail).replace('## In 60 seconds\n', `## In 60 seconds\n${in60}\n`)
+    const r = evaluateContentQuality({
+      content: body,
+      primaryKeyword: 'f1 visa',
+      indexable: true,
+      requiredShortKeywords: short,
+      requiredLongTailKeywords: longTail,
+    })
+    expect(r.blockers.find((b) => b.code === 'short_keyword_density_violation')).toBeTruthy()
   })
 })

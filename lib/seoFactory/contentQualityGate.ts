@@ -666,15 +666,23 @@ export function evaluateContentQuality(opts: {
     }
 
     // Per-keyword density caps: ≤4 hits per short keyword, ≤2 hits per long-tail keyword.
+    // The PRIMARY keyword is exempt from these per-keyword caps — it has its own
+    // dedicated keyword_stuffing check (≥12 hits = blocker, ≥8 = warning) above,
+    // and it naturally appears in the title, H1, first H2, and FAQ of any valid
+    // article. Requiring the primary to stay under the 2-hit long-tail cap made
+    // every well-formed article about a long primary ("study abroad statement of
+    // purpose") fail shipping.
+    const primaryL = (opts.primaryKeyword || '').trim().toLowerCase()
+    const isPrimary = (t: string) => t.toLowerCase() === primaryL
     const overShort: Array<{ term: string; hits: number }> = []
     for (const t of shortArr) {
-      if (blank(t)) continue
+      if (blank(t) || isPrimary(t)) continue
       const hits = countOccurrences(body, t.toLowerCase())
       if (hits > 4) overShort.push({ term: t, hits })
     }
     const overLong: Array<{ term: string; hits: number }> = []
     for (const t of longArr) {
-      if (blank(t)) continue
+      if (blank(t) || isPrimary(t)) continue
       const hits = countOccurrences(body, t.toLowerCase())
       if (hits > 2) overLong.push({ term: t, hits })
     }

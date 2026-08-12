@@ -238,22 +238,23 @@ export function buildFactorySystemPrompt(opts: {
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
     '12) If you are under the word minimum, keep expanding with real procedures/documents/FAQs until you clear it — short drafts are discarded.',
-    '13) KEYWORD COVERAGE — the brief supplies ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words).',
-    '    - Use every short keyword at least once (cap ≤4 hits per keyword in the body).',
-    '    - Use every long-tail keyword at least once (cap ≤2 hits per keyword in the body).',
-    '    - Place at least one short keyword in the title slug, first H2, and the In 60 seconds block.',
-    '    - Place at least one long-tail keyword in a natural FAQ question, a procedural heading, or step description.',
-    '    - Missing any keyword = HARD BLOCK (the quality gate refuses ship). Stuffing = HARD BLOCK. Aim for natural distribution.',
+    '13) KEYWORD COVERAGE — the brief supplies ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words). Every keyword below is AUDIT-ENFORCED: missing any one = HARD BLOCK, and exceeding the per-keyword hit caps = HARD BLOCK. This is the #1 ship-killer — treat it like a checklist.',
+    '    - Use EVERY short keyword at least once but NEVER more than 4 times in the body.',
+    '    - Use EVERY long-tail keyword at least once but NEVER more than 2 times in the body.',
+    '    - The PRIMARY keyword is exempt from these caps (it appears in title/H1 naturally) — but if it appears 12+ times the page is flagged as keyword stuffing anyway.',
+    '    - PLACEMENT (plan before you write): assign each keyword a single natural slot — title/H1, the In 60 seconds block, one H2 heading, a checklist item, one FAQ question, or one step description. Do NOT repeat a keyword across several sections; one intentional placement per keyword is enough.',
+    '    - Long-tail phrases read as spam when repeated: use the FULL phrase once (a FAQ question is the cleanest slot) and do not echo it again verbatim.',
+    '    - After writing, MENTALLY SCAN the body: for each keyword below, confirm it appears at least once and not more than its cap. If you catch an over-repeat, replace the later occurrence with a synonym or rephrase.',
     ...(opts.requiredShortKeywords
       ? [
-          '    SHORT KEYWORDS TO USE:',
-          ...opts.requiredShortKeywords.map((k) => `- "${k}"`),
+          '    SHORT KEYWORDS TO USE (each exactly 1-4 times):',
+          ...opts.requiredShortKeywords.map((k) => `    - "${k}"`),
         ]
       : []),
     ...(opts.requiredLongTailKeywords
       ? [
-          '    LONG-TAIL KEYWORDS TO USE:',
-          ...opts.requiredLongTailKeywords.map((k) => `- "${k}"`),
+          '    LONG-TAIL KEYWORDS TO USE (each exactly 1-2 times, in DIFFERENT contexts):',
+          ...opts.requiredLongTailKeywords.map((k) => `    - "${k}"`),
         ]
       : []),
   ]

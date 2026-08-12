@@ -248,6 +248,8 @@ export async function shipContent(opts: {
       region: opts.region,
       indexable: opts.plan.indexable,
       contentType: opts.contentType,
+      requiredShortKeywords: opts.requiredShortKeywords,
+      requiredLongTailKeywords: opts.requiredLongTailKeywords,
     })
     if (repaired.applied.length) {
       shipContent_ = repaired.content

@@ -140,6 +140,8 @@ export async function POST(request: NextRequest) {
       primaryKeyword: primaryKeyword || 'guide',
       indexable,
       contentType,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
     let effective = repaired.content
     // Contract evaluation (quality gate + audit + warningsData merge + depth
@@ -273,6 +275,8 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       primaryKeyword: primaryKeyword || 'guide',
       indexable: body.indexable,
       contentType,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
     fixedContent = repaired.content
 

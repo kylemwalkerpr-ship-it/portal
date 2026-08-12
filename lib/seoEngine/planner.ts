@@ -169,15 +169,46 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): { shor
   if (ptWords.length >= 2) classifyAndAdd(pt)
 
   // First synthesize SHORT (≤3 words) head terms so the floor is met.
+  //
+  // 2026-08-12 hardening: for a LONG primary (≥4 words, e.g. "study abroad
+  // statement of purpose") the old "${prefix} ${pt}" construction always
+  // produced 5+ word candidates that could never classify as short — so the
+  // short list stayed at whatever the model/user supplied (often 4), and the
+  // quality gate hard-blocked every draft with "only N short keywords; need
+  // at least 5". Now we derive SHORT heads from the primary's own contiguous
+  // word windows (leading 1-2 words, trailing 2-3 words) and attach the
+  // modifiers to those heads instead of the full phrase.
   const ST_PREFIXES = ['guide', 'requirements', 'application', 'eligibility', 'documents', 'timeline', 'rules', 'process']
   if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 2 && ptWords.length >= 1) {
-    for (const prefix of ST_PREFIXES) {
-      const candidate = `${prefix} ${pt}`
-      if (wordCount(candidate) <= 3) classifyAndAdd(candidate)
-    }
     const stripped = pt.replace(/-/g, ' ')
-    if (wordCount(stripped) <= 3) classifyAndAdd(`${stripped} guide`)
-    if (wordCount(`${stripped} 2026`) <= 3) classifyAndAdd(`${stripped} 2026`)
+    // Stopwords that would produce awkward heads ("of purpose", "for study")
+    const STOP = /\b(of|for|in|to|a|an|the|and|or|at|on|by|with|from)\b/
+    // Candidate short heads — every contiguous window that can carry a
+    // modifier while staying ≤3 words. Deduped via classifyAndAdd below.
+    const headCandidates: string[] = [stripped]
+    if (ptWords.length >= 2) {
+      headCandidates.push(ptWords.slice(0, 2).join(' '), ptWords.slice(-2).join(' '))
+    }
+    if (ptWords.length >= 3) {
+      headCandidates.push(ptWords.slice(-3).join(' '))
+    }
+    for (const head of headCandidates) {
+      if (!head.trim()) continue
+      // Skip heads that start or end with a stopword — they read as sentence
+      // fragments, not keyword phrases ("of purpose"). Keep the full primary
+      // even if it contains stopwords in the middle.
+      const headWords = head.split(/\s+/).filter(Boolean)
+      if (head !== stripped && (STOP.test(headWords[0] || '') || STOP.test(headWords[headWords.length - 1] || ''))) continue
+      // The head itself may already be a valid short keyword ("statement of
+      // purpose" = 3 words).
+      classifyAndAdd(head)
+      for (const prefix of ST_PREFIXES) {
+        const candidate = `${head} ${prefix}`
+        if (wordCount(candidate) <= 3) classifyAndAdd(candidate)
+      }
+      if (wordCount(`${head} 2026`) <= 3) classifyAndAdd(`${head} 2026`)
+      if (wordCount(`${head} guide`) <= 3) classifyAndAdd(`${head} guide`)
+    }
   }
 
   // Then synthesize LONG-TAIL (≥4) query phrases.
@@ -188,6 +219,48 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): { shor
     for (const suffix of LT_SUFFIXES) classifyAndAdd(`${pt} ${suffix}`)
   }
 
+  return { short, longTail }
+}
+
+/**
+ * Merge a model-generated brief keyword list with the deterministic
+ * partitioner so the brief ALWAYS ships ≥5 short + ≥4 long-tail keywords.
+ * Model terms come first; partitioner-synthesized terms fill any shortfall.
+ * The primary keyword is excluded from the returned arrays — it appears in
+ * the title/H1 by definition and has its own keyword_stuffing check.
+ */
+export function mergeBriefKeywords(opts: {
+  modelShort?: string[]
+  modelLong?: string[]
+  primaryTerm?: string
+  maxShort?: number
+  maxLong?: number
+}): { short: string[]; longTail: string[] } {
+  const modelShort = (opts.modelShort || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
+  const modelLong = (opts.modelLong || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
+  const primaryL = (opts.primaryTerm || '').trim().toLowerCase()
+  const maxShort = Math.max(5, opts.maxShort ?? 8)
+  const maxLong = Math.max(4, opts.maxLong ?? 6)
+
+  const partitioned = partitionKeywords([...modelShort, ...modelLong], opts.primaryTerm || '')
+  const short: string[] = []
+  const longTail: string[] = []
+  const pushUnique = (arr: string[], t: string) => {
+    const norm = t.toLowerCase()
+    if (!norm || norm === primaryL) return
+    if (arr.some((x) => x.toLowerCase() === norm)) return
+    arr.push(t)
+  }
+  for (const t of modelShort) pushUnique(short, t)
+  for (const t of modelLong) pushUnique(longTail, t)
+  for (const t of partitioned.short) {
+    if (short.length >= maxShort) break
+    pushUnique(short, t)
+  }
+  for (const t of partitioned.longTail) {
+    if (longTail.length >= maxLong) break
+    pushUnique(longTail, t)
+  }
   return { short, longTail }
 }
 

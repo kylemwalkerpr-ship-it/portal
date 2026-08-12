@@ -307,4 +307,93 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
     // ── Assert ≥5 repairs total (6 categories minus internal_links gap) ──
     expect(applied.length).toBeGreaterThanOrEqual(5)
   })
+
+  it('backfills missing required long-tail keywords as FAQ questions', () => {
+    const draft = `---
+title: Study Abroad Statement of Purpose Guide
+description: A practical guide to the study abroad statement of purpose with steps, samples, and requirements.
+---
+
+# Study Abroad Statement of Purpose Guide
+
+## In 60 seconds
+- One direct answer bullet.
+
+## Eligibility
+You need a valid passport and admission letter.
+
+## FAQ
+- Q: How long is a statement of purpose?
+  A: Usually one page.
+
+## Sources
+- [USCIS](https://www.uscis.gov/)
+
+**Disclaimer:** educational only, not legal advice.
+`
+    const repaired = applyDeterministicRepairs({
+      content: draft,
+      title: 'Study Abroad Statement of Purpose Guide',
+      primaryKeyword: 'study abroad statement of purpose',
+      indexable: true,
+      contentType: 'article',
+      requiredShortKeywords: ['statement of purpose guide', 'sop writing tips', 'sop sample', 'sop length', 'sop checklist'],
+      requiredLongTailKeywords: [
+        'statement of purpose for study abroad sample',
+        'is it possible to study abroad statement of purpose',
+        'requirements for a study abroad statement of purpose',
+      ],
+    })
+    const out = repaired.content
+    // Every required long-tail phrase must now exist verbatim in the body
+    for (const lt of ['statement of purpose for study abroad sample', 'is it possible to study abroad statement of purpose', 'requirements for a study abroad statement of purpose']) {
+      expect(out.toLowerCase()).toContain(lt)
+    }
+    // They were inserted as FAQ questions (### under ## FAQ)
+    expect(out).toMatch(/### Statement of purpose for study abroad sample\?/)
+    expect(out).toMatch(/### Is it possible to study abroad statement of purpose\?/)
+    expect(out).toMatch(/### Requirements for a study abroad statement of purpose\?/)
+    expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(true)
+  })
+
+  it('backfills missing required short keywords as In 60 seconds bullets', () => {
+    const draft = `---
+title: Study Abroad SOP Guide
+description: Practical study abroad statement of purpose guidance with samples and templates.
+---
+
+# Study Abroad SOP Guide
+
+## In 60 seconds
+- Direct answer bullet.
+
+## Steps
+One practical step here.
+
+## FAQ
+- Q: What is an SOP?
+  A: A statement of purpose.
+
+## Sources
+- [USCIS](https://www.uscis.gov/)
+
+**Disclaimer:** educational only, not legal advice.
+`
+    const repaired = applyDeterministicRepairs({
+      content: draft,
+      title: 'Study Abroad SOP Guide',
+      primaryKeyword: 'study abroad sop',
+      indexable: true,
+      contentType: 'article',
+      requiredShortKeywords: ['study abroad sop', 'sop writing tips', 'sop sample', 'sop length', 'sop checklist'],
+      requiredLongTailKeywords: ['how to write a study abroad statement of purpose', 'study abroad statement of purpose requirements 2026', 'study abroad statement of purpose sample pdf', 'study abroad statement of purpose template'],
+    })
+    const out = repaired.content
+    // Missing shorts appear as bullets in the In 60 seconds block
+    for (const k of ['sop writing tips', 'sop sample', 'sop length', 'sop checklist']) {
+      expect(out.toLowerCase()).toContain(k)
+    }
+    expect(out).toMatch(/## In 60 seconds/)
+    expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(true)
+  })
 })

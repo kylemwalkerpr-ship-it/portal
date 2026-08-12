@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
+import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import {
   clampBriefWordBudget,
   depthPromptClause,
@@ -238,12 +239,27 @@ export async function POST(req: NextRequest) {
       parsed.maxWords as number | undefined,
     )
 
+    // ── KEYWORD FLOOR GUARANTEE (≥5 short / ≥4 long-tail) ──────────────
+    // The quality gate hard-blocks drafts when the brief ships fewer than 5
+    // short keywords ("Brief shipped only N short keyword(s); need at least
+    // 5"). The model occasionally returns 3-4 shorts — merge its output with
+    // the deterministic partitioner so the floor is ALWAYS met. The
+    // partitioner derives short heads from the primary's own word windows
+    // (handles long primaries like "study abroad statement of purpose").
+    const modelShort = Array.isArray(parsed.shortTail) ? parsed.shortTail.map(String).filter(Boolean) : []
+    const modelLong = Array.isArray(parsed.longTail) ? parsed.longTail.map(String).filter(Boolean) : []
+    const merged = mergeBriefKeywords({
+      modelShort,
+      modelLong,
+      primaryTerm: primaryKeyword,
+    })
+
     return NextResponse.json({
       ok: true,
       suggestedH1: String(parsed.suggestedH1 || ''),
       h2Outline: Array.isArray(parsed.h2Outline) ? parsed.h2Outline.slice(0, 12) : [],
-      shortTail: Array.isArray(parsed.shortTail) ? parsed.shortTail.slice(0, 8) : [],
-      longTail: Array.isArray(parsed.longTail) ? parsed.longTail.slice(0, 6) : [],
+      shortTail: merged.short.slice(0, 8),
+      longTail: merged.longTail.slice(0, 6),
       kwH2Map: parsed.kwH2Map && typeof parsed.kwH2Map === 'object' ? parsed.kwH2Map as Record<string, string> : {},
       sources: Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6) : [],
       interlinkTargets: interlinkTargets.slice(0, 8),
