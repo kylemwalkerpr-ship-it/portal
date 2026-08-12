@@ -4053,6 +4053,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   }, [safeStage, setActionNotice, stageAvailability])
 
   const [selectedWorkPlanIds, setSelectedWorkPlanIds] = React.useState<Set<string>>(new Set())
+  // Competing estate pages detected when sending a topic to research.
+  // Populated from radarMeta.cannibalization and the coverage map.
+  const [competingUrls, setCompetingUrls] = React.useState<Array<{ url: string; title: string; primaryKeyword?: string | null }>>([])
 
   const workPlanItems = React.useMemo(
     () => buildWorkPlan(radar, radarMeta, merges),
@@ -4072,6 +4075,35 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setSelectedBrief(first.suggestion)
       setBriefInterlinks(first.suggestion.interlinks ?? [])
     }
+    // ── Competing URL detection (anti-cannibalization) ──
+    // Wire the Discover stage to call checkCompetingPages() when sending
+    // topics to research. Competing URLs are stored in state and flow into
+    // the content_jobs row so the quality gate + repair fire on reaudit.
+    const topicLower = first.topic.toLowerCase()
+    const competing: Array<{ url: string; title: string; primaryKeyword?: string | null }> = []
+    const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
+    for (const c of cannibalList) {
+      if (c.term.toLowerCase() === topicLower || topicLower.includes(c.term.toLowerCase())) {
+        for (const page of (c.pages || []).slice(0, 5)) {
+          competing.push({ url: page, title: c.term, primaryKeyword: c.term })
+        }
+      }
+    }
+    // Also check radar items that are flagged as cannibalization plays
+    for (const item of selected) {
+      if (item.play === 'cannibalization' || item.category === 'cannibal') {
+        for (const sig of (item.signals || [])) {
+          // Extract URLs from signals like "3 competing pages target this term"
+          // The actual URLs live in radarMeta.cannibalization, already handled above
+        }
+        // Include the topic itself as a competing signal
+        if (!competing.some((c) => c.primaryKeyword === item.topic)) {
+          competing.push({ url: '', title: item.title, primaryKeyword: item.topic })
+        }
+      }
+    }
+    setCompetingUrls(competing)
+    // ── End competing URL detection ──
     // If multiple selected, note them in the keywords so Plan stage can queue them
     if (selected.length > 1) {
       const topics = selected.map((s) => s.topic).join(', ')
@@ -4082,7 +4114,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
     setSelectedWorkPlanIds(new Set())
     selectTab('research')
-  }, [selectTab, setActionNotice])
+  }, [selectTab, setActionNotice, radarMeta])
 
   React.useEffect(() => {
     const requested = resolveStudioStage(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('tab'))
@@ -4679,8 +4711,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           minWords: formData.minWords || undefined,
           maxWords: formData.maxWords || undefined,
           targetSlug: formData.targetSlug || undefined,
-          kwH2Map: formData.kwH2Map || undefined,
-        }),
+        kwH2Map: formData.kwH2Map || undefined,
+        competingUrls: competingUrls.length ? competingUrls : undefined,
+      }),
       })
       if (!res.ok) {
         const failure = await res.json().catch(() => ({})) as { error?: string }

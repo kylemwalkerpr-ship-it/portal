@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
+import { checkCompetingPages } from '@/lib/seoEngine/planner'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -125,6 +126,47 @@ export async function POST(request: Request) {
         }
       : null
 
+    // ── Competing page detection (anti-cannibalization) ──
+    // Call checkCompetingPages() against the live estate coverage map so
+    // the quality gate + deterministic repair fire on reaudit / ship.
+    // Priority: body-supplied competingUrls (from Discover stage cannibal
+    // data) > server-computed (from full content_jobs estate scan).
+    let computedCompetingUrls: Array<{ url: string; title: string; primaryKeyword?: string | null }> | undefined
+    if (!body.competingUrls || !Array.isArray(body.competingUrls) || body.competingUrls.length === 0) {
+      try {
+        const supabase = sb()
+        const { data: shipped } = await supabase
+          .from('content_jobs')
+          .select('canonical_url, title, primary_keyword')
+          .in('status', ['merged', 'pr_created', 'publishing'])
+          .not('canonical_url', 'is', null)
+          .limit(500)
+        if (shipped?.length) {
+          const coverage = (shipped as Array<{ canonical_url?: string | null; title?: string | null; primary_keyword?: string | null }>)
+            .filter((r) => r.canonical_url)
+            .map((r) => ({
+              url: r.canonical_url!,
+              title: r.title || r.canonical_url!,
+              primaryKeyword: r.primary_keyword || null,
+            }))
+          const result = checkCompetingPages({
+            primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
+            coverage,
+          })
+          if (result.competing.length) {
+            computedCompetingUrls = result.competing.map((c) => ({
+              url: c.url,
+              title: c.title,
+              primaryKeyword: c.primaryKeyword,
+            }))
+          }
+        }
+      } catch (e) {
+        console.warn('[seo-factory/generate-stream] competing-pages check skipped', e)
+      }
+    }
+    // ── End competing page detection ──
+
     const input = {
       topic,
       sourceJobId: String(body.supersedesJobId || '').trim() || null,
@@ -176,6 +218,12 @@ export async function POST(request: Request) {
             reason: body.cluster.reason ? String(body.cluster.reason) : undefined,
           }
         : null,
+      competingUrls: computedCompetingUrls
+        || (Array.isArray(body.competingUrls)
+          ? (body.competingUrls as Array<{ url?: string; title?: string; primaryKeyword?: string | null }>)
+              .filter((c: { url?: string; title?: string }) => c.url || c.title)
+              .slice(0, 10)
+          : undefined),
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,

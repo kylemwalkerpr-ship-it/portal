@@ -160,6 +160,10 @@ export interface PipelineInput {
   targetSlug?: string
   /** Brief Assembly Panel: keyword → H2 section placement map */
   kwH2Map?: Record<string, string>
+  /** Competing estate pages detected by the Discover stage's anti-cannibalization
+   *  guard. Stored in content_jobs.competing_urls so the quality gate and
+   *  deterministic repair fire on reaudit / ship. */
+  competingUrls?: Array<{ url?: string; title?: string; primaryKeyword?: string | null }>
 }
 
 export interface PipelineResult {
@@ -875,6 +879,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       required_short_keywords: requiredShortKeywords,
       required_long_tail_keywords: requiredLongTailKeywords,
       keyword_partition_source: 'word_count_v1',
+      competing_urls: Array.isArray(input.competingUrls) && input.competingUrls!.length
+        ? JSON.stringify(input.competingUrls!.slice(0, 10))
+        : null,
       deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
       deployed_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
       merged_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
