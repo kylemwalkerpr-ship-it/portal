@@ -13,6 +13,7 @@ import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile, buildBlogPostEntry, insertBlogPostIntoData } from './renderTarget'
 import { assertShipAllowed } from './shipGate'
+import { assertNoRouteSubtypeConflict } from './routeSubtypeGuard'
 import { assertContentDepth } from './contentDepth'
 import { assertQualityGate } from './contentQualityGate'
 import { applyDeterministicRepairs } from './editorialScaffold'
@@ -316,6 +317,17 @@ export async function shipContent(opts: {
       humanApproved: opts.humanApproved,
     }
   }
+
+  // ── Route-subtype overwrite guard (last line of defence) ─────────────────
+  // Refuse to overwrite an existing page whose route subtype differs from this
+  // article's (the 2026-08 spouse-visa overwrite root). New pages pass through.
+  await assertNoRouteSubtypeConflict({
+    owner,
+    repo,
+    filePath,
+    primaryKeyword: opts.primaryKeyword,
+    branch: branchMain,
+  })
 
   // ── Direct main ONLY for human-approved ships (architecture I4) ─────────
   // Unattended factory / War Room must never red-X main without a PR + CI gate.

@@ -176,6 +176,22 @@ export function slugify(s: string): string {
     .slice(0, 80)
 }
 
+/** Visa/immigration route subtypes — the distinguishing subject of a page. */
+export const ROUTE_SUBTYPES_RE =
+  /\b(graduate|post.?study|psw|spouse|fianc|partner|dependent|dependant|child|student|visitor|tourist|ancestry|family|carer|innovator|founder|start.?up|global.?talent|health.?care|skilled.?worker|care.?worker)\b/i
+
+/** All distinct, normalized route subtypes present in a subject string. */
+export function extractRouteSubtypes(text: string): string[] {
+  const seen = new Set<string>()
+  const re = new RegExp(ROUTE_SUBTYPES_RE.source, 'gi')
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text || '')) !== null) {
+    const norm = m[0].toLowerCase().replace(/[^a-z]/g, '')
+    if (norm) seen.add(norm)
+  }
+  return [...seen]
+}
+
 /**
  * Detect when two keywords describe fundamentally different subjects
  * even though they share words (e.g. "stem occupations list" vs "document checklist").
@@ -234,11 +250,8 @@ function intentMismatchPenalty(keyword: string, primary: string): number {
   // route subtype is the real subject. When both sides carry a DIFFERENT route
   // subtype (graduate ≠ spouse ≠ dependent ≠ child ≠ student …), hard-penalize so
   // the match falls back to standing rules instead of a wrong canonical.
-  const ROUTE_TYPES = /\b(graduate|post.?study|psw|spouse|fianc|partner|dependent|dependant|child|student|visitor|tourist|ancestry|family|carer|innovator|founder|start.?up|global.?talent|health.?care|skilled.?worker|care.?worker)\b/i
-  const kwRoute = kw.match(ROUTE_TYPES)
-  const prRoute = pr.match(ROUTE_TYPES)
-  const kwR = kwRoute ? kwRoute[0].toLowerCase().replace(/[^a-z]/g, '') : null
-  const prR = prRoute ? prRoute[0].toLowerCase().replace(/[^a-z]/g, '') : null
+  const kwR = extractRouteSubtypes(kw)[0] ?? null
+  const prR = extractRouteSubtypes(pr)[0] ?? null
   if (kwR && prR && kwR !== prR) {
     penalty += 55
   }
