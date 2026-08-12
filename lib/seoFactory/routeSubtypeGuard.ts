@@ -26,13 +26,22 @@ export interface RouteSubtypeConflict {
   existing?: string[]
 }
 
+/**
+ * Umbrella route subtypes that do NOT disambiguate a page on their own.
+ * "family" covers spouse + child + parent + partner routes, so a shared
+ * "family" token must not mask a real spouse-vs-child / partner-vs-parent
+ * conflict. These are dropped before comparing, so the conflict decision
+ * rests on the more specific route tokens only.
+ */
+const UMBRELLA_SUBTYPES = new Set(['family'])
+
 /** True when two subjects carry disjoint route subtypes (e.g. graduate vs spouse). */
 export function routeSubtypeConflict(
   articleSubject: string,
   existingSubject: string,
 ): RouteSubtypeConflict {
-  const a = extractRouteSubtypes(articleSubject)
-  const b = extractRouteSubtypes(existingSubject)
+  const a = extractRouteSubtypes(articleSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const b = extractRouteSubtypes(existingSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
   if (!a.length || !b.length) return { conflict: false }
   const overlap = a.filter((x) => b.includes(x))
   if (overlap.length === 0) return { conflict: true, article: a, existing: b }

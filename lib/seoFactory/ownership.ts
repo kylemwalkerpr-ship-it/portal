@@ -178,7 +178,12 @@ export function slugify(s: string): string {
 
 /** Visa/immigration route subtypes — the distinguishing subject of a page. */
 export const ROUTE_SUBTYPES_RE =
-  /\b(graduate|post.?study|psw|spouse|fianc|partner|dependent|dependant|child|student|visitor|tourist|ancestry|family|carer|innovator|founder|start.?up|global.?talent|health.?care|skilled.?worker|care.?worker)\b/i
+  /\b(graduate|post.?study|psw|spouse|fianc|partner|dependent|dependant|child|student|visitor|tourist|ancestry|family|parent|carer|innovator|founder|start.?up|global.?talent|health.?care|skilled.?worker|care.?worker)\b/i
+
+/** British spelling variants that must not read as a different route subtype. */
+const ROUTE_SUBTYPE_SPELLING: Record<string, string> = {
+  dependant: 'dependent',
+}
 
 /** All distinct, normalized route subtypes present in a subject string. */
 export function extractRouteSubtypes(text: string): string[] {
@@ -186,7 +191,8 @@ export function extractRouteSubtypes(text: string): string[] {
   const re = new RegExp(ROUTE_SUBTYPES_RE.source, 'gi')
   let m: RegExpExecArray | null
   while ((m = re.exec(text || '')) !== null) {
-    const norm = m[0].toLowerCase().replace(/[^a-z]/g, '')
+    let norm = m[0].toLowerCase().replace(/[^a-z]/g, '')
+    norm = ROUTE_SUBTYPE_SPELLING[norm] || norm
     if (norm) seen.add(norm)
   }
   return [...seen]

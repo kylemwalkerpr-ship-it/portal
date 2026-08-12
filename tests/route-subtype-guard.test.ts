@@ -39,6 +39,13 @@ describe('extractRouteSubtypes', () => {
     expect(extractRouteSubtypes('uk graduate visa requirements')).toEqual(['graduate'])
     expect(extractRouteSubtypes('how to rent in austin')).toEqual([])
   })
+
+  it('normalizes British spelling variants (dependant → dependent)', () => {
+    expect(extractRouteSubtypes('uk dependant visa child requirements')).toEqual([
+      'dependent',
+      'child',
+    ])
+  })
 })
 
 describe('routeSubtypeConflict', () => {
@@ -59,9 +66,10 @@ describe('routeSubtypeConflict', () => {
     ).toBe(false)
   })
 
-  it('does not conflict when a shared supertype (family) overlaps', () => {
-    // family pillar expanding the family-visas hub: article has dependent+family,
-    // existing page has family+spouse+child — "family" overlaps → allow.
+  it('does not conflict when the family pillar shares the dependent token with the hub', () => {
+    // "uk dependent visa family pillar" → {dependent}; the family-visas hub title
+    // carries {spouse, child, dependent, parent}. The shared "dependent" allows
+    // the pillar to expand the hub, while "family" alone would not have.
     expect(
       routeSubtypeConflict(
         'uk dependent visa family pillar',
@@ -70,8 +78,29 @@ describe('routeSubtypeConflict', () => {
     ).toBe(false)
   })
 
-  it('does not conflict when either side has no route subtype', () => {
+  it('conflicts across different specific routes even when both share "family"', () => {
+    // "family" is an umbrella; partner vs parent are the real (disjoint) routes.
+    expect(
+      routeSubtypeConflict('uk family visa partner route', 'UK family visa parent route').conflict,
+    ).toBe(true)
+    expect(
+      routeSubtypeConflict('uk family visa partner', 'UK family visa child dependant').conflict,
+    ).toBe(true)
+  })
+
+  it('does not conflict when a spelling variant matches (dependant vs dependent)', () => {
+    expect(
+      routeSubtypeConflict('uk dependant visa child requirements', 'UK dependent visa child guide')
+        .conflict,
+    ).toBe(false)
+  })
+
+  it('does not conflict when either side has no specific route subtype', () => {
     expect(routeSubtypeConflict('austin rental guide', 'UK spouse visa document checklist').conflict).toBe(
+      false,
+    )
+    // pure "family" (umbrella only) carries no disambiguating token → fail-open
+    expect(routeSubtypeConflict('uk family visa guide', 'UK spouse visa document checklist').conflict).toBe(
       false,
     )
   })
