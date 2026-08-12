@@ -227,6 +227,22 @@ function intentMismatchPenalty(keyword: string, primary: string): number {
     penalty += 35
   }
 
+  // ── Direction D: distinct visa route subtypes ──────────────────────────────
+  // 2026-08 incident: "uk graduate visa requirements" matched "uk dependent visa
+  // child requirements" (score ≥45) and shipped onto the spouse-visa-document-
+  // checklist page. They share only generic words (uk/visa/requirements); the
+  // route subtype is the real subject. When both sides carry a DIFFERENT route
+  // subtype (graduate ≠ spouse ≠ dependent ≠ child ≠ student …), hard-penalize so
+  // the match falls back to standing rules instead of a wrong canonical.
+  const ROUTE_TYPES = /\b(graduate|post.?study|psw|spouse|fianc|partner|dependent|dependant|child|student|visitor|tourist|ancestry|family|carer|innovator|founder|start.?up|global.?talent|health.?care|skilled.?worker|care.?worker)\b/i
+  const kwRoute = kw.match(ROUTE_TYPES)
+  const prRoute = pr.match(ROUTE_TYPES)
+  const kwR = kwRoute ? kwRoute[0].toLowerCase().replace(/[^a-z]/g, '') : null
+  const prR = prRoute ? prRoute[0].toLowerCase().replace(/[^a-z]/g, '') : null
+  if (kwR && prR && kwR !== prR) {
+    penalty += 55
+  }
+
   return Math.min(60, penalty)
 }
 
