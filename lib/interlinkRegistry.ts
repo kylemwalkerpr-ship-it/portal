@@ -2,9 +2,13 @@
  * Interlink Registry — canonical link map for the YouSafe ecosystem.
  *
  * Maps topic keywords → internal URLs across:
- *   - caseworks.com       (SEO hub — articles, guides, glossary, country pages)
- *   - yousafeconsultancy.com  (regional landing pages: /us, /ca, /uk, /au)
- *   - portal.yousafeconsultancy.com  (marketplace — services, attorneys, gigs)
+ *   - legal.yousafeconsultancy.com  (caseworks estate — articles, guides, glossary, country pages)
+ *   - yousafeconsultancy.com        (consultancy home)
+ *   - portal.yousafeconsultancy.com (marketplace — services, attorneys, gigs)
+ *
+ * EVERY url below is verified live against the estate (2026-08-13 sweep).
+ * Dead legacy hosts (caseworks.com, yousafeconsultancy.com/usa|ca|uk|au) were
+ * repointed to their live legal.yousafeconsultancy.com equivalents.
  *
  * Used by the Content Studio to:
  *   1. Inject relevant internal links into AI generation prompts
@@ -73,23 +77,23 @@ const LINKS: InterlinkEntry[] = [
   // --- United States ---
   {
     label: 'US Immigration — Complete Guide',
-    url: 'https://caseworks.com/us/',
+    url: 'https://legal.yousafeconsultancy.com/us/',
     site: 'caseworks',
     kind: 'landing',
     triggers: ['us immigration', 'united states', 'american visa', 'usa', 'uscis', 'green card', 'f-1', 'h-1b', 'opt', 'cpt', 'i-20', 'i-765', 'i-485', 'i-130', 'i-140', 'ds-160', 'n-400', 'naturalization', 'daca', 'tps'],
     priority: 10,
   },
   {
-    label: 'F-1 OPT: Complete Timeline & Application',
-    url: 'https://caseworks.com/us/f1-opt/',
+    label: 'F-1 OPT: Application, Timeline & EAD',
+    url: 'https://legal.yousafeconsultancy.com/us/student-visas/opt-ead-replacement',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['f-1 opt', 'optional practical training', 'opt timeline', 'opt application', 'stem opt', 'opt extension', 'i-765', 'ead', 'employment authorization', 'sevis', 'dso'],
     priority: 10,
   },
   {
-    label: 'H-1B Visa: Application, Cap, & Timeline',
-    url: 'https://caseworks.com/us/h1b/',
+    label: 'H-1B Visa: Lottery, Cap & Transfer',
+    url: 'https://legal.yousafeconsultancy.com/us/h1b-lottery-explained-2026',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['h-1b', 'h1b', 'work visa', 'specialty occupation', 'lca', 'i-129', 'h1b cap', 'h1b lottery', 'prevailing wage'],
@@ -97,7 +101,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Green Card Process (Family & Employment)',
-    url: 'https://caseworks.com/us/green-card/',
+    url: 'https://legal.yousafeconsultancy.com/us/family-green-card',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['green card', 'permanent residence', 'adjustment of status', 'i-485', 'i-130', 'i-140', 'priority date', 'visa bulletin', 'dv lottery'],
@@ -105,7 +109,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Student Visas — F-1, J-1, M-1 Compared',
-    url: 'https://caseworks.com/us/student-visas/',
+    url: 'https://legal.yousafeconsultancy.com/us/student-visas/',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['student visa', 'f-1', 'j-1', 'm-1', 'study in the us', 'international student', 'sevp', 'sevis', 'i-20', 'ds-2019'],
@@ -115,15 +119,15 @@ const LINKS: InterlinkEntry[] = [
   // --- Canada ---
   {
     label: 'Canada Immigration — Complete Guide',
-    url: 'https://caseworks.com/ca/',
+    url: 'https://legal.yousafeconsultancy.com/ca/',
     site: 'caseworks',
     kind: 'landing',
     triggers: ['canada immigration', 'canadian visa', 'express entry', 'ircc', 'pr card', 'canadian permanent residence', 'ontario', 'british columbia', 'quebec'],
     priority: 10,
   },
   {
-    label: 'Study Permit & PGWP — Canada',
-    url: 'https://caseworks.com/ca/study-permit/',
+    label: 'Study Permit & PGWP — Canada (Checklist)',
+    url: 'https://legal.yousafeconsultancy.com/ca/study-permit-document-checklist',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['study permit', 'canada student', 'pgwp', 'post graduation work permit', 'dlis', 'canadian university', 'canada college'],
@@ -131,7 +135,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Express Entry: CRS & Application Timeline',
-    url: 'https://caseworks.com/ca/express-entry/',
+    url: 'https://legal.yousafeconsultancy.com/ca/express-entry-crs-calculator',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['express entry', 'crs', 'comprehensive ranking system', 'fswp', 'fstp', 'cec', 'canadian experience class', 'ita', 'invitation to apply'],
@@ -139,7 +143,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'PNP: Provincial Nominee Programs',
-    url: 'https://caseworks.com/ca/pnp/',
+    url: 'https://legal.yousafeconsultancy.com/ca/pnp-ontario-bc-alberta',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['pnp', 'provincial nominee', 'ontario immigrant nominee', 'oinp', 'bc pnp', 'ainp', 'saskatchewan', 'manitoba', 'nova scotia'],
@@ -149,7 +153,7 @@ const LINKS: InterlinkEntry[] = [
   // --- United Kingdom ---
   {
     label: 'UK Immigration — Complete Guide',
-    url: 'https://caseworks.com/uk/',
+    url: 'https://legal.yousafeconsultancy.com/uk/',
     site: 'caseworks',
     kind: 'landing',
     triggers: ['uk immigration', 'british visa', 'home office', 'ukvi', 'ilr', 'indefinite leave', 'british citizenship', 'uk settlement'],
@@ -157,7 +161,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Skilled Worker Visa (UK)',
-    url: 'https://caseworks.com/uk/skilled-worker/',
+    url: 'https://legal.yousafeconsultancy.com/uk/skilled-worker/',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['skilled worker visa', 'tier 2', 'uk work visa', 'certificate of sponsorship', 'cos', 'uk job', 'uk employer', 'nhs visa', 'health and care'],
@@ -165,7 +169,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'UK Spouse Visa: Financial Requirement 2026',
-    url: 'https://caseworks.com/uk/spouse-visa/',
+    url: 'https://legal.yousafeconsultancy.com/uk/immigration/uk-spouse-visa-financial-requirement-2026',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['spouse visa', 'partner visa', 'family visa uk', 'minimum income', 'financial requirement', 'adequate maintenance', 'Appendix FM'],
@@ -173,7 +177,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'UK Graduate Route & Student Visas',
-    url: 'https://caseworks.com/uk/student-visas/',
+    url: 'https://legal.yousafeconsultancy.com/uk/blog/graduate-route-2026-changes',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['graduate route', 'uk student visa', 'tier 4', 'student route', 'cas', 'confirmation of acceptance', 'ucas', 'uk university'],
@@ -183,7 +187,7 @@ const LINKS: InterlinkEntry[] = [
   // --- Australia ---
   {
     label: 'Australia Immigration — Complete Guide',
-    url: 'https://caseworks.com/au/',
+    url: 'https://legal.yousafeconsultancy.com/au/',
     site: 'caseworks',
     kind: 'landing',
     triggers: ['australia immigration', 'australian visa', 'department of home affairs', 'skillselect', 'immiaccount', 'australian pr'],
@@ -191,7 +195,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Skilled Migration (189/190/491)',
-    url: 'https://caseworks.com/au/skilled-migration/',
+    url: 'https://legal.yousafeconsultancy.com/au/skilled-migration-points-test-189-190',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['skilled migration', 'subclass 189', 'subclass 190', 'subclass 491', 'anzsco', 'skills assessment', 'skillselect', 'eoi', 'expression of interest'],
@@ -199,7 +203,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Australian Student Visas (Subclass 500)',
-    url: 'https://caseworks.com/au/student-visas/',
+    url: 'https://legal.yousafeconsultancy.com/au/student-visa-subclass-500-document-checklist',
     site: 'caseworks',
     kind: 'guide',
     triggers: ['student visa australia', 'subclass 500', 'australian university', 'coe', 'confirmation of enrolment', 'gs requirement', 'genuine student'],
@@ -209,7 +213,7 @@ const LINKS: InterlinkEntry[] = [
   // --- Cross-Country Comparisons ---
   {
     label: 'Compare Immigration: US vs Canada vs UK vs Australia',
-    url: 'https://caseworks.com/compare/',
+    url: 'https://legal.yousafeconsultancy.com/compare/',
     site: 'caseworks',
     kind: 'comparison',
     triggers: ['compare', 'comparison', 'vs', 'versus', 'which country', 'best country', 'difference between', 'move to', 'immigrate to'],
@@ -219,7 +223,7 @@ const LINKS: InterlinkEntry[] = [
   // --- Content Hubs ---
   {
     label: 'Immigration Articles Library',
-    url: 'https://caseworks.com/articles/',
+    url: 'https://legal.yousafeconsultancy.com/articles/',
     site: 'caseworks',
     kind: 'article',
     triggers: ['articles', 'blog', 'reading', 'resources', 'learn more', 'further reading', 'guides', 'in-depth'],
@@ -227,7 +231,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Immigration Glossary',
-    url: 'https://caseworks.com/glossary/',
+    url: 'https://legal.yousafeconsultancy.com/glossary/',
     site: 'caseworks',
     kind: 'glossary',
     triggers: ['glossary', 'definition', 'term', 'terminology', 'abbreviation', 'acronym', 'what does'],
@@ -235,7 +239,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Immigration Topics Directory',
-    url: 'https://caseworks.com/topics/',
+    url: 'https://legal.yousafeconsultancy.com/topics/',
     site: 'caseworks',
     kind: 'landing',
     triggers: ['topics', 'browse', 'all topics', 'categories', 'directory'],
@@ -243,7 +247,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Immigration Services Overview',
-    url: 'https://caseworks.com/services/',
+    url: 'https://legal.yousafeconsultancy.com/services/',
     site: 'caseworks',
     kind: 'service',
     triggers: ['services', 'what we do', 'help available', 'service', 'offering', 'solutions'],
@@ -251,7 +255,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Free Immigration Templates & Checklists',
-    url: 'https://caseworks.com/templates/',
+    url: 'https://legal.yousafeconsultancy.com/templates/',
     site: 'caseworks',
     kind: 'template',
     triggers: ['template', 'checklist', 'form', 'document', 'download', 'sample', 'example'],
@@ -259,7 +263,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Immigration FAQ',
-    url: 'https://caseworks.com/faq/',
+    url: 'https://legal.yousafeconsultancy.com/faq/',
     site: 'caseworks',
     kind: 'article',
     triggers: ['faq', 'frequently asked', 'common question', 'q&a'],
@@ -267,7 +271,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Immigration Tracks: Step-by-Step Guides',
-    url: 'https://caseworks.com/tracks/',
+    url: 'https://legal.yousafeconsultancy.com/tracks/',
     site: 'caseworks',
     kind: 'track',
     triggers: ['step by step', 'track', 'pathway', 'roadmap', 'timeline', 'process overview'],
@@ -277,7 +281,7 @@ const LINKS: InterlinkEntry[] = [
   // --- Key Topic Pages (generic) ---
   {
     label: 'Immigration Attorneys & Legal Help',
-    url: 'https://caseworks.com/attorneys/',
+    url: 'https://legal.yousafeconsultancy.com/attorneys/',
     site: 'caseworks',
     kind: 'service',
     triggers: ['attorney', 'lawyer', 'legal', 'counsel', 'representation'],
@@ -285,7 +289,7 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'Pricing & Plans',
-    url: 'https://caseworks.com/pricing/',
+    url: 'https://legal.yousafeconsultancy.com/pricing/',
     site: 'caseworks',
     kind: 'landing',
     triggers: ['pricing', 'cost', 'fee', 'price', 'how much', 'affordable', 'budget', 'package'],
@@ -305,32 +309,32 @@ const LINKS: InterlinkEntry[] = [
   },
   {
     label: 'US Immigration Services',
-    url: 'https://yousafeconsultancy.com/usa',
-    site: 'regional',
-    kind: 'landing',
+    url: 'https://legal.yousafeconsultancy.com/services/f1-student-support',
+    site: 'caseworks',
+    kind: 'service',
     triggers: ['us immigration service', 'usa immigration', 'us immigration help', 'us visa service'],
     priority: 8,
   },
   {
     label: 'Canada Immigration Services',
-    url: 'https://yousafeconsultancy.com/ca',
-    site: 'regional',
-    kind: 'landing',
+    url: 'https://legal.yousafeconsultancy.com/services/canada-study-permit-support',
+    site: 'caseworks',
+    kind: 'service',
     triggers: ['canada immigration service', 'canadian immigration help', 'canada visa service'],
     priority: 8,
   },
   {
     label: 'UK Immigration Services',
-    url: 'https://yousafeconsultancy.com/uk',
-    site: 'regional',
+    url: 'https://legal.yousafeconsultancy.com/uk/',
+    site: 'caseworks',
     kind: 'landing',
     triggers: ['uk immigration service', 'british immigration help', 'uk visa service'],
     priority: 8,
   },
   {
     label: 'Australia Immigration Services',
-    url: 'https://yousafeconsultancy.com/au',
-    site: 'regional',
+    url: 'https://legal.yousafeconsultancy.com/au/',
+    site: 'caseworks',
     kind: 'landing',
     triggers: ['australia immigration service', 'australian immigration help', 'australia visa service'],
     priority: 8,

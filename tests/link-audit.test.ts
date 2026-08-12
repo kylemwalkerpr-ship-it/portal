@@ -21,6 +21,7 @@ import {
   normalizeEstateUrl,
   resetLinkAuditCaches,
 } from '@/lib/seoFactory/linkAudit'
+import { LINKS } from '@/lib/interlinkRegistry'
 
 const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -195,6 +196,35 @@ describe('linkAudit · countEstateLinks (shared INTERNAL_LINKS counter)', () => 
 
   it('does not count external or placeholder hosts', () => {
     expect(countEstateLinks('See [gov](https://www.uscis.gov/x) and [example](https://example.com/y)')).toBe(0)
+  })
+})
+
+describe('interlinkRegistry — every entry points at a live estate host', () => {
+  // 2026-08-13 sweep: caseworks.com was unreachable and
+  // yousafeconsultancy.com/usa|ca|uk|au returned 404. All entries must now
+  // target the verified-live estate (legal.yousafeconsultancy.com),
+  // the consultancy home, or the portal marketplace — never a dead legacy
+  // host or a bare country-code path that no longer resolves.
+  it('contains zero dead legacy hosts (caseworks.com / /usa paths)', () => {
+    for (const e of LINKS) {
+      const url = e.url.toLowerCase()
+      expect(url).not.toMatch(/caseworks\.com/)
+      expect(url).not.toMatch(/yousafeconsultancy\.com\/(usa|ca|uk|au)$/)
+    }
+  })
+
+  it('every URL is a recognized estate host', () => {
+    // legal.* caseworks estate, portal marketplace, or the consultancy home
+    const estateBaseRe = /^(https:\/\/legal\.yousafeconsultancy\.com\/?|https:\/\/portal\.yousafeconsultancy\.com\/?|https:\/\/(www\.)?yousafeconsultancy\.com\/?)/
+    for (const e of LINKS) {
+      expect(countEstateLinks(e.url)).toBeGreaterThanOrEqual(1)
+      expect(normalizeEstateUrl(e.url)).toMatch(estateBaseRe)
+    }
+  })
+
+  it('keeps the marketplace + home funnel entries live', () => {
+    expect(LINKS.some((e) => e.url.includes('portal.yousafeconsultancy.com'))).toBe(true)
+    expect(LINKS.some((e) => e.url === 'https://yousafeconsultancy.com/')).toBe(true)
   })
 })
 
