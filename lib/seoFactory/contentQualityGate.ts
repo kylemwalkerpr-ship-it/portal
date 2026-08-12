@@ -273,6 +273,7 @@ export function evaluateContentQuality(opts: {
   /** Required short keywords (≤3 words). The brief supplies at least 5. */
   requiredShortKeywords?: string[]
   /** Required long-tail keywords (≥4 words). The brief supplies at least 4. */
+  requiredLongTailKeywords?: string[]
   minShortKeywords?: number
   minLongTailKeywords?: number
   /** Verified internal URLs from the brief — internal links outside this set are flagged. */
