@@ -115,15 +115,10 @@ async function fetchJson<T>(path: string): Promise<T | null> {
     /* fall through */
   }
 
-  try {
-    const res = await fetch(`${siteOrigin()}${path}`, {
-      headers: { Accept: 'application/json' },
-    })
-    if (res.ok) return (await res.json()) as T
-  } catch {
-    /* fall through */
-  }
-
+  // Local filesystem FIRST for non-Worker runtimes (dev + tests): the committed
+  // public/seo-data/* assets are the source of truth, and tests must be hermetic
+  // (they must not silently hit the production Worker URL and assert against
+  // stale deployed data).
   try {
     const { readFile } = await import('node:fs/promises')
     const { join } = await import('node:path')
@@ -131,8 +126,18 @@ async function fetchJson<T>(path: string): Promise<T | null> {
     const text = await readFile(filePath, 'utf8')
     return JSON.parse(text) as T
   } catch {
+    /* fall through */
+  }
+
+  try {
+    const res = await fetch(`${siteOrigin()}${path}`, {
+      headers: { Accept: 'application/json' },
+    })
+    if (res.ok) return (await res.json()) as T
+  } catch {
     return null
   }
+  return null
 }
 
 async function fetchText(path: string): Promise<string | null> {
@@ -149,18 +154,19 @@ async function fetchText(path: string): Promise<string | null> {
     /* fall through */
   }
   try {
-    const res = await fetch(`${siteOrigin()}${path}`)
-    if (res.ok) return await res.text()
-  } catch {
-    /* fall through */
-  }
-  try {
     const { readFile } = await import('node:fs/promises')
     const { join } = await import('node:path')
     return await readFile(join(process.cwd(), 'public', path.replace(/^\//, '')), 'utf8')
   } catch {
+    /* fall through */
+  }
+  try {
+    const res = await fetch(`${siteOrigin()}${path}`)
+    if (res.ok) return await res.text()
+  } catch {
     return null
   }
+  return null
 }
 
 export async function loadGscSnapshot(): Promise<GscSnapshot> {
