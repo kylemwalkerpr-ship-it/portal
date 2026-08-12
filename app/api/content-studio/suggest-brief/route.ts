@@ -39,10 +39,19 @@ export async function POST(req: NextRequest) {
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
-    // Default to GPT-5.6 Terra (OpenAI) for Research — this is the model
-    // optimized for structured planning tasks. The admin can override via
-    // the provider dropdown in Configurator.
-    const aiProvider = String(body.aiProvider || 'openai').trim() || 'openai'
+    // GPT-5.6 Sol (flagship) and GPT-5.6 Terra (balanced) are the only
+    // models responsible for Research/Discover and Review. The admin
+    // selects one from the dropdown; both route through the OpenAI provider.
+    const rawProvider = String(body.aiProvider || 'gpt-5.6-terra').trim()
+    let aiProvider = rawProvider || 'openai'
+    let modelOverride: string | undefined
+    if (rawProvider === 'gpt-5.6-sol') {
+      aiProvider = 'openai'
+      modelOverride = 'gpt-5.6-sol'
+    } else if (rawProvider === 'gpt-5.6-terra') {
+      aiProvider = 'openai'
+      modelOverride = 'gpt-5.6-terra'
+    }
 
     // GSC live data
     const gscImpressions = Number(body.gscImpressions) || 0
@@ -187,16 +196,12 @@ export async function POST(req: NextRequest) {
       'Produce the complete editorial brief JSON now.',
     ].filter(Boolean).join('\n')
 
-    // 90s deadline — GPT models (gpt-5.6-terra) can take 40-70s to generate
-    // the full structured JSON brief. 45s was tight and caused timeouts on
-    // every deployment with OpenAI as the Research provider.
+    // 90s deadline — GPT models can take 40-70s to generate the full
+    // structured JSON brief. The admin selected Sol or Terra from the
+    // dropdown; modelOverride carries the specific model name.
     const ai = await generateContentText({
       aiProvider,
-      // Pin GPT-5.6 Terra for Research/Discover — the model the admin
-      // selected in Configurator. Sol and Luna are for Review (senior edit)
-      // and Draft (high-volume) respectively. Terra is the balanced model
-      // optimized for structured planning tasks.
-      model: aiProvider === 'openai' ? 'gpt-5.6-terra' : undefined,
+      model: modelOverride,
       system,
       prompt,
       maxTokens: 1600,

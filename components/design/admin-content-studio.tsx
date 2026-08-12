@@ -83,6 +83,8 @@ const TYPE = {
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   openai: 'gpt-5.6-terra',
   custom: 'gpt-5.6-terra',
+  'gpt-5.6-sol': 'gpt-5.6-sol',
+  'gpt-5.6-terra': 'gpt-5.6-terra',
   grok: 'grok-3',
   deepseek: 'deepseek-chat',
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
@@ -202,9 +204,10 @@ const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising'
   { key: 'refresh', label: '🔄 Refresh' },
 ]
 const AI_PROVIDER_OPTIONS: { value: string; label: string }[] = [
-  { value: 'auto', label: 'Auto (Grok → OpenAI → rest)' },
+  { value: 'auto', label: 'Auto (NVIDIA → Cloudflare → rest)' },
+  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol (flagship · Review)' },
+  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra (balanced · Research/Plan)' },
   { value: 'grok', label: 'Grok (xAI)' },
-  { value: 'openai', label: 'OpenAI (GPT-5.6 Terra · Research)' },
   { value: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b)' },
   { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 · preferred)' },
   { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten (preferred)' },
