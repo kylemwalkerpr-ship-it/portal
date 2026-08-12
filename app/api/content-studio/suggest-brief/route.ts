@@ -24,11 +24,12 @@ import {
  * Every field the generate-stream route needs is populated from live intel.
  */
 export async function POST(req: NextRequest) {
-  // Belt-and-suspenders: if the AI cascade fails to respect the per-call
-  // timeoutMs (e.g. a stuck TCP connection), abort the whole request after
-  // 60s so the client sees a clean error instead of an infinite spinner.
+  // 120s hard ceiling — if the AI cascade still hasn't produced a brief
+  // after 2 minutes, abort so the client sees a clean error instead of
+  // an infinite spinner. The per-provider timeoutMs (90s) is the primary
+  // guard; this is the belt-and-suspenders safety net.
   const controller = new AbortController()
-  const globalTimer = setTimeout(() => controller.abort(), 60_000)
+  const globalTimer = setTimeout(() => controller.abort(), 120_000)
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
@@ -38,11 +39,10 @@ export async function POST(req: NextRequest) {
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
-    // Use the admin's selected provider, defaulting to whatever is configured.
-    // The provider cascade (auto) tries each configured provider in order;
-    // each uses its own default model — we do NOT override with an
-    // OpenAI-specific model name that would break NVIDIA/Baseten/etc.
-    const aiProvider = String(body.aiProvider || 'auto').trim() || 'auto'
+    // Default to GPT-5.6 Terra (OpenAI) for Research — this is the model
+    // optimized for structured planning tasks. The admin can override via
+    // the provider dropdown in Configurator.
+    const aiProvider = String(body.aiProvider || 'openai').trim() || 'openai'
 
     // GSC live data
     const gscImpressions = Number(body.gscImpressions) || 0
@@ -187,16 +187,21 @@ export async function POST(req: NextRequest) {
       'Produce the complete editorial brief JSON now.',
     ].filter(Boolean).join('\n')
 
-    // 45s deadline — brief generation is a structured JSON response, not a
-    // long-form draft. If the provider hasn't responded by then, it's likely
-    // stalled (overloaded endpoint, quota exhaustion, or network partition).
+    // 90s deadline — GPT models (gpt-5.6-terra) can take 40-70s to generate
+    // the full structured JSON brief. 45s was tight and caused timeouts on
+    // every deployment with OpenAI as the Research provider.
     const ai = await generateContentText({
       aiProvider,
+      // Pin GPT-5.6 Terra for Research/Discover — the model the admin
+      // selected in Configurator. Sol and Luna are for Review (senior edit)
+      // and Draft (high-volume) respectively. Terra is the balanced model
+      // optimized for structured planning tasks.
+      model: aiProvider === 'openai' ? 'gpt-5.6-terra' : undefined,
       system,
       prompt,
       maxTokens: 1600,
       temperature: 0.3,
-      timeoutMs: 45_000,
+      timeoutMs: 90_000,
     })
 
     // Strip markdown code fences + extract JSON object from model response.
