@@ -188,6 +188,20 @@ export const blogPosts: BlogPost[] = [
     expect(entry.slug).toBe('my-new-post')
     expect(entry.category).toBe('canada')
     expect(entry.title).toBe('Banking in Canada for International Students: Accounts, Credit & SIN (2026)')
+    // US region maps to the 'usa' category chip, not the generic 'both'
+    const usEntry = buildBlogPostEntry({
+      plan: plan({
+        host: 'apex',
+        repo: 'yousafe-consultancy',
+        filePath: 'landing-page/app/blog/us-post/page.tsx',
+        canonicalUrl: 'https://yousafeconsultancy.com/blog/us-post/',
+        contentType: 'blog_post',
+      }),
+      content: blogMarkdown,
+      title: 'US Post',
+      region: 'US',
+    })
+    expect(usEntry.category).toBe('usa')
     expect(entry.content).toContain('Step 1')
     expect(entry.readTime).toMatch(/min read/)
   })

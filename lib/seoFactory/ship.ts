@@ -157,8 +157,7 @@ async function maybeAppendBlogIndex(opts: {
   title: string
   region: string
   primaryKeyword: string
-  humanApproved?: boolean
-}): Promise<{ path: string; appended: boolean; note?: string }> {
+}): Promise<{ path: string; appended: boolean; note?: string; commitSha?: string }> {
   // Only apex yousafe-consultancy blog pages get index entries
   const isBlog =
     opts.repo === 'yousafe-consultancy' &&
@@ -188,7 +187,7 @@ async function maybeAppendBlogIndex(opts: {
       content: updated,
       message: `seo-factory: index blog "${opts.title}" in blog-data.ts`,
     })
-    return { path: dataPath, appended: true, note: `entry added (${put.attempts} attempt(s))` }
+    return { path: dataPath, appended: true, note: `entry added (${put.attempts} attempt(s))`, commitSha: put.commitSha }
   } catch (e) {
     return {
       path: dataPath,
@@ -339,7 +338,6 @@ export async function shipContent(opts: {
       title: opts.title,
       region: opts.region,
       primaryKeyword: opts.primaryKeyword,
-      humanApproved: true,
     })
     if (blogIdx.appended) {
       console.info(`[ship] blog index updated on main: ${blogIdx.path}`)
@@ -403,12 +401,14 @@ export async function shipContent(opts: {
     title: opts.title,
     region: opts.region,
     primaryKeyword: opts.primaryKeyword,
-    humanApproved: opts.humanApproved,
   })
   if (blogIdx.appended) {
     console.info(`[ship] blog index appended on branch ${branchName}: ${blogIdx.path}`)
   }
-  const branchCommit = put.commitSha
+  // CI polls the TRUE branch head — the blog-data append commit when present,
+  // otherwise the page commit. Polling a stale parent SHA could report green
+  // while the head commit's check-runs are still pending.
+  const branchCommit = blogIdx.commitSha ?? put.commitSha
 
   const pr = await openPullRequest({
     owner,
