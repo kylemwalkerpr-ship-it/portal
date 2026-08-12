@@ -1,7 +1,6 @@
 import './globals.css'
 import './portal-themes.css'
 import type { Viewport } from 'next'
-import { Inter, Cormorant_Garamond, Lora, IBM_Plex_Mono } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
@@ -10,35 +9,9 @@ import ChatWidget from '@/components/ChatWidget'
 // URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
 // Canonical" flags. Re-introduce once we have real `/es/...` routes.
 
-// Self-host fonts via next/font for better LCP + no render-blocking
-// stylesheet from fonts.googleapis.com. Variables are consumed by the
-// existing `font-family` declarations in globals.css.
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-inter',
-  display: 'swap',
-})
-const cormorant = Cormorant_Garamond({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  style: ['normal', 'italic'],
-  variable: '--font-cormorant',
-  display: 'swap',
-})
-const lora = Lora({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  style: ['normal', 'italic'],
-  variable: '--font-lora',
-  display: 'swap',
-})
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-plex-mono',
-  display: 'swap',
-})
+// Fonts loaded via CSS @import in globals.css — Cloudflare Pages builds
+// block requests to fonts.gstatic.com, so next/font/google hard-crashes.
+// The CSS variables (--font-inter etc.) are defined in :root in globals.css.
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
@@ -108,7 +81,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <html lang={lang} dir={dir} className={`${inter.variable} ${cormorant.variable} ${lora.variable} ${plexMono.variable}`}>
+    <html lang={lang} dir={dir} className="fonts-loaded">
       <head>
         {/* Warm the TLS handshake for the Clerk SDK origin — the script
             itself is async, but preconnect shaves ~100ms off the eventual
