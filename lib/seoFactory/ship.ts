@@ -219,6 +219,9 @@ export async function shipContent(opts: {
   requiredShortKeywords?: string[]
   /** Required long-tail keywords (≥4 words each). The master gate fails ship if any are missing. */
   requiredLongTailKeywords?: string[]
+  /** Competing estate pages for cannibalization detection (from the coverage map
+   *  / radar). Passed through to the quality gate and deterministic repair. */
+  competingUrls?: Array<{url: string; title: string; primaryKeyword?: string | null}>
 }): Promise<ShipResult> {
   // Hard gate: strategy host → repo must match HOST_REPO table
   assertPlanRepoConsistency(opts.plan)
@@ -250,6 +253,8 @@ export async function shipContent(opts: {
       contentType: opts.contentType,
       requiredShortKeywords: opts.requiredShortKeywords,
       requiredLongTailKeywords: opts.requiredLongTailKeywords,
+      competingUrls: opts.competingUrls,
+      targetUrl: (opts.plan as any)?.canonicalUrl || undefined,
     })
     if (repaired.applied.length) {
       shipContent_ = repaired.content

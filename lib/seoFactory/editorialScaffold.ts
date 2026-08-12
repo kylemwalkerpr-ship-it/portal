@@ -7,6 +7,7 @@
  */
 
 import { DISCLAIMER_RE } from './contentQualityGate'
+import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
 
@@ -203,6 +204,13 @@ export function applyDeterministicRepairs(opts: {
   /** Required long-tail keywords (≥4 words). Missing ones are appended as
    *  FAQ questions so the keyword-coverage gate can pass. */
   requiredLongTailKeywords?: string[]
+  /** Competing estate pages from the coverage map. When present and the
+   *  draft's primary keyword overlaps, the repair narrows the title/H1 and
+   *  adds a differentiation note to resolve the cannibalization warning. */
+  competingUrls?: CompetingPage[]
+  /** The target URL for this draft — competing pages at different URLs
+   *  are cannibalization risks; self-references are ignored. */
+  targetUrl?: string
 }): { content: string; applied: string[] } {
   const applied: string[] = []
   let { fm, body } = stripFm(opts.content || '')
@@ -517,6 +525,98 @@ export function applyDeterministicRepairs(opts: {
 
     if (backfilled.length) {
       applied.push(`keyword_backfill (${backfilled.length})`)
+    }
+  }
+
+  // ── Cannibalization differentiation ─────────────────────────────────
+  // When the draft's primary keyword overlaps existing estate pages, the
+  // quality gate warns about split ranking signals. Narrow the title/H1
+  // with a qualifier and add a \"How this differs\" hero block so the admin
+  // can ship with the differentiation note in place.
+  {
+    const pk = (opts.primaryKeyword || '').trim().toLowerCase()
+    const targetNormal = (opts.targetUrl || '').trim().toLowerCase().replace(/\/+$/, '')
+    const competing = (opts.competingUrls || []).filter((c) => {
+      const cu = (c.url || '').trim().toLowerCase().replace(/\/+$/, '')
+      return cu && cu !== targetNormal
+    })
+    if (pk.length >= 4 && competing.length) {
+      const exactMatch = competing.filter(
+        (c) => (c.primaryKeyword || '').toLowerCase().trim() === pk,
+      )
+      const tokenize = (s: string) => s.toLowerCase().replace(/\b([a-z])-(\d)\b/gi, '$1$2').split(/[^a-z0-9]+/).filter((t: string) => t.length > 1)
+      const pkTokens = new Set(tokenize(pk))
+      const highOverlap = competing.filter((c) => {
+        const ct = (c.title || c.primaryKeyword || '').toLowerCase()
+        const ctTokens = tokenize(ct)
+        let shared = 0
+        for (const t of ctTokens) if (pkTokens.has(t)) shared++
+        return shared >= Math.max(2, pkTokens.size * 0.5)
+      })
+      const needsDifferentiation = exactMatch.length || highOverlap.length
+
+      if (needsDifferentiation) {
+        // Narrow the H1 with a qualifier if it matches a competitor's title
+        const h1Match = b.match(/^#\s+(.+?)\s*$/m)
+        if (h1Match) {
+          const currentH1 = h1Match[1].trim()
+          const competitorTitles = competing
+            .filter((c) => c.title)
+            .map((c) => c.title!.trim())
+          const isNearMatch = competitorTitles.some(
+            (ct) => ct.toLowerCase() === currentH1.toLowerCase(),
+          )
+          if (isNearMatch || exactMatch.length) {
+            // Append a differentiating qualifier to the H1
+            const qualifiers = [
+              ' — Step-by-Step Guide',
+              ' — 2026 Checklist & Timeline',
+              ' — Requirements & Application Process',
+              ' — Complete Overview for Applicants',
+            ]
+            const qualifier = qualifiers.find((q) => {
+              const candidate = `${currentH1}${q}`
+              return candidate.length <= 78
+            }) || qualifiers[0]
+            const newH1 = `${currentH1}${qualifier}`
+            // Only narrow if the qualifier actually fits (don't truncate)
+            if (newH1.length <= 78) {
+              b = b.replace(/^#\s+[^\n]+$/m, `# ${newH1}`)
+              applied.push('cannibal_h1_narrowed')
+            }
+          }
+        }
+
+        // Add a \"How this differs\" hero block after the intro/In 60 seconds
+        if (!/how this differs|differentiation note|cannibal/i.test(b)) {
+          const competitorList = competing
+            .slice(0, 3)
+            .map((c) => `\`${c.url}\``)
+            .join(', ')
+          const diffBlock = [
+            '',
+            '> **How this differs from related pages:** This guide focuses on ' +
+              `**${pk}** with a specific scope — it covers the step-by-step ` +
+              'process, required documents, and practical timelines. For related ' +
+              `topics, see: ${competitorList}.`,
+            '',
+          ].join('\n')
+          // Insert after the first H2 or In 60 seconds block, before the main content
+          const sixtyMatch = b.match(/^##\s+In 60 seconds\s*$/im)
+          const sixtyIdx = sixtyMatch ? sixtyMatch.index! + sixtyMatch[0].length : -1
+          const firstH2 = b.search(/^##\s+(?!In 60 seconds|Table of contents)/im)
+          const insertAt =
+            sixtyIdx > -1
+              ? (b.indexOf('\n\n', sixtyIdx) > -1 ? b.indexOf('\n\n', sixtyIdx) + 2 : sixtyIdx)
+              : firstH2 > -1
+                ? firstH2
+                : 0
+          if (insertAt > 0) {
+            b = b.slice(0, insertAt) + diffBlock + b.slice(insertAt)
+            applied.push('cannibal_differentiation_note')
+          }
+        }
+      }
     }
   }
 

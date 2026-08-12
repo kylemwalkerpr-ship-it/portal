@@ -674,3 +674,103 @@ export async function loadPlansDashboard(limit = 30): Promise<{
     return { plans: [], coverage: [] }
   }
 }
+
+/**
+ * Anti-cannibalization guard for the Research stage. Before greenlighting a
+ * topic, check whether existing estate pages already target the same primary
+ * keyword. Returns competing pages with overlap analysis and differentiation
+ * suggestions so the admin can narrow focus or merge instead of creating a
+ * sibling that splits ranking signals.
+ */
+export function checkCompetingPages(opts: {
+  primaryKeyword: string
+  /** Existing estate pages from the coverage map / content inventory. */
+  coverage?: Array<{
+    url?: string | null
+    title?: string | null
+    primaryKeyword?: string | null
+    status?: string | null
+  }>
+  /** The target URL being planned — competing pages at different URLs are
+   *  flagged; self-references are ignored. */
+  targetUrl?: string
+}): {
+  competing: Array<{
+    url: string
+    title: string
+    primaryKeyword?: string | null
+    overlap: 'exact' | 'high' | 'low'
+  }>
+  suggestions: string[]
+} {
+  const pk = (opts.primaryKeyword || '').trim().toLowerCase()
+  const target = (opts.targetUrl || '').trim().toLowerCase().replace(/\/+$/, '')
+  if (!pk || pk.length < 4) return { competing: [], suggestions: [] }
+
+  const coverage = (opts.coverage || [])
+    .filter((c) => {
+      const cu = (c.url || '').trim().toLowerCase().replace(/\/+$/, '')
+      return cu && cu !== target
+    })
+
+  const tokenize = (s: string) => s.toLowerCase().replace(/\b([a-z])-(\d)\b/gi, '$1$2').split(/[^a-z0-9]+/).filter((t) => t.length > 1)
+  const pkTokens = new Set(tokenize(pk))
+  const competing: Array<{
+    url: string
+    title: string
+    primaryKeyword?: string | null
+    overlap: 'exact' | 'high' | 'low'
+  }> = []
+
+  for (const c of coverage) {
+    const cpk = (c.primaryKeyword || '').trim().toLowerCase()
+    const ct = (c.title || cpk).toLowerCase()
+    const cu = (c.url || '').trim()
+    if (!cu) continue
+
+    if (cpk === pk) {
+      competing.push({ url: cu, title: c.title || cpk, primaryKeyword: c.primaryKeyword, overlap: 'exact' })
+      continue
+    }
+
+    const ctTokens = tokenize(ct)
+    let shared = 0
+    for (const t of ctTokens) if (pkTokens.has(t)) shared++
+    const overlapScore = shared / Math.max(1, pkTokens.size)
+    if (overlapScore >= 0.5) {
+      competing.push({ url: cu, title: c.title || cpk, primaryKeyword: c.primaryKeyword, overlap: 'high' })
+    } else if (overlapScore >= 0.3 && shared >= 2) {
+      competing.push({ url: cu, title: c.title || cpk, primaryKeyword: c.primaryKeyword, overlap: 'low' })
+    }
+  }
+
+  const suggestions: string[] = []
+  const exactCount = competing.filter((c) => c.overlap === 'exact').length
+  const highCount = competing.filter((c) => c.overlap === 'high').length
+
+  if (exactCount) {
+    suggestions.push(
+      `⚠ This topic exactly matches ${exactCount} existing page(s). ` +
+      `DO NOT create another — either expand the existing canonical or ` +
+      `differentiate with a narrower qualifier (e.g. "for students", ` +
+      `"step-by-step", "2026 checklist").`,
+    )
+  }
+  if (highCount) {
+    suggestions.push(
+      `⚠ ${highCount} page(s) have high keyword overlap. Narrow the focus ` +
+      `(sub-topic, audience, or format) so this page serves a distinct search intent.`,
+    )
+  }
+  if (!exactCount && !highCount && competing.length) {
+    suggestions.push(
+      `${competing.length} page(s) in the same topic area — overlap is low. ` +
+      `Safe to proceed if the intent is clearly different.`,
+    )
+  }
+  if (!competing.length) {
+    suggestions.push('No competing pages found — safe to create.')
+  }
+
+  return { competing, suggestions }
+}

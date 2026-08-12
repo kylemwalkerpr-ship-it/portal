@@ -142,6 +142,8 @@ export async function POST(request: NextRequest) {
       contentType,
       requiredShortKeywords,
       requiredLongTailKeywords,
+    competingUrls: (body as any).competingUrls,
+      targetUrl: (body as any).targetUrl,
     })
     let effective = repaired.content
     // Contract evaluation (quality gate + audit + warningsData merge + depth
@@ -277,6 +279,8 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       contentType,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      competingUrls: (body as any).competingUrls,
+        targetUrl: (body as any).targetUrl,
     })
     fixedContent = repaired.content
 

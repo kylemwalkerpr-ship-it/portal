@@ -256,6 +256,14 @@ function wordBoundaryHit(text: string, word: string): boolean {
 /**
  * Run the full quality gate on markdown (or pre-render body).
  */
+export interface CompetingPage {
+  url: string
+  title: string
+  primaryKeyword?: string | null
+  /** Higher = stronger competitor (optional tiebreak). */
+  impressions?: number | null
+}
+
 export function evaluateContentQuality(opts: {
   content: string
   contentType?: string
@@ -265,12 +273,16 @@ export function evaluateContentQuality(opts: {
   /** Required short keywords (≤3 words). The brief supplies at least 5. */
   requiredShortKeywords?: string[]
   /** Required long-tail keywords (≥4 words). The brief supplies at least 4. */
-  requiredLongTailKeywords?: string[]
-  /** Min counts — defaults match the planner (5 short / 4 long-tail). */
   minShortKeywords?: number
   minLongTailKeywords?: number
   /** Verified internal URLs from the brief — internal links outside this set are flagged. */
   linkAllowlist?: string[]
+  /** Existing estate pages targeting the same primary keyword — cannibalization 
+   *  risk detection. The brief/planner supplies these from the coverage map. */
+  competingUrls?: CompetingPage[]
+  /** The target URL for this draft — competing pages at different URLs are 
+   *  cannibalization risks; self-references (same canonical) are ignored. */
+  targetUrl?: string
 }): QualityGateResult {
   const contentType = (opts.contentType || 'legal_guide').toLowerCase()
   const indexable = opts.indexable !== false
@@ -742,6 +754,63 @@ export function evaluateContentQuality(opts: {
     }
   }
 
+  // ── 8. Cannibalization risk (warning — not a shipping blocker) ─────────
+  // When the planner/radar detects existing estate pages targeting the same
+  // primary keyword, this draft may split ranking signals across sibling
+  // pages instead of consolidating them on a single canonical. The gate
+  // warns so the admin can differentiate or merge before publishing.
+  if (pk.length >= 4 && Array.isArray(opts.competingUrls) && opts.competingUrls.length) {
+    const targetNormal = (opts.targetUrl || '').trim().toLowerCase().replace(/\/+$/, '')
+    const competing = opts.competingUrls.filter((c) => {
+      const cu = (c.url || '').trim().toLowerCase().replace(/\/+$/, '')
+      return cu && cu !== targetNormal
+    })
+    if (competing.length) {
+      // Tokenization: normalise "f-1" → "f1" before splitting so visa codes
+      // retain their meaning rather than becoming ["f","1"]→filtered. Same
+      // transform as the planner's checkCompetingPages for parity.
+      const tokenize = (s: string) =>
+        s.toLowerCase().replace(/\b([a-z])-(\d)\b/gi, '$1$2').split(/[^a-z0-9]+/).filter((t) => t.length > 1)
+      const pkTokens = new Set(tokenize(pk))
+      const highOverlap = competing.filter((c) => {
+        const ct = (c.title || c.primaryKeyword || '')
+        const ctTokens = tokenize(ct)
+        let shared = 0
+        for (const t of ctTokens) if (pkTokens.has(t)) shared++
+        return shared >= Math.max(2, pkTokens.size * 0.5)
+      })
+      const exactMatch = competing.filter((c) =>
+        (c.primaryKeyword || '').toLowerCase().trim() === pk.toLowerCase(),
+      )
+
+      if (exactMatch.length) {
+        add({
+          code: 'cannibalization_exact_match',
+          severity: 'warning',
+          message: `Primary keyword "${pk}" exactly matches ${exactMatch.length} existing page(s): ${exactMatch.map((c) => `\`${c.url}\``).join(', ')}. Ranking signals will split — differentiate or merge.`,
+          fix: 'Differentiate: narrow the title/H1 to a sub-topic (e.g. add a qualifier like "for students", "step-by-step", "2026 checklist"). Or merge: redirect the weaker page to this one via the cannibal merge tool.',
+          evidence: exactMatch.map((c) => c.url).join(', '),
+        })
+      } else if (highOverlap.length) {
+        add({
+          code: 'cannibalization_high_overlap',
+          severity: 'warning',
+          message: `High keyword overlap with ${highOverlap.length} existing page(s): ${highOverlap.map((c) => `\`${c.url}\``).join(', ')}. May dilute ranking signals.`,
+          fix: 'Add a differentiation note: "How this differs from…" hero block. Narrow the focus to a specific sub-topic or audience segment. Or approve if the pages serve genuinely different intents.',
+          evidence: highOverlap.map((c) => `${c.url}=${c.title}`).join('; '),
+        })
+      } else if (competing.length) {
+        add({
+          code: 'cannibalization_low_overlap',
+          severity: 'warning',
+          message: `${competing.length} competing page(s) share the primary keyword area but have low title overlap. Review before publishing.`,
+          fix: 'Verify the pages serve different search intents. If yes, the overlap is safe — approve. If not, differentiate or merge.',
+          evidence: competing.slice(0, 3).map((c) => c.url).join(', '),
+        })
+      }
+    }
+  }
+
   const blockers = findings.filter((f) => f.severity === 'blocker')
   const warnings = findings.filter((f) => f.severity === 'warning')
   const ok = blockers.length === 0
@@ -767,6 +836,8 @@ export function assertQualityGate(opts: {
   minShortKeywords?: number
   minLongTailKeywords?: number
   linkAllowlist?: string[]
+  competingUrls?: CompetingPage[]
+  targetUrl?: string
 }): QualityGateResult {
   const r = evaluateContentQuality(opts)
   if (!r.ok) {
