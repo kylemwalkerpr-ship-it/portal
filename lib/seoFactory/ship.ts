@@ -11,7 +11,7 @@ import type { OwnerPlan } from './ownership'
 import { assertPlanRepoConsistency, HOST_REPO } from './ownership'
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
-import { renderTargetFile } from './renderTarget'
+import { renderTargetFile, buildBlogPostEntry, insertBlogPostIntoData } from './renderTarget'
 import { assertShipAllowed } from './shipGate'
 import { assertContentDepth } from './contentDepth'
 import { assertQualityGate } from './contentQualityGate'
@@ -20,6 +20,7 @@ import {
   createBranchFrom,
   getBranchHeadSha,
   getFileBlobSha,
+  getRepoFileContent,
   githubFetch,
   mergePullRequest as mergePrApi,
   openPullRequest,
@@ -139,6 +140,62 @@ export async function mergePullRequest(opts: {
   mergeMethod?: 'merge' | 'squash' | 'rebase'
 }): Promise<{ merged: boolean; sha?: string; message: string }> {
   return mergePrApi(opts)
+}
+
+/**
+ * Blog ships write TWO files: the static page.tsx (rendered by renderTargetFile)
+ * AND an index entry in landing-page/lib/blog-data.ts so the blog index page
+ * and the [slug] fallback renderer list the new post. Appends the entry to the
+ * existing file on the branch, creating a second commit on the same branch.
+ */
+async function maybeAppendBlogIndex(opts: {
+  owner: string
+  repo: string
+  branch: string
+  plan: OwnerPlan
+  content: string
+  title: string
+  region: string
+  primaryKeyword: string
+  humanApproved?: boolean
+}): Promise<{ path: string; appended: boolean; note?: string }> {
+  // Only apex yousafe-consultancy blog pages get index entries
+  const isBlog =
+    opts.repo === 'yousafe-consultancy' &&
+    /app\/blog\/[^/]+\/page\.tsx$/.test(opts.plan.filePath)
+  if (!isBlog) {
+    return { path: 'landing-page/lib/blog-data.ts', appended: false, note: 'not a blog' }
+  }
+
+  const dataPath = 'landing-page/lib/blog-data.ts'
+  try {
+    const current = await getRepoFileContent(opts.owner, opts.repo, dataPath, opts.branch)
+    if (!current) {
+      return { path: dataPath, appended: false, note: 'blog-data.ts not found on branch' }
+    }
+    const entry = buildBlogPostEntry({
+      plan: opts.plan,
+      content: opts.content,
+      title: opts.title,
+      region: opts.region,
+    })
+    const updated = insertBlogPostIntoData(current, entry)
+    const put = await putRepoFile({
+      owner: opts.owner,
+      repo: opts.repo,
+      path: dataPath,
+      branch: opts.branch,
+      content: updated,
+      message: `seo-factory: index blog "${opts.title}" in blog-data.ts`,
+    })
+    return { path: dataPath, appended: true, note: `entry added (${put.attempts} attempt(s))` }
+  } catch (e) {
+    return {
+      path: dataPath,
+      appended: false,
+      note: `append failed (non-fatal): ${e instanceof Error ? e.message : 'unknown'}`,
+    }
+  }
 }
 
 /**
@@ -272,6 +329,22 @@ export async function shipContent(opts: {
       message: `seo-factory: approve & deploy "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
     })
 
+    // Blog ships also append an index entry to blog-data.ts (index + [slug] fallback)
+    const blogIdx = await maybeAppendBlogIndex({
+      owner,
+      repo,
+      branch: branchMain,
+      plan: opts.plan,
+      content: shipContent_,
+      title: opts.title,
+      region: opts.region,
+      primaryKeyword: opts.primaryKeyword,
+      humanApproved: true,
+    })
+    if (blogIdx.appended) {
+      console.info(`[ship] blog index updated on main: ${blogIdx.path}`)
+    }
+
     // Fire-and-forget IndexNow submission for the new/updated page
     if (opts.plan.canonicalUrl) {
       submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch((e) => {
@@ -318,6 +391,23 @@ export async function shipContent(opts: {
     content: fileContent,
     message: `seo-factory: add "${opts.title}"`,
   })
+
+  // Blog ships also append an index entry to blog-data.ts on the same branch
+  // so the PR carries both the static page and its index listing.
+  const blogIdx = await maybeAppendBlogIndex({
+    owner,
+    repo,
+    branch: branchName,
+    plan: opts.plan,
+    content: shipContent_,
+    title: opts.title,
+    region: opts.region,
+    primaryKeyword: opts.primaryKeyword,
+    humanApproved: opts.humanApproved,
+  })
+  if (blogIdx.appended) {
+    console.info(`[ship] blog index appended on branch ${branchName}: ${blogIdx.path}`)
+  }
   const branchCommit = put.commitSha
 
   const pr = await openPullRequest({
@@ -337,6 +427,7 @@ export async function shipContent(opts: {
       `- **Audit:** ${opts.audit.score} (${opts.audit.grade})`,
       `- **Job:** ${opts.jobId || '—'}`,
       `- **Git write:** ${put.updated ? 'update (sha resolved)' : 'create'} · ${put.attempts} attempt(s)`,
+      blogIdx.appended ? `- **Blog index:** ${blogIdx.path} (appended)` : '',
       effectiveMode === 'merge'
         ? '- **Auto-merge:** after CI green (or timeout with merge attempt)'
         : '',

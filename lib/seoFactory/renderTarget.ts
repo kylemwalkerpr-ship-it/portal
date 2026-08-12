@@ -214,6 +214,110 @@ function escapeJsxText(s: string): string {
     .replace(/\}/g, '&#125;')
 }
 
+/**
+ * Convert markdown body to JSX for the yousafe-consultancy blog format — the
+ * precedence set by the existing static blog pages under landing-page/app/blog/.
+ * Sections wrap in <section className="mt-10">, H2s use the serif display
+ * style, and paragraph/list text uses the muted foreground utility classes.
+ */
+function markdownToBlogJsx(body: string): string {
+  let cleaned = body
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/```json[\s\S]*?```/gi, '')
+    .replace(/```html[\s\S]*?```/gi, '')
+    .replace(/```tsx?[\s\S]*?```/gi, '')
+    .replace(/```jsx?[\s\S]*?```/gi, '')
+    .replace(/```[\s\S]*?```/gi, '')
+
+  const lines = cleaned.split('\n')
+  const out: string[] = []
+  let inList = false
+  let inSection = false
+  let para: string[] = []
+
+  const flushPara = () => {
+    if (!para.length) return
+    out.push(`      <p className="mt-4 text-muted-foreground">${renderInline(para.join(' '))}</p>`)
+    para = []
+  }
+  const closeList = () => {
+    if (inList) {
+      out.push('      </ul>')
+      inList = false
+    }
+  }
+  const closeSection = () => {
+    flushPara()
+    closeList()
+    if (inSection) {
+      out.push('    </section>')
+      inSection = false
+    }
+  }
+
+  for (const raw of lines) {
+    const line = raw.trimEnd()
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      flushPara()
+      closeList()
+      continue
+    }
+
+    if ((trimmed.startsWith('<') && !/^<\/?details/.test(trimmed)) || trimmed.startsWith('# ')) {
+      flushPara()
+      closeList()
+      continue
+    }
+
+    if (line.startsWith('## ')) {
+      closeSection()
+      // Skip duplicate "In 60 seconds" — the header intro already covers it
+      if (/^in 60 seconds$/i.test(line.slice(3).trim())) continue
+      const text = line.slice(3)
+      inSection = true
+      out.push('    <section className="mt-10">')
+      out.push(`      <h2 className="font-serif text-2xl text-foreground">${renderInline(text)}</h2>`)
+      continue
+    }
+    if (line.startsWith('### ')) {
+      flushPara()
+      closeList()
+      out.push(`      <h3 className="font-serif text-xl text-foreground">${renderInline(line.slice(4))}</h3>`)
+      continue
+    }
+    const h4 = line.match(/^(#{4,6})\s+(.+)$/)
+    if (h4) {
+      flushPara()
+      closeList()
+      out.push(`      <h4 className="font-serif text-lg text-foreground">${renderInline(h4[2])}</h4>`)
+      continue
+    }
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      flushPara()
+      if (!inList) {
+        out.push('      <ul className="mt-4 list-disc space-y-2 pl-5 text-muted-foreground">')
+        inList = true
+      }
+      out.push(`        <li>${renderInline(line.slice(2))}</li>`)
+      continue
+    }
+    if (/^\d+\.\s+/.test(line)) {
+      flushPara()
+      if (!inList) {
+        out.push('      <ul className="mt-4 list-disc space-y-2 pl-5 text-muted-foreground">')
+        inList = true
+      }
+      out.push(`        <li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`)
+      continue
+    }
+    para.push(trimmed)
+  }
+  closeSection()
+  return out.join('\n')
+}
+
 function renderCaseworksPage(opts: {
   plan: OwnerPlan
   content: string
@@ -356,6 +460,189 @@ ${jsxBody || `      <p>Editorial draft for ${escapeJsxText(title)}. Expand with 
   return out
 }
 
+/**
+ * Render a yousafe-consultancy blog page — the established static-route
+ * precedence at landing-page/app/blog/<slug>/page.tsx (rich Metadata,
+ * serif display layout, BlogDepthSection, legal-guide CTA panel).
+ */
+function renderConsultancyBlogPage(opts: {
+  plan: OwnerPlan
+  content: string
+  title: string
+  region: string
+  primaryKeyword: string
+  indexable: boolean
+  canonicalUrl: string
+}): string {
+  const { fm, body } = stripFrontMatter(opts.content)
+  const title = fm.title || opts.title
+  const description =
+    fm.description ||
+    fm.metaDescription ||
+    `${title} — a practical guide for international students and immigrants.`
+  const today = new Date().toISOString().slice(0, 10)
+  const pathParts = opts.plan.filePath
+    .split('/')
+    .filter((p) => p && p !== 'page.tsx')
+  const slug = pathParts.slice(-1)[0] || 'blog'
+  // Blog canonical always lives on the apex yousafeconsultancy.com /blog/<slug>/
+  const canonical = opts.canonicalUrl.startsWith('https://yousafeconsultancy.com/blog/')
+    ? opts.canonicalUrl
+    : `https://yousafeconsultancy.com/blog/${slug}/`
+  const regionKey = (opts.region || 'US').toUpperCase()
+  const category =
+    regionKey === 'UK' ? 'uk' : regionKey === 'CA' ? 'canada' : regionKey === 'AU' ? 'both' : 'both'
+  const keywords = [opts.primaryKeyword || title]
+  const intro = (() => {
+    const firstH2 = body.search(/\n##\s/)
+    const before = (firstH2 >= 0 ? body.slice(0, firstH2) : body).trim()
+    if (before.length >= 60) return renderInline(before.replace(/\s+/g, ' '))
+    return renderInline(description)
+  })()
+  const jsxBody = markdownToBlogJsx(body)
+
+  const out = `// Generated by SEO Factory — yousafe-consultancy blog page (static route)
+import type { Metadata } from "next";
+import { BlogDepthSection } from "@/components/blog-depth-section";
+
+export const metadata: Metadata = {
+  title: ${JSON.stringify(title)},
+  description: ${JSON.stringify(description.slice(0, 160))},
+  keywords: ${JSON.stringify(keywords)},
+  openGraph: {
+    title: ${JSON.stringify(title)},
+    description: ${JSON.stringify(description.slice(0, 160))},
+    url: ${JSON.stringify(canonical)},
+    type: "article",
+    publishedTime: ${JSON.stringify(today)},
+    authors: ["MyCaseworks Editorial"],
+    images: [
+      { url: "/og-image.png", width: 1200, height: 630, alt: "YouSafe consultancy blog" },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: ${JSON.stringify(title)},
+    description: ${JSON.stringify(description.slice(0, 160))},
+    images: ["/og-image.png"],
+  },
+};
+
+export default function Page() {
+  const date = ${JSON.stringify(today)}
+
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+      <article>
+        <header>
+          <p className="text-sm text-muted-foreground">{date} · MyCaseworks Editorial</p>
+          <h1 className="mt-4 font-serif text-3xl text-foreground sm:text-4xl">
+            ${escapeTs(title)}
+          </h1>
+          <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
+            ${intro}
+          </p>
+        </header>
+
+${jsxBody || `        <p className="mt-4 text-muted-foreground">
+          Editorial draft for ${escapeTs(title)}. Expand with practical steps.
+        </p>`}
+
+        <section className="mt-10 rounded-lg border border-border bg-secondary/30 p-6">
+          <h3 className="font-serif text-xl text-foreground">Need the full legal guide?</h3>
+          <p className="mt-3 text-muted-foreground">
+            This post is a practical walkthrough. For the complete legal guide — forms,
+            deadlines, and refusal-risk checks — read the attorney-reviewed guide on MyCaseworks:
+          </p>
+          <a
+            href="https://legal.yousafeconsultancy.com/${category === 'uk' ? 'uk' : category === 'canada' ? 'ca' : 'us'}/"
+            className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Browse legal guides →
+          </a>
+        </section>
+
+        <BlogDepthSection slug=${JSON.stringify(slug)} />
+      </article>
+    </main>
+  )
+}
+`
+  // Self-check: the blog page must import BlogDepthSection and never leak fences
+  if (!out.includes('BlogDepthSection')) {
+    throw new Error('renderConsultancyBlogPage internal error: BlogDepthSection missing')
+  }
+  if (/```/.test(out)) {
+    throw new Error('renderConsultancyBlogPage internal error: markdown fences leaked into page.tsx')
+  }
+  return out
+}
+
+/**
+ * BlogPost index entry for landing-page/lib/blog-data.ts — the blog index page
+ * and the [slug] fallback renderer both consume this array. Shipping a blog
+ * means writing BOTH the static page.tsx and this index entry.
+ */
+export interface BlogPostEntry {
+  slug: string
+  title: string
+  metaDescription: string
+  category: 'usa' | 'canada' | 'both' | 'uk'
+  date: string
+  readTime: string
+  content: string
+}
+
+export function buildBlogPostEntry(opts: {
+  plan: OwnerPlan
+  content: string
+  title: string
+  region: string
+}): BlogPostEntry {
+  const { fm, body } = stripFrontMatter(opts.content)
+  const title = fm.title || opts.title
+  const pathParts = opts.plan.filePath.split('/').filter((p) => p && p !== 'page.tsx')
+  const slug = pathParts.slice(-1)[0] || 'blog-post'
+  const regionKey = (opts.region || 'US').toUpperCase()
+  const category =
+    regionKey === 'UK' ? 'uk' : regionKey === 'CA' ? 'canada' : 'both'
+  const words = body.trim().split(/\s+/).filter(Boolean).length
+  return {
+    slug,
+    title,
+    metaDescription: (fm.description || fm.metaDescription || `${title} — YouSafe Consultancy`).slice(0, 160),
+    category,
+    date: new Date().toISOString().slice(0, 10),
+    readTime: `${Math.max(3, Math.round(words / 200))} min read`,
+    content: body.trim(),
+  }
+}
+
+/**
+ * Insert a new entry at the top of blogPosts[] in blog-data.ts. Pure string
+ * surgery — finds the array opening and splices the entry object in first.
+ */
+export function insertBlogPostIntoData(current: string, entry: BlogPostEntry): string {
+  const marker = 'export const blogPosts: BlogPost[] = ['
+  const at = current.indexOf(marker)
+  if (at < 0) {
+    throw new Error('blog-data.ts: blogPosts array marker not found — cannot append entry')
+  }
+  const entryJs = [
+    '  {',
+    `    slug: ${JSON.stringify(entry.slug)},`,
+    `    title: ${JSON.stringify(entry.title)},`,
+    `    metaDescription: ${JSON.stringify(entry.metaDescription)},`,
+    `    category: ${JSON.stringify(entry.category)},`,
+    `    date: ${JSON.stringify(entry.date)},`,
+    `    readTime: ${JSON.stringify(entry.readTime)},`,
+    `    content: \`${escapeTs(entry.content)}\`,`,
+    '  },',
+  ].join('\n')
+  const insertAt = at + marker.length
+  return current.slice(0, insertAt) + '\n' + entryJs + '\n' + current.slice(insertAt)
+}
+
 export function renderTargetFile(opts: {
   plan: OwnerPlan
   content: string
@@ -372,6 +659,18 @@ export function renderTargetFile(opts: {
     return {
       filePath,
       fileContent: renderCaseworksPage(opts),
+    }
+  }
+
+  // Apex yousafe-consultancy blog pages — static route precedence
+  // (landing-page/app/blog/<slug>/page.tsx).
+  if (
+    opts.plan.repo === 'yousafe-consultancy' &&
+    /app\/blog\/[^/]+\/page\.tsx$/.test(filePath)
+  ) {
+    return {
+      filePath,
+      fileContent: renderConsultancyBlogPage(opts),
     }
   }
 

@@ -156,7 +156,7 @@ const TONE_OPTIONS: { value: Tone; label: string }[] = [
 ]
 
 const CONTENT_TYPE_OPTIONS: { value: ContentType; label: string; ext: string; repo: string; icon: string; hint: string }[] = [
-  { value: 'blog_post', label: 'Blog Post', ext: '.md', repo: 'caseworks', icon: '📝', hint: 'Short-form thought leadership' },
+  { value: 'blog_post', label: 'Blog Post', ext: '.tsx', repo: 'yousafe-consultancy', icon: '📝', hint: 'Short-form thought leadership → yousafe-consultancy /blog/' },
   { value: 'article', label: 'Long-Form Article', ext: '.mdx', repo: 'caseworks', icon: '📄', hint: 'Deep legal guides & explainers' },
   { value: 'regional_page', label: 'Regional Page', ext: '.mdx', repo: 'yousafe-consultancy', icon: '🌐', hint: 'Country / city landing pages' },
   // marketplace_gig removed — studio ships to caseworks + yousafe-consultancy only
@@ -1390,7 +1390,7 @@ function PublishLedger({
 function CreateWizard({
   generating,
   onGenerate,
-  contentType, setContentType,
+  contentType, setContentType, onContentTypeTouched,
   region, setRegion,
   tone, setTone,
   aiProvider, setAiProvider,
@@ -1412,6 +1412,7 @@ function CreateWizard({
   generating: boolean
   onGenerate: (data: any) => void
   contentType: ContentType; setContentType: (v: ContentType) => void
+  onContentTypeTouched?: () => void
   region: Region; setRegion: (v: Region) => void
   tone: Tone; setTone: (v: Tone) => void
   aiProvider: string; setAiProvider: (v: string) => void
@@ -1607,7 +1608,7 @@ function CreateWizard({
         {/* ── STEP 1 · Target ── */}{wizardStep(1,'Pick the target — where should this live?', Boolean(contentType))}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6, marginBottom: 12 }}>
           {CONTENT_TYPE_OPTIONS.map(opt => (
-            <button key={opt.value} type="button" onClick={() => setContentType(opt.value)} style={{
+            <button key={opt.value} type="button" onClick={() => { setContentType(opt.value); onContentTypeTouched?.() }} style={{
               textAlign: 'left', padding: '9px 11px', borderRadius: C.radiusXs,
               border: contentType === opt.value ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
               background: contentType === opt.value ? C.surface2 : C.surface,
@@ -1794,6 +1795,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   generating: boolean
   onGenerate: (fd: Record<string, any>) => void
   contentType: ContentType; setContentType: (v: ContentType) => void
+  onContentTypeTouched?: () => void
   region: Region; setRegion: (v: Region) => void
   tone: Tone; setTone: (v: Tone) => void
   aiProvider: string; setAiProvider: (v: string) => void
@@ -1815,7 +1817,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 }>(function BriefAssemblyPanel(
   {
     generating, onGenerate,
-    contentType, setContentType,
+    contentType, setContentType, onContentTypeTouched,
     region, setRegion,
     tone, setTone,
     aiProvider, setAiProvider,
@@ -2049,7 +2051,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         <div style={fieldGrid}>
           <div>
             <label style={labelBase}>Content Type</label>
-            <select value={contentType} onChange={e => setContentType(e.target.value as ContentType)} style={inputBase}>
+            <select value={contentType} onChange={e => { setContentType(e.target.value as ContentType); onContentTypeTouched?.() }} style={inputBase}>
               {CONTENT_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.icon} {o.label} — {o.hint}</option>)}
             </select>
           </div>
@@ -3897,6 +3899,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   // Composer state (lifted so generation + auto-interlink can use it)
   const [contentType, setContentType] = React.useState<ContentType>('blog_post')
+  // Explicit user selection is authoritative: Discover suggestions must NOT
+  // silently flip a chosen content type (2026-08: 'selected as blog' jobs were
+  // stored as 'article' → wrong word-count floor applied at the ship gate).
+  const [contentTypeTouched, setContentTypeTouched] = React.useState(false)
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
   const [aiProvider, setAiProvider] = React.useState('auto')
@@ -4062,7 +4068,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setTitle(first.suggestion.title)
       if (first.suggestion.keywords) setKeywords(first.suggestion.keywords.join(', '))
       if (first.suggestion.audience) setAudience(first.suggestion.audience)
-      if (first.suggestion.contentType) setContentType(first.suggestion.contentType as ContentType)
+      if (first.suggestion.contentType && !contentTypeTouched) setContentType(first.suggestion.contentType as ContentType)
       setSelectedBrief(first.suggestion)
       setBriefInterlinks(first.suggestion.interlinks ?? [])
     }
@@ -4287,7 +4293,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setKeywords((s.keywords && s.keywords.length ? s.keywords : [s.primaryKeyword || s.topic]).join(', '))
     if (s.title) setTitle(s.title)
     if (s.audience) setAudience(s.audience)
-    if (s.contentType) setContentType(s.contentType as ContentType)
+    if (s.contentType && !contentTypeTouched) setContentType(s.contentType as ContentType)
     if (s.intent) setTone(TONE_FOR_INTENT[s.intent] ?? 'educational')
     setSelectedBrief(s)
     setBriefInterlinks(s.interlinks ?? [])
@@ -5048,6 +5054,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               generating={generating}
               onGenerate={handleGenerate}
               contentType={contentType} setContentType={setContentType}
+              onContentTypeTouched={() => setContentTypeTouched(true)}
               region={region} setRegion={setRegion}
               tone={tone} setTone={setTone}
               aiProvider={aiProvider} setAiProvider={setAiProvider}

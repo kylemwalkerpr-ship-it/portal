@@ -95,7 +95,7 @@ export function reconcileContentTypeWithPath(opts: {
   if (/content\/from\//.test(p) || /(^|\/)from\//.test(p)) {
     return { contentType: 'regional_from', intentClass: 'geo_modifier' }
   }
-  if (/content\/blog\//.test(p) || /^app\/blog\//.test(p)) {
+  if (/content\/blog\//.test(p) || /app\/blog\//.test(p)) {
     const kind = contentType === 'blog_post' ? 'blog_post' : 'blog_summary'
     return { contentType: kind, intentClass: 'news_summary' }
   }
@@ -368,6 +368,15 @@ export function filePathFromOwnerUrl(
     }
   }
   if (segments[0] === 'blog' && segments[1]) {
+    // Apex blogs deploy as static pages (landing-page/app/blog/<slug>/page.tsx)
+    // — the established yousafe-consultancy blog precedence. Regional hosts
+    // keep the markdown content/blog/<slug>.md format.
+    if (host === 'apex') {
+      return {
+        filePath: `${app}/app/blog/${segments[1]}/page.tsx`,
+        urlPath,
+      }
+    }
     return {
       filePath: `${app}/content/blog/${segments[1]}.md`,
       urlPath,
@@ -458,8 +467,14 @@ export function standingRulesHost(opts: {
     return { host: 'legal', contentType: contentType || 'legal_guide', reason: 'housing/tenant rights → legal' }
   }
 
-  // Blog / news — legal by default for YMYL news; regional hosts only when region page type is explicit
-  if (contentType === 'blog_post' || contentType === 'blog_summary' || /news|update 2026|overview/i.test(kw)) {
+  // Blog — the studio's Blog Post (blog_post) always deploys to the apex
+  // yousafe-consultancy blog (https://yousafeconsultancy.com/blog/<slug>/),
+  // whose page format is the established precedent. News-style blog_summary
+  // keeps the soft-regional / legal behavior below.
+  if (contentType === 'blog_post') {
+    return { host: 'apex', contentType: 'blog_post', reason: 'blog_post → apex yousafe-consultancy /blog/' }
+  }
+  if (contentType === 'blog_summary' || /news|update 2026|overview/i.test(kw)) {
     // Soft regional blog only when keyword clearly geo-local and non-procedural
     if (
       contentType === 'blog_summary' &&
@@ -531,10 +546,12 @@ function pathForHostFallback(
     }
   }
   if (contentType === 'blog_post' || contentType === 'blog_summary') {
-    return {
-      filePath: `${app}/content/blog/${slug}.md`,
-      urlPath: `/blog/${slug}/`,
+    // Apex blogs deploy as static pages under landing-page/app/blog/<slug>/
+    // — the precedence set by the existing yousafe-consultancy blog posts.
+    if (host === 'apex') {
+      return { filePath: `${app}/app/blog/${slug}/page.tsx`, urlPath: `/blog/${slug}/` }
     }
+    return { filePath: `${app}/content/blog/${slug}.md`, urlPath: `/blog/${slug}/` }
   }
   return { filePath: `${app}/content/${slug}.md`, urlPath: `/${slug}/` }
 }

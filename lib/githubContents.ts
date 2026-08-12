@@ -131,6 +131,34 @@ export async function getFileBlobSha(
   }
 }
 
+/**
+ * Decode the text content of an existing repo file on a branch, or undefined
+ * when the path does not exist. Used to append index entries (blog-data.ts)
+ * to existing files during a ship.
+ */
+export async function getRepoFileContent(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string,
+): Promise<string | undefined> {
+  try {
+    const file = await githubFetch(
+      `/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}?ref=${encodeURIComponent(branch)}`,
+    )
+    if (Array.isArray(file)) {
+      throw new Error(`Path is a directory, not a file: ${path}`)
+    }
+    if (!file?.content) return undefined
+    return Buffer.from(String(file.content).replace(/\n/g, ''), 'base64').toString('utf8')
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // GitHub 404 means the path doesn't exist yet — treat as undefined
+    if (/^GitHub 404:/.test(msg)) return undefined
+    throw e
+  }
+}
+
 export interface PutRepoFileOpts {
   owner: string
   repo: string

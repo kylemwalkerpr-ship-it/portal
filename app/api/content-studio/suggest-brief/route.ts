@@ -132,6 +132,18 @@ export async function POST(req: NextRequest) {
       '14. SCHEMA FAQ JSON-LD: include 4-6 FAQ questions as H2 sections in the h2Outline. At minimum: eligibility, timeline, required documents, costs, DIY-vs-attorney, and denial/reapply questions. The drafting system wraps these in FAQPage JSON-LD (`{"@type":"FAQPage"}`) so the page qualifies for AI-overview rich results.',
       '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
       '16. INTERNAL LINKS (HARD REQUIREMENT): ALWAYS return at least 2 interlinkTargets — never fewer than 2, prefer 3–4. Each URL must come from the allowlist VERBATIM (no invented, guessed, or modified paths). The draft-time audit blocks on fewer than 2 internal estate links, so a thin interlinkTargets list forces rewrites.',
+      ...(contentType === 'blog_post'
+        ? [
+            '',
+            'BLOG FORMAT SPEC (blog_post — the deployed artifact is a STATIC Next.js page on yousafeconsultancy.com/blog/<slug>/ following the established blog format):',
+            '17. BLOG STRUCTURE: conversational strategy post, NOT a legal document. H1 = hook + year (e.g. "Banking in Canada for International Students: Accounts, Credit & SIN (2026)"). Opening paragraph (2-4 sentences) frames the situation and what the reader will learn.',
+            '18. SECTIONS: use "Step N:" H2 sections for practical walkthroughs (Step 1: Get your SIN first, Step 2: Choose a student bank account) or thematic H2s for comparisons. Short paragraphs (2-4 sentences each). Bullet lists for checklists.',
+            '19. VOICE: direct address ("you"), plain language, 8th-grade reading level, actionable and specific. No legalese, no disclaimer boilerplate in the body — the blog template appends the legal-guide CTA automatically.',
+            '20. INTERLINKS: 2-3 links to the legal pillar on legal.yousafeconsultancy.com where readers go deeper (use the allowlist URLs verbatim).',
+            '21. LENGTH: 800–1,500 words (target ~1,200). Blogs are scannable strategy walkthroughs — never a 2,200-word legal guide.',
+            '22. NO JSON-LD or schema blocks in the body — the blog page template emits Metadata + BlogDepthSection automatically.',
+          ]
+        : []),
     ].join('\n')
 
     const prompt = [
@@ -161,6 +173,9 @@ export async function POST(req: NextRequest) {
         : 'VERIFIED INTERNAL LINK ALLOWLIST: none provided — rely exclusively on sitemap-verified estate URLs.',
       sitemapCount > 0
         ? `ESTATE SITEMAP SIZE: ${sitemapCount} pages live — find adjacency opportunities.`
+        : '',
+      contentType === 'blog_post'
+        ? 'BLOG FORMAT: static blog page on yousafeconsultancy.com/blog/ — conversational "Step N:" walkthrough, 800–1,500 words, direct address, 2-3 legal-pillar links (see BLOG FORMAT SPEC rules 17-22).'
         : '',
       '',
       'Produce the complete editorial brief JSON now.',
