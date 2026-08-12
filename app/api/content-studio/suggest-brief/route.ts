@@ -4,6 +4,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
+import {
+  clampBriefWordBudget,
+  depthPromptClause,
+  maxWordsForType,
+  minWordsForType,
+  targetWordsForType,
+} from '@/lib/seoFactory/contentDepth'
 
 /**
  * POST /api/content-studio/suggest-brief
@@ -59,10 +66,19 @@ export async function POST(req: NextRequest) {
     const sitemapCount = Number(body.sitemapCount) || 0
 
     const contentTypeLabels: Record<string, string> = {
-      blog_post: 'blog post (~1,000 words, conversational, with images)',
-      article: 'long-form legal guide (~2,200–2,800 words, educational, YMYL-safe)',
-      regional_page: 'regional landing page (~1,600 words, location-signalled)',
+      blog_post: 'blog post (conversational, with images)',
+      article: 'long-form legal guide (educational, YMYL-safe)',
+      regional_page: 'regional landing page (location-signalled)',
     }
+
+    // ── WORD COUNT BUDGET ────────────────────────────────────────────────
+    // Dictated by the canonical Google-aligned depth spec (contentDepth.ts)
+    // for THIS content type — never the model's whim or a hardcoded default.
+    // The draft-time audit + ship gate enforce the same numbers, so the brief
+    // must carry them verbatim and the model must plan sections to fill them.
+    const minWords = minWordsForType(contentType)
+    const targetWords = targetWordsForType(contentType)
+    const maxWords = maxWordsForType(contentType)
 
     const system = [
       'You are the master editorial brief architect for an immigration legal marketplace.',
@@ -91,8 +107,8 @@ export async function POST(req: NextRequest) {
       '  "metaDescription": "140–160 character SEO meta description (compelling benefit + primary keyword, no clickbait)",',
       '  "recommendedTone": "professional | educational | authoritative | persuasive",',
       '  "recommendedAudience": "1-sentence description of the ideal reader",',
-      '  "minWords": 2200,',
-      '  "maxWords": 2800,',
+      `  "minWords": ${minWords},   // minimum ${minWords} (Google depth floor)`,
+      `  "maxWords": ${maxWords},   // HARD MAX ${maxWords} — never exceed`,
       '  "readabilityLevel": "8th grade — active voice, short sentences, direct address (‘you’)",',
       '  "reasoning": "3–5 sentences explaining the editorial strategy: what gap this fills, why these keywords, how H2s map to search intent, which competitors to outrank."',
       '}',
@@ -123,6 +139,7 @@ export async function POST(req: NextRequest) {
       `PRIMARY KEYWORD: ${primaryKeyword}`,
       `REGION: ${region}`,
       `CONTENT TYPE: ${contentTypeLabels[contentType] || contentType}`,
+      `WORD COUNT BUDGET (NON-NEGOTIABLE — this dictates the drafting length): ${minWords}–${maxWords} words, target ~${targetWords}. ${depthPromptClause(contentType)}`,
       audience ? `TARGET AUDIENCE: ${audience}` : '',
       gscImpressions > 0
         ? `GSC LIVE DATA: ${gscImpressions.toLocaleString()} impressions · ${gscClicks.toLocaleString()} clicks · avg position #${Math.round(gscPosition)}`
@@ -197,6 +214,15 @@ export async function POST(req: NextRequest) {
       { region, min: 2, max: 6 },
     )
 
+    // The model may echo a sub-range INSIDE the canonical budget; anything
+    // below the floor or above the hard max is clamped back to the spec so a
+    // brief can never under-spec (or over-spec) the drafting length.
+    const { minWords: finalMin, maxWords: finalMax } = clampBriefWordBudget(
+      contentType,
+      parsed.minWords as number | undefined,
+      parsed.maxWords as number | undefined,
+    )
+
     return NextResponse.json({
       ok: true,
       suggestedH1: String(parsed.suggestedH1 || ''),
@@ -210,8 +236,8 @@ export async function POST(req: NextRequest) {
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),
       recommendedAudience: String(parsed.recommendedAudience || ''),
-      minWords: Number(parsed.minWords) || 2200,
-      maxWords: Number(parsed.maxWords) || 2800,
+      minWords: finalMin,
+      maxWords: finalMax,
       readabilityLevel: String(parsed.readabilityLevel || ''),
       reasoning: String(parsed.reasoning || ''),
     })

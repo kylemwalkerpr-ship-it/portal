@@ -113,6 +113,29 @@ export function maxWordsForType(contentType: string): number {
 }
 
 /**
+ * Clamp a model-echoed word range into the canonical depth budget for a
+ * content type. Used by the Research brief so a generated brief can never
+ * under-spec (below the Google floor) or over-spec (above the hard max) the
+ * drafting length — the same numbers the draft audit and ship gate enforce.
+ *
+ * A model sub-range fully inside the budget is kept (e.g. article 2400–2600);
+ * anything outside snaps back to the canonical min/max.
+ */
+export function clampBriefWordBudget(
+  contentType: string,
+  modelMin?: number | null,
+  modelMax?: number | null,
+): { minWords: number; maxWords: number } {
+  const minWords = minWordsForType(contentType)
+  const maxWords = maxWordsForType(contentType)
+  const mMin = Number(modelMin) || 0
+  const mMax = Number(modelMax) || 0
+  const finalMin = mMin >= minWords && mMin <= maxWords ? mMin : minWords
+  const finalMax = mMax >= finalMin && mMax <= maxWords ? mMax : maxWords
+  return { minWords: finalMin, maxWords: finalMax }
+}
+
+/**
  * Count prose words only: strip YAML front matter, fenced code, JSON-LD, and
  * raw <script> blocks so schema inflation cannot fake depth.
  */
