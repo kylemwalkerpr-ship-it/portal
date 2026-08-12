@@ -1804,6 +1804,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   suggestions: any[]; gscStatus: any
   brief: AISuggestion | null; onClearBrief: () => void
   briefInterlinks: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
+  onBriefInterlinksChange?: (links: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>) => void
   autoInterlinkBusy: boolean; onAutoInterlink: () => void
   interlinkStage: string; setInterlinkStage: (v: string) => void
   selectedBrief?: AISuggestion | null
@@ -1824,6 +1825,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     keywords, setKeywords,
     suggestions, gscStatus,
     brief, onClearBrief, briefInterlinks,
+    onBriefInterlinksChange,
     autoInterlinkBusy, onAutoInterlink,
     interlinkStage, setInterlinkStage,
     selectedBrief,
@@ -1901,6 +1903,22 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (typeof data.minWords === 'number' && data.minWords > 0) setMinWords(data.minWords)
       if (typeof data.maxWords === 'number' && data.maxWords > 0) setMaxWords(data.maxWords)
       if (data.kwH2Map && typeof data.kwH2Map === 'object') setKwH2Map(data.kwH2Map as Record<string, string>)
+      // Merge the brief's interlinkTargets into briefInterlinks (deduped) so
+      // the drafting call receives the brief's guaranteed ≥2 verified estate
+      // links — not just whatever the registry happened to match earlier.
+      const briefTargets = (data as Record<string, unknown>).interlinkTargets
+      if (Array.isArray(briefTargets) && briefTargets.length > 0) {
+        const prev = briefInterlinks || []
+        const seen = new Set(prev.map((l) => l.url))
+        const merged = [...prev]
+        for (const t of briefTargets as Array<{ label?: unknown; url?: unknown }>) {
+          if (t && typeof t.url === 'string' && t.url.trim() && !seen.has(t.url)) {
+            merged.push({ label: String(t.label || ''), url: t.url })
+            seen.add(t.url)
+          }
+        }
+        onBriefInterlinksChange?.(merged)
+      }
       setActionNotice?.(`🧠 Full brief ready: ${String(data.reasoning || '').slice(0, 120)}`)
     } catch (err) {
       setActionNotice?.(`Brief generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
@@ -5042,6 +5060,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               brief={selectedBrief}
               onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
               briefInterlinks={briefInterlinks}
+              onBriefInterlinksChange={setBriefInterlinks}
               interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
               onAutoInterlink={runAutoInterlink}
               autoInterlinkBusy={autoInterlinkBusy}

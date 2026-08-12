@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
+import { ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -197,10 +198,24 @@ export async function POST(request: Request) {
         .filter((l: any) => l && typeof l.url === 'string' && l.url.trim())
         .map((l: any) => ({ label: String(l.label || ''), url: String(l.url), matchedOn: Array.isArray(l.matchedOn) ? l.matchedOn.map(String) : undefined }))
     } else if (input.primaryKeyword) {
+      // Always ensure ≥2 verified estate links reach the drafting prompt.
+      // Registry entries are live-filtered (dead entries dropped) — when the
+      // registry returns nothing, fall back to the verified-live estate
+      // anchors so the model NEVER drafts with zero internal-link guidance
+      // (the INTERNAL_LINKS audit then clears without any repair).
+      const regionKey = String(input.region || 'US').toUpperCase().slice(0, 2)
+      const anchors = (ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US)
+        .map((a) => ({ label: a.label, url: a.url }))
       try {
         const verified = await suggestVerifiedInterlinks(input.primaryKeyword, (input.keywords || []) as string[], 6)
-        if (verified.length) input.interlinks = verified as Array<{ label?: string; url?: string; matchedOn?: string[] }>
-      } catch { /* sitemap unavailable — prompt fallback rule still guards */ }
+        if (verified.length) {
+          input.interlinks = verified as Array<{ label?: string; url?: string; matchedOn?: string[] }>
+        } else {
+          input.interlinks = anchors
+        }
+      } catch {
+        input.interlinks = anchors
+      }
     }
     const resumeRequested = body.resume === true
     // Client is created for every run: the pipeline emits a 'job' event with the

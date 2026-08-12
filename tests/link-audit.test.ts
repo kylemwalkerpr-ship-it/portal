@@ -12,6 +12,8 @@
 import {
   auditLinksLive,
   auditLinksSync,
+  ensureBriefInterlinks,
+  ESTATE_ANCHOR_LINKS,
   extractLinks,
   filterLiveInternalUrls,
   isPlaceholderUrl,
@@ -111,6 +113,65 @@ describe('linkAudit · sync structural audit', () => {
   it('warns on insecure http internal links', () => {
     const findings = auditLinksSync('See [x](http://legal.yousafeconsultancy.com/us/student-visas/)')
     expect(findings.some((f) => f.code === 'insecure_internal_link')).toBe(true)
+  })
+})
+
+describe('linkAudit · brief internal-link guarantee', () => {
+  it('tops up an empty model response to ≥2 from the allowlist', () => {
+    const allowlist = [
+      { label: 'US hub', url: 'https://legal.yousafeconsultancy.com/us/' },
+      { label: 'Student visas', url: 'https://legal.yousafeconsultancy.com/us/student-visas/' },
+    ]
+    const out = ensureBriefInterlinks(allowlist, [], { region: 'US' })
+    expect(out.length).toBeGreaterThanOrEqual(2)
+    expect(out[0].url).toContain('yousafeconsultancy.com')
+  })
+
+  it('keeps model targets only when they exist in the allowlist (no invented URLs)', () => {
+    const allowlist = [
+      { label: 'US hub', url: 'https://legal.yousafeconsultancy.com/us/' },
+      { label: 'Services', url: 'https://legal.yousafeconsultancy.com/services/' },
+      { label: 'Student visas', url: 'https://legal.yousafeconsultancy.com/us/student-visas/' },
+    ]
+    const modelTargets = [
+      { label: 'US hub', url: 'https://legal.yousafeconsultancy.com/us/' },
+      // Model hallucination — must be dropped, never shipped
+      { label: 'Made up', url: 'https://legal.yousafeconsultancy.com/us/not-a-real-page/' },
+      { label: 'Example', url: 'https://example.com/evil' },
+    ]
+    const out = ensureBriefInterlinks(allowlist, modelTargets, { region: 'US' })
+    expect(out.some((l) => l.url.includes('not-a-real-page'))).toBe(false)
+    expect(out.some((l) => l.url.includes('example.com'))).toBe(false)
+    expect(out.some((l) => l.url.includes('/us/'))).toBe(true)
+    expect(out.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('falls back to verified region anchors when the allowlist is empty', () => {
+    const out = ensureBriefInterlinks([], [], { region: 'UK' })
+    expect(out.length).toBeGreaterThanOrEqual(2)
+    // UK anchors must be the verified live estate hosts
+    expect(out.every((l) => l.url.includes('yousafeconsultancy.com'))).toBe(true)
+    expect(out.some((l) => l.url.includes('/uk/'))).toBe(true)
+  })
+
+  it('dedupes by normalized URL across model + allowlist', () => {
+    const allowlist = [
+      { label: 'US hub', url: 'https://legal.yousafeconsultancy.com/us/' },
+      { label: 'Hub (alt label)', url: 'https://legal.yousafeconsultancy.com/us' },
+      { label: 'Services', url: 'https://legal.yousafeconsultancy.com/services/' },
+    ]
+    const out = ensureBriefInterlinks(allowlist, [{ label: 'US hub', url: 'https://legal.yousafeconsultancy.com/us/' }], { region: 'US' })
+    const urls = out.map((l) => normalizeEstateUrl(l.url))
+    expect(new Set(urls).size).toBe(urls.length)
+  })
+
+  it('every region has ≥2 verified live anchors', () => {
+    for (const [region, anchors] of Object.entries(ESTATE_ANCHOR_LINKS)) {
+      expect(anchors.length).toBeGreaterThanOrEqual(2)
+      for (const a of anchors) {
+        expect(a.url).toMatch(/yousafeconsultancy\.com/)
+      }
+    }
   })
 })
 

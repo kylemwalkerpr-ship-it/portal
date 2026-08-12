@@ -2,6 +2,8 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
+import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
+import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 
 /**
  * POST /api/content-studio/suggest-brief
@@ -113,6 +115,7 @@ export async function POST(req: NextRequest) {
       '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline.',
       '14. SCHEMA FAQ JSON-LD: include 4-6 FAQ questions as H2 sections in the h2Outline. At minimum: eligibility, timeline, required documents, costs, DIY-vs-attorney, and denial/reapply questions. The drafting system wraps these in FAQPage JSON-LD (`{"@type":"FAQPage"}`) so the page qualifies for AI-overview rich results.',
       '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
+      '16. INTERNAL LINKS (HARD REQUIREMENT): ALWAYS return at least 2 interlinkTargets — never fewer than 2, prefer 3–4. Each URL must come from the allowlist VERBATIM (no invented, guessed, or modified paths). The draft-time audit blocks on fewer than 2 internal estate links, so a thin interlinkTargets list forces rewrites.',
     ].join('\n')
 
     const prompt = [
@@ -173,6 +176,27 @@ export async function POST(req: NextRequest) {
       }, { status: 502 })
     }
 
+    // ── INTERNAL LINK GUARANTEE (≥2 verified estate links in EVERY brief) ──
+    // The draft audit requires ≥2 internal/estate links; a brief with 0–1
+    // targets leaves the drafting model to improvise. Guarantee it
+    // mechanically: brief allowlist → live-verified registry → region anchors.
+    let briefAllowlist = interlinks
+    if (briefAllowlist.length === 0) {
+      try {
+        const verified = await suggestVerifiedInterlinks(primaryKeyword, [topic, primaryKeyword], 6)
+        briefAllowlist = verified.map((v) => ({ label: v.label, url: v.url }))
+      } catch { /* fall through to region anchors below */ }
+    }
+    if (briefAllowlist.length === 0) {
+      const regionKey = (region || 'US').toUpperCase().slice(0, 2)
+      briefAllowlist = (ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US).map((a) => ({ label: a.label, url: a.url }))
+    }
+    const interlinkTargets = ensureBriefInterlinks(
+      briefAllowlist,
+      Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets : [],
+      { region, min: 2, max: 6 },
+    )
+
     return NextResponse.json({
       ok: true,
       suggestedH1: String(parsed.suggestedH1 || ''),
@@ -181,7 +205,7 @@ export async function POST(req: NextRequest) {
       longTail: Array.isArray(parsed.longTail) ? parsed.longTail.slice(0, 6) : [],
       kwH2Map: parsed.kwH2Map && typeof parsed.kwH2Map === 'object' ? parsed.kwH2Map as Record<string, string> : {},
       sources: Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6) : [],
-      interlinkTargets: Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets.slice(0, 8) : [],
+      interlinkTargets: interlinkTargets.slice(0, 8),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),

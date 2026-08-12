@@ -274,12 +274,11 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
     expect(content).toMatch(/Worked Example|Scenario|Maria|Carlos|real.world case/)
 
     // ── Assert internal links injected ──
-    // REGION_SOURCES.AU injects homeaffairs.gov.au gov references (these count
-    // for the citations gate). The repair fires but the audit's internal_links
-    // regex /\]\(\// only matches relative links like ](/page), NOT full URLs
-    // like ](https://immi.homeaffairs.gov.au/...). This is a known gap — the
-    // repair should also inject estate-host interlinks (yousafeconsultancy.com)
-    // to clear the INTERNAL_LINKS audit warning.
+    // The internal_links repair now injects verified ESTATE anchors
+    // (legal.yousafeconsultancy.com / yousafeconsultancy.com), which the audit
+    // counts — so the INTERNAL_LINKS warning clears. Gov citations are injected
+    // separately by the official_sources repair.
+    expect(content).toMatch(/legal\.yousafeconsultancy\.com/)
     expect(content).toMatch(/immi\.homeaffairs\.gov/)
 
     // ── Assert disclaimer injected ──
@@ -298,9 +297,11 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
     expect(warningCodes.has('schema_faq')).toBe(false)
     expect(warningCodes.has('wall_of_text')).toBe(false)
     expect(warningCodes.has('missing_concrete_example')).toBe(false)
-    // internal_links warning still fires — repair injects gov URLs, not estate
-    // TODO: wire repair to interlinkRegistry estate URLs so this flips to false
-    expect(warningCodes.has('internal_links')).toBe(true)
+    // internal_links warning now clears — the repair injects estate-host
+    // interlinks (yousafeconsultancy.com) instead of gov URLs, and gov sources
+    // are handled by the separate official_sources repair.
+    expect(warningCodes.has('internal_links')).toBe(false)
+    expect(warningCodes.has('citations')).toBe(false)
     expect(warningCodes.has('disclaimer')).toBe(false)
 
     // ── Assert ≥5 repairs total (6 categories minus internal_links gap) ──

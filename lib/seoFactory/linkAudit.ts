@@ -23,6 +23,89 @@
 
 export const ESTATE_BASE = 'https://legal.yousafeconsultancy.com'
 
+/**
+ * Verified-live estate hub anchors per region (every URL confirmed HTTP 200
+ * against the live estate — 2026-08-13). Used as the ultimate internal-link
+ * fallback for briefs, prompts, and deterministic repairs so the drafting AI
+ * ALWAYS receives ≥2 real estate URLs to weave in — never a made-up or dead
+ * link. These match the audit's internal-link detector (they contain
+ * `yousafeconsultancy.com`), so a draft that carries them clears the
+ * INTERNAL_LINKS check without any repair.
+ */
+export const ESTATE_ANCHOR_LINKS: Record<string, Array<{ label: string; url: string }>> = {
+  US: [
+    { label: 'US Immigration Hub — CaseWorks Guides', url: `${ESTATE_BASE}/us/` },
+    { label: 'YouSafe Consultancy — Immigration Services', url: 'https://yousafeconsultancy.com/' },
+  ],
+  UK: [
+    { label: 'UK Immigration Hub — CaseWorks Guides', url: `${ESTATE_BASE}/uk/` },
+    { label: 'YouSafe Consultancy — Immigration Services', url: 'https://yousafeconsultancy.com/' },
+  ],
+  CA: [
+    { label: 'Canada Immigration Hub — CaseWorks Guides', url: `${ESTATE_BASE}/ca/` },
+    { label: 'YouSafe Consultancy — Immigration Services', url: 'https://yousafeconsultancy.com/' },
+  ],
+  AU: [
+    { label: 'Australia Immigration Hub — CaseWorks Guides', url: `${ESTATE_BASE}/au/` },
+    { label: 'YouSafe Consultancy — Immigration Services', url: 'https://yousafeconsultancy.com/' },
+  ],
+}
+
+export interface BriefInterlink {
+  label: string
+  url: string
+  placement: string
+}
+
+/**
+ * Guarantee a brief never carries fewer than `min` verified internal links.
+ *
+ * 1. Model-chosen targets are kept ONLY when present in the allowlist — a
+ *    hallucinated URL from the model is dropped, never shipped.
+ * 2. The allowlist tops up until `min` is met (deduped by normalized URL).
+ * 3. If the allowlist itself is empty, verified-live region anchors fill the
+ *    gap — so the Research brief ALWAYS returns ≥2 estate links end-to-end
+ *    and the draft-time INTERNAL_LINKS audit can clear without repairs.
+ */
+export function ensureBriefInterlinks(
+  allowlist: Array<{ label?: string; url: string }>,
+  modelTargets: Array<{ label?: string; url?: string; placement?: string }>,
+  opts: { min?: number; max?: number; region?: string } = {},
+): BriefInterlink[] {
+  const min = opts.min ?? 2
+  const max = opts.max ?? 6
+  const allowUrls = new Set(allowlist.map((l) => normalizeEstateUrl(l.url)))
+  const chosen: BriefInterlink[] = []
+  const used = new Set<string>()
+
+  const push = (url: string, label: string, placement: string) => {
+    const key = normalizeEstateUrl(url)
+    if (used.has(key)) return
+    chosen.push({ label, url, placement })
+    used.add(key)
+  }
+
+  for (const t of modelTargets) {
+    if (!t || typeof t.url !== 'string' || !t.url.trim()) continue
+    if (allowUrls.size > 0 && !allowUrls.has(normalizeEstateUrl(t.url))) continue
+    push(t.url, String(t.label || t.url), String(t.placement || 'contextually relevant section'))
+    if (chosen.length >= max) return chosen
+  }
+  for (const l of allowlist) {
+    if (chosen.length >= min) break
+    push(l.url, String(l.label || l.url), 'contextually relevant section')
+  }
+  if (chosen.length < min) {
+    const regionKey = String(opts.region || 'US').toUpperCase().slice(0, 2)
+    const anchors = ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US
+    for (const a of anchors) {
+      if (chosen.length >= min) break
+      push(a.url, a.label, 'Related guides section')
+    }
+  }
+  return chosen
+}
+
 export const ESTATE_HOSTS = new Set<string>([
   'legal.yousafeconsultancy.com',
   'yousafeconsultancy.com',
