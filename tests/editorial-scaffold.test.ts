@@ -135,6 +135,36 @@ describe('ensureEditorialScaffold', () => {
 })
 
 describe('applyDeterministicRepairs — warning micro-fixes', () => {
+  it('injects description: into a draft with NO front matter at all', () => {
+    // 2026-08-12 regression: a draft without YAML front matter never received
+    // a description field, so META_DESCRIPTION could never clear. The repair
+    // must now CREATE minimal front matter (title + content_type + region +
+    // description) instead of silently skipping.
+    const draft = [
+      '# UK Dependent Visa Guide',
+      '',
+      'This guide covers eligibility and documents.',
+      '',
+      '## Eligibility',
+      'Content here. '.repeat(30),
+      '',
+      '## Documents',
+      'More content. '.repeat(30),
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'UK Dependent Visa Guide',
+      primaryKeyword: 'uk dependent visa',
+      region: 'UK',
+      indexable: true,
+      contentType: 'article',
+    })
+    expect(applied).toContain('meta_description')
+    expect(content).toMatch(/^---\ntitle: /)
+    expect(content).toMatch(/^description: /m)
+    expect(content).toContain('region: UK')
+  })
+
   it('normalises whilst → while so the tone_whilst warning is mechanically cleared', () => {
     const draft = '# Guide\n\nYou must apply whilst the window is open.'
     const { content, applied } = applyDeterministicRepairs({

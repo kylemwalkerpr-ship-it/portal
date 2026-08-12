@@ -239,12 +239,23 @@ export function applyDeterministicRepairs(opts: {
   // (120–170 chars). If missing or too short, inject one using the same
   // metaDescriptionFrom helper the schema_article repair already relies on.
   // NOTE: fm holds the front matter (stripped from body at function entry).
-  // We modify fm so the re-assembly at line 437 picks up the new field.
-  if (fm) {
-    const existingDesc = fm.match(/^description:\s*(.+)$/m)
-    if (!existingDesc || (existingDesc[1] && existingDesc[1].length < 100)) {
-      const kw = (opts.primaryKeyword || opts.title || 'Immigration guide').trim()
-      const desc = metaDescriptionFrom(opts.title || '', b, kw)
+  // We modify fm so the re-assembly below picks up the new field.
+  //
+  // 2026-08-12 hardening: when the draft has NO front matter at all, create
+  // one (title + content_type + region + description) instead of silently
+  // skipping — otherwise a FM-less draft can never clear META_DESCRIPTION.
+  {
+    const existingDesc = fm ? fm.match(/^description:\s*(.+)$/m) : null
+    const desc = metaDescriptionFrom(opts.title || '', b, (opts.primaryKeyword || opts.title || 'Immigration guide').trim())
+    if (!fm) {
+      fm = [
+        `title: "${(opts.title || opts.primaryKeyword || 'Guide').replace(/"/g, "'")}"`,
+        `content_type: ${String(opts.contentType || 'article')}`,
+        opts.region ? `region: ${opts.region}` : null,
+        `description: ${desc}`,
+      ].filter(Boolean).join('\n')
+      applied.push('meta_description')
+    } else if (!existingDesc || (existingDesc[1] && existingDesc[1].length < 100)) {
       if (existingDesc) {
         fm = fm.replace(existingDesc[0], `description: ${desc}`)
       } else {

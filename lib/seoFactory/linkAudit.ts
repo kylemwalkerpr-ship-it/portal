@@ -40,7 +40,7 @@ export const ESTATE_HOSTS = new Set<string>([
 
 /** Hosts that are obviously placeholder / made-up (hard blockers). */
 export const PLACEHOLDER_HOST_RE =
-  /(^|\.)(example\.(com|org|net|test)|yourdomain\.com|your-domain\.com|yourwebsite|your-site|mysite\.com|mywebsite|sitename\.com|websitename|domain\.com|sample\.com|test\.com|website\.com|site\.com|localhost|anything\.com|somesite|lorem\.com|placeholder\.com)$/i
+  /(^|\.)(example\.(com|org|net|test)|yourdomain\.com|your-domain\.com|yoursite\.com|yourwebsite\.com|yourwebsite|your-site|your-url|mysite\.com|mywebsite|sitename\.com|websitename|domain\.com|sample\.com|test\.com|website\.com|site\.com|localhost|anything\.com|somesite|lorem\.com|placeholder\.com)$/i
 
 /** Placeholder tokens inside a path (also hard blockers). */
 export const PLACEHOLDER_PATH_RE =

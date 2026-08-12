@@ -71,6 +71,11 @@ describe('linkAudit · extraction + classification', () => {
     expect(isPlaceholderUrl('https://example.org/x').hit).toBe(true)
     expect(isPlaceholderUrl('https://yourdomain.com/a').hit).toBe(true)
     expect(isPlaceholderUrl('https://legal.yousafeconsultancy.com/us/example-path').hit).toBe(true)
+    // 2026-08-12 regression: yoursite.com / yourwebsite were not in the host
+    // regex — the AI could slip a classic placeholder past the gate.
+    expect(isPlaceholderUrl('https://yoursite.com/uk/guide').hit).toBe(true)
+    expect(isPlaceholderUrl('https://www.yoursite.com/x').hit).toBe(true)
+    expect(isPlaceholderUrl('https://yourwebsite.com/y').hit).toBe(true)
     expect(isPlaceholderUrl('https://legal.yousafeconsultancy.com/us/student-visas/').hit).toBe(false)
   })
 
