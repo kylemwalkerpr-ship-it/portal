@@ -2290,7 +2290,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 // Replaces the old dark LiveGenerationPanel with a proper document editor.
 function DraftWorkspace({
   generating, generationEvents, generationStartedAt, generationChars, generationText,
-  rescueStats,
+  rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob,
   onContinueToReview, selectTab, error, setError,
 }: {
@@ -2300,6 +2300,7 @@ function DraftWorkspace({
   generationChars: number
   generationText: string
   rescueStats: DepthRescueStats | null
+  triedProviders: string[]
   completedJob: ContentJob | null
   selectedJob: ContentJob | null
   setSelectedJob: (j: ContentJob | null) => void
@@ -2380,6 +2381,11 @@ function DraftWorkspace({
               <span style={{ fontFamily: C.mono, fontSize: 10, color: '#B45309', marginLeft: 4 }}>
                 {generationChars.toLocaleString()} chars streamed
               </span>
+              {triedProviders.length > 0 && (
+                <span style={{ fontFamily: C.mono, fontSize: 9, color: '#78350F', background: '#FEF3C7', padding: '2px 7px', borderRadius: 3, marginLeft: 6, fontWeight: 600 }}>
+                  {triedProviders.length === 1 ? `Trying ${triedProviders[0]}…` : `Cascade: ${triedProviders.join(' → ')}`}
+                </span>
+              )}
               <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, marginLeft: 'auto' }}>
                 {latestEvent?.message || 'Connecting…'}
               </span>
@@ -3939,6 +3945,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
   const [generationChars, setGenerationChars] = React.useState(0)
   const [generationText, setGenerationText] = React.useState('')
+  const [triedProviders, setTriedProviders] = React.useState<string[]>([])
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
   // Depth-rescue (PASS 2) stats — expansion rounds, stalls, time budget, set
@@ -4590,6 +4597,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setGenerationChars(0)
     setGenerationText('')
     setRescueStats(null)
+    setTriedProviders([])
     setGenerationEvents([{ id: `start-${Date.now()}`, ts: Date.now(), stage: 'connect', message: 'Connecting to the SEO generation pipeline…', level: 'info' }])
 
     const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
@@ -4671,7 +4679,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         if (!payload || payload === '[DONE]') return
         const event = JSON.parse(payload) as any
         if (event.type === 'progress') record(event.stage || 'pipeline', event.message || 'Working…')
-        else if (event.type === 'provider') record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
+        else if (event.type === 'provider') {
+          setTriedProviders((prev) => {
+            const name = String(event.provider || 'AI')
+            return prev.includes(name) ? prev : [...prev, name]
+          })
+          record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
+        }
         else if (event.type === 'job') {
           liveJobId = String(event.jobId || '')
           // Refresh immediately so the queue strip flips to '1 In Progress'.
@@ -4915,15 +4929,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       )}
       {tab === 'draft' && (
         <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* ── Draft workspace — inline editor with live streaming ── */}
-          <DraftWorkspace
-            generating={generating}
-            generationEvents={generationEvents}
-            generationStartedAt={generationStartedAt}
-            generationChars={generationChars}
-            generationText={generationText}
-            rescueStats={rescueStats}
-            completedJob={generationReviewJob}
+          {/* ── Draft workspace — inline editor with live streaming ── */}            <DraftWorkspace
+              generating={generating}
+              generationEvents={generationEvents}
+              generationStartedAt={generationStartedAt}
+              generationChars={generationChars}
+              generationText={generationText}
+              rescueStats={rescueStats}
+              triedProviders={triedProviders}
+              completedJob={generationReviewJob}
             selectedJob={selectedJob}
             setSelectedJob={setSelectedJob}
             onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('approve') } }}
