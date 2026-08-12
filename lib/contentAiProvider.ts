@@ -352,10 +352,14 @@ async function openAiCompatFetch(
       }
     }
     delete body.reasoning_budget
-    // ExtraBody-less reasoning endpoints (custom OpenAI-compatible) expect the
-    // flag at the top level. Harmless when ignored; a strict 400 still fails
-    // the same way as the empty content it replaces, so nothing regresses.
-    if (!p.extraBody) body.enable_thinking = false
+    // Only CUSTOM OpenAI-compatible endpoints accept a top-level
+    // enable_thinking flag. OpenAI itself REJECTS it (400 "Unknown
+    // parameter: enable_thinking") — a GPT reasoning model that burned its
+    // budget returns empty + finish_reason:length, and the disableThinking
+    // re-ask must NOT send this flag to OpenAI or it hard-fails. OpenAI's
+    // empty-content case is recovered by a larger completion budget (see
+    // resolveMaxTokens), not by toggling a thinking flag it doesn't support.
+    if (!p.extraBody && p.label === 'custom') body.enable_thinking = false
   }
   // Per-fetch deadline — a hung upstream must fail fast so the cascade can
   // move on instead of burning the whole per-candidate budget.

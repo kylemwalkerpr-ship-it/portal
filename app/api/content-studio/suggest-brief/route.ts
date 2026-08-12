@@ -199,12 +199,18 @@ export async function POST(req: NextRequest) {
     // 90s deadline — GPT models can take 40-70s to generate the full
     // structured JSON brief. The admin selected Sol or Terra from the
     // dropdown; modelOverride carries the specific model name.
+    // GPT-5.6 Sol/Terra are reasoning models: max_completion_tokens is the
+    // TOTAL budget (reasoning chain + final prose). 1600 was enough for a
+    // plain answer but left reasoning models burning the whole budget on
+    // chain-of-thought and returning EMPTY content with finish_reason:length
+    // (root cause of the 2026-08 brief failures). Give the model ~8k so
+    // reasoning + the JSON brief both fit; the JSON itself is only ~1k tokens.
     const ai = await generateContentText({
       aiProvider,
       model: modelOverride,
       system,
       prompt,
-      maxTokens: 1600,
+      maxTokens: 8000,
       temperature: 0.3,
       timeoutMs: 90_000,
     })
