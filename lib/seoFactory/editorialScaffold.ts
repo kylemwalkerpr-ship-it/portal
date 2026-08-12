@@ -8,7 +8,7 @@
 
 import { DISCLAIMER_RE } from './contentQualityGate'
 import { countBodyWords } from './contentDepth'
-import { ESTATE_ANCHOR_LINKS } from './linkAudit'
+import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
 
 const REGION_SOURCES: Record<string, Array<{ title: string; url: string }>> = {
   US: [
@@ -423,8 +423,7 @@ export function applyDeterministicRepairs(opts: {
   // clears. Previously this injected REGION_SOURCES (gov/external URLs), which
   // the audit does NOT count as internal links — the warning persisted after
   // every "fix". Gov sources are still injected separately below as citations.
-  const internalLinkCount = (b.match(/\]\(\//g) || []).length +
-    (b.match(/yousafeconsultancy\.com/g) || []).length
+  const internalLinkCount = countEstateLinks(b)
   if (internalLinkCount < 2) {
     const region = (opts.region || 'US').toUpperCase().slice(0, 2)
     const anchors = ESTATE_ANCHOR_LINKS[region] || ESTATE_ANCHOR_LINKS.US

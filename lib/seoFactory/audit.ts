@@ -10,6 +10,7 @@ import {
   targetWordsForType,
 } from './contentDepth'
 import { evaluateContentQuality, DISCLAIMER_RE } from './contentQualityGate'
+import { countEstateLinks } from './linkAudit'
 
 export interface AuditFinding {
   code: string
@@ -209,8 +210,10 @@ export function auditContent(opts: {
     fix: 'Add 4–6 FAQs with FAQPage schema for AI overviews',
   }, 1)
 
-  // Internal links
-  const internalLinks = (body.match(/\]\(\//g) || []).length + (body.match(/yousafeconsultancy\.com/g) || []).length
+  // Internal links — shared estate counter (legal. / portal. / any estate
+  // subdomain / caseworks.com / relative paths). Future estate hosts are
+  // counted automatically via the estate-root regex.
+  const internalLinks = countEstateLinks(body)
   add(internalLinks >= 2, {
     code: 'internal_links',
     severity: 'warning',

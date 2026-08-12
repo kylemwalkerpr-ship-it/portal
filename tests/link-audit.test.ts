@@ -12,6 +12,7 @@
 import {
   auditLinksLive,
   auditLinksSync,
+  countEstateLinks,
   ensureBriefInterlinks,
   ESTATE_ANCHOR_LINKS,
   extractLinks,
@@ -172,6 +173,28 @@ describe('linkAudit · brief internal-link guarantee', () => {
         expect(a.url).toMatch(/yousafeconsultancy\.com/)
       }
     }
+  })
+})
+
+describe('linkAudit · countEstateLinks (shared INTERNAL_LINKS counter)', () => {
+  it('counts relative estate paths and any estate subdomain', () => {
+    const body =
+      'See [hub](/us/student-visas/) and [legal](https://legal.yousafeconsultancy.com/us/) and [portal](https://portal.yousafeconsultancy.com/)'
+    expect(countEstateLinks(body)).toBe(3)
+  })
+
+  it('counts caseworks.com links (2026-08 fix: previously ignored)', () => {
+    expect(countEstateLinks('Read [guide](https://caseworks.com/us/h1b/)')).toBe(1)
+    expect(countEstateLinks('Read [www](https://www.caseworks.com/uk/)')).toBe(1)
+  })
+
+  it('counts future estate subdomains automatically via the estate root regex', () => {
+    expect(countEstateLinks('See [x](https://api.yousafeconsultancy.com/v1)')).toBe(1)
+    expect(countEstateLinks('See [y](https://some-future-sub.caseworks.com/page)')).toBe(1)
+  })
+
+  it('does not count external or placeholder hosts', () => {
+    expect(countEstateLinks('See [gov](https://www.uscis.gov/x) and [example](https://example.com/y)')).toBe(0)
   })
 })
 

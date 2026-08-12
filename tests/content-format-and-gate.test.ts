@@ -194,6 +194,50 @@ describe('deterministic reader TOC (editorialScaffold)', () => {
   })
 })
 
+describe('audit internal_links detector — any estate host counts', () => {
+  // 2026-08-13 fix: the detector only matched `](/` and `yousafeconsultancy.com`.
+  // caseworks.com links (and future estate subdomains) were invisible to the
+  // INTERNAL_LINKS check. Now every estate host counts via countEstateLinks.
+  const body = (links: string) => [
+    '# Guide',
+    '',
+    '## In 60 seconds',
+    '- A quick answer block.',
+    '',
+    '## Eligibility',
+    'You need a valid passport. ' + 'Eligibility details. '.repeat(30),
+    '',
+    '## Documents',
+    'Passport and proof of funds. ' + 'More documents. '.repeat(30),
+    '',
+    '## FAQ',
+    '- **Q1?** A1.',
+    '- **Q2?** A2.',
+    '',
+    links,
+    '',
+    'This is educational only, not legal advice.',
+  ].join('\n')
+
+  it('clears with two caseworks.com links (previously ignored)', () => {
+    const content = body('- [H1B](https://caseworks.com/us/h1b/)\n- [OPT](https://caseworks.com/us/f1-opt/)')
+    const audit = auditContent({ content, contentType: 'article', primaryKeyword: 'guide', indexable: true })
+    expect(audit.warnings.some((w) => w.code === 'internal_links')).toBe(false)
+  })
+
+  it('clears with portal. + legal. subdomain links', () => {
+    const content = body('- [Portal](https://portal.yousafeconsultancy.com/attorneys)\n- [Legal](https://legal.yousafeconsultancy.com/us/student-visas/)')
+    const audit = auditContent({ content, contentType: 'article', primaryKeyword: 'guide', indexable: true })
+    expect(audit.warnings.some((w) => w.code === 'internal_links')).toBe(false)
+  })
+
+  it('still flags fewer than two estate links', () => {
+    const content = body('- [One link only](https://legal.yousafeconsultancy.com/us/)')
+    const audit = auditContent({ content, contentType: 'article', primaryKeyword: 'guide', indexable: true })
+    expect(audit.warnings.some((w) => w.code === 'internal_links')).toBe(true)
+  })
+})
+
 describe('audit vs ship gate — disclaimer agreement', () => {
   it('audit can no longer score 100 while the gate blocks on missing disclaimer', () => {
     // Body with no disclaimer at all (the reported scenario: 100/100 human

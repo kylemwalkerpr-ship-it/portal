@@ -121,6 +121,29 @@ export const ESTATE_HOSTS = new Set<string>([
   'www.caseworks.com',
 ])
 
+/**
+ * Future-proof estate link detector regex — matches any host under the
+ * estate root domains (yousafeconsultancy.com / caseworks.com) including
+ * current subdomains (legal., portal., market., www., country codes) and ANY
+ * future subdomain, plus their bare roots. Used for counting internal/estate
+ * links in the audit and the deterministic repair so the two never disagree.
+ */
+export const ESTATE_LINK_RE =
+  /(?:https?:\/\/)?(?:[a-z0-9-]+\.)*(?:yousafeconsultancy\.com|caseworks\.com)/gi
+
+/**
+ * Count internal/estate links in draft body text:
+ *  - root-relative markdown links (`](`/path`)
+ *  - absolute estate-host links (any subdomain of yousafeconsultancy.com or
+ *    caseworks.com) — matches the audit's INTERNAL_LINKS check exactly.
+ */
+export function countEstateLinks(body: string): number {
+  return (
+    (body.match(/\]\(\//g) || []).length +
+    (body.match(ESTATE_LINK_RE) || []).length
+  )
+}
+
 /** Hosts that are obviously placeholder / made-up (hard blockers). */
 export const PLACEHOLDER_HOST_RE =
   /(^|\.)(example\.(com|org|net|test)|yourdomain\.com|your-domain\.com|yoursite\.com|yourwebsite\.com|yourwebsite|your-site|your-url|mysite\.com|mywebsite|sitename\.com|websitename|domain\.com|sample\.com|test\.com|website\.com|site\.com|localhost|anything\.com|somesite|lorem\.com|placeholder\.com)$/i
