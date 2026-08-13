@@ -1,6 +1,7 @@
 import { applyDeterministicRepairs, ensureEditorialScaffold } from '@/lib/seoFactory/editorialScaffold'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 describe('ensureEditorialScaffold', () => {
   it('adds FM, disclaimer, and AU official sources so audit can pass depth+quality', () => {
@@ -395,5 +396,79 @@ One practical step here.
     }
     expect(out).toMatch(/## In 60 seconds/)
     expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(true)
+  })
+
+  // 2026-08-13 live-run regression: GLM 5.2 Fast drafted a 3234-word legal
+  // guide (max 2800) and the gates only WARNED — bloated pages shipped. The
+  // deterministic repair must trim over-long drafts into [min, max] while
+  // preserving every required block.
+  it('trims an over-long draft into the word window without touching protected sections', () => {
+    const section = (name: string, n = 60) =>
+      `## ${name}\n\n` +
+      Array.from(
+        { length: n },
+        (_, i) =>
+          `Paragraph ${i} in the ${name} section covers practical steps, required documents, processing times, fees, and common pitfalls for applicants in 2026.`,
+      ).join('\n\n')
+    const content =
+      `# UK Dependent Visa Documents Checklist 2026\n\n` +
+      `Intro paragraph with the primary keyword uk dependent visa documents checklist for applicants.\n\n` +
+      `${section('In 60 seconds', 3)}\n` +
+      `${section('Eligibility')}\n` +
+      `${section('Documents')}\n` +
+      `${section('Costs and fees')}\n` +
+      `${section('Processing times')}\n` +
+      `${section('FAQ', 8)}\n` +
+      `${section('Disclaimer', 2)}\n`
+    expect(countBodyWords(content)).toBeGreaterThan(2800)
+
+    const r = applyDeterministicRepairs({
+      content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk dependent visa documents checklist',
+      title: 'UK Dependent Visa Documents Checklist 2026',
+    })
+    const out = r.content
+    const words = countBodyWords(out)
+    expect(words).toBeLessThanOrEqual(2800)
+    expect(words).toBeGreaterThanOrEqual(2200)
+    expect(r.applied.some((a) => a.startsWith('trim_to_max_words'))).toBe(true)
+    // Required blocks survive the trim
+    expect(out).toMatch(/## In 60 seconds/)
+    expect(out).toMatch(/## FAQ/)
+    expect(out).toMatch(/## Disclaimer/)
+    expect(out).toMatch(/## Official sources/)
+  })
+
+  // 2026-08-13: a draft that is ALREADY inside the window is untouched.
+  it('leaves a draft already inside the window alone', () => {
+    const body = [
+      '# UK Dependent Visa Guide',
+      '',
+      '## In 60 seconds',
+      '- Dependents include spouses, civil partners, and children under 18.',
+      '- Financial requirements apply per dependent.',
+      '',
+      '## Eligibility',
+      'You must demonstrate a genuine and subsisting relationship.',
+      '',
+      '## Documents',
+      'Passport, financial evidence, accommodation details.',
+      '',
+      '## FAQ',
+      '### Do children need separate applications?',
+      'Yes when they travel on a dependent visa.',
+      '',
+      '## Disclaimer',
+      '**Disclaimer:** This page is educational and editorial only. It is **not legal advice**.',
+    ].join('\n')
+    const r = applyDeterministicRepairs({
+      content: body,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk dependent visa',
+      title: 'UK Dependent Visa Guide',
+    })
+    expect(r.applied.some((a) => a.startsWith('trim_to_max_words'))).toBe(false)
+    expect(r.content).toContain('genuine and subsisting relationship')
   })
 })

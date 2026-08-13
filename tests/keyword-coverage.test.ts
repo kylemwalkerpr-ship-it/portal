@@ -257,4 +257,64 @@ describe('content quality gate — keyword coverage', () => {
     })
     expect(r.blockers.find((b) => b.code === 'short_keyword_density_violation')).toBeTruthy()
   })
+
+  // 2026-08-13 live-run regression: a short keyword that is a SUB-PHRASE of
+  // the primary ("uk dependent" inside "uk dependent visa documents
+  // checklist") was counted once per primary usage — 29× — and hard-blocked
+  // shipping even though the model never repeated it independently. Primary
+  // spans are now masked before density counting.
+  it('does NOT count short/long-tail hits that fall inside the primary phrase', () => {
+    const primary = 'uk dependent visa documents checklist'
+    // NOTE: the long-tail list deliberately does NOT re-contain the short
+    // sub-phrases — otherwise those hits are genuine independent repeats.
+    const short = ['uk dependent', 'documents checklist', 'f 1 requirements', 'f1 eligibility', 'f1 application']
+    const longTail = [
+      'uk dependent visa documents checklist', // == primary, exempt
+      'how to apply for a dependent visa uk',
+      'dependent visa financial requirements uk',
+      'dependent visa application process steps uk',
+    ]
+    // Primary used 12× naturally (title + H1 + repeated body usage) — every
+    // occurrence also contains the short sub-phrases 'uk dependent' and
+    // 'documents checklist', which must NOT count toward their 4-hit caps.
+    const repeated = Array.from({ length: 11 }, () => primary).join(' ')
+    const body = makeCompliantBody(short, longTail).replace(
+      /# f-1 visa documents checklist 2026/,
+      `# ${primary} — ${repeated}`,
+    )
+    const r = evaluateContentQuality({
+      content: body,
+      primaryKeyword: primary,
+      indexable: true,
+      requiredShortKeywords: short,
+      requiredLongTailKeywords: longTail,
+    })
+    const density = r.blockers.filter((b) =>
+      b.code === 'short_keyword_density_violation' || b.code === 'long_tail_density_violation',
+    )
+    expect(density).toEqual([])
+  })
+
+  it('still blocks a sub-phrase short keyword when it is ALSO repeated outside the primary', () => {
+    const primary = 'uk dependent visa documents checklist'
+    const short = ['uk dependent', 'documents checklist', 'f 1 requirements', 'f1 eligibility', 'f1 application']
+    const longTail = [
+      'uk dependent visa documents checklist',
+      'how to apply uk dependent visa',
+      'uk dependent visa requirements 2026',
+      'uk dependent visa application steps',
+    ]
+    const body = makeCompliantBody(short, longTail).replace(
+      '## In 60 seconds\n',
+      '## In 60 seconds\n' + Array.from({ length: 6 }, () => '- uk dependent').join('\n') + '\n',
+    )
+    const r = evaluateContentQuality({
+      content: body,
+      primaryKeyword: primary,
+      indexable: true,
+      requiredShortKeywords: short,
+      requiredLongTailKeywords: longTail,
+    })
+    expect(r.blockers.find((b) => b.code === 'short_keyword_density_violation')).toBeTruthy()
+  })
 })

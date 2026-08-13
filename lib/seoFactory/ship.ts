@@ -223,6 +223,9 @@ export async function shipContent(opts: {
   /** Competing estate pages for cannibalization detection (from the coverage map
    *  / radar). Passed through to the quality gate and deterministic repair. */
   competingUrls?: Array<{url: string; title: string; primaryKeyword?: string | null}>
+  /** Hard max body words for the content type — passed to the deterministic
+   *  repair so over-long drafts are trimmed into their window before gates. */
+  maxWords?: number
 }): Promise<ShipResult> {
   // Hard gate: strategy host → repo must match HOST_REPO table
   assertPlanRepoConsistency(opts.plan)
@@ -256,6 +259,7 @@ export async function shipContent(opts: {
       requiredLongTailKeywords: opts.requiredLongTailKeywords,
       competingUrls: opts.competingUrls,
       targetUrl: (opts.plan as any)?.canonicalUrl || undefined,
+      maxWords: opts.maxWords,
     })
     if (repaired.applied.length) {
       shipContent_ = repaired.content

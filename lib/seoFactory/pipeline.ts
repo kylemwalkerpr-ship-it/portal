@@ -24,7 +24,7 @@ import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDe
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
-import { ensureEditorialScaffold } from './editorialScaffold'
+import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
@@ -399,6 +399,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       primaryKeyword,
       indexable: plan.indexable,
       ownershipBlockers: plan.blockers,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
 
     // Depth + voice/tone/compliance — unattended publish must clear all gates
@@ -516,6 +518,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       primaryKeyword,
       indexable: plan.indexable,
       ownershipBlockers: plan.blockers,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
     if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) {
       break
@@ -583,6 +587,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         primaryKeyword,
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
 
       if (meetsShipQuality(audit) && audit.score >= minAudit) break
@@ -637,6 +643,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     primaryKeyword,
     indexable: plan.indexable,
     ownershipBlockers: plan.blockers,
+    requiredShortKeywords,
+    requiredLongTailKeywords,
   })
 
   if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 8) {
@@ -699,6 +707,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         primaryKeyword,
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
     }
   }
@@ -706,27 +716,35 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
   // ── PASS 5: Resolve mechanical blockers before push ────────────────────
   // Deterministic repairs for blockers the model repeatedly misses, so a
-  // small em-dash or disclaimer miss never blocks the daily ship.
+  // small em-dash, disclaimer, schema, or over-max-word-count issue never
+  // ships (or persists in the studio). The SAME repair stack the ship gate
+  // uses is applied here so the stored draft is the content that will ship.
   {
-    let repaired = content
-    const dashes = (repaired.match(/[\u2014\u2013]/g) || []).length
-    if (dashes > 0) {
-      repaired = repaired
-        .replace(/(\d)\s*[\u2013\u2014]\s*(\d)/g, '$1-$2')
-        .replace(/\s+[\u2014\u2013]\s+/g, ', ')
-        .replace(/[\u2014\u2013]/g, ', ')
-    }
-    if (!/not legal advice|educational only|consult (an? )?(attorney|lawyer|solicitor|regulated)/i.test(repaired)) {
-      repaired = `${repaired.trimEnd()}\n\n---\n\n*This guide is for general information and educational purposes only. It is not legal advice. For your specific situation, consult a licensed attorney or immigration professional.*\n`
-    }
-    if (repaired !== content) {
-      content = repaired
+    const repaired = applyDeterministicRepairs({
+      content,
+      title: title || primaryKeyword,
+      primaryKeyword,
+      region,
+      indexable: plan.indexable,
+      contentType,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+      competingUrls: (input.competingUrls ?? []) as any,
+      targetUrl: plan.canonicalUrl || undefined,
+      maxWords: maxWordsForType(contentType),
+      minWords: minWordsForType(contentType),
+    })
+    if (repaired.applied.length) {
+      console.info(`[seoFactory/pipeline] deterministic repair applied: ${repaired.applied.join(', ')}`)
+      content = repaired.content
       audit = auditContent({
         content,
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
     }
   }
@@ -788,6 +806,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         primaryKeyword,
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
     }
   }
@@ -810,6 +830,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       dryRun: Boolean(input.dryRun),
       requiredShortKeywords,
       requiredLongTailKeywords,
+      maxWords,
     })
     } catch (e) {
       shipError = e instanceof Error ? e.message : 'Ship failed'

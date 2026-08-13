@@ -94,6 +94,37 @@ describe('evaluateContentQuality', () => {
     expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
   })
 
+  // 2026-08-13 live-run false positive: GLM 5.2 Fast drafted compliant
+  // caveats ("averages, not guarantees", "an average, not a guarantee",
+  // "No outcome is ever guaranteed") that the old negation detector missed,
+  // hard-blocking shipping on safe prose. All three forms must pass.
+  it('allows compliant caveats: "not guarantees" / "not a guarantee" / "No outcome … guaranteed"', () => {
+    const safe = guide(
+      'You can check current processing times on GOV.UK, but these are averages, not guarantees. ' +
+        'For a straightforward application from India this is an average, not a guarantee of a decision date. ' +
+        'No outcome is ever guaranteed — an adviser helps you present the strongest application you can. ' +
+        'There is no guarantee of approval and every application is decided on its own merits.',
+    )
+    const r = evaluateContentQuality({
+      content: safe,
+      contentType: 'legal_guide',
+      primaryKeyword: 'dependent visa uk',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
+  })
+
+  it('still blocks an affirmative promise after a negated clause ("not just help … we guarantee approval")', () => {
+    const promised = guide(
+      'Our advisers do not just help you gather documents — we guarantee your visa approval within 30 days.',
+    )
+    const r = evaluateContentQuality({
+      content: promised,
+      contentType: 'legal_guide',
+      primaryKeyword: 'dependent visa uk',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(true)
+  })
+
   it('passes calm practitioner prose', () => {
     const good = guide(
       'You gather the checklist, confirm each form number, and file only when every item matches the official instructions.',
