@@ -69,6 +69,23 @@ describe('depth expand helpers', () => {
     expect(p).not.toMatch(/Need ~400 MORE words/) // old soft target
   })
 
+  it('buildDepthAppendPrompt warns against repeating sentence openings so appended sections never re-create sentence_start_repetition', () => {
+    const p = buildDepthAppendPrompt({
+      primaryKeyword: 'student visa',
+      region: 'US',
+      minWords: 2200,
+      currentWords: 1900,
+      existingH2s: ['Eligibility'],
+      draftExcerpt: 'short',
+    })
+    expect(p).toMatch(/SENTENCE OPENINGS/)
+    // Explicitly names the failure mode (repeated 12-char subject phrase) and
+    // the remedy (pronouns / connectives / concrete nouns after first mention).
+    expect(p).toMatch(/Do NOT start 5 or more sentences/)
+    expect(p).toMatch(/same 12 characters/)
+    expect(p).toMatch(/pronouns, connectives, and concrete nouns/)
+  })
+
   it('mergeAppendedSections inserts before script', () => {
     const draft = `# Title\n\nIntro\n\n<script type="application/ld+json">{}</script>\n`
     const append = `## Extra section\n\n${'word '.repeat(50)}`

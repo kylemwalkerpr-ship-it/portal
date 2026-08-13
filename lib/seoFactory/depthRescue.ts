@@ -19,6 +19,7 @@ import {
   mergeAppendedSections,
 } from './prompts'
 import { countBodyWords } from './contentDepth'
+import { smoothSentenceRhythm } from './editorialScaffold'
 import type { ContentAiResult } from '@/lib/contentAiProvider'
 
 /** Depth-rescue attempt stats — how many expansion rounds a draft needed, how
@@ -244,7 +245,17 @@ export async function* runDepthRescue(
         })
         provider = ai.provider
         model = ai.model
-        const merged = mergeAppendedSections(content, ai.text)
+        let merged = mergeAppendedSections(content, ai.text)
+        // Rhythm guard on appended sections: the append prompt now asks the
+        // model to vary openings, but a model that already wrote "The UK
+        // dependent visa …" 5× in the original will repeat the opener in the
+        // NEW sections too. Deterministically smooth repeated 12-char
+        // openings (same repair applyDeterministicRepairs runs at ship) so
+        // the rescue never ships a robotic-rhythm draft.
+        const rhythm = smoothSentenceRhythm(merged)
+        if (rhythm.replaced > 0) {
+          merged = rhythm.content
+        }
         if (countBodyWords(merged) > currentWords) {
           content = merged
         }

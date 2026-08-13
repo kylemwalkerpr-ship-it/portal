@@ -590,6 +590,11 @@ export function buildDepthAppendPrompt(opts: {
     outlineBlock,
     '',
     'Voice: calm practitioner, second person, official-source minded, no guarantees, no AI filler.',
+    // Rhythm guard — appended sections must not re-create the
+    // sentence_start_repetition warning. The deterministic repair (applied to
+    // the merged draft afterward) catches leftovers, but instructing the model
+    // up front means new sections rarely need it.
+    'SENTENCE OPENINGS: vary every opening. Do NOT start 5 or more sentences across the page with the same 12 characters (for example, don\'t open several sentences with the same subject phrase like "The UK dependent visa"). Use pronouns, connectives, and concrete nouns after the first mention.',
     'Raw markdown only. No code fences.',
     '',
     'Context excerpt from current draft:',

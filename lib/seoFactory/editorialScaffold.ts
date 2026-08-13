@@ -273,7 +273,12 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
   const freq = new Map<string, number>()
   parts.forEach((part, i) => {
     if (i % 2 === 1) return // separator
-    const re = /[^.!?\n]*[.!?]+[ \t]*|[^.!?\n]+$/g
+    // Note: `$` in JS only matches at the very end of a string — a paragraph
+    // that ends with a newline (common for the last part of a split, or an
+    // appended section) would yield ZERO spans from the fallback alternative
+    // and the whole paragraph would be silently dropped in the rebuild. Use a
+    // lookahead that tolerates trailing whitespace/newlines instead.
+    const re = /[^.!?\n]*[.!?]+[ \t]*|[^.!?\n]+(?=\s*$)/g
     let m: RegExpExecArray | null
     let spanIdx = 0
     while ((m = re.exec(part)) !== null) {
@@ -378,7 +383,12 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
   // only for spans marked in the first pass so the splice stays consistent).
   const rebuilt = parts.map((part, i) => {
     if (i % 2 === 1) return part
-    const re = /[^.!?\n]*[.!?]+[ \t]*|[^.!?\n]+$/g
+    // Note: `$` in JS only matches at the very end of a string — a paragraph
+    // that ends with a newline (common for the last part of a split, or an
+    // appended section) would yield ZERO spans from the fallback alternative
+    // and the whole paragraph would be silently dropped in the rebuild. Use a
+    // lookahead that tolerates trailing whitespace/newlines instead.
+    const re = /[^.!?\n]*[.!?]+[ \t]*|[^.!?\n]+(?=\s*$)/g
     const out: string[] = []
     let m: RegExpExecArray | null
     let spanIdx = 0

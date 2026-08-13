@@ -571,4 +571,31 @@ One practical step here.
     expect(content).not.toMatch(/This must check the official guidance/)
     expect(content).not.toMatch(/That must check the official guidance/)
   })
+
+  it('never drops a no-punctuation paragraph that ends with a newline', () => {
+    // Regression for the depth-rescue merge: the sentence-splitting regex used
+    // `$` (end-of-string only), so a paragraph of plain tokens followed by a
+    // trailing newline — exactly how an appended section ends after a merge —
+    // produced ZERO spans and the whole paragraph was silently deleted from
+    // the rebuilt content (a 700-word block vanishing mid-draft).
+    const body = [
+      '# Guide',
+      '',
+      'The UK dependent visa allows partners to apply. The UK dependent visa requires proof of the relationship. The UK dependent visa covers children under 18. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process.',
+      '',
+      Array(50).fill('guidance').join(' '),
+      '',
+      '## Documents',
+      '',
+      'Applicants must show a valid passport. Applicants must check the official guidance. Applicants must include evidence of shared finances. Applicants must usually need translated documents. Applicants must be responsible for accuracy. Officers review each file in order of submission date. Processing times vary by office and season.',
+    ].join('\n')
+
+    const { content, replaced } = smoothSentenceRhythm(body)
+    expect(replaced).toBeGreaterThan(0) // the repeated openings ARE smoothed
+    expect(content).toMatch(/guidance guidance/)
+    // The padding paragraph's word count survives (only opener words dropped)
+    const kept = content.split(/\s+/).filter(Boolean).length
+    const input = body.split(/\s+/).filter(Boolean).length
+    expect(kept).toBeGreaterThanOrEqual(input - 12)
+  })
 })

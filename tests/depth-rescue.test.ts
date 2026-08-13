@@ -186,6 +186,36 @@ describe('runDepthRescue', () => {
     expect(done!.content).toMatch(/Student Visa Guide/)
   })
 
+  it('smooths repeated sentence openings introduced by appended sections', async () => {
+    // The appended section opens 5+ sentences with the same phrase. The rescue
+    // must deterministically smooth them (same repair the ship gate runs) so
+    // the merged draft never ships with sentence_start_repetition.
+    const repeated = [
+      '## Regional Nuances',
+      '',
+      'The UK dependent visa allows partners to apply. The UK dependent visa requires proof of the relationship. The UK dependent visa covers children under 18. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process.',
+      '',
+      // Body padding so the appended section is substantive enough to count
+      // toward the floor (the rescue only accepts word growth, not pronouns).
+      Array(700).fill('guidance').join(' '),
+    ].join('\n')
+    const { gen } = makeGenerate([
+      { growTo: 700 }, // pass 1: rewrite still short
+      { append: repeated }, // pass 2: append introduces the repeated openings
+      { append: buildAppendSection('Fees and Processing Logistics', 800) },
+    ])
+    const { done } = await drain(baseOpts({ generateText: gen }))
+
+    expect(done).not.toBeNull()
+    expect(countBodyWords(done!.content)).toBeGreaterThanOrEqual(MIN_WORDS)
+    // The section survived (headings intact) but the identical openings are
+    // gone — replaced with rotating pronouns instead of 5× the same subject.
+    expect(done!.content).toMatch(/Regional Nuances/)
+    const exactRepeat = (done!.content.match(/The UK dependent visa/g) || []).length
+    expect(exactRepeat).toBeLessThan(5)
+    expect(done!.content).toMatch(/(It|This|That) requires proof of the relationship/)
+  })
+
   it('a throwing provider pass is logged and the rescue continues', async () => {
     const { gen } = makeGenerate([
       { throw: true }, // pass 1: provider failure
