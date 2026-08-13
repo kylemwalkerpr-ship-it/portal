@@ -1237,6 +1237,11 @@ function preferProvider(): string {
   if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
     return configuredProviderOrder()[0] || 'xai'
   }
+  // GPT-5.6 model aliases in the env pin → OpenAI provider (mirrors
+  // resolveAiProviderPin so both resolution paths agree).
+  if (GPT_ALIAS_RE.test(explicit)) {
+    return 'openai'
+  }
   // Aliases → NVIDIA GLM 5.2 (preferred lead on this estate).
   // GLM 5.2 wins the NVIDIA pin even when `nvidia`/`nim` are passed, because the
   // operator-visible model label is the more accurate mental model.
@@ -1574,13 +1579,20 @@ async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): 
  * "not configured" throw when the studio forwards its GPT picker value
  * straight into the factory pipeline.
  */
+const GPT_ALIAS_RE = /^gpt-5\.6(-(?:terra|sol|luna))?$/
+
+/** Normalize a GPT-5.6 model alias to its canonical model id (bare → flagship sol). */
+function gptAliasModel(pin: string): string {
+  return pin === 'gpt-5.6' ? 'gpt-5.6-sol' : pin
+}
+
 export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: string; model?: string } {
   const pin = (raw || '').trim().toLowerCase()
   // GPT-5.6 family aliases → OpenAI provider + model override.
   // gpt-5.6 bare → gpt-5.6-sol (GPT-5.6 flagship alias), same as the
   // request-level mapping in openAiCompatibleComplete.
-  if (/^gpt-5\.6(-[a-z0-9]+)?$/.test(pin)) {
-    return { explicit: 'openai', prefer: 'openai', model: pin === 'gpt-5.6' ? 'gpt-5.6-sol' : pin }
+  if (GPT_ALIAS_RE.test(pin)) {
+    return { explicit: 'openai', prefer: 'openai', model: gptAliasModel(pin) }
   }
   const isAutoMode = !pin || pin === 'auto' || pin === 'default' || pin === 'primary'
   const explicit = isAutoMode ? '' : pin
@@ -1606,8 +1618,13 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // diagnostic instead of silently cycling through every other backend.
   if (explicit && !candidates.some((c) => c.label === prefer)) {
     const configured = candidates.map((c) => c.label).join(', ') || 'none'
+    // Show the friendly GPT alias (e.g. 'gpt-5.6-terra') when the pin was a
+    // model alias, so the message matches the picker label.
+    const display = model && GPT_ALIAS_RE.test((opts.aiProvider || '').trim().toLowerCase())
+      ? `${opts.aiProvider!.trim()} (${prefer})`
+      : prefer
     throw new Error(
-      `Selected AI provider "${prefer}" is not configured. ` +
+      `Selected AI provider "${display}" is not configured. ` +
       `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
       `Currently available providers: ${configured}.`,
     )
