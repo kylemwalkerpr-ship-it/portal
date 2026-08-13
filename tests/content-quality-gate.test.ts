@@ -138,6 +138,56 @@ describe('evaluateContentQuality', () => {
     expect(r.humanScore).toBeGreaterThanOrEqual(60)
   })
 
+  it('flags robotic rhythm across TL;DR list items (bullets count as prose)', () => {
+    // The In 60 seconds block repeats the same opener across 5 bullets — the
+    // gate must count list items so robotic bullet blocks surface as warnings
+    // (and the deterministic smoothSentenceRhythm can clear them).
+    const draft = guide('', {
+      title: 'UK dependent visa guide 2026',
+      keyword: 'uk dependent visa',
+    }).replace(
+      /## In 60 seconds\n[\s\S]*?\n\nYou need/,
+      '## In 60 seconds\n' +
+        '- The UK dependent visa allows partners to apply.\n' +
+        '- The UK dependent visa requires proof of the relationship.\n' +
+        '- The UK dependent visa covers children under 18.\n' +
+        '- The UK dependent visa is applied for online.\n' +
+        '- The UK dependent visa normally takes three weeks to process.\n\n' +
+        'You need',
+    )
+    const r = evaluateContentQuality({
+      content: draft,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk dependent visa',
+    })
+    expect(r.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(true)
+    const rhythm = r.findings.find((f) => f.code === 'sentence_start_repetition')
+    expect(rhythm?.evidence).toContain('the uk depen')
+  })
+
+  it('aggregates a bullet and a prose sentence sharing an opener under one key', () => {
+    // 3 bullets + 2 prose sentences all open "The UK dependent visa …" — the
+    // marker-stripped key must let them count together (5 total → fires),
+    // matching smoothSentenceRhythm's aggregation so the repair can clear it.
+    const draft = guide('', {
+      title: 'UK dependent visa guide 2026',
+      keyword: 'uk dependent visa',
+    }).replace(
+      /## In 60 seconds\n[\s\S]*?\n\nYou need/,
+      '## In 60 seconds\n' +
+        '- The UK dependent visa allows partners to apply.\n' +
+        '- The UK dependent visa requires proof of the relationship.\n' +
+        '- The UK dependent visa covers children under 18.\n\n' +
+        'You need a clear document set before you file. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process.',
+    )
+    const r = evaluateContentQuality({
+      content: draft,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk dependent visa',
+    })
+    expect(r.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(true)
+  })
+
   it('does NOT block factual non-outcome guarantees (housing rates / fee locks)', () => {
     const factual = guide(
       'The university publishes FY27 rates each spring. Rates are guaranteed for the academic year once posted. Security deposits are guaranteed refundable when no damage is found.',

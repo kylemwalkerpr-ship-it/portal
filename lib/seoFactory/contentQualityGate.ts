@@ -497,18 +497,38 @@ export function evaluateContentQuality(opts: {
     })
   }
 
-  // Repeated sentence starts (This / It is / There are)
-  // Ignore markdown list items and headings (enumerations, not prose rhythm)
-  // and strip bold/code markers, so a bullet list like "* **For the X
-  // stream:**" does not false-positive as repeated sentence openings.
-  const isMarkdownStructure = (s: string) =>
-    /^\s*(?:[-*+]|\d+[.)])\s/.test(s) || /^\s*#{1,6}\s/.test(s)
+  // Repeated sentence starts (This / It is / There are) — PROSE sentences AND
+  // list items (TL;DR bullets, FAQ answers) count, so robotic bullet blocks
+  // fire too. List markers are STRIPPED before the 12-char key (a bullet
+  // "- The UK dependent visa …" and a prose sentence "The UK dependent visa
+  // …" aggregate under ONE key) — exactly the aggregation smoothSentenceRhythm
+  // uses, so whatever this gate flags, the deterministic repair clears.
+  // Headings stay excluded (structure, not rhythm). Bold/code markers are
+  // stripped so "* **For the X stream:**" label lists don't false-positive.
+  //
+  // Drop HEADING LINES first (mirroring smoothSentenceRhythm's span regex,
+  // which never includes a heading line in a sentence match). A whole-body
+  // split on (?<=[.!?])\s+ — or even a paragraph-first split — glues a
+  // heading to the next line ("## In 60 seconds\n- The UK …" with no blank
+  // line between them) and the merged chunk starts with #, so it is dropped
+  // as a heading and the FIRST bullet/sentence is silently lost from the
+  // count. Removing heading lines before splitting keeps every bullet and
+  // sentence its own chunk.
+  const isHeadingLine = (s: string) => /^\s*#{1,6}\s/.test(s)
+  const stripListMarker = (s: string) => s.replace(/^\s*(?:[-*+]|\d+[.)])\s/, '')
   const stripMarkdown = (s: string) => s.trim().replace(/\*\*|__|`/g, '').trim()
   const sentences = body
-    .split(/(?<=[.!?])\s+/)
+    .split(/\n\s*\n/)
+    .flatMap((para) =>
+      para
+        .split('\n')
+        .filter((line) => !isHeadingLine(line))
+        .join('\n')
+        .split(/(?<=[.!?])\s+/),
+    )
     .map((s) => s.trim())
-    .filter((s) => s.length > 20 && !isMarkdownStructure(s))
-    .map(stripMarkdown)
+    .filter((s) => s.length > 20 && !isHeadingLine(s))
+    .map((s) => stripListMarker(stripMarkdown(s)))
   if (sentences.length >= 8) {
     const starts = sentences.map((s) => s.slice(0, 12).toLowerCase())
     const freq = new Map<string, number>()
