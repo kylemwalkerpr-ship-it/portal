@@ -66,3 +66,31 @@ describe('ownership resolver — visa route subtype separation', () => {
     expect(p.filePath).toBe('app/uk/family-visas/page.tsx')
   })
 })
+
+describe('ownership resolver — university/geo modifier vs generic hub separation', () => {
+  it('never routes a university modifier (boulder student visas) to the generic student-visas hub', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'boulder student visas',
+      contentType: 'legal_guide',
+      region: 'US',
+    })
+    // The 2026-08 incident: this keyword matched the "us student visas hub" row
+    // (both carry the "student" route subtype) and overwrote the live hub.
+    expect(p.matched).toBeNull()
+    expect(p.routingSource).toBe('standing_rules')
+    expect(p.host).toBe('usa')
+    expect(p.canonicalUrl).not.toContain('legal.yousafeconsultancy.com/us/student-visas')
+    expect(p.canonicalUrl).toContain('boulder')
+    expect(p.contentType).toBe('regional_university')
+  })
+
+  it('still matches a registry university row when the geo scope is shared', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'auburn university student housing',
+      contentType: 'regional_university',
+      region: 'US',
+    })
+    expect(p.routingSource).toBe('registry_owner_url')
+    expect(p.canonicalUrl).toContain('auburn-university')
+  })
+})

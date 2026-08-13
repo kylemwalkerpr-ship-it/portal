@@ -185,6 +185,53 @@ const ROUTE_SUBTYPE_SPELLING: Record<string, string> = {
   dependant: 'dependent',
 }
 
+/**
+ * City / university / state / province modifiers that make a keyword
+ * geographically specific. Region-level markers (us/uk/ca/au) are deliberately
+ * NOT here — regionMismatchPenalty handles those. Housing/tenant keywords are
+ * also handled separately (they stay on legal).
+ *
+ * 2026-08 incident: "boulder student visas" / "boulder f-1 visa" (university
+ * modifiers) matched the generic "us student visas hub" row — both carry the
+ * "student" route subtype — and overwrote the hub + f1-rejection-recovery with
+ * Boulder-specific content. A keyword carrying a geo/university modifier must
+ * NEVER resolve to a generic route/hub row that lacks that modifier.
+ */
+const GEO_UNIVERSITY_TOKENS =
+  'university|universities|college|campus|downtown|' +
+  // universities with caseworks/regional pages or registry rows
+  'cornell|auburn|kansas state|utah|creighton|american university|king\'s college|' +
+  'washington|nyu|mit|harvard|stanford|ucla|berkeley|' +
+  // cities (estate + majors)
+  'boulder|austin|boston|seattle|omaha|atlanta|chicago|dallas|denver|houston|' +
+  'los angeles|miami|new york|phoenix|portland|san diego|san francisco|' +
+  'london|manchester|edinburgh|toronto|vancouver|melbourne|sydney|brisbane|' +
+  // US states + DC + CA provinces
+  'alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|' +
+  'florida|georgia|hawaii|idaho|illinois|indiana|iowa|kentucky|louisiana|' +
+  'maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|' +
+  'montana|nebraska|nevada|new hampshire|new jersey|new mexico|north carolina|' +
+  'north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|' +
+  'south dakota|tennessee|texas|vermont|virginia|washington dc|west virginia|' +
+  'wisconsin|wyoming|ontario|british columbia|alberta|quebec'
+
+/** Regex over all geo/university modifiers (case-insensitive). */
+export const GEO_MODIFIER_RE = new RegExp(
+  '\\b(?:' + GEO_UNIVERSITY_TOKENS + '|university of [a-z-]+)\\b',
+  'i',
+)
+
+/** All distinct geo/university modifiers present in a subject string. */
+export function extractGeoModifiers(text: string): string[] {
+  const seen = new Set<string>()
+  const re = new RegExp(GEO_MODIFIER_RE.source, 'gi')
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text || '')) !== null) {
+    seen.add(m[0].toLowerCase().replace(/\s+/g, ' ').trim())
+  }
+  return [...seen]
+}
+
 /** All distinct, normalized route subtypes present in a subject string. */
 export function extractRouteSubtypes(text: string): string[] {
   const seen = new Set<string>()
@@ -265,6 +312,29 @@ function intentMismatchPenalty(keyword: string, primary: string): number {
   return Math.min(60, penalty)
 }
 
+/**
+ * Hard-separate geo/university-modifier keywords from generic route/hub rows
+ * that share the same route subtype (2026-08 "boulder student visas" → the
+ * "us student visas hub" row — both read "student", so intentMismatchPenalty
+ * alone can't stop the match).
+ *
+ * Rules (symmetric):
+ *   - keyword geo-specific, row generic            → +55 (hard block → standing rules)
+ *   - keyword generic, row geo-specific            → +40
+ *   - both geo-specific but different scopes       → +55 (austin ≠ boston)
+ *   - both carry the SAME modifier                 → 0  (legit university-row match)
+ */
+function geoScopeMismatchPenalty(keyword: string, primary: string): number {
+  const kwG = extractGeoModifiers(keyword)
+  const prG = extractGeoModifiers(primary)
+  if (kwG.length && !prG.length) return 55
+  if (!kwG.length && prG.length) return 40
+  if (kwG.length && prG.length) {
+    return kwG.some((x) => prG.includes(x)) ? 0 : 55
+  }
+  return 0
+}
+
 /** Penalize registry rows when keyword region conflicts with entry region signals. */
 function regionMismatchPenalty(keyword: string, primary: string, ownerUrl?: string): number {
   const kw = keyword.toLowerCase()
@@ -302,7 +372,10 @@ function scoreMatch(keyword: string, primary: string, ownerUrl?: string): number
   // phrase containment
   if (a.includes(b) || b.includes(a)) {
     // Even when one phrase contains the other, check for intent mismatch
-    const ip = intentMismatchPenalty(keyword, primary) + regionPen
+    const ip =
+      intentMismatchPenalty(keyword, primary) +
+      regionPen +
+      geoScopeMismatchPenalty(keyword, primary)
     if (ip >= 40) {
       // Strong penalty — the keywords share words but describe fundamentally different things
       // e.g. "stem category occupations list" matches "document checklist" on "express entry" only
@@ -322,8 +395,11 @@ function scoreMatch(keyword: string, primary: string, ownerUrl?: string): number
   const j = overlap / union
   const coverage = overlap / bw.length
   let raw = Math.round(Math.max(j, coverage) * 90)
-  // Apply intent + region mismatch penalties
-  const ip = intentMismatchPenalty(keyword, primary) + regionPen
+  // Apply intent + region + geo-scope mismatch penalties
+  const ip =
+    intentMismatchPenalty(keyword, primary) +
+    regionPen +
+    geoScopeMismatchPenalty(keyword, primary)
   if (ip > 0) {
     raw = Math.round(raw * (1 - Math.min(ip, 90) / 100))
   }
@@ -480,11 +556,15 @@ export function standingRulesHost(opts: {
     return { host, contentType: 'regional_from', reason: 'geo_modifier from-country → regional' }
   }
 
-  // University modifier → regional campus graph (strategy default)
+  // University / geo modifier → regional campus graph (strategy default).
+  // Curated city/state/university tokens included so "boulder student visas"
+  // (a university modifier that shares the "student" route subtype with the
+  // legal student-visas hub) can never fall back to the generic hub — it gets
+  // a dedicated regional universities entry. Housing/tenant keywords are
+  // excluded (they stay on legal, matching the estate's renting-* pages).
   if (
     contentType === 'regional_university' ||
-    (/\buniversity\b|\bcollege\b|\bmit\b|\bnyu\b|\bharvard\b/i.test(kw) &&
-      !/housing|tenant|rent/i.test(kw))
+    (GEO_MODIFIER_RE.test(kw) && !/housing|tenant|rent/i.test(kw))
   ) {
     let host: OwnerHost = 'usa'
     if (/uk|london|kcl|ucl|manchester|edinburgh/i.test(kw) || region === 'UK') host = 'uk'
@@ -493,7 +573,7 @@ export function standingRulesHost(opts: {
     return {
       host,
       contentType: 'regional_university',
-      reason: 'university_modifier → regional universities graph',
+      reason: 'university/geo modifier → regional universities graph',
     }
   }
 

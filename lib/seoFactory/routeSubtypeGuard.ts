@@ -1,24 +1,23 @@
 /**
- * Ship-time route-subtype guard — refuse to deploy when the resolved canonical
- * path already hosts a page whose visa/immigration route subtype differs from
- * the article being shipped.
+ * Ship-time overwrite guard — refuse to deploy when the resolved canonical
+ * path already hosts a page that the incoming article must not overwrite:
  *
- * Root cause of the 2026-08 overwrite incident: the ownership resolver matched
- * "uk graduate visa requirements" onto the spouse-visa-document-checklist page
- * and shipped, silently overwriting live spouse-visa content. The resolver
- * fallback is now fixed (intentMismatchPenalty), but this guard is the last
- * line of defence at the Git-write door: even if routing ever mis-resolves
- * again, we refuse to overwrite an existing page that is clearly about a
- * different route subtype (spouse / child / graduate / student / …).
+ *   1. ROUTE-SUBTYPE CONFLICT — a different visa/immigration route subtype
+ *      (spouse / child / graduate / student / …), e.g. the 2026-08 incident
+ *      where "uk graduate visa requirements" shipped onto the
+ *      spouse-visa-document-checklist page.
+ *   2. GEO-SCOPE CONFLICT — a city/university-specific article (e.g. "boulder
+ *      student visas") shipped onto a generic route/hub page of the SAME route
+ *      subtype, or a generic article overwriting a geo-specific page.
  *
  * Fail-closed on ambiguity is NOT desired here (parse failures must not block
- * legitimate new-page ships), so the guard only blocks when BOTH sides carry a
- * recognizable route subtype AND the sets are disjoint. A missing existing file
- * (new page) or an unparseable existing subject passes.
+ * legitimate new-page ships), so the guard only blocks when a conflict is
+ * clearly detectable. A missing existing file (new page) or an unparseable
+ * existing subject passes.
  */
 
 import { getRepoFileContent } from '@/lib/githubContents'
-import { extractRouteSubtypes } from './ownership'
+import { extractGeoModifiers, extractRouteSubtypes } from './ownership'
 
 export interface RouteSubtypeConflict {
   conflict: boolean
@@ -74,6 +73,37 @@ export function extractExistingPageSubject(fileContent: string, filePath: string
 }
 
 /**
+ * True when the article and existing page sit at different geo/university
+ * scopes. Catches the 2026-08 companion incident: "boulder student visas" and
+ * the generic "us student visas hub" share the "student" route subtype, so the
+ * route-subtype check alone passes — but a city-specific article must never
+ * overwrite a generic hub, and a generic article must never overwrite a
+ * city/university-specific page.
+ *
+ * Fails open when neither side carries a geo/university modifier.
+ */
+export function geoScopeConflict(
+  articleSubject: string,
+  existingSubject: string,
+): GeoScopeConflict {
+  const a = extractGeoModifiers(articleSubject)
+  const b = extractGeoModifiers(existingSubject)
+  if (a.length && !b.length) return { conflict: true, article: a, existing: [] }
+  if (!a.length && b.length) return { conflict: true, article: [], existing: b }
+  if (a.length && b.length) {
+    const shared = a.some((x) => b.includes(x))
+    if (!shared) return { conflict: true, article: a, existing: b }
+  }
+  return { conflict: false }
+}
+
+export interface GeoScopeConflict {
+  conflict: boolean
+  article?: string[]
+  existing?: string[]
+}
+
+/**
  * Throw if the target path already hosts a page whose route subtype differs from
  * the incoming article's. Called immediately before any GitHub write.
  */
@@ -98,6 +128,22 @@ export async function assertNoRouteSubtypeConflict(opts: {
         `but that path already hosts "${subject}" (route subtypes [${(c.article || []).join(', ')}] vs ` +
         `[${(c.existing || []).join(', ')}]). This would overwrite unrelated content. ` +
         `Re-plan the keyword/slug or merge the two pages intentionally before shipping.`,
+    )
+  }
+
+  const g = geoScopeConflict(opts.primaryKeyword, subject)
+  if (g.conflict) {
+    const a = (g.article || []).join(', ')
+    const b = (g.existing || []).join(', ')
+    const why = a && b
+      ? `different geo/university scopes (article [${a}] vs existing [${b}])`
+      : a
+        ? `the article is ${a}-specific but the existing page is a generic route/hub page`
+        : `the existing page is ${b}-specific but the article is generic`
+    throw new Error(
+      `Ship refused — geo-scope conflict: "${opts.primaryKeyword}" resolves to ${opts.filePath}, ` +
+        `but that path already hosts "${subject}" (${why}). A city/university-specific article must ` +
+        `never overwrite a generic hub and vice versa. Re-plan the keyword/slug or merge intentionally.`,
     )
   }
 }
