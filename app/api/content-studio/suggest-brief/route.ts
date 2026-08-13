@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
+import { resolveBriefAiProvider } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
@@ -39,19 +40,14 @@ export async function POST(req: NextRequest) {
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
-    // GPT-5.6 Sol (flagship) and GPT-5.6 Terra (balanced) are the only
-    // models responsible for Research/Discover and Review. The admin
-    // selects one from the dropdown; both route through the OpenAI provider.
-    const rawProvider = String(body.aiProvider || 'gpt-5.6-terra').trim()
-    let aiProvider = rawProvider || 'openai'
-    let modelOverride: string | undefined
-    if (rawProvider === 'gpt-5.6-sol') {
-      aiProvider = 'openai'
-      modelOverride = 'gpt-5.6-sol'
-    } else if (rawProvider === 'gpt-5.6-terra') {
-      aiProvider = 'openai'
-      modelOverride = 'gpt-5.6-terra'
-    }
+    // OpenAI ChatGPT is the ONLY model family responsible for the brief
+    // (see lib/seoFactory/briefModel). GPT-5.6 Sol (flagship) when explicitly
+    // requested; every other value — including 'auto' or a stale drafting
+    // provider id — coerces to GPT-5.6 Terra on OpenAI. A non-OpenAI model
+    // can never draft the brief.
+    const { aiProvider, model: modelOverride } = resolveBriefAiProvider(
+      String(body.aiProvider || ''),
+    )
 
     // GSC live data
     const gscImpressions = Number(body.gscImpressions) || 0
@@ -213,6 +209,10 @@ export async function POST(req: NextRequest) {
       maxTokens: 8000,
       temperature: 0.3,
       timeoutMs: 90_000,
+      // The brief belongs to ChatGPT alone: if OpenAI fails (bad key, quota,
+      // timeout), throw the explicit-provider error instead of cascading to
+      // the open-source drafting backends (baseten/nvidia/cloudflare).
+      exclusive: true,
     })
 
     // Strip markdown code fences + extract JSON object from model response.

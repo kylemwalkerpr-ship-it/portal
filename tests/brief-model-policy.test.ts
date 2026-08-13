@@ -1,0 +1,192 @@
+/**
+ * Brief-model policy — OpenAI ChatGPT is the ONLY model responsible for the
+ * Research/Plan brief.
+ *
+ * 2026-08 regression: the suggest-brief route forwarded body.aiProvider
+ * verbatim, so a stray 'auto' or a stale drafting provider id
+ * ('baseten-deepseek', 'nvidia-glm'…) silently sent the brief through the
+ * open-source drafting cascade instead of ChatGPT. These tests lock:
+ *
+ *  1. resolveBriefAiProvider coerces EVERY non-GPT value to OpenAI/Terra —
+ *     only an explicit gpt-5.6-sol request gets Sol; anything else (including
+ *     'auto' and any open-source provider id) becomes OpenAI + gpt-5.6-terra.
+ *  2. exclusive: true means the brief can never cascade to a non-OpenAI
+ *     backend: if OpenAI fails, the call throws the explicit-provider error
+ *     instead of returning prose drafted by baseten/nvidia/cloudflare.
+ */
+jest.mock('@/lib/aiKeyVault', () => ({
+  buildVaultEnvOverrides: jest.fn(async () => ({})),
+}))
+
+import { resolveBriefAiProvider } from '@/lib/seoFactory/briefModel'
+import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
+
+describe('resolveBriefAiProvider — OpenAI ChatGPT is the only brief model', () => {
+  it('gpt-5.6-terra and gpt-5.6 default to OpenAI + Terra', () => {
+    expect(resolveBriefAiProvider('gpt-5.6-terra')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
+    })
+    expect(resolveBriefAiProvider('')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
+    })
+  })
+
+  it('gpt-5.6-sol (and bare gpt-5.6 alias) → OpenAI + Sol', () => {
+    expect(resolveBriefAiProvider('gpt-5.6-sol')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-sol',
+    })
+    expect(resolveBriefAiProvider('gpt-5.6')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-sol',
+    })
+    // Case-insensitive
+    expect(resolveBriefAiProvider('GPT-5.6-SOL')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-sol',
+    })
+  })
+
+  it('EVERY other value coerces to OpenAI + Terra — never a non-OpenAI provider', () => {
+    const leaks = [
+      'auto',
+      '',
+      'default',
+      'baseten-deepseek',
+      'baseten-glm-fast',
+      'nvidia-glm',
+      'nvidia-nemotron',
+      'glm-fast',
+      'cloudflare-ai',
+      'openai', // provider id without a model → Terra (balanced default)
+      'gpt-5.6-luna', // Luna is efficient/high-volume — not brief-grade
+      '  gpt-5.6-terra  ', // whitespace normalized
+    ]
+    for (const raw of leaks) {
+      const resolved = resolveBriefAiProvider(raw)
+      expect({ raw, resolved }).toEqual({
+        raw,
+        resolved: { aiProvider: 'openai', model: 'gpt-5.6-terra' },
+      })
+    }
+  })
+})
+
+describe('exclusive pin — the brief never cascades to open-source backends', () => {
+  const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'CONTENT_AI_RETRY'] as const
+  const saved: Record<string, string | undefined> = {}
+  const originalFetch = global.fetch
+
+  beforeAll(() => {
+    for (const k of envKeys) saved[k] = process.env[k]
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    for (const k of envKeys) {
+      if (saved[k] == null) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  })
+
+  const json = (payload: unknown) =>
+    new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+
+  it('complete path: OpenAI failure throws the explicit-provider error — baseten/nvidia never called', async () => {
+    // OpenAI + BOTH fallbacks configured: without `exclusive`, a failing
+    // OpenAI would cascade to nvidia and "succeed". With `exclusive` it must
+    // refuse to hand the brief to a non-OpenAI backend.
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input, init) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.openai.com')) {
+        throw new Error('openai upstream 500')
+      }
+      // Any non-OpenAI backend would "succeed" — reaching this branch is the bug.
+      return json({ choices: [{ message: { content: 'FALLBACK-DRAFTED-BRIEF' }, finish_reason: 'stop' }] })
+    }) as typeof fetch
+
+    await expect(
+      generateContentText({
+        aiProvider: 'gpt-5.6-terra',
+        system: 'You are the brief architect.',
+        prompt: 'TOPIC: dependent visa uk',
+        exclusive: true,
+      }),
+    ).rejects.toThrow(/explicit ai provider "openai" failed|openai upstream 500/i)
+
+    // Only the OpenAI endpoint was hit — zero fallback calls.
+    expect(urls.filter((u) => !u.includes('api.openai.com')).length).toBe(0)
+    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(true)
+  })
+
+  it('complete path: unconfigured OpenAI with exclusive throws "not configured" — no silent auto-pick', async () => {
+    // No OPENAI_API_KEY, but baseten/nvidia ARE configured. Auto mode would
+    // pick one of them and draft the brief — exclusive must refuse.
+    delete process.env.OPENAI_API_KEY
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+
+    global.fetch = jest.fn(async () =>
+      json({ choices: [{ message: { content: 'SHOULD-NEVER-HAPPEN' }, finish_reason: 'stop' }] }),
+    ) as typeof fetch
+
+    await expect(
+      generateContentText({
+        aiProvider: 'gpt-5.6-terra',
+        system: 'You are the brief architect.',
+        prompt: 'TOPIC: dependent visa uk',
+        exclusive: true,
+      }),
+    ).rejects.toThrow(/not configured/i)
+
+    // No upstream call at all — the early-fail fired before any provider.
+    expect(global.fetch).toHaveBeenCalledTimes(0)
+  })
+
+  it('stream path: OpenAI is the only provider attempted with exclusive', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.openai.com')) {
+        throw new Error('openai stream down')
+      }
+      return new Response('data: [DONE]\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as typeof fetch
+
+    const events: Array<{ type: string; provider?: string; model?: string; text?: string }> = []
+    await expect(async () => {
+      for await (const ev of generateContentTextStream({
+        aiProvider: 'gpt-5.6-terra',
+        system: 'You are the brief architect.',
+        prompt: 'TOPIC: dependent visa uk',
+        exclusive: true,
+      })) {
+        events.push(ev as { type: string; provider?: string; model?: string; text?: string })
+      }
+    }).rejects.toThrow(/openai|explicit/i)
+
+    // Only OpenAI was contacted — the cascade never reached baseten/nvidia.
+    expect(urls.filter((u) => !u.includes('api.openai.com')).length).toBe(0)
+    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(true)
+  })
+})

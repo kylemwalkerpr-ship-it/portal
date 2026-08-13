@@ -97,6 +97,12 @@ export interface ContentAiOptions {
   /** Per-call deadline override (ms). Brief generation uses 45s; depth
    *  rescue uses the default 180s. When unset, COMPLETE_TIMEOUT_MS applies. */
   timeoutMs?: number
+  /** Exclusive pin: only the selected provider may serve this request — no
+   *  cascade fallback to other backends. Used by the Research/Plan brief so
+   *  OpenAI ChatGPT alone is responsible (2026-08 policy). When true and the
+   *  pinned provider fails or is unconfigured, the call throws instead of
+   *  silently shipping a brief drafted by baseten/nvidia/cloudflare. */
+  exclusive?: boolean
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -1690,7 +1696,14 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   const { explicit, prefer, model } = resolveAiProviderPin(opts.aiProvider)
   if (model && !opts.model) opts = { ...opts, model }
   const errors: string[] = []
-  const candidates = orderedCompleters(opts, prefer)
+  let candidates = orderedCompleters(opts, prefer)
+
+  // Exclusive pin (e.g. the Research brief): OpenAI ChatGPT alone must draft
+  // it — never silently fall back to the open-source backends. Truncate the
+  // cascade to just the pinned provider so any failure surfaces loudly.
+  if (opts.exclusive) {
+    candidates = candidates.filter((c) => c.label === prefer)
+  }
 
   // Early-fail: if the admin explicitly selected a provider but it isn't
   // in the cascade (missing API key), throw immediately with a clear
@@ -1941,13 +1954,19 @@ export async function* generateContentTextStream(
 
   // Dedupe preserving order (DeepSeek first, Cloudflare second by default)
   const seen = new Set<string>()
-  const unique = candidates
+  let unique = candidates
     .filter((c) => {
       if (seen.has(c.label)) return false
       seen.add(c.label)
       return true
     })
     .slice(0, maxProviderCandidates())
+
+  // Exclusive pin: only the selected provider may serve this request — no
+  // cascade to other backends (the Research brief belongs to ChatGPT alone).
+  if (opts.exclusive) {
+    unique = unique.filter((c) => c.label === prefer)
+  }
 
   let explicitProviderFailed = false
   for (const c of unique) {
