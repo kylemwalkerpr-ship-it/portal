@@ -290,7 +290,20 @@ export async function shipContent(opts: {
     contentType: opts.contentType,
     indexable: opts.plan.indexable,
   })
-  // 2) Voice, tonality, AI-slop, outcome promises, human cadence, keyword coverage
+  // 2) Rhythm beyond the deterministic repair's clearing range — the repair
+  // ran above on shipContent_ (mechanical fixes applied); if robotic sentence
+  // openings STILL fire, the mechanical repair cannot clear them and only the
+  // AI targeted sweep can. Refuse ship rather than ship robotic rhythm.
+  // Runs BEFORE assertQualityGate so even the ≥7× blocker case surfaces this
+  // actionable message instead of the generic "Same sentence opening repeated"
+  // line — the exact opener + count + sweep direction.
+  assertRhythmWithinRepairRange({
+    content: shipContent_,
+    contentType: opts.contentType,
+    primaryKeyword: opts.primaryKeyword,
+    indexable: opts.plan.indexable,
+  })
+  // 2b) Voice, tonality, AI-slop, outcome promises, human cadence, keyword coverage
   assertQualityGate({
     content: shipContent_,
     contentType: opts.contentType,
@@ -298,16 +311,6 @@ export async function shipContent(opts: {
     indexable: opts.plan.indexable,
     requiredShortKeywords: opts.requiredShortKeywords,
     requiredLongTailKeywords: opts.requiredLongTailKeywords,
-  })
-  // 2b) Rhythm beyond the deterministic repair's clearing range — the repair
-  // ran above on shipContent_ (mechanical fixes applied); if robotic sentence
-  // openings STILL fire, the mechanical repair cannot clear them and only the
-  // AI targeted sweep can. Refuse ship rather than ship robotic rhythm.
-  assertRhythmWithinRepairRange({
-    content: shipContent_,
-    contentType: opts.contentType,
-    primaryKeyword: opts.primaryKeyword,
-    indexable: opts.plan.indexable,
   })
   // 3) Host · path · format + build-safe payload (CTAPanel, balanced JSX, FM)
   assertShipAllowed({
