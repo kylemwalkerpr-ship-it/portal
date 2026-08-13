@@ -485,6 +485,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             primaryKeyword,
             region,
             minWords,
+            maxWords,
             currentWords,
             existingH2s: extractH2Titles(content),
             draftExcerpt: content,

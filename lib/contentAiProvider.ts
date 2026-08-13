@@ -57,6 +57,8 @@ const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
 const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
 const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
 const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+/** Baseten-hosted GLM 5.2 Fast — efficient high-volume drafting partner. */
+const BASETEN_GLM_MODEL = 'zai-org/GLM-5.2-Fast'
 /** Default separate reasoning budget for NVIDIA NIM models that ACCEPT the
  *  `reasoning_budget` body param. Verified live: only Nemotron accepts it —
  *  NVIDIA DeepSeek V4 Flash returns 400 "Unsupported parameter(s)" for it, so
@@ -574,9 +576,32 @@ export function getBasetenProvider(): OpenAiCompat | null {
   }
 }
 
+/** Baseten-hosted GLM 5.2 Fast — a fast, efficient partner for drafting.
+ *  Reuses the same BASETEN_API_KEY; model overridable via BASETEN_GLM_MODEL. */
+export function getBasetenGlmFastProvider(): OpenAiCompat | null {
+  const apiKey = resolveBasetenApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'baseten-glm-fast',
+    baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
+    apiKey,
+    model: env('BASETEN_GLM_MODEL') || BASETEN_GLM_MODEL,
+    maxTokensCap: BASETEN_MAX_TOKENS,
+  }
+}
+
 async function basetenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
   const p = getBasetenProvider()
   if (!p) throw new Error('Baseten not configured (BASETEN_API_KEY)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+  })
+}
+
+async function basetenGlmFastComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getBasetenGlmFastProvider()
+  if (!p) throw new Error('Baseten GLM 5.2 Fast not configured (BASETEN_API_KEY)')
   return openAiCompatibleComplete(p, {
     ...opts,
     maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
@@ -1201,6 +1226,12 @@ export function listConfiguredContentProviders(): Array<{
       role: 'primary',
     },
     {
+      id: 'baseten-glm-fast',
+      label: 'GLM 5.2 Fast via Baseten',
+      configured: isBasetenConfigured(),
+      role: 'fallback',
+    },
+    {
       id: 'nvidia-deepseek',
       label: 'DeepSeek V4 Flash via NVIDIA (primary)',
       configured: isNvidiaDeepseekConfigured(),
@@ -1263,6 +1294,10 @@ function preferProvider(): string {
   ) {
     return 'nvidia-nemotron'
   }
+  // Aliases → Baseten GLM 5.2 Fast (mirrors configuredProviderOrder)
+  if (explicit === 'glm-fast' || explicit === 'baseten-glm' || explicit === 'baseten-glm-fast') {
+    return 'baseten-glm-fast'
+  }
   // Aliases → NVIDIA DeepSeek primary
   if (
     explicit === 'deepseek' ||
@@ -1289,7 +1324,7 @@ function preferProvider(): string {
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
     'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
-    'baseten', 'baseten-deepseek',
+    'baseten', 'baseten-deepseek', 'baseten-glm-fast',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
@@ -1334,10 +1369,11 @@ function configuredProviderOrder(): string[] {
     glm: 'nvidia-glm', 'glm-5.2': 'nvidia-glm', 'z-ai': 'nvidia-glm',
     nemotron: 'nvidia-nemotron', 'nemotron-3-ultra': 'nvidia-nemotron',
     baseten: 'baseten-deepseek', 'baseten-deepseek': 'baseten-deepseek',
+    'glm-fast': 'baseten-glm-fast', 'baseten-glm': 'baseten-glm-fast',
     nvidia: 'nvidia-deepseek', nim: 'nvidia-deepseek',
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
-  const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
+  const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-glm-fast', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   return [...configured, ...[...known].filter((id) => !configured.includes(id))]
@@ -1383,6 +1419,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushBaseten = () => {
     if (isBasetenConfigured()) {
       items.push({ label: 'baseten-deepseek', run: () => basetenComplete(opts) })
+    }
+  }
+  const pushBasetenGlmFast = () => {
+    if (isBasetenConfigured()) {
+      items.push({ label: 'baseten-glm-fast', run: () => basetenGlmFastComplete(opts) })
     }
   }
   const pushNvidia = () => {
@@ -1442,6 +1483,12 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (prefer === 'baseten-glm-fast') {
+    pushBasetenGlmFast()
+    pushBaseten()
+    pushGlm()
+    pushNvidia()
+    pushCf()
   } else if (prefer === 'nvidia-nemotron') {
     if (isNvidiaNemotronConfigured()) items.push({ label: 'nvidia-nemotron', run: () => nvidiaNemotronComplete(opts) })
     pushGlm()
@@ -1466,6 +1513,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     // explicitly selected or promoted by the saved admin provider order.
     pushGlm()
     pushBaseten()
+    pushBasetenGlmFast()
     pushGrok()
     pushOpenAi()
     pushNvidia()
@@ -1478,6 +1526,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   pushNemotron()
   pushGlm()
   pushBaseten()
+  pushBasetenGlmFast()
   pushGrok()
   pushOpenAi()
   pushNvidia()
@@ -1730,6 +1779,20 @@ export async function* generateContentTextStream(
     })
   }
 
+  // Baseten-hosted GLM 5.2 Fast — streaming partner for high-volume drafting.
+  const basetenGlmFast = getBasetenGlmFastProvider()
+  if (basetenGlmFast) {
+    candidates.push({
+      label: 'baseten-glm-fast',
+      stream: () =>
+        openAiCompatibleStream(basetenGlmFast, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+        }),
+      complete: () => basetenGlmFastComplete(opts),
+    })
+  }
+
   // NVIDIA DeepSeek remains available as a separate fallback/explicit pin.
   const nvidia = getNvidiaDeepseekProvider()
   if (nvidia) {
@@ -1817,7 +1880,7 @@ export async function* generateContentTextStream(
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  } else if (prefer === 'baseten-deepseek') {
+  } else if (prefer === 'baseten-deepseek' || prefer === 'baseten-glm-fast') {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)

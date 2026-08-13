@@ -144,6 +144,16 @@ export function buildFactorySystemPrompt(opts: {
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
     'Cite official sources with full https URLs: USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP as relevant.',
     '',
+    'SHIP GATES — pass ALL of these before you submit; the audit re-checks every one and blocks the ship on any failure:',
+    `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`,
+    '- STRUCTURE: H1 + "## In 60 seconds" TL;DR (3–5 direct bullets) + opening answer ≤40 words + ≥4 H2 sections + FAQ (4–6 Q&A) + ## Sources + short educational disclaimer.',
+    '- SCHEMA: Article JSON-LD AND FAQPage JSON-LD in <script type="application/ld+json"> blocks.',
+    '- META: description 140–160 chars containing the primary keyword and a concrete next step.',
+    '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
+    '- KEYWORDS: every short keyword appears ≥1× and ≤4×; every long-tail keyword ≥1× and ≤2× (details in KEYWORD COVERAGE below).',
+    '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
+    '- SOURCES: official .gov / .edu / institutional URLs only — never fabricate a citation or a URL.',
+    '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
     '- Google: clear primary intent match, entity coverage, helpful depth, crawlable structure, E-E-A-T signals (who this is for, what steps, which official rules).',
@@ -399,6 +409,11 @@ export function buildFactoryUserPrompt(opts: {
   /** Ranking-model guidance (recommendedActions + forecast) — threads into the prompt. */
   modelGuidance?: ModelGuidanceInput | null
 }): string {
+  // The word-count window is dictated by the canonical depth spec for THIS
+  // content type — never a hardcoded floor. The brief, the audit, and the
+  // ship gate all enforce these exact numbers, so the drafting prompt must
+  // state them verbatim and cap the overshoot that produced 3,000-word pages.
+  const spec = depthSpecForType(opts.contentType)
   const parts = [
     `Title hint: ${opts.title}`,
     `Topic: ${opts.topic}`,
@@ -416,14 +431,17 @@ export function buildFactoryUserPrompt(opts: {
     '',
     playbookDirective(opts.opportunityAction),
     '',
+    `LENGTH (${spec.label}): ${spec.minWords}–${spec.maxWords} body words, target ~${spec.targetWords}. BOTH under ${spec.minWords} (thin) and over ${spec.maxWords} (bloated) are rejected by the audit — this is a measured gate, not a suggestion. YAML front matter, JSON-LD, and code fences do NOT count. Write complete but tight: concrete procedures, documents, risks, and FAQs earn length; padding and repetition do not. If you exceed ${spec.maxWords}, stop and trim to the last complete sentence inside the window.`,
     'Write the full page now. Front matter first, then body. Raw markdown only.',
-    'LENGTH: legal guides must clear ~1,800+ body words; thin stubs are auto-rejected and rewritten. Prefer long, concrete sections over short summaries.',
   ]
   if (opts.refineNotes) {
     parts.push(
       '',
-      '## REVISION REQUIRED',
-      'A previous draft failed the SEO audit. Fix ALL of the following issues in a complete rewrite (must stay as long or longer):',
+      '## REVISION REQUIRED — SURGICAL FIXES ONLY',
+      'A previous draft failed the SEO audit. Fix ONLY the specific issues listed below — do NOT regenerate the whole article.',
+      'For each issue, edit the smallest affected text (the flagged sentences, a single section, or the front matter) and keep everything that already passes. ' +
+        'Rewriting sections that already pass re-introduces voice/schema/depth failures and wastes tokens.',
+      'Keep the total body words inside the LENGTH window above.',
       opts.refineNotes,
     )
   }
@@ -484,6 +502,7 @@ export function buildDepthExpandPrompt(opts: {
     `CURRENT body word count: ${opts.currentWords}`,
     `HARD MINIMUM: ${opts.minWords} body words of real prose (YAML + JSON-LD + code fences do NOT count)`,
     `TARGET: ~${opts.targetWords} words`,
+    maxWords < 99999 ? `HARD MAXIMUM: ${maxWords} body words — the audit ALSO rejects bloated pages over the cap. Stop adding once you pass ${opts.targetWords}; do not overshoot into ${maxWords}+ territory.` : '',
     `This is a measured gate: the audit counts every body word and REJECTS the page below ${opts.minWords}. Under-delivering is the ONLY failure that matters. If you pass ${opts.targetWords} words the audit is satisfied.`,
     `You must ADD at least ${deficit + 250} more words of substance than the current draft. Do not stop writing until the total body prose clears ${opts.minWords} words.`,
     '',
@@ -523,6 +542,7 @@ export function buildDepthAppendPrompt(opts: {
   primaryKeyword: string
   region: string
   minWords: number
+  maxWords?: number
   currentWords: number
   existingH2s: string[]
   draftExcerpt: string
@@ -531,6 +551,7 @@ export function buildDepthAppendPrompt(opts: {
    *  appends add NEW substance instead of repeating the same sections. */
   focus?: string
 }): string {
+  const maxWords = opts.maxWords ?? 99999
   const deficit = Math.max(0, opts.minWords - opts.currentWords)
   // Demand at least the full remaining deficit, plus headroom so a
   // single successful append can clear the floor in one pass.
@@ -551,6 +572,7 @@ export function buildDepthAppendPrompt(opts: {
     `Primary keyword: ${opts.primaryKeyword}`,
     `Region: ${opts.region}`,
     `Current body words: ${opts.currentWords}. You MUST add at least ${need} MORE words this pass — the gate needs ${opts.minWords} total and the audit re-measures after every pass.`,
+    maxWords < 99999 ? `HARD CEILING: the FULL page must stay at or under ${maxWords} body words — if current + new would exceed ${maxWords}, write the minimum needed to clear ${opts.minWords} and stop.` : '',
     'Return ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing sections).',
     'Existing H2 titles (do not repeat these headings):',
     ...(opts.existingH2s.length ? opts.existingH2s.map((h) => `- ${h}`) : ['- (none parsed)']),
@@ -584,12 +606,20 @@ export function auditToRefineNotes(audit: {
   /** When known, force expansion language */
   minWords?: number
   targetWords?: number
+  /** When known, force a hard ceiling so drafts stop overshooting. */
+  maxWords?: number
 }): string {
   const min = audit.minWords ?? 2200
   const target = audit.targetWords ?? Math.round(min * 1.1)
+  const max = audit.maxWords
   const lines: string[] = [
-    `Previous score: ${audit.score}. Body word count was ${audit.wordCount} (HARD MIN ${min}, target ~${target}).`,
+    `Previous score: ${audit.score}. Body word count was ${audit.wordCount} (HARD MIN ${min}, target ~${target}${max ? `, HARD MAX ${max}` : ''}).`,
   ]
+  if (max && audit.wordCount > max) {
+    lines.push(
+      `- BLOCKER OVER-LENGTH: Draft is ${audit.wordCount} words — ABOVE the HARD MAX ${max}. Trim redundant sections, condense padding, and return a page between ${min} and ${max} words. Do NOT add new sections; tighten what exists.`,
+    )
+  }
   if (audit.wordCount < min) {
     lines.push(
       `- BLOCKER DEPTH: Draft has only ${audit.wordCount} body words — ILLEGAL for ship. Produce a COMPLETE page of at least ${min} words (aim ${target}).`,

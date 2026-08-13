@@ -2309,6 +2309,7 @@ function RecheckDuePanel() {
                   { id: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra', configured: false, model: 'nvidia/nemotron-3-ultra-550b-a55b' },
                   { id: 'nvidia-glm', label: 'NVIDIA GLM 5.2', configured: false, model: 'z-ai/glm-5.2' },
                    { id: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten', configured: false, model: 'deepseek-ai/DeepSeek-V4-Flash-0731' },
+                  { id: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten', configured: false, model: 'zai-org/GLM-5.2-Fast' },
                   { id: 'nvidia-deepseek', label: 'NVIDIA DeepSeek', configured: false, model: 'deepseek-ai/deepseek-v4-flash-0731' },
                   { id: 'grok', label: 'Grok (xAI)', configured: false, model: 'grok-3' },
                   { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-terra' },

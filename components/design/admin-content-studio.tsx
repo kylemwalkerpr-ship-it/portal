@@ -211,6 +211,7 @@ const AI_PROVIDER_OPTIONS: { value: string; label: string }[] = [
   { value: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b)' },
   { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 · preferred)' },
   { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten (preferred)' },
+  { value: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten (zai-org/GLM-5.2-Fast)' },
   { value: 'nvidia-deepseek', label: 'NVIDIA DeepSeek' },
   { value: 'cloudflare-ai', label: 'Cloudflare Workers AI' },
   { value: 'groq', label: 'Groq (Llama)' },

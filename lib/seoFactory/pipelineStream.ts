@@ -574,7 +574,7 @@ export async function* runSeoFactoryPipelineStream(
         requiredLongTailKeywords,
       })
       refineNotes = [
-        auditToRefineNotes({ ...audit, minWords, targetWords }),
+        auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),
         !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
       ]
         .filter(Boolean)
@@ -672,7 +672,7 @@ export async function* runSeoFactoryPipelineStream(
           indexable: plan.indexable,
         })
         refineNotes = [
-          auditToRefineNotes({ ...audit, minWords, targetWords }),
+          auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),
           !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
         ]
           .filter(Boolean)
@@ -867,7 +867,7 @@ export async function* runSeoFactoryPipelineStream(
         requiredLongTailKeywords,
       })
       refineNotes = [
-        auditToRefineNotes({ ...audit, minWords, targetWords }),
+        auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),
         !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
       ]
         .filter(Boolean)
