@@ -44,21 +44,29 @@ export type ReauditResponse = {
 
 /**
  * Depth-mediation plan — the pure, testable description of how to clear the
- * Google depth floor. The editor renders this as "Expand to depth floor" when
- * a draft is below minWords, and the fix_depth PATCH action executes the same
- * plan (append-only: preserves everything that passes and adds new H2
- * sections until the floor clears). Returns ok=true when the floor is met so
- * callers can skip AI expansion entirely.
+ * Google depth floor AND the word_count_target warning. The editor renders
+ * this as "Expand to depth floor" when a draft is below minWords, or "Expand
+ * to target depth" when it meets the floor but still sits under the target
+ * (the word_count_target warning — e.g. 2380/2200–2500). The fix_depth PATCH
+ * action executes the same plan (append-only: preserves everything that
+ * passes and adds new H2 sections until the GOAL clears). Returns ok=true
+ * when the goal is met so callers can skip AI expansion entirely.
  */
 export type DepthMediationPlan = {
-  /** True when the draft already meets the floor — nothing to expand. */
+  /** True when the draft already meets the goal — nothing to expand. */
   ok: boolean
   message: string
   currentWords: number
   minWords: number
   targetWords: number
   maxWords: number
-  /** Word gap to the floor (minWords - currentWords, ≥0). */
+  /** What we are expanding toward: minWords when below the floor, else
+   *  targetWords (clears the word_count_target warning). */
+  goalWords: number
+  /** True when the hard floor is already met (only the target warning
+   *  remains). Lets the UI label the button "target" vs "floor". */
+  floorMet: boolean
+  /** Word gap to the goal (goalWords - currentWords, ≥0). */
   deficit: number
   /** Append-only expansion prompt (only when !ok). */
   prompt?: string
@@ -72,22 +80,28 @@ export function depthMediationPlan(
 ): DepthMediationPlan {
   const spec = depthSpecForType(contentType || 'legal_guide')
   const currentWords = countBodyWords(content)
-  const deficit = Math.max(0, spec.minWords - currentWords)
+  const floorMet = currentWords >= spec.minWords
+  const goalWords = floorMet ? spec.targetWords : spec.minWords
+  const deficit = Math.max(0, goalWords - currentWords)
   if (deficit === 0) {
     return {
       ok: true,
-      message: 'Depth floor met',
+      message: floorMet ? 'Depth target met' : 'Depth floor met',
       currentWords,
       minWords: spec.minWords,
       targetWords: spec.targetWords,
       maxWords: spec.maxWords,
+      goalWords,
+      floorMet,
       deficit: 0,
     }
   }
   const prompt = buildDepthAppendPrompt({
     primaryKeyword: primaryKeyword || 'guide',
     region: region || 'US',
-    minWords: spec.minWords,
+    // The append prompt computes its deficit from minWords — pass the goal so
+    // it demands enough new words to clear the floor OR the target warning.
+    minWords: goalWords,
     maxWords: spec.maxWords,
     currentWords,
     existingH2s: extractH2Titles(content),
@@ -95,11 +109,15 @@ export function depthMediationPlan(
   })
   return {
     ok: false,
-    message: `Below Google-depth floor: ${currentWords} body words (min ${spec.minWords}, target ~${spec.targetWords}). Append-only expansion will add new H2 sections until the floor clears.`,
+    message: floorMet
+      ? `Meets the ${spec.minWords}-word floor but under target ~${spec.targetWords} (${currentWords}/${spec.targetWords}). Append-only expansion will add new H2 sections until the target clears.`
+      : `Below Google-depth floor: ${currentWords} body words (min ${spec.minWords}, target ~${spec.targetWords}). Append-only expansion will add new H2 sections until the floor clears.`,
     currentWords,
     minWords: spec.minWords,
     targetWords: spec.targetWords,
     maxWords: spec.maxWords,
+    goalWords,
+    floorMet,
     deficit,
     prompt,
   }

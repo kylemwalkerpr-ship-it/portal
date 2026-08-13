@@ -102,10 +102,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [expandingDepth, setExpandingDepth] = useState(false)
   const [shipReady, setShipReady] = useState<boolean | null>(null)
   const [depthGate, setDepthGate] = useState<{ ok: boolean; message: string } | null>(null)
-  // Depth-mediation plan — how far below the floor the draft is, so the
-  // ship-gate strip can show "1813/2200 words" and offer the Expand button.
+  // Depth-mediation plan — how far below the goal (floor OR word-count target)
+  // the draft is, so the ship-gate strip can show "1813/2200 words" or
+  // "2380/2500 target" and offer the Expand button. goalWords is the goal the
+  // append-only expansion aims at; floorMet distinguishes the hard floor
+  // blocker from the word_count_target warning.
   const [depthMediation, setDepthMediation] = useState<{
-    ok: boolean; message: string; currentWords: number; minWords: number; targetWords: number; maxWords: number; deficit: number
+    ok: boolean; message: string; currentWords: number; minWords: number; targetWords: number; maxWords: number; goalWords: number; floorMet: boolean; deficit: number
   } | null>(null)
   // Merged quality + audit warnings (schema/meta/internal-links included).
   const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
@@ -479,15 +482,19 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           </span>
           <span style={{ color: C.textMuted, flex: 1, lineHeight: 1.4 }}>
             {shipReady
-              ? 'Quality + depth floors pass. Warnings do not block shipping — clear them for the best reader engagement and AI-overview eligibility.'
+              ? (depthMediation && !depthMediation.ok && depthMediation.floorMet
+                  ? `Meets the ${depthMediation.minWords}-word floor but under the ${depthMediation.targetWords}-word target (${depthMediation.currentWords}/${depthMediation.targetWords}) — expand to clear the word_count_target warning.`
+                  : 'Quality + depth floors pass. Warnings do not block shipping — clear them for the best reader engagement and AI-overview eligibility.')
               : (depthGate && !depthGate.ok
                   ? `${depthGate.message}${depthMediation && depthMediation.currentWords > 0 ? ` — ${depthMediation.currentWords}/${depthMediation.minWords} words` : ''}`
                   : 'Quality blockers remain — resolve them in the issues panel.')}
           </span>
-          {/* Depth-mediation button — only when the floor is the blocker and an
-              append-only expansion can clear it. GPT Sol (senior editor) writes
-              the new sections by default; Terra is the fast alternative. */}
-          {!shipReady && depthGate && !depthGate.ok && (
+          {/* Depth-mediation button — whenever the plan says there is depth to
+              add: below the floor (hard gate) OR meeting the floor but under
+              the word-count target (word_count_target warning). GPT Sol
+              (senior editor) writes the new sections by default; Terra is the
+              fast alternative. */}
+          {depthMediation && !depthMediation.ok && (
             <button
               type="button"
               data-testid="studio-expand-depth"
@@ -502,7 +509,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             >
               {expandingDepth
                 ? `Expanding… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
-                : `Expand to depth floor${depthMediation && depthMediation.deficit > 0 ? ` (${depthMediation.deficit} words)` : ''}`}
+                : depthMediation.deficit > 0
+                  ? depthMediation.floorMet
+                    ? `Expand to target depth (${depthMediation.deficit} words)`
+                    : `Expand to depth floor (${depthMediation.deficit} words)`
+                  : (depthMediation.floorMet ? 'Expand to target depth' : 'Expand to depth floor')}
             </button>
           )}
         </div>

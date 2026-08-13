@@ -4,7 +4,7 @@ import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
-import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType } from '@/lib/seoFactory/contentDepth'
 import { auditLinksLive, stripDeadLinks } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
@@ -205,6 +205,10 @@ export async function PATCH(request: NextRequest) {
     // Depth-mediation plan — hoisted so the appliedRepairs block below can
     // report the floor numbers after the append-only expansion runs.
     let depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
+    // True when fix_warnings routed word_count_target through the append-only
+    // depth expansion (the sweep cannot pad) — lets the appliedRepairs block
+    // report the growth like fix_depth does.
+    let depthExpandedForWarnings = false
 
     if (action === 'fix_all' && annotations && annotations.length > 0) {
       // Build a comprehensive fix prompt listing every issue
@@ -263,22 +267,46 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       // missing_second_person, wall_of_text, missing_reader_path…) carry no
       // inline evidence, so they were never fixable before. The sweep prompt
       // lists them with their remediation and asks for minimal edits.
-      const sys = 'You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.'
-      fixedContent = await callAiFix(sys, buildWarningsFixPrompt(content, warnings), 16384, reviewModel)
+      //
+      // word_count_target is special: the sweep is told NOT to pad, so it can
+      // never add the missing words. Route it through the append-only depth
+      // expansion (same as fix_depth) so "Fix all warnings" actually clears it.
+      fixedContent = content
+      const hasDepthWarning = warnings.some((w) => w.code === 'word_count_target')
+      if (hasDepthWarning) {
+        depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
+        if (!depthPlan.ok && depthPlan.prompt) {
+          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+          const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+          const merged = mergeAppendedSections(content, appended)
+          if (countBodyWords(merged) > countBodyWords(content)) {
+            fixedContent = merged
+            depthExpandedForWarnings = true
+          }
+        }
+      }
+      // Sweep the REMAINING warnings with minimal edits (depth already handled
+      // above — do not ask the sweep to pad on top of the expansion).
+      const rest = warnings.filter((w) => w.code !== 'word_count_target')
+      if (rest.length) {
+        const sys = 'You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.'
+        fixedContent = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+      }
 
     } else if (action === 'fix_depth') {
-      // DEPTH MEDIATION — the Google depth floor is the other hard ship gate.
-      // A draft can be "100/100 quality" yet ship-blocked at 1813/2200 words
-      // (the exact case in the editor screenshot). The fix is append-only:
-      // buildDepthAppendPrompt asks the review model to write NEW H2 sections
-      // (never touching existing content, which already passed quality), and
-      // mergeAppendedSections splices them in before the schema block. This
-      // preserves every passing section instead of forcing a full rewrite that
-      // re-introduces voice/depth failures.
+      // DEPTH MEDIATION — the Google depth floor AND the word_count_target
+      // warning share one mechanism. A draft can be "100/100 quality" yet
+      // ship-blocked at 1813/2200 words, or warning-listed at 2380/2200–2500.
+      // The fix is append-only: buildDepthAppendPrompt asks the review model
+      // to write NEW H2 sections (never touching existing content, which
+      // already passed quality), and mergeAppendedSections splices them in
+      // before the schema block. This preserves every passing section instead
+      // of forcing a full rewrite that re-introduces voice/depth failures.
       depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
       if (depthPlan.ok) {
-        // Floor already met — nothing to expand; keep the draft as-is and
-        // re-evaluate below so the response reflects the true state.
+        // Goal (floor OR target) already met — nothing to expand; keep the
+        // draft as-is and re-evaluate below so the response reflects the true
+        // state.
         fixedContent = content
       } else {
         const before = countBodyWords(content)
@@ -320,16 +348,23 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       requiredLongTailKeywords,
       competingUrls: (body as any).competingUrls,
         targetUrl: (body as any).targetUrl,
+      // The append prompt demands ≥500 new words even for a small target gap —
+      // the deterministic trim keeps an overshooting expansion inside the
+      // type's window (2026-08-13 regression: fix_depth overshot past max).
+      maxWords: maxWordsForType(String(contentType || 'legal_guide')),
+      minWords: minWordsForType(String(contentType || 'legal_guide')),
     })
     fixedContent = repaired.content
 
     // Depth mediation is append-only — record the growth so the editor can
-    // show what actually happened (e.g. "expanded 1813 → 2261 words"). Only
-    // report it when the floor was actually below minimum (plan.ok=false).
+    // show what actually happened (e.g. "expanded 1813 → 2261 words"). Report
+    // it for fix_depth AND for the word_count_target branch of fix_warnings.
     let depthRepair: string | undefined
-    if (action === 'fix_depth' && !depthPlan.ok) {
+    if ((action === 'fix_depth' || depthExpandedForWarnings) && !depthPlan.ok) {
       const grewWords = countBodyWords(fixedContent)
-      depthRepair = `expanded to ${grewWords} body words (floor ${depthPlan.minWords}, target ~${depthPlan.targetWords})`
+      depthRepair = depthPlan.floorMet
+        ? `expanded to ${grewWords} body words (target ${depthPlan.targetWords})`
+        : `expanded to ${grewWords} body words (floor ${depthPlan.minWords}, target ~${depthPlan.targetWords})`
     }
 
     // Re-evaluate the fixed content — contract evaluation (quality gate +

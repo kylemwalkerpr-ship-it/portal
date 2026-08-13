@@ -431,13 +431,44 @@ describe('depthMediationPlan (the mechanism that clears the depth floor)', () =>
     expect(result.depthMediation!.message).toContain('Append-only expansion')
   })
 
-  it('returns ok=true with no prompt when the draft already meets the floor', () => {
+  it('returns ok=true with no prompt when the draft already meets the target', () => {
     const full = buildPassingArticle()
     const plan = depthMediationPlan(full, 'legal_guide', 'us visa renewal')
     expect(plan.ok).toBe(true)
     expect(plan.deficit).toBe(0)
     expect(plan.prompt).toBeUndefined()
-    expect(plan.message).toBe('Depth floor met')
+    expect(plan.floorMet).toBe(true)
+    expect(plan.goalWords).toBe(plan.targetWords)
+    expect(plan.message).toBe('Depth target met')
+  })
+
+  it('expands toward the TARGET (not just the floor) when the draft meets the floor but sits under target — the word_count_target warning case', () => {
+    // Full fixture is ~2683 words (≥ target 2500); trim sections to land a
+    // draft INSIDE the 2200–2500 band so the floor passes but the target
+    // warning fires (the exact "2380/2500" case the user reported).
+    const between = buildPassingArticle()
+    // Crop one section (~340 words) → ≈2340 words, still ≥ 2200 floor.
+    const cropped = between.replace(/## Common mistakes[\s\S]*?(?=## |$)/, '')
+    const plan = depthMediationPlan(cropped, 'legal_guide', 'us visa renewal', 'US')
+    expect(plan.floorMet).toBe(true)      // floor clears
+    expect(plan.ok).toBe(false)           // …but the plan says there is depth to add
+    expect(plan.goalWords).toBe(2500)     // goal is the target, not the floor
+    expect(plan.deficit).toBeGreaterThan(0)
+    expect(plan.deficit).toBeLessThan(2500 - 2200)
+    expect(plan.prompt).toBeTruthy()
+    // Prompt demands enough words to clear the TARGET, and lists it.
+    expect(plan.prompt).toContain('2500')
+    expect(plan.message).toContain('under target')
+    expect(plan.message).toContain('Append-only expansion')
+  })
+
+  it('returns ok=true with no prompt when the draft already meets the floor', () => {
+    const full = buildPassingArticle()
+    const plan = depthMediationPlan(full, 'legal_guide', 'us visa renewal')
+    expect(plan.floorMet).toBe(true)
+    expect(plan.ok).toBe(true)
+    expect(plan.deficit).toBe(0)
+    expect(plan.prompt).toBeUndefined()
   })
 
   it('builds an append-only expansion prompt that preserves existing sections', () => {
