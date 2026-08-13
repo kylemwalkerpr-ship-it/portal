@@ -574,7 +574,24 @@ export async function POST(request: NextRequest) {
               .from('content_jobs')
               .update({ error_message: msg, status: 'failed' })
               .eq('id', id)
-            results.push({ id, ok: false, error: msg })
+            // Structured rhythm-refusal detail so the ship dialog can render
+            // the exact repeated opener + count instead of a generic failure.
+            const rm = msg.match(/sentence_start_repetition \((\d+)× "([^"]+)…"\) exceeds the deterministic repair's clearing range/)
+            if (rm) {
+              results.push({
+                id,
+                ok: false,
+                error: msg,
+                detail: {
+                  code: 'rhythm_beyond_repair',
+                  rhythmKey: rm[2],
+                  rhythmCount: Number(rm[1]),
+                  message: msg,
+                },
+              })
+            } else {
+              results.push({ id, ok: false, error: msg })
+            }
           }
         } else {
           results.push({ id, ok: false, error: `Unknown bulk action ${action}` })

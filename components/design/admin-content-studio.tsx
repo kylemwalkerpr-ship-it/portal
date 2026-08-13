@@ -548,7 +548,7 @@ function ApprovePanel({
   merges: any[]
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
-  onApproveAndMerge?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
+  onApproveAndMerge?: (j: ContentJob) => Promise<{ ok: boolean; message?: string; rhythmDetail?: { key: string; count: number } | null }>
   onMerged?: () => void
 }) {
   const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
@@ -565,6 +565,12 @@ function ApprovePanel({
     startedAt: number
     finishedAt?: number
   }>>({})
+  // Ship-time rhythm refusals per job (structured detail from the approve API):
+  // opener key + count, so the row can name exactly what the AI sweep must fix.
+  const [rhythmRefusals, setRhythmRefusals] = React.useState<Record<string, { key: string; count: number } | null>>({})
+  const setRhythmRefusal = React.useCallback((jobId: string, refusal: { key: string; count: number } | null) => {
+    setRhythmRefusals((prev) => ({ ...prev, [jobId]: refusal }))
+  }, [])
   const runApproveRow = React.useCallback(async (j: ContentJob) => {
     if (!onApproveAndMerge) return
     const started = Date.now()
@@ -626,6 +632,10 @@ function ApprovePanel({
           finishedAt: Date.now(),
         },
       }))
+      // Surface the ship-time rhythm refusal (structured detail from the
+      // approve API) as a dedicated notice naming the opener + count.
+      const rhythmDetail = (result as { rhythmDetail?: { key: string; count: number } | null }).rhythmDetail
+      setRhythmRefusal(j.id, rhythmDetail ?? null)
       if (ok) onMerged?.()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Push failed'
@@ -633,9 +643,10 @@ function ApprovePanel({
         ...prev,
         [j.id]: { stage: 'failed', message, startedAt: started, finishedAt: Date.now() },
       }))
+      setRhythmRefusal(j.id, null)
       setActionNotice?.(message)
     }
-  }, [onApproveAndMerge, setActionNotice, onMerged])
+  }, [onApproveAndMerge, setActionNotice, onMerged, setRhythmRefusal])
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
@@ -718,6 +729,37 @@ function ApprovePanel({
                         </a>
                       </div>
                     )}
+                  </div>
+                )}
+                {/* Ship-time rhythm refusal: the deterministic repair ran but
+                    could not clear the robotic openings — name the exact opener
+                    + count and direct to the AI targeted sweep. */}
+                {rhythmRefusals[j.id] && (
+                  <div data-testid={`studio-rhythm-refusal-${j.id}`} style={{
+                    marginTop: 8, padding: '9px 11px', background: '#FEF2F2',
+                    border: `1px solid #FECACA`, borderLeft: `3px solid #DC2626`,
+                  }}>
+                    <div style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: '#991B1B', marginBottom: 4 }}>
+                      ⛔ RHYTHM BEYOND REPAIR · {rhythmRefusals[j.id]!.count}× "{rhythmRefusals[j.id]!.key}…"
+                    </div>
+                    <div style={{ fontFamily: C.mono, fontSize: 9.5, color: '#7F1D1D', lineHeight: 1.5 }}>
+                      The mechanical rhythm repair ran but cannot clear these repeated sentence openings — the AI targeted sweep is required before ship.
+                    </div>
+                    <div style={{ marginTop: 5 }}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenJob(j)}
+                        data-testid={`studio-rhythm-refusal-cta-${j.id}`}
+                        style={{
+                          padding: '4px 10px', borderRadius: 4, border: 'none',
+                          background: '#DC2626', color: '#FFF',
+                          fontFamily: C.mono, fontSize: 9, fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Open in editor → Re-audit (AI sweep)
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -4470,7 +4512,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // repair + shipContent) and finishes with monitorContentJob. After the
   // promise resolves we re-fetch jobs so VII · Approve surfaces the merged
   // status and VII · Track gets a fresh stamp.
-  const runApproveAndMerge = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string }> => {
+  const runApproveAndMerge = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string; rhythmDetail?: { key: string; count: number } | null }> => {
     try {
       const response = await fetch('/api/content-studio/jobs', {
         method: 'POST',
@@ -4495,7 +4537,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       )
       setActionNotice?.(message)
       void fetchJobs().catch(() => { /* best-effort refresh */ })
-      return { ok, message }
+      return { ok, message, rhythmDetail: (first?.detail && typeof first.detail === 'object' && (first.detail as { code?: string }).code === 'rhythm_beyond_repair')
+        ? { key: String((first.detail as { rhythmKey?: string }).rhythmKey || '?'), count: Number((first.detail as { rhythmCount?: number }).rhythmCount) || 0 }
+        : null }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Approve failed'
       setActionNotice?.(message)
