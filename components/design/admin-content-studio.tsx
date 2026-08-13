@@ -34,6 +34,7 @@ import { subscribeToTable } from '@/lib/supabaseRealtime'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
+import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { StudioStageNav } from './studio-stage-nav'
@@ -4197,6 +4198,21 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally { setLoading(false) }
   }, [])
 
+  // Deep-link from the Rhythm Alerts panel: fetch the job by id (it may not be
+  // in the current queue view) and open the JobDetail modal for remediation.
+  const openRhythmAlertJob = React.useCallback(async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(jobId)}`, { credentials: 'same-origin' })
+      const data = (await res.json().catch(() => ({}))) as { job?: ContentJob; error?: string }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (!data.job) throw new Error('Job not found')
+      setSelectedJob(data.job)
+      setQueueFocusJobId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open rhythm-alert job')
+    }
+  }, [])
+
   // Best-effort index of merged clusters → job pages
   const fetchMergeIndex = React.useCallback(async () => {
     try {
@@ -5818,6 +5834,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                   <span style={{ fontSize: 14 }}>🩺</span>SITE HEALTH
                 </div>
                 <AdminSiteHealthPanel />
+              </section>
+
+              {/* Rhythm Alerts (weekly scan) */}
+              <section style={{
+                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+              }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>🎼</span>RHYTHM ALERTS <span style={{ color: E.inkMuted, fontWeight: 400 }}>— weekly sentence-opening scan</span>
+                </div>
+                <AdminRhythmAlertsPanel onOpenJob={(jobId) => { void openRhythmAlertJob(jobId) }} />
               </section>
             </div>
 

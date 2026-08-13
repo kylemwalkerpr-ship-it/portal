@@ -1,0 +1,39 @@
+name: Rhythm Scan Weekly
+
+# Every Monday 06:00 UTC — scans stored drafts for sentence_start_repetition
+# that slipped through the gate, persists alerts to content_rhythm_alerts, and
+# posts the flagged list to the admin dashboard. Can also be run on demand
+# from the Actions tab.
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max drafts to scan (default 500)'
+        required: false
+        default: '500'
+
+jobs:
+  rhythm-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger weekly rhythm scan
+        run: |
+          set -euo pipefail
+          URL="${PORTAL_URL:-https://portal.yousafeconsultancy.com}/api/cron/rhythm-scan-weekly"
+          LIMIT="${LIMIT:-500}"
+          echo "POST $URL (limit=$LIMIT)"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"limit\":${LIMIT}}")
+          echo "HTTP $code"
+          cat /tmp/resp.json || true
+          echo
+          test "$code" = "200"
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PORTAL_URL: ${{ vars.PORTAL_URL }}
+          LIMIT: ${{ github.event.inputs.limit || '500' }}
