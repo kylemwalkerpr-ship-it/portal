@@ -1,4 +1,4 @@
-import { applyDeterministicRepairs, ensureEditorialScaffold } from '@/lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, ensureEditorialScaffold, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -470,5 +470,105 @@ One practical step here.
     })
     expect(r.applied.some((a) => a.startsWith('trim_to_max_words'))).toBe(false)
     expect(r.content).toContain('genuine and subsisting relationship')
+  })
+
+  it('clears the sentence_start_repetition warning — 5× "The UK dependent visa" openings get varied pronouns', () => {
+    // The exact live-run failure: the drafting model opened 5+ sentences with
+    // the same 12-char phrase. The AI sweep is told to vary openings but often
+    // does not; the deterministic rhythm repair must clear it on the same pass.
+    const body = [
+      '# UK Dependent Visa Guide',
+      '',
+      '## Eligibility',
+      '',
+      'The department publishes guidance for dependents of visa holders. The UK dependent visa allows partners to apply. The UK dependent visa requires proof of the relationship. The UK dependent visa covers children under 18. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process.',
+      '',
+      '## Documents',
+      '',
+      'Passport, financial evidence, and accommodation details must all be supplied before the application is submitted for assessment by the case officer. You should keep certified copies of everything you send to the department.',
+      '',
+      '## FAQ',
+      '',
+      '### Do children need separate applications?',
+      'Yes when they travel on a dependent visa and the sponsor meets the financial requirement for each child.',
+    ].join('\n')
+
+    const { content, applied } = applyDeterministicRepairs({
+      content: body,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk dependent visa',
+      title: 'UK Dependent Visa Guide',
+      region: 'UK',
+      indexable: true,
+    })
+
+    expect(applied.some((a) => a.startsWith('sentence_rhythm'))).toBe(true)
+    // The first occurrence is kept verbatim; the repeated openings are replaced
+    // with pronouns (It / This / That), so the exact phrase no longer repeats.
+    const ukDependentCount = (content.match(/The UK dependent visa/g) || []).length
+    expect(ukDependentCount).toBeLessThan(5)
+    expect(ukDependentCount).toBeGreaterThanOrEqual(1)
+
+    const audit = auditContent({
+      content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk dependent visa',
+      indexable: true,
+    })
+    expect(audit.warnings.some((w) => w.code === 'sentence_start_repetition')).toBe(false)
+    expect(audit.blockers.some((b) => b.code === 'sentence_start_repetition')).toBe(false)
+  })
+
+  it('never mangles a noun-phrase tail — "The UK dependent visa fees are…" stays untouched', () => {
+    // Safety guard: the tail after the repeated phrase must start with a verb.
+    // "fees are paid" begins with a NOUN, so that sentence must NOT be
+    // rewritten into "It fees are paid…".
+    const body = [
+      '# UK Dependent Visa Guide',
+      '',
+      '## Eligibility',
+      '',
+      'The department publishes guidance for dependents of visa holders. The UK dependent visa allows partners to apply. The UK dependent visa requires proof of the relationship. The UK dependent visa covers children under 18. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process. The UK dependent visa fees are paid when you submit.',
+      '',
+      '## Documents',
+      '',
+      'Passport, financial evidence, and accommodation details must all be supplied before the application is submitted for assessment by the case officer. You should keep certified copies of everything you send to the department.',
+      '',
+      '## FAQ',
+      '',
+      '### Do children need separate applications?',
+      'Yes when they travel on a dependent visa and the sponsor meets the financial requirement for each child.',
+    ].join('\n')
+
+    const { content } = smoothSentenceRhythm(body)
+    expect(content).toContain('The UK dependent visa fees are paid when you submit.')
+    // The four safe verb-led sentences ARE rewritten (rotating It/This/That);
+    // the noun-led one is not.
+    expect(content).toMatch(/(It|This|That) requires proof of the relationship/)
+    expect(content).not.toMatch(/It fees are paid/)
+  })
+
+  it('uses plural pronouns for repeated plural subjects ("Applicants must…")', () => {
+    const body = [
+      '# UK Dependent Visa Guide',
+      '',
+      '## Eligibility',
+      '',
+      'The department publishes guidance for dependents of visa holders. Applicants must show a valid passport. Applicants must check the official guidance. Applicants must include evidence of shared finances. Applicants must usually need translated documents. Applicants must be responsible for accuracy. The department assesses every application on its own merits. Officers review each file in order of submission date. Processing times vary by office and season. Refusals can be appealed within strict time limits.',
+      '',
+      '## FAQ',
+      '',
+      '### Do children need separate applications?',
+      'Yes when they travel on a dependent visa and the sponsor meets the financial requirement for each child.',
+    ].join('\n')
+
+    const { content, replaced } = smoothSentenceRhythm(body)
+    expect(replaced).toBeGreaterThan(0)
+    // All rewrites use PLURAL openers (They/These/Those) — the subject
+    // "Applicants" is plural, so "It must…" must never appear.
+    expect(content).toMatch(/(They|These|Those) must check the official guidance/)
+    expect(content).not.toMatch(/It must check the official guidance/)
+    expect(content).not.toMatch(/This must check the official guidance/)
+    expect(content).not.toMatch(/That must check the official guidance/)
   })
 })

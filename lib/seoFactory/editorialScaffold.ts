@@ -189,6 +189,246 @@ export function normalizeReaderStructure(body: string): string {
  * ship gate and the studio remediation loop so a miss clears on the NEXT run
  * instead of blocking forever. Returns what was applied so UIs can surface it.
  */
+/** Deterministic sentence-opening rhythm smoothing — clears the
+ *  sentence_start_repetition warning WITHOUT an AI pass. The gate flags ≥5
+ *  prose sentences sharing the same 12-char opening ("The UK dependent
+ *  visa" ×5, the exact 2026-08 live-run case). Human editors fix this by
+ *  replacing the repeated subject with a pronoun; we do the same
+ *  mechanically: keep the first occurrence, then rewrite later occurrences
+ *  of the same leading phrase with "It / This / That" (or plural forms),
+ *  rotating so the replacement openers never themselves repeat ≥5 times.
+ *
+ * Safety guards (a bad rewrite is worse than the warning):
+ *  - Only rewrites when the leading phrase is a shared noun phrase
+ *    (≥2 words, or a single plural noun like "Applicants").
+ *  - The remainder after the phrase must begin with a recognized verb /
+ *    auxiliary / adverb from TAIL_OPENERS ("requires", "is", "must"…), so
+ *    "The UK dependent applicant" or "The visa fees are…" never get mangled
+ *    into "It applicant…" / "It fees are…".
+ *  - Never rewrites when the leading word is just a determiner ("The… The
+ *    dog…" would become "It dog…").
+ */
+export function smoothSentenceRhythm(body: string): { content: string; replaced: number } {
+  const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'our', 'your', 'their', 'its', 'my', 'his', 'her', 'no', 'any', 'some', 'each', 'every'])
+  const SINGULAR_OPENERS = ['It', 'This', 'That']
+  const PLURAL_OPENERS = ['They', 'These', 'Those']
+  // Conservative tail allowlist: after the repeated noun phrase, the rest must
+  // begin with a recognized verb / auxiliary / adverb. Anything else (a noun
+  // like "fees" in "The visa fees are…") is SKIPPED — a mangled rewrite is
+  // worse than the warning. Verbs are listed in the 3rd-person singular /
+  // plain forms these guides actually use.
+  const TAIL_OPENERS = new Set([
+    'is', 'are', 'was', 'were', 'has', 'have', 'had', 'can', 'could', 'may', 'might',
+    'must', 'shall', 'should', 'will', 'would', 'do', 'does', 'did', 'be', 'been', 'being',
+    'requires', 'require', 'covers', 'cover', 'allows', 'allow', 'permits', 'permit',
+    'provides', 'provide', 'offers', 'offer', 'includes', 'include', 'needs', 'need',
+    'supports', 'support', 'protects', 'protect', 'applies', 'apply', 'takes', 'take',
+    'gives', 'give', 'sets', 'set', 'lists', 'list', 'outlines', 'outline', 'explains',
+    'explain', 'helps', 'help', 'ensures', 'ensure', 'guarantees', 'guarantee', 'makes',
+    'make', 'means', 'mean', 'restricts', 'restrict', 'limits', 'limit', 'excludes',
+    'exclude', 'entitles', 'entitle', 'qualifies', 'qualify', 'counts', 'count', 'costs',
+    'cost', 'charges', 'charge', 'varies', 'vary', 'depends', 'depend', 'follows',
+    'follow', 'works', 'work', 'starts', 'start', 'begins', 'begin', 'ends', 'end',
+    'remains', 'remain', 'stays', 'stay', 'holds', 'hold', 'keeps', 'keep', 'shows',
+    'show', 'states', 'state', 'notes', 'note', 'mentions', 'mention', 'advises',
+    'advise', 'warns', 'warn', 'recommends', 'recommend', 'suggests', 'suggest', 'says',
+    'say', 'claims', 'claim', 'confirms', 'confirm', 'verifies', 'verify', 'proves',
+    'prove', 'demonstrates', 'demonstrate', 'illustrates', 'illustrate', 'describes',
+    'describe', 'details', 'detail', 'specifies', 'specify', 'mandates', 'mandate',
+    'prohibits', 'prohibit', 'forbids', 'forbid', 'precludes', 'preclude', 'demands',
+    'demand', 'requests', 'request', 'asks', 'ask', 'expects', 'expect', 'accepts',
+    'accept', 'approves', 'approve', 'rejects', 'reject', 'issues', 'issue', 'grants',
+    'grant', 'processes', 'process', 'handles', 'handle', 'checks', 'check', 'reviews',
+    'review', 'evaluates', 'evaluate', 'assesses', 'assess', 'considers', 'consider',
+    'normally', 'usually', 'typically', 'generally', 'often', 'sometimes', 'frequently',
+    'regularly', 'currently', 'normally', 'always', 'rarely', 'usually', 'also', 'still',
+    'even', 'just', 'only', 'then', 'now', 'first', 'next', 'finally', 'once', 'after',
+    'before', 'when', 'if', 'unless', 'while', 'though', 'although', 'however',
+    'instead', 'similarly', 'likewise', 'conversely', 'additionally', 'therefore',
+    'consequently', 'thus', 'hence', 'ultimately', 'eventually', 'typically',
+  ])
+  const isMarkdownStructure = (s: string) =>
+    /^\s*(?:[-*+]|\d+[.)])\s/.test(s) || /^\s*#{1,6}\s/.test(s)
+  const stripMarkdown = (s: string) => s.trim().replace(/\*\*|__|`/g, '').trim()
+  const pluralHead = (w: string) => {
+    const lw = w.toLowerCase()
+    if (/(ss|us|is)$/.test(lw)) return false
+    return lw.endsWith('s')
+  }
+
+  // Split into paragraphs (preserving separators) so sentence rewrites never
+  // cross a paragraph boundary or mangle list/heading lines.
+  const parts = body.split(/(\n\s*\n)/)
+  let replaced = 0
+  // Global usage of replacement openers — the gate fires at ≥5, so cap each
+  // opener at 4 uses across the whole document.
+  const openerUsage = new Map<string, number>()
+
+  // First pass: collect every prose sentence span across ALL paragraphs and
+  // count repeated openings GLOBALLY — the gate counts across the whole body
+  // (it splits the full text on `(?<=[.!?])\s+`, which crosses paragraph
+  // boundaries), so a key repeated 3× in one paragraph + 2× in another still
+  // fires. Only rewrite when the whole-document count is ≥5.
+  const allSpans: Array<{ partIdx: number; spanIdx: number; text: string; clean: string; key: string; keep: boolean }> = []
+  const freq = new Map<string, number>()
+  parts.forEach((part, i) => {
+    if (i % 2 === 1) return // separator
+    const re = /[^.!?\n]*[.!?]+[ \t]*|[^.!?\n]+$/g
+    let m: RegExpExecArray | null
+    let spanIdx = 0
+    while ((m = re.exec(part)) !== null) {
+      const text = m[0]
+      if (text.trim()) {
+        const keep = text.trim().length > 20 && !isMarkdownStructure(text)
+        const clean = keep ? stripMarkdown(text) : ''
+        const key = clean ? clean.slice(0, 12).toLowerCase() : ''
+        allSpans.push({ partIdx: i, spanIdx, text, clean, key, keep })
+        if (keep) freq.set(key, (freq.get(key) || 0) + 1)
+      }
+      spanIdx++
+    }
+  })
+  const totalProse = allSpans.filter((s) => s.keep).length
+  if (totalProse < 8) return { content: body, replaced: 0 }
+  const repeated = new Set<string>()
+  for (const [k, v] of freq) if (v >= 5) repeated.add(k)
+  if (repeated.size === 0) return { content: body, replaced: 0 }
+
+  // First occurrence per key (whole document) — the "canonical" subject other
+  // occurrences are rewritten to refer back to.
+  const firstOf = new Map<string, string>()
+  for (const s of allSpans) if (s.keep && repeated.has(s.key) && !firstOf.has(s.key)) firstOf.set(s.key, s.clean)
+
+  const seen = new Map<string, number>()
+  // "partIdx:spanIdx" → the exact pronoun pass 1 chose, so pass 2 splices the
+  // SAME opener (recomputing from `seen` alone would give every occurrence of
+  // a key the identical pronoun and re-create the repetition).
+  const rewritten = new Map<string, string>()
+  for (const s of allSpans) {
+    if (!s.keep || !repeated.has(s.key)) continue
+    const n = (seen.get(s.key) || 0) + 1
+    seen.set(s.key, n)
+    if (n === 1) continue // keep the first occurrence
+    const firstClean = firstOf.get(s.key)!
+    // Longest shared leading word sequence (the noun phrase to replace).
+    const a = firstClean.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+    const b = s.clean.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+    let prefixWords: string[] = []
+    for (let k = 0; k < Math.min(a.length, b.length); k++) {
+      if (a[k] !== b[k]) break
+      prefixWords.push(a[k])
+    }
+    if (prefixWords.length === 0) continue
+    // Trim trailing verbs / auxiliaries off the noun phrase — "Applicants
+    // must…" shares "applicants must" but the subject is just "Applicants",
+    // so the pronoun must be plural. Pop known verb-ish tails until the head
+    // looks like a noun.
+    while (prefixWords.length > 1 && TAIL_OPENERS.has(prefixWords[prefixWords.length - 1])) {
+      prefixWords.pop()
+    }
+    if (prefixWords.length === 0) continue
+    // A bare determiner is not a subject — "The… The dog…" must not become
+    // "It dog…". A single plural noun ("Applicants…") IS a valid subject.
+    const onlyWord = prefixWords.length === 1
+    if (onlyWord && DETERMINERS.has(prefixWords[0])) continue
+    const prefixLower = prefixWords.join(' ')
+    // The remainder after the phrase must begin with a recognized verb /
+    // auxiliary / adverb ("requires", "is", "normally"…). Nouns ("fees are
+    // paid") and uppercase subjects ("Applicant…") are skipped — a mangled
+    // rewrite is worse than the warning.
+    const restStart = s.clean.toLowerCase().slice(prefixLower.length).trimStart()
+    const restFirst = restStart.split(/[^a-z0-9]+/)[0] || ''
+    if (!TAIL_OPENERS.has(restFirst)) continue
+
+    // Locate the phrase in the ORIGINAL text (which may carry leading
+    // markdown like **) and splice in the pronoun.
+    let lead = s.text
+    const marker = lead.match(/^(?:\*\*|__|`)+/)
+    const markerLen = marker ? marker[0].length : 0
+    lead = lead.slice(markerLen)
+    const leadingWs = lead.length - lead.trimStart().length
+    lead = lead.trimStart()
+    if (!lead.toLowerCase().startsWith(prefixLower)) continue
+    const tailStart = markerLen + leadingWs + prefixLower.length
+    const tail = s.text.slice(tailStart)
+    if (!/^[a-z]/.test(tail.trimStart())) continue
+
+    const head = prefixWords[prefixWords.length - 1]
+    const isPlural = pluralHead(head)
+    const pool = isPlural ? PLURAL_OPENERS : SINGULAR_OPENERS
+    // Rotate through the opener bank, skipping any opener already used 4×
+    // (the gate needs 5 to fire — we never re-create the warning).
+    let pronoun = ''
+    for (let r = 0; r < pool.length; r++) {
+      const cand = pool[(n + r) % pool.length]
+      if ((openerUsage.get(cand) || 0) < 4) {
+        pronoun = cand
+        break
+      }
+    }
+    if (!pronoun) continue
+    openerUsage.set(pronoun, (openerUsage.get(pronoun) || 0) + 1)
+    rewritten.set(`${s.partIdx}:${s.spanIdx}`, pronoun)
+    replaced++
+  }
+  if (replaced === 0) return { content: body, replaced: 0 }
+
+  // Second pass: rebuild each paragraph, splicing the pronoun for rewritten
+  // spans (recomputing the tail from the CURRENT text — identical logic, but
+  // only for spans marked in the first pass so the splice stays consistent).
+  const rebuilt = parts.map((part, i) => {
+    if (i % 2 === 1) return part
+    const re = /[^.!?\n]*[.!?]+[ \t]*|[^.!?\n]+$/g
+    const out: string[] = []
+    let m: RegExpExecArray | null
+    let spanIdx = 0
+    while ((m = re.exec(part)) !== null) {
+      const text = m[0]
+      if (!text.trim()) {
+        out.push(text)
+        spanIdx++
+        continue
+      }
+      const mark = `${i}:${spanIdx}`
+      const pronoun = rewritten.get(mark)
+      if (pronoun) {
+        // Splice the SAME pronoun pass 1 selected, recomputing the tail from
+        // the current text (prefix logic identical to pass 1).
+        const clean = stripMarkdown(text)
+        const key = clean.slice(0, 12).toLowerCase()
+        const firstClean = firstOf.get(key)!
+        const a = firstClean.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+        const b = clean.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+        let prefixWords: string[] = []
+        for (let k = 0; k < Math.min(a.length, b.length); k++) {
+          if (a[k] !== b[k]) break
+          prefixWords.push(a[k])
+        }
+        // Same verb-tail trim as pass 1 — keeps the splice indices aligned.
+        while (prefixWords.length > 1 && TAIL_OPENERS.has(prefixWords[prefixWords.length - 1])) {
+          prefixWords.pop()
+        }
+        const prefixLower = prefixWords.join(' ')
+        let lead = text
+        const marker = lead.match(/^(?:\*\*|__|`)+/)
+        const markerLen = marker ? marker[0].length : 0
+        lead = lead.slice(markerLen)
+        const leadingWs = lead.length - lead.trimStart().length
+        lead = lead.trimStart()
+        const tailStart = markerLen + leadingWs + prefixLower.length
+        const tail = text.slice(tailStart)
+        out.push(`${pronoun} ${tail.trimStart()}`)
+      } else {
+        out.push(text)
+      }
+      spanIdx++
+    }
+    return out.join('')
+  })
+
+  return { content: rebuilt.join(''), replaced }
+}
+
 export function applyDeterministicRepairs(opts: {
   content: string
   title?: string
@@ -256,6 +496,22 @@ export function applyDeterministicRepairs(opts: {
   if (noWhilst !== b) {
     b = noWhilst
     applied.push('whilst_normalized')
+  }
+
+  // ── Sentence-opening rhythm smoothing ────────────────────────────────
+  // The quality gate flags ≥5 prose sentences sharing the same 12-char
+  // opening ("The UK dependent visa" ×5 — the 2026-08 live-run case) as
+  // robotic rhythm. The AI sweep is told to vary openings but often does
+  // not; this deterministic pass replaces later occurrences of the repeated
+  // leading noun phrase with a rotating pronoun (It / This / That / They…),
+  // which is exactly what a human editor does, so the warning clears on the
+  // same repair run without another AI call.
+  {
+    const rhythm = smoothSentenceRhythm(b)
+    if (rhythm.replaced > 0) {
+      b = rhythm.content
+      applied.push(`sentence_rhythm (${rhythm.replaced})`)
+    }
   }
 
   // ── Meta description: inject description: into YAML front matter ────
