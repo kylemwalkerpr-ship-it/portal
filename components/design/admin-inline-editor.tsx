@@ -62,6 +62,9 @@ type Props = {
   contentType?: string
   primaryKeyword?: string
   indexable?: boolean
+  /** Region (US/CA/UK/AU…) — threaded into depth-expansion prompts so new
+   *  sections carry the right jurisdictional detail. */
+  region?: string
   /** Review model override — defaults to gpt-5.6-sol (senior editor).
    *  gpt-5.6-terra is the faster, lower-cost alternative for non-critical
    *  fixes. Sent to the reaudit API as the reviewModel field. */
@@ -78,7 +81,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, onReviewModelChange }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, reviewModel, onReviewModelChange }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -96,8 +99,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [fixElapsed, setFixElapsed] = useState(0)
   const [fixingWarnings, setFixingWarnings] = useState(false)
+  const [expandingDepth, setExpandingDepth] = useState(false)
   const [shipReady, setShipReady] = useState<boolean | null>(null)
   const [depthGate, setDepthGate] = useState<{ ok: boolean; message: string } | null>(null)
+  // Depth-mediation plan — how far below the floor the draft is, so the
+  // ship-gate strip can show "1813/2200 words" and offer the Expand button.
+  const [depthMediation, setDepthMediation] = useState<{
+    ok: boolean; message: string; currentWords: number; minWords: number; targetWords: number; maxWords: number; deficit: number
+  } | null>(null)
   // Merged quality + audit warnings (schema/meta/internal-links included).
   const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -169,6 +178,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setShowAnnotations(true)
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
+      setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · auto-fixed: ${data.appliedRepairs.join(', ')}`
@@ -266,6 +276,60 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     }
   }, [content, fixingOne, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
+  // Fix DEPTH via AI — append-only expansion to clear the Google depth floor.
+  // The reaudit fix_depth action asks the review model to write NEW H2
+  // sections (never touching existing content that already passed quality)
+  // and merges them in, so a "100/100 but 1813/2200 words" draft becomes
+  // shippable without a full rewrite. Clicking again while running cancels.
+  const handleExpandDepth = useCallback(async () => {
+    if (expandingDepth) {
+      fixAbortRef.current?.abort()
+      return
+    }
+    const seq = ++fixSeqRef.current
+    const controller = new AbortController()
+    fixAbortRef.current = controller
+    setExpandingDepth(true); setError(null); setNotice(null); setFixElapsed(0)
+    const startedAt = Date.now()
+    const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
+    try {
+      const res = await fetchWithTimeout('/api/content-studio/reaudit', {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        timeoutMs: 260_000,
+        body: JSON.stringify({ action: 'fix_depth', content, ...briefMeta }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (seq !== fixSeqRef.current) return
+      if (data.fixedContent) {
+        onChange(data.fixedContent); setDirty(true)
+      }
+      setAuditResult(data)
+      setAnnotations(data.annotations || [])
+      setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      setDepthGate(data.depthGate || null)
+      setDepthMediation(data.depthMediation || null)
+      onScoreChange?.(data.score)
+      const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
+        ? ` · ${data.appliedRepairs.join(', ')}`
+        : ''
+      setNotice(`Depth expansion applied - ${data.shipReady ? 'ship gate now ready' : 'still below the floor'}: ${data.depthGate?.message || ''}${repairs}`)
+    } catch (err) {
+      if (seq !== fixSeqRef.current) return
+      setError(err instanceof Error ? err.message : 'Depth expansion failed')
+    } finally {
+      clearInterval(tick)
+      if (seq === fixSeqRef.current) {
+        fixAbortRef.current = null
+        setExpandingDepth(false)
+        setFixElapsed(0)
+      }
+    }
+  }, [content, expandingDepth, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+
   // Fix ALL warnings via AI — evidence-less quality warnings AND indexability
   // warnings (schema/meta/internal-links) included. The sweep prompt lists
   // every warning with its remediation and asks for minimal edits, so the
@@ -302,6 +366,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
+      setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
       setNotice(`Warnings sweep applied - ${data.warnings ?? 0} warning(s) remain`)
     } catch (err) {
@@ -361,6 +426,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(contentType ? { contentType } : {}),
     ...(primaryKeyword ? { primaryKeyword } : {}),
     ...(typeof indexable === 'boolean' ? { indexable } : {}),
+    ...(region ? { region } : {}),
     ...(reviewModel ? { reviewModel } : {}),
   }
 
@@ -414,8 +480,31 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           <span style={{ color: C.textMuted, flex: 1, lineHeight: 1.4 }}>
             {shipReady
               ? 'Quality + depth floors pass. Warnings do not block shipping — clear them for the best reader engagement and AI-overview eligibility.'
-              : (depthGate && !depthGate.ok ? depthGate.message : 'Quality blockers remain — resolve them in the issues panel.')}
+              : (depthGate && !depthGate.ok
+                  ? `${depthGate.message}${depthMediation && depthMediation.currentWords > 0 ? ` — ${depthMediation.currentWords}/${depthMediation.minWords} words` : ''}`
+                  : 'Quality blockers remain — resolve them in the issues panel.')}
           </span>
+          {/* Depth-mediation button — only when the floor is the blocker and an
+              append-only expansion can clear it. GPT Sol (senior editor) writes
+              the new sections by default; Terra is the fast alternative. */}
+          {!shipReady && depthGate && !depthGate.ok && (
+            <button
+              type="button"
+              data-testid="studio-expand-depth"
+              disabled={expandingDepth || busy || disabled}
+              onClick={handleExpandDepth}
+              style={btnStyle({
+                bg: expandingDepth ? '#FEE2E2' : '#FFF7ED',
+                border: expandingDepth ? C.red : '#D97706',
+                color: expandingDepth ? C.red : '#92400E',
+                disabled: expandingDepth || busy || disabled,
+              })}
+            >
+              {expandingDepth
+                ? `Expanding… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
+                : `Expand to depth floor${depthMediation && depthMediation.deficit > 0 ? ` (${depthMediation.deficit} words)` : ''}`}
+            </button>
+          )}
         </div>
       )}
 

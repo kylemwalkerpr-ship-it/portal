@@ -19,7 +19,8 @@
 import { evaluateContentQuality } from './contentQualityGate'
 import { auditContent } from './audit'
 import { findingToAnnotations, mergeWarnings, type InlineAnnotation } from './inlineAnnotations'
-import { assertContentDepth } from './contentDepth'
+import { assertContentDepth, countBodyWords, depthSpecForType } from './contentDepth'
+import { buildDepthAppendPrompt, extractH2Titles } from './prompts'
 
 export type ReauditResponse = {
   ok: boolean; score: number; summary: string
@@ -36,6 +37,72 @@ export type ReauditResponse = {
   warningsData?: Array<{ code: string; message: string; fix?: string }>
   /** Live link-audit findings (placeholder / dead / unverified internal links). */
   linkAudit?: Array<{ code: string; severity: 'blocker' | 'warning'; url: string; message: string; status?: number }>
+  /** Depth-mediation plan — tells the editor how far below the floor the
+   *  draft is and whether an append-only expansion can clear it (fix_depth). */
+  depthMediation?: DepthMediationPlan
+}
+
+/**
+ * Depth-mediation plan — the pure, testable description of how to clear the
+ * Google depth floor. The editor renders this as "Expand to depth floor" when
+ * a draft is below minWords, and the fix_depth PATCH action executes the same
+ * plan (append-only: preserves everything that passes and adds new H2
+ * sections until the floor clears). Returns ok=true when the floor is met so
+ * callers can skip AI expansion entirely.
+ */
+export type DepthMediationPlan = {
+  /** True when the draft already meets the floor — nothing to expand. */
+  ok: boolean
+  message: string
+  currentWords: number
+  minWords: number
+  targetWords: number
+  maxWords: number
+  /** Word gap to the floor (minWords - currentWords, ≥0). */
+  deficit: number
+  /** Append-only expansion prompt (only when !ok). */
+  prompt?: string
+}
+
+export function depthMediationPlan(
+  content: string,
+  contentType?: string,
+  primaryKeyword?: string,
+  region?: string,
+): DepthMediationPlan {
+  const spec = depthSpecForType(contentType || 'legal_guide')
+  const currentWords = countBodyWords(content)
+  const deficit = Math.max(0, spec.minWords - currentWords)
+  if (deficit === 0) {
+    return {
+      ok: true,
+      message: 'Depth floor met',
+      currentWords,
+      minWords: spec.minWords,
+      targetWords: spec.targetWords,
+      maxWords: spec.maxWords,
+      deficit: 0,
+    }
+  }
+  const prompt = buildDepthAppendPrompt({
+    primaryKeyword: primaryKeyword || 'guide',
+    region: region || 'US',
+    minWords: spec.minWords,
+    maxWords: spec.maxWords,
+    currentWords,
+    existingH2s: extractH2Titles(content),
+    draftExcerpt: content,
+  })
+  return {
+    ok: false,
+    message: `Below Google-depth floor: ${currentWords} body words (min ${spec.minWords}, target ~${spec.targetWords}). Append-only expansion will add new H2 sections until the floor clears.`,
+    currentWords,
+    minWords: spec.minWords,
+    targetWords: spec.targetWords,
+    maxWords: spec.maxWords,
+    deficit,
+    prompt,
+  }
 }
 
 /** Google depth floor — the OTHER hard ship gate. The editor previously only
@@ -80,6 +147,9 @@ export type ReauditContractOutput = {
   shipReady: boolean
   depthGate: { ok: boolean; message: string }
   warningsData: Array<{ code: string; message: string; fix?: string }>
+  /** Depth-mediation plan — floor numbers + deficit so the editor can show
+   *  "1813/2200 words" and offer the append-only Expand-to-floor action. */
+  depthMediation: DepthMediationPlan
 }
 
 /**
@@ -151,6 +221,7 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     shipReady: result.ok && depthGate.ok,
     depthGate,
     warningsData,
+    depthMediation: depthMediationPlan(content, contentType, primaryKeyword),
   }
 }
 

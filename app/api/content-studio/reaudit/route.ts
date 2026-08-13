@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
-import { evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
+import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
+import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { auditLinksLive, stripDeadLinks } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
@@ -177,7 +179,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as {
-      action: 'fix_all' | 'fix_one' | 'fix_warnings'
+      action: 'fix_all' | 'fix_one' | 'fix_warnings' | 'fix_depth'
       content: string
       annotations?: InlineAnnotation[]
       annotation?: InlineAnnotation
@@ -187,18 +189,22 @@ export async function PATCH(request: NextRequest) {
       contentType?: string
       primaryKeyword?: string
       indexable?: boolean
+      region?: string
       requiredShortKeywords?: string[]
       requiredLongTailKeywords?: string[]
       /** Override the review model (gpt-5.6-sol by default). Set to
        *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
       reviewModel?: string
     }
-    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, reviewModel } = body
+    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, reviewModel } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
 
     let fixedContent: string
+    // Depth-mediation plan — hoisted so the appliedRepairs block below can
+    // report the floor numbers after the append-only expansion runs.
+    let depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
 
     if (action === 'fix_all' && annotations && annotations.length > 0) {
       // Build a comprehensive fix prompt listing every issue
@@ -260,14 +266,44 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       const sys = 'You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.'
       fixedContent = await callAiFix(sys, buildWarningsFixPrompt(content, warnings), 16384, reviewModel)
 
+    } else if (action === 'fix_depth') {
+      // DEPTH MEDIATION — the Google depth floor is the other hard ship gate.
+      // A draft can be "100/100 quality" yet ship-blocked at 1813/2200 words
+      // (the exact case in the editor screenshot). The fix is append-only:
+      // buildDepthAppendPrompt asks the review model to write NEW H2 sections
+      // (never touching existing content, which already passed quality), and
+      // mergeAppendedSections splices them in before the schema block. This
+      // preserves every passing section instead of forcing a full rewrite that
+      // re-introduces voice/depth failures.
+      depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
+      if (depthPlan.ok) {
+        // Floor already met — nothing to expand; keep the draft as-is and
+        // re-evaluate below so the response reflects the true state.
+        fixedContent = content
+      } else {
+        const before = countBodyWords(content)
+        const sys = 'You are a master SEO content editor expanding an immigration legal guide to clear the Google depth floor. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+        const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+        const merged = mergeAppendedSections(content, appended)
+        const after = countBodyWords(merged)
+        if (after <= before) {
+          throw new Error(
+            `Depth expansion added no new words (${before} → ${after}). The model returned no usable sections — try again or expand sections manually.`,
+          )
+        }
+        fixedContent = merged
+      }
+
     } else {
       return NextResponse.json({ error: 'Invalid action or missing annotations/warnings' }, { status: 400 })
     }
 
     // Sanity: never let a truncated/partial rewrite silently replace the article.
+    // Skip for fix_depth — append-only expansion is a strict superset (it can
+    // only grow the draft), so the shrink guard would be meaningless.
     const fixedWords = fixedContent.split(/\s+/).filter(Boolean).length
     const originalWords = Math.max(1, content.split(/\s+/).filter(Boolean).length)
-    if (fixedWords < Math.max(20, Math.round(originalWords * 0.4))) {
+    if (action !== 'fix_depth' && fixedWords < Math.max(20, Math.round(originalWords * 0.4))) {
       throw new Error(
         `AI fix returned a partial rewrite (${fixedWords} words vs ${originalWords} original) and was discarded. Your draft is unchanged — try Fix again or edit inline.`,
       )
@@ -287,6 +323,15 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
     })
     fixedContent = repaired.content
 
+    // Depth mediation is append-only — record the growth so the editor can
+    // show what actually happened (e.g. "expanded 1813 → 2261 words"). Only
+    // report it when the floor was actually below minimum (plan.ok=false).
+    let depthRepair: string | undefined
+    if (action === 'fix_depth' && !depthPlan.ok) {
+      const grewWords = countBodyWords(fixedContent)
+      depthRepair = `expanded to ${grewWords} body words (floor ${depthPlan.minWords}, target ~${depthPlan.targetWords})`
+    }
+
     // Re-evaluate the fixed content — contract evaluation (quality gate +
     // audit + warningsData merge + depth gate + shipReady) shared with POST.
     const response: ReauditResponse = {
@@ -301,7 +346,10 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       fixedContent,
     }
     fixedContent = await mergeLinkAudit(response, fixedContent)
-    if (repaired.applied.length) response.appliedRepairs = repaired.applied
+    const applied: string[] = []
+    if (depthRepair) applied.push(depthRepair)
+    if (repaired.applied.length) applied.push(...repaired.applied)
+    if (applied.length) response.appliedRepairs = applied
     return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI fix failed'
