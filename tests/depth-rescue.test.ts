@@ -69,7 +69,7 @@ function buildAppendSection(heading: string, words: number): string {
 
 /** Wrap a deterministic text factory into the injected generateText contract. */
 function makeGenerate(
-  sequence: Array<{ growTo?: number; throw?: boolean; append?: string }>,
+  sequence: Array<{ growTo?: number; growText?: string; throw?: boolean; append?: string }>,
 ) {
   const calls: Array<{ maxTokens: number; temperature: number; prompt: string }> = []
   const gen = async (opts: { system: string; prompt: string; maxTokens: number; temperature: number; aiProvider?: string }) => {
@@ -83,6 +83,8 @@ function makeGenerate(
       // Append passes return ONLY new sections (mirrors mergeAppendedSections).
       const merged = mergeAppendedSections(buildDraft(0), step.append)
       text = merged
+    } else if (step.growText !== undefined) {
+      text = step.growText
     } else {
       text = (step.growTo ?? 0) > 0 ? buildDraft(step.growTo) : ''
     }
@@ -211,6 +213,33 @@ describe('runDepthRescue', () => {
     // The section survived (headings intact) but the identical openings are
     // gone — replaced with rotating pronouns instead of 5× the same subject.
     expect(done!.content).toMatch(/Regional Nuances/)
+    const exactRepeat = (done!.content.match(/The UK dependent visa/g) || []).length
+    expect(exactRepeat).toBeLessThan(5)
+    expect(done!.content).toMatch(/(It|This|That) requires proof of the relationship/)
+  })
+
+  it('smooths repeated sentence openings in the expand (full-rewrite) pass too', async () => {
+    // The FULL REWRITE (pass 1) reproduces the whole page, so any robotic
+    // opener in the original gets carried over and amplified. The rescue must
+    // deterministically smooth the rewritten draft — same repair as the append
+    // pass — before storing it, so a single-pass expand never ships with
+    // sentence_start_repetition.
+    const rewrite = [
+      buildDraft(0), // full-page skeleton (front matter + H1 + sections)
+      '## Eligibility Requirements',
+      '',
+      'The UK dependent visa allows partners to apply. The UK dependent visa requires proof of the relationship. The UK dependent visa covers children under 18. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process.',
+      '',
+      Array(2000).fill('guidance').join(' '),
+    ].join('\n')
+    const { gen } = makeGenerate([
+      { growText: rewrite }, // pass 1: full rewrite introduces repeated openings
+    ])
+    const { done } = await drain(baseOpts({ generateText: gen }))
+
+    expect(done).not.toBeNull()
+    expect(countBodyWords(done!.content)).toBeGreaterThanOrEqual(MIN_WORDS)
+    // The rewrite survived but the repeated subject got varied openers.
     const exactRepeat = (done!.content.match(/The UK dependent visa/g) || []).length
     expect(exactRepeat).toBeLessThan(5)
     expect(done!.content).toMatch(/(It|This|That) requires proof of the relationship/)

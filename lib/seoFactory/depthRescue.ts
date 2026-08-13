@@ -216,7 +216,14 @@ export async function* runDepthRescue(
         provider = ai.provider
         model = ai.model
         if (countBodyWords(ai.text) > currentWords) {
-          content = ai.text
+          // Rhythm guard on the full rewrite: the expand prompt asks the model
+          // to vary openings, but a rewrite reproduces the WHOLE page, so any
+          // robotic opener in the original (bullets included) gets carried
+          // over and amplified. Deterministically smooth repeated 12-char
+          // openings — same repair the append pass and the ship gate run — so
+          // the rescue never ships a robotic-rhythm rewrite.
+          const rhythm = smoothSentenceRhythm(ai.text)
+          content = rhythm.replaced > 0 ? rhythm.content : ai.text
           yield { type: 'delta', text: '\n\n<!-- depth expand applied -->\n\n', attempt: attempts }
           yield { type: 'delta', text: content.slice(0, 500), attempt: attempts }
         }

@@ -525,7 +525,14 @@ export function buildDepthExpandPrompt(opts: {
     outlineBlock,
     '5) Practitioner voice: second person, plain English, NO AI clichés, NO outcome guarantees.',
     '6) Do NOT wrap in markdown code fences. Raw markdown only.',
-    '7) Before you finish, mentally count your body prose words: if under ' + opts.minWords + ', keep writing. A 2000-word page does not clear a 2200-word floor — the audit will reject it again.',
+    // Rhythm guard — a full rewrite is where robotic openers get baked in: the
+    // model reproduces its own repeated subjects across the whole page. Vary
+    // openings up front (same 12-char rule the audit enforces) so the rewrite
+    // never re-creates sentence_start_repetition. Applies to prose sentences
+    // AND bullets (TL;DR list, FAQ answers) — bullets with the same opener are
+    // just as robotic as sentences.
+    '7) SENTENCE OPENINGS: vary every opening across the whole page — prose AND bullets. Do NOT start 5 or more sentences (or list items) with the same 12 characters (for example, do not open several bullets with the same subject phrase like "The UK dependent visa"). After the first mention, use pronouns, connectives, and concrete nouns.',
+    '8) Before you finish, mentally count your body prose words: if under ' + opts.minWords + ', keep writing. A 2000-word page does not clear a 2200-word floor — the audit will reject it again.',
     '',
     '## PREVIOUS DRAFT (expand this — do not replace with a shorter page)',
     draftSlice,

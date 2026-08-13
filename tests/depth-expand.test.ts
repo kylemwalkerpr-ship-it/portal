@@ -49,6 +49,27 @@ describe('depth expand helpers', () => {
     expect(p).toMatch(/Under-delivering is the ONLY failure/)
   })
 
+  it('buildDepthExpandPrompt warns against repeating sentence openings so the full rewrite never re-creates sentence_start_repetition', () => {
+    const p = buildDepthExpandPrompt({
+      title: 'Test',
+      topic: 'student visa',
+      primaryKeyword: 'student visa',
+      region: 'US',
+      contentType: 'legal_guide',
+      minWords: 2200,
+      targetWords: 2500,
+      currentWords: 1900,
+      draft: 'short',
+    })
+    expect(p).toMatch(/SENTENCE OPENINGS/)
+    // Covers prose AND bullets (TL;DR list, FAQ answers) — the expand pass
+    // rewrites the whole page, so bullets with the same opener are just as
+    // robotic as sentences and get the same up-front instruction.
+    expect(p).toMatch(/Do NOT start 5 or more sentences \(or list items\)/)
+    expect(p).toMatch(/same 12 characters/)
+    expect(p).toMatch(/pronouns, connectives, and concrete nouns/)
+  })
+
   it('buildDepthAppendPrompt demands the full remaining deficit with focus', () => {
     const p = buildDepthAppendPrompt({
       primaryKeyword: 'student visa',
