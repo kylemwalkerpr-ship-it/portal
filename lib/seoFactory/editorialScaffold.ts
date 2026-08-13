@@ -198,6 +198,11 @@ export function normalizeReaderStructure(body: string): string {
  *  of the same leading phrase with "It / This / That" (or plural forms),
  *  rotating so the replacement openers never themselves repeat ≥5 times.
  *
+ *  Scope: PROSE sentences AND list items (TL;DR bullets, FAQ answers). List
+ *  markers are stripped for key aggregation (a bullet and a sentence that
+ *  share an opener count together) and re-prepended on the splice so a
+ *  smoothed bullet stays a bullet. Headings remain excluded (structure).
+ *
  * Safety guards (a bad rewrite is worse than the warning):
  *  - Only rewrites when the leading phrase is a shared noun phrase
  *    (≥2 words, or a single plural noun like "Applicants").
@@ -247,8 +252,13 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     'instead', 'similarly', 'likewise', 'conversely', 'additionally', 'therefore',
     'consequently', 'thus', 'hence', 'ultimately', 'eventually', 'typically',
   ])
-  const isMarkdownStructure = (s: string) =>
-    /^\s*(?:[-*+]|\d+[.)])\s/.test(s) || /^\s*#{1,6}\s/.test(s)
+  // Headings are structure, not prose rhythm — excluded from counting. List
+  // items ARE prose rhythm (TL;DR bullets, FAQ answers): their marker is
+  // stripped for key aggregation (a bullet "- The UK dependent visa …" and a
+  // prose sentence "The UK dependent visa …" count toward the same key) and
+  // re-prepended on the splice so a smoothed bullet stays a bullet.
+  const isHeading = (s: string) => /^\s*#{1,6}\s/.test(s)
+  const stripListMarker = (s: string) => s.replace(/^\s*(?:[-*+]|\d+[.)])\s/, '')
   const stripMarkdown = (s: string) => s.trim().replace(/\*\*|__|`/g, '').trim()
   const pluralHead = (w: string) => {
     const lw = w.toLowerCase()
@@ -284,8 +294,13 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     while ((m = re.exec(part)) !== null) {
       const text = m[0]
       if (text.trim()) {
-        const keep = text.trim().length > 20 && !isMarkdownStructure(text)
-        const clean = keep ? stripMarkdown(text) : ''
+        // List items ARE prose rhythm — TL;DR bullets and FAQ answers repeat
+        // openers just like sentences do. Headings stay excluded (structure).
+        const keep = text.trim().length > 20 && !isHeading(text)
+        // Marker-stripped clean: a bullet "- The UK dependent visa …" and a
+        // prose sentence "The UK dependent visa …" aggregate under ONE key so
+        // a draft that mixes both is caught together.
+        const clean = keep ? stripListMarker(stripMarkdown(text)) : ''
         const key = clean ? clean.slice(0, 12).toLowerCase() : ''
         allSpans.push({ partIdx: i, spanIdx, text, clean, key, keep })
         if (keep) freq.set(key, (freq.get(key) || 0) + 1)
@@ -346,15 +361,18 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     if (!TAIL_OPENERS.has(restFirst)) continue
 
     // Locate the phrase in the ORIGINAL text (which may carry leading
-    // markdown like **) and splice in the pronoun.
+    // markdown like ** or a list marker) and splice in the pronoun.
     let lead = s.text
     const marker = lead.match(/^(?:\*\*|__|`)+/)
     const markerLen = marker ? marker[0].length : 0
     lead = lead.slice(markerLen)
+    const listMarker = lead.match(/^\s*(?:[-*+]|\d+[.)])\s/)
+    const listLen = listMarker ? listMarker[0].length : 0
+    lead = lead.slice(listLen)
     const leadingWs = lead.length - lead.trimStart().length
     lead = lead.trimStart()
     if (!lead.toLowerCase().startsWith(prefixLower)) continue
-    const tailStart = markerLen + leadingWs + prefixLower.length
+    const tailStart = markerLen + listLen + leadingWs + prefixLower.length
     const tail = s.text.slice(tailStart)
     if (!/^[a-z]/.test(tail.trimStart())) continue
 
@@ -392,8 +410,15 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     const out: string[] = []
     let m: RegExpExecArray | null
     let spanIdx = 0
+    let lastEnd = 0
     while ((m = re.exec(part)) !== null) {
       const text = m[0]
+      // Preserve the GAP before this match. List items and FAQ answers are
+      // separated by `\n` which is never part of a sentence match — without
+      // this, smoothing a bullet list would collapse every bullet onto one
+      // line ("…apply.- That requires…").
+      out.push(part.slice(lastEnd, m.index))
+      lastEnd = m.index + text.length
       if (!text.trim()) {
         out.push(text)
         spanIdx++
@@ -404,7 +429,7 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
       if (pronoun) {
         // Splice the SAME pronoun pass 1 selected, recomputing the tail from
         // the current text (prefix logic identical to pass 1).
-        const clean = stripMarkdown(text)
+        const clean = stripListMarker(stripMarkdown(text))
         const key = clean.slice(0, 12).toLowerCase()
         const firstClean = firstOf.get(key)!
         const a = firstClean.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
@@ -423,16 +448,25 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
         const marker = lead.match(/^(?:\*\*|__|`)+/)
         const markerLen = marker ? marker[0].length : 0
         lead = lead.slice(markerLen)
+        const listMarker = lead.match(/^\s*(?:[-*+]|\d+[.)])\s/)
+        const listLen = listMarker ? listMarker[0].length : 0
+        lead = lead.slice(listLen)
         const leadingWs = lead.length - lead.trimStart().length
         lead = lead.trimStart()
-        const tailStart = markerLen + leadingWs + prefixLower.length
+        const tailStart = markerLen + listLen + leadingWs + prefixLower.length
         const tail = text.slice(tailStart)
-        out.push(`${pronoun} ${tail.trimStart()}`)
+        // Re-prepend the marker + leading whitespace so a smoothed BULLET
+        // stays a bullet ("- It requires …") instead of collapsing into a
+        // plain paragraph.
+        const leadPrefix = text.slice(0, markerLen + listLen + leadingWs)
+        out.push(`${leadPrefix}${pronoun} ${tail.trimStart()}`)
       } else {
         out.push(text)
       }
       spanIdx++
     }
+    // Trailing gap after the last match (e.g. the part's closing newline).
+    out.push(part.slice(lastEnd))
     return out.join('')
   })
 

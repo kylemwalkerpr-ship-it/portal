@@ -598,4 +598,78 @@ One practical step here.
     const input = body.split(/\s+/).filter(Boolean).length
     expect(kept).toBeGreaterThanOrEqual(input - 12)
   })
+
+  it('smooths repeated openings across TL;DR list items, keeping bullets as bullets', () => {
+    // The In 60 seconds block repeats the subject across bullets. The smooth
+    // must rewrite the later openers AND preserve the "- " marker so the
+    // block stays a list ("- It requires…" not "It requires…" as prose), and
+    // must NOT collapse the bullets onto one line.
+    const body = [
+      '# UK Dependent Visa Guide',
+      '',
+      '## In 60 seconds',
+      '',
+      '- The UK dependent visa allows partners to apply.',
+      '- The UK dependent visa requires proof of the relationship.',
+      '- The UK dependent visa covers children under 18.',
+      '- The UK dependent visa is applied for online.',
+      '- The UK dependent visa normally takes three weeks to process.',
+      '',
+      '## Eligibility',
+      '',
+      'Applicants must hold a valid passport. The main applicant must hold valid leave. Partners can live and work freely. Children can attend school. Extensions are filed before leave expires. Decisions arrive in writing. Appeals have strict deadlines.',
+      '',
+      '## FAQ',
+      '',
+      '### Can dependents work?',
+      'Yes, dependents have full work rights.',
+    ].join('\n')
+
+    const { content, replaced } = smoothSentenceRhythm(body)
+    expect(replaced).toBeGreaterThan(0)
+    // Exactly one bullet keeps the full subject; the rest take pronouns.
+    const full = (content.match(/- The UK dependent visa/g) || []).length
+    expect(full).toBe(1)
+    // Later bullets are rewritten with rotating pronouns AND stay bullets.
+    expect(content).toMatch(/- That requires proof of the relationship/)
+    expect(content).toMatch(/- It covers children under 18/)
+    // No bullet collapsed into a plain paragraph, no bullets merged into one
+    // line (the gap-preserving rebuild keeps every "- " on its own line).
+    expect((content.match(/^- /gm) || []).length).toBe(5)
+    expect(content).not.toMatch(/apply\.- /)
+    // Unrelated sections are untouched.
+    expect(content).toMatch(/Applicants must hold a valid passport/)
+    expect(content).toMatch(/Yes, dependents have full work rights/)
+  })
+
+  it('smooths repeated openings in FAQ answers (prose and bullet forms)', () => {
+    // FAQ answers that repeat the subject across questions get smoothed the
+    // same way as body prose — the answer block is prose rhythm, not a
+    // heading enumeration.
+    const body = [
+      '# Guide',
+      '',
+      '## FAQ',
+      '',
+      '### What documents do I need?',
+      'The UK dependent visa requires a valid passport. The UK dependent visa requires proof of the relationship. The UK dependent visa requires financial evidence. The UK dependent visa requires accommodation details. The UK dependent visa requires biometrics for everyone.',
+      '',
+      '### Can I extend?',
+      'Yes, extensions are filed before leave expires.',
+      '### Do children apply separately?',
+      'No, children are included on the main application.',
+      '### Can partners work?',
+      'Yes, dependents have full work rights in the UK.',
+    ].join('\n')
+
+    const { content, replaced } = smoothSentenceRhythm(body)
+    expect(replaced).toBeGreaterThan(0)
+    // One opener left in the answer, the other four rotated to pronouns.
+    const full = (content.match(/The UK dependent visa requires/g) || []).length
+    expect(full).toBe(1)
+    expect(content).toMatch(/That requires proof of the relationship/)
+    // Question headings and unrelated answers are untouched.
+    expect(content).toMatch(/### What documents do I need\?/)
+    expect(content).toMatch(/Yes, extensions are filed before leave expires/)
+  })
 })
