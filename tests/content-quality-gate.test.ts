@@ -188,6 +188,31 @@ describe('evaluateContentQuality', () => {
     expect(r.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(true)
   })
 
+  it('does NOT flag a Sources list of official URLs as repeated openings', () => {
+    // 2026-08-13 stored-draft scan: gov.uk sources lists shared the
+    // "https://www." prefix and falsely fired sentence_start_repetition,
+    // even though the deterministic repair could never (and should never)
+    // rewrite a citation URL. URL lines are not prose rhythm — excluded.
+    const draft = guide('', {
+      title: 'UK graduate visa guide 2026',
+      keyword: 'uk graduate visa',
+    }).replace(
+      /## Sources\n- https:\/\/www\.uscis\.gov\//,
+      '## Sources\n' +
+        '- https://www.gov.uk/graduate-visa\n' +
+        '- https://www.gov.uk/guidance/immigration-rules/immigration-rules-appendix-graduate\n' +
+        '- https://www.gov.uk/skilled-worker-visa\n' +
+        '- https://www.gov.uk/student-visa\n' +
+        '- https://www.gov.uk/check-uk-visa',
+    )
+    const r = evaluateContentQuality({
+      content: draft,
+      contentType: 'legal_guide',
+      primaryKeyword: 'uk graduate visa',
+    })
+    expect(r.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(false)
+  })
+
   it('does NOT block factual non-outcome guarantees (housing rates / fee locks)', () => {
     const factual = guide(
       'The university publishes FY27 rates each spring. Rates are guaranteed for the academic year once posted. Security deposits are guaranteed refundable when no damage is found.',

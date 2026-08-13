@@ -517,6 +517,12 @@ export function evaluateContentQuality(opts: {
   const isHeadingLine = (s: string) => /^\s*#{1,6}\s/.test(s)
   const stripListMarker = (s: string) => s.replace(/^\s*(?:[-*+]|\d+[.)])\s/, '')
   const stripMarkdown = (s: string) => s.trim().replace(/\*\*|__|`/g, '').trim()
+  // URL-only lines (official citations in the Sources section) are NOT prose
+  // rhythm — a sources list of 5 gov.uk links must not fire
+  // sentence_start_repetition on the shared "https://www." prefix.
+  // smoothSentenceRhythm already skips them (the tail verb-check fails on
+  // "www"/"gov"), so excluding them here keeps the gate↔repair contract.
+  const isUrlLine = (s: string) => /^(?:https?:\/\/|www\.)/i.test(s.trim())
   const sentences = body
     .split(/\n\s*\n/)
     .flatMap((para) =>
@@ -527,7 +533,7 @@ export function evaluateContentQuality(opts: {
         .split(/(?<=[.!?])\s+/),
     )
     .map((s) => s.trim())
-    .filter((s) => s.length > 20 && !isHeadingLine(s))
+    .filter((s) => s.length > 20 && !isHeadingLine(s) && !isUrlLine(stripListMarker(s)))
     .map((s) => stripListMarker(stripMarkdown(s)))
   if (sentences.length >= 8) {
     const starts = sentences.map((s) => s.slice(0, 12).toLowerCase())
