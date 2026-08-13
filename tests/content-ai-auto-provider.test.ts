@@ -1,0 +1,114 @@
+import { resolveAiProviderPin } from '@/lib/contentAiProvider'
+
+/**
+ * 2026-08 regression: suggest-keywords (and factory routes) pass
+ * aiProvider:'auto'. Both generateContentText and generateContentTextStream
+ * previously did `const prefer = explicit || preferProvider()` — the literal
+ * 'auto' became prefer and the early-fail check threw
+ * `Selected AI provider "auto" is not configured` even when providers WERE
+ * configured. resolveAiProviderPin now normalizes auto-mode so 'auto'
+ * resolves through preferProvider().
+ */
+
+describe('content AI · auto provider pin', () => {
+  const originalProvider = process.env.CONTENT_AI_PROVIDER
+  const originalOrder = process.env.CONTENT_AI_PROVIDER_ORDER
+  const originalNvidia = process.env.NVIDIA_API_KEY
+  const originalOpenAi = process.env.OPENAI_API_KEY
+
+  afterEach(() => {
+    for (const [name, value] of [
+      ['CONTENT_AI_PROVIDER', originalProvider],
+      ['CONTENT_AI_PROVIDER_ORDER', originalOrder],
+      ['NVIDIA_API_KEY', originalNvidia],
+      ['OPENAI_API_KEY', originalOpenAi],
+    ] as const) {
+      if (value == null) delete process.env[name]
+      else process.env[name] = value
+    }
+  })
+
+  it("'auto' clears the explicit pin and never resolves to the literal string 'auto'", () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const { explicit, prefer } = resolveAiProviderPin('auto')
+    expect(explicit).toBe('')
+    expect(prefer).not.toBe('auto')
+    expect(prefer.length).toBeGreaterThan(0)
+  })
+
+  it("treats 'default', 'primary', and empty as auto mode (no literal pin)", () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    for (const raw of [undefined, '', 'auto', 'default', 'primary']) {
+      const { explicit, prefer } = resolveAiProviderPin(raw)
+      expect(explicit).toBe('')
+      expect(prefer).not.toBe(raw || '')
+      expect(prefer.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('preserves a real provider pin like openai (explicit stays, prefer matches)', () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const { explicit, prefer } = resolveAiProviderPin('openai')
+    expect(explicit).toBe('openai')
+    expect(prefer).toBe('openai')
+  })
+
+  it("resolves 'auto' to the first entry of CONTENT_AI_PROVIDER_ORDER when set", () => {
+    process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
+      'baseten-deepseek',
+      'nvidia-nemotron',
+      'nvidia-glm',
+    ])
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const { explicit, prefer } = resolveAiProviderPin('auto')
+    expect(explicit).toBe('')
+    expect(prefer).toBe('baseten-deepseek')
+  })
+
+  it("is case/whitespace insensitive ('  AUTO ' behaves like auto)", () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const { explicit, prefer } = resolveAiProviderPin('  AUTO ')
+    expect(explicit).toBe('')
+    expect(prefer).not.toBe('auto')
+    expect(prefer.length).toBeGreaterThan(0)
+  })
+
+  it("a real pin is normalized to lowercase ('OpenAI' → 'openai')", () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const { explicit, prefer } = resolveAiProviderPin('  OpenAI ')
+    expect(explicit).toBe('openai')
+    expect(prefer).toBe('openai')
+  })
+
+  it("maps GPT model aliases to the openai provider with a model override ('gpt-5.6-terra')", () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('gpt-5.6-terra')
+    expect(explicit).toBe('openai')
+    expect(prefer).toBe('openai')
+    expect(model).toBe('gpt-5.6-terra')
+  })
+
+  it("maps 'gpt-5.6-sol' to openai + sol model override", () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('gpt-5.6-sol')
+    expect(explicit).toBe('openai')
+    expect(prefer).toBe('openai')
+    expect(model).toBe('gpt-5.6-sol')
+  })
+
+  it("maps bare 'gpt-5.6' to openai + flagship sol model (alias per GPT-5.6 naming scheme)", () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('gpt-5.6')
+    expect(explicit).toBe('openai')
+    expect(prefer).toBe('openai')
+    expect(model).toBe('gpt-5.6-sol')
+  })
+
+  it("maps 'gpt-5.6-luna' to openai + luna model override", () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('gpt-5.6-luna')
+    expect(explicit).toBe('openai')
+    expect(prefer).toBe('openai')
+    expect(model).toBe('gpt-5.6-luna')
+  })
+})

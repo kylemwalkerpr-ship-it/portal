@@ -1557,6 +1557,36 @@ async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): 
   }
 }
 
+/**
+ * Normalize a caller-supplied provider pin into { explicit, prefer }.
+ *
+ * 'auto' / 'default' / 'primary' / empty are AUTO MODE: the literal string is
+ * never a candidate label, so passing it through as `prefer` made
+ * generateContentText throw `Selected AI provider "auto" is not configured`
+ * even when providers ARE configured (2026-08 regression: suggest-keywords
+ * and factory routes send aiProvider:'auto'). In auto mode we clear the
+ * explicit pin ('' → cascade + fallback enabled) and resolve the best
+ * configured provider through preferProvider().
+ *
+ * GPT model aliases ('gpt-5.6-terra' / 'gpt-5.6-sol' / 'gpt-5.6' / 'gpt-5.6-luna')
+ * are also normalized: they are model names, not provider labels, so they map
+ * to the OpenAI provider with a model override. This prevents the same
+ * "not configured" throw when the studio forwards its GPT picker value
+ * straight into the factory pipeline.
+ */
+export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: string; model?: string } {
+  const pin = (raw || '').trim().toLowerCase()
+  // GPT-5.6 family aliases → OpenAI provider + model override.
+  // gpt-5.6 bare → gpt-5.6-sol (GPT-5.6 flagship alias), same as the
+  // request-level mapping in openAiCompatibleComplete.
+  if (/^gpt-5\.6(-[a-z0-9]+)?$/.test(pin)) {
+    return { explicit: 'openai', prefer: 'openai', model: pin === 'gpt-5.6' ? 'gpt-5.6-sol' : pin }
+  }
+  const isAutoMode = !pin || pin === 'auto' || pin === 'default' || pin === 'primary'
+  const explicit = isAutoMode ? '' : pin
+  return { explicit, prefer: explicit || preferProvider() }
+}
+
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
   // Apply the latest admin provider/key settings without requiring a redeploy.
   await refreshAiVault()
@@ -1566,8 +1596,8 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const explicit = (opts.aiProvider || '').trim().toLowerCase()
-  const prefer = explicit || preferProvider()
+  const { explicit, prefer, model } = resolveAiProviderPin(opts.aiProvider)
+  if (model && !opts.model) opts = { ...opts, model }
   const errors: string[] = []
   const candidates = orderedCompleters(opts, prefer)
 
@@ -1640,8 +1670,8 @@ export async function* generateContentTextStream(
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const explicit = (opts.aiProvider || '').trim().toLowerCase()
-  const prefer = explicit || preferProvider()
+  const { explicit, prefer, model } = resolveAiProviderPin(opts.aiProvider)
+  if (model && !opts.model) opts = { ...opts, model }
   const errors: string[] = []
 
   type Candidate = {
