@@ -100,6 +100,9 @@ jobs:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           XAI_MODEL: ${{ secrets.XAI_MODEL }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
+          BASETEN_MODEL: ${{ secrets.BASETEN_MODEL }}
+          BASETEN_GLM_MODEL: ${{ secrets.BASETEN_GLM_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           CUSTOM_AI_BASE_URL: ${{ secrets.CUSTOM_AI_BASE_URL }}
@@ -220,6 +223,9 @@ jobs:
           put_secret XAI_API_KEY               "$XAI_API_KEY"
           put_secret XAI_MODEL                  "$XAI_MODEL"
           put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"
+          put_secret BASETEN_API_KEY           "$BASETEN_API_KEY"
+          put_secret BASETEN_MODEL             "${BASETEN_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
+          put_secret BASETEN_GLM_MODEL         "${BASETEN_GLM_MODEL:-zai-org/GLM-5.2-Fast}"
           put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"
           put_secret OPENAI_MODEL              "${OPENAI_MODEL:-gpt-5.6-luna}"
           put_secret CUSTOM_AI_BASE_URL        "$CUSTOM_AI_BASE_URL"
