@@ -10,6 +10,12 @@
  *      student visas") shipped onto a generic route/hub page of the SAME route
  *      subtype, or a generic article overwriting a geo-specific page.
  *
+ * Geo detection uses a curated list (cities / universities / states /
+ * provinces) — a modifier not yet in the list is not detected on the article
+ * side. The resolver's standing-rules fallback is the primary defence for
+ * those; add the token to GEO_UNIVERSITY_TOKENS when a new city/university
+ * ships so both the resolver and this guard cover it.
+ *
  * Fail-closed on ambiguity is NOT desired here (parse failures must not block
  * legitimate new-page ships), so the guard only blocks when a conflict is
  * clearly detectable. A missing existing file (new page) or an unparseable

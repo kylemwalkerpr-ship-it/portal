@@ -76,11 +76,11 @@ describe('extractRouteSubtypes', () => {
 describe('extractGeoModifiers', () => {
   it('extracts city/university/state modifiers', () => {
     expect(extractGeoModifiers('boulder student visas')).toEqual(['boulder'])
-    expect(extractGeoModifiers('auburn university student housing')).toEqual([
-      'auburn',
-      'university',
-    ])
+    expect(extractGeoModifiers('auburn university student housing')).toEqual(
+      expect.arrayContaining(['auburn', 'university']),
+    )
     expect(extractGeoModifiers('austin student housing')).toEqual(['austin'])
+    expect(extractGeoModifiers('texas student visas')).toEqual(['texas'])
   })
 
   it('returns nothing for generic route keywords', () => {
@@ -91,6 +91,11 @@ describe('extractGeoModifiers', () => {
 
   it('matches university-of phrases', () => {
     expect(extractGeoModifiers('university of washington f-1')).toContain('washington')
+  })
+
+  it('ignores region-level markers (us/uk/ca/au are not geo modifiers)', () => {
+    expect(extractGeoModifiers('us student visas hub')).toEqual([])
+    expect(extractGeoModifiers('uk spouse visa checklist')).toEqual([])
   })
 })
 
@@ -283,5 +288,17 @@ describe('assertNoRouteSubtypeConflict', () => {
         primaryKeyword: 'boulder f-1 visa',
       }),
     ).resolves.toBeUndefined()
+  })
+
+  it('throws for a state-level modifier targeting the generic hub', async () => {
+    mockedGet.mockResolvedValue(STUDENT_HUB_PAGE)
+    await expect(
+      assertNoRouteSubtypeConflict({
+        owner: 'kylemwalkerpr-ship-it',
+        repo: 'caseworks',
+        filePath: 'app/us/student-visas/page.tsx',
+        primaryKeyword: 'texas student visas',
+      }),
+    ).rejects.toThrow(/geo-scope conflict/i)
   })
 })

@@ -93,4 +93,28 @@ describe('ownership resolver — university/geo modifier vs generic hub separati
     expect(p.routingSource).toBe('registry_owner_url')
     expect(p.canonicalUrl).toContain('auburn-university')
   })
+
+  it('never routes a state-level modifier (texas student visas) to the generic hub', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'texas student visas',
+      contentType: 'legal_guide',
+      region: 'US',
+    })
+    expect(p.matched).toBeNull()
+    expect(p.routingSource).toBe('standing_rules')
+    expect(p.host).toBe('usa')
+    expect(p.canonicalUrl).not.toContain('legal.yousafeconsultancy.com/us/student-visas')
+    expect(p.canonicalUrl).toContain('texas')
+  })
+
+  it('still resolves the generic hub keyword to the hub (no geo penalty on generic)', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'us student visas hub',
+      contentType: 'legal_guide',
+      region: 'US',
+    })
+    expect(p.routingSource).toBe('registry_owner_url')
+    expect(p.canonicalUrl).toBe('https://legal.yousafeconsultancy.com/us/student-visas/')
+    expect(p.filePath).toBe('app/us/student-visas/page.tsx')
+  })
 })
