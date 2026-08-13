@@ -15,7 +15,7 @@ import { renderTargetFile, buildBlogPostEntry, insertBlogPostIntoData } from './
 import { assertShipAllowed } from './shipGate'
 import { assertNoRouteSubtypeConflict } from './routeSubtypeGuard'
 import { assertContentDepth } from './contentDepth'
-import { assertQualityGate } from './contentQualityGate'
+import { assertQualityGate, assertRhythmWithinRepairRange } from './contentQualityGate'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import {
   createBranchFrom,
@@ -298,6 +298,16 @@ export async function shipContent(opts: {
     indexable: opts.plan.indexable,
     requiredShortKeywords: opts.requiredShortKeywords,
     requiredLongTailKeywords: opts.requiredLongTailKeywords,
+  })
+  // 2b) Rhythm beyond the deterministic repair's clearing range — the repair
+  // ran above on shipContent_ (mechanical fixes applied); if robotic sentence
+  // openings STILL fire, the mechanical repair cannot clear them and only the
+  // AI targeted sweep can. Refuse ship rather than ship robotic rhythm.
+  assertRhythmWithinRepairRange({
+    content: shipContent_,
+    contentType: opts.contentType,
+    primaryKeyword: opts.primaryKeyword,
+    indexable: opts.plan.indexable,
   })
   // 3) Host · path · format + build-safe payload (CTAPanel, balanced JSX, FM)
   assertShipAllowed({

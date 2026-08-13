@@ -4,7 +4,9 @@
 import {
   evaluateContentQuality,
   assertQualityGate,
+  assertRhythmWithinRepairRange,
 } from '@/lib/seoFactory/contentQualityGate'
+import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { auditContent, meetsShipQuality } from '@/lib/seoFactory/audit'
 
 const solidBody = Array.from({ length: 1900 }, (_, i) => `detail${i}`).join(' ')
@@ -323,6 +325,63 @@ describe('auditContent surfaces ownership blockers with clear remediation', () =
     const ob = audit.blockers.find((b) => b.code === 'ownership')
     expect(ob).toBeDefined()
     expect(ob!.fix).toMatch(/expand the existing strategy URL/i)
+  })
+})
+
+describe('assertRhythmWithinRepairRange (ship-time rhythm guard)', () => {
+  const TAILS = [
+    'allows partners to apply for the same stay.',
+    'requires proof of the relationship.',
+    'covers children under 18.',
+    'is applied for online.',
+    'normally takes three weeks to process.',
+    'does not grant access to public funds.',
+    'can be extended from inside the UK.',
+    'needs a valid passport and biometrics.',
+  ]
+
+  // ≥8 sentences so the gate's rhythm check runs; first sentence varied so
+  // the In 60 seconds block opens a different key.
+  const rhythmicDraft = (count: number) =>
+    `---\ntitle: "UK dependent visa guide 2026"\ncontent_type: article\nprimaryKeyword: uk dependent visa\n---\n\n` +
+    `# UK dependent visa guide 2026\n\n` +
+    `## In 60 seconds\n` +
+    Array.from({ length: count }, (_, i) => `- The UK dependent visa ${TAILS[i % TAILS.length]}`).join('\n') +
+    `\n\nYou need a clear document set before you file. Processing times change and you verify the current rules on the official site before applying. Supporting evidence must match the application. Check the official guidance before you submit anything.`
+
+  it('passes when the deterministic repair cleared the rhythm (moderate repetition)', () => {
+    // 5× bullets: the repair rewrites 4, leaving one — clears the warning.
+    const draft = rhythmicDraft(5)
+    const repaired = applyDeterministicRepairs({
+      content: draft,
+      contentType: 'article',
+      primaryKeyword: 'uk dependent visa',
+      title: 'UK dependent visa guide 2026',
+    })
+    const after = evaluateContentQuality({ content: repaired.content, contentType: 'article', primaryKeyword: 'uk dependent visa' })
+    expect(after.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(false)
+    // Guard on the repaired content must NOT throw.
+    expect(() =>
+      assertRhythmWithinRepairRange({ content: repaired.content, contentType: 'article', primaryKeyword: 'uk dependent visa' }),
+    ).not.toThrow()
+  })
+
+  it('refuses ship when repetition exceeds the deterministic repair clearing range', () => {
+    // 26× bullets: the repair caps each opener at 4 uses (12 max rewrites) and
+    // the tail verb-check skips odd tails — it cannot clear 26×.
+    const draft = rhythmicDraft(26)
+    const repaired = applyDeterministicRepairs({
+      content: draft,
+      contentType: 'article',
+      primaryKeyword: 'uk dependent visa',
+      title: 'UK dependent visa guide 2026',
+    })
+    const after = evaluateContentQuality({ content: repaired.content, contentType: 'article', primaryKeyword: 'uk dependent visa' })
+    expect(after.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(true)
+    // Guard on the repaired content MUST refuse ship.
+    expect(() =>
+      assertRhythmWithinRepairRange({ content: repaired.content, contentType: 'article', primaryKeyword: 'uk dependent visa' }),
+    ).toThrow(/exceeds the deterministic repair's clearing range[\s\S]*AI targeted sweep/)
   })
 })
 

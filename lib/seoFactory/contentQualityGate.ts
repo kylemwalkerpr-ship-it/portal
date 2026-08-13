@@ -973,6 +973,41 @@ export function assertQualityGate(opts: {
   return r
 }
 
+/**
+ * Ship-time rhythm guard — the deterministic repair's clearing range.
+ *
+ * Call AFTER applyDeterministicRepairs (ship.ts already applies it before the
+ * gate stack), on the repaired content. If sentence_start_repetition STILL
+ * fires here, the deterministic repair has hit its limits and cannot clear it:
+ * the pronoun rotation caps each opener at 4 uses (3 singular + 3 plural
+ * openers = 12 rewrites max per key), and the conservative tail verb-check
+ * skips sentences whose post-subject remainder is not a recognized verb — so
+ * extreme repetition (26×) or odd tails can survive the repair. Only the AI
+ * targeted sweep (Re-audit → Fix all warnings, or the reviewer model) can
+ * clear those. Refuse ship rather than ship robotic rhythm.
+ *
+ * Note: the ≥7× case is already a gate blocker (severity 'blocker'); this
+ * guard additionally refuses the 5–6× WARNING case that survives the repair,
+ * which the standard gate would otherwise let through.
+ */
+export function assertRhythmWithinRepairRange(opts: {
+  content: string
+  contentType?: string
+  primaryKeyword?: string
+  indexable?: boolean
+}): QualityGateResult {
+  const r = evaluateContentQuality(opts)
+  const rhythm = r.findings.find((f) => f.code === 'sentence_start_repetition')
+  if (rhythm) {
+    const count = (rhythm.message.match(/(\d+)×/) || [])[1] || '?'
+    throw new Error(
+      `Ship refused — sentence_start_repetition (${count}× "${rhythm.evidence || '?'}…") exceeds the deterministic repair's clearing range. ` +
+        `The mechanical rhythm repair ran but could not clear it. Run the AI targeted sweep (Re-audit → Fix all warnings) before ship.`,
+    )
+  }
+  return r
+}
+
 /** Inject into system prompts for every generation. */
 export function qualityPromptBlock(): string {
   return [
