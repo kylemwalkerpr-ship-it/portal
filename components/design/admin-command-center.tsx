@@ -463,7 +463,9 @@ export default function AdminCommandCenter({
   const [shipMode, setShipMode] = React.useState<ShipMode>('merge')
   const [minAudit, setMinAudit] = React.useState(65)
   const [maxRefine, setMaxRefine] = React.useState(2)
-  const [aiProvider, setAiProvider] = React.useState('auto')
+  // Drafting leads with GLM 5.2 Fast (open-source, fast, cheap); GPT remains
+  // selectable here for research/plan-heavy full runs.
+  const [aiProvider, setAiProvider] = React.useState('baseten-glm-fast')
 
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])

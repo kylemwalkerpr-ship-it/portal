@@ -1509,13 +1509,15 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: preserve the established cascade; Nemotron is append-only unless
+    // DEFAULT: lead with Baseten GLM 5.2 Fast — the fastest, lowest-cost
+    // partner for high-volume drafting (2026-08 policy: drafting runs on
+    // open-source models; GPT is reserved for Research/Review). Then the
+    // established open-source cascade; Nemotron is append-only unless
     // explicitly selected or promoted by the saved admin provider order.
+    pushBasetenGlmFast()
     pushGlm()
     pushBaseten()
-    pushBasetenGlmFast()
     pushGrok()
-    pushOpenAi()
     pushNvidia()
     pushCf()
   }
@@ -1524,9 +1526,9 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   // Nemotron, GLM, and Baseten are included so an explicit pin still gets the preferred
   // long-form providers before we drop out to the broader fallback set.
   pushNemotron()
+  pushBasetenGlmFast()
   pushGlm()
   pushBaseten()
-  pushBasetenGlmFast()
   pushGrok()
   pushOpenAi()
   pushNvidia()
@@ -1644,7 +1646,35 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     return { explicit: 'openai', prefer: 'openai', model: gptAliasModel(pin) }
   }
   const isAutoMode = !pin || pin === 'auto' || pin === 'default' || pin === 'primary'
-  const explicit = isAutoMode ? '' : pin
+  // Normalize non-GPT aliases so an explicit quick-select ('glm-fast',
+  // 'baseten-glm', 'nvidia', 'nim', 'cloudflare'…) resolves to the canonical
+  // provider label — otherwise the early-fail check in generateContentText
+  // throws "Selected AI provider 'glm-fast' is not configured" even when the
+  // backend IS configured. Mirrors the alias maps in configuredProviderOrder
+  // and preferProvider so every resolution path agrees.
+  const aliasMap: Record<string, string> = {
+    'glm-fast': 'baseten-glm-fast',
+    'baseten-glm': 'baseten-glm-fast',
+    glm: 'nvidia-glm',
+    'glm-5': 'nvidia-glm',
+    'glm-5.2': 'nvidia-glm',
+    'z-ai': 'nvidia-glm',
+    'z-ai-glm-5.2': 'nvidia-glm',
+    'nvidia-glm-5.2': 'nvidia-glm',
+    nemotron: 'nvidia-nemotron',
+    'nemotron-3-ultra': 'nvidia-nemotron',
+    baseten: 'baseten-deepseek',
+    deepseek: 'nvidia-deepseek',
+    'deepseek-v4': 'nvidia-deepseek',
+    'deepseek-v4-pro': 'nvidia-deepseek',
+    nvidia: 'nvidia-deepseek',
+    nim: 'nvidia-deepseek',
+    cloudflare: 'cloudflare-ai',
+    'workers-ai': 'cloudflare-ai',
+    xai: 'grok',
+  }
+  const canonical = aliasMap[pin] || pin
+  const explicit = isAutoMode ? '' : canonical
   return { explicit, prefer: explicit || preferProvider() }
 }
 
@@ -1748,6 +1778,22 @@ export async function* generateContentTextStream(
 
   const candidates: Candidate[] = []
 
+  // Baseten-hosted GLM 5.2 Fast leads the stream cascade — the fastest,
+  // lowest-cost partner for high-volume drafting (2026-08 policy: drafting
+  // runs on open-source models; GPT is reserved for Research/Review).
+  const basetenGlmFast = getBasetenGlmFastProvider()
+  if (basetenGlmFast) {
+    candidates.push({
+      label: 'baseten-glm-fast',
+      stream: () =>
+        openAiCompatibleStream(basetenGlmFast, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+        }),
+      complete: () => basetenGlmFastComplete(opts),
+    })
+  }
+
   // NVIDIA GLM 5.2 is a first-class streaming provider. The previous
   // stream path omitted it entirely, so a selected GLM job visibly started
   // on DeepSeek/Cloudflare even though the complete path knew about GLM.
@@ -1776,20 +1822,6 @@ export async function* generateContentTextStream(
           maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
         }),
       complete: () => basetenComplete(opts),
-    })
-  }
-
-  // Baseten-hosted GLM 5.2 Fast — streaming partner for high-volume drafting.
-  const basetenGlmFast = getBasetenGlmFastProvider()
-  if (basetenGlmFast) {
-    candidates.push({
-      label: 'baseten-glm-fast',
-      stream: () =>
-        openAiCompatibleStream(basetenGlmFast, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-        }),
-      complete: () => basetenGlmFastComplete(opts),
     })
   }
 

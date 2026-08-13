@@ -203,15 +203,18 @@ const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising'
   { key: 'rising', label: '↗ Rising' },
   { key: 'refresh', label: '🔄 Refresh' },
 ]
-const AI_PROVIDER_OPTIONS: { value: string; label: string }[] = [
-  { value: 'auto', label: 'Auto (NVIDIA → Cloudflare → rest)' },
-  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol (flagship · Review)' },
-  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra (balanced · Research/Plan)' },
-  { value: 'grok', label: 'Grok (xAI)' },
+
+// Drafting-only provider options — GPT is NOT offered for the draft itself.
+// Research/Plan keeps GPT Terra (via the brief endpoint) and Review keeps GPT
+// Sol (senior editor), but the actual drafting runs on open-source models
+// with GLM 5.2 Fast (Baseten) as the default. GLM Fast is the fastest,
+// lowest-cost partner for high-volume drafting.
+const DRAFTING_PROVIDER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten (zai-org/GLM-5.2-Fast · default)' },
+  { value: 'auto', label: 'Auto (cascade: GLM Fast → DeepSeek → NVIDIA → rest)' },
+  { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2)' },
+  { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten' },
   { value: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b)' },
-  { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 · preferred)' },
-  { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten (preferred)' },
-  { value: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten (zai-org/GLM-5.2-Fast)' },
   { value: 'nvidia-deepseek', label: 'NVIDIA DeepSeek' },
   { value: 'cloudflare-ai', label: 'Cloudflare Workers AI' },
   { value: 'groq', label: 'Groq (Llama)' },
@@ -1639,9 +1642,9 @@ function CreateWizard({
             </select>
           </div>
           <div>
-            <label style={labelStyle}>AI model</label>
+            <label style={labelStyle}>Drafting AI model</label>
             <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
-              {AI_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {DRAFTING_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
@@ -1883,7 +1886,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic, region, contentType, primaryKeyword: title || topic, audience, aiProvider,
+          topic, region, contentType, primaryKeyword: title || topic, audience,
+          // Research/Plan stays on GPT Terra regardless of the drafting model
+          // selection — drafting runs open-source (GLM 5.2 Fast default).
+          aiProvider: 'gpt-5.6-terra',
           gscImpressions: gscData.impressions || 0,
           gscPosition: gscData.position || 0,
           gscClicks: gscData.clicks || 0,
@@ -2072,9 +2078,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             </select>
           </div>
           <div>
-            <label style={labelBase}>AI Provider</label>
+            <label style={labelBase}>Drafting AI Model</label>
             <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputBase}>
-              {AI_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {DRAFTING_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
@@ -3066,7 +3072,9 @@ function JobDetail({
   const [activeAction, setActiveAction] = React.useState<string | null>(null)
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
-  const [aiProvider, setAiProvider] = React.useState<string>('gpt-5.6-terra')
+  // Drafting runs on open-source models — GLM 5.2 Fast (Baseten) is the
+  // default. GPT stays out of the draft itself (Research = Terra, Review = Sol).
+  const [aiProvider, setAiProvider] = React.useState<string>('baseten-glm-fast')
   const [reviewModel, setReviewModel] = React.useState<string>('gpt-5.6-sol')
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
@@ -3318,7 +3326,7 @@ function JobDetail({
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: C.text }}>
             AI model for regeneration
             <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusXs, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}>
-              {AI_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {DRAFTING_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
           {aiProvider === 'auto' && detail.ai_provider && (
@@ -3910,7 +3918,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [contentTypeTouched, setContentTypeTouched] = React.useState(false)
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
-  const [aiProvider, setAiProvider] = React.useState('gpt-5.6-terra')
+  // Drafting default → GLM 5.2 Fast (Baseten); GPT stays for Research/Review.
+  const [aiProvider, setAiProvider] = React.useState('baseten-glm-fast')
   const [reviewModel, setReviewModel] = React.useState('gpt-5.6-sol')
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')

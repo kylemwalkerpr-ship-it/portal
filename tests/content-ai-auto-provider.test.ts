@@ -111,4 +111,36 @@ describe('content AI · auto provider pin', () => {
     expect(prefer).toBe('openai')
     expect(model).toBe('gpt-5.6-luna')
   })
+
+  it("keeps the drafting default 'baseten-glm-fast' on Baseten GLM 5.2 Fast — never GPT", () => {
+    // 2026-08 drafting policy: drafting runs on open-source models with
+    // GLM 5.2 Fast as the default; GPT is reserved for Research (Terra) and
+    // Review (Sol). The drafting pin must resolve to baseten-glm-fast even
+    // when an OpenAI key is present.
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('baseten-glm-fast')
+    expect(explicit).toBe('baseten-glm-fast')
+    expect(prefer).toBe('baseten-glm-fast')
+    expect(model || '').not.toMatch(/^gpt-/) // never a GPT model override
+  })
+
+  it("maps the 'glm-fast' alias to baseten-glm-fast (drafting quick-select)", () => {
+    const { explicit, prefer } = resolveAiProviderPin('glm-fast')
+    expect(explicit).toBe('baseten-glm-fast')
+    expect(prefer).toBe('baseten-glm-fast')
+  })
+
+  it("auto-mode with no saved order never resolves to openai/gpt for drafting", () => {
+    // Clean env: no CONTENT_AI_PROVIDER / ORDER pins, no GPT-leaning keys.
+    delete process.env.CONTENT_AI_PROVIDER
+    delete process.env.CONTENT_AI_PROVIDER_ORDER
+    delete process.env.OPENAI_API_KEY
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    const { explicit, prefer } = resolveAiProviderPin('auto')
+    expect(explicit).toBe('')
+    expect(prefer).not.toBe('openai')
+    expect(prefer).not.toMatch(/^gpt-/) // open-source lead only
+  })
 })
