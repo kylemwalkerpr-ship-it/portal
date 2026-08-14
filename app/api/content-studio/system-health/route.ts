@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
+import { getGscConfig } from '@/lib/gscConfig'
 import { createClient } from '@supabase/supabase-js'
 
 export async function GET() {
@@ -37,27 +38,23 @@ export async function GET() {
       .not('api_key', 'is', null)
 
     // ── GSC connection ──
-    const { data: gscTokens, error: gscError } = await supabase
-      .from('gsc_tokens')
-      .select('google_email, expires_at, created_at, updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-
-    const gscConnected = (!gscError && gscTokens && gscTokens.length > 0) ?? false
-    const gscEmail = gscTokens?.[0]?.google_email ?? null
-    const gscExpiresAt = gscTokens?.[0]?.expires_at ?? null
-    const gscConnectedSince = gscTokens?.[0]?.created_at ?? null
-
-    // ── Service account GSC connection ──
-    const { count: saCount, error: saError } = await supabase
-      .from('gsc_service_account_keys')
-      .select('*', { count: 'exact', head: true })
-
-    const gscMode = (!saError && saCount && saCount > 0)
-      ? 'service_account'
-      : gscConnected
+    // Source of truth is the same one the rest of the studio uses:
+    // public.gsc_connection (single row) + GSC_* env vars, resolved by
+    // lib/gscConfig. The legacy gsc_tokens / gsc_service_account_keys
+    // tables were never the runtime source (gsc_tokens has no site_url
+    // column), so reading them left this card stuck on "Offline · no token"
+    // even while the Worker had a service-account key synced.
+    const gscCfg = await getGscConfig()
+    const gscMode =
+      gscCfg.refreshToken && gscCfg.clientId && gscCfg.clientSecret
         ? 'oauth'
-        : null
+        : gscCfg.serviceAccountKey
+          ? 'service_account'
+          : null
+    const gscConnected = gscMode !== null && Boolean(gscCfg.siteUrl)
+    const gscEmail = gscCfg.connectedEmail ?? null
+    const gscExpiresAt = null
+    const gscConnectedSince = gscCfg.connectedAt ?? null
 
     // ── Interlink registry size ──
     const { count: interlinkCount, error: interlinkError } = await supabase

@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getGscConfig } from '@/lib/gscConfig'
 import { createClient } from '@supabase/supabase-js'
 
 // ── Data fetching (direct Supabase queries, no admin-auth endpoints) ────────
@@ -29,17 +30,14 @@ async function fetchSystemHealth(): Promise<HealthData> {
     .eq('enabled', true)
     .not('api_key', 'is', null)
 
-  const { data: gscTokens } = await supabase
-    .from('gsc_tokens')
-    .select('google_email')
-    .limit(1)
-
-  const { count: saCount } = await supabase
-    .from('gsc_service_account_keys')
-    .select('*', { count: 'exact', head: true })
-
-  const gscConnected = (gscTokens && gscTokens.length > 0) || (saCount && saCount > 0)
-  const gscMode = (saCount && saCount > 0) ? 'service_account' : gscConnected ? 'oauth' : null
+  const gscCfg = await getGscConfig()
+  const gscMode =
+    gscCfg.refreshToken && gscCfg.clientId && gscCfg.clientSecret
+      ? 'oauth'
+      : gscCfg.serviceAccountKey
+        ? 'service_account'
+        : null
+  const gscConnected = gscMode !== null && Boolean(gscCfg.siteUrl)
 
   const { count: interlinkCount } = await supabase
     .from('seo_interlinks')
