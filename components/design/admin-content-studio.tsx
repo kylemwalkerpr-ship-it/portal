@@ -552,7 +552,12 @@ function ApprovePanel({
   onMerged?: () => void
 }) {
   const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
-  const approvable = jobs.filter((j) => j.status === 'drafting' || j.status === 'pending')
+  // Completed drafts — generation finished and content present, but no PR yet.
+  // These were only shown as a passive footnote before (so Approve & Track
+  // never surfaced new completed jobs); they must be actionable approve rows.
+  const readyToApprove = jobs.filter((j) => j.status === 'drafting' && Boolean(j.content))
+  // Still running: queued (pending) or drafting with nothing written yet.
+  const inProgress = jobs.filter((j) => j.status === 'pending' || (j.status === 'drafting' && !j.content))
   const recentMerges = (merges || []).slice(0, 8)
 
   // Per-job approve progress: 'idle' | 'opening' | 'merging' | 'monitoring' | 'ok' | 'failed'
@@ -782,9 +787,102 @@ function ApprovePanel({
           </div>
         </div>
       )}
-      {approvable.length > 0 && (
+      {readyToApprove.length > 0 && (
+        <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+            READY TO APPROVE · {readyToApprove.length} COMPLETED DRAFT{readyToApprove.length === 1 ? '' : 'S'}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {readyToApprove.map((j) => {
+              const progress = approveProgress[j.id]
+              const isWorking = progress && progress.stage !== 'ok' && progress.stage !== 'failed'
+              const stageColor =
+                progress?.stage === 'ok' ? '#0f7a3a'
+                : progress?.stage === 'failed' ? '#a32525'
+                : isWorking ? '#b87a00'
+                : 'transparent'
+              const stageLabel =
+                progress?.stage === 'ok' ? '✓ MERGED · LIVE'
+                : progress?.stage === 'failed' ? '✕ FAILED'
+                : progress?.stage === 'monitoring' ? '⏳ MONITORING DEPLOY'
+                : progress?.stage === 'opening' ? '⏳ SHIPPING…'
+                : isWorking ? '⏳ WORKING…'
+                : (onApproveAndMerge ? '✓ APPROVE → SHIP' : 'OPEN EDITOR')
+              return (
+                <div key={j.id} data-testid={`studio-approve-draft-row-${j.id}`} data-stage={progress?.stage || 'idle'} style={{
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                  padding: 12, background: E.ivory,
+                  border: `1px solid ${E.hairline}`, borderRadius: 0,
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => onApproveAndMerge ? runApproveRow(j) : onOpenJob(j)}
+                    disabled={Boolean(isWorking)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      cursor: isWorking ? 'progress' : 'pointer',
+                      background: 'transparent', border: 'none', padding: 0,
+                      width: '100%', textAlign: 'left',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink }}>{j.title}</div>
+                      <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkMuted }}>
+                        {j.region} · {(j.content_type || '').toUpperCase()} · {j.word_count ? `${j.word_count} words` : 'draft complete'}
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '4px 10px', fontFamily: C.mono, fontSize: 11, fontWeight: 700,
+                      background: stageColor, color: stageColor === 'transparent' ? E.inkMuted : E.ivory,
+                      transition: 'background 0.2s',
+                    }}>{stageLabel}</div>
+                  </button>
+                  {progress && (
+                    <div style={{
+                      fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted,
+                      paddingTop: 4, borderTop: `1px dashed ${E.hairline}`,
+                    }}>
+                      {progress.message}
+                    </div>
+                  )}
+                  {/* Ship-time rhythm refusal — name the repeated opener + count
+                      and direct to the AI targeted sweep (same as PR rows). */}
+                  {rhythmRefusals[j.id] && (
+                    <div data-testid={`studio-rhythm-refusal-${j.id}`} style={{
+                      marginTop: 8, padding: '9px 11px', background: '#FEF2F2',
+                      border: `1px solid #FECACA`, borderLeft: `3px solid #DC2626`,
+                    }}>
+                      <div style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: '#991B1B', marginBottom: 4 }}>
+                        ⛔ RHYTHM BEYOND REPAIR · {rhythmRefusals[j.id]!.count}× "{rhythmRefusals[j.id]!.key}…"
+                      </div>
+                      <div style={{ fontFamily: C.mono, fontSize: 9.5, color: '#7F1D1D', lineHeight: 1.5 }}>
+                        The mechanical rhythm repair ran but cannot clear these repeated sentence openings — the AI targeted sweep is required before ship.
+                      </div>
+                      <div style={{ marginTop: 5 }}>
+                        <button
+                          type="button"
+                          onClick={() => onOpenJob(j)}
+                          style={{
+                            padding: '4px 10px', borderRadius: 4, border: 'none',
+                            background: '#DC2626', color: '#FFF',
+                            fontFamily: C.mono, fontSize: 9, fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Open in editor → Re-audit (AI sweep)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      {inProgress.length > 0 && (
         <div style={{ fontFamily: C.serif, fontSize: 13, color: E.inkMuted, fontStyle: 'italic' }}>
-          {approvable.length} draft{approvable.length === 1 ? '' : 's'} are still in early stages. They will promote here once VI · Defend green-lights them.
+          {inProgress.length} job{inProgress.length === 1 ? '' : 's'} still generating. They will appear here as ready to approve once complete.
         </div>
       )}
     </div>
