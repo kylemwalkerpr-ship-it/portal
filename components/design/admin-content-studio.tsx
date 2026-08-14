@@ -1082,9 +1082,18 @@ function PublishLedger({
   // lib/seoFactory/publishLedgerMetric (single source of truth).
   const [metricChoice, setMetricChoice] = React.useState<Record<string, Metric>>({})
 
+  // Key the memo on the SERIALIZED URL set, not the array reference. `stamps`
+  // is a fresh array every render (the parent polls jobs every 6s + realtime
+  // subscription), so `[stamps]` made this memo recompute every render, which
+  // cascaded into new loadTrends/loadDivergence callbacks and re-ran their
+  // effects on every render — the ledger kept re-fetching and flickering. A
+  // string key stays referentially stable while the actual URL list is
+  // unchanged, so the trend/divergence fetches only fire when it truly changes.
+  const canonicalUrlsKey = stamps.map((s) => s.canonical_url || '').join('\u0001')
   const canonicalUrls = React.useMemo(
     () => stamps.map((s) => s.canonical_url).filter((u): u is string => !!u),
-    [stamps],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canonicalUrlsKey],
   )
 
   // Live metrics summary — aggregates trend data into KPI cards
@@ -2174,10 +2183,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // verified interlinks) and produces a maximally prescriptive brief so the
   // drafting AI has zero room to hallucinate.
   const [briefGenerating, setBriefGenerating] = React.useState(false)
-  // Research/Plan brief model — GPT Sol (flagship) or GPT Terra (fast+cheap).
-  // The brief endpoint's policy (lib/seoFactory/briefModel) only honors these
-  // two; Terra is the sensible default for the brief.
+  // Research/Plan brief model — GPT Sol (flagship), GPT Terra (balanced), or
+  // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
+  // brief endpoint (lib/seoFactory/briefModel) honors all three.
   const [briefModel, setBriefModel] = React.useState('gpt-5.6-terra')
+  const briefModelName =
+    briefModel === 'gpt-5.6-sol'
+      ? 'GPT Sol'
+      : briefModel === 'baseten-glm-fast'
+        ? 'GLM 5.2 Fast'
+        : 'GPT Terra'
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -2189,10 +2204,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic, region, contentType, primaryKeyword: title || topic, audience,
-          // Research/Plan stays on ChatGPT (Sol or Terra — selectable above)
-          // regardless of the drafting model selection — drafting runs
-          // open-source (GLM 5.2 Fast default). The brief endpoint's policy
-          // coerces everything else to Terra; we pass the explicit choice.
+          // Research/Plan model is selectable above (GPT Sol/Terra or GLM 5.2
+          // Fast). We pass the explicit choice; the brief endpoint's policy
+          // coerces unknown values to Terra.
           aiProvider: briefModel,
           gscImpressions: gscData.impressions || 0,
           gscPosition: gscData.position || 0,
@@ -2464,7 +2478,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
               value={briefModel}
               onChange={(e) => setBriefModel(e.target.value)}
               disabled={briefGenerating}
-              title="Brief model — GPT Sol (flagship) for the highest-quality brief; GPT Terra (fast + lower cost) as the default"
+              title="Brief model — GPT Sol (flagship) for the highest-quality brief; GPT Terra (balanced) as the default; GLM 5.2 Fast (efficient open-source)"
               style={{
                 padding: '4px 6px', borderRadius: 6, border: `1px solid ${E.hairline}`,
                 background: E.paper, color: E.ink,
@@ -2476,6 +2490,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             >
               <option value="gpt-5.6-terra">GPT Terra</option>
               <option value="gpt-5.6-sol">GPT Sol</option>
+              <option value="baseten-glm-fast">GLM 5.2 Fast</option>
             </select>
             <button
               type="button"
@@ -2491,9 +2506,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s ease',
               }}
-              title={!topic.trim() ? 'Enter a topic first' : `GPT ${briefModel === 'gpt-5.6-sol' ? 'Sol' : 'Terra'} reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief`}
+              title={!topic.trim() ? 'Enter a topic first' : `${briefModelName} reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief`}
             >
-              {briefGenerating ? `🧠 GPT ${briefModel === 'gpt-5.6-sol' ? 'Sol' : 'Terra'} building brief…` : '🧠 Generate Full Brief'}
+              {briefGenerating ? `🧠 ${briefModelName} building brief…` : '🧠 Generate Full Brief'}
             </button>
           </div>
           <textarea

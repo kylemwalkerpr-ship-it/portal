@@ -26,7 +26,7 @@ import {
 } from '@/lib/seoFactory/briefModel'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('resolveBriefAiProvider — OpenAI ChatGPT is the only brief model', () => {
+describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2 Fast)', () => {
   it('gpt-5.6-terra and gpt-5.6 default to OpenAI + Terra', () => {
     expect(resolveBriefAiProvider('gpt-5.6-terra')).toEqual({
       aiProvider: 'openai',
@@ -54,13 +54,25 @@ describe('resolveBriefAiProvider — OpenAI ChatGPT is the only brief model', ()
     })
   })
 
+  it('baseten-glm-fast (and glm-5.2-fast alias) → GLM 5.2 Fast', () => {
+    expect(resolveBriefAiProvider('baseten-glm-fast')).toEqual({
+      aiProvider: 'baseten-glm-fast',
+    })
+    expect(resolveBriefAiProvider('glm-5.2-fast')).toEqual({
+      aiProvider: 'baseten-glm-fast',
+    })
+    // Case-insensitive
+    expect(resolveBriefAiProvider('BASETEN-GLM-FAST')).toEqual({
+      aiProvider: 'baseten-glm-fast',
+    })
+  })
+
   it('EVERY other value coerces to OpenAI + Terra — never a non-OpenAI provider', () => {
     const leaks = [
       'auto',
       '',
       'default',
       'baseten-deepseek',
-      'baseten-glm-fast',
       'nvidia-glm',
       'nvidia-nemotron',
       'glm-fast',
@@ -158,6 +170,32 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
     // Both endpoints were hit: OpenAI first, then Baseten GLM 5.2 Fast.
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(true)
     expect(urls.some((u) => u.includes('inference.baseten.co'))).toBe(true)
+  })
+
+  it('explicit GLM 5.2 Fast primary succeeds with fallbackUsed=false', async () => {
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      return json({ choices: [{ message: { content: 'GLM-CHOSEN-BRIEF' }, finish_reason: 'stop' }] })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'baseten-glm-fast',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    // An explicit GLM selection is the PRIMARY leg, not a fallback.
+    expect(result.fallbackUsed).toBe(false)
+    expect(result.ai.provider).toBe('baseten-glm-fast')
+    expect(result.ai.text).toBe('GLM-CHOSEN-BRIEF')
+    // Only Baseten was contacted — OpenAI was never tried.
+    expect(urls.some((u) => u.includes('inference.baseten.co'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
   })
 
   it('both-fail path: combined error names GPT and GLM 5.2 Fast reasons', async () => {
