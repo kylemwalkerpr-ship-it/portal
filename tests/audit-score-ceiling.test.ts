@@ -1,0 +1,104 @@
+/**
+ * Regression: the SEO audit score had a denominator bug (`max = 20` while the
+ * checks only ever award 18 points), so a flawless article could never score
+ * above 90%. This locks the ceiling at 100% for a fully-clean, blocker-free,
+ * warning-free article.
+ */
+import { auditContent } from '@/lib/seoFactory/audit'
+
+const TITLE = 'Student visa documents checklist 2026'
+// 120–170 chars so the meta_description check passes.
+const DESCRIPTION =
+  'A practical checklist of the student visa documents, timelines, and risks, with official sources and clear steps for applicants.'
+
+/**
+ * A long-form (pillar-tier) article that clears every audit check with zero
+ * blockers and zero warnings. Padding uses a unique per-sentence token so
+ * sentence-start repetition never fires, and paragraphs are kept short so the
+ * wall_of_text warning never fires.
+ */
+function cleanLongForm(): string {
+  const sentences = Array.from({ length: 180 }, (_, i) => {
+    // First 12 chars are unique per index → no sentence_start_repetition.
+    return `Step${i} gives you one more practical point to check against the official source.`
+  })
+  let pad = ''
+  for (let i = 0; i < sentences.length; i++) {
+    pad += sentences[i]
+    pad += i % 3 === 2 ? '\n\n' : ' '
+  }
+
+  return `---
+title: ${TITLE}
+description: ${DESCRIPTION}
+primaryKeyword: student visa documents
+---
+
+# ${TITLE}
+
+## In 60 seconds
+- Confirm the exact form list for your route on the official site
+- Gather bank statements and identity documents before you file
+- Check processing times so you don't miss a deadline
+
+## On this page
+- Eligibility and steps
+- Documents checklist
+- Risks and timelines
+- FAQ
+
+## Eligibility and steps
+You confirm which route applies, then you collect evidence that matches the rules on https://www.uscis.gov/. For example, an F-1 student files the I-20 alongside the visa application.
+
+## Documents checklist
+Passport, financial proof, and school letters usually sit on the list. Verify live requirements before you pay any fee.
+
+## Risks and timelines
+Missing pages or stale bank statements often delay a case. You'll want to renew anything that expires within the next six months.
+
+## FAQ
+### What should you prepare first?
+You start with identity documents and the official form list for your category.
+
+### How long does filing take?
+Processing times change, so check the agency site for the current estimate.
+
+### What if something is missing?
+You pause filing until the evidence set is complete rather than guessing.
+
+### Can family members apply with you?
+Dependents follow separate rules, so read the official page for your route.
+
+## Sources
+- https://www.uscis.gov/
+- [Student visa hub](https://legal.yousafeconsultancy.com/us/student-visas/)
+- [F-1 OPT guide](https://legal.yousafeconsultancy.com/us/f1-opt/)
+
+This guide is for educational purposes only and is not legal advice. Consult a qualified immigration attorney for your situation.
+
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Article","headline":"${TITLE}"}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[]}
+</script>
+
+${pad}
+`
+}
+
+describe('audit score ceiling', () => {
+  it('a fully-clean article scores 100, not 90', () => {
+    const audit = auditContent({
+      content: cleanLongForm(),
+      contentType: 'article',
+      primaryKeyword: 'student visa documents',
+      indexable: true,
+    })
+
+    expect(audit.blockers.map((b) => b.code)).toEqual([])
+    expect(audit.warnings.map((w) => w.code)).toEqual([])
+    expect(audit.score).toBe(100)
+    expect(audit.grade).toBe('A')
+  })
+})

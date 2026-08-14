@@ -80,7 +80,14 @@ export function auditContent(opts: {
   const warnings: AuditFinding[] = []
   const passes: AuditFinding[] = []
   let points = 0
-  const max = 20
+  // Total achievable points across all checks is 18, not 20:
+  //   word_count 2 + title 2 + keyword 2 + citations 2 + human_voice 2
+  //   + meta_description 1 + h2_structure 1 + schema_article 1 + schema_faq 1
+  //   + internal_links 1 + ai_answer_block 1 + disclaimer 1 + robots 1 = 18.
+  // Keep this denominator in sync when adding/removing checks, or the score
+  // ceiling drifts. (2026-08-14: was 20, which capped a flawless article at
+  // 18/20 = 90% — hence the persistent "90%" across the Job queue.)
+  const max = 18
 
   const add = (ok: boolean, finding: AuditFinding, pts: number) => {
     if (ok) {
