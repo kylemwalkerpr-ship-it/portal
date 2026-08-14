@@ -1919,6 +1919,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // verified interlinks) and produces a maximally prescriptive brief so the
   // drafting AI has zero room to hallucinate.
   const [briefGenerating, setBriefGenerating] = React.useState(false)
+  // Research/Plan brief model — GPT Sol (flagship) or GPT Terra (fast+cheap).
+  // The brief endpoint's policy (lib/seoFactory/briefModel) only honors these
+  // two; Terra is the sensible default for the brief.
+  const [briefModel, setBriefModel] = React.useState('gpt-5.6-terra')
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -1930,9 +1934,11 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic, region, contentType, primaryKeyword: title || topic, audience,
-          // Research/Plan stays on GPT Terra regardless of the drafting model
-          // selection — drafting runs open-source (GLM 5.2 Fast default).
-          aiProvider: 'gpt-5.6-terra',
+          // Research/Plan stays on ChatGPT (Sol or Terra — selectable above)
+          // regardless of the drafting model selection — drafting runs
+          // open-source (GLM 5.2 Fast default). The brief endpoint's policy
+          // coerces everything else to Terra; we pass the explicit choice.
+          aiProvider: briefModel,
           gscImpressions: gscData.impressions || 0,
           gscPosition: gscData.position || 0,
           gscClicks: gscData.clicks || 0,
@@ -2199,6 +2205,23 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             >
               {suggestingKeywords ? '⏳ AI analyzing…' : '🤖 AI Suggest Keywords'}
             </button>
+            <select
+              value={briefModel}
+              onChange={(e) => setBriefModel(e.target.value)}
+              disabled={briefGenerating}
+              title="Brief model — GPT Sol (flagship) for the highest-quality brief; GPT Terra (fast + lower cost) as the default"
+              style={{
+                padding: '4px 6px', borderRadius: 6, border: `1px solid ${E.hairline}`,
+                background: E.paper, color: E.ink,
+                fontSize: 10, fontWeight: 700, fontFamily: E.mono,
+                cursor: briefGenerating ? 'not-allowed' : 'pointer',
+                opacity: briefGenerating ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <option value="gpt-5.6-terra">GPT Terra</option>
+              <option value="gpt-5.6-sol">GPT Sol</option>
+            </select>
             <button
               type="button"
               onClick={handleGenerateBrief}
@@ -2213,9 +2236,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s ease',
               }}
-              title={!topic.trim() ? 'Enter a topic first' : 'GPT Luna reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief'}
+              title={!topic.trim() ? 'Enter a topic first' : `GPT ${briefModel === 'gpt-5.6-sol' ? 'Sol' : 'Terra'} reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief`}
             >
-              {briefGenerating ? '🧠 GPT Luna building brief…' : '🧠 Generate Full Brief'}
+              {briefGenerating ? `🧠 GPT ${briefModel === 'gpt-5.6-sol' ? 'Sol' : 'Terra'} building brief…` : '🧠 Generate Full Brief'}
             </button>
           </div>
           <textarea
