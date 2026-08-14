@@ -4382,7 +4382,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
     discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
     research: { available: true, reason: 'Research keywords and build the brief — always accessible.' },
-    draft: { available: hasBriefReady, reason: 'Complete the research brief before drafting.' },
+    // Draft & Review is unlocked by EITHER a ready brief (generate a new
+    // draft) OR an existing job in the queue (review/repair prior work).
+    // Gating solely on hasBriefReady made the stage unreachable whenever an
+    // admin wanted to revisit previously drafted content without starting a
+    // fresh brief first.
+    draft: { available: hasBriefReady || hasDraft, reason: 'Complete the research brief, or open an existing draft from the queue to review.' },
     approve: { available: hasApproval, reason: 'A completed draft or open PR must exist before approval.' },
     configure: { available: true, reason: 'System configuration is always accessible.' },
   }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
