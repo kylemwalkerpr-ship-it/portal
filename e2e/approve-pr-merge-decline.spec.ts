@@ -218,5 +218,8 @@ test.describe('Approve & Track PR rows (admin)', () => {
     // The dispatched PATCH must be close_pr — closing the PR on GitHub.
     await expect.poll(() => patches.length, { timeout: 10000 }).toBeGreaterThan(0)
     expect(patches[0]).toEqual({ id: 'job-pr', action: 'close_pr' })
+
+    // The row's terminal state must read DECLINED — not the pre-fix '✕ FAILED'.
+    await expect(page.getByTestId('studio-approve-row-job-pr')).toContainText('DECLINED · PR CLOSED')
   })
 })

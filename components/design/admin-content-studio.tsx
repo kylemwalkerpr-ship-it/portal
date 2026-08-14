@@ -567,7 +567,7 @@ function ApprovePanel({
   // Per-job approve progress: 'idle' | 'opening' | 'merging' | 'monitoring' | 'ok' | 'failed'
   // bulk_approve resolves only when the full sequence is done, so we project
   // coarse stage milestones to keep the admin informed during CI.
-  type ApproveProgress = 'idle' | 'opening' | 'merging' | 'monitoring' | 'ok' | 'failed'
+  type ApproveProgress = 'idle' | 'opening' | 'merging' | 'monitoring' | 'ok' | 'failed' | 'closed'
   const [approveProgress, setApproveProgress] = React.useState<Record<string, {
     stage: ApproveProgress
     message: string
@@ -705,7 +705,7 @@ function ApprovePanel({
       setApproveProgress((prev) => ({
         ...prev,
         [j.id]: {
-          stage: result.ok ? 'failed' : 'failed',
+          stage: result.ok ? 'closed' : 'failed',
           message: result.message || (result.ok ? 'PR closed' : 'Close failed'),
           startedAt: prev[j.id]?.startedAt || started,
           finishedAt: Date.now(),
@@ -734,15 +734,17 @@ function ApprovePanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {prOpen.map((j) => {
             const progress = approveProgress[j.id]
-            const isWorking = progress && progress.stage !== 'ok' && progress.stage !== 'failed'
+            const isWorking = progress && progress.stage !== 'ok' && progress.stage !== 'failed' && progress.stage !== 'closed'
             const stageColor =
               progress?.stage === 'ok' ? '#0f7a3a'
               : progress?.stage === 'failed' ? '#a32525'
+              : progress?.stage === 'closed' ? '#6b7280'
               : isWorking ? '#b87a00'
               : 'transparent'
             const stageLabel =
               progress?.stage === 'ok' ? '✓ MERGED · LIVE'
               : progress?.stage === 'failed' ? '✕ FAILED'
+              : progress?.stage === 'closed' ? '✕ DECLINED · PR CLOSED'
               : progress?.stage === 'monitoring' ? '⏳ MONITORING DEPLOY'
               : progress?.stage === 'merging' ? '⏳ MERGING'
               : progress?.stage === 'opening' ? '⏳ MERGING PR'
