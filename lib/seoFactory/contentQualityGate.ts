@@ -1152,6 +1152,22 @@ export function formattingRequirementsBlock(): string {
     '- SCANNABILITY: 1–3 sentence paragraphs, bullets for sets, numbered steps',
     '  for sequences, one comparison/checklist table only where it earns its',
     '  space, FAQ answers self-contained for answer engines.',
+    '',
+    '- NUMBERED LISTS: real markdown numbers for steps — `1. `, `2. `, `3. `, one',
+    '  per line. The renderer turns these into a numbered <ol>. Never fake',
+    '  numbering with manual "1)" / "Step 1:" text.',
+    '',
+    '- BULLETS: a single `- ` for sets/checklists. Never mix bullets and numbers',
+    '  in one list. Bold the lead phrase of long items (`**Lead:** rest`).',
+    '',
+    '- TABLES: markdown pipe tables only, with a header row + a `---` separator',
+    '  row. The renderer converts these to a real <table> — never write a table',
+    '  as plain text or inside a code fence.',
+    '',
+    '- CALLOUTS: blockquotes for warnings/notes — `> **Note:** text.` → <blockquote>.',
+    '',
+    '- SPACING: exactly ONE blank line between blocks; no trailing spaces; no two',
+    '  consecutive blank lines.',
   ].join('\n')
 }
 

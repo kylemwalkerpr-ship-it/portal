@@ -61,6 +61,49 @@ function escapeJsxAttr(s: string): string {
   return escapeJsxText(s).replace(/"/g, '&quot;')
 }
 
+/**
+ * Render a markdown pipe-table into build-safe JSX.
+ * `rows` = [headerRow, separatorRow, ...bodyRows]. The separator row
+ * (|---|---|) is detected and dropped; cells are renderInline'd so bold
+ * lead-ins and inline links survive inside cells.
+ */
+function renderMarkdownTable(
+  rows: string[],
+  cls?: { table?: string; th?: string; td?: string },
+): string[] {
+  const parse = (row: string): string[] =>
+    row
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map((c) => c.trim())
+  const [headRaw, ...rest] = rows
+  const sepIdx = rest.findIndex((r) => r.includes('-') && /^\|?[\s:| -]+\|?$/.test(r.trim()))
+  const bodyRows = sepIdx >= 0 ? rest.slice(sepIdx + 1) : rest
+  const head = headRaw ? parse(headRaw) : []
+  const table = cls?.table ? ` className="${cls.table}"` : ''
+  const th = cls?.th ? ` className="${cls.th}"` : ''
+  const td = cls?.td ? ` className="${cls.td}"` : ''
+  const out: string[] = [`      <table${table}>`]
+  if (head.length) {
+    out.push('        <thead>')
+    out.push('          <tr>')
+    for (const c of head) out.push(`            <th${th}>${renderInline(c)}</th>`)
+    out.push('          </tr>')
+    out.push('        </thead>')
+  }
+  out.push('        <tbody>')
+  for (const r of bodyRows) {
+    out.push('          <tr>')
+    for (const c of parse(r)) out.push(`            <td${td}>${renderInline(c)}</td>`)
+    out.push('          </tr>')
+  }
+  out.push('        </tbody>')
+  out.push('      </table>')
+  return out
+}
+
 /** Convert markdown body to simple JSX fragment strings for ArticleLayout children. */
 function markdownToJsx(body: string): string {
   // Drop JSON-LD / raw HTML scripts — ArticleLayout already emits schema.
@@ -78,12 +121,13 @@ function markdownToJsx(body: string): string {
 
   const lines = cleaned.split('\n')
   const out: string[] = []
-  let inList = false
+  let listType: 'ul' | 'ol' | null = null
   let para: string[] = []
   let inFence = false
   // <details>/<summary> collapsible passthrough state
   let inDetails = false
   let inSummary = false
+  let inBlockquote = false
 
   const flushPara = () => {
     if (!para.length) return
@@ -91,19 +135,33 @@ function markdownToJsx(body: string): string {
     para = []
   }
   const closeList = () => {
-    if (inList) {
-      out.push('      </ul>')
-      inList = false
+    if (listType) {
+      out.push(`      </${listType}>`)
+      listType = null
+    }
+  }
+  const openList = (type: 'ul' | 'ol') => {
+    if (listType === type) return
+    closeList()
+    out.push(`      <${type}>`)
+    listType = type
+  }
+  const closeBlockquote = () => {
+    if (inBlockquote) {
+      out.push('      </blockquote>')
+      inBlockquote = false
     }
   }
 
-  for (const raw of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
     const line = raw.trimEnd()
     const trimmed = line.trim()
 
     if (trimmed.startsWith('```')) {
       flushPara()
       closeList()
+      closeBlockquote()
       inFence = !inFence
       continue
     }
@@ -112,6 +170,7 @@ function markdownToJsx(body: string): string {
     if (!trimmed) {
       flushPara()
       closeList()
+      closeBlockquote()
       continue
     }
 
@@ -121,6 +180,7 @@ function markdownToJsx(body: string): string {
     if (/^<details\b/i.test(trimmed)) {
       flushPara()
       closeList()
+      closeBlockquote()
       inDetails = true
       out.push(`      ${trimmed}`)
       continue
@@ -128,6 +188,7 @@ function markdownToJsx(body: string): string {
     if (inDetails && /^<\/details>$/i.test(trimmed)) {
       flushPara()
       closeList()
+      closeBlockquote()
       inDetails = false
       inSummary = false
       out.push(`      ${trimmed}`)
@@ -136,6 +197,7 @@ function markdownToJsx(body: string): string {
     if (inDetails && /^<summary\b/i.test(trimmed)) {
       flushPara()
       closeList()
+      closeBlockquote()
       inSummary = true
       out.push(`      ${trimmed}`)
       continue
@@ -146,16 +208,51 @@ function markdownToJsx(body: string): string {
       continue
     }
 
+    // Markdown pipe-table — a header row immediately followed by a separator
+    // row (|---|---|). Rendered as a real <table> so comparison/checklist
+    // tables the brief asks for never ship as literal pipe text.
+    if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length) {
+      const nextTrim = lines[i + 1].trim()
+      if (nextTrim.includes('-') && /^\|?[\s:| -]+\|?$/.test(nextTrim)) {
+        const rows: string[] = [trimmed, nextTrim]
+        let j = i + 2
+        while (j < lines.length && /^\|.*\|$/.test(lines[j].trim())) {
+          rows.push(lines[j].trim())
+          j++
+        }
+        flushPara()
+        closeList()
+        closeBlockquote()
+        out.push(...renderMarkdownTable(rows))
+        i = j - 1
+        continue
+      }
+    }
+
+    // Blockquote callouts ("> Note: …") — render as a real <blockquote>.
+    if (line.startsWith('> ')) {
+      flushPara()
+      closeList()
+      if (!inBlockquote) {
+        out.push('      <blockquote>')
+        inBlockquote = true
+      }
+      out.push(`        <p>${renderInline(line.slice(2).trim())}</p>`)
+      continue
+    }
+
     // Skip raw HTML blocks and markdown H1 (page already has title/H1 from layout)
     if ((trimmed.startsWith('<') && !inDetails) || trimmed.startsWith('#' + ' ')) {
       flushPara()
       closeList()
+      closeBlockquote()
       continue
     }
 
     if (line.startsWith('## ')) {
       flushPara()
       closeList()
+      closeBlockquote()
       // Skip duplicate "In 60 seconds" — Tldr already covers it
       if (/^in 60 seconds$/i.test(line.slice(3).trim())) continue
       const text = line.slice(3)
@@ -166,6 +263,7 @@ function markdownToJsx(body: string): string {
     if (line.startsWith('### ')) {
       flushPara()
       closeList()
+      closeBlockquote()
       out.push(`      <h3 id="${slugifyHeading(line.slice(4)) || 'section'}">${renderInline(line.slice(4))}</h3>`)
       continue
     }
@@ -174,6 +272,7 @@ function markdownToJsx(body: string): string {
     if (h4) {
       flushPara()
       closeList()
+      closeBlockquote()
       const level = Math.min(6, h4[1].length)
       const Tag = `h${level}`
       out.push(`      <${Tag} id="${slugifyHeading(h4[2]) || 'section'}">${renderInline(h4[2])}</${Tag}>`)
@@ -181,20 +280,17 @@ function markdownToJsx(body: string): string {
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
       flushPara()
-      if (!inList) {
-        out.push('      <ul>')
-        inList = true
-      }
+      closeBlockquote()
+      openList('ul')
       out.push(`        <li>${renderInline(line.slice(2))}</li>`)
       continue
     }
-    // Ordered lists → plain list items
+    // Ordered (numbered) lists → <ol> so step numbers survive to the live page.
+    // Previously these were emitted as <ul> and silently lost their numbering.
     if (/^\d+\.\s+/.test(line)) {
       flushPara()
-      if (!inList) {
-        out.push('      <ul>')
-        inList = true
-      }
+      closeBlockquote()
+      openList('ol')
       out.push(`        <li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`)
       continue
     }
@@ -202,6 +298,7 @@ function markdownToJsx(body: string): string {
   }
   flushPara()
   closeList()
+  closeBlockquote()
   return out.join('\n')
 }
 
@@ -231,9 +328,10 @@ function markdownToBlogJsx(body: string): string {
 
   const lines = cleaned.split('\n')
   const out: string[] = []
-  let inList = false
+  let listType: 'ul' | 'ol' | null = null
   let inSection = false
   let para: string[] = []
+  let inBlockquote = false
 
   const flushPara = () => {
     if (!para.length) return
@@ -241,33 +339,90 @@ function markdownToBlogJsx(body: string): string {
     para = []
   }
   const closeList = () => {
-    if (inList) {
-      out.push('      </ul>')
-      inList = false
+    if (listType) {
+      out.push(`      </${listType}>`)
+      listType = null
+    }
+  }
+  const openList = (type: 'ul' | 'ol') => {
+    if (listType === type) return
+    closeList()
+    out.push(
+      type === 'ol'
+        ? '      <ol className="mt-4 list-decimal space-y-2 pl-5 text-muted-foreground">'
+        : '      <ul className="mt-4 list-disc space-y-2 pl-5 text-muted-foreground">',
+    )
+    listType = type
+  }
+  const closeBlockquote = () => {
+    if (inBlockquote) {
+      out.push('      </blockquote>')
+      inBlockquote = false
     }
   }
   const closeSection = () => {
     flushPara()
     closeList()
+    closeBlockquote()
     if (inSection) {
       out.push('    </section>')
       inSection = false
     }
   }
 
-  for (const raw of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
     const line = raw.trimEnd()
     const trimmed = line.trim()
 
     if (!trimmed) {
       flushPara()
       closeList()
+      closeBlockquote()
+      continue
+    }
+
+    // Markdown pipe-table — header + separator row → a real <table>.
+    if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length) {
+      const nextTrim = lines[i + 1].trim()
+      if (nextTrim.includes('-') && /^\|?[\s:| -]+\|?$/.test(nextTrim)) {
+        const rows: string[] = [trimmed, nextTrim]
+        let j = i + 2
+        while (j < lines.length && /^\|.*\|$/.test(lines[j].trim())) {
+          rows.push(lines[j].trim())
+          j++
+        }
+        flushPara()
+        closeList()
+        closeBlockquote()
+        out.push(
+          ...renderMarkdownTable(rows, {
+            table: 'mt-4 w-full border-collapse text-sm',
+            th: 'border border-border px-3 py-2 text-left font-semibold',
+            td: 'border border-border px-3 py-2 align-top',
+          }),
+        )
+        i = j - 1
+        continue
+      }
+    }
+
+    // Blockquote callouts ("> Note: …") → a real <blockquote>.
+    if (line.startsWith('> ')) {
+      flushPara()
+      closeList()
+      if (!inBlockquote) {
+        out.push('      <blockquote className="mt-4 border-l-2 border-border pl-4 italic text-muted-foreground">')
+        inBlockquote = true
+      }
+      out.push(`        <p>${renderInline(line.slice(2).trim())}</p>`)
       continue
     }
 
     if ((trimmed.startsWith('<') && !/^<\/?details/.test(trimmed)) || trimmed.startsWith('# ')) {
       flushPara()
       closeList()
+      closeBlockquote()
       continue
     }
 
@@ -284,6 +439,7 @@ function markdownToBlogJsx(body: string): string {
     if (line.startsWith('### ')) {
       flushPara()
       closeList()
+      closeBlockquote()
       out.push(`      <h3 className="font-serif text-xl text-foreground">${renderInline(line.slice(4))}</h3>`)
       continue
     }
@@ -291,24 +447,22 @@ function markdownToBlogJsx(body: string): string {
     if (h4) {
       flushPara()
       closeList()
+      closeBlockquote()
       out.push(`      <h4 className="font-serif text-lg text-foreground">${renderInline(h4[2])}</h4>`)
       continue
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
       flushPara()
-      if (!inList) {
-        out.push('      <ul className="mt-4 list-disc space-y-2 pl-5 text-muted-foreground">')
-        inList = true
-      }
+      closeBlockquote()
+      openList('ul')
       out.push(`        <li>${renderInline(line.slice(2))}</li>`)
       continue
     }
+    // Ordered (numbered) lists → <ol> so step numbers survive to the live page.
     if (/^\d+\.\s+/.test(line)) {
       flushPara()
-      if (!inList) {
-        out.push('      <ul className="mt-4 list-disc space-y-2 pl-5 text-muted-foreground">')
-        inList = true
-      }
+      closeBlockquote()
+      openList('ol')
       out.push(`        <li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`)
       continue
     }
@@ -456,6 +610,13 @@ ${jsxBody || `      <p>Editorial draft for ${escapeJsxText(title)}. Expand with 
   const closeUl = (out.match(/<\/ul>/g) || []).length
   if (openUl !== closeUl) {
     throw new Error(`renderCaseworksPage internal error: unbalanced <ul> (${openUl}/${closeUl})`)
+  }
+  for (const tag of ['ol', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote']) {
+    const open = (out.match(new RegExp(`<${tag}(?=[\\s>])`, 'g')) || []).length
+    const close = (out.match(new RegExp(`</${tag}>`, 'g')) || []).length
+    if (open !== close) {
+      throw new Error(`renderCaseworksPage internal error: unbalanced <${tag}> (${open}/${close})`)
+    }
   }
   return out
 }
