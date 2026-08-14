@@ -77,6 +77,17 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'Preferred DeepSeek Flash endpoint — OpenAI-compatible streaming',
   },
   {
+    id: 'baseten-glm-fast',
+    label: 'GLM 5.2 Fast · Baseten',
+    keyEnv: 'BASETEN_API_KEY',
+    baseUrlEnv: 'BASETEN_BASE_URL',
+    modelEnv: 'BASETEN_GLM_MODEL',
+    fixedBaseUrl: 'https://inference.baseten.co/v1',
+    defaultModel: 'zai-org/GLM-5.2-Fast',
+    role: 'fallback',
+    hint: 'Efficient high-volume drafting partner — also the brief fallback when GPT is unconfigured',
+  },
+  {
     id: 'cloudflare-ai',
     label: 'Cloudflare Workers AI',
     keyEnv: 'CLOUDFLARE_AI_TOKEN',

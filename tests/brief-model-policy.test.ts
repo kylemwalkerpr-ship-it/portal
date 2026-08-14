@@ -18,7 +18,12 @@ jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
 }))
 
-import { resolveBriefAiProvider } from '@/lib/seoFactory/briefModel'
+import {
+  resolveBriefAiProvider,
+  resolveBriefFallback,
+  BRIEF_FALLBACK_PROVIDER,
+  generateBriefText,
+} from '@/lib/seoFactory/briefModel'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
 describe('resolveBriefAiProvider — OpenAI ChatGPT is the only brief model', () => {
@@ -71,6 +76,109 @@ describe('resolveBriefAiProvider — OpenAI ChatGPT is the only brief model', ()
         resolved: { aiProvider: 'openai', model: 'gpt-5.6-terra' },
       })
     }
+  })
+})
+
+describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails', () => {
+  const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'CONTENT_AI_RETRY'] as const
+  const saved: Record<string, string | undefined> = {}
+  const originalFetch = global.fetch
+
+  beforeAll(() => {
+    for (const k of envKeys) saved[k] = process.env[k]
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    for (const k of envKeys) {
+      if (saved[k] == null) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  })
+
+  const json = (payload: unknown) =>
+    new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+
+  it('resolves the fallback to baseten-glm-fast (GLM 5.2 Fast)', () => {
+    expect(resolveBriefFallback()).toEqual({ aiProvider: 'baseten-glm-fast' })
+    expect(BRIEF_FALLBACK_PROVIDER).toBe('baseten-glm-fast')
+  })
+
+  it('primary path: OpenAI success returns fallbackUsed=false', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    global.fetch = jest.fn(async () =>
+      json({ choices: [{ message: { content: 'GPT-BRIEF' }, finish_reason: 'stop' }] }),
+    ) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    expect(result.fallbackUsed).toBe(false)
+    expect(result.ai.provider).toBe('openai')
+    expect(result.ai.text).toBe('GPT-BRIEF')
+  })
+
+  it('fallback path: OpenAI failure (unpaid/quota) falls back to GLM 5.2 Fast via Baseten', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.openai.com')) {
+        // Unpaid account / insufficient quota — the exact GPT-billing failure
+        // the fallback exists to absorb.
+        throw new Error('openai 429 insufficient_quota')
+      }
+      return json({ choices: [{ message: { content: 'GLM-FALLBACK-BRIEF' }, finish_reason: 'stop' }] })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    expect(result.fallbackUsed).toBe(true)
+    expect(result.ai.provider).toBe('baseten-glm-fast')
+    expect(result.ai.text).toBe('GLM-FALLBACK-BRIEF')
+    // Both endpoints were hit: OpenAI first, then Baseten GLM 5.2 Fast.
+    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(true)
+    expect(urls.some((u) => u.includes('inference.baseten.co'))).toBe(true)
+  })
+
+  it('both-fail path: combined error names GPT and GLM 5.2 Fast reasons', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      if (url.includes('api.openai.com')) throw new Error('openai 429 insufficient_quota')
+      throw new Error('baseten 503 overloaded')
+    }) as typeof fetch
+
+    await expect(
+      generateBriefText({
+        aiProvider: 'openai',
+        model: 'gpt-5.6-terra',
+        system: 'You are the brief architect.',
+        prompt: 'TOPIC: dependent visa uk',
+      }),
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(GPT\)[\s\S]*Fallback \(GLM 5\.2 Fast\)/)
   })
 })
 

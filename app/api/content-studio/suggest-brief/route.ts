@@ -1,8 +1,7 @@
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { generateContentText } from '@/lib/contentAiProvider'
-import { resolveBriefAiProvider } from '@/lib/seoFactory/briefModel'
+import { resolveBriefAiProvider, generateBriefText } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
@@ -40,11 +39,11 @@ export async function POST(req: NextRequest) {
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
-    // OpenAI ChatGPT is the ONLY model family responsible for the brief
-    // (see lib/seoFactory/briefModel). GPT-5.6 Sol (flagship) when explicitly
-    // requested; every other value — including 'auto' or a stale drafting
-    // provider id — coerces to GPT-5.6 Terra on OpenAI. A non-OpenAI model
-    // can never draft the brief.
+    // OpenAI ChatGPT is the PRIMARY brief model (see lib/seoFactory/briefModel).
+    // GPT-5.6 Sol (flagship) when explicitly requested; every other value —
+    // including 'auto' or a stale drafting provider id — coerces to GPT-5.6
+    // Terra on OpenAI. When OpenAI is unconfigured or fails (unpaid account,
+    // quota), the call below falls back to GLM 5.2 Fast via Baseten.
     const { aiProvider, model: modelOverride } = resolveBriefAiProvider(
       String(body.aiProvider || ''),
     )
@@ -201,7 +200,9 @@ export async function POST(req: NextRequest) {
     // chain-of-thought and returning EMPTY content with finish_reason:length
     // (root cause of the 2026-08 brief failures). Give the model ~8k so
     // reasoning + the JSON brief both fit; the JSON itself is only ~1k tokens.
-    const ai = await generateContentText({
+    // GPT (OpenAI) is the primary brief architect; GLM 5.2 Fast (Baseten) is
+    // the fallback when GPT is unconfigured or fails (unpaid account / quota).
+    const { ai, fallbackUsed } = await generateBriefText({
       aiProvider,
       model: modelOverride,
       system,
@@ -209,10 +210,6 @@ export async function POST(req: NextRequest) {
       maxTokens: 8000,
       temperature: 0.3,
       timeoutMs: 90_000,
-      // The brief belongs to ChatGPT alone: if OpenAI fails (bad key, quota,
-      // timeout), throw the explicit-provider error instead of cascading to
-      // the open-source drafting backends (baseten/nvidia/cloudflare).
-      exclusive: true,
     })
 
     // Strip markdown code fences + extract JSON object from model response.
@@ -281,6 +278,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      // Which model actually produced the brief — 'openai' (GPT Sol/Terra) or
+      // 'baseten-glm-fast' (GLM 5.2 Fast fallback) — so the UI can surface a
+      // "GPT unavailable — brief generated via GLM 5.2 Fast" notice.
+      provider: ai.provider,
+      model: ai.model,
+      fallbackUsed,
       suggestedH1: String(parsed.suggestedH1 || ''),
       h2Outline: Array.isArray(parsed.h2Outline) ? parsed.h2Outline.slice(0, 12) : [],
       shortTail: merged.short.slice(0, 8),
