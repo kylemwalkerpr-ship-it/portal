@@ -4196,14 +4196,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const hasBriefReady = Boolean(topic.trim() && title.trim())
   const hasDraft = jobs.length > 0 || jobTotal > 0
   const hasReviewableJob = jobs.some((j) => ['drafting', 'publishing', 'pr_created', 'merged'].includes(j.status))
-  const hasApproval = jobs.some((j) => Boolean(j.pr_url || j.pr_number) && j.status !== 'closed')
+  // Approval is what CREATES the PR (shipContent → pr_created/merged), so a
+  // completed draft (status 'drafting' WITH content) must also unlock the
+  // Approve & Track stage — gating on an existing PR alone made the stage
+  // unreachable for every freshly-completed job.
+  const hasApproval = jobs.some(
+    (j) =>
+      (Boolean(j.pr_url || j.pr_number) && j.status !== 'closed') ||
+      (j.status === 'drafting' && Boolean(j.content)),
+  )
   const hasPublication = jobs.some((j) => j.status === 'merged' || Boolean(j.canonical_url))
 
   const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
     discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
     research: { available: true, reason: 'Research keywords and build the brief — always accessible.' },
     draft: { available: hasBriefReady, reason: 'Complete the research brief before drafting.' },
-    approve: { available: hasApproval, reason: 'A PR must exist before approval.' },
+    approve: { available: hasApproval, reason: 'A completed draft or open PR must exist before approval.' },
     configure: { available: true, reason: 'System configuration is always accessible.' },
   }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
 
