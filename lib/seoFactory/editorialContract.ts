@@ -1,6 +1,6 @@
 /** Shared reader-engagement contract for every generated page and brief. */
 
-export const EDITORIAL_CONTRACT_VERSION = '2026.08.reader-engagement.v1'
+export const EDITORIAL_CONTRACT_VERSION = '2026.08.reader-engagement.v2'
 
 export const EDITORIAL_FORMATTING_CONTRACT = [
   `## READER-ENGAGEMENT AND EDITORIAL FORMAT CONTRACT (${EDITORIAL_CONTRACT_VERSION})`,
@@ -25,6 +25,18 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '12. ANTI-WALL-OF-TEXT (mandatory): paragraphs of 1-3 sentences, each under 180 characters. No prose block may run longer than 180 chars without a visual break — split with bullets, a numbered step, a table, a callout, or a new paragraph with a bold lead. Avoid creating long blocks: the scanner flags blocks >180 chars that also have either >520 chars or ≥5 sentences. Break sections into 2-4 short paragraphs.',
   '13. CONCRETE WORKED EXAMPLE (mandatory for long-form): every page ≥1,000 words MUST include at least one concrete example with a named person, their situation, the step they took, and the result. Label it "Example:" or "Worked Example:" in its own H2 or H3. The scanner checks body text for "for example", "for instance", or "e.g." — ensure at least one such marker exists.',
   '14. SCHEMA JSON-LD (mandatory for indexable pages): Article JSON-LD `{"@type":"Article","author":{...},"datePublished":"...","description":"..."}` must be present in every page. FAQPage JSON-LD `{"@type":"FAQPage","mainEntity":[...]}` is required when the page has 4+ FAQ sections. These are rendered by the template from the article meta, keywords, and FAQ content — do not write raw schema blocks manually. The scanner will warn (not block) if either schema type is absent.',
+  '',
+  '## READER-ENGAGEMENT ARTEFACTS (mandatory — these keep the reader on the page)',
+  '',
+  'E1. HOOK (first 40 words): open with the reader\'s exact problem or question using a concrete noun and a verb, then answer it in the same breath. No throat-clearing, no "In today\'s …", no history lesson, no dictionary definition of an obvious term.',
+  'E2. SIGNPOST SUBHEADINGS: every ## H2 must read as a signpost the reader recognises — state the payoff or ask the question they would type ("What documents you need", "How long it takes", "What happens if you are refused"). Never use vague labels like "More information" or "Details".',
+  'E3. SO-WHAT TEST: before keeping any sentence, paragraph, or section, ask "does this move the reader one step closer to their next action?". Cut anything that does not. Every section must earn its place; a section with no actionable takeaway is padding.',
+  'E4. SENTENCE RHYTHM: vary sentence length — a short punchy sentence after a longer explanatory one. Active voice, second person ("you"), concrete nouns (agency, form, document, deadline). No two consecutive sentences the same length and no robotic repeated openers.',
+  'E5. BOLD LEAD-INS: begin long list items and paragraphs with a bolded lead phrase so a skimmer gets the point without reading the rest (`**Passport:** must be valid for six months…`).',
+  'E6. FORWARD MOMENTUM: end each major section with a one-line pointer to the next action or next section so the reader is never left wondering "now what?". Avoid the saggy middle by making the middle sections procedural, not filler.',
+  'E7. CONCRETE OVER ABSTRACT: replace every abstract noun with a concrete artefact — a named form (Form I-485), an agency (USCIS), a document (passport), a deadline, a fee schedule. If you cannot name the artefact, say "check the official schedule" rather than inventing one.',
+  'E8. READER TRUST: distinguish official rules from practical guidance, cite primary sources with full HTTPS URLs, add a currentness note where rules change, and keep the educational disclaimer visible (see item 7).',
+  'E9. VISUAL RHYTHM: alternate prose with a checklist, numbered steps, a comparison table, a worked example, or a blockquote callout — never two consecutive wall-of-text paragraphs (see items 5 and 12).',
   '',
   '## HARD FORMAT SPEC (every long-form page)',
   '',

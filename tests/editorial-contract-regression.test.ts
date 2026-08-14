@@ -22,7 +22,7 @@ describe('editorialContract · guardrail regression', () => {
   const brief = editorialBriefPromptBlock()
 
   it('publishes the expected contract version', () => {
-    expect(EDITORIAL_CONTRACT_VERSION).toBe('2026.08.reader-engagement.v1')
+    expect(EDITORIAL_CONTRACT_VERSION).toBe('2026.08.reader-engagement.v2')
   })
 
   // ── DEAD_INTERNAL_LINK prevention ──────────────────────────────────────
@@ -84,6 +84,28 @@ describe('editorialContract · guardrail regression', () => {
     expect(contract).toContain('plain English')
   })
 
+  // ── Reader-engagement artefacts ────────────────────────────────────────
+
+  it('locks the hardened reader-engagement artefact spec (E1–E9)', () => {
+    expect(contract).toContain('READER-ENGAGEMENT ARTEFACTS')
+    // E1 hook, E2 signpost subheadings, E3 so-what test
+    expect(contract).toMatch(/E1\. HOOK|first 40 words/i)
+    expect(contract).toMatch(/SIGNPOST SUBHEADINGS|E2\./i)
+    expect(contract).toMatch(/SO-WHAT TEST|E3\./i)
+  })
+
+  it('locks sentence rhythm, bold lead-ins, and forward momentum', () => {
+    expect(contract).toMatch(/SENTENCE RHYTHM/i)
+    expect(contract).toMatch(/BOLD LEAD-INS/i)
+    expect(contract).toMatch(/FORWARD MOMENTUM/i)
+    expect(contract).toMatch(/saggy middle/i)
+  })
+
+  it('locks concrete-over-abstract and visual rhythm', () => {
+    expect(contract).toMatch(/CONCRETE OVER ABSTRACT/i)
+    expect(contract).toMatch(/VISUAL RHYTHM/i)
+  })
+
   it('produces a non-empty brief prompt block', () => {
     expect(brief.length).toBeGreaterThan(200)
     expect(brief).toContain('BRIEF FORMAT')
@@ -133,5 +155,14 @@ describe('prompts.ts · system-prompt guardrail regression', () => {
     // Removing or softening this line reopens the DEAD_INTERNAL_LINK class.
     expect(prompt).toContain('EMPTY —')
     expect(prompt).toContain('do NOT create ANY internal links')
+  })
+
+  it('carries the reader-engagement artefacts into the drafting prompt', () => {
+    // The contract is threaded through qualityPromptBlock() → the system prompt,
+    // so the E1–E9 engagement artefacts must be present for the drafting model.
+    expect(prompt).toContain('READER-ENGAGEMENT ARTEFACTS')
+    expect(prompt).toMatch(/SO-WHAT TEST/i)
+    expect(prompt).toMatch(/FORWARD MOMENTUM/i)
+    expect(prompt).toMatch(/BOLD LEAD-INS/i)
   })
 })
