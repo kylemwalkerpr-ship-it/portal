@@ -110,9 +110,9 @@ describe('renderTargetFile blog page format', () => {
     // Blog format contract — precedence from existing blog pages
     expect(fileContent).toContain('import type { Metadata } from "next"')
     expect(fileContent).toContain('BlogDepthSection')
-    expect(fileContent).toContain('mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8')
-    expect(fileContent).toContain('font-serif text-3xl text-foreground sm:text-4xl')
-    expect(fileContent).toContain('font-serif text-2xl text-foreground')
+    expect(fileContent).toContain('mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8')
+    expect(fileContent).toContain('font-sans text-3xl tracking-[-0.02em] text-foreground sm:text-4xl')
+    expect(fileContent).toContain('font-sans text-2xl font-semibold tracking-[-0.02em] text-balance text-foreground')
     expect(fileContent).toContain('text-muted-foreground')
     expect(fileContent).toContain('Need the full legal guide?')
     expect(fileContent).toContain('https://legal.yousafeconsultancy.com')

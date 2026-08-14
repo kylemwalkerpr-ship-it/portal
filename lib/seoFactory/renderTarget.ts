@@ -433,14 +433,14 @@ function markdownToBlogJsx(body: string): string {
       const text = line.slice(3)
       inSection = true
       out.push('    <section className="mt-10">')
-      out.push(`      <h2 className="font-serif text-2xl font-semibold tracking-[-0.02em] text-balance text-foreground">${renderInline(text)}</h2>`)
+      out.push(`      <h2 className="font-sans text-2xl font-semibold tracking-[-0.02em] text-balance text-foreground">${renderInline(text)}</h2>`)
       continue
     }
     if (line.startsWith('### ')) {
       flushPara()
       closeList()
       closeBlockquote()
-      out.push(`      <h3 className="font-serif text-xl font-semibold tracking-[-0.02em] text-balance text-foreground">${renderInline(line.slice(4))}</h3>`)
+      out.push(`      <h3 className="font-sans text-xl font-semibold tracking-[-0.02em] text-balance text-foreground">${renderInline(line.slice(4))}</h3>`)
       continue
     }
     const h4 = line.match(/^(#{4,6})\s+(.+)$/)
@@ -448,7 +448,7 @@ function markdownToBlogJsx(body: string): string {
       flushPara()
       closeList()
       closeBlockquote()
-      out.push(`      <h4 className="font-serif text-lg font-semibold tracking-[-0.02em] text-foreground">${renderInline(h4[2])}</h4>`)
+      out.push(`      <h4 className="font-sans text-lg font-semibold tracking-[-0.02em] text-foreground">${renderInline(h4[2])}</h4>`)
       continue
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
@@ -697,7 +697,7 @@ export default function Page() {
       <article>
         <header>
           <p className="text-sm text-muted-foreground">{date} · MyCaseworks Editorial</p>
-          <h1 className="mt-4 font-serif text-3xl text-foreground sm:text-4xl">
+          <h1 className="mt-4 font-sans text-3xl tracking-[-0.02em] text-foreground sm:text-4xl">
             ${escapeTs(title)}
           </h1>
           <p className="mt-6 text-xl leading-relaxed text-muted-foreground">
@@ -710,7 +710,7 @@ ${jsxBody || `        <p className="mt-4 text-muted-foreground">
         </p>`}
 
         <section className="mt-10 rounded-lg border border-border bg-secondary/30 p-6">
-          <h3 className="font-serif text-xl text-foreground">Need the full legal guide?</h3>
+          <h3 className="font-sans text-xl text-foreground">Need the full legal guide?</h3>
           <p className="mt-3 text-muted-foreground">
             This post is a practical walkthrough. For the complete legal guide — forms,
             deadlines, and refusal-risk checks — read the attorney-reviewed guide on MyCaseworks:
