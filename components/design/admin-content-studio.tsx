@@ -538,10 +538,10 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
 }
 
 // ── VII · APPROVE PANEL ──
-// Surfaces the PR/monitor surface for the selected job. Each merged job
-// renders a status badge, deploy indicator, and a one-click rollback.
+// Surfaces three approval surfaces: completed drafts (approve → ship), open
+// PRs (merge or decline), and the latest merge/deploy activity.
 function ApprovePanel({
-  selectedJob, jobs, merges, onOpenJob, setActionNotice, onApproveAndMerge, onMerged,
+  selectedJob, jobs, merges, onOpenJob, setActionNotice, onApproveAndMerge, onMergePr, onDeclinePr, onMerged,
 }: {
   selectedJob: ContentJob | null
   jobs: ContentJob[]
@@ -549,6 +549,10 @@ function ApprovePanel({
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
   onApproveAndMerge?: (j: ContentJob) => Promise<{ ok: boolean; message?: string; rhythmDetail?: { key: string; count: number } | null }>
+  /** Merge the job's already-open PR (no re-ship). Used by PR rows. */
+  onMergePr?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
+  /** Decline/close the job's open PR. */
+  onDeclinePr?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
   onMerged?: () => void
 }) {
   const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
@@ -576,72 +580,72 @@ function ApprovePanel({
   const setRhythmRefusal = React.useCallback((jobId: string, refusal: { key: string; count: number } | null) => {
     setRhythmRefusals((prev) => ({ ...prev, [jobId]: refusal }))
   }, [])
+  // Poll the live monitor endpoint for real deploy status (started only AFTER
+  // the approve/merge call resolves — polling a pre-ship job just returns
+  // "checking" forever).
+  const startMonitoring = React.useCallback((jobId: string, started: number) => {
+    const timer = setInterval(async () => {
+      try {
+        const mr = await fetch(`/api/seo-factory/monitor?jobId=${encodeURIComponent(jobId)}`, {
+          credentials: 'same-origin',
+        })
+        const md = await mr.json().catch(() => ({})) as Record<string, unknown>
+        if (!mr.ok || !md.ok) {
+          setApproveProgress((prev) => prev[jobId]
+            ? { ...prev, [jobId]: { ...prev[jobId], stage: 'monitoring', message: String(md.checkState || 'Checking deploy…') } }
+            : prev)
+          return
+        }
+        const state = String(md.checkState || '')
+        if (state === 'success' || state === 'deployed' || state === 'live') {
+          clearInterval(timer)
+          setApproveProgress((prev) => prev[jobId]
+            ? { ...prev, [jobId]: { stage: 'ok', message: md.deployUrl ? `✓ Deployed → ${md.deployUrl}` : (md.prUrl ? `✓ PR #${md.prNumber || '?'} merged · deploy live` : '✓ Merged · deploy live'), startedAt: prev[jobId].startedAt, finishedAt: Date.now() } }
+            : prev)
+        } else if (state === 'failure' || state === 'error') {
+          clearInterval(timer)
+          setApproveProgress((prev) => prev[jobId]
+            ? { ...prev, [jobId]: { stage: 'failed', message: String(md.action || 'Deploy failed'), startedAt: prev[jobId].startedAt, finishedAt: Date.now() } }
+            : prev)
+        } else {
+          setApproveProgress((prev) => prev[jobId]
+            ? { ...prev, [jobId]: { ...prev[jobId], stage: 'monitoring', message: String(state || 'Building…') } }
+            : prev)
+        }
+      } catch {
+        // keep polling
+      }
+    }, 6000)
+    return () => clearInterval(timer)
+  }, [])
+
   const runApproveRow = React.useCallback(async (j: ContentJob) => {
     if (!onApproveAndMerge) return
     const started = Date.now()
     setApproveProgress((prev) => ({
       ...prev,
-      [j.id]: { stage: 'opening', message: 'Opening PR...', startedAt: started },
+      [j.id]: { stage: 'opening', message: 'Shipping…', startedAt: started },
     }))
-    // Poll the live monitor endpoint for real deploy status instead of
-    // projecting coarse fake timeouts.
-    let monitorTimer: ReturnType<typeof setInterval> | null = null
-    const startMonitoring = () => {
-      monitorTimer = setInterval(async () => {
-        try {
-          const mr = await fetch(`/api/seo-factory/monitor?jobId=${encodeURIComponent(j.id)}`, {
-            credentials: 'same-origin',
-          })
-          const md = await mr.json().catch(() => ({})) as Record<string, unknown>
-          if (!mr.ok || !md.ok) {
-            setApproveProgress((prev) => prev[j.id]
-              ? { ...prev, [j.id]: { ...prev[j.id], stage: 'monitoring', message: String(md.checkState || 'Checking deploy…') } }
-              : prev)
-            return
-          }
-          const state = String(md.checkState || '')
-          if (state === 'success' || state === 'deployed' || state === 'live') {
-            if (monitorTimer) clearInterval(monitorTimer)
-            setApproveProgress((prev) => prev[j.id]
-              ? { ...prev, [j.id]: { stage: 'ok', message: md.deployUrl ? `✓ Deployed → ${md.deployUrl}` : (md.prUrl ? `✓ PR #${md.prNumber || '?'} merged · deploy live` : '✓ Merged · deploy live'), startedAt: prev[j.id].startedAt, finishedAt: Date.now() } }
-              : prev)
-            onMerged?.()
-          } else if (state === 'failure' || state === 'error') {
-            if (monitorTimer) clearInterval(monitorTimer)
-            setApproveProgress((prev) => prev[j.id]
-              ? { ...prev, [j.id]: { stage: 'failed', message: String(md.action || 'Deploy failed'), startedAt: prev[j.id].startedAt, finishedAt: Date.now() } }
-              : prev)
-          } else {
-            setApproveProgress((prev) => prev[j.id]
-              ? { ...prev, [j.id]: { ...prev[j.id], stage: 'monitoring', message: String(state || 'Building…') } }
-              : prev)
-          }
-        } catch {
-          // keep polling
-        }
-      }, 6000)
-    }
-
-    // After the approve call returns, start real monitoring
-    startMonitoring()
-
     try {
       const result = await onApproveAndMerge(j)
       const ok = result.ok
       setApproveProgress((prev) => ({
         ...prev,
         [j.id]: {
-          stage: ok ? 'ok' : 'failed',
-          message: result.message || (ok ? 'PR merged · deploy live' : 'Push failed'),
+          stage: ok ? 'monitoring' : 'failed',
+          message: result.message || (ok ? 'Shipped — monitoring deploy' : 'Push failed'),
           startedAt: prev[j.id]?.startedAt || started,
-          finishedAt: Date.now(),
+          finishedAt: ok ? undefined : Date.now(),
         },
       }))
       // Surface the ship-time rhythm refusal (structured detail from the
       // approve API) as a dedicated notice naming the opener + count.
       const rhythmDetail = (result as { rhythmDetail?: { key: string; count: number } | null }).rhythmDetail
       setRhythmRefusal(j.id, rhythmDetail ?? null)
-      if (ok) onMerged?.()
+      if (ok) {
+        startMonitoring(j.id, started)
+        onMerged?.()
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Push failed'
       setApproveProgress((prev) => ({
@@ -651,7 +655,72 @@ function ApprovePanel({
       setRhythmRefusal(j.id, null)
       setActionNotice?.(message)
     }
-  }, [onApproveAndMerge, setActionNotice, onMerged, setRhythmRefusal])
+  }, [onApproveAndMerge, setActionNotice, onMerged, setRhythmRefusal, startMonitoring])
+
+  // Merge an already-open PR — no re-ship. Mirrors runApproveRow's progress
+  // lifecycle but delegates to onMergePr (PATCH merge_pr).
+  const runMergePrRow = React.useCallback(async (j: ContentJob) => {
+    if (!onMergePr) return
+    const started = Date.now()
+    setApproveProgress((prev) => ({
+      ...prev,
+      [j.id]: { stage: 'opening', message: `Merging PR #${j.pr_number ?? '?'}…`, startedAt: started },
+    }))
+    try {
+      const result = await onMergePr(j)
+      setApproveProgress((prev) => ({
+        ...prev,
+        [j.id]: {
+          stage: result.ok ? 'monitoring' : 'failed',
+          message: result.message || (result.ok ? 'Merged — monitoring deploy' : 'Merge failed'),
+          startedAt: prev[j.id]?.startedAt || started,
+          finishedAt: result.ok ? undefined : Date.now(),
+        },
+      }))
+      setRhythmRefusal(j.id, null)
+      if (result.ok) {
+        startMonitoring(j.id, started)
+        onMerged?.()
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Merge failed'
+      setApproveProgress((prev) => ({
+        ...prev,
+        [j.id]: { stage: 'failed', message, startedAt: started, finishedAt: Date.now() },
+      }))
+      setActionNotice?.(message)
+    }
+  }, [onMergePr, setActionNotice, onMerged, setRhythmRefusal, startMonitoring])
+
+  // Decline an open PR — closes it on GitHub + marks the job closed.
+  const runDeclinePrRow = React.useCallback(async (j: ContentJob) => {
+    if (!onDeclinePr) return
+    const started = Date.now()
+    setApproveProgress((prev) => ({
+      ...prev,
+      [j.id]: { stage: 'opening', message: `Closing PR #${j.pr_number ?? '?'}…`, startedAt: started },
+    }))
+    try {
+      const result = await onDeclinePr(j)
+      setApproveProgress((prev) => ({
+        ...prev,
+        [j.id]: {
+          stage: result.ok ? 'failed' : 'failed',
+          message: result.message || (result.ok ? 'PR closed' : 'Close failed'),
+          startedAt: prev[j.id]?.startedAt || started,
+          finishedAt: Date.now(),
+        },
+      }))
+      if (result.ok) onMerged?.()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Close failed'
+      setApproveProgress((prev) => ({
+        ...prev,
+        [j.id]: { stage: 'failed', message, startedAt: started, finishedAt: Date.now() },
+      }))
+      setActionNotice?.(message)
+    }
+  }, [onDeclinePr, setActionNotice, onMerged])
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
@@ -676,9 +745,9 @@ function ApprovePanel({
               : progress?.stage === 'failed' ? '✕ FAILED'
               : progress?.stage === 'monitoring' ? '⏳ MONITORING DEPLOY'
               : progress?.stage === 'merging' ? '⏳ MERGING'
-              : progress?.stage === 'opening' ? '⏳ OPENING PR'
+              : progress?.stage === 'opening' ? '⏳ MERGING PR'
               : isWorking ? '⏳ WORKING...'
-              : (onApproveAndMerge ? '🚀 PUSH PR → MERGE' : 'READY TO MERGE')
+              : (onMergePr ? '🚀 MERGE PR → MAIN' : 'READY TO MERGE')
             return (
               <div key={j.id} data-testid={`studio-approve-row-${j.id}`} data-stage={progress?.stage || 'idle'} style={{
                 display: 'flex', flexDirection: 'column', gap: 4,
@@ -687,7 +756,7 @@ function ApprovePanel({
               }}>
                 <button
                   type="button"
-                  onClick={() => onApproveAndMerge ? runApproveRow(j) : onOpenJob(j)}
+                  onClick={() => onMergePr ? runMergePrRow(j) : onOpenJob(j)}
                   disabled={Boolean(isWorking)}
                   data-testid={`studio-approve-cta-${j.id}`}
                   style={{
@@ -734,6 +803,39 @@ function ApprovePanel({
                         </a>
                       </div>
                     )}
+                  </div>
+                )}
+                {/* Decline/close the open PR — reject without merging. */}
+                {onDeclinePr && (
+                  <div style={{ display: 'flex', gap: 8, paddingTop: 6, borderTop: `1px dashed ${E.hairline}` }}>
+                    <button
+                      type="button"
+                      onClick={() => runDeclinePrRow(j)}
+                      disabled={Boolean(isWorking)}
+                      data-testid={`studio-approve-decline-${j.id}`}
+                      title="Close this PR on GitHub and mark the job closed (reject without merging)"
+                      style={{
+                        fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em',
+                        padding: '4px 10px', borderRadius: 0,
+                        border: `1px solid #DC2626`, background: 'transparent', color: '#DC2626',
+                        cursor: isWorking ? 'progress' : 'pointer',
+                      }}
+                    >
+                      ✕ DECLINE PR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenJob(j)}
+                      disabled={Boolean(isWorking)}
+                      style={{
+                        fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em',
+                        padding: '4px 10px', borderRadius: 0,
+                        border: `1px solid ${E.hairline}`, background: 'transparent', color: E.inkMuted,
+                        cursor: isWorking ? 'progress' : 'pointer',
+                      }}
+                    >
+                      OPEN EDITOR
+                    </button>
                   </div>
                 )}
                 {/* Ship-time rhythm refusal: the deterministic repair ran but
@@ -4676,6 +4778,52 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
   }, [fetchJobs, setActionNotice])
 
+  // ── Merge an ALREADY-OPEN PR (pr_created) — no re-ship, no duplicate branch.
+  // The Approve panel's PR rows use this; shipContent re-ships a fresh branch
+  // which would strand the existing PR, so merge_pr is the correct path here.
+  const runMergePr = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const response = await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: j.id, action: 'merge_pr' }),
+      })
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string }
+      if (!response.ok) throw new Error(data.error || data.message || `Merge failed (HTTP ${response.status})`)
+      const message = data.message || `PR #${j.pr_number ?? '?'} merged to main`
+      setActionNotice?.(message)
+      void fetchJobs().catch(() => { /* best-effort refresh */ })
+      return { ok: true, message }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Merge failed'
+      setActionNotice?.(message)
+      return { ok: false, message }
+    }
+  }, [fetchJobs, setActionNotice])
+
+  // ── Decline an open PR: closes it on GitHub + marks the job closed ──
+  const runDeclinePr = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const response = await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: j.id, action: 'close_pr' }),
+      })
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string }
+      if (!response.ok) throw new Error(data.error || data.message || `Close failed (HTTP ${response.status})`)
+      const message = data.message || `PR #${j.pr_number ?? '?'} closed`
+      setActionNotice?.(message)
+      void fetchJobs().catch(() => { /* best-effort refresh */ })
+      return { ok: true, message }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Close failed'
+      setActionNotice?.(message)
+      return { ok: false, message }
+    }
+  }, [fetchJobs, setActionNotice])
+
   // ── Bulk queue actions: rerun, resume, clear queue, re-audit, refresh PR, abandon ──
   // The bulk_* POST handler accepts up to 25 ids per request; we chunk large
   // selections and surface a progress bar so the admin sees the work moving.
@@ -5679,9 +5827,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           subtitle="Once review is green, the content earns approval. Push the reviewed PR, watch the deployment, verify the live URL, and record the publication in the ledger."
           chapterKey="approve"
             scope={[
-              { chip: 'Push to main',  text: 'Opens the PR to the deployment repo; auto-resolves once the build is green.' },
+              { chip: 'Push to main',  text: 'Approves a completed draft and ships it, or merges an already-open PR to main.' },
               { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
-              { chip: 'Rollback',      text: 'A single click reverts the change and removes it from the citation ledger.' },
+              { chip: 'Decline',       text: 'Reject an open PR — closes it on GitHub and marks the job closed.' },
             ]}
             prev="IV · Review"
             next="VI · Track"
@@ -5694,6 +5842,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
             onApproveAndMerge={runApproveAndMerge}
+            onMergePr={runMergePr}
+            onDeclinePr={runDeclinePr}
             onMerged={() => { void fetchJobs(); selectTab('approve') }}
           />
           <PublishLedger
