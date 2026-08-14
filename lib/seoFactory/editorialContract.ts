@@ -1,6 +1,6 @@
 /** Shared reader-engagement contract for every generated page and brief. */
 
-export const EDITORIAL_CONTRACT_VERSION = '2026.08.reader-engagement.v2'
+export const EDITORIAL_CONTRACT_VERSION = '2026.08.reader-engagement.v3'
 
 export const EDITORIAL_FORMATTING_CONTRACT = [
   `## READER-ENGAGEMENT AND EDITORIAL FORMAT CONTRACT (${EDITORIAL_CONTRACT_VERSION})`,
@@ -31,7 +31,7 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   'E1. HOOK (first 40 words): open with the reader\'s exact problem or question using a concrete noun and a verb, then answer it in the same breath. No throat-clearing, no "In today\'s …", no history lesson, no dictionary definition of an obvious term.',
   'E2. SIGNPOST SUBHEADINGS: every ## H2 must read as a signpost the reader recognises — state the payoff or ask the question they would type ("What documents you need", "How long it takes", "What happens if you are refused"). Never use vague labels like "More information" or "Details".',
   'E3. SO-WHAT TEST: before keeping any sentence, paragraph, or section, ask "does this move the reader one step closer to their next action?". Cut anything that does not. Every section must earn its place; a section with no actionable takeaway is padding.',
-  'E4. SENTENCE RHYTHM: vary sentence length — a short punchy sentence after a longer explanatory one. Active voice, second person ("you"), concrete nouns (agency, form, document, deadline). No two consecutive sentences the same length and no robotic repeated openers.',
+  'E4. SENTENCE RHYTHM: vary sentence length — a short punchy sentence after a longer explanatory one. Active voice, second person ("you"), concrete nouns (agency, form, document, deadline). No two consecutive sentences the same length and no robotic repeated openers. PRONOUN CLARITY: never open a sentence with a bare "It", "This", or "They" when it stands for a specific actor (the employer, the officer, the sponsor, a named person). Repeat the noun or restructure — "The employer then compares the duties", never "It then compares". Avoid the robotic "X does A. It then does B." chain by naming the actor or joining the sentences.',
   'E5. BOLD LEAD-INS: begin long list items and paragraphs with a bolded lead phrase so a skimmer gets the point without reading the rest (`**Passport:** must be valid for six months…`).',
   'E6. FORWARD MOMENTUM: end each major section with a one-line pointer to the next action or next section so the reader is never left wondering "now what?". Avoid the saggy middle by making the middle sections procedural, not filler.',
   'E7. CONCRETE OVER ABSTRACT: replace every abstract noun with a concrete artefact — a named form (Form I-485), an agency (USCIS), a document (passport), a deadline, a fee schedule. If you cannot name the artefact, say "check the official schedule" rather than inventing one.',

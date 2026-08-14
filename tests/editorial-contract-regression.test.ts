@@ -22,7 +22,7 @@ describe('editorialContract · guardrail regression', () => {
   const brief = editorialBriefPromptBlock()
 
   it('publishes the expected contract version', () => {
-    expect(EDITORIAL_CONTRACT_VERSION).toBe('2026.08.reader-engagement.v2')
+    expect(EDITORIAL_CONTRACT_VERSION).toBe('2026.08.reader-engagement.v3')
   })
 
   // ── DEAD_INTERNAL_LINK prevention ──────────────────────────────────────
@@ -101,6 +101,15 @@ describe('editorialContract · guardrail regression', () => {
     expect(contract).toMatch(/saggy middle/i)
   })
 
+  it('locks pronoun clarity — no bare "It/This/They" opener for a named actor', () => {
+    // The "It then compares…" machine-narration pattern (ambiguous sentence-
+    // initial pronoun) is banned deterministically in the contract.
+    expect(contract).toContain('PRONOUN CLARITY')
+    expect(contract).toMatch(/never open a sentence with a bare "It"/i)
+    expect(contract).toMatch(/"It then compares"/)
+    expect(contract).toMatch(/"The employer then compares the duties"/)
+  })
+
   it('locks concrete-over-abstract and visual rhythm', () => {
     expect(contract).toMatch(/CONCRETE OVER ABSTRACT/i)
     expect(contract).toMatch(/VISUAL RHYTHM/i)
@@ -164,5 +173,10 @@ describe('prompts.ts · system-prompt guardrail regression', () => {
     expect(prompt).toMatch(/SO-WHAT TEST/i)
     expect(prompt).toMatch(/FORWARD MOMENTUM/i)
     expect(prompt).toMatch(/BOLD LEAD-INS/i)
+  })
+
+  it('carries the pronoun-clarity rule into the drafting prompt', () => {
+    expect(prompt).toContain('PRONOUN CLARITY')
+    expect(prompt).toMatch(/"It then compares"/)
   })
 })
