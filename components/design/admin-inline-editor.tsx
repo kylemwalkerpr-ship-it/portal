@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useCallback, useRef, useEffect } from 'react'
+import { MarkdownDocument } from '@/lib/markdownDocument'
 
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -91,6 +92,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showAnnotations, setShowAnnotations] = useState(false)
+  const [viewMode, setViewMode] = useState<'document' | 'source'>('document')
   const [showHistory, setShowHistory] = useState(false)
   const [drafts, setDrafts] = useState<DraftVersion[]>([])
   const [loadingDrafts, setLoadingDrafts] = useState(false)
@@ -114,6 +116,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // Merged quality + audit warnings (schema/meta/internal-links included).
   const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const pendingJumpRef = useRef<InlineAnnotation | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fixAbortRef = useRef<AbortController | null>(null)
   const fixSeqRef = useRef(0)
@@ -389,13 +392,24 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
     setActiveAnnotationId(a.id)
-    if (textareaRef.current) {
+    pendingJumpRef.current = a
+    setViewMode('source')
+  }, [])
+
+  // When switching back to source mode for a "Jump to line", apply the
+  // selection once the textarea has mounted.
+  useEffect(() => {
+    if (viewMode !== 'source' || !pendingJumpRef.current) return
+    const a = pendingJumpRef.current
+    pendingJumpRef.current = null
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return
       const before = content.split('\n').slice(0, a.line - 1).join('\n')
       const pos = before.length + (a.line > 1 ? 1 : 0) + (a.col - 1)
       textareaRef.current.focus()
       textareaRef.current.setSelectionRange(pos, pos + a.highlightedText.length)
-    }
-  }, [content])
+    })
+  }, [viewMode, content])
 
   // Load draft history
   const handleLoadHistory = useCallback(async () => {
@@ -564,6 +578,26 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
       {/* Primary Toolbar */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* View mode — read as a Word-style document, or edit the raw markdown */}
+        <div style={{ display: 'inline-flex', borderRadius: 6, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+          {(['document', 'source'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setViewMode(m)}
+              aria-pressed={viewMode === m}
+              style={{
+                padding: '6px 12px', fontSize: 11, fontWeight: viewMode === m ? 700 : 500,
+                border: 'none', cursor: 'pointer',
+                background: viewMode === m ? C.surface2 : C.surface,
+                color: viewMode === m ? C.text : C.textMuted,
+              }}
+            >
+              {m === 'document' ? '📄 Document' : '✏️ Markdown'}
+            </button>
+          ))}
+        </div>
+
         {/* Re-audit */}
         <button type="button" disabled={allBusy || !content.trim()} onClick={handleReaudit}
           style={btnStyle({ bg: '#EFF6FF', border: C.blue, color: C.blue, disabled: allBusy || !content.trim() })}>
@@ -660,35 +694,46 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       <div style={{ display: 'flex', gap: 12, minHeight: 320 }}>
         {/* Editor */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          <textarea
-            ref={textareaRef} value={content}
-            onChange={(e) => { onChange(e.target.value); setDirty(true) }}
-            disabled={disabled || allBusy}
-            placeholder="The generated draft will appear here. Edit freely or use Re-audit to check quality..."
-            spellCheck
-            style={{
-              width: '100%', height: '100%', minHeight: 320, resize: 'vertical',
-              boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 8,
-              padding: 14, fontFamily: C.mono, fontSize: 12, lineHeight: 1.75,
-              color: C.text, background: '#FFFEFC', outline: 'none',
-              transition: 'border-color 0.2s',
-            }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = C.blue }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = C.border }}
-          />
-          {/* Gutter markers */}
-          {annotations.length > 0 && (
-            <div style={{ position: 'absolute', top: 0, left: 4, width: 6, height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
-              {annotations.map((a) => (
-                <div key={a.id} title={a.message} style={{
-                  position: 'absolute', top: `${Math.max(0, (a.line - 1) * 21)}px`,
-                  width: 6, height: 5, borderRadius: 3,
-                  background: a.severity === 'blocker' ? C.red : C.orange,
-                  opacity: 0.6,
-                  transition: 'opacity 0.15s',
-                }} />
-              ))}
+          {viewMode === 'document' ? (
+            <div style={{
+              border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8',
+              minHeight: 320, maxHeight: 760, overflow: 'auto',
+            }}>
+              <MarkdownDocument source={content} />
             </div>
+          ) : (
+            <>
+              <textarea
+                ref={textareaRef} value={content}
+                onChange={(e) => { onChange(e.target.value); setDirty(true) }}
+                disabled={disabled || allBusy}
+                placeholder="The generated draft will appear here. Edit freely or use Re-audit to check quality..."
+                spellCheck
+                style={{
+                  width: '100%', height: '100%', minHeight: 320, resize: 'vertical',
+                  boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 8,
+                  padding: 14, fontFamily: C.mono, fontSize: 12, lineHeight: 1.75,
+                  color: C.text, background: '#FFFEFC', outline: 'none',
+                  transition: 'border-color 0.2s',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = C.blue }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = C.border }}
+              />
+              {/* Gutter markers */}
+              {annotations.length > 0 && (
+                <div style={{ position: 'absolute', top: 0, left: 4, width: 6, height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
+                  {annotations.map((a) => (
+                    <div key={a.id} title={a.message} style={{
+                      position: 'absolute', top: `${Math.max(0, (a.line - 1) * 21)}px`,
+                      width: 6, height: 5, borderRadius: 3,
+                      background: a.severity === 'blocker' ? C.red : C.orange,
+                      opacity: 0.6,
+                      transition: 'opacity 0.15s',
+                    }} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
