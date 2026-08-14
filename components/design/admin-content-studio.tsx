@@ -996,13 +996,33 @@ function ApprovePanel({
 // time, merge SHA, region, and the rank observed at the most recent GSC
 // snapshot. From here the ranking model replays reward signal.
 function PublishLedger({
-  merges, jobs, onOpenJob, setActionNotice,
+  merges, jobs, onOpenJob, setActionNotice, onRevertJob,
 }: {
   merges: any[]
   jobs: ContentJob[]
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
+  /** Rollback a merged/live change to its pre-ship state. */
+  onRevertJob?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
 }) {
+  // Per-stamp revert state so the button reflects in-flight rollbacks.
+  const [reverting, setReverting] = React.useState<Record<string, boolean>>({})
+  const [revertNotice, setRevertNotice] = React.useState<Record<string, string | null>>({})
+  const runRevert = React.useCallback(async (j: ContentJob) => {
+    if (!onRevertJob || !j.canonical_url) return
+    if (typeof window !== 'undefined' && !window.confirm(`Rollback "${j.title}"?\n\nThis reverts ${j.canonical_url} to its pre-ship state (or deletes it if it was a net-new page).`)) return
+    setReverting((prev) => ({ ...prev, [j.id]: true }))
+    setRevertNotice((prev) => ({ ...prev, [j.id]: null }))
+    try {
+      const result = await onRevertJob(j)
+      setRevertNotice((prev) => ({ ...prev, [j.id]: result.ok ? (result.message || 'Rollback merged') : `Failed: ${result.message || 'unknown'}` }))
+    } catch (err) {
+      setRevertNotice((prev) => ({ ...prev, [j.id]: `Failed: ${err instanceof Error ? err.message : 'unknown'}` }))
+    } finally {
+      setReverting((prev) => ({ ...prev, [j.id]: false }))
+    }
+  }, [onRevertJob])
+
   // NEW: per-stamp verify state + batched position-trend lookup.
   type VerifyState =
     | { stage: 'idle' }
@@ -1466,27 +1486,47 @@ function PublishLedger({
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => canonical && runVerify(j.id, canonical)}
-                    disabled={verifying || !canonical}
-                    data-testid={`studio-verify-cta-${j.id}`}
-                    title={canonical ? 'Re-verify HTTP 200 + canonical tag' : 'Stamp is missing a canonical URL'}
-                    style={{
-                      fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
-                      padding: '4px 10px', borderRadius: 0,
-                      border: `1px solid ${trendColor}`,
-                      background: verifying ? trendColor : 'transparent',
-                      color: verifying ? E.ivory : trendColor,
-                      cursor: verifying ? 'progress' : 'pointer',
-                      transition: 'opacity 0.15s',
-                    }}
-                  >
-                    {verifyState.stage === 'verifying' && '⏳ VERIFYING…'}
-                    {verifyState.stage === 'ok' && '✓ RE-VERIFY'}
-                    {verifyState.stage === 'broken' && '✕ BROKEN · RE-VERIFY'}
-                    {verifyState.stage === 'idle' && '✓ VERIFY'}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => canonical && runVerify(j.id, canonical)}
+                      disabled={verifying || !canonical}
+                      data-testid={`studio-verify-cta-${j.id}`}
+                      title={canonical ? 'Re-verify HTTP 200 + canonical tag' : 'Stamp is missing a canonical URL'}
+                      style={{
+                        fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
+                        padding: '4px 10px', borderRadius: 0,
+                        border: `1px solid ${trendColor}`,
+                        background: verifying ? trendColor : 'transparent',
+                        color: verifying ? E.ivory : trendColor,
+                        cursor: verifying ? 'progress' : 'pointer',
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      {verifyState.stage === 'verifying' && '⏳ VERIFYING…'}
+                      {verifyState.stage === 'ok' && '✓ RE-VERIFY'}
+                      {verifyState.stage === 'broken' && '✕ BROKEN · RE-VERIFY'}
+                      {verifyState.stage === 'idle' && '✓ VERIFY'}
+                    </button>
+                    {onRevertJob && (
+                      <button
+                        type="button"
+                        onClick={() => runRevert(j)}
+                        disabled={reverting[j.id] || !canonical}
+                        data-testid={`studio-revert-cta-${j.id}`}
+                        title="Rollback this live change to its pre-ship state (or delete if it was net-new)"
+                        style={{
+                          fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
+                          padding: '4px 10px', borderRadius: 0,
+                          border: `1px solid #DC2626`, background: 'transparent', color: '#DC2626',
+                          cursor: reverting[j.id] || !canonical ? 'progress' : 'pointer',
+                          transition: 'opacity 0.15s',
+                        }}
+                      >
+                        {reverting[j.id] ? '⏳ REVERTING…' : '↩ ROLLBACK'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1523,6 +1563,15 @@ function PublishLedger({
                     paddingTop: 4, borderTop: `1px dashed ${E.hairline}`,
                   }}>
                     Re-checking HTTP 200 + canonical tag…
+                  </div>
+                )}
+                {revertNotice[j.id] && (
+                  <div style={{
+                    fontFamily: C.mono, fontSize: 10.5,
+                    color: revertNotice[j.id]!.startsWith('Failed') ? '#a32525' : '#0f7a3a',
+                    paddingTop: 4, borderTop: `1px dashed ${E.hairline}`,
+                  }}>
+                    {revertNotice[j.id]}
                   </div>
                 )}
                 <div style={{
@@ -4824,6 +4873,29 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
   }, [fetchJobs, setActionNotice])
 
+  // ── Rollback a merged/live change (Track stage) — revert the shipped file
+  // to its pre-ship state via a PR→CI→merge.
+  const runRevertJob = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const response = await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: j.id, action: 'revert', dryRun: false }),
+      })
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string; revert?: { action?: string; status?: string } }
+      if (!response.ok) throw new Error(data.error || data.message || `Rollback failed (HTTP ${response.status})`)
+      const message = data.message || (data.revert?.action === 'deleted' ? 'Rollback merged — page deleted' : 'Rollback merged — pre-ship content restored')
+      setActionNotice?.(message)
+      void fetchJobs().catch(() => { /* best-effort refresh */ })
+      return { ok: true, message }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Rollback failed'
+      setActionNotice?.(message)
+      return { ok: false, message }
+    }
+  }, [fetchJobs, setActionNotice])
+
   // ── Bulk queue actions: rerun, resume, clear queue, re-audit, refresh PR, abandon ──
   // The bulk_* POST handler accepts up to 25 ids per request; we chunk large
   // selections and surface a progress bar so the admin sees the work moving.
@@ -5851,6 +5923,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             jobs={jobs}
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
+            onRevertJob={runRevertJob}
           />
         </>
       )}

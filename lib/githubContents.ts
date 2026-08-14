@@ -103,6 +103,53 @@ export async function createBranchFrom(
 }
 
 /**
+ * The first-parent SHA of a commit. Used by rollback to find the state of the
+ * repo BEFORE a merged ship landed (so we can restore that exact content).
+ */
+export async function getCommitParentSha(
+  owner: string,
+  repo: string,
+  sha: string,
+): Promise<string | null> {
+  try {
+    const commit = await githubFetch(`/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)
+    const parents = commit?.parents as Array<{ sha?: string }> | undefined
+    return parents?.[0]?.sha || null
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/^GitHub 404:/.test(msg)) return null
+    throw e
+  }
+}
+
+/**
+ * Delete a file from a branch (rollback of a net-new page). Requires the blob
+ * SHA so GitHub rejects a concurrent edit race instead of deleting silently.
+ */
+export async function deleteRepoFile(opts: {
+  owner: string
+  repo: string
+  path: string
+  branch: string
+  message: string
+  sha?: string
+}): Promise<{ commitSha: string }> {
+  const sha = opts.sha ?? (await getFileBlobSha(opts.owner, opts.repo, opts.path, opts.branch))
+  if (!sha) {
+    throw new Error(`Cannot delete ${opts.path}: file does not exist on ${opts.branch}`)
+  }
+  const res = await githubFetch(
+    `/repos/${opts.owner}/${opts.repo}/contents/${encodeRepoPath(opts.path)}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: opts.message, branch: opts.branch, sha }),
+    },
+  )
+  return { commitSha: (res.commit?.sha || '') as string }
+}
+
+/**
  * Blob SHA of an existing file on a branch, or undefined if the path is free (404).
  */
 export async function getFileBlobSha(

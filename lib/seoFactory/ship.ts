@@ -19,7 +19,9 @@ import { assertQualityGate, assertRhythmWithinRepairRange } from './contentQuali
 import { applyDeterministicRepairs } from './editorialScaffold'
 import {
   createBranchFrom,
+  deleteRepoFile,
   getBranchHeadSha,
+  getCommitParentSha,
   getFileBlobSha,
   getRepoFileContent,
   githubFetch,
@@ -141,6 +143,177 @@ export async function mergePullRequest(opts: {
   mergeMethod?: 'merge' | 'squash' | 'rebase'
 }): Promise<{ merged: boolean; sha?: string; message: string }> {
   return mergePrApi(opts)
+}
+
+export interface RevertContentOpts {
+  owner: string
+  repo: string
+  /** File the ship wrote (content_path / plan.filePath). */
+  path: string
+  /** Commit SHA that landed the ship on main (deploy_sha / merge commit). */
+  deploySha: string
+  title: string
+  dryRun?: boolean
+}
+
+export interface RevertResult {
+  status: 'reverted' | 'pr_created' | 'dry_run'
+  action: 'restored' | 'deleted' | 'unchanged'
+  owner: string
+  repo: string
+  path: string
+  prUrl?: string
+  prNumber?: number
+  commitSha?: string
+  note?: string
+}
+
+/**
+ * Rollback a merged ship by restoring the file to its pre-ship state.
+ *
+ * Strategy: find the deploy commit's first parent (the state of main right
+ * before the ship), read the file at that parent SHA, then either restore that
+ * exact content (page existed before → update) or delete the file (page was
+ * net-new → it had no parent content). Goes through the same PR → CI → merge
+ * door as every other write, so a rollback never direct-pushes a red main.
+ */
+export async function revertContent(opts: RevertContentOpts): Promise<RevertResult> {
+  const { owner, repo, path, deploySha, title } = opts
+
+  const parentSha = await getCommitParentSha(owner, repo, deploySha)
+  const priorContent = parentSha
+    ? await getRepoFileContent(owner, repo, path, parentSha)
+    : undefined
+
+  // No parent (root commit) or file absent at parent → the ship was net-new.
+  const shouldDelete = priorContent === undefined
+
+  if (opts.dryRun) {
+    return {
+      status: 'dry_run',
+      action: shouldDelete ? 'deleted' : 'restored',
+      owner,
+      repo,
+      path,
+      note: shouldDelete
+        ? 'rollback would DELETE this net-new page (no pre-ship content)'
+        : `rollback would restore the pre-ship content (${priorContent.length} bytes from parent ${parentSha?.slice(0, 7)})`,
+    }
+  }
+
+  const baseSha = await getBranchHeadSha(owner, repo, 'main')
+  const slug = path.split('/').filter(Boolean).slice(-2, -1)[0] || 'page'
+  const branchName = `seo-factory/revert-${slug}-${Date.now().toString(36)}`.slice(0, 240)
+  await createBranchFrom(owner, repo, branchName, baseSha)
+
+  let action: RevertResult['action'] = 'unchanged'
+  let branchCommit = ''
+  if (shouldDelete) {
+    const del = await deleteRepoFile({
+      owner,
+      repo,
+      path,
+      branch: branchName,
+      message: `seo-factory: rollback "${title}" (delete net-new page)`,
+    })
+    action = 'deleted'
+    branchCommit = del.commitSha
+  } else {
+    const put = await putRepoFile({
+      owner,
+      repo,
+      path,
+      branch: branchName,
+      content: priorContent,
+      message: `seo-factory: rollback "${title}" (restore pre-ship content)`,
+    })
+    action = 'restored'
+    branchCommit = put.commitSha
+  }
+
+  const pr = await openPullRequest({
+    owner,
+    repo,
+    title: `[SEO Factory rollback] ${title}`,
+    head: branchName,
+    base: 'main',
+    body: [
+      '## SEO Factory rollback',
+      '',
+      `- **Page:** \`${path}\``,
+      `- **Action:** ${action === 'deleted' ? 'delete net-new page' : 'restore pre-ship content'}`,
+      `- **Deploy SHA reverted:** \`${deploySha.slice(0, 7)}\``,
+      `- **Parent SHA:** \`${parentSha ? parentSha.slice(0, 7) : '—'}\``,
+      '',
+      'Merging to `main` triggers Cloudflare autodeploy for this repo.',
+    ].join('\n'),
+  })
+
+  // Let GitHub register the PR head + start workflows
+  await new Promise((r) => setTimeout(r, 2500))
+  const ci = await waitForCommitCi(owner, repo, branchCommit, {
+    timeoutMs: Number(process.env.SHIP_CI_WAIT_MS || 5 * 60 * 1000),
+    intervalMs: 20_000,
+  })
+  if (ci.state === 'failure') {
+    return {
+      status: 'pr_created',
+      action,
+      owner,
+      repo,
+      path,
+      prUrl: pr.html_url,
+      prNumber: pr.number,
+      commitSha: branchCommit,
+      note: `CI failed on rollback branch — PR left open. ${ci.note}`,
+    }
+  }
+
+  try {
+    const merged = await mergePrApi({
+      owner,
+      repo,
+      prNumber: pr.number,
+      commitTitle: `seo-factory: rollback "${title}"`,
+    })
+    if (!merged.merged) {
+      return {
+        status: 'pr_created',
+        action,
+        owner,
+        repo,
+        path,
+        prUrl: pr.html_url,
+        prNumber: pr.number,
+        commitSha: branchCommit,
+        note: `Merge rejected: ${merged.message}`,
+      }
+    }
+    return {
+      status: 'reverted',
+      action,
+      owner,
+      repo,
+      path,
+      prUrl: pr.html_url,
+      prNumber: pr.number,
+      commitSha: merged.sha || branchCommit,
+      note: `${action === 'deleted' ? 'Deleted' : 'Restored'} ${path} — rollback merged to main`,
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'merge failed'
+    return {
+      status: 'pr_created',
+      action,
+      owner,
+      repo,
+      path,
+      prUrl: pr.html_url,
+      prNumber: pr.number,
+      commitSha: branchCommit,
+      note: `Rollback PR open but merge failed: ${msg.slice(0, 240)}`,
+    }
+  }
 }
 
 /**

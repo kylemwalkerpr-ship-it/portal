@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runSeoFactoryPipeline } from '@/lib/seoFactory/pipeline'
-import { shipContent, mergePullRequest, parseRepoSlug, type ShipMode } from '@/lib/seoFactory/ship'
+import { shipContent, mergePullRequest, revertContent, parseRepoSlug, type ShipMode } from '@/lib/seoFactory/ship'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
@@ -730,6 +730,90 @@ export async function PATCH(request: NextRequest) {
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
+    }
+
+    if (action === 'revert') {
+      // Rollback a merged/live change: restore the shipped file to its
+      // pre-ship state (or delete it if it was net-new) via a PR→CI→merge.
+      if (job.status !== 'merged' && job.status !== 'deployed' && !job.content_path) {
+        return NextResponse.json(
+          { error: 'Only merged jobs with a shipped file path can be reverted' },
+          { status: 400 },
+        )
+      }
+      const deploySha = String(job.deploy_sha || job.merge_commit_sha || '').trim()
+      if (!deploySha) {
+        return NextResponse.json(
+          { error: 'Job has no deploy SHA to revert — cannot determine the pre-ship state' },
+          { status: 400 },
+        )
+      }
+      const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
+      if (!repo) {
+        return NextResponse.json({ error: 'Job has no target repo' }, { status: 400 })
+      }
+      try {
+        const revert = await revertContent({
+          owner,
+          repo,
+          path: String(job.content_path),
+          deploySha,
+          title: job.title || job.topic || String(job.content_path),
+          dryRun: Boolean(body.dryRun),
+        })
+        const now = new Date().toISOString()
+        const patch: Record<string, unknown> = {
+          status: revert.status === 'reverted' ? 'closed' : job.status,
+          closed_at: revert.status === 'reverted' ? now : job.closed_at,
+          error_message:
+            revert.status === 'reverted'
+              ? `Rollback merged: ${revert.note || 'reverted to pre-ship state'} (${revert.action})`
+              : job.error_message,
+          last_failure_kind: null,
+        }
+        const { data: updated, error: upErr } = await supabase
+          .from('content_jobs')
+          .update(patch)
+          .eq('id', id)
+          .select()
+          .single()
+        if (upErr) throw upErr
+        // Audit event for the operator timeline.
+        try {
+          const prevLog = Array.isArray(updated?.event_log) ? updated!.event_log : Array.isArray(job.event_log) ? job.event_log : []
+          const next = [
+            ...prevLog.slice(-200),
+            {
+              id: `revert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              ts: Date.now(),
+              level: revert.status === 'reverted' ? 'success' : 'warn',
+              source: 'admin:revert',
+              message:
+                revert.status === 'reverted'
+                  ? `Rollback merged — ${revert.action} ${revert.path} (PR #${revert.prNumber ?? '?'})`
+                  : `Rollback PR open — ${revert.note || 'merge pending'}`,
+              detail: `owner=${owner} repo=${repo} deploySha=${deploySha.slice(0, 7)} action=${revert.action}`,
+            },
+          ]
+          await supabase.from('content_jobs').update({ event_log: next }).eq('id', id)
+        } catch { /* event log is best-effort */ }
+        if (revert.status === 'reverted' && !body.dryRun) {
+          await monitorContentJob(id, { openIssueOnFailure: true, waitMs: 1500 })
+        }
+        return NextResponse.json({
+          ok: true,
+          revert,
+          job: updated,
+          message:
+            revert.status === 'reverted'
+              ? `Rollback merged — ${revert.action === 'deleted' ? 'deleted' : 'restored'} ${revert.path}`
+              : revert.note || 'Rollback PR opened',
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Rollback failed'
+        await supabase.from('content_jobs').update({ error_message: msg }).eq('id', id)
+        return NextResponse.json({ ok: false, error: msg }, { status: 502 })
+      }
     }
 
     if (action === 'reaudit') {
