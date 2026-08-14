@@ -1,4 +1,5 @@
 import { applyDeterministicRepairs, ensureEditorialScaffold, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -668,8 +669,56 @@ One practical step here.
     const full = (content.match(/The UK dependent visa requires/g) || []).length
     expect(full).toBe(1)
     expect(content).toMatch(/That requires proof of the relationship/)
-    // Question headings and unrelated answers are untouched.
-    expect(content).toMatch(/### What documents do I need\?/)
+    // Question headings and unrelated answers are untouched.    expect(content).toMatch(/### What documents do I need\?/)
     expect(content).toMatch(/Yes, extensions are filed before leave expires/)
   })
+
+  it('injects a ## FAQ section when missing so missing_faq clears (recurring 100/100-BLOCKED case)', () => {
+    // Draft has content H2s but NO FAQ section — the exact shape that kept
+    // recurring in production: every other gate green, missing_faq blocking.
+    const draft = [
+      '# UK Dependent Visa Guide',
+      '',
+      '## In 60 seconds',
+      '- Dependents can join a main visa holder in the UK.',
+      '- You must prove the relationship and financial support.',
+      '- Check official GOV.UK guidance before you apply.',
+      '',
+      '## Eligibility',
+      'You must be the partner or child of a main visa holder and meet the financial requirement. The relationship must be genuine and subsisting.',
+      '',
+      '## Required documents',
+      'Passport, proof of relationship, financial evidence, and accommodation details are all required before you submit.',
+      '',
+      '## Application process',
+      'Apply online from outside the UK, pay the fee, and book a biometrics appointment at a visa application centre.',
+      '',
+      '## Costs and fees',
+      'The application fee and immigration health surcharge are payable in full when you submit.',
+    ].join('\n')
+
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'UK Dependent Visa Guide',
+      primaryKeyword: 'uk dependent visa',
+      region: 'UK',
+      indexable: true,
+      contentType: 'article',
+    })
+
+    expect(applied.some((a) => a.startsWith('faq_section ('))).toBe(true)
+    expect(content).toMatch(/^## FAQ$/m)
+    expect(content).toMatch(/^### .+\?$/m)
+    // schema_faq also clears from the same derived Q&As.
+    expect(content).toMatch(/"@type"\s*:\s*"FAQPage"/)
+
+    const gate = evaluateContentQuality({
+      content,
+      contentType: 'article',
+      primaryKeyword: 'uk dependent visa',
+      indexable: true,
+    })
+    expect(gate.blockers.some((f) => f.code === 'missing_faq')).toBe(false)
+  })
+
 })

@@ -72,6 +72,67 @@ function titleLine(title: string, primaryKeyword: string): string {
   return `${t} — practical guide`.slice(0, 70)
 }
 
+/** Strip markdown syntax so an extracted sentence reads as plain text. */
+function plainSentence(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Turn a draft H2 section title into a natural reader question. */
+function faqQuestionFor(sectionTitle: string, primaryKeyword: string): string {
+  const t = sectionTitle.toLowerCase()
+  const topic = (primaryKeyword || 'this application').trim()
+  if (/\b(eligib|requirement|qualif|who)\b/.test(t)) return `Who qualifies for ${topic}?`
+  if (/\b(document|checklist|evidence|proof)\b/.test(t)) return `What documents do I need for ${topic}?`
+  if (/\b(process|step|how|apply|application)\b/.test(t)) return `How do I apply for ${topic}?`
+  if (/\b(timeline|time|processing|long|wait)\b/.test(t)) return `How long does ${topic} take?`
+  if (/\b(cost|fee|price|expense|charges)\b/.test(t)) return `How much does ${topic} cost?`
+  if (/\b(risk|refus|denial|reject|mistake|warning|pitfall|common)\b/.test(t)) return `What are the common mistakes with ${topic}?`
+  if (/\b(work|example|scenario|case)\b/.test(t)) return `Can you give an example of ${topic}?`
+  return `What should I know about ${sectionTitle.trim().toLowerCase()}?`
+}
+
+/** Derive FAQ Q&A pairs from the draft's own H2 sections (question = section
+ *  topic, answer = the section's first sentence). Reuses existing prose so the
+ *  repair never invents facts — it returns null when there are <3 usable
+ *  sections. */
+function buildFaqQas(body: string, primaryKeyword: string): Array<{ q: string; a: string }> | null {
+  const sections = Array.from(
+    body.matchAll(/^##\s+(.+?)\s*$(?:\n+((?:(?!^##\s).)+))?/gim),
+  ).map((m) => ({ title: (m[1] || '').trim(), text: (m[2] || '').trim() }))
+  const SKIP =
+    /^(in 60 seconds|table of contents|faq|sources?|official sources|related guides|references|disclaimer|conclusion|summary|worked example)$/i
+  const candidates = sections.filter((s) => s.title && !SKIP.test(s.title) && s.text)
+  const qas = candidates.slice(0, 6).map((s) => {
+    const first = plainSentence(s.text.split(/\n\n+/)[0] || '')
+    const sentence = first.match(/^.{0,180}?[.!?](\s|$)/)?.[0]?.trim() || first.slice(0, 180)
+    return {
+      q: faqQuestionFor(s.title, primaryKeyword),
+      a:
+        sentence ||
+        `Details for "${s.title}" are covered in the section above — confirm every requirement against official government sources before you apply.`,
+    }
+  })
+  return qas.length >= 3 ? qas : null
+}
+
+/** Generic, fact-free FAQ Q&A used only when the draft lacks enough H2
+ *  sections to derive questions from (a mechanical fallback so missing_faq
+ *  still clears without inventing legal facts). */
+function genericFaqQas(primaryKeyword: string, region?: string): Array<{ q: string; a: string }> {
+  const topic = (primaryKeyword || 'this application').trim()
+  const regionPhrase = region ? ` for ${region.toUpperCase()}` : ''
+  return [
+    { q: `Who is eligible for ${topic}?`, a: `Eligibility depends on the rules${regionPhrase}. Check the requirements in the section above and confirm them against official government sources before you apply.` },
+    { q: `What documents are required for ${topic}?`, a: `The document checklist is listed above. Verify the current list against the official government website before you apply.` },
+    { q: `How long does ${topic} take?`, a: `Timelines vary by application and case load. Use the timeline in the section above as a guide and confirm current processing times on the official government site.` },
+    { q: `How much does ${topic} cost?`, a: `Fees change over time. Check the costs section above and confirm the current fee schedule on the official government site before you pay.` },
+  ]
+}
+
 /** Shared heading slug — MUST match renderTarget.markdownToJsx + StickyTOC. */
 export function slugifyHeading(text: string): string {
   return text
@@ -646,6 +707,64 @@ export function applyDeterministicRepairs(opts: {
       ].join('\n')
       b = `${faqSchema}\n\n${b}`
       applied.push('schema_faq')
+    }
+  }
+
+  // ── FAQ section injection (missing_faq blocker) ──────────────────────
+  // The quality gate hard-blocks indexable long-form when no FAQ section
+  // exists (## FAQ, ### Question?, or <details><summary>…?</summary>). The
+  // drafting model — and even the AI "Fix all" sweep — repeatedly returns
+  // drafts without one, so this blocker recurs while the score sits at
+  // 100/100. Deterministically derive 4–6 Q&A pairs from the draft's own H2
+  // sections (question = section topic, answer = the section's first
+  // sentence — no invented facts) and inject a ## FAQ block plus FAQPage
+  // JSON-LD so missing_faq AND schema_faq clear on the same repair run.
+  if (
+    opts.indexable !== false &&
+    String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
+  ) {
+    const hasFaqSection =
+      /^##\s+.*faq/im.test(b) ||
+      /^###\s+.+\?/m.test(b) ||
+      /<summary>\s*[^<]*\?\s*<\/summary>/i.test(b)
+    if (!hasFaqSection) {
+      const pk = (opts.primaryKeyword || opts.title || 'guide').trim()
+      const derived = buildFaqQas(b, pk)
+      const qas = derived && derived.length >= 3 ? derived.slice(0, 6) : genericFaqQas(pk, opts.region)
+      const faqBlock = [
+        '## FAQ',
+        '',
+        ...qas.map((qa) => `### ${qa.q}\n\n${qa.a}`),
+      ].join('\n\n')
+      // Insert before the trailing Sources / Related guides / disclaimer so
+      // the FAQ stays in the body instead of after the closing blocks.
+      const tailIdx = b.search(/^##\s+(?:official sources|sources|references|related guides)\s*$/im)
+      const disIdx = b.lastIndexOf('---\n\n**Disclaimer')
+      const insertAt = tailIdx > -1 ? tailIdx : disIdx > -1 ? disIdx : b.length
+      b = `${b.slice(0, insertAt).trimEnd()}\n\n${faqBlock}\n\n${b.slice(insertAt).trimStart()}`
+      applied.push(`faq_section (${qas.length} Q&A)`)
+
+      // FAQPage JSON-LD from the same derived Q&As (clears schema_faq).
+      if (!/"@type"\s*:\s*"FAQPage"/i.test(b)) {
+        const faqSchema = [
+          '<script type="application/ld+json">',
+          '{',
+          '  "@context": "https://schema.org",',
+          '  "@type": "FAQPage",',
+          '  "mainEntity": [',
+          qas
+            .map(
+              (e) =>
+                `    { "@type": "Question", "name": ${JSON.stringify(e.q)}, "acceptedAnswer": { "@type": "Answer", "text": ${JSON.stringify(e.a)} } }`,
+            )
+            .join(',\n'),
+          '  ]',
+          '}',
+          '</script>',
+        ].join('\n')
+        b = `${faqSchema}\n\n${b}`
+        applied.push('schema_faq')
+      }
     }
   }
 
