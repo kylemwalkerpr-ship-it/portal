@@ -21,6 +21,7 @@ import { StudioStageNav } from '@/components/design/studio-stage-nav'
 import { ChapterIntro } from '@/components/design/studio-chapter-intro'
 import { QueueStats, QueueTable } from '@/components/design/studio-queue'
 import { ReviewDraftsPanel } from '@/components/design/studio-review-panels'
+import { isPublishedJob } from '@/components/design/studio-ui-shared'
 import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-shared'
 
 /* ── fixtures ─────────────────────────────────────────────────────────── */
@@ -93,6 +94,33 @@ const gateByJob = new Map<string, { score: number | null; passed: boolean | null
   ['j1', { score: 33, passed: false }],
   ['j2', { score: 100, passed: true }],
 ])
+
+/* ── isPublishedJob — Track ledger stamp predicate ────────────────────── */
+
+describe('isPublishedJob — a stamp is earned only by a genuinely shipped page', () => {
+  it('canonical_url alone never earns a stamp (drafts/pr/failed are excluded)', () => {
+    // 2026-08 regression: the pipeline writes canonical_url on every job at
+    // creation (status 'drafting'), so the old `status === 'merged' ||
+    // canonical_url` filter flooded the Track ledger with never-merged drafts.
+    expect(
+      isPublishedJob(job({ id: 'd1', title: 'Draft', status: 'drafting', canonical_url: 'https://legal.yousafeconsultancy.com/us/draft/' })),
+    ).toBe(false)
+    expect(
+      isPublishedJob(job({ id: 'p1', title: 'PR open', status: 'pr_created', canonical_url: 'https://legal.yousafeconsultancy.com/us/pr/' })),
+    ).toBe(false)
+    expect(
+      isPublishedJob(job({ id: 'f1', title: 'Failed', status: 'failed', canonical_url: 'https://legal.yousafeconsultancy.com/us/fail/' })),
+    ).toBe(false)
+  })
+
+  it('status merged (or a set merged_at) earns a stamp', () => {
+    expect(isPublishedJob(job({ id: 'm1', title: 'Merged', status: 'merged' }))).toBe(true)
+    // Defensive: a merged_at timestamp is authoritative even if status is stale.
+    expect(
+      isPublishedJob(job({ id: 'm2', title: 'Merged-stale', status: 'pr_created', merged_at: '2026-08-01T00:00:00.000Z' })),
+    ).toBe(true)
+  })
+})
 
 /* ── StudioStageNav ───────────────────────────────────────────────────── */
 

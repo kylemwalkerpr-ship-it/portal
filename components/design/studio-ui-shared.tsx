@@ -48,6 +48,16 @@ export interface GscMiniStats {
   source: 'live' | 'snapshot' | null
 }
 
+/**
+ * True when a job has actually shipped to main and earned a publication-ledger
+ * stamp. `canonical_url` alone is NOT a ship signal — the pipeline writes it
+ * onto every job at creation (status 'drafting'), so filtering on it flooded
+ * the Track ledger with never-merged drafts that would 404 on VERIFY.
+ */
+export function isPublishedJob(j: ContentJob): boolean {
+  return j.status === 'merged' || Boolean(j.merged_at)
+}
+
 export function formatDate(iso: string) {
   try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
   catch { return iso }

@@ -47,6 +47,7 @@ import {
   formatDate,
   gateBadge,
   GscMini,
+  isPublishedJob,
   jobWebPath,
   statusBadge,
   type CannibalMergeRecord,
@@ -1032,16 +1033,19 @@ function PublishLedger({
     | { stage: 'ok'; message: string; httpStatus: number | null; verifiedAt: string }
     | { stage: 'broken'; message: string; httpStatus: number | null; verifiedAt: string }
 
-  const merged = jobs.filter((j) => j.status === 'merged' || j.canonical_url)
+  // A stamp is earned ONLY by a genuinely shipped page. `canonical_url` alone
+  // is NOT a ship signal — the pipeline writes it onto every job at creation
+  // (status 'drafting'), so filtering on it flooded the ledger with drafts that
+  // were never merged and would 404 on VERIFY. `status === 'merged'` (or a
+  // set `merged_at`) is the authoritative "actually on main" marker.
+  const merged = jobs.filter(isPublishedJob)
   // Dedupe by canonical URL — repeated deploys of the same article.
   const seen = new Set<string>()
-  const stamps = merged
-    .filter((j) => {
-      const key = j.canonical_url || j.slug || j.id
-      if (seen.has(key)) return false
-      seen.add(key); return true
-    })
-    .slice(0, 18)
+  const stamps = merged.filter((j) => {
+    const key = j.canonical_url || j.slug || j.id
+    if (seen.has(key)) return false
+    seen.add(key); return true
+  })
 
   const [verify, setVerify] = React.useState<Record<string, VerifyState>>({})
   const [trendsLoading, setTrendsLoading] = React.useState(false)
@@ -4358,7 +4362,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       (Boolean(j.pr_url || j.pr_number) && j.status !== 'closed') ||
       (j.status === 'drafting' && Boolean(j.content)),
   )
-  const hasPublication = jobs.some((j) => j.status === 'merged' || Boolean(j.canonical_url))
+  const hasPublication = jobs.some(isPublishedJob)
 
   const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
     discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
