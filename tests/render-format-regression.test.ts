@@ -162,7 +162,7 @@ describe('renderTarget — numbering, tables, and callouts survive to the live p
     expect(fileContent).toContain('<li>Gather your passport.</li>')
     // Blog tables render with the bordered utility classes.
     expect(fileContent).toContain('<table className="mt-4 w-full border-collapse text-sm">')
-    expect(fileContent).toContain('<blockquote className="mt-4 border-l-2')
+    expect(fileContent).toContain('<blockquote className="my-8 border-l-2')
   })
 })
 

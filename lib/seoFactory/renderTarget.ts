@@ -335,7 +335,7 @@ function markdownToBlogJsx(body: string): string {
 
   const flushPara = () => {
     if (!para.length) return
-    out.push(`      <p className="mt-4 text-muted-foreground">${renderInline(para.join(' '))}</p>`)
+    out.push(`      <p className="mt-4 text-lg leading-relaxed tracking-[-0.003em] break-words text-foreground">${renderInline(para.join(' '))}</p>`)
     para = []
   }
   const closeList = () => {
@@ -349,8 +349,8 @@ function markdownToBlogJsx(body: string): string {
     closeList()
     out.push(
       type === 'ol'
-        ? '      <ol className="mt-4 list-decimal space-y-2 pl-5 text-muted-foreground">'
-        : '      <ul className="mt-4 list-disc space-y-2 pl-5 text-muted-foreground">',
+        ? '      <ol className="mt-4 list-decimal space-y-2 pl-5 leading-relaxed text-foreground">'
+        : '      <ul className="mt-4 list-disc space-y-2 pl-5 leading-relaxed text-foreground">',
     )
     listType = type
   }
@@ -412,7 +412,7 @@ function markdownToBlogJsx(body: string): string {
       flushPara()
       closeList()
       if (!inBlockquote) {
-        out.push('      <blockquote className="mt-4 border-l-2 border-border pl-4 italic text-muted-foreground">')
+        out.push('      <blockquote className="my-8 border-l-2 border-border pl-4 italic text-muted-foreground">')
         inBlockquote = true
       }
       out.push(`        <p>${renderInline(line.slice(2).trim())}</p>`)
@@ -433,14 +433,14 @@ function markdownToBlogJsx(body: string): string {
       const text = line.slice(3)
       inSection = true
       out.push('    <section className="mt-10">')
-      out.push(`      <h2 className="font-serif text-2xl text-foreground">${renderInline(text)}</h2>`)
+      out.push(`      <h2 className="font-serif text-2xl font-semibold tracking-[-0.02em] text-balance text-foreground">${renderInline(text)}</h2>`)
       continue
     }
     if (line.startsWith('### ')) {
       flushPara()
       closeList()
       closeBlockquote()
-      out.push(`      <h3 className="font-serif text-xl text-foreground">${renderInline(line.slice(4))}</h3>`)
+      out.push(`      <h3 className="font-serif text-xl font-semibold tracking-[-0.02em] text-balance text-foreground">${renderInline(line.slice(4))}</h3>`)
       continue
     }
     const h4 = line.match(/^(#{4,6})\s+(.+)$/)
@@ -448,7 +448,7 @@ function markdownToBlogJsx(body: string): string {
       flushPara()
       closeList()
       closeBlockquote()
-      out.push(`      <h4 className="font-serif text-lg text-foreground">${renderInline(h4[2])}</h4>`)
+      out.push(`      <h4 className="font-serif text-lg font-semibold tracking-[-0.02em] text-foreground">${renderInline(h4[2])}</h4>`)
       continue
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
@@ -693,14 +693,14 @@ export default function Page() {
   const date = ${JSON.stringify(today)}
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
       <article>
         <header>
           <p className="text-sm text-muted-foreground">{date} · MyCaseworks Editorial</p>
           <h1 className="mt-4 font-serif text-3xl text-foreground sm:text-4xl">
             ${escapeTs(title)}
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
+          <p className="mt-6 text-xl leading-relaxed text-muted-foreground">
             ${intro}
           </p>
         </header>
