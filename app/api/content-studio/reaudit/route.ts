@@ -45,13 +45,15 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   // reasoning capability and evaluates gate compliance with higher accuracy
   // than Terra (Research) or Luna (high-volume drafting).
   const effectiveModel = reviewModel || 'gpt-5.6-sol'
-  // GPT Sol/Terra/Luna are the ONLY responsible review models — pin the
-  // OpenAI provider so the model override actually applies. Without this,
-  // generateContentText falls back to the default cascade (NVIDIA DeepSeek
-  // first), which IGNORES the gpt-5.6 model override and runs the fix on a
-  // completely different model. Pin only for gpt-5.6* models; a legacy/custom
-  // reviewModel still cascades normally.
-  const aiProvider = /^gpt-5\.6/i.test(effectiveModel) ? 'openai' : undefined
+  // Pin the provider so the selected review model actually applies:
+  //   · gpt-5.6* → OpenAI (otherwise the default cascade runs the fix on
+  //     NVIDIA DeepSeek and silently ignores the gpt-5.6 model name)
+  //   · GLM 5.2 Fast → Baseten (the efficient open-source editor)
+  //   · anything else (legacy/custom) → normal cascade
+  const isGpt = /^gpt-5\.6/i.test(effectiveModel)
+  const isGlmFast =
+    effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
+  const aiProvider = isGpt ? 'openai' : isGlmFast ? 'baseten-glm-fast' : undefined
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,

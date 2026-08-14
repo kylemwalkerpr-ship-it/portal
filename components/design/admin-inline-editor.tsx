@@ -66,8 +66,9 @@ type Props = {
    *  sections carry the right jurisdictional detail. */
   region?: string
   /** Review model override — defaults to gpt-5.6-sol (senior editor).
-   *  gpt-5.6-terra is the faster, lower-cost alternative for non-critical
-   *  fixes. Sent to the reaudit API as the reviewModel field. */
+   *  gpt-5.6-terra is the faster, lower-cost OpenAI alternative; GLM 5.2 Fast
+   *  (baseten-glm-fast) is the efficient open-source editor. Sent to the
+   *  reaudit API as the reviewModel field. */
   reviewModel?: string
   onReviewModelChange?: (m: string) => void
 }
@@ -604,9 +605,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {saving ? 'Saving...' : 'Save'}
         </button>
 
-        {/* Review model selector — GPT Sol (senior editor) vs Terra (fast/cheap).
-            Only OpenAI providers use the model override, so this applies to the
-            OpenAI path; the provider cascade falls back normally for others. */}
+        {/* Review model selector — GPT Sol (senior editor), GPT Terra (fast
+            OpenAI), or GLM 5.2 Fast (efficient open-source via Baseten). */}
         {onReviewModelChange && (
           <select
             value={reviewModel || 'gpt-5.6-sol'}
@@ -623,6 +623,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           >
             <option value="gpt-5.6-sol">GPT Sol · Senior Editor</option>
             <option value="gpt-5.6-terra">GPT Terra · Fast Review</option>
+            <option value="baseten-glm-fast">GLM 5.2 Fast · Fast Review</option>
           </select>
         )}
 
