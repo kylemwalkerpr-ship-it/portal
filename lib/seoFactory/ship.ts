@@ -54,6 +54,10 @@ export interface ShipResult {
   /** CI state when merge waited for checks */
   ciState?: 'success' | 'failure' | 'pending' | 'none' | 'timeout'
   ciNote?: string
+  /** Deterministic repairs applied to the content before the gate stack
+   *  (e.g. keyword_backfill, cannibal_differentiation_note). Lets the studio
+   *  ship dialog and E2E see what mechanically changed before gates ran. */
+  repairsApplied?: string[]
 }
 
 /** Poll GitHub check-runs / combined status until green, red, or timeout. */
@@ -420,6 +424,7 @@ export async function shipContent(opts: {
   // disclaimer or broken reader TOC must never block a ship that a mechanical
   // fix can resolve — the studio's "Fix & regenerate" and manual ship both
   // converge on the same repaired content instead of failing forever.
+  let repairsApplied: string[] = []
   {
     const repaired = applyDeterministicRepairs({
       content: shipContent_,
@@ -435,6 +440,7 @@ export async function shipContent(opts: {
       maxWords: opts.maxWords,
     })
     if (repaired.applied.length) {
+      repairsApplied = repaired.applied
       shipContent_ = repaired.content
       console.info(
         `[ship] deterministic repair applied before gates: ${repaired.applied.join(', ')}`,
@@ -505,6 +511,7 @@ export async function shipContent(opts: {
       status: 'dry_run',
       dryRun: true,
       humanApproved: opts.humanApproved,
+      repairsApplied,
     }
   }
 

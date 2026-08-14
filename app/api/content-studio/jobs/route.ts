@@ -529,6 +529,30 @@ export async function POST(request: NextRequest) {
             ownershipBlockers: plan.blockers,
           })
           try {
+            // Feed the brief's gate inputs through the full ship path: the
+            // keyword-coverage gate and cannibalization repair only fire when
+            // these are present, and the studio approve route is the LAST
+            // place the brief requirements can reach shipContent (2026-08:
+            // they were silently dropped here, so the gates never fired on
+            // approve). Empty arrays are no-ops — legacy rows behave exactly
+            // as before.
+            const requiredShortKeywords: string[] = Array.isArray(
+              (job as any).required_short_keywords,
+            )
+              ? (job as any).required_short_keywords
+              : []
+            const requiredLongTailKeywords: string[] = Array.isArray(
+              (job as any).required_long_tail_keywords,
+            )
+              ? (job as any).required_long_tail_keywords
+              : []
+            const competingUrls: Array<{
+              url: string
+              title: string
+              primaryKeyword?: string | null
+            }> = Array.isArray((job as any).competing_urls)
+              ? (job as any).competing_urls
+              : []
             const ship = await shipContent({
               mode: 'autodeploy',
               plan,
@@ -541,6 +565,9 @@ export async function POST(request: NextRequest) {
               dryRun: Boolean(body.dryRun),
               jobId: id,
               humanApproved: true,
+              requiredShortKeywords,
+              requiredLongTailKeywords,
+              competingUrls,
             })
             const now = new Date().toISOString()
             const terminal =
