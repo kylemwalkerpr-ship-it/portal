@@ -9,6 +9,7 @@ next-env.d.ts
 .wrangler/
 pnpm-lock.yaml
 playwright-report/
+test-results/
 .wrangler/
 # smoke-prod baseline (machine-local deploy drift state)
 scripts/.smoke-prod-state.json
