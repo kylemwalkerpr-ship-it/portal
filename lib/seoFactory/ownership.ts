@@ -790,12 +790,16 @@ export async function resolveOwner(opts: {
   }
 
   const repo = HOST_REPO[host]
-  let indexable = opts.indexable ?? true
+  // Indexability is the DEFAULT for any article that passes review and merges
+  // to live. A registry action (noindex / supply_first) may flag a page for
+  // manual handling, but it never silently forces a noindex directive — only
+  // an explicit caller override (opts.indexable === false) can mark a page
+  // noindex.
+  const indexable = opts.indexable !== false
 
   if (matched) {
     if (matched.action === 'noindex' || matched.action === 'supply_first') {
-      if (matched.action === 'noindex') indexable = false
-      warnings.push(`Registry action=${matched.action} for "${matched.primary_keyword}"`)
+      warnings.push(`Registry action=${matched.action} for "${matched.primary_keyword}" — ship stays indexable by default`)
     }
     if (matched.action === '301' || matched.action === 'merge') {
       // Auto-resolve to the existing canonical page: the file path already

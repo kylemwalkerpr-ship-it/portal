@@ -118,3 +118,28 @@ describe('ownership resolver — university/geo modifier vs generic hub separati
     expect(p.filePath).toBe('app/us/student-visas/page.tsx')
   })
 })
+
+describe('ownership resolver — indexability defaults to indexable', () => {
+  it('defaults every resolved article to indexable (no silent noindex)', async () => {
+    // 2026-08 regression: a registry `noindex` action used to silently mark the
+    // resolved plan indexable=false, so a passing article shipped with a noindex
+    // tag. Every article that passes review and merges to live must be indexable
+    // by default — only an explicit caller override can mark it noindex.
+    const p = await resolveOwner({
+      primaryKeyword: 'f-1 visa rights international students',
+      contentType: 'legal_guide',
+      region: 'US',
+    })
+    expect(p.indexable).toBe(true)
+  })
+
+  it('still honors an explicit caller override to noindex', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'f-1 visa rights international students',
+      contentType: 'legal_guide',
+      region: 'US',
+      indexable: false,
+    })
+    expect(p.indexable).toBe(false)
+  })
+})
