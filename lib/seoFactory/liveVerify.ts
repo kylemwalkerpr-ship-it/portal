@@ -7,8 +7,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
-import { auditContent } from './audit'
-import { evaluateContentQuality } from './contentQualityGate'
+import { auditLiveHtml } from './liveAudit'
 import { countBodyWords } from './contentDepth'
 
 export interface LiveVerifyInput {
@@ -139,7 +138,6 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
     if (input.jobId) await appendLog(input.jobId, { level:'warn', source:'liveVerify', message:`Live verify: ${result.error} on ${url} (HTTP ${httpStatus})`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes }, null,2) })
     return result
   }
-  const wc = countBodyWords(bodyText)
   const hasNoIndex = /<meta[^>]*robots[^>]*noindex/i.test(bodyText)
   // Canonical tag check — assert the <link rel="canonical" href="…"> matches
   // the canonicalUrl we asked about. CDNs occasionally rewrite to the
@@ -149,33 +147,21 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
   let auditScore: number | null = null
   let humanScore: number | null = null
   let auditError: string | null = null
+  let wc: number | null = null
   try {
-    if (!input.requiredShortKeywords && !input.requiredLongTailKeywords && input.jobId) {
-      try {
-        const { data: jobRow } = await dbc()
-          .from('content_jobs')
-          .select('required_short_keywords,required_long_tail_keywords')
-          .eq('id', input.jobId)
-          .maybeSingle()
-        if (jobRow) {
-          input.requiredShortKeywords = Array.isArray(jobRow.required_short_keywords) ? jobRow.required_short_keywords : []
-          input.requiredLongTailKeywords = Array.isArray(jobRow.required_long_tail_keywords) ? jobRow.required_long_tail_keywords : []
-        }
-      } catch { /* best-effort */ }
-    }
-    const audit = auditContent({ content: bodyText, contentType: input.contentType||'legal_guide', primaryKeyword: input.primaryKeyword||input.title||url, indexable:true, ownershipBlockers: [] })
-    auditScore = audit.score
-    const q = evaluateContentQuality({
-      content: bodyText,
+    const live = auditLiveHtml({
+      html: bodyText,
       contentType: input.contentType || 'legal_guide',
       primaryKeyword: input.primaryKeyword || input.title || url,
-      indexable: true,
-      requiredShortKeywords: input.requiredShortKeywords,
-      requiredLongTailKeywords: input.requiredLongTailKeywords,
     })
-    humanScore = q.humanScore
-  } catch(ex:any){ auditError = String(ex?.message||ex).slice(0,400) }
-  const ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && wc>=200
+    auditScore = live.score
+    humanScore = live.humanScore
+    wc = live.wordCount
+  } catch (ex: any) {
+    auditError = String(ex?.message || ex).slice(0, 400)
+    wc = countBodyWords(bodyText)
+  }
+  const ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && (wc??0)>=200
   if (input.jobId) {
     try {
       // live_status is CHECK-constrained to ('verified','noindex','fetch_failed',
