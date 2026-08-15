@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { scoreMaster, type MasterEngineInput, type IntentId, type SubsystemId } from '@/lib/seoFactory/masterEngine'
 import { learnWeights, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
+import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 
 /**
@@ -54,14 +55,28 @@ export async function POST(request: NextRequest) {
       input = jobToMasterEngineInput(job)
     }
 
-    // Retrain from any supplied historical outcomes, then feed the learned
-    // per-intent weights back into the engine so it adapts to real outcomes.
-    const learn = body.history && body.history.length ? learnWeights(body.history) : null
+    // Retrain from real outcomes. When the caller supplies history use it
+    // verbatim; otherwise build it from live GSC page positions correlated
+    // against every merged job's stored engine report, so the learned weights
+    // shift from measured rank data without a manual history payload.
+    let history: HistoricalOutcome[] = Array.isArray(body.history) ? body.history : []
+    let outcomeHistory: { source: string; matchedJobs: number; pages: number; warnings: string[] } | null = null
+    if (history.length === 0) {
+      const built = await buildOutcomeHistoryFromLiveGsc()
+      history = built.history
+      outcomeHistory = {
+        source: built.source,
+        matchedJobs: built.matchedJobs,
+        pages: built.pages,
+        warnings: built.warnings,
+      }
+    }
+    const learn = history.length ? learnWeights(history) : null
     const byIntent: Partial<Record<IntentId, Record<SubsystemId, number>>> = {}
     if (learn) for (const m of learn.models) byIntent[m.intent] = m.weights
     const report = scoreMaster(input, { byIntent })
 
-    return NextResponse.json({ ok: true, report, learn })
+    return NextResponse.json({ ok: true, report, learn, outcomeHistory })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: `Master engine failed: ${message}` }, { status: 500 })
