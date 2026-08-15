@@ -56,6 +56,11 @@ declare global {
     // Backlink provider (DataForSEO Backlinks API — HTTP Basic auth)
     DATAFORSEO_LOGIN: string
     DATAFORSEO_PASSWORD: string
+
+    // AIHubmix OpenAI-compatible aggregator — GLM 5.2 Fast (glm-5.2-fast-preview)
+    AIHUBMIX_API_KEY: string
+    AIHUBMIX_BASE_URL: string
+    AIHUBMIX_GLM_MODEL: string
   }
 }
 

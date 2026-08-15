@@ -221,6 +221,7 @@ const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising'
 // lowest-cost partner for high-volume drafting.
 const DRAFTING_PROVIDER_OPTIONS: { value: string; label: string }[] = [
   { value: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten (zai-org/GLM-5.2-Fast · default)' },
+  { value: 'aihubmix-glm-fast', label: 'GLM 5.2 Fast · AIHubmix (glm-5.2-fast-preview)' },
   { value: 'auto', label: 'Auto (cascade: GLM Fast → DeepSeek → NVIDIA → rest)' },
   { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2)' },
   { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten' },
@@ -2228,8 +2229,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     briefModel === 'gpt-5.6-sol'
       ? 'GPT Sol'
       : briefModel === 'baseten-glm-fast'
-        ? 'GLM 5.2 Fast'
-        : 'GPT Terra'
+        ? 'GLM 5.2 Fast · Baseten'
+        : briefModel === 'aihubmix-glm-fast'
+          ? 'GLM 5.2 Fast · AIHubmix'
+          : 'GPT Terra'
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -2527,7 +2530,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             >
               <option value="gpt-5.6-terra">GPT Terra</option>
               <option value="gpt-5.6-sol">GPT Sol</option>
-              <option value="baseten-glm-fast">GLM 5.2 Fast</option>
+              <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten</option>
+              <option value="aihubmix-glm-fast">GLM 5.2 Fast · AIHubmix</option>
             </select>
             <button
               type="button"

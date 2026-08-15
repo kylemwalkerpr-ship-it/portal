@@ -107,6 +107,11 @@ jobs:
           # (lib/seoFactory/backlinkProvider.ts). Basic auth login + password.
           DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
           DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          # AIHubmix OpenAI-compatible aggregator — GLM 5.2 Fast route
+          # (lib/contentAiProvider.ts getAihubmixGlmFastProvider).
+          AIHUBMIX_API_KEY: ${{ secrets.AIHUBMIX_API_KEY }}
+          AIHUBMIX_BASE_URL: ${{ secrets.AIHUBMIX_BASE_URL }}
+          AIHUBMIX_GLM_MODEL: ${{ secrets.AIHUBMIX_GLM_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           CUSTOM_AI_BASE_URL: ${{ secrets.CUSTOM_AI_BASE_URL }}
@@ -235,6 +240,11 @@ jobs:
           # deploy stays green until the credentials are provisioned.
           put_secret DATAFORSEO_LOGIN          "$DATAFORSEO_LOGIN"
           put_secret DATAFORSEO_PASSWORD       "$DATAFORSEO_PASSWORD"
+          # AIHubmix GLM 5.2 Fast (OpenAI-compatible aggregator) — drafting /
+          # brief / review route. put_secret no-ops when unset.
+          put_secret AIHUBMIX_API_KEY          "$AIHUBMIX_API_KEY"
+          put_secret AIHUBMIX_BASE_URL         "${AIHUBMIX_BASE_URL:-https://aihubmix.com/v1}"
+          put_secret AIHUBMIX_GLM_MODEL        "${AIHUBMIX_GLM_MODEL:-glm-5.2-fast-preview}"
           put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"
           put_secret OPENAI_MODEL              "${OPENAI_MODEL:-gpt-5.6-luna}"
           put_secret CUSTOM_AI_BASE_URL        "$CUSTOM_AI_BASE_URL"

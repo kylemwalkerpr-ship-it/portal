@@ -2,8 +2,8 @@
  * Brief-stage model policy — OpenAI ChatGPT is the PRIMARY model family for
  * the Research/Plan brief, with GLM 5.2 Fast (Baseten) as the fallback.
  *
- * GPT-5.6 Sol (flagship), GPT-5.6 Terra (balanced), and GLM 5.2 Fast
- * (efficient open-source via Baseten) are the three acceptable PRIMARY brief
+ * GPT-5.6 Sol (flagship), GPT-5.6 Terra (balanced), GLM 5.2 Fast via Baseten,
+ * and GLM 5.2 Fast via AIHubmix are the four acceptable PRIMARY brief
  * models — all selectable in the Research stage. Everything else — 'auto', a
  * legacy drafting provider id ('baseten-deepseek', 'nvidia-glm', 'glm-fast'…),
  * or junk — is coerced to GPT-5.6 Terra on the OpenAI provider. This is the
@@ -26,6 +26,7 @@ export const BRIEF_FALLBACK_PROVIDER = 'baseten-glm-fast' as const
 export type BriefProviderChoice =
   | { aiProvider: 'openai'; model: 'gpt-5.6-sol' | 'gpt-5.6-terra' }
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
+  | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -33,6 +34,11 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   // Research stage alongside GPT Sol/Terra. 'glm-5.2-fast' is a friendly alias.
   if (pin === BRIEF_FALLBACK_PROVIDER || pin === 'glm-5.2-fast') {
     return { aiProvider: BRIEF_FALLBACK_PROVIDER }
+  }
+  // GLM 5.2 Fast via AIHubmix — a fourth brief choice (OpenAI-compatible
+  // aggregator route). Aliases: 'aihubmix-glm-fast' / 'glm-fast-aihubmix'.
+  if (pin === 'aihubmix-glm-fast' || pin === 'aihubmix-glm' || pin === 'glm-fast-aihubmix') {
+    return { aiProvider: 'aihubmix-glm-fast' }
   }
   // Bare 'gpt-5.6' maps to the flagship alias (gpt-5.6-sol), matching the
   // provider layer's gptAliasModel convention.

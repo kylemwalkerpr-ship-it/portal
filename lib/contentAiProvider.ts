@@ -59,6 +59,11 @@ const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
 const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 /** Baseten-hosted GLM 5.2 Fast — efficient high-volume drafting partner. */
 const BASETEN_GLM_MODEL = 'zai-org/GLM-5.2-Fast'
+/** AIHubmix OpenAI-compatible aggregator (aihubmix.com/v1) — GLM 5.2 Fast
+ *  is served as `glm-5.2-fast-preview` (the high-speed flagship route). */
+const AIHUBMIX_BASE_URL = 'https://aihubmix.com/v1'
+const AIHUBMIX_GLM_MODEL = 'glm-5.2-fast-preview'
+const AIHUBMIX_MAX_TOKENS = 16384
 /** Default separate reasoning budget for NVIDIA NIM models that ACCEPT the
  *  `reasoning_budget` body param. Verified live: only Nemotron accepts it —
  *  NVIDIA DeepSeek V4 Flash returns 400 "Unsupported parameter(s)" for it, so
@@ -596,6 +601,25 @@ export function getBasetenGlmFastProvider(): OpenAiCompat | null {
   }
 }
 
+/** AIHubmix-hosted GLM 5.2 Fast (glm-5.2-fast-preview) — OpenAI-compatible
+ *  aggregator route. Credentials: AIHUBMIX_API_KEY (Bearer); endpoint and
+ *  model overridable via AIHUBMIX_BASE_URL / AIHUBMIX_GLM_MODEL. */
+export function getAihubmixGlmFastProvider(): OpenAiCompat | null {
+  const apiKey = env('AIHUBMIX_API_KEY')
+  if (!apiKey) return null
+  return {
+    label: 'aihubmix-glm-fast',
+    baseURL: env('AIHUBMIX_BASE_URL') || AIHUBMIX_BASE_URL,
+    apiKey,
+    model: env('AIHUBMIX_GLM_MODEL') || AIHUBMIX_GLM_MODEL,
+    maxTokensCap: AIHUBMIX_MAX_TOKENS,
+  }
+}
+
+export function isAihubmixGlmFastConfigured(): boolean {
+  return Boolean(env('AIHUBMIX_API_KEY'))
+}
+
 async function basetenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
   const p = getBasetenProvider()
   if (!p) throw new Error('Baseten not configured (BASETEN_API_KEY)')
@@ -611,6 +635,15 @@ async function basetenGlmFastComplete(opts: ContentAiOptions): Promise<ContentAi
   return openAiCompatibleComplete(p, {
     ...opts,
     maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+  })
+}
+
+async function aihubmixGlmFastComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getAihubmixGlmFastProvider()
+  if (!p) throw new Error('AIHubmix GLM 5.2 Fast not configured (AIHUBMIX_API_KEY)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? AIHUBMIX_MAX_TOKENS, AIHUBMIX_MAX_TOKENS),
   })
 }
 
@@ -1238,6 +1271,12 @@ export function listConfiguredContentProviders(): Array<{
       role: 'fallback',
     },
     {
+      id: 'aihubmix-glm-fast',
+      label: 'GLM 5.2 Fast via AIHubmix',
+      configured: isAihubmixGlmFastConfigured(),
+      role: 'fallback',
+    },
+    {
       id: 'nvidia-deepseek',
       label: 'DeepSeek V4 Flash via NVIDIA (primary)',
       configured: isNvidiaDeepseekConfigured(),
@@ -1304,6 +1343,15 @@ function preferProvider(): string {
   if (explicit === 'glm-fast' || explicit === 'baseten-glm' || explicit === 'baseten-glm-fast') {
     return 'baseten-glm-fast'
   }
+  // Aliases → AIHubmix GLM 5.2 Fast (OpenAI-compatible aggregator route)
+  if (
+    explicit === 'aihubmix' ||
+    explicit === 'aihubmix-glm' ||
+    explicit === 'aihubmix-glm-fast' ||
+    explicit === 'glm-fast-aihubmix'
+  ) {
+    return 'aihubmix-glm-fast'
+  }
   // Aliases → NVIDIA DeepSeek primary
   if (
     explicit === 'deepseek' ||
@@ -1331,6 +1379,7 @@ function preferProvider(): string {
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
     'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
     'baseten', 'baseten-deepseek', 'baseten-glm-fast',
+    'aihubmix', 'aihubmix-glm', 'aihubmix-glm-fast', // AIHubmix GLM 5.2 Fast
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
@@ -1376,10 +1425,12 @@ function configuredProviderOrder(): string[] {
     nemotron: 'nvidia-nemotron', 'nemotron-3-ultra': 'nvidia-nemotron',
     baseten: 'baseten-deepseek', 'baseten-deepseek': 'baseten-deepseek',
     'glm-fast': 'baseten-glm-fast', 'baseten-glm': 'baseten-glm-fast',
+    aihubmix: 'aihubmix-glm-fast', 'aihubmix-glm': 'aihubmix-glm-fast',
+    'glm-fast-aihubmix': 'aihubmix-glm-fast',
     nvidia: 'nvidia-deepseek', nim: 'nvidia-deepseek',
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
-  const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-glm-fast', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
+  const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-glm-fast', 'aihubmix-glm-fast', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   return [...configured, ...[...known].filter((id) => !configured.includes(id))]
@@ -1430,6 +1481,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushBasetenGlmFast = () => {
     if (isBasetenConfigured()) {
       items.push({ label: 'baseten-glm-fast', run: () => basetenGlmFastComplete(opts) })
+    }
+  }
+  const pushAihubmixGlmFast = () => {
+    if (isAihubmixGlmFastConfigured()) {
+      items.push({ label: 'aihubmix-glm-fast', run: () => aihubmixGlmFastComplete(opts) })
     }
   }
   const pushNvidia = () => {
@@ -1490,6 +1546,13 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushNvidia()
     pushCf()
   } else if (prefer === 'baseten-glm-fast') {
+    pushBasetenGlmFast()
+    pushBaseten()
+    pushGlm()
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'aihubmix-glm-fast') {
+    pushAihubmixGlmFast()
     pushBasetenGlmFast()
     pushBaseten()
     pushGlm()
@@ -1661,6 +1724,9 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
   const aliasMap: Record<string, string> = {
     'glm-fast': 'baseten-glm-fast',
     'baseten-glm': 'baseten-glm-fast',
+    'aihubmix-glm-fast': 'aihubmix-glm-fast',
+    'aihubmix-glm': 'aihubmix-glm-fast',
+    'glm-fast-aihubmix': 'aihubmix-glm-fast',
     glm: 'nvidia-glm',
     'glm-5': 'nvidia-glm',
     'glm-5.2': 'nvidia-glm',
@@ -1807,6 +1873,21 @@ export async function* generateContentTextStream(
     })
   }
 
+  // AIHubmix GLM 5.2 Fast is a first-class streaming provider (OpenAI-compat
+  // SSE) — same role as Baseten GLM Fast in the cascade, alternative route.
+  const aihubmixGlmFast = getAihubmixGlmFastProvider()
+  if (aihubmixGlmFast) {
+    candidates.push({
+      label: 'aihubmix-glm-fast',
+      stream: () =>
+        openAiCompatibleStream(aihubmixGlmFast, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? AIHUBMIX_MAX_TOKENS, AIHUBMIX_MAX_TOKENS),
+        }),
+      complete: () => aihubmixGlmFastComplete(opts),
+    })
+  }
+
   // NVIDIA GLM 5.2 is a first-class streaming provider. The previous
   // stream path omitted it entirely, so a selected GLM job visibly started
   // on DeepSeek/Cloudflare even though the complete path knew about GLM.
@@ -1925,7 +2006,7 @@ export async function* generateContentTextStream(
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  } else if (prefer === 'baseten-deepseek' || prefer === 'baseten-glm-fast') {
+  } else if (prefer === 'baseten-deepseek' || prefer === 'baseten-glm-fast' || prefer === 'aihubmix-glm-fast') {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)

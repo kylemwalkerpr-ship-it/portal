@@ -714,7 +714,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           >
             <option value="gpt-5.6-sol">GPT Sol · Senior Editor</option>
             <option value="gpt-5.6-terra">GPT Terra · Fast Review</option>
-            <option value="baseten-glm-fast">GLM 5.2 Fast · Fast Review</option>
+            <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten Review</option>
+            <option value="aihubmix-glm-fast">GLM 5.2 Fast · AIHubmix Review</option>
           </select>
         )}
 

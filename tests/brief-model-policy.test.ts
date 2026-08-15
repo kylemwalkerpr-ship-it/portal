@@ -67,6 +67,22 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     })
   })
 
+  it('aihubmix-glm-fast (and aliases) → GLM 5.2 Fast via AIHubmix', () => {
+    expect(resolveBriefAiProvider('aihubmix-glm-fast')).toEqual({
+      aiProvider: 'aihubmix-glm-fast',
+    })
+    expect(resolveBriefAiProvider('aihubmix-glm')).toEqual({
+      aiProvider: 'aihubmix-glm-fast',
+    })
+    expect(resolveBriefAiProvider('glm-fast-aihubmix')).toEqual({
+      aiProvider: 'aihubmix-glm-fast',
+    })
+    // Case-insensitive
+    expect(resolveBriefAiProvider('AIHUBMIX-GLM-FAST')).toEqual({
+      aiProvider: 'aihubmix-glm-fast',
+    })
+  })
+
   it('EVERY other value coerces to OpenAI + Terra — never a non-OpenAI provider', () => {
     const leaks = [
       'auto',

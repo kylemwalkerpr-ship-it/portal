@@ -1,4 +1,4 @@
-import { resolveAiProviderPin } from '@/lib/contentAiProvider'
+import { resolveAiProviderPin, isAihubmixGlmFastConfigured, getAihubmixGlmFastProvider } from '@/lib/contentAiProvider'
 
 /**
  * 2026-08 regression: suggest-keywords (and factory routes) pass
@@ -129,6 +129,28 @@ describe('content AI · auto provider pin', () => {
     const { explicit, prefer } = resolveAiProviderPin('glm-fast')
     expect(explicit).toBe('baseten-glm-fast')
     expect(prefer).toBe('baseten-glm-fast')
+  })
+
+  it("maps 'aihubmix-glm-fast' and aliases to the AIHubmix GLM 5.2 Fast provider", () => {
+    process.env.AIHUBMIX_API_KEY = 'test-aihubmix-key'
+    for (const raw of ['aihubmix-glm-fast', 'aihubmix-glm', 'glm-fast-aihubmix', 'AIHUBMIX-GLM-FAST']) {
+      const { explicit, prefer, model } = resolveAiProviderPin(raw)
+      expect({ raw, explicit }).toEqual({ raw, explicit: 'aihubmix-glm-fast' })
+      expect(prefer).toBe('aihubmix-glm-fast')
+      expect(model || '').not.toMatch(/^gpt-/)
+    }
+  })
+
+  it('exposes the AIHubmix GLM 5.2 Fast provider when the key is present', () => {
+    delete process.env.AIHUBMIX_API_KEY
+    expect(isAihubmixGlmFastConfigured()).toBe(false)
+    process.env.AIHUBMIX_API_KEY = 'test-aihubmix-key'
+    expect(isAihubmixGlmFastConfigured()).toBe(true)
+    const p = getAihubmixGlmFastProvider()
+    expect(p).not.toBeNull()
+    expect(p!.label).toBe('aihubmix-glm-fast')
+    expect(p!.model).toBe('glm-5.2-fast-preview')
+    expect(p!.baseURL).toContain('aihubmix.com')
   })
 
   it("auto-mode with no saved order never resolves to openai/gpt for drafting", () => {
