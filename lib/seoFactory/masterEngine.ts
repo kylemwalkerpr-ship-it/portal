@@ -1294,6 +1294,10 @@ export interface MasterRecommendation {
   confidence: number
   effort: 'low' | 'medium' | 'high'
   value: number
+  /** Concrete stage-1 signal reading that opened this gap (current vs target),
+   *  e.g. "official-citation signal 0/100 (target ≥70)". Grounds the review
+   *  model in the engine's computed signals instead of a bare action label. */
+  evidence?: string
 }
 
 function effortCost(e: MasterRecommendation['effort']): number {
@@ -1307,6 +1311,7 @@ function recommend(
   risks: MasterRisk[],
 ): MasterRecommendation[] {
   const recs: MasterRecommendation[] = []
+  const pct = (v: number | null | undefined) => (v == null ? '—' : String(Math.round(v * 100)))
   const push = (
     code: string,
     subsystem: SubsystemId,
@@ -1315,60 +1320,79 @@ function recommend(
     confidence: number,
     effort: MasterRecommendation['effort'],
     value = 1,
-  ) => recs.push({ code, open: true, priority: 0, subsystem, action, lift, confidence, effort, value })
+    evidence?: string,
+  ) => recs.push({ code, open: true, priority: 0, subsystem, action, lift, confidence, effort, value, evidence })
 
   const ymyl = isYmyLQuery(input)
 
   // Specific findings first (highest confidence) — every check reads the
   // signal as 0-1 GOODNESS, so a recommendation is pushed ONLY while its gap
   // is genuinely open (open: true). Satisfied gaps never reach the fix loop.
+  // Each push carries `evidence` — the stage-1 signal reading that opened the
+  // gap — so the review model is grounded in the engine's computed signals.
   if ((values.c_h2_structure ?? 1) < 0.75) {
-    push('h2_structure', 'content', 'Add ≥4 H2 sections (procedure, documents, risks, FAQ)', 0.12, 0.8, 'low')
+    push('h2_structure', 'content', 'Add ≥4 H2 sections (procedure, documents, risks, FAQ)', 0.12, 0.8, 'low', 1,
+      `H2 structure signal ${pct(values.c_h2_structure)}/100 (target ≥75)`)
   }
   if ((values.c_citations ?? 0) < 0.7) {
-    push('gov_citations', 'content', 'Add 2–3 official .gov/.edu citations with live URLs', 0.1, 0.75, 'low')
+    push('gov_citations', 'content', 'Add 2–3 official .gov/.edu citations with live URLs', 0.1, 0.75, 'low', 1,
+      `official-citation signal ${pct(values.c_citations)}/100 (target ≥70)`)
   }
   if ((values.c_internal_links ?? 0) < 0.7) {
-    push('internal_links', 'links', 'Add 2+ contextual internal links to hub and related estate pages', 0.08, 0.75, 'low')
+    push('internal_links', 'links', 'Add 2+ contextual internal links to hub and related estate pages', 0.08, 0.75, 'low', 1,
+      `internal-link signal ${pct(values.c_internal_links)}/100 (target ≥70)`)
   }
   if ((values.c_keyword_density ?? 0.3) < 0.4 && values.c_keyword_density != null) {
-    push('keyword_density', 'content', 'Normalize primary-keyword density toward ~1.2% (avoid stuffing or absence)', 0.06, 0.6, 'low')
+    push('keyword_density', 'content', 'Normalize primary-keyword density toward ~1.2% (avoid stuffing or absence)', 0.06, 0.6, 'low', 1,
+      `keyword-density signal ${pct(values.c_keyword_density)}/100 (target ≥40)`)
   }
   if ((values.sc_faq ?? 0) === 0) {
-    push('faq_schema', 'schema', 'Add FAQPage JSON-LD (4–6 Q&As) for AI-overview eligibility', 0.09, 0.7, 'low')
+    push('faq_schema', 'schema', 'Add FAQPage JSON-LD (4–6 Q&As) for AI-overview eligibility', 0.09, 0.7, 'low', 1,
+      'FAQPage JSON-LD absent')
   }
   if ((values.sc_article ?? 0) === 0) {
-    push('article_schema', 'schema', 'Add Article JSON-LD with headline + datePublished', 0.06, 0.7, 'low')
+    push('article_schema', 'schema', 'Add Article JSON-LD with headline + datePublished', 0.06, 0.7, 'low', 1,
+      'Article JSON-LD absent')
   }
   if ((values.c_tldr ?? 0) === 0) {
-    push('tldr_block', 'content', 'Add an "In 60 seconds" quick-answer block for LLM citation', 0.07, 0.7, 'low')
+    push('tldr_block', 'content', 'Add an "In 60 seconds" quick-answer block for LLM citation', 0.07, 0.7, 'low', 1,
+      'quick-answer block absent')
   }
   if (ymyl && (values.e_disclaimer ?? 0) === 0) {
-    push('ymyl_disclaimer', 'eeat', 'Add educational disclaimer ("not legal advice")', 0.15, 0.9, 'low', 2)
+    push('ymyl_disclaimer', 'eeat', 'Add educational disclaimer ("not legal advice")', 0.15, 0.9, 'low', 2,
+      'YMYL disclaimer absent')
   }
   if (ymyl && (values.e_author_byline ?? 0) === 0) {
-    push('author_byline', 'eeat', 'Add author byline with credentials (YMYL trust)', 0.08, 0.75, 'low')
+    push('author_byline', 'eeat', 'Add author byline with credentials (YMYL trust)', 0.08, 0.75, 'low', 1,
+      'author byline absent')
   }
   if ((values.e_outcome_promise_risk ?? 1) === 0) {
-    push('outcome_promise', 'eeat', 'Remove outcome-guarantee language', 0.15, 0.95, 'low', 2)
+    push('outcome_promise', 'eeat', 'Remove outcome-guarantee language', 0.15, 0.95, 'low', 2,
+      'outcome-guarantee language detected')
   }
   if ((values.f_year_marker ?? 0.2) < 0.6) {
-    push('year_marker', 'freshness', 'Add current-year markers + "as of" dates so the page reads current', 0.06, 0.65, 'low')
+    push('year_marker', 'freshness', 'Add current-year markers + "as of" dates so the page reads current', 0.06, 0.65, 'low', 1,
+      `current-year signal ${pct(values.f_year_marker)}/100 (target ≥60)`)
   }
   if ((values.c_ai_tells ?? 1) < 0.6) {
-    push('ai_voice', 'content', 'Rewrite generic AI phrases in plain practitioner voice', 0.12, 0.85, 'medium', 2)
+    push('ai_voice', 'content', 'Rewrite generic AI phrases in plain practitioner voice', 0.12, 0.85, 'medium', 2,
+      `AI-language signal ${pct(values.c_ai_tells)}/100 (target ≥60)`)
   }
   if ((values.c_originality ?? 1) < 0.8) {
-    push('originality', 'content', 'Cut repeated sentences; add original examples and case studies', 0.08, 0.7, 'medium')
+    push('originality', 'content', 'Cut repeated sentences; add original examples and case studies', 0.08, 0.7, 'medium', 1,
+      `originality signal ${pct(values.c_originality)}/100 (target ≥80)`)
   }
   if ((values.s_longtail_coverage ?? 1) < 0.6) {
-    push('longtail_coverage', 'semantic', 'Work the required long-tail queries into FAQ + H2s naturally', 0.07, 0.7, 'low')
+    push('longtail_coverage', 'semantic', 'Work the required long-tail queries into FAQ + H2s naturally', 0.07, 0.7, 'low', 1,
+      `long-tail coverage ${pct(values.s_longtail_coverage)}/100 (target ≥60)`)
   }
   if ((values.sc_org ?? 0) === 0 || (values.sc_person ?? 0) === 0) {
-    push('org_person_schema', 'schema', 'Add Organization + Person (author) JSON-LD with sameAs', 0.05, 0.65, 'low')
+    push('org_person_schema', 'schema', 'Add Organization + Person (author) JSON-LD with sameAs', 0.05, 0.65, 'low', 1,
+      'Organization/Person JSON-LD incomplete')
   }
   if (competingCount(input.competingUrls) > 0) {
-    push('cannibal_merge', 'serp', 'Consolidate/differentiate from competing pages (301 losers → winner)', 0.1, 0.7, 'medium', 2)
+    push('cannibal_merge', 'serp', 'Consolidate/differentiate from competing pages (301 losers → winner)', 0.1, 0.7, 'medium', 2,
+      `${competingCount(input.competingUrls)} competing URL(s) target the same intent`)
   }
 
   // Subsystem delta gaps (lower confidence, higher effort) — gated on an
@@ -1381,7 +1405,9 @@ function recommend(
     if (delta < -0.12 && absolute != null && absolute < 0.65) {
       const gap = Math.abs(delta)
       const label = SUBSYSTEM_LABELS[sub].split(' ')[0].toLowerCase()
-      push(`gap_${sub}`, sub, `Close the ${label} gap vs SERP consensus (delta ${(delta * 100).toFixed(0)}pts)`, Math.min(0.18, gap * 0.6), 0.5, gap > 0.2 ? 'high' : 'medium')
+      const consensus = delta != null && absolute != null ? absolute - delta : null
+      push(`gap_${sub}`, sub, `Close the ${label} gap vs SERP consensus (delta ${(delta * 100).toFixed(0)}pts)`, Math.min(0.18, gap * 0.6), 0.5, gap > 0.2 ? 'high' : 'medium', 1,
+        `${label} score ${Math.round(absolute * 100)}/100 vs consensus baseline ${consensus == null ? '—' : Math.round(consensus * 100)}/100`)
     }
   }
 
@@ -1735,6 +1761,8 @@ export interface MasterEngineFixPlan {
     effort: 'low' | 'medium' | 'high'
     lift: number
     confidence: number
+    /** Concrete stage-1 signal reading that opened the gap (current vs target). */
+    evidence?: string
   }>
   /** Prompt-ready block telling the review model to address the gaps in order. */
   promptBlock: string
@@ -1760,11 +1788,12 @@ export function masterEngineFixPlan(input: MasterEngineInput): MasterEngineFixPl
     effort: r.effort,
     lift: r.lift,
     confidence: r.confidence,
+    evidence: r.evidence,
   }))
   const promptBlock = [
     '## PRIORITIZED ENGINE GAPS — address IN THIS ORDER (highest expected value first)',
-    'Each gap comes from the Master SEO Engine (priority = Lift × Confidence × Value / Cost).',
-    ...recs.map((r, i) => `${i + 1}. [${r.subsystem.toUpperCase()} · p${r.priority}] ${r.action} (effort: ${r.effort}, lift ~${Math.round(r.lift * 100)}%)`),
+    'Each gap comes from the Master SEO Engine (priority = Lift × Confidence × Value / Cost), with the concrete stage-1 signal reading that opened it.',
+    ...recs.map((r, i) => `${i + 1}. [${r.subsystem.toUpperCase()} · p${r.priority}] ${r.action} (effort: ${r.effort}, lift ~${Math.round(r.lift * 100)}%)${r.evidence ? ` — evidence: ${r.evidence}` : ''}`),
     '',
   ].join('\n')
   return { priorities, promptBlock }

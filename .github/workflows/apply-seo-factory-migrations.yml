@@ -42,6 +42,7 @@ jobs:
             supabase/migrations/20260812_content_jobs_hardening.sql \
             supabase/migrations/20260813_backlink_engine.sql \
             supabase/migrations/20260813_rhythm_alerts.sql \
+            supabase/migrations/20260815_competing_snippets.sql \
             supabase/migrations/pg_trgm_indexes.sql \
             supabase/migrations/additional_fts_indexes.sql \
             supabase/migrations/application_fts_indexes.sql \

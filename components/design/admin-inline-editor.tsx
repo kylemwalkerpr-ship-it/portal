@@ -72,6 +72,12 @@ type Props = {
    *  reaudit API as the reviewModel field. */
   reviewModel?: string
   onReviewModelChange?: (m: string) => void
+  /** SERP competitor snippets (Discover/Research stage) — fed into the fix
+   *  loop so the engine's SERP-consensus baseline reflects real competitors
+   *  instead of the deterministic floor. */
+  competingSnippets?: string[]
+  /** Pages already targeting the same intent (cannibalization). */
+  competingUrls?: string[]
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -83,7 +89,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, reviewModel, onReviewModelChange }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, reviewModel, onReviewModelChange, competingSnippets, competingUrls }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -120,7 +126,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // to fix, in order. Cleared on Re-audit (a fresh audit supersedes the plan).
   const [enginePlan, setEnginePlan] = useState<Array<{
     code: string; priority: number; subsystem: string; action: string
-    effort: string; lift: number; confidence: number
+    effort: string; lift: number; confidence: number; evidence?: string
   }> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const pendingJumpRef = useRef<InlineAnnotation | null>(null)
@@ -234,7 +240,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       onScoreChange?.(data.score)
-      const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number }>
+      const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number; evidence?: string }>
       // Persist the targeted plan so the checklist renders below — the notice
       // stays a one-liner, the full prioritized list lives in the panel.
       setEnginePlan(engine.length ? engine : null)
@@ -391,7 +397,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setDepthMediation(data.depthMediation || null)
       // The warnings sweep also receives the engine's top gaps — surface the
       // same checklist when the route returns them.
-      const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number }>
+      const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number; evidence?: string }>
       setEnginePlan(engine.length ? engine : null)
       onScoreChange?.(data.score)
       setNotice(`Warnings sweep applied - ${data.warnings ?? 0} warning(s) remain`)
@@ -465,6 +471,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(typeof indexable === 'boolean' ? { indexable } : {}),
     ...(region ? { region } : {}),
     ...(reviewModel ? { reviewModel } : {}),
+    ...(competingSnippets?.length ? { competingSnippets } : {}),
+    ...(competingUrls?.length ? { competingUrls } : {}),
   }
 
   const allBusy = busy || fixingAll || fixingWarnings || disabled
@@ -627,6 +635,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 <span style={{ fontFamily: C.mono, fontSize: 9.5, color: C.textMuted, marginLeft: 6 }}>
                   · {g.effort} · lift ~{Math.round(g.lift * 100)}%
                 </span>
+                {g.evidence ? (
+                  <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 2, fontStyle: 'italic' }}>
+                    evidence: {g.evidence}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ol>

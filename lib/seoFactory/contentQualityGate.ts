@@ -516,7 +516,16 @@ export function evaluateContentQuality(opts: {
   // sentence its own chunk.
   const isHeadingLine = (s: string) => /^\s*#{1,6}\s/.test(s)
   const stripListMarker = (s: string) => s.replace(/^\s*(?:[-*+]|\d+[.)])\s/, '')
-  const stripMarkdown = (s: string) => s.trim().replace(/\*\*|__|`/g, '').trim()
+  // HTML tags (<details>, <summary>, </summary>, <strong>, …) are structural,
+  // not prose rhythm. The editorial contract deliberately wraps deep FAQs and
+  // long checklists in <details><summary> blocks — a page with 5 collapsible
+  // sections must NOT fire sentence_start_repetition on the shared
+  // "<details> <summary>" opener (2026-08 live-run false blocker that made the
+  // gate keep failing after every AI edit). Strip the tags so the KEY is the
+  // human text; chunks that are only markup drop below the length floor.
+  // (JSON-LD <script> and code fences are already removed by stripForScan.)
+  const stripHtml = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const stripMarkdown = (s: string) => stripHtml(s.replace(/\*\*|__|`/g, ''))
   // URL-only lines (official citations in the Sources section) are NOT prose
   // rhythm — a sources list of 5 gov.uk links must not fire
   // sentence_start_repetition on the shared "https://www." prefix.
@@ -535,6 +544,7 @@ export function evaluateContentQuality(opts: {
     .map((s) => s.trim())
     .filter((s) => s.length > 20 && !isHeadingLine(s) && !isUrlLine(stripListMarker(s)))
     .map((s) => stripListMarker(stripMarkdown(s)))
+    .filter((s) => s.length > 20)
   if (sentences.length >= 8) {
     const starts = sentences.map((s) => s.slice(0, 12).toLowerCase())
     const freq = new Map<string, number>()

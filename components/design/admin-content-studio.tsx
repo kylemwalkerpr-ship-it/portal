@@ -2972,6 +2972,8 @@ function DraftWorkspace({
               primaryKeyword={completedJob?.primary_keyword ?? undefined}
               indexable={completedJob?.indexable}
               region={completedJob?.region ?? undefined}
+              competingSnippets={completedJob?.competing_snippets ?? undefined}
+              competingUrls={completedJob?.competing_urls ?? undefined}
               reviewModel={reviewModel}
               onReviewModelChange={setReviewModel}
             />
@@ -3768,7 +3770,7 @@ function JobDetail({
           </div>
           {loading
             ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div>
-            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />}
+            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingSnippets={detail.competing_snippets ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />}
         </div>
 
         {/* ── Dedicated action groups ── */}
@@ -6025,6 +6027,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 primaryKeyword={selectedJob.primary_keyword ?? undefined}
                 indexable={selectedJob.indexable}
                 region={selectedJob.region ?? undefined}
+                competingSnippets={selectedJob.competing_snippets ?? undefined}
+                competingUrls={selectedJob.competing_urls ?? undefined}
                 reviewModel={reviewModel}
                 onReviewModelChange={setReviewModel}
                 onScoreChange={async (_s) => {

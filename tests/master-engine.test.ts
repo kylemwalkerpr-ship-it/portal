@@ -330,6 +330,19 @@ describe('Master SEO Engine — fix-loop integration', () => {
     expect(top.action.length).toBeGreaterThan(10)
     expect(plan.promptBlock.startsWith('## PRIORITIZED ENGINE GAPS')).toBe(true)
   })
+
+  it('grounds each gap with concrete stage-1 signal evidence in the prompt', () => {
+    const plan = masterEngineFixPlan(healthyInput())
+    const withEvidence = plan.priorities.filter((p) => p.evidence)
+    expect(withEvidence.length).toBeGreaterThan(0)
+    // Every gap that carries evidence renders it into the review prompt block
+    for (const p of withEvidence) {
+      expect(plan.promptBlock).toContain(p.evidence!)
+    }
+    // Schema gaps carry concrete "absent" evidence, not a bare label
+    const faq = plan.priorities.find((p) => p.code === 'faq_schema')
+    expect(faq?.evidence).toBe('FAQPage JSON-LD absent')
+  })
 })
 
 describe('Master SEO Engine — full report', () => {
@@ -381,6 +394,22 @@ describe('Master SEO Engine — full report', () => {
     // Content subsystem baseline should still be a sane 0–1
     expect(withSnippets.content).toBeGreaterThan(0)
     expect(withSnippets.content).toBeLessThanOrEqual(1)
+  })
+
+  it('SERP competitor snippets shift the consensus baseline vs the deterministic floor', () => {
+    const floor = scoreMaster(healthyInput())
+    const withSnippets = scoreMaster(healthyInput({
+      competingSnippets: [
+        'UK Graduate Route visa guide covering eligibility, cost, application steps and documents required.',
+        'Post-study work visa UK: requirements, fees, processing time and how to apply from the official GOV.UK pages.',
+        'Graduate Route visa 2026: who qualifies, how much it costs, and the step-by-step application process.',
+      ],
+    }))
+    // The snippet-derived baseline must differ from the floor for at least one
+    // subsystem, proving the reviewer's engine analysis reflects competitors.
+    const changed = SUBSYSTEMS.some((s) => floor.baseline[s] !== withSnippets.baseline[s])
+    expect(changed).toBe(true)
+    expect(withSnippets.baseline.content).toBeGreaterThan(0)
   })
 
   it('captures an ordered livestream trace of every pipeline phase', () => {

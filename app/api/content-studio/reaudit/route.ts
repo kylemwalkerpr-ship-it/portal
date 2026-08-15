@@ -198,11 +198,17 @@ export async function PATCH(request: NextRequest) {
       region?: string
       requiredShortKeywords?: string[]
       requiredLongTailKeywords?: string[]
+      /** SERP competitor snippets (Discover/Research stage) — feed the
+       *  reviewer's engine analysis a real consensus baseline instead of the
+       *  deterministic floor. */
+      competingSnippets?: string[]
+      /** Pages already targeting the same intent (cannibalization). */
+      competingUrls?: string[]
       /** Override the review model (gpt-5.6-sol by default). Set to
        *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
       reviewModel?: string
     }
-    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, reviewModel } = body
+    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -233,7 +239,8 @@ export async function PATCH(request: NextRequest) {
         contentType,
         region,
         indexable,
-        competingUrls: (body as any).competingUrls,
+        competingSnippets,
+        competingUrls,
       })
       // Build a comprehensive fix prompt listing every issue
       const blockerList = annotations
@@ -324,7 +331,8 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
           contentType,
           region,
           indexable,
-          competingUrls: (body as any).competingUrls,
+          competingSnippets,
+          competingUrls,
         })
         const sys = `You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.
 

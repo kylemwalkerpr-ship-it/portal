@@ -215,6 +215,31 @@ describe('evaluateContentQuality', () => {
     expect(r.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(false)
   })
 
+  it('does NOT flag <details>/<summary> collapsible sections as repeated openings', () => {
+    // 2026-08 live-run false blocker: the editorial contract wraps deep FAQs
+    // in <details><summary> blocks. The gate joined the tag lines into chunks
+    // that all began "<details> <summary>" and fired sentence_start_repetition
+    // 7×, blocking ship after every AI edit. Tags are structure, not prose
+    // rhythm — they must be stripped so only the human text is keyed.
+    const qa = [
+      ['What documents do you need?', 'You start with the official form list.'],
+      ['How long does processing take?', 'Processing varies by service centre.'],
+      ['Can dependants apply with you?', 'Dependants follow separate rules.'],
+      ['What are the filing fees?', 'Fees are published each spring.'],
+      ['When must biometrics be booked?', 'Book biometrics within the deadline.'],
+      ['What happens after approval?', 'Approval letters arrive by post.'],
+    ]
+    const blocks = qa
+      .map(([q, a]) => `<details>\n<summary>${q}</summary>\n${a}\n</details>`)
+      .join('\n\n')
+    const r = evaluateContentQuality({
+      content: guide(blocks),
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.findings.some((f) => f.code === 'sentence_start_repetition')).toBe(false)
+  })
+
   it('does NOT block factual non-outcome guarantees (housing rates / fee locks)', () => {
     const factual = guide(
       'The university publishes FY27 rates each spring. Rates are guaranteed for the academic year once posted. Security deposits are guaranteed refundable when no damage is found.',

@@ -47,6 +47,7 @@ const JOB_LIST_COLUMNS = [
   'word_count',
   'seo_score',
   'primary_keyword',
+  'competing_urls',
   'owner_host',
   'canonical_url',
   'ship_mode',
