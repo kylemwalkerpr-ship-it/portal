@@ -3789,6 +3789,28 @@ const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: s
   visibility: { label: 'AEO GAP', bg: '#ECFDF5', fg: '#065F46', icon: '◎' },
 }
 
+/** Mirror of lib/seoFactory/cannibalMerge.ts `canonicalStem` — kept local so the
+ *  client bundle never imports the server-only merge executor (Supabase / GitHub
+ *  / GSC modules). Used to hide already-merged cannibal clusters. */
+function cannibalTermStem(term: string): string {
+  return term
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 4)
+    .join(' ')
+}
+
+/** Mirror of `clusterIdFromTerm` — matches the `cluster_id` the merge executor
+ *  writes to cannibal_merges so resolved clusters can be filtered locally. */
+function cannibalClusterIdForTerm(term: string): string {
+  return `cluster_${cannibalTermStem(term).replace(/[^a-z0-9]+/g, '_').slice(0, 48)}`
+}
+
 function buildWorkPlan(
   radar: AISuggestion[],
   radarMeta: Record<string, unknown> | null,
@@ -3814,9 +3836,20 @@ function buildWorkPlan(
       suggestion: s,
     })
   }
-  // Cannibalization from radar meta
+  // Cannibalization from radar meta — hide clusters that already have a merged
+  // decision in cannibal_merges so a refresh doesn't re-list resolved alerts.
+  const resolvedMerges = merges.filter((m) => m.status === 'merged')
+  const mergedClusterIds = new Set(resolvedMerges.map((m) => m.clusterId))
+  const mergedStems = new Set(resolvedMerges.map((m) => String(m.stem || '').toLowerCase()).filter(Boolean))
+  const mergedTerms = new Set(resolvedMerges.flatMap((m) => m.terms ?? []).map((t) => String(t).toLowerCase()))
   const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
   for (const c of cannibalList) {
+    const stem = cannibalTermStem(c.term)
+    if (
+      mergedClusterIds.has(cannibalClusterIdForTerm(c.term)) ||
+      mergedStems.has(stem) ||
+      mergedTerms.has(c.term.toLowerCase())
+    ) continue
     items.push({
       id: `cannibal-${c.term}`,
       category: 'cannibal',
