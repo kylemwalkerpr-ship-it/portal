@@ -3844,7 +3844,7 @@ function buildWorkPlan(
 }
 
 function WorkPlanTable({
-  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, resolvingIds,
+  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, onResolveAllCannibal, resolvingIds, resolvingAll,
 }: {
   items: WorkPlanItem[]
   selectedIds: Set<string>
@@ -3853,12 +3853,15 @@ function WorkPlanTable({
   onClearSelection: () => void
   onSendToResearch: (items: WorkPlanItem[]) => void
   onResolveCannibal: (item: WorkPlanItem) => void
+  onResolveAllCannibal: () => void
   resolvingIds?: Set<string>
+  resolvingAll?: boolean
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
   const filtered = filterCat === 'all' ? items : items.filter((i) => i.category === filterCat)
   const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id))
   const selectedItems = items.filter((i) => selectedIds.has(i.id))
+  const cannibalItems = items.filter((i) => i.category === 'cannibal')
 
   const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
@@ -3886,6 +3889,20 @@ function WorkPlanTable({
           >{c.label}</button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={onResolveAllCannibal}
+            disabled={cannibalItems.length === 0 || resolvingAll}
+            title={cannibalItems.length === 0 ? 'No cannibalization alerts to resolve' : 'Resolve every cannibal alert in one sweep (winner = highest impressions, 301 losers → winner)'}
+            style={{
+              padding: '5px 10px', borderRadius: 0, border: `1px solid ${E.red}`,
+              background: resolvingAll ? E.redSoft : 'transparent', color: E.red,
+              fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: cannibalItems.length === 0 || resolvingAll ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap', opacity: cannibalItems.length === 0 || resolvingAll ? 0.55 : 1,
+            }}
+          >
+            {resolvingAll ? 'Resolving…' : `⚠ Resolve all${cannibalItems.length ? ` (${cannibalItems.length})` : ''}`}
+          </button>
           <span style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono }}>
             {selectedItems.length} selected · {items.length} total
           </span>
@@ -4630,8 +4647,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // recorded to cannibal_merges and the Merge History panel refreshes so the
   // cluster shows as resolved. Mirrors ResearchLiveOperations' resolve flow.
   const [resolvingCannibalIds, setResolvingCannibalIds] = React.useState<Set<string>>(new Set())
-  const handleResolveCannibal = React.useCallback(async (item: WorkPlanItem) => {
-    setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
+  const [resolvingAllCannibal, setResolvingAllCannibal] = React.useState(false)
+
+  // Shared merge call: returns a per-item outcome so the single-row Resolve
+  // button and the Resolve-all sweep share identical behavior.
+  const resolveOneCannibal = React.useCallback(async (item: WorkPlanItem): Promise<{ status: 'resolved' | 'failed' | 'skipped'; detail: string }> => {
     try {
       const res = await fetch('/api/seo-factory/cannibal-merge', {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
@@ -4644,17 +4664,25 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         skipped?: Array<unknown>
         commits?: Array<{ prUrl?: string }>
       }
-      if (!res.ok) throw new Error(body.error || `Cannibal resolve failed (${res.status})`)
+      if (!res.ok) return { status: 'failed', detail: body.error || `HTTP ${res.status}` }
       const redirects = Array.isArray(body.redirectsAdded) ? body.redirectsAdded.length : 0
       const skipped = Array.isArray(body.skipped) ? body.skipped.length : 0
       const prUrl = (body.commits ?? []).map((c) => c?.prUrl).find(Boolean)
-      let notice = `⚠ Cannibal resolved: ${redirects} redirect(s) → ${body.winnerUrl || 'winner'}`
-      if (prUrl) notice += ` · PR ${prUrl}`
-      if (redirects === 0 && skipped > 0) notice += ` · ${skipped} URL(s) skipped (no redirect convention)`
-      setActionNotice(notice)
-      void fetchMergeHistory()
+      if (redirects === 0 && skipped > 0) return { status: 'skipped', detail: `${skipped} URL(s) skipped (no redirect convention)` }
+      let detail = `${redirects} redirect(s) → ${body.winnerUrl || 'winner'}`
+      if (prUrl) detail += ` · PR ${prUrl}`
+      return { status: 'resolved', detail }
     } catch (err) {
-      setActionNotice(`Cannibal resolve failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+      return { status: 'failed', detail: err instanceof Error ? err.message : 'unknown error' }
+    }
+  }, [])
+
+  const handleResolveCannibal = React.useCallback(async (item: WorkPlanItem) => {
+    setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
+    try {
+      const r = await resolveOneCannibal(item)
+      setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
+      void fetchMergeHistory()
     } finally {
       setResolvingCannibalIds((prev) => {
         const next = new Set(prev)
@@ -4662,7 +4690,37 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         return next
       })
     }
-  }, [fetchMergeHistory, setActionNotice])
+  }, [resolveOneCannibal, fetchMergeHistory, setActionNotice])
+
+  // Resolve all cannibal alerts in one sweep: iterate rows sequentially (avoids
+  // hammering GSC/GitHub), then report an aggregate notice + refresh Merge
+  // History once.
+  const handleResolveAllCannibal = React.useCallback(async () => {
+    const cannibals = workPlanItems.filter((i) => i.category === 'cannibal')
+    if (cannibals.length === 0 || resolvingAllCannibal) return
+    setResolvingAllCannibal(true)
+    setResolvingCannibalIds(new Set(cannibals.map((i) => i.id)))
+    let resolved = 0
+    let skipped = 0
+    let failed = 0
+    const failures: string[] = []
+    try {
+      for (const item of cannibals) {
+        const r = await resolveOneCannibal(item)
+        if (r.status === 'resolved') resolved += 1
+        else if (r.status === 'skipped') skipped += 1
+        else { failed += 1; failures.push(`${item.topic}: ${r.detail}`) }
+      }
+      let notice = `⚠ Cannibal sweep: ${resolved} resolved`
+      if (skipped > 0) notice += ` · ${skipped} skipped`
+      if (failed > 0) notice += ` · ${failed} failed${failures.length ? ` — ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '…' : ''}` : ''}`
+      setActionNotice(notice)
+      void fetchMergeHistory()
+    } finally {
+      setResolvingAllCannibal(false)
+      setResolvingCannibalIds(new Set())
+    }
+  }, [workPlanItems, resolvingAllCannibal, resolveOneCannibal, fetchMergeHistory, setActionNotice])
 
   const fetchSuggestions = React.useCallback(async (regionArg: string) => {
     setSuggestionsLoading(true)
@@ -5948,7 +6006,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 onClearSelection={() => setSelectedWorkPlanIds(new Set())}
                 onSendToResearch={handleSendToResearch}
                 onResolveCannibal={handleResolveCannibal}
+                onResolveAllCannibal={handleResolveAllCannibal}
                 resolvingIds={resolvingCannibalIds}
+                resolvingAll={resolvingAllCannibal}
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
