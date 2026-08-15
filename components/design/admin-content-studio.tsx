@@ -71,6 +71,7 @@ import {
 } from './studio-ui-shared'
 import { QueueStats, QueueTable } from './studio-queue'
 import { ReviewDraftsPanel } from './studio-review-panels'
+import { MasterEnginePanel } from './master-engine-panel'
 
 
 const C = E
@@ -6025,6 +6026,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               />
             </div>
           )}
+
+          {/* Master SEO Engine — 130+ signal layered analysis of the selected job */}
+          <MasterEnginePanel job={selectedJob} notice={setActionNotice} />
         </div>
       )}
 
