@@ -46,6 +46,20 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'cannibal merge failed'
     console.error('[seo-factory/cannibal-merge]', err)
 
+    // No resolvable competing pages → not a hard failure. Treat it as a
+    // skipped cluster (likely a false-positive from title-token overlap, or a
+    // low-impression term with no GSC page rows) so the sweep reports
+    // "skipped" instead of "failed" for these.
+    if (/could not resolve competing pages/i.test(message)) {
+      return NextResponse.json({
+        ok: true,
+        winnerUrl: '',
+        redirectsAdded: [],
+        commits: [],
+        skipped: [{ url: '', reason: 'no competing pages resolvable — not a real cluster' }],
+      })
+    }
+
     // Resolution/validation failures are user-actionable → 400 with guidance.
     if (
       /could not resolve|required to run|not a valid page url|search term/i.test(

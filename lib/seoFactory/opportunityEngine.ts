@@ -21,6 +21,8 @@
  *   cannibalization 2+ pages already target it — do NOT create another
  */
 
+import { isJunkQuery } from './queryNoise'
+
 export interface OpportunityQuery {
   term: string
   impressions: number
@@ -399,7 +401,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       })(),
     })
 
-    if (play === 'cannibalization') {
+    if (play === 'cannibalization' && !isJunkQuery(term)) {
       cannibalization.push({ term, pages: matches.slice(0, 4), impressions })
     }
   }

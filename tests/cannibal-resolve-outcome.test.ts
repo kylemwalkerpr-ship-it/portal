@@ -55,7 +55,20 @@ describe('classifyCannibalMergeResult — resolved/skipped/failed contract', () 
       }),
     })
     expect(r.status).toBe('skipped')
-    expect(r.detail).toBe('2 URL(s) skipped (no redirect convention)')
+    expect(r.detail).toBe('2 page(s) skipped — no redirect convention')
+  })
+
+  it('surfaces the skipped reason for a no-competing-pages cluster', () => {
+    const r = classifyCannibalMergeResult({
+      ok: true,
+      status: 200,
+      body: body({
+        redirectsAdded: [],
+        skipped: [{ url: '', reason: 'no competing pages resolvable — not a real cluster' }],
+      }),
+    })
+    expect(r.status).toBe('skipped')
+    expect(r.detail).toContain('no competing pages resolvable')
   })
 
   it('treats a non-array redirectsAdded as zero (defensive)', () => {

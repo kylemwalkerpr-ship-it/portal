@@ -39,6 +39,7 @@ import { subscribeToTable } from '@/lib/supabaseRealtime'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
+import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
@@ -6061,6 +6062,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <MergeHistory />
+                <OrphanWatch setActionNotice={setActionNotice} />
                 <InterlinksMini topic={topic} keywords={keywords} />
                 <ResearchLiveOperations />
               </div>

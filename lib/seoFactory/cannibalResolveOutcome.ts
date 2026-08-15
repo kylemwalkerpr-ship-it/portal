@@ -40,7 +40,13 @@ export function classifyCannibalMergeResult(opts: {
   const skipped = Array.isArray(opts.body.skipped) ? opts.body.skipped.length : 0
   const prUrl = (opts.body.commits ?? []).map((c) => c?.prUrl).find(Boolean)
   if (redirects === 0 && skipped > 0) {
-    return { status: 'skipped', detail: `${skipped} URL(s) skipped (no redirect convention)` }
+    const firstReason = (opts.body.skipped?.[0] as { reason?: string } | undefined)?.reason
+    return {
+      status: 'skipped',
+      detail: firstReason
+        ? `${skipped} page(s) skipped — ${firstReason}`
+        : `${skipped} URL(s) skipped (no redirect convention)`,
+    }
   }
   let detail = `${redirects} redirect(s) → ${opts.body.winnerUrl || 'winner'}`
   if (prUrl) detail += ` · PR ${prUrl}`
