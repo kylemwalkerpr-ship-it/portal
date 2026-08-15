@@ -68,6 +68,11 @@ export type SignalSource = 'content' | 'live' | 'gsc' | 'registry' | 'derived'
 export interface SignalDef {
   id: string
   label: string
+  /** Fine-grained taxonomy bucket from the research spec's 18 categories
+   *  (e.g. "Keyword Demand & Opportunity"). Every signal still rolls up into
+   *  one of the 10 scoring subsystems; `group` is the wider ingestion
+   *  taxonomy. Defaults to the subsystem label. */
+  group?: string
   subsystem: SubsystemId
   source: SignalSource
   /** Display-only metadata: 1 = higher is better, -1 = lower is better.
@@ -116,6 +121,25 @@ const sig = (
   weight: number,
   computed: boolean,
 ): SignalDef => ({ id, label, subsystem, source, direction, weight, computed })
+
+/** Bulk registry builder for the extended taxonomy: [id, label, dir, weight, computed].
+ *  Each entry carries the spec `group` but rolls up into one scoring subsystem. */
+const bulk = (
+  group: string,
+  subsystem: SubsystemId,
+  source: SignalSource,
+  defs: ReadonlyArray<readonly [string, string, number, number, boolean]>,
+): SignalDef[] =>
+  defs.map(([id, label, direction, weight, computed]) => ({
+    id,
+    label,
+    group,
+    subsystem,
+    source,
+    direction: direction as 1 | -1,
+    weight,
+    computed,
+  }))
 
 /**
  * 130+ variable registry. `computed:false` entries are measurement slots that
@@ -276,9 +300,166 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('x_page_weight', 'Page weight', 'experience', 'live', -1, 1, true),
   sig('x_readability', 'Readability', 'experience', 'content', 1, 1, true),
   sig('x_above_fold', 'Above-fold content availability', 'experience', 'content', 1, 1, true),
-  sig('x_alt_text', 'Image alt-text coverage', 'experience', 'live', 1, 1, false),
+  sig('x_alt_text', 'Image alt-text coverage', 'experience', 'live', 1, 1, true),
   sig('x_core_vitals', 'Core Web Vitals (field data)', 'experience', 'live', 1, 2, false),
   sig('x_mobile_parity', 'Mobile/desktop content parity', 'experience', 'live', 1, 1, false),
+
+  // ── EXTENDED TAXONOMY · computed signals (powerhouse v2) ───────────────────
+  // Each new signal maps to one of the 18 research-spec categories and rolls up
+  // into one of the 10 scoring subsystems. Computed from inputs already in the
+  // studio: draft markdown, live HTML, GSC, backlinks, authority registry.
+
+  // Content — on-page depth (group 'Content & On-Page Signals')
+  sig('c_keyword_url_slug', 'Primary keyword in URL slug', 'content', 'content', 1, 1, true),
+  sig('c_url_length', 'URL slug length window', 'content', 'content', 1, 1, true),
+  sig('c_url_readable', 'URL readability (lowercase/hyphenated)', 'content', 'content', 1, 1, true),
+  sig('c_keyword_h1', 'Primary keyword in H1', 'content', 'content', 1, 2, true),
+  sig('c_heading_keyword_dist', 'Keyword distribution across H2s', 'content', 'content', 1, 1, true),
+  sig('c_transition_words', 'Transition-word rate', 'content', 'content', 1, 1, true),
+  sig('c_reading_time', 'Reading-time estimate vs target', 'content', 'content', 1, 1, true),
+  sig('c_ttr', 'Vocabulary richness (type-token ratio)', 'content', 'content', 1, 1, true),
+  sig('c_toc_present', 'Table of contents / jump nav', 'content', 'content', 1, 1, true),
+  sig('c_jump_links', 'Anchor jump links', 'content', 'content', 1, 1, true),
+  sig('c_glossary', 'Glossary / key-terms section', 'content', 'content', 1, 1, true),
+  sig('c_cta_present', 'Call-to-action clarity', 'content', 'content', 1, 1, true),
+  sig('c_numbered_list', 'Numbered-list usage', 'content', 'content', 1, 1, true),
+  sig('c_bold_emphasis', 'Bold/emphasis usage', 'content', 'content', 1, 1, true),
+  sig('c_first_para_answer', 'First-paragraph direct answer', 'content', 'content', 1, 2, true),
+  sig('c_section_balance', 'Intro/body/conclusion balance', 'content', 'content', 1, 1, true),
+  sig('c_evergreen_class', 'Evergreen vs time-sensitive', 'content', 'content', 1, 1, true),
+  sig('c_grammar_proxy', 'Grammar/spacing health proxy', 'content', 'content', 1, 1, true),
+
+  // Semantic — NLP & entity depth (group 'Semantic, NLP & Entity Signals')
+  sig('s_tfidf_proxy', 'Top-term concentration (TF-IDF proxy)', 'semantic', 'content', 1, 1, true),
+  sig('s_related_questions', 'Related-question coverage', 'semantic', 'content', 1, 1, true),
+  sig('s_answer_completeness', 'Answer-completeness for question queries', 'semantic', 'derived', 1, 1, true),
+  sig('s_entity_attributes', 'Entity attributes (dates/stats/forms)', 'semantic', 'content', 1, 1, true),
+  sig('s_conversational', 'Conversational phrasing coverage', 'semantic', 'content', 1, 1, true),
+  sig('s_semantic_html5', 'Semantic HTML5 tag usage', 'semantic', 'live', 1, 1, true),
+
+  // Technical — crawl/security depth (group 'Technical SEO & Crawlability')
+  sig('t_soft404', 'No soft-404 (thin 200 page)', 'technical', 'live', 1, 1, true),
+  sig('t_html_validation', 'HTML tag-balance proxy', 'technical', 'live', 1, 1, true),
+  sig('t_url_consistency', 'Live/canonical URL consistency', 'technical', 'live', 1, 2, true),
+
+  // Links — internal + anchor depth (group 'Off-Page & Backlink Signals')
+  sig('l_contextual_links', 'Contextual in-body link density', 'links', 'content', 1, 1, true),
+  sig('l_internal_anchor_relevance', 'Internal anchor keyword relevance', 'links', 'content', 1, 1, true),
+  sig('l_unlinked_mentions', 'Unlinked brand-mention control', 'links', 'content', 1, 1, true),
+  sig('l_link_diversity', 'Backlink anchor diversity (entropy)', 'links', 'registry', 1, 1, true),
+
+  // E-E-A-T — trust depth (group 'E-E-A-T & Trust Signals')
+  sig('e_contact', 'Contact transparency', 'eeat', 'content', 1, 1, true),
+  sig('e_editorial_policy', 'Editorial standards disclosure', 'eeat', 'content', 1, 1, true),
+  sig('e_fact_check', 'Fact-check/review disclosure', 'eeat', 'content', 1, 1, true),
+  sig('e_citation_freshness', 'Citation freshness (current-year sources)', 'eeat', 'content', 1, 1, true),
+  sig('e_claims_evidence', 'Claims-to-evidence ratio', 'eeat', 'content', 1, 1, true),
+
+  // Schema — richer markup (group 'Structured Data & Schema Markup')
+  sig('sc_webpage', 'WebPage/WebSite JSON-LD', 'schema', 'content', 1, 1, true),
+  sig('sc_sameas', 'sameAs entity relationships', 'schema', 'content', 1, 1, true),
+
+  // SERP — engagement efficiency (group 'Search Console Performance')
+  sig('g_impression_ctr_eff', 'Impression-to-click efficiency', 'serp', 'gsc', 1, 1, true),
+
+  // Freshness — decay control (group 'Freshness, Historical & Temporal')
+  sig('f_content_decay', 'Content-decay control (recent update)', 'freshness', 'registry', 1, 2, true),
+
+  // Experience — media depth (group 'Media — Images & Video')
+  sig('x_image_format', 'Next-gen image format (WebP/AVIF)', 'experience', 'live', 1, 1, true),
+  sig('x_resource_hints', 'Resource hints (preconnect/preload)', 'experience', 'live', 1, 1, true),
+
+  // ── EXTENDED TAXONOMY · measurement slots (awaiting data sources) ─────────
+  // These light up as keyword-data, analytics, CrUX, security-scan and brand
+  // providers come online — the coverage report makes the gap explicit.
+  ...bulk('Keyword Demand & Opportunity', 'intent', 'registry', [
+    ['intent_monthly_volume', 'Monthly search volume', 1, 1, false],
+    ['intent_volume_trend', 'Search-volume trend (30/90d)', 1, 1, false],
+    ['intent_seasonality', 'Seasonal demand pattern', 1, 1, false],
+    ['intent_keyword_difficulty', 'Keyword difficulty', 1, 1, false],
+    ['intent_serp_competition', 'SERP competitiveness', 1, 1, false],
+    ['intent_content_saturation', 'Content saturation', 1, 1, false],
+    ['intent_authority_avg', 'Avg authority of ranking domains', 1, 1, false],
+    ['intent_depth_avg', 'Avg content depth of ranking pages', 1, 1, false],
+    ['intent_opp_competition_ratio', 'Opportunity-to-competition ratio', 1, 1, false],
+    ['intent_expected_traffic', 'Expected traffic opportunity', 1, 1, false],
+    ['intent_commercial_value', 'Commercial/conversion value', 1, 1, false],
+  ]),
+  ...bulk('SERP Features & Competitive Intelligence', 'serp', 'derived', [
+    ['g_featured_snippet', 'Featured-snippet presence', 1, 1, false],
+    ['g_paa', 'People-Also-Ask presence', 1, 1, false],
+    ['g_ai_overview_citation', 'AI-overview citation presence', 1, 1, false],
+    ['g_video_results', 'Video carousel presence', 1, 1, false],
+    ['g_serp_volatility', 'SERP volatility index', 1, 1, false],
+    ['g_competitor_velocity', 'Competitor publish velocity', 1, 1, false],
+    ['g_new_entrant', 'New SERP entrant detection', 1, 1, false],
+    ['g_branded_split', 'Branded vs non-branded split', 1, 1, false],
+    ['g_rank_distribution', 'Ranking distribution across page 1', 1, 1, false],
+  ]),
+  ...bulk('Security, Privacy & Compliance', 'technical', 'live', [
+    ['t_security_headers', 'Security headers (CSP/X-Frame/HSTS)', 1, 1, false],
+    ['t_cookie_consent', 'Cookie-consent compliance', 1, 1, false],
+    ['t_malware_status', 'Malware/blacklist status', 1, 1, false],
+    ['t_email_auth', 'Email auth (SPF/DKIM/DMARC)', 1, 1, false],
+  ]),
+  ...bulk('Media — Images & Video', 'experience', 'live', [
+    ['x_image_sitemap', 'Image sitemap coverage', 1, 1, false],
+    ['x_video_present', 'Video presence', 1, 1, false],
+    ['x_video_transcript', 'Video transcript availability', 1, 1, false],
+    ['x_image_compression', 'Image compression ratio', 1, 1, false],
+    ['x_srcset', 'Responsive srcset usage', 1, 1, false],
+  ]),
+  ...bulk('Mobile Optimization', 'experience', 'live', [
+    ['x_tap_targets', 'Tap-target sizing', 1, 1, false],
+    ['x_mobile_usability', 'Mobile usability (Search Console)', 1, 1, false],
+    ['x_font_display', 'font-display strategy', 1, 1, false],
+    ['x_bfcache', 'bfcache eligibility', 1, 1, false],
+  ]),
+  ...bulk('Brand & Entity Signals', 'links', 'registry', [
+    ['l_branded_volume', 'Branded search volume', 1, 1, false],
+    ['l_brand_mentions', 'Brand mention volume', 1, 1, false],
+    ['l_brand_growth', 'Branded-query growth', 1, 1, false],
+    ['l_entity_recognition', 'Entity recognition strength', 1, 1, false],
+  ]),
+  ...bulk('Behavioral & Engagement', 'serp', 'derived', [
+    ['g_dwell_time', 'Dwell-time proxy', 1, 1, false],
+    ['g_pogo_stick', 'Pogo-sticking proxy', 1, 1, false],
+    ['g_return_rate', 'Returning-user rate', 1, 1, false],
+    ['g_session_depth', 'Pages-per-session', 1, 1, false],
+  ]),
+  ...bulk('International & Multi-Market', 'technical', 'registry', [
+    ['t_hreflang', 'Hreflang correctness', 1, 1, false],
+    ['t_ccTLD', 'Country TLD/ccTLD usage', 1, 1, false],
+    ['t_localization', 'Localization depth', 1, 1, false],
+  ]),
+  ...bulk('Local SEO Layer', 'eeat', 'registry', [
+    ['e_nap_consistency', 'NAP consistency', 1, 1, false],
+    ['e_gbp_profile', 'Google Business Profile completeness', 1, 1, false],
+    ['e_local_citations', 'Local citation volume', 1, 1, false],
+  ]),
+  ...bulk('Site-Level & Topical Authority', 'links', 'registry', [
+    ['l_domain_topical_relevance', 'Domain topical relevance', 1, 1, false],
+    ['l_topic_cluster_depth', 'Topic-cluster depth', 1, 1, false],
+    ['l_supporting_pages', 'Supporting-page count', 1, 1, false],
+    ['l_topical_coverage_velocity', 'Topical coverage velocity', 1, 1, false],
+    ['l_duplicate_page_pct', 'Duplicate-page percentage', -1, 1, false],
+  ]),
+  ...bulk('Publishing & Operational Intelligence', 'freshness', 'registry', [
+    ['f_time_to_index', 'Time-to-index', 1, 1, false],
+    ['f_time_to_top10', 'Time-to-top-10', 1, 1, false],
+    ['f_revision_effectiveness', 'Revision effectiveness', 1, 1, false],
+    ['f_publish_velocity', 'Publishing velocity', 1, 1, false],
+  ]),
+  ...bulk('Structured Data & Rich Results', 'schema', 'content', [
+    ['sc_review', 'Review/AggregateRating JSON-LD', 1, 1, false],
+    ['sc_rich_impression', 'Rich-result impression data', 1, 1, false],
+  ]),
+  ...bulk('Link Building & Outreach', 'links', 'registry', [
+    ['l_editorial_earn_rate', 'Editorial link earn rate', 1, 1, false],
+    ['l_broken_link_recovery', 'Broken-link recovery opportunities', 1, 1, false],
+    ['l_guest_post_ratio', 'Guest-post link ratio', -1, 1, false],
+    ['l_referring_domain_topicality', 'Referring-domain topical relevance', 1, 1, false],
+  ]),
 ]
 
 export const SIGNAL_COUNT = SIGNAL_REGISTRY.length
@@ -820,9 +1001,142 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.x_page_weight = out.t_page_weight
   out.x_readability = out.c_reading_level
   out.x_above_fold = out.c_answer_strength
-  out.x_alt_text = null
   out.x_core_vitals = null
   out.x_mobile_parity = null
+
+  // ══ extended taxonomy — computed signals (powerhouse v2) ══
+  const urlFull = (() => {
+    try {
+      return new URL(input.canonicalUrl || input.liveUrl || 'https://legal.yousafeconsultancy.com/').pathname.toLowerCase()
+    } catch {
+      return (input.canonicalUrl || input.liveUrl || '').toLowerCase()
+    }
+  })()
+  const slug = (urlFull.split('/').filter(Boolean).pop() || '').replace(/\.(html?|php|aspx?)$/, '')
+  const kwTokens = primary.split(/\s+/).filter(Boolean)
+  out.c_keyword_url_slug = primary ? (kwTokens.some((t) => t.length > 2 && slug.includes(t)) ? 1 : 0) : null
+  out.c_url_length = slug ? normalizeTarget(slug.length, 35, 18) : null
+  out.c_url_readable = slug ? (/[A-Z_+]|\s/.test(slug) ? 0 : 1) : null
+
+  const h2LinesArr = (body.match(/^##\s+(.+)$/gm) || [])
+  const h2Titles = h2LinesArr.map((l) => l.replace(/^##\s+/, '').toLowerCase())
+  const h1Line = (body.match(/^#\s+(.+)$/m) || [])[1]?.toLowerCase() || ''
+  const kwInH2 = primary ? h2Titles.filter((h) => kwTokens.some((t) => t && h.includes(t))).length : 0
+  out.c_heading_keyword_dist = primary && h2Titles.length ? clamp01(kwInH2 / Math.max(1, Math.min(h2Titles.length, 6))) : null
+  out.c_keyword_h1 = primary ? (kwTokens.some((t) => t && h1Line.includes(t)) ? 1 : 0) : null
+
+  const TRANSITION_RE = /\b(however|therefore|moreover|furthermore|meanwhile|consequently|additionally|in addition|for example|for instance|on the other hand|as a result|in contrast|similarly|although|whereas|nevertheless|specifically|typically|generally|importantly|notably)\b/gi
+  const transitions = (text.match(TRANSITION_RE) || []).length
+  out.c_transition_words = normalizeRange(transitions / Math.max(1, words / 100), 0.2, 2, true)
+
+  const readingMinutes = words / 200
+  out.c_reading_time = normalizeTarget(readingMinutes, targetWords / 200, Math.max(1, targetWords / 400))
+
+  const wordTokens = text.toLowerCase().split(/\s+/).filter(Boolean)
+  const ttr = wordTokens.length ? new Set(wordTokens).size / wordTokens.length : 0
+  out.c_ttr = normalizeRange(ttr, 0.35, 0.72, true)
+
+  out.c_toc_present = /\b(table of contents|jump to|on this page|quick navigation)\b/i.test(body) ? 1 : 0
+  out.c_jump_links = (/\[[^\]]+\]\(#[^)]+\)/.test(body) || /<a\b[^>]*href=["']#/i.test(liveHtml)) ? 1 : 0
+  out.c_glossary = /^##\s*(glossary|terminology|key terms|definitions)\b/im.test(body) ? 1 : 0
+  out.c_cta_present = /(contact us|book a consultation|speak to|get in touch|start your|call us|email us|schedule|free consultation|request a review|talk to)/i.test(text) ? 1 : 0.4
+
+  const numbered = (body.match(/^\s*\d+[.)]\s+/gm) || []).length
+  out.c_numbered_list = normalizeRange(numbered, 0, 6, true)
+  const boldCount = (body.match(/\*\*[^*]+\*\*/g) || []).length
+  out.c_bold_emphasis = normalizeRange(boldCount, 0, 6, true)
+
+  const afterH1 = body.replace(/^---[\s\S]*?---\r?\n/, '').replace(/^#\s+.*$/m, '').trim().slice(0, 250).toLowerCase()
+  out.c_first_para_answer = primary
+    ? ((/\b(is|are|can|do|does|means|refers|lets|allows|steps?|requirements?|must|need)\b/.test(afterH1) && afterH1.includes(pFirst)) ? 1 : 0.3)
+    : null
+
+  const hasIntro = afterH1.length > 60
+  const hasBody = h2s >= 2
+  const hasConcl = (out.c_conclusion ?? 0) === 1
+  out.c_section_balance = [hasIntro, hasBody, hasConcl].filter(Boolean).length / 3
+
+  out.c_evergreen_class = /(deadline|expires? on|by \d{4}|this month|this week|before \d{1,2} [a-z]+)/i.test(text) ? 0.4 : 0.8
+
+  const grammarIssues =
+    (text.match(/\s{2,}/g) || []).length +
+    (text.match(/\b(\w+) \1\b/g) || []).length +
+    (text.match(/\.{3,}/g) || []).length
+  out.c_grammar_proxy = 1 - clamp01(grammarIssues / 10)
+
+  // semantic depth
+  const freq = new Map<string, number>()
+  for (const w of wordTokens) if (w.length > 3) freq.set(w, (freq.get(w) || 0) + 1)
+  const topTerms = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20)
+  const topCoverage = wordTokens.length ? topTerms.reduce((a, [, c]) => a + c, 0) / wordTokens.length : 0
+  out.s_tfidf_proxy = normalizeRange(topCoverage, 0.3, 0.7, true)
+  out.s_related_questions = normalizeRange(questions, 0, 5, true)
+  out.s_answer_completeness = clamp01(
+    (out.c_answer_strength ?? 0) * 0.4 + (out.c_faq_section ?? 0) * 0.3 + (normalizeRange(questions, 0, 4, true) ?? 0) * 0.3,
+  )
+  const datedStats = (text.match(/\b20(2[0-9])\b/g) || []).length
+  out.s_entity_attributes = normalizeRange(stats + datedStats + legalMatches, 0, 8, true)
+  out.s_conversational = /\b(you|your|we|let's|if you|want to|need to|wondering|thinking about|planning to)\b/i.test(text) ? 1 : 0.5
+  out.s_semantic_html5 = liveHtml ? (/<(article|section|nav|aside|main|figure)\b/gi.test(liveHtml) ? 1 : 0) : null
+
+  // technical depth
+  out.t_soft404 = liveHtml ? (liveHtml.length < 800 && input.liveHttpStatus === 200 ? 0 : 1) : null
+  const openDiv = (liveHtml.match(/<div\b/gi) || []).length
+  const closeDiv = (liveHtml.match(/<\/div>/gi) || []).length
+  out.t_html_validation = liveHtml ? 1 - clamp01(Math.abs(openDiv - closeDiv) / 10) : null
+  out.t_url_consistency = input.liveUrl && input.canonicalUrl
+    ? (input.liveUrl.replace(/\/+$/, '').toLowerCase() === input.canonicalUrl.replace(/\/+$/, '').toLowerCase() ? 1 : 0)
+    : null
+
+  // links depth
+  const mdLinks = (body.match(/\[([^\]]+)\]\(([^)]+)\)/g) || [])
+  const internalMd = mdLinks.filter((l) => /\]\(\//.test(l))
+  const internalAnchors = internalMd.map((l) => (l.match(/\[([^\]]+)\]/)?.[1] || '').toLowerCase())
+  out.l_contextual_links = normalizeRange(internalMd.length, 0, 4, true)
+  out.l_internal_anchor_relevance = primary && internalAnchors.length
+    ? internalAnchors.filter((a) => kwTokens.some((t) => t && a.includes(t))).length / internalAnchors.length
+    : null
+  const brandMentions = (text.match(/yousafe/g) || []).length
+  const linkedBrand = (body.match(/\[[^\]]*yousafe[^\]]*\]\(/gi) || []).length
+  out.l_unlinked_mentions = brandMentions ? 1 - clamp01((brandMentions - linkedBrand) / 6) : null
+  if (input.backlinks?.samples?.length) {
+    const anchors = input.backlinks.samples.map((s) => (s.anchor || '').toLowerCase().split(/\s+/).sort().join(' '))
+    const acounts = new Map<string, number>()
+    for (const a of anchors) acounts.set(a, (acounts.get(a) || 0) + 1)
+    const n = anchors.length
+    let h = 0
+    for (const c of acounts.values()) { const p = c / n; h -= p * Math.log(p) }
+    const maxH = Math.log(Math.max(1, acounts.size))
+    out.l_link_diversity = maxH > 0 ? clamp01(h / maxH) : null
+  } else {
+    out.l_link_diversity = null
+  }
+
+  // eeat depth
+  out.e_contact = /(contact|email|phone|call|reach us|office address|enquiries)/i.test(text) ? 1 : 0.4
+  out.e_editorial_policy = /(editorial (policy|standards|guidelines)|reviewed by|accuracy (policy|standards)|verified by)/i.test(text) ? 1 : 0
+  out.e_fact_check = /(fact-?check|reviewed by|verified by|checked by|checked for accuracy)/i.test(text) ? 1 : 0
+  out.e_citation_freshness = citations > 0 ? (datedStats > 0 ? 1 : 0.4) : null
+  out.e_claims_evidence = (stats > 0 || citations > 0) ? 1 : 0.3
+
+  // schema depth
+  out.sc_webpage = (hasType('WebPage') || hasType('WebSite')) ? 1 : 0
+  out.sc_sameas = /"sameAs"\s*:/.test(ldText) ? 1 : 0
+
+  // serp depth
+  out.g_impression_ctr_eff = g.impressions != null && g.clicks != null
+    ? normalizeRange(g.impressions > 0 ? g.clicks / g.impressions : 0, 0, 0.2, true)
+    : null
+
+  // freshness depth
+  out.f_content_decay = 1 - clamp01(Math.max(0, daysSince - 60) / 300)
+
+  // experience / media depth
+  const imgTags = (liveHtml.match(/<img\b[^>]*>/gi) || [])
+  const imgWithAlt = imgTags.filter((t) => /alt=["']/.test(t)).length
+  out.x_alt_text = imgTags.length ? imgWithAlt / imgTags.length : null
+  out.x_image_format = liveHtml ? (/\.(webp|avif)\b/i.test(liveHtml) ? 1 : 0) : null
+  out.x_resource_hints = liveHtml ? (/<link\b[^>]*rel=["'](preconnect|preload|prefetch)["']/i.test(liveHtml) ? 1 : 0) : null
 
   return out
 }
@@ -1080,13 +1394,25 @@ function competingCount(urls?: string[]): number {
   return (urls || []).filter(Boolean).length
 }
 
-// ═══ Prediction ════════════════════════════════════════════════════════════
+// ═══ Prediction — probability ladder + expected value ════════════════════════
 
 export interface MasterPrediction {
+  /** Probability-ladder: P(rank ≤ k) for k ∈ {100, 20, 10, 3, 1}, in %.
+   *  Separate models, exactly as the research brief prescribed — the engine
+   *  answers P(top-10) independently of P(top-3), not by degrading one curve. */
+  top100Probability: number | null
+  top20Probability: number | null
   top10Probability: number | null
   top3Probability: number | null
+  position1Probability: number | null
+  /** P(a searcher clicks the result) — from GSC CTR, else a composite proxy. */
+  clickProbability: number | null
+  /** P(a click converts) — intent-conditioned base rate scaled by composite. */
+  conversionProbability: number | null
   expectedLift: number
   expectedTrafficLift: number | null
+  /** Expected-value index (0–100): P(top-10) × click-weighted business value. */
+  expectedValue: number | null
 }
 
 export function predict(
@@ -1094,22 +1420,153 @@ export function predict(
   deltas: Record<SubsystemId, number>,
   weights: Record<SubsystemId, number>,
   gsc?: MasterEngineInput['gsc'],
+  opts: { intent?: IntentId; ymyl?: boolean } = {},
 ): MasterPrediction {
   const positiveDeltaSum = SUBSYSTEMS.reduce((a, s) => a + Math.max(0, deltas[s] ?? 0), 0)
   const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
+  const top100 = sigmoid((composite - 28) / 12 + positiveDeltaSum * 0.3)
+  const top20 = sigmoid((composite - 44) / 11 + positiveDeltaSum * 0.45)
   const top10 = sigmoid((composite - 52) / 11 + positiveDeltaSum * 0.55)
   const top3 = sigmoid((composite - 66) / 12 + positiveDeltaSum * 0.4)
+  const top1 = sigmoid((composite - 80) / 10 + positiveDeltaSum * 0.3)
   const expectedLift = SUBSYSTEMS.reduce((a, s) => a + Math.max(0, -(deltas[s] ?? 0)) * (weights[s] ?? 0), 0)
   let expectedTrafficLift: number | null = null
   if (gsc?.impressions != null) {
     expectedTrafficLift = Math.round(gsc.impressions * expectedLift * 0.5)
   }
+  const clickProbability = gsc?.ctr != null
+    ? clamp01(gsc.ctr / 0.2)
+    : clamp01(sigmoid((composite - 40) / 14))
+  const commercialish = opts.intent === 'transactional' || opts.intent === 'commercial'
+  const baseConv = commercialish ? 0.04 : 0.012
+  const conversionProbability = clamp01(baseConv * (1 + (composite - 50) / 60))
+
+  // Cumulative ladder: P(rank ≤ k) is non-increasing as k shrinks. The raw
+  // sigmoids use slightly different delta scales, so clamp into a proper
+  // nested sequence rather than risk P(top-10) > P(top-20).
+  const p1 = top1
+  const p3 = Math.max(top3, p1)
+  const p10 = Math.max(top10, p3)
+  const p20 = Math.max(top20, p10)
+  const p100 = Math.max(top100, p20)
+  const expectedValue = clamp01(p10 * (0.3 + 0.7 * clickProbability))
   return {
-    top10Probability: Math.round(top10 * 100),
-    top3Probability: Math.round(top3 * 100),
+    top100Probability: Math.round(p100 * 100),
+    top20Probability: Math.round(p20 * 100),
+    top10Probability: Math.round(p10 * 100),
+    top3Probability: Math.round(p3 * 100),
+    position1Probability: Math.round(p1 * 100),
+    clickProbability: Math.round(clickProbability * 100),
+    conversionProbability: Math.round(conversionProbability * 100),
     expectedLift: Math.round(expectedLift * 100),
     expectedTrafficLift,
+    expectedValue: Math.round(expectedValue * 100),
   }
+}
+
+// ═══ Derived features (higher-order math) ═══════════════════════════════════
+
+export interface DerivedFeatures {
+  /** How far the page trails the SERP consensus (0 = ahead everywhere). */
+  competitiveGap: number | null
+  /** Content+semantic superiority vs consensus (0–1, higher = superior). */
+  contentSuperiority: number | null
+  /** Originality + entity variety + definition coverage (information-gain). */
+  informationGainAdvantage: number | null
+  /** How much link authority is missing vs consensus (0–1). */
+  authorityGap: number | null
+  linkGap: number | null
+  freshnessAdvantage: number | null
+  experienceAdvantage: number | null
+  trustAdvantage: number | null
+  intentFitAdvantage: number | null
+  evidenceAdvantage: number | null
+  /** Remaining upside for the highest-value edits (100 - composite, 0–1). */
+  optimizationHeadroom: number | null
+}
+
+/** Map a subsystem delta (page − consensus) to a 0–1 advantage. */
+function deltaToAdvantage(delta: number | null): number | null {
+  if (delta == null) return null
+  return clamp01((delta + 0.3) / 0.6)
+}
+
+/**
+ * Higher-order features derived from the raw subsystem scores + competitive
+ * deltas — the "outsmarts competition" layer. Each feature is interpretable
+ * on its own (a gap, an advantage, a headroom) rather than one opaque score.
+ */
+export function deriveFeatures(
+  composite: number | null,
+  subsystems: Record<SubsystemId, { score: number | null; coverage: number }>,
+  deltas: Record<SubsystemId, number | null>,
+  values: Record<string, number | null>,
+): DerivedFeatures {
+  const avgOf = (ids: string[]): number | null => {
+    const vals = ids.map((id) => values[id]).filter((v): v is number => v != null)
+    if (!vals.length) return null
+    return vals.reduce((a, b) => a + b, 0) / vals.length
+  }
+  const allDeltas = SUBSYSTEMS.map((s) => deltas[s]).filter((v): v is number => v != null)
+  const meanDelta = allDeltas.length ? allDeltas.reduce((a, b) => a + b, 0) / allDeltas.length : 0
+  const competitiveGap = clamp01(-meanDelta / 0.3)
+
+  const csDeltas = (['content', 'semantic'] as SubsystemId[])
+    .map((s) => deltas[s])
+    .filter((v): v is number => v != null)
+  const contentSuperiority = deltaToAdvantage(csDeltas.length ? csDeltas.reduce((a, b) => a + b, 0) / csDeltas.length : null)
+  const informationGainAdvantage = avgOf(['c_originality', 's_entity_variety', 's_definition_coverage'])
+  const linkGap = deltaToAdvantage(deltas.links == null ? null : -(deltas.links as number))
+  const authorityGap = linkGap
+  const freshnessAdvantage = deltaToAdvantage(deltas.freshness ?? null)
+  const experienceAdvantage = deltaToAdvantage(deltas.experience ?? null)
+  const trustAdvantage = deltaToAdvantage(deltas.eeat ?? null)
+  const intentFitAdvantage = deltaToAdvantage(deltas.intent ?? null)
+  const evidenceAdvantage = avgOf(['c_citations', 'e_primary_source', 'e_evidence_density'])
+  const optimizationHeadroom = composite == null ? null : clamp01(1 - composite)
+
+  return {
+    competitiveGap,
+    contentSuperiority,
+    informationGainAdvantage,
+    authorityGap,
+    linkGap,
+    freshnessAdvantage,
+    experienceAdvantage,
+    trustAdvantage,
+    intentFitAdvantage,
+    evidenceAdvantage,
+    optimizationHeadroom,
+  }
+}
+
+// ═══ Model governance ═══════════════════════════════════════════════════════
+
+export interface EngineGovernance {
+  /** 0–1 confidence in the composite given signal coverage + live data presence. */
+  confidence: number | null
+  /** Model/registry version so stored reports stay reproducible over time. */
+  modelVersion: string
+  caveats: string[]
+}
+
+export const ENGINE_MODEL_VERSION = '2.0.0'
+
+export function buildGovernance(
+  coverage: { computed: number; total: number },
+  input: MasterEngineInput,
+): EngineGovernance {
+  const pct = coverage.total ? coverage.computed / coverage.total : 0
+  const livePresent = Boolean(input.liveHtml)
+  const gscPresent = Boolean(input.gsc && (input.gsc.impressions != null || input.gsc.position != null))
+  const backlinksPresent = Boolean(input.backlinks)
+  const caveats: string[] = []
+  if (!livePresent) caveats.push('No live HTML — technical/experience signals use draft-only proxies')
+  if (!gscPresent) caveats.push('No GSC data — SERP performance slots are dark')
+  if (!backlinksPresent) caveats.push('No backlink snapshot — referring-domain slots are dark')
+  if (pct < 0.5) caveats.push('Most registry signals await data sources — composite is a lower bound')
+  const confidence = clamp01(pct * 0.5 + (livePresent ? 0.2 : 0) + (gscPresent ? 0.2 : 0) + (backlinksPresent ? 0.1 : 0))
+  return { confidence, modelVersion: ENGINE_MODEL_VERSION, caveats }
 }
 
 // ═══ Trace (the "livestream" — ordered pipeline steps) ══════════════════════
@@ -1185,6 +1642,13 @@ export function buildEngineTrace(input: MasterEngineInput, report: MasterEngineR
     step('delta', `${SUBSYSTEM_LABELS[s].split(' ')[0]} ${scorePct == null ? '·' : `${scorePct}/100`} (delta ${deltaTxt} vs consensus)`, scorePct == null || scorePct >= 70 ? 'ok' : scorePct >= 50 ? 'accent' : 'warn')
   }
 
+  {
+    const dv = report.derived
+    const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
+    step('derived', `Derived features — competitive gap ${pct(dv.competitiveGap)} · headroom ${pct(dv.optimizationHeadroom)}`, 'accent',
+      `superiority ${pct(dv.contentSuperiority)} · info-gain ${pct(dv.informationGainAdvantage)} · evidence ${pct(dv.evidenceAdvantage)}`)
+  }
+
   if (report.risks.length) {
     for (const r of report.risks) {
       step('risk', `${r.severity === 'blocker' ? '⛔ BLOCKER' : '⚠ warning'}: ${r.message}`, r.severity === 'blocker' ? 'err' : 'warn')
@@ -1202,10 +1666,15 @@ export function buildEngineTrace(input: MasterEngineInput, report: MasterEngineR
     step('recommend', 'No open gaps — page clears every subsystem bar', 'ok')
   }
 
-  step('predict', `P(top-10) ${report.prediction.top10Probability ?? '—'}% · P(top-3) ${report.prediction.top3Probability ?? '—'}%`, 'info',
-    `expected lift +${report.prediction.expectedLift}%${report.prediction.expectedTrafficLift != null ? ` · ≈ ${report.prediction.expectedTrafficLift} organic clicks` : ''}`)
+  {
+    const pred = report.prediction
+    const ladder = `top-100 ${pred.top100Probability ?? '—'}% · top-20 ${pred.top20Probability ?? '—'}% · #1 ${pred.position1Probability ?? '—'}%`
+    step('predict', `P(top-10) ${pred.top10Probability ?? '—'}% · P(top-3) ${pred.top3Probability ?? '—'}%`, 'info',
+      `${ladder} · click ${pred.clickProbability ?? '—'}% · convert ${pred.conversionProbability ?? '—'}% · EV ${pred.expectedValue ?? '—'} · lift +${pred.expectedLift}%${pred.expectedTrafficLift != null ? ` ≈ ${pred.expectedTrafficLift} clicks` : ''}`)
+  }
 
-  step('done', `COMPOSITE ${report.composite ?? '—'}/100 · grade ${report.grade ?? '—'}`, report.grade === 'A' || report.grade === 'B' ? 'ok' : report.grade === 'C' ? 'accent' : 'warn')
+  step('done', `COMPOSITE ${report.composite ?? '—'}/100 · grade ${report.grade ?? '—'}`, report.grade === 'A' || report.grade === 'B' ? 'ok' : report.grade === 'C' ? 'accent' : 'warn',
+    `confidence ${report.governance.confidence == null ? '—' : `${Math.round(report.governance.confidence * 100)}%`} · model v${report.governance.modelVersion}`)
 
   const total = steps.length
   for (let i = 0; i < total; i++) steps[i].progress = Math.round(((i + 1) / total) * 100) / 100
@@ -1234,6 +1703,8 @@ export interface MasterEngineReport {
   risks: MasterRisk[]
   recommendations: MasterRecommendation[]
   prediction: MasterPrediction
+  derived: DerivedFeatures
+  governance: EngineGovernance
   computedSignals: ComputedSignal[]
   /** Ordered pipeline steps — the UI replays this as the engine "livestream". */
   trace: EngineTraceStep[]
@@ -1318,12 +1789,16 @@ export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
   const computedSignals = SUBSYSTEMS.flatMap((s) => bundle(s, values).signals)
   const risks = evaluateRisks(input, values)
   const recs = recommend(input, values, deltas, risks)
-  const prediction = predict(composite ?? 50, deltas, weights, input.gsc)
+  // predict() operates on the 0–100 composite (the 0–1 value is the internal
+  // subsystem aggregate; the ladder thresholds are on the reported scale).
+  const prediction = predict(composite == null ? 50 : composite * 100, deltas, weights, input.gsc, { intent, ymyl })
   const coverage = {
     computed: computedSignals.filter((s) => s.computed && s.value != null).length,
     total: SIGNAL_COUNT,
     pct: Math.round((computedSignals.filter((s) => s.computed && s.value != null).length / SIGNAL_COUNT) * 100),
   }
+  const derived = deriveFeatures(composite, subsystems, deltas, values)
+  const governance = buildGovernance(coverage, input)
 
   const report: MasterEngineReport = {
     generatedAt: new Date().toISOString(),
@@ -1339,6 +1814,8 @@ export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
     risks,
     recommendations: recs,
     prediction,
+    derived,
+    governance,
     computedSignals,
     trace: [],
   }

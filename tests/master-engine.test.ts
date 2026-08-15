@@ -107,8 +107,8 @@ function healthyInput(overrides: Partial<MasterEngineInput> = {}): MasterEngineI
 }
 
 describe('Master SEO Engine — registry & taxonomy', () => {
-  it('registers 130+ typed signals across 10 subsystems', () => {
-    expect(SIGNAL_COUNT).toBeGreaterThanOrEqual(130)
+  it('registers 240+ typed signals across 10 scoring subsystems', () => {
+    expect(SIGNAL_COUNT).toBeGreaterThanOrEqual(240)
     const subsystems = new Set(SIGNAL_REGISTRY.map((s) => s.subsystem))
     expect(subsystems.size).toBe(10)
     SUBSYSTEMS.forEach((s) => expect(subsystems.has(s)).toBe(true))
@@ -426,6 +426,76 @@ describe('Master SEO Engine — full report', () => {
     // recommend steps mirror the top recommendation priority
     if (report.recommendations.length > 0 && recSteps.length > 0) {
       expect(recSteps[0].message).toContain(`#${report.recommendations[0].priority}`)
+    }
+  })
+})
+
+describe('Master SEO Engine — powerhouse layers (derived, ladder, governance)', () => {
+  it('derives higher-order features with sane 0–1 bounds', () => {
+    const report = scoreMaster(healthyInput())
+    const d = report.derived
+    expect(d.competitiveGap).not.toBeNull()
+    for (const key of [
+      'competitiveGap',
+      'contentSuperiority',
+      'informationGainAdvantage',
+      'authorityGap',
+      'optimizationHeadroom',
+    ] as const) {
+      const v = d[key]
+      expect(v).not.toBeNull()
+      expect(v!).toBeGreaterThanOrEqual(0)
+      expect(v!).toBeLessThanOrEqual(1)
+    }
+    // Headroom = 1 - composite (0-1), mirroring the reported (rounded) 0-100 composite.
+    expect(d.optimizationHeadroom!).toBeCloseTo((100 - report.composite!) / 100, 2)
+  })
+
+  it('exposes a full probability ladder that is monotonically decreasing', () => {
+    const report = scoreMaster(healthyInput())
+    const p = report.prediction
+    for (const key of [
+      'top100Probability',
+      'top20Probability',
+      'top10Probability',
+      'top3Probability',
+      'position1Probability',
+      'clickProbability',
+      'conversionProbability',
+      'expectedValue',
+    ] as const) {
+      expect(p[key]).not.toBeNull()
+    }
+    expect(p.top100Probability!).toBeGreaterThanOrEqual(p.top20Probability!)
+    expect(p.top20Probability!).toBeGreaterThanOrEqual(p.top10Probability!)
+    expect(p.top10Probability!).toBeGreaterThanOrEqual(p.top3Probability!)
+    expect(p.top3Probability!).toBeGreaterThanOrEqual(p.position1Probability!)
+    // The ladder is on the reported 0-100 scale (fixed the 0-1/0-100 mismatch).
+    expect(p.top10Probability!).toBeGreaterThan(0)
+    expect(p.top10Probability!).toBeLessThanOrEqual(100)
+  })
+
+  it('reports model governance: confidence in 0–1, version, and data caveats', () => {
+    const report = scoreMaster(healthyInput())
+    expect(report.governance.modelVersion).toBeTruthy()
+    expect(report.governance.confidence).not.toBeNull()
+    expect(report.governance.confidence!).toBeGreaterThanOrEqual(0)
+    expect(report.governance.confidence!).toBeLessThanOrEqual(1)
+    // healthyInput has no liveHtml / gsc / backlinks → caveats must be present
+    expect(report.governance.caveats.length).toBeGreaterThan(0)
+  })
+
+  it('maps the registry into the 18-category research taxonomy via group', () => {
+    const groups = new Set(SIGNAL_REGISTRY.map((s) => s.group || s.subsystem))
+    for (const g of [
+      'Keyword Demand & Opportunity',
+      'SERP Features & Competitive Intelligence',
+      'Security, Privacy & Compliance',
+      'Brand & Entity Signals',
+      'Mobile Optimization',
+      'Local SEO Layer',
+    ]) {
+      expect(groups.has(g)).toBe(true)
     }
   })
 })
