@@ -4,7 +4,11 @@
  * above 90%. This locks the ceiling at 100% for a fully-clean, blocker-free,
  * warning-free article.
  */
-import { auditContent } from '@/lib/seoFactory/audit'
+import {
+  auditContent,
+  AUDIT_MAX_POINTS,
+  AUDIT_POINT_WEIGHTS,
+} from '@/lib/seoFactory/audit'
 
 const TITLE = 'Student visa documents checklist 2026'
 // 120–170 chars so the meta_description check passes.
@@ -86,6 +90,43 @@ This guide is for educational purposes only and is not legal advice. Consult a q
 ${pad}
 `
 }
+
+describe('audit score denominator stays in sync with check weights', () => {
+  it('AUDIT_MAX_POINTS equals the sum of every check weight', () => {
+    const sum = Object.values(AUDIT_POINT_WEIGHTS).reduce((a, b) => a + b, 0)
+    expect(AUDIT_MAX_POINTS).toBe(sum)
+    expect(AUDIT_MAX_POINTS).toBeGreaterThan(0)
+  })
+
+  it('every check weight is a positive integer', () => {
+    for (const [check, pts] of Object.entries(AUDIT_POINT_WEIGHTS)) {
+      expect(Number.isInteger(pts)).toBe(true)
+      expect(pts).toBeGreaterThan(0)
+    }
+  })
+
+  it('the weight table lists exactly the 13 scored checks', () => {
+    // Adding or removing a check MUST update this list AND AUDIT_MAX_POINTS,
+    // otherwise the ceiling silently drifts (the original 90% bug).
+    expect(Object.keys(AUDIT_POINT_WEIGHTS).sort()).toEqual(
+      [
+        'aiAnswerBlock',
+        'citations',
+        'disclaimer',
+        'h2Structure',
+        'humanVoice',
+        'internalLinks',
+        'keyword',
+        'metaDescription',
+        'robots',
+        'schemaArticle',
+        'schemaFaq',
+        'title',
+        'wordCount',
+      ].sort(),
+    )
+  })
+})
 
 describe('audit score ceiling', () => {
   it('a fully-clean article scores 100, not 90', () => {

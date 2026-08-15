@@ -42,6 +42,38 @@ function grade(score: number): SeoFactoryAudit['grade'] {
   return 'F'
 }
 
+/**
+ * Point weight of every audit check — the single source of truth for scoring.
+ * Every point the scorecard awards MUST come from this table (see the
+ * `add(…, AUDIT_POINT_WEIGHTS.x)` calls below). The score denominator is
+ * AUDIT_MAX_POINTS, and a regression test asserts the two stay in sync, so
+ * adding or removing a check forces an explicit update instead of silently
+ * drifting the score ceiling.
+ */
+export const AUDIT_POINT_WEIGHTS = {
+  wordCount: 2,
+  title: 2,
+  metaDescription: 1,
+  h2Structure: 1,
+  keyword: 2,
+  citations: 2,
+  schemaArticle: 1,
+  schemaFaq: 1,
+  internalLinks: 1,
+  aiAnswerBlock: 1,
+  disclaimer: 1,
+  robots: 1,
+  humanVoice: 2,
+} as const
+
+/**
+ * Score denominator. MUST equal the sum of AUDIT_POINT_WEIGHTS — a regression
+ * test asserts exactly that, so this literal can never drift from the real
+ * total of awarded points. (2026-08-14: was 20 while the checks only awarded
+ * 18, which capped a flawless article at 18/20 = 90%.)
+ */
+export const AUDIT_MAX_POINTS = 18
+
 function extractFrontMatter(content: string): Record<string, string> {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!m) return {}
@@ -80,14 +112,8 @@ export function auditContent(opts: {
   const warnings: AuditFinding[] = []
   const passes: AuditFinding[] = []
   let points = 0
-  // Total achievable points across all checks is 18, not 20:
-  //   word_count 2 + title 2 + keyword 2 + citations 2 + human_voice 2
-  //   + meta_description 1 + h2_structure 1 + schema_article 1 + schema_faq 1
-  //   + internal_links 1 + ai_answer_block 1 + disclaimer 1 + robots 1 = 18.
-  // Keep this denominator in sync when adding/removing checks, or the score
-  // ceiling drifts. (2026-08-14: was 20, which capped a flawless article at
-  // 18/20 = 90% — hence the persistent "90%" across the Job queue.)
-  const max = 18
+  // Score denominator — locked to the weight table by a regression test.
+  const max = AUDIT_MAX_POINTS
 
   const add = (ok: boolean, finding: AuditFinding, pts: number) => {
     if (ok) {
@@ -136,14 +162,14 @@ export function auditContent(opts: {
       message: `Word count ${words} meets floor ${minWords} but under target ${targetWords}`,
       fix: `Add another H2 section or expand FAQs toward ~${targetWords} words for competitive depth`,
     })
-    // Partial points for meeting the floor
-    points += 1
+    // Partial credit for meeting the floor (not the full wordCount weight)
+    points += Math.floor(AUDIT_POINT_WEIGHTS.wordCount / 2)
   } else {
     add(true, {
       code: 'word_count',
       severity: 'pass',
       message: `Word count ${words} (min ${minWords}, target ${targetWords})`,
-    }, 2)
+    }, AUDIT_POINT_WEIGHTS.wordCount)
   }
 
   // Title
@@ -153,7 +179,7 @@ export function auditContent(opts: {
     severity: !title ? 'blocker' : 'warning',
     message: title ? `Title length ${title.length}: "${title.slice(0, 60)}"` : 'Missing title',
     fix: 'Set YAML title 30–60 chars with primary keyword + year/place when relevant',
-  }, 2)
+  }, AUDIT_POINT_WEIGHTS.title)
 
   // Meta description
   const desc = fm.description || fm.metaDescription || ''
@@ -162,7 +188,7 @@ export function auditContent(opts: {
     severity: 'warning',
     message: desc ? `Meta description length ${desc.length}` : 'Missing meta description in front matter',
     fix: 'Add description: 140–160 characters with a concrete benefit',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.metaDescription)
 
   // H2 structure
   const h2s = (body.match(/^##\s+/gm) || []).length
@@ -171,7 +197,7 @@ export function auditContent(opts: {
     severity: 'warning',
     message: `H2 count ${h2s} (want ≥4)`,
     fix: 'Add clear H2 sections covering procedure, documents, risks, FAQ',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.h2Structure)
 
   // Keyword usage
   if (primary) {
@@ -182,7 +208,7 @@ export function auditContent(opts: {
       severity: 'warning',
       message: inTitle ? 'Primary keyword appears in title' : 'Primary keyword weak/missing in title',
       fix: `Include "${opts.primaryKeyword}" naturally in title and first H2`,
-    }, 2)
+    }, AUDIT_POINT_WEIGHTS.keyword)
   } else {
     warnings.push({
       code: 'keyword',
@@ -199,7 +225,7 @@ export function auditContent(opts: {
     severity: wantIndexable ? 'blocker' : 'warning',
     message: hasGov ? 'Official .gov/.edu citations present' : 'Missing official authority citations',
     fix: 'Cite USCIS, IRCC, UKVI, or Home Affairs with live URLs',
-  }, 2)
+  }, AUDIT_POINT_WEIGHTS.citations)
 
   // Schema
   const hasArticle = /"@type"\s*:\s*"Article"/.test(body)
@@ -209,13 +235,13 @@ export function auditContent(opts: {
     severity: 'warning',
     message: hasArticle ? 'Article JSON-LD present' : 'Missing Article JSON-LD',
     fix: 'Add Article schema in application/ld+json',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.schemaArticle)
   add(hasFaq || opts.contentType === 'marketplace_gig', {
     code: 'schema_faq',
     severity: 'warning',
     message: hasFaq ? 'FAQPage JSON-LD present' : 'Missing FAQPage JSON-LD',
     fix: 'Add 4–6 FAQs with FAQPage schema for AI overviews',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.schemaFaq)
 
   // Internal links — shared estate counter (legal. / portal. / any estate
   // subdomain / caseworks.com / relative paths). Future estate hosts are
@@ -226,7 +252,7 @@ export function auditContent(opts: {
     severity: 'warning',
     message: `Internal/estate links ~${internalLinks}`,
     fix: 'Link to hub + 1–2 related legal/regional pages',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.internalLinks)
 
   // AI / LLM readiness
   const hasTldr = /tldr|in 60 seconds|quick answer|key takeaways/i.test(body)
@@ -235,7 +261,7 @@ export function auditContent(opts: {
     severity: 'warning',
     message: hasTldr ? 'Answer/TL;DR block present' : 'Missing TL;DR / quick-answer block',
     fix: 'Add a concise "In 60 seconds" list for AI Overviews and llms.txt',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.aiAnswerBlock)
 
   // Robots / index policy
   const robots = (fm.robots || '').toLowerCase()
@@ -256,9 +282,9 @@ export function auditContent(opts: {
     })
   } else if (!wantIndexable) {
     passes.push({ code: 'robots_noindex', severity: 'pass', message: 'noindex declared for non-indexable content' })
-    points += 1
+    points += AUDIT_POINT_WEIGHTS.robots
   } else {
-    points += 1
+    points += AUDIT_POINT_WEIGHTS.robots
     passes.push({ code: 'robots_index', severity: 'pass', message: 'Indexable intent (no noindex)' })
   }
 
@@ -271,7 +297,7 @@ export function auditContent(opts: {
     severity: wantIndexable ? 'blocker' : 'warning',
     message: hasDisclaimer ? 'Disclaimer present' : 'Missing legal disclaimer',
     fix: 'Add short disclaimer: educational only, not legal advice',
-  }, 1)
+  }, AUDIT_POINT_WEIGHTS.disclaimer)
 
   // ── Voice / tone / human quality (non-negotiable) ────────────────────────
   const quality = evaluateContentQuality({
@@ -314,9 +340,10 @@ export function auditContent(opts: {
       severity: 'pass',
       message: `Human voice ${quality.humanScore}/100`,
     })
-    points += 2
+    points += AUDIT_POINT_WEIGHTS.humanVoice
   } else if (quality.humanScore >= 60 && quality.ok) {
-    points += 1
+    // Partial credit for a passing-but-mediocre voice score
+    points += Math.floor(AUDIT_POINT_WEIGHTS.humanVoice / 2)
   }
 
   // Never recommend index for under-floor depth or quality blockers
