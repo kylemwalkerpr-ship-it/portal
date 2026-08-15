@@ -1112,6 +1112,112 @@ export function predict(
   }
 }
 
+// ═══ Trace (the "livestream" — ordered pipeline steps) ══════════════════════
+
+export type EngineTraceTone = 'info' | 'ok' | 'warn' | 'err' | 'accent'
+
+export interface EngineTraceStep {
+  /** Monotonic step index (0-based) — the UI replays them in order. */
+  seq: number
+  /** Phase name: input · intent · weights · signals · baseline · delta · risk · recommend · predict · done */
+  phase: string
+  /** One-line human message, e.g. "Detected intent → PROCEDURAL · YMYL overlay". */
+  message: string
+  /** Optional secondary line (detail, e.g. the weight row or a risk message). */
+  detail?: string
+  tone: EngineTraceTone
+  /** Progress 0–1 when this step completes (drives the stream progress bar). */
+  progress: number
+}
+
+/**
+ * Reconstruct the engine's computation as an ordered, human-readable trace.
+ * The engine is synchronous + fast, so the UI "livestreams" this captured
+ * trace with pacing — every value comes from the already-computed report,
+ * nothing is re-run or fabricated.
+ */
+export function buildEngineTrace(input: MasterEngineInput, report: MasterEngineReport): EngineTraceStep[] {
+  const steps: EngineTraceStep[] = []
+  const step = (phase: string, message: string, tone: EngineTraceTone, detail?: string) =>
+    steps.push({ seq: steps.length, phase, message, detail, tone, progress: 0 })
+
+  const words = countBodyWords(input.content || '')
+  const primary = (input.primaryKeyword || input.topic || '').trim() || '(none)'
+  const contentType = input.contentType || 'legal_guide'
+  const region = input.region || '—'
+  const targetWords = targetWordsForType(contentType)
+  step('input', `Ingesting draft · “${primary}”`, 'info',
+    `${words.toLocaleString()} body words (target ≈ ${targetWords.toLocaleString()}) · type ${contentType} · region ${region}`)
+
+  const isY = report.intentLabel.includes('YMYL')
+  step('intent', `Intent classified → ${report.intentLabel}`, 'accent',
+    isY
+      ? 'YMYL overlay active — E-E-A-T weight blended up 40% toward the trust row'
+      : 'Base intent weight matrix selected')
+
+  const topW = SUBSYSTEMS.map((s) => ({ s, w: report.weights[s] }))
+    .sort((a, b) => b.w - a.w)
+    .slice(0, 3)
+  step('weights', 'Applying intent-conditioned weights', 'info',
+    `top rows: ${topW.map((t) => `${SUBSYSTEM_LABELS[t.s].split(' ')[0]} ${(t.w * 100).toFixed(0)}%`).join(' · ')}`)
+
+  const computed = report.computedSignals.filter((s) => s.computed && s.value != null)
+  const perSub: Record<string, { n: number; total: number }> = {}
+  for (const s of report.computedSignals) {
+    if (!perSub[s.subsystem]) perSub[s.subsystem] = { n: 0, total: 0 }
+    perSub[s.subsystem].total++
+    if (s.computed && s.value != null) perSub[s.subsystem].n++
+  }
+  step('signals', `Signal registry scanned — ${report.coverage.computed}/${report.coverage.total} computed (${report.coverage.pct}% coverage)`, 'ok',
+    SUBSYSTEMS.map((s) => `${SUBSYSTEM_SHORT2[s]} ${perSub[s]?.n ?? 0}/${perSub[s]?.total ?? 0}`).join(' · '))
+
+  const snippetSrc = (input.competingSnippets || []).filter(Boolean).length
+  step('baseline', 'SERP consensus baseline', 'info',
+    snippetSrc > 0
+      ? `derived from ${snippetSrc} competitor snippet(s), re-scored with the same machinery`
+      : 'deterministic floor (no competitor snippets supplied)')
+
+  for (const s of SUBSYSTEMS) {
+    const sub = report.subsystems[s]
+    const delta = report.deltas[s]
+    const scorePct = sub.score == null ? null : Math.round(sub.score * 100)
+    const deltaTxt = delta == null ? '—' : `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(0)}`
+    step('delta', `${SUBSYSTEM_LABELS[s].split(' ')[0]} ${scorePct == null ? '·' : `${scorePct}/100`} (delta ${deltaTxt} vs consensus)`, scorePct == null || scorePct >= 70 ? 'ok' : scorePct >= 50 ? 'accent' : 'warn')
+  }
+
+  if (report.risks.length) {
+    for (const r of report.risks) {
+      step('risk', `${r.severity === 'blocker' ? '⛔ BLOCKER' : '⚠ warning'}: ${r.message}`, r.severity === 'blocker' ? 'err' : 'warn')
+    }
+  } else {
+    step('risk', 'Risk / eligibility gates — none tripped', 'ok')
+  }
+
+  if (report.recommendations.length) {
+    for (const r of report.recommendations.slice(0, 8)) {
+      step('recommend', `#${r.priority} [${r.subsystem.toUpperCase()}] ${r.action}`, 'accent',
+        `lift ~${Math.round(r.lift * 100)}% · confidence ${Math.round(r.confidence * 100)}% · effort ${r.effort}`)
+    }
+  } else {
+    step('recommend', 'No open gaps — page clears every subsystem bar', 'ok')
+  }
+
+  step('predict', `P(top-10) ${report.prediction.top10Probability ?? '—'}% · P(top-3) ${report.prediction.top3Probability ?? '—'}%`, 'info',
+    `expected lift +${report.prediction.expectedLift}%${report.prediction.expectedTrafficLift != null ? ` · ≈ ${report.prediction.expectedTrafficLift} organic clicks` : ''}`)
+
+  step('done', `COMPOSITE ${report.composite ?? '—'}/100 · grade ${report.grade ?? '—'}`, report.grade === 'A' || report.grade === 'B' ? 'ok' : report.grade === 'C' ? 'accent' : 'warn')
+
+  const total = steps.length
+  for (let i = 0; i < total; i++) steps[i].progress = Math.round(((i + 1) / total) * 100) / 100
+  return steps
+}
+
+const SUBSYSTEM_SHORT2: Record<SubsystemId, string> = {
+  intent: 'intent', content: 'content', semantic: 'semantic', technical: 'tech',
+  links: 'links', eeat: 'E-E-A-T', schema: 'schema', serp: 'SERP',
+  freshness: 'fresh', experience: 'exp',
+}
+
 // ═══ Report ════════════════════════════════════════════════════════════════
 
 export interface MasterEngineReport {
@@ -1129,6 +1235,8 @@ export interface MasterEngineReport {
   recommendations: MasterRecommendation[]
   prediction: MasterPrediction
   computedSignals: ComputedSignal[]
+  /** Ordered pipeline steps — the UI replays this as the engine "livestream". */
+  trace: EngineTraceStep[]
 }
 
 function grade(score: number): MasterEngineReport['grade'] {
@@ -1211,8 +1319,13 @@ export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
   const risks = evaluateRisks(input, values)
   const recs = recommend(input, values, deltas, risks)
   const prediction = predict(composite ?? 50, deltas, weights, input.gsc)
+  const coverage = {
+    computed: computedSignals.filter((s) => s.computed && s.value != null).length,
+    total: SIGNAL_COUNT,
+    pct: Math.round((computedSignals.filter((s) => s.computed && s.value != null).length / SIGNAL_COUNT) * 100),
+  }
 
-  return {
+  const report: MasterEngineReport = {
     generatedAt: new Date().toISOString(),
     intent,
     intentLabel: ymyl ? `${intent.toUpperCase()} · YMYL` : intent.toUpperCase(),
@@ -1222,14 +1335,13 @@ export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
     subsystems,
     deltas,
     baseline,
-    coverage: {
-      computed: computedSignals.filter((s) => s.computed && s.value != null).length,
-      total: SIGNAL_COUNT,
-      pct: Math.round((computedSignals.filter((s) => s.computed && s.value != null).length / SIGNAL_COUNT) * 100),
-    },
+    coverage,
     risks,
     recommendations: recs,
     prediction,
     computedSignals,
+    trace: [],
   }
+  report.trace = buildEngineTrace(input, report)
+  return report
 }

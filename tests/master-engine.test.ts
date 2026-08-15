@@ -380,4 +380,52 @@ describe('Master SEO Engine — full report', () => {
     expect(withSnippets.content).toBeGreaterThan(0)
     expect(withSnippets.content).toBeLessThanOrEqual(1)
   })
+
+  it('captures an ordered livestream trace of every pipeline phase', () => {
+    const report = scoreMaster(healthyInput())
+    expect(report.trace).toBeInstanceOf(Array)
+    expect(report.trace.length).toBeGreaterThan(8)
+
+    // Every step is well-formed
+    for (const s of report.trace) {
+      expect(s.seq).toBeGreaterThanOrEqual(0)
+      expect(s.message).toBeTruthy()
+      expect(['info', 'ok', 'warn', 'err', 'accent']).toContain(s.tone)
+      expect(s.progress).toBeGreaterThan(0)
+      expect(s.progress).toBeLessThanOrEqual(1)
+    }
+
+    // Phases appear in pipeline order, seq is monotonic
+    const phases = report.trace.map((s) => s.phase)
+    for (let i = 1; i < report.trace.length; i++) {
+      expect(report.trace[i].seq).toBe(report.trace[i - 1].seq + 1)
+    }
+    expect(phases[0]).toBe('input')
+    expect(phases).toContain('intent')
+    expect(phases).toContain('weights')
+    expect(phases).toContain('signals')
+    expect(phases).toContain('baseline')
+    expect(phases).toContain('delta')
+    expect(phases).toContain('predict')
+    expect(phases[phases.length - 1]).toBe('done')
+
+    // The trace mirrors the report's own numbers
+    const done = report.trace[report.trace.length - 1]
+    expect(done.message).toContain(String(report.composite))
+    const sig = report.trace.find((s) => s.phase === 'signals')
+    expect(sig!.message).toContain(`${report.coverage.computed}/${report.coverage.total}`)
+  })
+
+  it('risk phases surface blockers and recommendations carry priority in the trace', () => {
+    const report = scoreMaster(healthyInput())
+    const riskSteps = report.trace.filter((s) => s.phase === 'risk')
+    expect(riskSteps.length).toBeGreaterThan(0)
+    const recSteps = report.trace.filter((s) => s.phase === 'recommend')
+    // recommendations slice is capped at 8 in the trace
+    expect(recSteps.length).toBeLessThanOrEqual(8)
+    // recommend steps mirror the top recommendation priority
+    if (report.recommendations.length > 0 && recSteps.length > 0) {
+      expect(recSteps[0].message).toContain(`#${report.recommendations[0].priority}`)
+    }
+  })
 })

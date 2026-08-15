@@ -32,6 +32,10 @@ interface MasterReport {
     expectedLift: number; expectedTrafficLift: number | null
   }
   computedSignals: Array<{ id: string; label: string; subsystem: SubsystemId; value: number | null; computed: boolean }>
+  trace: Array<{
+    seq: number; phase: string; message: string; detail?: string
+    tone: string; progress: number
+  }>
 }
 
 interface LearnSummary {
@@ -156,6 +160,9 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
 
       {report && (
         <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Engine livestream — replays the captured trace with pacing */}
+          <EngineLiveFeed trace={report.trace ?? []} onDone={() => notice?.('Master Engine analysis complete')} />
+
           {/* Composite + prediction row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, paddingTop: 14 }}>
             <Stat tile="Composite score" value={report.composite == null ? '—' : `${report.composite}/100`} accent={report.grade ? GRADE_COLOR[report.grade] : E.inkMuted} sub={`grade ${report.grade ?? '—'} · ${report.intentLabel}`} />
@@ -279,6 +286,160 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
+}
+
+// ═══ Engine livestream ════════════════════════════════════════════════════
+//
+// The engine computes synchronously in milliseconds — too fast to watch in
+// real time. The report carries an ordered `trace` of every pipeline step
+// (input → intent → weights → signals → deltas → risk → recommend → predict
+// → done). This component REPLAYS that trace with realistic pacing, so you
+// can watch the engine "think" — like a terminal livestream of the analysis.
+
+const TONE_COLOR: Record<string, string> = {
+  info: '#9fb6c9',
+  ok: '#34d399',
+  warn: '#fbbf24',
+  err: '#f87171',
+  accent: '#fbbf24',
+}
+const PHASE_PAD: Record<string, string> = {
+  input: 'INPUT', intent: 'INTENT', weights: 'WEIGHTS', signals: 'SIGNALS',
+  baseline: 'BASELINE', delta: 'DELTA', risk: 'RISK', recommend: 'RECOMMEND',
+  predict: 'PREDICT', done: 'DONE',
+}
+
+function EngineLiveFeed({ trace, onDone }: { trace: MasterReport['trace']; onDone?: () => void }) {
+  const [count, setCount] = React.useState(0)
+  const [playing, setPlaying] = React.useState(true)
+  const [speed, setSpeed] = React.useState(1)
+  const ref = React.useRef<HTMLDivElement>(null)
+  const doneRef = React.useRef(false)
+
+  const total = trace.length
+  const finished = count >= total
+
+  // Reset whenever a new trace arrives
+  React.useEffect(() => {
+    setCount(0)
+    setPlaying(true)
+    doneRef.current = false
+  }, [trace])
+
+  // Autoscroll while streaming
+  React.useEffect(() => {
+    const el = ref.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [count, trace])
+
+  // The stream "live" ticker
+  React.useEffect(() => {
+    if (!playing || finished) return
+    const delay = Math.max(90, 320 / speed)
+    const t = setTimeout(() => setCount((c) => Math.min(total, c + 1)), delay)
+    return () => clearTimeout(t)
+  }, [playing, finished, count, speed, total])
+
+  // Fire onDone once the stream reaches the end
+  React.useEffect(() => {
+    if (finished && !doneRef.current) {
+      doneRef.current = true
+      onDone?.()
+    }
+  }, [finished, onDone])
+
+  const visible = trace.slice(0, count)
+  const progress = total ? count / total : 0
+  const lastTone = trace[count - 1]?.tone
+
+  return (
+    <div style={{ border: `1px solid ${E.hairline}`, overflow: 'hidden' }}>
+      {/* Feed header + controls */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+        background: '#101418', borderBottom: `1px solid ${E.hairline}`,
+      }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+          color: finished ? '#34d399' : '#f87171', textTransform: 'uppercase',
+        }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: finished ? '#34d399' : '#f87171',
+            boxShadow: finished ? 'none' : '0 0 6px #f87171',
+          }} />
+          {finished ? 'Analysis complete' : 'Engine live'}
+        </span>
+        <span style={{ flex: 1, fontFamily: C.mono, fontSize: 9, color: '#5b6b7b', letterSpacing: '0.06em' }}>
+          step {Math.min(count, total)}/{total} · {Math.round(progress * 100)}%
+        </span>
+        <button type="button" onClick={() => { setPlaying(!playing); if (finished) { setCount(0); setPlaying(true) } }}
+          style={feedBtn}>
+          {finished ? '↺ replay' : playing ? '❚❚ pause' : '▶ play'}
+        </button>
+        <button type="button" onClick={() => setSpeed((s) => (s >= 4 ? 1 : s * 2))} style={feedBtn}>
+          {speed}×
+        </button>
+        {!finished && (
+          <button type="button" onClick={() => setCount(total)} style={feedBtn}>
+            skip ⏭
+          </button>
+        )}
+      </div>
+
+      {/* Terminal body */}
+      <div
+        ref={ref}
+        data-testid="engine-live-feed"
+        style={{
+          background: '#0b0e12', color: '#c7d3dd', fontFamily: C.mono, fontSize: 10.5,
+          lineHeight: 1.7, padding: '12px 14px', height: 220, overflowY: 'auto',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}
+      >
+        {visible.map((s) => (
+          <div key={s.seq} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+            <span style={{ color: '#3d4c5c', width: 34, flexShrink: 0, textAlign: 'right' }}>
+              {(s.progress * 100).toFixed(0).padStart(3)}%
+            </span>
+            <span style={{
+              color: TONE_COLOR[s.tone] ?? '#9fb6c9', width: 88, flexShrink: 0,
+              fontWeight: 700, letterSpacing: '0.04em',
+            }}>
+              {PHASE_PAD[s.phase] ?? s.phase.toUpperCase()}
+            </span>
+            <span style={{ color: '#dbe6ee' }}>{s.message}</span>
+            {s.detail && <span style={{ color: '#5b6b7b' }}> · {s.detail}</span>}
+          </div>
+        ))}
+        {!finished && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+            <span style={{ color: '#3d4c5c', width: 34, flexShrink: 0, textAlign: 'right' }}>…</span>
+            <span style={{ color: '#f87171' }}>▋</span>
+            <span style={{ color: '#5b6b7b', fontStyle: 'italic' }}>
+              {trace[count] ? trace[count].message.slice(0, 60) + '…' : 'computing…'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 3, background: '#101418' }}>
+        <div style={{
+          width: `${Math.max(2, progress * 100)}%`, height: '100%',
+          background: finished ? '#34d399' : (lastTone === 'err' ? '#f87171' : '#fbbf24'),
+          transition: 'width 120ms linear',
+        }} />
+      </div>
+    </div>
+  )
+}
+
+const feedBtn: React.CSSProperties = {
+  padding: '3px 8px', borderRadius: 2, border: '1px solid #2a3644',
+  background: 'transparent', color: '#8fa3b3', fontFamily: C.mono, fontSize: 9,
+  fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.06em',
 }
 
 function Stat({ tile, value, accent, sub }: { tile: string; value: string; accent: string; sub: string }) {
