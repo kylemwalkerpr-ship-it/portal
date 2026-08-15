@@ -51,13 +51,26 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   //     NVIDIA DeepSeek and silently ignores the gpt-5.6 model name)
   //   · GLM 5.2 Fast → Baseten (the efficient open-source editor)
   //   · GLM 5.2 Fast via AIHubmix → the OpenAI-compatible aggregator route
+  //   · DeepSeek V4 Flash 0731 → Baseten (the reasoning review heavyweight)
   //   · anything else (legacy/custom) → normal cascade
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
   const isGlmFast =
     effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
   const isAihubmixGlmFast =
     effectiveModel === 'aihubmix-glm-fast' || effectiveModel === 'aihubmix-glm' || effectiveModel === 'glm-fast-aihubmix'
-  const aiProvider = isGpt ? 'openai' : isGlmFast ? 'baseten-glm-fast' : isAihubmixGlmFast ? 'aihubmix-glm-fast' : undefined
+  const isDeepseekFlash =
+    effectiveModel === 'baseten-deepseek' ||
+    effectiveModel === 'deepseek-v4-flash' ||
+    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731'
+  const aiProvider = isGpt
+    ? 'openai'
+    : isGlmFast
+      ? 'baseten-glm-fast'
+      : isAihubmixGlmFast
+        ? 'aihubmix-glm-fast'
+        : isDeepseekFlash
+          ? 'baseten-deepseek'
+          : undefined
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,

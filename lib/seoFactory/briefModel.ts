@@ -3,10 +3,11 @@
  * the Research/Plan brief, with GLM 5.2 Fast (Baseten) as the fallback.
  *
  * GPT-5.6 Sol (flagship), GPT-5.6 Terra (balanced), GLM 5.2 Fast via Baseten,
- * and GLM 5.2 Fast via AIHubmix are the four acceptable PRIMARY brief
- * models — all selectable in the Research stage. Everything else — 'auto', a
- * legacy drafting provider id ('baseten-deepseek', 'nvidia-glm', 'glm-fast'…),
- * or junk — is coerced to GPT-5.6 Terra on the OpenAI provider. This is the
+ * GLM 5.2 Fast via AIHubmix, and DeepSeek V4 Flash 0731 via Baseten are the
+ * five acceptable PRIMARY brief models — all selectable in the Research
+ * stage. Everything else — 'auto', a legacy drafting provider id
+ * ('nvidia-glm', 'glm-fast'…), or junk — is coerced to GPT-5.6 Terra on the
+ * OpenAI provider. This is the
  * single choke point so a stale client or provider-id leak can never make an
  * unrelated backend draft the brief (2026-08: the route forwarded
  * body.aiProvider verbatim, so a stray 'auto' or 'baseten-*' value silently
@@ -27,6 +28,7 @@ export type BriefProviderChoice =
   | { aiProvider: 'openai'; model: 'gpt-5.6-sol' | 'gpt-5.6-terra' }
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
   | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
+  | { aiProvider: 'baseten-deepseek'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -39,6 +41,16 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   // aggregator route). Aliases: 'aihubmix-glm-fast' / 'glm-fast-aihubmix'.
   if (pin === 'aihubmix-glm-fast' || pin === 'aihubmix-glm' || pin === 'glm-fast-aihubmix') {
     return { aiProvider: 'aihubmix-glm-fast' }
+  }
+  // DeepSeek V4 Flash 0731 via Baseten — a fifth brief choice (the research
+  // stage's reasoning heavyweight). Aliases: 'baseten-deepseek' /
+  // 'deepseek-v4-flash' / the full Baseten model id.
+  if (
+    pin === 'baseten-deepseek' ||
+    pin === 'deepseek-v4-flash' ||
+    pin === 'deepseek-ai/deepseek-v4-flash-0731'
+  ) {
+    return { aiProvider: 'baseten-deepseek' }
   }
   // Bare 'gpt-5.6' maps to the flagship alias (gpt-5.6-sol), matching the
   // provider layer's gptAliasModel convention.
@@ -85,6 +97,16 @@ export async function generateBriefText(opts: {
   // primary are the same backend — there is no second leg to try.
   const primaryIsFallback =
     String(opts.aiProvider || '').trim().toLowerCase() === BRIEF_FALLBACK_PROVIDER
+  // Human-readable label for the combined-error message, so a DeepSeek/AIHubmix
+  // primary isn't mis-reported as "(GPT)".
+  const primaryPin = String(opts.aiProvider || '').trim().toLowerCase()
+  const primaryLabel = primaryIsFallback
+    ? 'GLM 5.2 Fast'
+    : primaryPin === 'baseten-deepseek'
+      ? 'DeepSeek V4 Flash (Baseten)'
+      : primaryPin === 'aihubmix-glm-fast'
+        ? 'GLM 5.2 Fast (AIHubmix)'
+        : 'GPT'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,
@@ -121,7 +143,7 @@ export async function generateBriefText(opts: {
     } catch (fallbackErr) {
       const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
       throw new Error(
-        `Brief generation failed. Primary (GPT): ${primaryMsg.slice(0, 300)}. ` +
+        `Brief generation failed. Primary (${primaryLabel}): ${primaryMsg.slice(0, 300)}. ` +
         `Fallback (GLM 5.2 Fast): ${fallbackMsg.slice(0, 300)}.`,
       )
     }

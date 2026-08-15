@@ -2233,7 +2233,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         ? 'GLM 5.2 Fast · Baseten'
         : briefModel === 'aihubmix-glm-fast'
           ? 'GLM 5.2 Fast · AIHubmix'
-          : 'GPT Terra'
+          : briefModel === 'baseten-deepseek'
+            ? 'DeepSeek V4 Flash · Baseten'
+            : 'GPT Terra'
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -2531,6 +2533,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             >
               <option value="gpt-5.6-terra">GPT Terra</option>
               <option value="gpt-5.6-sol">GPT Sol</option>
+              <option value="baseten-deepseek">DeepSeek V4 Flash · Baseten</option>
               <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten</option>
               <option value="aihubmix-glm-fast">GLM 5.2 Fast · AIHubmix</option>
             </select>

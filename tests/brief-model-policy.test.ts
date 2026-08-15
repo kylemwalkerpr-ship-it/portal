@@ -1,18 +1,20 @@
 /**
- * Brief-model policy — OpenAI ChatGPT is the ONLY model responsible for the
- * Research/Plan brief.
+ * Brief-model policy — the Research/Plan brief runs ONLY on an explicitly
+ * selectable model: GPT-5.6 Sol/Terra (OpenAI), GLM 5.2 Fast (Baseten /
+ * AIHubmix), or DeepSeek V4 Flash 0731 (Baseten).
  *
  * 2026-08 regression: the suggest-brief route forwarded body.aiProvider
- * verbatim, so a stray 'auto' or a stale drafting provider id
- * ('baseten-deepseek', 'nvidia-glm'…) silently sent the brief through the
- * open-source drafting cascade instead of ChatGPT. These tests lock:
+ * verbatim, so a stray 'auto' or a stale drafting provider id ('nvidia-glm'…)
+ * silently sent the brief through the open-source drafting cascade instead of
+ * a chosen brief model. These tests lock:
  *
- *  1. resolveBriefAiProvider coerces EVERY non-GPT value to OpenAI/Terra —
- *     only an explicit gpt-5.6-sol request gets Sol; anything else (including
- *     'auto' and any open-source provider id) becomes OpenAI + gpt-5.6-terra.
- *  2. exclusive: true means the brief can never cascade to a non-OpenAI
- *     backend: if OpenAI fails, the call throws the explicit-provider error
- *     instead of returning prose drafted by baseten/nvidia/cloudflare.
+ *  1. resolveBriefAiProvider maps each accepted brief model to its provider,
+ *     and coerces EVERY other value to OpenAI/Terra — only an explicit
+ *     gpt-5.6-sol request gets Sol; anything else (including 'auto' and any
+ *     unrecognized provider id) becomes OpenAI + gpt-5.6-terra.
+ *  2. exclusive: true means the brief can never cascade to a non-chosen
+ *     backend: if the pinned provider fails, the call throws the
+ *     explicit-provider error instead of returning prose drafted by another.
  */
 jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
@@ -26,7 +28,7 @@ import {
 } from '@/lib/seoFactory/briefModel'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2 Fast)', () => {
+describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2 Fast + DeepSeek V4 Flash)', () => {
   it('gpt-5.6-terra and gpt-5.6 default to OpenAI + Terra', () => {
     expect(resolveBriefAiProvider('gpt-5.6-terra')).toEqual({
       aiProvider: 'openai',
@@ -83,12 +85,27 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     })
   })
 
-  it('EVERY other value coerces to OpenAI + Terra — never a non-OpenAI provider', () => {
+  it('baseten-deepseek (and aliases) → DeepSeek V4 Flash 0731 via Baseten', () => {
+    expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({
+      aiProvider: 'baseten-deepseek',
+    })
+    expect(resolveBriefAiProvider('deepseek-v4-flash')).toEqual({
+      aiProvider: 'baseten-deepseek',
+    })
+    expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash-0731')).toEqual({
+      aiProvider: 'baseten-deepseek',
+    })
+    // Case-insensitive
+    expect(resolveBriefAiProvider('BASETEN-DEEPSEEK')).toEqual({
+      aiProvider: 'baseten-deepseek',
+    })
+  })
+
+  it('EVERY other value coerces to OpenAI + Terra — never a non-chosen provider', () => {
     const leaks = [
       'auto',
       '',
       'default',
-      'baseten-deepseek',
       'nvidia-glm',
       'nvidia-nemotron',
       'glm-fast',
