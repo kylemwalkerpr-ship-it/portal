@@ -21,7 +21,7 @@ import { StudioStageNav } from '@/components/design/studio-stage-nav'
 import { ChapterIntro } from '@/components/design/studio-chapter-intro'
 import { QueueStats, QueueTable } from '@/components/design/studio-queue'
 import { ReviewDraftsPanel } from '@/components/design/studio-review-panels'
-import { isPublishedJob } from '@/components/design/studio-ui-shared'
+import { isOpenPr, isPublishedJob } from '@/components/design/studio-ui-shared'
 import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-shared'
 
 /* ── fixtures ─────────────────────────────────────────────────────────── */
@@ -118,6 +118,31 @@ describe('isPublishedJob — a stamp is earned only by a genuinely shipped page'
     // Defensive: a merged_at timestamp is authoritative even if status is stale.
     expect(
       isPublishedJob(job({ id: 'm2', title: 'Merged-stale', status: 'pr_created', merged_at: '2026-08-01T00:00:00.000Z' })),
+    ).toBe(true)
+  })
+})
+
+/* ── isOpenPr — Approve panel "open PR" predicate ─────────────────────── */
+
+describe('isOpenPr — only a pr_created job is an open pull request', () => {
+  it('pr_url alone never makes a merged job an open PR', () => {
+    // 2026-08 regression: merge_pr sets status='merged' but RETAINS pr_url for
+    // the audit trail, so the old `status === 'pr_created' || j.pr_url` filter
+    // left every merged job stuck in "Push to main · N open PRs".
+    expect(
+      isOpenPr(job({ id: 'm1', title: 'Merged', status: 'merged', pr_url: 'https://github.com/acme/repo/pull/42', pr_number: 42 })),
+    ).toBe(false)
+    expect(
+      isOpenPr(job({ id: 'f1', title: 'Failed', status: 'failed', pr_url: 'https://github.com/acme/repo/pull/7', pr_number: 7 })),
+    ).toBe(false)
+    expect(
+      isOpenPr(job({ id: 'd1', title: 'Drafting', status: 'drafting', pr_url: 'https://github.com/acme/repo/pull/3', pr_number: 3 })),
+    ).toBe(false)
+  })
+
+  it('status pr_created is an open PR', () => {
+    expect(
+      isOpenPr(job({ id: 'p1', title: 'PR open', status: 'pr_created', pr_url: 'https://github.com/acme/repo/pull/42', pr_number: 42 })),
     ).toBe(true)
   })
 })

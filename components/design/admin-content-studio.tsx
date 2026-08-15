@@ -53,6 +53,7 @@ import {
   formatDate,
   gateBadge,
   GscMini,
+  isOpenPr,
   isPublishedJob,
   jobWebPath,
   statusBadge,
@@ -562,7 +563,7 @@ function ApprovePanel({
   onDeclinePr?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
   onMerged?: () => void
 }) {
-  const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
+  const prOpen = jobs.filter(isOpenPr)
   // Completed drafts — generation finished and content present, but no PR yet.
   // These were only shown as a passive footnote before (so Approve & Track
   // never surfaced new completed jobs); they must be actionable approve rows.

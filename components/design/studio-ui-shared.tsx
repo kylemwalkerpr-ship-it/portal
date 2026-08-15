@@ -58,6 +58,16 @@ export function isPublishedJob(j: ContentJob): boolean {
   return j.status === 'merged' || Boolean(j.merged_at)
 }
 
+/**
+ * True only when a job currently has an OPEN pull request awaiting merge.
+ * `pr_url` alone is NOT an open-PR signal — it is retained on the row after
+ * merge (for the audit trail), so filtering on it flooded the Approve panel
+ * with already-merged jobs. Only `pr_created` means "PR opened, not merged".
+ */
+export function isOpenPr(j: ContentJob): boolean {
+  return j.status === 'pr_created'
+}
+
 export function formatDate(iso: string) {
   try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
   catch { return iso }
