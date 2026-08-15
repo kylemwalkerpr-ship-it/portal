@@ -3844,7 +3844,7 @@ function buildWorkPlan(
 }
 
 function WorkPlanTable({
-  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, onResolveAllCannibal, resolvingIds, resolvingAll,
+  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, onResolveAllCannibal, resolvingIds, resolvingAll, resolvedIds,
 }: {
   items: WorkPlanItem[]
   selectedIds: Set<string>
@@ -3856,6 +3856,7 @@ function WorkPlanTable({
   onResolveAllCannibal: () => void
   resolvingIds?: Set<string>
   resolvingAll?: boolean
+  resolvedIds?: Set<string>
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
   const filtered = filterCat === 'all' ? items : items.filter((i) => i.category === filterCat)
@@ -3976,19 +3977,31 @@ function WorkPlanTable({
                 </div>
                 <div>
                   {item.category === 'cannibal' ? (
-                    <button
-                      type="button"
-                      onClick={() => onResolveCannibal(item)}
-                      disabled={resolvingIds?.has(item.id)}
-                      title="Auto-resolve: winner = highest impressions, 301 losers → winner, retire losers at the source"
-                      style={{
-                        padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.red}`, background: resolvingIds?.has(item.id) ? E.redSoft : 'transparent',
-                        color: E.red, cursor: resolvingIds?.has(item.id) ? 'wait' : 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
-                        whiteSpace: 'nowrap', opacity: resolvingIds?.has(item.id) ? 0.6 : 1,
-                      }}
-                    >
-                      {resolvingIds?.has(item.id) ? 'Resolving…' : '⚠ Resolve'}
-                    </button>
+                    resolvedIds?.has(item.id) ? (
+                      <span
+                        title="Resolved — 301 redirects merged losers into the winner"
+                        style={{
+                          display: 'inline-block', padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.green}`, background: E.greenSoft,
+                          color: E.green, fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ✅ Resolved
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onResolveCannibal(item)}
+                        disabled={resolvingIds?.has(item.id)}
+                        title="Auto-resolve: winner = highest impressions, 301 losers → winner, retire losers at the source"
+                        style={{
+                          padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.red}`, background: resolvingIds?.has(item.id) ? E.redSoft : 'transparent',
+                          color: E.red, cursor: resolvingIds?.has(item.id) ? 'wait' : 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                          whiteSpace: 'nowrap', opacity: resolvingIds?.has(item.id) ? 0.6 : 1,
+                        }}
+                      >
+                        {resolvingIds?.has(item.id) ? 'Resolving…' : '⚠ Resolve'}
+                      </button>
+                    )
                   ) : item.suggestion ? (
                     <button type="button" onClick={() => {
                       // Single-item quick apply
@@ -4648,6 +4661,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // cluster shows as resolved. Mirrors ResearchLiveOperations' resolve flow.
   const [resolvingCannibalIds, setResolvingCannibalIds] = React.useState<Set<string>>(new Set())
   const [resolvingAllCannibal, setResolvingAllCannibal] = React.useState(false)
+  const [resolvedCannibalIds, setResolvedCannibalIds] = React.useState<Set<string>>(new Set())
 
   // Shared merge call: returns a per-item outcome so the single-row Resolve
   // button and the Resolve-all sweep share identical behavior.
@@ -4681,6 +4695,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
     try {
       const r = await resolveOneCannibal(item)
+      if (r.status === 'resolved') setResolvedCannibalIds((prev) => new Set(prev).add(item.id))
       setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
       void fetchMergeHistory()
     } finally {
@@ -4704,13 +4719,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     let skipped = 0
     let failed = 0
     const failures: string[] = []
+    const resolvedIds: string[] = []
     try {
       for (const item of cannibals) {
         const r = await resolveOneCannibal(item)
-        if (r.status === 'resolved') resolved += 1
+        if (r.status === 'resolved') { resolved += 1; resolvedIds.push(item.id) }
         else if (r.status === 'skipped') skipped += 1
         else { failed += 1; failures.push(`${item.topic}: ${r.detail}`) }
       }
+      if (resolvedIds.length) setResolvedCannibalIds((prev) => new Set([...prev, ...resolvedIds]))
       let notice = `⚠ Cannibal sweep: ${resolved} resolved`
       if (skipped > 0) notice += ` · ${skipped} skipped`
       if (failed > 0) notice += ` · ${failed} failed${failures.length ? ` — ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '…' : ''}` : ''}`
@@ -6009,6 +6026,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 onResolveAllCannibal={handleResolveAllCannibal}
                 resolvingIds={resolvingCannibalIds}
                 resolvingAll={resolvingAllCannibal}
+                resolvedIds={resolvedCannibalIds}
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
