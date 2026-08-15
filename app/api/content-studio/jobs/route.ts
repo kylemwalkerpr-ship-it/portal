@@ -285,13 +285,21 @@ export async function POST(request: NextRequest) {
 
       const targetIds = ids.length
         ? ids
-        : (await supabase
-            .from('content_jobs')
-            .select('id')
-            .in('status', statusFilter)
-            .order('created_at', { ascending: false })
-            .limit(500)
-            .then((r) => (r.data ?? []).map((j: { id: string }) => j.id)))
+        : (await (action === 'clear_stuck'
+            ? supabase
+                .from('content_jobs')
+                .select('id')
+                .in('status', statusFilter)
+                .lt('updated_at', new Date(Date.now() - 30 * 60_000).toISOString())
+                .order('created_at', { ascending: false })
+                .limit(500)
+            : supabase
+                .from('content_jobs')
+                .select('id')
+                .in('status', statusFilter)
+                .order('created_at', { ascending: false })
+                .limit(500)
+          ).then((r) => (r.data ?? []).map((j: { id: string }) => j.id)))
 
       if (!targetIds.length) {
         return NextResponse.json({

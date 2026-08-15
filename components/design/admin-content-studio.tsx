@@ -5085,77 +5085,97 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // selections and surface a progress bar so the admin sees the work moving.
   const runBulkQueueAction = React.useCallback(async (kind: 'bulk_reaudit' | 'bulk_abandon' | 'bulk_approve' | 'bulk_monitor' | 'rerun_resume' | 'refresh_pr' | 'clear_drafts' | 'clear_stuck' | 'clear_failed') => {
     if (queueBulkBusy) return
-    let ids: string[] = []
-    if (kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed') {
-      // Status-filtered ops ignore the checkbox selection and act on the
-      // currently visible list, so an admin can wipe an entire queue bucket
-      // without selecting 30+ rows manually.
-      const statusFilter = kind === 'clear_drafts' ? 'pending'
-        : kind === 'clear_stuck' ? 'drafting'
-        : 'failed'
-      ids = jobs
-        .filter((j) => j.status === statusFilter || (kind === 'clear_stuck' && j.status === 'pending'))
-        .map((j) => j.id)
-    } else {
-      ids = Array.from(selectedJobIds)
-    }
-    if (!ids.length && !['clear_stuck', 'clear_failed', 'clear_drafts'].includes(kind)) {
+    const isClearBucket = kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed'
+    const ids: string[] = isClearBucket ? [] : Array.from(selectedJobIds)
+    if (!ids.length && !isClearBucket) {
       setActionNotice('Select at least one job first.')
       return
     }
     // Destructive ops require a second click (toggle arming).
-    if ((kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed' || kind === 'bulk_abandon') && queueBulkConfirmArmed !== kind) {
+    if ((isClearBucket || kind === 'bulk_abandon') && queueBulkConfirmArmed !== kind) {
       setQueueBulkConfirmArmed(kind)
-      setActionNotice(`Click again to confirm ${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')} on ${ids.length || jobs.filter((j) => (kind === 'clear_failed' ? j.status === 'failed' : kind === 'clear_stuck' ? (j.status === 'drafting' || j.status === 'pending') : j.status === 'pending')).length} job(s).`)
+      // Status-scoped clears act on the FULL bucket, not the 100-row window,
+      // so the confirm count comes from the real table summary (jobSummary),
+      // except 'stuck' which is a computed stale-row estimate.
+      const bucketCount = kind === 'clear_drafts' ? (jobSummary?.pending ?? 0)
+        : kind === 'clear_failed' ? (jobSummary?.failed ?? 0)
+        : jobs.filter((j) => (j.status === 'drafting' || j.status === 'pending') && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000).length
+      const n = isClearBucket ? bucketCount : ids.length
+      setActionNotice(`Click again to confirm ${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')} on ${n} job(s).`)
       return
     }
     setQueueBulkConfirmArmed(null)
     setQueueBulkBusy(true)
     setQueueBulkAction(kind)
-    setQueueBulkProgress({ done: 0, total: ids.length, failed: 0 })
+    setQueueBulkProgress({ done: 0, total: isClearBucket ? 1 : ids.length, failed: 0 })
     try {
       let successCount = 0
       let failCount = 0
-      const chunks: string[][] = []
-      for (let i = 0; i < ids.length; i += 25) chunks.push(ids.slice(i, i + 25))
-      for (const chunk of chunks) {
-        if (kind === 'rerun_resume' || kind === 'refresh_pr') {
-          // Per-job PATCH; rerun_resume uses the regenerate action and refresh_pr
-          // pulls the latest PR metadata from GitHub.
-          const action: 'regenerate' | 'refresh_pr' = kind === 'rerun_resume' ? 'regenerate' : 'refresh_pr'
-          const results = await Promise.allSettled(chunk.map(async (id) => {
+      let failReason = ''
+      if (isClearBucket) {
+        // Send NO ids so the route resolves the ENTIRE status bucket from the
+        // DB. The in-memory `jobs` list is only the 100-row window; sending
+        // window ids left the rest of the bucket uncleared (e.g. "Clear
+        // failed" cleared 43 of 95, then 43 more re-appeared on refresh).
+        const res = await fetch('/api/content-studio/jobs', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: kind, ids: [] }),
+        })
+        const data = await res.json().catch(() => ({})) as { ok?: boolean; processed?: number; message?: string; error?: string }
+        if (res.ok && data.ok) {
+          successCount += Number(data.processed || 0)
+        } else {
+          failCount++
+          failReason = data.message || data.error || `HTTP ${res.status}`
+        }
+      } else {
+        const chunks: string[][] = []
+        for (let i = 0; i < ids.length; i += 25) chunks.push(ids.slice(i, i + 25))
+        for (const chunk of chunks) {
+          if (kind === 'rerun_resume' || kind === 'refresh_pr') {
+            // Per-job PATCH; rerun_resume uses the regenerate action and refresh_pr
+            // pulls the latest PR metadata from GitHub.
+            const action: 'regenerate' | 'refresh_pr' = kind === 'rerun_resume' ? 'regenerate' : 'refresh_pr'
+            const results = await Promise.allSettled(chunk.map(async (id) => {
+              const res = await fetch('/api/content-studio/jobs', {
+                method: 'PATCH',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action }),
+              })
+              const data = await res.json().catch(() => ({})) as { error?: string }
+              if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+              return id
+            }))
+            successCount += results.filter((r) => r.status === 'fulfilled').length
+            failCount += results.filter((r) => r.status === 'rejected').length
+          } else {
             const res = await fetch('/api/content-studio/jobs', {
-              method: 'PATCH',
+              method: 'POST',
               credentials: 'same-origin',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id, action }),
+              body: JSON.stringify({ action: kind, ids: chunk }),
             })
-            const data = await res.json().catch(() => ({})) as { error?: string }
-            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-            return id
-          }))
-          successCount += results.filter((r) => r.status === 'fulfilled').length
-          failCount += results.filter((r) => r.status === 'rejected').length
-        } else {
-          const res = await fetch('/api/content-studio/jobs', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: kind, ids: chunk }),
-          })
-          const data = await res.json().catch(() => ({})) as { ok?: boolean; processed?: number; error?: string; message?: string }
-          if (res.ok && data.ok) {
-            successCount += Number(data.processed || chunk.length)
-          } else {
-            failCount += chunk.length
-            console.warn('[queue] bulk action failed', kind, data.error || res.status)
+            const data = await res.json().catch(() => ({})) as { ok?: boolean; processed?: number; error?: string; message?: string }
+            if (res.ok && data.ok) {
+              successCount += Number(data.processed || chunk.length)
+            } else {
+              failCount += chunk.length
+              failReason = data.message || data.error || `HTTP ${res.status}`
+              console.warn('[queue] bulk action failed', kind, data.error || res.status)
+            }
           }
+          setQueueBulkProgress((p) => p ? { done: Math.min(p.total, p.done + chunk.length), total: p.total, failed: failCount } : p)
         }
-        setQueueBulkProgress((p) => p ? { done: Math.min(p.total, p.done + chunk.length), total: p.total, failed: p.failed + failCount - (p.failed || 0) } : p)
+      }
+      if (failCount && failReason) {
+        setError(`${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')} failed: ${failReason}`)
       }
       setActionNotice(
         failCount
-          ? `${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')}: ${successCount} ok, ${failCount} failed`
+          ? `${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')}: ${successCount} ok, ${failCount} failed${failReason ? ` — ${failReason}` : ''}`
           : `${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')}: ${successCount} job(s) processed`,
       )
       setSelectedJobIds(new Set())
@@ -5168,7 +5188,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setQueueBulkAction(null)
       setTimeout(() => setQueueBulkProgress(null), 1500)
     }
-  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, fetchJobs, fetchGateRuns, setActionNotice, setError])
+  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, jobSummary, fetchJobs, fetchGateRuns, setActionNotice, setError])
 
   const queueSelectionCounts = React.useMemo(() => {
     const counts = { pending: 0, drafting: 0, failed: 0, stuck: 0, total: 0 }
@@ -5177,7 +5197,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (j.status === 'pending') counts.pending++
       if (j.status === 'drafting') counts.drafting++
       if (j.status === 'failed') counts.failed++
-      if (j.status === 'drafting' || (j.status === 'pending' && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000)) counts.stuck++
+      // Stuck = idle >30min in drafting/pending (NOT every drafting job — that
+      // would label actively-writing drafts as stuck and abandon them).
+      if ((j.status === 'drafting' || j.status === 'pending') && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000) counts.stuck++
     }
     return counts
   }, [jobs])
@@ -5185,7 +5207,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const visibleQueueJobs = React.useMemo(() => {
     if (queueStatusFilter === 'all') return jobs
     if (queueStatusFilter === 'stuck') {
-      return jobs.filter((j) => j.status === 'drafting' || (j.status === 'pending' && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000))
+      return jobs.filter((j) => (j.status === 'drafting' || j.status === 'pending') && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000)
     }
     return jobs.filter((j) => j.status === queueStatusFilter)
   }, [jobs, queueStatusFilter])
@@ -5837,11 +5859,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 onClick={() => { void runBulkQueueAction('clear_drafts') }}
                 disabled={queueBulkBusy}
                 style={queueBulkConfirmArmed === 'clear_drafts' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
-                title={queueBulkConfirmArmed === 'clear_drafts' ? `Click again to confirm clearing all ${queueSelectionCounts.pending} queued drafts` : `Clear all ${queueSelectionCounts.pending} pending drafts`}
+                title={queueBulkConfirmArmed === 'clear_drafts' ? `Click again to confirm clearing all ${jobSummary?.pending ?? 0} queued drafts` : `Clear all ${jobSummary?.pending ?? 0} pending drafts`}
               >
                 {queueBulkConfirmArmed === 'clear_drafts'
-                  ? `⚠ Confirm clear queue (${queueSelectionCounts.pending})`
-                  : `🧹 Clear queue (${queueSelectionCounts.pending})`}
+                  ? `⚠ Confirm clear queue (${jobSummary?.pending ?? 0})`
+                  : `🧹 Clear queue (${jobSummary?.pending ?? 0})`}
               </button>
               <button
                 type="button"
@@ -5851,19 +5873,19 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 title={queueBulkConfirmArmed === 'clear_stuck' ? `Click again to confirm abandoning ${queueSelectionCounts.stuck} stuck jobs` : `Abandon ${queueSelectionCounts.stuck} stuck jobs (>30min in drafting/pending)`}
               >
                 {queueBulkConfirmArmed === 'clear_stuck'
-                  ? `⚠ Confirm resume cleanup (${queueSelectionCounts.stuck})`
-                  : `🚧 Resume stuck (${queueSelectionCounts.stuck})`}
+                  ? `⚠ Confirm abandon stuck (${queueSelectionCounts.stuck})`
+                  : `🚧 Abandon stuck (${queueSelectionCounts.stuck})`}
               </button>
               <button
                 type="button"
                 onClick={() => { void runBulkQueueAction('clear_failed') }}
                 disabled={queueBulkBusy}
                 style={queueBulkConfirmArmed === 'clear_failed' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
-                title={queueBulkConfirmArmed === 'clear_failed' ? `Click again to confirm abandoning ${queueSelectionCounts.failed} failed jobs` : `Abandon ${queueSelectionCounts.failed} failed jobs`}
+                title={queueBulkConfirmArmed === 'clear_failed' ? `Click again to confirm abandoning ${jobSummary?.failed ?? 0} failed jobs` : `Abandon ${jobSummary?.failed ?? 0} failed jobs`}
               >
                 {queueBulkConfirmArmed === 'clear_failed'
-                  ? `⚠ Confirm clear failed (${queueSelectionCounts.failed})`
-                  : `❌ Clear failed (${queueSelectionCounts.failed})`}
+                  ? `⚠ Confirm clear failed (${jobSummary?.failed ?? 0})`
+                  : `❌ Clear failed (${jobSummary?.failed ?? 0})`}
               </button>
             </div>
           )}
