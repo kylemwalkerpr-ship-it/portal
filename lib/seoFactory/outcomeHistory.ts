@@ -22,6 +22,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
+import { resolveSupabaseKey } from '@/lib/supabaseKey'
 import { SUBSYSTEMS, type IntentId, type SubsystemId } from './masterEngine'
 import type { HistoricalOutcome } from './masterEngineLearn'
 
@@ -189,15 +190,12 @@ export async function buildOutcomeHistoryFromLiveGsc(opts?: {
   // ── 1. Merged jobs with a stored engine report ───────────────────────────
   let jobs: OutcomeJobRow[] = []
   try {
-    // Read-only query — accept the legacy `eyJ…` service-role JWT, else the
-    // anon key (same fallback as scripts/backfill-master-engine.mts, which
-    // handles the newer `sb_secret_…` key format that supabase-js v2 rejects).
-    const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').startsWith('eyJ')
-      ? process.env.SUPABASE_SERVICE_ROLE_KEY!
-      : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    // Read-only query — resolveSupabaseKey() accepts the legacy `eyJ…`
+    // service-role JWT, else falls back to the anon key (handles the newer
+    // `sb_secret_…` key format that supabase-js v2 rejects).
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseKey,
+      resolveSupabaseKey()!,
     )
     const { data, error } = await supabase
       .from('content_jobs')

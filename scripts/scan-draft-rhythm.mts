@@ -7,15 +7,13 @@
  * Outputs a per-draft report + summary. Read-only against Supabase.
  */
 import { createClient } from '@supabase/supabase-js'
+import { resolveSupabaseKey } from '../lib/supabaseKey'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-// The new-format service secret (sb_secret_…) may not be accepted by
-// supabase-js for this project, so fall back to the anon key — the RLS
-// policy on content_jobs is open (USING true), so reads work either way.
-const supabaseKey =
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || '').startsWith('eyJ')
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY
-    : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// resolveSupabaseKey(): the new-format service secret (sb_secret_…) may not be
+// accepted by supabase-js for this project, so fall back to the anon key — the
+// RLS policy on content_jobs is open (USING true), so reads work either way.
+const supabaseKey = resolveSupabaseKey()
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL + key)')
   process.exit(1)

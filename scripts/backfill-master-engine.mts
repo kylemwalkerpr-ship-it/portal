@@ -21,12 +21,10 @@ import { scoreMaster, type IntentId, type SubsystemId } from '../lib/seoFactory/
 import { learnWeights, applyRewardNudges } from '../lib/seoFactory/masterEngineLearn'
 import { buildOutcomeHistoryFromLiveGsc } from '../lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '../lib/seoFactory/jobToMasterInput'
+import { resolveSupabaseKey } from '../lib/supabaseKey'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-const supabaseKey =
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || '').startsWith('eyJ')
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY
-    : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseKey = resolveSupabaseKey()
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL + key)')
   process.exit(1)

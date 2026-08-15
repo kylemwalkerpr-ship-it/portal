@@ -7,6 +7,7 @@
  * the table has RLS on with no policies, so it's server-only.
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { isLegacyJwtKey } from '@/lib/supabaseKey'
 
 export interface GscConfig {
   clientId: string | null
@@ -23,10 +24,10 @@ export async function getGscConfig(): Promise<GscConfig> {
   // The newer `sb_secret_…` service-role key isn't accepted by supabase-js v2
   // ("Unregistered API key"), so skip the server-only gsc_connection read and
   // fall straight through to the GSC_* env vars. Only the legacy `eyJ…` JWT
-  // can read that row. This keeps an env-configured deployment (or local
-  // machine with the new key format) working via GSC_SERVICE_ACCOUNT_JSON +
-  // GSC_SITE_URL without a doomed DB round-trip.
-  const canReadGscRow = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').startsWith('eyJ')
+  // can read that row (see isLegacyJwtKey). This keeps an env-configured
+  // deployment (or local machine with the new key format) working via
+  // GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL without a doomed DB round-trip.
+  const canReadGscRow = isLegacyJwtKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
   if (canReadGscRow) {
     try {
       const db = createSupabaseAdminClient()

@@ -25,15 +25,13 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { auditLiveHtml } from '../lib/seoFactory/liveAudit'
+import { resolveSupabaseKey } from '../lib/supabaseKey'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-// Same key selection as recompute-seo-scores.mts: the new-format service
-// secret (sb_secret_…) is not registered for PostgREST on this project, so
-// fall back to the JWT anon key — content_jobs RLS is open for read/write.
-const supabaseKey =
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || '').startsWith('eyJ')
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY
-    : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// resolveSupabaseKey(): the new-format service secret (sb_secret_…) is not
+// registered for PostgREST on this project, so fall back to the JWT anon key
+// — content_jobs RLS is open for read/write.
+const supabaseKey = resolveSupabaseKey()
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL + key)')
   process.exit(1)
