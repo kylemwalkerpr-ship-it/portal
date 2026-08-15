@@ -3,8 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { fetchBacklinkSnapshot, isBacklinkProviderConfigured } from '@/lib/seoFactory/backlinkProvider'
 
-export const runtime = 'edge'
-
 /**
  * POST /api/seo-engine/backlinks
  *

@@ -4,8 +4,6 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { scoreMaster, type MasterEngineInput } from '@/lib/seoFactory/masterEngine'
 import { learnWeights, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
 
-export const runtime = 'edge'
-
 /**
  * POST /api/seo-engine/master
  *
