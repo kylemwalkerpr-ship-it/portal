@@ -97,3 +97,18 @@ export default async function Page({
     </>
   )
 }
+
+
+      {/* SITEMAP_ORPHAN_FIX_START — maintained by Content Studio */}
+      <section aria-labelledby="content-studio-related-pages">
+        <h2 id="content-studio-related-pages">Related guides</h2>
+        <ul>
+          <li><a href="https://market.yousafeconsultancy.com/marketplace/categories/">All categories | YouSafe Marketplace</a></li>
+          <li><a href="https://market.yousafeconsultancy.com/marketplace/">YouSafe Marketplace — Verified Immigration & Tenancy Help</a></li>
+          <li><a href="https://market.yousafeconsultancy.com/marketplace/providers/">All providers | YouSafe Marketplace</a></li>
+          <li><a href="https://market.yousafeconsultancy.com/marketplace/templates/">Document Template Packs — Immigration & Study</a></li>
+          <li><a href="https://market.yousafeconsultancy.com/page.tsx/">YouSafe Portal — Study Abroad & Legal Services</a></li>
+          <li><a href="https://market.yousafeconsultancy.com/sellers/">Sellers</a></li>
+        </ul>
+      </section>
+      {/* SITEMAP_ORPHAN_FIX_END */}
