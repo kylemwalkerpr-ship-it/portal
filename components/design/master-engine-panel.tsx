@@ -28,8 +28,34 @@ interface MasterReport {
     lift: number; confidence: number; effort: string; value: number
   }>
   prediction: {
-    top10Probability: number | null; top3Probability: number | null
-    expectedLift: number; expectedTrafficLift: number | null
+    top100Probability: number | null
+    top20Probability: number | null
+    top10Probability: number | null
+    top3Probability: number | null
+    position1Probability: number | null
+    clickProbability: number | null
+    conversionProbability: number | null
+    expectedLift: number
+    expectedTrafficLift: number | null
+    expectedValue: number | null
+  }
+  derived: {
+    competitiveGap: number | null
+    contentSuperiority: number | null
+    informationGainAdvantage: number | null
+    authorityGap: number | null
+    linkGap: number | null
+    freshnessAdvantage: number | null
+    experienceAdvantage: number | null
+    trustAdvantage: number | null
+    intentFitAdvantage: number | null
+    evidenceAdvantage: number | null
+    optimizationHeadroom: number | null
+  }
+  governance: {
+    confidence: number | null
+    modelVersion: string
+    caveats: string[]
   }
   computedSignals: Array<{ id: string; label: string; subsystem: SubsystemId; value: number | null; computed: boolean }>
   trace: Array<{
@@ -71,13 +97,15 @@ function bar(v: number, color: string = E.gold): React.ReactElement {
 /**
  * MASTER SEO ENGINE panel — the Review-stage brain.
  *
- * Runs the 130+ signal engine over the selected job and surfaces:
+ * Runs the 240+ signal engine over the selected job and surfaces:
  *  · composite grade + intent-conditioned weights
  *  · per-subsystem score vs SERP-consensus baseline (competitive deltas)
  *  · risk / eligibility gates (blockers vs warnings)
  *  · prioritized recommendations (Priority = Lift × Confidence × Value / Cost)
- *  · predicted top-10 / top-3 probabilities + expected lift
- *  · signal coverage report (which of the 130+ variables were computed)
+ *  · full ranking probability ladder (top-100 → #1) + click/conversion/EV
+ *  · derived features (competitive gap, information-gain, headroom)
+ *  · model governance (confidence + data caveats)
+ *  · signal coverage report (which of the 240+ variables were computed)
  *  · adaptive learning status when historical outcomes are attached
  */
 export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; notice?: (msg: string) => void }) {
@@ -124,7 +152,7 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
         <div style={{ flex: 1, minWidth: 240 }}>
           <div style={{ fontFamily: C.serif, fontSize: 17, color: E.ink, fontWeight: 700 }}>Master SEO Engine</div>
           <div style={{ fontFamily: C.mono, fontSize: 9.5, color: E.inkDim, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 2 }}>
-            130+ signals · intent-conditioned weights · competitive deltas · risk gates · prediction
+            240+ signals · derived features · probability ladder · governance · risk gates
           </div>
         </div>
         <button
@@ -170,6 +198,67 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
             <Stat tile="Predicted top-3" value={report.prediction.top3Probability == null ? '—' : `${report.prediction.top3Probability}%`} accent={E.navy} sub="logistic probability" />
             <Stat tile="Expected lift" value={`+${report.prediction.expectedLift}%`} accent={E.mossGreen} sub={report.prediction.expectedTrafficLift == null ? 'close the deltas' : `≈ ${report.prediction.expectedTrafficLift} organic clicks`} />
             <Stat tile="Signal coverage" value={`${report.coverage.pct}%`} accent={E.gold} sub={`${report.coverage.computed} / ${report.coverage.total} computed`} />
+          </div>
+
+          {/* Ranking probability ladder */}
+          <div style={{ border: `1px solid ${E.hairline}` }}>
+            <SectionTitle>Ranking probability ladder</SectionTitle>
+            <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {([
+                ['top-100', report.prediction.top100Probability],
+                ['top-20', report.prediction.top20Probability],
+                ['top-10', report.prediction.top10Probability],
+                ['top-3', report.prediction.top3Probability],
+                ['#1', report.prediction.position1Probability],
+              ] as Array<[string, number | null]>).map(([label, p]) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 56, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+                  {bar((p ?? 0) / 100, p == null ? E.inkDim : p >= 60 ? E.mossGreen : p >= 25 ? E.blue : E.orange)}
+                  <span style={{ width: 40, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: p == null ? E.inkDim : E.ink }}>{p == null ? '—' : `${p}%`}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4, paddingTop: 8, borderTop: `1px dashed ${E.hairline}` }}>
+                <LadderChip label="Click" value={report.prediction.clickProbability} />
+                <LadderChip label="Convert" value={report.prediction.conversionProbability} />
+                <LadderChip label="EV index" value={report.prediction.expectedValue} />
+              </div>
+            </div>
+          </div>
+
+          {/* Derived features */}
+          <div style={{ border: `1px solid ${E.hairline}` }}>
+            <SectionTitle>Derived features — higher-order math</SectionTitle>
+            <div style={{ padding: '10px 14px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+              <DerivedTile label="Competitive gap" value={report.derived.competitiveGap} lowerIsBetter />
+              <DerivedTile label="Content superiority" value={report.derived.contentSuperiority} />
+              <DerivedTile label="Information-gain" value={report.derived.informationGainAdvantage} />
+              <DerivedTile label="Authority gap" value={report.derived.authorityGap} lowerIsBetter />
+              <DerivedTile label="Evidence advantage" value={report.derived.evidenceAdvantage} />
+              <DerivedTile label="Trust advantage" value={report.derived.trustAdvantage} />
+              <DerivedTile label="Freshness advantage" value={report.derived.freshnessAdvantage} />
+              <DerivedTile label="Experience advantage" value={report.derived.experienceAdvantage} />
+              <DerivedTile label="Intent-fit advantage" value={report.derived.intentFitAdvantage} />
+              <DerivedTile label="Headroom" value={report.derived.optimizationHeadroom} neutral />
+            </div>
+          </div>
+
+          {/* Model governance */}
+          <div style={{ border: `1px solid ${E.hairline}` }}>
+            <SectionTitle>Model governance · v{report.governance.modelVersion}</SectionTitle>
+            <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 120, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confidence</span>
+                {bar(report.governance.confidence ?? 0, report.governance.confidence == null ? E.inkDim : report.governance.confidence >= 0.6 ? E.mossGreen : report.governance.confidence >= 0.35 ? E.gold : E.orange)}
+                <span style={{ width: 40, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: E.ink }}>{report.governance.confidence == null ? '—' : `${Math.round(report.governance.confidence * 100)}%`}</span>
+              </div>
+              {report.governance.caveats.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+                  {report.governance.caveats.map((c) => (
+                    <div key={c} style={{ fontFamily: C.mono, fontSize: 10, color: E.inkDim }}>· {c}</div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Risk gates */}
@@ -448,6 +537,35 @@ function Stat({ tile, value, accent, sub }: { tile: string; value: string; accen
       <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>{tile}</div>
       <div style={{ fontSize: 24, fontWeight: 700, fontFamily: C.serif, color: accent, lineHeight: 1.1 }}>{value}</div>
       <div style={{ fontSize: 10, color: E.inkMuted, marginTop: 4, fontFamily: C.mono }}>{sub}</div>
+    </div>
+  )
+}
+
+function LadderChip({ label, value }: { label: string; value: number | null }) {
+  return (
+    <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>
+      <span style={{ textTransform: 'uppercase', letterSpacing: '0.06em', color: E.inkDim }}>{label}</span>{' '}
+      <span style={{ color: E.ink, fontWeight: 700 }}>{value == null ? '—' : `${value}%`}</span>
+    </span>
+  )
+}
+
+function DerivedTile({ label, value, lowerIsBetter, neutral }: { label: string; value: number | null; lowerIsBetter?: boolean; neutral?: boolean }) {
+  const pct = value == null ? null : Math.round(value * 100)
+  const color = pct == null
+    ? E.inkDim
+    : neutral
+      ? E.gold
+      : lowerIsBetter
+        ? pct <= 30 ? E.mossGreen : E.orange
+        : pct >= 55 ? E.mossGreen : E.orange
+  return (
+    <div style={{ border: `1px solid ${E.hairline}`, background: E.cream, padding: '10px 12px' }}>
+      <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontFamily: C.serif, fontSize: 18, fontWeight: 700, color, minWidth: 34, textAlign: 'right' }}>{pct == null ? '—' : pct}</span>
+        {bar(value ?? 0, color)}
+      </div>
     </div>
   )
 }
