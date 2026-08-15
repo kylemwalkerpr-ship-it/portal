@@ -142,6 +142,7 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
       }
       let finalReport: MasterReport | null = null
       let finalLearn: LearnSummary | null = null
+      let fellBack = false
       await consumeSseStream(res.body, (ev) => {
         if (ev.type === 'progress' && ev.step) {
           const s = ev.step as MasterReport['trace'][number]
@@ -153,10 +154,27 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
           throw new Error(String(ev.error || 'Engine stream failed'))
         }
       })
-      if (!finalReport) throw new Error('Engine stream ended before a report was received')
+      if (!finalReport) {
+        // Stream closed without a `done` event (worker killed mid-run, network
+        // drop). Fall back to the plain JSON report instead of surfacing a
+        // hard error — the engine result is identical, just not streamed.
+        fellBack = true
+        const fb = await fetch('/api/seo-engine/master', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId: job.id }),
+        })
+        const fbData = await fb.json().catch(() => ({})) as { error?: string; report?: MasterReport; learn?: LearnSummary | null }
+        if (!fb.ok || !fbData.report) {
+          throw new Error(fbData.error || `Engine fallback returned ${fb.status}`)
+        }
+        finalReport = fbData.report
+        finalLearn = fbData.learn ?? null
+      }
       setReport(finalReport)
       setLearn(finalLearn)
-      notice?.(`Master Engine: ${finalReport.grade ?? '—'} (${finalReport.composite ?? '—'}/100) · ${finalReport.intentLabel}`)
+      notice?.(`Master Engine: ${finalReport.grade ?? '—'} (${finalReport.composite ?? '—'}/100) · ${finalReport.intentLabel}${fellBack ? ' · stream dropped, used JSON' : ''}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Engine run failed')
     } finally {
