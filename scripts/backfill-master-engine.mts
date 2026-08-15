@@ -17,7 +17,9 @@
  *   npx tsx --env-file=.env.local scripts/backfill-master-engine.mts --apply
  */
 import { createClient } from '@supabase/supabase-js'
-import { scoreMaster } from '../lib/seoFactory/masterEngine'
+import { scoreMaster, type IntentId, type SubsystemId } from '../lib/seoFactory/masterEngine'
+import { learnWeights, applyRewardNudges } from '../lib/seoFactory/masterEngineLearn'
+import { buildOutcomeHistoryFromLiveGsc } from '../lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '../lib/seoFactory/jobToMasterInput'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -91,24 +93,47 @@ async function main() {
   const rows = await fetchJobs()
   console.log(`${APPLY ? 'APPLY' : 'DRY-RUN'} — ${rows.length} merged job(s)\n`)
 
+  // ── Adaptive layer ────────────────────────────────────────────────────
+  // Learn per-intent weights from live GSC outcomes correlated against each
+  // merged job's stored engine report, then layer the per-publish reward
+  // nudge on top. When GSC is unreachable this degrades to an empty history
+  // and the engine keeps the fixed intent priors (usedLearned: false).
+  const outcome = await buildOutcomeHistoryFromLiveGsc({ days: 28 })
+  const learn = outcome.history.length ? learnWeights(outcome.history) : null
+  const byIntent: Partial<Record<IntentId, Record<SubsystemId, number>>> = {}
+  let nudgeCount = 0
+  if (learn) {
+    const nudged = applyRewardNudges(learn, outcome.history)
+    Object.assign(byIntent, nudged.byIntent)
+    nudgeCount = nudged.nudges.length
+  }
+  console.log(
+    `Adaptation: ${outcome.source} · ${outcome.matchedJobs} outcome(s) · ` +
+      `${learn?.models.length ?? 0} learned intent(s) · ${nudgeCount} nudged`,
+  )
+  if (outcome.warnings.length) console.log(`  ⚠ ${outcome.warnings.join(' · ')}`)
+  console.log('')
+
   const grades: Record<string, number> = {}
   let scored = 0
   let skipped = 0
   let wrote = 0
   let updated = 0
+  let adapted = 0
 
   for (const row of rows) {
     const label = (row.title || row.topic || 'untitled').slice(0, 60)
 
     // Skip rows that already carry a score from the same engine era? No —
     // this is a raise/replace backfill: score every merged job and refresh.
-    const report = scoreMaster(jobToMasterEngineInput(row))
+    const report = scoreMaster(jobToMasterEngineInput(row), { byIntent })
     if (report.composite == null) {
       skipped++
       console.log(`  · skipped       ${row.id.slice(0, 8)}…  no computable composite · ${label}`)
       continue
     }
     scored++
+    if (report.adaptation.usedLearned) adapted++
     grades[report.grade ?? '?'] = (grades[report.grade ?? '?'] ?? 0) + 1
 
     const already = row.master_engine_score
@@ -140,6 +165,7 @@ async function main() {
   console.log(`  Rows scanned:      ${rows.length}`)
   console.log(`  Scored:            ${scored}`)
   console.log(`  Skipped:           ${skipped} (no computable composite)`)
+  console.log(`  Adapted (learned): ${adapted}`)
   const gradeLine = Object.entries(grades)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([g, n]) => `${g}:${n}`)
