@@ -176,7 +176,14 @@ export function tagItem(item: RawItem): TaggedItem {
   return { ...item, stages: Array.from(new Set(hits.slice(0, 3).map((h) => h.stage))), countries: Array.from(new Set(hits.slice(0, 2).map((h) => h.country))), score: hits.reduce((sum, h) => sum + h.score, 0) }
 }
 
-export interface KnowledgeIngestOptions { sources?: string[]; limitPerSource?: number; aiSummarize?: boolean; maxAiItems?: number }
+export interface KnowledgeIngestOptions {
+  sources?: string[]
+  limitPerSource?: number
+  aiSummarize?: boolean
+  maxAiItems?: number
+  /** Live progress callback for streaming surfaces (phase, message, detail). */
+  onProgress?: (phase: string, message: string, detail?: string) => void
+}
 export interface KnowledgeIngestResult { sourcesRun: number; itemsFetched: number; itemsStored: number; aiSummarized: number; skipped: number; errors: string[]; perSource: Array<{ id: string; label: string; fetched: number; stored: number; error?: string }> }
 
 function stagePromptBanks(): string { return LIFECYCLE_STAGES.map((s) => `${s.key}: ${s.label}`).join('\n') }
@@ -241,6 +248,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
 
   for (const source of sources) {
     const per: KnowledgeIngestResult['perSource'][number] = { id: source.id, label: source.label, fetched: 0, stored: 0 }
+    opts.onProgress?.('fetch', `Fetching ${source.label}…`)
     try {
       const res = await fetch(source.url, { headers: { Accept: 'application/rss+xml, application/atom+xml, text/xml, */*' }, signal: AbortSignal.timeout(12_000) })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -282,6 +290,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
       const msg = e instanceof Error ? e.message : String(e); per.error = msg.slice(0, 200); result.errors.push(`${source.id}: ${msg.slice(0, 160)}`)
     }
     result.sourcesRun += 1; result.perSource.push(per)
+    opts.onProgress?.('store', `${source.label}: ${per.stored} stored · ${per.fetched} fetched`, per.error)
   }
   return result
 }

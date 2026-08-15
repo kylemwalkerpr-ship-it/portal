@@ -51,6 +51,8 @@ export interface VisibilityAuditOptions {
   queries?: string[]
   engineLabel?: string
   maxAudits?: number
+  /** Live progress callback for streaming surfaces (phase, message, detail). */
+  onProgress?: (phase: string, message: string, detail?: string) => void
 }
 
 export interface VisibilityAuditResult {
@@ -152,8 +154,10 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   const audits: VisibilityAuditResult[] = []
 
   for (const q of queries) {
+    opts.onProgress?.('audit', `Auditing “${q}”…`)
     const result = await auditQuery(q, engine)
     audits.push(result)
+    opts.onProgress?.('result', `“${q}” ${result.cited ? 'cited the estate' : 'not cited'}`, result.cited ? result.citedUrls.slice(0, 3).join(' · ') || undefined : undefined)
     try {
       const supabase = createSupabaseAdminClient()
       await supabase.from('seo_llm_visibility').insert({

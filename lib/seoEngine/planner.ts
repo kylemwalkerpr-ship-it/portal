@@ -60,6 +60,8 @@ export interface PlanRequest {
   /** Draft AI narrative briefs (best-effort; false = faster, deterministic). */
   draftBriefs?: boolean
   limit?: number
+  /** Live progress callback for streaming surfaces (phase, message, detail). */
+  onProgress?: (phase: string, message: string, detail?: string) => void
 }
 
 export interface ClusterPlan {
@@ -411,7 +413,10 @@ function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, n
 }
 
 export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> {
+  req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC demand signals…')
   const signals = req.signals || (await pullGscSignals())
+  req.onProgress?.('signals', `${signals.length} demand signal(s) loaded`)
+  req.onProgress?.('knowledge', 'Loading knowledge + predictive intelligence…')
   const knowledge = (req.knowledge as unknown as Array<Record<string, unknown>>) || (await pullLatestKnowledge())
   const intelligence = await pullLatestIntelligence()
   const bias = knowledgeBias(knowledge)
@@ -594,6 +599,8 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
   }
 
   plans.sort((a, b) => b.opportunityScore - a.opportunityScore)
+
+  req.onProgress?.('persist', `Persisting ${plans.length} cluster plan(s)…`)
 
   // Persist to Supabase (best-effort, idempotent by cluster_id)
   try {

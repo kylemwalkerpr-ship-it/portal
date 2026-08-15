@@ -21,6 +21,7 @@ import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
+import { consumeSseStream } from '@/lib/seoFactory/sse'
 import {
   extractMetricValues,
   directionForMetric,
@@ -4466,6 +4467,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const latestJobContentRef = React.useRef(selectedJob?.content)
   latestJobContentRef.current = selectedJob?.content
   const [engineBusy, setEngineBusy] = React.useState(false)
+  // Live SSE trace for the masthead engine actions (Ingest / Plan / LLM audit).
+  const [engineTrace, setEngineTrace] = React.useState<Array<{ seq: number; phase: string; message: string; detail?: string; tone: string }>>([])
+  const [engineAction, setEngineAction] = React.useState<string | null>(null)
   const [queueFocusJobId, setQueueFocusJobId] = React.useState<string | null>(null)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
   // Work Plan — multi-select table for Discover stage
@@ -5477,14 +5481,31 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const runEngineAction = async (kind: 'plan' | 'llm' | 'ingest') => {
     setEngineBusy(true)
     setError(null)
+    setEngineTrace([])
+    setEngineAction(kind)
     try {
-      if (kind === 'plan') {
-        await fetch('/api/seo-engine/plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10, draftBriefs: false }) })
-      } else if (kind === 'llm') {
-        await fetch('/api/seo-engine/llm-visibility', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 6 }) })
-      } else {
-        await fetch('/api/seo-engine/knowledge', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limitPerSource: 8, maxAiItems: 8 }) })
+      const res = await fetch('/api/seo-engine/action-stream', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ kind, limit: 10, draftBriefs: false, maxAudits: 6, limitPerSource: 8, maxAiItems: 8 }),
+      })
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error || `Engine action returned ${res.status}`)
       }
+      let summary: string | null = null
+      await consumeSseStream(res.body, (ev) => {
+        if (ev.type === 'progress' && ev.step) {
+          const s = ev.step as { seq: number; phase: string; message: string; detail?: string; tone: string }
+          setEngineTrace((prev) => [...prev, s])
+        } else if (ev.type === 'done') {
+          summary = String((ev as { summary?: string }).summary || 'Engine action complete')
+        } else if (ev.type === 'error') {
+          throw new Error(String(ev.error || 'Engine action failed'))
+        }
+      })
+      if (summary) setActionNotice(summary)
       await fetchEngineStatus()
     } catch (e) {
       setError(e instanceof Error ? e.message : `${kind} failed`)
@@ -5613,16 +5634,40 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={() => void runEngineAction('ingest')} disabled={engineBusy} style={btnSolid(C.navy)} title="Scrape all intelligence sources now">
-            {engineBusy ? '⏳ …' : '🌐 Ingest knowledge'}
+            {engineBusy && engineAction === 'ingest' ? '⏳ Ingesting…' : '🌐 Ingest knowledge'}
           </button>
           <button type="button" onClick={() => void runEngineAction('plan')} disabled={engineBusy} style={{ ...btnSolid(C.gold) }} title="Rank GSC demand into life-cycle missions">
-            {engineBusy ? '⏳ …' : '🧭 Run planner'}
+            {engineBusy && engineAction === 'plan' ? '⏳ Planning…' : '🧭 Run planner'}
           </button>
           <button type="button" onClick={() => void runEngineAction('llm')} disabled={engineBusy} style={{ ...btnSolid('#6D28D9') }} title="Run an LLM share-of-voice audit (10 estate queries)">
-            {engineBusy ? '⏳ …' : '🤖 LLM audit'}
+            {engineBusy && engineAction === 'llm' ? '⏳ Auditing…' : '🤖 LLM audit'}
           </button>
         </div>
       </div>
+
+      {/* ── Live engine activity feed — streams the trace of the last masthead action ── */}
+      {engineTrace.length > 0 && (
+        <div style={{
+          margin: '0 0 14px', background: '#0b0e12', border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
+          fontFamily: C.mono, fontSize: 10, color: '#c7d3dd', maxHeight: 170, overflowY: 'auto',
+          padding: '8px 12px', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}>
+          {engineTrace.map((s) => (
+            <div key={s.seq} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ color: '#5b6b7b', width: 74, flexShrink: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{s.phase}</span>
+              <span style={{ color: s.tone === 'ok' ? '#34d399' : s.tone === 'warn' ? '#fbbf24' : '#dbe6ee' }}>{s.message}</span>
+              {s.detail && <span style={{ color: '#5b6b7b' }}> · {s.detail}</span>}
+            </div>
+          ))}
+          {engineBusy && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ color: '#5b6b7b', width: 74, flexShrink: 0 }}>…</span>
+              <span style={{ color: '#f87171' }}>▋</span>
+              <span style={{ color: '#5b6b7b', fontStyle: 'italic' }}>running {engineAction ?? 'action'}…</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <StudioStageNav
         tabs={TABS}
