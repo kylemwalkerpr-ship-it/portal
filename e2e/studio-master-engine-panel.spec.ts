@@ -147,6 +147,14 @@ const SUBS = {
   experience: { score: 0.7, coverage: 0.4 },
 }
 
+/** Ordered trace steps the stream endpoint emits before the `done` report. */
+const TRACE_STEPS = [
+  { seq: 1, phase: 'input', message: 'Ingesting draft · “engine panel visa guide”', detail: '950 body words · type article · region US', tone: 'info', progress: 0.04 },
+  { seq: 2, phase: 'intent', message: 'Intent classified → PROCEDURAL · YMYL', tone: 'accent', progress: 0.08 },
+  { seq: 3, phase: 'signals', message: 'Signal registry scanned — 110/240 computed (46% coverage)', tone: 'ok', progress: 0.16 },
+  { seq: 4, phase: 'done', message: 'COMPOSITE 74/100 · grade B', detail: 'confidence 74% · model v2.0.0', tone: 'ok', progress: 1 },
+]
+
 /** A full v2 engine report — ladder, derived features and governance present. */
 function makeEngineReport() {
   return {
@@ -205,7 +213,7 @@ function makeEngineReport() {
     },
     adaptation: { usedLearned: false },
     computedSignals: [],
-    trace: [],
+    trace: TRACE_STEPS,
   }
 }
 
@@ -234,14 +242,38 @@ async function installRouteMocks(page: Page): Promise<void> {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, job: drafted }) })
   })
 
-  // The Master SEO Engine endpoint — returns the full v2 report.
-  await page.route('**/api/seo-engine/master', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ ok: true, report: makeEngineReport(), learn: null }),
-    })
-  })
+  // The Master SEO Engine streaming endpoint — emits the trace steps as a live
+  // SSE stream (with a short pause so the "live" indicator is observable),
+  // then a `done` event carrying the full v2 report. Uses a window.fetch shim
+  // (matching studio-draft-live-preview.spec.ts) because route.fulfill can't
+  // stream a ReadableStream body in this Playwright version.
+  const report = makeEngineReport()
+  const frames = [
+    JSON.stringify({ type: 'progress', step: { seq: 0, phase: 'boot', message: 'Authenticated · starting Master SEO Engine', tone: 'info', progress: 0 } }),
+    ...TRACE_STEPS.map((s) => JSON.stringify({ type: 'progress', step: s })),
+    JSON.stringify({ type: 'done', report, learn: null }),
+  ]
+  await page.evaluate((dataLines: string[]) => {
+    const w = window as unknown as { __origFetch?: typeof fetch; fetch: typeof fetch }
+    if (!w.__origFetch) w.__origFetch = w.fetch.bind(w)
+    w.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.includes('/api/seo-engine/master/stream')) {
+        const enc = new TextEncoder()
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(enc.encode(`data: ${dataLines[0]}\n\n`))
+            await new Promise((r) => setTimeout(r, 600))
+            for (const f of dataLines.slice(1)) controller.enqueue(enc.encode(`data: ${f}\n\n`))
+            controller.enqueue(enc.encode('data: [DONE]\n\n'))
+            controller.close()
+          },
+        })
+        return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }
+      return w.__origFetch!(input, init)
+    }
+  }, frames)
 
   // Other studio mount fetches — keep the UI quiet.
   await page.route('**/api/content-studio/reaudit', async (route) => {
@@ -300,6 +332,11 @@ test.describe('Studio Master Engine panel — ladder, derived features, governan
     await expect(runBtn).toBeVisible({ timeout: 8000 })
     await expect(runBtn).toBeEnabled({ timeout: 5000 })
     await runBtn.dispatchEvent('click')
+
+    // ── Live stream — the trace arrives as SSE steps before the report resolves ──
+    const liveFeed = panel.getByTestId('engine-live-feed')
+    await expect(liveFeed).toBeVisible({ timeout: 8000 })
+    await expect(liveFeed.getByText('Authenticated · starting Master SEO Engine')).toBeVisible({ timeout: 5000 })
 
     // ── Ranking probability ladder ──
     await expect(panel.getByText('Ranking probability ladder')).toBeVisible({ timeout: 10000 })

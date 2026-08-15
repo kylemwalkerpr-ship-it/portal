@@ -3,6 +3,7 @@
 import React from 'react'
 import { studioTokens as E } from './studio-tokens'
 import type { ContentJob } from './studio-ui-shared'
+import { consumeSseStream } from '@/lib/seoFactory/sse'
 
 const C = E
 
@@ -113,6 +114,8 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
   const [report, setReport] = React.useState<MasterReport | null>(null)
   const [learn, setLearn] = React.useState<LearnSummary | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const [streaming, setStreaming] = React.useState(false)
+  const [liveTrace, setLiveTrace] = React.useState<MasterReport['trace']>([])
   const [error, setError] = React.useState<string | null>(null)
 
   async function run() {
@@ -122,26 +125,43 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
     }
     setBusy(true)
     setError(null)
+    setReport(null)
+    setLearn(null)
+    setLiveTrace([])
+    setStreaming(true)
     try {
-      const res = await fetch('/api/seo-engine/master', {
+      const res = await fetch('/api/seo-engine/master/stream', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({ jobId: job.id }),
       })
-      const data = await res.json().catch(() => ({})) as {
-        ok?: boolean; error?: string; report?: MasterReport; learn?: LearnSummary | null
-      }
-      if (!res.ok || !data.report) {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(data.error || `Engine returned ${res.status}`)
       }
-      setReport(data.report)
-      setLearn(data.learn ?? null)
-      notice?.(`Master Engine: ${data.report.grade ?? '—'} (${data.report.composite ?? '—'}/100) · ${data.report.intentLabel}`)
+      let finalReport: MasterReport | null = null
+      let finalLearn: LearnSummary | null = null
+      await consumeSseStream(res.body, (ev) => {
+        if (ev.type === 'progress' && ev.step) {
+          const s = ev.step as MasterReport['trace'][number]
+          setLiveTrace((prev) => [...prev, s])
+        } else if (ev.type === 'done') {
+          finalReport = (ev.report as MasterReport) ?? null
+          finalLearn = (ev.learn as LearnSummary | null) ?? null
+        } else if (ev.type === 'error') {
+          throw new Error(String(ev.error || 'Engine stream failed'))
+        }
+      })
+      if (!finalReport) throw new Error('Engine stream ended before a report was received')
+      setReport(finalReport)
+      setLearn(finalLearn)
+      notice?.(`Master Engine: ${finalReport.grade ?? '—'} (${finalReport.composite ?? '—'}/100) · ${finalReport.intentLabel}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Engine run failed')
     } finally {
       setBusy(false)
+      setStreaming(false)
     }
   }
 
@@ -177,13 +197,19 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
         </div>
       )}
 
-      {!report && !error && (
+      {!report && !error && !streaming && (
         <div style={{ padding: '34px 18px', textAlign: 'center' }}>
           <div style={{ fontFamily: C.serif, fontStyle: 'italic', color: E.inkMuted, maxWidth: 520, margin: '0 auto', fontSize: 14 }}>
             {job
               ? `Score “${job.title || job.topic}” against the SERP consensus — click “Run full analysis” to see the layered report, competitive deltas and prioritized fixes.`
               : 'Select a draft in the Review stage, then run the engine to get a full competitive analysis of the article.'}
           </div>
+        </div>
+      )}
+
+      {streaming && !report && (
+        <div style={{ padding: '0 18px 18px' }}>
+          <EngineLiveFeed trace={liveTrace} live />
         </div>
       )}
 
@@ -399,7 +425,7 @@ const PHASE_PAD: Record<string, string> = {
   predict: 'PREDICT', done: 'DONE',
 }
 
-function EngineLiveFeed({ trace, onDone }: { trace: MasterReport['trace']; onDone?: () => void }) {
+function EngineLiveFeed({ trace, live = false, onDone }: { trace: MasterReport['trace']; live?: boolean; onDone?: () => void }) {
   const [count, setCount] = React.useState(0)
   const [playing, setPlaying] = React.useState(true)
   const [speed, setSpeed] = React.useState(1)
@@ -407,39 +433,43 @@ function EngineLiveFeed({ trace, onDone }: { trace: MasterReport['trace']; onDon
   const doneRef = React.useRef(false)
 
   const total = trace.length
-  const finished = count >= total
+  // In live mode the feed grows as the server streams; it is never "finished"
+  // until the `done` event lands and the panel swaps to the full replay feed.
+  const finished = live ? false : count >= total
 
-  // Reset whenever a new trace arrives
+  // Reset the replay whenever a new trace arrives (replay mode only).
   React.useEffect(() => {
+    if (live) return
     setCount(0)
     setPlaying(true)
     doneRef.current = false
-  }, [trace])
+  }, [trace, live])
 
   // Autoscroll while streaming
   React.useEffect(() => {
     const el = ref.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [count, trace])
+  }, [count, trace, live])
 
-  // The stream "live" ticker
+  // The replay ticker (disabled in live mode — steps arrive from the server)
   React.useEffect(() => {
-    if (!playing || finished) return
+    if (live || !playing || finished) return
     const delay = Math.max(90, 320 / speed)
     const t = setTimeout(() => setCount((c) => Math.min(total, c + 1)), delay)
     return () => clearTimeout(t)
-  }, [playing, finished, count, speed, total])
+  }, [live, playing, finished, count, speed, total])
 
-  // Fire onDone once the stream reaches the end
+  // Fire onDone once the replay reaches the end
   React.useEffect(() => {
+    if (live) return
     if (finished && !doneRef.current) {
       doneRef.current = true
       onDone?.()
     }
-  }, [finished, onDone])
+  }, [live, finished, onDone])
 
-  const visible = trace.slice(0, count)
-  const progress = total ? count / total : 0
+  const visible = live ? trace : trace.slice(0, count)
+  const progress = total ? (live ? 1 : count / total) : 0
   const lastTone = trace[count - 1]?.tone
 
   return (
@@ -458,23 +488,30 @@ function EngineLiveFeed({ trace, onDone }: { trace: MasterReport['trace']; onDon
             width: 7, height: 7, borderRadius: '50%',
             background: finished ? '#34d399' : '#f87171',
             boxShadow: finished ? 'none' : '0 0 6px #f87171',
+            animation: live ? 'studioPulse 1.2s infinite' : 'none',
           }} />
           {finished ? 'Analysis complete' : 'Engine live'}
         </span>
         <span style={{ flex: 1, fontFamily: C.mono, fontSize: 9, color: '#5b6b7b', letterSpacing: '0.06em' }}>
-          step {Math.min(count, total)}/{total} · {Math.round(progress * 100)}%
+          {live
+            ? `streaming · ${total} step${total === 1 ? '' : 's'}`
+            : `step ${Math.min(count, total)}/${total} · ${Math.round(progress * 100)}%`}
         </span>
-        <button type="button" onClick={() => { setPlaying(!playing); if (finished) { setCount(0); setPlaying(true) } }}
-          style={feedBtn}>
-          {finished ? '↺ replay' : playing ? '❚❚ pause' : '▶ play'}
-        </button>
-        <button type="button" onClick={() => setSpeed((s) => (s >= 4 ? 1 : s * 2))} style={feedBtn}>
-          {speed}×
-        </button>
-        {!finished && (
-          <button type="button" onClick={() => setCount(total)} style={feedBtn}>
-            skip ⏭
-          </button>
+        {!live && (
+          <>
+            <button type="button" onClick={() => { setPlaying(!playing); if (finished) { setCount(0); setPlaying(true) } }}
+              style={feedBtn}>
+              {finished ? '↺ replay' : playing ? '❚❚ pause' : '▶ play'}
+            </button>
+            <button type="button" onClick={() => setSpeed((s) => (s >= 4 ? 1 : s * 2))} style={feedBtn}>
+              {speed}×
+            </button>
+            {!finished && (
+              <button type="button" onClick={() => setCount(total)} style={feedBtn}>
+                skip ⏭
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -508,7 +545,7 @@ function EngineLiveFeed({ trace, onDone }: { trace: MasterReport['trace']; onDon
             <span style={{ color: '#3d4c5c', width: 34, flexShrink: 0, textAlign: 'right' }}>…</span>
             <span style={{ color: '#f87171' }}>▋</span>
             <span style={{ color: '#5b6b7b', fontStyle: 'italic' }}>
-              {trace[count] ? trace[count].message.slice(0, 60) + '…' : 'computing…'}
+              {live ? 'awaiting next step…' : trace[count] ? trace[count].message.slice(0, 60) + '…' : 'computing…'}
             </span>
           </div>
         )}
@@ -517,9 +554,11 @@ function EngineLiveFeed({ trace, onDone }: { trace: MasterReport['trace']; onDon
       {/* Progress bar */}
       <div style={{ height: 3, background: '#101418' }}>
         <div style={{
-          width: `${Math.max(2, progress * 100)}%`, height: '100%',
+          width: live ? '100%' : `${Math.max(2, progress * 100)}%`,
+          height: '100%',
           background: finished ? '#34d399' : (lastTone === 'err' ? '#f87171' : '#fbbf24'),
           transition: 'width 120ms linear',
+          animation: live ? 'studioPulse 1.2s infinite' : 'none',
         }} />
       </div>
     </div>
