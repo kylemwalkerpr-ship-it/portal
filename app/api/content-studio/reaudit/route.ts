@@ -3,6 +3,7 @@ import { generateContentText } from '@/lib/contentAiProvider'
 import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
+import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType } from '@/lib/seoFactory/contentDepth'
 import { auditLinksLive, stripDeadLinks } from '@/lib/seoFactory/linkAudit'
@@ -204,6 +205,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     let fixedContent: string
+    // Master Engine fix plan — the engine's highest-priority gaps, rendered
+    // into a prompt block so fix_all / fix_warnings address the highest-
+    // expected-value gaps FIRST instead of letting the model free-form. Pure
+    // local computation (no AI, no network), computed lazily for the actions
+    // that consume it.
+    let enginePlan: MasterEngineFixPlan | null = null
     // Depth-mediation plan — hoisted so the appliedRepairs block below can
     // report the floor numbers after the append-only expansion runs.
     let depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
@@ -213,6 +220,18 @@ export async function PATCH(request: NextRequest) {
     let depthExpandedForWarnings = false
 
     if (action === 'fix_all' && annotations && annotations.length > 0) {
+      // Master Engine gaps FIRST — the model must tackle the highest-priority
+      // expected-value gaps (internal links, schema, citations, YMYL trust…) in
+      // order before the annotation sweep, so the rewrite converges on the
+      // strategic gaps rather than only the mechanical issues.
+      enginePlan = masterEngineFixPlan({
+        content,
+        primaryKeyword,
+        contentType,
+        region,
+        indexable,
+        competingUrls: (body as any).competingUrls,
+      })
       // Build a comprehensive fix prompt listing every issue
       const blockerList = annotations
         .filter((a) => a.severity === 'blocker')
@@ -224,7 +243,8 @@ export async function PATCH(request: NextRequest) {
         .join('\n')
 
       const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. Return ONLY the complete fixed article. Do not add explanations.'
-      const prompt = `## Original Article
+      const prompt = `${enginePlan.promptBlock}
+## Original Article
 
 ${content}
 
@@ -235,12 +255,13 @@ ${blockerList}
 ${warningList}
 
 ## INSTRUCTIONS
-1. Fix EVERY blocker listed above - these are mandatory
-2. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
-3. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
-4. Add specific data, examples, or concrete details where the article is vague
-5. Keep all original headings, interlinks, and key facts intact
-6. Return the COMPLETE fixed article, nothing else`
+1. Address the PRIORITIZED ENGINE GAPS first, in the exact order listed — highest expected value first
+2. Then fix EVERY blocker listed above - these are mandatory
+3. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
+4. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
+5. Add specific data, examples, or concrete details where the article is vague
+6. Keep all original headings, interlinks, and key facts intact
+7. Return the COMPLETE fixed article, nothing else`
 
       fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
 
@@ -291,7 +312,20 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       // above — do not ask the sweep to pad on top of the expansion).
       const rest = warnings.filter((w) => w.code !== 'word_count_target')
       if (rest.length) {
-        const sys = 'You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.'
+        // The sweep is minimal-edit by design, but it still gets the engine's
+        // top gaps so structure-level wins (reader path, second person,
+        // table/example) are addressed before the fine-grained polish.
+        enginePlan = masterEngineFixPlan({
+          content,
+          primaryKeyword,
+          contentType,
+          region,
+          indexable,
+          competingUrls: (body as any).competingUrls,
+        })
+        const sys = `You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.
+
+${enginePlan.promptBlock}`
         fixedContent = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
       }
 
@@ -381,6 +415,8 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         requiredLongTailKeywords,
       }),
       fixedContent,
+      // Let the editor show which engine gaps the fix targeted, in order.
+      ...(enginePlan ? { enginePriorities: enginePlan.priorities } : {}),
     }
     fixedContent = await mergeLinkAudit(response, fixedContent)
     const applied: string[] = []

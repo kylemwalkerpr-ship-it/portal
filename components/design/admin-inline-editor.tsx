@@ -226,7 +226,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       onScoreChange?.(data.score)
-      setNotice(`AI fix applied - new score ${data.score}/100 - ${data.ok ? 'PASSED' : 'BLOCKED'}`)
+      const engine = (data.enginePriorities || []) as Array<{ priority: number; subsystem: string; action: string }>
+      setNotice(
+        `AI fix applied - new score ${data.score}/100 - ${data.ok ? 'PASSED' : 'BLOCKED'}`
+        + (engine.length ? ` · targeted ${engine.length} engine gap${engine.length === 1 ? '' : 's'} (${engine[0].subsystem} → …)` : ''),
+      )
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'AI fix failed')

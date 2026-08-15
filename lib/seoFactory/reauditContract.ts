@@ -24,6 +24,9 @@ import { buildDepthAppendPrompt, extractH2Titles } from './prompts'
 
 export type ReauditResponse = {
   ok: boolean; score: number; summary: string
+  /** Master Engine gaps the AI fix targeted, in priority order (fix_all /
+   *  fix_warnings only). Lets the editor show what the fix was aimed at. */
+  enginePriorities?: Array<{ priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number }>
   annotations: InlineAnnotation[]; blockers: number; warnings: number
   fixedContent?: string
   appliedRepairs?: string[]

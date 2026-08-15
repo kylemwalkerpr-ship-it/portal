@@ -1099,6 +1099,48 @@ function grade(score: number): MasterEngineReport['grade'] {
   return 'F'
 }
 
+// ═══ Fix-loop integration ═════════════════════════════════════════════════
+
+export interface MasterEngineFixPlan {
+  /** Top engine gaps, sorted by priority (Priority = Lift × Confidence × Value / Cost). */
+  priorities: Array<{
+    priority: number
+    subsystem: SubsystemId
+    action: string
+    effort: 'low' | 'medium' | 'high'
+    lift: number
+    confidence: number
+  }>
+  /** Prompt-ready block telling the review model to address the gaps in order. */
+  promptBlock: string
+}
+
+/**
+ * Build the fix-loop plan: run the engine, take the highest-priority
+ * recommendations, and render them into a prompt block the AI re-audit fix
+ * loop prepends to fix_all / fix_warnings. Pure and cheap (no AI, no
+ * network) — safe to call on every PATCH.
+ */
+export function masterEngineFixPlan(input: MasterEngineInput): MasterEngineFixPlan {
+  const report = scoreMaster(input)
+  const recs = report.recommendations.slice(0, 8)
+  const priorities = recs.map((r) => ({
+    priority: r.priority,
+    subsystem: r.subsystem,
+    action: r.action,
+    effort: r.effort,
+    lift: r.lift,
+    confidence: r.confidence,
+  }))
+  const promptBlock = [
+    '## PRIORITIZED ENGINE GAPS — address IN THIS ORDER (highest expected value first)',
+    'Each gap comes from the Master SEO Engine (priority = Lift × Confidence × Value / Cost).',
+    ...recs.map((r, i) => `${i + 1}. [${r.subsystem.toUpperCase()} · p${r.priority}] ${r.action} (effort: ${r.effort}, lift ~${Math.round(r.lift * 100)}%)`),
+    '',
+  ].join('\n')
+  return { priorities, promptBlock }
+}
+
 export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
   const values = computeSignals(input)
   const intent = detectIntent(input)

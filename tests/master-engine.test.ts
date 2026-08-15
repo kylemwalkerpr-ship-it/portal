@@ -11,6 +11,7 @@ import {
   computeSignals,
   scoreMaster,
   competitiveBaseline,
+  masterEngineFixPlan,
   type MasterEngineInput,
 } from '@/lib/seoFactory/masterEngine'
 import type { BacklinkSnapshot } from '@/lib/seoFactory/backlinkProvider'
@@ -252,6 +253,36 @@ describe('Master SEO Engine — signal computation', () => {
   it('detects outcome-guarantee language', () => {
     const report = scoreMaster(healthyInput({ content: 'We guarantee 100% approval on your visa application. ' + LEGAL_GUIDE }))
     expect(report.risks.some((r) => r.code === 'outcome_promise' && r.severity === 'blocker')).toBe(true)
+  })
+})
+
+describe('Master SEO Engine — fix-loop integration', () => {
+  it('renders the top engine gaps into a prompt block, ordered by priority', () => {
+    const plan = masterEngineFixPlan(healthyInput())
+    expect(plan.priorities.length).toBeGreaterThan(0)
+    expect(plan.priorities.length).toBeLessThanOrEqual(8)
+    // Strictly descending priority (fix order = highest expected value first)
+    for (let i = 1; i < plan.priorities.length; i++) {
+      expect(plan.priorities[i - 1].priority).toBeGreaterThanOrEqual(plan.priorities[i].priority)
+    }
+    // Prompt block names the header and the top action
+    expect(plan.promptBlock).toContain('PRIORITIZED ENGINE GAPS')
+    expect(plan.promptBlock).toContain(plan.priorities[0].action)
+    expect(plan.promptBlock).toContain('IN THIS ORDER')
+  })
+
+  it('weak drafts surface concrete high-value gaps first', () => {
+    const plan = masterEngineFixPlan({
+      topic: 'visa refusal appeal',
+      primaryKeyword: 'visa refusal appeal',
+      contentType: 'article',
+      content: 'Visa refusal appeal. This is very short.',
+    })
+    expect(plan.priorities.length).toBeGreaterThan(0)
+    const top = plan.priorities[0]
+    expect(top.subsystem).toBeTruthy()
+    expect(top.action.length).toBeGreaterThan(10)
+    expect(plan.promptBlock.startsWith('## PRIORITIZED ENGINE GAPS')).toBe(true)
   })
 })
 
