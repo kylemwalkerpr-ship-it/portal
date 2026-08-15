@@ -45,6 +45,8 @@ export const studioTokens = {
   mossGreen: '#3F6F3F', // success ink
   mossSoft: '#D8E5D5',
   red: '#DC2626',
+  redSoft: '#FEF2F2',
+  redBorder: '#FECACA',
   green: '#166534',
   greenSoft: '#ECFDF5',
   orange: '#D97706',

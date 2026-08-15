@@ -3844,7 +3844,7 @@ function buildWorkPlan(
 }
 
 function WorkPlanTable({
-  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch,
+  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, resolvingIds,
 }: {
   items: WorkPlanItem[]
   selectedIds: Set<string>
@@ -3852,6 +3852,8 @@ function WorkPlanTable({
   onSelectAll: () => void
   onClearSelection: () => void
   onSendToResearch: (items: WorkPlanItem[]) => void
+  onResolveCannibal: (item: WorkPlanItem) => void
+  resolvingIds?: Set<string>
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
   const filtered = filterCat === 'all' ? items : items.filter((i) => i.category === filterCat)
@@ -3956,7 +3958,21 @@ function WorkPlanTable({
                   </div>
                 </div>
                 <div>
-                  {item.suggestion ? (
+                  {item.category === 'cannibal' ? (
+                    <button
+                      type="button"
+                      onClick={() => onResolveCannibal(item)}
+                      disabled={resolvingIds?.has(item.id)}
+                      title="Auto-resolve: winner = highest impressions, 301 losers → winner, retire losers at the source"
+                      style={{
+                        padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.red}`, background: resolvingIds?.has(item.id) ? E.redSoft : 'transparent',
+                        color: E.red, cursor: resolvingIds?.has(item.id) ? 'wait' : 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                        whiteSpace: 'nowrap', opacity: resolvingIds?.has(item.id) ? 0.6 : 1,
+                      }}
+                    >
+                      {resolvingIds?.has(item.id) ? 'Resolving…' : '⚠ Resolve'}
+                    </button>
+                  ) : item.suggestion ? (
                     <button type="button" onClick={() => {
                       // Single-item quick apply
                       if (item.suggestion) {
@@ -4607,6 +4623,46 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       }))
     } catch { /* best-effort */ }
   }, [])
+
+  // One-click cannibal resolution from the Work Plan: resolve the competing
+  // pages (winner = highest impressions) and execute the merge — 301 losers →
+  // winner, retire losers at the source, enrich the winner. The decision is
+  // recorded to cannibal_merges and the Merge History panel refreshes so the
+  // cluster shows as resolved. Mirrors ResearchLiveOperations' resolve flow.
+  const [resolvingCannibalIds, setResolvingCannibalIds] = React.useState<Set<string>>(new Set())
+  const handleResolveCannibal = React.useCallback(async (item: WorkPlanItem) => {
+    setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
+    try {
+      const res = await fetch('/api/seo-factory/cannibal-merge', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ term: item.topic, mode: 'merge' }),
+      })
+      const body = await res.json().catch(() => ({})) as {
+        error?: string
+        winnerUrl?: string
+        redirectsAdded?: Array<unknown>
+        skipped?: Array<unknown>
+        commits?: Array<{ prUrl?: string }>
+      }
+      if (!res.ok) throw new Error(body.error || `Cannibal resolve failed (${res.status})`)
+      const redirects = Array.isArray(body.redirectsAdded) ? body.redirectsAdded.length : 0
+      const skipped = Array.isArray(body.skipped) ? body.skipped.length : 0
+      const prUrl = (body.commits ?? []).map((c) => c?.prUrl).find(Boolean)
+      let notice = `⚠ Cannibal resolved: ${redirects} redirect(s) → ${body.winnerUrl || 'winner'}`
+      if (prUrl) notice += ` · PR ${prUrl}`
+      if (redirects === 0 && skipped > 0) notice += ` · ${skipped} URL(s) skipped (no redirect convention)`
+      setActionNotice(notice)
+      void fetchMergeHistory()
+    } catch (err) {
+      setActionNotice(`Cannibal resolve failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+    } finally {
+      setResolvingCannibalIds((prev) => {
+        const next = new Set(prev)
+        next.delete(item.id)
+        return next
+      })
+    }
+  }, [fetchMergeHistory, setActionNotice])
 
   const fetchSuggestions = React.useCallback(async (regionArg: string) => {
     setSuggestionsLoading(true)
@@ -5891,6 +5947,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 onSelectAll={() => setSelectedWorkPlanIds(new Set(workPlanItems.map((i) => i.id)))}
                 onClearSelection={() => setSelectedWorkPlanIds(new Set())}
                 onSendToResearch={handleSendToResearch}
+                onResolveCannibal={handleResolveCannibal}
+                resolvingIds={resolvingCannibalIds}
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
