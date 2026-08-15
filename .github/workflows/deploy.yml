@@ -103,6 +103,10 @@ jobs:
           BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
           BASETEN_MODEL: ${{ secrets.BASETEN_MODEL }}
           BASETEN_GLM_MODEL: ${{ secrets.BASETEN_GLM_MODEL }}
+          # DataForSEO Backlinks API — Master SEO Engine links subsystem
+          # (lib/seoFactory/backlinkProvider.ts). Basic auth login + password.
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           CUSTOM_AI_BASE_URL: ${{ secrets.CUSTOM_AI_BASE_URL }}
@@ -226,6 +230,11 @@ jobs:
           put_secret BASETEN_API_KEY           "$BASETEN_API_KEY"
           put_secret BASETEN_MODEL             "${BASETEN_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
           put_secret BASETEN_GLM_MODEL         "${BASETEN_GLM_MODEL:-zai-org/GLM-5.2-Fast}"
+          # DataForSEO Backlinks API — Master SEO Engine links subsystem.
+          # Basic-auth login + password; put_secret no-ops when unset so a
+          # deploy stays green until the credentials are provisioned.
+          put_secret DATAFORSEO_LOGIN          "$DATAFORSEO_LOGIN"
+          put_secret DATAFORSEO_PASSWORD       "$DATAFORSEO_PASSWORD"
           put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"
           put_secret OPENAI_MODEL              "${OPENAI_MODEL:-gpt-5.6-luna}"
           put_secret CUSTOM_AI_BASE_URL        "$CUSTOM_AI_BASE_URL"
