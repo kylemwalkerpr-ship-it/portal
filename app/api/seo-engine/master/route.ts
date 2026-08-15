@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { scoreMaster, type MasterEngineInput } from '@/lib/seoFactory/masterEngine'
 import { learnWeights, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
+import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 
 /**
  * POST /api/seo-engine/master
@@ -50,36 +51,7 @@ export async function POST(request: NextRequest) {
       if (error || !job) {
         return NextResponse.json({ error: `Job not found: ${error?.message || body.jobId}` }, { status: 404 })
       }
-      input = {
-        topic: job.topic || undefined,
-        primaryKeyword: job.primary_keyword || job.topic || undefined,
-        contentType: job.content_type || undefined,
-        region: job.region || undefined,
-        title: job.title || undefined,
-        content: job.content || undefined,
-        liveHtml: job.live_html || undefined,
-        liveUrl: job.live_url || job.canonical_url || undefined,
-        liveHttpStatus: job.live_http_status ?? undefined,
-        indexable: job.indexable ?? undefined,
-        canonicalUrl: job.canonical_url || undefined,
-        requiredShortKeywords: job.required_short_keywords || undefined,
-        requiredLongTailKeywords: job.required_long_tail_keywords || undefined,
-        competingSnippets: job.competing_snippets || undefined,
-        competingUrls: job.competing_urls || undefined,
-        gsc: job.gsc && typeof job.gsc === 'object'
-          ? {
-              impressions: job.gsc.impressions,
-              clicks: job.gsc.clicks,
-              ctr: job.gsc.ctr,
-              position: job.gsc.position,
-              queries: job.gsc.queries,
-            }
-          : undefined,
-        backlinks: job.backlinks_json || undefined,
-        authorityScore: job.authority_score ?? undefined,
-        createdAt: job.created_at || undefined,
-        updatedAt: job.updated_at || undefined,
-      }
+      input = jobToMasterEngineInput(job)
     }
 
     const report = scoreMaster(input)

@@ -1270,6 +1270,14 @@ function PublishLedger({
       setActionNotice?.(message)
     }
   }, [setActionNotice])
+  // Master Engine summary for the KPI row — persisted composite scores on the
+  // merged stamps (computed inline: 89 rows is trivial).
+  const engineScored = stamps.filter((s) => s.master_engine_score != null)
+  const engineAvg = engineScored.length
+    ? Math.round(engineScored.reduce((a, s) => a + (s.master_engine_score ?? 0), 0) / engineScored.length)
+    : null
+  const gradeMix = Array.from(new Set(engineScored.map((s) => s.master_engine_grade).filter(Boolean) as string[]))
+    .sort().join('/')
   return (
     <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
@@ -1317,6 +1325,13 @@ function PublishLedger({
                 : divergenceSummary.missing > 0 ? `${divergenceSummary.missing} missing forecast data` : 'forecast vs GSC direction',
               icon: '🤖',
               accuracy: divergenceSummary.accuracy,
+            },
+            {
+              label: 'Avg Engine Score',
+              value: engineAvg != null ? `${engineAvg}/100` : '—',
+              sub: engineScored.length > 0 ? `${engineScored.length} scored · grades ${gradeMix || '—'}` : 'run backfill to score merged jobs',
+              icon: '🧠',
+              accuracy: engineAvg,
             },
           ].map((kpi, i) => (
             <div key={i} style={{
@@ -1692,6 +1707,20 @@ function PublishLedger({
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>
+                    {j.master_engine_score != null && (
+                      <span
+                        title={`Master Engine: ${j.master_engine_score}/100 · grade ${j.master_engine_grade} · ${j.master_engine_fetched_at ? `scored ${timeAgo(j.master_engine_fetched_at)}` : ''}`}
+                        style={{
+                          color: (j.master_engine_grade === 'A' || j.master_engine_grade === 'B') ? E.mossGreen
+                            : j.master_engine_grade === 'C' ? '#C47F17'
+                            : (j.master_engine_grade === 'D' || j.master_engine_grade === 'F') ? E.red
+                            : E.inkMuted,
+                          fontWeight: 700,
+                        }}
+                      >
+                        🧠 {j.master_engine_score} · {j.master_engine_grade}
+                      </span>
+                    )}
                     <span>{j.branch_name || 'main'}</span>
                     <span>·</span>
                     <span>{timeAgo(j.merged_at || j.updated_at || j.created_at)}</span>

@@ -38,6 +38,10 @@ export interface ContentJob {
     rescue?: DepthRescueStats
   } | null
   primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
+  /** Master SEO Engine composite (0-100) + grade, persisted by the backfill. */
+  master_engine_score?: number | null
+  master_engine_grade?: string | null
+  master_engine_fetched_at?: string | null
   created_at: string; updated_at: string
 }
 

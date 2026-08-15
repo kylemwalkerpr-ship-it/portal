@@ -57,6 +57,9 @@ const JOB_LIST_COLUMNS = [
   'closed_at',
   'created_at',
   'updated_at',
+  'master_engine_score',
+  'master_engine_grade',
+  'master_engine_fetched_at',
 ].join(',')
 
 export async function GET(request: NextRequest) {
