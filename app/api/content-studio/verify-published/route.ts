@@ -57,10 +57,10 @@ export async function POST(request: NextRequest) {
     const stamp = {
       status: result.ok
         ? 'verified'
-        : (result.hasCanonical === false)
-          ? 'canonical_mismatch'
-          : (result.hasNoIndex)
-            ? 'noindex'
+        : (result.hasNoIndex)
+          ? 'noindex'
+          : (result.hasCanonical === false)
+            ? 'canonical_mismatch'
             : (result.httpStatus && result.httpStatus !== 200)
               ? 'fetch_failed'
               : 'needs_review',
@@ -68,10 +68,12 @@ export async function POST(request: NextRequest) {
         ? String(result.error)
         : (result.ok
           ? `Verified · HTTP ${result.httpStatus} · ${result.wordCount ?? '?'}w · score ${result.auditScore ?? '?'}/100`
-          : (result.hasCanonical === false)
-            ? `Canonical tag points to ${result.canonicalHref || 'a different URL'}`
-            : (result.hasNoIndex)
-              ? 'Live URL is noindex'
+          : (result.hasNoIndex)
+            ? 'Live URL is noindex'
+            : (result.hasCanonical === false)
+              ? (result.canonicalHref
+                ? `Canonical tag points to ${result.canonicalHref}`
+                : 'Missing canonical tag on live page')
               : `HTTP ${result.httpStatus || '?'} · needs review`),
     }
 

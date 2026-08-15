@@ -178,15 +178,18 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
   const ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && wc>=200
   if (input.jobId) {
     try {
+      // live_status is CHECK-constrained to ('verified','noindex','fetch_failed',
+      // 'needs_review','unverified') — there is no 'canonical_mismatch' enum value,
+      // so a canonical mismatch persists as needs_review + the raw href in
+      // live_canonical_url; verify-published recomputes the precise stamp from
+      // hasCanonical/canonicalHref in-memory.
       const liveStatus = ok
         ? 'verified'
         : hasNoIndex
           ? 'noindex'
-          : (canonicalHref && !hasCanonical)
-            ? 'canonical_mismatch'
-            : (httpStatus !== 200)
-              ? 'fetch_failed'
-              : 'needs_review'
+          : (httpStatus !== 200)
+            ? 'fetch_failed'
+            : 'needs_review'
       const db = dbc()
       await (db as any).from('content_jobs').update({
         live_verified_at: verifiedAt,
@@ -196,8 +199,11 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
         live_audit_score: auditScore,
         live_human_score: humanScore,
         live_has_noindex: hasNoIndex,
-        live_canonical_href: canonicalHref,
-        live_has_canonical: hasCanonical,
+        live_canonical_url: canonicalHref,
+        live_purge_status: purgeStatus,
+        live_sitemap_status: sitemapStatus,
+        live_indexnow_status: indexNowRes,
+        live_error: auditError,
       }).eq('id', input.jobId)
     } catch {}
     await appendLog(input.jobId, { level: ok?'success':'warn', source:'liveVerify', message: ok?`Live verified: ${url} — ${wc}w · score ${auditScore}/100 · human ${humanScore} · HTTP ${httpStatus} · canonical=${hasCanonical}`:`Live needs review: ${url} — ${auditError||`HTTP ${httpStatus} · ${wc}w · noindex=${hasNoIndex} · canonical=${hasCanonical} · score ${auditScore}`}`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, httpStatus, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical }, null,2) })
