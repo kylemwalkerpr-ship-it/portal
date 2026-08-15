@@ -115,6 +115,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   } | null>(null)
   // Merged quality + audit warnings (schema/meta/internal-links included).
   const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
+  // Engine gaps the last Fix-all targeted (PATCH fix_all response) — shown as
+  // a prioritized checklist so the admin sees exactly WHAT the model was asked
+  // to fix, in order. Cleared on Re-audit (a fresh audit supersedes the plan).
+  const [enginePlan, setEnginePlan] = useState<Array<{
+    code: string; priority: number; subsystem: string; action: string
+    effort: string; lift: number; confidence: number
+  }> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const pendingJumpRef = useRef<InlineAnnotation | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -186,6 +193,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
+      setEnginePlan(null) // a fresh audit supersedes the last fix plan
       onScoreChange?.(data.score)
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · auto-fixed: ${data.appliedRepairs.join(', ')}`
@@ -226,10 +234,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       onScoreChange?.(data.score)
-      const engine = (data.enginePriorities || []) as Array<{ priority: number; subsystem: string; action: string }>
+      const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number }>
+      // Persist the targeted plan so the checklist renders below — the notice
+      // stays a one-liner, the full prioritized list lives in the panel.
+      setEnginePlan(engine.length ? engine : null)
       setNotice(
         `AI fix applied - new score ${data.score}/100 - ${data.ok ? 'PASSED' : 'BLOCKED'}`
-        + (engine.length ? ` · targeted ${engine.length} engine gap${engine.length === 1 ? '' : 's'} (${engine[0].subsystem} → …)` : ''),
+        + (engine.length ? ` · targeted ${engine.length} engine gap${engine.length === 1 ? '' : 's'} — see checklist` : ''),
       )
     } catch (err) {
       if (seq !== fixSeqRef.current) return
@@ -378,6 +389,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
+      // The warnings sweep also receives the engine's top gaps — surface the
+      // same checklist when the route returns them.
+      const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number }>
+      setEnginePlan(engine.length ? engine : null)
       onScoreChange?.(data.score)
       setNotice(`Warnings sweep applied - ${data.warnings ?? 0} warning(s) remain`)
     } catch (err) {
@@ -577,6 +592,44 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           <div style={{ fontSize: 10, color: C.textDim }}>
             Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Use <strong>Fix all warnings</strong> or the per-issue AI Fix in the issues panel.
           </div>
+        </div>
+      )}
+
+      {/* Engine gaps targeted — prioritized checklist from the last Fix-all / warnings sweep */}
+      {enginePlan && enginePlan.length > 0 && (
+        <div data-testid="studio-engine-plan" style={{
+          display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px',
+          borderRadius: 8, background: '#F5F3FF', border: '1px solid #DDD6FE',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 800, fontFamily: C.mono, letterSpacing: '0.08em', color: C.purple, textTransform: 'uppercase' }}>
+              🧠 Engine gaps targeted · {enginePlan.length} prioritized
+            </span>
+            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.serif, fontStyle: 'italic' }}>
+              the review model was asked to address these in order — click <b>Re-audit</b> to confirm which cleared
+            </span>
+            <button
+              type="button"
+              onClick={() => setEnginePlan(null)}
+              aria-label="Dismiss engine gap checklist"
+              style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, fontSize: 14, lineHeight: 1 }}
+            >
+              ×
+            </button>
+          </div>
+          <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {enginePlan.map((g, i) => (
+              <li key={g.code || `${g.subsystem}-${i}`} style={{ fontSize: 11.5, color: C.text, lineHeight: 1.4 }}>
+                <span style={{ fontFamily: C.mono, fontWeight: 700, color: C.purple, textTransform: 'uppercase', fontSize: 10, marginRight: 6 }}>
+                  {g.subsystem}
+                </span>
+                {g.action}
+                <span style={{ fontFamily: C.mono, fontSize: 9.5, color: C.textMuted, marginLeft: 6 }}>
+                  · {g.effort} · lift ~{Math.round(g.lift * 100)}%
+                </span>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 

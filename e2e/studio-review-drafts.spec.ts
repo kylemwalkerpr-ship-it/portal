@@ -191,6 +191,29 @@ function makeReauditResponse(withSchemaAnnotation = false) {
   }
 }
 
+/** Fix-all response — carries the engine's prioritized gaps so the editor can
+ *  render the targeted-gap checklist after the sweep. */
+function makeFixAllResponse() {
+  return {
+    ok: true,
+    score: 96,
+    blockers: 0,
+    warnings: 0,
+    summary: '96/100 - 0 blocker(s), 0 warning(s) - PASSED',
+    shipReady: true,
+    depthGate: { ok: true, message: 'Depth floor met' },
+    annotations: [],
+    warningsData: [],
+    appliedRepairs: [],
+    fixedContent: DRAFT_CONTENT.replace('## In 60 seconds', '## In 60 seconds\n- The engine prioritized gap was addressed'),
+    enginePriorities: [
+      { code: 'faq_schema', priority: 90, subsystem: 'schema', action: 'Add FAQPage JSON-LD (4–6 Q&As) for AI-overview eligibility', effort: 'low', lift: 0.09, confidence: 0.7 },
+      { code: 'gov_citations', priority: 75, subsystem: 'content', action: 'Add 2–3 official .gov/.edu citations with live URLs', effort: 'low', lift: 0.1, confidence: 0.75 },
+      { code: 'internal_links', priority: 60, subsystem: 'links', action: 'Add 2+ contextual internal links to hub and related estate pages', effort: 'low', lift: 0.08, confidence: 0.75 },
+    ],
+  }
+}
+
 // ── Route mocks ─────────────────────────────────────────────────────────────
 
 async function installRouteMocks(page: Page, opts: { withSchemaAnnotation?: boolean } = {}): Promise<void> {
@@ -229,8 +252,17 @@ async function installRouteMocks(page: Page, opts: { withSchemaAnnotation?: bool
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, job: drafted }) })
   })
 
-  // Re-audit (POST) — feeds the editor's audit result + warnings block.
+  // Re-audit — POST (re-audit + warnings block) and PATCH (fix_all returns
+  // the targeted engine gaps for the checklist).
   await page.route('**/api/content-studio/reaudit', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(makeFixAllResponse()),
+      })
+      return
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -381,5 +413,48 @@ test.describe('Studio Review stage — drafts list + warnings block', () => {
     const aiFixBtn = schemaCard.getByRole('button', { name: /^AI Fix$/ })
     await expect(aiFixBtn).toBeVisible({ timeout: 5000 })
     await expect(aiFixBtn).toBeEnabled({ timeout: 5000 })
+  })
+
+  test('Fix-all renders the targeted engine gaps as a prioritized checklist', async () => {
+    test.skip(!hasClerkCredentials(), 'Clerk credentials not configured')
+
+    // withSchemaAnnotation adds one annotation → the Fix all (1) button shows.
+    await installRouteMocks(page, { withSchemaAnnotation: true })
+    await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
+
+    // ── 1 · Open the editor and re-audit so annotations populate ──
+    const reviewPill = page.locator('#studio-tab-draft')
+    await reviewPill.waitFor({ state: 'visible', timeout: 30000 })
+    await reviewPill.click()
+
+    const draftRow = page.getByTestId(`studio-review-draft-${DRAFT_ID}`)
+    await expect(draftRow).toBeVisible({ timeout: 8000 })
+    await draftRow.getByRole('button', { name: /Open in editor/ }).click()
+
+    const reauditBtn = page.locator('button:visible', { hasText: /^Re-audit$/ }).first()
+    await expect(reauditBtn).toBeVisible({ timeout: 10000 })
+    await expect(reauditBtn).toBeEnabled({ timeout: 5000 })
+    await reauditBtn.dispatchEvent('click')
+
+    // ── 2 · Run Fix all — PATCH is mocked to return the engine plan ──
+    const fixAllBtn = page.getByRole('button', { name: /^Fix all \(1\)$/ })
+    await expect(fixAllBtn).toBeVisible({ timeout: 8000 })
+    await expect(fixAllBtn).toBeEnabled({ timeout: 5000 })
+    await fixAllBtn.dispatchEvent('click')
+
+    // ── 3 · The targeted engine gaps render as a prioritized checklist ──
+    const plan = page.getByTestId('studio-engine-plan')
+    await expect(plan).toBeVisible({ timeout: 10000 })
+    await expect(plan.getByText(/Engine gaps targeted · 3 prioritized/)).toBeVisible({ timeout: 5000 })
+
+    // Each gap is listed with its subsystem + action.
+    await expect(plan.getByText('Add FAQPage JSON-LD').first()).toBeVisible({ timeout: 5000 })
+    await expect(plan.getByText('Add 2–3 official .gov/.edu citations').first()).toBeVisible({ timeout: 5000 })
+    await expect(plan.getByText('Add 2+ contextual internal links').first()).toBeVisible({ timeout: 5000 })
+
+    // The checklist is ORDERED by priority: the first item is the schema gap
+    // (p90), not the links gap (p60).
+    const firstItem = plan.locator('ol > li').first()
+    await expect(firstItem.getByText(/SCHEMA/)).toBeVisible({ timeout: 5000 })
   })
 })
