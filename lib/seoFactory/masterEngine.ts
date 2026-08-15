@@ -512,8 +512,11 @@ export function detectIntent(input: {
 export function weightsFor(
   intent: IntentId,
   ymyl: boolean,
+  /** Optional learned base weights for this intent (from masterEngineLearn).
+   *  Replaces the fixed prior row; the YMYL trust overlay still blends on top. */
+  learned?: Record<SubsystemId, number>,
 ): Record<SubsystemId, number> {
-  const base = INTENT_WEIGHT_MATRIX[intent]
+  const base = learned ?? INTENT_WEIGHT_MATRIX[intent]
   if (!ymyl) return base
   const y = INTENT_WEIGHT_MATRIX.ymyl
   const out = {} as Record<SubsystemId, number>
@@ -1615,7 +1618,7 @@ export function buildEngineTrace(input: MasterEngineInput, report: MasterEngineR
   const topW = SUBSYSTEMS.map((s) => ({ s, w: report.weights[s] }))
     .sort((a, b) => b.w - a.w)
     .slice(0, 3)
-  step('weights', 'Applying intent-conditioned weights', 'info',
+  step('weights', `Applying ${report.adaptation.usedLearned ? 'adaptive (learned)' : 'intent-conditioned'} weights`, 'info',
     `top rows: ${topW.map((t) => `${SUBSYSTEM_LABELS[t.s].split(' ')[0]} ${(t.w * 100).toFixed(0)}%`).join(' · ')}`)
 
   const computed = report.computedSignals.filter((s) => s.computed && s.value != null)
@@ -1705,6 +1708,8 @@ export interface MasterEngineReport {
   prediction: MasterPrediction
   derived: DerivedFeatures
   governance: EngineGovernance
+  /** Whether the weights were adapted from learned outcomes or kept the fixed prior. */
+  adaptation: { usedLearned: boolean }
   computedSignals: ComputedSignal[]
   /** Ordered pipeline steps — the UI replays this as the engine "livestream". */
   trace: EngineTraceStep[]
@@ -1765,11 +1770,21 @@ export function masterEngineFixPlan(input: MasterEngineInput): MasterEngineFixPl
   return { priorities, promptBlock }
 }
 
-export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
+/** Learned weights feed for scoreMaster — kept as plain data so masterEngine
+ *  does not import masterEngineLearn (avoids a module cycle). */
+export interface LearnedWeightsInput {
+  /** Per-intent learned subsystem weights (from masterEngineLearn.learnWeights).
+   *  The detected intent's row replaces the fixed prior; intents without a
+   *  learned row keep the prior. */
+  byIntent?: Partial<Record<IntentId, Record<SubsystemId, number>>>
+}
+
+export function scoreMaster(input: MasterEngineInput, learned?: LearnedWeightsInput): MasterEngineReport {
   const values = computeSignals(input)
   const intent = detectIntent(input)
   const ymyl = isYmyLQuery(input)
-  const weights = weightsFor(intent, ymyl)
+  const learnedBase = learned?.byIntent?.[intent]
+  const weights = weightsFor(intent, ymyl, learnedBase)
   const baseline = competitiveBaseline(input)
 
   const subsystems = {} as Record<SubsystemId, { score: number | null; coverage: number }>
@@ -1799,6 +1814,7 @@ export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
   }
   const derived = deriveFeatures(composite, subsystems, deltas, values)
   const governance = buildGovernance(coverage, input)
+  const adaptation = { usedLearned: Boolean(learnedBase) }
 
   const report: MasterEngineReport = {
     generatedAt: new Date().toISOString(),
@@ -1816,6 +1832,7 @@ export function scoreMaster(input: MasterEngineInput): MasterEngineReport {
     prediction,
     derived,
     governance,
+    adaptation,
     computedSignals,
     trace: [],
   }

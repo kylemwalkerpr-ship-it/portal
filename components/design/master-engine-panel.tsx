@@ -57,6 +57,7 @@ interface MasterReport {
     modelVersion: string
     caveats: string[]
   }
+  adaptation?: { usedLearned: boolean }
   computedSignals: Array<{ id: string; label: string; subsystem: SubsystemId; value: number | null; computed: boolean }>
   trace: Array<{
     seq: number; phase: string; message: string; detail?: string
@@ -311,7 +312,7 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
               <div style={{ display: 'flex', gap: 14, marginTop: 4, fontFamily: C.mono, fontSize: 9, color: E.inkDim }}>
                 <span><span style={{ color: E.mossGreen }}>■</span> vs SERP baseline</span>
                 <span>delta = page − consensus</span>
-                <span>weight: intent-conditioned ({report.intentLabel})</span>
+                <span>weight: {report.adaptation?.usedLearned ? 'adaptive (learned)' : 'intent-conditioned'} ({report.intentLabel})</span>
               </div>
             </div>
           </div>

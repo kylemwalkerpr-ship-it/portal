@@ -13,7 +13,9 @@ import {
   competitiveBaseline,
   masterEngineFixPlan,
   type MasterEngineInput,
+  type SubsystemId,
 } from '@/lib/seoFactory/masterEngine'
+import { learnWeights, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
 import type { BacklinkSnapshot } from '@/lib/seoFactory/backlinkProvider'
 
 const BACKLINKS: BacklinkSnapshot = {
@@ -497,5 +499,46 @@ describe('Master SEO Engine — powerhouse layers (derived, ladder, governance)'
     ]) {
       expect(groups.has(g)).toBe(true)
     }
+  })
+})
+
+describe('Master SEO Engine — adaptive weights (learn → scoreMaster)', () => {
+  it('weightsFor accepts a learned base and preserves the YMYL overlay', () => {
+    const base = INTENT_WEIGHT_MATRIX.informational
+    const learned = { ...base, content: 0.32, eeat: 0.06, links: 0.16 }
+    const s = Object.values(learned).reduce((a, b) => a + b, 0)
+    ;(Object.keys(learned) as SubsystemId[]).forEach((k) => { learned[k] = learned[k] / s })
+
+    expect(weightsFor('informational', false, learned)).toEqual(learned)
+    const ymyl = weightsFor('informational', true, learned)
+    expect(ymyl.eeat).toBeGreaterThan(learned.eeat)
+    const sum = Object.values(ymyl).reduce((a, b) => a + b, 0)
+    expect(sum).toBeGreaterThan(0.999)
+    expect(sum).toBeLessThan(1.001)
+  })
+
+  it('scoreMaster applies learned weights for the detected intent and reports adaptation', () => {
+    const history: HistoricalOutcome[] = Array.from({ length: 8 }, (_, i) => {
+      const good = i % 2 === 0
+      const score = good ? 0.72 : 0.42
+      const subsystemScores = {} as Partial<Record<SubsystemId, number>>
+      SUBSYSTEMS.forEach((s, j) => { subsystemScores[s] = Math.min(1, score + ((i + j) % 3) * 0.06) })
+      return { intent: 'procedural', subsystemScores, outcome: { top10: good } }
+    })
+    const learn = learnWeights(history)
+    const model = learn.models.find((m) => m.intent === 'procedural')
+    expect(model).toBeTruthy()
+
+    const input = healthyInput()
+    const intent = detectIntent(input)
+    const ymyl = isYmyLQuery(input)
+    const report = scoreMaster(input, { byIntent: { [model!.intent]: model!.weights } })
+
+    expect(report.adaptation.usedLearned).toBe(true)
+    expect(report.weights).toEqual(weightsFor(intent, ymyl, model!.weights))
+
+    // Without a learned feed the engine keeps the fixed prior.
+    const prior = scoreMaster(input)
+    expect(prior.adaptation.usedLearned).toBe(false)
   })
 })

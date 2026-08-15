@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { scoreMaster, type MasterEngineInput } from '@/lib/seoFactory/masterEngine'
+import { scoreMaster, type MasterEngineInput, type IntentId, type SubsystemId } from '@/lib/seoFactory/masterEngine'
 import { learnWeights, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 
@@ -54,8 +54,12 @@ export async function POST(request: NextRequest) {
       input = jobToMasterEngineInput(job)
     }
 
-    const report = scoreMaster(input)
+    // Retrain from any supplied historical outcomes, then feed the learned
+    // per-intent weights back into the engine so it adapts to real outcomes.
     const learn = body.history && body.history.length ? learnWeights(body.history) : null
+    const byIntent: Partial<Record<IntentId, Record<SubsystemId, number>>> = {}
+    if (learn) for (const m of learn.models) byIntent[m.intent] = m.weights
+    const report = scoreMaster(input, { byIntent })
 
     return NextResponse.json({ ok: true, report, learn })
   } catch (err) {
