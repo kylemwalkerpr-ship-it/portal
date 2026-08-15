@@ -188,6 +188,15 @@ describe('Master SEO Engine — normalization', () => {
     expect(normalizeTarget(10, 1.2, 0.8)).toBeLessThan(0.01)
     expect(normalizeTarget(undefined, 1.2, 0.8)).toBeNull()
   })
+
+  it('handles inverted windows linearly instead of collapsing to a step', () => {
+    // (v, hi, lo, true) must equal (v, lo, hi, false) — the pre-fix behavior
+    // returned 0 for every value below min, so clean drafts read as "worst".
+    expect(normalizeRange(0, 8, 0, true)).toBe(1) // 0 occurrences = perfect
+    expect(normalizeRange(8, 8, 0, true)).toBe(0)
+    expect(normalizeRange(4, 8, 0, true)).toBeCloseTo(0.5, 5)
+    expect(normalizeRange(4, 0, 8, false)).toBeCloseTo(0.5, 5)
+  })
 })
 
 describe('Master SEO Engine — signal computation', () => {
@@ -209,6 +218,24 @@ describe('Master SEO Engine — signal computation', () => {
     expect(v.s_longtail_coverage!).toBeGreaterThan(0.99)
     // Current-year marker (2026)
     expect(v.f_year_marker).toBe(1)
+  })
+
+  it('scores clean voice as GOODNESS (1) so satisfied gaps never read as unmet', () => {
+    const v = computeSignals(healthyInput())
+    // No banned AI tells, no filler, no passive voice in the fixture
+    expect(v.c_ai_tells).toBe(1)
+    expect(v.c_passive_voice).toBe(1)
+    expect(v.c_filler_ratio).toBe(1)
+    // The recommendation gate and the risk gate both read the same value
+    const report = scoreMaster(healthyInput())
+    expect(report.recommendations.some((r) => r.code === 'ai_voice')).toBe(false)
+    expect(report.risks.some((r) => r.code === 'ai_slop')).toBe(false)
+  })
+
+  it('detects genuine AI-tell spam and fires the voice gap + risk', () => {
+    const slop = 'Unlock seamless solutions. ' + 'Delve into robust strategies. ' + 'Navigate the dynamic landscape. ' + 'Elevate your journey today. '
+    const report = scoreMaster(healthyInput({ content: LEGAL_GUIDE + '\n\n' + slop }))
+    expect(report.recommendations.some((r) => r.code === 'ai_voice')).toBe(true)
   })
 
   it('lights up the links subsystem from a backlink snapshot', () => {
@@ -269,6 +296,23 @@ describe('Master SEO Engine — fix-loop integration', () => {
     expect(plan.promptBlock).toContain('PRIORITIZED ENGINE GAPS')
     expect(plan.promptBlock).toContain(plan.priorities[0].action)
     expect(plan.promptBlock).toContain('IN THIS ORDER')
+  })
+
+  it('passes ONLY unmet gaps to the model — satisfied ones are skipped', () => {
+    const plan = masterEngineFixPlan(healthyInput())
+    const codes = plan.priorities.map((p) => p.code)
+    // Voice gap is satisfied (clean draft) → must NOT be in the plan
+    expect(codes).not.toContain('ai_voice')
+    // Content subsystem is strong (delta +9) → no "close the content gap"
+    expect(codes).not.toContain('gap_content')
+    // Schema subsystem is genuinely empty → its gaps must be in the plan
+    expect(codes).toContain('faq_schema')
+    expect(codes).toContain('article_schema')
+    // Every passed gap carries a stable code and is open by construction
+    for (const p of plan.priorities) {
+      expect(p.code.length).toBeGreaterThan(2)
+      expect(p.action.length).toBeGreaterThan(10)
+    }
   })
 
   it('weak drafts surface concrete high-value gaps first', () => {

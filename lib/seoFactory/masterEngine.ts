@@ -70,7 +70,9 @@ export interface SignalDef {
   label: string
   subsystem: SubsystemId
   source: SignalSource
-  /** 1 = higher is better, -1 = lower is better */
+  /** Display-only metadata: 1 = higher is better, -1 = lower is better.
+   *  computeSignals returns every value as 0-1 GOODNESS already, so this is
+   *  never flipped in scoring (2026-08 convention fix). */
   direction: 1 | -1
   /** Intra-subsystem relative weight (higher = more important within the group). */
   weight: number
@@ -388,7 +390,12 @@ export function intentWeightsFor(intent: IntentId): Record<SubsystemId, number> 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
-/** Linear 0–1 normalization with clamping; higherIsBetter flips it. */
+/**
+ * Linear 0–1 normalization with clamping; higherIsBetter flips it.
+ * A min > max window is normalized (swap + flip) instead of collapsing to a
+ * step function — callers can express "lower is better" either as
+ * (v, lo, hi, false) or (v, hi, lo, true) and get the same linear result.
+ */
 export function normalizeRange(
   value: number | null | undefined,
   min: number,
@@ -396,8 +403,9 @@ export function normalizeRange(
   higherIsBetter = true,
 ): number | null {
   if (value == null || !finite(value)) return null
+  if (max < min) return normalizeRange(value, max, min, !higherIsBetter)
   const span = max - min
-  if (span <= 0) return clamp01(value >= min ? 1 : 0)
+  if (span <= 0) return clamp01(higherIsBetter ? (value >= min ? 1 : 0) : (value <= min ? 1 : 0))
   const t = clamp01((value - min) / span)
   return higherIsBetter ? t : 1 - t
 }
@@ -601,15 +609,18 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
     ? Math.sqrt(lens.reduce((a, b) => a + (b - mean) ** 2, 0) / lens.length)
     : 0
   out.c_sentence_variance = normalizeRange(variance, 4, 12, true)
+  // Lower-is-better signals are computed as direct 0-1 GOODNESS (higher =
+  // better) so every consumer (recommendations, risk gates) reads the value
+  // without a second flip. 0 occurrences = 1 (perfect), N+ occurrences = 0.
   const passive = (text.match(PASSIVE_RE) || []).length
-  out.c_passive_voice = normalizeRange(passive, 8, 0, true) ?? 1
+  out.c_passive_voice = 1 - clamp01(passive / 8)
   const filler = (text.match(FILLER_RE) || []).length
-  out.c_filler_ratio = normalizeRange(filler / Math.max(1, words / 1000), 12, 0, true) ?? 1
+  out.c_filler_ratio = 1 - clamp01(filler / Math.max(1, words / 1000) / 12)
   let aiTells = 0
   for (const t of BANNED_AI_TELLS) {
     if (lower.includes(t.toLowerCase())) aiTells++
   }
-  out.c_ai_tells = normalizeRange(aiTells, 4, 0, true) ?? 1
+  out.c_ai_tells = 1 - clamp01(aiTells / 4)
   const seen = new Set<string>()
   let unique = 0
   for (const s of sentences) {
@@ -684,7 +695,7 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.t_meta_present = live ? (live.metaDescription ? 1 : 0) : null
   out.t_viewport = liveHtml ? (viewport ? 1 : 0) : null
   out.t_title_length = liveTitle ? normalizeTarget(liveTitle.length, 55, 20) : null
-  out.t_page_weight = liveHtml ? normalizeRange(liveHtml.length, 400_000, 60_000, false) : null
+  out.t_page_weight = liveHtml ? normalizeRange(liveHtml.length, 60_000, 400_000, false) : null
   out.t_robots_txt = null
   out.t_sitemap_membership = null
   out.t_crawl_depth = null
@@ -803,7 +814,7 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
 
   // ══ experience ══
   out.x_viewport = out.t_viewport
-  out.x_script_count = liveHtml ? normalizeRange(scriptCount, 20, 3, false) : null
+  out.x_script_count = liveHtml ? normalizeRange(scriptCount, 3, 20, false) : null
   out.x_image_dims = imgCount > 0 ? imgWithDims / imgCount : null
   out.x_lazy_load = liveHtml ? (/(<img\b[^>]*loading=["']lazy["']|<img\b[^>]*loading=lazy)/i.test(liveHtml) ? 1 : 0.5) : null
   out.x_page_weight = out.t_page_weight
@@ -821,8 +832,11 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
 function bundle(subsystem: SubsystemId, values: Record<string, number | null>): SignalBundle {
   const defs = SIGNAL_REGISTRY.filter((s) => s.subsystem === subsystem)
   const signals: ComputedSignal[] = defs.map((d) => {
-    let value = values[d.id]
-    if (value != null && d.direction === -1) value = 1 - value
+    // computeSignals returns every value as 0-1 GOODNESS (higher = better),
+    // so no direction flip happens here — the registry `direction` field is
+    // metadata/display only. (2026-08: fixed inverted-window signals that
+    // read 0 = "perfect" and leaked satisfied gaps into the fix loop.)
+    const value = values[d.id]
     return { id: d.id, label: d.label, subsystem, source: d.source, value, computed: d.computed && value != null }
   })
   const computedSignals = signals.filter((s) => s.computed && s.value != null)
@@ -839,6 +853,21 @@ function bundle(subsystem: SubsystemId, values: Record<string, number | null>): 
       : null
   const coverage = defs.length ? computedSignals.length / defs.length : 0
   return { signals, score, coverage }
+}
+
+/** Weighted 0-1 score for one subsystem from raw signal values (no flip —
+ *  values are already goodness). Used by the delta-gap gate in recommend(). */
+function subsystemScoreFrom(
+  values: Record<string, number | null>,
+  subsystem: SubsystemId,
+): number | null {
+  const defs = SIGNAL_REGISTRY.filter((s) => s.subsystem === subsystem)
+  const computed = defs
+    .map((d) => ({ def: d, value: values[d.id] }))
+    .filter((c): c is { def: SignalDef; value: number } => c.def.computed && c.value != null)
+  const weightSum = computed.reduce((a, c) => a + c.def.weight, 0)
+  if (weightSum <= 0) return null
+  return computed.reduce((a, c) => a + c.value * c.def.weight, 0) / weightSum
 }
 
 // ═══ Competitive baseline ══════════════════════════════════════════════════
@@ -936,6 +965,11 @@ function evaluateRisks(input: MasterEngineInput, values: Record<string, number |
 // ═══ Recommendations ═══════════════════════════════════════════════════════
 
 export interface MasterRecommendation {
+  /** Stable machine id (e.g. 'h2_structure', 'faq_schema') for filtering. */
+  code: string
+  /** True while the underlying gap is still open given the current signals.
+   *  The fix loop passes ONLY open recommendations to the review model. */
+  open: boolean
   priority: number
   subsystem: SubsystemId
   action: string
@@ -957,74 +991,80 @@ function recommend(
 ): MasterRecommendation[] {
   const recs: MasterRecommendation[] = []
   const push = (
+    code: string,
     subsystem: SubsystemId,
     action: string,
     lift: number,
     confidence: number,
     effort: MasterRecommendation['effort'],
     value = 1,
-  ) => recs.push({ priority: 0, subsystem, action, lift, confidence, effort, value })
+  ) => recs.push({ code, open: true, priority: 0, subsystem, action, lift, confidence, effort, value })
 
   const ymyl = isYmyLQuery(input)
 
-  // Specific findings first (highest confidence)
+  // Specific findings first (highest confidence) — every check reads the
+  // signal as 0-1 GOODNESS, so a recommendation is pushed ONLY while its gap
+  // is genuinely open (open: true). Satisfied gaps never reach the fix loop.
   if ((values.c_h2_structure ?? 1) < 0.75) {
-    push('content', 'Add ≥4 H2 sections (procedure, documents, risks, FAQ)', 0.12, 0.8, 'low')
+    push('h2_structure', 'content', 'Add ≥4 H2 sections (procedure, documents, risks, FAQ)', 0.12, 0.8, 'low')
   }
   if ((values.c_citations ?? 0) < 0.7) {
-    push('content', 'Add 2–3 official .gov/.edu citations with live URLs', 0.1, 0.75, 'low')
+    push('gov_citations', 'content', 'Add 2–3 official .gov/.edu citations with live URLs', 0.1, 0.75, 'low')
   }
   if ((values.c_internal_links ?? 0) < 0.7) {
-    push('links', 'Add 2+ contextual internal links to hub and related estate pages', 0.08, 0.75, 'low')
+    push('internal_links', 'links', 'Add 2+ contextual internal links to hub and related estate pages', 0.08, 0.75, 'low')
   }
   if ((values.c_keyword_density ?? 0.3) < 0.4 && values.c_keyword_density != null) {
-    push('content', 'Normalize primary-keyword density toward ~1.2% (avoid stuffing or absence)', 0.06, 0.6, 'low')
+    push('keyword_density', 'content', 'Normalize primary-keyword density toward ~1.2% (avoid stuffing or absence)', 0.06, 0.6, 'low')
   }
   if ((values.sc_faq ?? 0) === 0) {
-    push('schema', 'Add FAQPage JSON-LD (4–6 Q&As) for AI-overview eligibility', 0.09, 0.7, 'low')
+    push('faq_schema', 'schema', 'Add FAQPage JSON-LD (4–6 Q&As) for AI-overview eligibility', 0.09, 0.7, 'low')
   }
   if ((values.sc_article ?? 0) === 0) {
-    push('schema', 'Add Article JSON-LD with headline + datePublished', 0.06, 0.7, 'low')
+    push('article_schema', 'schema', 'Add Article JSON-LD with headline + datePublished', 0.06, 0.7, 'low')
   }
   if ((values.c_tldr ?? 0) === 0) {
-    push('content', 'Add an "In 60 seconds" quick-answer block for LLM citation', 0.07, 0.7, 'low')
+    push('tldr_block', 'content', 'Add an "In 60 seconds" quick-answer block for LLM citation', 0.07, 0.7, 'low')
   }
   if (ymyl && (values.e_disclaimer ?? 0) === 0) {
-    push('eeat', 'Add educational disclaimer ("not legal advice")', 0.15, 0.9, 'low', 2)
+    push('ymyl_disclaimer', 'eeat', 'Add educational disclaimer ("not legal advice")', 0.15, 0.9, 'low', 2)
   }
   if (ymyl && (values.e_author_byline ?? 0) === 0) {
-    push('eeat', 'Add author byline with credentials (YMYL trust)', 0.08, 0.75, 'low')
+    push('author_byline', 'eeat', 'Add author byline with credentials (YMYL trust)', 0.08, 0.75, 'low')
   }
   if ((values.e_outcome_promise_risk ?? 1) === 0) {
-    push('eeat', 'Remove outcome-guarantee language', 0.15, 0.95, 'low', 2)
+    push('outcome_promise', 'eeat', 'Remove outcome-guarantee language', 0.15, 0.95, 'low', 2)
   }
   if ((values.f_year_marker ?? 0.2) < 0.6) {
-    push('freshness', 'Add current-year markers + "as of" dates so the page reads current', 0.06, 0.65, 'low')
+    push('year_marker', 'freshness', 'Add current-year markers + "as of" dates so the page reads current', 0.06, 0.65, 'low')
   }
   if ((values.c_ai_tells ?? 1) < 0.6) {
-    push('content', 'Rewrite generic AI phrases in plain practitioner voice', 0.12, 0.85, 'medium', 2)
+    push('ai_voice', 'content', 'Rewrite generic AI phrases in plain practitioner voice', 0.12, 0.85, 'medium', 2)
   }
   if ((values.c_originality ?? 1) < 0.8) {
-    push('content', 'Cut repeated sentences; add original examples and case studies', 0.08, 0.7, 'medium')
+    push('originality', 'content', 'Cut repeated sentences; add original examples and case studies', 0.08, 0.7, 'medium')
   }
   if ((values.s_longtail_coverage ?? 1) < 0.6) {
-    push('semantic', 'Work the required long-tail queries into FAQ + H2s naturally', 0.07, 0.7, 'low')
+    push('longtail_coverage', 'semantic', 'Work the required long-tail queries into FAQ + H2s naturally', 0.07, 0.7, 'low')
   }
   if ((values.sc_org ?? 0) === 0 || (values.sc_person ?? 0) === 0) {
-    push('schema', 'Add Organization + Person (author) JSON-LD with sameAs', 0.05, 0.65, 'low')
+    push('org_person_schema', 'schema', 'Add Organization + Person (author) JSON-LD with sameAs', 0.05, 0.65, 'low')
   }
   if (competingCount(input.competingUrls) > 0) {
-    push('serp', 'Consolidate/differentiate from competing pages (301 losers → winner)', 0.1, 0.7, 'medium', 2)
+    push('cannibal_merge', 'serp', 'Consolidate/differentiate from competing pages (301 losers → winner)', 0.1, 0.7, 'medium', 2)
   }
 
-  // Subsystem delta gaps (lower confidence, higher effort)
+  // Subsystem delta gaps (lower confidence, higher effort) — gated on an
+  // ABSOLUTE floor so a subsystem that is already strong (≥65) is never told
+  // to "close the gap" just because the consensus baseline sits higher.
   for (const sub of SUBSYSTEMS) {
     const delta = deltas[sub]
     if (delta == null) continue
-    if (delta < -0.12) {
+    const absolute = values && subsystemScoreFrom(values, sub)
+    if (delta < -0.12 && absolute != null && absolute < 0.65) {
       const gap = Math.abs(delta)
       const label = SUBSYSTEM_LABELS[sub].split(' ')[0].toLowerCase()
-      push(sub, `Close the ${label} gap vs SERP consensus (delta ${(delta * 100).toFixed(0)}pts)`, Math.min(0.18, gap * 0.6), 0.5, gap > 0.2 ? 'high' : 'medium')
+      push(`gap_${sub}`, sub, `Close the ${label} gap vs SERP consensus (delta ${(delta * 100).toFixed(0)}pts)`, Math.min(0.18, gap * 0.6), 0.5, gap > 0.2 ? 'high' : 'medium')
     }
   }
 
@@ -1102,8 +1142,9 @@ function grade(score: number): MasterEngineReport['grade'] {
 // ═══ Fix-loop integration ═════════════════════════════════════════════════
 
 export interface MasterEngineFixPlan {
-  /** Top engine gaps, sorted by priority (Priority = Lift × Confidence × Value / Cost). */
+  /** Top UNMET engine gaps, sorted by priority (Priority = Lift × Confidence × Value / Cost). */
   priorities: Array<{
+    code: string
     priority: number
     subsystem: SubsystemId
     action: string
@@ -1123,8 +1164,12 @@ export interface MasterEngineFixPlan {
  */
 export function masterEngineFixPlan(input: MasterEngineInput): MasterEngineFixPlan {
   const report = scoreMaster(input)
-  const recs = report.recommendations.slice(0, 8)
+  // Only UNMET gaps reach the model: recommendations are open:true at push
+  // time (each guard reads a goodness signal), and the delta-gap gate carries
+  // its absolute floor. Filtering again here is the contract's safety net.
+  const recs = report.recommendations.filter((r) => r.open).slice(0, 8)
   const priorities = recs.map((r) => ({
+    code: r.code,
     priority: r.priority,
     subsystem: r.subsystem,
     action: r.action,
