@@ -198,4 +198,39 @@ test.describe('Studio cannibalization — Work Plan Resolve button', () => {
 
     await page.close()
   })
+
+  test('cannibal row shows the Resolved badge after a successful merge', async ({ browser }) => {
+    const page = await loginAsAdmin(browser)
+    if (!page) {
+      console.warn('[cannibal-resolve-e2e] skipping — Clerk credentials not configured')
+      return
+    }
+
+    // cannibal-merges returns an empty history here, so the row is NOT filtered
+    // out after the merge — the test isolates the inline badge state.
+    await installRouteMocks(page)
+
+    await page.goto(`${BASE}/dashboard/admin/content?tab=discover`, { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('networkidle').catch(() => {})
+
+    await page.locator('#studio-panel-discover').waitFor({ state: 'visible', timeout: 30_000 })
+    await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toBeVisible({ timeout: 10_000 })
+
+    // Row starts with the Resolve button and no resolved badge.
+    const resolveBtn = page.locator('button[title*="Auto-resolve"]').first()
+    await expect(resolveBtn).toBeVisible({ timeout: 8_000 })
+    await expect(page.locator('span[title*="301 redirects merged losers"]')).toHaveCount(0)
+
+    await resolveBtn.click()
+
+    // After the merge resolves, the row flips to the green ✅ Resolved badge.
+    const badge = page.locator('span[title*="301 redirects merged losers"]')
+    await expect(badge).toBeVisible({ timeout: 10_000 })
+    await expect(badge).toHaveText(/Resolved/)
+
+    // The Resolve button is gone (replaced by the badge).
+    await expect(page.locator('button[title*="Auto-resolve"]')).toHaveCount(0)
+
+    await page.close()
+  })
 })
