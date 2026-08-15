@@ -80,6 +80,7 @@ function num(v: unknown): number | null {
 function outcomeFromReport(
   report: Record<string, unknown>,
   page: GscPageRow,
+  at?: string,
 ): HistoricalOutcome | null {
   const intent = report.intent
   if (typeof intent !== 'string' || !VALID_INTENTS.has(intent as IntentId)) return null
@@ -100,6 +101,7 @@ function outcomeFromReport(
   const position = page.position > 0 ? page.position : null
   return {
     intent: intent as IntentId,
+    at,
     subsystemScores,
     outcome: {
       top10: position != null ? position <= 10 : undefined,
@@ -166,7 +168,7 @@ export function buildOutcomeHistory(
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
 
-    const oc = outcomeFromReport(report, page)
+    const oc = outcomeFromReport(report, page, job.updated_at ?? undefined)
     if (oc) out.push(oc)
   }
   return out

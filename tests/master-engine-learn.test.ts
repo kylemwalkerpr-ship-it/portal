@@ -1,4 +1,5 @@
 import {
+  applyRewardNudges,
   fitLogistic,
   learnWeights,
   learnWeightsForIntent,
@@ -134,5 +135,61 @@ describe('Master Engine Learn — single-outcome reward', () => {
     const sum = SUBSYSTEMS.reduce((a, s) => a + weights[s], 0)
     expect(sum).toBeGreaterThan(0.999)
     expect(sum).toBeLessThan(1.001)
+  })
+})
+
+describe('Master Engine Learn — reward nudge layered on batch regression', () => {
+  const lowContentRecent = (at: string): HistoricalOutcome => ({
+    intent: 'ymyl' as IntentId,
+    at,
+    // Low content/schema preceded a GOOD outcome → those subsystems were underweighted
+    subsystemScores: {
+      content: 0.2, schema: 0.15, eeat: 0.9, links: 0.85, semantic: 0.8,
+      intent: 0.8, technical: 0.85, serp: 0.8, freshness: 0.8, experience: 0.8,
+    },
+    outcome: { top10: true, position: 3 },
+  })
+
+  it('nudges the batch weights using the most recent per-intent outcome', () => {
+    const report = learnWeights(historyFor('ymyl', 8, 8))
+    const model = report.models.find((m) => m.intent === 'ymyl')!
+    const nudged = applyRewardNudges(report, [...historyFor('ymyl', 8, 8), lowContentRecent('2026-08-15T00:00:00Z')])
+
+    const w = nudged.byIntent.ymyl!
+    // The nudge upweighted content (underweighted → good outcome) on top of the batch fit
+    expect(w.content).toBeGreaterThan(model.weights.content)
+    expect(w.schema).toBeGreaterThan(model.weights.schema)
+    // Renormalized
+    const sum = SUBSYSTEMS.reduce((a, s) => a + w[s], 0)
+    expect(sum).toBeGreaterThan(0.999)
+    expect(sum).toBeLessThan(1.001)
+    expect(nudged.nudges).toHaveLength(1)
+    expect(nudged.nudges[0].intent).toBe('ymyl')
+    expect(nudged.nudges[0].moved).toBeGreaterThan(0)
+  })
+
+  it('picks the latest outcome by timestamp', () => {
+    const report = learnWeights(historyFor('ymyl', 8, 8))
+    const model = report.models.find((m) => m.intent === 'ymyl')!
+    // Later outcome = BAD with high content → content over-trusted → downweighted
+    const laterBad: HistoricalOutcome = {
+      intent: 'ymyl' as IntentId,
+      at: '2026-08-16T00:00:00Z',
+      subsystemScores: { ...scoresFor(0.95), content: 0.95, eeat: 0.9 },
+      outcome: { top10: false, position: 33 },
+    }
+    const nudged = applyRewardNudges(report, [
+      ...historyFor('ymyl', 8, 8),
+      lowContentRecent('2026-08-15T00:00:00Z'),
+      laterBad,
+    ])
+    // The later (bad) outcome wins → content is nudged DOWN vs the batch fit
+    expect(nudged.byIntent.ymyl!.content).toBeLessThan(model.weights.content)
+  })
+
+  it('emits no nudge when there are no models', () => {
+    const nudged = applyRewardNudges(learnWeights([]), [])
+    expect(Object.keys(nudged.byIntent)).toHaveLength(0)
+    expect(nudged.nudges).toHaveLength(0)
   })
 })

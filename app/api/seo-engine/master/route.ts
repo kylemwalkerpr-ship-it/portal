@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { scoreMaster, type MasterEngineInput, type IntentId, type SubsystemId } from '@/lib/seoFactory/masterEngine'
-import { learnWeights, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
+import { learnWeights, applyRewardNudges, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 
@@ -72,11 +72,20 @@ export async function POST(request: NextRequest) {
       }
     }
     const learn = history.length ? learnWeights(history) : null
+    // Per-publish reward nudge layered on top of the batch regression: each
+    // intent's blended weights are nudged once more by its most recent
+    // outcome (learnFromOutcome), so a fresh publish moves the needle
+    // immediately instead of waiting for the next retrain.
     const byIntent: Partial<Record<IntentId, Record<SubsystemId, number>>> = {}
-    if (learn) for (const m of learn.models) byIntent[m.intent] = m.weights
+    let rewardNudges: ReturnType<typeof applyRewardNudges>['nudges'] | null = null
+    if (learn) {
+      const nudged = applyRewardNudges(learn, history)
+      Object.assign(byIntent, nudged.byIntent)
+      rewardNudges = nudged.nudges
+    }
     const report = scoreMaster(input, { byIntent })
 
-    return NextResponse.json({ ok: true, report, learn, outcomeHistory })
+    return NextResponse.json({ ok: true, report, learn, rewardNudges, outcomeHistory })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: `Master engine failed: ${message}` }, { status: 500 })

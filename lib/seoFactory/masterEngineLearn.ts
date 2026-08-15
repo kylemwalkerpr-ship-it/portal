@@ -27,6 +27,9 @@ import { INTENT_WEIGHT_MATRIX, SUBSYSTEMS, type IntentId, type SubsystemId } fro
 
 export interface HistoricalOutcome {
   intent: IntentId
+  /** Optional outcome timestamp (ISO) — lets the reward nudge pick the most
+   *  recent per-publish result. Falls back to array order when absent. */
+  at?: string
   /** 0–1 normalized subsystem scores for the page at evaluation time. */
   subsystemScores: Partial<Record<SubsystemId, number>>
   /** Real measured outcome after publish. */
@@ -289,4 +292,54 @@ export function learnFromOutcome(
   const sum = SUBSYSTEMS.reduce((a, s) => a + next[s], 0) || 1
   for (const s of SUBSYSTEMS) next[s] = next[s] / sum
   return { weights: next, moved }
+}
+
+// ═══ Per-publish reward nudge (layered on the batch regression) ════════════
+
+export interface RewardNudge {
+  intent: IntentId
+  /** Subsystems the credit-assignment actually moved (informative). */
+  moved: number
+  /** Weights after the reward nudge (renormalized, sums to 1). */
+  weights: Record<SubsystemId, number>
+}
+
+/**
+ * Layer the single-outcome reward nudge (learnFromOutcome) on top of the batch
+ * regression. The batch fit learns slowly from the whole history; this nudges
+ * each intent's blended weights once more using that intent's MOST RECENT
+ * outcome, so a fresh publish moves the needle immediately instead of waiting
+ * for the next retrain. Deterministic: same history → same result (no drift
+ * from repeated runs).
+ */
+export function applyRewardNudges(
+  report: LearnReport,
+  history: HistoricalOutcome[],
+  opts: { lambda?: number } = {},
+): {
+  byIntent: Partial<Record<IntentId, Record<SubsystemId, number>>>
+  nudges: RewardNudge[]
+} {
+  const byIntent: Partial<Record<IntentId, Record<SubsystemId, number>>> = {}
+  const nudges: RewardNudge[] = []
+  for (const m of report.models) {
+    let weights = m.weights
+    const recent = mostRecentOutcome(history, m.intent)
+    if (recent) {
+      const n = learnFromOutcome(weights, recent.subsystemScores, recent.outcome, opts.lambda ?? 0.12)
+      weights = n.weights
+      nudges.push({ intent: m.intent, moved: n.moved, weights })
+    }
+    byIntent[m.intent] = weights
+  }
+  return { byIntent, nudges }
+}
+
+/** Newest-first: max `at` wins; absent timestamps fall back to array order. */
+function mostRecentOutcome(history: HistoricalOutcome[], intent: IntentId): HistoricalOutcome | null {
+  const rows = history.filter(
+    (h) => h.intent === intent && (h.outcome.top10 != null || h.outcome.position != null),
+  )
+  if (!rows.length) return null
+  return rows.reduce((best, r) => (r.at && (!best.at || r.at > best.at) ? r : best), rows[0])
 }
