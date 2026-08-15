@@ -38,6 +38,7 @@ import { auditLiveHtml } from './liveAudit'
 import { DISCLAIMER_RE } from './contentQualityGate'
 import { ESTATE_LINK_RE } from './linkAudit'
 import { BANNED_AI_TELLS } from '@/lib/seoVoice'
+import { backlinkSignals, type BacklinkSnapshot } from './backlinkProvider'
 
 // ═══ Taxonomy ══════════════════════════════════════════════════════════════
 
@@ -200,14 +201,14 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('l_outbound_authority', 'Outbound .gov/.edu authority links', 'links', 'content', 1, 2, true),
   sig('l_anchor_diversity', 'Anchor/link diversity', 'links', 'content', 1, 1, true),
   sig('l_orphan_risk', 'Not an orphan (has internal links)', 'links', 'content', 1, 2, true),
-  sig('l_domain_authority', 'Domain authority proxy (host)', 'links', 'registry', 1, 1, true),
-  sig('l_estate_inbound', 'Estate inbound links', 'links', 'registry', 1, 1, false),
-  sig('l_referring_domains', 'Referring-domain count', 'links', 'registry', 1, 2, false),
-  sig('l_link_velocity', 'Link velocity trend', 'links', 'registry', 1, 1, false),
-  sig('l_anchor_natural', 'Natural anchor-text ratio', 'links', 'registry', 1, 1, false),
+  sig('l_domain_authority', 'Domain authority (host / DataForSEO rank)', 'links', 'registry', 1, 1, true),
+  sig('l_estate_inbound', 'Estate inbound links', 'links', 'registry', 1, 1, true),
+  sig('l_referring_domains', 'Referring-domain count', 'links', 'registry', 1, 2, true),
+  sig('l_link_velocity', 'Link velocity trend', 'links', 'registry', 1, 1, true),
+  sig('l_anchor_natural', 'Natural anchor-text ratio', 'links', 'registry', 1, 1, true),
   sig('l_competitor_link_gap', 'Competitor link gap', 'links', 'derived', 1, 1, false),
-  sig('l_toxic_links', 'Toxic-link risk', 'links', 'registry', -1, 1, false),
-  sig('l_editorial_links', 'Editorial link ratio', 'links', 'registry', 1, 1, false),
+  sig('l_toxic_links', 'Toxic-link risk', 'links', 'registry', -1, 1, true),
+  sig('l_editorial_links', 'Editorial link ratio', 'links', 'registry', 1, 1, true),
 
   // ── E-E-A-T (14) ─────────────────────────────────────────────────────────
   sig('e_author_byline', 'Author byline present', 'eeat', 'content', 1, 1, true),
@@ -440,6 +441,8 @@ export interface MasterEngineInput {
     position?: number
     queries?: number
   }
+  /** Per-URL backlink snapshot from the DataForSEO provider (links subsystem). */
+  backlinks?: BacklinkSnapshot | null
   updatedAt?: string
   createdAt?: string
   /** Optional 0–100 host authority proxy (registry / authorityScoring). */
@@ -695,13 +698,28 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.l_anchor_diversity = normalizeRange(domains.size, 0, 4, true)
   out.l_orphan_risk = internalLinks > 0 ? 1 : 0
   out.l_domain_authority = input.authorityScore == null ? null : normalizeRange(input.authorityScore, 0, 80, true)
-  out.l_estate_inbound = null
-  out.l_referring_domains = null
-  out.l_link_velocity = null
-  out.l_anchor_natural = null
   out.l_competitor_link_gap = null
-  out.l_toxic_links = null
-  out.l_editorial_links = null
+  if (input.backlinks) {
+    const bl = backlinkSignals({
+      snapshot: input.backlinks,
+      primaryKeyword: primary,
+      brandTerms: ['yousafe'],
+    })
+    out.l_referring_domains = bl.referringDomains
+    out.l_estate_inbound = bl.estateInbound
+    out.l_link_velocity = bl.linkVelocity
+    out.l_anchor_natural = bl.anchorNatural
+    out.l_toxic_links = bl.toxicClean
+    out.l_editorial_links = bl.editorialLinks
+    if (bl.domainAuthority != null) out.l_domain_authority = bl.domainAuthority
+  } else {
+    out.l_referring_domains = null
+    out.l_estate_inbound = null
+    out.l_link_velocity = null
+    out.l_anchor_natural = null
+    out.l_toxic_links = null
+    out.l_editorial_links = null
+  }
 
   // ══ E-E-A-T ══
   const author = fm.author || fm.byline || ''

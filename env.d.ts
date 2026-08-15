@@ -52,6 +52,10 @@ declare global {
     AUTHORIZENET_TRANSACTION_KEY: string
     AUTHORIZENET_SIGNATURE_KEY: string
     RESEND_API_KEY: string
+
+    // Backlink provider (DataForSEO Backlinks API — HTTP Basic auth)
+    DATAFORSEO_LOGIN: string
+    DATAFORSEO_PASSWORD: string
   }
 }
 

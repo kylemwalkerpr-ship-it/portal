@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
               queries: job.gsc.queries,
             }
           : undefined,
+        backlinks: job.backlinks_json || undefined,
         authorityScore: job.authority_score ?? undefined,
         createdAt: job.created_at || undefined,
         updatedAt: job.updated_at || undefined,

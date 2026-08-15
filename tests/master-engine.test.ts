@@ -13,6 +13,29 @@ import {
   competitiveBaseline,
   type MasterEngineInput,
 } from '@/lib/seoFactory/masterEngine'
+import type { BacklinkSnapshot } from '@/lib/seoFactory/backlinkProvider'
+
+const BACKLINKS: BacklinkSnapshot = {
+  url: 'https://legal.yousafeconsultancy.com/uk/graduate-route-visa/',
+  provider: 'dataforseo',
+  fetchedAt: '2026-08-15T00:00:00.000Z',
+  totalBacklinks: 120,
+  referringDomains: 34,
+  referringMainDomains: 22,
+  referringPages: 96,
+  newBacklinks: 18,
+  lostBacklinks: 6,
+  brokenBacklinks: 2,
+  spamScore: 12,
+  domainRank: 38,
+  samples: [
+    { anchor: 'UK Graduate Route visa', nofollow: false, isNew: true, isLost: false, spamScore: 8, sourceExternalLinks: 4 },
+    { anchor: 'graduate visa UK', nofollow: false, isNew: false, isLost: false, spamScore: 15, sourceExternalLinks: 2 },
+    { anchor: 'you safe consultancy', nofollow: true, isNew: false, isLost: false, spamScore: 30, sourceExternalLinks: 180 },
+    { anchor: 'read more', nofollow: false, isNew: true, isLost: false, spamScore: 5, sourceExternalLinks: 1 },
+    { anchor: 'uk graduate visa', nofollow: false, isNew: false, isLost: false, spamScore: 20, sourceExternalLinks: 3 },
+  ],
+}
 
 const LEGAL_GUIDE = `---
 title: "UK Graduate Visa Requirements: Eligibility, Costs and Steps"
@@ -185,6 +208,29 @@ describe('Master SEO Engine — signal computation', () => {
     expect(v.s_longtail_coverage!).toBeGreaterThan(0.99)
     // Current-year marker (2026)
     expect(v.f_year_marker).toBe(1)
+  })
+
+  it('lights up the links subsystem from a backlink snapshot', () => {
+    const without = scoreMaster(healthyInput())
+    const withBl = scoreMaster(healthyInput({ backlinks: BACKLINKS }))
+    // All six measurement slots compute once backlink data exists
+    for (const id of ['l_referring_domains', 'l_estate_inbound', 'l_link_velocity', 'l_anchor_natural', 'l_toxic_links', 'l_editorial_links']) {
+      const sig = withBl.computedSignals.find((s) => s.id === id)
+      expect(sig).toBeDefined()
+      expect(sig!.computed).toBe(true)
+      expect(sig!.value).not.toBeNull()
+    }
+    // They were dark without the snapshot
+    for (const id of ['l_referring_domains', 'l_estate_inbound']) {
+      const sig = without.computedSignals.find((s) => s.id === id)
+      expect(sig!.value).toBeNull()
+    }
+    // Links subsystem score improves and coverage rises
+    expect(withBl.subsystems.links.score!).toBeGreaterThan(without.subsystems.links.score ?? 0)
+    expect(withBl.coverage.computed).toBeGreaterThan(without.coverage.computed)
+    // Domain authority now comes from DataForSEO rank when present
+    const da = withBl.computedSignals.find((s) => s.id === 'l_domain_authority')
+    expect(da!.value).toBeCloseTo(0.38, 2)
   })
 
   it('flags thin content and missing YMYL disclaimer as risks', () => {
