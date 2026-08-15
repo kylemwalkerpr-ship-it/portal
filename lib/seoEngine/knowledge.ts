@@ -33,14 +33,6 @@ export interface KnowledgeSource {
 // ── Source registry (deterministic, overridable via seo_engine_config) ───────
 export const DEFAULT_SOURCES: KnowledgeSource[] = [
   {
-    id: 'uscis-news',
-    label: 'USCIS Newsroom',
-    kind: 'policy',
-    url: 'https://www.uscis.gov/news/all-news/rss',
-    countries: ['US'],
-    limit: 12,
-  },
-  {
     id: 'home-office',
     label: 'UK Home Office (immigration)',
     kind: 'policy',
@@ -52,17 +44,9 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
     id: 'ircc-news',
     label: 'IRCC News (Canada)',
     kind: 'policy',
-    url: 'https://www.canada.ca/en/immigration-refugees-citizenship.rss',
+    url: 'https://api.io.canada.ca/io-server/gc/news/en/v2?dept=departmentofcitizenshipandimmigration&sort=publishedDate&orderBy=desc&publishedDate%3E=2021-07-23&pick=50&format=atom&atomtitle=Immigration,%20Refugees%20and%20Citizenship%20Canada',
     countries: ['CA'],
     limit: 12,
-  },
-  {
-    id: 'home-affairs-au',
-    label: 'AU Home Affairs Media',
-    kind: 'policy',
-    url: 'https://www.homeaffairs.gov.au/news-media/media-releases.rss',
-    countries: ['AU'],
-    limit: 10,
   },
   {
     id: 'google-search-central',
