@@ -127,14 +127,19 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
     setError(null)
     setReport(null)
     setLearn(null)
-    setLiveTrace([])
+    // Immediate feedback — the live feed renders the moment the run starts,
+    // before the first SSE frame arrives, so a busy panel is never silent.
+    setLiveTrace([{ seq: -1, phase: 'connect', message: 'Connecting…', tone: 'info', progress: 0 }])
     setStreaming(true)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60_000)
     try {
       const res = await fetch('/api/seo-engine/master/stream', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({ jobId: job.id }),
+        signal: controller.signal,
       })
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({})) as { error?: string }
@@ -143,17 +148,22 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
       let finalReport: MasterReport | null = null
       let finalLearn: LearnSummary | null = null
       let fellBack = false
-      await consumeSseStream(res.body, (ev) => {
-        if (ev.type === 'progress' && ev.step) {
-          const s = ev.step as MasterReport['trace'][number]
-          setLiveTrace((prev) => [...prev, s])
-        } else if (ev.type === 'done') {
-          finalReport = (ev.report as MasterReport) ?? null
-          finalLearn = (ev.learn as LearnSummary | null) ?? null
-        } else if (ev.type === 'error') {
-          throw new Error(String(ev.error || 'Engine stream failed'))
-        }
-      })
+      try {
+        await consumeSseStream(res.body, (ev) => {
+          if (ev.type === 'progress' && ev.step) {
+            const s = ev.step as MasterReport['trace'][number]
+            setLiveTrace((prev) => [...prev, s])
+          } else if (ev.type === 'done') {
+            finalReport = (ev.report as MasterReport) ?? null
+            finalLearn = (ev.learn as LearnSummary | null) ?? null
+          } else if (ev.type === 'error') {
+            throw new Error(String(ev.error || 'Engine stream failed'))
+          }
+        })
+      } catch (streamErr) {
+        // Stream aborted by our timeout — fall through to the JSON fallback.
+        if (!(streamErr instanceof Error && streamErr.name === 'AbortError')) throw streamErr
+      }
       if (!finalReport) {
         // Stream closed without a `done` event (worker killed mid-run, network
         // drop). Fall back to the plain JSON report instead of surfacing a
@@ -178,6 +188,7 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Engine run failed')
     } finally {
+      clearTimeout(timeout)
       setBusy(false)
       setStreaming(false)
     }

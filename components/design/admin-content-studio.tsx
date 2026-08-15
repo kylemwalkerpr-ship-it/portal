@@ -5481,14 +5481,19 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const runEngineAction = async (kind: 'plan' | 'llm' | 'ingest') => {
     setEngineBusy(true)
     setError(null)
-    setEngineTrace([])
     setEngineAction(kind)
+    // Immediate feedback — render the feed the instant the click lands, even
+    // before the first SSE frame arrives, so a busy button is never silent.
+    setEngineTrace([{ seq: -1, phase: 'connect', message: 'Connecting to engine stream…', tone: 'info' }])
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 90_000)
     try {
       const res = await fetch('/api/seo-engine/action-stream', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({ kind, limit: 10, draftBriefs: false, maxAudits: 6, limitPerSource: 8, maxAiItems: 8 }),
+        signal: controller.signal,
       })
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({})) as { error?: string }
@@ -5508,8 +5513,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (summary) setActionNotice(summary)
       await fetchEngineStatus()
     } catch (e) {
-      setError(e instanceof Error ? e.message : `${kind} failed`)
+      const message = e instanceof Error && e.name === 'AbortError'
+        ? `${kind} timed out after 90s — the engine action did not finish`
+        : e instanceof Error ? e.message : `${kind} failed`
+      setError(message)
     } finally {
+      clearTimeout(timeout)
       setEngineBusy(false)
     }
   }
@@ -5652,8 +5661,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           fontFamily: C.mono, fontSize: 10, color: '#c7d3dd', maxHeight: 170, overflowY: 'auto',
           padding: '8px 12px', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
         }}>
-          {engineTrace.map((s) => (
-            <div key={s.seq} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          {engineTrace.map((s, i) => (
+            <div key={`${s.seq}-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
               <span style={{ color: '#5b6b7b', width: 74, flexShrink: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{s.phase}</span>
               <span style={{ color: s.tone === 'ok' ? '#34d399' : s.tone === 'warn' ? '#fbbf24' : '#dbe6ee' }}>{s.message}</span>
               {s.detail && <span style={{ color: '#5b6b7b' }}> · {s.detail}</span>}
