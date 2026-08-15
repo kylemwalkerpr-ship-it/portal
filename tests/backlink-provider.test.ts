@@ -129,10 +129,15 @@ describe('Backlink provider — fetch', () => {
           broken_backlinks: 2, spam_score: 12, domain_rank: 38,
         }] }] })
       }
-      return dfsJson({ tasks: [{ result: [
-        { anchor: 'UK Graduate Route visa', is_nofollow: false, is_new: true, is_lost: false, spam_score: 8, page_from_external_links: 4 },
-        { anchor: 'you safe consultancy', is_nofollow: true, is_new: false, is_lost: false, spam_score: 30, page_from_external_links: 180 },
-      ] }] })
+      return dfsJson({ tasks: [{ result: [{
+        // Real DataForSEO shape: container row with items array
+        target: 'https://legal.yousafeconsultancy.com/uk/graduate-route-visa/',
+        total_count: 2, items_count: 2,
+        items: [
+          { anchor: 'UK Graduate Route visa', is_nofollow: false, is_new: true, is_lost: false, backlink_spam_score: 8, page_from_external_links: 4 },
+          { anchor: 'you safe consultancy', is_nofollow: true, is_new: false, is_lost: false, backlink_spam_score: 30, page_from_external_links: 180 },
+        ],
+      }] }] })
     })
 
     const snap = await fetchBacklinkSnapshot('https://legal.yousafeconsultancy.com/uk/graduate-route-visa/')
@@ -161,7 +166,7 @@ describe('Backlink provider — fetch', () => {
       if (url.includes('/summary/live')) {
         return dfsJson({ tasks: [{ result: [{ target: 'https://example.com/', backlinks: 40, referring_domains: 12, domain_rank: 25, spam_score: 20 }] }] })
       }
-      return dfsJson({ tasks: [{ result: [] }] })
+      return dfsJson({ tasks: [{ result: [{ total_count: 0, items_count: 0, items: [] }] }] })
     })
     const snap = await fetchBacklinkSnapshot('https://example.com/')
     expect(snap).not.toBeNull()

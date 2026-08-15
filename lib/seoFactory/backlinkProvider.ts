@@ -236,13 +236,19 @@ export async function fetchBacklinkSnapshot(
   }
   if (!summary && linksRes.status !== 'fulfilled') return null
 
+  // The backlinks-list endpoint returns container rows ({ total_count,
+  // items_count, items: [...] }) — the actual backlinks live in each row's
+  // `items` array. Mapping the container rows directly (as earlier versions
+  // did) produced one phantom empty sample per row even when total_count
+  // was 0. Flatten `items` and guard against null/empty arrays.
   const linksResult = linksRes.status === 'fulfilled' ? linksRes.value.tasks?.[0]?.result : undefined
-  const samples: BacklinkAnchorSample[] = (linksResult || []).map((r) => ({
+  const items = (linksResult || []).flatMap((r) => (Array.isArray(r?.items) ? r.items : []))
+  const samples: BacklinkAnchorSample[] = items.map((r) => ({
     anchor: typeof r.anchor === 'string' ? r.anchor : '',
     nofollow: typeof r.is_nofollow === 'boolean' ? r.is_nofollow : null,
     isNew: typeof r.is_new === 'boolean' ? r.is_new : null,
     isLost: typeof r.is_lost === 'boolean' ? r.is_lost : null,
-    spamScore: num(r.spam_score),
+    spamScore: num(r.backlink_spam_score),
     sourceExternalLinks: num(r.page_from_external_links),
   }))
 
