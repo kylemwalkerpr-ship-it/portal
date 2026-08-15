@@ -30,6 +30,11 @@ import {
   type Metric,
 } from '@/lib/seoFactory/publishLedgerMetric'
 import { RankingModelBlock } from './admin-ranking-model-block'
+import {
+  classifyCannibalMergeResult,
+  type CannibalMergeResponseBody,
+  type CannibalResolveOutcome,
+} from '@/lib/seoFactory/cannibalResolveOutcome'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
@@ -4698,27 +4703,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   // Shared merge call: returns a per-item outcome so the single-row Resolve
   // button and the Resolve-all sweep share identical behavior.
-  const resolveOneCannibal = React.useCallback(async (item: WorkPlanItem): Promise<{ status: 'resolved' | 'failed' | 'skipped'; detail: string }> => {
+  const resolveOneCannibal = React.useCallback(async (item: WorkPlanItem): Promise<CannibalResolveOutcome> => {
     try {
       const res = await fetch('/api/seo-factory/cannibal-merge', {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ term: item.topic, mode: 'merge' }),
       })
-      const body = await res.json().catch(() => ({})) as {
-        error?: string
-        winnerUrl?: string
-        redirectsAdded?: Array<unknown>
-        skipped?: Array<unknown>
-        commits?: Array<{ prUrl?: string }>
-      }
-      if (!res.ok) return { status: 'failed', detail: body.error || `HTTP ${res.status}` }
-      const redirects = Array.isArray(body.redirectsAdded) ? body.redirectsAdded.length : 0
-      const skipped = Array.isArray(body.skipped) ? body.skipped.length : 0
-      const prUrl = (body.commits ?? []).map((c) => c?.prUrl).find(Boolean)
-      if (redirects === 0 && skipped > 0) return { status: 'skipped', detail: `${skipped} URL(s) skipped (no redirect convention)` }
-      let detail = `${redirects} redirect(s) → ${body.winnerUrl || 'winner'}`
-      if (prUrl) detail += ` · PR ${prUrl}`
-      return { status: 'resolved', detail }
+      const body = await res.json().catch(() => ({})) as CannibalMergeResponseBody
+      return classifyCannibalMergeResult({ ok: res.ok, status: res.status, body })
     } catch (err) {
       return { status: 'failed', detail: err instanceof Error ? err.message : 'unknown error' }
     }
