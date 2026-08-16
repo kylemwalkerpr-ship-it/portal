@@ -60,6 +60,21 @@ interface MasterReport {
   }
   adaptation?: { usedLearned: boolean }
   computedSignals: Array<{ id: string; label: string; subsystem: SubsystemId; value: number | null; computed: boolean }>
+  contentQuality?: {
+    score: number | null
+    confidence: number | null
+    missingSubtopics: string[]
+    topCompetitorUrl: string | null
+    topCompetitorDepthScore: number | null
+  }
+  semanticNlp?: {
+    score: number | null
+    confidence: number | null
+    missingEntities: string[]
+    topCompetitorUrl: string | null
+    topCompetitorEntityCoverage: number | null
+    flags?: string[]
+  }
   trace: Array<{
     seq: number; phase: string; message: string; detail?: string
     tone: string; progress: number
@@ -371,6 +386,83 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
               </div>
             </div>
           </div>
+
+          {/* Content Quality module (Subsystem A) — LLM judgment delta badge + actions */}
+          {report.contentQuality && report.contentQuality.score != null && (
+            <div style={{ border: `1px solid ${E.hairline}` }}>
+              <SectionTitle>Content quality · LLM judgment (Subsystem A)</SectionTitle>
+              <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 120, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Content depth</span>
+                  {bar(report.contentQuality.score)}
+                  <span style={{ width: 44, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: E.ink }}>{Math.round(report.contentQuality.score * 100)}</span>
+                  <span style={{ width: 58, textAlign: 'right', fontFamily: C.mono, fontSize: 10, color: report.deltas.content == null ? E.inkDim : report.deltas.content >= 0 ? E.mossGreen : E.orange }}>
+                    {report.deltas.content == null ? '' : `${report.deltas.content >= 0 ? '+' : ''}${(report.deltas.content * 100).toFixed(0)}`}
+                  </span>
+                </div>
+                {report.contentQuality.confidence != null && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: report.contentQuality.confidence >= 0.6 ? E.inkSoft : E.orange }}>
+                    confidence {Math.round(report.contentQuality.confidence * 100)}%{report.contentQuality.confidence < 0.6 ? ' · below 0.6 → excluded from engine score (advisory only)' : ''}
+                  </div>
+                )}
+                {report.contentQuality.topCompetitorUrl && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    👀 Top competitor: <b>{report.contentQuality.topCompetitorUrl}</b>
+                    {report.contentQuality.topCompetitorDepthScore != null ? ` (${Math.round(report.contentQuality.topCompetitorDepthScore * 100)}/100 depth)` : ''}
+                  </div>
+                )}
+                {report.contentQuality.missingSubtopics.length > 0 && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkSoft }}>
+                    missing: {report.contentQuality.missingSubtopics.slice(0, 5).join(' · ')}{report.contentQuality.missingSubtopics.length > 5 ? ` (+${report.contentQuality.missingSubtopics.length - 5} more)` : ''}
+                  </div>
+                )}
+                {report.recommendations.filter((r) => r.subsystem === 'content').slice(0, 3).map((r, i) => (
+                  <div key={`cq-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Semantic/NLP module (Subsystem H) — LLM judgment delta badge + actions */}
+          {report.semanticNlp && report.semanticNlp.score != null && (
+            <div style={{ border: `1px solid ${E.hairline}` }}>
+              <SectionTitle>Semantic coverage · LLM judgment (Subsystem H)</SectionTitle>
+              <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 120, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entity coverage</span>
+                  {bar(report.semanticNlp.score)}
+                  <span style={{ width: 44, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: E.ink }}>{Math.round(report.semanticNlp.score * 100)}</span>
+                  <span style={{ width: 58, textAlign: 'right', fontFamily: C.mono, fontSize: 10, color: report.deltas.semantic == null ? E.inkDim : report.deltas.semantic >= 0 ? E.mossGreen : E.orange }}>
+                    {report.deltas.semantic == null ? '' : `${report.deltas.semantic >= 0 ? '+' : ''}${(report.deltas.semantic * 100).toFixed(0)}`}
+                  </span>
+                </div>
+                {report.semanticNlp.confidence != null && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: report.semanticNlp.confidence >= 0.6 ? E.inkSoft : E.orange }}>
+                    confidence {Math.round(report.semanticNlp.confidence * 100)}%{report.semanticNlp.confidence < 0.6 ? ' · below 0.6 → excluded from engine score (advisory only)' : ''}
+                  </div>
+                )}
+                {report.semanticNlp.flags?.includes('text_only_judgment') && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    ⚠ text-only judgment — no variable embedding-verified · confidence capped at 0.7
+                  </div>
+                )}
+                {report.semanticNlp.topCompetitorUrl && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    👀 Top competitor: <b>{report.semanticNlp.topCompetitorUrl}</b>
+                    {report.semanticNlp.topCompetitorEntityCoverage != null ? ` (${Math.round(report.semanticNlp.topCompetitorEntityCoverage * 100)}/100 entity coverage)` : ''}
+                  </div>
+                )}
+                {report.semanticNlp.missingEntities.length > 0 && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkSoft }}>
+                    missing: {report.semanticNlp.missingEntities.slice(0, 5).join(' · ')}{report.semanticNlp.missingEntities.length > 5 ? ` (+${report.semanticNlp.missingEntities.length - 5} more)` : ''}
+                  </div>
+                )}
+                {report.recommendations.filter((r) => r.subsystem === 'semantic').slice(0, 3).map((r, i) => (
+                  <div key={`sn-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Recommendations */}
           <div style={{ border: `1px solid ${E.hairline}` }}>

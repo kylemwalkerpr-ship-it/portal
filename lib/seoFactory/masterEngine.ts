@@ -145,8 +145,20 @@ const bulk = (
  * 130+ variable registry. `computed:false` entries are measurement slots that
  * the engine ingests once a data source exists (backlink provider, CrUX field
  * data, analytics, logs) — the coverage report makes the gap explicit instead
- * of pretending a fixed formula knows the answer.
+ * of pretending a fixed formula knows the answer. */
+
+/**
+ * LLM-derived signals (content-quality / semantic coverage) must clear this
+ * confidence floor before they are published to the engine score. Below it the
+ * judgment is a human-QA advisory only — it does NOT enter the subsystem
+ * composite, so a hallucinated/weak LLM score cannot leak into the stored
+ * `master_engine_json` report or the regression training set. This is the gate
+ * because masterEngineLearn reads subsystem scores from the stored report, not
+ * the raw signals, so gating here is what keeps low-confidence judgments out
+ * of training.
  */
+export const LLM_CONFIDENCE_FLOOR = 0.6
+
 export const SIGNAL_REGISTRY: SignalDef[] = [
   // ── Intent (12) ──────────────────────────────────────────────────────────
   sig('intent_informational', 'Informational intent probability', 'intent', 'derived', 1, 1, true),
@@ -205,6 +217,10 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('s_entity_kg_link', 'Knowledge-graph entity linkage', 'semantic', 'registry', 1, 1, false),
   sig('s_embedding_similarity', 'Embedding similarity to top pages', 'semantic', 'derived', 1, 1, false),
   sig('s_passage_relevance', 'Passage-level relevance', 'semantic', 'derived', 1, 1, false),
+  // LLM judgment — fixed intra-subsystem prior weight, same as c_quality_llm.
+  // TODO(learned-weights): learn per-signal weights when the Phase-4 regression
+  // pipeline goes live instead of this fixed prior.
+  sig('s_coverage_llm', 'LLM semantic-coverage judgment', 'semantic', 'derived', 1, 2, true),
 
   // ── Technical (14) ───────────────────────────────────────────────────────
   sig('t_http_ok', 'HTTP 200', 'technical', 'live', 1, 2, true),
@@ -274,6 +290,12 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('g_cannibal_risk', 'No cannibalization (competing URLs)', 'serp', 'registry', 1, 2, true),
   sig('g_expected_traffic', 'Expected organic traffic proxy', 'serp', 'derived', 1, 1, true),
   sig('g_share_of_voice', 'Share-of-voice vs top 3', 'serp', 'derived', 1, 1, true),
+  // LLM judgment signals: `weight: 2` is a fixed intra-subsystem prior (same as
+  // every registry signal). Adaptive learning (masterEngineLearn) reweights at
+  // the SUBSYSTEM level, not per-signal.
+  // TODO(learned-weights): learn per-signal weights when the Phase-4 regression
+  // pipeline goes live instead of this fixed prior.
+  sig('c_quality_llm', 'LLM content-quality judgment', 'content', 'derived', 1, 2, true),
   sig('g_serp_feature_opp', 'SERP feature opportunity', 'serp', 'derived', 1, 1, false),
   sig('g_rank_volatility', 'Ranking volatility', 'serp', 'derived', 1, 1, false),
   sig('g_new_query_velocity', 'New-query emergence', 'serp', 'gsc', 1, 1, false),
@@ -674,6 +696,35 @@ export interface MasterEngineInput {
     topCompetitorDomain?: string | null
     competitorShare?: number | null
   }
+  /**
+   * LLM Content Quality judgment (Subsystem A, lib/seoFactory/contentQuality).
+   * One well-scoped DeepSeek call per page; `score` is the confidence-weighted
+   * composite (0-1). Present only after the module has run and persisted.
+   * Feeds `c_quality_llm` + the `content_depth_gap` recommendation.
+   */
+  contentQuality?: {
+    score: number | null
+    confidence: number | null
+    missingSubtopics: string[]
+    topCompetitorUrl: string | null
+    topCompetitorDepthScore: number | null
+  }
+  /**
+   * LLM Semantic/NLP judgment (Subsystem H, lib/seoFactory/semanticNlp).
+   * One well-scoped call per page; `score` is the confidence-weighted
+   * composite (0-1). Present only after the module has run and persisted.
+   * Feeds `s_coverage_llm` + the `semantic_coverage_gap` recommendation.
+   */
+  semanticNlp?: {
+    score: number | null
+    confidence: number | null
+    missingEntities: string[]
+    topCompetitorUrl: string | null
+    topCompetitorEntityCoverage: number | null
+    /** Model flags; `text_only_judgment` means no variable was embedding-verified
+     *  (per-variable confidence was capped at 0.7 by the parser). */
+    flags?: string[]
+  }
 }
 
 // ═══ Signal computation ════════════════════════════════════════════════════
@@ -1032,6 +1083,13 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
     ? clamp01(llmV.shareOfVoice != null ? llmV.shareOfVoice : llmV.cited / llmV.total)
     : null
   out.g_serp_feature_opp = null
+
+  // ══ LLM content-quality judgment (Subsystem A module) ══
+  // Gated on the LLM_CONFIDENCE_FLOOR: a low-confidence judgment stays out of
+  // the score (and therefore out of the regression training set, which reads
+  // subsystem scores from the stored report).
+  const cq = input.contentQuality
+  out.c_quality_llm = cq && cq.score != null && (cq.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(cq.score) : null
   out.g_rank_volatility = null
   out.g_new_query_velocity = null
   out.g_lost_query_rate = null
@@ -1137,6 +1195,8 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.s_entity_attributes = normalizeRange(stats + datedStats + legalMatches, 0, 8, true)
   out.s_conversational = /\b(you|your|we|let's|if you|want to|need to|wondering|thinking about|planning to)\b/i.test(text) ? 1 : 0.5
   out.s_semantic_html5 = liveHtml ? (/<(article|section|nav|aside|main|figure)\b/gi.test(liveHtml) ? 1 : 0) : null
+  const sn = input.semanticNlp
+  out.s_coverage_llm = sn && sn.score != null && (sn.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(sn.score) : null
 
   // technical depth
   out.t_soft404 = liveHtml
@@ -1475,6 +1535,36 @@ function recommend(
         : 'Add a direct-answer capsule + FAQ schema so answer engines cite the estate',
         0.1, 0.7, 'medium', 2,
         `LLM share-of-voice ${Math.round(sov * 100)}%${top ? ` — top competitor ${top} (${Math.round((llmV.competitorShare ?? 0) * 100)}%)` : ''}`)
+    }
+  }
+  // LLM Content Quality competitive delta (Subsystem A module) — names the top
+  // competitor and the specific missing subtopics the model identified.
+  const cq = input.contentQuality
+  if (cq && cq.score != null) {
+    const missing = (cq.missingSubtopics || []).filter(Boolean)
+    const trailsTop = cq.topCompetitorDepthScore != null && cq.score < cq.topCompetitorDepthScore - 0.15
+    if (missing.length || trailsTop) {
+      const top = cq.topCompetitorUrl
+      push('content_depth_gap', 'content', missing.length
+        ? `Cover the missing subtopics competitors rank for: ${missing.slice(0, 4).join(' · ')}${missing.length > 4 ? ` (+${missing.length - 4} more)` : ''}`
+        : 'Deepen the page to close the gap against the top-ranking competitor',
+        0.1, 0.7, 'medium', 2,
+        `content quality ${Math.round(cq.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${cq.topCompetitorDepthScore != null ? ` at ${Math.round(cq.topCompetitorDepthScore * 100)}/100` : ''}${missing.length ? ` · ${missing.length} missing subtopic(s)` : ''}`)
+    }
+  }
+  // LLM Semantic/NLP competitive delta (Subsystem H module) — names the top
+  // competitor and the specific missing entities the model identified.
+  const sem = input.semanticNlp
+  if (sem && sem.score != null) {
+    const missingEntities = (sem.missingEntities || []).filter(Boolean)
+    const trailsTop = sem.topCompetitorEntityCoverage != null && sem.score < sem.topCompetitorEntityCoverage - 0.15
+    if (missingEntities.length || trailsTop) {
+      const top = sem.topCompetitorUrl
+      push('semantic_coverage_gap', 'semantic', missingEntities.length
+        ? `Add the missing entities competitors already cover: ${missingEntities.slice(0, 4).join(' · ')}${missingEntities.length > 4 ? ` (+${missingEntities.length - 4} more)` : ''}`
+        : 'Broaden entity coverage to close the gap against the top-ranking competitor',
+        0.1, 0.7, 'medium', 2,
+        `semantic coverage ${Math.round(sem.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${sem.topCompetitorEntityCoverage != null ? ` at ${Math.round(sem.topCompetitorEntityCoverage * 100)}/100` : ''}${missingEntities.length ? ` · ${missingEntities.length} missing entity(ies)` : ''}`)
     }
   }
 
@@ -1820,6 +1910,12 @@ export interface MasterEngineReport {
   /** Whether the weights were adapted from learned outcomes or kept the fixed prior. */
   adaptation: { usedLearned: boolean }
   computedSignals: ComputedSignal[]
+  /** LLM Content Quality judgment (Subsystem A) — echoed back for the panel's
+   *  delta badge + top-competitor readout (null when the module hasn't run). */
+  contentQuality?: MasterEngineInput['contentQuality']
+  /** LLM Semantic/NLP judgment (Subsystem H) — echoed back for the panel's
+   *  delta badge + top-competitor readout (null when the module hasn't run). */
+  semanticNlp?: MasterEngineInput['semanticNlp']
   /** Ordered pipeline steps — the UI replays this as the engine "livestream". */
   trace: EngineTraceStep[]
 }
@@ -1946,6 +2042,8 @@ export function scoreMaster(input: MasterEngineInput, learned?: LearnedWeightsIn
     governance,
     adaptation,
     computedSignals,
+    contentQuality: input.contentQuality,
+    semanticNlp: input.semanticNlp,
     trace: [],
   }
   report.trace = buildEngineTrace(input, report)

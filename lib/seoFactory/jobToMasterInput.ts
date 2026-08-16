@@ -32,6 +32,20 @@ export interface MasterEngineJobRowLike {
   authority_score?: number | null
   created_at?: string | null
   updated_at?: string | null
+  /** LLM Content Quality module (Subsystem A) — persisted typed columns. */
+  content_quality_score?: number | null
+  content_depth_score?: number | null
+  content_gap_missing_subtopics?: string[] | null
+  content_top_competitor?: string | null
+  content_top_competitor_depth?: number | null
+  content_confidence_avg?: number | null
+  /** LLM Semantic/NLP module (Subsystem H) — persisted typed columns. */
+  semantic_coverage_score?: number | null
+  semantic_missing_entities?: string[] | null
+  semantic_top_competitor?: string | null
+  semantic_top_competitor_coverage?: number | null
+  semantic_confidence_avg?: number | null
+  semantic_flags?: string[] | null
 }
 
 const gscOf = (gsc: Record<string, unknown> | null | undefined): MasterEngineInput['gsc'] => {
@@ -45,6 +59,37 @@ const gscOf = (gsc: Record<string, unknown> | null | undefined): MasterEngineInp
   }
   // A blob with no usable numeric fields is treated as absent.
   return Object.values(out).some((v) => v !== undefined) ? out : undefined
+}
+
+const contentQualityOf = (job: MasterEngineJobRowLike): MasterEngineInput['contentQuality'] => {
+  const score = typeof job.content_quality_score === 'number' ? job.content_quality_score : null
+  const missingSubtopics = Array.isArray(job.content_gap_missing_subtopics)
+    ? job.content_gap_missing_subtopics.map(String).filter(Boolean)
+    : []
+  if (score == null && !missingSubtopics.length && !job.content_top_competitor) return undefined
+  return {
+    score,
+    confidence: typeof job.content_confidence_avg === 'number' ? job.content_confidence_avg : null,
+    missingSubtopics,
+    topCompetitorUrl: job.content_top_competitor || null,
+    topCompetitorDepthScore: typeof job.content_top_competitor_depth === 'number' ? job.content_top_competitor_depth : null,
+  }
+}
+
+const semanticNlpOf = (job: MasterEngineJobRowLike): MasterEngineInput['semanticNlp'] => {
+  const score = typeof job.semantic_coverage_score === 'number' ? job.semantic_coverage_score : null
+  const missingEntities = Array.isArray(job.semantic_missing_entities)
+    ? job.semantic_missing_entities.map(String).filter(Boolean)
+    : []
+  if (score == null && !missingEntities.length && !job.semantic_top_competitor) return undefined
+  return {
+    score,
+    confidence: typeof job.semantic_confidence_avg === 'number' ? job.semantic_confidence_avg : null,
+    missingEntities,
+    topCompetitorUrl: job.semantic_top_competitor || null,
+    topCompetitorEntityCoverage: typeof job.semantic_top_competitor_coverage === 'number' ? job.semantic_top_competitor_coverage : null,
+    flags: Array.isArray(job.semantic_flags) ? job.semantic_flags.map(String) : undefined,
+  }
 }
 
 export function jobToMasterEngineInput(job: MasterEngineJobRowLike): MasterEngineInput {
@@ -69,5 +114,7 @@ export function jobToMasterEngineInput(job: MasterEngineJobRowLike): MasterEngin
     authorityScore: job.authority_score ?? undefined,
     createdAt: job.created_at || undefined,
     updatedAt: job.updated_at || undefined,
+    contentQuality: contentQualityOf(job),
+    semanticNlp: semanticNlpOf(job),
   }
 }

@@ -24,6 +24,8 @@ import { jobToMasterEngineInput } from '../lib/seoFactory/jobToMasterInput'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
 import { loadAllSiteHealthFacts, normalizePageUrl } from '../lib/seoFactory/siteHealthSnapshot'
 import { loadLlmVisibilityEvidence } from '../lib/seoEngine/llmVisibility'
+import { scoreContentQuality, buildContentLane1, contentQualityPersist } from '../lib/seoFactory/contentQuality'
+import { scoreSemanticNlp, buildSemanticLane1, semanticNlpPersist } from '../lib/seoFactory/semanticNlp'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = resolveSupabaseKey()
@@ -55,12 +57,26 @@ interface JobRow {
   required_short_keywords: string[] | null
   required_long_tail_keywords: string[] | null
   competing_urls: string[] | null
+  competing_snippets: string[] | null
   gsc_json: Record<string, unknown> | null
   backlinks_json: Record<string, unknown> | null
   created_at: string | null
   updated_at: string | null
   master_engine_score: number | null
   master_engine_grade: string | null
+  content_scored_at: string | null
+  content_quality_score: number | null
+  content_gap_missing_subtopics: string[] | null
+  content_top_competitor: string | null
+  content_top_competitor_depth: number | null
+  content_confidence_avg: number | null
+  semantic_scored_at: string | null
+  semantic_coverage_score: number | null
+  semantic_missing_entities: string[] | null
+  semantic_top_competitor: string | null
+  semantic_top_competitor_coverage: number | null
+  semantic_confidence_avg: number | null
+  semantic_flags: string[] | null
 }
 
 async function fetchJobs(): Promise<JobRow[]> {
@@ -73,9 +89,14 @@ async function fetchJobs(): Promise<JobRow[]> {
         id, title, topic, primary_keyword, content_type, region, content,
         indexable, canonical_url, live_http_status,
         required_short_keywords, required_long_tail_keywords,
-        competing_urls, gsc_json, backlinks_json,
+        competing_urls, competing_snippets, gsc_json, backlinks_json,
         created_at, updated_at,
-        master_engine_score, master_engine_grade
+        master_engine_score, master_engine_grade,
+        content_scored_at, content_quality_score, content_gap_missing_subtopics,
+        content_top_competitor, content_top_competitor_depth, content_confidence_avg,
+        semantic_scored_at, semantic_coverage_score, semantic_missing_entities,
+        semantic_top_competitor, semantic_top_competitor_coverage, semantic_confidence_avg,
+        semantic_flags
       `)
       .eq('status', 'merged')
       .order('created_at', { ascending: false })
@@ -122,6 +143,10 @@ async function main() {
   let adapted = 0
   let siteHealthFed = 0
   let llmFed = 0
+  let contentScored = 0
+  let contentSkipped = 0
+  let semanticScored = 0
+  let semanticSkipped = 0
 
   // ── Site Health feed ──────────────────────────────────────────────
   // Load the persisted Operations audit once and attach per-page facts so the
@@ -155,6 +180,80 @@ async function main() {
       llmFed++
     }
 
+    // Content Quality module (Subsystem A) — one well-scoped LLM judgment
+    // call per job, skipped within its 7-day TTL so re-runs don't re-spend.
+    // Apply-mode only: dry-run must not spend tokens.
+    let contentCols: Record<string, unknown> | null = null
+    if (APPLY) {
+      const fresh = row.content_scored_at &&
+        Date.now() - new Date(row.content_scored_at).getTime() < 7 * 86_400_000
+      if (!fresh) {
+        const lane1 = buildContentLane1({
+          targetText: input.content || '',
+          competitorTexts: row.competing_snippets || [],
+          competingInternalUrls: input.competingUrls || [],
+        })
+        const cq = await scoreContentQuality({
+          pageUrl: input.liveUrl || input.canonicalUrl || '',
+          targetText: input.content || '',
+          competitorTexts: row.competing_snippets || [],
+          lane1,
+        })
+        if (cq.model_used !== 'unavailable' || cq.variables.length) {
+          const persisted = contentQualityPersist(cq)
+          contentCols = { ...persisted, content_scored_at: new Date().toISOString() }
+          input.contentQuality = persisted.content_quality_score != null
+            ? {
+                score: persisted.content_quality_score,
+                confidence: persisted.content_confidence_avg,
+                missingSubtopics: persisted.content_gap_missing_subtopics,
+                topCompetitorUrl: persisted.content_top_competitor,
+                topCompetitorDepthScore: persisted.content_top_competitor_depth,
+              }
+            : undefined
+          contentScored++
+        }
+      } else {
+        contentSkipped++
+      }
+    }
+
+    // Semantic/NLP module (Subsystem H) — one well-scoped LLM judgment call
+    // per job, skipped within its 7-day TTL. Apply-mode only.
+    let semanticCols: Record<string, unknown> | null = null
+    if (APPLY) {
+      const fresh = row.semantic_scored_at &&
+        Date.now() - new Date(row.semantic_scored_at).getTime() < 7 * 86_400_000
+      if (!fresh) {
+        const lane1 = buildSemanticLane1({
+          questionIntent: input.contentType === 'faq' || /\?/.test(input.topic || ''),
+        })
+        const sem = await scoreSemanticNlp({
+          pageUrl: input.liveUrl || input.canonicalUrl || '',
+          targetText: input.content || '',
+          competitorTexts: row.competing_snippets || [],
+          lane1,
+        })
+        if (sem.model_used !== 'unavailable' || sem.variables.length) {
+          const persisted = semanticNlpPersist(sem)
+          semanticCols = { ...persisted, semantic_scored_at: new Date().toISOString() }
+          input.semanticNlp = persisted.semantic_coverage_score != null
+            ? {
+                score: persisted.semantic_coverage_score,
+                confidence: persisted.semantic_confidence_avg,
+                missingEntities: persisted.semantic_missing_entities,
+                topCompetitorUrl: persisted.semantic_top_competitor,
+                topCompetitorEntityCoverage: persisted.semantic_top_competitor_coverage,
+                flags: persisted.semantic_flags,
+              }
+            : undefined
+          semanticScored++
+        }
+      } else {
+        semanticSkipped++
+      }
+    }
+
     // Skip rows that already carry a score from the same engine era? No —
     // this is a raise/replace backfill: score every merged job and refresh.
     const report = scoreMaster(input, { byIntent })
@@ -181,6 +280,8 @@ async function main() {
           master_engine_grade: report.grade,
           master_engine_json: report,
           master_engine_fetched_at: report.generatedAt,
+          ...(contentCols || {}),
+          ...(semanticCols || {}),
         })
         .eq('id', row.id)
       if (error) {
@@ -198,6 +299,8 @@ async function main() {
   console.log(`  Skipped:           ${skipped} (no computable composite)`)
   console.log(`  Site Health fed:   ${siteHealthFed}`)
   console.log(`  LLM voice fed:     ${llmFed}`)
+  console.log(`  Content scored:    ${contentScored} (${contentSkipped} within TTL)`)
+  console.log(`  Semantic scored:   ${semanticScored} (${semanticSkipped} within TTL)`)
   console.log(`  Adapted (learned): ${adapted}`)
   const gradeLine = Object.entries(grades)
     .sort(([a], [b]) => a.localeCompare(b))
