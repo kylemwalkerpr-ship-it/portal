@@ -267,6 +267,9 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('e_reviewer_disclosure', 'Reviewer / fact-check disclosure', 'eeat', 'content', 1, 1, false),
   sig('e_brand_reputation', 'Independent reputation signals', 'eeat', 'registry', 1, 1, false),
   sig('e_external_experts', 'External expert references', 'eeat', 'content', 1, 1, false),
+  // LLM judgment — fixed intra-subsystem prior weight, same as c_quality_llm.
+  // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
+  sig('e_eeat_llm', 'LLM E-E-A-T/trust judgment', 'eeat', 'derived', 1, 2, true),
 
   // ── Schema (10) ──────────────────────────────────────────────────────────
   sig('sc_article', 'Article JSON-LD', 'schema', 'content', 1, 2, true),
@@ -723,6 +726,20 @@ export interface MasterEngineInput {
     topCompetitorEntityCoverage: number | null
     /** Model flags; `text_only_judgment` means no variable was embedding-verified
      *  (per-variable confidence was capped at 0.7 by the parser). */
+    flags?: string[]
+  }
+  /**
+   * LLM E-E-A-T/Trust judgment (Subsystem I, lib/seoFactory/eeatTrust).
+   * One well-scoped call per page; `score` is the confidence-weighted
+   * composite (0-1). Present only after the module has run and persisted.
+   * Feeds `e_eeat_llm` + the `eeat_trust_gap` recommendation.
+   */
+  eeatTrust?: {
+    score: number | null
+    confidence: number | null
+    missingSignals: string[]
+    topCompetitorUrl: string | null
+    topCompetitorTrustScore: number | null
     flags?: string[]
   }
 }
@@ -1241,6 +1258,8 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.e_fact_check = /(fact-?check|reviewed by|verified by|checked by|checked for accuracy)/i.test(text) ? 1 : 0
   out.e_citation_freshness = citations > 0 ? (datedStats > 0 ? 1 : 0.4) : null
   out.e_claims_evidence = (stats > 0 || citations > 0) ? 1 : 0.3
+  const et = input.eeatTrust
+  out.e_eeat_llm = et && et.score != null && (et.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(et.score) : null
 
   // schema depth
   out.sc_webpage = (hasType('WebPage') || hasType('WebSite')) ? 1 : 0
@@ -1565,6 +1584,21 @@ function recommend(
         : 'Broaden entity coverage to close the gap against the top-ranking competitor',
         0.1, 0.7, 'medium', 2,
         `semantic coverage ${Math.round(sem.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${sem.topCompetitorEntityCoverage != null ? ` at ${Math.round(sem.topCompetitorEntityCoverage * 100)}/100` : ''}${missingEntities.length ? ` · ${missingEntities.length} missing entity(ies)` : ''}`)
+    }
+  }
+  // LLM E-E-A-T/Trust competitive delta (Subsystem I module) — names the top
+  // competitor and the specific missing trust signals the model identified.
+  const et = input.eeatTrust
+  if (et && et.score != null) {
+    const missingSignals = (et.missingSignals || []).filter(Boolean)
+    const trailsTop = et.topCompetitorTrustScore != null && et.score < et.topCompetitorTrustScore - 0.15
+    if (missingSignals.length || trailsTop) {
+      const top = et.topCompetitorUrl
+      push('eeat_trust_gap', 'eeat', missingSignals.length
+        ? `Add the missing trust signals competitors already demonstrate: ${missingSignals.slice(0, 4).join(' · ')}${missingSignals.length > 4 ? ` (+${missingSignals.length - 4} more)` : ''}`
+        : 'Strengthen E-E-A-T signals to close the gap against the most trustworthy competitor',
+        0.1, 0.7, 'medium', 2,
+        `E-E-A-T trust ${Math.round(et.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${et.topCompetitorTrustScore != null ? ` at ${Math.round(et.topCompetitorTrustScore * 100)}/100` : ''}${missingSignals.length ? ` · ${missingSignals.length} missing signal(s)` : ''}`)
     }
   }
 
@@ -1916,6 +1950,9 @@ export interface MasterEngineReport {
   /** LLM Semantic/NLP judgment (Subsystem H) — echoed back for the panel's
    *  delta badge + top-competitor readout (null when the module hasn't run). */
   semanticNlp?: MasterEngineInput['semanticNlp']
+  /** LLM E-E-A-T/Trust judgment (Subsystem I) — echoed back for the panel's
+   *  delta badge + top-competitor readout (null when the module hasn't run). */
+  eeatTrust?: MasterEngineInput['eeatTrust']
   /** Ordered pipeline steps — the UI replays this as the engine "livestream". */
   trace: EngineTraceStep[]
 }
@@ -2044,6 +2081,7 @@ export function scoreMaster(input: MasterEngineInput, learned?: LearnedWeightsIn
     computedSignals,
     contentQuality: input.contentQuality,
     semanticNlp: input.semanticNlp,
+    eeatTrust: input.eeatTrust,
     trace: [],
   }
   report.trace = buildEngineTrace(input, report)

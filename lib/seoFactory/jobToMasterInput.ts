@@ -46,6 +46,13 @@ export interface MasterEngineJobRowLike {
   semantic_top_competitor_coverage?: number | null
   semantic_confidence_avg?: number | null
   semantic_flags?: string[] | null
+  /** LLM E-E-A-T/Trust module (Subsystem I) — persisted typed columns. */
+  eeat_trust_score?: number | null
+  eeat_missing_signals?: string[] | null
+  eeat_top_competitor?: string | null
+  eeat_top_competitor_trust?: number | null
+  eeat_confidence_avg?: number | null
+  eeat_flags?: string[] | null
 }
 
 const gscOf = (gsc: Record<string, unknown> | null | undefined): MasterEngineInput['gsc'] => {
@@ -92,6 +99,22 @@ const semanticNlpOf = (job: MasterEngineJobRowLike): MasterEngineInput['semantic
   }
 }
 
+const eeatTrustOf = (job: MasterEngineJobRowLike): MasterEngineInput['eeatTrust'] => {
+  const score = typeof job.eeat_trust_score === 'number' ? job.eeat_trust_score : null
+  const missingSignals = Array.isArray(job.eeat_missing_signals)
+    ? job.eeat_missing_signals.map(String).filter(Boolean)
+    : []
+  if (score == null && !missingSignals.length && !job.eeat_top_competitor) return undefined
+  return {
+    score,
+    confidence: typeof job.eeat_confidence_avg === 'number' ? job.eeat_confidence_avg : null,
+    missingSignals,
+    topCompetitorUrl: job.eeat_top_competitor || null,
+    topCompetitorTrustScore: typeof job.eeat_top_competitor_trust === 'number' ? job.eeat_top_competitor_trust : null,
+    flags: Array.isArray(job.eeat_flags) ? job.eeat_flags.map(String) : undefined,
+  }
+}
+
 export function jobToMasterEngineInput(job: MasterEngineJobRowLike): MasterEngineInput {
   return {
     topic: job.topic || undefined,
@@ -116,5 +139,6 @@ export function jobToMasterEngineInput(job: MasterEngineJobRowLike): MasterEngin
     updatedAt: job.updated_at || undefined,
     contentQuality: contentQualityOf(job),
     semanticNlp: semanticNlpOf(job),
+    eeatTrust: eeatTrustOf(job),
   }
 }

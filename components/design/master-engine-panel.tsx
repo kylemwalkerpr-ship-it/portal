@@ -75,6 +75,14 @@ interface MasterReport {
     topCompetitorEntityCoverage: number | null
     flags?: string[]
   }
+  eeatTrust?: {
+    score: number | null
+    confidence: number | null
+    missingSignals: string[]
+    topCompetitorUrl: string | null
+    topCompetitorTrustScore: number | null
+    flags?: string[]
+  }
   trace: Array<{
     seq: number; phase: string; message: string; detail?: string
     tone: string; progress: number
@@ -459,6 +467,42 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
                 )}
                 {report.recommendations.filter((r) => r.subsystem === 'semantic').slice(0, 3).map((r, i) => (
                   <div key={`sn-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* E-E-A-T/Trust module (Subsystem I) — LLM judgment delta badge + actions */}
+          {report.eeatTrust && report.eeatTrust.score != null && (
+            <div style={{ border: `1px solid ${E.hairline}` }}>
+              <SectionTitle>Trust & E-E-A-T · LLM judgment (Subsystem I)</SectionTitle>
+              <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 120, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trust score</span>
+                  {bar(report.eeatTrust.score)}
+                  <span style={{ width: 44, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: E.ink }}>{Math.round(report.eeatTrust.score * 100)}</span>
+                  <span style={{ width: 58, textAlign: 'right', fontFamily: C.mono, fontSize: 10, color: report.deltas.eeat == null ? E.inkDim : report.deltas.eeat >= 0 ? E.mossGreen : E.orange }}>
+                    {report.deltas.eeat == null ? '' : `${report.deltas.eeat >= 0 ? '+' : ''}${(report.deltas.eeat * 100).toFixed(0)}`}
+                  </span>
+                </div>
+                {report.eeatTrust.confidence != null && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: report.eeatTrust.confidence >= 0.6 ? E.inkSoft : E.orange }}>
+                    confidence {Math.round(report.eeatTrust.confidence * 100)}%{report.eeatTrust.confidence < 0.6 ? ' · below 0.6 → excluded from engine score (advisory only)' : ''}
+                  </div>
+                )}
+                {report.eeatTrust.topCompetitorUrl && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    👀 Most trustworthy competitor: <b>{report.eeatTrust.topCompetitorUrl}</b>
+                    {report.eeatTrust.topCompetitorTrustScore != null ? ` (${Math.round(report.eeatTrust.topCompetitorTrustScore * 100)}/100 trust)` : ''}
+                  </div>
+                )}
+                {report.eeatTrust.missingSignals.length > 0 && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkSoft }}>
+                    missing: {report.eeatTrust.missingSignals.slice(0, 5).join(' · ')}{report.eeatTrust.missingSignals.length > 5 ? ` (+${report.eeatTrust.missingSignals.length - 5} more)` : ''}
+                  </div>
+                )}
+                {report.recommendations.filter((r) => r.subsystem === 'eeat').slice(0, 3).map((r, i) => (
+                  <div key={`et-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
                 ))}
               </div>
             </div>

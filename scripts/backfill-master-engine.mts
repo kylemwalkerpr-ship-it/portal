@@ -26,6 +26,7 @@ import { loadAllSiteHealthFacts, normalizePageUrl } from '../lib/seoFactory/site
 import { loadLlmVisibilityEvidence } from '../lib/seoEngine/llmVisibility'
 import { scoreContentQuality, buildContentLane1, contentQualityPersist } from '../lib/seoFactory/contentQuality'
 import { scoreSemanticNlp, buildSemanticLane1, semanticNlpPersist } from '../lib/seoFactory/semanticNlp'
+import { scoreEeatTrust, buildEeatLane1, eeatTrustPersist } from '../lib/seoFactory/eeatTrust'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = resolveSupabaseKey()
@@ -77,6 +78,13 @@ interface JobRow {
   semantic_top_competitor_coverage: number | null
   semantic_confidence_avg: number | null
   semantic_flags: string[] | null
+  eeat_scored_at: string | null
+  eeat_trust_score: number | null
+  eeat_missing_signals: string[] | null
+  eeat_top_competitor: string | null
+  eeat_top_competitor_trust: number | null
+  eeat_confidence_avg: number | null
+  eeat_flags: string[] | null
 }
 
 async function fetchJobs(): Promise<JobRow[]> {
@@ -96,7 +104,9 @@ async function fetchJobs(): Promise<JobRow[]> {
         content_top_competitor, content_top_competitor_depth, content_confidence_avg,
         semantic_scored_at, semantic_coverage_score, semantic_missing_entities,
         semantic_top_competitor, semantic_top_competitor_coverage, semantic_confidence_avg,
-        semantic_flags
+        semantic_flags,
+        eeat_scored_at, eeat_trust_score, eeat_missing_signals,
+        eeat_top_competitor, eeat_top_competitor_trust, eeat_confidence_avg, eeat_flags
       `)
       .eq('status', 'merged')
       .order('created_at', { ascending: false })
@@ -147,6 +157,8 @@ async function main() {
   let contentSkipped = 0
   let semanticScored = 0
   let semanticSkipped = 0
+  let eeatScored = 0
+  let eeatSkipped = 0
 
   // ── Site Health feed ──────────────────────────────────────────────
   // Load the persisted Operations audit once and attach per-page facts so the
@@ -254,6 +266,43 @@ async function main() {
       }
     }
 
+    // E-E-A-T/Trust module (Subsystem I) — one well-scoped LLM judgment call
+    // per job, skipped within its 7-day TTL. Apply-mode only.
+    let eeatCols: Record<string, unknown> | null = null
+    if (APPLY) {
+      const fresh = row.eeat_scored_at &&
+        Date.now() - new Date(row.eeat_scored_at).getTime() < 7 * 86_400_000
+      if (!fresh) {
+        const lane1 = buildEeatLane1({
+          targetText: input.content || '',
+          ymyl: input.contentType === 'legal_guide' || input.contentType === 'ymyl' || /\b(visa|immigration|naturalization|asylum|refugee)\b/i.test(input.topic || ''),
+        })
+        const et = await scoreEeatTrust({
+          pageUrl: input.liveUrl || input.canonicalUrl || '',
+          targetText: input.content || '',
+          competitorTexts: row.competing_snippets || [],
+          lane1,
+        })
+        if (et.model_used !== 'unavailable' || et.variables.length) {
+          const persisted = eeatTrustPersist(et)
+          eeatCols = { ...persisted, eeat_scored_at: new Date().toISOString() }
+          input.eeatTrust = persisted.eeat_trust_score != null
+            ? {
+                score: persisted.eeat_trust_score,
+                confidence: persisted.eeat_confidence_avg,
+                missingSignals: persisted.eeat_missing_signals,
+                topCompetitorUrl: persisted.eeat_top_competitor,
+                topCompetitorTrustScore: persisted.eeat_top_competitor_trust,
+                flags: persisted.eeat_flags,
+              }
+            : undefined
+          eeatScored++
+        }
+      } else {
+        eeatSkipped++
+      }
+    }
+
     // Skip rows that already carry a score from the same engine era? No —
     // this is a raise/replace backfill: score every merged job and refresh.
     const report = scoreMaster(input, { byIntent })
@@ -282,6 +331,7 @@ async function main() {
           master_engine_fetched_at: report.generatedAt,
           ...(contentCols || {}),
           ...(semanticCols || {}),
+          ...(eeatCols || {}),
         })
         .eq('id', row.id)
       if (error) {
@@ -301,6 +351,7 @@ async function main() {
   console.log(`  LLM voice fed:     ${llmFed}`)
   console.log(`  Content scored:    ${contentScored} (${contentSkipped} within TTL)`)
   console.log(`  Semantic scored:   ${semanticScored} (${semanticSkipped} within TTL)`)
+  console.log(`  E-E-A-T scored:    ${eeatScored} (${eeatSkipped} within TTL)`)
   console.log(`  Adapted (learned): ${adapted}`)
   const gradeLine = Object.entries(grades)
     .sort(([a], [b]) => a.localeCompare(b))
