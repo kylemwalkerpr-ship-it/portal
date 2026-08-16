@@ -121,6 +121,43 @@ function decodeXml(s: string): string {
   return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'").trim()
 }
 
+/**
+ * Browser-like UA — Google News RSS serves an empty/rate-limited response to
+ * generic cloud runtimes without one (the "0 fetched" symptom in the live
+ * ingest feed). The fetcher also retries once on 429/503 or an empty body
+ * because Google News intermittently rate-limits datacenter IPs.
+ */
+const FEED_UA = 'Mozilla/5.0 (compatible; YouSafeContentStudio/1.0; +https://portal.yousafeconsultancy.com)'
+
+/** Fetch a feed URL with a retry on transient rate-limits / empty bodies. */
+export async function fetchFeedText(url: string): Promise<string> {
+  let lastStatus = '?'
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/rss+xml, application/atom+xml, text/xml, */*',
+        'User-Agent': FEED_UA,
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+    lastStatus = String(res.status)
+    if (!res.ok) {
+      if ((res.status === 429 || res.status === 503) && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 800))
+        continue
+      }
+      throw new Error(`HTTP ${res.status}`)
+    }
+    const text = await res.text()
+    if (text.trim()) return text
+    if (attempt === 0) {
+      await new Promise((r) => setTimeout(r, 800))
+      continue
+    }
+  }
+  throw new Error(`Empty feed body (HTTP ${lastStatus})`)
+}
+
 function parseFeed(xml: string, limit: number): RawItem[] {
   const items: RawItem[] = []
   const re = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/gi
@@ -234,9 +271,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
     const per: KnowledgeIngestResult['perSource'][number] = { id: source.id, label: source.label, fetched: 0, stored: 0 }
     opts.onProgress?.('fetch', `Fetching ${source.label}…`)
     try {
-      const res = await fetch(source.url, { headers: { Accept: 'application/rss+xml, application/atom+xml, text/xml, */*' }, signal: AbortSignal.timeout(12_000) })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const raw = parseFeed(await res.text(), limit)
+      const raw = parseFeed(await fetchFeedText(source.url), limit)
       per.fetched = raw.length; result.itemsFetched += raw.length
       for (const item of raw) {
         const tagged = tagItem(item)
