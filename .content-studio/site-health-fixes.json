@@ -1431,5 +1431,50 @@
     "repo": "portal",
     "path": "https://market.yousafeconsultancy.com/sellers/",
     "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "idx_msvjeeju_au_app_sitemap_page.tsx",
+    "timestamp": "2026-08-16T08:22:31.722Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "au/app/sitemap/page.tsx",
+    "url": "https://au.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (688w): Site Map | YouSafe Australia"
+  },
+  {
+    "id": "idx_msvjeeju_ca_app_sitemap_page.tsx",
+    "timestamp": "2026-08-16T08:22:31.722Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "ca/app/sitemap/page.tsx",
+    "url": "https://ca.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (740w): Site Map | YouSafe Canada"
+  },
+  {
+    "id": "idx_msvjeeju_landing-page_app_sitemap_page.",
+    "timestamp": "2026-08-16T08:22:31.722Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "landing-page/app/sitemap/page.tsx",
+    "url": "https://yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (659w): Site Map | YouSafe Consultancy"
+  },
+  {
+    "id": "idx_msvjeeju_uk_app_sitemap_page.tsx",
+    "timestamp": "2026-08-16T08:22:31.722Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "uk/app/sitemap/page.tsx",
+    "url": "https://uk.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (745w): Site Map | YouSafe UK"
+  },
+  {
+    "id": "idx_msvjeeju_usa_app_sitemap_page.tsx",
+    "timestamp": "2026-08-16T08:22:31.722Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "usa/app/sitemap/page.tsx",
+    "url": "https://usa.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (732w): Site Map | YouSafe USA"
   }
 ]
