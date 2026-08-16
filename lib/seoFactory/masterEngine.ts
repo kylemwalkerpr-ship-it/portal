@@ -219,8 +219,8 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('t_title_length', 'Title length window (live)', 'technical', 'live', 1, 1, true),
   sig('t_page_weight', 'Page weight (lighter is better)', 'technical', 'live', -1, 1, true),
   sig('t_robots_txt', 'Robots.txt directive correct', 'technical', 'live', 1, 1, false),
-  sig('t_sitemap_membership', 'Sitemap inclusion', 'technical', 'registry', 1, 1, false),
-  sig('t_crawl_depth', 'Crawl depth (clicks from home)', 'technical', 'registry', 1, 1, false),
+  sig('t_sitemap_membership', 'Sitemap inclusion', 'technical', 'registry', 1, 1, true),
+  sig('t_crawl_depth', 'Crawl depth (clicks from home)', 'technical', 'registry', -1, 1, true),
 
   // ── Links (12) ───────────────────────────────────────────────────────────
   sig('l_internal_estate', 'Internal estate interlinks', 'links', 'content', 1, 2, true),
@@ -635,6 +635,28 @@ export interface MasterEngineInput {
   }
   /** Per-URL backlink snapshot from the DataForSEO provider (links subsystem). */
   backlinks?: BacklinkSnapshot | null
+  /**
+   * Site Health findings for this page (persisted by the Content Studio
+   * Operations audit → siteHealthSnapshot). Lights up the technical + links
+   * signals that the deterministic live-HTML path cannot see (estate-wide
+   * inbound links, sitemap membership, source-level noindex, crawl depth).
+   */
+  siteHealth?: {
+    /** True when the estate scan found zero inbound internal links. */
+    orphan?: boolean
+    /** Estate-wide inbound internal link count from the GitHub scan. */
+    inboundLinks?: number
+    /** Present in the repo sitemap (null = unknown/unreachable sitemap). */
+    inSitemap?: boolean
+    /** Source file carries an explicit noindex directive. */
+    noindex?: boolean
+    /** Source page is indexable (not blocked/noindex). */
+    indexable?: boolean
+    /** Clicks from home (URL path depth proxy). */
+    crawlDepth?: number
+    /** Source prose word count (thin < 400 flags a soft-404 risk). */
+    words?: number
+  }
   updatedAt?: string
   createdAt?: string
   /** Optional 0–100 host authority proxy (registry / authorityScoring). */
@@ -863,6 +885,8 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   const liveHtml = input.liveHtml || ''
   const canonicalHref = liveHtml ? extractCanonicalHref(liveHtml) : null
   const noindex = /<meta[^>]*robots[^>]*noindex/i.test(liveHtml)
+  // Site Health facts (persisted estate scan) — see siteHealthSnapshot.ts.
+  const sh = input.siteHealth
   const viewport = /<meta[^>]*name=["']viewport["']/i.test(liveHtml)
   const liveTitle = liveHtml ? (liveHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').trim() : ''
   const scriptCount = (liveHtml.match(/<script\b/gi) || []).length
@@ -871,18 +895,24 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
 
   out.t_http_ok = input.liveHttpStatus == null ? null : input.liveHttpStatus === 200 ? 1 : 0
   out.t_https = input.liveUrl ? (input.liveUrl.startsWith('https://') ? 1 : 0) : null
-  out.t_indexable = input.indexable === false ? 0 : 1
+  // Indexable = job flag AND source-level site-health indexability agree.
+  out.t_indexable =
+    input.indexable === false || sh?.noindex === true || sh?.indexable === false ? 0 : 1
   out.t_canonical_present = liveHtml ? (canonicalHref ? 1 : 0) : null
   out.t_canonical_match = liveHtml ? (canonicalMatches(input.canonicalUrl || input.liveUrl, canonicalHref) ? 1 : 0) : null
-  out.t_noindex_absent = liveHtml ? (noindex ? 0 : 1) : null
+  // Noindex is 0 when EITHER the live HTML or the source scan flags it.
+  const liveNoindex = liveHtml ? noindex : null
+  const shNoindex = sh?.noindex
+  out.t_noindex_absent =
+    liveNoindex != null || shNoindex != null ? (liveNoindex === true || shNoindex === true ? 0 : 1) : null
   out.t_h1_single = live ? (live.h1 ? 1 : 0) : null
   out.t_meta_present = live ? (live.metaDescription ? 1 : 0) : null
   out.t_viewport = liveHtml ? (viewport ? 1 : 0) : null
   out.t_title_length = liveTitle ? normalizeTarget(liveTitle.length, 55, 20) : null
   out.t_page_weight = liveHtml ? normalizeRange(liveHtml.length, 60_000, 400_000, false) : null
   out.t_robots_txt = null
-  out.t_sitemap_membership = null
-  out.t_crawl_depth = null
+  out.t_sitemap_membership = sh?.inSitemap === undefined ? null : sh.inSitemap ? 1 : 0
+  out.t_crawl_depth = sh?.crawlDepth == null ? null : normalizeRange(sh.crawlDepth, 0, 5, false)
 
   // ══ links ══
   out.l_internal_estate = normalizeRange(internalLinks, 0, 3, true)
@@ -891,7 +921,15 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
     try { return new URL(u).hostname } catch { return u }
   }))
   out.l_anchor_diversity = normalizeRange(domains.size, 0, 4, true)
-  out.l_orphan_risk = internalLinks > 0 ? 1 : 0
+  // Estate-wide orphan detection: prefer the Site Health inbound-link audit;
+  // fall back to the draft's own internal links when no snapshot is present.
+  const shOrphan =
+    sh?.orphan !== undefined
+      ? sh.orphan
+      : sh?.inboundLinks !== undefined
+        ? sh.inboundLinks === 0
+        : undefined
+  out.l_orphan_risk = shOrphan !== undefined ? (shOrphan ? 0 : 1) : internalLinks > 0 ? 1 : 0
   out.l_domain_authority = input.authorityScore == null ? null : normalizeRange(input.authorityScore, 0, 80, true)
   out.l_competitor_link_gap = null
   if (input.backlinks) {
@@ -1083,7 +1121,11 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.s_semantic_html5 = liveHtml ? (/<(article|section|nav|aside|main|figure)\b/gi.test(liveHtml) ? 1 : 0) : null
 
   // technical depth
-  out.t_soft404 = liveHtml ? (liveHtml.length < 800 && input.liveHttpStatus === 200 ? 0 : 1) : null
+  out.t_soft404 = liveHtml
+    ? (liveHtml.length < 800 && input.liveHttpStatus === 200 ? 0 : 1)
+    : sh?.words != null && sh.words > 0
+      ? (sh.words < 400 ? 0 : 1)
+      : null
   const openDiv = (liveHtml.match(/<div\b/gi) || []).length
   const closeDiv = (liveHtml.match(/<\/div>/gi) || []).length
   out.t_html_validation = liveHtml ? 1 - clamp01(Math.abs(openDiv - closeDiv) / 10) : null
@@ -1260,14 +1302,23 @@ function evaluateRisks(input: MasterEngineInput, values: Record<string, number |
   if ((values.e_outcome_promise_risk ?? 1) === 0) {
     risks.push({ code: 'outcome_promise', severity: 'blocker', message: 'Outcome-guarantee language present (YMYL / bar-ethics risk)' })
   }
-  if (input.liveHtml && (values.t_noindex_absent ?? 1) === 0) {
-    risks.push({ code: 'noindex', severity: 'blocker', message: 'Live page is noindex' })
+  if ((values.t_noindex_absent ?? 1) === 0) {
+    risks.push({
+      code: 'noindex',
+      severity: 'blocker',
+      message: input.siteHealth?.noindex
+        ? 'Source page carries a noindex directive (Site Health)'
+        : 'Live page is noindex',
+    })
   }
   if (input.liveHtml && (values.t_canonical_match ?? 1) === 0) {
     risks.push({ code: 'canonical_mismatch', severity: 'warning', message: 'Live canonical does not match the target URL' })
   }
   if ((values.l_orphan_risk ?? 1) === 0) {
     risks.push({ code: 'orphan', severity: 'warning', message: 'Page has no internal estate links (orphan risk)' })
+  }
+  if ((values.t_sitemap_membership ?? 1) === 0) {
+    risks.push({ code: 'missing_sitemap', severity: 'warning', message: 'Page missing from the repo sitemap (Site Health)' })
   }
   if (isYmyLQuery(input) && (values.e_disclaimer ?? 0) === 0) {
     risks.push({ code: 'missing_disclaimer', severity: 'blocker', message: 'YMYL content without a legal/educational disclaimer' })

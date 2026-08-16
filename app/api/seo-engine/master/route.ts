@@ -5,6 +5,7 @@ import { scoreMaster, type MasterEngineInput, type IntentId, type SubsystemId } 
 import { learnWeights, applyRewardNudges, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
+import { attachSiteHealthFacts } from '@/lib/seoFactory/siteHealthSnapshot'
 
 /**
  * POST /api/seo-engine/master
@@ -54,6 +55,11 @@ export async function POST(request: NextRequest) {
       }
       input = jobToMasterEngineInput(job)
     }
+
+    // Site Health feed — attach the persisted Operations-audit facts for this
+    // page (orphan / noindex / sitemap membership / crawl depth / thin) so the
+    // technical + links signals reflect the estate scan without re-scanning.
+    input = await attachSiteHealthFacts(input, input.liveUrl || input.canonicalUrl)
 
     // Retrain from real outcomes. When the caller supplies history use it
     // verbatim; otherwise build it from live GSC page positions correlated

@@ -20,8 +20,11 @@ import type {
 import {
   CONFIGS,
   auditSiteHealthChunked,
+  enrichInboundLinks,
+  isRootPageUrl,
   repairSiteHealthChunked,
 } from './siteHealth'
+import { persistSiteHealthSnapshot } from './siteHealthSnapshot'
 import {
   fixNoIndexPagesChunked,
   collectShippedNoIndexContent,
@@ -66,6 +69,8 @@ export interface FullSiteHealthReport {
   liveResults: LiveVerifyResult[]
   sitemapDiffs: SitemapDiffResult[]
   fixHistory: SiteHealthFixRecord[]
+  /** Pages persisted to the Master SEO Engine feed (site_health_pages). */
+  engineFedPages?: number
   exportFormats?: ('json' | 'csv')[]
 }
 
@@ -113,7 +118,7 @@ export function computeSiteHealthScore(pages: SiteHealthPage[]): SiteHealthScore
   if (!pages.length) return null
   const repo = pages[0].repo
   const total = pages.length
-  const orphans = pages.filter((p) => (p.inboundLinks ?? 0) === 0 && !p.url.endsWith('/')).length
+  const orphans = pages.filter((p) => (p.inboundLinks ?? 0) === 0 && !isRootPageUrl(p.url)).length
   const noindex = pages.filter((p) => p.noindex === true).length
   const thin = pages.filter((p) => (p.words ?? 0) > 0 && (p.words ?? 0) < 400).length
   const healthy = total - orphans - noindex - thin
@@ -189,16 +194,19 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
   const batchSize = Math.min(50, Math.max(10, opts.batchSize ?? 30))
 
   // ── Phase 1: Scan all pages (chunked) ────────────────────────────
-  const allPages: SiteHealthPage[] = []
+  const rawPages: SiteHealthPage[] = []
   let cursor: number | null = 0
   while (cursor !== null) {
     const batch = await auditSiteHealthChunked(scope, cursor, batchSize)
-    allPages.push(...batch.pages)
+    rawPages.push(...batch.pages)
     cursor = batch.nextBatch
   }
+  // The chunked audit leaves inboundLinks = 0 — compute the estate-wide link
+  // graph once so orphan classification and the engine feed are both correct.
+  const allPages = enrichInboundLinks(rawPages)
 
   // ── Phase 2: Classify ────────────────────────────────────────────
-  const orphans = allPages.filter((p) => (p.inboundLinks ?? 0) === 0 && !p.url.endsWith('/'))
+  const orphans = allPages.filter((p) => (p.inboundLinks ?? 0) === 0 && !isRootPageUrl(p.url))
   const noindexPages = allPages.filter((p) => p.noindex === true)
   const thinPages = allPages.filter((p) => (p.words ?? 0) > 0 && (p.words ?? 0) < 400)
 
@@ -314,7 +322,7 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
   // ── Phase 7: Fix history ─────────────────────────────────────────
   const fixHistory = await readFixHistory().catch(() => [] as SiteHealthFixRecord[])
 
-  return {
+  const report: FullSiteHealthReport = {
     scope,
     scannedAt: new Date().toISOString(),
     totalPages: allPages.length,
@@ -331,6 +339,11 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
     sitemapDiffs,
     fixHistory: fixHistory.slice(-50),
   }
+
+  // ── Phase 8: Feed the Master SEO Engine (persist snapshot) ───────
+  report.engineFedPages = await persistSiteHealthSnapshot(report).catch(() => 0)
+
+  return report
 }
 
 /** Export the report as JSON string or CSV of the pages table. */

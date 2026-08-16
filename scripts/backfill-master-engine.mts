@@ -22,6 +22,7 @@ import { learnWeights, applyRewardNudges } from '../lib/seoFactory/masterEngineL
 import { buildOutcomeHistoryFromLiveGsc } from '../lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '../lib/seoFactory/jobToMasterInput'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
+import { loadAllSiteHealthFacts, normalizePageUrl } from '../lib/seoFactory/siteHealthSnapshot'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = resolveSupabaseKey()
@@ -118,13 +119,36 @@ async function main() {
   let wrote = 0
   let updated = 0
   let adapted = 0
+  let siteHealthFed = 0
+
+  // ── Site Health feed ──────────────────────────────────────────────
+  // Load the persisted Operations audit once and attach per-page facts so the
+  // technical + links signals reflect the estate scan (orphan / noindex /
+  // sitemap / crawl depth / thin) instead of draft-only proxies.
+  const siteHealthFacts = await loadAllSiteHealthFacts()
 
   for (const row of rows) {
     const label = (row.title || row.topic || 'untitled').slice(0, 60)
 
+    const input = jobToMasterEngineInput(row)
+    const shUrl = input.liveUrl || input.canonicalUrl || ''
+    const facts = shUrl ? siteHealthFacts.get(normalizePageUrl(shUrl)) : undefined
+    if (facts) {
+      input.siteHealth = {
+        orphan: facts.orphan,
+        inboundLinks: facts.inboundLinks,
+        inSitemap: facts.inSitemap ?? undefined,
+        noindex: facts.noindex,
+        indexable: facts.indexable,
+        crawlDepth: facts.crawlDepth,
+        words: facts.words,
+      }
+      siteHealthFed++
+    }
+
     // Skip rows that already carry a score from the same engine era? No —
     // this is a raise/replace backfill: score every merged job and refresh.
-    const report = scoreMaster(jobToMasterEngineInput(row), { byIntent })
+    const report = scoreMaster(input, { byIntent })
     if (report.composite == null) {
       skipped++
       console.log(`  · skipped       ${row.id.slice(0, 8)}…  no computable composite · ${label}`)
@@ -163,6 +187,7 @@ async function main() {
   console.log(`  Rows scanned:      ${rows.length}`)
   console.log(`  Scored:            ${scored}`)
   console.log(`  Skipped:           ${skipped} (no computable composite)`)
+  console.log(`  Site Health fed:   ${siteHealthFed}`)
   console.log(`  Adapted (learned): ${adapted}`)
   const gradeLine = Object.entries(grades)
     .sort(([a], [b]) => a.localeCompare(b))

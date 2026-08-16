@@ -290,6 +290,70 @@ export function isFullyExpanded(content: string): boolean {
   return wordCount(content) >= 400
 }
 
+/** True when the page URL is the site root (homepage) — excluded from orphan classification. */
+export function isRootPageUrl(url: string): boolean {
+  try {
+    return (new URL(url).pathname.replace(/\/+$/, '') || '/') === '/'
+  } catch {
+    return (url || '').split('/').filter(Boolean).length === 0
+  }
+}
+
+/**
+ * Estate-wide inbound internal-link audit over a full page scan. Reuses the
+ * same extractLinks/normalizeUrl machinery as the non-chunked audit, so the
+ * chunked full-scan path (runFullSiteHealthCheck) can classify orphans and
+ * persist real inbound counts for the Master SEO Engine feed.
+ */
+export function computeInboundLinks(
+  pages: SiteHealthPage[],
+): Map<string, { count: number; sources: string[] }> {
+  const files: ScanFile[] = pages.map((p) => ({
+    repo: p.repo,
+    path: p.path,
+    url: p.url,
+    content: p.content || '',
+    page: true,
+    indexable: p.indexable,
+  }))
+  const inbound = new Map<string, { count: number; sources: string[] }>()
+  for (const page of files) {
+    const key = normalizeUrl(page.url, page)
+    if (key) inbound.set(key, { count: 0, sources: [] })
+  }
+  for (const source of files) {
+    for (const link of extractLinks(source.content, source)) {
+      const existing = inbound.get(link)
+      if (!existing) continue
+      existing.count += 1
+      if (existing.sources.length < 5) existing.sources.push(source.url)
+    }
+  }
+  return inbound
+}
+
+/**
+ * Enrich a scanned page list with real estate inbound-link counts (the
+ * chunked audit leaves inboundLinks = 0). Returns the same pages with
+ * inboundLinks + sampleSources populated so callers can classify orphans and
+ * feed the Master SEO Engine without re-scanning GitHub.
+ */
+export function enrichInboundLinks(pages: SiteHealthPage[]): SiteHealthPage[] {
+  const inbound = computeInboundLinks(pages)
+  return pages.map((p) => {
+    const key = normalizeUrl(p.url, {
+      repo: p.repo,
+      path: p.path,
+      url: p.url,
+      content: p.content || '',
+      page: true,
+      indexable: p.indexable,
+    })
+    const v = key ? inbound.get(key) : undefined
+    return v ? { ...p, inboundLinks: v.count, sampleSources: v.sources.slice(0, 5) } : p
+  })
+}
+
 export async function auditSiteHealth(scope: SiteHealthScope = 'all') {
   const configs = (Object.values(CONFIGS) as RepoConfig[]).filter((config) => scope === 'all' || config.repo === scope)
   const files = (await Promise.all(configs.map(scanRepo))).flat()

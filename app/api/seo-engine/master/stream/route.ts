@@ -10,6 +10,7 @@ import {
 import { learnWeights, applyRewardNudges, type HistoricalOutcome } from '@/lib/seoFactory/masterEngineLearn'
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
+import { attachSiteHealthFacts } from '@/lib/seoFactory/siteHealthSnapshot'
 
 export const runtime = 'nodejs'
 // Allow the live-GSC outcome-history build + streaming on long runs
@@ -106,6 +107,18 @@ export async function POST(request: Request) {
           emitStep(
             'load',
             `Job loaded · ${words.toLocaleString()} body words · ${input.contentType || 'legal_guide'} · ${input.region || '—'}`,
+            undefined,
+            'ok',
+          )
+        }
+
+        // Site Health feed — attach the persisted Operations-audit facts for
+        // this page (orphan / noindex / sitemap / crawl depth / thin).
+        input = await attachSiteHealthFacts(input, input.liveUrl || input.canonicalUrl)
+        if (input.siteHealth) {
+          emitStep(
+            'sitehealth',
+            `Site Health facts attached · orphan=${input.siteHealth.orphan} · sitemap=${input.siteHealth.inSitemap ?? 'unknown'} · depth=${input.siteHealth.crawlDepth}`,
             undefined,
             'ok',
           )

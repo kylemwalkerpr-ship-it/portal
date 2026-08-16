@@ -241,7 +241,8 @@ export default function AdminSiteHealthPanel() {
         <div>
           <h3 style={{ margin: '4px 0 2px', fontFamily: C.serif, fontSize: 22, color: C.text }}>Site Health · Content Studio Operations</h3>
           <p style={{ margin: 0, fontSize: 12, color: C.textDim }}>
-            Orphan repair · indexing · sitemap sync · live verification
+            Orphan repair · indexing · sitemap sync · live verification ·
+            <span style={{ color: C.purple }}> feeds Master SEO Engine</span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
