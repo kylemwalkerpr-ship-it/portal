@@ -31,7 +31,7 @@ interface GscDashboardProps {
   onDisconnect: () => void
 }
 
-type TabKey = 'query' | 'page' | 'device' | 'country'
+type TabKey = 'query' | 'page' | 'device' | 'country' | 'indexing'
 
 // ── Connect state ──
 
@@ -300,6 +300,232 @@ function GscSummary({
   )
 }
 
+// ── Indexing (why pages aren't indexed + fix) ──
+
+type IndexIssueRow = {
+  url: string
+  reasonCode: string
+  reason: string
+  fixAction: string
+  fixLabel: string
+  autoFix: boolean
+  indexed: boolean
+  repo?: string | null
+  path?: string | null
+  title?: string | null
+  words?: number | null
+  coverageState?: string | null
+  verdict?: string | null
+}
+
+type FixSummary = {
+  fixed: number
+  delegated: number
+  recommended: number
+  skipped: number
+  failed: number
+  requested: number
+}
+
+const REASON_COLOR: Record<string, string> = {
+  NOINDEX_TAG: C.red,
+  NOINDEX_HTTP_HEADER: C.red,
+  BLOCKED_ROBOTS_TXT: C.orange,
+  DUPLICATE_NO_CANONICAL: C.orange,
+  DUPLICATE_CHOSEN_CANONICAL: C.orange,
+  SOFT_404: C.orange,
+  NOT_FOUND_404: C.red,
+  SERVER_ERROR_5XX: C.red,
+  REDIRECT_ERROR: C.orange,
+  PAGE_WITH_REDIRECT: C.orange,
+  ACCESS_DENIED_401: C.red,
+  ACCESS_FORBIDDEN_403: C.red,
+  BLOCKED_4XX: C.red,
+  DISCOVERED_NOT_INDEXED: C.purple,
+  CRAWLED_NOT_INDEXED: C.purple,
+  SUBMITTED_NOT_INDEXED: C.purple,
+  UNKNOWN_TO_GOOGLE: C.purple,
+  UNKNOWN: C.textDim,
+  INDEXED_BLOCKED_ROBOTS: C.gold,
+}
+
+function GscIndexingPanel() {
+  const [rows, setRows] = React.useState<IndexIssueRow[] | null>(null)
+  const [scanning, setScanning] = React.useState(false)
+  const [fixing, setFixing] = React.useState<string | 'all' | null>(null)
+  const [summary, setSummary] = React.useState<FixSummary | null>(null)
+  const [prUrls, setPrUrls] = React.useState<string[]>([])
+  const [note, setNote] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const loadCached = React.useCallback(async () => {
+    setError(null)
+    try {
+      const res = await fetch('/api/content-studio/gsc/index-coverage', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list' }),
+      })
+      const d = await res.json()
+      if (d.error) throw new Error(d.error)
+      setRows((d.issues ?? []) as IndexIssueRow[])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load cached coverage')
+    }
+  }, [])
+
+  React.useEffect(() => { loadCached() }, [loadCached])
+
+  const scan = async () => {
+    setScanning(true)
+    setError(null)
+    setNote(null)
+    try {
+      const res = await fetch('/api/content-studio/gsc/index-coverage', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fetch', maxUrls: 250 }),
+      })
+      const d = await res.json()
+      if (d.error) throw new Error(d.error)
+      if (!d.configured) throw new Error('GSC not configured — connect a property first')
+      setRows((d.issues ?? []) as IndexIssueRow[])
+      setNote(`Scanned ${d.inspected} URLs · ${d.issues?.length ?? 0} not indexed · ${d.errors?.length ?? 0} inspect errors`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Index coverage scan failed')
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  const fix = async (target: string | 'all') => {
+    setFixing(target)
+    setError(null)
+    setNote(null)
+    setSummary(null)
+    setPrUrls([])
+    try {
+      const body = target === 'all' ? { fixAll: true, requestIndexing: true } : { urls: [target], requestIndexing: true }
+      const res = await fetch('/api/content-studio/gsc/index-coverage/fix', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await res.json()
+      if (d.error) throw new Error(d.error)
+      setSummary(d.summary ?? null)
+      setPrUrls(d.prUrls ?? [])
+      setNote((d.warnings?.length ? d.warnings.join(' · ') + ' — ' : '') + `Fixed ${d.summary?.fixed ?? 0} · requested indexing on ${d.summary?.requested ?? 0}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fix failed')
+    } finally {
+      setFixing(null)
+      loadCached()
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: C.textMuted }}>
+          Google's own verdict on why each estate page is (not) indexed — noindex tags, robots.txt blocks, canonical dupes, soft 404s, 4xx/5xx, and "discovered/crawled, not indexed".
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={scan} disabled={scanning} style={{
+            padding: '7px 14px', borderRadius: 6, border: `1px solid ${C.border}`,
+            background: C.surface, color: C.text, cursor: scanning ? 'wait' : 'pointer', fontSize: 12, fontFamily: 'inherit',
+          }}>
+            {scanning ? 'Scanning…' : '🔍 Scan index coverage'}
+          </button>
+          {rows && rows.length > 0 && (
+            <button onClick={() => fix('all')} disabled={fixing !== null} style={{
+              padding: '7px 14px', borderRadius: 6, border: 'none', background: C.green, color: '#fff',
+              cursor: fixing !== null ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+            }}>
+              {fixing === 'all' ? 'Fixing…' : '⚡ Fix all'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '8px 14px', fontSize: 12, color: C.red, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+      {note && (
+        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '8px 14px', fontSize: 12, color: '#1D4ED8', marginBottom: 12 }}>
+          {note}
+        </div>
+      )}
+      {summary && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12, fontFamily: C.mono, fontSize: 11 }}>
+          <span style={{ color: C.green }}>✔ {summary.fixed} fixed</span>
+          <span style={{ color: C.orange }}>→ {summary.recommended} recommended</span>
+          <span style={{ color: C.purple }}>↻ {summary.requested} re-index requested</span>
+          {summary.failed > 0 && <span style={{ color: C.red }}>✖ {summary.failed} failed</span>}
+        </div>
+      )}
+      {prUrls.length > 0 && (
+        <div style={{ marginBottom: 12, fontSize: 12 }}>
+          {prUrls.map((u) => (
+            <a key={u} href={u} target="_blank" rel="noreferrer" style={{ color: C.blue, display: 'inline-block', marginRight: 12 }}>PR ↗</a>
+          ))}
+        </div>
+      )}
+
+      {rows === null ? (
+        <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>Loading cached coverage…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>
+          No cached issues. Run <strong>Scan index coverage</strong> to inspect the estate against GSC.
+        </div>
+      ) : (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                <th style={{ ...thStyle(220) }}>Page</th>
+                <th style={{ ...thStyle(300) }}>Why not indexed</th>
+                <th style={{ ...thStyle(70), cursor: 'default' }}>Words</th>
+                <th style={{ ...thStyle(150), cursor: 'default' }}>Fix</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 100).map((r) => (
+                <tr key={r.url} style={{ borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+                  <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{r.title || r.url.split('/').filter(Boolean).pop() || r.url}</div>
+                    <a href={r.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.textDim, fontFamily: C.mono, textDecoration: 'none' }}>{r.url}</a>
+                    {r.path && <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>{r.repo}:{r.path}</div>}
+                  </td>
+                  <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 700,
+                      background: `${REASON_COLOR[r.reasonCode] || C.textDim}18`, color: REASON_COLOR[r.reasonCode] || C.textDim,
+                      border: `1px solid ${REASON_COLOR[r.reasonCode] || C.textDim}44`,
+                    }}>{r.reasonCode}</span>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{r.reason}</div>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'center', fontFamily: C.mono, fontSize: 12, color: C.textMuted }}>
+                    {r.words ?? '—'}
+                  </td>
+                  <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                    <button onClick={() => fix(r.url)} disabled={fixing !== null} style={{
+                      padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.border}`,
+                      background: r.autoFix ? C.surface : C.surface3, color: r.autoFix ? C.blue : C.textDim,
+                      cursor: fixing !== null ? 'wait' : 'pointer', fontSize: 11, fontFamily: 'inherit', whiteSpace: 'nowrap',
+                    }}>
+                      {fixing === r.url ? '…' : r.autoFix ? `Fix ${r.fixLabel}` : `⟳ ${r.fixLabel}`}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ──
 
 type GscStatus = {
@@ -317,6 +543,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'page', label: 'Pages' },
   { key: 'device', label: 'Devices' },
   { key: 'country', label: 'Countries' },
+  { key: 'indexing', label: 'Indexing' },
 ]
 
 export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: GscDashboardProps) {
@@ -466,8 +693,10 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
         ))}
       </div>
 
-      {/* Table */}
-      {loading ? (
+      {/* Table / Indexing panel */}
+      {tab === 'indexing' ? (
+        <GscIndexingPanel />
+      ) : loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>Loading GSC data...</div>
       ) : activeRows.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>
