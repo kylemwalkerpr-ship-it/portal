@@ -45,6 +45,7 @@ jobs:
             supabase/migrations/20260815_competing_snippets.sql \
             supabase/migrations/20260816_site_health_pages.sql \
             supabase/migrations/20260816_gsc_index_coverage.sql \
+            supabase/migrations/20260816_seo_llm_visibility_v3.sql \
             supabase/migrations/pg_trgm_indexes.sql \
             supabase/migrations/additional_fts_indexes.sql \
             supabase/migrations/application_fts_indexes.sql \

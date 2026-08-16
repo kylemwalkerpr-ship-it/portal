@@ -720,6 +720,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
                       {badge(a.cited ? 'CITED' : 'NOT CITED', a.cited ? C.greenSoft : C.redSoft, a.cited ? C.green : C.red)}
                       {a.fan_out ? badge(`FAN-OUT ${String(a.source_field || '').toUpperCase()}`, C.violetSoft, C.violet) : null}
+                      {Number(a.share_of_voice) > 0 ? badge(`SOV ${Math.round(Number(a.share_of_voice) * 100)}%`, C.violetSoft, C.violet) : null}
                       {a.stage ? badge(STAGE_LABELS[String(a.stage)] || String(a.stage), C.cyanSoft, C.cyan2) : null}
                       {a.country ? badge(String(a.country), C.blueSoft, C.blue) : null}
                       <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{String(a.engine)} · {timeAgo(String(a.created_at))}</span>
@@ -731,6 +732,25 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                       </div>
                     )}
                     {Boolean(a.snippet) && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 3, lineHeight: 1.5 }}>“{String(a.snippet).slice(0, 220)}{String(a.snippet).length > 220 ? '…' : ''}”</div>}
+                    {Boolean(a.top_competitor) && (
+                      <div style={{ fontSize: 10, color: C.orange, marginTop: 3 }}>
+                        👀 Top competitor: <b>{String(a.top_competitor)}</b>
+                        {Number(a.competitor_share) > 0 ? ` (${Math.round(Number(a.competitor_share) * 100)}% of engines)` : ''}
+                        {Number(a.share_of_voice) > 0 ? ` · estate ${Math.round(Number(a.share_of_voice) * 100)}%` : ''}
+                      </div>
+                    )}
+                    {Boolean((a.competitor_domains as string[] | undefined)?.length) && (
+                      <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, marginTop: 2 }}>
+                        competitors: {(a.competitor_domains as string[]).join(' · ')}
+                      </div>
+                    )}
+                    {Boolean((a.actions as unknown[] | undefined)?.length) && (
+                      <div style={{ marginTop: 4, padding: '5px 8px', borderRadius: C.radiusSm, background: C.violetSoft }}>
+                        {(a.actions as Array<{ action: string }>).slice(0, 3).map((act) => (
+                          <div key={act.action} style={{ fontSize: 10, color: C.text, lineHeight: 1.5 }}>→ {act.action}</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

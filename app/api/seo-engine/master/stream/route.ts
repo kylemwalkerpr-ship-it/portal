@@ -11,6 +11,7 @@ import { learnWeights, applyRewardNudges, type HistoricalOutcome } from '@/lib/s
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 import { attachSiteHealthFacts } from '@/lib/seoFactory/siteHealthSnapshot'
+import { loadLlmVisibilityEvidence } from '@/lib/seoEngine/llmVisibility'
 
 export const runtime = 'nodejs'
 // Allow the live-GSC outcome-history build + streaming on long runs
@@ -115,6 +116,19 @@ export async function POST(request: Request) {
         // Site Health feed — attach the persisted Operations-audit facts for
         // this page (orphan / noindex / sitemap / crawl depth / thin).
         input = await attachSiteHealthFacts(input, input.liveUrl || input.canonicalUrl)
+
+        // LLM/AEO feed — measured multi-engine share-of-voice for this topic.
+        const llmV = await loadLlmVisibilityEvidence(input.primaryKeyword || input.topic)
+        if (llmV) {
+          input.llmVisibility = llmV
+          emitStep(
+            'llmvoice',
+            `LLM share-of-voice ${Math.round((llmV.shareOfVoice ?? (llmV.total ? llmV.cited / llmV.total : 0)) * 100)}% (${llmV.cited}/${llmV.total})` +
+              (llmV.topCompetitorDomain ? ` · top competitor ${llmV.topCompetitorDomain}` : ''),
+            undefined,
+            'ok',
+          )
+        }
         if (input.siteHealth) {
           emitStep(
             'sitehealth',

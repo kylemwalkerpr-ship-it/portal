@@ -23,6 +23,7 @@ import { buildOutcomeHistoryFromLiveGsc } from '../lib/seoFactory/outcomeHistory
 import { jobToMasterEngineInput } from '../lib/seoFactory/jobToMasterInput'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
 import { loadAllSiteHealthFacts, normalizePageUrl } from '../lib/seoFactory/siteHealthSnapshot'
+import { loadLlmVisibilityEvidence } from '../lib/seoEngine/llmVisibility'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = resolveSupabaseKey()
@@ -120,6 +121,7 @@ async function main() {
   let updated = 0
   let adapted = 0
   let siteHealthFed = 0
+  let llmFed = 0
 
   // ── Site Health feed ──────────────────────────────────────────────
   // Load the persisted Operations audit once and attach per-page facts so the
@@ -144,6 +146,13 @@ async function main() {
         words: facts.words,
       }
       siteHealthFed++
+    }
+
+    // LLM/AEO feed — measured multi-engine share-of-voice for this topic.
+    const llmV = await loadLlmVisibilityEvidence(input.primaryKeyword || input.topic)
+    if (llmV) {
+      input.llmVisibility = llmV
+      llmFed++
     }
 
     // Skip rows that already carry a score from the same engine era? No —
@@ -188,6 +197,7 @@ async function main() {
   console.log(`  Scored:            ${scored}`)
   console.log(`  Skipped:           ${skipped} (no computable composite)`)
   console.log(`  Site Health fed:   ${siteHealthFed}`)
+  console.log(`  LLM voice fed:     ${llmFed}`)
   console.log(`  Adapted (learned): ${adapted}`)
   const gradeLine = Object.entries(grades)
     .sort(([a], [b]) => a.localeCompare(b))

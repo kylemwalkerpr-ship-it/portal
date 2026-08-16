@@ -273,7 +273,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('g_query_count', 'Query count for page', 'serp', 'gsc', 1, 1, true),
   sig('g_cannibal_risk', 'No cannibalization (competing URLs)', 'serp', 'registry', 1, 2, true),
   sig('g_expected_traffic', 'Expected organic traffic proxy', 'serp', 'derived', 1, 1, true),
-  sig('g_share_of_voice', 'Share-of-voice vs top 3', 'serp', 'derived', 1, 1, false),
+  sig('g_share_of_voice', 'Share-of-voice vs top 3', 'serp', 'derived', 1, 1, true),
   sig('g_serp_feature_opp', 'SERP feature opportunity', 'serp', 'derived', 1, 1, false),
   sig('g_rank_volatility', 'Ranking volatility', 'serp', 'derived', 1, 1, false),
   sig('g_new_query_velocity', 'New-query emergence', 'serp', 'gsc', 1, 1, false),
@@ -661,6 +661,19 @@ export interface MasterEngineInput {
   createdAt?: string
   /** Optional 0–100 host authority proxy (registry / authorityScoring). */
   authorityScore?: number | null
+  /**
+   * MEASURED LLM / AEO share-of-voice evidence for this page's topic
+   * (from the multi-engine prompt audits in lib/seoEngine/llmVisibility).
+   * Lights up `g_share_of_voice` and the competitive-delta recommendation.
+   * `total` > 0 is required before the signal is computed (never guessed).
+   */
+  llmVisibility?: {
+    cited: number
+    total: number
+    shareOfVoice?: number | null
+    topCompetitorDomain?: string | null
+    competitorShare?: number | null
+  }
 }
 
 // ═══ Signal computation ════════════════════════════════════════════════════
@@ -1012,7 +1025,12 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.g_expected_traffic = g.impressions != null && g.position != null
     ? normalizeRange(Math.log10(Math.max(1, g.impressions * (g.position <= 3 ? 0.1 : g.position <= 10 ? 0.03 : 0.01))), 0.5, 3.5, true)
     : null
-  out.g_share_of_voice = null
+  // LLM/AEO share-of-voice — measured from the multi-engine prompt audits
+  // (llmVisibility evidence), never guessed. 1.0 = every engine cited us.
+  const llmV = input.llmVisibility
+  out.g_share_of_voice = llmV && llmV.total > 0
+    ? clamp01(llmV.shareOfVoice != null ? llmV.shareOfVoice : llmV.cited / llmV.total)
+    : null
   out.g_serp_feature_opp = null
   out.g_rank_volatility = null
   out.g_new_query_velocity = null
@@ -1444,6 +1462,20 @@ function recommend(
   if (competingCount(input.competingUrls) > 0) {
     push('cannibal_merge', 'serp', 'Consolidate/differentiate from competing pages (301 losers → winner)', 0.1, 0.7, 'medium', 2,
       `${competingCount(input.competingUrls)} competing URL(s) target the same intent`)
+  }
+  // LLM/AEO share-of-voice gap — grounded in measured prompt-audit evidence
+  // (competitive delta names the exact domain that beat us).
+  const llmV = input.llmVisibility
+  if (llmV && llmV.total > 0) {
+    const sov = llmV.shareOfVoice != null ? llmV.shareOfVoice : llmV.cited / llmV.total
+    if (sov < 0.5) {
+      const top = llmV.topCompetitorDomain
+      push('llm_voice_gap', 'serp', top
+        ? `Outrank ${top} in answer engines — add a direct-answer capsule + FAQ schema`
+        : 'Add a direct-answer capsule + FAQ schema so answer engines cite the estate',
+        0.1, 0.7, 'medium', 2,
+        `LLM share-of-voice ${Math.round(sov * 100)}%${top ? ` — top competitor ${top} (${Math.round((llmV.competitorShare ?? 0) * 100)}%)` : ''}`)
+    }
   }
 
   // Subsystem delta gaps (lower confidence, higher effort) — gated on an

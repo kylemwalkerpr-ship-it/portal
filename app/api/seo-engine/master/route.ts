@@ -6,6 +6,7 @@ import { learnWeights, applyRewardNudges, type HistoricalOutcome } from '@/lib/s
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 import { attachSiteHealthFacts } from '@/lib/seoFactory/siteHealthSnapshot'
+import { loadLlmVisibilityEvidence } from '@/lib/seoEngine/llmVisibility'
 
 /**
  * POST /api/seo-engine/master
@@ -60,6 +61,12 @@ export async function POST(request: NextRequest) {
     // page (orphan / noindex / sitemap membership / crawl depth / thin) so the
     // technical + links signals reflect the estate scan without re-scanning.
     input = await attachSiteHealthFacts(input, input.liveUrl || input.canonicalUrl)
+
+    // LLM/AEO feed — attach measured share-of-voice evidence (multi-engine
+    // prompt audits) for this page's topic so g_share_of_voice + the
+    // competitive-delta recommendation reflect real answer-engine citations.
+    const llmV = await loadLlmVisibilityEvidence(input.primaryKeyword || input.topic)
+    if (llmV) input.llmVisibility = llmV
 
     // Retrain from real outcomes. When the caller supplies history use it
     // verbatim; otherwise build it from live GSC page positions correlated
