@@ -1133,5 +1133,55 @@
     "repo": "portal",
     "path": "https://market.yousafeconsultancy.com/sellers/",
     "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "noindex-1786868539380-au/app/sitemap/page.tsx",
+    "timestamp": "2026-08-16T08:22:19.380Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "au/app/sitemap/page.tsx",
+    "url": "https://au.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 688 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/104"
+  },
+  {
+    "id": "noindex-1786868539771-ca/app/sitemap/page.tsx",
+    "timestamp": "2026-08-16T08:22:19.771Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "ca/app/sitemap/page.tsx",
+    "url": "https://ca.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 740 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/104"
+  },
+  {
+    "id": "noindex-1786868540262-landing-page/app/sitemap/page.tsx",
+    "timestamp": "2026-08-16T08:22:20.262Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "landing-page/app/sitemap/page.tsx",
+    "url": "https://yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 659 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/104"
+  },
+  {
+    "id": "noindex-1786868540717-uk/app/sitemap/page.tsx",
+    "timestamp": "2026-08-16T08:22:20.717Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "uk/app/sitemap/page.tsx",
+    "url": "https://uk.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 745 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/104"
+  },
+  {
+    "id": "noindex-1786868541128-usa/app/sitemap/page.tsx",
+    "timestamp": "2026-08-16T08:22:21.128Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "usa/app/sitemap/page.tsx",
+    "url": "https://usa.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 732 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/104"
   }
 ]
