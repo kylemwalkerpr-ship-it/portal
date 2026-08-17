@@ -27,7 +27,17 @@ describe('isJunkQuery — GSC noise filter', () => {
     expect(isJunkQuery('0300 number eligibility')).toBe(false)
     expect(isJunkQuery('uk dependent visa')).toBe(false)
     expect(isJunkQuery('cpt approval letter uscis')).toBe(false)
+    expect(isJunkQuery('"cpt approval letter" uscis')).toBe(false)
     expect(isJunkQuery('485 visa english requirement pte')).toBe(false)
+  })
+
+  it('flags the Work Plan leftovers that Resolve-all could not merge', () => {
+    expect(isJunkQuery('"user2983" "stockton room and meal plan rates"')).toBe(true)
+    expect(isJunkQuery('"stockton room and meal plan rates final" pacific')).toBe(true)
+    expect(isJunkQuery('"user2983" "stockton room and meal plan rates" pacific')).toBe(true)
+    expect(isJunkQuery('"2026-04" "stockton room and meal plan rates" pacific')).toBe(true)
+    expect(isJunkQuery('"2026-2027 stockton room and meal plan rates" "iamhome@pacific.edu"')).toBe(true)
+    expect(isJunkQuery('"issued by yale university" weekly new haven')).toBe(true)
   })
 
   it('treats empty/blank input as junk', () => {

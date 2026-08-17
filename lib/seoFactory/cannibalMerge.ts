@@ -19,6 +19,7 @@
  */
 
 import { hostFromUrl, HOST_REPO, filePathFromOwnerUrl, slugify, type OwnerHost } from './ownership'
+import { isJunkQuery } from './queryNoise'
 import { getGscAccess } from '@/lib/gscAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
@@ -233,6 +234,18 @@ async function recordMergeToSupabase(payload: {
   }
 }
 
+/** Persist a non-mergeable cluster so Resolve-all can clear it from the Work Plan. */
+export async function dismissCannibalCluster(term: string, reason: string): Promise<void> {
+  await recordMergeToSupabase({
+    term,
+    winnerUrl: '',
+    loserUrls: [],
+    redirectsCreated: 0,
+    status: 'skipped',
+    message: reason.slice(0, 500),
+  })
+}
+
 export interface ResolvedCannibalPage {
   url: string
   impressions: number
@@ -424,6 +437,13 @@ export async function executeCannibalMerge(opts: {
     throw new Error('A search term is required to run a cannibal merge.')
   }
 
+  if (isJunkQuery(term)) {
+    const reason = 'junk GSC query — not a real keyword cluster'
+    await dismissCannibalCluster(term, reason)
+    outcome.skipped.push({ url: '', reason })
+    return outcome
+  }
+
   // Resolution-first: if the caller passed a bare keyword, a missing winner,
   // or an empty loser set, pull the competing pages from GSC page data.
   if (!winnerUrl || looksLikeKeyword(winnerUrl) || loserUrls.length === 0) {
@@ -432,15 +452,11 @@ export async function executeCannibalMerge(opts: {
       winnerUrl = resolved.pages[0].url
       loserUrls = resolved.pages.slice(1).map((p) => p.url)
       outcome.winnerUrl = winnerUrl
-      outcome.skipped.push({
-        url: `resolved:${term}`,
-        reason: `pages resolved from GSC (${resolved.pages.length} competing, winner = highest impressions)`,
-      })
     } else {
-      throw new Error(
-        `Could not resolve competing pages for "${term}" from Google Search Console. ` +
-          'Refresh GSC data in the War Room, then retry — or pick a winner and at least one loser page explicitly.',
-      )
+      const reason = 'no competing pages resolvable — not a real cluster'
+      await dismissCannibalCluster(term, reason)
+      outcome.skipped.push({ url: '', reason })
+      return outcome
     }
   }
 

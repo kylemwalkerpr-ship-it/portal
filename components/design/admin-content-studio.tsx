@@ -20,6 +20,7 @@
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
 import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream } from '@/lib/seoFactory/sse'
@@ -3956,6 +3957,7 @@ function buildWorkPlan(
   const items: WorkPlanItem[] = []
   // Radar opportunities → gaps, quick wins, refreshes
   for (const s of radar) {
+    if (s.play === 'cannibalization' && isJunkQuery(s.topic)) continue
     const cat: WorkPlanCategory = s.play === 'refresh' || s.play === 'defend' ? 'refresh'
       : s.play === 'cannibalization' ? 'cannibal'
       : 'gap'
@@ -3973,14 +3975,16 @@ function buildWorkPlan(
       suggestion: s,
     })
   }
-  // Cannibalization from radar meta — hide clusters that already have a merged
-  // decision in cannibal_merges so a refresh doesn't re-list resolved alerts.
-  const resolvedMerges = merges.filter((m) => m.status === 'merged')
+  // Cannibalization from radar meta — hide clusters that already have a
+  // terminal decision (merged / skipped / deferred) so Resolve-all and junk
+  // dismissals stay off the Work Plan after a refresh.
+  const resolvedMerges = merges.filter((m) => m.status === 'merged' || m.status === 'skipped' || m.status === 'deferred')
   const mergedClusterIds = new Set(resolvedMerges.map((m) => m.clusterId))
   const mergedStems = new Set(resolvedMerges.map((m) => String(m.stem || '').toLowerCase()).filter(Boolean))
   const mergedTerms = new Set(resolvedMerges.flatMap((m) => m.terms ?? []).map((t) => String(t).toLowerCase()))
   const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
   for (const c of cannibalList) {
+    if (isJunkQuery(c.term)) continue
     const stem = cannibalTermStem(c.term)
     if (
       mergedClusterIds.has(cannibalClusterIdForTerm(c.term)) ||
@@ -4149,7 +4153,7 @@ function WorkPlanTable({
                   {item.category === 'cannibal' ? (
                     resolvedIds?.has(item.id) ? (
                       <span
-                        title="Resolved — 301 redirects merged losers into the winner"
+                        title="Cleared — merge completed or the cluster was dismissed as unresolvable"
                         style={{
                           display: 'inline-block', padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.green}`, background: E.greenSoft,
                           color: E.green, fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
@@ -4861,8 +4865,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
     try {
       const r = await resolveOneCannibal(item)
-      if (r.status === 'resolved') setResolvedCannibalIds((prev) => new Set(prev).add(item.id))
-      setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
+      if (r.status === 'resolved' || r.status === 'skipped') setResolvedCannibalIds((prev) => new Set(prev).add(item.id))
+      setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : r.status === 'skipped' ? `⚠ Cannibal dismissed: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
       void fetchMergeHistory()
     } finally {
       setResolvingCannibalIds((prev) => {
@@ -4890,7 +4894,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       for (const item of cannibals) {
         const r = await resolveOneCannibal(item)
         if (r.status === 'resolved') { resolved += 1; resolvedIds.push(item.id) }
-        else if (r.status === 'skipped') skipped += 1
+        else if (r.status === 'skipped') { skipped += 1; resolvedIds.push(item.id) }
         else { failed += 1; failures.push(`${item.topic}: ${r.detail}`) }
       }
       if (resolvedIds.length) setResolvedCannibalIds((prev) => new Set([...prev, ...resolvedIds]))

@@ -267,7 +267,10 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       let shared = 0
       for (const t of termSet) if (tSet.has(t)) shared += 1
       const jac = shared / Math.max(1, termSet.size + tSet.size - shared)
-      if (jac >= 0.4 || (shared >= 2 && term.length >= 4)) matches.push(c.raw)
+      // Two shared tokens ("room"+"plan", "university"+"new") used to flag
+      // unrelated campus-PDF leftovers as cannibal clusters. Require a real
+      // Jaccard hit or three overlapping content words.
+      if (jac >= 0.45 || (shared >= 3 && jac >= 0.3)) matches.push(c.raw)
     }
 
     let play: Play

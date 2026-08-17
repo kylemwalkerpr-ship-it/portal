@@ -219,12 +219,12 @@ test.describe('Studio cannibalization — Work Plan Resolve button', () => {
     // Row starts with the Resolve button and no resolved badge.
     const resolveBtn = page.locator('button[title*="Auto-resolve"]').first()
     await expect(resolveBtn).toBeVisible({ timeout: 8_000 })
-    await expect(page.locator('span[title*="301 redirects merged losers"]')).toHaveCount(0)
+    await expect(page.locator('span[title*="Cleared"]')).toHaveCount(0)
 
     await resolveBtn.click()
 
     // After the merge resolves, the row flips to the green ✅ Resolved badge.
-    const badge = page.locator('span[title*="301 redirects merged losers"]')
+    const badge = page.locator('span[title*="Cleared"]')
     await expect(badge).toBeVisible({ timeout: 10_000 })
     await expect(badge).toHaveText(/Resolved/)
 
