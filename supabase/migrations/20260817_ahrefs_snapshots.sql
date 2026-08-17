@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS public.seo_ahrefs_snapshots (
   health_score_compared NUMERIC,
   cs_open INTEGER NOT NULL DEFAULT 0,
   total_open INTEGER NOT NULL DEFAULT 0,
-  issues JSONB NOT NULL DEFAULT '[]'
+  issues JSONB NOT NULL DEFAULT '[]',
+  source TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_seo_ahrefs_fetched ON public.seo_ahrefs_snapshots (fetched_at DESC);
