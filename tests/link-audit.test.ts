@@ -12,15 +12,20 @@
 import {
   auditLinksLive,
   auditLinksSync,
+  classifyLiveStatus,
   countEstateLinks,
   ensureBriefInterlinks,
   ESTATE_ANCHOR_LINKS,
   extractLinks,
   filterLiveInternalUrls,
+  filterVerifiedCitationUrls,
   isPlaceholderUrl,
   normalizeEstateUrl,
   resetLinkAuditCaches,
+  sanitizeDraftLinksLive,
+  stripDeadLinks,
 } from '@/lib/seoFactory/linkAudit'
+import { isAuthorityHost, isLowValueHost, sourcesForRegion } from '@/lib/seoFactory/officialSources'
 import { LINKS } from '@/lib/interlinkRegistry'
 
 const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -252,5 +257,95 @@ describe('linkAudit · live verification', () => {
     ])
     expect(live).toContain('https://legal.yousafeconsultancy.com/us/student-visas')
     expect(live.some((u) => u.includes('f1-opt'))).toBe(false)
+  })
+})
+
+describe('linkAudit · external citations must be live official sources', () => {
+  it('treats only .gov/.edu/known agencies as authority hosts', () => {
+    expect(isAuthorityHost('https://www.uscis.gov/working-in-the-united-states')).toBe(true)
+    expect(isAuthorityHost('https://www.gov.uk/student-visa')).toBe(true)
+    expect(isAuthorityHost('https://www.canada.ca/en/immigration-refugees-citizenship.html')).toBe(true)
+    expect(isAuthorityHost('https://immi.homeaffairs.gov.au/')).toBe(true)
+    expect(isAuthorityHost('https://boundless.com/f1-opt')).toBe(false)
+    expect(isLowValueHost('https://bit.ly/abc')).toBe(true)
+    expect(isLowValueHost('https://www.reddit.com/r/immigration')).toBe(true)
+  })
+
+  it('blocks competitor, shortener, and invented commercial URLs without a network call', () => {
+    const findings = auditLinksSync(
+      'See [Boundless](https://www.boundless.com/f1) and [promo](https://bit.ly/visa).',
+    )
+    expect(findings.filter((f) => f.code === 'untrusted_external_link').length).toBe(2)
+    expect(findings.every((f) => f.severity === 'blocker')).toBe(true)
+  })
+
+  it('marks a 404 government path as a dead_external_link blocker', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      if (url.includes('/this-path-does-not-exist')) {
+        return new Response('not found', { status: 404 })
+      }
+      return okJson()
+    }) as typeof fetch
+    const findings = await auditLinksLive(
+      'Cite [USCIS](https://www.uscis.gov/this-path-does-not-exist) for the rule.',
+    )
+    expect(findings.some((f) => f.code === 'dead_external_link' && f.severity === 'blocker')).toBe(true)
+  })
+
+  it('does not treat bot-blocked official hosts (403) as dead', () => {
+    const verdict = classifyLiveStatus('https://www.uscis.gov/working-in-the-united-states', 403)
+    expect(verdict.ok).toBe(true)
+    expect(classifyLiveStatus('https://www.uscis.gov/missing', 404).ok).toBe(false)
+  })
+
+  it('drops invented official paths from the citation allowlist', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/invented-form-i-999')) return new Response('nope', { status: 404 })
+      return okJson()
+    }) as typeof fetch
+    const live = await filterVerifiedCitationUrls([
+      'https://www.uscis.gov/invented-form-i-999',
+      'https://www.uscis.gov/',
+      'https://www.boundless.com/opt',
+    ])
+    expect(live).toEqual(['https://www.uscis.gov/'])
+  })
+
+  it('sanitizeDraftLinksLive strips a dead invented .gov path and injects a live official source', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      if (url.includes('/fake-opt-page')) return new Response('nope', { status: 404 })
+      return okJson()
+    }) as typeof fetch
+    const draft = 'You file OPT on [this page](https://www.uscis.gov/fake-opt-page). Also read [Boundless](https://www.boundless.com/opt).'
+    const result = await sanitizeDraftLinksLive(draft, { region: 'US' })
+    expect(result.stripped).toBeGreaterThanOrEqual(2)
+    expect(result.content).not.toContain('fake-opt-page')
+    expect(result.content).not.toContain('boundless.com')
+    expect(result.content).toMatch(/uscis\.gov|studyinthestates/)
+    expect(sourcesForRegion('US').length).toBeGreaterThan(0)
+  })
+
+  it('stripDeadLinks unwraps markdown, HTML, and bare URLs', () => {
+    const { content, stripped } = stripDeadLinks(
+      'See [x](https://www.uscis.gov/nope) and <a href="https://www.uscis.gov/nope">y</a> plus https://www.uscis.gov/nope.',
+      ['https://www.uscis.gov/nope'],
+    )
+    expect(stripped).toBeGreaterThanOrEqual(2)
+    expect(content).not.toContain('https://www.uscis.gov/nope')
+    expect(content).toContain('x')
   })
 })

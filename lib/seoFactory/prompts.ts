@@ -152,7 +152,8 @@ export function buildFactorySystemPrompt(opts: {
     '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
     '- KEYWORDS: every short keyword appears ≥1× and ≤4×; every long-tail keyword ≥1× and ≤2× (details in KEYWORD COVERAGE below).',
     '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
-    '- SOURCES: official .gov / .edu / institutional URLs only — never fabricate a citation or a URL.',
+    '- SOURCES: official .gov / .edu URLs only, taken VERBATIM from SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
+    '- EXTERNAL LINKS: no blogs, news, competitors, social, or URL shorteners. Every external href must be a live official page that helps the reader verify a rule.',
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
@@ -196,11 +197,14 @@ export function buildFactorySystemPrompt(opts: {
       '',
     ]),
     ...(sources && sources.length ? [
-      'SOURCES TO CITE:',
+      'SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST (use ONLY these exact URLs for external links):',
       ...sources.map((s, i) => `${i + 1}. ${s}`),
-      'Cite these sources where they support a claim. Do not fabricate additional URLs.',
+      'Cite these sources where they support a claim. Do not fabricate additional URLs. Do not invent a deeper path on the same host.',
       '',
-    ] : []),
+    ] : [
+      'OFFICIAL SOURCE ALLOWLIST is EMPTY — do NOT create ANY external http(s) links. Write agency names as plain text (USCIS, IRCC, UKVI, Home Affairs). Inventing a .gov path is a hard error.',
+      '',
+    ]),
     ...(interlinkAllowlist && interlinkAllowlist.length ? [
       'INTERNAL LINK ALLOWLIST (use ONLY these exact URLs for internal links — never invent, modify, or shorten them):',
       ...interlinkAllowlist.map((l, i) => `${i + 1}. ${l.label || l.url} -> ${l.url}`),

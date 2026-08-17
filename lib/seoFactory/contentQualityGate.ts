@@ -729,7 +729,7 @@ export function evaluateContentQuality(opts: {
         code: 'missing_official_sources',
         severity: 'blocker',
         message: 'Missing official government source URLs',
-        fix: 'Cite USCIS / IRCC / UKVI / Home Affairs with full https URLs.',
+        fix: 'Cite USCIS / IRCC / UKVI / Home Affairs with a live official https URL from the source allowlist — never invent a path.',
       })
     }
     if (!DISCLAIMER_RE.test(body)) {
@@ -883,7 +883,11 @@ export function evaluateContentQuality(opts: {
             ? 'Fix the link syntax — full https URL or estate-relative path.'
             : f.code === 'insecure_internal_link'
               ? 'Upgrade to https://.'
-              : 'Re-verify the URL against the live site before shipping.',
+              : f.code === 'untrusted_external_link'
+                ? 'Remove blogs, competitors, and shorteners. Cite only a live official .gov/.edu URL.'
+                : f.code === 'dead_external_link'
+                  ? 'That government/external path does not resolve. Use an exact URL from the official source allowlist.'
+                  : 'Re-verify the URL against the live site before shipping.',
       })
     }
   }

@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBriefAiProvider, generateBriefText } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
-import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
+import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import {
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
       '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each)',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
-      '  "sources": ["https://gov-or-edu-source.gov/page"]  // 3–5 authoritative URLs to cite',
+      '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 LIVE official .gov/.edu URLs only — never invent a path; the server live-checks every one',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
       '  "targetSlug": "kebab-case-slug-for-this-page",',
       '  "metaDescription": "140–160 character SEO meta description (compelling benefit + primary keyword, no clickbait)",',
@@ -302,7 +302,10 @@ export async function POST(req: NextRequest) {
       shortTail: merged.short.slice(0, 8),
       longTail: merged.longTail.slice(0, 6),
       kwH2Map: parsed.kwH2Map && typeof parsed.kwH2Map === 'object' ? parsed.kwH2Map as Record<string, string> : {},
-      sources: Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6) : [],
+      sources: await assembleDraftSourceAllowlist(
+        region,
+        Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],
+      ),
       interlinkTargets: interlinkTargets.slice(0, 8),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),

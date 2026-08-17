@@ -308,6 +308,10 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     maxChars: 4200,
   })
 
+  const { assembleDraftSourceAllowlist, sanitizeDraftLinksLive, urlsFromAllowlistLines } = await import('./linkAudit')
+  const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined)
+  const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
+
   const system = buildFactorySystemPrompt({
     plan,
     contentType,
@@ -317,7 +321,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     requiredShortKeywords,
     requiredLongTailKeywords,
     h2Outline: input.h2Outline as string[] | undefined,
-    sources: input.sources as string[] | undefined,
+    sources: verifiedSources,
     targetSlug: input.targetSlug as string | undefined,
     kwH2Map: input.kwH2Map as Record<string, string> | undefined,
   })
@@ -742,6 +746,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     if (repaired.applied.length) {
       console.info(`[seoFactory/pipeline] deterministic repair applied: ${repaired.applied.join(', ')}`)
       content = repaired.content
+    }
+    const sanitized = await sanitizeDraftLinksLive(content, { region, externalAllowlist: verifiedSourceUrls })
+    if (sanitized.stripped || sanitized.injected) {
+      console.info(`[seoFactory/pipeline] live link sanitize: stripped=${sanitized.stripped} injected=${sanitized.injected}`)
+      content = sanitized.content
+    }
+    if (repaired.applied.length || sanitized.stripped || sanitized.injected) {
       audit = auditContent({
         content,
         contentType,

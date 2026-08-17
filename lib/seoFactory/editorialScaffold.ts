@@ -10,25 +10,7 @@ import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
-
-const REGION_SOURCES: Record<string, Array<{ title: string; url: string }>> = {
-  US: [
-    { title: 'USCIS — Students and Employment', url: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/students-and-employment' },
-    { title: 'Study in the States (DHS / SEVP)', url: 'https://studyinthestates.dhs.gov/' },
-  ],
-  UK: [
-    { title: 'GOV.UK — Student visa', url: 'https://www.gov.uk/student-visa' },
-    { title: 'GOV.UK — Immigration Rules', url: 'https://www.gov.uk/guidance/immigration-rules' },
-  ],
-  CA: [
-    { title: 'IRCC — Study permit', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada.html' },
-    { title: 'IRCC — Work after graduation (PGWP)', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/after-graduation.html' },
-  ],
-  AU: [
-    { title: 'Home Affairs — Student visa (subclass 500)', url: 'https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/student-500' },
-    { title: 'Home Affairs — Temporary Graduate visa (485)', url: 'https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/temporary-graduate-485' },
-  ],
-}
+import { sourcesForRegion } from './officialSources'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -927,7 +909,7 @@ export function applyDeterministicRepairs(opts: {
   // official sources on the same repair pass so the citations gate clears too.
   if (!hasGovCitation(b)) {
     const region = (opts.region || 'US').toUpperCase().slice(0, 2)
-    const sources = REGION_SOURCES[region] || REGION_SOURCES.US
+    const sources = sourcesForRegion(region).slice(0, 3)
     const lines = sources.map((s) => `- [${s.title}](${s.url})`).join('\n')
     b += `\n\n## Official sources\n\n${lines}\n`
     applied.push('official_sources')
@@ -1285,7 +1267,7 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
   body = body.replace(/<script(?![^>]*application\/ld\+json)[^>]*>[\s\S]*?<\/script>/gi, '')
 
   if (!hasGovCitation(body)) {
-    const sources = REGION_SOURCES[region] || REGION_SOURCES.US
+    const sources = sourcesForRegion(region).slice(0, 3)
     const lines = sources.map((s) => `- [${s.title}](${s.url})`).join('\n')
     body += `\n\n## Official sources\n\n${lines}\n`
   }

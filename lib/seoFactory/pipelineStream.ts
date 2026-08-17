@@ -256,6 +256,11 @@ export async function* runSeoFactoryPipelineStream(
       .join('\n\n')
     if (autopilotBlock) strategyBlock = `${strategyBlock}\n\n${autopilotBlock}`
 
+    const { assembleDraftSourceAllowlist, sanitizeDraftLinksLive, urlsFromAllowlistLines } = await import('./linkAudit')
+    const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined)
+    const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
+    yield { type: 'progress', stage: 'brief', message: `Verified ${verifiedSourceUrls.length} live official citation URL${verifiedSourceUrls.length === 1 ? '' : 's'}` }
+
     const system = buildFactorySystemPrompt({
       plan,
       contentType,
@@ -265,7 +270,7 @@ export async function* runSeoFactoryPipelineStream(
       requiredShortKeywords,
       requiredLongTailKeywords,
       h2Outline: input.h2Outline as string[] | undefined,
-      sources: input.sources as string[] | undefined,
+      sources: verifiedSources,
       interlinkAllowlist: radarInterlinks as Array<{ label?: string; url?: string }>,
       targetSlug: input.targetSlug as string | undefined,
       kwH2Map: input.kwH2Map as Record<string, string> | undefined,
@@ -969,6 +974,18 @@ export async function* runSeoFactoryPipelineStream(
       }
       if (repaired !== content) {
         content = repaired
+        yield { type: 'progress', stage: 'refine', message: 'Applied deterministic compliance repair (dashes, disclaimer)…' }
+      }
+      const sanitized = await sanitizeDraftLinksLive(content, { region, externalAllowlist: verifiedSourceUrls })
+      if (sanitized.stripped || sanitized.injected) {
+        content = sanitized.content
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Live-checked citations — stripped ${sanitized.stripped} dead/untrusted link${sanitized.stripped === 1 ? '' : 's'}${sanitized.injected ? `, injected ${sanitized.injected} official source${sanitized.injected === 1 ? '' : 's'}` : ''}`,
+        }
+      }
+      if (repaired !== content || sanitized.stripped || sanitized.injected) {
         audit = auditContent({
           content,
           contentType,
@@ -976,7 +993,6 @@ export async function* runSeoFactoryPipelineStream(
           indexable: plan.indexable,
           ownershipBlockers: plan.blockers,
         })
-        yield { type: 'progress', stage: 'refine', message: 'Applied deterministic compliance repair (dashes, disclaimer)…' }
         yield { type: 'attempt', attempt: attempts + 1, score: audit.score, wordCount: audit.wordCount, goodEnough: meetsShipQuality(audit) && audit.score >= minAudit, draft: content }
       }
     }

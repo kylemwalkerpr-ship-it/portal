@@ -6,7 +6,7 @@ import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } fro
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType } from '@/lib/seoFactory/contentDepth'
-import { auditLinksLive, stripDeadLinks } from '@/lib/seoFactory/linkAudit'
+import { auditLinksLive, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
 
@@ -93,52 +93,52 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
  *  invented links (2026-08 example.com incident) block ship with evidence.
  *  After the audit, mechanically strips every dead link so the AI editor
  *  and ship gate never see a URL that doesn't resolve. */
-async function mergeLinkAudit(response: ReauditResponse, content: string): Promise<string> {
+async function mergeLinkAudit(response: ReauditResponse, content: string, region?: string): Promise<string> {
   let effective = content
   try {
-    const findings = await auditLinksLive(content)
-    if (!findings.length) return effective
-    const blockers = findings.filter((f) => f.severity === 'blocker')
-    const warnings = findings.filter((f) => f.severity === 'warning')
-
-    // ── Mechanical strip: remove every dead/unreachable/placeholder URL ──
-    const deadUrls = findings
-      .filter((f) => f.code === 'dead_internal_link' || f.code === 'placeholder_link' || f.code === 'unreachable_internal_link')
-      .map((f) => f.url)
-    if (deadUrls.length > 0) {
-      const { content: cleaned, stripped } = stripDeadLinks(content, deadUrls)
-      if (stripped > 0) {
-        effective = cleaned
-        response.appliedRepairs = [...(response.appliedRepairs || []), `stripped ${stripped} dead link${stripped === 1 ? '' : 's'}`]
-      }
+    const sanitized = await sanitizeDraftLinksLive(content, { region })
+    effective = sanitized.content
+    const findings = sanitized.findings
+    if (sanitized.stripped) {
+      response.appliedRepairs = [
+        ...(response.appliedRepairs || []),
+        `stripped ${sanitized.stripped} dead/untrusted link${sanitized.stripped === 1 ? '' : 's'}`,
+      ]
     }
+    if (sanitized.injected) {
+      response.appliedRepairs = [
+        ...(response.appliedRepairs || []),
+        `injected ${sanitized.injected} live official source${sanitized.injected === 1 ? '' : 's'}`,
+      ]
+    }
+    if (!findings.length && !sanitized.stripped && !sanitized.injected) return effective
 
-    // Re-count after strip — only dead links we couldn't mechanically fix
-    const remainingBlockers = blockers.filter(
-      (f) => !deadUrls.includes(f.url),
-    )
-    const remainingWarnings = warnings.filter(
-      (f) => !deadUrls.includes(f.url),
-    )
-    if (remainingBlockers.length) {
+    const remaining = await auditLinksLive(effective)
+    const blockers = remaining.filter((f) => f.severity === 'blocker')
+    const warnings = remaining.filter((f) => f.severity === 'warning')
+    if (blockers.length) {
       response.ok = false
       response.shipReady = false
     }
-    response.blockers = (response.blockers || 0) + remainingBlockers.length
-    response.warnings = (response.warnings || 0) + remainingWarnings.length
+    response.blockers = (response.blockers || 0) + blockers.length
+    response.warnings = (response.warnings || 0) + warnings.length
     response.warningsData = [
       ...(response.warningsData || []),
-      ...[...remainingBlockers, ...remainingWarnings].map((f) => ({
+      ...[...blockers, ...warnings].map((f) => ({
         code: f.code,
         message: f.message,
         fix: f.code === 'placeholder_link'
           ? 'Replace with a verified estate URL from the research-stage INTERNAL LINK ALLOWLIST.'
           : f.code === 'dead_internal_link'
             ? 'Point the link at a live estate URL (re-verify in the link audit).'
-            : 'Re-verify the URL before shipping.',
+            : f.code === 'dead_external_link'
+              ? 'Replace with a live official .gov/.edu URL from the source allowlist. Never invent a path.'
+              : f.code === 'untrusted_external_link'
+                ? 'Remove blogs, competitors, and shorteners. Cite only live official sources.'
+                : 'Re-verify the URL before shipping.',
       })),
     ]
-    response.linkAudit = findings
+    response.linkAudit = remaining
     return effective
   } catch {
     // Live audit is best-effort; the structural gate still enforces placeholders.
@@ -152,8 +152,9 @@ export async function POST(request: NextRequest) {
       content: string; contentType?: string; primaryKeyword?: string; indexable?: boolean
       requiredShortKeywords?: string[]; requiredLongTailKeywords?: string[]
       jobId?: string
+      region?: string
     }
-    const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, jobId } = body
+    const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, jobId, region } = body
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
@@ -186,10 +187,10 @@ export async function POST(request: NextRequest) {
         requiredLongTailKeywords,
       }),
     }
-    effective = await mergeLinkAudit(response, effective)
-    if (repaired.applied.length && effective !== content) {
+    effective = await mergeLinkAudit(response, effective, region)
+    if (effective !== content) {
       response.fixedContent = effective
-      response.appliedRepairs = repaired.applied
+      response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
     }
     if (jobId && response.shipReady) {
       try {
@@ -464,11 +465,12 @@ ${enginePlan.promptBlock}`
       // Let the editor show which engine gaps the fix targeted, in order.
       ...(enginePlan ? { enginePriorities: enginePlan.priorities } : {}),
     }
-    fixedContent = await mergeLinkAudit(response, fixedContent)
+    fixedContent = await mergeLinkAudit(response, fixedContent, region)
     const applied: string[] = []
     if (depthRepair) applied.push(depthRepair)
     if (repaired.applied.length) applied.push(...repaired.applied)
-    if (applied.length) response.appliedRepairs = applied
+    if (response.appliedRepairs?.length) applied.push(...response.appliedRepairs)
+    if (applied.length) response.appliedRepairs = [...new Set(applied)]
     return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI fix failed'

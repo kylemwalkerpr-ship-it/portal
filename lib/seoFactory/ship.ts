@@ -17,6 +17,7 @@ import { assertNoRouteSubtypeConflict } from './routeSubtypeGuard'
 import { assertContentDepth } from './contentDepth'
 import { assertQualityGate, assertRhythmWithinRepairRange } from './contentQualityGate'
 import { applyDeterministicRepairs } from './editorialScaffold'
+import { auditLinksLive, sanitizeDraftLinksLive } from './linkAudit'
 import {
   createBranchFrom,
   deleteRepoFile,
@@ -484,6 +485,21 @@ export async function shipContent(opts: {
       shipContent_ = repaired.content
       console.info(
         `[ship] deterministic repair applied before gates: ${repaired.applied.join(', ')}`,
+      )
+    }
+    const sanitized = await sanitizeDraftLinksLive(shipContent_, { region: opts.region })
+    if (sanitized.stripped || sanitized.injected) {
+      shipContent_ = sanitized.content
+      if (sanitized.stripped) repairsApplied.push(`stripped ${sanitized.stripped} dead/untrusted links`)
+      if (sanitized.injected) repairsApplied.push(`injected ${sanitized.injected} live official sources`)
+      console.info(
+        `[ship] live link sanitize: stripped=${sanitized.stripped} injected=${sanitized.injected}`,
+      )
+    }
+    const leftover = (await auditLinksLive(shipContent_)).filter((f) => f.severity === 'blocker')
+    if (leftover.length) {
+      throw new Error(
+        `Refusing ship: ${leftover.length} dead or untrusted link${leftover.length === 1 ? '' : 's'} — ${leftover.map((f) => `${f.code}:${f.url}`).join('; ')}`,
       )
     }
   }
