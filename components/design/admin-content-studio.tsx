@@ -3454,9 +3454,10 @@ function JobDetail({
   const [detail, setDetail] = React.useState<ContentJob>(job)
   const [jobLineage, setJobLineage] = React.useState<Array<Record<string, any>>>([])
   const [editorContent, setEditorContent] = React.useState(job.content || '')
-  const [loading, setLoading] = React.useState(!job.content)
   const loadGenRef = React.useRef(0)
   const generationFailed = Boolean(detail.error_message) && (detail.status === 'drafting' || detail.status === 'failed' || detail.status === 'pending')
+  const needsBody = Boolean(job.content) || Number(job.word_count) > 0
+  const [loading, setLoading] = React.useState(needsBody && !job.content)
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [actionNotice, setLocalActionNotice] = React.useState<string | null>(null)
@@ -3474,13 +3475,16 @@ function JobDetail({
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
 
-  const loadDetail = React.useCallback(async () => {
+  const loadDetail = React.useCallback(async (opts: { body?: boolean } = {}) => {
     const gen = ++loadGenRef.current
-    setLoading(true)
+    const wantBody = opts.body !== false && (Boolean(job.content) || Number(job.word_count) > 0)
+    if (wantBody) setLoading(true)
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8_000)
+    const timer = setTimeout(() => controller.abort(), 5_000)
     try {
-      const response = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(job.id)}`, {
+      const qs = new URLSearchParams({ id: job.id })
+      if (wantBody) qs.set('body', '1')
+      const response = await fetch(`/api/content-studio/jobs?${qs.toString()}`, {
         credentials: 'same-origin',
         cache: 'no-store',
         signal: controller.signal,
@@ -3488,20 +3492,21 @@ function JobDetail({
       const data = await response.json().catch(() => ({})) as { job?: ContentJob; lineage?: Array<Record<string, any>>; error?: string }
       if (gen !== loadGenRef.current) return
       if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
-      setDetail(data.job)
-      setJobLineage(Array.isArray(data.lineage) ? data.lineage : [])
-      setEditorContent(data.job.content || job.content || '')
-      setAudit((data.job as ContentJob & { audit_json?: unknown }).audit_json || null)
+      const next = { ...job, ...data.job }
+      React.startTransition(() => {
+        setDetail(next)
+        if (data.job?.content != null) setEditorContent(String(data.job.content))
+      })
       setActionError(null)
-      if (data.job.error_message && (data.job.status === 'drafting' || data.job.status === 'failed')) {
-        setResumeAvailable(Boolean(data.job.content || job.content))
+      if (next.error_message && (next.status === 'drafting' || next.status === 'failed')) {
+        setResumeAvailable(Boolean(next.content || job.content))
       }
     } catch (error) {
       if (gen !== loadGenRef.current) return
       const aborted = error instanceof DOMException && error.name === 'AbortError'
       setActionError(
         aborted
-          ? 'Full job took too long to load. Use Regenerate or Retry load — the window stays usable.'
+          ? 'Draft body took too long to load. The window stays usable — Regenerate, Retry load, or close with Esc.'
           : (error instanceof Error ? error.message : 'Failed to load the full job'),
       )
       setResumeAvailable(Boolean(job.content) || Number(job.word_count) > 0)
@@ -3509,20 +3514,28 @@ function JobDetail({
       clearTimeout(timer)
       if (gen === loadGenRef.current) setLoading(false)
     }
-  }, [job.id, job.content])
+  }, [job])
 
   React.useEffect(() => {
-    void loadDetail()
+    if (!needsBody && generationFailed) {
+      setLoading(false)
+      return
+    }
+    if (!needsBody) return
+    void loadDetail({ body: true })
     return () => { loadGenRef.current += 1 }
-  }, [loadDetail])
+  }, [loadDetail, needsBody, generationFailed])
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onClose()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [busy, onClose])
+  }, [onClose])
 
   const runRegenerateStream = async (resume = false) => {
     if (busy) return
@@ -3718,7 +3731,7 @@ function JobDetail({
   )
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={detail.title || 'Job details'} style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={detail.title || 'Job details'} style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radius, border: `1px solid ${C.border}`, maxWidth: 840, width: '92vw', maxHeight: '92vh', overflow: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
@@ -5463,28 +5476,34 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } catch { /* silent */ }
   }, [jobs.length])
 
-  // Poll active jobs
+  // Poll active jobs — pause while a detail modal is open so the queue
+  // refresh cannot freeze the dialog on a fat JSON parse.
   React.useEffect(() => {
+    if (selectedJob) return
     const hasActive = jobs.some(j => ['pending', 'drafting', 'publishing'].includes(j.status))
     if (!hasActive) return
     const interval = setInterval(fetchJobs, 6_000)
     return () => clearInterval(interval)
-  }, [jobs, fetchJobs])
+  }, [jobs, fetchJobs, selectedJob])
 
   // Background jobs poll — 10s so the desk never sits on a 30s-old queue.
   React.useEffect(() => {
+    if (selectedJob) return
     const id = setInterval(fetchJobs, 10_000)
     return () => clearInterval(id)
-  }, [fetchJobs])
+  }, [fetchJobs, selectedJob])
 
   // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE refreshes the queue
   // instantly — a draft finishing or a PR landing shows up without a poll.
   React.useEffect(() => {
-    const off = subscribeToTable('content_jobs', 'public', () => { fetchJobs() }, (status) => {
+    const off = subscribeToTable('content_jobs', 'public', () => {
+      if (selectedJob) return
+      fetchJobs()
+    }, (status) => {
       if (status === 'SUBSCRIBED') setDeskLive('live')
     })
     return off
-  }, [fetchJobs])
+  }, [fetchJobs, selectedJob])
 
   // Coming back to the tab must pull a fresh desk, not the last hidden snapshot.
   React.useEffect(() => {
