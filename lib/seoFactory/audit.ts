@@ -307,6 +307,7 @@ export function auditContent(opts: {
     indexable: wantIndexable,
     requiredShortKeywords: opts.requiredShortKeywords,
     requiredLongTailKeywords: opts.requiredLongTailKeywords,
+    region: fm.region,
   })
   for (const b of quality.blockers) {
     // Avoid duplicate codes already covered above (tldr/faq/citations)

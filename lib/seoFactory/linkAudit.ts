@@ -34,6 +34,7 @@ import {
   isAuthorityHost,
   isCitationRelevant,
   isCreamSource,
+  isPrimaryDisciplineAuthority,
   sourcesForBrief,
   type CitationContext,
 } from './officialSources'
@@ -407,16 +408,16 @@ export function auditLinksSync(
           code: 'untrusted_external_link',
           severity: 'blocker',
           url,
-          message: 'External link is not a crème-de-la-crème authority (immigration/gov department, official school page, or named intergovernmental body) — remove it or replace with a live official URL.',
+          message: `Untrusted external link (${url}) — not a government, official school, or named authority page.`,
         })
         continue
       }
       if (citationContext && !isCitationRelevant(url, citationContext)) {
         findings.push({
           code: 'irrelevant_external_link',
-          severity: 'blocker',
+          severity: 'warning',
           url,
-          message: 'Official URL is live but off-topic for this article — cite a source that actually supports the claim (do not hyperlink irrelevant material).',
+          message: `Official page is a weak fit for this article (${url}) — swap for an on-topic authority or remove the hyperlink.`,
         })
         continue
       }
@@ -885,30 +886,55 @@ export async function remediateDeadLinksInContext(
   const toInject: Array<{ title: string; url: string }> = []
   let stripped = 0
 
+  const safePool = pool.filter((c) => {
+    if (isEstateUrl(c.url)) return true
+    return isCreamSource(c.url) && isCitationRelevant(c.url, ctx)
+  })
+
   for (const f of dead) {
-    const ctx = contextAround(next, f.url)
-    const alt = pickBestAlternative(ctx, pool)
-    const unwrapOnly =
-      f.code === 'untrusted_external_link' ||
-      f.code === 'placeholder_link' ||
-      f.code === 'irrelevant_external_link'
-    if (alt && !unwrapOnly) {
+    const around = contextAround(next, f.url)
+    const localCtx: CitationContext = {
+      ...ctx,
+      body: around,
+    }
+    const localPool = safePool.filter((c) => c.url !== f.url && isCitationRelevant(c.url, localCtx))
+    const alt = pickBestAlternative(around, localPool.length ? localPool : safePool)
+    const keepCream =
+      f.code === 'irrelevant_external_link' && isPrimaryDisciplineAuthority(f.url) && isCitationRelevant(f.url, ctx)
+    if (keepCream) continue
+
+    const preferReplace = f.code === 'irrelevant_external_link' || f.code === 'dead_external_link' || f.code === 'dead_internal_link'
+    const unwrapOnly = f.code === 'untrusted_external_link' || f.code === 'placeholder_link'
+    if (alt && preferReplace && !unwrapOnly) {
       const r = rewriteHref(next, f.url, alt.url)
       if (r.hits > 0) {
         next = r.content
         stripped += r.hits
-        remediations.push({ deadUrl: f.url, context: ctx, action: 'replaced', replacement: alt })
+        remediations.push({ deadUrl: f.url, context: around, action: 'replaced', replacement: alt })
         continue
       }
     }
-    const r = rewriteHref(next, f.url, null)
+    if (f.code === 'irrelevant_external_link' && isCreamSource(f.url)) {
+      // Live official page — leave it rather than unwrap into a bare claim.
+      if (!alt || alt.url === f.url) continue
+      const r = rewriteHref(next, f.url, alt.url)
+      if (r.hits > 0) {
+        next = r.content
+        stripped += r.hits
+        remediations.push({ deadUrl: f.url, context: around, action: 'replaced', replacement: alt })
+      }
+      continue
+    }
+    const r = rewriteHref(next, f.url, unwrapOnly ? null : alt?.url || null)
     next = r.content
     stripped += r.hits
-    if (alt) {
+    if (unwrapOnly && alt) {
       toInject.push(alt)
-      remediations.push({ deadUrl: f.url, context: ctx, action: 'removed_and_injected', replacement: alt })
+      remediations.push({ deadUrl: f.url, context: around, action: 'removed_and_injected', replacement: alt })
+    } else if (alt && r.hits > 0) {
+      remediations.push({ deadUrl: f.url, context: around, action: 'replaced', replacement: alt })
     } else {
-      remediations.push({ deadUrl: f.url, context: ctx, action: 'removed' })
+      remediations.push({ deadUrl: f.url, context: around, action: 'removed' })
     }
   }
 

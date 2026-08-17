@@ -158,6 +158,7 @@ export type ReauditContractInput = {
   indexable?: boolean
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  region?: string
 }
 
 /** The contract fields that POST + PATCH both return (route adds
@@ -193,7 +194,7 @@ export type ReauditContractOutput = {
  *  6. shipReady      → quality.ok && depthGate.ok — warnings never block
  */
 export function evaluateReauditContract(input: ReauditContractInput): ReauditContractOutput {
-  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = input
+  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, region } = input
 
   const result = evaluateContentQuality({
     content,
@@ -202,6 +203,7 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     indexable,
     requiredShortKeywords,
     requiredLongTailKeywords,
+    region,
   })
 
   const annotations: InlineAnnotation[] = []

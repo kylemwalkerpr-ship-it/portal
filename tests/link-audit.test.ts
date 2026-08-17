@@ -279,14 +279,28 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(isLowValueHost('https://www.reddit.com/r/immigration')).toBe(true)
   })
 
-  it('flags an official but off-topic citation as irrelevant', () => {
+  it('does not block same-region USCIS on a housing article', () => {
     const findings = auditLinksSync(
-      'Rent a room in Stockton via [USCIS students](https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/students-and-employment).',
+      'International students in Stockton still file status changes on [USCIS](https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/students-and-employment).',
       undefined,
       undefined,
       { region: 'US', topic: 'Stockton student housing', keywords: ['rent', 'landlord'] },
     )
-    expect(findings.some((f) => f.code === 'irrelevant_external_link')).toBe(true)
+    expect(findings.some((f) => f.code === 'irrelevant_external_link' && f.severity === 'blocker')).toBe(false)
+    expect(findings.some((f) => f.url.includes('uscis.gov'))).toBe(false)
+  })
+
+  it('warns on a specialist official page that does not fit the article', () => {
+    const findings = auditLinksSync(
+      'File the I-765 on [HUD](https://www.hud.gov/topics/rental_assistance).',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'F-1 OPT employment', keywords: ['opt', 'i-765'] },
+    )
+    const hit = findings.find((f) => f.code === 'irrelevant_external_link')
+    expect(hit).toBeTruthy()
+    expect(hit?.severity).toBe('warning')
+    expect(hit?.message).toContain('hud.gov')
   })
 
   it('blocks competitor, shortener, and invented commercial URLs without a network call', () => {
@@ -375,6 +389,28 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(stripped).toBeGreaterThanOrEqual(1)
     expect(content).not.toContain('legal.yousafeconsultancy.com/us/stockton-housing')
     expect(content).toContain('Stockton housing')
+  })
+
+  it('swaps a weak-fit official page in place instead of unwrapping it', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      return okJson()
+    }) as typeof fetch
+    const draft = 'File Form I-765 on [this HUD page](https://www.hud.gov/topics/rental_assistance) within 90 days.'
+    const result = await sanitizeDraftLinksLive(draft, {
+      region: 'US',
+      topic: 'F-1 OPT employment',
+      keywords: ['opt', 'i-765'],
+    })
+    expect(result.content).not.toContain('hud.gov')
+    expect(result.content).toMatch(/uscis\.gov|studyinthestates|ice\.gov/)
+    expect(result.content).toContain('this HUD page')
+    expect(result.remediations.some((r) => r.action === 'replaced')).toBe(true)
   })
 
   it('replaces a dead official path in-place with a live official URL that fits the sentence', async () => {

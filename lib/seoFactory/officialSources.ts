@@ -235,8 +235,61 @@ export function scoreUrlRelevance(url: string, ctx?: CitationContext | null, tit
 
 export const MIN_CITATION_RELEVANCE = 3
 
+/** Immigration / education agencies on this estate — never “off-topic” in-region. */
+const PRIMARY_DISCIPLINE_HOSTS = new Set([
+  'uscis.gov',
+  'studyinthestates.dhs.gov',
+  'ice.gov',
+  'cbp.gov',
+  'dhs.gov',
+  'travel.state.gov',
+  'state.gov',
+  'educationusa.state.gov',
+  'gov.uk',
+  'canada.ca',
+  'ircc.canada.ca',
+  'homeaffairs.gov.au',
+  'immi.homeaffairs.gov.au',
+  'studyaustralia.gov.au',
+  'educanada.ca',
+  'ukcisa.org.uk',
+  'officeforstudents.org.uk',
+  'iom.int',
+  'unhcr.org',
+])
+
+export function citationRegionMatch(url: string, ctx?: CitationContext | null): boolean {
+  if (!ctx?.region) return true
+  const want = normalizeRegion(ctx.region)
+  const curated = findCuratedSource(url)
+  const regions = curated?.regions || regionOfUrl(url)
+  return regions.includes(want) || regions.includes('ALL')
+}
+
+export function isPrimaryDisciplineAuthority(url: string): boolean {
+  const host = hostnameOf(url)
+  if (!host) return false
+  const bare = bareHost(host)
+  if (PRIMARY_DISCIPLINE_HOSTS.has(bare)) return true
+  if (PRIMARY_DISCIPLINE_HOSTS.has(bare.split('.').slice(-2).join('.'))) return true
+  if (isOfficialSchoolPage(url)) return true
+  const curated = findCuratedSource(url)
+  if (curated?.topics.some((t) => CORE_IMMIGRATION_TOPICS.includes(t) || t === 'education' || t === 'study')) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Cream citations stay unless they are clearly the wrong region or a
+ * specialist page (housing/tax/health) on an article that never touches that
+ * topic. Same-region USCIS / IRCC / UKVI / Home Affairs / school pages always
+ * pass — this is an immigration/student estate.
+ */
 export function isCitationRelevant(url: string, ctx?: CitationContext | null, title?: string): boolean {
   if (!ctx || (!ctx.topic && !ctx.keywords?.length && !ctx.body)) return true
+  if (!citationRegionMatch(url, ctx)) return false
+  if (isPrimaryDisciplineAuthority(url)) return true
   return scoreUrlRelevance(url, ctx, title) >= MIN_CITATION_RELEVANCE
 }
 

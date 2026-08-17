@@ -222,6 +222,7 @@ export async function POST(request: NextRequest) {
         indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        region,
       }),
     }
     effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
@@ -446,6 +447,7 @@ ${enginePlan.promptBlock}`
         indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        region,
       })
       const leftoverLinks = (await auditLinksLive(sanitized.content)).filter((f) => f.severity === 'blocker')
       if (afterMech.ok && leftoverLinks.length === 0) {
@@ -543,6 +545,7 @@ ${enginePlan.promptBlock}`
         indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        region,
       }),
       fixedContent,
       // Let the editor show which engine gaps the fix targeted, in order.

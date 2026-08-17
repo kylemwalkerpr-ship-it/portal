@@ -591,6 +591,7 @@ export async function* runSeoFactoryPipelineStream(
         indexable: plan.indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        region,
       })
       refineNotes = [
         auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),
@@ -689,6 +690,7 @@ export async function* runSeoFactoryPipelineStream(
           contentType,
           primaryKeyword,
           indexable: plan.indexable,
+          region,
         })
         refineNotes = [
           auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),
@@ -886,6 +888,7 @@ export async function* runSeoFactoryPipelineStream(
         indexable: plan.indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        region,
       })
       refineNotes = [
         auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),

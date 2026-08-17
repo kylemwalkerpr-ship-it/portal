@@ -372,6 +372,8 @@ export function evaluateContentQuality(opts: {
   /** The target URL for this draft — competing pages at different URLs are 
    *  cannibalization risks; self-references (same canonical) are ignored. */
   targetUrl?: string
+  /** Region so official citations are scored against the right immigration agency. */
+  region?: string
 }): QualityGateResult {
   const contentType = (opts.contentType || 'legal_guide').toLowerCase()
   const indexable = opts.indexable !== false
@@ -889,9 +891,9 @@ export function evaluateContentQuality(opts: {
       opts.linkAllowlist?.length ? opts.linkAllowlist : undefined,
       undefined,
       {
+        region: opts.region,
         topic: opts.primaryKeyword,
         keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
-        body: opts.content,
       },
     )
     for (const f of linkFindings) {
@@ -899,6 +901,7 @@ export function evaluateContentQuality(opts: {
         code: f.code as QualityFinding['code'],
         severity: f.severity as QualityFinding['severity'],
         message: f.message,
+        evidence: f.url,
         fix: f.code === 'placeholder_link'
           ? 'Replace with a verified estate URL from the INTERNAL LINK ALLOWLIST (research stage) or remove the link.'
           : f.code === 'malformed_link'

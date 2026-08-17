@@ -45,13 +45,14 @@ describe('officialSources · crème-de-la-crème allowlist', () => {
     expect(isCitationRelevant(
       'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/students-and-employment',
       { region: 'US', topic: 'Stockton student housing', keywords: ['rent'] },
-    )).toBe(false)
+    )).toBe(true)
   })
 
   it('ranks USCIS / SEVP above HUD on a student-visa brief', () => {
     const ranked = sourcesForBrief({ region: 'US', topic: 'F-1 OPT employment', keywords: ['opt', 'uscis'] })
     expect(ranked[0].url).toMatch(/uscis\.gov|studyinthestates|ice\.gov/)
     expect(scoreUrlRelevance('https://www.hud.gov/', { region: 'US', topic: 'F-1 OPT employment' })).toBeLessThan(3)
+    expect(isCitationRelevant('https://www.hud.gov/', { region: 'US', topic: 'F-1 OPT employment' })).toBe(false)
   })
 
   it('does not mix regions', () => {
