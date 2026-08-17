@@ -25,6 +25,9 @@ function stubReport(overrides: Partial<MasterEngineReport> = {}): MasterEngineRe
     prediction: { top10Probability: 0.22, expectedLift: 0.08 } as MasterEngineReport['prediction'],
     derived: { competitiveGap: 0.31, contentSuperiority: 0.2, authorityGap: 0.4, trustAdvantage: 0.1 } as MasterEngineReport['derived'],
     governance: { confidence: 0.5, modelVersion: 'test', caveats: [] },
+    adaptation: { usedLearned: false },
+    computedSignals: [],
+    trace: [],
     ...overrides,
   }
 }
