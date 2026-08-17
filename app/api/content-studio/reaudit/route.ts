@@ -107,13 +107,24 @@ async function mergeLinkAudit(
     })
     effective = sanitized.content
     const findings = sanitized.findings
-    if (sanitized.stripped) {
+    if (sanitized.remediations?.length) {
+      response.appliedRepairs = [
+        ...(response.appliedRepairs || []),
+        ...sanitized.remediations.map((r) =>
+          r.action === 'replaced'
+            ? `replaced dead ${r.deadUrl} with ${r.replacement?.title || r.replacement?.url}`
+            : r.action === 'removed_and_injected'
+              ? `removed ${r.deadUrl} and cited ${r.replacement?.title || r.replacement?.url}`
+              : `removed dead ${r.deadUrl}`,
+        ),
+      ]
+    } else if (sanitized.stripped) {
       response.appliedRepairs = [
         ...(response.appliedRepairs || []),
         `stripped ${sanitized.stripped} dead/untrusted link${sanitized.stripped === 1 ? '' : 's'}`,
       ]
     }
-    if (sanitized.injected) {
+    if (sanitized.injected && !sanitized.remediations?.some((r) => r.action === 'removed_and_injected')) {
       response.appliedRepairs = [
         ...(response.appliedRepairs || []),
         `injected ${sanitized.injected} live official source${sanitized.injected === 1 ? '' : 's'}`,
@@ -121,18 +132,20 @@ async function mergeLinkAudit(
     }
     if (!findings.length && !sanitized.stripped && !sanitized.injected) return effective
 
-    const remaining = await auditLinksLive(effective)
+    const remaining = await auditLinksLive(effective, {
+      knownLiveUrls: targetUrl ? [targetUrl] : undefined,
+    })
     const blockers = remaining.filter((f) => f.severity === 'blocker')
     const warnings = remaining.filter((f) => f.severity === 'warning')
     const linkFix = (code: string) =>
       code === 'placeholder_link'
         ? 'Replace with a verified estate URL from the research-stage INTERNAL LINK ALLOWLIST.'
         : code === 'dead_internal_link'
-          ? 'Point the link at a live estate URL, or remove it. Fix blockers strips dead URLs.'
+          ? 'Read the surrounding sentence. Swap this href for a live estate hub that matches the claim, or remove it and add a verified official citation nearby.'
           : code === 'dead_external_link'
-            ? 'Replace with a live official .gov/.edu URL, or remove it. Fix blockers strips dead URLs.'
+            ? 'Read the surrounding sentence. Swap this href for a live official .gov/.edu page that supports the same claim, or remove it and add that citation under Official sources.'
             : code === 'untrusted_external_link'
-              ? 'Remove blogs, competitors, and shorteners. Cite only live official sources.'
+              ? 'Drop competitor/blog/shortener hrefs. Keep the sentence and cite a live official .gov/.edu source instead.'
               : 'Re-verify the URL before shipping.'
     if (blockers.length) {
       response.ok = false
@@ -309,7 +322,7 @@ export async function PATCH(request: NextRequest) {
         .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}"`)
         .join('\n')
 
-      const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. Return ONLY the complete fixed article. Do not add explanations.'
+      const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. For dead links: read the surrounding sentence and either swap in a live official/estate URL that fits the claim, or remove the href and add a new verifiable citation. Never invent URLs. Return ONLY the complete fixed article. Do not add explanations.'
       const prompt = `${enginePlan.promptBlock}
 ## Original Article
 
@@ -324,11 +337,12 @@ ${warningList}
 ## INSTRUCTIONS
 1. Address the PRIORITIZED ENGINE GAPS first, in the exact order listed — highest expected value first
 2. Then fix EVERY blocker listed above - these are mandatory
-3. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
-4. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
-5. Add specific data, examples, or concrete details where the article is vague
-6. Keep all original headings, interlinks, and key facts intact
-7. Return the COMPLETE fixed article, nothing else`
+3. Dead/untrusted links: read the sentence around each URL. Prefer an in-place swap to a live official .gov/.edu or estate hub that matches the claim. If the anchor is a competitor/placeholder, drop the href and introduce a new verifiable citation in that paragraph or under ## Official sources.
+4. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
+5. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
+6. Add specific data, examples, or concrete details where the article is vague
+7. Keep all original headings, interlinks, and key facts intact
+8. Return the COMPLETE fixed article, nothing else`
 
       fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
 

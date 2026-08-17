@@ -365,4 +365,40 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(content).not.toContain('legal.yousafeconsultancy.com/us/stockton-housing')
     expect(content).toContain('Stockton housing')
   })
+
+  it('replaces a dead official path in-place with a live official URL that fits the sentence', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      if (url.includes('/fake-opt-page')) return new Response('nope', { status: 404 })
+      return okJson()
+    }) as typeof fetch
+    const draft = 'You file OPT on [this USCIS page](https://www.uscis.gov/fake-opt-page) before the 90-day clock starts.'
+    const result = await sanitizeDraftLinksLive(draft, { region: 'US' })
+    expect(result.content).not.toContain('fake-opt-page')
+    expect(result.content).toMatch(/\[this USCIS page\]\(https:\/\/www\.uscis\.gov\//)
+    expect(result.remediations.some((r) => r.action === 'replaced')).toBe(true)
+  })
+
+  it('removes an untrusted competitor href and introduces a verifiable official citation', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      return okJson()
+    }) as typeof fetch
+    const draft = 'Compare meal-plan rates with [Boundless](https://www.boundless.com/opt) before you sign.'
+    const result = await sanitizeDraftLinksLive(draft, { region: 'US' })
+    expect(result.content).not.toContain('boundless.com')
+    expect(result.content).toContain('Boundless')
+    expect(result.content).toMatch(/uscis\.gov|studyinthestates|legal\.yousafeconsultancy\.com/)
+    expect(result.remediations.some((r) => r.action === 'removed_and_injected')).toBe(true)
+  })
 })

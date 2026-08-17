@@ -741,35 +741,180 @@ export async function liveOfficialSources(region?: string | null): Promise<Array
   return kept.length ? kept : bank.slice(-1)
 }
 
+export type DeadLinkAction = 'replaced' | 'removed_and_injected' | 'removed'
+
+export interface DeadLinkRemediation {
+  deadUrl: string
+  context: string
+  action: DeadLinkAction
+  replacement?: { title: string; url: string }
+}
+
+function contextAround(content: string, url: string): string {
+  const keys = deadLinkKeys(url)
+  let idx = -1
+  for (const k of keys) {
+    idx = content.indexOf(k)
+    if (idx >= 0) break
+  }
+  if (idx < 0) return content.slice(0, 220).replace(/\s+/g, ' ')
+  return content.slice(Math.max(0, idx - 180), Math.min(content.length, idx + url.length + 180)).replace(/\s+/g, ' ')
+}
+
+function tokenOverlapScore(context: string, title: string, url: string): number {
+  const tokens = context
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 4)
+  const hay = `${title} ${url}`.toLowerCase()
+  let score = 0
+  for (const t of tokens) if (hay.includes(t)) score += 1
+  const ctx = context.toLowerCase()
+  if (/\b(hous|rent|meal|dorm|campus|tenant)\b/.test(ctx) && /legal\.yousafeconsultancy|yousafeconsultancy\.com\/?$/.test(url)) score += 3
+  if (/\b(visa|opt|permit|uscis|sevis|i-20|ircc|ukvi)\b/.test(ctx) && /uscis|studyinthestates|sevis|canada\.ca|gov\.uk|homeaffairs/.test(url)) score += 3
+  return score
+}
+
+function pickBestAlternative(
+  context: string,
+  pool: Array<{ title: string; url: string }>,
+): { title: string; url: string } | null {
+  if (!pool.length) return null
+  let best = pool[0]
+  let bestScore = -1
+  for (const c of pool) {
+    const s = tokenOverlapScore(context, c.title, c.url)
+    if (s > bestScore) {
+      best = c
+      bestScore = s
+    }
+  }
+  return best
+}
+
+function rewriteHref(content: string, deadUrl: string, nextHref: string | null): { content: string; hits: number } {
+  const dead = new Set(deadLinkKeys(deadUrl))
+  let hits = 0
+  let out = content.replace(/\[([^\]]*)\]\((\S+?)(?:\s+"[^"]*")?\)/g, (m, text, href) => {
+    if (!urlIsInDeadSet(href, dead)) return m
+    hits += 1
+    return nextHref ? `[${text}](${nextHref})` : String(text)
+  })
+  out = out.replace(/<a\s+([^>]*?)href=["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi, (m, _pre, href, _post, inner) => {
+    if (!urlIsInDeadSet(href, dead)) return m
+    hits += 1
+    return nextHref ? `<a href="${nextHref}">${inner}</a>` : String(inner)
+  })
+  out = out.replace(/https?:\/\/[^\s)<>\]"'`]+/gi, (href) => {
+    if (!urlIsInDeadSet(href, dead)) return href
+    hits += 1
+    return nextHref || ''
+  })
+  return { content: out, hits }
+}
+
+function injectVerifiedSources(content: string, sources: Array<{ title: string; url: string }>): string {
+  const missing = sources.filter((s) => s.url && !content.includes(s.url))
+  if (!missing.length) return content
+  const lines = missing.map((s) => `- [${s.title}](${s.url})`).join('\n')
+  const heading = content.search(/^##\s+(official sources|sources|references)\s*$/im)
+  if (heading >= 0) {
+    const nl = content.indexOf('\n', heading)
+    const at = nl >= 0 ? nl + 1 : heading
+    return `${content.slice(0, at)}\n${lines}\n${content.slice(at)}`
+  }
+  return `${content.trimEnd()}\n\n## Official sources\n\n${lines}\n`
+}
+
 /**
- * Post-draft sanitizer: strip every dead / invented / untrusted URL and
- * top up Official sources with live government pages when citations vanish.
+ * Read the sentence around each dead/untrusted URL and either:
+ *   - swap the href for a live official or estate alternative that fits the
+ *     claim (visa → USCIS/IRCC, housing → estate hub), or
+ *   - unwrap the dead href and add a new verifiable citation in Official sources.
+ * Never invent a URL — the pool is live-checked official + estate anchors.
+ */
+export async function remediateDeadLinksInContext(
+  content: string,
+  findings: LinkAuditFinding[],
+  opts?: { region?: string },
+): Promise<{ content: string; remediations: DeadLinkRemediation[]; stripped: number; injected: number }> {
+  const dead = findings.filter((f) => STRIP_CODES.has(f.code))
+  if (!dead.length) return { content, remediations: [], stripped: 0, injected: 0 }
+
+  const official = await liveOfficialSources(opts?.region)
+  const regionKey = String(opts?.region || 'US').toUpperCase().slice(0, 2)
+  const anchors = ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US
+  const pool = [
+    ...official.map((s) => ({ title: s.title, url: s.url })),
+    ...anchors.map((s) => ({ title: s.label, url: s.url })),
+  ]
+
+  let next = content
+  const remediations: DeadLinkRemediation[] = []
+  const toInject: Array<{ title: string; url: string }> = []
+  let stripped = 0
+
+  for (const f of dead) {
+    const ctx = contextAround(next, f.url)
+    const alt = pickBestAlternative(ctx, pool)
+    const unwrapOnly = f.code === 'untrusted_external_link' || f.code === 'placeholder_link'
+    if (alt && !unwrapOnly) {
+      const r = rewriteHref(next, f.url, alt.url)
+      if (r.hits > 0) {
+        next = r.content
+        stripped += r.hits
+        remediations.push({ deadUrl: f.url, context: ctx, action: 'replaced', replacement: alt })
+        continue
+      }
+    }
+    const r = rewriteHref(next, f.url, null)
+    next = r.content
+    stripped += r.hits
+    if (alt) {
+      toInject.push(alt)
+      remediations.push({ deadUrl: f.url, context: ctx, action: 'removed_and_injected', replacement: alt })
+    } else {
+      remediations.push({ deadUrl: f.url, context: ctx, action: 'removed' })
+    }
+  }
+
+  const unique: Array<{ title: string; url: string }> = []
+  const seen = new Set<string>()
+  for (const s of toInject) {
+    if (!s.url || seen.has(s.url) || next.includes(s.url)) continue
+    seen.add(s.url)
+    unique.push(s)
+  }
+  if (unique.length) next = injectVerifiedSources(next, unique)
+  return { content: next, remediations, stripped, injected: unique.length }
+}
+
+/**
+ * Post-draft sanitizer: remediates every dead / invented / untrusted URL
+ * from article context (replace with a live alternative, or remove and
+ * introduce a new verifiable citation). Never invents URLs.
  */
 export async function sanitizeDraftLinksLive(
   content: string,
   opts?: { region?: string; externalAllowlist?: string[]; knownLiveUrls?: Set<string> | string[] },
-): Promise<{ content: string; stripped: number; injected: number; findings: LinkAuditFinding[] }> {
+): Promise<{
+  content: string
+  stripped: number
+  injected: number
+  findings: LinkAuditFinding[]
+  remediations: DeadLinkRemediation[]
+}> {
   const findings = await auditLinksLive(content, {
     externalAllowlist: opts?.externalAllowlist,
     knownLiveUrls: opts?.knownLiveUrls,
   })
-  const deadUrls = findings.filter((f) => STRIP_CODES.has(f.code)).map((f) => f.url)
-  let next = content
-  let stripped = 0
-  if (deadUrls.length) {
-    const cleaned = stripDeadLinks(next, deadUrls)
-    next = cleaned.content
-    stripped = cleaned.stripped
+  const remediated = await remediateDeadLinksInContext(content, findings, { region: opts?.region })
+  return {
+    content: remediated.content,
+    stripped: remediated.stripped,
+    injected: remediated.injected,
+    findings,
+    remediations: remediated.remediations,
   }
-  let injected = 0
-  const stillHasOfficial = /\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk|studyinthestates/i.test(next)
-  if (!stillHasOfficial) {
-    const sources = await liveOfficialSources(opts?.region)
-    if (sources.length) {
-      const lines = sources.slice(0, 3).map((s) => `- [${s.title}](${s.url})`).join('\n')
-      next = `${next.trimEnd()}\n\n## Official sources\n\n${lines}\n`
-      injected = sources.slice(0, 3).length
-    }
-  }
-  return { content: next, stripped, injected, findings }
 }
