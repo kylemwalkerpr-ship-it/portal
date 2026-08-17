@@ -237,10 +237,11 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
   const pool = [...byTerm.values()].sort((a, b) => b.impressions - a.impressions).slice(0, limit * 3)
 
   // Coverage fingerprint from the existing content inventory
-  const coverageTokens: Array<{ raw: string; toks: Set<string> }> = coverage
+  const coverageTokens: Array<{ raw: string; url: string; toks: Set<string> }> = coverage
     .filter((c) => c && (c.title || c.topic || c.primaryKeyword))
     .map((c) => ({
       raw: c.title || c.topic || c.primaryKeyword || '',
+      url: String(c.url || '').trim(),
       toks: uniqueTokens([c.title || '', c.topic || '', c.primaryKeyword || '']),
     }))
 
@@ -258,9 +259,13 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     // ── Coverage & play classification ──
     const termSet = uniqueTokens([term])
     const matches: string[] = []
+    const pushMatch = (c: { raw: string; url: string }) => {
+      const page = /^https?:\/\//i.test(c.url) ? c.url : c.raw
+      if (page && !matches.includes(page)) matches.push(page)
+    }
     for (const c of coverageTokens) {
       if (c.raw.toLowerCase() === term) {
-        matches.push(c.raw)
+        pushMatch(c)
         continue
       }
       const tSet = c.toks
@@ -270,7 +275,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       // Two shared tokens ("room"+"plan", "university"+"new") used to flag
       // unrelated campus-PDF leftovers as cannibal clusters. Require a real
       // Jaccard hit or three overlapping content words.
-      if (jac >= 0.45 || (shared >= 3 && jac >= 0.3)) matches.push(c.raw)
+      if (jac >= 0.45 || (shared >= 3 && jac >= 0.3)) pushMatch(c)
     }
 
     let play: Play

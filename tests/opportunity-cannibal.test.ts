@@ -39,12 +39,15 @@ describe('opportunity engine — cannibal classification', () => {
         { term: 'uk dependent visa', impressions: 800, clicks: 40, ctr: 0.05, position: 8 },
       ],
       coverage: [
-        { title: 'UK dependent visa guide', primaryKeyword: 'uk dependent visa' },
-        { title: 'UK dependent visa 2026', topic: 'uk dependent visa documents' },
+        { title: 'UK dependent visa guide', primaryKeyword: 'uk dependent visa', url: 'https://legal.yousafeconsultancy.com/uk/dependent-visa/' },
+        { title: 'UK dependent visa 2026', topic: 'uk dependent visa documents', url: 'https://legal.yousafeconsultancy.com/uk/dependent-visa-2026/' },
       ],
       limit: 10,
     })
     expect(result.cannibalization.some((c) => c.term === 'uk dependent visa')).toBe(true)
-    expect(result.cannibalization[0].pages.length).toBeGreaterThanOrEqual(2)
+    expect(result.cannibalization[0].pages).toEqual([
+      'https://legal.yousafeconsultancy.com/uk/dependent-visa/',
+      'https://legal.yousafeconsultancy.com/uk/dependent-visa-2026/',
+    ])
   })
 })

@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
       const { data } = await supabase
         .from('content_jobs')
-        .select('title, topic, primary_keyword, status, content_path')
+        .select('title, topic, primary_keyword, status, content_path, canonical_url')
         .order('created_at', { ascending: false })
         .limit(300)
       coverage = ((data ?? []) as Array<Record<string, unknown>>)
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
           topic: j.topic ? String(j.topic) : null,
           primaryKeyword: j.primary_keyword ? String(j.primary_keyword) : null,
           status: j.status ? String(j.status) : null,
-          url: j.content_path ? String(j.content_path) : null,
+          url: String(j.canonical_url || j.content_path || '').trim() || null,
         }))
     } catch (err) {
       console.warn('[content-studio/gsc/suggestions] coverage load failed', err)

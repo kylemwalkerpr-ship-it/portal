@@ -1,5 +1,6 @@
 import {
   classifyCannibalMergeResult,
+  formatCannibalSweepNotice,
   type CannibalMergeResponseBody,
 } from '@/lib/seoFactory/cannibalResolveOutcome'
 
@@ -94,6 +95,12 @@ describe('classifyCannibalMergeResult — resolved/skipped/failed contract', () 
     const r = classifyCannibalMergeResult({ ok: false, status: 500, body: {} })
     expect(r.status).toBe('failed')
     expect(r.detail).toBe('HTTP 500')
+  })
+
+  it('describes an all-skipped sweep as cleared, not unresolved', () => {
+    expect(formatCannibalSweepNotice({ resolved: 0, skipped: 8, failed: 0 })).toBe(
+      '⚠ Cannibal sweep: 8 cleared — no mergeable estate URLs (GSC noise or title-only overlap).',
+    )
   })
 
   it('classifies ok with zero redirects and zero skipped as resolved', () => {

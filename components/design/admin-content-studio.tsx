@@ -35,6 +35,7 @@ import {
 import { RankingModelBlock } from './admin-ranking-model-block'
 import {
   classifyCannibalMergeResult,
+  formatCannibalSweepNotice,
   type CannibalMergeResponseBody,
   type CannibalResolveOutcome,
 } from '@/lib/seoFactory/cannibalResolveOutcome'
@@ -3915,6 +3916,7 @@ interface WorkPlanItem {
   play?: string
   suggestion?: AISuggestion
   mergeRecord?: CannibalMergeRecord
+  competingPages?: string[]
 }
 
 const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: string; icon: string }> = {
@@ -3953,6 +3955,7 @@ function buildWorkPlan(
   radar: AISuggestion[],
   radarMeta: Record<string, unknown> | null,
   merges: CannibalMergeRecord[],
+  clearedTopics: Set<string> = new Set(),
 ): WorkPlanItem[] {
   const items: WorkPlanItem[] = []
   // Radar opportunities → gaps, quick wins, refreshes
@@ -3985,6 +3988,7 @@ function buildWorkPlan(
   const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
   for (const c of cannibalList) {
     if (isJunkQuery(c.term)) continue
+    if (clearedTopics.has(c.term.toLowerCase())) continue
     const stem = cannibalTermStem(c.term)
     if (
       mergedClusterIds.has(cannibalClusterIdForTerm(c.term)) ||
@@ -3998,7 +4002,8 @@ function buildWorkPlan(
       topic: c.term,
       source: 'Cannibal Watch',
       priority: 70,
-      signals: [`${c.pages.length} competing pages target this term`],
+      signals: [`${(c.pages || []).length} competing pages target this term`],
+      competingPages: Array.isArray(c.pages) ? c.pages : [],
     })
   }
   // Merge history
@@ -4033,10 +4038,11 @@ function WorkPlanTable({
   resolvedIds?: Set<string>
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
-  const filtered = filterCat === 'all' ? items : items.filter((i) => i.category === filterCat)
+  const activeItems = items.filter((i) => i.category !== 'cannibal' || !resolvedIds?.has(i.id))
+  const filtered = filterCat === 'all' ? activeItems : activeItems.filter((i) => i.category === filterCat)
   const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id))
-  const selectedItems = items.filter((i) => selectedIds.has(i.id))
-  const cannibalItems = items.filter((i) => i.category === 'cannibal')
+  const selectedItems = activeItems.filter((i) => selectedIds.has(i.id))
+  const cannibalItems = activeItems.filter((i) => i.category === 'cannibal')
 
   const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
@@ -4649,9 +4655,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Populated from radarMeta.cannibalization and the coverage map.
   const [competingUrls, setCompetingUrls] = React.useState<Array<{ url: string; title: string; primaryKeyword?: string | null }>>([])
 
+  const [clearedCannibalTopics, setClearedCannibalTopics] = React.useState<Set<string>>(new Set())
   const workPlanItems = React.useMemo(
-    () => buildWorkPlan(radar, radarMeta, merges),
-    [radar, radarMeta, merges],
+    () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics),
+    [radar, radarMeta, merges, clearedCannibalTopics],
   )
 
   const handleSendToResearch = React.useCallback((selected: WorkPlanItem[]) => {
@@ -4850,9 +4857,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // button and the Resolve-all sweep share identical behavior.
   const resolveOneCannibal = React.useCallback(async (item: WorkPlanItem): Promise<CannibalResolveOutcome> => {
     try {
+      const urls = (item.competingPages || []).filter((u) => /^https?:\/\//i.test(u))
+      const payload = urls.length >= 2
+        ? { term: item.topic, winnerUrl: urls[0], loserUrls: urls.slice(1), mode: 'merge' as const }
+        : { term: item.topic, mode: 'merge' as const }
       const res = await fetch('/api/seo-factory/cannibal-merge', {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ term: item.topic, mode: 'merge' }),
+        body: JSON.stringify(payload),
       })
       const body = await res.json().catch(() => ({})) as CannibalMergeResponseBody
       return classifyCannibalMergeResult({ ok: res.ok, status: res.status, body })
@@ -4865,8 +4876,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
     try {
       const r = await resolveOneCannibal(item)
-      if (r.status === 'resolved' || r.status === 'skipped') setResolvedCannibalIds((prev) => new Set(prev).add(item.id))
-      setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : r.status === 'skipped' ? `⚠ Cannibal dismissed: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
+      if (r.status === 'resolved' || r.status === 'skipped') {
+        setResolvedCannibalIds((prev) => new Set(prev).add(item.id))
+        setClearedCannibalTopics((prev) => new Set(prev).add(item.topic.toLowerCase()))
+      }
+      setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : r.status === 'skipped' ? `⚠ Cannibal cleared: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
       void fetchMergeHistory()
     } finally {
       setResolvingCannibalIds((prev) => {
@@ -4897,11 +4911,17 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         else if (r.status === 'skipped') { skipped += 1; resolvedIds.push(item.id) }
         else { failed += 1; failures.push(`${item.topic}: ${r.detail}`) }
       }
-      if (resolvedIds.length) setResolvedCannibalIds((prev) => new Set([...prev, ...resolvedIds]))
-      let notice = `⚠ Cannibal sweep: ${resolved} resolved`
-      if (skipped > 0) notice += ` · ${skipped} skipped`
-      if (failed > 0) notice += ` · ${failed} failed${failures.length ? ` — ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '…' : ''}` : ''}`
-      setActionNotice(notice)
+      if (resolvedIds.length) {
+        setResolvedCannibalIds((prev) => new Set([...prev, ...resolvedIds]))
+        setClearedCannibalTopics((prev) => new Set([...prev, ...cannibals.filter((i) => resolvedIds.includes(i.id)).map((i) => i.topic.toLowerCase())]))
+        setRadarMeta((prev) => {
+          if (!prev) return prev
+          const gone = new Set(cannibals.filter((i) => resolvedIds.includes(i.id)).map((i) => i.topic.toLowerCase()))
+          const list = Array.isArray(prev.cannibalization) ? (prev.cannibalization as Array<{ term?: string }>) : []
+          return { ...prev, cannibalization: list.filter((c) => !gone.has(String(c.term || '').toLowerCase())) }
+        })
+      }
+      setActionNotice(formatCannibalSweepNotice({ resolved, skipped, failed, failures }))
       void fetchMergeHistory()
     } finally {
       setResolvingAllCannibal(false)

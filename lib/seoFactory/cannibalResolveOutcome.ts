@@ -52,3 +52,23 @@ export function classifyCannibalMergeResult(opts: {
   if (prUrl) detail += ` · PR ${prUrl}`
   return { status: 'resolved', detail }
 }
+
+/** Work Plan sweep copy — skipped clusters are cleared, not left hanging. */
+export function formatCannibalSweepNotice(counts: {
+  resolved: number
+  skipped: number
+  failed: number
+  failures?: string[]
+}): string {
+  const { resolved, skipped, failed, failures = [] } = counts
+  if (resolved === 0 && skipped > 0 && failed === 0) {
+    return `⚠ Cannibal sweep: ${skipped} cleared — no mergeable estate URLs (GSC noise or title-only overlap).`
+  }
+  let notice = `⚠ Cannibal sweep: ${resolved} merged`
+  if (skipped > 0) notice += ` · ${skipped} cleared`
+  if (failed > 0) {
+    notice += ` · ${failed} failed`
+    if (failures.length) notice += ` — ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '…' : ''}`
+  }
+  return notice
+}

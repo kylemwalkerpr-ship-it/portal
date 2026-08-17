@@ -216,19 +216,15 @@ test.describe('Studio cannibalization — Work Plan Resolve button', () => {
     await page.locator('#studio-panel-discover').waitFor({ state: 'visible', timeout: 30_000 })
     await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toBeVisible({ timeout: 10_000 })
 
-    // Row starts with the Resolve button and no resolved badge.
+    // Row starts with the Resolve button.
     const resolveBtn = page.locator('button[title*="Auto-resolve"]').first()
     await expect(resolveBtn).toBeVisible({ timeout: 8_000 })
-    await expect(page.locator('span[title*="Cleared"]')).toHaveCount(0)
 
     await resolveBtn.click()
 
-    // After the merge resolves, the row flips to the green ✅ Resolved badge.
-    const badge = page.locator('span[title*="Cleared"]')
-    await expect(badge).toBeVisible({ timeout: 10_000 })
-    await expect(badge).toHaveText(/Resolved/)
-
-    // The Resolve button is gone (replaced by the badge).
+    // After the merge, the cluster is removed from the Work Plan (not left
+    // as a skipped/resolved leftover).
+    await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toHaveCount(0)
     await expect(page.locator('button[title*="Auto-resolve"]')).toHaveCount(0)
 
     await page.close()
