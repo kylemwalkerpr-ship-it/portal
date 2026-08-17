@@ -541,10 +541,24 @@ export function isGrokConfigured(): boolean {
   return Boolean(env('XAI_API_KEY'))
 }
 
-function grokModelId(opts?: ContentAiOptions): string {
-  const requested = (opts?.model || '').trim()
-  if (requested && /^grok/i.test(requested)) return requested
-  return env('XAI_MODEL') || 'grok-4.6'
+/** UI / pin aliases that are not xAI model ids. "grok" must never be sent. */
+const GROK_MODEL_ALIASES = new Set([
+  'grok',
+  'xai',
+  'supergrok',
+  'super-grok',
+  'grok-latest',
+  'grok-4',
+])
+
+/** Resolve the xAI model id. The reviewer pin is "grok"; the API wants grok-4.6. */
+export function grokModelId(opts?: { model?: string } | null): string {
+  const fallback = env('XAI_MODEL') || 'grok-4.6'
+  const requested = String(opts?.model || '').trim()
+  if (!requested) return fallback
+  if (GROK_MODEL_ALIASES.has(requested.toLowerCase())) return fallback
+  if (/^grok[-_.]/i.test(requested)) return requested
+  return fallback
 }
 
 /** Grok 4.6 default reasoning is HIGH and counts against max_output_tokens.

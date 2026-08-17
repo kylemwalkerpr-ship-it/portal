@@ -822,7 +822,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             or the open-source reviewers. */}
         {onReviewModelChange && (
           <select
-            value={reviewModel || 'gpt-5.6-sol'}
+            value={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok-4.6' : (reviewModel || 'gpt-5.6-sol')}
             onChange={(e) => onReviewModelChange(e.target.value)}
             disabled={allBusy}
             aria-label="Review AI model"
@@ -835,7 +835,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             }}
           >
             <option value="gpt-5.6-sol">GPT Sol · Senior Editor</option>
-            <option value="grok">Grok 4.6 · SuperGrok Review</option>
+            <option value="grok-4.6">Grok 4.6 · SuperGrok Review</option>
             <option value="gpt-5.6-terra">GPT Terra · Fast Review</option>
             <option value="baseten-deepseek">DeepSeek V4 Flash · Baseten Review</option>
             <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten Review</option>

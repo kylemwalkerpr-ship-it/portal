@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
 import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
@@ -80,7 +80,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     maxTokens,
     temperature: 0.2,
     aiProvider,
-    model: effectiveModel,
+    model: isGrok ? grokModelId({ model: effectiveModel }) : effectiveModel,
   }))
   const text = (result?.text || '').trim()
   if (!text) throw new Error('AI fix returned empty content')
