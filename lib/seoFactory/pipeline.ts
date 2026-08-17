@@ -28,6 +28,7 @@ import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialS
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
+import { isFileOrUrlLikeTerm } from './queryNoise'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -235,6 +236,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
   if (!topic) {
     throw new Error('topic required')
+  }
+
+  // Reject file paths, URLs, and pasted document fragments before they become
+  // jobs — GSC/autocomplete occasionally leak "rates final.pdf …/files/user2983"
+  // blobs that can never resolve into a real content page.
+  if (isFileOrUrlLikeTerm(topic) || isFileOrUrlLikeTerm(primaryKeyword)) {
+    throw new Error(
+      `Rejected bogus keyword: "${primaryKeyword || topic}" looks like a file path or URL, not a search topic`,
+    )
   }
 
   // Keyword cluster: merge the whole cluster into the brief so ONE page answers

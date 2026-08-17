@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { CATEGORIES } from '@/lib/categories'
+import { isFileOrUrlLikeTerm } from './queryNoise'
 
 /**
  * Marketplace category demand signal — when the marketplace has active
@@ -459,6 +460,7 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
   const board: KeywordSignal[] = []
   for (const q of queries) {
     if (!includeBrand && brandTerm(q.term)) continue
+    if (isFileOrUrlLikeTerm(q.term)) continue
     const region = inferRegion(q.term)
     if (regionFilter && region !== regionFilter) continue
 

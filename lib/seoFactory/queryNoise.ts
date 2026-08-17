@@ -34,6 +34,23 @@ const MEAL_PLAN_RE = /\broom and meal plan\b/i
 const MAX_KEYWORD_WORDS = 8
 
 /**
+ * True when a term is a file path, URL, email, or CMS path fragment rather
+ * than a search keyword (e.g. `rates final.pdf pacific.edu/sites/default/files`).
+ * Narrower than isJunkQuery: no word-count or phrasing heuristics, so it is
+ * safe to apply to free-form topics and long-but-legitimate queries too.
+ */
+export function isFileOrUrlLikeTerm(term: string): boolean {
+  const t = (term || '').trim()
+  if (!t) return false
+  return (
+    FILE_EXT_RE.test(t) ||
+    URL_FRAGMENT_RE.test(t) ||
+    EMAIL_RE.test(t) ||
+    CMS_USER_RE.test(t)
+  )
+}
+
+/**
  * True when a query string is noise (a filename/URL/pasted blob), not a real
  * keyword. Empty strings are also considered junk.
  */
@@ -42,10 +59,7 @@ export function isJunkQuery(term: string): boolean {
   if (!t) return true
   const words = t.split(/\s+/).filter(Boolean)
   if (words.length > MAX_KEYWORD_WORDS) return true
-  if (FILE_EXT_RE.test(t)) return true
-  if (URL_FRAGMENT_RE.test(t)) return true
-  if (EMAIL_RE.test(t)) return true
-  if (CMS_USER_RE.test(t)) return true
+  if (isFileOrUrlLikeTerm(t)) return true
   if (ISSUED_BY_RE.test(t)) return true
   if (QUOTED_DATE_RE.test(t)) return true
   if (MEAL_PLAN_RE.test(t)) return true

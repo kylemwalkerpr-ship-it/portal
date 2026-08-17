@@ -28,6 +28,7 @@ import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
+import { isFileOrUrlLikeTerm } from './queryNoise'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
 
@@ -87,6 +88,16 @@ export async function* runSeoFactoryPipelineStream(
 
     if (!topic) {
       yield { type: 'error', error: 'topic required' }
+      return
+    }
+
+    // Reject file paths, URLs, and pasted document fragments before they become
+    // jobs — same guard as the non-streaming pipeline entry.
+    if (isFileOrUrlLikeTerm(topic) || isFileOrUrlLikeTerm(primaryKeyword)) {
+      yield {
+        type: 'error',
+        error: `Rejected bogus keyword: "${primaryKeyword || topic}" looks like a file path or URL, not a search topic`,
+      }
       return
     }
 

@@ -1,4 +1,4 @@
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isJunkQuery, isFileOrUrlLikeTerm } from '@/lib/seoFactory/queryNoise'
 
 describe('isJunkQuery — GSC noise filter', () => {
   it('flags PDF-filename + URL blobs (the failing cannibal sweep terms)', () => {
@@ -43,5 +43,29 @@ describe('isJunkQuery — GSC noise filter', () => {
   it('treats empty/blank input as junk', () => {
     expect(isJunkQuery('')).toBe(true)
     expect(isJunkQuery('   ')).toBe(true)
+  })
+})
+
+describe('isFileOrUrlLikeTerm — intake guard', () => {
+  it('flags file extensions, URLs, and CMS path fragments', () => {
+    expect(isFileOrUrlLikeTerm('"2026-2027 stockton room and meal plan rates final.pdf" pacific.edu/sites/default/files/users/user2983')).toBe(true)
+    expect(isFileOrUrlLikeTerm('form i-765 instructions.pdf')).toBe(true)
+    expect(isFileOrUrlLikeTerm('https://pacific.edu/sites/default/files/rates.pdf')).toBe(true)
+    expect(isFileOrUrlLikeTerm('sites/default/files/users/user2983')).toBe(true)
+  })
+
+  it('keeps long-but-clean topics (no word-count heuristic)', () => {
+    expect(isFileOrUrlLikeTerm('can i work on a student visa in the uk during holidays')).toBe(false)
+    expect(isFileOrUrlLikeTerm('how to apply for a uk spouse visa step by step guide')).toBe(false)
+  })
+
+  it('keeps ordinary keyword phrases', () => {
+    expect(isFileOrUrlLikeTerm('uk dependent visa')).toBe(false)
+    expect(isFileOrUrlLikeTerm('cpt approval letter uscis')).toBe(false)
+  })
+
+  it('treats empty input as not file/url-like (callers handle empty)', () => {
+    expect(isFileOrUrlLikeTerm('')).toBe(false)
+    expect(isFileOrUrlLikeTerm('   ')).toBe(false)
   })
 })
