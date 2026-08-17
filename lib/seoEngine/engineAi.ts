@@ -11,10 +11,20 @@ import { generateContentText, type ContentAiOptions, type ContentAiResult } from
 
 export const ENGINE_FALLBACK_PROVIDER = 'grok' as const
 
+/** Prefer the named primary when it has a key; otherwise skip straight to Grok. */
+export function resolveEngineAiProvider(preferred?: string): string {
+  const want = String(preferred || 'openai').trim() || 'openai'
+  if (want === ENGINE_FALLBACK_PROVIDER) return ENGINE_FALLBACK_PROVIDER
+  if (want === 'openai' && !process.env.OPENAI_API_KEY) {
+    if (process.env.XAI_API_KEY || process.env.GROK_API_KEY) return ENGINE_FALLBACK_PROVIDER
+  }
+  return want
+}
+
 export async function generateEngineText(
   opts: Omit<ContentAiOptions, 'exclusive'> & { aiProvider?: string },
 ): Promise<ContentAiResult> {
-  const primary = String(opts.aiProvider || 'openai').trim() || 'openai'
+  const primary = resolveEngineAiProvider(opts.aiProvider)
   try {
     return await generateContentText({
       ...opts,

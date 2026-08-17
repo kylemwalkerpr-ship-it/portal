@@ -205,7 +205,50 @@ export interface KnowledgeIngestOptions {
   /** Live progress callback for streaming surfaces (phase, message, detail). */
   onProgress?: (phase: string, message: string, detail?: string) => void
 }
-export interface KnowledgeIngestResult { sourcesRun: number; itemsFetched: number; itemsStored: number; aiSummarized: number; skipped: number; errors: string[]; perSource: Array<{ id: string; label: string; fetched: number; stored: number; error?: string }> }
+export interface KnowledgeIngestResult {
+  sourcesRun: number
+  itemsFetched: number
+  itemsStored: number
+  aiSummarized: number
+  skipped: number
+  errors: string[]
+  aiErrors: string[]
+  perSource: Array<{ id: string; label: string; fetched: number; stored: number; error?: string }>
+}
+
+/** Parse the knowledge-analyst JSON (or recover a 2-sentence prose summary). */
+export function parseKnowledgeAiSummary(text: string): { summary: string; stages: string[]; countries: string[] } {
+  const raw = (text || '').trim()
+  const empty = { summary: '', stages: [] as string[], countries: [] as string[] }
+  if (!raw) return empty
+
+  const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/g, '').trim()
+  const start = fenced.indexOf('{')
+  const end = fenced.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    try {
+      const obj = JSON.parse(fenced.slice(start, end + 1)) as {
+        summary?: unknown
+        stages?: unknown
+        countries?: unknown
+      }
+      const summary = String(obj.summary || '').replace(/\s+/g, ' ').trim()
+      const stages = Array.isArray(obj.stages) ? obj.stages.map((s) => String(s)).filter(Boolean) : []
+      const countries = Array.isArray(obj.countries) ? obj.countries.map((c) => String(c)).filter(Boolean) : []
+      if (summary) return { summary, stages, countries }
+    } catch {
+      /* fall through to prose recovery */
+    }
+  }
+
+  const prose = raw
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[{}\[\]"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const sentences = prose.split(/(?<=[.!?])\s+/).filter((s) => s.length > 20).slice(0, 2).join(' ')
+  return { ...empty, summary: sentences.slice(0, 500) }
+}
 
 function stagePromptBanks(): string { return LIFECYCLE_STAGES.map((s) => `${s.key}: ${s.label}`).join('\n') }
 
@@ -263,7 +306,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
   const supabase = createSupabaseAdminClient()
   const sources = DEFAULT_SOURCES.filter((s) => !opts.sources || opts.sources.length === 0 || opts.sources.includes(s.id))
   const limit = Math.max(1, Math.min(25, opts.limitPerSource ?? 10))
-  const result: KnowledgeIngestResult = { sourcesRun: 0, itemsFetched: 0, itemsStored: 0, aiSummarized: 0, skipped: 0, errors: [], perSource: [] }
+  const result: KnowledgeIngestResult = { sourcesRun: 0, itemsFetched: 0, itemsStored: 0, aiSummarized: 0, skipped: 0, errors: [], aiErrors: [], perSource: [] }
   const aiSummarize = opts.aiSummarize !== false
   let aiBudget = Math.max(0, Math.min(20, opts.maxAiItems ?? 8))
 
@@ -281,15 +324,31 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
         if (aiSummarize && aiBudget > 0) {
           aiBudget -= 1
           try {
-            const ai = await generateEngineText({ aiProvider: 'openai', system: `You are the SEO knowledge analyst for an immigration marketplace. Summarize this item in 2 crisp sentences and tag affected stages: ${stagePromptBanks()}. Reply as JSON {"summary":"...","stages":[],"countries":[]}. Be factual — never invent numbers.`, prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`, maxTokens: 400, temperature: 0.2 })
-            const parsed = JSON.parse((ai.text || '{}').trim().replace(/^```json?/, '').replace(/```$/, '')) as { summary?: string; stages?: string[]; countries?: string[] }
-            aiSummary = parsed.summary || tagged.title
-            const stages = (parsed.stages || []).filter((s) => getStage(s)).slice(0, 3)
-            const countries = (parsed.countries || []).filter((c) => isCountry(c)).slice(0, 2)
-            if (stages.length) tagged.stages = stages
-            if (countries.length) tagged.countries = countries
-            result.aiSummarized += 1
-          } catch { aiSummary = tagged.title }
+            const ai = await generateEngineText({
+              aiProvider: 'openai',
+              system: `You are the SEO knowledge analyst for an immigration marketplace. Summarize this item in 2 crisp sentences and tag affected stages: ${stagePromptBanks()}. Reply as JSON {"summary":"...","stages":[],"countries":[]}. Be factual — never invent numbers.`,
+              prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`,
+              maxTokens: 400,
+              temperature: 0.2,
+            })
+            const parsed = parseKnowledgeAiSummary(ai.text || '')
+            const usable = parsed.summary && parsed.summary !== tagged.title
+            if (usable) {
+              aiSummary = parsed.summary
+              const stages = parsed.stages.filter((s) => getStage(s)).slice(0, 3)
+              const countries = parsed.countries.filter((c) => isCountry(c)).slice(0, 2)
+              if (stages.length) tagged.stages = stages
+              if (countries.length) tagged.countries = countries
+              result.aiSummarized += 1
+            } else {
+              aiSummary = tagged.title
+              if (result.aiErrors.length < 6) result.aiErrors.push(`${source.id}: empty AI summary`)
+            }
+          } catch (e) {
+            aiSummary = tagged.title
+            const msg = e instanceof Error ? e.message : String(e)
+            if (result.aiErrors.length < 6) result.aiErrors.push(`${source.id}: ${msg.slice(0, 160)}`)
+          }
         }
         const { error } = await supabase.from('seo_knowledge').upsert({
           source: source.id, source_label: source.label, kind: source.kind, url: dedupeKey,

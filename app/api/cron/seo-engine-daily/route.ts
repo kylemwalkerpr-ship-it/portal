@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ingestKnowledge, recordEngineRun } from '@/lib/seoEngine/knowledge'
 import { runPlanner } from '@/lib/seoEngine/planner'
 import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
+import { classifyEngineRunStatus, formatTopScores } from '@/lib/seoEngine/engineRunSummary'
 
 /**
  * POST /api/cron/seo-engine-daily
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
         fanOut = { cited: 0, total: 0, clusters: 0, byCluster: {} }
       }
       await recordEngineRun('daily', 'success', {
-        phase, cited: vis.cited, total: vis.total, shareOfVoice: vis.shareOfVoice,
+        phase, cited: vis.cited, total: vis.total, failed: vis.failed, shareOfVoice: vis.shareOfVoice,
         fanOutCited: fanOut.cited, fanOutTotal: fanOut.total, fanOutClusters: fanOut.clusters,
       }, [], 'cron')
       return NextResponse.json({ ok: true, phase, ...vis, fanOut })
@@ -68,22 +69,28 @@ export async function POST(req: NextRequest) {
     if (phase === 'rank') {
       const { runRankingPassForPlans } = await import('@/lib/seoEngine/rankingModel')
       const rank = await runRankingPassForPlans(body.limit || 15)
-      await recordEngineRun('daily', rank.computed ? 'success' : 'partial', { phase, computed: rank.computed, topScores: rank.topScores }, [], 'cron')
-      return NextResponse.json({ ok: true, phase, ...rank })
+      await recordEngineRun('daily', rank.computed ? 'success' : 'partial', { phase, computed: rank.computed, topScores: formatTopScores(rank.topScores) }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, ...rank, topScores: formatTopScores(rank.topScores) })
     }
     if (phase === 'rewards') {
       const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
       const reward = await attributizeOutcomes()
-      await recordEngineRun('daily', 'success', { phase, events: reward.events }, [], 'cron')
+      await recordEngineRun('daily', 'success', {
+        phase,
+        events: reward.events,
+        jobsConsidered: reward.jobsConsidered,
+        jobsMatched: reward.jobsMatched,
+      }, [], 'cron')
       return NextResponse.json({ ok: true, phase, ...reward })
     }
     if (phase === 'track') {
       const { loadForecastTracker } = await import('@/lib/seoEngine/forecastTracker')
       const tracker = await loadForecastTracker({ limit: 200 })
-      await recordEngineRun('daily', 'success', {
+      await recordEngineRun('daily', tracker.summary.inFlight || tracker.summary.evaluated ? 'success' : 'partial', {
         phase,
         evaluated: tracker.summary.evaluated,
         inFlight: tracker.summary.inFlight,
+        noData: tracker.summary.noData,
         onTrackRate: tracker.summary.onTrackRate,
         overPredicted: tracker.summary.byVerdict.over_predicted,
         underPredicted: tracker.summary.byVerdict.under_predicted,
@@ -100,45 +107,96 @@ export async function POST(req: NextRequest) {
     let cited = 0
     let rankComputed = 0
     let rewardEvents = 0
+    let rewardJobs = 0
+    let rewardMatched = 0
     let tracked = 0
+    let inFlight = 0
     let onTrackRate = 0
-    const topScores: Array<{ topic: string; total: number }> = []
+    let llmFailed = 0
+    let interlinksStored = 0
+    const topScores: string[] = []
     if (phase === 'all') {
       const result = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit || 15 })
       plans = result.length
+      try {
+        const { persistPlannerInterlinks } = await import('@/lib/seoEngine/interlink')
+        interlinksStored = await persistPlannerInterlinks(result)
+      } catch {
+        interlinksStored = 0
+      }
       const { runRankingPassForPlans, attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
       const rank = await runRankingPassForPlans(body.limit || 15)
       rankComputed = rank.computed
-      topScores.push(...rank.topScores)
+      topScores.push(...formatTopScores(rank.topScores))
       const reward = await attributizeOutcomes()
       rewardEvents = reward.events
+      rewardJobs = reward.jobsConsidered
+      rewardMatched = reward.jobsMatched
       const { loadForecastTracker } = await import('@/lib/seoEngine/forecastTracker')
       const tracker = await loadForecastTracker({ limit: 200 })
       tracked = tracker.summary.evaluated
+      inFlight = tracker.summary.inFlight
       onTrackRate = tracker.summary.onTrackRate
       if (body.llmAudits !== false) {
         const vis = await runVisibilityAudits({ maxAudits: 6 })
         llmAudits = vis.total
         cited = vis.cited
+        llmFailed = vis.failed
       }
     }
-    const status = ingest.errors.length ? 'partial' : 'success'
+    const status = classifyEngineRunStatus({
+      phase,
+      itemsStored: ingest.itemsStored,
+      sourcesRun: ingest.sourcesRun,
+      sourceErrors: ingest.errors.length,
+      plans,
+      rankComputed,
+    })
     await recordEngineRun('daily', status, {
       phase,
       ingested: ingest.itemsStored,
       fetched: ingest.itemsFetched,
       aiSummarized: ingest.aiSummarized,
+      ingestErrors: ingest.errors.length,
       plans,
       rankComputed,
       rewardEvents,
+      rewardJobs,
+      rewardMatched,
       tracked,
+      inFlight,
       onTrackRate,
       topScores,
       llmAudits,
       llmCited: cited,
-    }, ingest.errors, 'cron')
+      llmFailed,
+      interlinksStored,
+    }, [...ingest.errors, ...ingest.aiErrors].slice(0, 20), 'cron')
 
-    return NextResponse.json({ ok: true, phase, ingest: { fetched: ingest.itemsFetched, stored: ingest.itemsStored, aiSummarized: ingest.aiSummarized, errors: ingest.errors.slice(0, 5) }, plans, rankComputed, rewardEvents, tracked, onTrackRate, topScores, llmAudits, llmCited: cited })
+    return NextResponse.json({
+      ok: true,
+      phase,
+      ingest: {
+        fetched: ingest.itemsFetched,
+        stored: ingest.itemsStored,
+        aiSummarized: ingest.aiSummarized,
+        errors: ingest.errors.slice(0, 5),
+        aiErrors: ingest.aiErrors.slice(0, 5),
+      },
+      plans,
+      rankComputed,
+      rewardEvents,
+      rewardJobs,
+      rewardMatched,
+      tracked,
+      inFlight,
+      onTrackRate,
+      topScores,
+      llmAudits,
+      llmCited: cited,
+      llmFailed,
+      interlinksStored,
+    })
   } catch (e) {
     await recordEngineRun('daily', 'failed', { phase }, [e instanceof Error ? e.message : 'unknown'], 'cron')
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'daily run failed' }, { status: 500 })

@@ -1033,10 +1033,11 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
  * position/impression deltas — never fabricating gains. Richer deltas come
  * from operator-recorded outcomes via /api/seo-engine/rewards.
  */
-export async function attributizeOutcomes(): Promise<{ events: number }> {
+export async function attributizeOutcomes(): Promise<{ events: number; jobsConsidered: number; jobsMatched: number }> {
+  const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0 }
   try {
     const client = await db()
-    if (!client) return { events: 0 }
+    if (!client) return empty
     const { data } = await client
       .from('content_jobs')
       .select('id,title,topic,primary_keyword,status,content_path')
@@ -1044,14 +1045,16 @@ export async function attributizeOutcomes(): Promise<{ events: number }> {
       .gte('created_at', new Date(Date.now() - 90 * 86400_000).toISOString())
       .limit(50)
     const jobs = (data as Array<Record<string, unknown>>) || []
-    if (!jobs.length) return { events: 0 }
+    if (!jobs.length) return empty
     const { pullGscSignals } = await import('./planner')
     const signals = await pullGscSignals()
     let events = 0
+    let jobsMatched = 0
     for (const job of jobs) {
       const hay = `${String(job.title || '')} ${String(job.topic || '')} ${String(job.primary_keyword || '')}`.toLowerCase()
       const matched = signals.find((s) => hay.includes(s.term.toLowerCase().slice(0, 24)))
       if (!matched || matched.clicks <= 0) continue
+      jobsMatched += 1
       const event = creditOutcome({
         pageUrl: String(job.content_path || `job:${String(job.id)}`),
         topic: String(job.topic || job.primary_keyword || ''),
@@ -1063,8 +1066,8 @@ export async function attributizeOutcomes(): Promise<{ events: number }> {
       await persistRewardEvent(event)
       events += 1
     }
-    return { events }
+    return { events, jobsConsidered: jobs.length, jobsMatched }
   } catch {
-    return { events: 0 }
+    return empty
   }
 }

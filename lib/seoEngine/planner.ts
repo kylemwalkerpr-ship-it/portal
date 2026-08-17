@@ -638,6 +638,13 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     // persistence best-effort
   }
 
+  try {
+    const { persistPlannerInterlinks } = await import('./interlink')
+    await persistPlannerInterlinks(plans)
+  } catch {
+    // interlink graph is additive — plans still stand without it
+  }
+
   return plans
 }
 

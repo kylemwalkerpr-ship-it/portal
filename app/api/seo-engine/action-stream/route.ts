@@ -78,14 +78,21 @@ export async function POST(request: Request) {
             maxAiItems: body.maxAiItems != null ? Number(body.maxAiItems) : 8,
             onProgress,
           })
-          const status = result.errors.length ? 'partial' : 'success'
+          const { classifyEngineRunStatus } = await import('@/lib/seoEngine/engineRunSummary')
+          const status = classifyEngineRunStatus({
+            phase: 'knowledge',
+            itemsStored: result.itemsStored,
+            sourcesRun: result.sourcesRun,
+            sourceErrors: result.errors.length,
+          })
           await recordEngineRun('knowledge', status, {
             sourcesRun: result.sourcesRun,
             itemsFetched: result.itemsFetched,
             itemsStored: result.itemsStored,
             aiSummarized: result.aiSummarized,
             skipped: result.skipped,
-          }, result.errors, 'admin')
+            ingestErrors: result.errors.length,
+          }, [...result.errors, ...result.aiErrors].slice(0, 20), 'admin')
           emitStep('done', `Ingested ${result.itemsStored} item(s) from ${result.sourcesRun} source(s)`, result.errors.slice(0, 2).join('; ') || undefined)
           send({ type: 'done', kind, summary: `Ingested ${result.itemsStored} items from ${result.sourcesRun} sources`, result })
         } else if (kind === 'plan') {

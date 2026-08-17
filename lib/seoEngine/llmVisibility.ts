@@ -462,6 +462,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   audits: VisibilityAuditResult[]
   cited: number
   total: number
+  failed: number
   shareOfVoice: number
   engine: string
 }> {
@@ -503,10 +504,12 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
 
   const cited = audits.filter((a) => a.cited).length
   const total = audits.length
+  const failed = audits.filter((a) => !a.engines.some((e) => e.ok)).length
   return {
     audits,
     cited,
     total,
+    failed,
     shareOfVoice: total ? Math.round((cited / total) * 100) : 0,
     engine,
   }
@@ -577,10 +580,20 @@ export async function loadLlmVisibilityEvidence(term?: string | null): Promise<L
       .order('created_at', { ascending: false })
       .limit(200)
     const rows = (data as Array<Record<string, unknown>>) || []
-    const matches = rows.filter((r) => {
+    // The daily cron re-audits the same canonical queries, so a single prompt
+    // accumulates one row per run (currently 14 copies each). Dedupe by
+    // normalized query, preferring the newest row (the DESC order already
+    // surfaces it first), so `total` means distinct topics — not 14 copies of
+    // the same prompt inflating the denominator.
+    const seen = new Set<string>()
+    const matches: Array<Record<string, unknown>> = []
+    for (const r of rows) {
       const q = normalizeAuditQuery(String(r.query || ''))
-      return q && (q === normalized || q.includes(normalized) || normalized.includes(q))
-    })
+      if (!q || !(q === normalized || q.includes(normalized) || normalized.includes(q))) continue
+      if (seen.has(q)) continue
+      seen.add(q)
+      matches.push(r)
+    }
     if (!matches.length) return null
     const cited = matches.filter((r) => r.cited).length
     const total = matches.length

@@ -9,7 +9,7 @@ jest.mock('@/lib/aiKeyVault', () => ({
   deleteAiSetting: jest.fn(async () => undefined),
 }))
 
-import { generateEngineText, ENGINE_FALLBACK_PROVIDER } from '@/lib/seoEngine/engineAi'
+import { generateEngineText, ENGINE_FALLBACK_PROVIDER, resolveEngineAiProvider } from '@/lib/seoEngine/engineAi'
 
 describe('generateEngineText — Grok is the default engine fallback', () => {
   const envKeys = ['OPENAI_API_KEY', 'XAI_API_KEY', 'CONTENT_AI_RETRY'] as const
@@ -30,6 +30,14 @@ describe('generateEngineText — Grok is the default engine fallback', () => {
 
   it('exports grok as the engine fallback', () => {
     expect(ENGINE_FALLBACK_PROVIDER).toBe('grok')
+  })
+
+  it('skips OpenAI and pins Grok when no OPENAI_API_KEY is present', () => {
+    delete process.env.OPENAI_API_KEY
+    process.env.XAI_API_KEY = 'test-xai-key'
+    expect(resolveEngineAiProvider('openai')).toBe('grok')
+    process.env.OPENAI_API_KEY = 'sk-test'
+    expect(resolveEngineAiProvider('openai')).toBe('openai')
   })
 
   it('falls back to Grok when the OpenAI primary fails', async () => {

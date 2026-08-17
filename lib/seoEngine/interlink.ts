@@ -200,6 +200,32 @@ export function interlinkPromptBlock(edges: InterlinkEdge[]): string {
   )
 }
 
+/** Persist ontology interlink edges for planner missions (idempotent upsert). */
+export async function persistPlannerInterlinks(
+  plans: Array<{
+    clusterId: string
+    stage: string
+    country: Country
+    relatedTerms?: string[]
+    plan: { contentType: ContentType }
+  }>,
+): Promise<number> {
+  let stored = 0
+  for (const p of plans) {
+    if (!p.clusterId || !p.stage || !p.country) continue
+    const edges = generateInterlinkPlan({
+      sourceSlug: p.clusterId,
+      stage: p.stage,
+      country: p.country,
+      contentType: p.plan.contentType,
+      clusterId: p.clusterId,
+      relatedTerms: p.relatedTerms,
+    })
+    stored += (await persistInterlinkPlan(edges)).stored
+  }
+  return stored
+}
+
 export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number }> {
   if (!edges.length) return { stored: 0 }
   try {

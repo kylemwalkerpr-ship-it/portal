@@ -19,6 +19,7 @@
  */
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
+import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream } from '@/lib/seoFactory/sse'
@@ -382,7 +383,7 @@ function EngineRunHistory({ runs }: { runs: Array<Record<string, unknown>> }) {
         const kind = String(r.kind || 'run')
         const status = String(r.status || '')
         const summary = r.summary && typeof r.summary === 'object'
-          ? Object.entries(r.summary as Record<string, unknown>).map(([k, v]) => `${k}=${v}`).join(' · ')
+          ? formatEngineRunSummary(r.summary as Record<string, unknown>)
           : ''
         const when = r.started_at ? new Date(String(r.started_at)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
         const tone = status === 'success' ? '#34d399' : status === 'failed' ? '#f87171' : status === 'partial' ? '#fbbf24' : '#8b98a5'

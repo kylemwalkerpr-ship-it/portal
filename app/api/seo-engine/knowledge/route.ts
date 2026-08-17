@@ -44,14 +44,21 @@ export async function POST(req: NextRequest) {
       aiSummarize: body.aiSummarize,
       maxAiItems: body.maxAiItems,
     })
-    const status = result.errors.length ? 'partial' : 'success'
+    const { classifyEngineRunStatus } = await import('@/lib/seoEngine/engineRunSummary')
+    const status = classifyEngineRunStatus({
+      phase: 'knowledge',
+      itemsStored: result.itemsStored,
+      sourcesRun: result.sourcesRun,
+      sourceErrors: result.errors.length,
+    })
     await recordEngineRun('knowledge', status, {
       sourcesRun: result.sourcesRun,
       itemsFetched: result.itemsFetched,
       itemsStored: result.itemsStored,
       aiSummarized: result.aiSummarized,
       skipped: result.skipped,
-    }, result.errors, 'admin')
+      ingestErrors: result.errors.length,
+    }, [...result.errors, ...result.aiErrors].slice(0, 20), 'admin')
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {
     await recordEngineRun('knowledge', 'failed', {}, [e instanceof Error ? e.message : 'unknown'], 'admin')
