@@ -40,6 +40,13 @@ import {
   isAihubmixGlmFastConfigured,
   isGrokConfigured,
 } from '@/lib/contentAiProvider'
+import {
+  scoreAuditCandidates,
+  selectAuditQueries,
+  type QueryCandidate,
+} from './auditQuerySelector'
+import { loadKnowledgeFeed } from './knowledge'
+import { loadPlansDashboard } from './planner'
 
 /** The estate's observable surface — everything we want LLMs to cite. */
 export const ESTATE_DOMAINS: string[] = [
@@ -74,6 +81,65 @@ export interface VisibilityAuditOptions {
   maxAudits?: number
   /** Live progress callback for streaming surfaces (phase, message, detail). */
   onProgress?: (phase: string, message: string, detail?: string) => void
+}
+
+/**
+ * Build the live audit slate from planner + knowledge + prior visibility
+ * records. Explicit `queries` from the caller still win.
+ */
+export async function assembleAuditQueryPool(limit: number): Promise<{
+  queries: string[]
+  picked: QueryCandidate[]
+}> {
+  const fallback = () => {
+    const picked = selectAuditQueries(scoreAuditCandidates({ seeds: DEFAULT_AUDIT_QUERIES }), limit)
+    return { queries: picked.map((p) => p.query), picked }
+  }
+  try {
+  const supabase = createSupabaseAdminClient()
+  const [plansDash, knowledge, priorRes] = await Promise.all([
+    loadPlansDashboard(24).catch(() => ({ plans: [] as Array<Record<string, unknown>> })),
+    loadKnowledgeFeed(24).catch(() => ({ items: [] as Array<Record<string, unknown>> })),
+    supabase
+      .from('seo_llm_visibility')
+      .select('query,cited,share_of_voice,created_at')
+      .eq('fan_out', false)
+      .order('created_at', { ascending: false })
+      .limit(240),
+  ])
+
+  const plans = (plansDash.plans || []).map((p) => {
+    const plan = (p.plan && typeof p.plan === 'object') ? p.plan as { faq?: unknown } : null
+    const faq = Array.isArray(plan?.faq) ? plan.faq.map(String) : []
+    const related = Array.isArray(p.related_terms) ? (p.related_terms as unknown[]).map(String) : []
+    return {
+      primaryTerm: String(p.primary_term || ''),
+      relatedTerms: related,
+      faq,
+      opportunityScore: Number(p.opportunity_score) || 0,
+      impressions: Number(p.est_monthly_impressions) || 0,
+    }
+  })
+
+  const priorAudits = ((priorRes.data || []) as Array<Record<string, unknown>>).map((r) => ({
+    query: String(r.query || ''),
+    cited: Boolean(r.cited),
+    shareOfVoice: Number(r.share_of_voice) || 0,
+    createdAt: String(r.created_at || ''),
+  }))
+
+  const knowledgeTitles = (knowledge.items || []).map((i) => String(i.title || '')).filter(Boolean)
+  const scored = scoreAuditCandidates({
+    seeds: DEFAULT_AUDIT_QUERIES,
+    plans,
+    knowledgeTitles,
+    priorAudits,
+  })
+  const picked = selectAuditQueries(scored, limit)
+  return { queries: picked.map((p) => p.query), picked }
+  } catch {
+    return fallback()
+  }
 }
 
 // ── Structured audit types ──────────────────────────────────────────────────
@@ -465,13 +531,33 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   failed: number
   shareOfVoice: number
   engine: string
+  selected?: Array<{ query: string; source: string; score: number; reasons: string[] }>
 }> {
-  const queries = (opts.queries || DEFAULT_AUDIT_QUERIES).slice(0, Math.min(15, opts.maxAudits ?? 10))
+  const cap = Math.min(15, opts.maxAudits ?? 10)
+  let queries = (opts.queries || []).map(String).filter(Boolean).slice(0, cap)
+  let selected: Array<{ query: string; source: string; score: number; reasons: string[] }> = []
+  if (!queries.length) {
+    const pool = await assembleAuditQueryPool(cap)
+    queries = pool.queries
+    selected = pool.picked.map((p) => ({
+      query: p.query,
+      source: p.source,
+      score: Math.round(p.score * 10) / 10,
+      reasons: p.reasons.slice(0, 4),
+    }))
+    opts.onProgress?.(
+      'think',
+      `Selected ${queries.length} adaptive queries (not the fixed seed list)`,
+      selected.slice(0, 3).map((s) => `${s.query.slice(0, 48)} [${s.source}]`).join(' · ') || undefined,
+    )
+  }
+  if (!queries.length) queries = DEFAULT_AUDIT_QUERIES.slice(0, cap)
   const engine = opts.engineLabel || 'deepseek'
   const audits: VisibilityAuditResult[] = []
 
   for (const q of queries) {
-    opts.onProgress?.('audit', `Auditing “${q}”…`)
+    const why = selected.find((s) => s.query === q)
+    opts.onProgress?.('audit', `Auditing “${q}”…`, why ? why.reasons.join(' · ') : undefined)
     const result = await auditQuery(q, engine)
     audits.push(result)
     opts.onProgress?.('result', `“${q}” ${result.cited ? 'cited the estate' : 'not cited'}`, result.cited ? result.citedUrls.slice(0, 3).join(' · ') || undefined : undefined)
@@ -512,6 +598,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     failed,
     shareOfVoice: total ? Math.round((cited / total) * 100) : 0,
     engine,
+    selected,
   }
 }
 

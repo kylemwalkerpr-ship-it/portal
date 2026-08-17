@@ -29,7 +29,7 @@ export const ENGINE_ACTION_LABEL: Record<string, string> = {
 export const ENGINE_PARAMS: Record<string, string> = {
   ingest: 'limitPerSource=8 · maxAiItems=8 · aiSummarize=on',
   plan: 'GSC demand + knowledge · limit=10',
-  llm: 'maxAudits=6 · estate queries',
+  llm: 'adaptive slate · skip recent · planner + losses',
 }
 
 export type DeskLiveState = 'connecting' | 'live' | 'poll' | 'stale' | 'offline'

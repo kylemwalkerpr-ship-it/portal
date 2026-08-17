@@ -113,6 +113,19 @@ export async function POST(request: Request) {
             maxAudits: body.maxAudits != null ? Number(body.maxAudits) : 6,
             onProgress,
           })
+          await recordEngineRun(
+            'manual',
+            result.total ? 'success' : 'partial',
+            {
+              kind: 'llm',
+              cited: result.cited,
+              total: result.total,
+              shareOfVoice: result.shareOfVoice,
+              selected: (result.selected || []).map((s) => s.query),
+            },
+            [],
+            'admin',
+          )
           emitStep('done', `LLM audit: ${result.cited}/${result.total} cited the estate (${result.shareOfVoice}%)`)
           send({ type: 'done', kind, summary: `LLM audit: ${result.cited}/${result.total} queries cited the estate`, result })
         }
