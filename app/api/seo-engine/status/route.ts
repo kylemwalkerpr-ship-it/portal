@@ -3,6 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
+import { reportSpecCoverage } from '@/lib/seoEngine/specCoverage'
 
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' }
 
@@ -131,6 +132,7 @@ export async function GET() {
         latestAt: latestGate ? String(latestGate.created_at || '') : null,
       },
       runs: runs as Array<Record<string, unknown>>,
+      specCoverage: reportSpecCoverage(),
       sources: DEFAULT_SOURCES.map((s) => ({ id: s.id, label: s.label, kind: s.kind, countries: s.countries })),
       config: Object.fromEntries((config.data || []).map((c) => [c.key, c.value])),
     }, { headers: NO_STORE })
