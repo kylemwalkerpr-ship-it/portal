@@ -48,6 +48,8 @@ export interface ContentJob {
   master_engine_grade?: string | null
   master_engine_fetched_at?: string | null
   created_at: string; updated_at: string
+  deployed_at?: string | null
+  event_log?: Array<{ ts?: number | string; level?: string; source?: string; message?: string; detail?: string }> | null
 }
 
 

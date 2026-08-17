@@ -3395,90 +3395,50 @@ function MergeHistory() {
   )
 }
 
-// ── Job Timeline ──
-function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number }) {
-  const [entries, setEntries] = React.useState<TimelineEntry[] | null>(null)
-  const [error, setError] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/content-studio/jobs?id=${jobId}`, { credentials: 'same-origin' })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`)
-        if (cancelled) return
-        const job = (data as { job?: any }).job ?? {}
-        const lineage = Array.isArray((data as { lineage?: unknown[] }).lineage) ? (data as { lineage: any[] }).lineage : []
-
-        const derived: TimelineEntry[] = []
-        const pushStage = (ts: unknown, source: string, message: string, detail?: string, level: LogLevel = 'success') => {
-          const ms = typeof ts === 'number' ? ts : ts ? new Date(String(ts)).getTime() : NaN
-          if (Number.isFinite(ms)) derived.push({ ts: ms, level, source, message, detail, kind: 'stage' })
-        }
-        for (const node of lineage) {
-          pushStage(node.created_at, 'lineage', `${node.regeneration_mode ? `${node.regeneration_mode} · ` : ''}${node.status || 'job'}: ${node.title || node.topic || node.id}`, node.regeneration_reason || undefined, node.status === 'failed' ? 'error' : 'info')
-          if (node.lineage?.evidence) pushStage(node.created_at, 'evidence', `Evidence snapshot attached · ${node.lineage.modelVersion || 'model'}`, JSON.stringify(node.lineage.evidence).slice(0, 600), 'info')
-        }
-        pushStage(job.created_at ?? createdMs, 'job', 'Job created (queued)', undefined, 'info')
-        if (job.pr_number || job.pr_url) {
-          pushStage(job.created_at ?? createdMs, 'github', `Pull request #${job.pr_number ?? ''} opened`, job.pr_url || undefined, 'info')
-        }
-        if (job.deployed_at) pushStage(job.deployed_at, 'cloudflare', 'Deployed to Cloudflare', undefined, 'success')
-        if (job.merged_at) pushStage(job.merged_at, 'github', 'Pull request merged', undefined, 'success')
-        if (job.closed_at) pushStage(job.closed_at, 'github', 'Pull request closed without merge', undefined, 'warn')
-        if (job.status === 'failed') {
-          pushStage(job.updated_at ?? Date.now(), 'pipeline', job.error_message || 'Job failed', undefined, 'error')
-        }
-
-        const logs: TimelineEntry[] = Array.isArray(job.event_log)
-          ? (job.event_log as any[]).map((e) => ({
-              ts: typeof e.ts === 'number' ? e.ts : new Date(String(e.ts)).getTime(),
-              level: (['success', 'info', 'warn', 'error'].includes(e.level) ? e.level : 'info') as LogLevel,
-              source: String(e.source || 'studio'),
-              message: String(e.message || ''),
-              detail: e.detail ? String(e.detail) : undefined,
-              kind: 'log' as const,
-            })).filter((e) => Number.isFinite(e.ts))
-          : []
-
-        const merged = [...logs, ...derived]
-        const seen = new Set<string>()
-        const deduped = merged
-          .filter((e) => {
-            const key = `${e.ts}-${e.message}`
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-          .sort((a, b) => a.ts - b.ts)
-
-        if (cancelled) return
-        setEntries(deduped.length > 0 ? deduped : [])
-      } catch (err) {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Failed to load timeline')
-      }
-    }
-    load()
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const poll = async () => {
-      await load()
-      if (!cancelled) timer = setTimeout(poll, 2500)
-    }
-    timer = setTimeout(poll, 2500)
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-  }, [jobId, createdMs])
-
-  if (error) {
-    return <div style={{ fontSize: 11, color: C.red, fontFamily: C.mono }}>Timeline unavailable: {error}</div>
+// ── Job Timeline (built from the already-loaded job — never re-fetches) ──
+function buildJobTimelineEntries(job: ContentJob, lineage: Array<Record<string, any>> = []): TimelineEntry[] {
+  const derived: TimelineEntry[] = []
+  const pushStage = (ts: unknown, source: string, message: string, detail?: string, level: LogLevel = 'success') => {
+    const ms = typeof ts === 'number' ? ts : ts ? new Date(String(ts)).getTime() : NaN
+    if (Number.isFinite(ms)) derived.push({ ts: ms, level, source, message, detail, kind: 'stage' })
   }
-  if (entries === null) {
-    return <div style={{ fontSize: 11, color: C.textDim, fontFamily: C.mono }}>Loading timeline…</div>
+  for (const node of lineage) {
+    pushStage(node.created_at, 'lineage', `${node.regeneration_mode ? `${node.regeneration_mode} · ` : ''}${node.status || 'job'}: ${node.title || node.topic || node.id}`, node.regeneration_reason || undefined, node.status === 'failed' ? 'error' : 'info')
   }
+  pushStage(job.created_at, 'job', 'Job created (queued)', undefined, 'info')
+  if (job.pr_number || job.pr_url) {
+    pushStage(job.created_at, 'github', `Pull request #${job.pr_number ?? ''} opened`, job.pr_url || undefined, 'info')
+  }
+  if (job.deployed_at) pushStage(job.deployed_at, 'cloudflare', 'Deployed to Cloudflare', undefined, 'success')
+  if (job.merged_at) pushStage(job.merged_at, 'github', 'Pull request merged', undefined, 'success')
+  if (job.closed_at) pushStage(job.closed_at, 'github', 'Pull request closed without merge', undefined, 'warn')
+  if (job.status === 'failed' || job.error_message) {
+    pushStage(job.updated_at ?? Date.now(), 'pipeline', job.error_message || 'Job failed', undefined, 'error')
+  }
+  const logs: TimelineEntry[] = Array.isArray(job.event_log)
+    ? (job.event_log as any[]).map((e) => ({
+        ts: typeof e.ts === 'number' ? e.ts : new Date(String(e.ts)).getTime(),
+        level: (['success', 'info', 'warn', 'error'].includes(e.level) ? e.level : 'info') as LogLevel,
+        source: String(e.source || 'studio'),
+        message: String(e.message || ''),
+        detail: e.detail ? String(e.detail) : undefined,
+        kind: 'log' as const,
+      })).filter((e) => Number.isFinite(e.ts))
+    : []
+  const seen = new Set<string>()
+  return [...logs, ...derived]
+    .filter((e) => {
+      const key = `${e.ts}-${e.message}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((a, b) => a.ts - b.ts)
+}
+
+function JobTimeline({ job, lineage = [] }: { job: ContentJob; lineage?: Array<Record<string, any>> }) {
+  const entries = React.useMemo(() => buildJobTimelineEntries(job, lineage), [job, lineage])
+
   if (entries.length === 0) {
     return <div style={{ fontSize: 11, color: C.textDim }}>No timeline events recorded yet.</div>
   }
@@ -3551,8 +3511,10 @@ function JobDetail({
   gateFor?: { score: number; passed: boolean } | null
 }) {
   const [detail, setDetail] = React.useState<ContentJob>(job)
+  const [jobLineage, setJobLineage] = React.useState<Array<Record<string, any>>>([])
   const [editorContent, setEditorContent] = React.useState(job.content || '')
-  const [loading, setLoading] = React.useState(true)
+  const [loading, setLoading] = React.useState(!job.content)
+  const generationFailed = Boolean(detail.error_message) && (detail.status === 'drafting' || detail.status === 'failed' || detail.status === 'pending')
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [actionNotice, setLocalActionNotice] = React.useState<string | null>(null)
@@ -3561,7 +3523,9 @@ function JobDetail({
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
   // Drafting runs on open-source models — GLM 5.2 Fast (Baseten) is the
   // default. GPT stays out of the draft itself (Research = Terra, Review = Sol).
-  const [aiProvider, setAiProvider] = React.useState<string>('baseten-glm-fast')
+  const [aiProvider, setAiProvider] = React.useState<string>(() =>
+    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'baseten-glm-fast',
+  )
   const [reviewModel, setReviewModel] = React.useState<string>('gpt-5.6-sol')
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
@@ -3570,20 +3534,36 @@ function JobDetail({
 
   const loadDetail = React.useCallback(async () => {
     setLoading(true)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 12_000)
     try {
-      const response = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(job.id)}`, { credentials: 'same-origin' })
-      const data = await response.json().catch(() => ({})) as { job?: ContentJob; error?: string }
+      const response = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(job.id)}`, {
+        credentials: 'same-origin',
+        signal: controller.signal,
+      })
+      const data = await response.json().catch(() => ({})) as { job?: ContentJob; lineage?: Array<Record<string, any>>; error?: string }
       if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
       setDetail(data.job)
-      setEditorContent(data.job.content || '')
+      setJobLineage(Array.isArray(data.lineage) ? data.lineage : [])
+      setEditorContent(data.job.content || job.content || '')
       setAudit((data.job as ContentJob & { audit_json?: unknown }).audit_json || null)
       setActionError(null)
+      if (data.job.error_message && data.job.status === 'drafting') {
+        setResumeAvailable(Boolean(data.job.content || job.content))
+      }
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to load the full job')
+      const aborted = error instanceof DOMException && error.name === 'AbortError'
+      setActionError(
+        aborted
+          ? 'Full job took too long to load. You can still regenerate, or retry opening the draft.'
+          : (error instanceof Error ? error.message : 'Failed to load the full job'),
+      )
+      setResumeAvailable(Boolean(job.content) || Number(job.word_count) > 0)
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
-  }, [job.id])
+  }, [job.id, job.content, job.word_count])
 
   React.useEffect(() => { void loadDetail() }, [loadDetail])
 
@@ -3834,7 +3814,7 @@ function JobDetail({
 
         <div style={{ marginBottom: 16 }}>              <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>⏱ Job timeline · lineage</div>
               {detail.source_job_id && <div style={{ marginBottom: 8, padding: '7px 9px', borderRadius: C.radiusXs, background: C.blueSoft, color: C.blue, fontSize: 9.5, fontFamily: C.mono }}>↻ Replaces job {detail.source_job_id.slice(0, 12)}… · {detail.regeneration_mode || 'regeneration'}{detail.regeneration_reason ? ` · ${detail.regeneration_reason}` : ''}</div>}
-              <JobTimeline jobId={detail.id} createdMs={new Date(detail.created_at).getTime()} />
+              <JobTimeline job={detail} lineage={jobLineage} />
 
         </div>
 
@@ -3883,21 +3863,33 @@ function JobDetail({
             {dirty && <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono }}>Unsaved changes</span>}
           </div>
           {loading
-            ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div>
-            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingSnippets={detail.competing_snippets ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />}
+            ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>
+                Loading full job content…
+                <div style={{ marginTop: 8, fontSize: 10 }}>If this stays here, the job is still usable — use Regenerate or retry below.</div>
+              </div>
+            : editorContent.trim()
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingSnippets={detail.competing_snippets ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              : (
+                <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+                  {generationFailed
+                    ? 'Generation failed before a full draft was stored. Click Regenerate to rewrite with another model (Grok is the SuperGrok fallback), or Duplicate to start a fresh job from this brief.'
+                    : 'No draft body is stored on this job yet. Regenerate to write one.'}
+                </div>
+              )}
         </div>
 
         {/* ── Dedicated action groups ── */}
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>✏️ Editing the draft</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
-          {actionBtn('💾 Save draft', { border: C.gold, bg: dirty ? '#FFFBEB' : C.surface2, disabled: busy || loading || !dirty || !editorContent.trim(), onClick: () => void runAction('save'), title: 'Persist your edits to the job' })}
-          {actionBtn('🔍 Re-audit', { border: C.blue, fg: C.blue, disabled: busy || loading || !editorContent.trim(), onClick: () => void runAction('reaudit'), title: 'Re-run the quality audit on the current text' })}
-          {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy || loading, onClick: () => void runAction('regenerate'), title: 'Rewrite the full piece with AI (creates a replacement job)' })}
+          {actionBtn('💾 Save draft', { border: C.gold, bg: dirty ? '#FFFBEB' : C.surface2, disabled: busy || !dirty || !editorContent.trim(), onClick: () => void runAction('save'), title: 'Persist your edits to the job' })}
+          {actionBtn('🔍 Re-audit', { border: C.blue, fg: C.blue, disabled: busy || !editorContent.trim(), onClick: () => void runAction('reaudit'), title: 'Re-run the quality audit on the current text' })}
+          {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy, onClick: () => void runAction('regenerate'), title: 'Rewrite the full piece with AI (creates a replacement job)' })}
+          {generationFailed && actionBtn('↻ Retry load', { border: C.navy, fg: C.navy, disabled: busy, onClick: () => void loadDetail(), title: 'Fetch the stored draft again' })}
         </div>
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>🚀 Delivering to the sites</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 6 }}>
-          {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || loading || !editorContent.trim() || terminal, onClick: () => void runAction('reship'), title: 'Open / update the pull request without merging' })}
-          {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || loading || !editorContent.trim() || terminal, onClick: () => void runAction('approve'), title: 'Approve content and trigger deployment to main' })}
+          {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal, onClick: () => void runAction('reship'), title: 'Open / update the pull request without merging' })}
+          {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal, onClick: () => void runAction('approve'), title: 'Approve content and trigger deployment to main' })}
           {detail.pr_number && !terminal && actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { border: C.green, fg: C.green, bg: '#F0FDF4', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}
           {actionBtn('🩺 Monitor deploy', { disabled: busy || loading, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
           {actionBtn('⧉ Duplicate', { disabled: busy || loading, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}

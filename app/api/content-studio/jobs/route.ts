@@ -64,6 +64,27 @@ const JOB_LIST_COLUMNS = [
   'master_engine_fetched_at',
 ].join(',')
 
+const JOB_DETAIL_COLUMNS = [
+  JOB_LIST_COLUMNS,
+  'content',
+  'event_log',
+  'audit_json',
+  'competing_snippets',
+  'competing_urls',
+].join(',')
+
+const JOB_LINEAGE_COLUMNS = [
+  'id',
+  'source_job_id',
+  'title',
+  'topic',
+  'status',
+  'created_at',
+  'regeneration_mode',
+  'regeneration_reason',
+  'lineage',
+].join(',')
+
 export async function GET(request: NextRequest) {
   try {
     // Check for abort signal (Cloudflare sends this when CPU budget is exhausted)
@@ -100,19 +121,29 @@ export async function GET(request: NextRequest) {
     const supabase = sb()
 
     if (id) {
-      const { data, error } = await supabase.from('content_jobs').select('*').eq('id', id).single()
+      const { data, error } = await supabase.from('content_jobs').select(JOB_DETAIL_COLUMNS).eq('id', id).single()
       if (error) throw new Error(error.message)
       const lineage: Array<Record<string, unknown>> = []
       const seen = new Set<string>()
-      let current = data as Record<string, unknown>
-      for (let depth = 0; depth < 20 && current?.id && !seen.has(String(current.id)); depth++) {
+      let current = data as unknown as Record<string, unknown>
+      for (let depth = 0; depth < 8 && current?.id && !seen.has(String(current.id)); depth++) {
         seen.add(String(current.id))
-        lineage.unshift({ id: current.id, source_job_id: current.source_job_id || null, title: current.title || null, topic: current.topic || null, status: current.status || null, created_at: current.created_at || null, regeneration_mode: current.regeneration_mode || null, regeneration_reason: current.regeneration_reason || null, lineage: current.lineage || null })
+        lineage.unshift({
+          id: current.id,
+          source_job_id: current.source_job_id || null,
+          title: current.title || null,
+          topic: current.topic || null,
+          status: current.status || null,
+          created_at: current.created_at || null,
+          regeneration_mode: current.regeneration_mode || null,
+          regeneration_reason: current.regeneration_reason || null,
+          lineage: current.lineage || null,
+        })
         const sourceId = String(current.source_job_id || '')
         if (!sourceId) break
-        const { data: source } = await supabase.from('content_jobs').select('*').eq('id', sourceId).maybeSingle()
+        const { data: source } = await supabase.from('content_jobs').select(JOB_LINEAGE_COLUMNS).eq('id', sourceId).maybeSingle()
         if (!source) break
-        current = source as Record<string, unknown>
+        current = source as unknown as Record<string, unknown>
       }
       return NextResponse.json({ job: data, lineage })
     }
