@@ -53,6 +53,21 @@ export interface MasterEngineJobRowLike {
   eeat_top_competitor_trust?: number | null
   eeat_confidence_avg?: number | null
   eeat_flags?: string[] | null
+  /** LLM Competitive Gap module (Subsystem O) — persisted typed columns. */
+  competitive_score?: number | null
+  competitive_missing_edges?: string[] | null
+  competitive_top_competitor?: string | null
+  competitive_top_competitor_score?: number | null
+  competitive_confidence_avg?: number | null
+  competitive_flags?: string[] | null
+  /** LLM Local SEO module (Subsystem J) — persisted typed columns. */
+  local_score?: number | null
+  local_gbp_score?: number | null
+  local_missing_signals?: string[] | null
+  local_top_competitor?: string | null
+  local_top_competitor_score?: number | null
+  local_confidence_avg?: number | null
+  local_flags?: string[] | null
 }
 
 const gscOf = (gsc: Record<string, unknown> | null | undefined): MasterEngineInput['gsc'] => {
@@ -99,6 +114,38 @@ const semanticNlpOf = (job: MasterEngineJobRowLike): MasterEngineInput['semantic
   }
 }
 
+const localSeoOf = (job: MasterEngineJobRowLike): MasterEngineInput['localSeo'] => {
+  const score = typeof job.local_score === 'number' ? job.local_score : null
+  const missingSignals = Array.isArray(job.local_missing_signals)
+    ? job.local_missing_signals.map(String).filter(Boolean)
+    : []
+  if (score == null && !missingSignals.length && !job.local_top_competitor) return undefined
+  return {
+    score,
+    confidence: typeof job.local_confidence_avg === 'number' ? job.local_confidence_avg : null,
+    missingSignals,
+    topCompetitorUrl: job.local_top_competitor || null,
+    topCompetitorLocalScore: typeof job.local_top_competitor_score === 'number' ? job.local_top_competitor_score : null,
+    flags: Array.isArray(job.local_flags) ? job.local_flags.map(String) : undefined,
+  }
+}
+
+const competitiveGapOf = (job: MasterEngineJobRowLike): MasterEngineInput['competitiveGap'] => {
+  const score = typeof job.competitive_score === 'number' ? job.competitive_score : null
+  const missingEdges = Array.isArray(job.competitive_missing_edges)
+    ? job.competitive_missing_edges.map(String).filter(Boolean)
+    : []
+  if (score == null && !missingEdges.length && !job.competitive_top_competitor) return undefined
+  return {
+    score,
+    confidence: typeof job.competitive_confidence_avg === 'number' ? job.competitive_confidence_avg : null,
+    missingEdges,
+    topCompetitorUrl: job.competitive_top_competitor || null,
+    topCompetitorCompetitiveScore: typeof job.competitive_top_competitor_score === 'number' ? job.competitive_top_competitor_score : null,
+    flags: Array.isArray(job.competitive_flags) ? job.competitive_flags.map(String) : undefined,
+  }
+}
+
 const eeatTrustOf = (job: MasterEngineJobRowLike): MasterEngineInput['eeatTrust'] => {
   const score = typeof job.eeat_trust_score === 'number' ? job.eeat_trust_score : null
   const missingSignals = Array.isArray(job.eeat_missing_signals)
@@ -140,5 +187,7 @@ export function jobToMasterEngineInput(job: MasterEngineJobRowLike): MasterEngin
     contentQuality: contentQualityOf(job),
     semanticNlp: semanticNlpOf(job),
     eeatTrust: eeatTrustOf(job),
+    competitiveGap: competitiveGapOf(job),
+    localSeo: localSeoOf(job),
   }
 }

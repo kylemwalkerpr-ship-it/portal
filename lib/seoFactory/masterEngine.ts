@@ -270,6 +270,10 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   // LLM judgment — fixed intra-subsystem prior weight, same as c_quality_llm.
   // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
   sig('e_eeat_llm', 'LLM E-E-A-T/trust judgment', 'eeat', 'derived', 1, 2, true),
+  // LLM Local SEO judgment (Subsystem J) — fixed intra-subsystem prior weight,
+  // same as e_eeat_llm; sits beside the deterministic Local SEO Layer signals.
+  // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
+  sig('e_local_llm', 'LLM local-SEO judgment', 'eeat', 'derived', 1, 2, true),
 
   // ── Schema (10) ──────────────────────────────────────────────────────────
   sig('sc_article', 'Article JSON-LD', 'schema', 'content', 1, 2, true),
@@ -299,6 +303,10 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   // TODO(learned-weights): learn per-signal weights when the Phase-4 regression
   // pipeline goes live instead of this fixed prior.
   sig('c_quality_llm', 'LLM content-quality judgment', 'content', 'derived', 1, 2, true),
+  // LLM competitive-gap judgment (Subsystem O) — fixed intra-subsystem prior
+  // weight, same as c_quality_llm.
+  // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
+  sig('o_competitive_llm', 'LLM competitive-gap judgment', 'serp', 'derived', 1, 2, true),
   sig('g_serp_feature_opp', 'SERP feature opportunity', 'serp', 'derived', 1, 1, false),
   sig('g_rank_volatility', 'Ranking volatility', 'serp', 'derived', 1, 1, false),
   sig('g_new_query_velocity', 'New-query emergence', 'serp', 'gsc', 1, 1, false),
@@ -740,6 +748,34 @@ export interface MasterEngineInput {
     missingSignals: string[]
     topCompetitorUrl: string | null
     topCompetitorTrustScore: number | null
+    flags?: string[]
+  }
+  /**
+   * LLM Competitive Gap judgment (Subsystem O, lib/seoFactory/competitiveGap).
+   * One well-scoped call per page; `score` is the confidence-weighted
+   * composite (0-1). Present only after the module has run and persisted.
+   * Feeds `o_competitive_llm` + the `competitive_gap` recommendation.
+   */
+  competitiveGap?: {
+    score: number | null
+    confidence: number | null
+    missingEdges: string[]
+    topCompetitorUrl: string | null
+    topCompetitorCompetitiveScore: number | null
+    flags?: string[]
+  }
+  /**
+   * LLM Local SEO judgment (Subsystem J, lib/seoFactory/localSeo).
+   * One well-scoped call per page; `score` is the confidence-weighted
+   * composite (0-1). Present only after the module has run and persisted.
+   * Feeds `e_local_llm` + the `local_seo_gap` recommendation.
+   */
+  localSeo?: {
+    score: number | null
+    confidence: number | null
+    missingSignals: string[]
+    topCompetitorUrl: string | null
+    topCompetitorLocalScore: number | null
     flags?: string[]
   }
 }
@@ -1260,6 +1296,10 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.e_claims_evidence = (stats > 0 || citations > 0) ? 1 : 0.3
   const et = input.eeatTrust
   out.e_eeat_llm = et && et.score != null && (et.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(et.score) : null
+  const cgap = input.competitiveGap
+  out.o_competitive_llm = cgap && cgap.score != null && (cgap.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(cgap.score) : null
+  const loc = input.localSeo
+  out.e_local_llm = loc && loc.score != null && (loc.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(loc.score) : null
 
   // schema depth
   out.sc_webpage = (hasType('WebPage') || hasType('WebSite')) ? 1 : 0
@@ -1599,6 +1639,36 @@ function recommend(
         : 'Strengthen E-E-A-T signals to close the gap against the most trustworthy competitor',
         0.1, 0.7, 'medium', 2,
         `E-E-A-T trust ${Math.round(et.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${et.topCompetitorTrustScore != null ? ` at ${Math.round(et.topCompetitorTrustScore * 100)}/100` : ''}${missingSignals.length ? ` · ${missingSignals.length} missing signal(s)` : ''}`)
+    }
+  }
+  // LLM Competitive Gap delta (Subsystem O module) — names the top competitor
+  // and the specific competitive edges the model identified.
+  const cgap = input.competitiveGap
+  if (cgap && cgap.score != null) {
+    const missingEdges = (cgap.missingEdges || []).filter(Boolean)
+    const trailsTop = cgap.topCompetitorCompetitiveScore != null && cgap.score < cgap.topCompetitorCompetitiveScore - 0.15
+    if (missingEdges.length || trailsTop) {
+      const top = cgap.topCompetitorUrl
+      push('competitive_gap', 'serp', missingEdges.length
+        ? `Adopt the competitive edges the SERP leaders already have: ${missingEdges.slice(0, 4).join(' · ')}${missingEdges.length > 4 ? ` (+${missingEdges.length - 4} more)` : ''}`
+        : 'Strengthen the page to close the competitive gap against the strongest competitor',
+        0.1, 0.7, 'medium', 2,
+        `competitive position ${Math.round(cgap.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${cgap.topCompetitorCompetitiveScore != null ? ` at ${Math.round(cgap.topCompetitorCompetitiveScore * 100)}/100` : ''}${missingEdges.length ? ` · ${missingEdges.length} missing edge(s)` : ''}`)
+    }
+  }
+  // LLM Local SEO delta (Subsystem J module) — names the top local competitor
+  // and the specific local signals the model identified.
+  const loc = input.localSeo
+  if (loc && loc.score != null) {
+    const missingSignals = (loc.missingSignals || []).filter(Boolean)
+    const trailsTop = loc.topCompetitorLocalScore != null && loc.score < loc.topCompetitorLocalScore - 0.15
+    if (missingSignals.length || trailsTop) {
+      const top = loc.topCompetitorUrl
+      push('local_seo_gap', 'eeat', missingSignals.length
+        ? `Adopt the local signals competitors already demonstrate: ${missingSignals.slice(0, 4).join(' · ')}${missingSignals.length > 4 ? ` (+${missingSignals.length - 4} more)` : ''}`
+        : 'Strengthen the local-visibility stack to close the gap against the strongest local competitor',
+        0.1, 0.7, 'medium', 2,
+        `local SEO ${Math.round(loc.score * 100)}/100${top ? ` vs top competitor ${top}` : ''}${loc.topCompetitorLocalScore != null ? ` at ${Math.round(loc.topCompetitorLocalScore * 100)}/100` : ''}${missingSignals.length ? ` · ${missingSignals.length} missing local signal(s)` : ''}`)
     }
   }
 
@@ -1953,6 +2023,12 @@ export interface MasterEngineReport {
   /** LLM E-E-A-T/Trust judgment (Subsystem I) — echoed back for the panel's
    *  delta badge + top-competitor readout (null when the module hasn't run). */
   eeatTrust?: MasterEngineInput['eeatTrust']
+  /** LLM Competitive Gap judgment (Subsystem O) — echoed back for the panel's
+   *  delta badge + top-competitor readout (null when the module hasn't run). */
+  competitiveGap?: MasterEngineInput['competitiveGap']
+  /** LLM Local SEO judgment (Subsystem J) — echoed back for the panel's
+   *  delta badge + top-competitor readout (null when the module hasn't run). */
+  localSeo?: MasterEngineInput['localSeo']
   /** Ordered pipeline steps — the UI replays this as the engine "livestream". */
   trace: EngineTraceStep[]
 }
@@ -2082,6 +2158,8 @@ export function scoreMaster(input: MasterEngineInput, learned?: LearnedWeightsIn
     contentQuality: input.contentQuality,
     semanticNlp: input.semanticNlp,
     eeatTrust: input.eeatTrust,
+    competitiveGap: input.competitiveGap,
+    localSeo: input.localSeo,
     trace: [],
   }
   report.trace = buildEngineTrace(input, report)

@@ -25,6 +25,7 @@ interface MasterReport {
   coverage: { computed: number; total: number; pct: number }
   risks: Array<{ code: string; severity: string; message: string }>
   recommendations: Array<{
+    code: string
     priority: number; subsystem: SubsystemId; action: string
     lift: number; confidence: number; effort: string; value: number
   }>
@@ -81,6 +82,22 @@ interface MasterReport {
     missingSignals: string[]
     topCompetitorUrl: string | null
     topCompetitorTrustScore: number | null
+    flags?: string[]
+  }
+  competitiveGap?: {
+    score: number | null
+    confidence: number | null
+    missingEdges: string[]
+    topCompetitorUrl: string | null
+    topCompetitorCompetitiveScore: number | null
+    flags?: string[]
+  }
+  localSeo?: {
+    score: number | null
+    confidence: number | null
+    missingSignals: string[]
+    topCompetitorUrl: string | null
+    topCompetitorLocalScore: number | null
     flags?: string[]
   }
   trace: Array<{
@@ -503,6 +520,83 @@ export function MasterEnginePanel({ job, notice }: { job: ContentJob | null; not
                 )}
                 {report.recommendations.filter((r) => r.subsystem === 'eeat').slice(0, 3).map((r, i) => (
                   <div key={`et-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Competitive Gap module (Subsystem O) — LLM judgment delta badge + actions */}
+          {report.competitiveGap && report.competitiveGap.score != null && (
+            <div style={{ border: `1px solid ${E.hairline}` }}>
+              <SectionTitle>Competitive gap · LLM judgment (Subsystem O)</SectionTitle>
+              <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 120, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Position</span>
+                  {bar(report.competitiveGap.score)}
+                  <span style={{ width: 44, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: E.ink }}>{Math.round(report.competitiveGap.score * 100)}</span>
+                  <span style={{ width: 58, textAlign: 'right', fontFamily: C.mono, fontSize: 10, color: report.deltas.serp == null ? E.inkDim : report.deltas.serp >= 0 ? E.mossGreen : E.orange }}>
+                    {report.deltas.serp == null ? '' : `${report.deltas.serp >= 0 ? '+' : ''}${(report.deltas.serp * 100).toFixed(0)}`}
+                  </span>
+                </div>
+                {report.competitiveGap.confidence != null && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: report.competitiveGap.confidence >= 0.6 ? E.inkSoft : E.orange }}>
+                    confidence {Math.round(report.competitiveGap.confidence * 100)}%{report.competitiveGap.confidence < 0.6 ? ' · below 0.6 → excluded from engine score (advisory only)' : ''}
+                  </div>
+                )}
+                {report.competitiveGap.topCompetitorUrl && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    👀 Strongest competitor: <b>{report.competitiveGap.topCompetitorUrl}</b>
+                    {report.competitiveGap.topCompetitorCompetitiveScore != null ? ` (${Math.round(report.competitiveGap.topCompetitorCompetitiveScore * 100)}/100)` : ''}
+                  </div>
+                )}
+                {report.competitiveGap.missingEdges.length > 0 && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkSoft }}>
+                    missing: {report.competitiveGap.missingEdges.slice(0, 5).join(' · ')}{report.competitiveGap.missingEdges.length > 5 ? ` (+${report.competitiveGap.missingEdges.length - 5} more)` : ''}
+                  </div>
+                )}
+                {report.recommendations.filter((r) => r.subsystem === 'serp' && r.code === 'competitive_gap').slice(0, 3).map((r, i) => (
+                  <div key={`cg-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Local SEO module (Subsystem J) — LLM judgment delta badge + actions */}
+          {report.localSeo && report.localSeo.score != null && (
+            <div style={{ border: `1px solid ${E.hairline}` }}>
+              <SectionTitle>Local SEO · LLM judgment (Subsystem J)</SectionTitle>
+              <div style={{ padding: '10px 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 120, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Local presence</span>
+                  {bar(report.localSeo.score)}
+                  <span style={{ width: 44, textAlign: 'right', fontFamily: C.mono, fontSize: 10.5, fontWeight: 700, color: E.ink }}>{Math.round(report.localSeo.score * 100)}</span>
+                  <span style={{ width: 58, textAlign: 'right', fontFamily: C.mono, fontSize: 10, color: report.deltas.eeat == null ? E.inkDim : report.deltas.eeat >= 0 ? E.mossGreen : E.orange }}>
+                    {report.deltas.eeat == null ? '' : `${report.deltas.eeat >= 0 ? '+' : ''}${(report.deltas.eeat * 100).toFixed(0)}`}
+                  </span>
+                </div>
+                {report.localSeo.confidence != null && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: report.localSeo.confidence >= 0.6 ? E.inkSoft : E.orange }}>
+                    confidence {Math.round(report.localSeo.confidence * 100)}%{report.localSeo.confidence < 0.6 ? ' · below 0.6 → excluded from engine score (advisory only)' : ''}
+                  </div>
+                )}
+                {report.localSeo.flags?.includes('missing_contact_info') && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    ⚠ no contact info detected on the page
+                  </div>
+                )}
+                {report.localSeo.topCompetitorUrl && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.orange }}>
+                    👀 Strongest local competitor: <b>{report.localSeo.topCompetitorUrl}</b>
+                    {report.localSeo.topCompetitorLocalScore != null ? ` (${Math.round(report.localSeo.topCompetitorLocalScore * 100)}/100)` : ''}
+                  </div>
+                )}
+                {report.localSeo.missingSignals.length > 0 && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkSoft }}>
+                    missing: {report.localSeo.missingSignals.slice(0, 5).join(' · ')}{report.localSeo.missingSignals.length > 5 ? ` (+${report.localSeo.missingSignals.length - 5} more)` : ''}
+                  </div>
+                )}
+                {report.recommendations.filter((r) => r.subsystem === 'eeat' && r.code === 'local_seo_gap').slice(0, 3).map((r, i) => (
+                  <div key={`ls-${i}`} style={{ fontSize: 11, color: E.inkSoft }}>→ {r.action}</div>
                 ))}
               </div>
             </div>

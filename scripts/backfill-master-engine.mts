@@ -27,6 +27,8 @@ import { loadLlmVisibilityEvidence } from '../lib/seoEngine/llmVisibility'
 import { scoreContentQuality, buildContentLane1, contentQualityPersist } from '../lib/seoFactory/contentQuality'
 import { scoreSemanticNlp, buildSemanticLane1, semanticNlpPersist } from '../lib/seoFactory/semanticNlp'
 import { scoreEeatTrust, buildEeatLane1, eeatTrustPersist } from '../lib/seoFactory/eeatTrust'
+import { scoreCompetitiveGap, buildCompetitiveLane1, competitiveGapPersist } from '../lib/seoFactory/competitiveGap'
+import { scoreLocalSeo, buildLocalLane1, localSeoPersist } from '../lib/seoFactory/localSeo'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = resolveSupabaseKey()
@@ -85,6 +87,21 @@ interface JobRow {
   eeat_top_competitor_trust: number | null
   eeat_confidence_avg: number | null
   eeat_flags: string[] | null
+  competitive_scored_at: string | null
+  competitive_score: number | null
+  competitive_missing_edges: string[] | null
+  competitive_top_competitor: string | null
+  competitive_top_competitor_score: number | null
+  competitive_confidence_avg: number | null
+  competitive_flags: string[] | null
+  local_scored_at: string | null
+  local_score: number | null
+  local_gbp_score: number | null
+  local_missing_signals: string[] | null
+  local_top_competitor: string | null
+  local_top_competitor_score: number | null
+  local_confidence_avg: number | null
+  local_flags: string[] | null
 }
 
 async function fetchJobs(): Promise<JobRow[]> {
@@ -106,7 +123,12 @@ async function fetchJobs(): Promise<JobRow[]> {
         semantic_top_competitor, semantic_top_competitor_coverage, semantic_confidence_avg,
         semantic_flags,
         eeat_scored_at, eeat_trust_score, eeat_missing_signals,
-        eeat_top_competitor, eeat_top_competitor_trust, eeat_confidence_avg, eeat_flags
+        eeat_top_competitor, eeat_top_competitor_trust, eeat_confidence_avg, eeat_flags,
+        competitive_scored_at, competitive_score, competitive_missing_edges,
+        competitive_top_competitor, competitive_top_competitor_score, competitive_confidence_avg,
+        competitive_flags,
+        local_scored_at, local_score, local_gbp_score, local_missing_signals,
+        local_top_competitor, local_top_competitor_score, local_confidence_avg, local_flags
       `)
       .eq('status', 'merged')
       .order('created_at', { ascending: false })
@@ -159,6 +181,10 @@ async function main() {
   let semanticSkipped = 0
   let eeatScored = 0
   let eeatSkipped = 0
+  let competitiveScored = 0
+  let competitiveSkipped = 0
+  let localScored = 0
+  let localSkipped = 0
 
   // ── Site Health feed ──────────────────────────────────────────────
   // Load the persisted Operations audit once and attach per-page facts so the
@@ -303,6 +329,81 @@ async function main() {
       }
     }
 
+    // Competitive Gap module (Subsystem O) — one well-scoped LLM judgment call
+    // per job, skipped within its 7-day TTL. Apply-mode only.
+    let competitiveCols: Record<string, unknown> | null = null
+    if (APPLY) {
+      const fresh = row.competitive_scored_at &&
+        Date.now() - new Date(row.competitive_scored_at).getTime() < 7 * 86_400_000
+      if (!fresh) {
+        const lane1 = buildCompetitiveLane1({
+          competitorCount: (row.competing_snippets || []).filter(Boolean).length,
+          authorityScore: input.authorityScore ?? null,
+          questionIntent: input.contentType === 'faq' || /\?/.test(input.topic || ''),
+        })
+        const cg = await scoreCompetitiveGap({
+          pageUrl: input.liveUrl || input.canonicalUrl || '',
+          targetText: input.content || '',
+          competitorTexts: row.competing_snippets || [],
+          lane1,
+        })
+        if (cg.model_used !== 'unavailable' || cg.variables.length) {
+          const persisted = competitiveGapPersist(cg)
+          competitiveCols = { ...persisted, competitive_scored_at: new Date().toISOString() }
+          input.competitiveGap = persisted.competitive_score != null
+            ? {
+                score: persisted.competitive_score,
+                confidence: persisted.competitive_confidence_avg,
+                missingEdges: persisted.competitive_missing_edges,
+                topCompetitorUrl: persisted.competitive_top_competitor,
+                topCompetitorCompetitiveScore: persisted.competitive_top_competitor_score,
+                flags: persisted.competitive_flags,
+              }
+            : undefined
+          competitiveScored++
+        }
+      } else {
+        competitiveSkipped++
+      }
+    }
+
+    // Local SEO module (Subsystem J) — one well-scoped LLM judgment call per
+    // job, skipped within its 7-day TTL. Apply-mode only.
+    let localCols: Record<string, unknown> | null = null
+    if (APPLY) {
+      const fresh = row.local_scored_at &&
+        Date.now() - new Date(row.local_scored_at).getTime() < 7 * 86_400_000
+      if (!fresh) {
+        const lane1 = buildLocalLane1({
+          region: input.region || undefined,
+          targetText: input.content || '',
+        })
+        const loc = await scoreLocalSeo({
+          pageUrl: input.liveUrl || input.canonicalUrl || '',
+          targetText: input.content || '',
+          competitorTexts: row.competing_snippets || [],
+          lane1,
+        })
+        if (loc.model_used !== 'unavailable' || loc.variables.length) {
+          const persisted = localSeoPersist(loc)
+          localCols = { ...persisted, local_scored_at: new Date().toISOString() }
+          input.localSeo = persisted.local_score != null
+            ? {
+                score: persisted.local_score,
+                confidence: persisted.local_confidence_avg,
+                missingSignals: persisted.local_missing_signals,
+                topCompetitorUrl: persisted.local_top_competitor,
+                topCompetitorLocalScore: persisted.local_top_competitor_score,
+                flags: persisted.local_flags,
+              }
+            : undefined
+          localScored++
+        }
+      } else {
+        localSkipped++
+      }
+    }
+
     // Skip rows that already carry a score from the same engine era? No —
     // this is a raise/replace backfill: score every merged job and refresh.
     const report = scoreMaster(input, { byIntent })
@@ -332,6 +433,8 @@ async function main() {
           ...(contentCols || {}),
           ...(semanticCols || {}),
           ...(eeatCols || {}),
+          ...(competitiveCols || {}),
+          ...(localCols || {}),
         })
         .eq('id', row.id)
       if (error) {
@@ -352,6 +455,8 @@ async function main() {
   console.log(`  Content scored:    ${contentScored} (${contentSkipped} within TTL)`)
   console.log(`  Semantic scored:   ${semanticScored} (${semanticSkipped} within TTL)`)
   console.log(`  E-E-A-T scored:    ${eeatScored} (${eeatSkipped} within TTL)`)
+  console.log(`  Competitive scored: ${competitiveScored} (${competitiveSkipped} within TTL)`)
+  console.log(`  Local SEO scored:   ${localScored} (${localSkipped} within TTL)`)
   console.log(`  Adapted (learned): ${adapted}`)
   const gradeLine = Object.entries(grades)
     .sort(([a], [b]) => a.localeCompare(b))
