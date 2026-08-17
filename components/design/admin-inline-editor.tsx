@@ -181,7 +181,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const res = await fetch('/api/content-studio/reaudit', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, ...briefMeta }),
+        body: JSON.stringify({ content, jobId, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -208,7 +208,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ALL annotations via AI (clicking again while running cancels the request)
   const handleFixAll = useCallback(async () => {

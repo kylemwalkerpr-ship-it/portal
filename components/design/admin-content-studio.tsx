@@ -3838,7 +3838,13 @@ function JobDetail({
 
         </div>
 
-        {detail.error_message && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>}
+        {detail.error_message && /ship refused/i.test(detail.error_message) && Number((audit as { score?: number } | null)?.score) === 100 ? (
+          <div style={{ background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: '#166534', marginBottom: 10 }}>
+            Previous ship refusal is stale — the current draft passes the quality gate. Click <strong>Approve → main</strong> to ship this version.
+          </div>
+        ) : detail.error_message ? (
+          <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>
+        ) : null}
 
         {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: C.radiusSm, padding: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#9A3412', marginBottom: 4 }}>Quality gate remediation</div>

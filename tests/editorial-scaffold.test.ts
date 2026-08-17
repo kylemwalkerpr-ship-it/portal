@@ -520,6 +520,39 @@ One practical step here.
     expect(audit.blockers.some((b) => b.code === 'sentence_start_repetition')).toBe(false)
   })
 
+  it('clears 5× "US immigration…" openings with adverbial rewrites when the tail is not a verb', () => {
+    const body = [
+      '# Education Verification',
+      '',
+      '## Overview',
+      '',
+      'US immigration services require a full credential review before you file. US immigration services typically take six weeks after documents arrive. US immigration services also check translations against the original diploma. US immigration services may request extra transcripts from the registrar. US immigration services will not proceed until every page is certified.',
+      '',
+      '## Next steps',
+      '',
+      'Gather the diploma, transcripts, and a certified translation before you book the evaluation. Keep copies of every envelope you send to the evaluator.',
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: body,
+      contentType: 'legal_guide',
+      primaryKeyword: 'education verification',
+      title: 'Education Verification Service',
+      region: 'US',
+      indexable: true,
+    })
+    expect(applied.some((a) => a.startsWith('sentence_rhythm'))).toBe(true)
+    const hits = (content.match(/US immigration services/g) || []).length
+    expect(hits).toBeLessThan(5)
+    const audit = auditContent({
+      content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'education verification',
+      indexable: true,
+    })
+    expect(audit.warnings.some((w) => w.code === 'sentence_start_repetition')).toBe(false)
+    expect(audit.blockers.some((b) => b.code === 'sentence_start_repetition')).toBe(false)
+  })
+
   it('never mangles a noun-phrase tail — "The UK dependent visa fees are…" stays untouched', () => {
     // Safety guard: the tail after the repeated phrase must start with a verb.
     // "fees are paid" begins with a NOUN, so that sentence must NOT be

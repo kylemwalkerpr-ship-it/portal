@@ -6,6 +6,7 @@ import { shipContent, mergePullRequest, revertContent, parseRepoSlug, type ShipM
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
+import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
 
@@ -905,6 +906,16 @@ export async function PATCH(request: NextRequest) {
       // persist deterministic repairs so stored content matches the audit (a
       // repaired disclaimer/TOC must not live only in the response).
       if (body.content != null || repaired.applied.length > 0) patch.content = content
+      const reauditReady = evaluateContentQuality({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: job.indexable !== false,
+      })
+      if (reauditReady.ok) {
+        patch.error_message = null
+        if (job.status === 'failed') patch.status = 'drafting'
+      }
       const { data: updated, error: upErr } = await supabase
         .from('content_jobs')
         .update(patch)

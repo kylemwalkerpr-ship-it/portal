@@ -419,7 +419,26 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     // rewrite is worse than the warning.
     const restStart = s.clean.toLowerCase().slice(prefixLower.length).trimStart()
     const restFirst = restStart.split(/[^a-z0-9]+/)[0] || ''
-    if (!TAIL_OPENERS.has(restFirst)) continue
+    if (!TAIL_OPENERS.has(restFirst)) {
+      // Noun-phrase tail ("US immigration services require…") — splicing a
+      // pronoun would become "It services require…". Change the 12-char
+      // opener with a rotating adverbial instead so the gate clears without
+      // mangling grammar. This is the 2026-08 education-verification case.
+      const ADVERBIAL = ['In practice,', 'On the ground,', 'Typically,', 'Meanwhile,', 'For applicants,']
+      let adverb = ''
+      for (let r = 0; r < ADVERBIAL.length; r++) {
+        const cand = ADVERBIAL[(n + r) % ADVERBIAL.length]
+        if ((openerUsage.get(cand) || 0) < 4) {
+          adverb = cand
+          break
+        }
+      }
+      if (!adverb) continue
+      openerUsage.set(adverb, (openerUsage.get(adverb) || 0) + 1)
+      rewritten.set(`${s.partIdx}:${s.spanIdx}`, `ADV:${adverb}`)
+      replaced++
+      continue
+    }
 
     // Locate the phrase in the ORIGINAL text (which may carry leading
     // markdown like ** or a list marker) and splice in the pronoun.
@@ -488,6 +507,21 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
       const mark = `${i}:${spanIdx}`
       const pronoun = rewritten.get(mark)
       if (pronoun) {
+        if (pronoun.startsWith('ADV:')) {
+          const adverb = pronoun.slice(4)
+          const marker = text.match(/^(?:\*\*|__|`)+/)
+          const markerLen = marker ? marker[0].length : 0
+          const afterMark = text.slice(markerLen)
+          const listMarker = afterMark.match(/^\s*(?:[-*+]|\d+[.)])\s/)
+          const listLen = listMarker ? listMarker[0].length : 0
+          const afterList = afterMark.slice(listLen)
+          const leadingWs = afterList.length - afterList.trimStart().length
+          const leadPrefix = text.slice(0, markerLen + listLen + leadingWs)
+          const rest = text.slice(markerLen + listLen + leadingWs)
+          out.push(`${leadPrefix}${adverb} ${rest.trimStart()}`)
+          spanIdx++
+          continue
+        }
         // Splice the SAME pronoun pass 1 selected, recomputing the tail from
         // the current text (prefix logic identical to pass 1).
         const clean = stripListMarker(stripMarkdown(text))

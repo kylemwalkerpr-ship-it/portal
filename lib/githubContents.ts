@@ -50,23 +50,37 @@ export function isGithubShaRequiredError(message: string): boolean {
   return false
 }
 
+function isGithubRateLimit(status: number, body: string): boolean {
+  return status === 403 && /rate limit exceeded|secondary rate limit/i.test(body)
+}
+
 export async function githubFetch(path: string, init: RequestInit = {}): Promise<any> {
-  const res = await fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token()}`,
-      'X-GitHub-Api-Version': API_VERSION,
-      'User-Agent': DEFAULT_UA,
-      ...(init.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
+  let lastErr = ''
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await fetch(`${apiBase()}${path}`, {
+      ...init,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token()}`,
+        'X-GitHub-Api-Version': API_VERSION,
+        'User-Agent': DEFAULT_UA,
+        ...(init.headers ?? {}),
+      },
+    })
+    if (res.ok) {
+      if (res.status === 204) return null
+      return res.json()
+    }
     const text = await res.text().catch(() => '')
-    throw new Error(`GitHub ${res.status}: ${text.slice(0, 400)}`)
+    lastErr = `GitHub ${res.status}: ${text.slice(0, 400)}`
+    if (!isGithubRateLimit(res.status, text) || attempt === 3) {
+      throw new Error(lastErr)
+    }
+    const retryAfter = Number(res.headers.get('retry-after') || 0)
+    const waitMs = Math.max(retryAfter * 1000, 1500 * 2 ** attempt)
+    await new Promise((r) => setTimeout(r, waitMs))
   }
-  if (res.status === 204) return null
-  return res.json()
+  throw new Error(lastErr)
 }
 
 export async function getBranchHeadSha(

@@ -151,8 +151,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as {
       content: string; contentType?: string; primaryKeyword?: string; indexable?: boolean
       requiredShortKeywords?: string[]; requiredLongTailKeywords?: string[]
+      jobId?: string
     }
-    const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = body
+    const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, jobId } = body
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
@@ -189,6 +190,23 @@ export async function POST(request: NextRequest) {
     if (repaired.applied.length && effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = repaired.applied
+    }
+    if (jobId && response.shipReady) {
+      try {
+        const { createSupabaseAdminClient } = await import('@/lib/supabase')
+        const db = createSupabaseAdminClient()
+        const { data: row } = await db.from('content_jobs').select('status').eq('id', jobId).maybeSingle()
+        const patch: Record<string, unknown> = {
+          error_message: null,
+          content: effective,
+          seo_score: response.score,
+          word_count: effective.trim().split(/\s+/).filter(Boolean).length,
+        }
+        if (row?.status === 'failed') patch.status = 'drafting'
+        await db.from('content_jobs').update(patch).eq('id', jobId)
+      } catch {
+        /* persist is best-effort — the editor already has the passing draft */
+      }
     }
     return NextResponse.json(response)
   } catch (error) {
