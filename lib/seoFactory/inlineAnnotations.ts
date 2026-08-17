@@ -187,6 +187,32 @@ export function mergeWarnings(
 }
 
 /** Build the AI prompt for a warnings-only targeted sweep. */
+/** Prompt for a blockers-only sweep when mechanical repair is not enough. */
+export function buildBlockersFixPrompt(
+  content: string,
+  blockers: Array<{ code: string; message: string; fix?: string }>,
+): string {
+  const list = blockers.map((b) => `- [${b.code}] ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`).join('\n')
+  return [
+    '## BLOCKERS SWEEP — resolve EVERY hard gate listed below',
+    'These findings block shipping. Apply the smallest edit that clears each one.',
+    'Do NOT regenerate the article. Keep headings, facts, citations, and interlinks.',
+    '',
+    'BLOCKERS TO RESOLVE:',
+    list,
+    '',
+    'RULES:',
+    '1. Title must be 30–60 characters. Meta description must be 70–160 characters.',
+    '2. Keep a single H1. Set robots to index,follow. Add ogImage: /og-image.png if missing.',
+    '3. Collapse any // in URLs. Article JSON-LD needs headline, image, datePublished, author.',
+    '4. Dead or invented links: delete the href or replace with a live official .gov/.edu URL.',
+    '5. Return the COMPLETE article only.',
+    '',
+    'CURRENT ARTICLE:',
+    content.slice(0, 20000),
+  ].join('\n')
+}
+
 export function buildWarningsFixPrompt(content: string, warnings: Array<{ code: string; message: string; fix?: string }>): string {
   const list = warnings.map((w) => `- [${w.code}] ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`).join('\n')
   return [

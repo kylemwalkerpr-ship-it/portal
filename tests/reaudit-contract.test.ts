@@ -178,6 +178,7 @@ describe('evaluateReauditContract — response contract', () => {
     expect(result.depthGate).toEqual({ ok: true, message: 'Depth floor met' })
     expect(result.shipReady).toBe(true)
     expect(result.blockers).toBe(0)
+    expect(result.blockersData).toEqual([])
   })
 
   it('reports depthGate=false and shipReady=false for thin content even when the quality gate passes', () => {
@@ -267,6 +268,28 @@ ${DISCLAIMER}
       expect(a!.fix.length).toBeGreaterThan(0)
       expect(a!.line).toBeGreaterThan(0)
     }
+  })
+
+  it('lists every quality blocker in blockersData with a fix so the editor can resolve it', () => {
+    const short = `---
+title: Hi
+description: Too short
+---
+
+# Hi
+
+A sentence.
+`
+    const result = evaluateReauditContract({
+      content: short,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa',
+      indexable: true,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.blockersData.length).toBeGreaterThan(0)
+    expect(result.blockersData.every((b) => b.code && b.message && b.fix)).toBe(true)
+    expect(result.annotations.some((a) => a.severity === 'blocker')).toBe(true)
   })
 
   it('locates inline annotations for blockers and evidence-less warnings', () => {

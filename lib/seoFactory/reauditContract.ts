@@ -38,6 +38,10 @@ export type ReauditResponse = {
    *  meta description, internal links, AI-answer block…). Every entry is
    *  AI-fixable via the fix_warnings action. */
   warningsData?: Array<{ code: string; message: string; fix?: string }>
+  /** Every quality + link blocker with a remediation. The editor must list
+   *  these even when they have no inline evidence, so nothing blocks ship
+   *  without a Fix path. */
+  blockersData?: Array<{ code: string; message: string; fix?: string }>
   /** Live link-audit findings (placeholder / dead / unverified internal links). */
   linkAudit?: Array<{ code: string; severity: 'blocker' | 'warning'; url: string; message: string; status?: number }>
   /** Depth-mediation plan — tells the editor how far below the floor the
@@ -168,6 +172,7 @@ export type ReauditContractOutput = {
   shipReady: boolean
   depthGate: { ok: boolean; message: string }
   warningsData: Array<{ code: string; message: string; fix?: string }>
+  blockersData: Array<{ code: string; message: string; fix?: string }>
   /** Depth-mediation plan — floor numbers + deficit so the editor can show
    *  "1813/2200 words" and offer the append-only Expand-to-floor action. */
   depthMediation: DepthMediationPlan
@@ -225,6 +230,11 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     annotations.push(...findingToAnnotations(content, { ...w, severity: 'warning' as const }))
   }
   const warningsData = mergeWarnings(result.warnings, audit.warnings)
+  const blockersData = result.blockers.map((b) => ({
+    code: b.code,
+    message: b.message,
+    fix: b.fix || 'Apply the mechanical repair or Fix blockers.',
+  }))
   const depthGate = checkDepthGate(content, contentType, indexable)
 
   return {
@@ -242,6 +252,7 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     shipReady: result.ok && depthGate.ok,
     depthGate,
     warningsData,
+    blockersData,
     depthMediation: depthMediationPlan(content, contentType, primaryKeyword),
   }
 }

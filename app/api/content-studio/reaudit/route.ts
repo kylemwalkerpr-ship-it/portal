@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
+import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
@@ -116,28 +116,40 @@ async function mergeLinkAudit(response: ReauditResponse, content: string, region
     const remaining = await auditLinksLive(effective)
     const blockers = remaining.filter((f) => f.severity === 'blocker')
     const warnings = remaining.filter((f) => f.severity === 'warning')
+    const linkFix = (code: string) =>
+      code === 'placeholder_link'
+        ? 'Replace with a verified estate URL from the research-stage INTERNAL LINK ALLOWLIST.'
+        : code === 'dead_internal_link'
+          ? 'Point the link at a live estate URL, or remove it. Fix blockers strips dead URLs.'
+          : code === 'dead_external_link'
+            ? 'Replace with a live official .gov/.edu URL, or remove it. Fix blockers strips dead URLs.'
+            : code === 'untrusted_external_link'
+              ? 'Remove blogs, competitors, and shorteners. Cite only live official sources.'
+              : 'Re-verify the URL before shipping.'
     if (blockers.length) {
       response.ok = false
       response.shipReady = false
     }
     response.blockers = (response.blockers || 0) + blockers.length
     response.warnings = (response.warnings || 0) + warnings.length
+    response.blockersData = [
+      ...(response.blockersData || []),
+      ...blockers.map((f) => ({ code: f.code, message: f.message, fix: linkFix(f.code) })),
+    ]
     response.warningsData = [
       ...(response.warningsData || []),
-      ...[...blockers, ...warnings].map((f) => ({
-        code: f.code,
-        message: f.message,
-        fix: f.code === 'placeholder_link'
-          ? 'Replace with a verified estate URL from the research-stage INTERNAL LINK ALLOWLIST.'
-          : f.code === 'dead_internal_link'
-            ? 'Point the link at a live estate URL (re-verify in the link audit).'
-            : f.code === 'dead_external_link'
-              ? 'Replace with a live official .gov/.edu URL from the source allowlist. Never invent a path.'
-              : f.code === 'untrusted_external_link'
-                ? 'Remove blogs, competitors, and shorteners. Cite only live official sources.'
-                : 'Re-verify the URL before shipping.',
-      })),
+      ...warnings.map((f) => ({ code: f.code, message: f.message, fix: linkFix(f.code) })),
     ]
+    const linkAnns = blockers.flatMap((f) =>
+      findingToAnnotations(effective, {
+        code: f.code,
+        severity: 'blocker',
+        message: f.message,
+        fix: linkFix(f.code),
+        evidence: f.url,
+      }),
+    )
+    response.annotations = [...(response.annotations || []), ...linkAnns]
     response.linkAudit = remaining
     return effective
   } catch {
@@ -221,13 +233,14 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as {
-      action: 'fix_all' | 'fix_one' | 'fix_warnings' | 'fix_depth'
+      action: 'fix_all' | 'fix_one' | 'fix_warnings' | 'fix_depth' | 'fix_blockers'
       content: string
       annotations?: InlineAnnotation[]
       annotation?: InlineAnnotation
       /** Warnings-only payload for the fix_warnings sweep (evidence-less
        *  warnings included — these previously had no fix path at all). */
       warnings?: Array<{ code: string; message: string; fix?: string }>
+      blockers?: Array<{ code: string; message: string; fix?: string }>
       contentType?: string
       primaryKeyword?: string
       indexable?: boolean
@@ -244,7 +257,7 @@ export async function PATCH(request: NextRequest) {
        *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
       reviewModel?: string
     }
-    const { action, content, annotations, annotation, warnings, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel } = body
+    const { action, content, annotations, annotation, warnings, blockers, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -374,6 +387,44 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
 
 ${enginePlan.promptBlock}`
         fixedContent = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+      }
+
+    } else if (action === 'fix_blockers' && (blockers?.length || annotations?.some((a) => a.severity === 'blocker'))) {
+      // Mechanical first (Ahrefs title/meta/H1/canonical/OG/schema + dead links),
+      // then a targeted AI sweep only if blockers remain.
+      const list = (blockers && blockers.length
+        ? blockers
+        : (annotations || [])
+            .filter((a) => a.severity === 'blocker')
+            .map((a) => ({ code: a.code, message: a.message, fix: a.fix })))
+      const mechanical = applyDeterministicRepairs({
+        content,
+        primaryKeyword: primaryKeyword || 'guide',
+        indexable,
+        contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        targetUrl: (body as { targetUrl?: string }).targetUrl,
+      })
+      const sanitized = await sanitizeDraftLinksLive(mechanical.content, { region })
+      const afterMech = evaluateReauditContract({
+        content: sanitized.content,
+        contentType,
+        primaryKeyword,
+        indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+      })
+      const leftoverLinks = (await auditLinksLive(sanitized.content)).filter((f) => f.severity === 'blocker')
+      if (afterMech.ok && leftoverLinks.length === 0) {
+        fixedContent = sanitized.content
+      } else {
+        const leftover = [
+          ...afterMech.blockersData,
+          ...leftoverLinks.map((f) => ({ code: f.code, message: f.message, fix: 'Remove or replace the dead URL.' })),
+        ]
+        const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.'
+        fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, leftover.length ? leftover : list), 16384, reviewModel)
       }
 
     } else if (action === 'fix_depth') {

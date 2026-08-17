@@ -121,6 +121,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   } | null>(null)
   // Merged quality + audit warnings (schema/meta/internal-links included).
   const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
+  const [blockerItems, setBlockerItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
+  const [fixingBlockers, setFixingBlockers] = useState(false)
   // Engine gaps the last Fix-all targeted (PATCH fix_all response) — shown as
   // a prioritized checklist so the admin sees exactly WHAT the model was asked
   // to fix, in order. Cleared on Re-audit (a fresh audit supersedes the plan).
@@ -195,6 +197,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setShowAnnotations(true)
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
@@ -239,6 +242,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
+      setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
+      setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       onScoreChange?.(data.score)
       const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number; evidence?: string }>
       // Persist the targeted plan so the checklist renders below — the notice
@@ -289,6 +294,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
+      setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
+      setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       onScoreChange?.(data.score)
       setNotice(`Fixed "${annotation.code}" - new score ${data.score}/100`)
     } catch (err) {
@@ -337,6 +344,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
@@ -392,6 +400,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
@@ -413,6 +422,61 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       }
     }
   }, [content, warningItems, fixingWarnings, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+
+  const handleFixBlockers = useCallback(async () => {
+    const list = blockerItems.length
+      ? blockerItems
+      : annotations.filter((a) => a.severity === 'blocker').map((a) => ({ code: a.code, message: a.message, fix: a.fix }))
+    if (!list.length && !(auditResult && auditResult.blockers > 0)) return
+    if (fixingBlockers) {
+      fixAbortRef.current?.abort()
+      return
+    }
+    const seq = ++fixSeqRef.current
+    const controller = new AbortController()
+    fixAbortRef.current = controller
+    setFixingBlockers(true); setError(null); setNotice(null); setFixElapsed(0)
+    const startedAt = Date.now()
+    const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
+    try {
+      const res = await fetchWithTimeout('/api/content-studio/reaudit', {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        timeoutMs: 260_000,
+        body: JSON.stringify({ action: 'fix_blockers', content, blockers: list, annotations, ...briefMeta }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (seq !== fixSeqRef.current) return
+      if (data.fixedContent) {
+        onChange(data.fixedContent); setDirty(true)
+      }
+      setAuditResult(data)
+      setAnnotations(data.annotations || [])
+      setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
+      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      setDepthGate(data.depthGate || null)
+      setDepthMediation(data.depthMediation || null)
+      setShowAnnotations(true)
+      onScoreChange?.(data.score)
+      const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
+        ? ` · ${data.appliedRepairs.join(', ')}`
+        : ''
+      setNotice(`Blockers sweep ${data.ok ? 'cleared the gate' : 'applied'} — ${data.blockers ?? 0} remain${repairs}`)
+    } catch (err) {
+      if (seq !== fixSeqRef.current) return
+      setError(err instanceof Error ? err.message : 'Blockers fix failed')
+    } finally {
+      clearInterval(tick)
+      if (seq === fixSeqRef.current) {
+        fixAbortRef.current = null
+        setFixingBlockers(false)
+        setFixElapsed(0)
+      }
+    }
+  }, [content, blockerItems, annotations, auditResult, fixingBlockers, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
@@ -475,7 +539,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(competingUrls?.length ? { competingUrls } : {}),
   }
 
-  const allBusy = busy || fixingAll || fixingWarnings || disabled
+  const allBusy = busy || fixingAll || fixingWarnings || fixingBlockers || disabled
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -529,7 +593,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   : 'Quality + depth floors pass. Warnings do not block shipping — clear them for the best reader engagement and AI-overview eligibility.')
               : (depthGate && !depthGate.ok
                   ? `${depthGate.message}${depthMediation && depthMediation.currentWords > 0 ? ` — ${depthMediation.currentWords}/${depthMediation.minWords} words` : ''}`
-                  : 'Quality blockers remain — resolve them in the issues panel.')}
+                  : 'Quality blockers remain — use Fix blockers below or the issues list.')}
           </span>
           {/* Depth-mediation button — whenever the plan says there is depth to
               add: below the floor (hard gate) OR meeting the floor but under
@@ -558,6 +622,51 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   : (depthMediation.floorMet ? 'Expand to target depth' : 'Expand to depth floor')}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Blockers block — every hard gate is listed with a Fix path. Live-link
+          blockers used to increment the count without annotations, so the
+          editor showed "1 blocker" and no way to resolve it. */}
+      {auditResult && !auditResult.ok && (blockerItems.length > 0 || auditResult.blockers > 0) && (
+        <div data-testid="studio-blockers-block" style={{
+          display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px',
+          borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 800, fontFamily: C.mono, letterSpacing: '0.08em', color: C.red, textTransform: 'uppercase' }}>
+              {Math.max(blockerItems.length, auditResult.blockers)} ship blocker{Math.max(blockerItems.length, auditResult.blockers) === 1 ? '' : 's'}
+            </span>
+            <button
+              type="button"
+              data-testid="studio-fix-blockers"
+              disabled={busy || disabled}
+              onClick={handleFixBlockers}
+              style={btnStyle({
+                bg: fixingBlockers ? '#FEE2E2' : '#FFF5F5',
+                border: C.red,
+                color: C.red,
+                disabled: busy || disabled,
+              })}
+            >
+              {fixingBlockers
+                ? `Fixing blockers… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''} (click to cancel)`
+                : 'Fix blockers'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {(blockerItems.length ? blockerItems : annotations.filter((a) => a.severity === 'blocker').map((a) => ({ code: a.code, message: a.message, fix: a.fix }))).map((b) => (
+              <div key={b.code} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11 }}>
+                <span style={{ fontFamily: C.mono, fontWeight: 700, color: C.red, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{b.code}</span>
+                <span style={{ color: C.textMuted, flex: 1 }}>{b.message}</span>
+              </div>
+            ))}
+            {!blockerItems.length && !annotations.some((a) => a.severity === 'blocker') && (
+              <div style={{ fontSize: 11, color: C.textMuted }}>
+                A ship blocker is set (often a dead or untrusted link found after the voice score). Click Fix blockers to strip it or rewrite the URL.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
