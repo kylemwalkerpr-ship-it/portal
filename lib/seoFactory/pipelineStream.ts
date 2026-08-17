@@ -339,6 +339,8 @@ export async function* runSeoFactoryPipelineStream(
             gscBlock,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
+            modelGuidance: input.modelGuidance || undefined,
+            masterEngineBlock: input.masterEngineBlock || undefined,
             refineNotes,
             // REVISE THE EXISTING DRAFT, don't regenerate from scratch — fixes
             // must accumulate across iterations or the same blockers (AI slop,
@@ -700,6 +702,8 @@ export async function* runSeoFactoryPipelineStream(
               gscBlock,
               opportunityAction: input.opportunityAction,
               writeHint: input.writeHint,
+              modelGuidance: input.modelGuidance || undefined,
+              masterEngineBlock: input.masterEngineBlock || undefined,
               refineNotes,
               // Revise the existing draft — fixes must accumulate, not restart.
               draft: content || undefined,
@@ -894,6 +898,8 @@ export async function* runSeoFactoryPipelineStream(
               gscBlock,
               opportunityAction: input.opportunityAction,
               writeHint: input.writeHint,
+              modelGuidance: input.modelGuidance || undefined,
+              masterEngineBlock: input.masterEngineBlock || undefined,
               refineNotes,
               // Revise the scaffolded draft — never regenerate from scratch.
               draft: content || undefined,

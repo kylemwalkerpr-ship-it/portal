@@ -122,6 +122,8 @@ export interface PipelineInput {
    * generation prompt so the draft is written against the model's weak families.
    */
   modelGuidance?: ModelGuidanceInput | null
+  /** Master SEO Engine prompt pack (scoreMaster + prioritized gaps). */
+  masterEngineBlock?: string | null
   /** Internal-link targets chosen by the Opportunity Radar autopilot. */
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }> | null
   /**
@@ -367,6 +369,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           opportunityAction: input.opportunityAction,
           writeHint: input.writeHint,
           modelGuidance: input.modelGuidance || undefined,
+          masterEngineBlock: input.masterEngineBlock || undefined,
           refineNotes,
           // Keep human/model fixes when resuming a saved draft (retry cron).
           draft: content || undefined,
@@ -565,6 +568,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             gscBlock: canonPortfolio,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
+            masterEngineBlock: input.masterEngineBlock || undefined,
             refineNotes,
           }),
           maxTokens: tokensForType(contentType, 'draft'),
@@ -680,6 +684,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             gscBlock: canonPortfolio,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
+            masterEngineBlock: input.masterEngineBlock || undefined,
             refineNotes,
           }),
           maxTokens: tokensForType(contentType, 'draft'),

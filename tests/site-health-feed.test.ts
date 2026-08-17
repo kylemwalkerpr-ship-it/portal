@@ -31,6 +31,15 @@ describe('site health snapshot helpers', () => {
     )
   })
 
+  it('collapses www to the bare host so both variants share one key', () => {
+    expect(normalizePageUrl('https://www.yousafeconsultancy.com/uk/graduate-visa/')).toBe(
+      'yousafeconsultancy.com/uk/graduate-visa',
+    )
+    expect(normalizePageUrl('https://yousafeconsultancy.com/uk/graduate-visa/')).toBe(
+      'yousafeconsultancy.com/uk/graduate-visa',
+    )
+  })
+
   it('computes crawl depth from path segments', () => {
     expect(crawlDepthForUrl('https://h/a/b/c/')).toBe(3)
     expect(crawlDepthForUrl('https://h/')).toBe(0)

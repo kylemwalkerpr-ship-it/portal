@@ -5,6 +5,7 @@ import { resolveBriefAiProvider, generateBriefText } from '@/lib/seoFactory/brie
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
+import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import {
   clampBriefWordBudget,
   depthPromptClause,
@@ -72,6 +73,20 @@ export async function POST(req: NextRequest) {
 
     // Sitemap stats
     const sitemapCount = Number(body.sitemapCount) || 0
+
+    const engineFeed = await assembleMasterEngineFeed({
+      topic,
+      primaryKeyword,
+      region,
+      contentType,
+      title: String(body.title || primaryKeyword || topic),
+      gsc: {
+        impressions: gscImpressions,
+        clicks: gscClicks,
+        position: gscPosition,
+        ctr: gscImpressions > 0 ? gscClicks / gscImpressions : undefined,
+      },
+    })
 
     const contentTypeLabels: Record<string, string> = {
       blog_post: 'blog post (conversational, with images)',
@@ -164,6 +179,7 @@ export async function POST(req: NextRequest) {
       gscImpressions > 0
         ? `GSC LIVE DATA: ${gscImpressions.toLocaleString()} impressions · ${gscClicks.toLocaleString()} clicks · avg position #${Math.round(gscPosition)}`
         : 'GSC: not connected (treat as zero-demand baseline)',
+      engineFeed.promptBlock || '',
       radarGaps.length > 0
         ? `RADAR GAP OPPORTUNITIES (underserved demand — fill these): ${radarGaps.join(' | ')}`
         : '',
@@ -274,6 +290,13 @@ export async function POST(req: NextRequest) {
       provider: ai.provider,
       model: ai.model,
       fallbackUsed,
+      masterEngine: {
+        ok: engineFeed.ok,
+        intent: engineFeed.intent,
+        composite: engineFeed.composite,
+        grade: engineFeed.grade,
+        recommendationCount: engineFeed.recommendationCount,
+      },
       suggestedH1: String(parsed.suggestedH1 || ''),
       h2Outline: Array.isArray(parsed.h2Outline) ? parsed.h2Outline.slice(0, 12) : [],
       shortTail: merged.short.slice(0, 8),

@@ -50,13 +50,16 @@ export interface SiteHealthReportLike {
   sitemapDiffs?: SiteHealthSitemapDiffLike[]
 }
 
-/** host + pathname, trailing slash trimmed — the engine/snapshot match key. */
+/** host + pathname, trailing slash trimmed — the engine/snapshot match key.
+ *  Strips the `www.` prefix so a bare-domain and www-prefixed URL collapse to
+ *  the same key — mirroring the scan's own normalizeUrl (siteHealth.ts), which
+ *  already strips `www.` when building page URLs. */
 export function normalizePageUrl(u: string): string {
   try {
     const p = new URL(u)
-    return p.host.toLowerCase() + (p.pathname.replace(/\/+$/, '') || '/')
+    return p.host.toLowerCase().replace(/^www\./, '') + (p.pathname.replace(/\/+$/, '') || '/')
   } catch {
-    return (u || '').replace(/\/+$/, '').toLowerCase()
+    return (u || '').replace(/\/+$/, '').toLowerCase().replace(/^www\./, '')
   }
 }
 

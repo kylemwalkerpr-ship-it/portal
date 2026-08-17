@@ -408,6 +408,8 @@ export function buildFactoryUserPrompt(opts: {
   draft?: string
   /** Ranking-model guidance (recommendedActions + forecast) — threads into the prompt. */
   modelGuidance?: ModelGuidanceInput | null
+  /** Master SEO Engine pack (scoreMaster + fix plan + knowledge/cluster). */
+  masterEngineBlock?: string | null
 }): string {
   // The word-count window is dictated by the canonical depth spec for THIS
   // content type — never a hardcoded floor. The brief, the audit, and the
@@ -428,6 +430,8 @@ export function buildFactoryUserPrompt(opts: {
     opts.writeHint ? `War-room / authority brief:\n${opts.writeHint}` : '',
     '',
     opts.modelGuidance ? modelGuidanceBlock(opts.modelGuidance) : '',
+    '',
+    opts.masterEngineBlock ? opts.masterEngineBlock : '',
     '',
     playbookDirective(opts.opportunityAction),
     '',

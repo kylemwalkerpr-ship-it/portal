@@ -541,6 +541,21 @@ function grokModelId(opts?: ContentAiOptions): string {
   return env('XAI_MODEL') || 'grok-4.6'
 }
 
+/** Grok 4.6 default reasoning is HIGH and counts against max_output_tokens.
+ *  Drafts were sending 16384 + high effort, then timing out or returning
+ *  empty/incomplete so the stream cascade moved to GLM. Cap output and
+ *  drop effort so prose actually arrives. */
+export function grokRequestLimits(maxTokens?: number): {
+  maxOutputTokens: number
+  reasoningEffort: 'low' | 'medium'
+} {
+  const requested = Math.max(256, maxTokens ?? DEFAULT_MAX_TOKENS)
+  return {
+    maxOutputTokens: Math.min(requested, 8192),
+    reasoningEffort: requested >= 4000 ? 'low' : 'medium',
+  }
+}
+
 function grokAuthHeader(): { apiKey: string; baseURL: string } {
   const apiKey = env('XAI_API_KEY')
   if (!apiKey) {
@@ -565,9 +580,10 @@ async function grokResponsesFetch(
 ): Promise<{ text: string; finishReason?: string | null; model: string }> {
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
-  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS
+  const limits = grokRequestLimits(opts.maxTokens)
   const timeoutMs = Math.max(
     opts.timeoutMs ?? 0,
+    deadlineForProvider('grok', opts.timeoutMs),
     Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '180000', 10) || 180_000,
   )
   const controller = new AbortController()
@@ -587,7 +603,8 @@ async function grokResponsesFetch(
           { role: 'user', content: userContent },
         ],
         store: false,
-        max_output_tokens: maxTokens,
+        max_output_tokens: limits.maxOutputTokens,
+        reasoning: { effort: limits.reasoningEffort },
       }),
       signal: controller.signal,
     })
@@ -598,16 +615,94 @@ async function grokResponsesFetch(
     const errBody = await res.text().catch(() => '')
     throw new Error(formatProviderFailure('grok', res.status, errBody))
   }
-  const json = await res.json()
+  const json = await res.json() as Record<string, unknown>
   const text = extractResponsesText(json)
-  const status = typeof (json as { status?: string })?.status === 'string'
-    ? (json as { status: string }).status
-    : null
+  const status = typeof json.status === 'string' ? json.status : null
+  const incompleteReason = json.incomplete_details && typeof json.incomplete_details === 'object'
+    ? String((json.incomplete_details as { reason?: string }).reason || '')
+    : ''
   return {
     text,
-    finishReason: status === 'incomplete' ? 'length' : status,
+    finishReason: status === 'incomplete' ? (incompleteReason || 'length') : status,
     model,
   }
+}
+
+async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<ContentAiStreamEvent> {
+  const { apiKey, baseURL } = grokAuthHeader()
+  const model = grokModelId(opts)
+  const limits = grokRequestLimits(opts.maxTokens)
+  const timeoutMs = deadlineForProvider('grok', opts.timeoutMs)
+  yield { type: 'provider', provider: 'grok', model: `${model} · ${limits.reasoningEffort} effort` }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(`${baseURL}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: opts.prompt },
+        ],
+        store: false,
+        stream: true,
+        max_output_tokens: limits.maxOutputTokens,
+        reasoning: { effort: limits.reasoningEffort },
+      }),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    throw new Error(formatProviderFailure('grok', res.status, errBody))
+  }
+  if (!res.body) throw new Error('grok stream returned no body')
+  let full = ''
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const chunks = buf.split(/\n\n/)
+    buf = chunks.pop() || ''
+    for (const chunk of chunks) {
+      const dataLine = chunk.split(/\r?\n/).find((l) => l.startsWith('data:'))
+      if (!dataLine) continue
+      const payload = dataLine.slice(5).trim()
+      if (!payload || payload === '[DONE]') continue
+      let ev: Record<string, unknown>
+      try { ev = JSON.parse(payload) as Record<string, unknown> } catch { continue }
+      const type = String(ev.type || '')
+      if (type === 'response.output_text.delta' || type === 'response.text.delta') {
+        const delta = typeof ev.delta === 'string' ? ev.delta : ''
+        if (delta) {
+          full += delta
+          yield { type: 'delta', text: delta }
+        }
+      } else if (type === 'response.failed' || type === 'error') {
+        const err = ev.error && typeof ev.error === 'object'
+          ? String((ev.error as { message?: string }).message || 'stream failed')
+          : 'grok stream failed'
+        throw new Error(`grok: ${err}`)
+      } else if (type === 'response.completed' && ev.response) {
+        const rest = extractResponsesText(ev.response)
+        if (rest && rest.length > full.length) full = rest
+      }
+    }
+  }
+  if (!full.trim()) throw new Error('grok stream returned empty content')
+  yield { type: 'done', text: full.trim(), provider: 'grok', model }
 }
 
 async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
@@ -632,9 +727,16 @@ async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
       text = chat.text
       finishReason = chat.finishReason
     }
-    if (!text.trim()) throw new Error('grok returned empty content')
-    if (finishReason === 'length' && text.trim()) {
-      for (let c = 0; c < 3 && finishReason === 'length'; c++) {
+    const words = text.trim().split(/\s+/).filter(Boolean).length
+    if (!text.trim()) {
+      throw new Error(
+        `grok returned empty content` +
+          (finishReason ? ` (finish=${finishReason})` : '') +
+          ` — high-reasoning drafts were eating the token budget; retry uses low effort + 8k cap`,
+      )
+    }
+    if ((finishReason === 'length' || finishReason === 'max_output_tokens') && words < 400) {
+      for (let c = 0; c < 2 && (finishReason === 'length' || finishReason === 'max_output_tokens'); c++) {
         try {
           const cont = await grokResponsesFetch(opts, buildContinuationPrompt(text))
           text = `${text}\n\n${cont.text}`.trim()
@@ -644,7 +746,11 @@ async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
         }
       }
     }
-    if (finishReason === 'length') {
+    // Keep a substantial incomplete draft instead of cascading away from Grok.
+    if (text.trim().split(/\s+/).filter(Boolean).length >= 400) {
+      return { text, provider: 'grok', model: usedModel }
+    }
+    if (finishReason === 'length' || finishReason === 'max_output_tokens') {
       throw new Error('grok output was truncated (token limit) — trying next provider')
     }
     return { text, provider: 'grok', model: usedModel }
@@ -2178,6 +2284,7 @@ export async function* generateContentTextStream(
     if (p.label === 'grok') {
       candidates.push({
         label: 'grok',
+        stream: () => grokResponsesStream(opts),
         complete: () => grokComplete(opts),
       })
       continue
@@ -2191,6 +2298,7 @@ export async function* generateContentTextStream(
   if (isGrokConfigured() && !candidates.some((c) => c.label === 'grok')) {
     candidates.push({
       label: 'grok',
+      stream: () => grokResponsesStream(opts),
       complete: () => grokComplete(opts),
     })
   }
@@ -2316,7 +2424,9 @@ export async function* generateContentTextStream(
             provider: c.label,
             model: `FAILED: ${failure}`,
           }
-          throw new Error(failure)
+          // Grok drafts are allowed to cascade (long-form + SuperGrok can
+          // stall). Other explicit pins still fail closed.
+          if (prefer !== 'grok') throw new Error(failure)
         }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
         // Do not immediately call the same provider again through its
@@ -2330,6 +2440,9 @@ export async function* generateContentTextStream(
     } catch (e2) {
       const msg2 = e2 instanceof Error ? e2.message : String(e2)
       errors.push(`${c.label}: ${msg2}`)
+      if (c.label === 'grok' || (explicit && c.label === prefer)) {
+        yield { type: 'provider', provider: c.label, model: `FAILED: ${msg2.slice(0, 220)}` }
+      }
       if (explicit && c.label === prefer) {
         explicitProviderFailed = true
         if (isPaymentOrQuotaFailure(e2) && prefer !== 'grok' && isGrokConfigured()) {

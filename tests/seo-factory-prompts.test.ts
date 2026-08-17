@@ -110,4 +110,13 @@ describe('buildFactoryUserPrompt · model guidance threading', () => {
     const prompt = buildFactoryUserPrompt({ ...basePromptOpts, refineNotes: 'Fix depth' })
     expect(prompt).not.toMatch(/EXISTING DRAFT/)
   })
+
+  it('threads the Master SEO Engine pack into the draft prompt', () => {
+    const prompt = buildFactoryUserPrompt({
+      ...basePromptOpts,
+      masterEngineBlock: 'MASTER SEO ENGINE — write the brief/draft so it closes THESE gaps.\n- Intent PROCEDURAL · composite 61/100',
+    })
+    expect(prompt).toMatch(/MASTER SEO ENGINE/)
+    expect(prompt).toMatch(/composite 61\/100/)
+  })
 })

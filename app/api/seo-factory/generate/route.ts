@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runSeoFactoryPipeline, type RequestedShipMode } from '@/lib/seoFactory/pipeline'
+import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 
 /**
  * POST /api/seo-factory/generate
@@ -38,12 +39,23 @@ export async function POST(request: NextRequest) {
       (auth as { profileId?: string }).profileId ||
       'admin'
 
+    const primaryKeyword = String(body.primaryKeyword || body.primary_keyword || topic).trim()
+    const region = String(body.region || 'US').toUpperCase()
+    const contentType = String(body.contentType || body.content_type || 'legal_guide')
+    const engineFeed = await assembleMasterEngineFeed({
+      topic,
+      primaryKeyword,
+      region,
+      contentType,
+      title: String(body.title || topic).trim(),
+    }).catch(() => null)
+
     const result = await runSeoFactoryPipeline({
       topic,
       title: String(body.title || topic).trim(),
-      primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
-      region: String(body.region || 'US').toUpperCase(),
-      contentType: String(body.contentType || body.content_type || 'legal_guide'),
+      primaryKeyword,
+      region,
+      contentType,
       tone: String(body.tone || 'educational'),
       audience: body.audience ? String(body.audience) : undefined,
       keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
@@ -55,6 +67,8 @@ export async function POST(request: NextRequest) {
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
+      masterEngineBlock: engineFeed?.promptBlock || null,
+      intelligenceLineage: engineFeed?.lineage ? { masterEngine: engineFeed.lineage } : null,
       userId,
     })
 

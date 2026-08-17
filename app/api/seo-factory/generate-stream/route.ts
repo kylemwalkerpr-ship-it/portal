@@ -3,6 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { checkCompetingPages } from '@/lib/seoEngine/planner'
+import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -173,6 +174,7 @@ export async function POST(request: Request) {
       regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
       regenerationMode: (body.regenerationMode === 'resume' ? 'resume' : body.regenerationMode === 'expand' ? 'expand' : body.regenerationMode === 'refresh' ? 'refresh' : body.supersedesJobId ? 'manual' : 'new') as 'resume' | 'expand' | 'refresh' | 'manual' | 'new',
       intelligenceLineage: body.intelligenceLineage && typeof body.intelligenceLineage === 'object' ? body.intelligenceLineage as Record<string, unknown> : null,
+      masterEngineBlock: null as string | null,
       title: String(body.title || topic).trim(),
       primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
       region: String(body.region || 'US').toUpperCase(),
@@ -264,6 +266,27 @@ export async function POST(request: Request) {
       } catch {
         input.interlinks = anchors
       }
+    }
+    try {
+      const engineFeed = await assembleMasterEngineFeed({
+        topic: input.topic,
+        primaryKeyword: input.primaryKeyword,
+        region: input.region,
+        contentType: input.contentType,
+        title: input.title,
+        competingUrls: Array.isArray(input.competingUrls)
+          ? input.competingUrls.map((c) => String((c as { url?: string }).url || '')).filter(Boolean)
+          : undefined,
+      })
+      if (engineFeed.promptBlock) {
+        input.masterEngineBlock = engineFeed.promptBlock
+        input.intelligenceLineage = {
+          ...(input.intelligenceLineage || {}),
+          masterEngine: engineFeed.lineage,
+        }
+      }
+    } catch (e) {
+      console.warn('[seo-factory/generate-stream] master engine feed skipped', e)
     }
     const resumeRequested = body.resume === true
     // Client is created for every run: the pipeline emits a 'job' event with the

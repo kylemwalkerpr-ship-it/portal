@@ -13,6 +13,7 @@ import {
   deadlineForProvider,
   extractResponsesText,
   generateContentText,
+  grokRequestLimits,
   isPaymentOrQuotaFailure,
   isReasoningModelId,
 } from '@/lib/contentAiProvider'
@@ -43,6 +44,11 @@ describe('Grok 4.6 Responses transport', () => {
   it('does not honor a 90s brief deadline for Grok', () => {
     expect(deadlineForProvider('grok', 90_000)).toBeGreaterThanOrEqual(180_000)
     expect(deadlineForProvider('openai', 90_000)).toBe(90_000)
+  })
+
+  it('caps draft token budget and uses low reasoning so Grok can finish', () => {
+    expect(grokRequestLimits(16384)).toEqual({ maxOutputTokens: 8192, reasoningEffort: 'low' })
+    expect(grokRequestLimits(2500)).toEqual({ maxOutputTokens: 2500, reasoningEffort: 'medium' })
   })
 
   it('extracts output_text and output[].content[].text', () => {
