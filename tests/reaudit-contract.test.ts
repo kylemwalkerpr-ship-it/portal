@@ -126,13 +126,15 @@ function buildPassingArticle(keep = SECTIONS.length): string {
     .map((s) => `## ${s.h2}\n\n${[0, 1, 2, 3].map(() => buildParagraph()).join('\n\n')}`)
     .join('\n\n')
   return `---
-title: US Visa Renewal Guide 2026
+title: US visa renewal guide for 2026 applicants
 description: Complete guide to renewing your US visa with eligibility, documents, steps, timelines, and official sources.
 primaryKeyword: us visa renewal
+canonicalUrl: https://legal.yousafeconsultancy.com/us/visa-renewal/
+ogImage: /og-image.png
 robots: index,follow
 ---
 
-# US Visa Renewal Guide
+# US visa renewal guide for 2026 applicants
 
 ## In 60 seconds
 - Check which visa category applies to your situation
@@ -205,13 +207,15 @@ describe('evaluateReauditContract — response contract', () => {
     // warnings (schema_article, meta_description, ai_answer_block…). The merge
     // must surface BOTH families so every warning is AI-fixable in the editor.
     const blog = `---
-title: US Visa Update Guide 2026
+title: US visa update guide for 2026 applicants
 description: ${'A concrete meta description with enough characters to hit the audit band for this test case. '.repeat(2).trim()}
 primaryKeyword: us visa update
+canonicalUrl: https://legal.yousafeconsultancy.com/us/visa-update/
+ogImage: /og-image.png
 robots: index,follow
 ---
 
-# US Visa Update Guide
+# US visa update guide for 2026 applicants
 
 ## In 60 seconds
 - Check the current official guidance at uscis.gov

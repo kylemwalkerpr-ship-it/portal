@@ -152,9 +152,15 @@ export const ESTATE_LINK_RE =
  *    caseworks.com) — matches the audit's INTERNAL_LINKS check exactly.
  */
 export function countEstateLinks(body: string): number {
+  // JSON-LD / fenced code often mention legal.yousafeconsultancy.com (publisher
+  // logo, og:image). Those are not dofollow internal links — counting them
+  // skipped the internal_links repair and failed CI.
+  const prose = String(body || '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
   return (
-    (body.match(/\]\(\//g) || []).length +
-    (body.match(ESTATE_LINK_RE) || []).length
+    (prose.match(/\]\(\//g) || []).length +
+    (prose.match(ESTATE_LINK_RE) || []).length
   )
 }
 

@@ -202,6 +202,13 @@ describe('linkAudit · countEstateLinks (shared INTERNAL_LINKS counter)', () => 
   it('does not count external or placeholder hosts', () => {
     expect(countEstateLinks('See [gov](https://www.uscis.gov/x) and [example](https://example.com/y)')).toBe(0)
   })
+
+  it('does not count estate hosts inside JSON-LD / script blocks', () => {
+    const body = `<script type="application/ld+json">{"@type":"Article","image":["https://legal.yousafeconsultancy.com/og-image.png"],"publisher":{"url":"https://legal.yousafeconsultancy.com"}}</script>
+
+No markdown links here.`
+    expect(countEstateLinks(body)).toBe(0)
+  })
 })
 
 describe('interlinkRegistry — every entry points at a live estate host', () => {
