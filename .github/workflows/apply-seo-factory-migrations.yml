@@ -50,6 +50,7 @@ jobs:
             supabase/migrations/20260817_seo_eeat_v1.sql \
             supabase/migrations/20260817_seo_competitive_v1.sql \
             supabase/migrations/20260817_seo_local_v1.sql \
+            supabase/migrations/20260817_site_health_rls.sql \
             supabase/migrations/pg_trgm_indexes.sql \
             supabase/migrations/additional_fts_indexes.sql \
             supabase/migrations/application_fts_indexes.sql \
