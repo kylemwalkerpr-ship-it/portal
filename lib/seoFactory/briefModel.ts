@@ -120,10 +120,14 @@ export async function generateBriefText(opts: {
       timeoutMs: opts.timeoutMs,
       exclusive: true,
     })
-    // fallbackUsed is false whenever the primary leg succeeds — including when
-    // the primary IS GLM 5.2 Fast (previously `ai.provider === fallback` made
-    // an explicit GLM selection masquerade as a "fallback").
-    return { ai, fallbackUsed: false }
+    // SuperGrok can succeed inside generateContentText as the unpaid-quota
+    // rescue even when the pin was GPT. Surface that as fallbackUsed so the
+    // Research UI can say the brief came from Grok. An explicit Grok pin is
+    // still the primary (fallbackUsed stays false).
+    return {
+      ai,
+      fallbackUsed: !primaryIsFallback && ai.provider === BRIEF_FALLBACK_PROVIDER,
+    }
   } catch (primaryErr) {
     const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr)
     if (primaryIsFallback) {

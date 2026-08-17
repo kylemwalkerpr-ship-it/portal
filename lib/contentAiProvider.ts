@@ -324,8 +324,42 @@ function buildContinuationPrompt(partial: string): string {
 }
 
 /** Reasoning-capable models accept max_completion_tokens + reasoning_content. */
-function isReasoningModelId(model: string): boolean {
-  return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(model)
+export function isReasoningModelId(model: string): boolean {
+  return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron|grok)/i.test(model)
+}
+
+/** Unpaid / quota / billing failures — SuperGrok is the studio-wide second option. */
+export function isPaymentOrQuotaFailure(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || '')
+  return /insufficient_quota|unpaid|payment.?required|\b402\b|billing|past.?due|credit.?exhausted|requires.?payment|account.?not.?funded|quota.?exceeded|exceeded.?your.?current.?quota|You exceeded your current quota/i.test(msg)
+}
+
+/** Pull final prose out of an xAI / OpenAI Responses payload. */
+export function extractResponsesText(json: unknown): string {
+  if (!json || typeof json !== 'object') return ''
+  const rec = json as Record<string, unknown>
+  if (typeof rec.output_text === 'string' && rec.output_text.trim()) return rec.output_text.trim()
+  const parts: string[] = []
+  const output = Array.isArray(rec.output) ? rec.output : []
+  for (const item of output) {
+    if (!item || typeof item !== 'object') continue
+    const content = (item as { content?: unknown }).content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue
+      const b = block as { type?: string; text?: unknown }
+      if ((b.type === 'output_text' || b.type === 'text') && typeof b.text === 'string') {
+        parts.push(b.text)
+      }
+    }
+  }
+  if (parts.length) return parts.join('').trim()
+  const choices = rec.choices
+  if (Array.isArray(choices) && choices[0] && typeof choices[0] === 'object') {
+    const message = (choices[0] as { message?: { content?: unknown } }).message
+    return extractMessageText(message?.content)
+  }
+  return ''
 }
 
 /** One-shot OpenAI-compatible chat completion fetch (complete + continuation). */
@@ -499,6 +533,120 @@ export function isNvidiaGlmConfigured(): boolean {
 /** True when Grok can run: SuperGrok OAuth overlay or an XAI_API_KEY. */
 export function isGrokConfigured(): boolean {
   return Boolean(env('XAI_API_KEY'))
+}
+
+function grokModelId(opts?: ContentAiOptions): string {
+  const requested = (opts?.model || '').trim()
+  if (requested && /^grok/i.test(requested)) return requested
+  return env('XAI_MODEL') || 'grok-4.6'
+}
+
+function grokAuthHeader(): { apiKey: string; baseURL: string } {
+  const apiKey = env('XAI_API_KEY')
+  if (!apiKey) {
+    throw new Error(
+      'Grok is not configured. Connect SuperGrok in Content Studio → Configure, or set XAI_API_KEY.',
+    )
+  }
+  return {
+    apiKey,
+    baseURL: (env('XAI_BASE_URL') || 'https://api.x.ai/v1').replace(/\/$/, ''),
+  }
+}
+
+/**
+ * SuperGrok / Grok 4.6 primary transport: xAI Responses API.
+ * Chat Completions is a fallback only — OAuth subscription tokens and
+ * grok-4.6 reasoning output land on /v1/responses, not /chat/completions.
+ */
+async function grokResponsesFetch(
+  opts: ContentAiOptions,
+  userContent: string,
+): Promise<{ text: string; finishReason?: string | null; model: string }> {
+  const { apiKey, baseURL } = grokAuthHeader()
+  const model = grokModelId(opts)
+  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS
+  const timeoutMs =
+    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(`${baseURL}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: userContent },
+        ],
+        store: false,
+        max_output_tokens: maxTokens,
+      }),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    throw new Error(formatProviderFailure('grok', res.status, errBody))
+  }
+  const json = await res.json()
+  const text = extractResponsesText(json)
+  const status = typeof (json as { status?: string })?.status === 'string'
+    ? (json as { status: string }).status
+    : null
+  return {
+    text,
+    finishReason: status === 'incomplete' ? 'length' : status,
+    model,
+  }
+}
+
+async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const model = grokModelId(opts)
+  return withRetry('grok', async () => {
+    let text = ''
+    let finishReason: string | null | undefined
+    let usedModel = model
+    try {
+      const first = await grokResponsesFetch(opts, opts.prompt)
+      text = first.text
+      finishReason = first.finishReason
+      usedModel = first.model
+    } catch (responsesErr) {
+      const msg = responsesErr instanceof Error ? responsesErr.message : String(responsesErr)
+      // Responses is required for SuperGrok OAuth; chat completions is only
+      // useful for console API keys. Retry chat if Responses is missing/404.
+      if (!/ 404[:\s]|not found|unknown endpoint/i.test(msg)) throw responsesErr
+      const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
+      if (!p) throw responsesErr
+      const chat = await openAiCompatFetch({ ...p, model }, opts, opts.prompt)
+      text = chat.text
+      finishReason = chat.finishReason
+    }
+    if (!text.trim()) throw new Error('grok returned empty content')
+    if (finishReason === 'length' && text.trim()) {
+      for (let c = 0; c < 3 && finishReason === 'length'; c++) {
+        try {
+          const cont = await grokResponsesFetch(opts, buildContinuationPrompt(text))
+          text = `${text}\n\n${cont.text}`.trim()
+          finishReason = cont.finishReason
+        } catch {
+          break
+        }
+      }
+    }
+    if (finishReason === 'length') {
+      throw new Error('grok output was truncated (token limit) — trying next provider')
+    }
+    return { text, provider: 'grok', model: usedModel }
+  })
 }
 
 export function isNvidiaDeepseekConfigured(): boolean {
@@ -1435,10 +1583,27 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
+function promoteGrokAsSecond(order: string[]): string[] {
+  const grokAt = order.indexOf('grok')
+  if (grokAt < 0) {
+    order.splice(Math.min(1, order.length), 0, 'grok')
+  } else if (grokAt > 1) {
+    order.splice(grokAt, 1)
+    order.splice(1, 0, 'grok')
+  }
+  return order
+}
+
 /** Parse the admin-saved order defensively (JSON or CSV). */
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
-  if (!raw) return []
+  if (!raw) {
+    return promoteGrokAsSecond([
+      'baseten-glm-fast', 'grok', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek',
+      'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+      'nvidia-nemotron', 'aihubmix-glm-fast',
+    ])
+  }
   let values: unknown = raw
   try { values = JSON.parse(raw) } catch { values = raw.split(',') }
   if (!Array.isArray(values)) return []
@@ -1455,7 +1620,8 @@ function configuredProviderOrder(): string[] {
   const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-glm-fast', 'aihubmix-glm-fast', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
-  return [...configured, ...[...known].filter((id) => !configured.includes(id))]
+  const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
+  return promoteGrokAsSecond(merged)
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
@@ -1478,8 +1644,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const items: Array<{ label: string; run: CompleteFn }> = []
 
   const pushGrok = () => {
-    const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
-    if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
+    if (isGrokConfigured()) items.push({ label: 'grok', run: () => grokComplete(opts) })
   }
   const pushOpenAi = () => {
     const p = listOpenAiFallbackProviders().find((x) => x.label === 'openai')
@@ -1557,9 +1722,8 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushNvidia()
     pushCf()
   } else if (prefer === 'xai' || prefer === 'grok') {
-    const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
-    if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
-    pushGlm() // GLM 5.2 preferred lead over DeepSeek on NVIDIA branch
+    pushGrok()
+    pushGlm()
     pushNvidia()
     pushCf()
   } else if (prefer === 'baseten-deepseek') {
@@ -1804,9 +1968,11 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       ? `${opts.aiProvider!.trim()} (${prefer})`
       : prefer
     throw new Error(
-      `Selected AI provider "${display}" is not configured. ` +
-      `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
-      `Currently available providers: ${configured}.`,
+      prefer === 'grok'
+        ? `Grok is not configured. Connect SuperGrok in Content Studio → Configure (no API key needed), then retry. Currently available providers: ${configured}.`
+        : `Selected AI provider "${display}" is not configured. ` +
+          `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
+          `Currently available providers: ${configured}.`,
     )
   }
 
@@ -1826,13 +1992,28 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       errors.push(`${c.label}: ${msg}`)
+      const paymentFail = isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
+      if (paymentFail) {
+        try {
+          return await withDeadline('grok', opts.timeoutMs ?? COMPLETE_TIMEOUT_MS, grokComplete(opts))
+        } catch (grokErr) {
+          const grokMsg = grokErr instanceof Error ? grokErr.message : String(grokErr)
+          errors.push(`grok: ${grokMsg}`)
+        }
+      }
       // When the admin explicitly chose this provider, stop the cascade so
-      // the dashboard sees exactly why their selection didn't ship. Silent
-      // fallback made it look like the picker was ignored.
-      if (explicit && c.label === prefer) {
+      // the dashboard sees exactly why their selection didn't ship — except
+      // unpaid/quota failures, which always try SuperGrok second.
+      if (explicit && c.label === prefer && !paymentFail) {
         throw new Error(
           `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}. ` +
           `Check the API key and model in repo secrets (OPENAI_API_KEY, etc). ` +
+          `Provider errors: ${errors.join(' | ')}`,
+        )
+      }
+      if (explicit && c.label === prefer && paymentFail) {
+        throw new Error(
+          `Explicit AI provider "${prefer}" failed on billing/quota and SuperGrok fallback also failed. ` +
           `Provider errors: ${errors.join(' | ')}`,
         )
       }
@@ -1981,10 +2162,23 @@ export async function* generateContentTextStream(
     })
   }
   for (const p of listOpenAiFallbackProviders()) {
+    if (p.label === 'grok') {
+      candidates.push({
+        label: 'grok',
+        complete: () => grokComplete(opts),
+      })
+      continue
+    }
     candidates.push({
       label: p.label,
       stream: () => openAiCompatibleStream(p, opts),
       complete: () => openAiCompatibleComplete(p, opts),
+    })
+  }
+  if (isGrokConfigured() && !candidates.some((c) => c.label === 'grok')) {
+    candidates.push({
+      label: 'grok',
+      complete: () => grokComplete(opts),
     })
   }
   if (isOpenRouterConfigured()) {
@@ -2081,10 +2275,9 @@ export async function* generateContentTextStream(
     // because its stream isn't available (no SSE), surface the gap as a visible
     // provider event before the cascade continues.
     if (explicit && c.label === prefer && !c.stream) {
-      explicitProviderFailed = true
-      const message = `Explicit AI provider "${prefer}" has no streaming transport`
-      yield { type: 'provider', provider: c.label, model: `FAILED: ${message}` }
-      throw new Error(message)
+      // Grok 4.6 / SuperGrok uses the Responses API (no chat SSE). Fall
+      // through to completeAsStream instead of failing the job.
+      yield { type: 'provider', provider: c.label, model: grokModelId(opts) }
     }
     if (c.stream) {
       try {
@@ -2099,15 +2292,17 @@ export async function* generateContentTextStream(
         // selection was ignored. Continue the cascade for resilience.
         if (explicit && c.label === prefer) {
           explicitProviderFailed = true
+          if (isPaymentOrQuotaFailure(e) && prefer !== 'grok' && isGrokConfigured()) {
+            yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
+            yield* completeAsStream(() => grokComplete(opts))
+            return
+          }
           const failure = `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}`
           yield {
             type: 'provider',
             provider: c.label,
             model: `FAILED: ${failure}`,
           }
-          // An explicit selection must never silently become Cloudflare. Auto
-          // mode still gets the resilient fallback cascade; a manual pin gets
-          // an actionable failure with the real provider/model preserved.
           throw new Error(failure)
         }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
@@ -2124,6 +2319,11 @@ export async function* generateContentTextStream(
       errors.push(`${c.label}: ${msg2}`)
       if (explicit && c.label === prefer) {
         explicitProviderFailed = true
+        if (isPaymentOrQuotaFailure(e2) && prefer !== 'grok' && isGrokConfigured()) {
+          yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
+          yield* completeAsStream(() => grokComplete(opts))
+          return
+        }
       }
       if (isSubrequestLimitError(e2)) {
         subrequestBudgetExhausted = true

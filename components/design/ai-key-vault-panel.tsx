@@ -78,7 +78,15 @@ function parseProviderOrder(value: string | null | undefined, fallback: string[]
     try { raw = JSON.parse(orderString) } catch { raw = orderString.split(',') }
   }
   const ids = Array.isArray(raw) ? raw.map((id) => String(id).trim()).filter(Boolean) : []
-  return [...new Set([...ids, ...fallback])].filter((id) => fallback.includes(id))
+  const merged = [...new Set([...ids, ...fallback])].filter((id) => fallback.includes(id))
+  const grokAt = merged.indexOf('grok')
+  if (grokAt < 0 && fallback.includes('grok')) {
+    merged.splice(Math.min(1, merged.length), 0, 'grok')
+  } else if (grokAt > 1) {
+    merged.splice(grokAt, 1)
+    merged.splice(1, 0, 'grok')
+  }
+  return merged
 }
 
 const input = (w: string): React.CSSProperties => ({
@@ -131,7 +139,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       setSettings(s)
       setProviderOrder(parseProviderOrder(s.provider_order, nextRows.map((row) => row.id)))
       setDefaultProvider(s.default_provider || 'auto')
-      setDefaultModel(s.default_model || '')
+      setDefaultModel(s.default_model || ((d.grokOAuth as GrokOAuthStatus | null)?.connected ? 'grok-4.6' : ''))
       setMaxProviders(s.max_providers || '3')
       setGrokOAuth((d.grokOAuth || null) as GrokOAuthStatus | null)
       setNote(null)

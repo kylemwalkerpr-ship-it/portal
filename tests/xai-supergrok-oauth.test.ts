@@ -108,6 +108,7 @@ describe('SuperGrok OAuth helpers', () => {
     expect(settings.xai_oauth_access_token).toBe('access-123')
     expect(settings.xai_oauth_refresh_token).toBe('refresh-123')
     expect(settings.xai_oauth_pending).toBeUndefined()
+    expect(settings.default_model).toBe('grok-4.6')
   })
 
   it('ensureSuperGrokAccessToken returns a still-fresh stored token without refresh', async () => {

@@ -2226,7 +2226,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Research/Plan brief model — GPT Sol (flagship), GPT Terra (balanced), or
   // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
   // brief endpoint (lib/seoFactory/briefModel) honors all three.
-  const [briefModel, setBriefModel] = React.useState('gpt-5.6-terra')
+  const [briefModel, setBriefModel] = React.useState('grok')
   const briefModelName =
     briefModel === 'gpt-5.6-sol'
       ? 'GPT Sol'

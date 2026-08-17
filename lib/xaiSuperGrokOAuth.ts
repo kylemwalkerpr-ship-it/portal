@@ -275,6 +275,7 @@ export async function pollSuperGrokDeviceLogin(updatedBy = 'admin'): Promise<{
 
   const tokens = tokensFromResponse(json)
   await persistTokens(tokens, updatedBy)
+  await setAiSetting('default_model', XAI_DEFAULT_MODEL, updatedBy)
   return { connected: true, pending: false }
 }
 

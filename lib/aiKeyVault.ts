@@ -183,7 +183,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'baseten-glm-fast', 'nvidia-glm', 'baseten-deepseek', 'grok', 'nvidia-deepseek', 'openai',
+  'baseten-glm-fast', 'grok', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron',
   'aihubmix-glm-fast',
 ] as const
