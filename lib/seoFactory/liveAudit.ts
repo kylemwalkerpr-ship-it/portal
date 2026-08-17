@@ -19,6 +19,7 @@
 import { minWordsForType, targetWordsForType } from './contentDepth'
 import { DISCLAIMER_RE, evaluateContentQuality } from './contentQualityGate'
 import { ESTATE_LINK_RE } from './linkAudit'
+import { isCreamSource } from './officialSources'
 
 export interface LiveAuditResult {
   /** 0–100 live-page health score (10 checks × 10 points). */
@@ -40,9 +41,6 @@ export interface LiveAuditResult {
   keywordInBody: boolean
   warnings: string[]
 }
-
-/** Same authority-domains the draft audit treats as official citations. */
-const GOV_RE = /\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk|ircc/i
 
 /** TL;DR / AI-answer markers (mirrors audit.ts ai_answer_block). */
 const TLDR_RE = /tldr|in 60 seconds|quick answer|key takeaways/i
@@ -143,7 +141,7 @@ export function auditLiveHtml(opts: {
   const internalHrefs = new Set(hrefs.filter((u) => u.startsWith('/') || estateRe.test(u)))
   const internalLinks = internalHrefs.size
 
-  const hasGovCitations = hrefs.some((u) => GOV_RE.test(u)) || GOV_RE.test(text)
+  const hasGovCitations = hrefs.some((u) => isCreamSource(u))
   const hasDisclaimer = DISCLAIMER_RE.test(text)
   const hasTldr = TLDR_RE.test(text)
 

@@ -18,6 +18,7 @@ import { evaluateAhrefsDraft } from './ahrefsIssues'
 
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
+import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
 import { EDITORIAL_FORMATTING_CONTRACT } from './editorialContract'
 
 export type QualitySeverity = 'blocker' | 'warning'
@@ -727,7 +728,12 @@ export function evaluateContentQuality(opts: {
         fix: 'Add ## FAQ with 4–6 Q&A pairs (self-contained answers, plain or collapsible <details>).',
       })
     }
-    if (!/\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk/i.test(body)) {
+    if (!articleHasOfficialCitation(opts.content || '', buildCitationContext({
+      region: opts.region,
+      topic: opts.primaryKeyword,
+      primaryKeyword: opts.primaryKeyword,
+      keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+    }))) {
       add({
         code: 'missing_official_sources',
         severity: 'blocker',

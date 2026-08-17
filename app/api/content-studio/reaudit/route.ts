@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
     const repaired = applyDeterministicRepairs({
       content,
       primaryKeyword: primaryKeyword || 'guide',
+      region,
       indexable,
       contentType,
       requiredShortKeywords,
@@ -427,6 +428,7 @@ ${enginePlan.promptBlock}`
       const mechanical = applyDeterministicRepairs({
         content,
         primaryKeyword: primaryKeyword || 'guide',
+        region,
         indexable,
         contentType,
         requiredShortKeywords,
@@ -510,6 +512,7 @@ ${enginePlan.promptBlock}`
     const repaired = applyDeterministicRepairs({
       content: fixedContent,
       primaryKeyword: primaryKeyword || 'guide',
+      region,
       indexable: body.indexable,
       contentType,
       requiredShortKeywords,

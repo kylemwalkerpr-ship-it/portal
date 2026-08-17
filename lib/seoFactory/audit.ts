@@ -11,6 +11,7 @@ import {
 } from './contentDepth'
 import { evaluateContentQuality, DISCLAIMER_RE } from './contentQualityGate'
 import { countEstateLinks } from './linkAudit'
+import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
 
 export interface AuditFinding {
   code: string
@@ -219,7 +220,11 @@ export function auditContent(opts: {
   }
 
   // Citations
-  const hasGov = /\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk|ircc/i.test(body)
+  const hasGov = articleHasOfficialCitation(content, buildCitationContext({
+    region: fm.region,
+    topic: opts.primaryKeyword || fm.primaryKeyword || fm.title,
+    primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
+  }))
   add(hasGov, {
     code: 'citations',
     severity: wantIndexable ? 'blocker' : 'warning',

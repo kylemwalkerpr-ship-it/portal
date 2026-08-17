@@ -906,6 +906,7 @@ export async function PATCH(request: NextRequest) {
         contentType,
         primaryKeyword,
         indexable: job.indexable !== false,
+        region: job.region || 'US',
       })
       if (reauditReady.ok) {
         patch.error_message = null

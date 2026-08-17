@@ -10,7 +10,7 @@ import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
-import { sourcesForBrief } from './officialSources'
+import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
 
 function stripFm(content: string): { fm: string; body: string } {
@@ -23,9 +23,7 @@ function hasDisclaimer(body: string): boolean {
   return DISCLAIMER_RE.test(body)
 }
 
-function hasGovCitation(body: string): boolean {
-  return /\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk|ircc|studyinthestates/i.test(body)
-}
+
 
 function metaDescriptionFrom(title: string, body: string, primaryKeyword: string): string {
   const plain = body
@@ -904,20 +902,17 @@ export function applyDeterministicRepairs(opts: {
     applied.push('internal_links')
   }
 
-  // ── Official citation injection (gov/edu) when absent ────────────────
-  // Distinct from internal links: the audit credits .gov/.edu citations as a
-  // blocker-level check. Model drafts often omit them — inject the region's
-  // official sources on the same repair pass so the citations gate clears too.
-  if (!hasGovCitation(b)) {
-    const region = (opts.region || 'US').toUpperCase().slice(0, 2)
-    const sources = sourcesForBrief({
-      region,
+  {
+    const cited = applyCitationPolicy(b, buildCitationContext({
+      region: opts.region,
       topic: opts.primaryKeyword || opts.title,
+      primaryKeyword: opts.primaryKeyword,
       keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
-    }).slice(0, 3)
-    const lines = sources.map((s) => `- [${s.title}](${s.url})`).join('\n')
-    b += `\n\n## Official sources\n\n${lines}\n`
-    applied.push('official_sources')
+    }))
+    if (cited.applied.length) {
+      b = cited.content
+      applied.push('official_sources')
+    }
   }
 
   // ── Keyword coverage backfill (missing required short/long-tail) ─────
@@ -1275,13 +1270,13 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
   // so there is no duplication risk on that estate host.
   body = body.replace(/<script(?![^>]*application\/ld\+json)[^>]*>[\s\S]*?<\/script>/gi, '')
 
-  if (!hasGovCitation(body)) {
-    const sources = sourcesForBrief({
+  {
+    const cited = applyCitationPolicy(body, buildCitationContext({
       region,
       topic: opts.primaryKeyword || title,
-    }).slice(0, 3)
-    const lines = sources.map((s) => `- [${s.title}](${s.url})`).join('\n')
-    body += `\n\n## Official sources\n\n${lines}\n`
+      primaryKeyword: opts.primaryKeyword,
+    }))
+    if (cited.applied.length) body = cited.content
   }
 
   if (!hasDisclaimer(body)) {

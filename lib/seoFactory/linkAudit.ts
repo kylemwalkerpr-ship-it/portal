@@ -38,6 +38,7 @@ import {
   sourcesForBrief,
   type CitationContext,
 } from './officialSources'
+import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 
 export const ESTATE_BASE = 'https://legal.yousafeconsultancy.com'
 
@@ -970,12 +971,11 @@ export async function sanitizeDraftLinksLive(
   findings: LinkAuditFinding[]
   remediations: DeadLinkRemediation[]
 }> {
-  const citationContext: CitationContext = {
+  const citationContext = buildCitationContext({
     region: opts?.region,
     topic: opts?.topic,
     keywords: opts?.keywords,
-    body: content.slice(0, 4000),
-  }
+  })
   const findings = await auditLinksLive(content, {
     externalAllowlist: opts?.externalAllowlist,
     knownLiveUrls: opts?.knownLiveUrls,
@@ -986,10 +986,11 @@ export async function sanitizeDraftLinksLive(
     topic: opts?.topic,
     keywords: opts?.keywords,
   })
+  const cited = applyCitationPolicy(remediated.content, citationContext)
   return {
-    content: remediated.content,
+    content: cited.content,
     stripped: remediated.stripped,
-    injected: remediated.injected,
+    injected: remediated.injected + (cited.applied.length ? 1 : 0),
     findings,
     remediations: remediated.remediations,
   }
