@@ -177,7 +177,7 @@ export async function* runSeoFactoryPipelineStream(
     // Realtime queue row — create the content_jobs record NOW (status 'drafting')
     // so the Draft queue + Review stage reflect live progress while the AI writes.
     // The row is finalized (content/audit/ship) at the end of the stream.
-    let earlyJobId: string | null = null
+    let earlyJobId: string | null = String(input.existingJobId || '').trim() || null
     try {
       const earlySb = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -218,6 +218,14 @@ export async function* runSeoFactoryPipelineStream(
           },
         ],
       }
+      if (earlyJobId) {
+        const { error: earlyUp } = await earlySb.from('content_jobs').update(earlyRow).eq('id', earlyJobId)
+        if (earlyUp && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(earlyUp.message || '')) {
+          const { lineage: _l, regeneration_reason: _r, regeneration_mode: _m, event_log: _e, ...minimalRow } = earlyRow
+          await earlySb.from('content_jobs').update(minimalRow).eq('id', earlyJobId)
+        }
+        yield { type: 'job', jobId: earlyJobId }
+      } else {
       const early = await earlySb.from('content_jobs').insert(earlyRow).select('id').single()
       if (early.data?.id) {
         earlyJobId = early.data.id
@@ -230,6 +238,7 @@ export async function* runSeoFactoryPipelineStream(
           earlyJobId = retry.data.id
           yield { type: 'job', jobId: earlyJobId }
         }
+      }
       }
     } catch (e) {
       console.warn('[seoFactory/pipelineStream] early job row skipped', e)
@@ -1246,6 +1255,18 @@ export async function* runSeoFactoryPipelineStream(
           console.warn('[seoFactory/pipelineStream] job insert', withLog.error.message)
         }
         jobId = job?.id ?? null
+      }
+      if (jobId && plan.canonicalUrl) {
+        await supabase
+          .from('content_jobs')
+          .update({
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            error_message: `Superseded by in-place repair of ${jobId}`,
+          })
+          .eq('canonical_url', plan.canonicalUrl)
+          .in('status', ['drafting', 'pending', 'failed'])
+          .neq('id', jobId)
       }
     } catch (e) {
       console.warn('[seoFactory/pipelineStream] job persist skipped', e)

@@ -419,12 +419,10 @@ export async function POST(request: NextRequest) {
             minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 55,
             maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
             userId,
-            sourceJobId: jid,
+            existingJobId: jid,
+            resumeContent: job.content ? String(job.content) : undefined,
+            regenerationMode: 'refresh',
           })
-          await supabase
-            .from('content_jobs')
-            .update({ status: 'closed', closed_at: new Date().toISOString(), error_message: `Superseded by regenerate → ${result.jobId || 'new job'}` })
-            .eq('id', jid)
           results.push({ id: jid, ok: result.ok, newJobId: result.jobId || undefined, error: result.shipError })
         } catch (e) {
           results.push({ id: jid, ok: false, error: e instanceof Error ? e.message : 'regenerate failed' })
@@ -1662,17 +1660,10 @@ export async function PATCH(request: NextRequest) {
         minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 55,
         maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
         userId,
-        sourceJobId: id,
+        existingJobId: id,
+        resumeContent: job.content ? String(job.content) : undefined,
+        regenerationMode: 'refresh',
       })
-      // Mark old job closed; new job created by pipeline
-      await supabase
-        .from('content_jobs')
-        .update({
-          status: 'closed',
-          closed_at: new Date().toISOString(),
-          error_message: `Superseded by regenerate → ${result.jobId || 'new job'}`,
-        })
-        .eq('id', id)
 
       return NextResponse.json({
         ok: result.ok,

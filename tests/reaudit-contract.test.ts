@@ -141,7 +141,7 @@ robots: index,follow
 - Gather passport, proof of identity, and supporting documents
 - File before your current visa expires and keep your reference number
 
-Official guidance, forms, and fee schedules are published at uscis.gov for US cases and at the equivalent authority for other jurisdictions, so always verify the current position against the official source before you act.
+Official guidance, forms, and fee schedules are published at [USCIS](https://www.uscis.gov/) for US cases and at the equivalent authority for other jurisdictions, so always verify the current position against the official source before you act.
 
 ${body}
 

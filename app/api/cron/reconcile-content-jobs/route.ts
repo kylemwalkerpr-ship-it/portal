@@ -311,6 +311,7 @@ async function retryJob(
       minAuditScore: 55,
       maxRefine: 12,
       userId: job.user_id || 'system:cron',
+      existingJobId: job.id,
     })
 
     if (result.ok) {

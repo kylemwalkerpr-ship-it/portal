@@ -268,6 +268,7 @@ export async function POST(req: Request) {
         // More refine attempts on retry to push through quality gates.
         maxRefine: 12,
         userId: job.user_id || 'system:cron',
+        existingJobId: job.id,
       })
 
       if (result.ok) {

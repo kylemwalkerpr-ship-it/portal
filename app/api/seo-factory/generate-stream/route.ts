@@ -171,6 +171,7 @@ export async function POST(request: Request) {
 
     const input = {
       topic,
+      existingJobId: String(body.supersedesJobId || '').trim() || null,
       sourceJobId: String(body.supersedesJobId || '').trim() || null,
       regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
       regenerationMode: (body.regenerationMode === 'resume' ? 'resume' : body.regenerationMode === 'expand' ? 'expand' : body.regenerationMode === 'refresh' ? 'refresh' : body.supersedesJobId ? 'manual' : 'new') as 'resume' | 'expand' | 'refresh' | 'manual' | 'new',
@@ -289,20 +290,18 @@ export async function POST(request: Request) {
     } catch (e) {
       console.warn('[seo-factory/generate-stream] master engine feed skipped', e)
     }
-    const resumeRequested = body.resume === true
+    const resumeRequested = body.resume === true || Boolean(supersedesJobId)
     // Client is created for every run: the pipeline emits a 'job' event with the
     // early 'drafting' row so live deltas checkpoint into the queue in realtime.
     const supabase = sb()
-    if (supabase && supersedesJobId && resumeRequested) {
+    if (supabase && supersedesJobId) {
       const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', supersedesJobId).single()
       if (existing?.content) input.resumeContent = String(existing.content)
-    }
-    if (supabase && supersedesJobId) {
       await markSupersededJob(
         supabase,
         supersedesJobId,
         { status: 'drafting', error_message: null },
-        resumeRequested ? 'Continuing from the latest saved checkpoint' : 'Live regeneration started',
+        resumeRequested ? 'Repairing this draft in place' : 'Live regeneration started',
       )
     }
 
@@ -352,13 +351,12 @@ export async function POST(request: Request) {
                 )
               }
             }
-            if (supabase && supersedesJobId && ev.type === 'final') {
-              const replacementId = ev.result?.jobId || 'new job'
+            if (supabase && supersedesJobId && ev.type === 'final' && ev.result?.jobId && ev.result.jobId !== supersedesJobId) {
               await markSupersededJob(
                 supabase,
                 supersedesJobId,
-                { status: 'closed', closed_at: new Date().toISOString(), error_message: `Superseded by regenerate → ${replacementId}` },
-                `Replacement job created: ${replacementId}`,
+                { status: 'closed', closed_at: new Date().toISOString(), error_message: `Superseded by regenerate → ${ev.result.jobId}` },
+                `Replacement job created: ${ev.result.jobId}`,
               )
             }
             // If a live queue row exists but the pipeline failed before writing a

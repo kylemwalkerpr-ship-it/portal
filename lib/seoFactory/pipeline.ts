@@ -94,6 +94,8 @@ export interface PipelineInput {
   opportunityAction?: string
   writeHint?: string
   userId?: string
+  /** Update this job in place instead of inserting a sibling queue row. */
+  existingJobId?: string | null
   /** Existing job replaced by this regeneration, shown in the queue lineage. */
   sourceJobId?: string | null
   /** Operator-readable reason and mode for regeneration lineage. */
@@ -945,13 +947,35 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       llms_included: audit.llmsRecommended,
       error_message: shipError,
     }
-    let jobInsert = await supabase.from('content_jobs').insert(baseRow).select('id').single()
-    if (jobInsert.error && /lineage|regeneration_reason|regeneration_mode|column/i.test(jobInsert.error.message || '')) {
-      const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
-      jobInsert = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
+    const existingId = String(input.existingJobId || '').trim()
+    if (existingId) {
+      const { error: upErr } = await supabase.from('content_jobs').update(baseRow).eq('id', existingId)
+      if (upErr && /lineage|regeneration_reason|regeneration_mode|column/i.test(upErr.message || '')) {
+        const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
+        await supabase.from('content_jobs').update(legacyRow).eq('id', existingId)
+      }
+      jobId = existingId
+    } else {
+      let jobInsert = await supabase.from('content_jobs').insert(baseRow).select('id').single()
+      if (jobInsert.error && /lineage|regeneration_reason|regeneration_mode|column/i.test(jobInsert.error.message || '')) {
+        const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
+        jobInsert = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
+      }
+      if (jobInsert.error) console.warn('[seoFactory/pipeline] job insert skipped', jobInsert.error.message)
+      jobId = jobInsert.data?.id ?? null
     }
-    if (jobInsert.error) console.warn('[seoFactory/pipeline] job insert skipped', jobInsert.error.message)
-    jobId = jobInsert.data?.id ?? null
+    if (jobId && plan.canonicalUrl) {
+      await supabase
+        .from('content_jobs')
+        .update({
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          error_message: `Superseded by in-place repair of ${jobId}`,
+        })
+        .eq('canonical_url', plan.canonicalUrl)
+        .in('status', ['drafting', 'pending', 'failed'])
+        .neq('id', jobId)
+    }
   } catch (e) {
     console.warn('[seoFactory/pipeline] job persist skipped', e)
   }
