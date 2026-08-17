@@ -3,7 +3,10 @@ import {
   JOB_HEAVY_COLUMN_RE,
   JOB_LINEAGE_COLUMNS,
   JOB_LIST_COLUMNS,
+  JOB_MUTATE_COLUMNS,
   JOB_OPEN_COLUMNS,
+  jobDetailShouldAutoLoadBody,
+  slimJobForClient,
 } from '@/lib/seoFactory/jobColumns'
 
 describe('content_jobs select lists stay slim', () => {
@@ -12,8 +15,42 @@ describe('content_jobs select lists stay slim', () => {
     expect(JOB_HEAVY_COLUMN_RE.test(JOB_OPEN_COLUMNS)).toBe(false)
     expect(JOB_HEAVY_COLUMN_RE.test(JOB_BODY_COLUMNS)).toBe(false)
     expect(JOB_HEAVY_COLUMN_RE.test(JOB_LINEAGE_COLUMNS)).toBe(false)
+    expect(JOB_MUTATE_COLUMNS).not.toMatch(/(?:^|,)(?:event_log|lineage|gsc_json)(?:$|,)/)
+    expect(JOB_MUTATE_COLUMNS.split(',')).toContain('audit_json')
     expect(JOB_LIST_COLUMNS.split(',')).not.toContain('content')
     expect(JOB_OPEN_COLUMNS.split(',')).toContain('content')
     expect(JOB_BODY_COLUMNS.split(',')).toContain('content')
+  })
+
+  it('does not auto-load the body on failed / regen-needed jobs', () => {
+    expect(jobDetailShouldAutoLoadBody({
+      status: 'drafting',
+      error_message: 'All content AI providers failed',
+      word_count: 2386,
+    })).toBe(false)
+    expect(jobDetailShouldAutoLoadBody({
+      status: 'failed',
+      error_message: 'quality gate',
+      content: '# draft',
+    })).toBe(false)
+    expect(jobDetailShouldAutoLoadBody({
+      status: 'drafting',
+      error_message: null,
+      word_count: 1800,
+    })).toBe(true)
+  })
+
+  it('strips heavy blobs before a job row is sent to the modal', () => {
+    const slim = slimJobForClient({
+      id: '1',
+      content: 'ok',
+      event_log: [{ message: 'huge' }],
+      lineage: { n: 1 },
+      gsc_json: { clicks: 1 },
+    })
+    expect(slim.content).toBe('ok')
+    expect(slim.event_log).toBeUndefined()
+    expect(slim.lineage).toBeUndefined()
+    expect(slim.gsc_json).toBeUndefined()
   })
 })

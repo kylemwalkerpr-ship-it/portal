@@ -13,7 +13,9 @@ import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
   JOB_LIST_COLUMNS,
+  JOB_MUTATE_COLUMNS,
   JOB_OPEN_COLUMNS,
+  slimJobForClient,
 } from '@/lib/seoFactory/jobColumns'
 
 function sb() {
@@ -102,7 +104,7 @@ export async function GET(request: NextRequest) {
         }
       }
       return NextResponse.json(
-        { job, lineage },
+        { job: slimJobForClient(job), lineage },
         { headers: { 'Cache-Control': 'no-store, max-age=0' } },
       )
     }
@@ -698,10 +700,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = sb()
-    const { data: job, error } = await supabase.from('content_jobs').select('*').eq('id', id).single()
-    if (error || !job) {
+    const mutateCols = action === 'append_log' ? 'id,event_log' : JOB_MUTATE_COLUMNS
+    const { data: jobRow, error } = await supabase.from('content_jobs').select(mutateCols).eq('id', id).single()
+    if (error || !jobRow) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
+    const job = jobRow as unknown as Record<string, any>
 
     const userId =
       (auth as { profile?: { clerk_user_id?: string }; profileId?: string }).profile
@@ -756,7 +760,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update({ status: 'closed', closed_at: new Date().toISOString() })
         .eq('id', id)
-        .select()
+        .select(JOB_OPEN_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
@@ -805,12 +809,12 @@ export async function PATCH(request: NextRequest) {
           .from('content_jobs')
           .update(patch)
           .eq('id', id)
-          .select()
+          .select(JOB_OPEN_COLUMNS)
           .single()
         if (upErr) throw upErr
         // Audit event for the operator timeline.
         try {
-          const prevLog = Array.isArray(updated?.event_log) ? updated!.event_log : Array.isArray(job.event_log) ? job.event_log : []
+          const prevLog = Array.isArray(job.event_log) ? job.event_log : []
           const next = [
             ...prevLog.slice(-200),
             {
@@ -911,7 +915,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update(patch)
         .eq('id', id)
-        .select()
+        .select(JOB_OPEN_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated, audit, plan, appliedRepairs: repaired.applied })
@@ -970,7 +974,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update(patch)
         .eq('id', id)
-        .select()
+        .select(JOB_OPEN_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
@@ -1003,7 +1007,7 @@ export async function PATCH(request: NextRequest) {
           gsc_json: job.gsc_json,
           error_message: null,
         })
-        .select()
+        .select(JOB_OPEN_COLUMNS)
         .single()
       if (insErr) throw insErr
       return NextResponse.json({ ok: true, job: created, duplicatedFrom: id })
@@ -1061,7 +1065,7 @@ export async function PATCH(request: NextRequest) {
                 : 'drafting',
         })
         .eq('id', id)
-        .select()
+        .select(JOB_OPEN_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated, audit, appliedRepairs: repaired.applied })
@@ -1245,7 +1249,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update(patch)
         .eq('id', id)
-        .select()
+        .select(JOB_OPEN_COLUMNS)
         .single()
 
       return NextResponse.json({
@@ -1295,7 +1299,7 @@ export async function PATCH(request: NextRequest) {
             ship_mode: 'autodeploy',
           })
           .eq('id', id)
-          .select()
+          .select(JOB_OPEN_COLUMNS)
           .single()
 
         // Fire-and-watch CI after merge
@@ -1393,12 +1397,12 @@ export async function PATCH(request: NextRequest) {
           .from('content_jobs')
           .update(patch)
           .eq('id', id)
-          .select()
+          .select(JOB_OPEN_COLUMNS)
           .single()
         if (upErr) throw upErr
         // Append an audit event for the operator timeline.
         try {
-          const prevLog = Array.isArray(updated?.event_log) ? updated!.event_log : Array.isArray(job.event_log) ? job.event_log : []
+          const prevLog = Array.isArray(job.event_log) ? job.event_log : []
           const next = [
             ...prevLog.slice(-200),
             {
@@ -1540,7 +1544,7 @@ export async function PATCH(request: NextRequest) {
                   audit_json: audit,
                 })
                 .eq('id', id)
-                .select()
+                .select(JOB_OPEN_COLUMNS)
                 .single()
               const monitor = await monitorContentJob(id, {
                 openIssueOnFailure: true,
@@ -1607,7 +1611,7 @@ export async function PATCH(request: NextRequest) {
             audit_json: audit,
           })
           .eq('id', id)
-          .select()
+          .select(JOB_OPEN_COLUMNS)
           .single()
 
         let monitor = null

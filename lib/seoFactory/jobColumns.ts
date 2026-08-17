@@ -45,7 +45,31 @@ export const JOB_LIST_COLUMNS = [
 
 export const JOB_OPEN_COLUMNS = [JOB_LIST_COLUMNS, 'content'].join(',')
 
+/** PATCH mutate/return — content + audit, never event_log / lineage / gsc_json. */
+export const JOB_MUTATE_COLUMNS = [JOB_OPEN_COLUMNS, 'audit_json'].join(',')
+
 export const JOB_BODY_COLUMNS = 'id,content,word_count,error_message,status,updated_at'
+
+/** Jobs that already failed and need regen must not auto-fetch the stored body.
+ *  That fetch (and the editor mount that follows) is what freezes the modal. */
+export function jobDetailShouldAutoLoadBody(job: {
+  status?: string | null
+  error_message?: string | null
+  content?: string | null
+  word_count?: number | null
+}): boolean {
+  const failed = Boolean(job.error_message) && ['drafting', 'failed', 'pending'].includes(String(job.status || ''))
+  if (failed) return false
+  return Boolean(job.content) || Number(job.word_count) > 0
+}
+
+export function slimJobForClient<T extends Record<string, unknown>>(row: T): T {
+  const next = { ...row }
+  delete (next as Record<string, unknown>).event_log
+  delete (next as Record<string, unknown>).lineage
+  delete (next as Record<string, unknown>).gsc_json
+  return next
+}
 
 export const JOB_LINEAGE_COLUMNS = [
   'id',

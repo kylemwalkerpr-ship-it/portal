@@ -26,6 +26,7 @@ import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream } from '@/lib/seoFactory/sse'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
+import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
   extractMetricValues,
   directionForMetric,
@@ -3534,9 +3535,13 @@ function JobDetail({
   const [jobLineage, setJobLineage] = React.useState<Array<Record<string, any>>>([])
   const [editorContent, setEditorContent] = React.useState(job.content || '')
   const loadGenRef = React.useRef(0)
+  const jobIdRef = React.useRef(job.id)
+  jobIdRef.current = job.id
   const generationFailed = Boolean(detail.error_message) && (detail.status === 'drafting' || detail.status === 'failed' || detail.status === 'pending')
-  const needsBody = Boolean(job.content) || Number(job.word_count) > 0
-  const [loading, setLoading] = React.useState(needsBody && !job.content)
+  const storedDraftLikely = Boolean(job.content) || Number(job.word_count) > 0
+  // Failed / regen-needed jobs open instantly. Auto-fetching the stored body
+  // is what froze this modal (JSON parse + editor mount on a fat draft).
+  const [loading, setLoading] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [actionNotice, setLocalActionNotice] = React.useState<string | null>(null)
@@ -3552,16 +3557,17 @@ function JobDetail({
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
+  const regenAutoResumeRef = React.useRef(false)
   const [audit, setAudit] = React.useState<unknown>(null)
 
   const loadDetail = React.useCallback(async (opts: { body?: boolean } = {}) => {
     const gen = ++loadGenRef.current
-    const wantBody = opts.body !== false && (Boolean(job.content) || Number(job.word_count) > 0)
+    const wantBody = opts.body !== false
     if (wantBody) setLoading(true)
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5_000)
+    const timer = setTimeout(() => controller.abort(), 4_000)
     try {
-      const qs = new URLSearchParams({ id: job.id })
+      const qs = new URLSearchParams({ id: jobIdRef.current })
       if (wantBody) qs.set('body', '1')
       const response = await fetch(`/api/content-studio/jobs?${qs.toString()}`, {
         credentials: 'same-origin',
@@ -3571,13 +3577,11 @@ function JobDetail({
       const data = await response.json().catch(() => ({})) as { job?: ContentJob; lineage?: Array<Record<string, any>>; error?: string }
       if (gen !== loadGenRef.current) return
       if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
-      const next = { ...job, ...data.job }
-      React.startTransition(() => {
-        setDetail(next)
-        if (data.job?.content != null) setEditorContent(String(data.job.content))
-      })
+      const next = { ...job, ...data.job, id: jobIdRef.current }
+      setDetail(next)
+      if (typeof data.job.content === 'string') setEditorContent(data.job.content)
       setActionError(null)
-      if (next.error_message && (next.status === 'drafting' || next.status === 'failed')) {
+      if (next.error_message && (next.status === 'drafting' || next.status === 'failed' || next.status === 'pending')) {
         setResumeAvailable(Boolean(next.content || job.content))
       }
     } catch (error) {
@@ -3585,25 +3589,24 @@ function JobDetail({
       const aborted = error instanceof DOMException && error.name === 'AbortError'
       setActionError(
         aborted
-          ? 'Draft body took too long to load. The window stays usable — Regenerate, Retry load, or close with Esc.'
+          ? 'Draft body took too long to load. The window stays usable — Regenerate, Load draft, or close with Esc.'
           : (error instanceof Error ? error.message : 'Failed to load the full job'),
       )
-      setResumeAvailable(Boolean(job.content) || Number(job.word_count) > 0)
+      setResumeAvailable(storedDraftLikely)
     } finally {
       clearTimeout(timer)
       if (gen === loadGenRef.current) setLoading(false)
     }
-  }, [job])
+  }, [job, storedDraftLikely])
 
   React.useEffect(() => {
-    if (!needsBody && generationFailed) {
+    if (!jobDetailShouldAutoLoadBody(job)) {
       setLoading(false)
       return
     }
-    if (!needsBody) return
     void loadDetail({ body: true })
     return () => { loadGenRef.current += 1 }
-  }, [loadDetail, needsBody, generationFailed])
+  }, [job.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -3618,6 +3621,7 @@ function JobDetail({
 
   const runRegenerateStream = async (resume = false) => {
     if (busy) return
+    if (!resume) regenAutoResumeRef.current = false
     setBusy(true)
     setActiveAction('regenerate')
     setActionError(null)
@@ -3707,9 +3711,10 @@ function JobDetail({
       setActionError(message)
       setActionNotice(resumable ? 'Partial draft saved. Continue when ready.' : 'Regeneration did not complete.')
 
-      // Auto-resume: on timeout with streamed content, don't make the
-      // operator click a button — the checkpoint is reliable, just continue.
-      if (timedOut && streamedChars > 0) {
+      // Auto-resume once: a timeout with streamed content has a checkpoint.
+      // Never loop — a second timeout stays in the usable modal.
+      if (timedOut && streamedChars > 0 && !regenAutoResumeRef.current) {
+        regenAutoResumeRef.current = true
         record('info', 'Auto-resuming from the saved checkpoint…', 'info')
         clearTimeout(timeout)
         actionAbortRef.current = null
@@ -3914,13 +3919,15 @@ function JobDetail({
           {loading && !editorContent.trim()
             ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>
                 Loading draft body…
-                <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Retry load below.</div>
+                <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
               ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
-                  {generationFailed
+                  {generationFailed && storedDraftLikely
+                    ? `This run failed after a ${Number(detail.word_count || job.word_count) || 'partial'} word draft was stored. The window stays open so you can Regenerate (Grok is the SuperGrok fallback) or Load the saved draft to edit it.`
+                    : generationFailed
                     ? 'Generation failed before a full draft was stored. Click Regenerate to rewrite with another model (Grok is the SuperGrok fallback), or Duplicate to start a fresh job from this brief.'
                     : 'No draft body is stored on this job yet. Regenerate to write one.'}
                 </div>
@@ -3933,7 +3940,8 @@ function JobDetail({
           {actionBtn('💾 Save draft', { border: C.gold, bg: dirty ? '#FFFBEB' : C.surface2, disabled: busy || !dirty || !editorContent.trim(), onClick: () => void runAction('save'), title: 'Persist your edits to the job' })}
           {actionBtn('🔍 Re-audit', { border: C.blue, fg: C.blue, disabled: busy || !editorContent.trim(), onClick: () => void runAction('reaudit'), title: 'Re-run the quality audit on the current text' })}
           {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy, onClick: () => void runAction('regenerate'), title: 'Rewrite the full piece with AI (creates a replacement job)' })}
-          {generationFailed && actionBtn('↻ Retry load', { border: C.navy, fg: C.navy, disabled: busy, onClick: () => void loadDetail(), title: 'Fetch the stored draft again' })}
+          {generationFailed && storedDraftLikely && actionBtn(loading ? '↻ Loading draft…' : '↻ Load saved draft', { border: C.navy, fg: C.navy, disabled: busy || loading, onClick: () => void loadDetail({ body: true }), title: 'Fetch the stored draft body so you can edit it' })}
+          {generationFailed && !storedDraftLikely && actionBtn('↻ Retry load', { border: C.navy, fg: C.navy, disabled: busy, onClick: () => void loadDetail({ body: true }), title: 'Fetch the stored draft again' })}
         </div>
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>🚀 Delivering to the sites</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -5585,16 +5593,18 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   }, [fetchJobs, selectedJob])
 
   // Coming back to the tab must pull a fresh desk, not the last hidden snapshot.
+  // Skip while a job modal is open — a queue refresh must never contend with
+  // the dialog (or re-parse a fat payload on the main thread).
   React.useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === 'visible') {
-        void fetchJobs()
-        void fetchEngineStatus()
-      }
+      if (document.visibilityState !== 'visible') return
+      if (selectedJob) return
+      void fetchJobs()
+      void fetchEngineStatus()
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
-  }, [fetchJobs, fetchEngineStatus])
+  }, [fetchJobs, fetchEngineStatus, selectedJob])
 
   const handleGenerate = async (formData: any) => {
     setGenerating(true)
