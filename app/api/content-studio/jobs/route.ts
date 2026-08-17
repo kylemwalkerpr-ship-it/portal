@@ -245,7 +245,7 @@ export async function GET(request: NextRequest) {
       offset,
       limit,
       summary,
-    })
+    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } })
   } catch (err) {
     console.error('[content-studio/jobs]', err)
     // Surface JSON 500/503 so UI can stop retry storms.

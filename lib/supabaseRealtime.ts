@@ -24,6 +24,7 @@ export function subscribeToTable(
   table: string,
   schema: string,
   onEvent: (payload: RealtimePayload) => void,
+  onStatus?: (status: string) => void,
 ): () => void {
   const supabase = createSupabaseBrowserClient()
   const channelName = `realtime:${schema}:${table}:${Math.random().toString(36).slice(2, 8)}`
@@ -40,7 +41,9 @@ export function subscribeToTable(
         old: payload.old ?? null,
       })
     })
-    .subscribe()
+    .subscribe((status) => {
+      onStatus?.(String(status))
+    })
 
   return () => {
     try {

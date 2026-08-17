@@ -19,7 +19,7 @@
  */
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
-import { StudioLiveDesk, ENGINE_ACTION_LABEL } from './studio-live-desk'
+import { StudioLiveDesk, ENGINE_ACTION_LABEL, type DeskLiveState } from './studio-live-desk'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
@@ -4528,6 +4528,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [engineStatusAt, setEngineStatusAt] = React.useState<number | null>(null)
   const [engineTick, setEngineTick] = React.useState(0)
   const engineStatusRefreshRef = React.useRef(0)
+  const [deskLive, setDeskLive] = React.useState<DeskLiveState>('connecting')
   const [queueFocusJobId, setQueueFocusJobId] = React.useState<string | null>(null)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
   // Work Plan — multi-select table for Discover stage
@@ -4715,7 +4716,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const fetchJobs = React.useCallback(async (): Promise<ContentJob[]> => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return []
     try {
-      const res = await fetch('/api/content-studio/jobs?limit=100', { credentials: 'same-origin' })
+      const res = await fetch('/api/content-studio/jobs?limit=100', { credentials: 'same-origin', cache: 'no-store' })
       if (res.status === 503) { setError('Server busy (503). Waiting before next refresh…'); return [] }
       const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -4989,11 +4990,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Engine surfaces — non-fatal
   const fetchEngineStatus = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/seo-engine/status', { credentials: 'same-origin' })
-      if (!res.ok) return
+      const res = await fetch('/api/seo-engine/status', { credentials: 'same-origin', cache: 'no-store' })
+      if (!res.ok) {
+        setDeskLive((prev) => (prev === 'live' ? prev : 'offline'))
+        return
+      }
       const data = await res.json().catch(() => ({}))
-      if (data.ok) { setEngineStatus(data); setEngineStatusAt(Date.now()) }
-    } catch { /* best-effort */ }
+      if (data.ok) {
+        setEngineStatus(data)
+        setEngineStatusAt(Date.now())
+        setDeskLive((prev) => (prev === 'offline' ? 'poll' : prev === 'connecting' ? 'poll' : prev))
+      } else {
+        setDeskLive((prev) => (prev === 'live' ? prev : 'offline'))
+      }
+    } catch {
+      setDeskLive((prev) => (prev === 'live' ? prev : 'offline'))
+    }
   }, [])
 
   const fetchGateRuns = React.useCallback(async () => {
@@ -5031,10 +5043,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Realtime: any engine-table write refreshes the desk (debounced).
   React.useEffect(() => {
     let t: ReturnType<typeof setTimeout> | null = null
+    let subscribed = 0
     const kick = () => {
       if (t) clearTimeout(t)
       t = setTimeout(() => { void fetchEngineStatus() }, 350)
     }
+    const onStatus = (status: string) => {
+      if (status === 'SUBSCRIBED') {
+        subscribed += 1
+        setDeskLive('live')
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        setDeskLive((prev) => (prev === 'live' && subscribed > 0 ? prev : 'poll'))
+      }
+    }
+    const fallback = window.setTimeout(() => {
+      setDeskLive((prev) => (prev === 'connecting' ? 'poll' : prev))
+    }, 4000)
     const offs = [
       'seo_knowledge',
       'seo_cluster_plans',
@@ -5043,9 +5067,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       'seo_gate_runs',
       'seo_engine_runs',
       'seo_ranking_scores',
-    ].map((table) => subscribeToTable(table, 'public', kick))
+    ].map((table) => subscribeToTable(table, 'public', kick, onStatus))
     return () => {
       if (t) clearTimeout(t)
+      window.clearTimeout(fallback)
       offs.forEach((off) => off())
     }
   }, [fetchEngineStatus])
@@ -5428,18 +5453,32 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     return () => clearInterval(interval)
   }, [jobs, fetchJobs])
 
-  // Background jobs poll — queue badges stay fresh even when nothing is drafting.
+  // Background jobs poll — 10s so the desk never sits on a 30s-old queue.
   React.useEffect(() => {
-    const id = setInterval(fetchJobs, 30_000)
+    const id = setInterval(fetchJobs, 10_000)
     return () => clearInterval(id)
   }, [fetchJobs])
 
   // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE refreshes the queue
   // instantly — a draft finishing or a PR landing shows up without a poll.
   React.useEffect(() => {
-    const off = subscribeToTable('content_jobs', 'public', () => { fetchJobs() })
+    const off = subscribeToTable('content_jobs', 'public', () => { fetchJobs() }, (status) => {
+      if (status === 'SUBSCRIBED') setDeskLive('live')
+    })
     return off
   }, [fetchJobs])
+
+  // Coming back to the tab must pull a fresh desk, not the last hidden snapshot.
+  React.useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchJobs()
+        void fetchEngineStatus()
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [fetchJobs, fetchEngineStatus])
 
   const handleGenerate = async (formData: any) => {
     setGenerating(true)
@@ -5743,6 +5782,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
       <StudioLiveDesk
         summary={jobSummary}
+        jobs={jobs}
         generating={generating}
         engine={engineStatus}
         engineAt={engineStatusAt}
@@ -5750,9 +5790,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         engineAction={engineAction}
         engineElapsed={engineElapsed}
         engineTrace={engineTrace}
+        liveState={deskLive}
         onIngest={() => void runEngineAction('ingest')}
         onPlan={() => void runEngineAction('plan')}
         onLlm={() => void runEngineAction('llm')}
+        onOpenJob={(job) => { setSelectedJob(job); selectTab('draft') }}
+        onFilterQueue={(status) => { setQueueStatusFilter(status); selectTab('draft') }}
+        onRefresh={() => { void fetchJobs(); void fetchEngineStatus() }}
       />
 
       <StudioStageNav
