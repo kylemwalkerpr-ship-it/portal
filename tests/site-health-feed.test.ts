@@ -3,7 +3,7 @@ import {
   deriveSiteHealthFacts,
   normalizePageUrl,
 } from '@/lib/seoFactory/siteHealthSnapshot'
-import { enrichInboundLinks, isRootPageUrl, type SiteHealthPage } from '@/lib/seoFactory/siteHealth'
+import { configForFile, enrichInboundLinks, isRootPageUrl, type SiteHealthPage } from '@/lib/seoFactory/siteHealth'
 import { computeSignals } from '@/lib/seoFactory/masterEngine'
 
 function page(partial: Partial<SiteHealthPage> & { url: string }): SiteHealthPage {
@@ -20,6 +20,49 @@ function page(partial: Partial<SiteHealthPage> & { url: string }): SiteHealthPag
     ...partial,
   }
 }
+
+describe('configForFile — regional markdown content', () => {
+  it('maps a flat {region}/content/{slug}.md to the regional host', () => {
+    expect(configForFile('yousafe-consultancy', 'usa/content/student-neighborhoods-affordability-location-or-commute.md')).toEqual({
+      host: 'usa.yousafeconsultancy.com',
+      baseUrl: 'https://usa.yousafeconsultancy.com',
+      route: '/student-neighborhoods-affordability-location-or-commute/',
+    })
+  })
+
+  it('preserves nested content sub-paths (universities, from, blog)', () => {
+    expect(configForFile('yousafe-consultancy', 'usa/content/universities/american-university-international-students.md')).toEqual({
+      host: 'usa.yousafeconsultancy.com',
+      baseUrl: 'https://usa.yousafeconsultancy.com',
+      route: '/universities/american-university-international-students/',
+    })
+    expect(configForFile('yousafe-consultancy', 'uk/content/from/united-arab-emirates.md')).toEqual({
+      host: 'uk.yousafeconsultancy.com',
+      baseUrl: 'https://uk.yousafeconsultancy.com',
+      route: '/from/united-arab-emirates/',
+    })
+  })
+
+  it('maps the apex landing-page region to the bare domain', () => {
+    expect(configForFile('yousafe-consultancy', 'landing-page/content/pricing.md')).toEqual({
+      host: 'yousafeconsultancy.com',
+      baseUrl: 'https://yousafeconsultancy.com',
+      route: '/pricing/',
+    })
+  })
+
+  it('maps content/index.md to the root route', () => {
+    expect(configForFile('yousafe-consultancy', 'usa/content/index.md')!.route).toBe('/')
+  })
+
+  it('still maps regional app/page.tsx files unchanged', () => {
+    expect(configForFile('yousafe-consultancy', 'usa/app/universities/harvard/page.tsx')).toEqual({
+      host: 'usa.yousafeconsultancy.com',
+      baseUrl: 'https://usa.yousafeconsultancy.com',
+      route: '/universities/harvard/',
+    })
+  })
+})
 
 describe('site health snapshot helpers', () => {
   it('normalizes URLs to a host+pathname match key', () => {

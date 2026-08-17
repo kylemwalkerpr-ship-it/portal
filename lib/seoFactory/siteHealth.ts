@@ -76,7 +76,7 @@ const SOURCE_FILE = /\.(tsx?|mdx?)$/i
 const PAGE_FILE = /\/page\.tsx$/
 const DYNAMIC = /(^|\/)[^/]*\[[^/]+\][^/]*\//
 
-function configForFile(repo: RepoId, path: string): { host: string; baseUrl: string; route: string } | null {
+export function configForFile(repo: RepoId, path: string): { host: string; baseUrl: string; route: string } | null {
   if (repo === 'caseworks' && path.startsWith('app/') && PAGE_FILE.test(path)) {
     const route = path.replace(/^app\//, '').replace(/\/page\.tsx$/, '')
     return { host: CONFIGS.caseworks.host, baseUrl: CONFIGS.caseworks.baseUrl, route: route ? `/${route}/` : '/' }
@@ -89,6 +89,20 @@ function configForFile(repo: RepoId, path: string): { host: string; baseUrl: str
     const m = path.match(/^(usa|uk|ca|au|landing-page)\/app\/(.*)\/page\.tsx$/)
     if (!m) return null
     const route = m[2] ? `/${m[2]}/` : '/'
+    const host = m[1] === 'landing-page' ? 'yousafeconsultancy.com' : `${m[1]}.yousafeconsultancy.com`
+    return { host, baseUrl: `https://${host}`, route }
+  }
+  // Regional markdown content — the {region}/content/*.md pages (flat slugs,
+  // blog/, from/, universities/, etc.) that ship as static regional pages.
+  // Maps `usa/content/{rest}.md` → `usa.yousafeconsultancy.com/{rest}/`, mirroring
+  // pathForHostFallback in ownership.ts. Previously these files passed the
+  // SOURCE_FILE filter but configForFile returned null, so they never became
+  // SiteHealthPage entries and regional content jobs could never match.
+  if (repo === 'yousafe-consultancy' && /\.(md|mdx)$/i.test(path)) {
+    const m = path.match(/^(usa|uk|ca|au|landing-page)\/content\/(.+)\.(md|mdx)$/)
+    if (!m) return null
+    const rest = m[2] === 'index' ? '' : m[2].replace(/\/index$/i, '')
+    const route = rest ? `/${rest}/` : '/'
     const host = m[1] === 'landing-page' ? 'yousafeconsultancy.com' : `${m[1]}.yousafeconsultancy.com`
     return { host, baseUrl: `https://${host}`, route }
   }
