@@ -64,13 +64,13 @@ const JOB_LIST_COLUMNS = [
   'master_engine_fetched_at',
 ].join(',')
 
-const JOB_DETAIL_COLUMNS = [
+// Open-job payload must stay small. Failed retries accumulate a multi-MB
+// event_log; selecting it on GET ?id= has frozen the Worker and the studio
+// modal. Timeline is derived from job timestamps + a capped tail if present.
+const JOB_OPEN_COLUMNS = [
   JOB_LIST_COLUMNS,
   'content',
-  'event_log',
   'audit_json',
-  'competing_snippets',
-  'competing_urls',
 ].join(',')
 
 const JOB_LINEAGE_COLUMNS = [
@@ -121,31 +121,35 @@ export async function GET(request: NextRequest) {
     const supabase = sb()
 
     if (id) {
-      const { data, error } = await supabase.from('content_jobs').select(JOB_DETAIL_COLUMNS).eq('id', id).single()
+      const { data, error } = await supabase.from('content_jobs').select(JOB_OPEN_COLUMNS).eq('id', id).single()
       if (error) throw new Error(error.message)
+      const job = data as unknown as Record<string, unknown>
+      // Never send the raw lineage blob or a giant event_log back to the modal.
       const lineage: Array<Record<string, unknown>> = []
       const seen = new Set<string>()
-      let current = data as unknown as Record<string, unknown>
-      for (let depth = 0; depth < 8 && current?.id && !seen.has(String(current.id)); depth++) {
+      let current: Record<string, unknown> = {
+        id: job.id,
+        source_job_id: job.source_job_id,
+        title: job.title,
+        topic: job.topic,
+        status: job.status,
+        created_at: job.created_at,
+        regeneration_mode: job.regeneration_mode,
+        regeneration_reason: job.regeneration_reason,
+      }
+      for (let depth = 0; depth < 6 && current?.id && !seen.has(String(current.id)); depth++) {
         seen.add(String(current.id))
-        lineage.unshift({
-          id: current.id,
-          source_job_id: current.source_job_id || null,
-          title: current.title || null,
-          topic: current.topic || null,
-          status: current.status || null,
-          created_at: current.created_at || null,
-          regeneration_mode: current.regeneration_mode || null,
-          regeneration_reason: current.regeneration_reason || null,
-          lineage: current.lineage || null,
-        })
+        lineage.unshift(current)
         const sourceId = String(current.source_job_id || '')
         if (!sourceId) break
         const { data: source } = await supabase.from('content_jobs').select(JOB_LINEAGE_COLUMNS).eq('id', sourceId).maybeSingle()
         if (!source) break
         current = source as unknown as Record<string, unknown>
       }
-      return NextResponse.json({ job: data, lineage })
+      return NextResponse.json(
+        { job, lineage },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+      )
     }
 
     if (ids.length) {

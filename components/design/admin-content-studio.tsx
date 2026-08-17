@@ -3335,13 +3335,15 @@ function MergeHistory() {
 }
 
 // ── Job Timeline (built from the already-loaded job — never re-fetches) ──
+const TIMELINE_CAP = 40
+
 function buildJobTimelineEntries(job: ContentJob, lineage: Array<Record<string, any>> = []): TimelineEntry[] {
   const derived: TimelineEntry[] = []
   const pushStage = (ts: unknown, source: string, message: string, detail?: string, level: LogLevel = 'success') => {
     const ms = typeof ts === 'number' ? ts : ts ? new Date(String(ts)).getTime() : NaN
     if (Number.isFinite(ms)) derived.push({ ts: ms, level, source, message, detail, kind: 'stage' })
   }
-  for (const node of lineage) {
+  for (const node of lineage.slice(-8)) {
     pushStage(node.created_at, 'lineage', `${node.regeneration_mode ? `${node.regeneration_mode} · ` : ''}${node.status || 'job'}: ${node.title || node.topic || node.id}`, node.regeneration_reason || undefined, node.status === 'failed' ? 'error' : 'info')
   }
   pushStage(job.created_at, 'job', 'Job created (queued)', undefined, 'info')
@@ -3354,16 +3356,15 @@ function buildJobTimelineEntries(job: ContentJob, lineage: Array<Record<string, 
   if (job.status === 'failed' || job.error_message) {
     pushStage(job.updated_at ?? Date.now(), 'pipeline', job.error_message || 'Job failed', undefined, 'error')
   }
-  const logs: TimelineEntry[] = Array.isArray(job.event_log)
-    ? (job.event_log as any[]).map((e) => ({
+  const rawLog = Array.isArray(job.event_log) ? (job.event_log as any[]).slice(-TIMELINE_CAP) : []
+  const logs: TimelineEntry[] = rawLog.map((e) => ({
         ts: typeof e.ts === 'number' ? e.ts : new Date(String(e.ts)).getTime(),
         level: (['success', 'info', 'warn', 'error'].includes(e.level) ? e.level : 'info') as LogLevel,
         source: String(e.source || 'studio'),
-        message: String(e.message || ''),
-        detail: e.detail ? String(e.detail) : undefined,
+        message: String(e.message || '').slice(0, 400),
+        detail: e.detail ? String(e.detail).slice(0, 500) : undefined,
         kind: 'log' as const,
       })).filter((e) => Number.isFinite(e.ts))
-    : []
   const seen = new Set<string>()
   return [...logs, ...derived]
     .filter((e) => {
@@ -3373,6 +3374,7 @@ function buildJobTimelineEntries(job: ContentJob, lineage: Array<Record<string, 
       return true
     })
     .sort((a, b) => a.ts - b.ts)
+    .slice(-TIMELINE_CAP)
 }
 
 function JobTimeline({ job, lineage = [] }: { job: ContentJob; lineage?: Array<Record<string, any>> }) {
@@ -3453,6 +3455,7 @@ function JobDetail({
   const [jobLineage, setJobLineage] = React.useState<Array<Record<string, any>>>([])
   const [editorContent, setEditorContent] = React.useState(job.content || '')
   const [loading, setLoading] = React.useState(!job.content)
+  const loadGenRef = React.useRef(0)
   const generationFailed = Boolean(detail.error_message) && (detail.status === 'drafting' || detail.status === 'failed' || detail.status === 'pending')
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
@@ -3472,39 +3475,54 @@ function JobDetail({
   const [audit, setAudit] = React.useState<unknown>(null)
 
   const loadDetail = React.useCallback(async () => {
+    const gen = ++loadGenRef.current
     setLoading(true)
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 12_000)
+    const timer = setTimeout(() => controller.abort(), 8_000)
     try {
       const response = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(job.id)}`, {
         credentials: 'same-origin',
+        cache: 'no-store',
         signal: controller.signal,
       })
       const data = await response.json().catch(() => ({})) as { job?: ContentJob; lineage?: Array<Record<string, any>>; error?: string }
+      if (gen !== loadGenRef.current) return
       if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
       setDetail(data.job)
       setJobLineage(Array.isArray(data.lineage) ? data.lineage : [])
       setEditorContent(data.job.content || job.content || '')
       setAudit((data.job as ContentJob & { audit_json?: unknown }).audit_json || null)
       setActionError(null)
-      if (data.job.error_message && data.job.status === 'drafting') {
+      if (data.job.error_message && (data.job.status === 'drafting' || data.job.status === 'failed')) {
         setResumeAvailable(Boolean(data.job.content || job.content))
       }
     } catch (error) {
+      if (gen !== loadGenRef.current) return
       const aborted = error instanceof DOMException && error.name === 'AbortError'
       setActionError(
         aborted
-          ? 'Full job took too long to load. You can still regenerate, or retry opening the draft.'
+          ? 'Full job took too long to load. Use Regenerate or Retry load — the window stays usable.'
           : (error instanceof Error ? error.message : 'Failed to load the full job'),
       )
       setResumeAvailable(Boolean(job.content) || Number(job.word_count) > 0)
     } finally {
       clearTimeout(timer)
-      setLoading(false)
+      if (gen === loadGenRef.current) setLoading(false)
     }
-  }, [job.id, job.content, job.word_count])
+  }, [job.id, job.content])
 
-  React.useEffect(() => { void loadDetail() }, [loadDetail])
+  React.useEffect(() => {
+    void loadDetail()
+    return () => { loadGenRef.current += 1 }
+  }, [loadDetail])
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [busy, onClose])
 
   const runRegenerateStream = async (resume = false) => {
     if (busy) return
@@ -3700,7 +3718,7 @@ function JobDetail({
   )
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={detail.title || 'Job details'} style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radius, border: `1px solid ${C.border}`, maxWidth: 840, width: '92vw', maxHeight: '92vh', overflow: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
@@ -3801,13 +3819,13 @@ function JobDetail({
             </div>
             {dirty && <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono }}>Unsaved changes</span>}
           </div>
-          {loading
+          {loading && !editorContent.trim()
             ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>
-                Loading full job content…
-                <div style={{ marginTop: 8, fontSize: 10 }}>If this stays here, the job is still usable — use Regenerate or retry below.</div>
+                Loading draft body…
+                <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Retry load below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingSnippets={detail.competing_snippets ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed
@@ -3830,8 +3848,8 @@ function JobDetail({
           {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal, onClick: () => void runAction('reship'), title: 'Open / update the pull request without merging' })}
           {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal, onClick: () => void runAction('approve'), title: 'Approve content and trigger deployment to main' })}
           {detail.pr_number && !terminal && actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { border: C.green, fg: C.green, bg: '#F0FDF4', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}
-          {actionBtn('🩺 Monitor deploy', { disabled: busy || loading, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
-          {actionBtn('⧉ Duplicate', { disabled: busy || loading, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}
+          {actionBtn('🩺 Monitor deploy', { disabled: busy, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
+          {actionBtn('⧉ Duplicate', { disabled: busy, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}
         </div>
 
         {audit && <details style={{ marginTop: 12 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Raw audit JSON</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: C.radiusXs, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
@@ -6687,6 +6705,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {/* ── Detail modal ── */}
       {selectedJob && (
         <JobDetail
+          key={selectedJob.id}
           job={selectedJob}
           onClose={() => setSelectedJob(null)}
           onRefresh={async () => { await fetchJobs() }}
