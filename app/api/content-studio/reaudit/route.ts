@@ -54,6 +54,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   //   · DeepSeek V4 Flash 0731 → Baseten (the reasoning review heavyweight)
   //   · anything else (legacy/custom) → normal cascade
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
+  const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
   const isGlmFast =
     effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
   const isAihubmixGlmFast =
@@ -64,13 +65,15 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731'
   const aiProvider = isGpt
     ? 'openai'
-    : isGlmFast
-      ? 'baseten-glm-fast'
-      : isAihubmixGlmFast
-        ? 'aihubmix-glm-fast'
-        : isDeepseekFlash
-          ? 'baseten-deepseek'
-          : undefined
+    : isGrok
+      ? 'grok'
+      : isGlmFast
+        ? 'baseten-glm-fast'
+        : isAihubmixGlmFast
+          ? 'aihubmix-glm-fast'
+          : isDeepseekFlash
+            ? 'baseten-deepseek'
+            : undefined
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,

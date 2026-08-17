@@ -21,6 +21,7 @@ import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
 import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream } from '@/lib/seoFactory/sse'
@@ -2714,23 +2715,34 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       </div>
 
       {/* ── INTERLINKS ── */}
-      {briefInterlinks && briefInterlinks.length > 0 && (
-        <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <label style={{ ...labelBase, marginBottom: 0 }}>Interlink Targets ({briefInterlinks.length} links)</label>
-            <button onClick={onAutoInterlink} disabled={autoInterlinkBusy} style={{ ...btnGhost, padding: '4px 10px', fontSize: 10 }}>
-              {autoInterlinkBusy ? '⏳ Finding…' : 'Find interlinks'}
-            </button>
-          </div>
+      <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <label style={{ ...labelBase, marginBottom: 0 }}>
+            Interlink Targets ({briefInterlinks?.length || 0} link{(briefInterlinks?.length || 0) === 1 ? '' : 's'})
+          </label>
+          <button
+            type="button"
+            onClick={onAutoInterlink}
+            disabled={autoInterlinkBusy || !topic.trim()}
+            style={{ ...btnGhost, padding: '4px 10px', fontSize: 10 }}
+          >
+            {autoInterlinkBusy ? '⏳ Finding…' : 'Find interlinks'}
+          </button>
+        </div>
+        {briefInterlinks && briefInterlinks.length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {briefInterlinks.slice(0, 10).map((l, i) => (
-              <span key={i} style={{ padding: '3px 8px', background: E.ivory, border: `1px solid ${E.hairline}`, fontSize: 10, fontFamily: C.mono, color: E.ink }}>
+              <span key={i} title={l.url} style={{ padding: '3px 8px', background: E.ivory, border: `1px solid ${E.hairline}`, fontSize: 10, fontFamily: C.mono, color: E.ink }}>
                 {l.site ? `${l.site} → ` : ''}{l.label || l.url}
               </span>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ fontSize: 10, color: E.inkDim, fontFamily: C.serif, fontStyle: 'italic' }}>
+            No estate links yet — click Find interlinks to pull live pages across legal, regional, and marketplace.
+          </div>
+        )}
+      </div>
 
       {/* ── SYSTEM PROMPT PREVIEW (collapsible) ── */}
       <div style={{ background: '#0F172A', border: `1px solid ${E.hairline}` }}>
@@ -5392,7 +5404,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     return jobs.filter((j) => j.status === queueStatusFilter)
   }, [jobs, queueStatusFilter])
 
-  // Auto-interlink from the engine for the current topic
+  // Auto-interlink: Master Engine ontology + live estate registry/inventory.
   const runAutoInterlink = React.useCallback(async () => {
     if (!topic.trim()) return
     setAutoInterlinkBusy(true)
@@ -5400,20 +5412,38 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     try {
       const country = ['US', 'UK', 'CA', 'AU'].includes(region) ? region : 'US'
       const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'seo-page'
-      const res = await fetch('/api/seo-engine/interlink', {
-        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceSlug: slug, stage: interlinkStage, country, contentType: 'blog_post' }),
-      })
-      const data = await res.json()
-      if (!data.ok) throw new Error(data.error || 'interlink failed')
-      const edges: Array<{ anchor_text: string; target_url: string; target_host: string }> = data.edges || []
-      setBriefInterlinks(edges.slice(0, 6).map((e) => ({ label: e.anchor_text, url: e.target_url, site: e.target_host })))
+      const kwArr = keywords.split(',').map((s) => s.trim()).filter(Boolean)
+      const [engineRes, estateRes] = await Promise.all([
+        fetch('/api/seo-engine/interlink', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceSlug: slug,
+            stage: interlinkStage,
+            country,
+            contentType: contentType === 'regional_page' ? 'regional_page' : 'blog_post',
+            relatedTerms: kwArr.slice(0, 8),
+          }),
+        }),
+        fetch('/api/content-studio/interlinks', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: topic.trim(), keywords: kwArr, maxResults: 10 }),
+        }),
+      ])
+      const engine = await engineRes.json().catch(() => ({})) as { ok?: boolean; error?: string; edges?: Array<Record<string, unknown>> }
+      const estate = await estateRes.json().catch(() => ({})) as { suggestions?: Array<Record<string, unknown>>; error?: string }
+      if (!engineRes.ok && !estateRes.ok) {
+        throw new Error(engine.error || estate.error || 'interlink failed')
+      }
+      const merged = mergeInterlinkLists(estate.suggestions, engine.edges).slice(0, 10)
+      if (!merged.length) throw new Error('No live estate links found for this topic — try a clearer keyword or stage.')
+      setBriefInterlinks(merged)
+      setActionNotice(`🔗 ${merged.length} interlink${merged.length === 1 ? '' : 's'} ready for the draft`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto-interlink failed')
     } finally {
       setAutoInterlinkBusy(false)
     }
-  }, [topic, region, interlinkStage])
+  }, [topic, region, interlinkStage, keywords, contentType, setActionNotice])
 
   // Page further into the queue — older jobs stay reachable beyond the window.
   const loadMoreJobs = React.useCallback(async () => {

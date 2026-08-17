@@ -67,9 +67,9 @@ type Props = {
    *  sections carry the right jurisdictional detail. */
   region?: string
   /** Review model override — defaults to gpt-5.6-sol (senior editor).
-   *  gpt-5.6-terra is the faster, lower-cost OpenAI alternative; GLM 5.2 Fast
-   *  (baseten-glm-fast) is the efficient open-source editor. Sent to the
-   *  reaudit API as the reviewModel field. */
+   *  grok is SuperGrok 4.6; gpt-5.6-terra is the faster OpenAI alternative;
+   *  GLM 5.2 Fast is the efficient open-source editor. Sent to the reaudit
+   *  API as the reviewModel field. */
   reviewModel?: string
   onReviewModelChange?: (m: string) => void
   /** SERP competitor snippets (Discover/Research stage) — fed into the fix
@@ -709,8 +709,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {saving ? 'Saving...' : 'Save'}
         </button>
 
-        {/* Review model selector — GPT Sol (senior editor), GPT Terra (fast
-            OpenAI), or GLM 5.2 Fast (efficient open-source via Baseten). */}
+        {/* Review model selector — GPT Sol (senior editor), SuperGrok, Terra,
+            or the open-source reviewers. */}
         {onReviewModelChange && (
           <select
             value={reviewModel || 'gpt-5.6-sol'}
@@ -726,6 +726,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             }}
           >
             <option value="gpt-5.6-sol">GPT Sol · Senior Editor</option>
+            <option value="grok">Grok 4.6 · SuperGrok Review</option>
             <option value="gpt-5.6-terra">GPT Terra · Fast Review</option>
             <option value="baseten-deepseek">DeepSeek V4 Flash · Baseten Review</option>
             <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten Review</option>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
+import { suggestInterlinks } from '@/lib/interlinkRegistry'
+import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
 
 /**
  * POST /api/content-studio/interlinks
@@ -27,7 +28,19 @@ export async function POST(request: NextRequest) {
     const keywords = Array.isArray(body.keywords) ? body.keywords : []
     const maxResults = typeof body.maxResults === 'number' ? Math.min(body.maxResults, 10) : 5
 
-    const suggestions = await suggestVerifiedInterlinks(topic, keywords, maxResults)
+    const [registry, inventory] = await Promise.all([
+      Promise.resolve(suggestInterlinks(topic, keywords, maxResults)),
+      suggestInventoryInterlinks(topic, keywords, maxResults).catch(() => []),
+    ])
+    const seen = new Set<string>()
+    const suggestions: Array<{ label: string; url: string; site?: string }> = []
+    for (const s of [...registry, ...inventory]) {
+      const key = String(s.url || '').replace(/\/+$/, '').toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      suggestions.push({ label: s.label, url: s.url, site: s.site })
+      if (suggestions.length >= maxResults) break
+    }
 
     return NextResponse.json({
       topic,
