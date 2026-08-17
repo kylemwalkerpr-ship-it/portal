@@ -447,6 +447,9 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
     ['t_security_headers', 'Security headers (CSP/X-Frame/HSTS)', 1, 1, true],
     ['t_ahrefs_health', 'Ahrefs Site Audit health score', 1, 2, true],
     ['t_ahrefs_cs_open', 'Ahrefs issues CS can introduce (clear)', 1, 2, true],
+    ['t_ahrefs_og', 'Ahrefs Open Graph completeness', 1, 1, true],
+    ['t_ahrefs_schema', 'Ahrefs schema.org validation (clear)', 1, 1, true],
+    ['t_ahrefs_orphan', 'Ahrefs orphan-page pressure (clear)', 1, 1, true],
     ['t_cookie_consent', 'Cookie-consent compliance', 1, 1, false],
     ['t_malware_status', 'Malware/blacklist status', 1, 1, false],
     ['t_email_auth', 'Email auth (SPF/DKIM/DMARC)', 1, 1, false],
@@ -694,7 +697,13 @@ export interface MasterEngineInput {
   ahrefs?: {
     healthScore?: number | null
     csOpen?: number | null
+    csOpenTypes?: number | null
     totalOpen?: number | null
+    ogIncomplete?: number | null
+    schemaErrors?: number | null
+    orphans?: number | null
+    broken4xx?: number | null
+    indexNowBacklog?: number | null
   } | null
   /** Per-URL backlink snapshot from the DataForSEO provider (links subsystem). */
   backlinks?: BacklinkSnapshot | null
@@ -1388,9 +1397,20 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.t_ahrefs_health = input.ahrefs?.healthScore != null
     ? Math.max(0, Math.min(1, Number(input.ahrefs.healthScore) / 100))
     : null
-  out.t_ahrefs_cs_open = input.ahrefs?.csOpen == null
+  out.t_ahrefs_cs_open = input.ahrefs?.csOpenTypes != null
+    ? Math.max(0, 1 - Math.min(1, Number(input.ahrefs.csOpenTypes) / 16))
+    : input.ahrefs?.csOpen == null
+      ? null
+      : input.ahrefs.csOpen <= 0 ? 1 : Math.max(0, 1 - Math.min(1, Number(input.ahrefs.csOpen) / 200))
+  out.t_ahrefs_og = input.ahrefs?.ogIncomplete == null
     ? null
-    : input.ahrefs.csOpen <= 0 ? 1 : Math.max(0, 1 - Math.min(1, Number(input.ahrefs.csOpen) / 40))
+    : input.ahrefs.ogIncomplete <= 0 ? 1 : Math.max(0, 1 - Math.min(1, Number(input.ahrefs.ogIncomplete) / 50))
+  out.t_ahrefs_schema = input.ahrefs?.schemaErrors == null
+    ? null
+    : input.ahrefs.schemaErrors <= 0 ? 1 : Math.max(0, 1 - Math.min(1, Number(input.ahrefs.schemaErrors) / 120))
+  out.t_ahrefs_orphan = input.ahrefs?.orphans == null
+    ? null
+    : input.ahrefs.orphans <= 0 ? 1 : Math.max(0, 1 - Math.min(1, Number(input.ahrefs.orphans) / 205))
 
   out.l_broken_link_recovery = input.backlinks
     ? brokenLinkRecovery(input.backlinks.brokenBacklinks, input.backlinks.totalBacklinks)
@@ -1631,6 +1651,18 @@ function recommend(
   if ((values.sc_article ?? 0) === 0) {
     push('article_schema', 'schema', 'Add Article JSON-LD with headline + datePublished', 0.06, 0.7, 'low', 1,
       'Article JSON-LD absent')
+  }
+  if ((values.t_ahrefs_og ?? 1) < 0.6) {
+    push('ahrefs_og', 'technical', 'Complete Open Graph (og:image 1200×630) — Ahrefs flags incomplete OG on new CS pages', 0.07, 0.8, 'low', 1,
+      `Ahrefs OG completeness ${pct(values.t_ahrefs_og)}/100`)
+  }
+  if ((values.t_ahrefs_schema ?? 1) < 0.6) {
+    push('ahrefs_schema', 'schema', 'Fix Article JSON-LD (image + Organization publisher/logo) so schema.org validation clears', 0.07, 0.8, 'low', 1,
+      `Ahrefs schema.org validation ${pct(values.t_ahrefs_schema)}/100`)
+  }
+  if ((values.t_ahrefs_orphan ?? 1) < 0.5) {
+    push('ahrefs_orphan', 'links', 'Add 2+ inbound estate links from the country hub + related pillar (Ahrefs orphan crawl)', 0.08, 0.75, 'medium', 2,
+      `Ahrefs orphan pressure ${pct(values.t_ahrefs_orphan)}/100`)
   }
   if ((values.c_tldr ?? 0) === 0) {
     push('tldr_block', 'content', 'Add an "In 60 seconds" quick-answer block for LLM citation', 0.07, 0.7, 'low', 1,

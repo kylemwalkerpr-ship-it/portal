@@ -683,8 +683,11 @@ export function applyDeterministicRepairs(opts: {
       `  "@type": "Article",`,
       `  "headline": ${JSON.stringify(opts.title || kw)},`,
       `  "description": ${JSON.stringify(metaDescriptionFrom(opts.title || '', b, kw))},`,
+      `  "image": ["https://legal.yousafeconsultancy.com/og-image.png"],`,
       `  "datePublished": "${new Date().toISOString().slice(0, 10)}",`,
-      `  "author": { "@type": "Organization", "name": "YouSafe Consultancy" }`,
+      `  "dateModified": "${new Date().toISOString().slice(0, 10)}",`,
+      `  "author": { "@type": "Organization", "name": "MyCaseworks Editorial", "url": "https://legal.yousafeconsultancy.com/about/" },`,
+      `  "publisher": { "@type": "Organization", "name": "MyCaseworks", "url": "https://legal.yousafeconsultancy.com", "logo": { "@type": "ImageObject", "url": "https://legal.yousafeconsultancy.com/og-image.png", "width": 1200, "height": 630 } }`,
       '}',
       '</script>',
     ].join('\n')

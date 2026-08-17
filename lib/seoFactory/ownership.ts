@@ -146,6 +146,20 @@ export const HOST_PUBLIC: Record<OwnerHost, string> = {
   market: 'https://market.yousafeconsultancy.com',
 }
 
+/** Collapse `https://host//path` so CS never ships Ahrefs "Double slash in URL". */
+export function sanitizeOwnerUrl(url: string): string {
+  const raw = String(url || '').trim()
+  if (!raw) return raw
+  try {
+    const u = new URL(raw)
+    u.pathname = u.pathname.replace(/\/{2,}/g, '/')
+    if (u.pathname.length > 1 && !u.pathname.endsWith('/')) u.pathname += '/'
+    return u.toString()
+  } catch {
+    return raw.replace(/([^:]\/)\/+/g, '$1')
+  }
+}
+
 const HOST_FROM_HOSTNAME: Record<string, OwnerHost> = {
   'legal.yousafeconsultancy.com': 'legal',
   'usa.yousafeconsultancy.com': 'usa',
@@ -432,7 +446,7 @@ export function filePathFromOwnerUrl(
   } catch {
     return null
   }
-  let path = u.pathname.replace(/\/+$/, '') || '/'
+  let path = u.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/'
   if (path !== '/') path = path.replace(/\/+$/, '')
   const urlPath = path.endsWith('/') ? path : `${path}/`
   const segments = path.split('/').filter(Boolean)
@@ -765,7 +779,7 @@ export async function resolveOwner(opts: {
       routingSource = 'registry_host'
       warnings.push('Could not parse owner_url path; used host fallback path')
     }
-    canonicalUrl = matched.owner_url || `${HOST_PUBLIC[host]}${urlPath}`
+    canonicalUrl = sanitizeOwnerUrl(matched.owner_url || `${HOST_PUBLIC[host]}${urlPath}`)
   } else {
     const rules = standingRulesHost({
       primaryKeyword: keyword,
@@ -780,7 +794,7 @@ export async function resolveOwner(opts: {
     const fb = pathForHostFallback(host, opts.region, slug, contentType)
     filePath = fb.filePath
     urlPath = fb.urlPath
-    canonicalUrl = `${HOST_PUBLIC[host]}${urlPath}`
+    canonicalUrl = sanitizeOwnerUrl(`${HOST_PUBLIC[host]}${urlPath}`)
     warnings.push(`No registry match — standing rules: ${rules.reason}`)
   }
 
@@ -881,7 +895,7 @@ export async function resolveOwner(opts: {
         host = hintHost
         filePath = mapped.filePath
         urlPath = mapped.urlPath
-        canonicalUrl = opts.ownerUrlHint.replace(/\/+$/, '') + '/'
+        canonicalUrl = sanitizeOwnerUrl(opts.ownerUrlHint.replace(/\/+$/, '') + '/')
         routingSource = 'registry_owner_url'
         warnings.push(
           `Keyword cluster: generation expands existing canonical page ${canonicalUrl} — no sibling created`,

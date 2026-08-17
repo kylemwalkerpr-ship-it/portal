@@ -78,6 +78,9 @@ describe('renderTargetFile build-safety', () => {
     expect(fileContent).not.toMatch(/```/)
     expect(fileContent).not.toMatch(/href=\{undefined\}/)
     expect(fileContent).not.toMatch(/<script/i)
+    expect(fileContent).toMatch(/images:\s*\[\s*\{\s*url:\s*"\/og-image\.png"/)
+    expect(fileContent).toContain('card: "summary_large_image"')
+    expect(fileContent).toContain('images: ["/og-image.png"]')
 
     const gate = validateRenderedPayload({
       plan: p,

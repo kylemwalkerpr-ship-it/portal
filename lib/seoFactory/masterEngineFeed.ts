@@ -199,7 +199,20 @@ export async function assembleMasterEngineFeed(
     ])
     input = withHealth
     if (llmV) input.llmVisibility = llmV
-    if (ahrefs) input.ahrefs = { healthScore: ahrefs.healthScore, csOpen: ahrefs.csOpen, totalOpen: ahrefs.totalOpen }
+    if (ahrefs) {
+      const count = (id: string) => ahrefs.issues.find((i) => i.issueId === id)?.count ?? null
+      input.ahrefs = {
+        healthScore: ahrefs.healthScore,
+        csOpen: ahrefs.csOpen,
+        csOpenTypes: ahrefs.csOpenTypes,
+        totalOpen: ahrefs.totalOpen,
+        ogIncomplete: count('open_graph_tags_incomplete'),
+        schemaErrors: count('structured_data_has_schema_org_validation_error'),
+        orphans: count('orphan_page'),
+        broken4xx: count('4xx_page') ?? count('404_page'),
+        indexNowBacklog: count('pages_to_submit_to_indexnow'),
+      }
+    }
 
     const report = scoreMaster(input)
     const fix = masterEngineFixPlan(input)

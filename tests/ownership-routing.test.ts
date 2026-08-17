@@ -1,4 +1,4 @@
-import { resolveOwner } from '@/lib/seoFactory/ownership'
+import { filePathFromOwnerUrl, resolveOwner, sanitizeOwnerUrl } from '@/lib/seoFactory/ownership'
 
 /**
  * Regression for the 2026-08 production incident where "uk graduate visa
@@ -116,6 +116,17 @@ describe('ownership resolver — university/geo modifier vs generic hub separati
     expect(p.routingSource).toBe('registry_owner_url')
     expect(p.canonicalUrl).toBe('https://legal.yousafeconsultancy.com/us/student-visas/')
     expect(p.filePath).toBe('app/us/student-visas/page.tsx')
+  })
+})
+
+describe('ownership resolver — no double-slash URLs', () => {
+  it('collapses // in owner URLs and file paths', () => {
+    expect(sanitizeOwnerUrl('https://legal.yousafeconsultancy.com//uk/foo/')).toBe(
+      'https://legal.yousafeconsultancy.com/uk/foo/',
+    )
+    const mapped = filePathFromOwnerUrl('https://legal.yousafeconsultancy.com//uk/foo/', 'legal')
+    expect(mapped?.urlPath).toBe('/uk/foo/')
+    expect(mapped?.filePath).toBe('app/uk/foo/page.tsx')
   })
 })
 

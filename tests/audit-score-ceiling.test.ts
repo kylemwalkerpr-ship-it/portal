@@ -37,6 +37,7 @@ title: ${TITLE}
 description: ${DESCRIPTION}
 primaryKeyword: student visa documents
 canonicalUrl: https://legal.yousafeconsultancy.com/us/student-visa-documents/
+ogImage: /og-image.png
 ---
 
 # ${TITLE}
@@ -82,10 +83,10 @@ Dependents follow separate rules, so read the official page for your route.
 This guide is for educational purposes only and is not legal advice. Consult a qualified immigration attorney for your situation.
 
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"Article","headline":"${TITLE}"}
+{"@context":"https://schema.org","@type":"Article","headline":"${TITLE}","image":["https://legal.yousafeconsultancy.com/og-image.png"],"datePublished":"2026-08-17","author":{"@type":"Organization","name":"MyCaseworks"},"publisher":{"@type":"Organization","name":"MyCaseworks","logo":{"@type":"ImageObject","url":"https://legal.yousafeconsultancy.com/og-image.png"}}}
 </script>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[]}
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What should you prepare first?","acceptedAnswer":{"@type":"Answer","text":"You start with identity documents and the official form list."}}]}
 </script>
 
 ${pad}

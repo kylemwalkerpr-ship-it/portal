@@ -91,3 +91,16 @@ export function extractLocs(xml: string): string[] {
   while ((m = re.exec(xml)) !== null) out.push(m[1])
   return out
 }
+
+/** Pull a host sitemap and submit every <loc> to IndexNow (Ahrefs backlog). */
+export async function submitSitemapToIndexNow(sitemapUrl: string): Promise<{
+  host: string
+  urls: number
+  status: number | string
+}> {
+  const res = await fetch(sitemapUrl, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'application/xml' } })
+  if (!res.ok) return { host: '', urls: 0, status: `sitemap ${res.status}` }
+  const xml = await res.text()
+  const locs = extractLocs(xml).filter((u) => /^https:\/\//i.test(u) && !/\/\//.test(u.replace(/^https:\/\//, '')))
+  return submitUrlsToIndexNow(locs)
+}
