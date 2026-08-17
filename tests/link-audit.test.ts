@@ -355,4 +355,14 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(content).not.toContain('https://www.uscis.gov/nope')
     expect(content).toContain('x')
   })
+
+  it('strips a full estate URL even when the dead list is path-only or missing a slash', () => {
+    const { content, stripped } = stripDeadLinks(
+      'See [Stockton housing](https://legal.yousafeconsultancy.com/us/stockton-housing) and /us/stockton-housing/.',
+      ['https://legal.yousafeconsultancy.com/us/stockton-housing'],
+    )
+    expect(stripped).toBeGreaterThanOrEqual(1)
+    expect(content).not.toContain('legal.yousafeconsultancy.com/us/stockton-housing')
+    expect(content).toContain('Stockton housing')
+  })
 })

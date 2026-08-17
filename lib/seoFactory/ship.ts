@@ -487,7 +487,11 @@ export async function shipContent(opts: {
         `[ship] deterministic repair applied before gates: ${repaired.applied.join(', ')}`,
       )
     }
-    const sanitized = await sanitizeDraftLinksLive(shipContent_, { region: opts.region })
+    const knownLive = [opts.plan.canonicalUrl, opts.plan.filePath].filter(Boolean)
+    const sanitized = await sanitizeDraftLinksLive(shipContent_, {
+      region: opts.region,
+      knownLiveUrls: knownLive,
+    })
     if (sanitized.stripped || sanitized.injected) {
       shipContent_ = sanitized.content
       if (sanitized.stripped) repairsApplied.push(`stripped ${sanitized.stripped} dead/untrusted links`)
@@ -496,7 +500,9 @@ export async function shipContent(opts: {
         `[ship] live link sanitize: stripped=${sanitized.stripped} injected=${sanitized.injected}`,
       )
     }
-    const leftover = (await auditLinksLive(shipContent_)).filter((f) => f.severity === 'blocker')
+    const leftover = (await auditLinksLive(shipContent_, { knownLiveUrls: knownLive })).filter(
+      (f) => f.severity === 'blocker',
+    )
     if (leftover.length) {
       throw new Error(
         `Refusing ship: ${leftover.length} dead or untrusted link${leftover.length === 1 ? '' : 's'} — ${leftover.map((f) => `${f.code}:${f.url}`).join('; ')}`,

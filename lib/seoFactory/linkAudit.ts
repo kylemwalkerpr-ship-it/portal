@@ -556,10 +556,7 @@ export async function auditLinksLive(
 ): Promise<LinkAuditFinding[]> {
   const structural = auditLinksSync(content, opts?.knownLiveUrls, opts?.externalAllowlist)
   const findings = structural.filter((f) => f.code !== 'unverified_internal_link')
-  const known = opts?.knownLiveUrls
-    ? new Set(Array.from(opts.knownLiveUrls).map((u) => normalizeEstateUrl(u)))
-    : null
-  const liveSet = known ? known : await fetchLiveEstateUrls()
+  const liveSet = await fetchLiveEstateUrls(opts?.knownLiveUrls)
   const toVerify: string[] = []
   for (const { url } of extractLinks(content)) {
     if (SKIP_PREFIXES.some((p) => url.trim().startsWith(p)) || isSkippableHref(url)) continue
@@ -598,33 +595,36 @@ export async function auditLinksLive(
  * review/reaudit pipeline so the AI editor never sees hallucinated URLs
  * and the ship gate never blocks on DEAD_INTERNAL_LINK.
  */
-function urlIsInDeadSet(url: string, dead: Set<string>): boolean {
-  const cleanUrl = stripTrailingPunct(url.trim())
-  if (dead.has(cleanUrl) || dead.has(cleanUrl.replace(/\/$/, '')) || dead.has(normalizeCitationUrl(cleanUrl))) {
-    return true
+/** Comparable keys so `/us/foo`, `/us/foo/` and the absolute estate URL match. */
+export function deadLinkKeys(url: string): string[] {
+  const raw = stripTrailingPunct(String(url || '').trim())
+  if (!raw) return []
+  const keys = new Set<string>([raw, raw.replace(/\/$/, ''), normalizeCitationUrl(raw)])
+  try {
+    const resolved = resolveEstateUrl(raw)
+    keys.add(resolved)
+    keys.add(resolved.replace(/\/$/, ''))
+    const path = resolved.replace(/^https?:\/\/[^/]+/i, '') || '/'
+    keys.add(path)
+    keys.add(path.replace(/\/$/, '') || '/')
+    keys.add(`${ESTATE_BASE}${path.startsWith('/') ? path : `/${path}`}`)
+    keys.add(`${ESTATE_BASE}${(path.replace(/\/$/, '') || '/')}`)
+  } catch {
+    /* ignore */
   }
-  return Array.from(dead).some((d) => {
-    if (!d) return false
-    if (cleanUrl === d || normalizeCitationUrl(cleanUrl) === normalizeCitationUrl(d)) return true
-    return (
-      cleanUrl.startsWith(d) &&
-      (cleanUrl.length === d.length || cleanUrl[d.length] === '/' || cleanUrl[d.length] === '#')
-    )
-  })
+  return [...keys].filter(Boolean)
+}
+
+function urlIsInDeadSet(url: string, dead: Set<string>): boolean {
+  return deadLinkKeys(url).some((k) => dead.has(k))
 }
 
 export function stripDeadLinks(
   content: string,
   deadUrls: string[] | Set<string>,
 ): { content: string; stripped: number } {
-  const dead = new Set(
-    Array.from(deadUrls).map((u) =>
-      u
-        .trim()
-        .replace(/^https?:\/\/legal\.yousafeconsultancy\.com/i, '')
-        .replace(/^https?:\/\/yousafeconsultancy\.com/i, ''),
-    ),
-  )
+  const dead = new Set<string>()
+  for (const u of deadUrls) for (const k of deadLinkKeys(u)) dead.add(k)
   let stripped = 0
   // Strip markdown links: [text](DEAD_URL) -> text
   let result = content.replace(
@@ -747,9 +747,12 @@ export async function liveOfficialSources(region?: string | null): Promise<Array
  */
 export async function sanitizeDraftLinksLive(
   content: string,
-  opts?: { region?: string; externalAllowlist?: string[] },
+  opts?: { region?: string; externalAllowlist?: string[]; knownLiveUrls?: Set<string> | string[] },
 ): Promise<{ content: string; stripped: number; injected: number; findings: LinkAuditFinding[] }> {
-  const findings = await auditLinksLive(content, { externalAllowlist: opts?.externalAllowlist })
+  const findings = await auditLinksLive(content, {
+    externalAllowlist: opts?.externalAllowlist,
+    knownLiveUrls: opts?.knownLiveUrls,
+  })
   const deadUrls = findings.filter((f) => STRIP_CODES.has(f.code)).map((f) => f.url)
   let next = content
   let stripped = 0

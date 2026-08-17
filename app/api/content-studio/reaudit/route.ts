@@ -93,10 +93,18 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
  *  invented links (2026-08 example.com incident) block ship with evidence.
  *  After the audit, mechanically strips every dead link so the AI editor
  *  and ship gate never see a URL that doesn't resolve. */
-async function mergeLinkAudit(response: ReauditResponse, content: string, region?: string): Promise<string> {
+async function mergeLinkAudit(
+  response: ReauditResponse,
+  content: string,
+  region?: string,
+  targetUrl?: string,
+): Promise<string> {
   let effective = content
   try {
-    const sanitized = await sanitizeDraftLinksLive(content, { region })
+    const sanitized = await sanitizeDraftLinksLive(content, {
+      region,
+      knownLiveUrls: targetUrl ? [targetUrl] : undefined,
+    })
     effective = sanitized.content
     const findings = sanitized.findings
     if (sanitized.stripped) {
@@ -199,7 +207,7 @@ export async function POST(request: NextRequest) {
         requiredLongTailKeywords,
       }),
     }
-    effective = await mergeLinkAudit(response, effective, region)
+    effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl)
     if (effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
@@ -406,7 +414,12 @@ ${enginePlan.promptBlock}`
         requiredLongTailKeywords,
         targetUrl: (body as { targetUrl?: string }).targetUrl,
       })
-      const sanitized = await sanitizeDraftLinksLive(mechanical.content, { region })
+      const sanitized = await sanitizeDraftLinksLive(mechanical.content, {
+        region,
+        knownLiveUrls: (body as { targetUrl?: string }).targetUrl
+          ? [(body as { targetUrl?: string }).targetUrl as string]
+          : undefined,
+      })
       const afterMech = evaluateReauditContract({
         content: sanitized.content,
         contentType,
@@ -516,7 +529,7 @@ ${enginePlan.promptBlock}`
       // Let the editor show which engine gaps the fix targeted, in order.
       ...(enginePlan ? { enginePriorities: enginePlan.priorities } : {}),
     }
-    fixedContent = await mergeLinkAudit(response, fixedContent, region)
+    fixedContent = await mergeLinkAudit(response, fixedContent, region, (body as { targetUrl?: string }).targetUrl)
     const applied: string[] = []
     if (depthRepair) applied.push(depthRepair)
     if (repaired.applied.length) applied.push(...repaired.applied)
