@@ -36,7 +36,7 @@ interface VaultStatusRow {
   label: string
   role: 'primary' | 'fallback'
   configured: boolean
-  source: 'vault' | 'env' | 'none'
+  source: 'vault' | 'env' | 'oauth' | 'none'
   maskedKey: string | null
   baseUrl: string | null
   model: string | null
@@ -52,6 +52,17 @@ interface AiSettings {
   default_model?: string | null
   max_providers?: string | null
   provider_order?: string | null
+}
+
+interface GrokOAuthStatus {
+  connected?: boolean
+  pending?: boolean
+  userCode?: string | null
+  verificationUri?: string | null
+  verificationUriComplete?: string | null
+  expiresAt?: number | null
+  interval?: number | null
+  error?: string
 }
 
 interface Draft {
@@ -82,6 +93,9 @@ const btn = (bg?: string, strong?: boolean): React.CSSProperties => ({
 })
 
 function SourceBadge({ source }: { source: VaultStatusRow['source'] }) {
+  if (source === 'oauth') {
+    return <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.violetSoft, color: C.violet, border: `1px solid #DDD6FE` }}>SUPERGROK</span>
+  }
   if (source === 'vault') {
     return <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.greenSoft, color: C.green, border: `1px solid ${C.greenBorder}` }}>VAULT</span>
   }
@@ -103,6 +117,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   const [note, setNote] = React.useState<{ ok: boolean; text: string } | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [probe, setProbe] = React.useState<Record<string, string>>({})
+  const [grokOAuth, setGrokOAuth] = React.useState<GrokOAuthStatus | null>(null)
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -118,6 +133,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       setDefaultProvider(s.default_provider || 'auto')
       setDefaultModel(s.default_model || '')
       setMaxProviders(s.max_providers || '3')
+      setGrokOAuth((d.grokOAuth || null) as GrokOAuthStatus | null)
       setNote(null)
     } catch (e) {
       setNote({ ok: false, text: e instanceof Error ? e.message : 'Failed to load AI keys' })
@@ -220,6 +236,52 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       setBusy(null)
     }
   }
+
+  const grokOAuthAction = async (action: 'start' | 'poll' | 'disconnect') => {
+    setBusy(`grok-oauth-${action}`)
+    try {
+      const res = await fetch('/api/seo-factory/ai-keys/grok-oauth', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setGrokOAuth(j as GrokOAuthStatus)
+      if (action === 'start') {
+        setNote({ ok: true, text: `Open ${j.verificationUri || 'accounts.x.ai'} and enter ${j.userCode || 'the code'} to connect SuperGrok.` })
+        if (j.verificationUriComplete || j.verificationUri) {
+          window.open(String(j.verificationUriComplete || j.verificationUri), '_blank', 'noopener,noreferrer')
+        }
+      } else if (action === 'disconnect') {
+        setNote({ ok: true, text: 'SuperGrok disconnected. Grok will need a new login or an API key.' })
+        await load()
+        onChanged?.()
+      } else if (j.connected) {
+        setNote({ ok: true, text: 'SuperGrok connected. Grok is now the studio fallback.' })
+        await load()
+        onChanged?.()
+      } else if (j.error) {
+        setNote({ ok: false, text: String(j.error) })
+      }
+      return j as GrokOAuthStatus
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message : 'SuperGrok login failed' })
+      return null
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  React.useEffect(() => {
+    if (!grokOAuth?.pending || grokOAuth.connected) return
+    const wait = Math.max(2, Number(grokOAuth.interval || 5)) * 1000
+    const timer = window.setInterval(() => {
+      void grokOAuthAction('poll')
+    }, wait)
+    return () => window.clearInterval(timer)
+  }, [grokOAuth?.pending, grokOAuth?.connected, grokOAuth?.interval])
 
   const saveSettings = async () => {
     setBusy('settings')
@@ -369,6 +431,51 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                 </span>
               </div>
               {r.hint && <div style={{ fontSize: 9, color: C.textDim, marginBottom: 6 }}>{r.hint}</div>}
+
+              {r.id === 'grok' && (
+                <div style={{
+                  marginBottom: 8, padding: 8, borderRadius: C.radiusXs,
+                  background: C.violetSoft, border: '1px solid #DDD6FE',
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.violet, marginBottom: 4 }}>
+                    SuperGrok subscription — no API key
+                  </div>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 6, lineHeight: 1.45 }}>
+                    Sign in with the SuperGrok (or X Premium+) account you already pay for.
+                    Content Studio stores a refresh token and uses Grok 4.6 as the fallback
+                    for Master Engine, Discover, Research, and Draft.
+                  </div>
+                  {grokOAuth?.pending && grokOAuth.userCode && (
+                    <div style={{ fontSize: 10, fontFamily: C.mono, color: C.text, marginBottom: 6 }}>
+                      Enter code <strong>{grokOAuth.userCode}</strong> at{' '}
+                      <a href={grokOAuth.verificationUriComplete || grokOAuth.verificationUri || 'https://accounts.x.ai/device'} target="_blank" rel="noreferrer">
+                        {grokOAuth.verificationUri || 'accounts.x.ai/device'}
+                      </a>
+                      {' '}— waiting for approval…
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => void grokOAuthAction('start')}
+                      disabled={busy === 'grok-oauth-start' || busy === 'grok-oauth-poll'}
+                      style={btn(C.violet, true)}
+                    >
+                      {grokOAuth?.pending ? 'Restart SuperGrok login' : grokOAuth?.connected ? 'Reconnect SuperGrok' : 'Connect SuperGrok'}
+                    </button>
+                    {grokOAuth?.pending && (
+                      <button type="button" onClick={() => void grokOAuthAction('poll')} disabled={busy === 'grok-oauth-poll'} style={btn()}>
+                        Check now
+                      </button>
+                    )}
+                    {grokOAuth?.connected && (
+                      <button type="button" onClick={() => void grokOAuthAction('disconnect')} disabled={busy === 'grok-oauth-disconnect'} style={btn(C.redSoft)}>
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input

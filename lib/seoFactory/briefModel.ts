@@ -1,41 +1,44 @@
 /**
  * Brief-stage model policy — OpenAI ChatGPT is the PRIMARY model family for
- * the Research/Plan brief, with GLM 5.2 Fast (Baseten) as the fallback.
+ * the Research/Plan brief, with xAI Grok (SuperGrok) as the default fallback.
  *
- * GPT-5.6 Sol (flagship), GPT-5.6 Terra (balanced), GLM 5.2 Fast via Baseten,
- * GLM 5.2 Fast via AIHubmix, and DeepSeek V4 Flash 0731 via Baseten are the
- * five acceptable PRIMARY brief models — all selectable in the Research
- * stage. Everything else — 'auto', a legacy drafting provider id
- * ('nvidia-glm', 'glm-fast'…), or junk — is coerced to GPT-5.6 Terra on the
- * OpenAI provider. This is the
- * single choke point so a stale client or provider-id leak can never make an
- * unrelated backend draft the brief (2026-08: the route forwarded
- * body.aiProvider verbatim, so a stray 'auto' or 'baseten-*' value silently
- * sent the brief through the open-source drafting cascade instead of ChatGPT).
+ * GPT-5.6 Sol (flagship), GPT-5.6 Terra (balanced), Grok, GLM 5.2 Fast via
+ * Baseten / AIHubmix, and DeepSeek V4 Flash 0731 via Baseten are acceptable
+ * PRIMARY brief models — all selectable in the Research stage. Everything
+ * else — 'auto', a legacy drafting provider id ('nvidia-glm', 'glm-fast'…),
+ * or junk — is coerced to GPT-5.6 Terra on the OpenAI provider.
  *
  * FALLBACK: when OpenAI is unconfigured or fails (e.g. an unpaid account
- * returning 429 insufficient_quota), the route falls back to GLM 5.2 Fast via
- * Baseten — the same efficient open-source model the drafting stage leads
- * with — so the Research stage never hard-blocks on GPT billing.
+ * returning 429 insufficient_quota), the route falls back to Grok so the
+ * Research stage can use the SuperGrok subscription instead of GPT billing.
  */
 
 import { generateContentText, type ContentAiResult } from '@/lib/contentAiProvider'
 
-/** Provider id for the brief fallback (GLM 5.2 Fast via Baseten). */
-export const BRIEF_FALLBACK_PROVIDER = 'baseten-glm-fast' as const
+/** Provider id for the brief fallback (xAI Grok / SuperGrok). */
+export const BRIEF_FALLBACK_PROVIDER = 'grok' as const
 
 export type BriefProviderChoice =
   | { aiProvider: 'openai'; model: 'gpt-5.6-sol' | 'gpt-5.6-terra' }
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
+  | { aiProvider: 'baseten-glm-fast'; model?: undefined }
   | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
   | { aiProvider: 'baseten-deepseek'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
-  // GLM 5.2 Fast (Baseten) — an explicit third brief choice, selectable in the
-  // Research stage alongside GPT Sol/Terra. 'glm-5.2-fast' is a friendly alias.
-  if (pin === BRIEF_FALLBACK_PROVIDER || pin === 'glm-5.2-fast') {
+  if (
+    pin === BRIEF_FALLBACK_PROVIDER ||
+    pin === 'xai' ||
+    pin === 'supergrok' ||
+    pin === 'grok-4.6' ||
+    pin === 'grok-4.5'
+  ) {
     return { aiProvider: BRIEF_FALLBACK_PROVIDER }
+  }
+  // GLM 5.2 Fast (Baseten) — still selectable in Research.
+  if (pin === 'baseten-glm-fast' || pin === 'glm-5.2-fast') {
+    return { aiProvider: 'baseten-glm-fast' }
   }
   // GLM 5.2 Fast via AIHubmix — a fourth brief choice (OpenAI-compatible
   // aggregator route). Aliases: 'aihubmix-glm-fast' / 'glm-fast-aihubmix'.
@@ -60,28 +63,27 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   return { aiProvider: 'openai', model: 'gpt-5.6-terra' }
 }
 
-/** The fallback brief provider — GLM 5.2 Fast via Baseten. */
+/** The fallback brief provider — xAI Grok / SuperGrok. */
 export function resolveBriefFallback(): { aiProvider: typeof BRIEF_FALLBACK_PROVIDER } {
   return { aiProvider: BRIEF_FALLBACK_PROVIDER }
 }
 
 export interface BriefTextResult {
   ai: ContentAiResult
-  /** True when GPT (OpenAI) failed and GLM 5.2 Fast drafted the brief. */
+  /** True when the primary failed and Grok drafted the brief. */
   fallbackUsed: boolean
 }
 
 /**
  * Generate the brief text with the model policy enforced:
- *   1. PRIMARY — the operator's choice: GPT-5.6 Sol/Terra (OpenAI) or
- *      GLM 5.2 Fast (Baseten), exclusive (no cascade).
- *   2. FALLBACK — when the primary is GPT and OpenAI is unconfigured or fails
- *      (e.g. an unpaid account returning 429 insufficient_quota), retry with
- *      GLM 5.2 Fast. When GLM is already the primary, there is no second leg.
+ *   1. PRIMARY — the operator's choice: GPT-5.6 Sol/Terra, Grok, or an
+ *      explicit open-source brief model. Exclusive (no cascade).
+ *   2. FALLBACK — when the primary is not Grok and that backend fails,
+ *      retry with Grok (SuperGrok). When Grok is already the primary,
+ *      there is no second leg.
  *
- * Both attempts are `exclusive`, so a brief can only ever be produced by GPT
- * or GLM 5.2 Fast — never silently handed to an unrelated drafting backend.
- * When both legs fail, the combined error names each provider's reason.
+ * Both attempts are `exclusive`. When both legs fail, the combined error
+ * names each provider's reason.
  */
 export async function generateBriefText(opts: {
   aiProvider: string
@@ -93,20 +95,20 @@ export async function generateBriefText(opts: {
   timeoutMs?: number
 }): Promise<BriefTextResult> {
   const fallback = resolveBriefFallback()
-  // When the operator explicitly selected GLM 5.2 Fast, the "fallback" and the
-  // primary are the same backend — there is no second leg to try.
+  // When the operator explicitly selected Grok, the fallback and the primary
+  // are the same backend — there is no second leg to try.
   const primaryIsFallback =
     String(opts.aiProvider || '').trim().toLowerCase() === BRIEF_FALLBACK_PROVIDER
-  // Human-readable label for the combined-error message, so a DeepSeek/AIHubmix
-  // primary isn't mis-reported as "(GPT)".
   const primaryPin = String(opts.aiProvider || '').trim().toLowerCase()
   const primaryLabel = primaryIsFallback
-    ? 'GLM 5.2 Fast'
-    : primaryPin === 'baseten-deepseek'
-      ? 'DeepSeek V4 Flash (Baseten)'
-      : primaryPin === 'aihubmix-glm-fast'
-        ? 'GLM 5.2 Fast (AIHubmix)'
-        : 'GPT'
+    ? 'Grok'
+    : primaryPin === 'baseten-glm-fast'
+      ? 'GLM 5.2 Fast'
+      : primaryPin === 'baseten-deepseek'
+        ? 'DeepSeek V4 Flash (Baseten)'
+        : primaryPin === 'aihubmix-glm-fast'
+          ? 'GLM 5.2 Fast (AIHubmix)'
+          : 'GPT'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,
@@ -126,7 +128,7 @@ export async function generateBriefText(opts: {
     const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr)
     if (primaryIsFallback) {
       throw new Error(
-        `Brief generation failed (GLM 5.2 Fast): ${primaryMsg.slice(0, 300)}.`,
+        `Brief generation failed (Grok): ${primaryMsg.slice(0, 300)}.`,
       )
     }
     try {
@@ -144,7 +146,7 @@ export async function generateBriefText(opts: {
       const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
       throw new Error(
         `Brief generation failed. Primary (${primaryLabel}): ${primaryMsg.slice(0, 300)}. ` +
-        `Fallback (GLM 5.2 Fast): ${fallbackMsg.slice(0, 300)}.`,
+        `Fallback (Grok): ${fallbackMsg.slice(0, 300)}.`,
       )
     }
   }

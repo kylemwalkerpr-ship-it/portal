@@ -8,6 +8,7 @@ import {
   deleteVaultKey,
   maskKey,
 } from '@/lib/aiKeyVault'
+import { getSuperGrokStatus } from '@/lib/xaiSuperGrokOAuth'
 
 /**
  * AI Key Vault — admin-managed provider keys for the content AI chain.
@@ -27,7 +28,8 @@ export async function GET() {
     }
     const providers = await listVaultStatus()
     const settings = await getAiSettings(true)
-    return NextResponse.json({ providers, settings })
+    const grokOAuth = await getSuperGrokStatus()
+    return NextResponse.json({ providers, settings, grokOAuth })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'ai keys load failed' },

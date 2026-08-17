@@ -2314,7 +2314,7 @@ function RecheckDuePanel() {
                   { id: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten', configured: false, model: 'zai-org/GLM-5.2-Fast' },
                   { id: 'aihubmix-glm-fast', label: 'GLM 5.2 Fast · AIHubmix', configured: false, model: 'glm-5.2-fast-preview' },
                   { id: 'nvidia-deepseek', label: 'NVIDIA DeepSeek', configured: false, model: 'deepseek-ai/deepseek-v4-flash-0731' },
-                  { id: 'grok', label: 'Grok (xAI)', configured: false, model: 'grok-3' },
+                  { id: 'grok', label: 'Grok (SuperGrok / xAI)', configured: false, model: 'grok-4.6' },
                   { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-terra' },
                   { id: 'cloudflare-ai', label: 'Cloudflare Workers AI', configured: false, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' },
                   { id: 'groq', label: 'Groq', configured: false, model: 'llama-3.3-70b-versatile' },

@@ -1,7 +1,7 @@
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateEngineText } from '@/lib/seoEngine/engineAi'
 
 /**
  * POST /api/content-studio/suggest-keywords
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       'Suggest the optimal keyword strategy for this piece of content.',
     ].filter(Boolean).join('\n')
 
-    const ai = await generateContentText({
+    const ai = await generateEngineText({
       aiProvider: 'auto',
       system,
       prompt,

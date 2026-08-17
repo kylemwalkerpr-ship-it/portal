@@ -96,7 +96,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   custom: 'gpt-5.6-terra',
   'gpt-5.6-sol': 'gpt-5.6-sol',
   'gpt-5.6-terra': 'gpt-5.6-terra',
-  grok: 'grok-3',
+  grok: 'grok-4.6',
   deepseek: 'deepseek-chat',
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia-glm': 'z-ai/glm-5.2',
@@ -223,7 +223,8 @@ const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising'
 const DRAFTING_PROVIDER_OPTIONS: { value: string; label: string }[] = [
   { value: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten (zai-org/GLM-5.2-Fast · default)' },
   { value: 'aihubmix-glm-fast', label: 'GLM 5.2 Fast · AIHubmix (glm-5.2-fast-preview)' },
-  { value: 'auto', label: 'Auto (cascade: GLM Fast → DeepSeek → NVIDIA → rest)' },
+  { value: 'grok', label: 'Grok 4.6 · SuperGrok fallback' },
+  { value: 'auto', label: 'Auto (cascade: GLM Fast → Grok → DeepSeek → rest)' },
   { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2)' },
   { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten' },
   { value: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b)' },
@@ -2229,13 +2230,15 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const briefModelName =
     briefModel === 'gpt-5.6-sol'
       ? 'GPT Sol'
-      : briefModel === 'baseten-glm-fast'
-        ? 'GLM 5.2 Fast · Baseten'
-        : briefModel === 'aihubmix-glm-fast'
-          ? 'GLM 5.2 Fast · AIHubmix'
-          : briefModel === 'baseten-deepseek'
-            ? 'DeepSeek V4 Flash · Baseten'
-            : 'GPT Terra'
+      : briefModel === 'grok'
+        ? 'Grok 4.6 · SuperGrok'
+        : briefModel === 'baseten-glm-fast'
+          ? 'GLM 5.2 Fast · Baseten'
+          : briefModel === 'aihubmix-glm-fast'
+            ? 'GLM 5.2 Fast · AIHubmix'
+            : briefModel === 'baseten-deepseek'
+              ? 'DeepSeek V4 Flash · Baseten'
+              : 'GPT Terra'
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -2521,7 +2524,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
               value={briefModel}
               onChange={(e) => setBriefModel(e.target.value)}
               disabled={briefGenerating}
-              title="Brief model — GPT Sol (flagship) for the highest-quality brief; GPT Terra (balanced) as the default; GLM 5.2 Fast (efficient open-source)"
+              title="Brief model — GPT Sol/Terra as primary; Grok (SuperGrok) is the default fallback when GPT fails"
               style={{
                 padding: '4px 6px', borderRadius: 6, border: `1px solid ${E.hairline}`,
                 background: E.paper, color: E.ink,
@@ -2533,6 +2536,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             >
               <option value="gpt-5.6-terra">GPT Terra</option>
               <option value="gpt-5.6-sol">GPT Sol</option>
+              <option value="grok">Grok 4.6 · SuperGrok</option>
               <option value="baseten-deepseek">DeepSeek V4 Flash · Baseten</option>
               <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten</option>
               <option value="aihubmix-glm-fast">GLM 5.2 Fast · AIHubmix</option>

@@ -152,9 +152,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     baseUrlEnv: 'XAI_BASE_URL',
     modelEnv: 'XAI_MODEL',
     fixedBaseUrl: 'https://api.x.ai/v1',
-    defaultModel: 'grok-3',
+    defaultModel: 'grok-4.6',
     role: 'fallback',
-    hint: 'Current default primary when auto',
+    hint: 'Default fallback for Master Engine, Discover, Research, and Draft — connect SuperGrok (no API key) or paste XAI_API_KEY',
   },
   {
     id: 'openai',
@@ -183,8 +183,9 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai',
-  'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron', 'aihubmix-glm-fast',
+  'baseten-glm-fast', 'nvidia-glm', 'baseten-deepseek', 'grok', 'nvidia-deepseek', 'openai',
+  'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron',
+  'aihubmix-glm-fast',
 ] as const
 
 export interface VaultKeyRow {
@@ -202,7 +203,7 @@ export interface VaultStatusRow {
   label: string
   role: 'primary' | 'fallback'
   configured: boolean
-  source: 'vault' | 'env' | 'none'
+  source: 'vault' | 'env' | 'oauth' | 'none'
   maskedKey: string | null
   baseUrl: string | null
   model: string | null
@@ -219,6 +220,11 @@ export interface AiSettings {
   max_providers?: string | null
   /** JSON array of provider ids, highest priority first. */
   provider_order?: string | null
+  xai_oauth_access_token?: string | null
+  xai_oauth_refresh_token?: string | null
+  xai_oauth_expires_at?: string | null
+  xai_oauth_token_type?: string | null
+  xai_oauth_pending?: string | null
 }
 
 function sb() {
@@ -366,12 +372,23 @@ export async function setAiSetting(key: string, value: string, updatedBy = 'admi
   settingsCache = null
 }
 
+export async function deleteAiSetting(key: string): Promise<void> {
+  if (!key.trim()) throw new Error('Setting key required')
+  const { error } = await sb().from('ai_settings').delete().eq('key', key.trim())
+  if (error) throw new Error(error.message)
+  settingsCache = null
+}
+
 /**
  * Operator-facing status list: every provider with configured state from the
  * vault AND env, so the UI can show where each key lives.
  */
 export async function listVaultStatus(): Promise<VaultStatusRow[]> {
   const rows = await getVaultKeys(true)
+  const settings = await getAiSettings(true)
+  const grokOauth = Boolean(
+    settings.xai_oauth_access_token?.trim() || settings.xai_oauth_refresh_token?.trim(),
+  )
   const byProvider = new Map(rows.map((r) => [r.provider, r]))
   return AI_PROVIDERS.map((def) => {
     const row = byProvider.get(def.id)
@@ -380,17 +397,20 @@ export async function listVaultStatus(): Promise<VaultStatusRow[]> {
     const model = row?.model || process.env[def.modelEnv || ''] || def.defaultModel
     const fromVault = Boolean(row?.api_key)
     const fromEnv = Boolean(envKey)
-    const maskedKey = fromVault
-      ? maskKey(row!.api_key!)
-      : fromEnv
-        ? maskKey(envKey)
-        : null
+    const fromOauth = def.id === 'grok' && grokOauth
+    const maskedKey = fromOauth
+      ? 'SuperGrok · connected'
+      : fromVault
+        ? maskKey(row!.api_key!)
+        : fromEnv
+          ? maskKey(envKey)
+          : null
     return {
       id: def.id,
       label: def.label,
       role: def.role,
-      configured: fromVault || fromEnv,
-      source: fromVault ? 'vault' : fromEnv ? 'env' : 'none',
+      configured: fromVault || fromEnv || fromOauth,
+      source: fromOauth ? 'oauth' : fromVault ? 'vault' : fromEnv ? 'env' : 'none',
       maskedKey,
       baseUrl,
       model,

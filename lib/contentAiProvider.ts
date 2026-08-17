@@ -2,9 +2,9 @@
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
  * DEFAULT CHAIN (hard order):
- *   1. NVIDIA Nemotron / GLM / DeepSeek via NVIDIA Integrate
- *   2. Cloudflare Workers AI (first fallback)
- *   3. Groq → Gemini → OpenRouter → custom → xAI → OpenAI → DeepSeek.com
+ *   1. GLM Fast / NVIDIA GLM / Baseten DeepSeek (draft primaries)
+ *   2. xAI Grok (SuperGrok OAuth or XAI_API_KEY) — default fallback
+ *   3. NVIDIA DeepSeek → Cloudflare → Groq → Gemini → rest
  *   4. getChatProvider() bridge
  *
  * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
@@ -158,6 +158,23 @@ export async function refreshAiVault(): Promise<string[]> {
   try {
     const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
     const overlay = await buildVaultEnvOverrides(true)
+    try {
+      const vault = await import('@/lib/aiKeyVault')
+      if (typeof vault.getAiSettings === 'function') {
+        const { ensureSuperGrokAccessToken, XAI_DEFAULT_MODEL } = await import('@/lib/xaiSuperGrokOAuth')
+        const oauth = await ensureSuperGrokAccessToken()
+        if (oauth?.accessToken) {
+          overlay.XAI_API_KEY = oauth.accessToken
+          overlay.XAI_AUTH_MODE = 'supergrok'
+          if (!overlay.XAI_MODEL) overlay.XAI_MODEL = XAI_DEFAULT_MODEL
+        }
+      }
+    } catch (oauthErr) {
+      console.warn(
+        '[contentAi] SuperGrok OAuth overlay skipped',
+        oauthErr instanceof Error ? oauthErr.message : oauthErr,
+      )
+    }
     vaultOverlay = overlay
     return Object.keys(overlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
   } catch (e) {
@@ -477,6 +494,11 @@ export function resolveNvidiaApiKey(): string {
 
 export function isNvidiaGlmConfigured(): boolean {
   return Boolean(resolveNvidiaApiKey())
+}
+
+/** True when Grok can run: SuperGrok OAuth overlay or an XAI_API_KEY. */
+export function isGrokConfigured(): boolean {
+  return Boolean(env('XAI_API_KEY'))
 }
 
 export function isNvidiaDeepseekConfigured(): boolean {
@@ -1197,12 +1219,12 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
       model: env('CUSTOM_AI_MODEL') || 'gpt-5.6-luna',
     })
   }
-  if (env('XAI_API_KEY')) {
+  if (isGrokConfigured()) {
     out.push({
       label: 'grok',
       baseURL: env('XAI_BASE_URL') || 'https://api.x.ai/v1',
       apiKey: env('XAI_API_KEY'),
-      model: env('XAI_MODEL') || 'grok-3',
+      model: env('XAI_MODEL') || 'grok-4.6',
     })
   }
   if (env('OPENAI_API_KEY')) {
@@ -1292,7 +1314,7 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'gemini', label: 'Google Gemini', configured: isGeminiConfigured(), role: 'fallback' },
     { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')), role: 'fallback' },
-    { id: 'grok', label: 'xAI Grok', configured: Boolean(env('XAI_API_KEY')), role: 'fallback' },
+    { id: 'grok', label: 'xAI Grok (SuperGrok fallback)', configured: isGrokConfigured(), role: 'fallback' },
     { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna)', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
     { id: 'deepseek', label: 'DeepSeek.com API', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
   ]

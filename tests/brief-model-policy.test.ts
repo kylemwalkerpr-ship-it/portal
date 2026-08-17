@@ -18,6 +18,9 @@
  */
 jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
+  getAiSettings: jest.fn(async () => ({})),
+  setAiSetting: jest.fn(async () => undefined),
+  deleteAiSetting: jest.fn(async () => undefined),
 }))
 
 import {
@@ -54,6 +57,13 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
       aiProvider: 'openai',
       model: 'gpt-5.6-sol',
     })
+  })
+
+  it('grok / xai / supergrok / grok-4.6 → Grok fallback provider', () => {
+    expect(resolveBriefAiProvider('grok')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('xai')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('supergrok')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('grok-4.6')).toEqual({ aiProvider: 'grok' })
   })
 
   it('baseten-glm-fast (and glm-5.2-fast alias) → GLM 5.2 Fast', () => {
@@ -124,8 +134,8 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
   })
 })
 
-describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails', () => {
-  const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'CONTENT_AI_RETRY'] as const
+describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () => {
+  const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'XAI_API_KEY', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
 
@@ -147,9 +157,9 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
       headers: { 'content-type': 'application/json' },
     })
 
-  it('resolves the fallback to baseten-glm-fast (GLM 5.2 Fast)', () => {
-    expect(resolveBriefFallback()).toEqual({ aiProvider: 'baseten-glm-fast' })
-    expect(BRIEF_FALLBACK_PROVIDER).toBe('baseten-glm-fast')
+  it('resolves the fallback to grok (SuperGrok)', () => {
+    expect(resolveBriefFallback()).toEqual({ aiProvider: 'grok' })
+    expect(BRIEF_FALLBACK_PROVIDER).toBe('grok')
   })
 
   it('primary path: OpenAI success returns fallbackUsed=false', async () => {
@@ -173,9 +183,9 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
     expect(result.ai.text).toBe('GPT-BRIEF')
   })
 
-  it('fallback path: OpenAI failure (unpaid/quota) falls back to GLM 5.2 Fast via Baseten', async () => {
+  it('fallback path: OpenAI failure (unpaid/quota) falls back to Grok', async () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
 
     const urls: string[] = []
@@ -183,11 +193,9 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
       const url = String(input)
       urls.push(url)
       if (url.includes('api.openai.com')) {
-        // Unpaid account / insufficient quota — the exact GPT-billing failure
-        // the fallback exists to absorb.
         throw new Error('openai 429 insufficient_quota')
       }
-      return json({ choices: [{ message: { content: 'GLM-FALLBACK-BRIEF' }, finish_reason: 'stop' }] })
+      return json({ choices: [{ message: { content: 'GROK-FALLBACK-BRIEF' }, finish_reason: 'stop' }] })
     }) as typeof fetch
 
     const result = await generateBriefText({
@@ -198,11 +206,10 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
     })
 
     expect(result.fallbackUsed).toBe(true)
-    expect(result.ai.provider).toBe('baseten-glm-fast')
-    expect(result.ai.text).toBe('GLM-FALLBACK-BRIEF')
-    // Both endpoints were hit: OpenAI first, then Baseten GLM 5.2 Fast.
+    expect(result.ai.provider).toBe('grok')
+    expect(result.ai.text).toBe('GROK-FALLBACK-BRIEF')
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(true)
-    expect(urls.some((u) => u.includes('inference.baseten.co'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
   })
 
   it('explicit GLM 5.2 Fast primary succeeds with fallbackUsed=false', async () => {
@@ -231,15 +238,15 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
   })
 
-  it('both-fail path: combined error names GPT and GLM 5.2 Fast reasons', async () => {
+  it('both-fail path: combined error names GPT and Grok reasons', async () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
 
     global.fetch = jest.fn(async (input) => {
       const url = String(input)
       if (url.includes('api.openai.com')) throw new Error('openai 429 insufficient_quota')
-      throw new Error('baseten 503 overloaded')
+      throw new Error('grok 403 subscription not entitled')
     }) as typeof fetch
 
     await expect(
@@ -249,7 +256,7 @@ describe('generateBriefText fallback — GLM 5.2 Fast (Baseten) when GPT fails',
         system: 'You are the brief architect.',
         prompt: 'TOPIC: dependent visa uk',
       }),
-    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(GPT\)[\s\S]*Fallback \(GLM 5\.2 Fast\)/)
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(GPT\)[\s\S]*Fallback \(Grok\)/)
   })
 })
 

@@ -22,7 +22,7 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateEngineText } from '@/lib/seoEngine/engineAi'
 import { getStage, type Country, type LifecycleStageDef } from './ontology'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -411,7 +411,7 @@ Hard rules:
 Return ONLY JSON. No commentary.`
 
   try {
-    const res = await generateContentText({
+    const res = await generateEngineText({
       aiProvider: 'openai',
       system: 'You are a senior outreach copywriter who writes short, honest, copy-edit-ready outreach emails. Output strict JSON: { "subject", "body" }. Return ONLY JSON, no commentary.',
       prompt,

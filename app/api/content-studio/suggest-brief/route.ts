@@ -279,8 +279,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       // Which model actually produced the brief — 'openai' (GPT Sol/Terra) or
-      // 'baseten-glm-fast' (GLM 5.2 Fast fallback) — so the UI can surface a
-      // "GPT unavailable — brief generated via GLM 5.2 Fast" notice.
+      // 'grok' (SuperGrok fallback) — so the UI can surface a
+      // "GPT unavailable — brief generated via Grok" notice.
       provider: ai.provider,
       model: ai.model,
       fallbackUsed,

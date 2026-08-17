@@ -22,7 +22,7 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateEngineText } from '@/lib/seoEngine/engineAi'
 import {
   LIFECYCLE_STAGES,
   COUNTRIES,
@@ -536,7 +536,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     let brief = ''
     if (draft) {
       try {
-        const ai = await generateContentText({
+        const ai = await generateEngineText({
           aiProvider: 'openai',
           system: [
             editorialBriefPromptBlock(),
