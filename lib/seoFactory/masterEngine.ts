@@ -38,6 +38,20 @@ import { auditLiveHtml } from './liveAudit'
 import { DISCLAIMER_RE } from './contentQualityGate'
 import { ESTATE_LINK_RE } from './linkAudit'
 import { BANNED_AI_TELLS } from '@/lib/seoVoice'
+import {
+  brokenLinkRecovery,
+  ctrCurveFit,
+  dwellPogoProxy,
+  labCoreWebVitals,
+  lostQueryRate,
+  newQueryVelocity,
+  paaEligibility,
+  rankVolatility,
+  scoreHreflang,
+  scoreLocalization,
+  scoreSecurityHeaders,
+  snippetEligibility,
+} from './observedSignals'
 import { backlinkSignals, type BacklinkSnapshot } from './backlinkProvider'
 
 // ═══ Taxonomy ══════════════════════════════════════════════════════════════
@@ -264,9 +278,9 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('e_publication_date', 'Publication date disclosed', 'eeat', 'content', 1, 1, true),
   sig('e_update_disclosure', 'Update / revision disclosure', 'eeat', 'content', 1, 1, true),
   sig('e_evidence_density', 'Evidence-backed claims', 'eeat', 'content', 1, 1, true),
-  sig('e_reviewer_disclosure', 'Reviewer / fact-check disclosure', 'eeat', 'content', 1, 1, false),
+  sig('e_reviewer_disclosure', 'Reviewer / fact-check disclosure', 'eeat', 'content', 1, 1, true),
   sig('e_brand_reputation', 'Independent reputation signals', 'eeat', 'registry', 1, 1, false),
-  sig('e_external_experts', 'External expert references', 'eeat', 'content', 1, 1, false),
+  sig('e_external_experts', 'External expert references', 'eeat', 'content', 1, 1, true),
   // LLM judgment — fixed intra-subsystem prior weight, same as c_quality_llm.
   // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
   sig('e_eeat_llm', 'LLM E-E-A-T/trust judgment', 'eeat', 'derived', 1, 2, true),
@@ -284,8 +298,8 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('sc_valid', 'JSON-LD parses cleanly', 'schema', 'content', 1, 1, true),
   sig('sc_consistency', 'Schema-to-content consistency', 'schema', 'content', 1, 1, true),
   sig('sc_rich_result', 'Rich-result eligibility', 'schema', 'content', 1, 1, true),
-  sig('sc_howto', 'HowTo schema (procedural queries)', 'schema', 'content', 1, 1, false),
-  sig('sc_video', 'VideoObject schema', 'schema', 'content', 1, 1, false),
+  sig('sc_howto', 'HowTo schema (procedural queries)', 'schema', 'content', 1, 1, true),
+  sig('sc_video', 'VideoObject schema', 'schema', 'content', 1, 1, true),
 
   // ── SERP / GSC (14) ──────────────────────────────────────────────────────
   sig('g_impressions', 'GSC impressions', 'serp', 'gsc', 1, 1, true),
@@ -307,11 +321,11 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   // weight, same as c_quality_llm.
   // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
   sig('o_competitive_llm', 'LLM competitive-gap judgment', 'serp', 'derived', 1, 2, true),
-  sig('g_serp_feature_opp', 'SERP feature opportunity', 'serp', 'derived', 1, 1, false),
-  sig('g_rank_volatility', 'Ranking volatility', 'serp', 'derived', 1, 1, false),
-  sig('g_new_query_velocity', 'New-query emergence', 'serp', 'gsc', 1, 1, false),
-  sig('g_lost_query_rate', 'Lost-query rate', 'serp', 'gsc', -1, 1, false),
-  sig('g_ctr_curve', 'CTR curve position fit', 'serp', 'gsc', 1, 1, false),
+  sig('g_serp_feature_opp', 'SERP feature opportunity', 'serp', 'derived', 1, 1, true),
+  sig('g_rank_volatility', 'Ranking volatility', 'serp', 'derived', 1, 1, true),
+  sig('g_new_query_velocity', 'New-query emergence', 'serp', 'gsc', 1, 1, true),
+  sig('g_lost_query_rate', 'Lost-query rate', 'serp', 'gsc', -1, 1, true),
+  sig('g_ctr_curve', 'CTR curve position fit', 'serp', 'gsc', 1, 1, true),
 
   // ── Freshness (10) ───────────────────────────────────────────────────────
   sig('f_year_marker', 'Current-year marker in content', 'freshness', 'content', 1, 1, true),
@@ -322,7 +336,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('f_seasonal_alignment', 'Seasonal timing alignment', 'freshness', 'derived', 1, 1, false),
   sig('f_trending_velocity', 'Trending-query velocity', 'freshness', 'gsc', 1, 1, false),
   sig('f_news_proximity', 'News/event proximity', 'freshness', 'derived', 1, 1, false),
-  sig('f_update_frequency', 'Update frequency', 'freshness', 'registry', 1, 1, false),
+  sig('f_update_frequency', 'Update frequency', 'freshness', 'registry', 1, 1, true),
   sig('f_competitor_freshness', 'Freshness differential vs competitors', 'freshness', 'derived', 1, 1, false),
 
   // ── Experience (10) ──────────────────────────────────────────────────────
@@ -334,7 +348,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('x_readability', 'Readability', 'experience', 'content', 1, 1, true),
   sig('x_above_fold', 'Above-fold content availability', 'experience', 'content', 1, 1, true),
   sig('x_alt_text', 'Image alt-text coverage', 'experience', 'live', 1, 1, true),
-  sig('x_core_vitals', 'Core Web Vitals (field data)', 'experience', 'live', 1, 2, false),
+  sig('x_core_vitals', 'Core Web Vitals (lab proxy; field when CrUX present)', 'experience', 'live', 1, 2, true),
   sig('x_mobile_parity', 'Mobile/desktop content parity', 'experience', 'live', 1, 1, false),
 
   // ── EXTENDED TAXONOMY · computed signals (powerhouse v2) ───────────────────
@@ -419,9 +433,9 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
     ['intent_commercial_value', 'Commercial/conversion value', 1, 1, false],
   ]),
   ...bulk('SERP Features & Competitive Intelligence', 'serp', 'derived', [
-    ['g_featured_snippet', 'Featured-snippet presence', 1, 1, false],
-    ['g_paa', 'People-Also-Ask presence', 1, 1, false],
-    ['g_ai_overview_citation', 'AI-overview citation presence', 1, 1, false],
+    ['g_featured_snippet', 'Featured-snippet eligibility', 1, 1, true],
+    ['g_paa', 'People-Also-Ask eligibility', 1, 1, true],
+    ['g_ai_overview_citation', 'AI-overview citation (measured SoV)', 1, 1, true],
     ['g_video_results', 'Video carousel presence', 1, 1, false],
     ['g_serp_volatility', 'SERP volatility index', 1, 1, false],
     ['g_competitor_velocity', 'Competitor publish velocity', 1, 1, false],
@@ -430,40 +444,40 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
     ['g_rank_distribution', 'Ranking distribution across page 1', 1, 1, false],
   ]),
   ...bulk('Security, Privacy & Compliance', 'technical', 'live', [
-    ['t_security_headers', 'Security headers (CSP/X-Frame/HSTS)', 1, 1, false],
+    ['t_security_headers', 'Security headers (CSP/X-Frame/HSTS)', 1, 1, true],
     ['t_cookie_consent', 'Cookie-consent compliance', 1, 1, false],
     ['t_malware_status', 'Malware/blacklist status', 1, 1, false],
     ['t_email_auth', 'Email auth (SPF/DKIM/DMARC)', 1, 1, false],
   ]),
   ...bulk('Media — Images & Video', 'experience', 'live', [
     ['x_image_sitemap', 'Image sitemap coverage', 1, 1, false],
-    ['x_video_present', 'Video presence', 1, 1, false],
+    ['x_video_present', 'Video presence', 1, 1, true],
     ['x_video_transcript', 'Video transcript availability', 1, 1, false],
     ['x_image_compression', 'Image compression ratio', 1, 1, false],
-    ['x_srcset', 'Responsive srcset usage', 1, 1, false],
+    ['x_srcset', 'Responsive srcset usage', 1, 1, true],
   ]),
   ...bulk('Mobile Optimization', 'experience', 'live', [
     ['x_tap_targets', 'Tap-target sizing', 1, 1, false],
     ['x_mobile_usability', 'Mobile usability (Search Console)', 1, 1, false],
-    ['x_font_display', 'font-display strategy', 1, 1, false],
+    ['x_font_display', 'font-display strategy', 1, 1, true],
     ['x_bfcache', 'bfcache eligibility', 1, 1, false],
   ]),
   ...bulk('Brand & Entity Signals', 'links', 'registry', [
     ['l_branded_volume', 'Branded search volume', 1, 1, false],
-    ['l_brand_mentions', 'Brand mention volume', 1, 1, false],
+    ['l_brand_mentions', 'Brand mention volume', 1, 1, true],
     ['l_brand_growth', 'Branded-query growth', 1, 1, false],
     ['l_entity_recognition', 'Entity recognition strength', 1, 1, false],
   ]),
   ...bulk('Behavioral & Engagement', 'serp', 'derived', [
-    ['g_dwell_time', 'Dwell-time proxy', 1, 1, false],
-    ['g_pogo_stick', 'Pogo-sticking proxy', 1, 1, false],
+    ['g_dwell_time', 'Dwell-time proxy', 1, 1, true],
+    ['g_pogo_stick', 'Pogo-sticking proxy', 1, 1, true],
     ['g_return_rate', 'Returning-user rate', 1, 1, false],
     ['g_session_depth', 'Pages-per-session', 1, 1, false],
   ]),
   ...bulk('International & Multi-Market', 'technical', 'registry', [
-    ['t_hreflang', 'Hreflang correctness', 1, 1, false],
+    ['t_hreflang', 'Hreflang correctness', 1, 1, true],
     ['t_ccTLD', 'Country TLD/ccTLD usage', 1, 1, false],
-    ['t_localization', 'Localization depth', 1, 1, false],
+    ['t_localization', 'Localization depth', 1, 1, true],
   ]),
   ...bulk('Local SEO Layer', 'eeat', 'registry', [
     ['e_nap_consistency', 'NAP consistency', 1, 1, false],
@@ -484,12 +498,12 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
     ['f_publish_velocity', 'Publishing velocity', 1, 1, false],
   ]),
   ...bulk('Structured Data & Rich Results', 'schema', 'content', [
-    ['sc_review', 'Review/AggregateRating JSON-LD', 1, 1, false],
+    ['sc_review', 'Review/AggregateRating JSON-LD', 1, 1, true],
     ['sc_rich_impression', 'Rich-result impression data', 1, 1, false],
   ]),
   ...bulk('Link Building & Outreach', 'links', 'registry', [
     ['l_editorial_earn_rate', 'Editorial link earn rate', 1, 1, false],
-    ['l_broken_link_recovery', 'Broken-link recovery opportunities', 1, 1, false],
+    ['l_broken_link_recovery', 'Broken-link recovery opportunities', 1, 1, true],
     ['l_guest_post_ratio', 'Guest-post link ratio', -1, 1, false],
     ['l_referring_domain_topicality', 'Referring-domain topical relevance', 1, 1, false],
   ]),
@@ -665,7 +679,15 @@ export interface MasterEngineInput {
     ctr?: number
     position?: number
     queries?: number
+    /** Position/CTR history (oldest → newest) for volatility + curve fit. */
+    history?: Array<{ date?: string; position?: number; impressions?: number; clicks?: number; ctr?: number }>
+    /** Queries that disappeared vs the prior window. */
+    lostQueries?: number
+    /** Queries that appeared in this window. */
+    newQueries?: number
   }
+  /** Optional live response headers (CSP/HSTS/X-Frame) from a verify fetch. */
+  liveHeaders?: Record<string, string> | null
   /** Per-URL backlink snapshot from the DataForSEO provider (links subsystem). */
   backlinks?: BacklinkSnapshot | null
   /**
@@ -1087,9 +1109,9 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.e_update_disclosure = /\b(updated|last updated|revised|reviewed|as of)\b/i.test(text) ? 1 : 0
   const stats = (text.match(/\b\d[\d,.]*\s*(%|years?|days?|months?|weeks?|\$|USD|GBP|CAD|AUD)\b/g) || []).length
   out.e_evidence_density = normalizeRange(stats, 0, 6, true)
-  out.e_reviewer_disclosure = null
+  out.e_reviewer_disclosure = /(reviewed by|fact-?check|verified by|checked by|checked for accuracy)/i.test(text) ? 1 : 0
   out.e_brand_reputation = null
-  out.e_external_experts = null
+  out.e_external_experts = citations > 0 ? 1 : 0
 
   // ══ schema (from content JSON-LD) ══
   const ldBlocks = (body.match(/<script\b[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi) || [])
@@ -1112,8 +1134,9 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.sc_valid = ldBlocks.length ? (ldValid ? 1 : 0) : null
   out.sc_consistency = hasType('Article') && title ? (ldText.includes(title.slice(0, 30)) ? 1 : 0.5) : null
   out.sc_rich_result = hasType('Article') || hasType('FAQPage') ? 1 : 0
-  out.sc_howto = null
-  out.sc_video = null
+  out.sc_howto = hasType('HowTo') ? 1 : 0
+  out.sc_video = hasType('VideoObject') ? 1 : 0
+  out.sc_review = (hasType('Review') || hasType('AggregateRating')) ? 1 : 0
 
   // ══ SERP / GSC ══
   const g = input.gsc || {}
@@ -1135,7 +1158,22 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.g_share_of_voice = llmV && llmV.total > 0
     ? clamp01(llmV.shareOfVoice != null ? llmV.shareOfVoice : llmV.cited / llmV.total)
     : null
-  out.g_serp_feature_opp = null
+  const firstParaAnswer = Boolean(out.c_first_para_answer ?? out.c_answer_strength)
+  out.g_featured_snippet = snippetEligibility({
+    faq: out.c_faq_section === 1,
+    firstParaAnswer: firstParaAnswer && (out.c_first_para_answer ?? out.c_answer_strength ?? 0) >= 0.6,
+    hasList: (out.c_list_usage ?? 0) > 0.3,
+    hasTable: out.c_table_usage === 1,
+    tldr: out.c_tldr === 1,
+  })
+  const qHeadings = (body.match(/^##\s+.+\?/gm) || []).length
+  out.g_paa = paaEligibility(qHeadings + questions, out.c_faq_section === 1)
+  out.g_ai_overview_citation = llmV && llmV.total > 0
+    ? clamp01(llmV.shareOfVoice != null ? llmV.shareOfVoice : llmV.cited / llmV.total)
+    : null
+  out.g_serp_feature_opp = clamp01(
+    (out.g_featured_snippet ?? 0) * 0.45 + (out.g_paa ?? 0) * 0.35 + (out.g_ai_overview_citation ?? 0) * 0.2,
+  )
 
   // ══ LLM content-quality judgment (Subsystem A module) ══
   // Gated on the LLM_CONFIDENCE_FLOOR: a low-confidence judgment stays out of
@@ -1143,10 +1181,13 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   // subsystem scores from the stored report).
   const cq = input.contentQuality
   out.c_quality_llm = cq && cq.score != null && (cq.confidence ?? 0) >= LLM_CONFIDENCE_FLOOR ? clamp01(cq.score) : null
-  out.g_rank_volatility = null
-  out.g_new_query_velocity = null
-  out.g_lost_query_rate = null
-  out.g_ctr_curve = null
+  out.g_rank_volatility = rankVolatility(g.history)
+  out.g_new_query_velocity = newQueryVelocity(g.queries, g.newQueries)
+  out.g_lost_query_rate = lostQueryRate(g.queries, g.lostQueries)
+  out.g_ctr_curve = ctrCurveFit(g.ctr, g.position)
+  const dp = dwellPogoProxy(g.ctr, g.position)
+  out.g_dwell_time = dp.dwell
+  out.g_pogo_stick = dp.pogo
 
   // ══ freshness ══
   out.f_year_marker = text.includes(CURRENT_YEAR) ? 1 : /\b202[4-9]\b/.test(text) ? 0.6 : 0.2
@@ -1160,7 +1201,10 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.f_seasonal_alignment = null
   out.f_trending_velocity = null
   out.f_news_proximity = null
-  out.f_update_frequency = null
+  out.f_update_frequency =
+    input.createdAt && input.updatedAt && input.createdAt !== input.updatedAt
+      ? (daysSince < 90 ? 1 : normalizeRange(daysSince, 365, 30, true))
+      : 0.4
   out.f_competitor_freshness = null
 
   // ══ experience ══
@@ -1171,7 +1215,12 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.x_page_weight = out.t_page_weight
   out.x_readability = out.c_reading_level
   out.x_above_fold = out.c_answer_strength
-  out.x_core_vitals = null
+  out.x_core_vitals = labCoreWebVitals({
+    pageWeight: out.t_page_weight ?? null,
+    imageDimRatio: out.x_image_dims ?? null,
+    scriptCount: liveHtml ? scriptCount : null,
+    viewport: out.t_viewport ?? null,
+  })
   out.x_mobile_parity = null
 
   // ══ extended taxonomy — computed signals (powerhouse v2) ══
@@ -1319,6 +1368,33 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.x_alt_text = imgTags.length ? imgWithAlt / imgTags.length : null
   out.x_image_format = liveHtml ? (/\.(webp|avif)\b/i.test(liveHtml) ? 1 : 0) : null
   out.x_resource_hints = liveHtml ? (/<link\b[^>]*rel=["'](preconnect|preload|prefetch)["']/i.test(liveHtml) ? 1 : 0) : null
+  out.x_srcset = liveHtml ? (/<img\b[^>]*srcset=/i.test(liveHtml) ? 1 : 0) : null
+  out.x_font_display = liveHtml ? (/font-display\s*:\s*(swap|optional|fallback)/i.test(liveHtml) ? 1 : 0.4) : null
+  out.x_video_present = liveHtml
+    ? (/<video\b|youtube\.com\/embed|youtu\.be\/|"@type"\s*:\s*"VideoObject"/i.test(liveHtml) ? 1 : 0)
+    : (hasType('VideoObject') ? 1 : 0)
+
+  out.t_hreflang = scoreHreflang(liveHtml)
+  out.t_localization = scoreLocalization(input.canonicalUrl || input.liveUrl, input.region)
+  out.t_security_headers = scoreSecurityHeaders(input.liveHeaders)
+
+  out.l_broken_link_recovery = input.backlinks
+    ? brokenLinkRecovery(input.backlinks.brokenBacklinks, input.backlinks.totalBacklinks)
+    : null
+  out.l_brand_mentions = brandMentions ? normalizeRange(brandMentions, 0, 6, true) : 0
+
+  // Recompute snippet/PAA after first-paragraph answer is known.
+  out.g_featured_snippet = snippetEligibility({
+    faq: out.c_faq_section === 1,
+    firstParaAnswer: (out.c_first_para_answer ?? out.c_answer_strength ?? 0) >= 0.6,
+    hasList: (out.c_list_usage ?? 0) > 0.3,
+    hasTable: out.c_table_usage === 1,
+    tldr: out.c_tldr === 1,
+  })
+  out.g_paa = paaEligibility(qHeadings + questions, out.c_faq_section === 1)
+  out.g_serp_feature_opp = clamp01(
+    (out.g_featured_snippet ?? 0) * 0.45 + (out.g_paa ?? 0) * 0.35 + (out.g_ai_overview_citation ?? 0) * 0.2,
+  )
 
   return out
 }

@@ -219,7 +219,7 @@ export function reportSpecCoverage(): {
     groups: SPEC_GROUPS.map((g) => ({ ...g, registered: 0, computedCapable: 0, darkSlots: 0 })),
     hardenOrder: [
       '1. Keep scoring only observed values (null ≠ 0) — already in scoreMaster.',
-      '2. Wire the dark slots we already registered, in this order: GSC history (CTR/dwell proxies, lost queries), CrUX CWV, backlink graph (velocity, lost links, topical RD), hreflang, featured-snippet/PAA/AIO.',
+      '2. Wave 1 is live: hreflang, localization, snippet/PAA/AIO eligibility, GSC history (volatility, lost/new queries, CTR curve, dwell/pogo proxies), lab CWV, HowTo/Video schema, security headers when the verify fetch supplies them.',
       '3. Do not add the remaining ~600 spec rows until a feed exists. Empty rows dilute nothing today, but they create false coverage if flipped to 0.',
       '4. Learn family weights from shipped rank outcomes (seo_ranking_scores + GSC position) — rankingModel already has a bounded calibration loop.',
       '5. Competitive delta stays the decision layer: invest where Page − SERP_top10 is most negative and lift is cheapest.',

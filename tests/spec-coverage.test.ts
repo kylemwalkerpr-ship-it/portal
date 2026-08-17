@@ -21,8 +21,10 @@ describe('Master Engine vs 838-point spec', () => {
 
   it('does not treat uncomputed registry rows as computed-capable', () => {
     const dark = SIGNAL_REGISTRY.filter((s) => !s.computed)
-    expect(dark.some((s) => s.id === 'x_core_vitals')).toBe(true)
-    expect(dark.some((s) => s.id === 't_hreflang')).toBe(true)
-    expect(dark.some((s) => s.id === 'g_featured_snippet')).toBe(true)
+    expect(SIGNAL_REGISTRY.find((s) => s.id === 't_hreflang')?.computed).toBe(true)
+    expect(SIGNAL_REGISTRY.find((s) => s.id === 'g_featured_snippet')?.computed).toBe(true)
+    expect(SIGNAL_REGISTRY.find((s) => s.id === 'x_core_vitals')?.computed).toBe(true)
+    expect(dark.some((s) => s.id === 'e_gbp_profile')).toBe(true)
+    expect(dark.some((s) => s.id === 'intent_monthly_volume')).toBe(true)
   })
 })
