@@ -310,6 +310,7 @@ export async function scoreSemanticNlp(opts: ScoreSemanticNlpOptions): Promise<S
       prompt,
       maxTokens: opts.maxTokens ?? 2500,
       temperature: 0.2,
+      skipQualityContract: true,
     })
 
     const parsed = parseSemanticNlpResponse(ai.text || '', opts.lane1?.embeddings)

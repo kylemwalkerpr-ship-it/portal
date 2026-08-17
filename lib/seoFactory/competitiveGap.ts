@@ -305,6 +305,7 @@ export async function scoreCompetitiveGap(opts: ScoreCompetitiveGapOptions): Pro
       prompt,
       maxTokens: opts.maxTokens ?? 2500,
       temperature: 0.2,
+      skipQualityContract: true,
     })
 
     const parsed = parseCompetitiveGapResponse(ai.text || '')

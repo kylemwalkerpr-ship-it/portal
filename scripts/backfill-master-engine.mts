@@ -42,6 +42,27 @@ const APPLY = args.has('--apply')
 const limitArg = process.argv.find((a) => a.startsWith('--limit='))
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : null
 
+/**
+ * Groq's free tier caps at ~8k tokens-per-minute. A single Lane-2 scoring
+ * call (target + competitors + system prompt) lands around 6–7k tokens, so
+ * two back-to-back calls in the same minute exceed the TPM and the second
+ * call 429s. Space consecutive LLM scoring calls so each falls in a fresh
+ * TPM window. Overridable via BACKFILL_LLM_THROTTLE_MS for slow vs fast
+ * providers (raise it if you add a second 8k-TPM provider, drop it to 0 to
+ * disable when a paid/unlimited provider leads the cascade).
+ */
+let lastLlmCallAt = 0
+const LLM_THROTTLE_MS = Number(process.env.BACKFILL_LLM_THROTTLE_MS || '65000')
+async function throttleLlmCall(): Promise<void> {
+  if (!Number.isFinite(LLM_THROTTLE_MS) || LLM_THROTTLE_MS <= 0) return
+  const wait = lastLlmCallAt + LLM_THROTTLE_MS - Date.now()
+  if (wait > 0) {
+    process.stdout.write(`      ⏳ throttling ${Math.round(wait / 1000)}s (provider TPM)…\n`)
+    await new Promise((r) => setTimeout(r, wait))
+  }
+  lastLlmCallAt = Date.now()
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
@@ -226,6 +247,7 @@ async function main() {
       const fresh = row.content_scored_at &&
         Date.now() - new Date(row.content_scored_at).getTime() < 7 * 86_400_000
       if (!fresh) {
+        await throttleLlmCall()
         const lane1 = buildContentLane1({
           targetText: input.content || '',
           competitorTexts: row.competing_snippets || [],
@@ -263,6 +285,7 @@ async function main() {
       const fresh = row.semantic_scored_at &&
         Date.now() - new Date(row.semantic_scored_at).getTime() < 7 * 86_400_000
       if (!fresh) {
+        await throttleLlmCall()
         const lane1 = buildSemanticLane1({
           questionIntent: input.contentType === 'faq' || /\?/.test(input.topic || ''),
         })
@@ -299,6 +322,7 @@ async function main() {
       const fresh = row.eeat_scored_at &&
         Date.now() - new Date(row.eeat_scored_at).getTime() < 7 * 86_400_000
       if (!fresh) {
+        await throttleLlmCall()
         const lane1 = buildEeatLane1({
           targetText: input.content || '',
           ymyl: input.contentType === 'legal_guide' || input.contentType === 'ymyl' || /\b(visa|immigration|naturalization|asylum|refugee)\b/i.test(input.topic || ''),
@@ -336,6 +360,7 @@ async function main() {
       const fresh = row.competitive_scored_at &&
         Date.now() - new Date(row.competitive_scored_at).getTime() < 7 * 86_400_000
       if (!fresh) {
+        await throttleLlmCall()
         const lane1 = buildCompetitiveLane1({
           competitorCount: (row.competing_snippets || []).filter(Boolean).length,
           authorityScore: input.authorityScore ?? null,
@@ -374,6 +399,7 @@ async function main() {
       const fresh = row.local_scored_at &&
         Date.now() - new Date(row.local_scored_at).getTime() < 7 * 86_400_000
       if (!fresh) {
+        await throttleLlmCall()
         const lane1 = buildLocalLane1({
           region: input.region || undefined,
           targetText: input.content || '',

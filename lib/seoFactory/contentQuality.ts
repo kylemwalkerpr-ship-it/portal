@@ -328,6 +328,7 @@ export async function scoreContentQuality(opts: ScoreContentQualityOptions): Pro
       prompt,
       maxTokens: opts.maxTokens ?? 2500,
       temperature: 0.2,
+      skipQualityContract: true,
     })
 
     const parsed = parseContentQualityResponse(ai.text || '')

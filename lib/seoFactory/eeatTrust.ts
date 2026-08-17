@@ -321,6 +321,7 @@ export async function scoreEeatTrust(opts: ScoreEeatTrustOptions): Promise<EeatT
       prompt,
       maxTokens: opts.maxTokens ?? 2500,
       temperature: 0.2,
+      skipQualityContract: true,
     })
 
     const parsed = parseEeatTrustResponse(ai.text || '')

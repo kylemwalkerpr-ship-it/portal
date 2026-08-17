@@ -315,6 +315,7 @@ export async function scoreLocalSeo(opts: ScoreLocalSeoOptions): Promise<LocalSe
       prompt,
       maxTokens: opts.maxTokens ?? 2500,
       temperature: 0.2,
+      skipQualityContract: true,
     })
 
     const parsed = parseLocalSeoResponse(ai.text || '')

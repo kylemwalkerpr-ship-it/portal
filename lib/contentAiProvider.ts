@@ -108,6 +108,12 @@ export interface ContentAiOptions {
    *  pinned provider fails or is unconfigured, the call throws instead of
    *  silently shipping a brief drafted by baseten/nvidia/cloudflare. */
   exclusive?: boolean
+  /** Skip the universal quality contract (the prose-writing rules block).
+   *  Lane-2 scoring modules (contentQuality / semanticNlp / eeatTrust /
+   *  competitiveGap / localSeo) emit structured JSON judgments, not articles,
+   *  so the ~4k-token writing contract is pure dead weight there — it also
+   *  pushes those calls over Groq's 8k TPM free-tier limit. */
+  skipQualityContract?: boolean
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -1962,6 +1968,7 @@ export function deadlineForProvider(label: string, requested?: number): number {
 
 function withUniversalQualityContract(opts: ContentAiOptions): ContentAiOptions {
   const marker = '## MANDATORY QUALITY RULES'
+  if (opts.skipQualityContract) return opts
   if (opts.system.includes(marker)) return opts
   const system = opts.system.trim()
   return {
