@@ -99,6 +99,8 @@ AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
 #   SUPABASE_SERVICE_ROLE_KEY — Server-side Supabase access (content_jobs, etc.)
 #   CLOUDFLARE_AI_TOKEN      — Fallback AI when NVIDIA key is exhausted
 #   RESEND_API_KEY   — Transactional email (attorney decision notifications)
+#   AHREFS_API_KEY   — Site Audit ingest (project 9902912) for CS-introduced issues
+#   AHREFS_PROJECT_ID — optional override (defaults to 9902912)
 #
 # Without NVIDIA_API_KEY, the Auto-Pilot and Content Studio cannot generate
 # content — they fall through all providers because none are configured.

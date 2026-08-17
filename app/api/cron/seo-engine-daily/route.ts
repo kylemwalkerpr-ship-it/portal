@@ -143,6 +143,13 @@ export async function POST(req: NextRequest) {
         cited = vis.cited
         llmFailed = vis.failed
       }
+      if (process.env.AHREFS_API_KEY) {
+        try {
+          const { fetchAhrefsSiteAudit, persistAhrefsSnapshot } = await import('@/lib/seoEngine/ahrefsAudit')
+          const snap = await fetchAhrefsSiteAudit()
+          await persistAhrefsSnapshot(snap)
+        } catch { /* Ahrefs is additive — never fail the daily run */ }
+      }
     }
     const status = classifyEngineRunStatus({
       phase,

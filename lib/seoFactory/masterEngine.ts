@@ -445,6 +445,8 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   ]),
   ...bulk('Security, Privacy & Compliance', 'technical', 'live', [
     ['t_security_headers', 'Security headers (CSP/X-Frame/HSTS)', 1, 1, true],
+    ['t_ahrefs_health', 'Ahrefs Site Audit health score', 1, 2, true],
+    ['t_ahrefs_cs_open', 'Ahrefs issues CS can introduce (clear)', 1, 2, true],
     ['t_cookie_consent', 'Cookie-consent compliance', 1, 1, false],
     ['t_malware_status', 'Malware/blacklist status', 1, 1, false],
     ['t_email_auth', 'Email auth (SPF/DKIM/DMARC)', 1, 1, false],
@@ -688,6 +690,12 @@ export interface MasterEngineInput {
   }
   /** Optional live response headers (CSP/HSTS/X-Frame) from a verify fetch. */
   liveHeaders?: Record<string, string> | null
+  /** Latest Ahrefs Site Audit snapshot (estate-level). */
+  ahrefs?: {
+    healthScore?: number | null
+    csOpen?: number | null
+    totalOpen?: number | null
+  } | null
   /** Per-URL backlink snapshot from the DataForSEO provider (links subsystem). */
   backlinks?: BacklinkSnapshot | null
   /**
@@ -1377,6 +1385,12 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.t_hreflang = scoreHreflang(liveHtml)
   out.t_localization = scoreLocalization(input.canonicalUrl || input.liveUrl, input.region)
   out.t_security_headers = scoreSecurityHeaders(input.liveHeaders)
+  out.t_ahrefs_health = input.ahrefs?.healthScore != null
+    ? Math.max(0, Math.min(1, Number(input.ahrefs.healthScore) / 100))
+    : null
+  out.t_ahrefs_cs_open = input.ahrefs?.csOpen == null
+    ? null
+    : input.ahrefs.csOpen <= 0 ? 1 : Math.max(0, 1 - Math.min(1, Number(input.ahrefs.csOpen) / 40))
 
   out.l_broken_link_recovery = input.backlinks
     ? brokenLinkRecovery(input.backlinks.brokenBacklinks, input.backlinks.totalBacklinks)

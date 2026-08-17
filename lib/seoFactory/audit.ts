@@ -174,20 +174,20 @@ export function auditContent(opts: {
 
   // Title
   const title = fm.title || body.match(/^#\s+(.+)$/m)?.[1] || ''
-  add(title.length > 10 && title.length <= 70, {
+  add(title.length >= 30 && title.length <= 60, {
     code: 'title',
     severity: !title ? 'blocker' : 'warning',
     message: title ? `Title length ${title.length}: "${title.slice(0, 60)}"` : 'Missing title',
-    fix: 'Set YAML title 30–60 chars with primary keyword + year/place when relevant',
+    fix: 'Set YAML title 30–60 chars (Ahrefs band) with primary keyword + year/place when relevant',
   }, AUDIT_POINT_WEIGHTS.title)
 
   // Meta description
   const desc = fm.description || fm.metaDescription || ''
-  add(desc.length >= 120 && desc.length <= 170, {
+  add(desc.length >= 70 && desc.length <= 160, {
     code: 'meta_description',
     severity: 'warning',
     message: desc ? `Meta description length ${desc.length}` : 'Missing meta description in front matter',
-    fix: 'Add description: 140–160 characters with a concrete benefit',
+    fix: 'Add description: 70–160 characters (Ahrefs band) with a concrete benefit',
   }, AUDIT_POINT_WEIGHTS.metaDescription)
 
   // H2 structure

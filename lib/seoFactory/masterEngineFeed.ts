@@ -190,14 +190,16 @@ export async function assembleMasterEngineFeed(
       gsc: req.gsc,
       competingUrls: req.competingUrls,
     }
-    const [withHealth, llmV, knowledge, cluster] = await Promise.all([
+    const [withHealth, llmV, knowledge, cluster, ahrefs] = await Promise.all([
       attachSiteHealthFacts(input, req.canonicalUrl).catch(() => input),
       loadLlmVisibilityEvidence(primaryKeyword).catch(() => null),
       loadMatchingKnowledge(primaryKeyword, req.region),
       loadMatchingCluster(primaryKeyword, req.region),
+      import('@/lib/seoEngine/ahrefsAudit').then((m) => m.loadLatestAhrefsSnapshot()).catch(() => null),
     ])
     input = withHealth
     if (llmV) input.llmVisibility = llmV
+    if (ahrefs) input.ahrefs = { healthScore: ahrefs.healthScore, csOpen: ahrefs.csOpen, totalOpen: ahrefs.totalOpen }
 
     const report = scoreMaster(input)
     const fix = masterEngineFixPlan(input)

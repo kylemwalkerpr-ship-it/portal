@@ -14,6 +14,7 @@
 
 import { BANNED_AI_TELLS, VOICE_PLAYBOOK } from '@/lib/seoVoice'
 import { auditLinksSync } from './linkAudit'
+import { evaluateAhrefsDraft } from './ahrefsIssues'
 
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
@@ -863,6 +864,18 @@ export function evaluateContentQuality(opts: {
       message: `Human-voice score too low (${humanScore}/100) — cadence/filler patterns fail practitioner standard`,
       fix: 'Full rewrite: second person, varied sentence length, concrete procedures, no AI clichés.',
     })
+  }
+
+  // ── Ahrefs Site Audit contract — CS must not ship flags it can create ──
+  if (indexable) {
+    for (const f of evaluateAhrefsDraft(opts.content || '', { indexable, targetUrl: opts.targetUrl })) {
+      add({
+        code: f.code,
+        severity: f.severity,
+        message: f.message,
+        fix: f.fix,
+      })
+    }
   }
 
   // ── Link integrity (2026-08: the AI invented example.com URLs that shipped) ──

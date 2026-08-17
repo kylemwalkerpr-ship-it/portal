@@ -36,6 +36,7 @@ function cleanLongForm(): string {
 title: ${TITLE}
 description: ${DESCRIPTION}
 primaryKeyword: student visa documents
+canonicalUrl: https://legal.yousafeconsultancy.com/us/student-visa-documents/
 ---
 
 # ${TITLE}

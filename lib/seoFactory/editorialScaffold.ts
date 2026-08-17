@@ -11,6 +11,7 @@ import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
 import { sourcesForRegion } from './officialSources'
+import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -44,14 +45,11 @@ function metaDescriptionFrom(title: string, body: string, primaryKeyword: string
   if (desc.length < 120) {
     desc = (desc + ' Verify every rule against official government sources before you apply.').slice(0, 160)
   }
-  return desc.slice(0, 160)
+  return clampMetaToAhrefs(desc.slice(0, 160), title, primaryKeyword)
 }
 
 function titleLine(title: string, primaryKeyword: string): string {
-  const t = (title || primaryKeyword || 'Immigration guide').trim()
-  if (t.length >= 12 && t.length <= 70) return t
-  if (t.length > 70) return t.slice(0, 67).replace(/\s+\S*$/, '') + '…'
-  return `${t} — practical guide`.slice(0, 70)
+  return clampTitleToAhrefs(title, primaryKeyword)
 }
 
 /** Strip markdown syntax so an extracted sentence reads as plain text. */
@@ -1171,7 +1169,11 @@ export function applyDeterministicRepairs(opts: {
   const out = fm
     ? `---\n${fm}\n---\n\n${b.trim()}\n`
     : `${b.trim()}\n`
-  return { content: out, applied }
+  const ahrefs = applyAhrefsDraftRepairs(out, {
+    primaryKeyword: opts.primaryKeyword,
+    targetUrl: opts.targetUrl,
+  })
+  return { content: ahrefs.content, applied: [...applied, ...ahrefs.applied] }
 }
 
 /**

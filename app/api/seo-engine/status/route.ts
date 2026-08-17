@@ -133,6 +133,7 @@ export async function GET() {
       },
       runs: runs as Array<Record<string, unknown>>,
       specCoverage: reportSpecCoverage(),
+      ahrefs: await import('@/lib/seoEngine/ahrefsAudit').then((m) => m.loadLatestAhrefsSnapshot()).catch(() => null),
       sources: DEFAULT_SOURCES.map((s) => ({ id: s.id, label: s.label, kind: s.kind, countries: s.countries })),
       config: Object.fromEntries((config.data || []).map((c) => [c.key, c.value])),
     }, { headers: NO_STORE })
