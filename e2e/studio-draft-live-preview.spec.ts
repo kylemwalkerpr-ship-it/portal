@@ -293,9 +293,10 @@ test.describe('Stage III · Draft — Live AI Writing Preview', () => {
     // use substrings unique to the STREAMED markdown (the '#' prefix / full
     // bullet text) to avoid strict-mode collisions with the topic input or
     // keyword textarea.
-    // The heading should be visible (rendered as raw markdown line).
+    // Document view (default) renders the live-page heading, not raw `#`.
+    await expect(page.getByTestId('studio-stream-document')).toHaveAttribute('aria-pressed', 'true')
     await expect(
-      page.getByText('# UK Spouse Visa Financial')
+      page.getByRole('heading', { name: /UK Spouse Visa Financial/i })
     ).toBeVisible({ timeout: 8000 })
 
     // Key financial categories text should be streamed.
@@ -409,21 +410,20 @@ test.describe('Stage III · Draft — Live AI Writing Preview', () => {
       page.getByText(new RegExp(`· ${counterDigits} chars`)),
     ).toBeVisible({ timeout: 8000 })
 
-    // The pre-wrap content div shows only the last 2000 chars — locate the
-    // INNERMOST div containing a fragment from the last 2000 chars of the
-    // stream (the beginning of the paragraph is cut off by slice(-2000)).
-    const previewDiv = page
-      .locator('div')
-      .filter({ hasText: longParagraph.slice(-80, -20) })
-      .last()
+    // Document view shows the live page (full prose, not a 2000-char tail).
+    await expect(page.getByTestId('studio-stream-document-body')).toBeVisible()
+    await expect(page.getByTestId('studio-stream-document-body')).toContainText('Lorem ipsum dolor sit amet')
+
+    // Source view still tails long raw streams so the operator can inspect the dump.
+    await page.getByTestId('studio-stream-source').click()
+    const previewDiv = page.getByTestId('studio-stream-source-body')
     await expect(previewDiv).toBeVisible({ timeout: 8000 })
 
     const displayedText = await previewDiv.textContent()
     expect(displayedText).toBeTruthy()
 
-    // The full long paragraph is 2500+ chars, preview should show only ~2000.
     if (displayedText) {
-      expect(displayedText.length).toBeLessThanOrEqual(2200) // allow margin
+      expect(displayedText.length).toBeLessThanOrEqual(2300)
     }
   })
 

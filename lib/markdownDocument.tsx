@@ -81,13 +81,27 @@ function isTableSeparator(line: string): boolean {
   return /^\s*\|?[\s:|-]+\|?\s*$/.test(line) && line.includes('-')
 }
 
-export function MarkdownDocument({ source }: { source: string }) {
-  let md = source || ''
-  // Strip YAML front matter.
+/**
+ * Prose-only source for the live-site document preview. Drops YAML, JSON-LD
+ * scripts, and trailing incomplete schema so the stream does not render as a
+ * raw `{ "@context": ... }` dump.
+ */
+export function documentPreviewSource(source: string): string {
+  let md = String(source || '')
   if (md.startsWith('---')) {
     const end = md.indexOf('\n---', 3)
     if (end !== -1) md = md.slice(end + 4).replace(/^\n+/, '')
   }
+  md = md.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '\n')
+  md = md.replace(/<script\b[^>]*>[\s\S]*$/i, '\n')
+  md = md.replace(/```(?:json|ld\+json|html)[\s\S]*?```/gi, '\n')
+  md = md.replace(/\{[\s\n]*"@context"\s*:\s*"https?:\/\/schema\.org"[\s\S]*?(?:\n\s*\}[\s\n]*|$)/g, '\n')
+  md = md.replace(/\{[\s\n]*"@context"[\s\S]*$/g, '\n')
+  return md.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+export function MarkdownDocument({ source }: { source: string }) {
+  const md = documentPreviewSource(source)
 
   const lines = md.split('\n')
   const blocks: React.ReactNode[] = []

@@ -9,7 +9,7 @@
  */
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MarkdownDocument } from '@/lib/markdownDocument'
+import { documentPreviewSource, MarkdownDocument } from '@/lib/markdownDocument'
 
 const render = (md: string) => renderToStaticMarkup(React.createElement(MarkdownDocument, { source: md }))
 
@@ -49,5 +49,23 @@ describe('MarkdownDocument — Word-style draft renderer', () => {
   it('renders the empty state when there is no content', () => {
     const html = render('')
     expect(html).toContain('Nothing to preview yet')
+  })
+
+  it('does not render JSON-LD script dumps in the live document preview', () => {
+    const raw = `# CPT approval letter
+
+The DSO writes the campus letter.
+
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is CPT?"}]}
+</script>
+`
+    expect(documentPreviewSource(raw)).toContain('The DSO writes')
+    expect(documentPreviewSource(raw)).not.toContain('@context')
+    expect(documentPreviewSource(raw)).not.toContain('FAQPage')
+    const html = render(raw)
+    expect(html).toContain('CPT approval letter')
+    expect(html).not.toContain('@context')
+    expect(html).not.toContain('mainEntity')
   })
 })

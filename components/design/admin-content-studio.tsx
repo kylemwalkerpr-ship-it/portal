@@ -48,6 +48,7 @@ import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
+import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioStageNav } from './studio-stage-nav'
 import { ChapterIntro } from './studio-chapter-intro'
 import { studioTokens as E } from './studio-tokens'
@@ -2765,6 +2766,7 @@ function DraftWorkspace({
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
   const [reviewModel, setReviewModel] = React.useState('gpt-5.6-sol')
+  const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -2913,6 +2915,29 @@ function DraftWorkspace({
           }}>
             {draftTitle || '(untitled)'}
           </span>
+          {generating && generationText.length > 0 && (
+            <div style={{ display: 'inline-flex', borderRight: `1px solid ${E.hairline}`, overflow: 'hidden' }}>
+              {(['document', 'source'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  data-testid={m === 'document' ? 'studio-stream-document' : 'studio-stream-source'}
+                  onClick={() => setStreamView(m)}
+                  aria-pressed={streamView === m}
+                  style={{
+                    padding: '8px 12px', fontFamily: C.mono, fontSize: 9, letterSpacing: '0.08em',
+                    textTransform: 'uppercase', border: 'none', cursor: 'pointer',
+                    fontWeight: streamView === m ? 700 : 500,
+                    background: streamView === m ? E.paper : 'transparent',
+                    color: streamView === m ? E.ink : E.inkMuted,
+                    borderLeft: `1px solid ${E.hairline}`,
+                  }}
+                >
+                  {m === 'document' ? '📄 Document' : '✏️ Source'}
+                </button>
+              ))}
+            </div>
+          )}
           <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
             {(() => {
               const wc = generating
@@ -2954,37 +2979,57 @@ function DraftWorkspace({
 
         {/* Editor body */}
         {generating && generationText.length > 0 ? (
-          /* Live preview — streamed content visible in real-time during generation */
-          <div ref={livePreviewRef} style={{
-            marginTop: 14, padding: '16px 18px', background: E.paper,
-            border: '1px solid ' + E.hairline, borderRadius: 0,
-            maxHeight: 480, overflowY: 'auto',
+          /* Live preview — document view matches the live site; source is the raw stream. */
+          <div ref={livePreviewRef} data-testid="studio-stream-preview" style={{
+            marginTop: 0, background: streamView === 'document' ? '#EFEDE8' : E.paper,
+            border: 'none', borderRadius: 0,
+            maxHeight: 640, overflowY: 'auto',
           }}>
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10,
-              borderBottom: '1px solid ' + E.hairline, paddingBottom: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              margin: '0 18px', padding: '12px 0 8px',
+              borderBottom: '1px solid ' + E.hairline,
             }}>
               <span style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
                 ✍️ AI WRITING LIVE
               </span>
               <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>
                 {generationText.length.toLocaleString()} chars · ~{Math.round(generationText.split(/\s+/).filter(Boolean).length)} words
+                {streamView === 'document' ? ' · live page preview' : ' · raw markdown'}
               </span>
             </div>
-            <div style={{
-              fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: E.ink,
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>
-              {generationText.length > 2000
-                ? generationText.slice(-2000)
-                : generationText}
-              <span style={{
-                display: 'inline-block', width: 8, height: 14,
-                background: E.gold,
-                verticalAlign: 'text-bottom', marginLeft: 1,
-                animation: 'studioCursorBlink 1s ease-in-out infinite',
-              }} />
-            </div>
+            {streamView === 'document' ? (
+              <div data-testid="studio-stream-document-body" style={{ padding: '8px 12px 28px' }}>
+                <MarkdownDocument source={generationText} />
+                <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 52px' }}>
+                  <span style={{
+                    display: 'inline-block', width: 8, height: 16,
+                    background: E.gold,
+                    verticalAlign: 'text-bottom',
+                    animation: 'studioCursorBlink 1s ease-in-out infinite',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              <div
+                data-testid="studio-stream-source-body"
+                style={{
+                  padding: '16px 18px 24px',
+                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: E.ink,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}
+              >
+                {generationText.length > 2000
+                  ? generationText.slice(-2000)
+                  : generationText}
+                <span style={{
+                  display: 'inline-block', width: 8, height: 14,
+                  background: E.gold,
+                  verticalAlign: 'text-bottom', marginLeft: 1,
+                  animation: 'studioCursorBlink 1s ease-in-out infinite',
+                }} />
+              </div>
+            )}
           </div>
         ) : generating && !hasContent ? (
           /* Empty state while streaming hasn't yielded content yet */
