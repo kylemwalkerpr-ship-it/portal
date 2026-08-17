@@ -914,6 +914,7 @@ export async function PATCH(request: NextRequest) {
       })
       if (reauditReady.ok) {
         patch.error_message = null
+        patch.indexable = true
         if (job.status === 'failed') patch.status = 'drafting'
       }
       const { data: updated, error: upErr } = await supabase

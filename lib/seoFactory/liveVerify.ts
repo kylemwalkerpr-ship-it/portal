@@ -138,7 +138,10 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
     if (input.jobId) await appendLog(input.jobId, { level:'warn', source:'liveVerify', message:`Live verify: ${result.error} on ${url} (HTTP ${httpStatus})`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes }, null,2) })
     return result
   }
-  const hasNoIndex = /<meta[^>]*robots[^>]*noindex/i.test(bodyText)
+  // A 404/410 document (Next.js not-found) always carries noindex. That is
+  // the missing-page template, not a published article marked noindex.
+  const missing = httpStatus === 404 || httpStatus === 410
+  const hasNoIndex = missing ? false : /<meta[^>]*robots[^>]*noindex/i.test(bodyText)
   // Canonical tag check — assert the <link rel="canonical" href="…"> matches
   // the canonicalUrl we asked about. CDNs occasionally rewrite to the
   // www/non-www form or strip trailing slashes, so normalize both sides.
@@ -171,11 +174,13 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
       // hasCanonical/canonicalHref in-memory.
       const liveStatus = ok
         ? 'verified'
-        : hasNoIndex
-          ? 'noindex'
-          : (httpStatus !== 200)
-            ? 'fetch_failed'
-            : 'needs_review'
+        : missing
+          ? 'fetch_failed'
+          : hasNoIndex
+            ? 'noindex'
+            : (httpStatus !== 200)
+              ? 'fetch_failed'
+              : 'needs_review'
       const db = dbc()
       await (db as any).from('content_jobs').update({
         live_verified_at: verifiedAt,
@@ -192,7 +197,7 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
         live_error: auditError,
       }).eq('id', input.jobId)
     } catch {}
-    await appendLog(input.jobId, { level: ok?'success':'warn', source:'liveVerify', message: ok?`Live verified: ${url} — ${wc}w · score ${auditScore}/100 · human ${humanScore} · HTTP ${httpStatus} · canonical=${hasCanonical}`:`Live needs review: ${url} — ${auditError||`HTTP ${httpStatus} · ${wc}w · noindex=${hasNoIndex} · canonical=${hasCanonical} · score ${auditScore}`}`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, httpStatus, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical }, null,2) })
+    await appendLog(input.jobId, { level: ok?'success':'warn', source:'liveVerify', message: ok?`Live verified: ${url} — ${wc}w · score ${auditScore}/100 · human ${humanScore} · HTTP ${httpStatus} · canonical=${hasCanonical}`: missing?`Live needs deploy: ${url} — HTTP ${httpStatus} (page is not on the live host yet; Approve → main to publish, then it is added to the sitemap and submitted to IndexNow)`:`Live needs review: ${url} — ${auditError||`HTTP ${httpStatus} · ${wc}w · noindex=${hasNoIndex} · canonical=${hasCanonical} · score ${auditScore}`}`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, httpStatus, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical, missing }, null,2) })
   }
   return { ok, liveUrl:url, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error:auditError }
 }

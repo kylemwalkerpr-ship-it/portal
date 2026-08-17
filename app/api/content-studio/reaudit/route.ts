@@ -201,6 +201,7 @@ export async function POST(request: NextRequest) {
           content: effective,
           seo_score: response.score,
           word_count: effective.trim().split(/\s+/).filter(Boolean).length,
+          indexable: true,
         }
         if (row?.status === 'failed') patch.status = 'drafting'
         await db.from('content_jobs').update(patch).eq('id', jobId)

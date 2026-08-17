@@ -231,6 +231,61 @@ function injectRepairSection(content: string, links: Array<{ url: string; label:
   return content + '\n' + section
 }
 
+/** Public path for a shipped page.tsx / .md file. */
+export function publicPathFromRepoFile(filePath: string): string {
+  let route = String(filePath || '')
+    .replace(/^(app|usa\/app|uk\/app|ca\/app|au\/app|landing-page\/app)\//, '')
+    .replace(/\/(page|route)\.(tsx|ts|jsx|js)$/, '')
+    .replace(/\.mdx?$/, '')
+  if (!route || route === 'page.tsx') return '/'
+  if (!route.startsWith('/')) route = `/${route}`
+  if (!route.endsWith('/')) route += '/'
+  return route.replace(/\/+/g, '/')
+}
+
+/**
+ * Add one indexable route to the Content Studio sitemap block without
+ * wiping the existing studio list. Used when a 100% gate page ships.
+ */
+export function upsertStudioSitemapEntry(
+  source: string,
+  routePath: string,
+  kind: 'caseworks' | 'regional' | 'portal' = 'caseworks',
+): { content: string; added: boolean } {
+  const looksLikeFile = /page\.(tsx|jsx|mdx?)$/.test(routePath) || /(?:^|\/)app\//.test(routePath)
+  const normalized = looksLikeFile
+    ? publicPathFromRepoFile(routePath)
+    : `${routePath.startsWith('/') ? routePath : `/${routePath}`}`.replace(/\/?$/, '/')
+  const start = source.indexOf('// SITEMAP_ORPHAN_FIX_START')
+  const endMark = '// SITEMAP_ORPHAN_FIX_END'
+  const end = source.indexOf(endMark)
+  let entries: Array<{ path: string; priority: number; changefreq: string }> = []
+  if (start >= 0 && end > start) {
+    const block = source.slice(start, end + endMark.length)
+    const jsonMatch = block.match(/=\s*(\[[\s\S]*?\])\s*(?:\n|\/\/)/)
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1]) as Array<string | { path?: string; priority?: number; changefreq?: string; changeFrequency?: string }>
+        entries = parsed.map((e) => {
+          if (typeof e === 'string') return { path: e, priority: 0.7, changefreq: 'weekly' }
+          return {
+            path: String(e.path || ''),
+            priority: Number(e.priority) || 0.7,
+            changefreq: String(e.changefreq || e.changeFrequency || 'weekly'),
+          }
+        }).filter((e) => e.path)
+      } catch {
+        entries = []
+      }
+    }
+    if (entries.some((e) => e.path === normalized)) return { content: source, added: false }
+    entries.push({ path: normalized, priority: 0.75, changefreq: 'weekly' })
+    const next = sitemapBlock(entries, kind)
+    return { content: source.slice(0, start) + next + source.slice(end + endMark.length), added: true }
+  }
+  return { content: updateSitemap(source, [{ path: normalized, priority: 0.75, changefreq: 'weekly' }], kind), added: true }
+}
+
 function sitemapBlock(entries: Array<{ path: string; priority: number; changefreq: string }>, kind: 'caseworks' | 'regional' | 'portal'): string {
   const payload = JSON.stringify(entries, null, 2)
   if (kind === 'caseworks') {

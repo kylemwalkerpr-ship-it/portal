@@ -32,6 +32,7 @@ import {
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { verifyLiveInBackground } from './liveVerify'
 import { stripNoIndex } from './siteHealthFixes'
+import { CONFIGS, publicPathFromRepoFile, upsertStudioSitemapEntry } from './siteHealth'
 
 /** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
@@ -375,6 +376,40 @@ async function maybeAppendBlogIndex(opts: {
   }
 }
 
+async function ensureCanonicalOnSitemap(opts: {
+  owner: string
+  repo: string
+  branch: string
+  filePath: string
+}): Promise<{ path: string; added: boolean; note: string }> {
+  const kind = opts.repo === 'caseworks' ? 'caseworks' : opts.repo === 'yousafe-consultancy' ? 'regional' : 'portal'
+  const sitemapPath =
+    opts.repo === 'caseworks'
+      ? CONFIGS.caseworks.sitemapPaths[0]
+      : opts.repo === 'yousafe-consultancy'
+        ? (opts.filePath.match(/^(usa|uk|ca|au)\//)?.[0]
+            ? `${opts.filePath.split('/')[0]}/app/sitemap.xml/route.ts`
+            : CONFIGS['yousafe-consultancy'].sitemapPaths[0])
+        : CONFIGS.portal.sitemapPaths[0]
+  try {
+    const current = await getRepoFileContent(opts.owner, opts.repo, sitemapPath, opts.branch)
+    if (!current) return { path: sitemapPath, added: false, note: 'sitemap file not found' }
+    const next = upsertStudioSitemapEntry(current, opts.filePath, kind)
+    if (!next.added) return { path: sitemapPath, added: false, note: 'already listed' }
+    await putRepoFile({
+      owner: opts.owner,
+      repo: opts.repo,
+      path: sitemapPath,
+      branch: opts.branch,
+      content: next.content,
+      message: `seo: add ${publicPathFromRepoFile(opts.filePath)} to sitemap (100% gate indexable)`,
+    })
+    return { path: sitemapPath, added: true, note: 'studio sitemap route added' }
+  } catch (e) {
+    return { path: sitemapPath, added: false, note: e instanceof Error ? e.message.slice(0, 160) : 'sitemap upsert failed' }
+  }
+}
+
 /**
  * Human-approved path: commit straight to main when possible.
  * Skips automated score gates (admin already reviewed content in the studio).
@@ -416,9 +451,14 @@ export async function shipContent(opts: {
   const repo = opts.plan.repo
   const branchMain = 'main'
 
+  // 100% / passing gate pages are always indexable — never ship noindex.
+  const gatePassed = (opts.audit?.score ?? 0) >= 100 || (opts.audit?.humanScore ?? 0) >= 100
+  const indexable = opts.plan.indexable !== false || gatePassed
+  if (gatePassed) opts.plan.indexable = true
+
   // Auto index: this article passed every gate — strip any stale noindex
   // directive so the shipped page is indexable by default.
-  let shipContent_ = opts.plan.indexable ? stripNoIndex(opts.content) : opts.content
+  let shipContent_ = indexable ? stripNoIndex(opts.content) : opts.content
 
   // Deterministic compliance repair BEFORE the master gate stack. A missing
   // disclaimer or broken reader TOC must never block a ship that a mechanical
@@ -455,7 +495,7 @@ export async function shipContent(opts: {
     region: opts.region,
     contentType: opts.contentType,
     primaryKeyword: opts.primaryKeyword,
-    indexable: opts.plan.indexable,
+    indexable,
     canonicalUrl: opts.plan.canonicalUrl,
   })
 
@@ -558,6 +598,10 @@ export async function shipContent(opts: {
     if (blogIdx.appended) {
       console.info(`[ship] blog index updated on main: ${blogIdx.path}`)
     }
+    const sitemap = await ensureCanonicalOnSitemap({
+      owner, repo, branch: branchMain, filePath,
+    })
+    if (sitemap.added) console.info(`[ship] sitemap updated: ${sitemap.path}`)
 
     // Fire-and-forget IndexNow submission for the new/updated page
     if (opts.plan.canonicalUrl) {
@@ -621,10 +665,15 @@ export async function shipContent(opts: {
   if (blogIdx.appended) {
     console.info(`[ship] blog index appended on branch ${branchName}: ${blogIdx.path}`)
   }
-  // CI polls the TRUE branch head — the blog-data append commit when present,
-  // otherwise the page commit. Polling a stale parent SHA could report green
-  // while the head commit's check-runs are still pending.
-  const branchCommit = blogIdx.commitSha ?? put.commitSha
+  const sitemap = await ensureCanonicalOnSitemap({
+    owner, repo, branch: branchName, filePath,
+  })
+  if (sitemap.added) console.info(`[ship] sitemap updated on ${branchName}: ${sitemap.path}`)
+  // CI polls the TRUE branch head — sitemap/blog appends land after the page
+  // commit, so poll the current tip rather than a stale parent SHA.
+  const branchCommit = sitemap.added
+    ? await getBranchHeadSha(owner, repo, branchName)
+    : (blogIdx.commitSha ?? put.commitSha)
 
   const pr = await openPullRequest({
     owner,
