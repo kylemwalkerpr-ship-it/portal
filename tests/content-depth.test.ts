@@ -84,6 +84,7 @@ ${'word '.repeat(100)}
     const n = countBodyWords(md)
     expect(n).toBeLessThan(150)
     expect(n).toBeGreaterThan(90)
+    expect(md.trim().split(/\s+/).filter(Boolean).length).toBeGreaterThan(n)
   })
 })
 

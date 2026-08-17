@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
           error_message: null,
           content: effective,
           seo_score: response.score,
-          word_count: effective.trim().split(/\s+/).filter(Boolean).length,
+          word_count: countBodyWords(effective),
           indexable: true,
         }
         if (row?.status === 'failed') patch.status = 'drafting'
@@ -495,8 +495,8 @@ ${enginePlan.promptBlock}`
     // Sanity: never let a truncated/partial rewrite silently replace the article.
     // Skip for fix_depth — append-only expansion is a strict superset (it can
     // only grow the draft), so the shrink guard would be meaningless.
-    const fixedWords = fixedContent.split(/\s+/).filter(Boolean).length
-    const originalWords = Math.max(1, content.split(/\s+/).filter(Boolean).length)
+    const fixedWords = countBodyWords(fixedContent)
+    const originalWords = Math.max(1, countBodyWords(content))
     if (action !== 'fix_depth' && fixedWords < Math.max(20, Math.round(originalWords * 0.4))) {
       throw new Error(
         `AI fix returned a partial rewrite (${fixedWords} words vs ${originalWords} original) and was discarded. Your draft is unchanged — try Fix again or edit inline.`,

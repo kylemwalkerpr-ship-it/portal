@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 function sb() {
   return createClient(
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'jobId and content required' }, { status: 400 })
     }
 
-    const words = content.split(/\s+/).filter(Boolean).length
+    const words = countBodyWords(content)
     const entry = {
       id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       jobId, content, createdAt: new Date().toISOString(),

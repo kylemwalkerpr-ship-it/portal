@@ -7,6 +7,7 @@
 import type { OwnerPlan } from './ownership'
 import { slugifyHeading } from './editorialScaffold'
 import { sanitizeEstateUrl } from './ahrefsIssues'
+import { countBodyWords } from './contentDepth'
 
 function escapeTs(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
@@ -778,7 +779,7 @@ export function buildBlogPostEntry(opts: {
   const regionKey = (opts.region || 'US').toUpperCase()
   const category =
     regionKey === 'UK' ? 'uk' : regionKey === 'CA' ? 'canada' : regionKey === 'US' ? 'usa' : 'both'
-  const words = body.trim().split(/\s+/).filter(Boolean).length
+  const words = countBodyWords(body)
   return {
     slug,
     title,

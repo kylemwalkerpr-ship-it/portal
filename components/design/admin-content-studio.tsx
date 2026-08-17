@@ -27,6 +27,7 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream } from '@/lib/seoFactory/sse'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import {
   extractMetricValues,
   directionForMetric,
@@ -2836,7 +2837,7 @@ function DraftWorkspace({
   const isStreaming = generating
   const hasCompleted = Boolean(completedJob && !generating)
   const gatePassed = completedJob?.audit_json && (completedJob.audit_json.score ?? 0) >= 90
-  const wordCount = completedJob?.word_count || (draftContent ? draftContent.split(/\s+/).filter(Boolean).length : 0)
+  const wordCount = countBodyWords(draftContent || completedJob?.content || '') || completedJob?.word_count || 0
   // Depth-rescue / audit activity — recorded from SSE progress (stage 'refine')
   // and attempt (stage 'audit') events. Shown as a persistent realtime feed so
   // expand/append passes with growing word counts stay visible during AND after
@@ -2976,7 +2977,7 @@ function DraftWorkspace({
           <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
             {(() => {
               const wc = generating
-                ? generationText.split(/\s+/).filter(Boolean).length
+                ? countBodyWords(generationText)
                 : wordCount
               const minW = completedJob?.content_type === 'blog_post' ? 800 : completedJob?.content_type === 'regional_page' ? 1200 : 2200
               const maxW = completedJob?.content_type === 'blog_post' ? 1500 : completedJob?.content_type === 'regional_page' ? 2000 : 2800
@@ -3029,7 +3030,7 @@ function DraftWorkspace({
                 ✍️ AI WRITING LIVE
               </span>
               <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>
-                {generationText.length.toLocaleString()} chars · ~{Math.round(generationText.split(/\s+/).filter(Boolean).length)} words
+                {generationText.length.toLocaleString()} chars · {countBodyWords(generationText).toLocaleString()} body words
                 {streamView === 'document' ? ' · live page preview' : ' · raw markdown'}
               </span>
             </div>
@@ -3831,7 +3832,7 @@ function JobDetail({
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
           {[
-            { label: 'Word count', value: detail.word_count != null ? String(detail.word_count) : '—' },
+            { label: 'Body words', value: String(countBodyWords(editorContent || detail.content || '') || detail.word_count || '—') },
             { label: 'SEO score', value: detail.seo_score != null ? `${detail.seo_score}%` : '—' },
             { label: 'AI provider', value: aiProviderCard },
             { label: 'Target repo', value: detail.target_repo ?? '—' },

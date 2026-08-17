@@ -12,6 +12,7 @@ import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { jobToMasterEngineInput } from '@/lib/seoFactory/jobToMasterInput'
 import { attachSiteHealthFacts } from '@/lib/seoFactory/siteHealthSnapshot'
 import { loadLlmVisibilityEvidence } from '@/lib/seoEngine/llmVisibility'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 export const runtime = 'nodejs'
 // Allow the live-GSC outcome-history build + streaming on long runs
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
             return
           }
           input = jobToMasterEngineInput(job)
-          const words = String(input.content || '').trim().split(/\s+/).filter(Boolean).length
+          const words = countBodyWords(String(input.content || ''))
           emitStep(
             'load',
             `Job loaded · ${words.toLocaleString()} body words · ${input.contentType || 'legal_guide'} · ${input.region || '—'}`,

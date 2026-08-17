@@ -136,8 +136,9 @@ export function clampBriefWordBudget(
 }
 
 /**
- * Count prose words only: strip YAML front matter, fenced code, JSON-LD, and
- * raw <script> blocks so schema inflation cannot fake depth.
+ * THE Content Studio word counter. Persist, display, quality, audit, and
+ * ship all use this. YAML, JSON-LD, scripts, and fenced code are excluded
+ * so schema inflation cannot fake Google-depth.
  */
 export function countBodyWords(content: string): number {
   let body = String(content || '')

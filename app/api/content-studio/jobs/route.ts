@@ -7,6 +7,7 @@ import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
 import {
@@ -495,7 +496,7 @@ export async function POST(request: NextRequest) {
             indexable: job.indexable !== false,
             ownershipBlockers: [],
           })
-          const words = String(job.content).trim().split(/\s+/).filter(Boolean).length
+          const words = countBodyWords(String(job.content))
           await supabase
             .from('content_jobs')
             .update({
@@ -882,7 +883,7 @@ export async function PATCH(request: NextRequest) {
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
       })
-      const words = content.trim().split(/\s+/).filter(Boolean).length
+      const words = countBodyWords(content)
       const patch: Record<string, unknown> = {
         seo_score: audit.score,
         word_count: words,
@@ -1033,7 +1034,7 @@ export async function PATCH(request: NextRequest) {
       })
       const content = repaired.content
       const title = body.title != null ? String(body.title).trim() : job.title
-      const words = String(content).trim().split(/\s+/).filter(Boolean).length
+      const words = countBodyWords(String(content))
       let audit: any = job.audit_json
       try {
         audit = auditContent({
@@ -1501,7 +1502,7 @@ export async function PATCH(request: NextRequest) {
             .from('content_jobs')
             .update({
               content: String(content),
-              word_count: String(content).trim().split(/\s+/).filter(Boolean).length,
+              word_count: countBodyWords(String(content)),
               seo_score: audit.score,
               audit_json: audit,
             })

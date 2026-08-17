@@ -4,6 +4,7 @@ import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { checkCompetingPages } from '@/lib/seoEngine/planner'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -39,7 +40,7 @@ async function checkpointJob(
   if (!content) return
   const patch: Record<string, unknown> = {
     content,
-    word_count: content.split(/\s+/).filter(Boolean).length,
+    word_count: countBodyWords(content),
     status: 'drafting',
     error_message: null,
   }
