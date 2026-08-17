@@ -11,6 +11,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   masterEngineFixPlan,
   scoreMaster,
+  type DerivedFeatures,
   type MasterEngineInput,
   type MasterEngineReport,
 } from '@/lib/seoFactory/masterEngine'
@@ -116,7 +117,7 @@ export function renderMasterEnginePromptBlock(
 ): string {
   const recs = (report.recommendations || []).filter((r) => r.open !== false).slice(0, 6)
   const risks = (report.risks || []).slice(0, 4)
-  const derived = report.derived || {}
+  const derived: Partial<DerivedFeatures> = report.derived || {}
   const lines = [
     'MASTER SEO ENGINE — write the brief/draft so it closes THESE gaps. Do not invent scores; only act on the lines below.',
     `- Intent ${report.intentLabel || report.intent}${report.composite != null ? ` · composite ${report.composite}/100` : ''}${report.grade ? ` (${report.grade})` : ''}${report.coverage?.pct != null ? ` · signal coverage ${report.coverage.pct}%` : ''}`,
