@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
-import { loadInterlinkGraph } from '@/lib/seoEngine/interlink'
 import { loadVisibilityFeed } from '@/lib/seoEngine/llmVisibility'
 import { loadGateRuns } from '@/lib/seoEngine/gate'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
@@ -22,32 +21,33 @@ export async function GET() {
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const supabase = createSupabaseAdminClient()
-    const [cells, knowledge, plans, runs, config, interlink, visibility, gate, ranking] = await Promise.all([
+    const [
+      cells, knowledge, plans, runs, config, visibility, gate, ranking,
+      linksPlanned, linksApplied, rankCount,
+    ] = await Promise.all([
       supabase.from('seo_lifecycle_stages').select('id', { count: 'exact', head: true }),
-      supabase.from('seo_knowledge').select('kind', { count: 'exact', head: true }),
-      supabase.from('seo_cluster_plans').select('status', { count: 'exact', head: true }),
+      supabase.from('seo_knowledge').select('id', { count: 'exact', head: true }),
+      supabase.from('seo_cluster_plans').select('id', { count: 'exact', head: true }),
       latestEngineRuns(8),
       supabase.from('seo_engine_config').select('key,value'),
-      loadInterlinkGraph(200),
-      loadVisibilityFeed(200),
-      loadGateRuns(200),
+      loadVisibilityFeed(50),
+      loadGateRuns(50),
       loadRankingScores({ limit: 3 }),
+      supabase.from('seo_interlinks').select('id', { count: 'exact', head: true }).eq('status', 'planned'),
+      supabase.from('seo_interlinks').select('id', { count: 'exact', head: true }).eq('status', 'applied'),
+      supabase.from('seo_ranking_scores').select('id', { count: 'exact', head: true }),
     ])
-
-    const kinds: Record<string, number> = {}
-    for (const r of knowledge.data || []) kinds[r.kind] = (kinds[r.kind] || 0) + 1
-    const statuses: Record<string, number> = {}
-    for (const p of plans.data || []) statuses[p.status] = (statuses[p.status] || 0) + 1
 
     return NextResponse.json({
       ok: true,
+      fetchedAt: new Date().toISOString(),
       lifecycle: { seededCells: cells.count ?? 0 },
-      knowledge: { total: knowledge.count ?? 0, byKind: kinds },
-      plans: { total: plans.count ?? 0, byStatus: statuses },
-      interlinks: { planned: interlink.planned, applied: interlink.applied, byReason: interlink.byReason },
-      llmVisibility: { total: visibility.total, cited: visibility.cited, shareOfVoice: visibility.shareOfVoice, byStage: visibility.byStage },
+      knowledge: { total: knowledge.count ?? 0 },
+      plans: { total: plans.count ?? 0 },
+      interlinks: { planned: linksPlanned.count ?? 0, applied: linksApplied.count ?? 0 },
+      llmVisibility: { total: visibility.total, cited: visibility.cited, shareOfVoice: visibility.shareOfVoice },
       rankingModel: {
-        computed: ranking.length,
+        computed: rankCount.count ?? ranking.length,
         latestTotal: ranking[0] ? Math.round(Number(ranking[0].total) || 0) : null,
         latestTopic: ranking[0] ? String(ranking[0].topic) : null,
       },

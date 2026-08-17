@@ -19,7 +19,7 @@
  */
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
-import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
+import { StudioLiveDesk, ENGINE_ACTION_LABEL } from './studio-live-desk'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
@@ -338,70 +338,9 @@ const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
 // cell is re-read from the engine status DB, and the telemetry panel streams the
 // SSE trace of the running action (or the engine's recent run history when idle)
 // so the operator can SEE the engine reasoning instead of a frozen number.
-const ENGINE_KEYFRAMES = `
-@keyframes enginePulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(37,99,235,0.35); } 50% { opacity: 0.35; box-shadow: 0 0 0 6px rgba(37,99,235,0); } }
-@keyframes engineBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
-`
 
-const ENGINE_ACTION_LABEL: Record<string, string> = {
-  ingest: 'knowledge ingestion',
-  plan: 'planner',
-  llm: 'LLM visibility audit',
-}
 
-// The request parameters actually sent to each engine action — surfaced so the
-// operator can see the knobs the engine is turning, not just the final count.
-const ENGINE_PARAMS: Record<string, string> = {
-  ingest: 'limitPerSource=8 · maxAiItems=8 · aiSummarize=on',
-  plan: 'GSC demand + knowledge bias + predictive intelligence · limit=10',
-  llm: 'maxAudits=6 · estate queries · share-of-voice',
-}
 
-function EngineSignalCell({ icon, label, value, title }: { icon: string; label: string; value?: number | string; title?: string }) {
-  const shown = value == null || value === '' ? '—' : String(value)
-  return (
-    <span title={title || label} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px',
-      border: `1px solid ${C.hairline}`, borderRadius: C.radiusXs, background: C.bg,
-      fontFamily: C.mono, fontSize: 10, color: C.inkMuted, whiteSpace: 'nowrap',
-    }}>
-      <span>{icon}</span>
-      <span style={{ fontWeight: 800, color: C.ink }}>{shown}</span>
-      <span style={{ color: C.textDim }}>{label}</span>
-    </span>
-  )
-}
-
-function EngineRunHistory({ runs }: { runs: Array<Record<string, unknown>> }) {
-  if (!runs || !runs.length) {
-    return (
-      <div style={{ color: '#5b6b7b', fontStyle: 'italic' }}>
-        No engine runs yet — click 🌐 Ingest knowledge, 🧭 Run planner or 🤖 LLM audit to stream live telemetry here.
-      </div>
-    )
-  }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {runs.slice(0, 6).map((r, i) => {
-        const kind = String(r.kind || 'run')
-        const status = String(r.status || '')
-        const summary = r.summary && typeof r.summary === 'object'
-          ? formatEngineRunSummary(r.summary as Record<string, unknown>)
-          : ''
-        const when = r.started_at ? new Date(String(r.started_at)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
-        const tone = status === 'success' ? '#34d399' : status === 'failed' ? '#f87171' : status === 'partial' ? '#fbbf24' : '#8b98a5'
-        return (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-            <span style={{ color: '#5b6b7b', width: 74, flexShrink: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{kind}</span>
-            <span style={{ color: tone, fontWeight: 700 }}>{status}</span>
-            {summary && <span style={{ color: '#8b98a5' }}>{summary}</span>}
-            {when && <span style={{ color: '#5b6b7b', marginLeft: 'auto' }}>{when}</span>}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
 // ── Editorial toolbar button styles ─────────────────────────────────────────────
 const actionBtnStyle = (color: string): React.CSSProperties => ({
@@ -5083,11 +5022,32 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     return () => clearInterval(id)
   }, [engineBusy])
 
-  // 30s status poll — keeps the signal cells honest between actions instead of
-  // freezing on the mount-time snapshot.
+  // 10s status poll — the desk never sits on a 30s-old snapshot.
   React.useEffect(() => {
-    const id = setInterval(() => { fetchEngineStatus() }, 30_000)
+    const id = setInterval(() => { fetchEngineStatus() }, 10_000)
     return () => clearInterval(id)
+  }, [fetchEngineStatus])
+
+  // Realtime: any engine-table write refreshes the desk (debounced).
+  React.useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null
+    const kick = () => {
+      if (t) clearTimeout(t)
+      t = setTimeout(() => { void fetchEngineStatus() }, 350)
+    }
+    const offs = [
+      'seo_knowledge',
+      'seo_cluster_plans',
+      'seo_interlinks',
+      'seo_llm_visibility',
+      'seo_gate_runs',
+      'seo_engine_runs',
+      'seo_ranking_scores',
+    ].map((table) => subscribeToTable(table, 'public', kick))
+    return () => {
+      if (t) clearTimeout(t)
+      offs.forEach((off) => off())
+    }
   }, [fetchEngineStatus])
 
   const engineElapsed = engineBusy && engineStartedAt ? Math.max(0, Math.floor((Date.now() - engineStartedAt) / 1000)) : 0
@@ -5711,15 +5671,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
   }
 
-  const engine = (engineStatus || {}) as Record<string, any>
-  const engLife = (engine.lifecycle as { seededCells?: number } | undefined)?.seededCells
-  const engKnow = (engine.knowledge as { total?: number } | undefined)?.total
-  const engPlans = (engine.plans as { total?: number } | undefined)?.total
-  const engLinks = (engine.interlinks as { planned?: number } | undefined)?.planned
-  const engVoice = (engine.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice
-  const engGate = (engine.gate as { passRate?: number } | undefined)?.passRate
-  const engRankTotal = (engine.rankingModel as { latestTotal?: number | null } | undefined)?.latestTotal
-  const engineRuns = Array.isArray(engine.runs) ? (engine.runs as Array<Record<string, unknown>>) : []
+  const engGatePass = Number((engineStatus as { gate?: { passRate?: number } } | null)?.gate?.passRate)
 
   // 7-stage pipeline taxonomy. Each tab routes to a distinct stage.
   // Back-compat aliases map legacy tab tokens to the stage they belong to.
@@ -5753,7 +5705,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', minWidth: 200 }}>
           <span style={{ ...TYPE.microFig, color: E.goldDeep }}>VOL · I · NO · {String(Math.max(1, jobs.length + merges.length)).padStart(3, '0')}</span>
-          <span style={{ ...TYPE.microFig, color: engineBusy ? E.blue : E.inkDim }}>{engineBusy ? `ENGINE · ${(ENGINE_ACTION_LABEL[engineAction ?? 'ingest'] || 'running').toUpperCase()}` : engGate ? `${Math.round(engGate * 100)}% GATE PASS` : 'ENGINE · IDLE'}</span>
+          <span style={{ ...TYPE.microFig, color: engineBusy ? E.blue : E.inkDim }}>{engineBusy ? `ENGINE · ${(ENGINE_ACTION_LABEL[engineAction ?? 'ingest'] || 'running').toUpperCase()}` : Number.isFinite(engGatePass) && engGatePass > 0 ? `${engGatePass}% GATE PASS` : 'ENGINE · LIVE'}</span>
           <button type="button" onClick={async () => {
             if (loading) return
             setError(null)
@@ -5763,6 +5715,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 fetchMergeIndex(),
                 fetchMergeHistory(),
                 fetchGateRuns(),
+                fetchEngineStatus(),
               ])
               setLastRefreshAt(Date.now())
               setActionNotice(`Studio data refreshed · ${jobs.length} jobs, ${merges.length} merged PRs`)
@@ -5788,141 +5741,19 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       </div>
 
-      {/* ── Realtime queue status strip ── */}
-      {!loading && (jobs.length > 0 || jobTotal > 0) && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-          padding: '10px 16px', marginBottom: 12,
-          background: E.paper, border: '1px solid ' + E.hairline,
-          fontFamily: C.mono, fontSize: 10,
-        }}>
-          <span style={{ fontWeight: 700, color: E.ink, letterSpacing: '0.06em' }}>QUEUE</span>
-          {[
-            { label: 'In Progress', count: jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length, color: '#D97706', icon: '⚙️' },
-            { label: 'PR Ready', count: jobs.filter(j => j.status === 'pr_created').length, color: '#2563EB', icon: '🔀' },
-            { label: 'Merged', count: jobs.filter(j => j.status === 'merged').length, color: '#166534', icon: '✅' },
-            { label: 'Failed', count: jobs.filter(j => j.status === 'failed').length, color: '#DC2626', icon: '⚠️' },
-          ].map((s, i) => (
-            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: E.inkMuted }}>
-              {i > 0 && <span style={{ color: E.hairline, marginRight: 2 }}>|</span>}
-              <span>{s.icon}</span>
-              <span style={{ fontWeight: 700, color: s.color }}>{s.count}</span>
-              <span>{s.label}</span>
-            </span>
-          ))}
-          <span style={{ marginLeft: 'auto', color: E.inkDim }}>
-            {jobTotal || jobs.length} total · {generating ? '🔴 1 generating' : 'idle'}
-          </span>
-        </div>
-      )}
-
-
-
-      {/* ── SEO Master Engine strip — live instrument panel ── */}
-      <div style={{
-        background: '#FFFFFF', border: `1px solid ${C.border}`, borderRadius: C.radius,
-        padding: '10px 14px', marginBottom: 8, boxShadow: C.shadowCard,
-      }}>
-        <style>{ENGINE_KEYFRAMES}</style>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: C.text, fontFamily: C.serif }}>🧠 SEO Master Engine</span>
-          <span style={{ fontSize: 9, fontFamily: C.mono, color: '#9A7B3B', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>v2</span>
-
-          {/* Live state beacon — pulses while an action runs, so the engine is
-              never mistaken for a frozen label. */}
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999,
-            fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-            background: engineBusy ? '#EEF2FF' : '#F3F4F6', color: engineBusy ? C.blue : C.textDim,
-            border: `1px solid ${engineBusy ? '#C7D2FE' : C.border}`, whiteSpace: 'nowrap',
-          }}>
-            <span style={{
-              width: 7, height: 7, borderRadius: 999, flexShrink: 0, background: engineBusy ? C.blue : C.textDim,
-              ...(engineBusy ? { animation: 'enginePulse 1.2s ease-in-out infinite' } : {}),
-            }} />
-            {engineBusy ? `${ENGINE_ACTION_LABEL[engineAction ?? 'ingest']}…` : 'Idle'}
-          </span>
-
-          {/* Signal cells — live DB counts re-read on action progress + a 30s poll */}
-          <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, flexWrap: 'wrap' }}>
-            <EngineSignalCell icon="🗺" label="cells" value={engLife} title="Life-cycle ontology cells seeded" />
-            <EngineSignalCell icon="🌐" label="intel" value={engKnow} title="Knowledge items stored (policy / guidance / trend intel)" />
-            <EngineSignalCell icon="🧭" label="plans" value={engPlans} title="Ranked cluster plans produced by the planner" />
-            <EngineSignalCell icon="🔗" label="links" value={engLinks} title="Interlink graph — planned links" />
-            <EngineSignalCell icon="🤖" label="LLM voice" value={engVoice != null ? `${engVoice}%` : undefined} title="AI share-of-voice across LLM visibility audits" />
-            <EngineSignalCell icon="🛡" label="gate pass" value={engGate != null ? `${Math.round(engGate * 100)}%` : undefined} title="Compliance gate pass rate" />
-            <EngineSignalCell icon="📊" label="rank total" value={engRankTotal ?? undefined} title="Latest ranking-model composite total" />
-          </div>
-
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
-            <button type="button" onClick={() => void runEngineAction('ingest')} disabled={engineBusy} style={btnSolid(C.navy)} title="Scrape all intelligence sources now">
-              {engineBusy && engineAction === 'ingest' ? '⏳ Ingesting…' : '🌐 Ingest knowledge'}
-            </button>
-            <button type="button" onClick={() => void runEngineAction('plan')} disabled={engineBusy} style={btnSolid(C.gold)} title="Rank GSC demand into life-cycle missions">
-              {engineBusy && engineAction === 'plan' ? '⏳ Planning…' : '🧭 Run planner'}
-            </button>
-            <button type="button" onClick={() => void runEngineAction('llm')} disabled={engineBusy} style={btnSolid('#6D28D9')} title="Run an LLM share-of-voice audit (10 estate queries)">
-              {engineBusy && engineAction === 'llm' ? '⏳ Auditing…' : '🤖 LLM audit'}
-            </button>
-          </div>
-        </div>
-
-        {/* Sync line — proves the numbers are live, and shows the running params */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontFamily: C.mono, fontSize: 9, color: C.textDim, flexWrap: 'wrap' }}>
-          <span style={{ color: engineBusy ? C.blue : C.mossGreen }}>●</span>
-          <span>
-            {engineBusy
-              ? `live · ${engineElapsed}s · streaming ${ENGINE_ACTION_LABEL[engineAction ?? 'ingest']} telemetry`
-              : engineStatusAt
-                ? `synced ${new Date(engineStatusAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · counts read from live DB`
-                : 'awaiting first status sync…'}
-          </span>
-          {engineBusy && <span style={{ color: C.textMuted }}>params {ENGINE_PARAMS[engineAction ?? 'ingest']}</span>}
-        </div>
-      </div>
-
-      {/* ── Live engine telemetry — always visible: streams the running action's
-           trace while busy, or the recent run history while idle ── */}
-      <div style={{
-        margin: '0 0 14px', background: '#0b0e12', border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
-        fontFamily: C.mono, fontSize: 10, color: '#c7d3dd', overflow: 'hidden',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
-          borderBottom: '1px solid rgba(255,255,255,0.07)', color: '#8b98a5',
-          fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700,
-        }}>
-          <span style={{ color: engineBusy ? '#60a5fa' : '#34d399', ...(engineBusy ? { animation: 'enginePulse 1.2s ease-in-out infinite' } : {}) }}>●</span>
-          <span>Live engine telemetry</span>
-          {engineBusy && <span style={{ color: '#60a5fa' }}>· {ENGINE_ACTION_LABEL[engineAction ?? 'ingest']}</span>}
-          <span style={{ marginLeft: 'auto', color: '#5b6b7b', textTransform: 'none', letterSpacing: 0 }}>
-            {engineBusy ? `${engineElapsed}s elapsed` : engineStatusAt ? `last activity ${new Date(engineStatusAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'no activity yet'}
-          </span>
-        </div>
-
-        <div style={{ maxHeight: 190, overflowY: 'auto', padding: '8px 12px', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {engineBusy || engineTrace.length > 0 ? (
-            <>
-              {engineTrace.map((s, i) => (
-                <div key={`${s.seq}-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                  <span style={{ color: '#5b6b7b', width: 74, flexShrink: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{s.phase}</span>
-                  <span style={{ color: s.tone === 'ok' ? '#34d399' : s.tone === 'warn' ? '#fbbf24' : '#dbe6ee' }}>{s.message}</span>
-                  {s.detail && <span style={{ color: '#5b6b7b' }}> · {s.detail}</span>}
-                </div>
-              ))}
-              {engineBusy && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                  <span style={{ color: '#5b6b7b', width: 74, flexShrink: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>THINK</span>
-                  <span style={{ color: '#f87171', animation: 'engineBlink 1s steps(1) infinite' }}>▋</span>
-                  <span style={{ color: '#5b6b7b', fontStyle: 'italic' }}>reasoning · running {ENGINE_ACTION_LABEL[engineAction ?? 'action']}…</span>
-                </div>
-              )}
-            </>
-          ) : (
-            <EngineRunHistory runs={engineRuns} />
-          )}
-        </div>
-      </div>
+      <StudioLiveDesk
+        summary={jobSummary}
+        generating={generating}
+        engine={engineStatus}
+        engineAt={engineStatusAt}
+        engineBusy={engineBusy}
+        engineAction={engineAction}
+        engineElapsed={engineElapsed}
+        engineTrace={engineTrace}
+        onIngest={() => void runEngineAction('ingest')}
+        onPlan={() => void runEngineAction('plan')}
+        onLlm={() => void runEngineAction('llm')}
+      />
 
       <StudioStageNav
         tabs={TABS}
