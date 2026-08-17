@@ -10,6 +10,7 @@ jest.mock('@/lib/aiKeyVault', () => ({
 }))
 
 import {
+  deadlineForProvider,
   extractResponsesText,
   generateContentText,
   isPaymentOrQuotaFailure,
@@ -37,6 +38,11 @@ describe('Grok 4.6 Responses transport', () => {
   it('treats grok-4.6 as a reasoning model', () => {
     expect(isReasoningModelId('grok-4.6')).toBe(true)
     expect(isReasoningModelId('grok-4.5')).toBe(true)
+  })
+
+  it('does not honor a 90s brief deadline for Grok', () => {
+    expect(deadlineForProvider('grok', 90_000)).toBeGreaterThanOrEqual(180_000)
+    expect(deadlineForProvider('openai', 90_000)).toBe(90_000)
   })
 
   it('extracts output_text and output[].content[].text', () => {

@@ -566,8 +566,10 @@ async function grokResponsesFetch(
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS
-  const timeoutMs =
-    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
+  const timeoutMs = Math.max(
+    opts.timeoutMs ?? 0,
+    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '180000', 10) || 180_000,
+  )
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response
@@ -1840,6 +1842,17 @@ const COMPLETE_TIMEOUT_MS = Math.max(
   15_000,
   Number.parseInt(process.env.CONTENT_AI_COMPLETE_TIMEOUT_MS || '180000', 10) || 180_000,
 )
+/** Grok 4.6 reasoning routinely needs 1–3 minutes. Callers that pass 90s
+ *  (the old brief deadline) must not cut SuperGrok off mid-thought. */
+const GROK_MIN_TIMEOUT_MS = Math.max(
+  180_000,
+  Number.parseInt(process.env.CONTENT_AI_GROK_TIMEOUT_MS || '180000', 10) || 180_000,
+)
+
+export function deadlineForProvider(label: string, requested?: number): number {
+  const base = requested ?? COMPLETE_TIMEOUT_MS
+  return label === 'grok' ? Math.max(base, GROK_MIN_TIMEOUT_MS) : base
+}
 
 function withUniversalQualityContract(opts: ContentAiOptions): ContentAiOptions {
   const marker = '## MANDATORY QUALITY RULES'
@@ -1988,14 +2001,14 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       continue
     }
     try {
-      return await withDeadline(c.label, opts.timeoutMs ?? COMPLETE_TIMEOUT_MS, c.run())
+      return await withDeadline(c.label, deadlineForProvider(c.label, opts.timeoutMs), c.run())
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       errors.push(`${c.label}: ${msg}`)
       const paymentFail = isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
       if (paymentFail) {
         try {
-          return await withDeadline('grok', opts.timeoutMs ?? COMPLETE_TIMEOUT_MS, grokComplete(opts))
+          return await withDeadline('grok', deadlineForProvider('grok', opts.timeoutMs), grokComplete(opts))
         } catch (grokErr) {
           const grokMsg = grokErr instanceof Error ? grokErr.message : String(grokErr)
           errors.push(`grok: ${grokMsg}`)

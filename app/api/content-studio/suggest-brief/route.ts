@@ -24,12 +24,10 @@ import {
  * Every field the generate-stream route needs is populated from live intel.
  */
 export async function POST(req: NextRequest) {
-  // 120s hard ceiling — if the AI cascade still hasn't produced a brief
-  // after 2 minutes, abort so the client sees a clean error instead of
-  // an infinite spinner. The per-provider timeoutMs (90s) is the primary
-  // guard; this is the belt-and-suspenders safety net.
+  // Grok 4.6 reasoning needs 1–3 minutes for a full brief. A 90s/120s
+  // ceiling is what produced "timed out after 90s" in the studio.
   const controller = new AbortController()
-  const globalTimer = setTimeout(() => controller.abort(), 120_000)
+  const globalTimer = setTimeout(() => controller.abort(), 210_000)
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
@@ -191,17 +189,9 @@ export async function POST(req: NextRequest) {
       'Produce the complete editorial brief JSON now.',
     ].filter(Boolean).join('\n')
 
-    // 90s deadline — GPT models can take 40-70s to generate the full
-    // structured JSON brief. The admin selected Sol or Terra from the
-    // dropdown; modelOverride carries the specific model name.
-    // GPT-5.6 Sol/Terra are reasoning models: max_completion_tokens is the
-    // TOTAL budget (reasoning chain + final prose). 1600 was enough for a
-    // plain answer but left reasoning models burning the whole budget on
-    // chain-of-thought and returning EMPTY content with finish_reason:length
-    // (root cause of the 2026-08 brief failures). Give the model ~8k so
-    // reasoning + the JSON brief both fit; the JSON itself is only ~1k tokens.
-    // GPT (OpenAI) is the primary brief architect; GLM 5.2 Fast (Baseten) is
-    // the fallback when GPT is unconfigured or fails (unpaid account / quota).
+    // Grok 4.6 is the default brief writer and a reasoning model: 90s is
+    // too short (live probe: brief can land at ~43s, or take well over 90s
+    // on a loaded SuperGrok session). Floor at 3 minutes.
     const { ai, fallbackUsed } = await generateBriefText({
       aiProvider,
       model: modelOverride,
@@ -209,7 +199,7 @@ export async function POST(req: NextRequest) {
       prompt,
       maxTokens: 8000,
       temperature: 0.3,
-      timeoutMs: 90_000,
+      timeoutMs: aiProvider === 'grok' ? 180_000 : 120_000,
     })
 
     // Strip markdown code fences + extract JSON object from model response.

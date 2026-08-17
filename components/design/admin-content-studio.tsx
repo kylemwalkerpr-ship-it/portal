@@ -2242,12 +2242,15 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
+    const briefAbort = new AbortController()
+    const briefTimer = window.setTimeout(() => briefAbort.abort(), 200_000)
     try {
       const gscData = (gscStatus && typeof gscStatus === 'object') ? gscStatus as Record<string, unknown> : {}
       const r = (radarMeta && typeof radarMeta === 'object') ? radarMeta as Record<string, unknown> : {}
       const res = await fetch('/api/content-studio/suggest-brief', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
+        signal: briefAbort.signal,
         body: JSON.stringify({
           topic, region, contentType, primaryKeyword: title || topic, audience,
           // Research/Plan model is selectable above (GPT Sol/Terra or GLM 5.2
@@ -2297,8 +2300,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       }
       setActionNotice?.(`🧠 Full brief ready: ${String(data.reasoning || '').slice(0, 120)}`)
     } catch (err) {
-      setActionNotice?.(`Brief generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    } finally { setBriefGenerating(false) }
+      const aborted = err instanceof DOMException && err.name === 'AbortError'
+      setActionNotice?.(
+        aborted
+          ? 'Brief generation timed out after 3 minutes. Grok 4.6 was still thinking — click Generate Full Brief again.'
+          : `Brief generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      )
+    } finally {
+      window.clearTimeout(briefTimer)
+      setBriefGenerating(false)
+    }
   }
 
   // AI-powered keyword suggestion — analyzes topic + GSC + competition
@@ -2557,7 +2568,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
               }}
               title={!topic.trim() ? 'Enter a topic first' : `${briefModelName} reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief`}
             >
-              {briefGenerating ? `🧠 ${briefModelName} building brief…` : '🧠 Generate Full Brief'}
+              {briefGenerating ? `🧠 ${briefModelName} building brief (up to 3 min)…` : '🧠 Generate Full Brief'}
             </button>
           </div>
           <textarea
