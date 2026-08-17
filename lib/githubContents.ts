@@ -24,6 +24,31 @@ function apiBase(): string {
   return process.env.GITHUB_API_BASE ?? 'https://api.github.com'
 }
 
+const DEFAULT_OWNER = 'kylemwalkerpr-ship-it'
+
+/** Normalize owner/repo from a bare name, owner/repo, or github.com URL. */
+export function normalizeGithubTarget(owner: string, repo: string): { owner: string; repo: string } {
+  const fallbackOwner = (process.env.GITHUB_CONTENT_OWNER || process.env.GITHUB_REPO_OWNER || owner || DEFAULT_OWNER).trim()
+  let cleaned = String(repo || '')
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '')
+  if (!cleaned) {
+    throw new Error('GitHub repo name is empty — ownership resolver returned no target repo')
+  }
+  if (cleaned.includes('/')) {
+    const [o, r] = cleaned.split('/')
+    if (!r) throw new Error(`Invalid GitHub repo slug: ${cleaned}`)
+    return { owner: (o || fallbackOwner).trim(), repo: r.trim() }
+  }
+  return { owner: fallbackOwner, repo: cleaned }
+}
+
+function isGithubNotFound(message: string): boolean {
+  return /GitHub 404:/.test(String(message || ''))
+}
+
 /** Encode each path segment for the Contents API. */
 export function encodeRepoPath(filePath: string): string {
   return String(filePath || '')
@@ -84,22 +109,53 @@ export async function githubFetch(path: string, init: RequestInit = {}): Promise
 }
 
 export async function getBranchHeadSha(
-  owner: string,
-  repo: string,
+  ownerIn: string,
+  repoIn: string,
   branch: string,
 ): Promise<string> {
+  const { owner, repo } = normalizeGithubTarget(ownerIn, repoIn)
+  const refPath = `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`
   try {
-    const ref = await githubFetch(
-      `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`,
-    )
+    const ref = await githubFetch(refPath)
     return ref.object.sha as string
-  } catch {
-    const branches = await githubFetch(`/repos/${owner}/${repo}/branches?per_page=100`)
-    const b = (branches as Array<{ name: string; commit: { sha: string } }>).find(
-      (x) => x.name === branch,
-    )
-    if (!b) throw new Error(`Branch '${branch}' not found in ${owner}/${repo}`)
-    return b.commit.sha
+  } catch (first) {
+    const firstMsg = first instanceof Error ? first.message : String(first)
+    // Confirm the repo exists / the token can see it. A private repo the
+    // token cannot access also 404s — do not hide that behind list-branches.
+    let defaultBranch = branch
+    try {
+      const info = await githubFetch(`/repos/${owner}/${repo}`)
+      defaultBranch = String(info?.default_branch || branch)
+    } catch (repoErr) {
+      const repoMsg = repoErr instanceof Error ? repoErr.message : String(repoErr)
+      throw new Error(
+        `Cannot access GitHub repo ${owner}/${repo}. ${isGithubNotFound(repoMsg) ? 'Not Found — the repo is missing, renamed, or GITHUB_TOKEN has no access to this private repository (grant Contents: Read and Write).' : repoMsg}`,
+      )
+    }
+    if (defaultBranch && defaultBranch !== branch) {
+      try {
+        const ref = await githubFetch(
+          `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(defaultBranch)}`,
+        )
+        return ref.object.sha as string
+      } catch {
+        /* fall through */
+      }
+    }
+    try {
+      const branches = await githubFetch(`/repos/${owner}/${repo}/branches?per_page=100`)
+      const wanted = [branch, defaultBranch]
+      const b = (branches as Array<{ name: string; commit: { sha: string } }>).find(
+        (x) => wanted.includes(x.name),
+      )
+      if (!b) throw new Error(`Branch '${branch}' not found in ${owner}/${repo} (default ${defaultBranch})`)
+      return b.commit.sha
+    } catch (listErr) {
+      const listMsg = listErr instanceof Error ? listErr.message : String(listErr)
+      throw new Error(
+        `Cannot read branches on ${owner}/${repo} (wanted '${branch}'). ${listMsg}. First lookup: ${firstMsg.slice(0, 180)}`,
+      )
+    }
   }
 }
 

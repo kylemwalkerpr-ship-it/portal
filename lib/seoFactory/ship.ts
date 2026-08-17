@@ -22,6 +22,7 @@ import {
   createBranchFrom,
   deleteRepoFile,
   getBranchHeadSha,
+  normalizeGithubTarget,
   getCommitParentSha,
   getFileBlobSha,
   getRepoFileContent,
@@ -448,8 +449,9 @@ export async function shipContent(opts: {
     )
   }
 
-  const owner = process.env.GITHUB_CONTENT_OWNER ?? 'kylemwalkerpr-ship-it'
-  const repo = opts.plan.repo
+  const resolved = parseRepoSlug(opts.plan.repo)
+  const owner = resolved.owner
+  const repo = resolved.repo
   const branchMain = 'main'
 
   // 100% / passing gate pages are always indexable — never ship noindex.
@@ -855,16 +857,8 @@ export async function shipContent(opts: {
 
 /** Parse "owner/repo" or bare repo name with default owner. */
 export function parseRepoSlug(targetRepo: string): { owner: string; repo: string } {
-  const cleaned = String(targetRepo || '')
-    .replace(/^https?:\/\/github\.com\//, '')
-    .replace(/\.git$/, '')
-    .replace(/\/$/, '')
-  if (cleaned.includes('/')) {
-    const [owner, repo] = cleaned.split('/')
-    return { owner, repo }
-  }
-  return {
-    owner: process.env.GITHUB_CONTENT_OWNER ?? 'kylemwalkerpr-ship-it',
-    repo: cleaned,
-  }
+  return normalizeGithubTarget(
+    process.env.GITHUB_CONTENT_OWNER ?? process.env.GITHUB_REPO_OWNER ?? 'kylemwalkerpr-ship-it',
+    targetRepo,
+  )
 }

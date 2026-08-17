@@ -2,7 +2,7 @@
  * Unit tests for GitHub Contents helpers (no network).
  * Guards the 422 "sha wasn't supplied" contract forever.
  */
-import { encodeRepoPath, isGithubShaRequiredError } from '@/lib/githubContents'
+import { encodeRepoPath, isGithubShaRequiredError, normalizeGithubTarget } from '@/lib/githubContents'
 
 describe('encodeRepoPath', () => {
   it('strips leading slash and encodes segments', () => {
@@ -19,6 +19,37 @@ describe('encodeRepoPath', () => {
     expect(encodeRepoPath('app/ca/express-entry/page.tsx')).toBe(
       'app/ca/express-entry/page.tsx',
     )
+  })
+})
+
+describe('normalizeGithubTarget', () => {
+  const prevOwner = process.env.GITHUB_CONTENT_OWNER
+  afterEach(() => {
+    if (prevOwner == null) delete process.env.GITHUB_CONTENT_OWNER
+    else process.env.GITHUB_CONTENT_OWNER = prevOwner
+  })
+
+  it('accepts a bare repo name', () => {
+    process.env.GITHUB_CONTENT_OWNER = 'kylemwalkerpr-ship-it'
+    expect(normalizeGithubTarget('kylemwalkerpr-ship-it', 'caseworks')).toEqual({
+      owner: 'kylemwalkerpr-ship-it',
+      repo: 'caseworks',
+    })
+  })
+
+  it('splits owner/repo and github URLs', () => {
+    expect(normalizeGithubTarget('ignored', 'kylemwalkerpr-ship-it/yousafe-consultancy')).toEqual({
+      owner: 'kylemwalkerpr-ship-it',
+      repo: 'yousafe-consultancy',
+    })
+    expect(normalizeGithubTarget('ignored', 'https://github.com/kylemwalkerpr-ship-it/caseworks.git')).toEqual({
+      owner: 'kylemwalkerpr-ship-it',
+      repo: 'caseworks',
+    })
+  })
+
+  it('rejects an empty repo', () => {
+    expect(() => normalizeGithubTarget('kylemwalkerpr-ship-it', '')).toThrow(/empty/)
   })
 })
 
