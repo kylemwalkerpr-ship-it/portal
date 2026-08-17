@@ -48,7 +48,7 @@ function marketplaceDemandBoost(term: string): number {
   }
   return Math.min(25, best)
 }
-import { resolveOwner, type OwnerPlan } from './ownership'
+import { classifyDestinationType, resolveOwner, type OwnerPlan } from './ownership'
 import {
   authorityPromptHints,
   scoreTopicAuthority,
@@ -466,7 +466,7 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
 
     const plan = await resolveOwner({
       primaryKeyword: q.term,
-      contentType: 'legal_guide',
+      contentType: classifyDestinationType(q.term),
       region,
     })
     const recentlyCovered = recent.has(q.term.toLowerCase())
@@ -516,16 +516,7 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       lane,
       laneReason: `${reason} · ${authority.rationale}${mktDemand > 0 ? ` · marketplace demand +${mktDemand}` : ''}`,
       region,
-      suggestedContentType:
-        plan.intentClass === 'geo_modifier'
-          ? 'regional_from'
-          : plan.intentClass === 'university_modifier'
-            ? 'regional_university'
-            : plan.intentClass === 'news_summary'
-              ? 'blog_summary'
-              : plan.intentClass === 'transactional'
-                ? 'marketplace_gig'
-                : 'legal_guide',
+      suggestedContentType: plan.contentType || 'legal_guide',
       owner: {
         host: plan.host,
         repo: plan.repo,

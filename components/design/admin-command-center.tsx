@@ -1067,7 +1067,7 @@ export default function AdminCommandCenter({
       setLaunchFeed((prev) => [...prev, { ts: Date.now(), level, msg }].slice(-60))
     try {
       const contentTypeMap: Record<string, string> = {
-        blog_post: 'blog_summary', article: 'legal_guide',
+        blog_post: 'blog_post', article: 'legal_guide',
         regional_page: 'regional_page',
       }
       const res = await fetch('/api/seo-factory/generate-stream', {

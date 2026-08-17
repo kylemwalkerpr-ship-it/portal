@@ -1,4 +1,10 @@
-import { filePathFromOwnerUrl, resolveOwner, sanitizeOwnerUrl } from '@/lib/seoFactory/ownership'
+import {
+  classifyDestinationType,
+  filePathFromOwnerUrl,
+  resolveOwner,
+  sanitizeOwnerUrl,
+  standingRulesHost,
+} from '@/lib/seoFactory/ownership'
 
 /**
  * Regression for the 2026-08 production incident where "uk graduate visa
@@ -116,6 +122,63 @@ describe('ownership resolver — university/geo modifier vs generic hub separati
     expect(p.routingSource).toBe('registry_owner_url')
     expect(p.canonicalUrl).toBe('https://legal.yousafeconsultancy.com/us/student-visas/')
     expect(p.filePath).toBe('app/us/student-visas/page.tsx')
+  })
+})
+
+describe('ownership resolver — explicit blog / regional destinations stay off caseworks', () => {
+  it('classifies from-country, campus, lifestyle, and procedure', () => {
+    expect(classifyDestinationType('student visa from nigeria')).toBe('regional_from')
+    expect(classifyDestinationType('yale university international student guide')).toBe('regional_university')
+    expect(classifyDestinationType('first 30 days in canada banking')).toBe('blog_post')
+    expect(classifyDestinationType('uk graduate visa requirements')).toBe('legal_guide')
+  })
+
+  it('routes Blog Post to the apex landing-page blog even when the keyword matches a legal pillar', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'uk spouse visa document checklist 2026',
+      contentType: 'blog_post',
+      region: 'UK',
+    })
+    expect(p.host).toBe('apex')
+    expect(p.repo).toBe('yousafe-consultancy')
+    expect(p.canonicalUrl).toContain('yousafeconsultancy.com/blog/')
+    expect(p.canonicalUrl).not.toContain('legal.yousafeconsultancy.com')
+    expect(p.filePath).toContain('landing-page/app/blog/')
+    expect(p.warnings.some((w) => /stays on legal/i.test(w))).toBe(true)
+  })
+
+  it('routes Regional Page to the regional host instead of overwriting the legal pillar', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'uk spouse visa document checklist 2026',
+      contentType: 'regional_page',
+      region: 'UK',
+    })
+    expect(p.host).toBe('uk')
+    expect(p.repo).toBe('yousafe-consultancy')
+    expect(p.canonicalUrl).toContain('uk.yousafeconsultancy.com')
+    expect(p.canonicalUrl).not.toContain('legal.yousafeconsultancy.com')
+    expect(p.filePath).toMatch(/^uk\//)
+  })
+
+  it('still ships Long-Form Article / legal_guide onto the caseworks pillar', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'uk spouse visa document checklist 2026',
+      contentType: 'legal_guide',
+      region: 'UK',
+    })
+    expect(p.host).toBe('legal')
+    expect(p.repo).toBe('caseworks')
+    expect(p.canonicalUrl).toContain('legal.yousafeconsultancy.com')
+  })
+
+  it('does not send visa blog_summary to caseworks', () => {
+    const rules = standingRulesHost({
+      primaryKeyword: 'uk graduate visa news update',
+      contentType: 'blog_summary',
+      region: 'UK',
+    })
+    expect(rules.host).toBe('apex')
+    expect(rules.contentType).toMatch(/blog/)
   })
 })
 

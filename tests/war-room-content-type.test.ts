@@ -32,7 +32,7 @@ describe('inferContentType', () => {
 
   it('detects from-country and blogs', () => {
     expect(inferContentType('student visa from nigeria', 'deep_demand_build')).toBe('regional_from')
-    expect(inferContentType('what is pgwp news update', 'aeo_entity_hub')).toBe('blog_summary')
+    expect(inferContentType('what is pgwp news update', 'aeo_entity_hub')).toBe('blog_post')
   })
 
   it('defaults procedural terms to legal_guide', () => {

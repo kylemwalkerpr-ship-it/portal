@@ -5516,7 +5516,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
     try {
       const contentTypeMap: Record<string, string> = {
-        blog_post: 'blog_summary', article: 'legal_guide',
+        blog_post: 'blog_post', article: 'legal_guide',
         regional_page: 'regional_page',
       }
       const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'

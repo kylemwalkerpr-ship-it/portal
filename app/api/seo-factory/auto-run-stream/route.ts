@@ -161,7 +161,8 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
         const war = warByTerm.get(term.toLowerCase())
         if (war) { candidates.push(await warToCandidate(war)); continue }
         const region = /uk|british/i.test(term) ? 'UK' : /canada|pgwp/i.test(term) ? 'CA' : /485|australia/i.test(term) ? 'AU' : 'US'
-        const contentType = 'legal_guide'
+        const { inferContentType } = await import('@/lib/seoFactory/seoWarRoom')
+        const contentType = inferContentType(term)
         candidates.push({
           term, impressions: 0, clicks: 0, ctr: 0, position: 50, score: 0,
           action: 'expand_or_build', suggestedContentType: contentType, region,

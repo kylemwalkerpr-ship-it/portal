@@ -19,6 +19,7 @@ import {
   type InterlinkOption,
 } from '@/lib/seoFactory/opportunityEngine'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
+import { classifyDestinationType } from '@/lib/seoFactory/ownership'
 
 // ── Legacy play labels (backward compat for the war-room UI) ─────────────
 const PLAY_MAP: Record<string, string> = {
@@ -477,10 +478,7 @@ export async function buildSeoWarRoom(opts?: {
 // Legacy compatibility exports (used by auto-run-stream)
 
 export function inferContentType(term: string, _play?: WarPlay): string {
-  if (/from [a-z]+|visa from/i.test(term)) return 'regional_from'
-  if (/university|college|campus|yale|mit|nyu|harvard/i.test(term) && !/housing|tenant/i.test(term)) return 'regional_university'
-  if (/blog|news|update|what is/i.test(term)) return 'blog_summary'
-  return 'legal_guide'
+  return classifyDestinationType(term)
 }
 
 export function playWriteHint(play: WarPlay, opts?: { position?: number; expectedCtr?: number; ctr?: number; pages?: Array<{ url: string }> }): string {

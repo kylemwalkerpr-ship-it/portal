@@ -604,7 +604,9 @@ export function standingRulesHost(opts: {
     return { host: 'apex', contentType: 'blog_post', reason: 'blog_post → apex yousafe-consultancy /blog/' }
   }
   if (contentType === 'blog_summary' || /news|update 2026|overview/i.test(kw)) {
-    // Soft regional blog only when keyword clearly geo-local and non-procedural
+    // Soft regional blog only when keyword is clearly geo-local and non-procedural.
+    // Visa/permit "blogs" used to fall through to caseworks app/blog — the
+    // estate blog lives on the apex landing page.
     if (
       contentType === 'blog_summary' &&
       !/visa|permit|uscis|ukvi|ircc|opt|h-1b|i-\d+/i.test(kw) &&
@@ -618,7 +620,7 @@ export function standingRulesHost(opts: {
         reason: `regional news-style blog → ${host}/content/blog`,
       }
     }
-    return { host: 'legal', contentType: contentType || 'blog_summary', reason: 'news_summary → legal blog' }
+    return { host: 'apex', contentType: contentType || 'blog_post', reason: 'blog → apex yousafe-consultancy /blog/' }
   }
 
   // Cross-country compare
@@ -687,11 +689,15 @@ function pathForHostFallback(
 
 /**
  * Infer content type from registry intent when caller passes a generic type.
+ * An explicit studio destination (blog / regional) is never overwritten by
+ * a procedural registry intent — that was sending every visa blog to caseworks.
  */
 export function contentTypeFromIntent(
   intent: string,
   fallback: string,
 ): string {
+  const fb = String(fallback || '').toLowerCase()
+  if (isExplicitDestinationType(fb)) return fb
   switch (intent) {
     case 'geo_modifier':
       return 'regional_from'
@@ -709,6 +715,54 @@ export function contentTypeFromIntent(
     default:
       return fallback || 'legal_guide'
   }
+}
+
+/** Studio / planner types that name a destination host, not just a length. */
+export const EXPLICIT_DESTINATION_TYPES = new Set([
+  'blog_post',
+  'blog_summary',
+  'regional_page',
+  'regional_from',
+  'regional_university',
+])
+
+export function isExplicitDestinationType(t: string): boolean {
+  return EXPLICIT_DESTINATION_TYPES.has(String(t || '').toLowerCase())
+}
+
+/** UI `article` is the caseworks legal guide; keep blog_post as blog_post. */
+export function normalizeStudioContentType(t: string): string {
+  const x = String(t || '').toLowerCase().trim()
+  if (x === 'article' || x === 'casework' || x === 'legal') return 'legal_guide'
+  if (x === 'blog') return 'blog_post'
+  return x || 'legal_guide'
+}
+
+/**
+ * Guess a destination when the caller only sent legal_guide / article.
+ * Conservative: procedure stays on caseworks; from-country, campus, and
+ * lifestyle/news go to regional hosts or the apex blog.
+ */
+export function classifyDestinationType(keyword: string): string {
+  const kw = normalize(keyword)
+  if (
+    /\bfrom (nigeria|india|kenya|ghana|pakistan|bangladesh|china|philippines|sri lanka|uae|united arab)\b/i.test(kw) ||
+    /\bvisa from\b/i.test(kw)
+  ) {
+    return 'regional_from'
+  }
+  if (GEO_MODIFIER_RE.test(kw) && !/housing|tenant|rent/i.test(kw)) {
+    return 'regional_university'
+  }
+  if (
+    /\b(news|update 2026|overview|what is|first 30 days|banking|cost of living|packing list|orientation|settlement services|living in|life in)\b/i.test(
+      kw,
+    ) &&
+    !/\b(how to apply|eligibility|document checklist|form i-|refusal|appeal|template)\b/i.test(kw)
+  ) {
+    return 'blog_post'
+  }
+  return 'legal_guide'
 }
 
 export async function resolveOwner(opts: {
@@ -740,7 +794,12 @@ export async function resolveOwner(opts: {
   const matched = best?.row ?? null
   const matchScore = best?.score ?? 0
 
-  let contentType = opts.contentType || 'legal_guide'
+  let contentType = normalizeStudioContentType(opts.contentType || 'legal_guide')
+  if (!isExplicitDestinationType(contentType) && (contentType === 'legal_guide' || !opts.contentType)) {
+    const guessed = classifyDestinationType(keyword)
+    if (guessed !== 'legal_guide') contentType = guessed
+  }
+  const callerExplicit = isExplicitDestinationType(normalizeStudioContentType(opts.contentType || ''))
   let host: OwnerHost
   let routingSource: OwnerPlan['routingSource']
   let filePath: string
@@ -749,7 +808,19 @@ export async function resolveOwner(opts: {
   let action = 'build'
   let intentClass = 'procedural'
 
-  if (matched) {
+  const registryHost = matched
+    ? hostFromUrl(matched.owner_url) ||
+      (HOST_REPO[matched.owner_host as OwnerHost] ? (matched.owner_host as OwnerHost) : 'legal')
+    : null
+  // Explicit blog/regional ships must not overwrite a legal pillar just because
+  // the keyword matched a caseworks registry row.
+  const stealLegalPillar =
+    Boolean(matched) &&
+    callerExplicit &&
+    registryHost === 'legal' &&
+    contentType !== 'legal_guide'
+
+  if (matched && !stealLegalPillar) {
     intentClass = String(matched.intent_class || 'procedural')
     contentType = contentTypeFromIntent(intentClass, contentType)
     action = matched.action || 'build'
@@ -781,6 +852,11 @@ export async function resolveOwner(opts: {
     }
     canonicalUrl = sanitizeOwnerUrl(matched.owner_url || `${HOST_PUBLIC[host]}${urlPath}`)
   } else {
+    if (stealLegalPillar && matched) {
+      warnings.push(
+        `Registry pillar ${matched.owner_url} stays on legal — shipping ${contentType} to its own host instead of overwriting caseworks`,
+      )
+    }
     const rules = standingRulesHost({
       primaryKeyword: keyword,
       contentType,
@@ -789,7 +865,16 @@ export async function resolveOwner(opts: {
     host = rules.host
     contentType = rules.contentType
     routingSource = 'standing_rules'
-    intentClass = contentType === 'regional_from' ? 'geo_modifier' : contentType === 'regional_university' ? 'university_modifier' : 'procedural'
+    intentClass =
+      contentType === 'regional_from'
+        ? 'geo_modifier'
+        : contentType === 'regional_university'
+          ? 'university_modifier'
+          : contentType === 'blog_post' || contentType === 'blog_summary'
+            ? 'news_summary'
+            : contentType === 'regional_page'
+              ? 'hub'
+              : 'procedural'
     const slug = opts.slug || slugify(keyword || contentType)
     const fb = pathForHostFallback(host, opts.region, slug, contentType)
     filePath = fb.filePath
@@ -811,7 +896,7 @@ export async function resolveOwner(opts: {
   // noindex.
   const indexable = opts.indexable !== false
 
-  if (matched) {
+  if (matched && !stealLegalPillar) {
     if (matched.action === 'noindex' || matched.action === 'supply_first') {
       warnings.push(`Registry action=${matched.action} for "${matched.primary_keyword}" — ship stays indexable by default`)
     }
