@@ -319,7 +319,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   })
 
   const { assembleDraftSourceAllowlist, sanitizeDraftLinksLive, urlsFromAllowlistLines } = await import('./linkAudit')
-  const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined)
+  const citationCtx = { region, topic, keywords: mergedKeywords }
+  const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined, citationCtx)
   const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
 
   const system = buildFactorySystemPrompt({
@@ -757,7 +758,12 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       console.info(`[seoFactory/pipeline] deterministic repair applied: ${repaired.applied.join(', ')}`)
       content = repaired.content
     }
-    const sanitized = await sanitizeDraftLinksLive(content, { region, externalAllowlist: verifiedSourceUrls })
+    const sanitized = await sanitizeDraftLinksLive(content, {
+      region,
+      topic,
+      keywords: mergedKeywords,
+      externalAllowlist: verifiedSourceUrls,
+    })
     if (sanitized.stripped || sanitized.injected) {
       console.info(`[seoFactory/pipeline] live link sanitize: stripped=${sanitized.stripped} injected=${sanitized.injected}`)
       content = sanitized.content

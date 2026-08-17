@@ -10,7 +10,8 @@
  *
  * External citations were a second hole: models invent uscis.gov / gov.uk
  * paths that 404, or drop competitor / shortener URLs. Those now have to
- * be an authority host AND resolve live (or be on a verified allowlist).
+ * be a crème-de-la-crème authority (gov / official school / named body),
+ * on-topic for the article, AND resolve live.
  *
  * This module is the single source of truth for link validity:
  *  - extractLinks / auditLinksSync  → pure, synchronous structural checks
@@ -26,13 +27,15 @@
  *    fully-live URLs ever reach a brief or a prompt.
  *  - filterVerifiedCitationUrls / sanitizeDraftLinksLive
  *                                   → briefing + post-draft: only live,
- *                                     authority, value-adding externals remain.
+ *                                     on-topic cream authorities remain.
  */
 
 import {
   isAuthorityHost,
-  isLowValueHost,
-  sourcesForRegion,
+  isCitationRelevant,
+  isCreamSource,
+  sourcesForBrief,
+  type CitationContext,
 } from './officialSources'
 
 export const ESTATE_BASE = 'https://legal.yousafeconsultancy.com'
@@ -191,6 +194,7 @@ export interface LinkAuditFinding {
     | 'unreachable_internal_link'
     | 'dead_external_link'
     | 'untrusted_external_link'
+    | 'irrelevant_external_link'
     | 'unreachable_external_link'
   severity: LinkSeverity
   url: string
@@ -347,11 +351,12 @@ export function auditLinksSync(
   content: string,
   knownLiveUrls?: Set<string> | string[],
   externalAllowlist?: string[],
+  citationContext?: CitationContext,
 ): LinkAuditFinding[] {
   const live = knownLiveUrls
     ? new Set(Array.from(knownLiveUrls).map((u) => normalizeEstateUrl(u)))
     : null
-  const extra = new Set((externalAllowlist || []).map((u) => normalizeCitationUrl(u)))
+  void externalAllowlist
   const findings: LinkAuditFinding[] = []
   const links = extractLinks(content)
 
@@ -397,14 +402,23 @@ export function auditLinksSync(
       continue
     }
     if (isExternalHttpUrl(url)) {
-      const allowed = extra.has(normalizeCitationUrl(url))
-      if (!allowed && (isLowValueHost(url) || !isAuthorityHost(url))) {
+      if (!isCreamSource(url)) {
         findings.push({
           code: 'untrusted_external_link',
           severity: 'blocker',
           url,
-          message: 'External link is not a live official source (.gov / .edu / verified allowlist) — remove it or replace with a working government URL.',
+          message: 'External link is not a crème-de-la-crème authority (immigration/gov department, official school page, or named intergovernmental body) — remove it or replace with a live official URL.',
         })
+        continue
+      }
+      if (citationContext && !isCitationRelevant(url, citationContext)) {
+        findings.push({
+          code: 'irrelevant_external_link',
+          severity: 'blocker',
+          url,
+          message: 'Official URL is live but off-topic for this article — cite a source that actually supports the claim (do not hyperlink irrelevant material).',
+        })
+        continue
       }
     }
   }
@@ -552,9 +566,9 @@ export function classifyLiveStatus(
  */
 export async function auditLinksLive(
   content: string,
-  opts?: { knownLiveUrls?: Set<string> | string[]; externalAllowlist?: string[] },
+  opts?: { knownLiveUrls?: Set<string> | string[]; externalAllowlist?: string[]; citationContext?: CitationContext },
 ): Promise<LinkAuditFinding[]> {
-  const structural = auditLinksSync(content, opts?.knownLiveUrls, opts?.externalAllowlist)
+  const structural = auditLinksSync(content, opts?.knownLiveUrls, opts?.externalAllowlist, opts?.citationContext)
   const findings = structural.filter((f) => f.code !== 'unverified_internal_link')
   const liveSet = await fetchLiveEstateUrls(opts?.knownLiveUrls)
   const toVerify: string[] = []
@@ -677,6 +691,7 @@ const STRIP_CODES = new Set<LinkAuditFinding['code']>([
   'dead_external_link',
   'placeholder_link',
   'untrusted_external_link',
+  'irrelevant_external_link',
   'malformed_link',
   'unreachable_internal_link',
 ])
@@ -689,13 +704,15 @@ const STRIP_CODES = new Set<LinkAuditFinding['code']>([
 export async function filterVerifiedCitationUrls(
   urls: string[],
   extraAllowlist?: string[],
+  context?: CitationContext,
 ): Promise<string[]> {
-  const extra = new Set((extraAllowlist || []).map((u) => normalizeCitationUrl(u)))
+  void extraAllowlist
   const candidates = urls
     .map((u) => String(u || '').trim())
     .filter((u) => /^https?:\/\//i.test(u))
     .filter((u) => !isPlaceholderUrl(u).hit && !isMalformedUrl(u) && !isSkippableHref(u))
-    .filter((u) => extra.has(normalizeCitationUrl(u)) || (isAuthorityHost(u) && !isLowValueHost(u)))
+    .filter((u) => isCreamSource(u))
+    .filter((u) => isCitationRelevant(u, context))
   if (candidates.length === 0) return []
   const results = await verifyUrlsLive(candidates)
   return candidates.filter((u) => {
@@ -718,9 +735,11 @@ export function urlsFromAllowlistLines(lines: string[]): string[] {
 export async function assembleDraftSourceAllowlist(
   region?: string | null,
   extra?: string[],
+  context?: CitationContext,
 ): Promise<string[]> {
-  const verified = await filterVerifiedCitationUrls(extra || [])
-  const official = await liveOfficialSources(region)
+  const ctx: CitationContext = { ...context, region: context?.region ?? region }
+  const verified = await filterVerifiedCitationUrls(extra || [], undefined, ctx)
+  const official = await liveOfficialSources(region, ctx)
   const out: string[] = []
   const seen = new Set<string>()
   const push = (line: string, url: string) => {
@@ -734,11 +753,16 @@ export async function assembleDraftSourceAllowlist(
   return out.slice(0, 8)
 }
 
-export async function liveOfficialSources(region?: string | null): Promise<Array<{ title: string; url: string }>> {
-  const bank = sourcesForRegion(region)
-  const live = new Set(await filterVerifiedCitationUrls(bank.map((s) => s.url)))
+export async function liveOfficialSources(
+  region?: string | null,
+  context?: CitationContext,
+): Promise<Array<{ title: string; url: string }>> {
+  const ctx: CitationContext = { ...context, region: context?.region ?? region }
+  const bank = sourcesForBrief(ctx)
+  const live = new Set(await filterVerifiedCitationUrls(bank.map((s) => s.url), undefined, ctx))
   const kept = bank.filter((s) => live.has(s.url) || live.has(normalizeCitationUrl(s.url)))
-  return kept.length ? kept : bank.slice(-1)
+  if (kept.length) return kept.slice(0, 8)
+  return bank.slice(0, 2)
 }
 
 export type DeadLinkAction = 'replaced' | 'removed_and_injected' | 'removed'
@@ -837,12 +861,18 @@ function injectVerifiedSources(content: string, sources: Array<{ title: string; 
 export async function remediateDeadLinksInContext(
   content: string,
   findings: LinkAuditFinding[],
-  opts?: { region?: string },
+  opts?: { region?: string; topic?: string; keywords?: string[] },
 ): Promise<{ content: string; remediations: DeadLinkRemediation[]; stripped: number; injected: number }> {
   const dead = findings.filter((f) => STRIP_CODES.has(f.code))
   if (!dead.length) return { content, remediations: [], stripped: 0, injected: 0 }
 
-  const official = await liveOfficialSources(opts?.region)
+  const ctx: CitationContext = {
+    region: opts?.region,
+    topic: opts?.topic,
+    keywords: opts?.keywords,
+    body: content.slice(0, 4000),
+  }
+  const official = await liveOfficialSources(opts?.region, ctx)
   const regionKey = String(opts?.region || 'US').toUpperCase().slice(0, 2)
   const anchors = ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US
   const pool = [
@@ -858,7 +888,10 @@ export async function remediateDeadLinksInContext(
   for (const f of dead) {
     const ctx = contextAround(next, f.url)
     const alt = pickBestAlternative(ctx, pool)
-    const unwrapOnly = f.code === 'untrusted_external_link' || f.code === 'placeholder_link'
+    const unwrapOnly =
+      f.code === 'untrusted_external_link' ||
+      f.code === 'placeholder_link' ||
+      f.code === 'irrelevant_external_link'
     if (alt && !unwrapOnly) {
       const r = rewriteHref(next, f.url, alt.url)
       if (r.hits > 0) {
@@ -897,7 +930,13 @@ export async function remediateDeadLinksInContext(
  */
 export async function sanitizeDraftLinksLive(
   content: string,
-  opts?: { region?: string; externalAllowlist?: string[]; knownLiveUrls?: Set<string> | string[] },
+  opts?: {
+    region?: string
+    topic?: string
+    keywords?: string[]
+    externalAllowlist?: string[]
+    knownLiveUrls?: Set<string> | string[]
+  },
 ): Promise<{
   content: string
   stripped: number
@@ -905,11 +944,22 @@ export async function sanitizeDraftLinksLive(
   findings: LinkAuditFinding[]
   remediations: DeadLinkRemediation[]
 }> {
+  const citationContext: CitationContext = {
+    region: opts?.region,
+    topic: opts?.topic,
+    keywords: opts?.keywords,
+    body: content.slice(0, 4000),
+  }
   const findings = await auditLinksLive(content, {
     externalAllowlist: opts?.externalAllowlist,
     knownLiveUrls: opts?.knownLiveUrls,
+    citationContext,
   })
-  const remediated = await remediateDeadLinksInContext(content, findings, { region: opts?.region })
+  const remediated = await remediateDeadLinksInContext(content, findings, {
+    region: opts?.region,
+    topic: opts?.topic,
+    keywords: opts?.keywords,
+  })
   return {
     content: remediated.content,
     stripped: remediated.stripped,

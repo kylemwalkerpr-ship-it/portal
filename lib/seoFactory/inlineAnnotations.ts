@@ -205,7 +205,7 @@ export function buildBlockersFixPrompt(
     '1. Title must be 30–60 characters. Meta description must be 70–160 characters.',
     '2. Keep a single H1. Set robots to index,follow. Add ogImage: /og-image.png if missing.',
     '3. Collapse any // in URLs. Article JSON-LD needs headline, image, datePublished, author.',
-    '4. Dead or invented links: READ the surrounding sentence. Replace the href in place with a LIVE official .gov/.edu or estate hub URL that fits that claim (visa → USCIS/IRCC/UKVI/Home Affairs; housing/campus → the regional legal hub). If no swap fits, delete the href and add a new verifiable markdown citation next to the claim or under ## Official sources. Never invent a URL. Never leave a 404.',
+    '4. Dead, invented, untrusted, or off-topic links: READ the surrounding sentence. Replace the href in place with a LIVE crème-de-la-crème official URL that fits that claim (visa → USCIS/IRCC/UKVI/Home Affairs; housing → HUD / GOV.UK renting / CMHC; campus → official school page or the regional legal hub). Never cite news, blogs, Wikipedia, or an official page that is irrelevant to the sentence. If no swap fits, delete the href and add a new verifiable markdown citation next to the claim or under ## Official sources. Never invent a URL. Never leave a 404.',
     '5. Return the COMPLETE article only.',
     '',
     'CURRENT ARTICLE:',

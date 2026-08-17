@@ -25,7 +25,7 @@ import {
   sanitizeDraftLinksLive,
   stripDeadLinks,
 } from '@/lib/seoFactory/linkAudit'
-import { isAuthorityHost, isLowValueHost, sourcesForRegion } from '@/lib/seoFactory/officialSources'
+import { isAuthorityHost, isCreamSource, isLowValueHost, sourcesForRegion } from '@/lib/seoFactory/officialSources'
 import { LINKS } from '@/lib/interlinkRegistry'
 
 const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -274,8 +274,19 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(isAuthorityHost('https://www.canada.ca/en/immigration-refugees-citizenship.html')).toBe(true)
     expect(isAuthorityHost('https://immi.homeaffairs.gov.au/')).toBe(true)
     expect(isAuthorityHost('https://boundless.com/f1-opt')).toBe(false)
+    expect(isCreamSource('https://en.wikipedia.org/wiki/F-1_visa')).toBe(false)
     expect(isLowValueHost('https://bit.ly/abc')).toBe(true)
     expect(isLowValueHost('https://www.reddit.com/r/immigration')).toBe(true)
+  })
+
+  it('flags an official but off-topic citation as irrelevant', () => {
+    const findings = auditLinksSync(
+      'Rent a room in Stockton via [USCIS students](https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/students-and-employment).',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'Stockton student housing', keywords: ['rent', 'landlord'] },
+    )
+    expect(findings.some((f) => f.code === 'irrelevant_external_link')).toBe(true)
   })
 
   it('blocks competitor, shortener, and invented commercial URLs without a network call', () => {

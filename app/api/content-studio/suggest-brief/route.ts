@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
       '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each)',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
-      '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 LIVE official .gov/.edu URLs only — never invent a path; the server live-checks every one',
+      '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — never invent a path; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
       '  "targetSlug": "kebab-case-slug-for-this-page",',
       '  "metaDescription": "140–160 character SEO meta description (compelling benefit + primary keyword, no clickbait)",',
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       '3. Target the word count range based on content type + Google SEO floor (2,200 min for legal guides).',
       '4. Every short-tail keyword must appear in kwH2Map mapped to exactly one H2 section.',
       '5. Every long-tail keyword must also appear in kwH2Map.',
-      '6. Sources must be real, authoritative .gov / .edu / institutional URLs — never Wikipedia.',
+      '6. Sources must be copied verbatim from the VERIFIED OFFICIAL SOURCE ALLOWLIST. Only immigration departments, government departments, official school pages, and named intergovernmental bodies. Never Wikipedia, news, blogs, or off-topic official pages.',
       '7. targetSlug must be kebab-case, descriptive, and not collide with any completedWork slug.',
       '8. The h2Outline order must follow search intent flow: answer-first → evidence → process → FAQ.',
       '9. Prefer keywords with clear informational or commercial intent — avoid terms without a search volume signal.',
@@ -168,6 +168,9 @@ export async function POST(req: NextRequest) {
           ]
         : []),
     ].join('\n')
+
+    const citationCtx = { region, topic, keywords: [primaryKeyword, topic, audience].filter(Boolean) }
+    const seedOfficialSources = await assembleDraftSourceAllowlist(region, [], citationCtx)
 
     const prompt = [
       `TOPIC: ${topic}`,
@@ -195,6 +198,9 @@ export async function POST(req: NextRequest) {
       interlinks.length > 0
         ? `VERIFIED INTERNAL LINK ALLOWLIST (only these URLs may be used):\n${interlinks.map((l) => `  - [${l.label}] ${l.url}`).join('\n')}`
         : 'VERIFIED INTERNAL LINK ALLOWLIST: none provided — rely exclusively on sitemap-verified estate URLs.',
+      seedOfficialSources.length
+        ? `VERIFIED OFFICIAL SOURCE ALLOWLIST (live-checked crème-de-la-crème authorities for this topic — copy URLs VERBATIM into "sources"; do not invent paths or add blogs/news/Wikipedia):\n${seedOfficialSources.map((s) => `  - ${s}`).join('\n')}`
+        : 'VERIFIED OFFICIAL SOURCE ALLOWLIST: empty after live check — return an empty sources array. Never invent a .gov path.',
       sitemapCount > 0
         ? `ESTATE SITEMAP SIZE: ${sitemapCount} pages live — find adjacency opportunities.`
         : '',
@@ -305,6 +311,7 @@ export async function POST(req: NextRequest) {
       sources: await assembleDraftSourceAllowlist(
         region,
         Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],
+        citationCtx,
       ),
       interlinkTargets: interlinkTargets.slice(0, 8),
       targetSlug: String(parsed.targetSlug || ''),

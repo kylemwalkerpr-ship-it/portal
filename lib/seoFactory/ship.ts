@@ -490,6 +490,8 @@ export async function shipContent(opts: {
     const knownLive = [opts.plan.canonicalUrl, opts.plan.filePath].filter(Boolean)
     const sanitized = await sanitizeDraftLinksLive(shipContent_, {
       region: opts.region,
+      topic: opts.primaryKeyword || opts.title,
+      keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
       knownLiveUrls: knownLive,
     })
     if (sanitized.stripped || sanitized.injected) {
@@ -500,7 +502,15 @@ export async function shipContent(opts: {
         `[ship] live link sanitize: stripped=${sanitized.stripped} injected=${sanitized.injected}`,
       )
     }
-    const leftover = (await auditLinksLive(shipContent_, { knownLiveUrls: knownLive })).filter(
+    const leftover = (await auditLinksLive(shipContent_, {
+      knownLiveUrls: knownLive,
+      citationContext: {
+        region: opts.region,
+        topic: opts.primaryKeyword || opts.title,
+        keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+        body: shipContent_,
+      },
+    })).filter(
       (f) => f.severity === 'blocker',
     )
     if (leftover.length) {

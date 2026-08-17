@@ -268,7 +268,8 @@ export async function* runSeoFactoryPipelineStream(
     if (autopilotBlock) strategyBlock = `${strategyBlock}\n\n${autopilotBlock}`
 
     const { assembleDraftSourceAllowlist, sanitizeDraftLinksLive, urlsFromAllowlistLines } = await import('./linkAudit')
-    const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined)
+    const citationCtx = { region, topic, keywords: mergedKeywords }
+    const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined, citationCtx)
     const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
     yield { type: 'progress', stage: 'brief', message: `Verified ${verifiedSourceUrls.length} live official citation URL${verifiedSourceUrls.length === 1 ? '' : 's'}` }
 
@@ -987,7 +988,12 @@ export async function* runSeoFactoryPipelineStream(
         content = repaired
         yield { type: 'progress', stage: 'refine', message: 'Applied deterministic compliance repair (dashes, disclaimer)…' }
       }
-      const sanitized = await sanitizeDraftLinksLive(content, { region, externalAllowlist: verifiedSourceUrls })
+      const sanitized = await sanitizeDraftLinksLive(content, {
+        region,
+        topic,
+        keywords: mergedKeywords,
+        externalAllowlist: verifiedSourceUrls,
+      })
       if (sanitized.stripped || sanitized.injected) {
         content = sanitized.content
         yield {

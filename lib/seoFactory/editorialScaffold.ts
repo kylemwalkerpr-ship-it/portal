@@ -10,7 +10,7 @@ import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
-import { sourcesForRegion } from './officialSources'
+import { sourcesForBrief } from './officialSources'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
 
 function stripFm(content: string): { fm: string; body: string } {
@@ -910,7 +910,11 @@ export function applyDeterministicRepairs(opts: {
   // official sources on the same repair pass so the citations gate clears too.
   if (!hasGovCitation(b)) {
     const region = (opts.region || 'US').toUpperCase().slice(0, 2)
-    const sources = sourcesForRegion(region).slice(0, 3)
+    const sources = sourcesForBrief({
+      region,
+      topic: opts.primaryKeyword || opts.title,
+      keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+    }).slice(0, 3)
     const lines = sources.map((s) => `- [${s.title}](${s.url})`).join('\n')
     b += `\n\n## Official sources\n\n${lines}\n`
     applied.push('official_sources')
@@ -1272,7 +1276,10 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
   body = body.replace(/<script(?![^>]*application\/ld\+json)[^>]*>[\s\S]*?<\/script>/gi, '')
 
   if (!hasGovCitation(body)) {
-    const sources = sourcesForRegion(region).slice(0, 3)
+    const sources = sourcesForBrief({
+      region,
+      topic: opts.primaryKeyword || title,
+    }).slice(0, 3)
     const lines = sources.map((s) => `- [${s.title}](${s.url})`).join('\n')
     body += `\n\n## Official sources\n\n${lines}\n`
   }

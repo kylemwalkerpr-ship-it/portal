@@ -142,7 +142,7 @@ export function buildFactorySystemPrompt(opts: {
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
     'ZERO outcome promises. No guarantees of visas, approvals, timelines, or results.',
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
-    'Cite official sources with full https URLs: USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP as relevant.',
+    'Cite only crème-de-la-crème official sources with full https URLs: immigration departments, government departments, official school pages, and named intergovernmental bodies (USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP, HUD, HMRC, CRA, TEQSA).',
     '',
     'SHIP GATES — pass ALL of these before you submit; the audit re-checks every one and blocks the ship on any failure:',
     `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`,
@@ -152,8 +152,8 @@ export function buildFactorySystemPrompt(opts: {
     '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
     '- KEYWORDS: every short keyword appears ≥1× and ≤4×; every long-tail keyword ≥1× and ≤2× (details in KEYWORD COVERAGE below).',
     '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
-    '- SOURCES: official .gov / .edu URLs only, taken VERBATIM from SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
-    '- EXTERNAL LINKS: no blogs, news, competitors, social, or URL shorteners. Every external href must be a live official page that helps the reader verify a rule.',
+    '- SOURCES: only crème-de-la-crème official URLs, taken VERBATIM from SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST. Never invent, guess, or modify a path. A 404, off-topic, or made-up URL is a hard error. If you are not sure a URL exists and belongs on this article, write the agency name as plain text.',
+    '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. Every external href must be a live official page that actually supports the surrounding claim (housing → HUD / GOV.UK renting; student visa → USCIS/IRCC/UKVI/Home Affairs). Do not hyperlink irrelevant material.',
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
@@ -199,7 +199,7 @@ export function buildFactorySystemPrompt(opts: {
     ...(sources && sources.length ? [
       'SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST (use ONLY these exact URLs for external links):',
       ...sources.map((s, i) => `${i + 1}. ${s}`),
-      'Cite these sources where they support a claim. Do not fabricate additional URLs. Do not invent a deeper path on the same host.',
+      'Cite a source only where it supports the surrounding claim. Do not fabricate additional URLs. Do not invent a deeper path on the same host. Do not cite an official page that is off-topic for this article.',
       '',
     ] : [
       'OFFICIAL SOURCE ALLOWLIST is EMPTY — do NOT create ANY external http(s) links. Write agency names as plain text (USCIS, IRCC, UKVI, Home Affairs). Inventing a .gov path is a hard error.',

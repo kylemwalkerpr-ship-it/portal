@@ -98,11 +98,13 @@ async function mergeLinkAudit(
   content: string,
   region?: string,
   targetUrl?: string,
+  topic?: string,
 ): Promise<string> {
   let effective = content
   try {
     const sanitized = await sanitizeDraftLinksLive(content, {
       region,
+      topic,
       knownLiveUrls: targetUrl ? [targetUrl] : undefined,
     })
     effective = sanitized.content
@@ -143,9 +145,11 @@ async function mergeLinkAudit(
         : code === 'dead_internal_link'
           ? 'Read the surrounding sentence. Swap this href for a live estate hub that matches the claim, or remove it and add a verified official citation nearby.'
           : code === 'dead_external_link'
-            ? 'Read the surrounding sentence. Swap this href for a live official .gov/.edu page that supports the same claim, or remove it and add that citation under Official sources.'
+            ? 'Read the surrounding sentence. Swap this href for a live official government/school page that supports the same claim, or remove it and add that citation under Official sources.'
             : code === 'untrusted_external_link'
-              ? 'Drop competitor/blog/shortener hrefs. Keep the sentence and cite a live official .gov/.edu source instead.'
+              ? 'Drop competitor/blog/news/Wikipedia/shortener hrefs. Keep the sentence and cite a live official government, school, or named authority source instead.'
+              : code === 'irrelevant_external_link'
+                ? 'This official URL does not support the claim. Swap it for an on-topic live authority page, or remove the hyperlink.'
               : 'Re-verify the URL before shipping.'
     if (blockers.length) {
       response.ok = false
@@ -220,7 +224,7 @@ export async function POST(request: NextRequest) {
         requiredLongTailKeywords,
       }),
     }
-    effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl)
+    effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
     if (effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
@@ -430,6 +434,7 @@ ${enginePlan.promptBlock}`
       })
       const sanitized = await sanitizeDraftLinksLive(mechanical.content, {
         region,
+        topic: primaryKeyword,
         knownLiveUrls: (body as { targetUrl?: string }).targetUrl
           ? [(body as { targetUrl?: string }).targetUrl as string]
           : undefined,
@@ -543,7 +548,7 @@ ${enginePlan.promptBlock}`
       // Let the editor show which engine gaps the fix targeted, in order.
       ...(enginePlan ? { enginePriorities: enginePlan.priorities } : {}),
     }
-    fixedContent = await mergeLinkAudit(response, fixedContent, region, (body as { targetUrl?: string }).targetUrl)
+    fixedContent = await mergeLinkAudit(response, fixedContent, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
     const applied: string[] = []
     if (depthRepair) applied.push(depthRepair)
     if (repaired.applied.length) applied.push(...repaired.applied)

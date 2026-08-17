@@ -730,7 +730,7 @@ export function evaluateContentQuality(opts: {
         code: 'missing_official_sources',
         severity: 'blocker',
         message: 'Missing official government source URLs',
-        fix: 'Cite USCIS / IRCC / UKVI / Home Affairs with a live official https URL from the source allowlist — never invent a path.',
+        fix: 'Cite a live official URL from the Research-stage allowlist (immigration/gov department, official school page, or named authority) that is on-topic for this article — never invent a path.',
       })
     }
     if (!DISCLAIMER_RE.test(body)) {
@@ -884,7 +884,16 @@ export function evaluateContentQuality(opts: {
   // internal paths not known to be live. Live HTTP verification runs in the
   // async audit (auditLinksLive) merged at the reaudit/ship call sites.
   {
-    const linkFindings = auditLinksSync(opts.content || '', opts.linkAllowlist?.length ? opts.linkAllowlist : undefined)
+    const linkFindings = auditLinksSync(
+      opts.content || '',
+      opts.linkAllowlist?.length ? opts.linkAllowlist : undefined,
+      undefined,
+      {
+        topic: opts.primaryKeyword,
+        keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+        body: opts.content,
+      },
+    )
     for (const f of linkFindings) {
       add({
         code: f.code as QualityFinding['code'],
@@ -897,9 +906,11 @@ export function evaluateContentQuality(opts: {
             : f.code === 'insecure_internal_link'
               ? 'Upgrade to https://.'
               : f.code === 'untrusted_external_link'
-                ? 'Remove blogs, competitors, and shorteners. Cite only a live official .gov/.edu URL.'
+                ? 'Remove blogs, news, Wikipedia, competitors, and shorteners. Cite only a live official government, school, or named authority URL that supports the claim.'
+                : f.code === 'irrelevant_external_link'
+                  ? 'That official URL does not support this article. Swap it for a live on-topic authority page from the Research allowlist, or remove the hyperlink.'
                 : f.code === 'dead_external_link'
-                  ? 'That government/external path does not resolve. Use an exact URL from the official source allowlist.'
+                  ? 'That government/external path does not resolve. Use an exact live URL from the official source allowlist.'
                   : 'Re-verify the URL against the live site before shipping.',
       })
     }

@@ -25,6 +25,7 @@ import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream } from '@/lib/seoFactory/sse'
+import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import {
   extractMetricValues,
   directionForMetric,
@@ -2220,7 +2221,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     }
     return ['Overview', 'Eligibility Requirements', 'Application Process', 'Required Documents', 'Timeline & Processing', 'Frequently Asked Questions']
   })
-  const [sources, setSources] = React.useState<string[]>(() => selectedBrief?.signals?.filter((s: string) => s.startsWith('http') || s.includes('.gov') || s.includes('.edu'))?.slice(0, 4) ?? [])
+  const [sources, setSources] = React.useState<string[]>(() => selectedBrief?.signals?.filter((s: string) => {
+    const url = String(s).match(/https?:\/\/[^\s)]+/)?.[0] || String(s)
+    return /^https?:\/\//i.test(url) && isCreamSource(url)
+  })?.slice(0, 4) ?? [])
   const [minWords, setMinWords] = React.useState<number>(() => contentType === 'blog_post' ? 900 : contentType === 'regional_page' ? 1400 : 1800)
   const [maxWords, setMaxWords] = React.useState<number>(() => contentType === 'blog_post' ? 1600 : contentType === 'regional_page' ? 2200 : 2800)
   const [targetSlug, setTargetSlug] = React.useState('')
@@ -2371,7 +2375,33 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     }
   }
 
-  const addSource = () => { if (newSource.trim()) { setSources(p => [...p, newSource.trim()]); setNewSource('') } }
+  const addSource = () => {
+    const raw = newSource.trim()
+    if (!raw) return
+    const url = raw.match(/https?:\/\/[^\s)]+/)?.[0] || raw
+    if (!/^https?:\/\//i.test(url) || !isCreamSource(url)) {
+      setActionNotice?.('Only crème-de-la-crème official URLs can be cited — immigration/gov departments, official school pages, or named intergovernmental bodies. Blogs, news, Wikipedia, and consultants are rejected.')
+      return
+    }
+    setSources((p) => [...p, raw])
+    setNewSource('')
+  }
+  const loadOfficialSources = () => {
+    const seed = sourcesForBrief({
+      region,
+      topic: topic || title,
+      keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
+    })
+    const lines = seed.slice(0, 6).map((s) => `${s.title} — ${s.url}`)
+    setSources((p) => {
+      const seen = new Set(p.map((x) => x.toLowerCase()))
+      const next = [...p]
+      for (const line of lines) {
+        if (!seen.has(line.toLowerCase())) next.push(line)
+      }
+      return next.slice(0, 8)
+    })
+  }
   const removeSource = (i: number) => setSources(p => p.filter((_, idx) => idx !== i))
   const addH2 = () => { if (newH2.trim()) { setH2s(p => [...p, newH2.trim()]); setNewH2('') } }
   const removeH2 = (i: number) => setH2s(p => p.filter((_, idx) => idx !== i))
@@ -2404,7 +2434,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     lines.push('')
     lines.push('### SOURCES TO CITE')
     if (sources.length) sources.forEach(s => lines.push(`- ${s}`))
-    else lines.push('- (no sources specified — AI will find authoritative references)')
+    else lines.push('- (empty — drafting will use only live-verified official authorities for this topic; no invented URLs)')
     lines.push('')
     lines.push(`### WORD COUNT: ${minWords}–${maxWords} words`)
     lines.push('')
@@ -2623,6 +2653,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       {/* ── SOURCES ── */}
       <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
         <label style={labelBase}>Sources to Cite ({sources.length} specified)</label>
+        <p style={{ margin: '0 0 8px', fontFamily: C.serif, fontSize: 12, color: E.inkMuted, lineHeight: 1.45 }}>
+          Crème de la crème only — immigration departments, government departments, official school pages, and named intergovernmental bodies. Generate Full Brief live-checks every URL. Off-topic or broken citations are stripped before ship.
+        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
           {sources.map((s, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2631,9 +2664,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input value={newSource} onChange={e => setNewSource(e.target.value)} placeholder="https://..." style={{ ...inputBase, flex: 1, maxWidth: 460 }} onKeyDown={e => e.key === 'Enter' && addSource()} />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <input value={newSource} onChange={e => setNewSource(e.target.value)} placeholder="https://www.uscis.gov/…" style={{ ...inputBase, flex: 1, maxWidth: 460 }} onKeyDown={e => e.key === 'Enter' && addSource()} />
           <button onClick={addSource} style={{ ...btnGhost, padding: '6px 12px' }}>+ Add</button>
+          <button type="button" onClick={loadOfficialSources} style={{ ...btnGhost, padding: '6px 12px' }}>Load official sources</button>
         </div>
       </div>
 
