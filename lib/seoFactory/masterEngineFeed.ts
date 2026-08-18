@@ -17,6 +17,9 @@ import {
 } from '@/lib/seoFactory/masterEngine'
 import { attachSiteHealthFacts } from '@/lib/seoFactory/siteHealthSnapshot'
 import { loadLlmVisibilityEvidence } from '@/lib/seoEngine/llmVisibility'
+import { computeGscMix, type GscMix, type GscMixQueryRow } from '@/lib/seoFactory/gscMix'
+import { loadGscSnapshot } from '@/lib/seoDataLoaders'
+import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
 
 export interface MasterEngineFeedRequest {
   topic: string
@@ -36,6 +39,9 @@ export interface MasterEngineFeed {
   grade: string | null
   recommendationCount: number
   promptBlock: string
+  /** Eligible vs junk vs deep-tail GSC mix — the studio cannot hide behind a
+   *  0.3% CTR when the eligible position is deep and junk share is high. */
+  gscMix: GscMix
   lineage: Record<string, unknown>
 }
 
@@ -128,6 +134,14 @@ export function renderMasterEnginePromptBlock(
     .slice(0, 5)
     .map(([id, v]) => `${id} ${fmtPct(v.score)}`)
   if (weak.length) lines.push(`- Weak subsystems: ${weak.join(' · ')}`)
+  // GSC push-through Phase B: surface the eligible vs junk mix so Autopilot
+  // and briefs cannot hide behind a site-wide 0.3% CTR.
+  const gscMix = report.gscMix
+  if (gscMix && (gscMix.eligible.impressions > 0 || gscMix.junk.share > 0 || gscMix.strikeDistance.length)) {
+    lines.push(
+      `- GSC mix: eligible position ${gscMix.eligible.position.toFixed(1)} · junk share ${Math.round(gscMix.junk.share * 100)}% · ${gscMix.strikeDistance.length} strike-distance URL(s)`,
+    )
+  }
   const gapBits = [
     derived.competitiveGap != null ? `competitive gap ${fmtPct(derived.competitiveGap)}` : '',
     derived.contentSuperiority != null ? `content superiority ${fmtPct(derived.contentSuperiority)}` : '',
@@ -162,6 +176,51 @@ export function renderMasterEnginePromptBlock(
   return lines.join('\n')
 }
 
+/**
+ * Load the per-query GSC breakdown the same way the radar already does —
+ * live `topQueries` when GSC is configured, else the committed snapshot — and
+ * map it to `{ term, impressions, clicks, position }` queryRows.
+ *
+ * Production callers (generate-stream, suggest-brief, jobToMasterInput) pass
+ * aggregates only or nothing, so without this the classifier in computeGscMix
+ * never sees a single row: 10.3K impressions at pos 33 get scored as eligible
+ * volume and the studio can still hide behind a site-wide 0.3% CTR. No new
+ * table, no new GSC client — reuses loadGscSnapshot / gscAnalytics.
+ */
+async function hydrateGscQueryRows(
+  existing?: GscMixQueryRow[],
+): Promise<GscMixQueryRow[]> {
+  if (existing && existing.length) return existing
+
+  try {
+    const live = await fetchSiteSearchAnalytics(28)
+    if (live.configured && live.topQueries.length) {
+      return live.topQueries.map((q) => ({
+        term: q.key,
+        impressions: q.impressions,
+        clicks: q.clicks,
+        ctr: q.ctr,
+        position: q.position,
+      }))
+    }
+  } catch {
+    /* fall through to snapshot */
+  }
+
+  try {
+    const snap = await loadGscSnapshot()
+    return (snap.topQueries ?? []).map((q) => ({
+      term: q.term,
+      impressions: q.impressions,
+      clicks: q.clicks,
+      ctr: q.ctr,
+      position: q.position,
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function assembleMasterEngineFeed(
   req: MasterEngineFeedRequest,
 ): Promise<MasterEngineFeed> {
@@ -174,11 +233,43 @@ export async function assembleMasterEngineFeed(
     grade: null,
     recommendationCount: 0,
     promptBlock: '',
+    gscMix: computeGscMix({
+      impressions: req.gsc?.impressions,
+      clicks: req.gsc?.clicks,
+      ctr: req.gsc?.ctr,
+      position: req.gsc?.position,
+      queries: req.gsc?.queryRows,
+    }),
     lineage: { modelVersion: 'seo-master-engine-feed-v1', ok: false },
   }
   if (!topic) return empty
 
   try {
+    // GSC push-through Phase B punch 1: hydrate the per-query breakdown inside
+    // the feed so the classifier actually sees rows in the real write path.
+    const queryRows = await hydrateGscQueryRows(req.gsc?.queryRows as GscMixQueryRow[] | undefined)
+    const hydratedMix = queryRows.length
+      ? computeGscMix({
+          queryRows,
+          impressions: req.gsc?.impressions,
+          clicks: req.gsc?.clicks,
+          ctr: req.gsc?.ctr,
+          position: req.gsc?.position,
+        })
+      : null
+    const gsc = queryRows.length
+      ? {
+          ...req.gsc,
+          queryRows,
+          // Keep aggregate fields so existing null-checks still fire; backfill
+          // from the re-aggregated totals when the caller sent no aggregate.
+          impressions: req.gsc?.impressions ?? hydratedMix?.totals.impressions ?? 0,
+          clicks: req.gsc?.clicks ?? hydratedMix?.totals.clicks ?? 0,
+          ctr: req.gsc?.ctr ?? hydratedMix?.totals.ctr ?? 0,
+          position: req.gsc?.position ?? hydratedMix?.totals.position ?? 0,
+        }
+      : req.gsc
+
     let input: MasterEngineInput = {
       topic,
       primaryKeyword,
@@ -187,7 +278,7 @@ export async function assembleMasterEngineFeed(
       title: req.title || topic,
       canonicalUrl: req.canonicalUrl,
       liveUrl: req.canonicalUrl,
-      gsc: req.gsc,
+      gsc,
       competingUrls: req.competingUrls,
     }
     const [withHealth, llmV, knowledge, cluster, ahrefs] = await Promise.all([
@@ -228,6 +319,7 @@ export async function assembleMasterEngineFeed(
       grade: report.grade,
       recommendationCount: (report.recommendations || []).filter((r) => r.open !== false).length,
       promptBlock,
+      gscMix: report.gscMix,
       lineage: {
         modelVersion: 'seo-master-engine-feed-v1',
         intent: report.intent,

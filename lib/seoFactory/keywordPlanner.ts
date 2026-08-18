@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { CATEGORIES } from '@/lib/categories'
-import { isFileOrUrlLikeTerm } from './queryNoise'
+import { isJunkQuery } from './queryNoise'
 
 /**
  * Marketplace category demand signal — when the marketplace has active
@@ -459,8 +459,10 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
 
   const board: KeywordSignal[] = []
   for (const q of queries) {
-    if (!includeBrand && brandTerm(q.term)) continue
-    if (isFileOrUrlLikeTerm(q.term)) continue
+    // Drop junk (PDF filenames, quoted document blobs, file paths) before
+    // clustering — a junk query can never resolve to an owner or a cluster.
+    // Brand terms are still allowed when the caller explicitly opts in.
+    if (isJunkQuery(q.term) && !(includeBrand && brandTerm(q.term))) continue
     const region = inferRegion(q.term)
     if (regionFilter && region !== regionFilter) continue
 
@@ -470,12 +472,19 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       region,
     })
     const recentlyCovered = recent.has(q.term.toLowerCase())
-    const { lane, reason } = classifyLane({
-      q,
-      plan,
-      recentlyCovered,
-      includeBrand,
-    })
+    // Strike-seed routing (Phase C): the four guide/lease pages expand their
+    // existing owner URL; the apex homepage is defended, never rewritten.
+    const isSeed = plan.routingSource === 'strike_seed'
+    const { lane, reason } = isSeed
+      ? plan.action === 'expand'
+        ? { lane: 'expand' as PlanLane, reason: 'Strike-seed lock — expand existing owner URL (no sibling)' }
+        : { lane: 'monitor' as PlanLane, reason: 'Strike-seed homepage — defend existing page (no rewrite)' }
+      : classifyLane({
+          q,
+          plan,
+          recentlyCovered,
+          includeBrand,
+        })
     const relatedPage = findRelatedPage(q.term, pages, plan.matched?.owner_url || plan.canonicalUrl)
     const dScore = demandScore(q)
     const authority = scoreTopicAuthority({

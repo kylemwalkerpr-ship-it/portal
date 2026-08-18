@@ -5,6 +5,7 @@
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { scoreOpportunities, type OpportunityQuery } from '@/lib/seoFactory/opportunityEngine'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 
 export type OpportunityAction =
   | 'title_rewrite'
@@ -62,15 +63,6 @@ function contentTypeForTerm(term: string): string {
   return 'article'
 }
 
-function isNoise(term: string): boolean {
-  const t = term.toLowerCase().trim()
-  if (!t || t.length < 3) return true
-  if (/yousafe|mycaseworks|yousafeconsultancy/.test(t)) return true
-  if (/^[0-9\s.\-/*]+$/.test(t)) return true
-  if (/c[:.].*drive|onedrive|dropbox|\.pdf|\.jpg|\.png|http:|https:|@/i.test(t)) return true
-  return false
-}
-
 export async function loadFactoryOpportunities(limit = 50): Promise<{
   source: 'live' | 'snapshot'
   siteUrl?: string
@@ -106,7 +98,7 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
         source = 'live'
         for (const r of (data.rows || [])) {
           const term = (r.keys?.[0] || '').trim()
-          if (!term || isNoise(term)) continue
+          if (!term || isJunkQuery(term)) continue
           queries.push({
             term,
             impressions: r.impressions ?? 0,
@@ -135,12 +127,13 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
     )
   }
 
-  // Deduplicate
+  // Deduplicate — single noise filter (queryNoise.isJunkQuery). A weaker local
+  // filter is exactly how quoted PDF queries leaked into the radar before.
   const seen = new Set<string>()
   const deduped: OpportunityQuery[] = []
   for (const q of queries) {
     const t = (q.term || '').trim().toLowerCase()
-    if (!t || t.length < 3 || seen.has(t) || isNoise(t)) continue
+    if (!t || t.length < 3 || seen.has(t) || isJunkQuery(t)) continue
     seen.add(t)
     deduped.push({ ...q, term: t })
   }
@@ -174,8 +167,18 @@ export function pickAutoRunCandidates(
   opps: FactoryOpportunity[],
   limit: number,
 ): FactoryOpportunity[] {
+  // Phase C: auto-run never opens a net-new page from the radar. Only
+  // expand-existing plays (strike distance, refresh, page-1 defend) ship.
   const eligible = opps
-    .filter((o) => o.enginePlay === 'content_gap' || o.enginePlay === 'quick_win' || o.action === 'expand_or_build' || o.action === 'strike_distance')
+    .filter(
+      (o) =>
+        o.enginePlay === 'quick_win' ||
+        o.enginePlay === 'refresh' ||
+        o.enginePlay === 'defend' ||
+        o.action === 'strike_distance' ||
+        o.action === 'expand_or_build' ||
+        o.action === 'page1_defend',
+    )
     .filter((o) => o.term.length >= 4)
     .filter((o) => o.impressions >= 8)
   eligible.sort((a, b) => b.score - a.score)

@@ -21,6 +21,7 @@
  */
 
 import { loadOwnershipRegistry } from '@/lib/seoDataLoaders'
+import { matchStrikeSeed } from './strikeSeeds'
 
 export type OwnerHost = 'legal' | 'usa' | 'ca' | 'uk' | 'au' | 'apex' | 'market'
 export type IntentClass =
@@ -70,7 +71,7 @@ export interface OwnerPlan {
   blockers: string[]
   ymy: boolean
   /** How routing was decided */
-  routingSource: 'registry_owner_url' | 'registry_host' | 'standing_rules' | 'content_type_default'
+  routingSource: 'registry_owner_url' | 'registry_host' | 'standing_rules' | 'content_type_default' | 'strike_seed'
 }
 
 /**
@@ -780,9 +781,44 @@ export async function resolveOwner(opts: {
 }): Promise<OwnerPlan> {
   const warnings: string[] = []
   const blockers: string[] = []
+  const keyword = opts.primaryKeyword || ''
+
+  // ── Strike-seed routing (Phase C): the five locked GSC pages always EXPAND
+  //    their existing owner URL — never a sibling, never standing rules. ──
+  const seed = matchStrikeSeed(keyword)
+  if (seed) {
+    const host: OwnerHost = seed.host === 'apex' ? 'apex' : 'legal'
+    const repo = HOST_REPO[host]
+    const action = seed.mode === 'defend' ? 'keep' : 'expand'
+    const reconciled = reconcileContentTypeWithPath({
+      contentType: normalizeStudioContentType(opts.contentType || 'legal_guide'),
+      filePath: seed.filePath,
+      host,
+      intentClass: 'procedural',
+    })
+    warnings.push(
+      `Strike-seed lock: "${keyword}" ${action === 'expand' ? 'expands' : 'defends'} existing page ${seed.canonicalUrl} (${seed.filePath}) — no sibling created`,
+    )
+    return {
+      matched: null,
+      matchScore: 100,
+      host,
+      repo,
+      filePath: seed.filePath,
+      canonicalUrl: seed.canonicalUrl,
+      indexable: opts.indexable !== false,
+      action,
+      intentClass: reconciled.intentClass,
+      contentType: reconciled.contentType,
+      warnings,
+      blockers,
+      ymy: host === 'legal',
+      routingSource: 'strike_seed',
+    }
+  }
+
   const registry = await loadOwnershipRegistry()
   const rows = (registry.rows ?? []) as OwnershipRow[]
-  const keyword = opts.primaryKeyword || ''
 
   let best: { row: OwnershipRow; score: number } | null = null
   for (const row of rows) {

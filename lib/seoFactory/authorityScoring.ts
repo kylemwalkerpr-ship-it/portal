@@ -13,6 +13,7 @@
  *   professionalism 0.12  — YMYL-safe professional framing (not spam / transactional bait)
  *   clusterFill     0.10  — fills known estate hubs vs random net-new
  */
+import { computeGscMix } from './gscMix'
 
 export interface AuthorityInputs {
   term: string
@@ -20,6 +21,19 @@ export interface AuthorityInputs {
   clicks: number
   ctr: number
   position: number
+  /**
+   * Per-query GSC breakdown. When present, demand is scored from the ELIGIBLE
+   * aggregate only (junk PDF/URL/brand rows excluded) with a junk-share
+   * penalty — raw GSC volume is not treated as good (GSC push-through Phase B).
+   */
+  queryRows?: Array<{
+    term?: string
+    url?: string
+    impressions?: number
+    clicks?: number
+    ctr?: number
+    position?: number
+  }>
   /** Has a matched owner URL in the SEO strategies registry */
   hasOwner?: boolean
   /** Owner host: legal | portal | market | apex | caseworks */
@@ -132,14 +146,18 @@ function demandComponent(q: {
   clicks: number
   ctr: number
   position: number
+  /** 0–1 share of impressions that are junk (PDF/URL/brand) — penalty. */
+  junkShare?: number
 }): number {
   const expectedCtr =
     q.position <= 3 ? 0.12 : q.position <= 10 ? 0.05 : q.position <= 20 ? 0.025 : 0.01
-  const ctrGap = Math.max(0, expectedCtr - q.ctr)
+  // CTR gap is meaningless past #20 (a pos-32 0.3% CTR is on-curve) — suppress.
+  const ctrGap = q.position > 20 ? 0 : Math.max(0, expectedCtr - q.ctr)
   // log-scale impressions so mega-head terms don't drown everything
   const imp = Math.log10(Math.max(1, q.impressions) + 9) // ~1–3+
   const posW = q.position <= 20 ? 1.25 : q.position <= 40 ? 1.05 : 0.85
-  const raw = imp * 28 * posW + ctrGap * 320 + Math.min(q.clicks, 50) * 0.4
+  const junkPenalty = 1 - Math.min(0.6, Math.max(0, q.junkShare ?? 0))
+  const raw = (imp * 28 * posW + ctrGap * 320 + Math.min(q.clicks, 50) * 0.4) * junkPenalty
   return clamp(raw)
 }
 
@@ -219,7 +237,25 @@ function pickAngle(
  */
 export function scoreTopicAuthority(input: AuthorityInputs): AuthorityBreakdown {
   const term = (input.term || '').trim()
-  const demand = demandComponent(input)
+  // GSC push-through Phase B: demand scores the ELIGIBLE aggregate only — junk
+  // (PDF/URL/brand) rows never count as volume, and a junk-share penalty stops
+  // a property drowning in PDF queries from looking like strong demand.
+  const gscMix = input.queryRows?.length
+    ? computeGscMix({
+        queries: input.queryRows,
+        impressions: input.impressions,
+        clicks: input.clicks,
+        ctr: input.ctr,
+        position: input.position,
+      })
+    : null
+  const eg = gscMix?.eligible ?? {
+    impressions: input.impressions,
+    clicks: input.clicks,
+    ctr: input.ctr,
+    position: input.position,
+  }
+  const demand = demandComponent({ ...eg, junkShare: gscMix?.junk.share ?? 0 })
   const aeoIntent = patternScore(term, AEO_PATTERNS)
   const geoCitation = patternScore(term, GEO_CITATION_PATTERNS)
   const disciplineAuth = disciplineScore(term)

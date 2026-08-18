@@ -72,14 +72,30 @@ export interface MasterEngineJobRowLike {
 
 const gscOf = (gsc: Record<string, unknown> | null | undefined): MasterEngineInput['gsc'] => {
   if (!gsc || typeof gsc !== 'object') return undefined
+  // Forward the per-query breakdown when gsc_json already carries it — never
+  // strip queryRows, or the classifier loses the only rows it has (Phase B).
+  const queryRows = Array.isArray(gsc.queryRows)
+    ? gsc.queryRows
+        .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+        .map((r) => ({
+          term: typeof r.term === 'string' ? r.term : undefined,
+          url: typeof r.url === 'string' ? r.url : undefined,
+          impressions: typeof r.impressions === 'number' ? r.impressions : undefined,
+          clicks: typeof r.clicks === 'number' ? r.clicks : undefined,
+          ctr: typeof r.ctr === 'number' ? r.ctr : undefined,
+          position: typeof r.position === 'number' ? r.position : undefined,
+        }))
+        .filter((r) => r.term || r.url)
+    : undefined
   const out: MasterEngineInput['gsc'] = {
     impressions: typeof gsc.impressions === 'number' ? gsc.impressions : undefined,
     clicks: typeof gsc.clicks === 'number' ? gsc.clicks : undefined,
     ctr: typeof gsc.ctr === 'number' ? gsc.ctr : undefined,
     position: typeof gsc.position === 'number' ? gsc.position : undefined,
     queries: typeof gsc.queries === 'number' ? gsc.queries : undefined,
+    queryRows: queryRows?.length ? queryRows : undefined,
   }
-  // A blob with no usable numeric fields is treated as absent.
+  // A blob with no usable numeric fields (or rows) is treated as absent.
   return Object.values(out).some((v) => v !== undefined) ? out : undefined
 }
 

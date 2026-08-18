@@ -21,6 +21,7 @@
  */
 
 import { confidenceFromEvidence, freshnessScore, type EvidenceLineage } from './intelligence'
+import { computeGscMix, junkSharePenalty } from '../seoFactory/gscMix'
 
 export const RANKING_MODEL_VERSION = 'seo-ranking-model-v1'
 
@@ -122,6 +123,19 @@ export interface RankingModelInput {
     clicks?: number
     ctr?: number
     position?: number
+    /**
+     * Per-query breakdown (term/url + metrics). When present, demand is scored
+     * from the ELIGIBLE aggregate only (junk PDF/URL/brand rows excluded) with
+     * a junk-share penalty (GSC push-through Phase B).
+     */
+    queryRows?: Array<{
+      term?: string
+      url?: string
+      impressions?: number
+      clicks?: number
+      ctr?: number
+      position?: number
+    }>
     /** Position history (ascending by date) for the behavioral family. */
     history?: Array<{ position?: number; impressions?: number; clicks?: number; date?: string }>
   }
@@ -190,25 +204,33 @@ function expectedCtr(position: number): number {
   return 0.01
 }
 
-/** Demand: log-scaled volume + CTR gap + position headroom. */
+/** Demand: eligible-only log-scaled volume + CTR gap (suppressed past #20) + position headroom, with a junk-share penalty. */
 function scoreDemand(gsc?: RankingModelInput['gsc']): FamilyScore {
   const reasons: string[] = []
-  const impressions = Math.max(0, Number(gsc?.impressions) || 0)
-  const position = Number(gsc?.position) || 100
-  const ctr = Number(gsc?.ctr) || 0
-  const clicks = Math.max(0, Number(gsc?.clicks) || 0)
+  // GSC push-through Phase B: score the ELIGIBLE aggregate only — junk
+  // (PDF/URL/brand) rows never count as demand, and a property drowning in
+  // PDF queries takes the junk-share penalty.
+  const gscMix = computeGscMix(gsc)
+  const eg = gscMix.eligible
+  const impressions = eg.impressions
+  const position = eg.position || 100
+  const ctr = eg.ctr
+  const clicks = eg.clicks
   if (!impressions && !clicks) {
     reasons.push('No GSC demand observed — treat as exploratory.')
     return { score: 18, weight: FAMILY_WEIGHTS.demand, reasons }
   }
+  const junkPenalty = junkSharePenalty(gscMix.junk.share)
   const imp = Math.log10(Math.max(1, impressions) + 9) // ~1–3+
   const posW = position <= 20 ? 1.25 : position <= 40 ? 1.05 : 0.85
-  const ctrGap = Math.max(0, expectedCtr(position) - ctr)
-  const score = clamp100(imp * 30 * posW + ctrGap * 300 + Math.min(clicks, 60) * 0.5)
-  if (impressions >= 500) reasons.push(`Real demand: ${impressions.toLocaleString()} impressions/mo`)
-  else if (impressions > 0) reasons.push(`${impressions.toLocaleString()} impressions/mo (long-tail)`)
+  // CTR gap is meaningless past #20 (a pos-32 0.3% CTR is on-curve) — suppress.
+  const ctrGap = position > 20 ? 0 : Math.max(0, expectedCtr(position) - ctr)
+  const score = clamp100((imp * 30 * posW + ctrGap * 300 + Math.min(clicks, 60) * 0.5) * junkPenalty)
+  if (impressions >= 500) reasons.push(`Real demand: ${impressions.toLocaleString()} impressions/mo on eligible queries`)
+  else if (impressions > 0) reasons.push(`${impressions.toLocaleString()} impressions/mo on eligible queries (long-tail)`)
   if (ctrGap > 0.02) reasons.push(`CTR gap vs expected at #${Math.round(position)} — headline/intro rewrite upside`)
-  if (position > 20) reasons.push(`Deep rank #${Math.round(position)} — headroom to climb`)
+  if (position > 20) reasons.push(`Deep rank #${Math.round(position)} on eligible queries — headroom to climb`)
+  if (gscMix.junk.share > 0.2) reasons.push(`Junk query share ${Math.round(gscMix.junk.share * 100)}% — demand penalized`)
   return { score, weight: FAMILY_WEIGHTS.demand, reasons }
 }
 

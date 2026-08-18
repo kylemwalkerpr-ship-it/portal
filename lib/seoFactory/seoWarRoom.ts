@@ -20,6 +20,8 @@ import {
 } from '@/lib/seoFactory/opportunityEngine'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { classifyDestinationType } from '@/lib/seoFactory/ownership'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { matchStrikeSeed } from '@/lib/seoFactory/strikeSeeds'
 
 // ── Legacy play labels (backward compat for the war-room UI) ─────────────
 const PLAY_MAP: Record<string, string> = {
@@ -147,7 +149,7 @@ export function isNoiseQuery(term: string): boolean {
   // Single stopword-ish
   if (/^(a|the|and|or|to|for|in|on|of)$/.test(t)) return true
   if (/c[:.].*drive|onedrive|dropbox|\.pdf|\.jpg|\.png|http:|https:|@/i.test(t)) return true
-  return false
+  return isJunkQuery(term)
 }
 
 export async function buildSeoWarRoom(opts?: {
@@ -363,6 +365,9 @@ export async function buildSeoWarRoom(opts?: {
       const expCtr = expectedCtrAtPosition(o.position)
       const ctrGap = Math.max(0, expCtr - o.ctr)
       const estimatedGain = Math.round(ctrGap * o.impressions) || Math.round(expCtr * o.impressions * 0.5)
+      // Strike-seed routing (Phase C): the five locked pages carry their owner
+      // URL / repo / file path so auto-run expands them instead of a sibling.
+      const seedTarget = matchStrikeSeed(o.topic, o.sourcePage)
       return {
         id: o.topic,
         term: o.topic,
@@ -377,10 +382,10 @@ export async function buildSeoWarRoom(opts?: {
         estimatedGainClicks: estimatedGain,
         region: regionFilter || 'US',
         contentType: o.contentType,
-        host: null,
-        repo: null,
-        ownerUrl: null,
-        filePath: null,
+        host: seedTarget ? seedTarget.host : null,
+        repo: seedTarget ? seedTarget.repo : null,
+        ownerUrl: seedTarget ? seedTarget.canonicalUrl : null,
+        filePath: seedTarget ? seedTarget.filePath : null,
         authorityScore: 100 - o.difficultyScore,
         contentAngle: null,
         writeHint: o.signals.slice(0, 2).join('; '),

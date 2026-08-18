@@ -21,7 +21,16 @@
  *   cannibalization 2+ pages already target it — do NOT create another
  */
 
-import { isJunkQuery } from './queryNoise'
+import { isJunkQuery, classifyGscQuery } from './queryNoise'
+import { matchStrikeSeed } from './strikeSeeds'
+
+/**
+ * Seed strike-distance targets from the locked 2026-08-18 GSC snapshot.
+ * These pages already earn impressions at positions ~8–14 with proven click
+ * intent. The factory must EXPAND these owners (canonicalUrl set, never a
+ * sibling, never a meal-plan PDF page). Do not invent more seeds.
+ */
+export { GSC_STRIKE_SEEDS_2026_08 } from './strikeSeeds'
 
 export interface OpportunityQuery {
   term: string
@@ -225,12 +234,16 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     limit = 60,
   } = input
 
-  // Deduplicate queries — keep the strongest signal per term
+  // Deduplicate queries — keep the strongest signal per term. Junk rows are
+  // dropped here (never scored, never queued, never briefed): the engine plays
+  // `ignore` for them by exclusion. deep_tail rows stay — they are real
+  // queries, just low-signal, and count toward the mix (Phase B scoring).
   const byTerm = new Map<string, OpportunityQuery>()
   for (const q of queries) {
     const term = (q.term || '').trim().toLowerCase()
     if (!term || term.length < 3) continue
     if (/\byousafe\b/i.test(term)) continue
+    if (classifyGscQuery(term, { impressions: q.impressions, clicks: q.clicks, position: q.position }) === 'junk') continue
     const existing = byTerm.get(term)
     if (!existing || q.impressions > existing.impressions) byTerm.set(term, q)
   }
@@ -278,11 +291,23 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       if (jac >= 0.45 || (shared >= 3 && jac >= 0.3)) pushMatch(c)
     }
 
+    // ── Strike-seed routing (Phase C): the five locked pages always EXPAND
+    //    their existing owner — never content_gap, never a sibling. ──
+    const seed = matchStrikeSeed(term, q.page)
+    const seedUrl = seed?.canonicalUrl || null
     let play: Play
-    if (matches.length >= 2) play = 'cannibalization'
-    else if (matches.length === 1)
+    if (seed) {
+      // Force the play by seed mode: expand → quick_win (strike distance),
+      // defend → defend (apex homepage). Override any coverage-match guess.
+      play = seed.mode === 'defend' ? 'defend' : 'quick_win'
+      if (seedUrl && !matches.includes(seedUrl)) matches.unshift(seedUrl)
+    } else if (matches.length >= 2) {
+      play = 'cannibalization'
+    } else if (matches.length === 1) {
       play = position <= 5 && clicks >= Math.max(1, impressions * 0.03) ? 'defend' : 'refresh'
-    else play = position <= 20 && impressions >= 20 ? 'quick_win' : 'content_gap'
+    } else {
+      play = position <= 20 && impressions >= 20 ? 'quick_win' : 'content_gap'
+    }
 
     // ── Scores ──
     const demandScore = Math.min(100, Math.round(42 * Math.log10(impressions + 1) + 16 * Math.log10(clicks + 1)))
@@ -396,7 +421,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       signals: signals.slice(0, 4),
       interlinks: interlinkTargets,
       coverage: { matched: matches.length > 0, matches: matches.slice(0, 3) },
-      sourcePage: q.page,
+      sourcePage: seedUrl || q.page,
       profitability: profitabilityFor(intent, impressions),
       reason: `${play.replace('_', ' ')} · #${position} · ${fmt(impressions)} imp/mo · ${intent}`,
       history: q.history

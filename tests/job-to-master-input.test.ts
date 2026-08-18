@@ -69,4 +69,29 @@ describe('jobToMasterEngineInput — shared row mapper', () => {
     const input = jobToMasterEngineInput({ gsc_json: { impressions: 10 }, gsc: { impressions: 99 } })
     expect(input.gsc!.impressions).toBe(10)
   })
+
+  it('forwards queryRows from gsc_json instead of stripping them (Phase B punch 1)', () => {
+    const input = jobToMasterEngineInput({
+      gsc_json: {
+        impressions: 10959,
+        clicks: 29,
+        ctr: 0.0026,
+        position: 33,
+        queries: 4,
+        queryRows: [
+          { term: 'pacific.edu/sites/default/files/rates-2026.pdf', impressions: 2192, clicks: 0, position: 3 },
+          { term: 'canada express entry stem category 2026', impressions: 248, clicks: 1, position: 10.2 },
+        ],
+      },
+    })
+    expect(input.gsc!.queryRows).toHaveLength(2)
+    expect(input.gsc!.queryRows![0]).toMatchObject({
+      term: 'pacific.edu/sites/default/files/rates-2026.pdf',
+      impressions: 2192,
+      clicks: 0,
+      position: 3,
+    })
+    // Aggregate fields still forward alongside the rows.
+    expect(input.gsc!.impressions).toBe(10959)
+  })
 })

@@ -42,6 +42,7 @@ import {
   brokenLinkRecovery,
   ctrCurveFit,
   dwellPogoProxy,
+  expectedCtrForPosition,
   labCoreWebVitals,
   lostQueryRate,
   newQueryVelocity,
@@ -52,7 +53,20 @@ import {
   scoreSecurityHeaders,
   snippetEligibility,
 } from './observedSignals'
+import { computeGscMix, junkSharePenalty, type GscMix, type GscMixInput } from './gscMix'
 import { backlinkSignals, type BacklinkSnapshot } from './backlinkProvider'
+
+/** Build the GSC mix from the engine's gsc shape (queries count vs queryRows). */
+function gscMixOf(gsc: MasterEngineInput['gsc']): GscMix {
+  const input: GscMixInput = {
+    impressions: gsc?.impressions,
+    clicks: gsc?.clicks,
+    ctr: gsc?.ctr,
+    position: gsc?.position,
+    queries: gsc?.queryRows,
+  }
+  return computeGscMix(input)
+}
 
 // ═══ Taxonomy ══════════════════════════════════════════════════════════════
 
@@ -684,6 +698,21 @@ export interface MasterEngineInput {
     ctr?: number
     position?: number
     queries?: number
+    /**
+     * Per-query breakdown (term/url + metrics). When present, the SERP
+     * subsystem scores the ELIGIBLE aggregate only — junk (PDF/URL/brand)
+     * and deep-tail rows are excluded from demand and a junk-share penalty
+     * dampens the subsystem so a property drowning in PDF queries cannot
+     * look healthy (GSC push-through Phase B).
+     */
+    queryRows?: Array<{
+      term?: string
+      url?: string
+      impressions?: number
+      clicks?: number
+      ctr?: number
+      position?: number
+    }>
     /** Position/CTR history (oldest → newest) for volatility + curve fit. */
     history?: Array<{ date?: string; position?: number; impressions?: number; clicks?: number; ctr?: number }>
     /** Queries that disappeared vs the prior window. */
@@ -1157,17 +1186,37 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
 
   // ══ SERP / GSC ══
   const g = input.gsc || {}
-  out.g_impressions = g.impressions == null ? null : normalizeRange(Math.log10(Math.max(1, g.impressions)), 1.5, 4.5, true)
-  out.g_clicks = g.clicks == null ? null : normalizeRange(Math.log10(Math.max(1, g.clicks)), 0, 3, true)
-  out.g_ctr = g.ctr == null ? null : normalizeRange(g.ctr, 0.005, 0.12, true)
-  out.g_position = g.position == null ? null : normalizeRange(g.position, 20, 1, true)
-  const expectedCtr = g.position == null ? null : (g.position <= 3 ? 0.12 : g.position <= 10 ? 0.05 : g.position <= 20 ? 0.025 : 0.01)
-  out.g_ctr_deviation = g.ctr != null && expectedCtr != null ? normalizeRange((g.ctr - expectedCtr) / expectedCtr + 1, 0.3, 1.5, true) : null
+  // GSC push-through Phase B: score the ELIGIBLE aggregate only. Junk
+  // (PDF/URL/brand queries) and deep-tail rows never count as demand, and a
+  // junk-share penalty dampens every gsc-driven SERP signal so a property
+  // drowning in PDF queries cannot look healthy. Without a per-query
+  // breakdown the aggregate passes through unchanged (junk share 0).
+  const gscMix = gscMixOf(g)
+  const eg = gscMix.eligible
+  const junkPenalty = junkSharePenalty(gscMix.junk.share)
+  out.g_impressions = g.impressions == null && eg.impressions === 0
+    ? null
+    : normalizeRange(Math.log10(Math.max(1, eg.impressions)), 1.5, 4.5, true)! * junkPenalty
+  out.g_clicks = g.clicks == null && eg.clicks === 0
+    ? null
+    : normalizeRange(Math.log10(Math.max(1, eg.clicks)), 0, 3, true)! * junkPenalty
+  out.g_ctr = g.ctr == null && eg.impressions === 0
+    ? null
+    : normalizeRange(eg.ctr, 0.005, 0.12, true)! * junkPenalty
+  out.g_position = g.position == null && eg.position === 0
+    ? null
+    : normalizeRange(eg.position, 20, 1, true)! * junkPenalty
+  const expectedCtr = eg.position > 0 ? expectedCtrForPosition(eg.position) : null
+  // CTR gap is meaningless past #20 (a pos-32 0.3% CTR is ON-CURVE, not a
+  // title problem) — suppress the deviation signal entirely.
+  out.g_ctr_deviation = g.ctr != null && expectedCtr != null && eg.position > 0 && eg.position <= 20
+    ? normalizeRange((eg.ctr - expectedCtr) / expectedCtr + 1, 0.3, 1.5, true) * junkPenalty
+    : null
   out.g_query_count = g.queries == null ? null : normalizeRange(Math.log10(Math.max(1, g.queries)), 1, 3, true)
   const competing = (input.competingUrls || []).filter(Boolean).length
   out.g_cannibal_risk = competing === 0 ? 1 : normalizeRange(competing, 3, 0, true) ?? 1
   out.g_expected_traffic = g.impressions != null && g.position != null
-    ? normalizeRange(Math.log10(Math.max(1, g.impressions * (g.position <= 3 ? 0.1 : g.position <= 10 ? 0.03 : 0.01))), 0.5, 3.5, true)
+    ? normalizeRange(Math.log10(Math.max(1, eg.impressions * (eg.position <= 3 ? 0.1 : eg.position <= 10 ? 0.03 : 0.01))), 0.5, 3.5, true)! * junkPenalty
     : null
   // LLM/AEO share-of-voice — measured from the multi-engine prompt audits
   // (llmVisibility evidence), never guessed. 1.0 = every engine cited us.
@@ -1201,8 +1250,8 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.g_rank_volatility = rankVolatility(g.history)
   out.g_new_query_velocity = newQueryVelocity(g.queries, g.newQueries)
   out.g_lost_query_rate = lostQueryRate(g.queries, g.lostQueries)
-  out.g_ctr_curve = ctrCurveFit(g.ctr, g.position)
-  const dp = dwellPogoProxy(g.ctr, g.position)
+  out.g_ctr_curve = eg.impressions > 0 ? ctrCurveFit(eg.ctr, eg.position)! * junkPenalty : null
+  const dp = eg.impressions > 0 ? dwellPogoProxy(eg.ctr, eg.position) : { dwell: null, pogo: null }
   out.g_dwell_time = dp.dwell
   out.g_pogo_stick = dp.pogo
 
@@ -1371,9 +1420,9 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.sc_webpage = (hasType('WebPage') || hasType('WebSite')) ? 1 : 0
   out.sc_sameas = /"sameAs"\s*:/.test(ldText) ? 1 : 0
 
-  // serp depth
+  // serp depth — eligible aggregate only (junk clicks/impressions excluded)
   out.g_impression_ctr_eff = g.impressions != null && g.clicks != null
-    ? normalizeRange(g.impressions > 0 ? g.clicks / g.impressions : 0, 0, 0.2, true)
+    ? normalizeRange(eg.impressions > 0 ? eg.clicks / eg.impressions : 0, 0, 0.2, true)! * junkPenalty
     : null
 
   // freshness depth
@@ -1623,6 +1672,27 @@ function recommend(
 
   const ymyl = isYmyLQuery(input)
 
+  // GSC push-through Phase B: eligible-rank vs CTR diagnosis. A property at
+  // pos 32 with 0.3% CTR is ON-CURVE for eligible queries — a rank problem,
+  // not a title problem. Never recommend "fix CTR" past #20.
+  const gscMix = gscMixOf(input.gsc)
+  if (gscMix.eligible.impressions > 0 && gscMix.eligible.position > 0) {
+    if (gscMix.eligible.position > 20) {
+      push('serp_eligible_rank', 'serp',
+        `Improve eligible rank — eligible queries average #${gscMix.eligible.position.toFixed(0)}, a rank problem not a CTR problem`,
+        0.1, 0.8, 'medium', 2,
+        `eligible position ${gscMix.eligible.position.toFixed(1)} > 20 · junk share ${Math.round(gscMix.junk.share * 100)}% — CTR gap suppressed`)
+    } else {
+      const expected = expectedCtrForPosition(gscMix.eligible.position)
+      if (expected != null && gscMix.eligible.ctr < expected * 0.8) {
+        push('serp_ctr_gap', 'serp',
+          `Fix CTR — eligible queries average #${gscMix.eligible.position.toFixed(0)} but earn ${(gscMix.eligible.ctr * 100).toFixed(1)}% CTR (expected ~${(expected * 100).toFixed(1)}%)`,
+          0.1, 0.8, 'medium', 2,
+          `eligible position ${gscMix.eligible.position.toFixed(1)} · eligible CTR ${(gscMix.eligible.ctr * 100).toFixed(1)}% vs expected ${(expected * 100).toFixed(1)}%`)
+      }
+    }
+  }
+
   // Specific findings first (highest confidence) — every check reads the
   // signal as 0-1 GOODNESS, so a recommendation is pushed ONLY while its gap
   // is genuinely open (open: true). Satisfied gaps never reach the fix loop.
@@ -1858,12 +1928,16 @@ export function predict(
   const top3 = sigmoid((composite - 66) / 12 + positiveDeltaSum * 0.4)
   const top1 = sigmoid((composite - 80) / 10 + positiveDeltaSum * 0.3)
   const expectedLift = SUBSYSTEMS.reduce((a, s) => a + Math.max(0, -(deltas[s] ?? 0)) * (weights[s] ?? 0), 0)
+  // GSC push-through Phase B: forecast from the ELIGIBLE aggregate only — a
+  // mountain of PDF-query impressions must never inflate the traffic forecast.
+  const gscMix = gscMixOf(gsc)
+  const eg = gscMix.eligible
   let expectedTrafficLift: number | null = null
-  if (gsc?.impressions != null) {
-    expectedTrafficLift = Math.round(gsc.impressions * expectedLift * 0.5)
+  if (gsc?.impressions != null || eg.impressions > 0) {
+    expectedTrafficLift = Math.round(eg.impressions * expectedLift * 0.5)
   }
-  const clickProbability = gsc?.ctr != null
-    ? clamp01(gsc.ctr / 0.2)
+  const clickProbability = gsc?.ctr != null || eg.impressions > 0
+    ? clamp01(eg.ctr / 0.2)
     : clamp01(sigmoid((composite - 40) / 14))
   const commercialish = opts.intent === 'transactional' || opts.intent === 'commercial'
   const baseConv = commercialish ? 0.04 : 0.012
@@ -2132,6 +2206,9 @@ export interface MasterEngineReport {
   recommendations: MasterRecommendation[]
   prediction: MasterPrediction
   derived: DerivedFeatures
+  /** Eligible vs junk vs deep-tail GSC mix — the studio cannot hide behind a
+   *  0.3% CTR when the eligible position is 50 and junk share is 40%. */
+  gscMix: GscMix
   governance: EngineGovernance
   /** Whether the weights were adapted from learned outcomes or kept the fixed prior. */
   adaptation: { usedLearned: boolean }
@@ -2274,6 +2351,7 @@ export function scoreMaster(input: MasterEngineInput, learned?: LearnedWeightsIn
     recommendations: recs,
     prediction,
     derived,
+    gscMix: gscMixOf(input.gsc),
     governance,
     adaptation,
     computedSignals,
