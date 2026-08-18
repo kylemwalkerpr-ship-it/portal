@@ -7,6 +7,7 @@ import {
   resolveAiProviderPin,
   resolveParasailApiKey,
 } from '@/lib/contentAiProvider'
+import { AI_PROVIDERS } from '@/lib/aiKeyVault'
 
 describe('content AI · Parasail (psk- keys)', () => {
   const envKeys = [
@@ -71,6 +72,18 @@ describe('content AI · Parasail (psk- keys)', () => {
     expect(deepseek!.model).toBe('parasail-deepseek-v4-flash')
     expect(glm!.label).toBe('parasail-glm')
     expect(glm!.model).toBe('parasail-glm-52')
+  })
+
+  it('lists Parasail in the Configure vault catalog as a grouped host', () => {
+    const ids = AI_PROVIDERS.map((p) => p.id)
+    expect(ids).toContain('parasail-deepseek')
+    expect(ids).toContain('parasail-glm')
+    const deepseek = AI_PROVIDERS.find((p) => p.id === 'parasail-deepseek')
+    expect(deepseek?.vaultGroup).toBe('parasail')
+    expect(deepseek?.vaultGroupLabel).toMatch(/Parasail/i)
+    expect(deepseek?.keyEnv).toBe('PARASAIL_API_KEY')
+    // Vault catalog order: Parasail sits with the other drafting hosts, not after the long fallback tail.
+    expect(ids.indexOf('parasail-deepseek')).toBeLessThan(ids.indexOf('cloudflare-ai'))
   })
 
   it('resolves Parasail pins and aliases', () => {

@@ -29,6 +29,9 @@ export interface AiProviderDef {
   role: 'primary' | 'fallback'
   /** short copy for UI hint */
   hint?: string
+  /** Shared vault card — one paste field for hosts that share a key. */
+  vaultGroup?: string
+  vaultGroupLabel?: string
 }
 
 export const AI_PROVIDERS: AiProviderDef[] = [
@@ -88,17 +91,6 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'Efficient high-volume drafting partner — also the brief fallback when GPT is unconfigured',
   },
   {
-    id: 'aihubmix-glm-fast',
-    label: 'GLM 5.2 Fast · AIHubmix (glm-5.2-fast-preview)',
-    keyEnv: 'AIHUBMIX_API_KEY',
-    baseUrlEnv: 'AIHUBMIX_BASE_URL',
-    modelEnv: 'AIHUBMIX_GLM_MODEL',
-    fixedBaseUrl: 'https://aihubmix.com/v1',
-    defaultModel: 'glm-5.2-fast-preview',
-    role: 'fallback',
-    hint: 'GLM 5.2 Fast via the AIHubmix OpenAI-compatible aggregator — selectable in drafting, brief and review',
-  },
-  {
     id: 'parasail-deepseek',
     label: 'DeepSeek V4 Flash · Parasail',
     keyEnv: 'PARASAIL_API_KEY',
@@ -107,7 +99,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://api.parasail.io/v1',
     defaultModel: 'parasail-deepseek-v4-flash',
     role: 'primary',
-    hint: 'OpenAI-compatible serverless — same DeepSeek V4 Flash family as Baseten / NVIDIA. Key prefix psk-',
+    hint: 'One psk- key unlocks DeepSeek V4 Flash and GLM 5.2 on api.parasail.io',
+    vaultGroup: 'parasail',
+    vaultGroupLabel: 'Parasail · api.parasail.io',
   },
   {
     id: 'parasail-glm',
@@ -118,7 +112,20 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://api.parasail.io/v1',
     defaultModel: 'parasail-glm-52',
     role: 'fallback',
-    hint: 'Shares PARASAIL_API_KEY with parasail-deepseek — GLM 5.2 on api.parasail.io',
+    hint: 'Shares the Parasail psk- key — GLM 5.2 on api.parasail.io',
+    vaultGroup: 'parasail',
+    vaultGroupLabel: 'Parasail · api.parasail.io',
+  },
+  {
+    id: 'aihubmix-glm-fast',
+    label: 'GLM 5.2 Fast · AIHubmix (glm-5.2-fast-preview)',
+    keyEnv: 'AIHUBMIX_API_KEY',
+    baseUrlEnv: 'AIHUBMIX_BASE_URL',
+    modelEnv: 'AIHUBMIX_GLM_MODEL',
+    fixedBaseUrl: 'https://aihubmix.com/v1',
+    defaultModel: 'glm-5.2-fast-preview',
+    role: 'fallback',
+    hint: 'GLM 5.2 Fast via the AIHubmix OpenAI-compatible aggregator — selectable in drafting, brief and review',
   },
   {
     id: 'cloudflare-ai',
@@ -234,6 +241,8 @@ export interface VaultStatusRow {
   envKey: string
   baseUrlEnv?: string
   modelEnv?: string
+  vaultGroup?: string
+  vaultGroupLabel?: string
 }
 
 export interface AiSettings {
@@ -441,6 +450,8 @@ export async function listVaultStatus(): Promise<VaultStatusRow[]> {
       envKey: def.keyEnv,
       baseUrlEnv: def.baseUrlEnv,
       modelEnv: def.modelEnv,
+      vaultGroup: def.vaultGroup,
+      vaultGroupLabel: def.vaultGroupLabel,
     } satisfies VaultStatusRow
   })
 }

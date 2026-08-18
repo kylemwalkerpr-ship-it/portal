@@ -45,6 +45,8 @@ interface VaultStatusRow {
   envKey: string
   baseUrlEnv?: string
   modelEnv?: string
+  vaultGroup?: string
+  vaultGroupLabel?: string
 }
 
 interface AiSettings {
@@ -338,6 +340,53 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     return completeOrder.map((id) => byId.get(id)).filter(Boolean) as VaultStatusRow[]
   }, [rows, providerOrder])
 
+  const parasailRows = (rows || []).filter((r) => r.vaultGroup === 'parasail' || r.id.startsWith('parasail-'))
+  const parasailLead = parasailRows.find((r) => r.id === 'parasail-deepseek') || parasailRows[0] || null
+  const parasailConfigured = parasailRows.some((r) => r.configured)
+  const parasailSource = parasailRows.find((r) => r.source === 'vault')?.source
+    || parasailRows.find((r) => r.source === 'env')?.source
+    || parasailLead?.source
+    || 'none'
+
+  const saveParasail = async () => {
+    const d = draft('parasail')
+    const key = d.key.trim()
+    if (!key && !d.baseUrl.trim()) {
+      setNote({ ok: false, text: 'Paste a Parasail psk- key first.' })
+      return
+    }
+    if (key && !/^psk-/i.test(key)) {
+      setNote({ ok: false, text: 'Parasail keys start with psk-. Check you copied the full key.' })
+      return
+    }
+    setBusy('save-parasail')
+    try {
+      const targets = parasailRows.length ? parasailRows.map((r) => r.id) : ['parasail-deepseek', 'parasail-glm']
+      for (const id of targets) {
+        const res = await fetch('/api/seo-factory/ai-keys', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: id,
+            apiKey: key || undefined,
+            baseUrl: d.baseUrl.trim() || undefined,
+          }),
+        })
+        const j = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      }
+      setDrafts((prev) => ({ ...prev, parasail: { key: '', baseUrl: '', model: '' } }))
+      setNote({ ok: true, text: 'Parasail saved — DeepSeek V4 Flash + GLM 5.2 unlocked' })
+      await load()
+      onChanged?.()
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message : 'Parasail save failed' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div>
       {/* Header */}
@@ -414,9 +463,47 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         </div>
       </div>
 
+      {parasailLead && (
+        <div style={{
+          padding: 12, borderRadius: C.radiusSm, marginBottom: 10,
+          border: `1px solid ${parasailConfigured ? C.greenBorder : C.goldBorder}`,
+          background: parasailConfigured ? C.greenSoft : C.goldSoft,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>Parasail · api.parasail.io</div>
+              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                One <span style={{ fontFamily: C.mono }}>psk-</span> key unlocks DeepSeek V4 Flash and GLM 5.2 as selectable hosts in Draft / Research / Review.
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <SourceBadge source={parasailSource} />
+              <span style={{ fontSize: 10, fontFamily: C.mono, color: parasailConfigured ? C.green : C.textDim }}>
+                {parasailLead.maskedKey || 'no key'}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="password"
+              value={draft('parasail').key}
+              onChange={(e) => setD('parasail', { key: e.target.value })}
+              placeholder="Paste PARASAIL_API_KEY (psk-…)"
+              style={{ ...input('min(280px, 100%)'), flex: 2, minWidth: 180 }}
+            />
+            <button type="button" onClick={() => void saveParasail()} disabled={busy === 'save-parasail'} style={btn(C.navy, true)}>
+              {busy === 'save-parasail' ? 'Saving…' : 'Save Parasail'}
+            </button>
+            <button type="button" onClick={() => void test('parasail-deepseek')} disabled={busy === 'test-parasail-deepseek'} style={btn(C.cyan2, true)}>
+              {busy === 'test-parasail-deepseek' ? '…' : 'Test'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Provider rows */}
       <div style={{ display: 'grid', gap: 6, maxHeight: 330, overflow: 'auto', paddingRight: 2 }}>
-        {orderedRows.map((r) => {
+        {orderedRows.filter((r) => r.vaultGroup !== 'parasail').map((r) => {
           const d = draft(r.id)
           const probing = probe[r.id]
           const isBusy = busy === `save-${r.id}` || busy === `del-${r.id}` || busy === `test-${r.id}`
