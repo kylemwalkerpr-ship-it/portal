@@ -39,6 +39,8 @@ import {
   isNvidiaDeepseekConfigured,
   isAihubmixGlmFastConfigured,
   isGrokConfigured,
+  isParasailConfigured,
+  looksLikeParasailKey,
 } from '@/lib/contentAiProvider'
 import {
   scoreAuditCandidates,
@@ -328,10 +330,12 @@ function auditEngineCandidates(): AuditEngineCandidate[] {
     { pin: 'nvidia-glm', label: 'glm', configured: () => isNvidiaGlmConfigured() },
     { pin: 'nvidia-deepseek', label: 'deepseek', configured: () => isNvidiaDeepseekConfigured() },
     { pin: 'aihubmix-glm-fast', label: 'glm-fast', configured: () => isAihubmixGlmFastConfigured() },
+    { pin: 'parasail-deepseek', label: 'deepseek', configured: () => isParasailConfigured() },
+    { pin: 'parasail-glm', label: 'glm', configured: () => isParasailConfigured() },
     { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY) },
     { pin: 'gemini', label: 'gemini', configured: () => Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) },
     { pin: 'groq', label: 'groq', configured: () => Boolean(process.env.GROQ_API_KEY) },
-    { pin: 'openai', label: 'openai', configured: () => Boolean(process.env.OPENAI_API_KEY) },
+    { pin: 'openai', label: 'openai', configured: () => Boolean(process.env.OPENAI_API_KEY && !looksLikeParasailKey(process.env.OPENAI_API_KEY)) },
   ]
 }
 

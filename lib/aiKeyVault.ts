@@ -99,6 +99,28 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'GLM 5.2 Fast via the AIHubmix OpenAI-compatible aggregator — selectable in drafting, brief and review',
   },
   {
+    id: 'parasail-deepseek',
+    label: 'DeepSeek V4 Flash · Parasail',
+    keyEnv: 'PARASAIL_API_KEY',
+    baseUrlEnv: 'PARASAIL_BASE_URL',
+    modelEnv: 'PARASAIL_DEEPSEEK_MODEL',
+    fixedBaseUrl: 'https://api.parasail.io/v1',
+    defaultModel: 'parasail-deepseek-v4-flash',
+    role: 'primary',
+    hint: 'OpenAI-compatible serverless — same DeepSeek V4 Flash family as Baseten / NVIDIA. Key prefix psk-',
+  },
+  {
+    id: 'parasail-glm',
+    label: 'GLM 5.2 · Parasail',
+    keyEnv: 'PARASAIL_API_KEY',
+    baseUrlEnv: 'PARASAIL_BASE_URL',
+    modelEnv: 'PARASAIL_GLM_MODEL',
+    fixedBaseUrl: 'https://api.parasail.io/v1',
+    defaultModel: 'parasail-glm-52',
+    role: 'fallback',
+    hint: 'Shares PARASAIL_API_KEY with parasail-deepseek — GLM 5.2 on api.parasail.io',
+  },
+  {
     id: 'cloudflare-ai',
     label: 'Cloudflare Workers AI',
     keyEnv: 'CLOUDFLARE_AI_TOKEN',
@@ -185,7 +207,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 export const DEFAULT_PROVIDER_ORDER = [
   'baseten-glm-fast', 'grok', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron',
-  'aihubmix-glm-fast',
+  'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-glm',
 ] as const
 
 export interface VaultKeyRow {

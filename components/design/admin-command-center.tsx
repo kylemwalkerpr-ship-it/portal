@@ -27,6 +27,7 @@ import ContentStudioWorkspace, {
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import SeoMasterEngine from './admin-seo-engine'
 import { RankingModelBlock } from './admin-ranking-model-block'
+import { StudioModelHostSelect } from './studio-model-host-select'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { JobSummary } from '@/lib/seoFactory/jobSummary'
 import GscConnectModal from './admin-gsc-connect-modal'
@@ -2304,28 +2305,18 @@ function RecheckDuePanel() {
               <input value={brief.audience || ''} onChange={(e) => setBrief({ ...brief, audience: e.target.value })} style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>AI model</label>
-              <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={inputStyle}>
-                <option value="auto">Auto (admin default + priority order)</option>
-                {(aiRuntimeProviders.length ? aiRuntimeProviders : [
-                  { id: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra', configured: false, model: 'nvidia/nemotron-3-ultra-550b-a55b' },
-                  { id: 'nvidia-glm', label: 'NVIDIA GLM 5.2', configured: false, model: 'z-ai/glm-5.2' },
-                   { id: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten', configured: false, model: 'deepseek-ai/DeepSeek-V4-Flash-0731' },
-                  { id: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten', configured: false, model: 'zai-org/GLM-5.2-Fast' },
-                  { id: 'aihubmix-glm-fast', label: 'GLM 5.2 Fast · AIHubmix', configured: false, model: 'glm-5.2-fast-preview' },
-                  { id: 'nvidia-deepseek', label: 'NVIDIA DeepSeek', configured: false, model: 'deepseek-ai/deepseek-v4-flash-0731' },
-                  { id: 'grok', label: 'Grok (SuperGrok / xAI)', configured: false, model: 'grok-4.6' },
-                  { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-terra' },
-                  { id: 'cloudflare-ai', label: 'Cloudflare Workers AI', configured: false, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' },
-                  { id: 'groq', label: 'Groq', configured: false, model: 'llama-3.3-70b-versatile' },
-                  { id: 'gemini', label: 'Google Gemini', configured: false, model: 'gemini-2.5-flash' },
-                  { id: 'openrouter', label: 'OpenRouter', configured: false, model: 'meta-llama/llama-3.3-70b-instruct:free' },
-                ]).map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.label}{provider.model ? ` · ${provider.model}` : ''}{provider.configured ? '' : ' (not configured)'}
-                  </option>
-                ))}
-              </select>
+              <label style={labelStyle}>AI model / provider</label>
+              <StudioModelHostSelect
+                lane="command"
+                pin={aiProvider}
+                onPinChange={setAiProvider}
+                selectStyle={inputStyle}
+                modelAriaLabel="Command Center AI model"
+                hostAriaLabel="Command Center AI provider"
+                configuredPins={new Set(
+                  (aiRuntimeProviders || []).filter((p) => p.configured).map((p) => p.id),
+                )}
+              />
             </div>
             {/* ── Life-cycle stage for this link plan ────────────── */}
             <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFBEB', boxShadow: C.shadowCard }}>

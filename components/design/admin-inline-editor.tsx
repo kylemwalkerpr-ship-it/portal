@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { MarkdownDocument } from '@/lib/markdownDocument'
+import { StudioModelHostSelect } from './studio-model-host-select'
 
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -821,26 +822,21 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         {/* Review model selector — GPT Sol (senior editor), SuperGrok, Terra,
             or the open-source reviewers. */}
         {onReviewModelChange && (
-          <select
-            value={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok-4.6' : (reviewModel || 'gpt-5.6-sol')}
-            onChange={(e) => onReviewModelChange(e.target.value)}
+          <StudioModelHostSelect
+            lane="review"
+            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'gpt-5.6-sol')}
+            onPinChange={onReviewModelChange}
             disabled={allBusy}
-            aria-label="Review AI model"
-            style={{
+            modelAriaLabel="Review AI model"
+            hostAriaLabel="Review AI provider"
+            selectStyle={{
               padding: '5px 10px', borderRadius: 6,
               border: `1px solid ${C.border}`, background: C.surface,
               fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
               color: C.text, cursor: allBusy ? 'not-allowed' : 'pointer',
               opacity: allBusy ? 0.5 : 1,
             }}
-          >
-            <option value="gpt-5.6-sol">GPT Sol · Senior Editor</option>
-            <option value="grok-4.6">Grok 4.6 · SuperGrok Review</option>
-            <option value="gpt-5.6-terra">GPT Terra · Fast Review</option>
-            <option value="baseten-deepseek">DeepSeek V4 Flash · Baseten Review</option>
-            <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten Review</option>
-            <option value="aihubmix-glm-fast">GLM 5.2 Fast · AIHubmix Review</option>
-          </select>
+          />
         )}
 
         {/* Status indicators */}

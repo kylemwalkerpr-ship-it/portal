@@ -119,6 +119,7 @@ npx wrangler secret put CLOUDFLARE_AI_TOKEN   # custom token: Workers AI Read
 
 # Fallbacks (optional)
 npx wrangler secret put XAI_API_KEY
+npx wrangler secret put PARASAIL_API_KEY  # psk-… Parasail serverless (DeepSeek V4 Flash + GLM 5.2)
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put GITHUB_TOKEN       # repo-scoped PAT for Content Studio PRs
 npx wrangler secret put GOOGLE_CLIENT_ID

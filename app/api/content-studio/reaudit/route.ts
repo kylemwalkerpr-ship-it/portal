@@ -63,6 +63,14 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     effectiveModel === 'baseten-deepseek' ||
     effectiveModel === 'deepseek-v4-flash' ||
     effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731'
+  const isParasailDeepseek =
+    effectiveModel === 'parasail' ||
+    effectiveModel === 'parasail-deepseek' ||
+    effectiveModel === 'parasail-deepseek-v4-flash'
+  const isParasailGlm =
+    effectiveModel === 'parasail-glm' ||
+    effectiveModel === 'parasail-glm-52' ||
+    effectiveModel === 'parasail-glm-5.2'
   const aiProvider = isGpt
     ? 'openai'
     : isGrok
@@ -71,9 +79,13 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
         ? 'baseten-glm-fast'
         : isAihubmixGlmFast
           ? 'aihubmix-glm-fast'
-          : isDeepseekFlash
-            ? 'baseten-deepseek'
-            : undefined
+          : isParasailDeepseek
+            ? 'parasail-deepseek'
+            : isParasailGlm
+              ? 'parasail-glm'
+              : isDeepseekFlash
+                ? 'baseten-deepseek'
+                : undefined
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,

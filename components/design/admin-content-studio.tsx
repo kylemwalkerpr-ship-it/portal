@@ -51,6 +51,8 @@ import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
+import { StudioModelHostSelect } from './studio-model-host-select'
+import { parseStudioPin } from '@/lib/contentAiCatalog'
 import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioStageNav } from './studio-stage-nav'
 import { ChapterIntro } from './studio-chapter-intro'
@@ -109,6 +111,8 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia-glm': 'z-ai/glm-5.2',
   'baseten-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
+  'parasail-deepseek': 'parasail-deepseek-v4-flash',
+  'parasail-glm': 'parasail-glm-52',
   'nvidia-deepseek': 'deepseek-ai/deepseek-v4-flash-0731',
   'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   groq: 'llama-3.3-70b-versatile',
@@ -223,25 +227,7 @@ const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising'
   { key: 'refresh', label: '🔄 Refresh' },
 ]
 
-// Drafting-only provider options — GPT is NOT offered for the draft itself.
-// Research/Plan keeps GPT Terra (via the brief endpoint) and Review keeps GPT
-// Sol (senior editor), but the actual drafting runs on open-source models
-// with GLM 5.2 Fast (Baseten) as the default. GLM Fast is the fastest,
-// lowest-cost partner for high-volume drafting.
-const DRAFTING_PROVIDER_OPTIONS: { value: string; label: string }[] = [
-  { value: 'baseten-glm-fast', label: 'GLM 5.2 Fast · Baseten (zai-org/GLM-5.2-Fast · default)' },
-  { value: 'aihubmix-glm-fast', label: 'GLM 5.2 Fast · AIHubmix (glm-5.2-fast-preview)' },
-  { value: 'grok', label: 'Grok 4.6 · SuperGrok fallback' },
-  { value: 'auto', label: 'Auto (cascade: GLM Fast → Grok → DeepSeek → rest)' },
-  { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2)' },
-  { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten' },
-  { value: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b)' },
-  { value: 'nvidia-deepseek', label: 'NVIDIA DeepSeek' },
-  { value: 'cloudflare-ai', label: 'Cloudflare Workers AI' },
-  { value: 'groq', label: 'Groq (Llama)' },
-  { value: 'gemini', label: 'Google Gemini' },
-  { value: 'openrouter', label: 'OpenRouter' },
-]
+// Drafting model × host is defined in lib/contentAiCatalog (StudioModelHostSelect).
 
 // ── Helpers ──
 function fmtN(n: number | undefined | null): string {
@@ -2006,10 +1992,15 @@ function CreateWizard({
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Drafting AI model</label>
-            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
-              {DRAFTING_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <label style={labelStyle}>Drafting model / provider</label>
+            <StudioModelHostSelect
+              lane="draft"
+              pin={aiProvider}
+              onPinChange={setAiProvider}
+              selectStyle={inputStyle}
+              modelAriaLabel="Drafting AI model"
+              hostAriaLabel="Drafting AI provider"
+            />
           </div>
         </div>
 
@@ -2247,18 +2238,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
   // brief endpoint (lib/seoFactory/briefModel) honors all three.
   const [briefModel, setBriefModel] = React.useState('grok')
-  const briefModelName =
-    briefModel === 'gpt-5.6-sol'
-      ? 'GPT Sol'
-      : briefModel === 'grok'
-        ? 'Grok 4.6 · SuperGrok'
-        : briefModel === 'baseten-glm-fast'
-          ? 'GLM 5.2 Fast · Baseten'
-          : briefModel === 'aihubmix-glm-fast'
-            ? 'GLM 5.2 Fast · AIHubmix'
-            : briefModel === 'baseten-deepseek'
-              ? 'DeepSeek V4 Flash · Baseten'
-              : 'GPT Terra'
+  const briefParsed = parseStudioPin(briefModel)
+  const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -2503,10 +2484,15 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             </select>
           </div>
           <div>
-            <label style={labelBase}>Drafting AI Model</label>
-            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputBase}>
-              {DRAFTING_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <label style={labelBase}>Drafting model / provider</label>
+            <StudioModelHostSelect
+              lane="draft"
+              pin={aiProvider}
+              onPinChange={setAiProvider}
+              selectStyle={inputBase}
+              modelAriaLabel="Drafting AI model"
+              hostAriaLabel="Drafting AI provider"
+            />
           </div>
         </div>
       </div>
@@ -2581,12 +2567,14 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             >
               {suggestingKeywords ? '⏳ AI analyzing…' : '🤖 AI Suggest Keywords'}
             </button>
-            <select
-              value={briefModel}
-              onChange={(e) => setBriefModel(e.target.value)}
+            <StudioModelHostSelect
+              lane="brief"
+              pin={briefModel}
+              onPinChange={setBriefModel}
               disabled={briefGenerating}
-              title="Brief model — GPT Sol/Terra as primary; Grok (SuperGrok) is the default fallback when GPT fails"
-              style={{
+              modelAriaLabel="Brief AI model"
+              hostAriaLabel="Brief AI provider"
+              selectStyle={{
                 padding: '4px 6px', borderRadius: 6, border: `1px solid ${E.hairline}`,
                 background: E.paper, color: E.ink,
                 fontSize: 10, fontWeight: 700, fontFamily: E.mono,
@@ -2594,14 +2582,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
                 opacity: briefGenerating ? 0.6 : 1,
                 whiteSpace: 'nowrap',
               }}
-            >
-              <option value="gpt-5.6-terra">GPT Terra</option>
-              <option value="gpt-5.6-sol">GPT Sol</option>
-              <option value="grok">Grok 4.6 · SuperGrok</option>
-              <option value="baseten-deepseek">DeepSeek V4 Flash · Baseten</option>
-              <option value="baseten-glm-fast">GLM 5.2 Fast · Baseten</option>
-              <option value="aihubmix-glm-fast">GLM 5.2 Fast · AIHubmix</option>
-            </select>
+            />
             <button
               type="button"
               onClick={handleGenerateBrief}
@@ -3847,9 +3828,14 @@ function JobDetail({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: C.text }}>
             AI model for regeneration
-            <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusXs, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}>
-              {DRAFTING_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <StudioModelHostSelect
+              lane="draft"
+              pin={aiProvider}
+              onPinChange={setAiProvider}
+              modelAriaLabel="Regeneration AI model"
+              hostAriaLabel="Regeneration AI provider"
+              selectStyle={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusXs, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}
+            />
           </label>
           {aiProvider === 'auto' && detail.ai_provider && (
             <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>job default: {aiProviderCard}</span>

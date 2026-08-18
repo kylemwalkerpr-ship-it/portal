@@ -94,6 +94,7 @@ AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
 # ── Required Secrets (set with `npx wrangler secret put <NAME>`) ────────
 # These are NOT in wrangler.toml — set them individually:
 #
+#   PARASAIL_API_KEY — Parasail serverless (psk-…). DeepSeek V4 Flash + GLM 5.2
 #   NVIDIA_API_KEY   — DeepSeek V4 Pro via NVIDIA (default AI provider)
 #   GITHUB_TOKEN     — GitHub PAT for shipContent (PRs, merges, deploys)
 #   SUPABASE_SERVICE_ROLE_KEY — Server-side Supabase access (content_jobs, etc.)

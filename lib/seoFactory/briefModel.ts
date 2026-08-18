@@ -24,6 +24,8 @@ export type BriefProviderChoice =
   | { aiProvider: 'baseten-glm-fast'; model?: undefined }
   | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
   | { aiProvider: 'baseten-deepseek'; model?: undefined }
+  | { aiProvider: 'parasail-deepseek'; model?: undefined }
+  | { aiProvider: 'parasail-glm'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -54,6 +56,16 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
     pin === 'deepseek-ai/deepseek-v4-flash-0731'
   ) {
     return { aiProvider: 'baseten-deepseek' }
+  }
+  if (
+    pin === 'parasail' ||
+    pin === 'parasail-deepseek' ||
+    pin === 'parasail-deepseek-v4-flash'
+  ) {
+    return { aiProvider: 'parasail-deepseek' }
+  }
+  if (pin === 'parasail-glm' || pin === 'parasail-glm-52' || pin === 'parasail-glm-5.2') {
+    return { aiProvider: 'parasail-glm' }
   }
   // Bare 'gpt-5.6' maps to the flagship alias (gpt-5.6-sol), matching the
   // provider layer's gptAliasModel convention.
@@ -108,7 +120,11 @@ export async function generateBriefText(opts: {
         ? 'DeepSeek V4 Flash (Baseten)'
         : primaryPin === 'aihubmix-glm-fast'
           ? 'GLM 5.2 Fast (AIHubmix)'
-          : 'GPT'
+          : primaryPin === 'parasail-deepseek'
+            ? 'DeepSeek V4 Flash (Parasail)'
+            : primaryPin === 'parasail-glm'
+              ? 'GLM 5.2 (Parasail)'
+              : 'GPT'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,

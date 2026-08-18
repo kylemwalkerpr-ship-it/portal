@@ -95,6 +95,16 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     })
   })
 
+  it('parasail-deepseek / parasail-glm (and aliases) stay on Parasail', () => {
+    expect(resolveBriefAiProvider('parasail')).toEqual({ aiProvider: 'parasail-deepseek' })
+    expect(resolveBriefAiProvider('parasail-deepseek')).toEqual({ aiProvider: 'parasail-deepseek' })
+    expect(resolveBriefAiProvider('parasail-deepseek-v4-flash')).toEqual({
+      aiProvider: 'parasail-deepseek',
+    })
+    expect(resolveBriefAiProvider('parasail-glm')).toEqual({ aiProvider: 'parasail-glm' })
+    expect(resolveBriefAiProvider('PARASAIL-GLM-52')).toEqual({ aiProvider: 'parasail-glm' })
+  })
+
   it('baseten-deepseek (and aliases) → DeepSeek V4 Flash 0731 via Baseten', () => {
     expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({
       aiProvider: 'baseten-deepseek',

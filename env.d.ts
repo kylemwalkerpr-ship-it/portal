@@ -61,6 +61,12 @@ declare global {
     AIHUBMIX_API_KEY: string
     AIHUBMIX_BASE_URL: string
     AIHUBMIX_GLM_MODEL: string
+
+    // Parasail OpenAI-compatible serverless (api.parasail.io) — psk- keys
+    PARASAIL_API_KEY: string
+    PARASAIL_BASE_URL: string
+    PARASAIL_DEEPSEEK_MODEL: string
+    PARASAIL_GLM_MODEL: string
   }
 }
 
