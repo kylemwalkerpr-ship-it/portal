@@ -53,7 +53,7 @@ describe('content AI · auto provider pin', () => {
     expect(prefer).toBe('openai')
   })
 
-  it("resolves 'auto' to the first entry of CONTENT_AI_PROVIDER_ORDER when set", () => {
+  it("resolves 'auto' to Parasail even when a stale saved order leads with Baseten", () => {
     process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
       'baseten-deepseek',
       'nvidia-nemotron',
@@ -62,7 +62,7 @@ describe('content AI · auto provider pin', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     const { explicit, prefer } = resolveAiProviderPin('auto')
     expect(explicit).toBe('')
-    expect(prefer).toBe('baseten-deepseek')
+    expect(prefer).toBe('parasail-deepseek')
   })
 
   it("is case/whitespace insensitive ('  AUTO ' behaves like auto)", () => {
