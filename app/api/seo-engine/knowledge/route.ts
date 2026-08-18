@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { ingestKnowledge, loadKnowledgeFeed, recordEngineRun, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
+import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
 
 /**
  * GET /api/seo-engine/knowledge
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
       aiSummarized: result.aiSummarized,
       skipped: result.skipped,
       ingestErrors: result.errors.length,
+      pair: formatEnginePairTape(result.pair),
     }, [...result.errors, ...result.aiErrors].slice(0, 20), 'admin')
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {

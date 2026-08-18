@@ -8,7 +8,7 @@
 
 import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
-import { countBodyWords, maxWordsForType, minWordsForType } from './contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
@@ -579,7 +579,9 @@ export function applyDeterministicRepairs(opts: {
   minWords?: number
 }): { content: string; applied: string[] } {
   const applied: string[] = []
-  let { fm, body } = stripFm(opts.content || '')
+  const unwrapped = unwrapWholeDocumentFence(opts.content || '')
+  if (unwrapped !== (opts.content || '')) applied.push('unwrapped_document_fence')
+  let { fm, body } = stripFm(unwrapped)
   let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
 
   const requireDisclaimer =

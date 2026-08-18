@@ -136,12 +136,35 @@ export function clampBriefWordBudget(
 }
 
 /**
+ * Models sometimes wrap the entire article in one ```markdown fence.
+ * That makes the draft look present in the editor while countBodyWords
+ * (which strips fences) reports 0 — and H2/FAQ scanners miss every heading.
+ */
+export function unwrapWholeDocumentFence(content: string): string {
+  const raw = String(content || '')
+  const trimmed = raw.trim()
+  const wrapped = trimmed.match(/^```(?:markdown|md|mdx)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i)
+  if (wrapped) {
+    const inner = wrapped[1].replace(/\s+$/, '')
+    if (inner.trim()) return inner + '\n'
+  }
+  return raw
+}
+
+/** Honest header: never hide a 0-word editor behind a stale stored count. */
+export function formatBodyWordDisplay(live: number, stored?: number | null): string {
+  if (live > 0) return String(live)
+  if (stored && stored > 0) return `0 (stored ${stored} — not in editor)`
+  return live === 0 ? '0' : '—'
+}
+
+/**
  * THE Content Studio word counter. Persist, display, quality, audit, and
  * ship all use this. YAML, JSON-LD, scripts, and fenced code are excluded
  * so schema inflation cannot fake Google-depth.
  */
 export function countBodyWords(content: string): number {
-  let body = String(content || '')
+  let body = unwrapWholeDocumentFence(content)
   // Front matter
   body = body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
   // Scripts / JSON-LD

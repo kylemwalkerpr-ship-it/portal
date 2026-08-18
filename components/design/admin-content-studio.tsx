@@ -27,7 +27,7 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream } from '@/lib/seoFactory/sse'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
-import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, formatBodyWordDisplay } from '@/lib/seoFactory/contentDepth'
 import {
   extractMetricValues,
   directionForMetric,
@@ -111,9 +111,14 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia-glm': 'z-ai/glm-5.2',
   'baseten-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
-  'parasail-deepseek': 'parasail-deepseek-v4-flash',
-  'parasail-glm': 'parasail-glm-52',
-  'nvidia-deepseek': 'deepseek-ai/deepseek-v4-flash-0731',
+  'baseten-deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
+  'parasail-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
+  'parasail-deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
+  'parasail-glm': 'nvidia/GLM-5.2-NVFP4',
+  'nvidia-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
+  'deepseek-flash': 'deepseek-ai/DeepSeek-V4-Flash-0731',
+  'deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
+  'zai-glm': 'glm-5.2',
   'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   groq: 'llama-3.3-70b-versatile',
   gemini: 'gemini-2.5-flash',
@@ -2237,7 +2242,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Research/Plan brief model — GPT Sol (flagship), GPT Terra (balanced), or
   // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
   // brief endpoint (lib/seoFactory/briefModel) honors all three.
-  const [briefModel, setBriefModel] = React.useState('grok')
+  const [briefModel, setBriefModel] = React.useState('parasail-deepseek-pro')
   const briefParsed = parseStudioPin(briefModel)
   const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
   const handleGenerateBrief = async () => {
@@ -2782,7 +2787,7 @@ function DraftWorkspace({
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
-  const [reviewModel, setReviewModel] = React.useState('gpt-5.6-sol')
+  const [reviewModel, setReviewModel] = React.useState('parasail-deepseek-pro')
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
@@ -3530,12 +3535,11 @@ function JobDetail({
   const [activeAction, setActiveAction] = React.useState<string | null>(null)
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
-  // Drafting runs on open-source models — GLM 5.2 Fast (Baseten) is the
-  // default. GPT stays out of the draft itself (Research = Terra, Review = Sol).
+  // Draft lead is DeepSeek V4 Flash-0731; Grok is the second favorite.
   const [aiProvider, setAiProvider] = React.useState<string>(() =>
-    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'baseten-glm-fast',
+    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'parasail-deepseek',
   )
-  const [reviewModel, setReviewModel] = React.useState<string>('gpt-5.6-sol')
+  const [reviewModel, setReviewModel] = React.useState<string>('parasail-deepseek-pro')
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
@@ -3547,7 +3551,7 @@ function JobDetail({
     const wantBody = opts.body !== false
     if (wantBody) setLoading(true)
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 4_000)
+    const timer = setTimeout(() => controller.abort(), 20_000)
     try {
       const qs = new URLSearchParams({ id: jobIdRef.current })
       if (wantBody) qs.set('body', '1')
@@ -3813,7 +3817,7 @@ function JobDetail({
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
           {[
-            { label: 'Body words', value: String(countBodyWords(editorContent || detail.content || '') || detail.word_count || '—') },
+            { label: 'Body words', value: formatBodyWordDisplay(countBodyWords(editorContent || detail.content || ''), detail.word_count) },
             { label: 'SEO score', value: detail.seo_score != null ? `${detail.seo_score}%` : '—' },
             { label: 'AI provider', value: aiProviderCard },
             { label: 'Target repo', value: detail.target_repo ?? '—' },
@@ -4534,9 +4538,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [contentTypeTouched, setContentTypeTouched] = React.useState(false)
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
-  // Drafting default → GLM 5.2 Fast (Baseten); GPT stays for Research/Review.
-  const [aiProvider, setAiProvider] = React.useState('baseten-glm-fast')
-  const [reviewModel, setReviewModel] = React.useState('gpt-5.6-sol')
+  // Draft lead is DeepSeek V4 Flash-0731; Grok is second. Review default is Pro-0813.
+  const [aiProvider, setAiProvider] = React.useState('parasail-deepseek')
+  const [reviewModel, setReviewModel] = React.useState('parasail-deepseek-pro')
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')

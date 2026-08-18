@@ -473,7 +473,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
             <div>
               <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>Parasail · api.parasail.io</div>
               <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
-                One <span style={{ fontFamily: C.mono }}>psk-</span> key unlocks DeepSeek V4 Flash and GLM 5.2 as selectable hosts in Draft / Research / Review.
+                One <span style={{ fontFamily: C.mono }}>psk-</span> key: Flash-0731 for Draft, Pro-0813 (low effort, cap medium) for Research/Review, plus GLM 5.2.
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

@@ -61,6 +61,10 @@ describe('Grok 4.6 Responses transport', () => {
     expect(grokRequestLimits(2500)).toEqual({ maxOutputTokens: 2500, reasoningEffort: 'medium' })
   })
 
+  it('honors an explicit high-effort override for the Master Engine pair', () => {
+    expect(grokRequestLimits(16384, 'high')).toEqual({ maxOutputTokens: 4096, reasoningEffort: 'high' })
+  })
+
   it('extracts output_text and output[].content[].text', () => {
     expect(extractResponsesText({ output_text: '  HELLO  ' })).toBe('HELLO')
     expect(extractResponsesText({

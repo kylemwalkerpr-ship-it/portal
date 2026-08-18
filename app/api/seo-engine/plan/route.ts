@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runPlanner, loadPlansDashboard } from '@/lib/seoEngine/planner'
 import { recordEngineRun } from '@/lib/seoEngine/knowledge'
+import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
 
 /**
  * GET /api/seo-engine/plan
@@ -33,14 +34,17 @@ export async function POST(req: NextRequest) {
       draftBriefs?: boolean
       limit?: number
     }
-    const plans = await runPlanner({
+    const { plans, pair } = await runPlanner({
       stage: body.stage,
       country: body.country,
       draftBriefs: body.draftBriefs !== false,
       limit: body.limit,
     })
-    await recordEngineRun('plan', plans.length ? 'success' : 'partial', { plans: plans.length }, [], 'admin')
-    return NextResponse.json({ ok: true, plans, count: plans.length })
+    await recordEngineRun('plan', plans.length ? 'success' : 'partial', {
+      plans: plans.length,
+      pair: formatEnginePairTape(pair),
+    }, [], 'admin')
+    return NextResponse.json({ ok: true, plans, count: plans.length, pair })
   } catch (e) {
     await recordEngineRun('plan', 'failed', {}, [e instanceof Error ? e.message : 'unknown'], 'admin')
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'planning failed' }, { status: 500 })

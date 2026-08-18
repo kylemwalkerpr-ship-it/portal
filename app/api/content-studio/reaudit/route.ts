@@ -45,14 +45,9 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   // GPT-5.6 Sol is the senior editor / quality reviewer. It has flagship
   // reasoning capability and evaluates gate compliance with higher accuracy
   // than Terra (Research) or Luna (high-volume drafting).
-  const effectiveModel = reviewModel || 'gpt-5.6-sol'
-  // Pin the provider so the selected review model actually applies:
-  //   · gpt-5.6* → OpenAI (otherwise the default cascade runs the fix on
-  //     NVIDIA DeepSeek and silently ignores the gpt-5.6 model name)
-  //   · GLM 5.2 Fast → Baseten (the efficient open-source editor)
-  //   · GLM 5.2 Fast via AIHubmix → the OpenAI-compatible aggregator route
-  //   · DeepSeek V4 Flash 0731 → Baseten (the reasoning review heavyweight)
-  //   · anything else (legacy/custom) → normal cascade
+  const effectiveModel = reviewModel || 'parasail-deepseek-pro'
+  // Pin the provider so the selected review model actually applies.
+  // Review default is DeepSeek V4 Pro-0813; Flash-0731 is the other named option.
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
   const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
   const isGlmFast =
@@ -62,15 +57,29 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   const isDeepseekFlash =
     effectiveModel === 'baseten-deepseek' ||
     effectiveModel === 'deepseek-v4-flash' ||
-    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731'
-  const isParasailDeepseek =
+    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731' ||
+    effectiveModel === 'deepseek-ai/DeepSeek-V4-Flash-0731'
+  const isParasailDeepseekPro =
     effectiveModel === 'parasail' ||
+    effectiveModel === 'parasail-deepseek-pro' ||
+    effectiveModel === 'parasail-pro' ||
+    effectiveModel === 'deepseek-v4-pro' ||
+    effectiveModel === 'deepseek-ai/deepseek-v4-pro-0813' ||
+    effectiveModel === 'deepseek-ai/DeepSeek-V4-Pro-0813'
+  const isParasailDeepseek =
     effectiveModel === 'parasail-deepseek' ||
     effectiveModel === 'parasail-deepseek-v4-flash'
   const isParasailGlm =
     effectiveModel === 'parasail-glm' ||
     effectiveModel === 'parasail-glm-52' ||
-    effectiveModel === 'parasail-glm-5.2'
+    effectiveModel === 'parasail-glm-5.2' ||
+    effectiveModel === 'nvidia/GLM-5.2-NVFP4'
+  const isBasetenPro = effectiveModel === 'baseten-deepseek-pro'
+  const isNvidiaGlm = effectiveModel === 'nvidia-glm'
+  const isNvidiaDeepseek = effectiveModel === 'nvidia-deepseek'
+  const isDeepseekOfficialPro = effectiveModel === 'deepseek-pro'
+  const isDeepseekOfficialFlash = effectiveModel === 'deepseek-flash'
+  const isZaiGlm = effectiveModel === 'zai-glm' || effectiveModel === 'zai'
   const aiProvider = isGpt
     ? 'openai'
     : isGrok
@@ -79,19 +88,34 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
         ? 'baseten-glm-fast'
         : isAihubmixGlmFast
           ? 'aihubmix-glm-fast'
-          : isParasailDeepseek
+          : isParasailDeepseekPro
+            ? 'parasail-deepseek-pro'
+            : isParasailDeepseek
             ? 'parasail-deepseek'
             : isParasailGlm
               ? 'parasail-glm'
-              : isDeepseekFlash
-                ? 'baseten-deepseek'
-                : undefined
+              : isBasetenPro
+                ? 'baseten-deepseek-pro'
+                : isNvidiaGlm
+                  ? 'nvidia-glm'
+                  : isNvidiaDeepseek
+                    ? 'nvidia-deepseek'
+                    : isDeepseekOfficialPro
+                      ? 'deepseek-pro'
+                      : isDeepseekOfficialFlash
+                        ? 'deepseek-flash'
+                        : isZaiGlm
+                          ? 'zai-glm'
+                          : isDeepseekFlash
+                            ? 'baseten-deepseek'
+                            : undefined
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,
     maxTokens,
     temperature: 0.2,
     aiProvider,
+    exclusive: Boolean(aiProvider),
     model: isGrok ? grokModelId({ model: effectiveModel }) : effectiveModel,
   }))
   const text = (result?.text || '').trim()
@@ -299,6 +323,12 @@ export async function PATCH(request: NextRequest) {
     const { action, content, annotations, annotation, warnings, blockers, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
+    }
+    if (countBodyWords(content) < 40) {
+      return NextResponse.json({
+        error: 'Editor content has no countable body words (YAML/schema only, or the draft never loaded). Click Load saved draft, then Fix again.',
+        needLoadDraft: true,
+      }, { status: 409 })
     }
 
     let fixedContent: string

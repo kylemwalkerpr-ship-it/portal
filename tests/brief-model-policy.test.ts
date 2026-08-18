@@ -95,14 +95,14 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     })
   })
 
-  it('parasail-deepseek / parasail-glm (and aliases) stay on Parasail', () => {
-    expect(resolveBriefAiProvider('parasail')).toEqual({ aiProvider: 'parasail-deepseek' })
-    expect(resolveBriefAiProvider('parasail-deepseek')).toEqual({ aiProvider: 'parasail-deepseek' })
-    expect(resolveBriefAiProvider('parasail-deepseek-v4-flash')).toEqual({
-      aiProvider: 'parasail-deepseek',
+  it('parasail DeepSeek on Research maps to Pro-0813; Flash pin stays Flash', () => {
+    expect(resolveBriefAiProvider('parasail')).toEqual({ aiProvider: 'parasail-deepseek-pro' })
+    expect(resolveBriefAiProvider('parasail-deepseek-pro')).toEqual({ aiProvider: 'parasail-deepseek-pro' })
+    expect(resolveBriefAiProvider('deepseek-ai/DeepSeek-V4-Pro-0813')).toEqual({
+      aiProvider: 'parasail-deepseek-pro',
     })
+    expect(resolveBriefAiProvider('parasail-deepseek')).toEqual({ aiProvider: 'parasail-deepseek' })
     expect(resolveBriefAiProvider('parasail-glm')).toEqual({ aiProvider: 'parasail-glm' })
-    expect(resolveBriefAiProvider('PARASAIL-GLM-52')).toEqual({ aiProvider: 'parasail-glm' })
   })
 
   it('baseten-deepseek (and aliases) → DeepSeek V4 Flash 0731 via Baseten', () => {
@@ -122,11 +122,17 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
   })
 
   it('EVERY other value coerces to OpenAI + Terra — never a non-chosen provider', () => {
+    expect(resolveBriefAiProvider('nvidia-glm')).toEqual({ aiProvider: 'nvidia-glm' })
+    expect(resolveBriefAiProvider('zai-glm')).toEqual({ aiProvider: 'zai-glm' })
+    expect(resolveBriefAiProvider('baseten-deepseek-pro')).toEqual({ aiProvider: 'baseten-deepseek-pro' })
+    expect(resolveBriefAiProvider('deepseek-pro')).toEqual({ aiProvider: 'deepseek-pro' })
+    expect(resolveBriefAiProvider('deepseek-flash')).toEqual({ aiProvider: 'deepseek-flash' })
+    expect(resolveBriefAiProvider('nvidia-deepseek')).toEqual({ aiProvider: 'nvidia-deepseek' })
+
     const leaks = [
       'auto',
       '',
       'default',
-      'nvidia-glm',
       'nvidia-nemotron',
       'glm-fast',
       'cloudflare-ai',

@@ -22,7 +22,7 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { generateEngineText } from '@/lib/seoEngine/engineAi'
+import { extractEngineJsonObject, generateEngineText } from '@/lib/seoEngine/engineAi'
 import { getStage, type Country, type LifecycleStageDef } from './ontology'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -412,13 +412,12 @@ Return ONLY JSON. No commentary.`
 
   try {
     const res = await generateEngineText({
-      aiProvider: 'openai',
       system: 'You are a senior outreach copywriter who writes short, honest, copy-edit-ready outreach emails. Output strict JSON: { "subject", "body" }. Return ONLY JSON, no commentary.',
       prompt,
       maxTokens: 600,
       temperature: 0.35,
     })
-    const parsed = JSON.parse(res.text || '{}')
+    const parsed = extractEngineJsonObject(res.text || '')
     if (parsed && typeof parsed.body === 'string' && parsed.body.length > 80) {
       return { subject: String(parsed.subject || `Resource for ${target.domain}`), body: String(parsed.body), model: res.model }
     }

@@ -24,8 +24,15 @@ export type BriefProviderChoice =
   | { aiProvider: 'baseten-glm-fast'; model?: undefined }
   | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
   | { aiProvider: 'baseten-deepseek'; model?: undefined }
+  | { aiProvider: 'baseten-deepseek-pro'; model?: undefined }
   | { aiProvider: 'parasail-deepseek'; model?: undefined }
+  | { aiProvider: 'parasail-deepseek-pro'; model?: undefined }
   | { aiProvider: 'parasail-glm'; model?: undefined }
+  | { aiProvider: 'nvidia-glm'; model?: undefined }
+  | { aiProvider: 'nvidia-deepseek'; model?: undefined }
+  | { aiProvider: 'deepseek-flash'; model?: undefined }
+  | { aiProvider: 'deepseek-pro'; model?: undefined }
+  | { aiProvider: 'zai-glm'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -59,13 +66,41 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   }
   if (
     pin === 'parasail' ||
-    pin === 'parasail-deepseek' ||
-    pin === 'parasail-deepseek-v4-flash'
+    pin === 'parasail-deepseek-pro' ||
+    pin === 'parasail-pro' ||
+    pin === 'deepseek-v4-pro' ||
+    pin === 'deepseek-ai/deepseek-v4-pro-0813'
   ) {
+    return { aiProvider: 'parasail-deepseek-pro' }
+  }
+  if (pin === 'parasail-deepseek' || pin === 'parasail-deepseek-v4-flash') {
     return { aiProvider: 'parasail-deepseek' }
   }
-  if (pin === 'parasail-glm' || pin === 'parasail-glm-52' || pin === 'parasail-glm-5.2') {
+  if (
+    pin === 'parasail-glm' ||
+    pin === 'parasail-glm-52' ||
+    pin === 'parasail-glm-5.2' ||
+    pin === 'nvidia/glm-5.2-nvfp4'
+  ) {
     return { aiProvider: 'parasail-glm' }
+  }
+  if (pin === 'baseten-deepseek-pro') {
+    return { aiProvider: 'baseten-deepseek-pro' }
+  }
+  if (pin === 'nvidia-glm' || pin === 'z-ai-glm-5.2') {
+    return { aiProvider: 'nvidia-glm' }
+  }
+  if (pin === 'nvidia-deepseek') {
+    return { aiProvider: 'nvidia-deepseek' }
+  }
+  if (pin === 'deepseek-pro' || pin === 'deepseek-official-pro') {
+    return { aiProvider: 'deepseek-pro' }
+  }
+  if (pin === 'deepseek-flash' || pin === 'deepseek-official' || pin === 'deepseek-official-flash') {
+    return { aiProvider: 'deepseek-flash' }
+  }
+  if (pin === 'zai-glm' || pin === 'zai' || pin === 'zhipu' || pin === 'zhipu-glm') {
+    return { aiProvider: 'zai-glm' }
   }
   // Bare 'gpt-5.6' maps to the flagship alias (gpt-5.6-sol), matching the
   // provider layer's gptAliasModel convention.
@@ -120,11 +155,25 @@ export async function generateBriefText(opts: {
         ? 'DeepSeek V4 Flash (Baseten)'
         : primaryPin === 'aihubmix-glm-fast'
           ? 'GLM 5.2 Fast (AIHubmix)'
-          : primaryPin === 'parasail-deepseek'
+          : primaryPin === 'parasail-deepseek-pro'
+            ? 'DeepSeek V4 Pro 0813 (Parasail)'
+            : primaryPin === 'parasail-deepseek'
             ? 'DeepSeek V4 Flash (Parasail)'
             : primaryPin === 'parasail-glm'
               ? 'GLM 5.2 (Parasail)'
-              : 'GPT'
+              : primaryPin === 'baseten-deepseek-pro'
+                ? 'DeepSeek V4 Pro 0813 (Baseten)'
+                : primaryPin === 'nvidia-glm'
+                  ? 'GLM 5.2 (NVIDIA)'
+                  : primaryPin === 'nvidia-deepseek'
+                    ? 'DeepSeek V4 Flash (NVIDIA)'
+                    : primaryPin === 'deepseek-pro'
+                      ? 'DeepSeek V4 Pro 0813 (DeepSeek.com)'
+                      : primaryPin === 'deepseek-flash'
+                        ? 'DeepSeek V4 Flash (DeepSeek.com)'
+                        : primaryPin === 'zai-glm'
+                          ? 'GLM 5.2 (Zai)'
+                          : 'GPT'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,

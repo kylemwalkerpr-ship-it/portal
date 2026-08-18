@@ -20,6 +20,7 @@ export function formatEngineSummaryValue(value: unknown): string {
   }
   if (typeof value === 'object') {
     const rec = value as Record<string, unknown>
+    if (typeof rec.pairTape === 'string' && rec.pairTape) return rec.pairTape
     if (rec.topic != null && rec.total != null) {
       const total = Number(rec.total)
       return `${String(rec.topic)}:${Number.isFinite(total) ? total.toFixed(1) : rec.total}`

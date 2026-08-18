@@ -3,6 +3,7 @@ import { ingestKnowledge, recordEngineRun } from '@/lib/seoEngine/knowledge'
 import { runPlanner } from '@/lib/seoEngine/planner'
 import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
 import { classifyEngineRunStatus, formatTopScores } from '@/lib/seoEngine/engineRunSummary'
+import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
 
 /**
  * POST /api/cron/seo-engine-daily
@@ -45,9 +46,13 @@ export async function POST(req: NextRequest) {
 
   try {
     if (phase === 'plan') {
-      const plans = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit })
-      await recordEngineRun('daily', plans.length ? 'success' : 'partial', { phase, plans: plans.length }, [], 'cron')
-      return NextResponse.json({ ok: true, phase, plans: plans.length })
+      const { plans, pair } = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit })
+      await recordEngineRun('daily', plans.length ? 'success' : 'partial', {
+        phase,
+        plans: plans.length,
+        pair: formatEnginePairTape(pair),
+      }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, plans: plans.length, pair })
     }
     if (phase === 'llm') {
       const vis = await runVisibilityAudits({ maxAudits: 8 })
@@ -116,11 +121,11 @@ export async function POST(req: NextRequest) {
     let interlinksStored = 0
     const topScores: string[] = []
     if (phase === 'all') {
-      const result = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit || 15 })
-      plans = result.length
+      const planned = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit || 15 })
+      plans = planned.plans.length
       try {
         const { persistPlannerInterlinks } = await import('@/lib/seoEngine/interlink')
-        interlinksStored = await persistPlannerInterlinks(result)
+        interlinksStored = await persistPlannerInterlinks(planned.plans)
       } catch {
         interlinksStored = 0
       }
@@ -167,6 +172,7 @@ export async function POST(req: NextRequest) {
       fetched: ingest.itemsFetched,
       aiSummarized: ingest.aiSummarized,
       ingestErrors: ingest.errors.length,
+      pair: formatEnginePairTape(ingest.pair),
       plans,
       rankComputed,
       rewardEvents,

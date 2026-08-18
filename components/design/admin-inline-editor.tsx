@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioModelHostSelect } from './studio-model-host-select'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -177,8 +178,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } finally { setSaving(false) }
   }, [content, jobId])
 
+  const editorHasNoBody = countBodyWords(content) < 40
+
   // Re-audit
   const handleReaudit = useCallback(async () => {
+    if (countBodyWords(content) < 40) {
+      setError('This editor has no countable body words (YAML/schema only, or the draft never loaded). Click Load saved draft, then Re-audit.')
+      return
+    }
     setBusy(true); setError(null); setNotice(null)
     try {
       const res = await fetch('/api/content-studio/reaudit', {
@@ -216,6 +223,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
   // Fix ALL annotations via AI (clicking again while running cancels the request)
   const handleFixAll = useCallback(async () => {
+    if (countBodyWords(content) < 40) {
+      setError('This editor has no countable body words. Load the saved draft before Fix all — otherwise the audit scores an empty buffer as 0 words.')
+      return
+    }
     if (!annotations.length) return
     if (fixingAll) {
       fixAbortRef.current?.abort()
@@ -372,6 +383,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // every warning with its remediation and asks for minimal edits, so the
   // "2 warnings, no way to resolve them" dead end disappears.
   const handleFixWarnings = useCallback(async () => {
+    if (countBodyWords(content) < 40) {
+      setError('This editor has no countable body words. Load the saved draft before Fix all warnings.')
+      return
+    }
     const warnList = warningItems.length ? warningItems : dedupeWarnings(annotations)
     if (!warnList.length) return
     if (fixingWarnings) {
@@ -425,6 +440,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   }, [content, warningItems, fixingWarnings, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
 
   const handleFixBlockers = useCallback(async () => {
+    if (countBodyWords(content) < 40) {
+      setError('This editor has no countable body words. Load the saved draft before Fix blockers.')
+      return
+    }
     const list = blockerItems.length
       ? blockerItems
       : annotations.filter((a) => a.severity === 'blocker').map((a) => ({ code: a.code, message: a.message, fix: a.fix }))
@@ -824,7 +843,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
-            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'gpt-5.6-sol')}
+            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'parasail-deepseek-pro')}
             onPinChange={onReviewModelChange}
             disabled={allBusy}
             modelAriaLabel="Review AI model"

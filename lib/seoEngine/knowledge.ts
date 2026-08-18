@@ -16,7 +16,13 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { generateEngineText } from '@/lib/seoEngine/engineAi'
+import {
+  accumulatePairRollup,
+  emptyPairRollup,
+  formatEnginePairTape,
+  generateEngineText,
+  type EnginePairRollup,
+} from '@/lib/seoEngine/engineAi'
 import { getStage, LIFECYCLE_STAGES, COUNTRIES, isCountry, type Country } from './ontology'
 import { buildPredictiveSignal, type EvidenceLineage } from './intelligence'
 
@@ -214,6 +220,7 @@ export interface KnowledgeIngestResult {
   errors: string[]
   aiErrors: string[]
   perSource: Array<{ id: string; label: string; fetched: number; stored: number; error?: string }>
+  pair: EnginePairRollup
 }
 
 /** Parse the knowledge-analyst JSON (or recover a 2-sentence prose summary). */
@@ -306,7 +313,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
   const supabase = createSupabaseAdminClient()
   const sources = DEFAULT_SOURCES.filter((s) => !opts.sources || opts.sources.length === 0 || opts.sources.includes(s.id))
   const limit = Math.max(1, Math.min(25, opts.limitPerSource ?? 10))
-  const result: KnowledgeIngestResult = { sourcesRun: 0, itemsFetched: 0, itemsStored: 0, aiSummarized: 0, skipped: 0, errors: [], aiErrors: [], perSource: [] }
+  const result: KnowledgeIngestResult = { sourcesRun: 0, itemsFetched: 0, itemsStored: 0, aiSummarized: 0, skipped: 0, errors: [], aiErrors: [], perSource: [], pair: emptyPairRollup() }
   const aiSummarize = opts.aiSummarize !== false
   let aiBudget = Math.max(0, Math.min(20, opts.maxAiItems ?? 8))
 
@@ -321,20 +328,29 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
         if (!tagged.score) { result.skipped += 1; continue }
         const dedupeKey = normalizeUrl(tagged.link)
         let aiSummary: string | null = null
+        let extraTags: string[] = []
         if (aiSummarize && aiBudget > 0) {
           aiBudget -= 1
           try {
             const ai = await generateEngineText({
-              aiProvider: 'openai',
               system: `You are the SEO knowledge analyst for an immigration marketplace. Summarize this item in 2 crisp sentences and tag affected stages: ${stagePromptBanks()}. Reply as JSON {"summary":"...","stages":[],"countries":[]}. Be factual — never invent numbers.`,
               prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`,
               maxTokens: 400,
               temperature: 0.2,
             })
             const parsed = parseKnowledgeAiSummary(ai.text || '')
+            accumulatePairRollup(result.pair, ai.pair)
+            const extras = ai.pair?.extras
+            const extraBits = [...(extras?.statutes || []), ...(extras?.urls || [])]
+            extraTags = [
+              ...(extras?.statutes || []).map((s) => `statute:${s.slice(0, 48)}`),
+              ...(extras?.urls || []).map((u) => `url:${u.slice(0, 80)}`),
+            ]
             const usable = parsed.summary && parsed.summary !== tagged.title
             if (usable) {
-              aiSummary = parsed.summary
+              aiSummary = extraBits.length
+                ? `${parsed.summary}\n\n[GLM extras] ${extraBits.join('; ')}`
+                : parsed.summary
               const stages = parsed.stages.filter((s) => getStage(s)).slice(0, 3)
               const countries = parsed.countries.filter((c) => isCountry(c)).slice(0, 2)
               if (stages.length) tagged.stages = stages
@@ -353,7 +369,11 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
         const { error } = await supabase.from('seo_knowledge').upsert({
           source: source.id, source_label: source.label, kind: source.kind, url: dedupeKey,
           title: tagged.title.slice(0, 500), summary: (tagged.description || '').slice(0, 2000) || null,
-          ai_summary: aiSummary, tags: [...tagged.stages, ...tagged.countries.map((c) => c.toLowerCase())],
+          ai_summary: aiSummary, tags: [
+            ...tagged.stages,
+            ...tagged.countries.map((c) => c.toLowerCase()),
+            ...extraTags,
+          ],
           countries: tagged.countries, stages: tagged.stages, confidence: Math.min(0.99, authorityFor(source)),
           published_at: tagged.published ? new Date(tagged.published).toISOString() : null, dedupe_key: dedupeKey,
         }, { onConflict: 'dedupe_key' })

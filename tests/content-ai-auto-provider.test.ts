@@ -112,17 +112,13 @@ describe('content AI · auto provider pin', () => {
     expect(model).toBe('gpt-5.6-luna')
   })
 
-  it("keeps the drafting default 'baseten-glm-fast' on Baseten GLM 5.2 Fast — never GPT", () => {
-    // 2026-08 drafting policy: drafting runs on open-source models with
-    // GLM 5.2 Fast as the default; GPT is reserved for Research (Terra) and
-    // Review (Sol). The drafting pin must resolve to baseten-glm-fast even
-    // when an OpenAI key is present.
+  it("keeps the drafting default 'parasail-deepseek' on DeepSeek V4 Flash-0731 — never GPT", () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
-    const { explicit, prefer, model } = resolveAiProviderPin('baseten-glm-fast')
-    expect(explicit).toBe('baseten-glm-fast')
-    expect(prefer).toBe('baseten-glm-fast')
-    expect(model || '').not.toMatch(/^gpt-/) // never a GPT model override
+    process.env.PARASAIL_API_KEY = 'psk-test'
+    const { explicit, prefer, model } = resolveAiProviderPin('parasail-deepseek')
+    expect(explicit).toBe('parasail-deepseek')
+    expect(prefer).toBe('parasail-deepseek')
+    expect(model || '').not.toMatch(/^gpt-/)
   })
 
   it("maps the 'glm-fast' alias to baseten-glm-fast (drafting quick-select)", () => {

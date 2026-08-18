@@ -22,7 +22,7 @@
  *     LLM calls.
  */
 
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateEngineText } from '@/lib/seoEngine/engineAi'
 
 /** The explicit competitive judgment variables from the taxonomy (Subsystem O,
  *  SERP/Competitive) — the LLM-judgment subset. Deterministic comparisons the
@@ -300,7 +300,7 @@ export async function scoreCompetitiveGap(opts: ScoreCompetitiveGapOptions): Pro
     })
     const prompt = `TARGET PAGE (${opts.pageUrl}):\n${target}\n\n${competitors ? `COMPETITOR PAGES:\n${competitors}\n\n` : ''}TOOL DATA:\n${lane1Block}`
 
-    const ai = await generateContentText({
+    const ai = await generateEngineText({
       system: COMPETITIVE_SYSTEM_PROMPT,
       prompt,
       maxTokens: opts.maxTokens ?? 2500,

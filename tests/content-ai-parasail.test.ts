@@ -1,9 +1,12 @@
 import {
+  canonicalizeDeepseekModelId,
+  getParasailDeepseekProProvider,
   getParasailDeepseekProvider,
   getParasailGlmProvider,
   isParasailConfigured,
   listConfiguredContentProviders,
   looksLikeParasailKey,
+  parasailProReasoningEffort,
   resolveAiProviderPin,
   resolveParasailApiKey,
 } from '@/lib/contentAiProvider'
@@ -14,6 +17,8 @@ describe('content AI · Parasail (psk- keys)', () => {
     'PARASAIL_API_KEY',
     'PARASAIL_BASE_URL',
     'PARASAIL_DEEPSEEK_MODEL',
+    'PARASAIL_DEEPSEEK_PRO_MODEL',
+    'PARASAIL_PRO_REASONING_EFFORT',
     'PARASAIL_GLM_MODEL',
     'OPENAI_API_KEY',
     'CUSTOM_AI_API_KEY',
@@ -56,27 +61,43 @@ describe('content AI · Parasail (psk- keys)', () => {
     const ids = listConfiguredContentProviders()
     expect(ids).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'parasail-deepseek', configured: true }),
+      expect.objectContaining({ id: 'parasail-deepseek-pro', configured: true }),
       expect.objectContaining({ id: 'parasail-glm', configured: true }),
       expect.objectContaining({ id: 'openai', configured: false }),
     ]))
   })
 
-  it('exposes DeepSeek V4 Flash and GLM 5.2 on api.parasail.io', () => {
+  it('never sends an undated DeepSeek V4 base id — only Flash-0731 / Pro-0813', () => {
+    expect(canonicalizeDeepseekModelId('deepseek-ai/DeepSeek-V4-Flash')).toBe('deepseek-ai/DeepSeek-V4-Flash-0731')
+    expect(canonicalizeDeepseekModelId('deepseek-v4-flash')).toBe('deepseek-ai/DeepSeek-V4-Flash-0731')
+    expect(canonicalizeDeepseekModelId('deepseek-chat')).toBe('deepseek-ai/DeepSeek-V4-Flash-0731')
+    expect(canonicalizeDeepseekModelId('DeepSeek-V4-Flash-0731')).toBe('deepseek-ai/DeepSeek-V4-Flash-0731')
+    expect(canonicalizeDeepseekModelId('deepseek-ai/DeepSeek-V4-Pro', 'pro')).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
+    expect(canonicalizeDeepseekModelId('deepseek-v4-pro')).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
+    expect(canonicalizeDeepseekModelId('deepseek-ai/DeepSeek-V4-Pro-0813', 'pro')).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
+  })
+
+  it('uses Flash-0731 for draft and Pro-0813 at low effort for research/review', () => {
     process.env.PARASAIL_API_KEY = 'psk-test-dedicated'
-    const deepseek = getParasailDeepseekProvider()
+    const flash = getParasailDeepseekProvider()
+    const pro = getParasailDeepseekProProvider()
     const glm = getParasailGlmProvider()
-    expect(deepseek).not.toBeNull()
-    expect(glm).not.toBeNull()
-    expect(deepseek!.label).toBe('parasail-deepseek')
-    expect(deepseek!.baseURL).toBe('https://api.parasail.io/v1')
-    expect(deepseek!.model).toBe('parasail-deepseek-v4-flash')
+    expect(flash!.model).toBe('deepseek-ai/DeepSeek-V4-Flash-0731')
+    expect(pro!.model).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
+    expect(glm!.model).toBe('nvidia/GLM-5.2-NVFP4')
+    expect(pro!.extraBody).toEqual({ reasoning_effort: 'low' })
+    expect(parasailProReasoningEffort()).toBe('low')
+    process.env.PARASAIL_PRO_REASONING_EFFORT = 'medium'
+    expect(parasailProReasoningEffort()).toBe('medium')
+    process.env.PARASAIL_PRO_REASONING_EFFORT = 'high'
+    expect(parasailProReasoningEffort()).toBe('low')
     expect(glm!.label).toBe('parasail-glm')
-    expect(glm!.model).toBe('parasail-glm-52')
   })
 
   it('lists Parasail in the Configure vault catalog as a grouped host', () => {
     const ids = AI_PROVIDERS.map((p) => p.id)
     expect(ids).toContain('parasail-deepseek')
+    expect(ids).toContain('parasail-deepseek-pro')
     expect(ids).toContain('parasail-glm')
     const deepseek = AI_PROVIDERS.find((p) => p.id === 'parasail-deepseek')
     expect(deepseek?.vaultGroup).toBe('parasail')
@@ -99,5 +120,9 @@ describe('content AI · Parasail (psk- keys)', () => {
     const glm = resolveAiProviderPin('parasail-glm-52')
     expect(glm.explicit).toBe('parasail-glm')
     expect(glm.prefer).toBe('parasail-glm')
+    expect(resolveAiProviderPin('nvidia/GLM-5.2-NVFP4').prefer).toBe('parasail-glm')
+    const pro = resolveAiProviderPin('deepseek-ai/DeepSeek-V4-Pro-0813')
+    expect(pro.explicit).toBe('parasail-deepseek-pro')
+    expect(pro.prefer).toBe('parasail-deepseek-pro')
   })
 })

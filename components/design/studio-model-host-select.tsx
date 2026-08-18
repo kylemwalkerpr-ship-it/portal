@@ -3,6 +3,7 @@
 import * as React from 'react'
 import {
   hostsForModel,
+  modelPickerLabel,
   modelsForLane,
   parseStudioPin,
   pinFor,
@@ -56,7 +57,7 @@ export function StudioModelHostSelect(props: {
       >
         {models.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.label}
+            {modelPickerLabel(m, props.lane)}
           </option>
         ))}
       </select>

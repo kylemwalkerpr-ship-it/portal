@@ -1,5 +1,6 @@
 import { requireAdminUser } from '@/lib/portalAuth'
 import { ingestKnowledge, recordEngineRun } from '@/lib/seoEngine/knowledge'
+import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
 import { runPlanner } from '@/lib/seoEngine/planner'
 import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
 
@@ -92,20 +93,24 @@ export async function POST(request: Request) {
             aiSummarized: result.aiSummarized,
             skipped: result.skipped,
             ingestErrors: result.errors.length,
+            pair: formatEnginePairTape(result.pair),
           }, [...result.errors, ...result.aiErrors].slice(0, 20), 'admin')
           emitStep('done', `Ingested ${result.itemsStored} item(s) from ${result.sourcesRun} source(s)`, result.errors.slice(0, 2).join('; ') || undefined)
           send({ type: 'done', kind, summary: `Ingested ${result.itemsStored} items from ${result.sourcesRun} sources`, result })
         } else if (kind === 'plan') {
-          const plans = await runPlanner({
+          const { plans, pair } = await runPlanner({
             stage: body.stage ? String(body.stage) : undefined,
             country: body.country ? String(body.country) : undefined,
             draftBriefs: body.draftBriefs !== false,
             limit: body.limit != null ? Number(body.limit) : 10,
             onProgress,
           })
-          await recordEngineRun('plan', plans.length ? 'success' : 'partial', { plans: plans.length }, [], 'admin')
+          await recordEngineRun('plan', plans.length ? 'success' : 'partial', {
+            plans: plans.length,
+            pair: formatEnginePairTape(pair),
+          }, [], 'admin')
           emitStep('done', `Planner produced ${plans.length} ranked cluster mission(s)`)
-          send({ type: 'done', kind, summary: `Planner produced ${plans.length} ranked cluster missions`, result: { plans, count: plans.length } })
+          send({ type: 'done', kind, summary: `Planner produced ${plans.length} ranked cluster missions`, result: { plans, count: plans.length, pair } })
         } else {
           const result = await runVisibilityAudits({
             queries: Array.isArray(body.queries) ? (body.queries as string[]) : undefined,

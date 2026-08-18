@@ -57,6 +57,7 @@ const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
 const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
 const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
 const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+const BASETEN_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 /** Baseten-hosted GLM 5.2 Fast — efficient high-volume drafting partner. */
 const BASETEN_GLM_MODEL = 'zai-org/GLM-5.2-Fast'
 /** AIHubmix OpenAI-compatible aggregator (aihubmix.com/v1) — GLM 5.2 Fast
@@ -65,13 +66,46 @@ const AIHUBMIX_BASE_URL = 'https://aihubmix.com/v1'
 const AIHUBMIX_GLM_MODEL = 'glm-5.2-fast-preview'
 const AIHUBMIX_MAX_TOKENS = 16384
 /** Parasail (api.parasail.io/v1) — OpenAI-compatible serverless. One psk-
- *  key unlocks the same estate models we already draft on (DeepSeek V4 Flash,
- *  GLM 5.2). Keys are issued as `psk-…`; a pasted psk- on another slot is
- *  recognized as Parasail and never sent to OpenAI / DeepSeek.com. */
+ *  key unlocks Flash (draft), Pro-0813 (research/review), and GLM 5.2.
+ *  Keys are issued as `psk-…`; a pasted psk- on another slot is recognized
+ *  as Parasail and never sent to OpenAI / DeepSeek.com. */
 const PARASAIL_BASE_URL = 'https://api.parasail.io/v1'
-const PARASAIL_DEEPSEEK_MODEL = 'parasail-deepseek-v4-flash'
-const PARASAIL_GLM_MODEL = 'parasail-glm-52'
+const PARASAIL_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+const PARASAIL_DEEPSEEK_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+
+/**
+ * Pin DeepSeek V4 to the dated checkpoints. Hosts that accept a bare
+ * `DeepSeek-V4-Flash` / `deepseek-v4-pro` alias will silently serve the
+ * April preview (base) instead of Flash-0731 / Pro-0813.
+ */
+export function canonicalizeDeepseekModelId(raw?: string | null, lane: 'flash' | 'pro' = 'flash'): string {
+  const id = String(raw || '').trim()
+  const lower = id.toLowerCase()
+  const wantsPro =
+    lane === 'pro' ||
+    /v4[-_.]?pro/.test(lower) ||
+    /pro-0813/.test(lower)
+  if (wantsPro) {
+    if (/0813/.test(lower) && /deepseek-ai\//.test(lower)) {
+      return /deepseek-v4-pro-0813/.test(lower) ? 'deepseek-ai/DeepSeek-V4-Pro-0813' : id
+    }
+    return PARASAIL_DEEPSEEK_PRO_MODEL
+  }
+  if (/0731/.test(lower) && /deepseek-ai\//.test(lower)) {
+    return /deepseek-v4-flash-0731/.test(lower) ? 'deepseek-ai/DeepSeek-V4-Flash-0731' : id
+  }
+  if (/0731/.test(lower)) return PARASAIL_DEEPSEEK_MODEL
+  return PARASAIL_DEEPSEEK_MODEL
+}
+/** Official Parasail catalog id — not the internal pin `parasail-glm`. */
+const PARASAIL_GLM_MODEL = 'nvidia/GLM-5.2-NVFP4'
 const PARASAIL_MAX_TOKENS = 16384
+const DEEPSEEK_OFFICIAL_BASE_URL = 'https://api.deepseek.com/v1'
+const DEEPSEEK_OFFICIAL_FLASH_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+const DEEPSEEK_OFFICIAL_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+const ZAI_BASE_URL = 'https://api.z.ai/api/paas/v4'
+const ZAI_GLM_MODEL = 'glm-5.2'
+const ZAI_MAX_TOKENS = 16384
 /** Default separate reasoning budget for NVIDIA NIM models that ACCEPT the
  *  `reasoning_budget` body param. Verified live: only Nemotron accepts it —
  *  NVIDIA DeepSeek V4 Flash returns 400 "Unsupported parameter(s)" for it, so
@@ -122,6 +156,9 @@ export interface ContentAiOptions {
    *  so the ~4k-token writing contract is pure dead weight there — it also
    *  pushes those calls over Groq's 8k TPM free-tier limit. */
   skipQualityContract?: boolean
+  /** Override reasoning budget. Draft Grok stays low on long outputs; the
+   *  Master Engine pair sends Grok high + Parasail GLM medium. */
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -170,10 +207,14 @@ export function setVaultOverlay(overlay: Record<string, string> | null): void {
  */
 export async function refreshAiVault(): Promise<string[]> {
   try {
-    const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
-    const overlay = await buildVaultEnvOverrides(true)
+    const vault = await import('@/lib/aiKeyVault')
+    const overlay = await vault.buildVaultEnvOverrides(true)
     try {
-      const vault = await import('@/lib/aiKeyVault')
+      await vault.ensureParasailDefaultSettings()
+    } catch {
+      /* settings persist is best-effort */
+    }
+    try {
       if (typeof vault.getAiSettings === 'function') {
         const { ensureSuperGrokAccessToken, XAI_DEFAULT_MODEL } = await import('@/lib/xaiSuperGrokOAuth')
         const oauth = await ensureSuperGrokAccessToken()
@@ -573,11 +614,20 @@ export function grokModelId(opts?: { model?: string } | null): string {
  *  Drafts were sending 16384 + high effort, then timing out or returning
  *  empty/incomplete so the stream cascade moved to GLM. Cap output and
  *  drop effort so prose actually arrives. */
-export function grokRequestLimits(maxTokens?: number): {
+export function grokRequestLimits(
+  maxTokens?: number,
+  effort?: 'low' | 'medium' | 'high',
+): {
   maxOutputTokens: number
-  reasoningEffort: 'low' | 'medium'
+  reasoningEffort: 'low' | 'medium' | 'high'
 } {
   const requested = Math.max(256, maxTokens ?? DEFAULT_MAX_TOKENS)
+  if (effort === 'high' || effort === 'medium' || effort === 'low') {
+    return {
+      maxOutputTokens: Math.min(requested, effort === 'high' ? 4096 : 8192),
+      reasoningEffort: effort,
+    }
+  }
   return {
     maxOutputTokens: Math.min(requested, 8192),
     reasoningEffort: requested >= 4000 ? 'low' : 'medium',
@@ -608,7 +658,7 @@ async function grokResponsesFetch(
 ): Promise<{ text: string; finishReason?: string | null; model: string }> {
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
-  const limits = grokRequestLimits(opts.maxTokens)
+  const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort)
   const timeoutMs = Math.max(
     opts.timeoutMs ?? 0,
     deadlineForProvider('grok', opts.timeoutMs),
@@ -659,7 +709,7 @@ async function grokResponsesFetch(
 async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<ContentAiStreamEvent> {
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
-  const limits = grokRequestLimits(opts.maxTokens)
+  const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort)
   const timeoutMs = deadlineForProvider('grok', opts.timeoutMs)
   yield { type: 'provider', provider: 'grok', model: `${model} · ${limits.reasoningEffort} effort` }
   const controller = new AbortController()
@@ -850,7 +900,11 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
     label: 'nvidia-deepseek',
     baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
     apiKey,
-    model: env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT,
+    // NVIDIA NIM catalog id is lowercase; still the dated 0731 checkpoint,
+    // not the undated DeepSeek-V4-Flash preview.
+    model: /0731/i.test(env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT)
+      ? (env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT)
+      : NVIDIA_DEEPSEEK_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
     // NOTE: NO reasoning_budget here — NVIDIA DeepSeek V4 Flash returns a 400
@@ -881,12 +935,28 @@ export function getBasetenProvider(): OpenAiCompat | null {
     label: 'baseten-deepseek',
     baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
     apiKey,
-    model: env('BASETEN_MODEL') || BASETEN_MODEL,
+    model: canonicalizeDeepseekModelId(env('BASETEN_MODEL') || BASETEN_MODEL, 'flash'),
     maxTokensCap: BASETEN_MAX_TOKENS,
     // Thinking mode ON — reasoning improves quality. The SSE parser consumes
     // ONLY delta.content, so reasoning chains never leak into the article.
     // Segmented writing keeps each run small enough that thinking + content fit
     // the token budget, so finish_reason:'length' truncation is avoided.
+    extraBody: {
+      chat_template_kwargs: { enable_thinking: true },
+    },
+  }
+}
+
+/** Baseten-hosted DeepSeek V4 Pro 0813 — research/review pin. */
+export function getBasetenDeepseekProProvider(): OpenAiCompat | null {
+  const apiKey = resolveBasetenApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'baseten-deepseek-pro',
+    baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
+    apiKey,
+    model: canonicalizeDeepseekModelId(env('BASETEN_PRO_MODEL') || BASETEN_PRO_MODEL, 'pro'),
+    maxTokensCap: BASETEN_MAX_TOKENS,
     extraBody: {
       chat_template_kwargs: { enable_thinking: true },
     },
@@ -950,7 +1020,7 @@ function parasailBaseURL(): string {
   return (env('PARASAIL_BASE_URL') || PARASAIL_BASE_URL).replace(/\/$/, '')
 }
 
-/** DeepSeek V4 Flash via Parasail — same model family as Baseten / NVIDIA. */
+/** Drafting/writing: DeepSeek V4 Flash on Parasail. */
 export function getParasailDeepseekProvider(): OpenAiCompat | null {
   const apiKey = resolveParasailApiKey()
   if (!apiKey) return null
@@ -958,21 +1028,113 @@ export function getParasailDeepseekProvider(): OpenAiCompat | null {
     label: 'parasail-deepseek',
     baseURL: parasailBaseURL(),
     apiKey,
-    model: env('PARASAIL_DEEPSEEK_MODEL') || PARASAIL_DEEPSEEK_MODEL,
+    model: canonicalizeDeepseekModelId(env('PARASAIL_DEEPSEEK_MODEL') || PARASAIL_DEEPSEEK_MODEL, 'flash'),
     maxTokensCap: PARASAIL_MAX_TOKENS,
   }
 }
 
-/** GLM 5.2 via Parasail — same model family as NVIDIA GLM. */
-export function getParasailGlmProvider(): OpenAiCompat | null {
+/**
+ * Research + Review: DeepSeek V4 Pro 0813 on Parasail.
+ * Default reasoning_effort is `low`. Env PARASAIL_PRO_REASONING_EFFORT may
+ * raise it to `medium` only — high/max are refused so briefs/reviews cannot
+ * burn a Pro thinking budget.
+ */
+export function parasailProReasoningEffort(): 'low' | 'medium' {
+  const raw = env('PARASAIL_PRO_REASONING_EFFORT').toLowerCase()
+  return raw === 'medium' ? 'medium' : 'low'
+}
+
+export function getParasailDeepseekProProvider(): OpenAiCompat | null {
   const apiKey = resolveParasailApiKey()
   if (!apiKey) return null
+  return {
+    label: 'parasail-deepseek-pro',
+    baseURL: parasailBaseURL(),
+    apiKey,
+    model: canonicalizeDeepseekModelId(env('PARASAIL_DEEPSEEK_PRO_MODEL') || PARASAIL_DEEPSEEK_PRO_MODEL, 'pro'),
+    maxTokensCap: PARASAIL_MAX_TOKENS,
+    extraBody: { reasoning_effort: parasailProReasoningEffort() },
+  }
+}
+
+/** GLM 5.2 via Parasail — same model family as NVIDIA GLM.
+ *  Master Engine pair sends reasoning_effort medium. */
+export function getParasailGlmProvider(effort?: 'low' | 'medium' | 'high'): OpenAiCompat | null {
+  const apiKey = resolveParasailApiKey()
+  if (!apiKey) return null
+  const reasoning = effort === 'high' ? 'medium' : effort
   return {
     label: 'parasail-glm',
     baseURL: parasailBaseURL(),
     apiKey,
     model: env('PARASAIL_GLM_MODEL') || PARASAIL_GLM_MODEL,
     maxTokensCap: PARASAIL_MAX_TOKENS,
+    extraBody: reasoning ? { reasoning_effort: reasoning } : undefined,
+  }
+}
+
+export function resolveDeepseekOfficialApiKey(): string {
+  const key = env('DEEPSEEK_API_KEY')
+  if (!key || looksLikeParasailKey(key)) return ''
+  return key
+}
+
+export function isDeepseekOfficialConfigured(): boolean {
+  return Boolean(resolveDeepseekOfficialApiKey())
+}
+
+function deepseekOfficialBaseURL(): string {
+  const raw = env('DEEPSEEK_BASE_URL')
+  if (/^https?:\/\/api\.deepseek\.com/i.test(raw)) return raw.replace(/\/$/, '')
+  return DEEPSEEK_OFFICIAL_BASE_URL
+}
+
+function deepseekOfficialProvider(label: string, model: string): OpenAiCompat | null {
+  const apiKey = resolveDeepseekOfficialApiKey()
+  if (!apiKey) return null
+  return {
+    label,
+    baseURL: deepseekOfficialBaseURL(),
+    apiKey,
+    model,
+    maxTokensCap: PARASAIL_MAX_TOKENS,
+  }
+}
+
+/** Official DeepSeek.com — Flash-0731 (draft + review). */
+export function getDeepseekOfficialFlashProvider(): OpenAiCompat | null {
+  return deepseekOfficialProvider(
+    'deepseek-flash',
+    canonicalizeDeepseekModelId(env('DEEPSEEK_FLASH_MODEL') || env('DEEPSEEK_MODEL') || DEEPSEEK_OFFICIAL_FLASH_MODEL, 'flash'),
+  )
+}
+
+/** Official DeepSeek.com — Pro-0813 (brief + review). */
+export function getDeepseekOfficialProProvider(): OpenAiCompat | null {
+  return deepseekOfficialProvider(
+    'deepseek-pro',
+    canonicalizeDeepseekModelId(env('DEEPSEEK_PRO_MODEL') || DEEPSEEK_OFFICIAL_PRO_MODEL, 'pro'),
+  )
+}
+
+export function resolveZaiApiKey(): string {
+  return env('ZAI_API_KEY') || env('ZHIPU_API_KEY') || env('Z_AI_API_KEY')
+}
+
+export function isZaiConfigured(): boolean {
+  return Boolean(resolveZaiApiKey())
+}
+
+/** Official Z.ai / Zhipu GLM 5.2. */
+export function getZaiGlmProvider(): OpenAiCompat | null {
+  const apiKey = resolveZaiApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'zai-glm',
+    baseURL: env('ZAI_BASE_URL') || ZAI_BASE_URL,
+    apiKey,
+    model: env('ZAI_GLM_MODEL') || ZAI_GLM_MODEL,
+    maxTokensCap: ZAI_MAX_TOKENS,
   }
 }
 
@@ -985,12 +1147,51 @@ async function parasailDeepseekComplete(opts: ContentAiOptions): Promise<Content
   })
 }
 
+async function parasailDeepseekProComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getParasailDeepseekProProvider()
+  if (!p) throw new Error('Parasail Pro not configured (PARASAIL_API_KEY or a psk- key)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
+  })
+}
+
 async function parasailGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getParasailGlmProvider()
+  const p = getParasailGlmProvider(opts.reasoningEffort)
   if (!p) throw new Error('Parasail GLM not configured (PARASAIL_API_KEY or a psk- key)')
   return openAiCompatibleComplete(p, {
     ...opts,
     maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
+  })
+}
+
+async function basetenDeepseekProComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getBasetenDeepseekProProvider()
+  if (!p) throw new Error('Baseten not configured (BASETEN_API_KEY)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+  })
+}
+
+async function deepseekOfficialFlashComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getDeepseekOfficialFlashProvider()
+  if (!p) throw new Error('DeepSeek.com not configured (DEEPSEEK_API_KEY)')
+  return openAiCompatibleComplete(p, opts)
+}
+
+async function deepseekOfficialProComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getDeepseekOfficialProProvider()
+  if (!p) throw new Error('DeepSeek.com not configured (DEEPSEEK_API_KEY)')
+  return openAiCompatibleComplete(p, opts)
+}
+
+async function zaiGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getZaiGlmProvider()
+  if (!p) throw new Error('Zai not configured (ZAI_API_KEY)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? ZAI_MAX_TOKENS, ZAI_MAX_TOKENS),
   })
 }
 
@@ -1594,9 +1795,9 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
   if (env('DEEPSEEK_API_KEY') && !looksLikeParasailKey(env('DEEPSEEK_API_KEY'))) {
     out.push({
       label: 'deepseek',
-      baseURL: env('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1',
+      baseURL: deepseekOfficialBaseURL(),
       apiKey: env('DEEPSEEK_API_KEY'),
-      model: env('DEEPSEEK_MODEL') || 'deepseek-chat',
+      model: canonicalizeDeepseekModelId(env('DEEPSEEK_MODEL') || DEEPSEEK_OFFICIAL_FLASH_MODEL, 'flash'),
     })
   }
 
@@ -1643,6 +1844,12 @@ export function listConfiguredContentProviders(): Array<{
       role: 'primary',
     },
     {
+      id: 'baseten-deepseek-pro',
+      label: 'DeepSeek V4 Pro 0813 via Baseten',
+      configured: isBasetenConfigured(),
+      role: 'fallback',
+    },
+    {
       id: 'baseten-glm-fast',
       label: 'GLM 5.2 Fast via Baseten',
       configured: isBasetenConfigured(),
@@ -1656,14 +1863,38 @@ export function listConfiguredContentProviders(): Array<{
     },
     {
       id: 'parasail-deepseek',
-      label: 'DeepSeek V4 Flash via Parasail',
+      label: 'DeepSeek V4 Flash via Parasail (draft)',
       configured: isParasailConfigured(),
       role: 'primary',
+    },
+    {
+      id: 'parasail-deepseek-pro',
+      label: 'DeepSeek V4 Pro 0813 via Parasail (research/review)',
+      configured: isParasailConfigured(),
+      role: 'fallback',
     },
     {
       id: 'parasail-glm',
       label: 'GLM 5.2 via Parasail',
       configured: isParasailConfigured(),
+      role: 'fallback',
+    },
+    {
+      id: 'deepseek-flash',
+      label: 'DeepSeek V4 Flash via DeepSeek.com',
+      configured: isDeepseekOfficialConfigured(),
+      role: 'fallback',
+    },
+    {
+      id: 'deepseek-pro',
+      label: 'DeepSeek V4 Pro 0813 via DeepSeek.com',
+      configured: isDeepseekOfficialConfigured(),
+      role: 'fallback',
+    },
+    {
+      id: 'zai-glm',
+      label: 'GLM 5.2 via Zai',
+      configured: isZaiConfigured(),
       role: 'fallback',
     },
     {
@@ -1684,7 +1915,7 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY') && !looksLikeParasailKey(env('CUSTOM_AI_API_KEY'))), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok (SuperGrok fallback)', configured: isGrokConfigured(), role: 'fallback' },
     { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna)', configured: Boolean(env('OPENAI_API_KEY') && !looksLikeParasailKey(env('OPENAI_API_KEY'))), role: 'fallback' },
-    { id: 'deepseek', label: 'DeepSeek.com API', configured: Boolean(env('DEEPSEEK_API_KEY') && !looksLikeParasailKey(env('DEEPSEEK_API_KEY'))), role: 'fallback' },
+    { id: 'deepseek', label: 'DeepSeek.com API', configured: isDeepseekOfficialConfigured(), role: 'fallback' },
   ]
 }
 
@@ -1751,9 +1982,26 @@ function preferProvider(): string {
     return 'parasail-deepseek'
   }
   if (
+    explicit === 'parasail-deepseek-pro' ||
+    explicit === 'parasail-pro' ||
+    explicit === 'deepseek-v4-pro' ||
+    explicit === 'deepseek-ai/deepseek-v4-pro-0813'
+  ) {
+    return 'parasail-deepseek-pro'
+  }
+  if (explicit === 'baseten-deepseek-pro') return 'baseten-deepseek-pro'
+  if (explicit === 'deepseek-pro' || explicit === 'deepseek-official-pro') return 'deepseek-pro'
+  if (explicit === 'deepseek-flash' || explicit === 'deepseek-official' || explicit === 'deepseek-official-flash') {
+    return 'deepseek-flash'
+  }
+  if (explicit === 'zai-glm' || explicit === 'zai' || explicit === 'zhipu' || explicit === 'zhipu-glm') {
+    return 'zai-glm'
+  }
+  if (
     explicit === 'parasail-glm' ||
     explicit === 'parasail-glm-52' ||
-    explicit === 'parasail-glm-5.2'
+    explicit === 'parasail-glm-5.2' ||
+    explicit === 'nvidia/glm-5.2-nvfp4'
   ) {
     return 'parasail-glm'
   }
@@ -1761,7 +2009,6 @@ function preferProvider(): string {
   if (
     explicit === 'deepseek' ||
     explicit === 'deepseek-v4' ||
-    explicit === 'deepseek-v4-pro' ||
     explicit === 'nvidia' ||
     explicit === 'nvidia-deepseek' ||
     explicit === 'nim'
@@ -1783,9 +2030,10 @@ function preferProvider(): string {
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
     'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
-    'baseten', 'baseten-deepseek', 'baseten-glm-fast',
+    'baseten', 'baseten-deepseek', 'baseten-deepseek-pro', 'baseten-glm-fast',
     'aihubmix', 'aihubmix-glm', 'aihubmix-glm-fast', // AIHubmix GLM 5.2 Fast
-    'parasail', 'parasail-deepseek', 'parasail-glm',
+    'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm',
+    'deepseek-flash', 'deepseek-pro', 'zai-glm',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
@@ -1819,6 +2067,17 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
+function promoteParasailAsLead(order: string[]): string[] {
+  const pin = 'parasail-deepseek'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return order
+}
+
 function promoteGrokAsSecond(order: string[]): string[] {
   const grokAt = order.indexOf('grok')
   if (grokAt < 0) {
@@ -1834,11 +2093,13 @@ function promoteGrokAsSecond(order: string[]): string[] {
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
   if (!raw) {
-    return promoteGrokAsSecond([
-      'baseten-glm-fast', 'grok', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek',
+    return promoteGrokAsSecond(promoteParasailAsLead([
+      'parasail-deepseek', 'baseten-deepseek', 'grok', 'nvidia-deepseek', 'deepseek-flash',
+      'parasail-glm', 'baseten-glm-fast', 'nvidia-glm',
       'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
-      'nvidia-nemotron', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-glm',
-    ])
+      'nvidia-nemotron', 'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro',
+      'deepseek-pro', 'zai-glm',
+    ]))
   }
   let values: unknown = raw
   try { values = JSON.parse(raw) } catch { values = raw.split(',') }
@@ -1851,15 +2112,26 @@ function configuredProviderOrder(): string[] {
     aihubmix: 'aihubmix-glm-fast', 'aihubmix-glm': 'aihubmix-glm-fast',
     'glm-fast-aihubmix': 'aihubmix-glm-fast',
     parasail: 'parasail-deepseek', 'parasail-deepseek-v4-flash': 'parasail-deepseek',
+    'parasail-deepseek-pro': 'parasail-deepseek-pro', 'parasail-pro': 'parasail-deepseek-pro',
+    'deepseek-v4-pro': 'parasail-deepseek-pro',
+    'baseten-deepseek-pro': 'baseten-deepseek-pro',
+    'deepseek-pro': 'deepseek-pro', 'deepseek-flash': 'deepseek-flash',
     'parasail-glm-52': 'parasail-glm', 'parasail-glm-5.2': 'parasail-glm',
+    'nvidia/glm-5.2-nvfp4': 'parasail-glm',
+    zai: 'zai-glm', zhipu: 'zai-glm',
     nvidia: 'nvidia-deepseek', nim: 'nvidia-deepseek',
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
-  const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-glm-fast', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-glm', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
+  const known = new Set([
+    'nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
+    'baseten-glm-fast', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
+    'parasail-glm', 'nvidia-deepseek', 'deepseek-flash', 'deepseek-pro', 'zai-glm',
+    'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+  ])
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
-  return promoteGrokAsSecond(merged)
+  return promoteGrokAsSecond(promoteParasailAsLead(merged))
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
@@ -1918,9 +2190,34 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
       items.push({ label: 'parasail-deepseek', run: () => parasailDeepseekComplete(opts) })
     }
   }
+  const pushParasailDeepseekPro = () => {
+    if (isParasailConfigured()) {
+      items.push({ label: 'parasail-deepseek-pro', run: () => parasailDeepseekProComplete(opts) })
+    }
+  }
   const pushParasailGlm = () => {
     if (isParasailConfigured()) {
       items.push({ label: 'parasail-glm', run: () => parasailGlmComplete(opts) })
+    }
+  }
+  const pushBasetenPro = () => {
+    if (isBasetenConfigured()) {
+      items.push({ label: 'baseten-deepseek-pro', run: () => basetenDeepseekProComplete(opts) })
+    }
+  }
+  const pushDeepseekFlash = () => {
+    if (isDeepseekOfficialConfigured()) {
+      items.push({ label: 'deepseek-flash', run: () => deepseekOfficialFlashComplete(opts) })
+    }
+  }
+  const pushDeepseekPro = () => {
+    if (isDeepseekOfficialConfigured()) {
+      items.push({ label: 'deepseek-pro', run: () => deepseekOfficialProComplete(opts) })
+    }
+  }
+  const pushZaiGlm = () => {
+    if (isZaiConfigured()) {
+      items.push({ label: 'zai-glm', run: () => zaiGlmComplete(opts) })
     }
   }
   const pushNvidia = () => {
@@ -1998,9 +2295,39 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (prefer === 'parasail-deepseek-pro') {
+    pushParasailDeepseekPro()
+    pushParasailDeepseek()
+    pushBaseten()
+    pushNvidia()
+    pushCf()
   } else if (prefer === 'parasail-glm') {
     pushParasailGlm()
     pushBasetenGlmFast()
+    pushGlm()
+    pushZaiGlm()
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'baseten-deepseek-pro') {
+    pushBasetenPro()
+    pushParasailDeepseekPro()
+    pushDeepseekPro()
+    pushBaseten()
+    pushCf()
+  } else if (prefer === 'deepseek-pro') {
+    pushDeepseekPro()
+    pushParasailDeepseekPro()
+    pushBasetenPro()
+    pushCf()
+  } else if (prefer === 'deepseek-flash') {
+    pushDeepseekFlash()
+    pushBaseten()
+    pushParasailDeepseek()
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'zai-glm') {
+    pushZaiGlm()
+    pushParasailGlm()
     pushGlm()
     pushNvidia()
     pushCf()
@@ -2024,16 +2351,12 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: lead with Baseten GLM 5.2 Fast — the fastest, lowest-cost
-    // partner for high-volume drafting (2026-08 policy: drafting runs on
-    // open-source models; GPT is reserved for Research/Review). Then the
-    // established open-source cascade; Nemotron is append-only unless
-    // explicitly selected or promoted by the saved admin provider order.
-    pushBasetenGlmFast()
-    pushGlm()
+    // DEFAULT: Parasail DeepSeek V4 Flash-0731 lead ($25 credit host), Grok 4.6 second.
+    pushParasailDeepseek()
     pushBaseten()
     pushGrok()
     pushNvidia()
+    pushDeepseekFlash()
     pushCf()
   }
 
@@ -2045,7 +2368,12 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   pushGlm()
   pushBaseten()
   pushParasailDeepseek()
+  pushParasailDeepseekPro()
   pushParasailGlm()
+  pushBasetenPro()
+  pushDeepseekFlash()
+  pushDeepseekPro()
+  pushZaiGlm()
   pushGrok()
   pushOpenAi()
   pushNvidia()
@@ -2190,9 +2518,20 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     parasail: 'parasail-deepseek',
     'parasail-deepseek': 'parasail-deepseek',
     'parasail-deepseek-v4-flash': 'parasail-deepseek',
+    'parasail-deepseek-pro': 'parasail-deepseek-pro',
+    'parasail-pro': 'parasail-deepseek-pro',
+    'deepseek-v4-pro': 'parasail-deepseek-pro',
+    'deepseek-ai/deepseek-v4-pro-0813': 'parasail-deepseek-pro',
+    'baseten-deepseek-pro': 'baseten-deepseek-pro',
+    'deepseek-pro': 'deepseek-pro',
+    'deepseek-flash': 'deepseek-flash',
+    zai: 'zai-glm',
+    'zai-glm': 'zai-glm',
+    zhipu: 'zai-glm',
     'parasail-glm': 'parasail-glm',
     'parasail-glm-52': 'parasail-glm',
     'parasail-glm-5.2': 'parasail-glm',
+    'nvidia/glm-5.2-nvfp4': 'parasail-glm',
     glm: 'nvidia-glm',
     'glm-5': 'nvidia-glm',
     'glm-5.2': 'nvidia-glm',
@@ -2204,7 +2543,6 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     baseten: 'baseten-deepseek',
     deepseek: 'nvidia-deepseek',
     'deepseek-v4': 'nvidia-deepseek',
-    'deepseek-v4-pro': 'nvidia-deepseek',
     nvidia: 'nvidia-deepseek',
     nim: 'nvidia-deepseek',
     cloudflare: 'cloudflare-ai',
@@ -2340,9 +2678,8 @@ export async function* generateContentTextStream(
 
   const candidates: Candidate[] = []
 
-  // Baseten-hosted GLM 5.2 Fast leads the stream cascade — the fastest,
-  // lowest-cost partner for high-volume drafting (2026-08 policy: drafting
-  // runs on open-source models; GPT is reserved for Research/Review).
+  // Stream cascade lead is DeepSeek V4 Flash (Baseten / Parasail) then Grok.
+  // GLM Fast remains available as an explicit pin.
   const basetenGlmFast = getBasetenGlmFastProvider()
   if (basetenGlmFast) {
     candidates.push({
@@ -2383,7 +2720,19 @@ export async function* generateContentTextStream(
       complete: () => parasailDeepseekComplete(opts),
     })
   }
-  const parasailGlm = getParasailGlmProvider()
+  const parasailDeepseekPro = getParasailDeepseekProProvider()
+  if (parasailDeepseekPro) {
+    candidates.push({
+      label: 'parasail-deepseek-pro',
+      stream: () =>
+        openAiCompatibleStream(parasailDeepseekPro, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
+        }),
+      complete: () => parasailDeepseekProComplete(opts),
+    })
+  }
+  const parasailGlm = getParasailGlmProvider(opts.reasoningEffort)
   if (parasailGlm) {
     candidates.push({
       label: 'parasail-glm',
@@ -2410,6 +2759,47 @@ export async function* generateContentTextStream(
           temperature: opts.temperature ?? 0.7,
         }),
       complete: () => nvidiaGlmComplete(opts),
+    })
+  }
+
+  const basetenPro = getBasetenDeepseekProProvider()
+  if (basetenPro) {
+    candidates.push({
+      label: 'baseten-deepseek-pro',
+      stream: () =>
+        openAiCompatibleStream(basetenPro, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+        }),
+      complete: () => basetenDeepseekProComplete(opts),
+    })
+  }
+  const deepseekFlash = getDeepseekOfficialFlashProvider()
+  if (deepseekFlash) {
+    candidates.push({
+      label: 'deepseek-flash',
+      stream: () => openAiCompatibleStream(deepseekFlash, opts),
+      complete: () => deepseekOfficialFlashComplete(opts),
+    })
+  }
+  const deepseekPro = getDeepseekOfficialProProvider()
+  if (deepseekPro) {
+    candidates.push({
+      label: 'deepseek-pro',
+      stream: () => openAiCompatibleStream(deepseekPro, opts),
+      complete: () => deepseekOfficialProComplete(opts),
+    })
+  }
+  const zaiGlm = getZaiGlmProvider()
+  if (zaiGlm) {
+    candidates.push({
+      label: 'zai-glm',
+      stream: () =>
+        openAiCompatibleStream(zaiGlm, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? ZAI_MAX_TOKENS, ZAI_MAX_TOKENS),
+        }),
+      complete: () => zaiGlmComplete(opts),
     })
   }
 
@@ -2529,7 +2919,18 @@ export async function* generateContentTextStream(
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  } else if (prefer === 'baseten-deepseek' || prefer === 'baseten-glm-fast' || prefer === 'aihubmix-glm-fast' || prefer === 'parasail-deepseek' || prefer === 'parasail-glm') {
+  } else if (
+    prefer === 'baseten-deepseek' ||
+    prefer === 'baseten-deepseek-pro' ||
+    prefer === 'baseten-glm-fast' ||
+    prefer === 'aihubmix-glm-fast' ||
+    prefer === 'parasail-deepseek' ||
+    prefer === 'parasail-deepseek-pro' ||
+    prefer === 'parasail-glm' ||
+    prefer === 'deepseek-flash' ||
+    prefer === 'deepseek-pro' ||
+    prefer === 'zai-glm'
+  ) {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)

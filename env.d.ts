@@ -66,6 +66,8 @@ declare global {
     PARASAIL_API_KEY: string
     PARASAIL_BASE_URL: string
     PARASAIL_DEEPSEEK_MODEL: string
+    PARASAIL_DEEPSEEK_PRO_MODEL: string
+    PARASAIL_PRO_REASONING_EFFORT: string
     PARASAIL_GLM_MODEL: string
   }
 }

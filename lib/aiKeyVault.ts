@@ -77,7 +77,18 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://inference.baseten.co/v1',
     defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     role: 'primary',
-    hint: 'Preferred DeepSeek Flash endpoint — OpenAI-compatible streaming',
+    hint: 'Baseten Flash fallback — same model id as the Parasail default.',
+  },
+  {
+    id: 'baseten-deepseek-pro',
+    label: 'DeepSeek V4 Pro 0813 · Baseten',
+    keyEnv: 'BASETEN_API_KEY',
+    baseUrlEnv: 'BASETEN_BASE_URL',
+    modelEnv: 'BASETEN_PRO_MODEL',
+    fixedBaseUrl: 'https://inference.baseten.co/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Pro-0813',
+    role: 'fallback',
+    hint: 'Research + Review — same Baseten key, Pro-0813 model id',
   },
   {
     id: 'baseten-glm-fast',
@@ -92,14 +103,27 @@ export const AI_PROVIDERS: AiProviderDef[] = [
   },
   {
     id: 'parasail-deepseek',
-    label: 'DeepSeek V4 Flash · Parasail',
+    label: 'DeepSeek V4 Flash · Parasail (draft)',
     keyEnv: 'PARASAIL_API_KEY',
     baseUrlEnv: 'PARASAIL_BASE_URL',
     modelEnv: 'PARASAIL_DEEPSEEK_MODEL',
     fixedBaseUrl: 'https://api.parasail.io/v1',
-    defaultModel: 'parasail-deepseek-v4-flash',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     role: 'primary',
-    hint: 'One psk- key unlocks DeepSeek V4 Flash and GLM 5.2 on api.parasail.io',
+    hint: 'Default host ($25 credit). Drafting — deepseek-ai/DeepSeek-V4-Flash-0731. Same psk- key as Pro + GLM.',
+    vaultGroup: 'parasail',
+    vaultGroupLabel: 'Parasail · api.parasail.io',
+  },
+  {
+    id: 'parasail-deepseek-pro',
+    label: 'DeepSeek V4 Pro 0813 · Parasail (research/review)',
+    keyEnv: 'PARASAIL_API_KEY',
+    baseUrlEnv: 'PARASAIL_BASE_URL',
+    modelEnv: 'PARASAIL_DEEPSEEK_PRO_MODEL',
+    fixedBaseUrl: 'https://api.parasail.io/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Pro-0813',
+    role: 'fallback',
+    hint: 'Research + Review — Pro-0813 at reasoning_effort low (cap medium). Same psk- key.',
     vaultGroup: 'parasail',
     vaultGroupLabel: 'Parasail · api.parasail.io',
   },
@@ -110,11 +134,22 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     baseUrlEnv: 'PARASAIL_BASE_URL',
     modelEnv: 'PARASAIL_GLM_MODEL',
     fixedBaseUrl: 'https://api.parasail.io/v1',
-    defaultModel: 'parasail-glm-52',
+    defaultModel: 'nvidia/GLM-5.2-NVFP4',
     role: 'fallback',
-    hint: 'Shares the Parasail psk- key — GLM 5.2 on api.parasail.io',
+    hint: 'Calls nvidia/GLM-5.2-NVFP4 on api.parasail.io — Master Engine complement at medium effort. Same psk- key.',
     vaultGroup: 'parasail',
     vaultGroupLabel: 'Parasail · api.parasail.io',
+  },
+  {
+    id: 'zai-glm',
+    label: 'GLM 5.2 · Zai',
+    keyEnv: 'ZAI_API_KEY',
+    baseUrlEnv: 'ZAI_BASE_URL',
+    modelEnv: 'ZAI_GLM_MODEL',
+    fixedBaseUrl: 'https://api.z.ai/api/paas/v4',
+    defaultModel: 'glm-5.2',
+    role: 'fallback',
+    hint: 'Official Z.ai / Zhipu GLM 5.2 — paste ZAI_API_KEY',
   },
   {
     id: 'aihubmix-glm-fast',
@@ -202,8 +237,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     baseUrlEnv: 'DEEPSEEK_BASE_URL',
     modelEnv: 'DEEPSEEK_MODEL',
     fixedBaseUrl: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     role: 'fallback',
+    hint: 'Official DeepSeek.com — Flash-0731 / Pro-0813 via the DeepSeek host on each model',
   },
 ]
 
@@ -212,9 +248,10 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'baseten-glm-fast', 'grok', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'openai',
+  'parasail-deepseek', 'baseten-deepseek', 'grok', 'nvidia-deepseek', 'deepseek-flash',
+  'parasail-glm', 'baseten-glm-fast', 'nvidia-glm', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron',
-  'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-glm',
+  'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
 ] as const
 
 export interface VaultKeyRow {
@@ -337,7 +374,10 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   }
   // Default provider / model pins. A provider-specific model wins; otherwise
   // the admin's default model is applied to the selected primary provider.
-  if (settings.default_provider) out['CONTENT_AI_PROVIDER'] = settings.default_provider
+  const defaultProvider = String(settings.default_provider || '').trim()
+  out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider)
+    ? 'parasail-deepseek'
+    : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
   if (settings.provider_order) out['CONTENT_AI_PROVIDER_ORDER'] = settings.provider_order
@@ -389,6 +429,43 @@ export async function deleteVaultKey(providerId: string): Promise<void> {
   const { error } = await sb().from('ai_provider_keys').delete().eq('provider', def.id)
   if (error) throw new Error(error.message)
   vaultCache = null
+}
+
+const STALE_DEFAULT_PROVIDERS = new Set(['', 'baseten-deepseek', 'baseten-glm-fast', 'auto'])
+
+/** Move Parasail Flash to the front of a saved provider-order JSON/CSV. */
+export function parasailFirstProviderOrder(raw?: string | null): string {
+  const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
+  if (!raw || !String(raw).trim()) return fallback
+  let values: unknown
+  try { values = JSON.parse(raw) } catch { values = String(raw).split(',') }
+  if (!Array.isArray(values)) return fallback
+  const order = values.map((v) => String(v).trim()).filter(Boolean)
+  const pin = 'parasail-deepseek'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return JSON.stringify(order)
+}
+
+let parasailDefaultsEnsured = false
+
+/** Persist Parasail as the studio default when the saved pin is missing or Baseten-era. */
+export async function ensureParasailDefaultSettings(updatedBy = 'engine-harden'): Promise<void> {
+  if (parasailDefaultsEnsured) return
+  parasailDefaultsEnsured = true
+  const settings = await getAiSettings(true)
+  const current = String(settings.default_provider || '').trim()
+  if (STALE_DEFAULT_PROVIDERS.has(current)) {
+    await setAiSetting('default_provider', 'parasail-deepseek', updatedBy)
+  }
+  const nextOrder = parasailFirstProviderOrder(settings.provider_order)
+  if (nextOrder !== settings.provider_order) {
+    await setAiSetting('provider_order', nextOrder, updatedBy)
+  }
 }
 
 export async function setAiSetting(key: string, value: string, updatedBy = 'admin'): Promise<void> {

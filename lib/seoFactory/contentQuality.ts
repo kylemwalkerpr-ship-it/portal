@@ -27,7 +27,7 @@
  * masterEngine.computeSignals and are passed in via `lane1`.
  */
 
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateEngineText } from '@/lib/seoEngine/engineAi'
 import { countBodyWords } from './contentDepth'
 
 /** The explicit judgment variables from the taxonomy (the spec's Module 1
@@ -323,7 +323,7 @@ export async function scoreContentQuality(opts: ScoreContentQualityOptions): Pro
     const lane1Block = opts.lane1 ? JSON.stringify(opts.lane1) : '{}'
     const prompt = `TARGET PAGE (${opts.pageUrl}):\n${target}\n\n${competitors ? `COMPETITOR PAGES:\n${competitors}\n\n` : ''}TOOL DATA:\n${lane1Block}`
 
-    const ai = await generateContentText({
+    const ai = await generateEngineText({
       system: CONTENT_SYSTEM_PROMPT,
       prompt,
       maxTokens: opts.maxTokens ?? 2500,

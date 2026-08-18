@@ -23,7 +23,7 @@
  * P2-1 frontmatter → JSON-LD builder — a separate concern.
  */
 
-import { generateContentText } from '@/lib/contentAiProvider'
+import { generateEngineText } from '@/lib/seoEngine/engineAi'
 
 /** The explicit E-E-A-T judgment variables from the taxonomy (Subsystem I
  *  items 531–575) — the LLM-judgment subset, not the deterministic presence
@@ -316,7 +316,7 @@ export async function scoreEeatTrust(opts: ScoreEeatTrustOptions): Promise<EeatT
     })
     const prompt = `TARGET PAGE (${opts.pageUrl}):\n${target}\n\n${competitors ? `COMPETITOR PAGES:\n${competitors}\n\n` : ''}TOOL DATA:\n${lane1Block}`
 
-    const ai = await generateContentText({
+    const ai = await generateEngineText({
       system: EEAT_SYSTEM_PROMPT,
       prompt,
       maxTokens: opts.maxTokens ?? 2500,

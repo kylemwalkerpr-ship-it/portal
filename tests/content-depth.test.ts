@@ -5,9 +5,11 @@ import {
   checkContentDepth,
   clampBriefWordBudget,
   countBodyWords,
+  formatBodyWordDisplay,
   maxWordsForType,
   minWordsForType,
   targetWordsForType,
+  unwrapWholeDocumentFence,
 } from '@/lib/seoFactory/contentDepth'
 import { auditContent } from '@/lib/seoFactory/audit'
 
@@ -183,5 +185,19 @@ This is educational only, not legal advice. Consult an attorney for your case.
     const depth = checkContentDepth({ content: md, contentType: 'legal_guide' })
     expect(depth.ok).toBe(true)
     expect(depth.wordCount).toBeGreaterThanOrEqual(2200)
+  })
+})
+
+describe('unwrapWholeDocumentFence + honest body-word display', () => {
+  it('counts prose that a model wrapped in one markdown fence', () => {
+    const inner = '# Title\n\n' + Array.from({ length: 80 }, () => 'word').join(' ')
+    expect(countBodyWords('```markdown\n' + inner + '\n```')).toBe(countBodyWords(inner))
+    expect(unwrapWholeDocumentFence('```md\nhello world\n```').trim()).toBe('hello world')
+  })
+
+  it('does not hide a 0-word editor behind a stale stored count', () => {
+    expect(formatBodyWordDisplay(0, 2618)).toBe('0 (stored 2618 — not in editor)')
+    expect(formatBodyWordDisplay(2618, 2618)).toBe('2618')
+    expect(formatBodyWordDisplay(0, 0)).toBe('0')
   })
 })

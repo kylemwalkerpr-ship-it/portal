@@ -35,7 +35,7 @@ const SYNC_MAP = {
   BASETEN_API_KEY: ['baseten-deepseek', 'baseten-glm-fast'],
   OPENAI_API_KEY: ['openai'],
   AIHUBMIX_API_KEY: ['aihubmix-glm-fast'],
-  PARASAIL_API_KEY: ['parasail-deepseek', 'parasail-glm'],
+  PARASAIL_API_KEY: ['parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm'],
   NVIDIA_API_KEY: ['nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek'],
   XAI_API_KEY: ['grok'],
   GROQ_API_KEY: ['groq'],

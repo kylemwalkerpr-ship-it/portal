@@ -466,7 +466,7 @@ export default function AdminCommandCenter({
   const [maxRefine, setMaxRefine] = React.useState(2)
   // Drafting leads with GLM 5.2 Fast (open-source, fast, cheap); GPT remains
   // selectable here for research/plan-heavy full runs.
-  const [aiProvider, setAiProvider] = React.useState('baseten-glm-fast')
+  const [aiProvider, setAiProvider] = React.useState('parasail-deepseek')
 
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])

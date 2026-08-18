@@ -331,6 +331,7 @@ function auditEngineCandidates(): AuditEngineCandidate[] {
     { pin: 'nvidia-deepseek', label: 'deepseek', configured: () => isNvidiaDeepseekConfigured() },
     { pin: 'aihubmix-glm-fast', label: 'glm-fast', configured: () => isAihubmixGlmFastConfigured() },
     { pin: 'parasail-deepseek', label: 'deepseek', configured: () => isParasailConfigured() },
+    { pin: 'parasail-deepseek-pro', label: 'deepseek', configured: () => isParasailConfigured() },
     { pin: 'parasail-glm', label: 'glm', configured: () => isParasailConfigured() },
     { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY) },
     { pin: 'gemini', label: 'gemini', configured: () => Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) },

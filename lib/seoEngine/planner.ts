@@ -22,7 +22,12 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { generateEngineText } from '@/lib/seoEngine/engineAi'
+import {
+  accumulatePairRollup,
+  emptyPairRollup,
+  generateEngineText,
+  type EnginePairRollup,
+} from '@/lib/seoEngine/engineAi'
 import {
   LIFECYCLE_STAGES,
   COUNTRIES,
@@ -412,7 +417,13 @@ function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, n
   return bias
 }
 
-export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> {
+export interface PlannerRun {
+  plans: ClusterPlan[]
+  pair: EnginePairRollup
+}
+
+export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
+  const pair = emptyPairRollup()
   req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC demand signals…')
   const signals = req.signals || (await pullGscSignals())
   req.onProgress?.('signals', `${signals.length} demand signal(s) loaded`)
@@ -537,7 +548,6 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     if (draft) {
       try {
         const ai = await generateEngineText({
-          aiProvider: 'openai',
           system: [
             editorialBriefPromptBlock(),
             `You are the chief SEO strategist for an immigration marketplace. Ground every claim in the supplied data — never invent numbers, fees or processing times. Flag required YMYL elements (statutes, disclaimers, author credentials).`,
@@ -555,7 +565,10 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
           maxTokens: 600,
           temperature: 0.4,
         })
-        brief = ai.text.trim()
+        accumulatePairRollup(pair, ai.pair)
+        const extras = ai.pair?.extras
+        const extraBits = [...(extras?.statutes || []), ...(extras?.urls || [])]
+        brief = extraBits.length ? `${ai.text.trim()}\n\n[GLM extras] ${extraBits.join('; ')}` : ai.text.trim()
       } catch {
         brief = ''
       }
@@ -645,7 +658,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     // interlink graph is additive — plans still stand without it
   }
 
-  return plans
+  return { plans, pair }
 }
 
 function cellBiasFor(bias: Map<string, number>, stage: string, country: Country): number {
