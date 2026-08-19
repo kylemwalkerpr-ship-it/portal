@@ -47,6 +47,7 @@ interface VaultStatusRow {
   modelEnv?: string
   vaultGroup?: string
   vaultGroupLabel?: string
+  modelOptions?: string[]
 }
 
 interface AiSettings {
@@ -71,6 +72,22 @@ interface Draft {
   key: string
   baseUrl: string
   model: string
+}
+
+interface ProviderGroup {
+  name: string
+  label: string
+  members: VaultStatusRow[]
+  lead: VaultStatusRow
+  configured: boolean
+  source: VaultStatusRow['source']
+}
+
+interface PriorityHost {
+  host: string
+  label: string
+  members: VaultStatusRow[]
+  source: VaultStatusRow['source']
 }
 
 function parseProviderOrder(value: string | null | undefined, fallback: string[]): string[] {
@@ -212,39 +229,43 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     }
   }
 
-  const test = async (id: string) => {
-    const d = draft(id)
-    setBusy(`test-${id}`)
-    setProbe((p) => ({ ...p, [id]: 'probing…' }))
+  const runTest = async (provider: string, apiKey: string, baseUrl: string, model: string) => {
+    setBusy(`test-${provider}`)
+    setProbe((p) => ({ ...p, [provider]: 'probing…' }))
     try {
       const res = await fetch('/api/seo-factory/ai-keys/test', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: id,
-          ...(d.key.trim() ? { apiKey: d.key.trim() } : {}),
-          ...(d.baseUrl.trim() ? { baseUrl: d.baseUrl.trim() } : {}),
-          ...(d.model.trim() ? { model: d.model.trim() } : {}),
+          provider,
+          ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+          ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+          ...(model.trim() ? { model: model.trim() } : {}),
         }),
       })
       const j = await res.json().catch(() => ({}))
       if (j.ok) {
         setProbe((p) => ({
           ...p,
-          [id]: `ok — via ${j.provider}${j.model ? ` · ${j.model}` : ''}${j.reply ? ` — "${String(j.reply).trim()}"` : ''}`,
+          [provider]: `ok — via ${j.provider}${j.model ? ` · ${j.model}` : ''}${j.reply ? ` — "${String(j.reply).trim()}"` : ''}`,
         }))
-        setNote({ ok: true, text: `${id} replied via ${j.provider}${j.model ? ` · ${j.model}` : ''}` })
+        setNote({ ok: true, text: `${provider} replied via ${j.provider}${j.model ? ` · ${j.model}` : ''}` })
       } else {
-        setProbe((p) => ({ ...p, [id]: `failed — ${j.error || 'no reply'}` }))
-        setNote({ ok: false, text: `${id} test failed` })
+        setProbe((p) => ({ ...p, [provider]: `failed — ${j.error || 'no reply'}` }))
+        setNote({ ok: false, text: `${provider} test failed` })
       }
     } catch (e) {
-      setProbe((p) => ({ ...p, [id]: 'request failed' }))
+      setProbe((p) => ({ ...p, [provider]: 'request failed' }))
       setNote({ ok: false, text: e instanceof Error ? e.message : 'Test request failed' })
     } finally {
       setBusy(null)
     }
+  }
+
+  const test = (id: string) => {
+    const d = draft(id)
+    return runTest(id, d.key, d.baseUrl, d.model)
   }
 
   const grokOAuthAction = async (action: 'start' | 'poll' | 'disconnect') => {
@@ -321,18 +342,6 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   const setD = (id: string, patch: Partial<Draft>) =>
     setDrafts((prev) => ({ ...prev, [id]: { ...draft(id), ...patch } }))
 
-  const moveProvider = (id: string, delta: -1 | 1) => {
-    setProviderOrder((current) => {
-      const index = current.indexOf(id)
-      const nextIndex = index + delta
-      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current
-      const next = [...current]
-      const [item] = next.splice(index, 1)
-      if (item) next.splice(nextIndex, 0, item)
-      return next
-    })
-  }
-
   const orderedRows = React.useMemo(() => {
     const byId = new Map((rows || []).map((row) => [row.id, row]))
     const knownIds = (rows || []).map((row) => row.id)
@@ -340,51 +349,129 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     return completeOrder.map((id) => byId.get(id)).filter(Boolean) as VaultStatusRow[]
   }, [rows, providerOrder])
 
-  const parasailRows = (rows || []).filter((r) => r.vaultGroup === 'parasail' || r.id.startsWith('parasail-'))
-  const parasailLead = parasailRows.find((r) => r.id === 'parasail-deepseek') || parasailRows[0] || null
-  const parasailConfigured = parasailRows.some((r) => r.configured)
-  const parasailSource = parasailRows.find((r) => r.source === 'vault')?.source
-    || parasailRows.find((r) => r.source === 'env')?.source
-    || parasailLead?.source
-    || 'none'
+  // Host-level grouping for the priority list: one row per provider (apex),
+  // with its models kept in their current relative order.
+  const priorityHosts = React.useMemo<PriorityHost[]>(() => {
+    const hostOrder: string[] = []
+    const membersByHost = new Map<string, VaultStatusRow[]>()
+    for (const r of orderedRows) {
+      const host = r.vaultGroup || r.id
+      if (!membersByHost.has(host)) {
+        membersByHost.set(host, [])
+        hostOrder.push(host)
+      }
+      membersByHost.get(host)!.push(r)
+    }
+    return hostOrder.map((host) => {
+      const members = membersByHost.get(host)!
+      return {
+        host,
+        label: members[0].vaultGroupLabel || members[0].label,
+        members,
+        source: members.find((m) => m.source !== 'none')?.source || 'none',
+      }
+    })
+  }, [orderedRows])
 
-  const saveParasail = async () => {
-    const d = draft('parasail')
-    const key = d.key.trim()
-    if (!key && !d.baseUrl.trim()) {
-      setNote({ ok: false, text: 'Paste a Parasail psk- key first.' })
+  const moveHost = (host: string, delta: -1 | 1) => {
+    const hosts = priorityHosts.map((h) => h.host)
+    const index = hosts.indexOf(host)
+    const nextIndex = index + delta
+    if (index < 0 || nextIndex < 0 || nextIndex >= hosts.length) return
+    const next = [...hosts]
+    const [item] = next.splice(index, 1)
+    if (item) next.splice(nextIndex, 0, item)
+    const flat: string[] = []
+    for (const h of next) {
+      const members = priorityHosts.find((p) => p.host === h)?.members || []
+      for (const m of members) flat.push(m.id)
+    }
+    setProviderOrder(flat)
+  }
+
+  const groups = React.useMemo<ProviderGroup[]>(() => {
+    const byGroup = new Map<string, VaultStatusRow[]>()
+    for (const r of orderedRows) {
+      const g = r.vaultGroup
+      if (!g) continue
+      const list = byGroup.get(g) || []
+      list.push(r)
+      byGroup.set(g, list)
+    }
+    return [...byGroup.entries()].map(([name, members]) => ({
+      name,
+      label: members[0]?.vaultGroupLabel || name,
+      members,
+      lead: members.find((m) => m.role === 'primary') || members[0]!,
+      configured: members.some((m) => m.configured),
+      source: members.find((m) => m.source === 'vault')?.source
+        || members.find((m) => m.source === 'env')?.source
+        || members[0]?.source
+        || 'none',
+    }))
+  }, [orderedRows])
+
+  const groupedIds = React.useMemo(
+    () => new Set(groups.flatMap((g) => g.members.map((m) => m.id))),
+    [groups],
+  )
+  const soloRows = orderedRows.filter((r) => !groupedIds.has(r.id))
+
+  const modelSelectOptions = (m: VaultStatusRow) => {
+    const opts = m.modelOptions || []
+    const current = draft(m.id).model.trim() || m.model || m.defaultModel
+    const list = opts.includes(current) ? opts : [current, ...opts]
+    return list.map((o) => <option key={o} value={o}>{o}</option>)
+  }
+
+  const saveGroup = async (g: ProviderGroup) => {
+    const shared = draft(`group:${g.name}`)
+    const hasKey = Boolean(shared.key.trim() || shared.baseUrl.trim())
+    const hasModel = g.members.some((m) => draft(m.id).model.trim())
+    if (!hasKey && !hasModel) {
+      setNote({ ok: false, text: 'Paste an API key (or pick a model) first.' })
       return
     }
-    if (key && !/^psk-/i.test(key)) {
+    if (g.name === 'parasail' && shared.key.trim() && !/^psk-/i.test(shared.key.trim())) {
       setNote({ ok: false, text: 'Parasail keys start with psk-. Check you copied the full key.' })
       return
     }
-    setBusy('save-parasail')
+    setBusy(`save-group-${g.name}`)
     try {
-      const targets = parasailRows.length ? parasailRows.map((r) => r.id) : ['parasail-deepseek', 'parasail-glm']
-      for (const id of targets) {
+      for (const m of g.members) {
         const res = await fetch('/api/seo-factory/ai-keys', {
           method: 'PUT',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            provider: id,
-            apiKey: key || undefined,
-            baseUrl: d.baseUrl.trim() || undefined,
+            provider: m.id,
+            apiKey: shared.key.trim() || undefined,
+            baseUrl: shared.baseUrl.trim() || undefined,
+            model: draft(m.id).model.trim() || undefined,
           }),
         })
         const j = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
       }
-      setDrafts((prev) => ({ ...prev, parasail: { key: '', baseUrl: '', model: '' } }))
-      setNote({ ok: true, text: 'Parasail saved — DeepSeek V4 Flash + GLM 5.2 unlocked' })
+      setDrafts((prev) => {
+        const next = { ...prev }
+        delete next[`group:${g.name}`]
+        for (const m of g.members) next[m.id] = { key: '', baseUrl: '', model: '' }
+        return next
+      })
+      setNote({ ok: true, text: `${g.label} saved` })
       await load()
       onChanged?.()
     } catch (e) {
-      setNote({ ok: false, text: e instanceof Error ? e.message : 'Parasail save failed' })
+      setNote({ ok: false, text: e instanceof Error ? e.message : `${g.label} save failed` })
     } finally {
       setBusy(null)
     }
+  }
+
+  const testGroup = (g: ProviderGroup) => {
+    const shared = draft(`group:${g.name}`)
+    return runTest(g.lead.id, shared.key, shared.baseUrl, draft(g.lead.id).model)
   }
 
   return (
@@ -451,59 +538,95 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
           <div style={{ fontSize: 9, color: C.textDim }}>Top = first eligible lead · arrows change fallback order · Save defaults applies it everywhere</div>
         </div>
         <div style={{ display: 'grid', gap: 4 }}>
-          {orderedRows.map((r, index) => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 7px', borderRadius: C.radiusXs, background: index === 0 ? C.goldSoft : C.surface2, border: `1px solid ${index === 0 ? C.goldBorder : C.border2}` }}>
+          {priorityHosts.map((h, index) => (
+            <div key={h.host} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 7px', borderRadius: C.radiusXs, background: index === 0 ? C.goldSoft : C.surface2, border: `1px solid ${index === 0 ? C.goldBorder : C.border2}` }}>
               <span style={{ width: 20, fontFamily: C.mono, fontSize: 10, color: index === 0 ? C.gold : C.textDim, fontWeight: 800 }}>{index + 1}</span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: C.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
-              <SourceBadge source={r.source} />
-              <button type="button" onClick={() => moveProvider(r.id, -1)} disabled={index === 0} aria-label={`Move ${r.label} up`} style={{ ...btn(), padding: '3px 7px', opacity: index === 0 ? 0.4 : 1 }}>↑</button>
-              <button type="button" onClick={() => moveProvider(r.id, 1)} disabled={index === orderedRows.length - 1} aria-label={`Move ${r.label} down`} style={{ ...btn(), padding: '3px 7px', opacity: index === orderedRows.length - 1 ? 0.4 : 1 }}>↓</button>
+              <span style={{ flex: '1 1 140px', minWidth: 140, fontSize: 10, color: C.text, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.label}</span>
+              <span style={{ flex: '2 1 auto', minWidth: 0, fontSize: 9, color: C.textDim, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {h.members.map((m) => m.model || m.defaultModel).join(' · ')}
+              </span>
+              <SourceBadge source={h.source} />
+              <button type="button" onClick={() => moveHost(h.host, -1)} disabled={index === 0} aria-label={`Move ${h.label} up`} style={{ ...btn(), padding: '3px 7px', opacity: index === 0 ? 0.4 : 1 }}>↑</button>
+              <button type="button" onClick={() => moveHost(h.host, 1)} disabled={index === priorityHosts.length - 1} aria-label={`Move ${h.label} down`} style={{ ...btn(), padding: '3px 7px', opacity: index === priorityHosts.length - 1 ? 0.4 : 1 }}>↓</button>
             </div>
           ))}
         </div>
       </div>
 
-      {parasailLead && (
-        <div style={{
-          padding: 12, borderRadius: C.radiusSm, marginBottom: 10,
-          border: `1px solid ${parasailConfigured ? C.greenBorder : C.goldBorder}`,
-          background: parasailConfigured ? C.greenSoft : C.goldSoft,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>Parasail · api.parasail.io</div>
-              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
-                One <span style={{ fontFamily: C.mono }}>psk-</span> key: Flash-0731 for Draft, Pro-0813 (low effort, cap medium) for Research/Review, plus GLM 5.2.
+      {groups.map((g) => {
+        const shared = draft(`group:${g.name}`)
+        const isBusy = busy === `save-group-${g.name}`
+        return (
+          <div key={g.name} style={{
+            padding: 12, borderRadius: C.radiusSm, marginBottom: 10,
+            border: `1px solid ${g.configured ? C.greenBorder : C.goldBorder}`,
+            background: g.configured ? C.greenSoft : C.goldSoft,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>{g.label}</div>
+                <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                  One key · {g.members.length} model{g.members.length === 1 ? '' : 's'} — {g.members.map((m) => m.label).join(' · ')}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <SourceBadge source={g.source} />
+                <span style={{ fontSize: 10, fontFamily: C.mono, color: g.configured ? C.green : C.textDim }}>
+                  {g.lead.maskedKey || 'no key'}
+                </span>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <SourceBadge source={parasailSource} />
-              <span style={{ fontSize: 10, fontFamily: C.mono, color: parasailConfigured ? C.green : C.textDim }}>
-                {parasailLead.maskedKey || 'no key'}
-              </span>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+              <input
+                type="password"
+                value={shared.key}
+                onChange={(e) => setD(`group:${g.name}`, { key: e.target.value })}
+                placeholder={`Paste ${g.lead.envKey}…`}
+                style={{ ...input('min(240px, 100%)'), flex: 2, minWidth: 150 }}
+              />
+              {g.lead.baseUrlEnv && (
+                <input
+                  value={shared.baseUrl}
+                  onChange={(e) => setD(`group:${g.name}`, { baseUrl: e.target.value })}
+                  placeholder={g.lead.baseUrl || 'Base URL…'}
+                  style={{ ...input('min(180px, 100%)'), flex: 1, minWidth: 120 }}
+                />
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gap: 5, marginBottom: 8 }}>
+              {g.members.map((m) => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                  <span style={{ flex: '1 1 220px', fontSize: 10, color: C.textMuted, fontWeight: 600, minWidth: 160 }}>
+                    {m.role === 'primary' ? 'Lead' : 'Fallback'} · {m.label}
+                  </span>
+                  <select
+                    value={draft(m.id).model.trim() || m.model || m.defaultModel}
+                    onChange={(e) => setD(m.id, { model: e.target.value })}
+                    style={{ ...input('min(280px, 100%)'), flex: 2, minWidth: 200 }}
+                  >
+                    {modelSelectOptions(m)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => void saveGroup(g)} disabled={isBusy} style={btn(C.navy, true)}>
+                {isBusy ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" onClick={() => void testGroup(g)} disabled={busy === `test-${g.lead.id}`} style={btn(C.cyan2, true)}>
+                {busy === `test-${g.lead.id}` ? '…' : 'Test'}
+              </button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              type="password"
-              value={draft('parasail').key}
-              onChange={(e) => setD('parasail', { key: e.target.value })}
-              placeholder="Paste PARASAIL_API_KEY (psk-…)"
-              style={{ ...input('min(280px, 100%)'), flex: 2, minWidth: 180 }}
-            />
-            <button type="button" onClick={() => void saveParasail()} disabled={busy === 'save-parasail'} style={btn(C.navy, true)}>
-              {busy === 'save-parasail' ? 'Saving…' : 'Save Parasail'}
-            </button>
-            <button type="button" onClick={() => void test('parasail-deepseek')} disabled={busy === 'test-parasail-deepseek'} style={btn(C.cyan2, true)}>
-              {busy === 'test-parasail-deepseek' ? '…' : 'Test'}
-            </button>
-          </div>
-        </div>
-      )}
+        )
+      })}
 
       {/* Provider rows */}
       <div style={{ display: 'grid', gap: 6, maxHeight: 330, overflow: 'auto', paddingRight: 2 }}>
-        {orderedRows.filter((r) => r.vaultGroup !== 'parasail').map((r) => {
+        {soloRows.map((r) => {
           const d = draft(r.id)
           const probing = probe[r.id]
           const isBusy = busy === `save-${r.id}` || busy === `del-${r.id}` || busy === `test-${r.id}`
@@ -588,13 +711,24 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                     style={{ ...input('min(180px, 100%)'), flex: 1, minWidth: 120 }}
                   />
                 )}
-                {r.modelEnv && (
-                  <input
-                    value={d.model}
-                    onChange={(e) => setD(r.id, { model: e.target.value })}
-                    placeholder={`Model (${r.model || r.defaultModel})`}
-                    style={{ ...input('min(150px, 100%)'), flex: 1, minWidth: 110 }}
-                  />
+                {r.modelEnv && (r.modelOptions && r.modelOptions.length > 0
+                  ? (
+                    <select
+                      value={d.model.trim() || r.model || r.defaultModel}
+                      onChange={(e) => setD(r.id, { model: e.target.value })}
+                      style={{ ...input('min(160px, 100%)'), flex: 1, minWidth: 120 }}
+                    >
+                      {modelSelectOptions(r)}
+                    </select>
+                  )
+                  : (
+                    <input
+                      value={d.model}
+                      onChange={(e) => setD(r.id, { model: e.target.value })}
+                      placeholder={`Model (${r.model || r.defaultModel})`}
+                      style={{ ...input('min(150px, 100%)'), flex: 1, minWidth: 110 }}
+                    />
+                  )
                 )}
                 <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
                   <button type="button" onClick={() => void save(r.id)} disabled={isBusy} style={btn(C.navy, true)}>

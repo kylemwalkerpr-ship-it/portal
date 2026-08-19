@@ -32,6 +32,77 @@ export interface AiProviderDef {
   /** Shared vault card — one paste field for hosts that share a key. */
   vaultGroup?: string
   vaultGroupLabel?: string
+  /** Selectable model ids for the host's model dropdown(s). */
+  modelOptions?: string[]
+}
+
+/** Curated model choices per host for the vault's model dropdowns. */
+const HOST_MODEL_OPTIONS: Record<string, string[]> = {
+  baseten: [
+    'deepseek-ai/DeepSeek-V4-Flash-0731',
+    'deepseek-ai/DeepSeek-V4-Pro-0813',
+    'deepseek-ai/DeepSeek-V4-Pro',
+    'zai-org/GLM-5.2-Fast',
+    'zai-org/GLM-5.2',
+    'zai-org/GLM-4.7',
+    'moonshotai/Kimi-K3',
+    'openai/gpt-oss-120b',
+    'nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B',
+  ],
+  parasail: [
+    'deepseek-ai/DeepSeek-V4-Flash-0731',
+    'deepseek-ai/DeepSeek-V4-Pro-0813',
+    'z-ai/glm-5.2',
+  ],
+  nvidia: [
+    'nvidia/nemotron-3-ultra-550b-a55b',
+    'z-ai/glm-5.2',
+    'deepseek-ai/deepseek-v4-flash-0731',
+  ],
+  openai: [
+    'gpt-5.6-terra',
+    'gpt-5.6-sol',
+    'gpt-5.6-luna',
+  ],
+  groq: [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-405b',
+  ],
+  gemini: [
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+  ],
+  openrouter: [
+    'meta-llama/llama-3.3-70b-instruct:free',
+  ],
+  'cloudflare-ai': [
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    '@cf/meta/m2m100-1.2b',
+  ],
+  custom: [
+    'gpt-5.6-luna',
+    'gpt-5.6-terra',
+    'gpt-5.6-sol',
+  ],
+  grok: [
+    'grok-4.6',
+    'grok-4.5',
+    'grok-4',
+  ],
+  deepseek: [
+    'deepseek-ai/DeepSeek-V4-Flash-0731',
+    'deepseek-ai/DeepSeek-V4-Pro-0813',
+    'deepseek-ai/DeepSeek-V4-Pro',
+  ],
+  'zai-glm': [
+    'glm-5.2',
+    'glm-5.2-fast',
+  ],
+  'aihubmix-glm-fast': [
+    'glm-5.2-fast-preview',
+    'glm-5.2-fast',
+    'glm-5.2',
+  ],
 }
 
 export const AI_PROVIDERS: AiProviderDef[] = [
@@ -45,6 +116,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'nvidia/nemotron-3-ultra-550b-a55b',
     role: 'primary',
     hint: 'Reasoning-enabled NVIDIA Integrate model; uses the shared NVIDIA API key',
+    vaultGroup: 'nvidia',
+    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
+    modelOptions: HOST_MODEL_OPTIONS.nvidia,
   },
   {
     id: 'nvidia-glm',
@@ -56,6 +130,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'z-ai/glm-5.2',
     role: 'primary',
     hint: 'Preferred lead — verified NVIDIA Integrate endpoint',
+    vaultGroup: 'nvidia',
+    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
+    modelOptions: HOST_MODEL_OPTIONS.nvidia,
   },
   {
     id: 'nvidia-deepseek',
@@ -67,6 +144,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'deepseek-ai/deepseek-v4-flash-0731',
     role: 'primary',
     hint: 'NVIDIA fallback — long-form depth',
+    vaultGroup: 'nvidia',
+    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
+    modelOptions: HOST_MODEL_OPTIONS.nvidia,
   },
   {
     id: 'baseten-deepseek',
@@ -78,6 +158,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     role: 'primary',
     hint: 'Baseten Flash fallback — same model id as the Parasail default.',
+    vaultGroup: 'baseten',
+    vaultGroupLabel: 'Baseten · inference.baseten.co',
+    modelOptions: HOST_MODEL_OPTIONS.baseten,
   },
   {
     id: 'baseten-deepseek-pro',
@@ -89,6 +172,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'deepseek-ai/DeepSeek-V4-Pro-0813',
     role: 'fallback',
     hint: 'Research + Review — same Baseten key, Pro-0813 model id',
+    vaultGroup: 'baseten',
+    vaultGroupLabel: 'Baseten · inference.baseten.co',
+    modelOptions: HOST_MODEL_OPTIONS.baseten,
   },
   {
     id: 'baseten-glm-fast',
@@ -100,6 +186,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'zai-org/GLM-5.2-Fast',
     role: 'fallback',
     hint: 'Efficient high-volume drafting partner — also the brief fallback when GPT is unconfigured',
+    vaultGroup: 'baseten',
+    vaultGroupLabel: 'Baseten · inference.baseten.co',
+    modelOptions: HOST_MODEL_OPTIONS.baseten,
   },
   {
     id: 'parasail-deepseek',
@@ -113,6 +202,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'Default host ($25 credit). Drafting — deepseek-ai/DeepSeek-V4-Flash-0731. Same psk- key as Pro + GLM.',
     vaultGroup: 'parasail',
     vaultGroupLabel: 'Parasail · api.parasail.io',
+    modelOptions: HOST_MODEL_OPTIONS.parasail,
   },
   {
     id: 'parasail-deepseek-pro',
@@ -126,6 +216,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'Research + Review — Pro-0813 at reasoning_effort low (cap medium). Same psk- key.',
     vaultGroup: 'parasail',
     vaultGroupLabel: 'Parasail · api.parasail.io',
+    modelOptions: HOST_MODEL_OPTIONS.parasail,
   },
   {
     id: 'parasail-glm',
@@ -139,6 +230,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'Calls z-ai/glm-5.2 on api.parasail.io (NVFP4 id 404s). Master Engine complement at medium effort. Same psk- key.',
     vaultGroup: 'parasail',
     vaultGroupLabel: 'Parasail · api.parasail.io',
+    modelOptions: HOST_MODEL_OPTIONS.parasail,
   },
   {
     id: 'zai-glm',
@@ -150,6 +242,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'glm-5.2',
     role: 'fallback',
     hint: 'Official Z.ai / Zhipu GLM 5.2 — paste ZAI_API_KEY',
+    modelOptions: HOST_MODEL_OPTIONS['zai-glm'],
   },
   {
     id: 'aihubmix-glm-fast',
@@ -161,6 +254,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'glm-5.2-fast-preview',
     role: 'fallback',
     hint: 'GLM 5.2 Fast via the AIHubmix OpenAI-compatible aggregator — selectable in drafting, brief and review',
+    modelOptions: HOST_MODEL_OPTIONS['aihubmix-glm-fast'],
   },
   {
     id: 'cloudflare-ai',
@@ -172,6 +266,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     role: 'fallback',
     hint: 'First fallback — also needs CLOUDFLARE_ACCOUNT_ID',
+    modelOptions: HOST_MODEL_OPTIONS['cloudflare-ai'],
   },
   {
     id: 'groq',
@@ -181,6 +276,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://api.groq.com/openai/v1',
     defaultModel: 'llama-3.3-70b-versatile',
     role: 'fallback',
+    modelOptions: HOST_MODEL_OPTIONS.groq,
   },
   {
     id: 'gemini',
@@ -189,6 +285,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     modelEnv: 'GEMINI_MODEL',
     defaultModel: 'gemini-2.5-flash',
     role: 'fallback',
+    modelOptions: HOST_MODEL_OPTIONS.gemini,
   },
   {
     id: 'openrouter',
@@ -198,6 +295,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://openrouter.ai/api/v1',
     defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
     role: 'fallback',
+    modelOptions: HOST_MODEL_OPTIONS.openrouter,
   },
   {
     id: 'custom',
@@ -208,6 +306,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'gpt-5.6-luna',
     role: 'fallback',
     hint: 'Bring your own endpoint — base URL required',
+    modelOptions: HOST_MODEL_OPTIONS.custom,
   },
   {
     id: 'grok',
@@ -219,6 +318,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'grok-4.6',
     role: 'fallback',
     hint: 'Default fallback for Master Engine, Discover, Research, and Draft — connect SuperGrok (no API key) or paste XAI_API_KEY',
+    modelOptions: HOST_MODEL_OPTIONS.grok,
   },
   {
     id: 'openai',
@@ -229,6 +329,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'gpt-5.6-terra',
     role: 'fallback',
     hint: 'GPT-5.6 Terra (Research/Plan) · Sol (flagship) · Luna (high-volume)',
+    modelOptions: HOST_MODEL_OPTIONS.openai,
   },
   {
     id: 'deepseek',
@@ -240,6 +341,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     role: 'fallback',
     hint: 'Official DeepSeek.com — Flash-0731 / Pro-0813 via the DeepSeek host on each model',
+    modelOptions: HOST_MODEL_OPTIONS.deepseek,
   },
 ]
 
@@ -280,6 +382,7 @@ export interface VaultStatusRow {
   modelEnv?: string
   vaultGroup?: string
   vaultGroupLabel?: string
+  modelOptions?: string[]
 }
 
 export interface AiSettings {
@@ -529,6 +632,7 @@ export async function listVaultStatus(): Promise<VaultStatusRow[]> {
       modelEnv: def.modelEnv,
       vaultGroup: def.vaultGroup,
       vaultGroupLabel: def.vaultGroupLabel,
+      modelOptions: def.modelOptions,
     } satisfies VaultStatusRow
   })
 }
