@@ -290,14 +290,14 @@ export async function POST(request: NextRequest) {
       if (spec.staleBefore) q = q.lt('updated_at', spec.staleBefore)
       if (ids.length) q = q.in('id', ids)
 
-      const { data, error, count } = await q.select('id')
+      const { error, count } = await q
       if (error) {
         return NextResponse.json(
           { ok: false, action, error: error.message, processed: 0, succeeded: 0, failed: 0 },
           { status: 422 },
         )
       }
-      const processed = typeof count === 'number' ? count : (data ?? []).length
+      const processed = typeof count === 'number' ? count : 0
       return NextResponse.json({
         ok: true,
         action,
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
         processed,
         succeeded: processed,
         failed: 0,
-        results: (data ?? []).map((j: { id: string }) => ({ id: j.id, ok: true })),
+        results: [],
       })
     }
 
