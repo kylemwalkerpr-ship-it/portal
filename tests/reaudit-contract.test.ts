@@ -13,7 +13,8 @@
  *   annotations          every blocker + warning gets a fixable inline anchor
  */
 
-import { evaluateReauditContract, checkDepthGate, capAnnotations, depthMediationPlan } from '@/lib/seoFactory/reauditContract'
+import { evaluateReauditContract, checkDepthGate, capAnnotations, depthMediationPlan, leftoverAnnotationCodes } from '@/lib/seoFactory/reauditContract'
+import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import type { InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
@@ -392,6 +393,35 @@ No, the reviewer does not file anything. You receive feedback and make your own 
     expect(result.ok).toBe(true)
     expect(result.depthGate.ok).toBe(true)
     expect(result.shipReady).toBe(true)
+  })
+
+  it('leftoverAnnotationCodes is empty after mechanical disclaimer + FAQ schema', () => {
+    const draft = buildPassingArticle().replace(`\n---\n\n${DISCLAIMER}`, '')
+    const requested = [
+      { code: 'missing_disclaimer' },
+      { code: 'schema_faq' },
+    ]
+    const before = leftoverAnnotationCodes(requested, evaluateReauditContract({
+      content: draft,
+      contentType: 'legal_guide',
+      primaryKeyword: 'us visa renewal',
+      indexable: true,
+    }))
+    expect(before).toContain('missing_disclaimer')
+    const repaired = applyDeterministicRepairs({
+      content: draft,
+      primaryKeyword: 'us visa renewal',
+      contentType: 'legal_guide',
+      indexable: true,
+    })
+    const after = leftoverAnnotationCodes(requested, evaluateReauditContract({
+      content: repaired.content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'us visa renewal',
+      indexable: true,
+    }))
+    expect(after).toEqual([])
+    expect(countBodyWords(repaired.content)).toBeGreaterThan(2000)
   })
 })
 

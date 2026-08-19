@@ -10,6 +10,7 @@ import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
+import { queueClearSpec, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
 import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
@@ -276,55 +277,37 @@ export async function POST(request: NextRequest) {
     // ── Status-scoped actions: operate on entire status buckets ──
     if (action === 'clear_drafts' || action === 'clear_stuck' || action === 'clear_failed') {
       const now = new Date().toISOString()
-      let statusFilter: string[]
-      if (action === 'clear_drafts') statusFilter = ['pending']
-      else if (action === 'clear_stuck') statusFilter = ['drafting', 'pending']
-      else statusFilter = ['failed']
+      const spec = queueClearSpec(action as QueueClearAction)
+      const statusFilter = [...spec.statuses]
 
-      const targetIds = ids.length
-        ? ids
-        : (await (action === 'clear_stuck'
-            ? supabase
-                .from('content_jobs')
-                .select('id')
-                .in('status', statusFilter)
-                .lt('updated_at', new Date(Date.now() - 30 * 60_000).toISOString())
-                .order('created_at', { ascending: false })
-                .limit(500)
-            : supabase
-                .from('content_jobs')
-                .select('id')
-                .in('status', statusFilter)
-                .order('created_at', { ascending: false })
-                .limit(500)
-          ).then((r) => (r.data ?? []).map((j: { id: string }) => j.id)))
+      // One UPDATE for the whole bucket. A per-row loop of 62+ jobs blows the
+      // Worker subrequest budget and the confirm click comes back as 500/422
+      // with an empty body — the desk then looks like "clear failed".
+      let q = supabase
+        .from('content_jobs')
+        .update({ status: 'closed', closed_at: now }, { count: 'exact' })
+        .in('status', statusFilter)
+      if (spec.staleBefore) q = q.lt('updated_at', spec.staleBefore)
+      if (ids.length) q = q.in('id', ids)
 
-      if (!targetIds.length) {
-        return NextResponse.json({
-          ok: true,
-          action,
-          message: `No jobs in [${statusFilter.join(', ')}] to clear`,
-          processed: 0, succeeded: 0, failed: 0, results: [],
-        })
+      const { data, error, count } = await q.select('id')
+      if (error) {
+        return NextResponse.json(
+          { ok: false, action, error: error.message, processed: 0, succeeded: 0, failed: 0 },
+          { status: 422 },
+        )
       }
-
-      const results: Array<{ id: string; ok: boolean; error?: string }> = []
-      for (const jid of targetIds.slice(0, 500)) {
-        const { error } = await supabase
-          .from('content_jobs')
-          .update({ status: 'closed', closed_at: now })
-          .eq('id', jid)
-        results.push({ id: jid, ok: !error, error: error?.message })
-      }
-      const okCount = results.filter((r) => r.ok).length
+      const processed = typeof count === 'number' ? count : (data ?? []).length
       return NextResponse.json({
-        ok: okCount === results.length,
+        ok: true,
         action,
-        message: `Cleared ${okCount}/${results.length} jobs from [${statusFilter.join(', ')}]`,
-        processed: results.length,
-        succeeded: okCount,
-        failed: results.length - okCount,
-        results,
+        message: processed
+          ? `Abandoned ${processed} job(s) from [${statusFilter.join(', ')}]`
+          : `No jobs in [${statusFilter.join(', ')}] to clear`,
+        processed,
+        succeeded: processed,
+        failed: 0,
+        results: (data ?? []).map((j: { id: string }) => ({ id: j.id, ok: true })),
       })
     }
 

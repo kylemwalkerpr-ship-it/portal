@@ -259,6 +259,31 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
   }
 }
 
+/**
+ * Codes the editor asked to fix that are still present after a mechanical
+ * repair. When this is empty, Fix all / Fix blockers must not call the
+ * reviewer — missing_disclaimer + schema_faq are scaffold-only and Pro-0813
+ * full rewrites of a 2k+ guide routinely come back as 0 countable words.
+ */
+export function leftoverAnnotationCodes(
+  requested: Array<{ code: string }>,
+  after: { blockersData?: Array<{ code: string }>; warningsData?: Array<{ code: string }> },
+): string[] {
+  const leftover = new Set([
+    ...(after.blockersData || []).map((b) => b.code),
+    ...(after.warningsData || []).map((w) => w.code),
+  ])
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of requested) {
+    const code = String(item?.code || '').trim()
+    if (!code || seen.has(code) || !leftover.has(code)) continue
+    seen.add(code)
+    out.push(code)
+  }
+  return out
+}
+
 /** Bound an annotation list while guaranteeing every distinct code keeps at
  *  least one entry. Repeat annotations of the same code are capped at
  *  `repeatsPerCode` (3) so a flooding blocker can't bury the issues panel in

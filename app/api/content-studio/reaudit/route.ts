@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
 import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
-import { depthMediationPlan, evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
+import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
-import { countBodyWords, maxWordsForType, minWordsForType } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
 import { auditLinksLive, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
@@ -116,10 +116,16 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     temperature: 0.2,
     aiProvider,
     exclusive: Boolean(aiProvider),
+    // Reviewer is not a first-pass drafter. The universal quality contract
+    // ("Every article you write…") makes Pro-0813 rewrite the whole guide
+    // as schema/YAML or a fenced stub — countBodyWords then reads 0 and
+    // the shrink guard discards it. Lane-2 scorers already skip this.
+    skipQualityContract: true,
+    reasoningEffort: 'low',
     model: isGrok ? grokModelId({ model: effectiveModel }) : effectiveModel,
   }))
-  const text = (result?.text || '').trim()
-  if (!text) throw new Error('AI fix returned empty content')
+  const text = unwrapWholeDocumentFence((result?.text || '').trim())
+  if (!text.trim()) throw new Error('AI fix returned empty content')
   return text
 }
 
@@ -262,7 +268,13 @@ export async function POST(request: NextRequest) {
         region,
       }),
     }
-    effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
+    // Live HEAD/GET of every URL is a Worker subrequest bomb. The desk auto-gate
+    // POSTs this on tab enter; crawling links 500s the request with an empty
+    // body. Structural placeholder checks still run inside the quality gate.
+    // Opt in with liveLinks:true (the PATCH fix path still live-audits).
+    if ((body as { liveLinks?: boolean }).liveLinks === true) {
+      effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
+    }
     if (effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
@@ -347,12 +359,40 @@ export async function PATCH(request: NextRequest) {
     let depthExpandedForWarnings = false
 
     if (action === 'fix_all' && annotations && annotations.length > 0) {
+      // Mechanical first — missing_disclaimer / schema_faq / TOC never need a
+      // 2.6k-word Pro rewrite. The reviewer pin inherits generateContentText's
+      // drafter role; a full rewrite of a long guide is how we get
+      // "0 words vs N original" discards.
+      const mechanical = applyDeterministicRepairs({
+        content,
+        primaryKeyword: primaryKeyword || 'guide',
+        region,
+        indexable,
+        contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        competingUrls: competingUrls as any,
+        targetUrl: (body as { targetUrl?: string }).targetUrl,
+      })
+      const afterMech = evaluateReauditContract({
+        content: mechanical.content,
+        contentType,
+        primaryKeyword,
+        indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        region,
+      })
+      const leftover = leftoverAnnotationCodes(annotations, afterMech)
+      if (leftover.length === 0) {
+        fixedContent = mechanical.content
+      } else {
       // Master Engine gaps FIRST — the model must tackle the highest-priority
       // expected-value gaps (internal links, schema, citations, YMYL trust…) in
       // order before the annotation sweep, so the rewrite converges on the
       // strategic gaps rather than only the mechanical issues.
       enginePlan = masterEngineFixPlan({
-        content,
+        content: mechanical.content,
         primaryKeyword,
         contentType,
         region,
@@ -360,13 +400,14 @@ export async function PATCH(request: NextRequest) {
         competingSnippets,
         competingUrls,
       })
+      const leftoverSet = new Set(leftover)
       // Build a comprehensive fix prompt listing every issue
       const blockerList = annotations
-        .filter((a) => a.severity === 'blocker')
+        .filter((a) => a.severity === 'blocker' && leftoverSet.has(a.code))
         .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}" -> Fix: ${a.fix}`)
         .join('\n')
       const warningList = annotations
-        .filter((a) => a.severity === 'warning')
+        .filter((a) => a.severity === 'warning' && leftoverSet.has(a.code))
         .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}"`)
         .join('\n')
 
@@ -374,7 +415,7 @@ export async function PATCH(request: NextRequest) {
       const prompt = `${enginePlan.promptBlock}
 ## Original Article
 
-${content}
+${mechanical.content}
 
 ## QUALITY ISSUES TO FIX (BLOCKERS - MUST FIX)
 ${blockerList}
@@ -393,6 +434,7 @@ ${warningList}
 8. Return the COMPLETE fixed article, nothing else`
 
       fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
+      }
 
     } else if (action === 'fix_one' && annotation) {
       const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.'

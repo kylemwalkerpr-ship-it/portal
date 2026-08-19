@@ -27,6 +27,7 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream } from '@/lib/seoFactory/sse'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
+import { queueClearConfirmCopy, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
 import { countBodyWords, formatBodyWordDisplay } from '@/lib/seoFactory/contentDepth'
 import {
   extractMetricValues,
@@ -5385,7 +5386,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         : kind === 'clear_failed' ? (jobSummary?.failed ?? 0)
         : jobs.filter((j) => (j.status === 'drafting' || j.status === 'pending') && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000).length
       const n = isClearBucket ? bucketCount : ids.length
-      setActionNotice(`Click again to confirm ${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')} on ${n} job(s).`)
+      const confirmCopy = isClearBucket
+        ? queueClearConfirmCopy(kind as QueueClearAction, n)
+        : `Click again to confirm abandon on ${n} job(s).`
+      setActionNotice(confirmCopy)
       return
     }
     setQueueBulkConfirmArmed(null)
