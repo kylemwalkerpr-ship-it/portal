@@ -291,6 +291,16 @@ function env(name: string): string {
   return (process.env[name] || '').trim()
 }
 
+/**
+ * Vault-aware env lookup for provider credentials/endpoints. The configurator
+ * (AI Key Vault in Supabase) wins over Worker secrets (process.env) — every
+ * provider key / model / base-URL read must go through this so an admin-pasted
+ * key is honored before the deployed env.
+ */
+export function contentAiEnv(name: string): string {
+  return env(name)
+}
+
 /** Workers AI daily-neuron exhaustion is permanent until the quota resets. */
 function isDailyQuotaError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
@@ -619,6 +629,11 @@ export function isNvidiaGlmConfigured(): boolean {
 /** True when Grok can run: SuperGrok OAuth overlay or an XAI_API_KEY. */
 export function isGrokConfigured(): boolean {
   return Boolean(env('XAI_API_KEY'))
+}
+
+/** True when OpenAI can run: an OPENAI_API_KEY that isn't a Parasail psk- key. */
+export function isOpenaiConfigured(): boolean {
+  return Boolean(env('OPENAI_API_KEY') && !looksLikeParasailKey(env('OPENAI_API_KEY')))
 }
 
 /** UI / pin aliases that are not xAI model ids. "grok" must never be sent. */

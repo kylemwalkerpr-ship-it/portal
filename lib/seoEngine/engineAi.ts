@@ -15,6 +15,7 @@
 import {
   generateContentText,
   isGrokConfigured,
+  isOpenaiConfigured,
   isParasailConfigured,
   refreshAiVault,
   type ContentAiOptions,
@@ -70,15 +71,15 @@ export type EngineTextResult = ContentAiResult & { pair?: EnginePairMeta }
 export function resolveEngineAiProvider(preferred?: string): string {
   const want = String(preferred || '').trim()
   if (!want || want === 'auto' || want === ENGINE_PAIR) {
-    if (process.env.XAI_API_KEY || process.env.GROK_API_KEY || process.env.PARASAIL_API_KEY) {
+    if (isGrokConfigured() || isParasailConfigured()) {
       return ENGINE_PAIR
     }
-    if (process.env.OPENAI_API_KEY) return 'openai'
+    if (isOpenaiConfigured()) return 'openai'
     return ENGINE_PAIR
   }
   if (want === ENGINE_FALLBACK_PROVIDER) return ENGINE_FALLBACK_PROVIDER
-  if (want === 'openai' && !process.env.OPENAI_API_KEY) {
-    if (process.env.XAI_API_KEY || process.env.GROK_API_KEY) return ENGINE_FALLBACK_PROVIDER
+  if (want === 'openai' && !isOpenaiConfigured()) {
+    if (isGrokConfigured()) return ENGINE_FALLBACK_PROVIDER
   }
   return want
 }
@@ -354,7 +355,7 @@ export async function generateEngineText(
   }
 
   const primary = asksPair
-    ? (process.env.OPENAI_API_KEY ? 'openai' : ENGINE_FALLBACK_PROVIDER)
+    ? (isOpenaiConfigured() ? 'openai' : ENGINE_FALLBACK_PROVIDER)
     : resolveEngineAiProvider(opts.aiProvider)
 
   if (primary === ENGINE_PAIR) {

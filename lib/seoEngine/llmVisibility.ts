@@ -33,14 +33,15 @@
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
+  contentAiEnv,
   generateContentText,
   isBasetenConfigured,
   isNvidiaGlmConfigured,
   isNvidiaDeepseekConfigured,
   isAihubmixGlmFastConfigured,
   isGrokConfigured,
+  isOpenaiConfigured,
   isParasailConfigured,
-  looksLikeParasailKey,
 } from '@/lib/contentAiProvider'
 import {
   scoreAuditCandidates,
@@ -338,10 +339,10 @@ function auditEngineCandidates(): AuditEngineCandidate[] {
     { pin: 'parasail-deepseek', label: 'deepseek', configured: () => isParasailConfigured() },
     { pin: 'parasail-deepseek-pro', label: 'deepseek', configured: () => isParasailConfigured() },
     { pin: 'parasail-glm', label: 'glm', configured: () => isParasailConfigured() },
-    { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY) },
-    { pin: 'gemini', label: 'gemini', configured: () => Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) },
-    { pin: 'groq', label: 'groq', configured: () => Boolean(process.env.GROQ_API_KEY) },
-    { pin: 'openai', label: 'openai', configured: () => Boolean(process.env.OPENAI_API_KEY && !looksLikeParasailKey(process.env.OPENAI_API_KEY)) },
+    { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(contentAiEnv('GROK_API_KEY')) },
+    { pin: 'gemini', label: 'gemini', configured: () => Boolean(contentAiEnv('GEMINI_API_KEY') || contentAiEnv('GOOGLE_GEMINI_API_KEY')) },
+    { pin: 'groq', label: 'groq', configured: () => Boolean(contentAiEnv('GROQ_API_KEY')) },
+    { pin: 'openai', label: 'openai', configured: () => isOpenaiConfigured() },
   ]
 }
 

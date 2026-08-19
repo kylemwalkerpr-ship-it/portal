@@ -27,6 +27,8 @@
  * names all of them so the operator sees the full picture.
  */
 
+import { contentAiEnv } from '@/lib/contentAiProvider'
+
 export type ChatTurn = { role: 'user' | 'assistant'; content: string }
 
 export interface ChatReplyOptions {
@@ -350,20 +352,20 @@ export function getChatProvider(): ChatProvider | null {
   // encodeURIComponent() on that newline turns into %0A in the
   // request URL, which Google's Generative Language API rejects with
   // API_KEY_INVALID. Same applies to Groq's Authorization header.
-  const groqKey = (process.env.GROQ_API_KEY || '').trim()
-  const geminiKey = ((process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) || '').trim()
-  const cfAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  const groqKey = contentAiEnv('GROQ_API_KEY').trim()
+  const geminiKey = (contentAiEnv('GEMINI_API_KEY') || contentAiEnv('GOOGLE_GEMINI_API_KEY')).trim()
+  const cfAccountId = contentAiEnv('CLOUDFLARE_ACCOUNT_ID').trim()
   // Prefer a scoped Workers AI token. Also accept CLOUDFLARE_API_TOKEN when
   // it was created with Workers AI Read (dashboard custom token). A deploy
   // token *without* AI scope still 401s — in that case create a dedicated
   // AI token and set CLOUDFLARE_AI_TOKEN (or replace CLOUDFLARE_API_TOKEN).
   const cfAiToken = (
-    process.env.CLOUDFLARE_AI_TOKEN ||
-    process.env.CLOUDFLARE_WORKERS_AI_TOKEN ||
-    process.env.CLOUDFLARE_API_TOKEN ||
+    contentAiEnv('CLOUDFLARE_AI_TOKEN') ||
+    contentAiEnv('CLOUDFLARE_WORKERS_AI_TOKEN') ||
+    contentAiEnv('CLOUDFLARE_API_TOKEN') ||
     ''
   ).trim()
-  const openRouterKey = (process.env.OPENROUTER_API_KEY || '').trim()
+  const openRouterKey = contentAiEnv('OPENROUTER_API_KEY').trim()
   const groq = groqKey ? buildGroq(groqKey) : null
   const gemini = geminiKey ? buildGemini(geminiKey) : null
   const cloudflare = cfAccountId && cfAiToken ? buildCloudflareAI(cfAccountId, cfAiToken) : null
