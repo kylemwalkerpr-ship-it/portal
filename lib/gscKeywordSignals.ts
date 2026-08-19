@@ -45,6 +45,7 @@
 // draft flow snappy and protects the daily quota across the workspace.
 
 import type { Jurisdiction } from './seoResearch'
+import { parseServiceAccountJson } from './gscAuth'
 
 export interface LiveKeywordSignal {
   term: string
@@ -213,7 +214,7 @@ export async function fetchGscKeywordSignals(
   try {
     const accessToken = hasOAuth
       ? await getAccessTokenFromRefreshToken(refreshToken, oauthClientId, oauthClientSecret)
-      : await getAccessToken(JSON.parse(saJson as string) as ServiceAccount)
+      : await getAccessToken(parseServiceAccountJson(saJson as string))
 
     // 28-day window matches GSC default.
     const endDate = new Date().toISOString().slice(0, 10)

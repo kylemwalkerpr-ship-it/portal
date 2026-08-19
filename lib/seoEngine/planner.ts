@@ -43,6 +43,7 @@ import {
 import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 
 export interface GscSignalInput {
@@ -280,7 +281,25 @@ function slugify(s: string): string {
 }
 
 function stemTerm(term: string): string {
-  return term.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).slice(0, 4).join(' ')
+  return normalizePlannerTopic(term).split(/\s+/).slice(0, 4).join(' ')
+}
+
+/** Strip punctuation but keep spaces so "UK Graduate Visa (2026)" matches intel. */
+export function normalizePlannerTopic(term: string): string {
+  return String(term || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Persist key for a cluster plan. Must include country + stage — otherwise
+ * "f-1 visa" (US) and a UK cell with the same stem overwrite each other in
+ * seo_cluster_plans and every run reprints the same row.
+ */
+export function plannerClusterId(country: string, stage: string, term: string): string {
+  return `seo-${slugify(`${country}-${stage}-${stemTerm(term)}`)}`
 }
 
 // Deterministic opportunity score: demand × gap × lifecycle priority × freshness
@@ -295,24 +314,89 @@ function opportunityScore(sig: GscSignalInput, stagePriority: number, knowledgeB
   return Math.round((demand + clickBonus) * gap * (stagePriority / 5) * (1 + knowledgeBias))
 }
 
-// Match a GSC term to the best lifecycle cell using seed-keyword overlap.
-function bestCellForTerm(term: string): { stage: string; country: Country; score: number } {
-  const t = term.toLowerCase()
-  let best = { stage: 'visa', country: 'US' as Country, score: 0 }
+/**
+ * Minimum ontology overlap before a GSC term becomes a cluster plan.
+ * Score 0 used to default to visa/US, so brand junk and unmatched campus
+ * queries were published as fake US visa missions.
+ */
+export const MIN_CELL_MATCH_SCORE = 2
+
+/** Country markers that must score even when they are 2-letter tokens (`uk`). */
+const COUNTRY_HINTS: Record<Country, RegExp> = {
+  UK: /\b(uk|u\.k\.|united kingdom|britain|british|england|scotland|wales|ukvi|ilr|appendix fm|tier\s*[25]|graduate route|warwick)\b/i,
+  CA: /\b(canada|canadian|ircc|express entry|lmia|study permit|spousal sponsorship)\b/i,
+  AU: /\b(australia|australian|subclass|home affairs|ministerial direction|485)\b/i,
+  US: /\b(usa|u\.s\.a\.|united states|uscis|sevis|sevp|f-?1|h-?1b|opt|green card|i-?485|i-?130|asu|arizona state)\b/i,
+}
+
+const SHORT_MATCH_TOKENS = new Set([
+  'uk', 'us', 'au', 'ca', 'pr', 'ilr', 'f1', 'h1b', 'k1', 'opt', 'cas', 'coe', 'pnp',
+])
+
+const STOP_MATCH_TOKENS = new Set([
+  'from', 'with', 'that', 'this', 'into', 'near', 'over', 'your', 'you', 'are', 'was',
+  'for', 'and', 'the', 'onto', 'than', 'then', 'have', 'has',
+])
+
+function matchBlob(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/-/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hasToken(haystack: string, token: string): boolean {
+  if (!token) return false
+  const esc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^a-z0-9])${esc}s?(?:[^a-z0-9]|$)`).test(haystack)
+}
+
+function hintedCountries(term: string): Set<Country> {
+  const found = new Set<Country>()
+  for (const c of COUNTRIES) {
+    if (COUNTRY_HINTS[c].test(term)) found.add(c)
+  }
+  return found
+}
+
+/**
+ * Match a GSC term to the best lifecycle cell using seed-keyword overlap.
+ * Returns score 0 with an empty stage when nothing in the ontology fits —
+ * callers must drop that row rather than invent a visa/US mission.
+ */
+export function bestCellForTerm(term: string): { stage: string; country: Country; score: number } {
+  const raw = String(term || '')
+  const t = matchBlob(raw)
+  const hints = hintedCountries(raw)
+  let best = { stage: '', country: 'US' as Country, score: 0 }
   for (const stage of LIFECYCLE_STAGES) {
     for (const country of COUNTRIES) {
       const cell = stage.countries[country]
-      let score = 0
+      let seedScore = 0
       for (const kw of cell.seedKeywords) {
-        const k = kw.toLowerCase()
-        if (t.includes(k)) score += k.split(' ').length * 2
+        const k = matchBlob(kw)
+        if (!k) continue
+        let s = 0
+        if (t.includes(k)) s = Math.max(2, k.split(' ').filter(Boolean).length * 2)
         else {
-          const tw = k.split(' ')
-          const hits = tw.filter((w) => w.length > 3 && t.includes(w)).length
-          score += hits
+          for (const w of k.split(' ').filter(Boolean)) {
+            if (STOP_MATCH_TOKENS.has(w)) continue
+            if ((w.length > 3 || SHORT_MATCH_TOKENS.has(w)) && hasToken(t, w)) s += 1
+          }
         }
+        if (s > seedScore) seedScore = s
       }
-      for (const a of cell.authorities) if (t.includes(a.toLowerCase())) score += 3
+      let score = seedScore
+      for (const a of cell.authorities) {
+        const al = matchBlob(a)
+        if (al && hasToken(t, al)) score += 3
+      }
+      if (hints.size) {
+        if (hints.has(country)) score += 4
+        else score -= 3
+      }
       if (score > best.score) best = { stage: stage.key, country, score }
     }
   }
@@ -424,8 +508,19 @@ export interface PlannerRun {
 
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const pair = emptyPairRollup()
-  req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC demand signals…')
-  const signals = req.signals || (await pullGscSignals())
+  req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC + market-demand signals…')
+  let signals = req.signals
+  if (!signals) {
+    const gsc = await pullGscSignals()
+    try {
+      const { loadKeywordDemandSignals, mergeDemandSignals } = await import('./keywordDemand')
+      const market = await loadKeywordDemandSignals()
+      signals = mergeDemandSignals(gsc, market)
+      req.onProgress?.('signals', `${gsc.length} GSC + ${market.length} market-demand signal(s)`)
+    } catch {
+      signals = gsc
+    }
+  }
   req.onProgress?.('signals', `${signals.length} demand signal(s) loaded`)
   req.onProgress?.('knowledge', 'Loading knowledge + predictive intelligence…')
   const knowledge = (req.knowledge as unknown as Array<Record<string, unknown>>) || (await pullLatestKnowledge())
@@ -454,11 +549,20 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const stageFilter = req.stage && getStage(req.stage) ? req.stage : null
   const countryFilter = req.country && isCountry(req.country) ? (req.country as Country) : null
 
-  const candidates: Array<{ sig: GscSignalInput; stage: string; country: Country; stageScore: number; matchScore: number }> = []
+  const candidates: Array<{
+    sig: GscSignalInput
+    stage: string
+    country: Country
+    stageScore: number
+    matchScore: number
+    rankedScore: number
+  }> = []
 
   for (const sig of signals) {
     if (!sig.term || sig.impressions < 10) continue
+    if (isJunkQuery(sig.term)) continue
     const match = bestCellForTerm(sig.term)
+    if (match.score < MIN_CELL_MATCH_SCORE || !match.stage) continue
     const stage = stageFilter && stageFilter !== match.stage ? stageFilter : match.stage
     const country = countryFilter || match.country
     const stageDef = getStage(stage)
@@ -467,18 +571,23 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     if (!cell) continue
     const cellBias = bias.get(cellId(stage, country)) || 0
     const pri = stageDef.priority || 5
-    const predictive = predictiveByTopic.get(sig.term.toLowerCase().replace(/[^a-z0-9\\s-]/g, ' ').replace(/\\s+/g, ' ').trim())
+    const predictive = predictiveByTopic.get(normalizePlannerTopic(sig.term))
     // Predictive intelligence is a bounded confidence/freshness adjustment,
     // never a fabricated ranking factor. GSC demand remains the dominant input.
     const predictiveAdjustment = predictive
       ? 0.9 + Math.min(0.1, Math.max(0, predictive.confidence * predictive.freshness) * 0.1)
       : 0.9
-    const score = opportunityScore(sig, pri, cellBias / 8) * predictiveAdjustment
-    candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score })
-    // Bias the top list toward cells with fresh knowledge
-    candidates.sort((a, b) => opportunityScore(b.sig, b.stageScore, (bias.get(cellId(b.stage, b.country)) || 0) / 8) - opportunityScore(a.sig, a.stageScore, (bias.get(cellId(a.stage, a.country)) || 0) / 8))
-    if (candidates.length > limit * 2) candidates.length = limit * 2
+    const rankedScore = opportunityScore(sig, pri, cellBias / 8) * predictiveAdjustment
+    candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score, rankedScore })
   }
+  const ownedSite = (sig: GscSignalInput) =>
+    (Number(sig.clicks) || 0) > 0 || (Number(sig.position) || 100) < 70
+  const owned = candidates.filter((c) => ownedSite(c.sig)).sort((a, b) => b.rankedScore - a.rankedScore)
+  const market = candidates.filter((c) => !ownedSite(c.sig)).sort((a, b) => b.rankedScore - a.rankedScore)
+  const cap = limit * 2
+  const reserved = Math.min(owned.length, cap)
+  candidates.length = 0
+  candidates.push(...owned.slice(0, reserved), ...market.slice(0, Math.max(0, cap - reserved)))
 
   const plans: ClusterPlan[] = []
   const usedTerms = new Set<string>()
@@ -493,11 +602,15 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     const stageDef = getStage(stage)!
     const cell = stageDef.countries[country]
     const primaryTerm = sig.term
-    const clusterId = `seo-${slugify(stemTerm(primaryTerm))}`
+    const clusterId = plannerClusterId(country, stage, primaryTerm)
 
     // Related terms: other signals in the same cell
     const related = signals
-      .filter((s) => s.term !== primaryTerm && bestCellForTerm(s.term).stage === stage && bestCellForTerm(s.term).country === country)
+      .filter((s) => {
+        if (!s.term || s.term === primaryTerm || isJunkQuery(s.term)) return false
+        const rel = bestCellForTerm(s.term)
+        return rel.score >= MIN_CELL_MATCH_SCORE && rel.stage === stage && rel.country === country
+      })
       .slice(0, 8)
       .map((s) => s.term)
 
@@ -542,7 +655,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
 
     const rationale =
       `#${Math.round(sig.position)} · ${fmtNum(sig.impressions)} imp/mo → gap-driven ${stageDef.label} (${country}) mission. ` +
-      `Bias from ${cellBiasFor(bias, stage, country)} fresh intel items; predictive evidence ${predictiveByTopic.has(primaryTerm.toLowerCase().replace(/[^a-z0-9\\s-]/g, ' ').replace(/\\s+/g, ' ').trim()) ? 'present' : 'not yet linked'}. YMYL: ${stageDef.ymyl}.`
+      `Bias from ${cellBiasFor(bias, stage, country)} fresh intel items; predictive evidence ${predictiveByTopic.has(normalizePlannerTopic(primaryTerm)) ? 'present' : 'not yet linked'}. YMYL: ${stageDef.ymyl}.`
 
     let brief = ''
     if (draft) {
@@ -583,7 +696,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       cell: cellId(stage, country),
       intent: stageDef.intentMix.informational > stageDef.intentMix.transactional ? 'informational' : 'transactional',
       ymyl: stageDef.ymyl,
-      opportunityScore: opportunityScore(sig, stageDef.priority || 5, cellBiasFor(bias, stage, country) / 8),
+      opportunityScore: Math.round(c.rankedScore),
       estMonthlyImpressions: sig.impressions,
       estMonthlyClicks: sig.clicks,
       position: sig.position ?? null,

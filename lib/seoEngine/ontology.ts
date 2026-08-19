@@ -122,7 +122,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
         neighbors: { prev: 'intent', next: 'work', across: ['schools|uk', 'schools|ca', 'schools|au'] },
       },
       UK: {
-        seedKeywords: K(['uk student visa requirements', 'study in uk for international students', 'uk student visa application 2026', 'cas letter explained', 'uk universities for african students']),
+        seedKeywords: K(['uk student visa requirements', 'study in uk for international students', 'uk student visa application 2026', 'cas letter explained', 'uk universities for african students', 'uk student visa process']),
         statutoryAnchors: ['UK Immigration Rules Part 3 (Students)'],
         authorities: ['Home Office', 'UKVI'],
         neighbors: { prev: 'intent', next: 'work', across: ['schools|us', 'schools|ca', 'schools|au'] },
@@ -134,7 +134,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
         neighbors: { prev: 'intent', next: 'work', across: ['schools|us', 'schools|uk', 'schools|au'] },
       },
       AU: {
-        seedKeywords: K(['australia student visa subclass 500', 'study in australia for international students', 'australia student visa requirements 2026', 'coe explained australia', 'australian universities for african students']),
+        seedKeywords: K(['australia student visa subclass 500', 'study in australia for international students', 'australia student visa requirements 2026', 'coe explained australia', 'australian universities for african students', 'ministerial direction 111']),
         statutoryAnchors: ['Migration Regulations 1994 Sch 2 subclass 500'],
         authorities: ['Department of Home Affairs', 'Department of Education'],
         neighbors: { prev: 'intent', next: 'work', across: ['schools|us', 'schools|uk', 'schools|ca'] },
@@ -161,7 +161,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
         neighbors: { prev: 'schools', next: 'visa', across: ['work|uk', 'work|ca', 'work|au'] },
       },
       UK: {
-        seedKeywords: K(['skilled worker visa requirements', 'uk skilled worker visa 2026', 'uk sponsor licence list', 'health and care visa uk', 'get uk work visa from africa']),
+        seedKeywords: K(['skilled worker visa requirements', 'uk skilled worker visa 2026', 'uk sponsor licence list', 'health and care visa uk', 'get uk work visa from africa', 'tier 5 to tier 2', 'uk graduate visa', 'graduate route']),
         statutoryAnchors: ['UK Immigration Rules Part 6A (Skilled Worker)'],
         authorities: ['Home Office', 'UKVI', 'DWP'],
         neighbors: { prev: 'schools', next: 'visa', across: ['work|us', 'work|ca', 'work|au'] },
@@ -194,25 +194,25 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     proofPoints: ['rental market data', 'neighborhood guides', 'tenant rights', 'first-month costs'],
     countries: {
       US: {
-        seedKeywords: K(['rent apartment usa for immigrants', 'housing for newcomers usa', 'us tenant rights immigrants', 'cost of living usa 2026', 'find housing in usa from abroad']),
+        seedKeywords: K(['rent apartment usa for immigrants', 'housing for newcomers usa', 'us tenant rights immigrants', 'cost of living usa 2026', 'find housing in usa from abroad', 'student housing', 'university housing', 'off campus housing']),
         statutoryAnchors: ['Fair Housing Act'],
         authorities: ['HUD'],
         neighbors: { prev: 'visa', next: 'settlement', across: ['housing|uk', 'housing|ca', 'housing|au'] },
       },
       UK: {
-        seedKeywords: K(['rent house uk for immigrants', 'uk rental market newcomers', 'uk tenant rights', 'right to rent explained', 'find housing in uk from abroad']),
+        seedKeywords: K(['rent house uk for immigrants', 'uk rental market newcomers', 'uk tenant rights', 'right to rent explained', 'find housing in uk from abroad', 'student housing', 'university housing', 'off campus housing']),
         statutoryAnchors: ['Housing Act 1988', 'Right to Rent scheme'],
         authorities: ['Home Office', 'MHCLG'],
         neighbors: { prev: 'visa', next: 'settlement', across: ['housing|us', 'housing|ca', 'housing|au'] },
       },
       CA: {
-        seedKeywords: K(['rent apartment canada for immigrants', 'housing for newcomers canada', 'canada tenant rights', 'cost of living canada 2026', 'find housing in canada from abroad']),
+        seedKeywords: K(['rent apartment canada for immigrants', 'housing for newcomers canada', 'canada tenant rights', 'cost of living canada 2026', 'find housing in canada from abroad', 'student housing', 'university housing', 'off campus housing']),
         statutoryAnchors: ['Provincial Residential Tenancies Acts'],
         authorities: ['CMHC', 'Provincial bodies'],
         neighbors: { prev: 'visa', next: 'settlement', across: ['housing|us', 'housing|uk', 'housing|au'] },
       },
       AU: {
-        seedKeywords: K(['rent house australia for immigrants', 'housing for newcomers australia', 'australia tenant rights', 'cost of living australia 2026', 'find housing in australia from abroad']),
+        seedKeywords: K(['rent house australia for immigrants', 'housing for newcomers australia', 'australia tenant rights', 'cost of living australia 2026', 'find housing in australia from abroad', 'student housing', 'university housing', 'off campus housing']),
         statutoryAnchors: ['State Residential Tenancies Acts'],
         authorities: ['State authorities', 'AHURI'],
         neighbors: { prev: 'visa', next: 'settlement', across: ['housing|us', 'housing|uk', 'housing|ca'] },
@@ -233,13 +233,13 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     proofPoints: ['exact forms', 'fee schedules', 'processing times', 'document checklists', 'approved case outcomes', 'attorney review'],
     countries: {
       US: {
-        seedKeywords: K(['green card application process', 'i-485 adjustment of status', 'us visa application checklist 2026', 'immigration lawyer usa', 'visa denial appeal usa']),
+        seedKeywords: K(['green card application process', 'i-485 adjustment of status', 'us visa application checklist 2026', 'immigration lawyer usa', 'visa denial appeal usa', 'immigration status violation']),
         statutoryAnchors: ['INA', '8 CFR', 'USCIS Policy Manual'],
         authorities: ['USCIS', 'EOIR', 'DOS'],
         neighbors: { prev: 'work', next: 'housing', across: ['visa|uk', 'visa|ca', 'visa|au'] },
       },
       UK: {
-        seedKeywords: K(['uk visa application process', 'indefinite leave to remain ilr', 'uk visa documents checklist 2026', 'immigration lawyer uk', 'uk visa refusal appeal']),
+        seedKeywords: K(['uk visa application process', 'indefinite leave to remain ilr', 'uk visa documents checklist 2026', 'immigration lawyer uk', 'uk visa refusal appeal', 'administrative review uk']),
         statutoryAnchors: ['UK Immigration Rules', 'Immigration Act 1971'],
         authorities: ['Home Office', 'UKVI'],
         neighbors: { prev: 'work', next: 'housing', across: ['visa|us', 'visa|ca', 'visa|au'] },
@@ -251,7 +251,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
         neighbors: { prev: 'work', next: 'housing', across: ['visa|us', 'visa|uk', 'visa|au'] },
       },
       AU: {
-        seedKeywords: K(['australia visa application process', 'australia pr points test calculator', 'australia visa documents checklist 2026', 'migration agent australia', 'australia visa refusal appeal']),
+        seedKeywords: K(['australia visa application process', 'australia pr points test calculator', 'australia visa documents checklist 2026', 'migration agent australia', 'australia visa refusal appeal', '485 visa']),
         statutoryAnchors: ['Migration Act 1958', 'Migration Regulations 1994'],
         authorities: ['Department of Home Affairs', 'MARA'],
         neighbors: { prev: 'work', next: 'housing', across: ['visa|us', 'visa|uk', 'visa|ca'] },
@@ -356,7 +356,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
         neighbors: { prev: 'citizenship', next: 'relatives', across: ['family|uk', 'family|ca', 'family|au'] },
       },
       UK: {
-        seedKeywords: K(['uk spouse visa requirements 2026', 'uk family visa guide', 'bring parents to uk', 'uk partner visa financial requirement', 'children visa uk']),
+        seedKeywords: K(['uk spouse visa requirements 2026', 'uk family visa guide', 'bring parents to uk', 'uk partner visa financial requirement', 'children visa uk', 'appendix fm', 'uk dependent visa']),
         statutoryAnchors: ['UK Immigration Rules Part 8 / Appendix FM'],
         authorities: ['Home Office', 'UKVI'],
         neighbors: { prev: 'citizenship', next: 'relatives', across: ['family|us', 'family|ca', 'family|au'] },

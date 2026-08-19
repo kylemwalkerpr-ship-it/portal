@@ -63,6 +63,22 @@ export type StrategiesIndex = {
   packs?: Array<{ id: string; path: string }>
 }
 
+export type KeywordDemandFile = {
+  version?: string
+  updatedAt?: string
+  source?: string
+  sourceFile?: string
+  rowCount?: number
+  rows: Array<{
+    term: string
+    volume: number
+    competition: string
+    competitionIndex: number
+    bidLow: number | null
+    bidHigh: number | null
+  }>
+}
+
 export type StrategyPromptPack = {
   updatedAt?: string
   standingRules?: string[]
@@ -88,10 +104,12 @@ let snapshotCache: GscSnapshot | null = null
 let registryCache: OwnershipRegistryFile | null = null
 let strategiesIndexCache: StrategiesIndex | null = null
 let promptPackCache: StrategyPromptPack | null = null
+let keywordDemandCache: KeywordDemandFile | null = null
 let snapshotInflight: Promise<GscSnapshot> | null = null
 let registryInflight: Promise<OwnershipRegistryFile> | null = null
 let strategiesInflight: Promise<StrategiesIndex> | null = null
 let promptPackInflight: Promise<StrategyPromptPack> | null = null
+let keywordDemandInflight: Promise<KeywordDemandFile> | null = null
 
 function siteOrigin(): string {
   return (
@@ -179,6 +197,20 @@ export async function loadGscSnapshot(): Promise<GscSnapshot> {
     })()
   }
   return snapshotInflight
+}
+
+const EMPTY_KEYWORD_DEMAND: KeywordDemandFile = { rows: [] }
+
+export async function loadKeywordDemandFile(): Promise<KeywordDemandFile> {
+  if (keywordDemandCache) return keywordDemandCache
+  if (!keywordDemandInflight) {
+    keywordDemandInflight = (async () => {
+      const data = await fetchJson<KeywordDemandFile>('/seo-data/keyword-demand.json')
+      keywordDemandCache = data && Array.isArray(data.rows) ? data : EMPTY_KEYWORD_DEMAND
+      return keywordDemandCache
+    })()
+  }
+  return keywordDemandInflight
 }
 
 export async function loadOwnershipRegistry(): Promise<OwnershipRegistryFile> {

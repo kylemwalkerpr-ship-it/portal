@@ -13,6 +13,7 @@ import { POST } from '@/app/api/content-studio/gsc/connect/route'
 import { __resetGscProbeCache } from '@/lib/gscConnectProbe'
 import { getGscAccessToken } from '@/lib/gsc-service-account'
 import { saveGscConnection } from '@/lib/gscConfig'
+import { parseServiceAccountJson } from '@/lib/gscAuth'
 
 jest.mock('next/server', () => ({
   NextRequest: class {
@@ -178,5 +179,18 @@ describe('POST /api/content-studio/gsc/connect (service account)', () => {
     expect(status).toBe(500)
     expect(String(body.error)).toContain('Failed to store config')
     expect(body.connected).toBeUndefined()
+  })
+})
+
+describe('parseServiceAccountJson', () => {
+  it('unwraps extra quotes that make JSON.parse throw Unexpected token \'\'\'', () => {
+    const inner = JSON.stringify({
+      client_email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n',
+    })
+    const sa = parseServiceAccountJson(`'${inner}'`)
+    expect(sa.client_email).toContain('gsc-reader@')
+    expect(sa.private_key).toContain('BEGIN PRIVATE KEY')
+    expect(sa.private_key).toContain('\n')
   })
 })

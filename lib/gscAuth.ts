@@ -49,6 +49,36 @@ interface ServiceAccount {
   token_uri?: string
 }
 
+/**
+ * Parse a GSC service-account key from env / pasted JSON.
+ * Wrangler, .env UIs, and secret stores often wrap the object in extra
+ * quotes (`'{...}'`) which makes JSON.parse throw `Unexpected token '''`.
+ */
+export function parseServiceAccountJson(raw: string): ServiceAccount {
+  let s = String(raw || '').trim().replace(/^\uFEFF/, '')
+  if (!s) throw new Error('GSC service account JSON is empty')
+  const start = s.indexOf('{')
+  const end = s.lastIndexOf('}')
+  if (start >= 0 && end > start) s = s.slice(start, end + 1)
+  let parsed: ServiceAccount
+  try {
+    parsed = JSON.parse(s) as ServiceAccount
+  } catch (err) {
+    try {
+      parsed = JSON.parse(s.replace(/'/g, '"')) as ServiceAccount
+    } catch {
+      throw err instanceof Error ? err : new Error('GSC service account JSON is invalid')
+    }
+  }
+  if (!parsed?.client_email || !parsed?.private_key) {
+    throw new Error('GSC service account JSON missing client_email or private_key')
+  }
+  if (parsed.private_key.includes('\\n')) {
+    parsed = { ...parsed, private_key: parsed.private_key.replace(/\\n/g, '\n') }
+  }
+  return parsed
+}
+
 async function tokenFromServiceAccount(sa: ServiceAccount): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   const claim = {
@@ -148,7 +178,7 @@ export async function getGscAccess(): Promise<GscAccess | null> {
     process.env.GSC_SERVICE_ACCOUNT_KEY
   if (saJson) {
     try {
-      const sa = JSON.parse(saJson) as ServiceAccount
+      const sa = parseServiceAccountJson(saJson)
       const accessToken = await tokenFromServiceAccount(sa)
       return { accessToken, mode: 'service_account', siteUrl }
     } catch (err) {
@@ -168,7 +198,7 @@ export async function serviceAccountEmail(): Promise<string | null> {
       process.env.GSC_SERVICE_ACCOUNT_JSON ||
       process.env.GSC_SERVICE_ACCOUNT_KEY
     if (!raw) return null
-    const sa = JSON.parse(raw) as { client_email?: string }
+    const sa = parseServiceAccountJson(raw)
     return sa.client_email ?? null
   } catch {
     return null

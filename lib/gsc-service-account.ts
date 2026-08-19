@@ -5,7 +5,7 @@
  * import getGscAccessToken(serviceAccountKeyJson) keep working.
  */
 
-import { getGscAccess } from '@/lib/gscAuth'
+import { getGscAccess, parseServiceAccountJson } from '@/lib/gscAuth'
 
 // Token cache for explicit JSON key argument
 let cached: { key: string; access_token: string; expires_at: number } | null = null
@@ -42,15 +42,7 @@ export async function getGscAccessToken(serviceAccountKeyJson: string): Promise<
     return cached.access_token
   }
 
-  let key: { client_email: string; private_key: string; token_uri?: string }
-  try {
-    key = JSON.parse(serviceAccountKeyJson)
-  } catch {
-    throw new Error('GSC service account key is not valid JSON')
-  }
-  if (!key.client_email || !key.private_key) {
-    throw new Error('Service account key missing client_email or private_key')
-  }
+  const key = parseServiceAccountJson(serviceAccountKeyJson)
 
   const now = Math.floor(Date.now() / 1000)
   const claim = {

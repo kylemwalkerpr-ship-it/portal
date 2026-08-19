@@ -9,6 +9,7 @@
  *   - Google Search Central    (algorithm + AI-search guidance)
  *   - Google Trends            (daily trending topics per country)
  *   - GSC signals              (own-site demand, via existing seoFactory)
+ *   - Keyword demand JSON      (caseworks Ads export — market volume, not GSC)
  *
  * Every item is normalized into `seo_knowledge` with source, URL, title,
  * AI summary (best-effort via contentAiProvider), lifecycle-stage tags and
@@ -113,6 +114,14 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
   },
   {
     id: 'google-trends-au', label: 'Google Trends (AU)', kind: 'trend', url: 'https://trends.google.com/trending/rss?geo=AU', countries: ['AU'], limit: 10,
+  },
+  {
+    id: 'keyword-demand',
+    label: 'Caseworks keyword demand (Ads)',
+    kind: 'trend',
+    url: 'https://portal.yousafeconsultancy.com/seo-data/keyword-demand.json',
+    countries: ['US', 'UK', 'CA', 'AU'],
+    limit: 80,
   },
 ]
 
@@ -321,6 +330,23 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
     const per: KnowledgeIngestResult['perSource'][number] = { id: source.id, label: source.label, fetched: 0, stored: 0 }
     opts.onProgress?.('fetch', `Fetching ${source.label}…`)
     try {
+      if (source.id === 'keyword-demand') {
+        const { ingestKeywordDemandSource } = await import('./keywordDemand')
+        const sub = await ingestKeywordDemandSource({ limit: Math.max(limit, source.limit) })
+        per.fetched = sub.fetched
+        per.stored = sub.stored
+        result.itemsFetched += sub.fetched
+        result.itemsStored += sub.stored
+        result.skipped += sub.skipped
+        if (sub.error) {
+          per.error = sub.error
+          result.errors.push(`${source.id}: ${sub.error}`)
+        }
+        result.sourcesRun += 1
+        result.perSource.push(per)
+        opts.onProgress?.('store', `${source.label}: ${per.stored} stored · ${per.fetched} fetched`, per.error)
+        continue
+      }
       const raw = parseFeed(await fetchFeedText(source.url), limit)
       per.fetched = raw.length; result.itemsFetched += raw.length
       for (const item of raw) {
