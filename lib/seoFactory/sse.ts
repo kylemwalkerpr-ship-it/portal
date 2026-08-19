@@ -5,6 +5,22 @@
  * invokes `onEvent` with each parsed JSON object, in order.
  */
 
+/** Map a dropped stream / parse error into a studio-facing sentence. */
+export function describeGenerationFailure(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err || 'Generation failed')
+  const name = err instanceof Error ? err.name : ''
+  if (
+    name === 'AbortError' ||
+    /Failed to fetch|network|connection was lost|Load failed|ERR_NETWORK|the user aborted/i.test(raw)
+  ) {
+    return 'The live connection dropped while drafting. Open Draft to check for a checkpointed job, then retry.'
+  }
+  if (/Unexpected (token|end of JSON|EOF)|JSON\.parse/i.test(raw)) {
+    return 'The draft stream was interrupted. Open Draft to check for a checkpointed job, then retry.'
+  }
+  return raw.replace(/\s+/g, ' ').trim().slice(0, 280) || 'Generation failed'
+}
+
 export async function consumeSseStream(
   body: ReadableStream<Uint8Array>,
   onEvent: (event: Record<string, unknown>) => void,

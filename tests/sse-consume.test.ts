@@ -5,7 +5,7 @@
  * chunk boundaries, ignores the `[DONE]` sentinel and malformed frames, and
  * propagates errors thrown by the event callback.
  */
-import { consumeSseStream } from '../lib/seoFactory/sse'
+import { consumeSseStream, describeGenerationFailure } from '../lib/seoFactory/sse'
 
 function sseBody(frames: string[], chunkSize?: number): ReadableStream<Uint8Array> {
   const full = frames.map((f) => `data: ${f}\n\n`).join('')
@@ -71,5 +71,19 @@ describe('consumeSseStream', () => {
     })
     await consumeSseStream(body, (ev) => events.push(ev))
     expect(events).toEqual([{ a: 1 }])
+  })
+})
+
+describe('describeGenerationFailure', () => {
+  it('maps a dropped websocket / fetch into a retryable studio sentence', () => {
+    expect(describeGenerationFailure(new Error('Failed to fetch'))).toMatch(/live connection dropped/i)
+    expect(describeGenerationFailure(new Error('The network connection was lost'))).toMatch(/checkpointed job/i)
+    const abort = new Error('The user aborted a request')
+    abort.name = 'AbortError'
+    expect(describeGenerationFailure(abort)).toMatch(/live connection dropped/i)
+  })
+
+  it('keeps pipeline errors readable', () => {
+    expect(describeGenerationFailure(new Error('Rejected junk keyword: "asdf"'))).toContain('Rejected junk keyword')
   })
 })

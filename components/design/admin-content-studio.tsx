@@ -24,7 +24,8 @@ import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
-import { consumeSseStream } from '@/lib/seoFactory/sse'
+import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
+import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
@@ -52,7 +53,6 @@ import {
   type CannibalMergeResponseBody,
   type CannibalResolveOutcome,
 } from '@/lib/seoFactory/cannibalResolveOutcome'
-import { subscribeToTable } from '@/lib/supabaseRealtime'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
@@ -415,30 +415,12 @@ async function consumeSseResponse(
   }
   if (!response.body) throw new Error('Generation stream returned no readable body')
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
   let finalResult: any = null
-  const consume = (raw: string) => {
-    const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
-    if (!dataLine) return
-    const payload = dataLine.slice(5).trim()
-    if (!payload || payload === '[DONE]') return
-    const event = JSON.parse(payload)
+  await consumeSseStream(response.body, (event) => {
     onEvent(event)
     if (event.type === 'final') finalResult = event.result
-    if (event.type === 'error') throw new Error(event.error || 'Generation pipeline failed')
-  }
-
-  while (true) {
-    const { value, done } = await reader.read()
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-    const chunks = buffer.split(/\r?\n\r?\n/)
-    buffer = chunks.pop() || ''
-    for (const chunk of chunks) consume(chunk)
-    if (done) break
-  }
-  if (buffer.trim()) consume(buffer)
+    if (event.type === 'error') throw new Error(String(event.error || 'Generation pipeline failed'))
+  })
   if (!finalResult) throw new Error('Generation stream ended before a final result was received')
   return finalResult
 }
@@ -5294,7 +5276,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const fallback = window.setTimeout(() => {
       setDeskLive((prev) => (prev === 'connecting' ? 'poll' : prev))
     }, 4000)
-    const offs = [
+    const off = subscribeToTables([
       'seo_knowledge',
       'seo_cluster_plans',
       'seo_interlinks',
@@ -5302,11 +5284,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       'seo_gate_runs',
       'seo_engine_runs',
       'seo_ranking_scores',
-    ].map((table) => subscribeToTable(table, 'public', kick, onStatus))
+    ], 'public', kick, onStatus)
     return () => {
       if (t) clearTimeout(t)
       window.clearTimeout(fallback)
-      offs.forEach((off) => off())
+      off()
     }
   }, [fetchEngineStatus])
 
@@ -5818,26 +5800,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         competingUrls: competingUrls.length ? competingUrls : undefined,
       }),
       })
-      if (!res.ok) {
-        const failure = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(failure.error || `Generation stream HTTP ${res.status}`)
-      }
-      if (!res.body) throw new Error('Generation stream returned no readable body')
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let finalResult: any = null
       let streamChars = 0
       // Early 'drafting' job row created by the pipeline — lets the Draft queue
       // show '1 In Progress' in realtime while the AI writes, before the final row.
       let liveJobId = ''
-      const consume = (raw: string) => {
-        const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
-        if (!dataLine) return
-        const payload = dataLine.slice(5).trim()
-        if (!payload || payload === '[DONE]') return
-        const event = JSON.parse(payload) as any
+      const data = await consumeSseResponse(res, (event: any) => {
         if (event.type === 'progress') record(event.stage || 'pipeline', event.message || 'Working…')
         else if (event.type === 'provider') {
           setTriedProviders((prev) => {
@@ -5864,23 +5831,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           setGenerationText((prev) => prev + chunk)
         } else if (event.type === 'ship') record('ship', event.ship?.prUrl ? `Pull request opened · audit passed` : event.shipError ? `Ship paused: ${event.shipError}` : 'Draft audited; preparing delivery', event.shipError ? 'warn' : 'info')
         else if (event.type === 'final') {
-          finalResult = event.result
           record('complete', event.result?.ship?.prUrl ? 'PR opened. The job is now ready for review.' : 'Generation complete. Job details are being refreshed.', 'success')
-        } else if (event.type === 'error') throw new Error(event.error || 'Generation pipeline failed')
-      }
-
-      while (true) {
-        const { value, done } = await reader.read()
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-        const chunks = buffer.split(/\r?\n\r?\n/)
-        buffer = chunks.pop() || ''
-        for (const chunk of chunks) consume(chunk)
-        if (done) break
-      }
-      if (buffer.trim()) consume(buffer)
-      if (!finalResult) throw new Error('Generation stream ended before a final result was received')
-
-      const data = finalResult
+        }
+      })
       const generatedJobId = String(data.jobId || data.job?.id || data.ship?.jobId || liveJobId || '')
       const shipBlocked = Boolean(data.shipError)
       const notice = data.ship?.prUrl
@@ -5905,10 +5858,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       }
       await fetchGateRuns()
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Generation failed'
+      const message = describeGenerationFailure(err)
       record('error', message, 'error')
       setError(message)
-      setActionNotice('Content generation failed.')
+      setActionNotice(`Content generation failed — ${message}`)
+      fetchJobs().catch(() => {})
     } finally { setGenerating(false) }
   }
 
@@ -5922,7 +5876,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     // before the first SSE frame arrives, so a busy button is never silent.
     setEngineTrace([{ seq: -1, phase: 'connect', message: 'Connecting to engine stream…', tone: 'info' }])
     const controller = new AbortController()
-    const timeoutMs = kind === 'ingest' ? 180_000 : 90_000
+    const timeoutMs = kind === 'ingest' || kind === 'llm' ? 180_000 : 90_000
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const res = await fetch('/api/seo-engine/action-stream', {
@@ -5931,9 +5885,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           kind,
-          limit: 10,
+          limit: kind === 'plan' ? 20 : 10,
           draftBriefs: false,
-          maxAudits: 6,
+          maxAudits: kind === 'llm' ? 4 : 6,
           limitPerSource: 8,
           maxAiItems: 0,
           aiSummarize: false,
@@ -5979,8 +5933,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       await fetchEngineStatus()
     } catch (e) {
       const timedOut = e instanceof Error && e.name === 'AbortError'
+      const timeoutHint = kind === 'ingest'
+        ? 'hung feeds were skipped'
+        : kind === 'plan'
+          ? 'failed feeders were skipped'
+          : 'the audit was aborted'
       const message = timedOut
-        ? `${kind} timed out after ${Math.round(timeoutMs / 1000)}s — hung feeds were skipped`
+        ? `${kind} timed out after ${Math.round(timeoutMs / 1000)}s — ${timeoutHint}`
         : e instanceof Error ? e.message : `${kind} failed`
       setEngineTrace((prev) => [...prev, { seq: 9999, phase: timedOut ? 'timeout' : 'error', message, tone: 'warn' }])
       setError(message)

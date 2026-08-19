@@ -81,9 +81,14 @@ export interface VisibilityAuditOptions {
   queries?: string[]
   engineLabel?: string
   maxAudits?: number
+  /** Answer engines per query. Masthead uses 2 so a 90–180s tape can finish. */
+  maxEngines?: number
   /** Live progress callback for streaming surfaces (phase, message, detail). */
   onProgress?: (phase: string, message: string, detail?: string) => void
 }
+
+/** Per-engine cap — content drafting allows 180s; an audit ping must not. */
+export const AUDIT_ENGINE_TIMEOUT_MS = 14_000
 
 /**
  * Build the live audit slate from planner + knowledge + prior visibility
@@ -368,6 +373,9 @@ async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit
     const ai = await generateContentText({
       aiProvider: pin,
       exclusive: true,
+      skipQualityContract: true,
+      strictTimeout: true,
+      timeoutMs: AUDIT_ENGINE_TIMEOUT_MS,
       system: AUDIT_SYSTEM_PROMPT,
       prompt: query,
       maxTokens: 900,
@@ -503,27 +511,32 @@ export function buildCitationActions(evidence: {
  * Run one audit for a single query across the multi-engine matrix. Never
  * throws — returns a partial record with per-engine failures on error.
  */
-export async function auditQuery(query: string, engineLabel = 'deepseek', model: string | null = null): Promise<VisibilityAuditResult> {
+export async function auditQuery(query: string, engineLabel = 'deepseek', model: string | null = null, maxEngines = 2): Promise<VisibilityAuditResult> {
   const empty: VisibilityAuditResult = {
     query, engine: engineLabel, model, cited: false, citedUrls: [], brandMentions: [],
     competitorDomains: [], snippet: '', rawScore: 0, shareOfVoice: 0, stage: null, country: null,
     engines: [], topCompetitor: null, actions: [],
   }
-  const pins = resolveAuditEngines(3)
+  let pins = resolveAuditEngines(Math.max(1, Math.min(3, maxEngines)))
   if (!pins.length) {
     // No configured engine — try the un-pinned cascade once so the audit still
     // produces something on estates with a minimal provider set.
     try {
-      const ai = await generateContentText({ system: AUDIT_SYSTEM_PROMPT, prompt: query, maxTokens: 900, temperature: 0.2 })
-      pins.push(ai.provider || 'cascade')
+      const ai = await generateContentText({
+        system: AUDIT_SYSTEM_PROMPT,
+        prompt: query,
+        maxTokens: 900,
+        temperature: 0.2,
+        skipQualityContract: true,
+        strictTimeout: true,
+        timeoutMs: AUDIT_ENGINE_TIMEOUT_MS,
+      })
+      pins = [ai.provider || 'cascade']
     } catch {
       return empty
     }
   }
-  const engineAudits: EngineAudit[] = []
-  for (const pin of pins) {
-    engineAudits.push(await auditQueryEngine(query, pin))
-  }
+  const engineAudits = await Promise.all(pins.map((pin) => auditQueryEngine(query, pin)))
   if (!engineAudits.length) return empty
   return aggregateEngineAudits(query, engineAudits)
 }
@@ -539,6 +552,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   selected?: Array<{ query: string; source: string; score: number; reasons: string[] }>
 }> {
   const cap = Math.min(15, opts.maxAudits ?? 10)
+  const maxEngines = Math.max(1, Math.min(3, opts.maxEngines ?? 2))
   let queries = (opts.queries || []).map(String).filter(Boolean).slice(0, cap)
   let selected: Array<{ query: string; source: string; score: number; reasons: string[] }> = []
   if (!queries.length) {
@@ -553,7 +567,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     opts.onProgress?.(
       'think',
       `Selected ${queries.length} adaptive queries (not the fixed seed list)`,
-      selected.slice(0, 3).map((s) => `${s.query.slice(0, 48)} [${s.source}]`).join(' · ') || undefined,
+      selected.slice(0, 3).map((s) => `${s.query} (${s.source})`).join(' · ') || undefined,
     )
   }
   if (!queries.length) queries = DEFAULT_AUDIT_QUERIES.slice(0, cap)
@@ -563,7 +577,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   for (const q of queries) {
     const why = selected.find((s) => s.query === q)
     opts.onProgress?.('audit', `Auditing “${q}”…`, why ? why.reasons.join(' · ') : undefined)
-    const result = await auditQuery(q, engine)
+    const result = await auditQuery(q, engine, null, maxEngines)
     audits.push(result)
     opts.onProgress?.('result', `“${q}” ${result.cited ? 'cited the estate' : 'not cited'}`, result.cited ? result.citedUrls.slice(0, 3).join(' · ') || undefined : undefined)
     try {

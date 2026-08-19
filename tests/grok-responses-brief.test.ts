@@ -56,6 +56,11 @@ describe('Grok 4.6 Responses transport', () => {
     expect(deadlineForProvider('openai', 90_000)).toBe(90_000)
   })
 
+  it('honors a strict short deadline for visibility-audit pings', () => {
+    expect(deadlineForProvider('grok', 14_000, true)).toBe(14_000)
+    expect(deadlineForProvider('parasail-deepseek', 14_000, true)).toBe(14_000)
+  })
+
   it('caps draft token budget and uses low reasoning so Grok can finish', () => {
     expect(grokRequestLimits(16384)).toEqual({ maxOutputTokens: 8192, reasoningEffort: 'low' })
     expect(grokRequestLimits(2500)).toEqual({ maxOutputTokens: 2500, reasoningEffort: 'medium' })

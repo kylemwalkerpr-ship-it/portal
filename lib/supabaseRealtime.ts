@@ -20,19 +20,24 @@ export type RealtimePayload = {
   old: Record<string, any> | null
 }
 
-export function subscribeToTable(
-  table: string,
+export function subscribeToTables(
+  tables: string[],
   schema: string,
   onEvent: (payload: RealtimePayload) => void,
   onStatus?: (status: string) => void,
 ): () => void {
   const supabase = createSupabaseBrowserClient()
-  const channelName = `realtime:${schema}:${table}:${Math.random().toString(36).slice(2, 8)}`
+  const unique = [...new Set(tables.filter(Boolean))]
+  const channelName = `realtime:${schema}:${unique.join(',')}:${Math.random().toString(36).slice(2, 8)}`
 
-  const channel = supabase
-    .channel(channelName)
+  // One websocket channel, many postgres_changes listeners. Opening a
+  // channel per table (Content Studio used to open 8) reconnect-storms
+  // when any table is missing from the publication and shows up in DevTools
+  // as `wss://…supabase.co/realtime/v1/websocket failed: network connection was lost`.
+  let channel = supabase.channel(channelName)
+  for (const table of unique) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .on('postgres_changes' as any, { event: '*', schema, table }, (payload: any) => {
+    channel = channel.on('postgres_changes' as any, { event: '*', schema, table }, (payload: any) => {
       onEvent({
         eventType: payload.eventType,
         schema: payload.schema,
@@ -41,9 +46,10 @@ export function subscribeToTable(
         old: payload.old ?? null,
       })
     })
-    .subscribe((status) => {
-      onStatus?.(String(status))
-    })
+  }
+  channel.subscribe((status) => {
+    onStatus?.(String(status))
+  })
 
   return () => {
     try {
@@ -52,4 +58,13 @@ export function subscribeToTable(
       /* no-op: channel may already be torn down */
     }
   }
+}
+
+export function subscribeToTable(
+  table: string,
+  schema: string,
+  onEvent: (payload: RealtimePayload) => void,
+  onStatus?: (status: string) => void,
+): () => void {
+  return subscribeToTables([table], schema, onEvent, onStatus)
 }

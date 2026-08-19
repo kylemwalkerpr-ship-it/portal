@@ -43,10 +43,9 @@ export async function pullAllDemand(onProgress?: (phase: string, message: string
   const gsc = await safePull('gsc', async () => tagSource(await pullGscSignals(), 'gsc'))
   onProgress?.('signals', `GSC ${gsc.skipped ? 'skipped' : `${gsc.signals.length} signals`}`, gsc.reason)
 
-  const ga4 = await safePull('ga4', async () => {
-    const { pullGa4Signals } = await import('./ga4')
-    return tagSource(await pullGa4Signals(), 'ga4')
-  })
+  const ga4Mod = await import('./ga4')
+  const ga4 = await safePull('ga4', async () => tagSource(await ga4Mod.pullGa4Signals(), 'ga4'))
+  if (!ga4.reason && ga4Mod.lastGa4Pull?.reason) ga4.reason = ga4Mod.lastGa4Pull.reason
   onProgress?.('signals', `GA4 ${ga4.skipped ? 'skipped' : `${ga4.signals.length} signals`}`, ga4.reason)
 
   const uberMod = await import('./ubersuggest')

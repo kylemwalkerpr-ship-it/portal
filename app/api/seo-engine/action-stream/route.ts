@@ -67,8 +67,13 @@ export async function POST(request: Request) {
       const onProgress = (phase: string, message: string, detail?: string) => emitStep(phase, message, detail)
 
       const KIND_LABEL: Record<ActionKind, string> = { ingest: 'knowledge ingestion', plan: 'planner', llm: 'LLM visibility audit' }
+      const HEARTBEAT: Record<ActionKind, string> = {
+        ingest: 'Still running — hung feeds are skipped after 6–8s…',
+        plan: 'Still running — a down feeder is skipped and last-good cache is used…',
+        llm: 'Still running — visibility audit in progress…',
+      }
       const heartbeat = setInterval(() => {
-        emitStep('wait', 'Still running — hung feeds are skipped after 6–8s…')
+        emitStep('wait', HEARTBEAT[kind])
       }, 8_000)
 
       try {
@@ -120,7 +125,8 @@ export async function POST(request: Request) {
           const result = await runVisibilityAudits({
             queries: Array.isArray(body.queries) ? (body.queries as string[]) : undefined,
             engineLabel: body.engineLabel ? String(body.engineLabel) : undefined,
-            maxAudits: body.maxAudits != null ? Number(body.maxAudits) : 6,
+            maxAudits: body.maxAudits != null ? Number(body.maxAudits) : 4,
+            maxEngines: 2,
             onProgress,
           })
           await recordEngineRun(

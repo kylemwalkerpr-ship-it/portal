@@ -4,6 +4,7 @@ import {
   queryTokens,
   scoreAuditCandidates,
   selectAuditQueries,
+  usableQuery,
 } from '@/lib/seoEngine/auditQuerySelector'
 import { DEFAULT_AUDIT_QUERIES } from '@/lib/seoEngine/llmVisibility'
 
@@ -94,6 +95,27 @@ describe('auditQuerySelector — adaptive LLM audit slate', () => {
     const canadaish = picked.filter((p) => /canada/i.test(p.query) && /nigeria/i.test(p.query))
     expect(canadaish.length).toBeLessThanOrEqual(1)
     expect(picked.length).toBe(3)
+  })
+
+  it('rejects ontology stage-label FAQ templates as unusable search queries', () => {
+    expect(usableQuery('What documents do I need for schools & study in US?')).toBeNull()
+    expect(usableQuery('How long does schools & study take in US?')).toBeNull()
+    expect(usableQuery('What are the US schools & study requirements?')).toBeNull()
+    expect(usableQuery('How long does OPT STEM extension last?')).toBe('How long does OPT STEM extension last?')
+    const scored = scoreAuditCandidates({
+      seeds: DEFAULT_AUDIT_QUERIES,
+      plans: [{
+        primaryTerm: 'f-1 visa requirements',
+        faq: [
+          'What documents do I need for schools & study in US?',
+          'What documents do I need for f-1 visa requirements?',
+        ],
+        opportunityScore: 0.9,
+      }],
+      now: NOW,
+    })
+    expect(scored.some((c) => /schools & study/i.test(c.query))).toBe(false)
+    expect(scored.some((c) => /f-1 visa requirements/i.test(c.query))).toBe(true)
   })
 
   it('jaccard is 0 on disjoint tokens and 1 on identical sets', () => {

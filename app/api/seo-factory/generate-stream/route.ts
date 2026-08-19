@@ -128,47 +128,9 @@ export async function POST(request: Request) {
         }
       : null
 
-    // ── Competing page detection (anti-cannibalization) ──
-    // Call checkCompetingPages() against the live estate coverage map so
-    // the quality gate + deterministic repair fire on reaudit / ship.
-    // Priority: body-supplied competingUrls (from Discover stage cannibal
-    // data) > server-computed (from full content_jobs estate scan).
-    let computedCompetingUrls: Array<{ url: string; title: string; primaryKeyword?: string | null }> | undefined
-    if (!body.competingUrls || !Array.isArray(body.competingUrls) || body.competingUrls.length === 0) {
-      try {
-        const supabase = sb()
-        const { data: shipped } = await supabase
-          .from('content_jobs')
-          .select('canonical_url, title, primary_keyword')
-          .in('status', ['merged', 'pr_created', 'publishing'])
-          .not('canonical_url', 'is', null)
-          .limit(500)
-        if (shipped?.length) {
-          const coverage = (shipped as Array<{ canonical_url?: string | null; title?: string | null; primary_keyword?: string | null }>)
-            .filter((r) => r.canonical_url)
-            .map((r) => ({
-              url: r.canonical_url!,
-              title: r.title || r.canonical_url!,
-              primaryKeyword: r.primary_keyword || null,
-            }))
-          const result = checkCompetingPages({
-            primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
-            coverage,
-          })
-          if (result.competing.length) {
-            computedCompetingUrls = result.competing.map((c) => ({
-              url: c.url,
-              title: c.title,
-              primaryKeyword: c.primaryKeyword,
-            }))
-          }
-        }
-      } catch (e) {
-        console.warn('[seo-factory/generate-stream] competing-pages check skipped', e)
-      }
-    }
-    // ── End competing page detection ──
-
+    // Competing-page / interlink / engine-feed work runs AFTER the SSE
+    // response is opened. Doing it first blocked the first byte long enough
+    // for Cloudflare to 524, which the studio surfaces as "Content generation failed".
     const input = {
       topic,
       existingJobId: String(body.supersedesJobId || '').trim() || null,
@@ -222,12 +184,11 @@ export async function POST(request: Request) {
             reason: body.cluster.reason ? String(body.cluster.reason) : undefined,
           }
         : null,
-      competingUrls: computedCompetingUrls
-        || (Array.isArray(body.competingUrls)
-          ? (body.competingUrls as Array<{ url?: string; title?: string; primaryKeyword?: string | null }>)
-              .filter((c: { url?: string; title?: string }) => c.url || c.title)
-              .slice(0, 10)
-          : undefined),
+      competingUrls: Array.isArray(body.competingUrls)
+        ? (body.competingUrls as Array<{ url?: string; title?: string; primaryKeyword?: string | null }>)
+            .filter((c: { url?: string; title?: string }) => c.url || c.title)
+            .slice(0, 10)
+        : undefined,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,
@@ -242,68 +203,8 @@ export async function POST(request: Request) {
       userId,
     }
     const supersedesJobId = String(body.supersedesJobId || '').trim()
-    // Verified interlink allowlist: brief-supplied links win; otherwise the
-    // engine derives live-verified targets server-side so the model NEVER
-    // invents URLs (2026-08 example.com incident).
-    if (Array.isArray(body.interlinks) && body.interlinks.length) {
-      input.interlinks = body.interlinks
-        .filter((l: any) => l && typeof l.url === 'string' && l.url.trim())
-        .map((l: any) => ({ label: String(l.label || ''), url: String(l.url), matchedOn: Array.isArray(l.matchedOn) ? l.matchedOn.map(String) : undefined }))
-    } else if (input.primaryKeyword) {
-      // Always ensure ≥2 verified estate links reach the drafting prompt.
-      // Registry entries are live-filtered (dead entries dropped) — when the
-      // registry returns nothing, fall back to the verified-live estate
-      // anchors so the model NEVER drafts with zero internal-link guidance
-      // (the INTERNAL_LINKS audit then clears without any repair).
-      const regionKey = String(input.region || 'US').toUpperCase().slice(0, 2)
-      const anchors = (ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US)
-        .map((a) => ({ label: a.label, url: a.url }))
-      try {
-        const verified = await suggestVerifiedInterlinks(input.primaryKeyword, (input.keywords || []) as string[], 6)
-        if (verified.length) {
-          input.interlinks = verified as Array<{ label?: string; url?: string; matchedOn?: string[] }>
-        } else {
-          input.interlinks = anchors
-        }
-      } catch {
-        input.interlinks = anchors
-      }
-    }
-    try {
-      const engineFeed = await assembleMasterEngineFeed({
-        topic: input.topic,
-        primaryKeyword: input.primaryKeyword,
-        region: input.region,
-        contentType: input.contentType,
-        title: input.title,
-        competingUrls: Array.isArray(input.competingUrls)
-          ? input.competingUrls.map((c) => String((c as { url?: string }).url || '')).filter(Boolean)
-          : undefined,
-      })
-      if (engineFeed.promptBlock) {
-        input.masterEngineBlock = engineFeed.promptBlock
-        input.intelligenceLineage = {
-          ...(input.intelligenceLineage || {}),
-          masterEngine: engineFeed.lineage,
-        }
-      }
-    } catch (e) {
-      console.warn('[seo-factory/generate-stream] master engine feed skipped', e)
-    }
     const resumeRequested = body.resume === true || Boolean(supersedesJobId)
-    // Client is created for every run: the pipeline emits a 'job' event with the
-    // early 'drafting' row so live deltas checkpoint into the queue in realtime.
     const supabase = sb()
-    if (supabase && supersedesJobId) {
-      const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', supersedesJobId).single()
-      if (existing?.content) input.resumeContent = String(existing.content)
-      await markSupersededJob(
-        supabase,
-        supersedesJobId,
-        { status: 'drafting', error_message: null },
-        resumeRequested ? 'Repairing this draft in place' : 'Live regeneration started',
-      )
-    }
 
     const encoder = new TextEncoder()
     let closed = false
@@ -319,16 +220,105 @@ export async function POST(request: Request) {
           }
         }
 
+        send({ type: 'progress', stage: 'connect', message: 'Pipeline connected — preparing brief…' })
+
         let lastCheckpointDraft = ''
         let lastCheckpointChars = 0
         let lastCheckpointAt = 0
         let checkpointCount = 0
         const MAX_CHECKPOINTS = 6
-        // Live queue row — the pipeline creates a 'drafting' job at start; we
-        // checkpoint streamed deltas into it so the Draft queue shows content
-        // growing in realtime without waiting for the final insert.
         let liveJobId = supersedesJobId || null
         try {
+        if (!input.competingUrls?.length) {
+          try {
+            const { data: shipped } = await supabase
+              .from('content_jobs')
+              .select('canonical_url, title, primary_keyword')
+              .in('status', ['merged', 'pr_created', 'publishing'])
+              .not('canonical_url', 'is', null)
+              .limit(500)
+            if (shipped?.length) {
+              const coverage = (shipped as Array<{ canonical_url?: string | null; title?: string | null; primary_keyword?: string | null }>)
+                .filter((r) => r.canonical_url)
+                .map((r) => ({
+                  url: r.canonical_url!,
+                  title: r.title || r.canonical_url!,
+                  primaryKeyword: r.primary_keyword || null,
+                }))
+              const result = checkCompetingPages({
+                primaryKeyword: input.primaryKeyword,
+                coverage,
+              })
+              if (result.competing.length) {
+                input.competingUrls = result.competing.map((c) => ({
+                  url: c.url,
+                  title: c.title,
+                  primaryKeyword: c.primaryKeyword,
+                }))
+              }
+            }
+          } catch (e) {
+            console.warn('[seo-factory/generate-stream] competing-pages check skipped', e)
+          }
+        }
+
+        if (Array.isArray(body.interlinks) && body.interlinks.length) {
+          input.interlinks = body.interlinks
+            .filter((l: { url?: string }) => l && typeof l.url === 'string' && l.url.trim())
+            .map((l: { label?: string; url?: string; matchedOn?: string[] }) => ({
+              label: String(l.label || ''),
+              url: String(l.url),
+              matchedOn: Array.isArray(l.matchedOn) ? l.matchedOn.map(String) : undefined,
+            }))
+        } else if (input.primaryKeyword) {
+          const regionKey = String(input.region || 'US').toUpperCase().slice(0, 2)
+          const anchors = (ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US)
+            .map((a) => ({ label: a.label, url: a.url }))
+          try {
+            send({ type: 'progress', stage: 'plan', message: 'Verifying estate interlinks…' })
+            const verified = await suggestVerifiedInterlinks(input.primaryKeyword, (input.keywords || []) as string[], 6)
+            input.interlinks = verified.length
+              ? verified as Array<{ label?: string; url?: string; matchedOn?: string[] }>
+              : anchors
+          } catch {
+            input.interlinks = anchors
+          }
+        }
+
+        try {
+          send({ type: 'progress', stage: 'seo', message: 'Loading Master Engine feed…' })
+          const engineFeed = await assembleMasterEngineFeed({
+            topic: input.topic,
+            primaryKeyword: input.primaryKeyword,
+            region: input.region,
+            contentType: input.contentType,
+            title: input.title,
+            competingUrls: Array.isArray(input.competingUrls)
+              ? input.competingUrls.map((c) => String((c as { url?: string }).url || '')).filter(Boolean)
+              : undefined,
+          })
+          if (engineFeed.promptBlock) {
+            input.masterEngineBlock = engineFeed.promptBlock
+            input.intelligenceLineage = {
+              ...(input.intelligenceLineage || {}),
+              masterEngine: engineFeed.lineage,
+            }
+          }
+        } catch (e) {
+          console.warn('[seo-factory/generate-stream] master engine feed skipped', e)
+        }
+
+        if (supabase && supersedesJobId) {
+          const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', supersedesJobId).single()
+          if (existing?.content) input.resumeContent = String(existing.content)
+          await markSupersededJob(
+            supabase,
+            supersedesJobId,
+            { status: 'drafting', error_message: null },
+            resumeRequested ? 'Repairing this draft in place' : 'Live regeneration started',
+          )
+        }
+
           for await (const ev of runSeoFactoryPipelineStream(input)) {
             if (ev.type === 'job') liveJobId = ev.jobId
             if (liveJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {

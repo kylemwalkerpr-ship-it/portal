@@ -18,6 +18,11 @@ export function createSupabaseBrowserClient(): SupabaseClient {
   }
   _client = createClient(url, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: {
+      params: { eventsPerSecond: 4 },
+      heartbeatIntervalMs: 25000,
+      reconnectAfterMs: (tries: number) => Math.min(1000 * 2 ** tries, 15000),
+    },
   })
   return _client
 }

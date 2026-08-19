@@ -32,6 +32,8 @@ export interface KnowledgeSource {
   label: string
   kind: 'policy' | 'guidance' | 'trend'
   url: string
+  /** Used when the primary host hangs (Google News from Workers). */
+  fallbackUrl?: string
   countries: Country[]
   /** How many items to keep per run (per source). */
   limit: number
@@ -75,7 +77,9 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
     id: 'gnews-uscis',
     label: 'Google News · USCIS',
     kind: 'policy',
-    url: 'https://news.google.com/rss/search?q=USCIS&hl=en-US&gl=US&ceid=US:en',
+    // Bing is primary: news.google.com hangs from Cloudflare Workers (6s skip).
+    url: 'https://www.bing.com/news/search?q=USCIS+immigration&format=rss',
+    fallbackUrl: 'https://news.google.com/rss/search?q=USCIS+immigration&hl=en-US&gl=US&ceid=US:en',
     countries: ['US'],
     limit: 12,
   },
@@ -83,7 +87,8 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
     id: 'gnews-ircc',
     label: 'Google News · IRCC Canada',
     kind: 'policy',
-    url: 'https://news.google.com/rss/search?q=IRCC+Canada+immigration&hl=en-CA&gl=CA&ceid=CA:en',
+    url: 'https://www.bing.com/news/search?q=IRCC+Canada+immigration&format=rss',
+    fallbackUrl: 'https://news.google.com/rss/search?q=IRCC+Canada+immigration&hl=en-CA&gl=CA&ceid=CA:en',
     countries: ['CA'],
     limit: 12,
   },
@@ -91,7 +96,8 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
     id: 'gnews-au',
     label: 'Google News · Australia immigration',
     kind: 'policy',
-    url: 'https://news.google.com/rss/search?q=Australia+immigration+visa&hl=en-AU&gl=AU&ceid=AU:en',
+    url: 'https://www.bing.com/news/search?q=Australia+immigration+visa&format=rss',
+    fallbackUrl: 'https://news.google.com/rss/search?q=Australia+immigration+visa&hl=en-AU&gl=AU&ceid=AU:en',
     countries: ['AU'],
     limit: 12,
   },
@@ -99,7 +105,8 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
     id: 'gnews-uk',
     label: 'Google News · UK Home Office',
     kind: 'policy',
-    url: 'https://news.google.com/rss/search?q=UK+Home+Office+immigration&hl=en-GB&gl=GB&ceid=GB:en',
+    url: 'https://www.bing.com/news/search?q=UK+Home+Office+immigration&format=rss',
+    fallbackUrl: 'https://news.google.com/rss/search?q=UK+Home+Office+immigration&hl=en-GB&gl=GB&ceid=GB:en',
     countries: ['UK'],
     limit: 12,
   },
@@ -107,7 +114,8 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
     id: 'gnews-seo',
     label: 'Google News · SEO',
     kind: 'guidance',
-    url: 'https://news.google.com/rss/search?q=Google+Search+Central+SEO&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://www.bing.com/news/search?q=Google+Search+Central+SEO&format=rss',
+    fallbackUrl: 'https://news.google.com/rss/search?q=Google+Search+Central+SEO&hl=en-US&gl=US&ceid=US:en',
     countries: ['US', 'UK', 'CA', 'AU'],
     limit: 8,
   },
@@ -170,49 +178,65 @@ export async function withTimeout<T>(ms: number, work: (signal: AbortSignal) => 
   }
 }
 
-/** Fetch a feed URL with a hard timeout and one retry on 429/503 or empty body. */
-export async function fetchFeedText(url: string, opts?: { timeoutMs?: number }): Promise<string> {
-  const timeoutMs = Math.max(250, opts?.timeoutMs ?? defaultFeedTimeoutMs(url))
-  let lastStatus = '?'
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await withTimeout(
-        timeoutMs,
-        (signal) =>
-          fetch(url, {
-            headers: {
-              Accept: 'application/rss+xml, application/atom+xml, text/xml, */*',
-              'User-Agent': FEED_UA,
-            },
-            signal,
-          }),
-        'Feed',
-      )
-      lastStatus = String(res.status)
-      if (!res.ok) {
-        if ((res.status === 429 || res.status === 503) && attempt === 0) {
-          await new Promise((r) => setTimeout(r, 400))
-          continue
-        }
-        throw new Error(`HTTP ${res.status}`)
-      }
-      const text = await withTimeout(timeoutMs, () => res.text(), 'Feed body')
-      if (text.trim()) return text
-      if (attempt === 0) continue
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      if (/timed out/i.test(msg)) throw new Error(`Feed timed out after ${timeoutMs}ms`)
-      if (attempt === 0 && /HTTP 429|HTTP 503/.test(msg)) {
-        await new Promise((r) => setTimeout(r, 400))
-        continue
-      }
-      throw e instanceof Error ? e : new Error(msg)
-    }
-  }
-  throw new Error(`Empty feed body (HTTP ${lastStatus})`)
+async function fetchFeedOnce(url: string, timeoutMs: number): Promise<string> {
+  const res = await withTimeout(
+    timeoutMs,
+    (signal) =>
+      fetch(url, {
+        headers: {
+          Accept: 'application/rss+xml, application/atom+xml, text/xml, */*',
+          'User-Agent': FEED_UA,
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal,
+      }),
+    'Feed',
+  )
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const text = await withTimeout(timeoutMs, () => res.text(), 'Feed body')
+  if (!text.trim()) throw new Error(`Empty feed body (HTTP ${res.status})`)
+  return text
 }
 
-function parseFeed(xml: string, limit: number): RawItem[] {
+/** Fetch a feed URL with a hard timeout, one retry on 429/503, then optional fallback host. */
+export async function fetchFeedText(url: string, opts?: { timeoutMs?: number; fallbackUrl?: string }): Promise<string> {
+  const timeoutMs = Math.max(250, opts?.timeoutMs ?? defaultFeedTimeoutMs(url))
+  const urls = [...new Set([url, opts?.fallbackUrl].filter((u): u is string => Boolean(u)))]
+  let lastErr = 'Empty feed body'
+  for (const candidate of urls) {
+    const budget = /news\.google\.com/i.test(candidate) ? Math.min(timeoutMs, 6_000) : timeoutMs
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await fetchFeedOnce(candidate, budget)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        lastErr = /timed out/i.test(msg) ? `Feed timed out after ${budget}ms` : msg
+        const retryable = /HTTP 429|HTTP 503|Empty feed/i.test(msg)
+        if (attempt === 0 && retryable) {
+          await new Promise((r) => setTimeout(r, 300))
+          continue
+        }
+        break
+      }
+    }
+  }
+  throw new Error(lastErr)
+}
+
+/** Unwrap Bing News tracker URLs so knowledge rows store the publisher link. */
+export function unwrapFeedLink(link: string): string {
+  const decoded = decodeXml(link)
+  try {
+    const u = new URL(decoded)
+    const nested = u.searchParams.get('url')
+    if (nested && /(?:^|\.)bing\.com$/i.test(u.hostname)) return nested
+  } catch {
+    /* keep decoded */
+  }
+  return decoded
+}
+
+export function parseFeed(xml: string, limit: number): RawItem[] {
   const items: RawItem[] = []
   const re = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/gi
   let m: RegExpExecArray | null
@@ -224,9 +248,14 @@ function parseFeed(xml: string, limit: number): RawItem[] {
     }
     const title = grab('title')
     const linkMatch = block.match(/<(?:link|link href|link[^>]*href)\s*[^>]*?href="([^"]+)"/i) || block.match(/<link>([^<]+)<\/link>/i)
-    const link = linkMatch ? decodeXml(linkMatch[1]) : ''
-    if (!title || !link) continue
-    items.push({ title, link, description: grab('description') || grab('summary') || '', published: grab('pubDate') || grab('published') || grab('updated') || undefined })
+    let link = linkMatch ? unwrapFeedLink(linkMatch[1]) : ''
+    if (!title) continue
+    if (!link || /trends\.google\.com\/trending\/rss/i.test(link)) {
+      link = `https://trends.google.com/trending?q=${encodeURIComponent(title)}`
+    }
+    const newsTitles = [...block.matchAll(/<ht:news_item_title[^>]*>([\s\S]*?)<\/ht:news_item_title>/gi)].map((n) => decodeXml(n[1]))
+    const description = [grab('description') || grab('summary'), ...newsTitles].filter(Boolean).join(' · ')
+    items.push({ title, link, description, published: grab('pubDate') || grab('published') || grab('updated') || undefined })
   }
   return items
 }
@@ -237,18 +266,61 @@ function normalizeUrl(url: string): string {
 
 export interface TaggedItem extends RawItem { stages: string[]; countries: Country[]; score: number }
 
-export function tagItem(item: RawItem): TaggedItem {
+const IMMIGRATION_LEXICON = /\b(visa|immigra|uscis|ircc|home office|ukvi|citizenship|asylum|opt|h-?1b|f-?1|l-?1|o-?1|green card|skilled worker|express entry|graduate route|study permit|subclass|sponsor licence|tps|ead|public charge|global talent|naturali[sz]ation|n-?400|i-?485|i-?20|cas letter|pr pathway|permanent resident|indefinite leave|lmia|pgwp)\b/i
+const SEO_LEXICON = /\b(search console|search central|google search|core update|ranking|sitemap|structured data|crawler|indexing|seo|rich result)\b/i
+
+function foldText(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/([a-z0-9])-+(?=[a-z0-9])/g, '$1')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function isImmigrationRelevant(title: string, description = ''): boolean {
+  return IMMIGRATION_LEXICON.test(`${title} ${description}`)
+}
+
+export function isSeoRelevant(title: string, description = ''): boolean {
+  return SEO_LEXICON.test(`${title} ${description}`)
+}
+
+function applySourceFloor(tagged: TaggedItem, source?: KnowledgeSource): TaggedItem {
+  if (tagged.score > 0 || !source) return tagged
+  if (source.kind === 'policy') {
+    return { ...tagged, score: 2, countries: tagged.countries.length ? tagged.countries : [...source.countries], stages: tagged.stages.length ? tagged.stages : ['visa'] }
+  }
+  if (source.kind === 'guidance' && isSeoRelevant(tagged.title, tagged.description)) {
+    return { ...tagged, score: 3, countries: tagged.countries.length ? tagged.countries : [...source.countries], stages: tagged.stages.length ? tagged.stages : ['intent'] }
+  }
+  return tagged
+}
+
+export function tagItem(item: RawItem, source?: KnowledgeSource): TaggedItem {
   const hay = `${item.title} ${item.description}`.toLowerCase()
+  const folded = foldText(hay)
   const hits: Array<{ stage: string; country: Country; score: number }> = []
   for (const stage of LIFECYCLE_STAGES) for (const country of COUNTRIES) {
     const cell = stage.countries[country]
     let score = 0
-    for (const kw of cell.seedKeywords) if (hay.includes(kw.toLowerCase())) score += kw.split(' ').length
+    for (const kw of cell.seedKeywords) {
+      const needle = foldText(kw)
+      if (needle && folded.includes(needle)) score += kw.split(' ').length
+    }
     for (const authority of cell.authorities) if (hay.includes(authority.toLowerCase())) score += 2
     if (score > 0) hits.push({ stage: stage.key, country, score })
   }
   hits.sort((a, b) => b.score - a.score)
-  return { ...item, stages: Array.from(new Set(hits.slice(0, 3).map((h) => h.stage))), countries: Array.from(new Set(hits.slice(0, 2).map((h) => h.country))), score: hits.reduce((sum, h) => sum + h.score, 0) }
+  let stages = Array.from(new Set(hits.slice(0, 3).map((h) => h.stage)))
+  let countries = Array.from(new Set(hits.slice(0, 2).map((h) => h.country)))
+  let score = hits.reduce((sum, h) => sum + h.score, 0)
+  if (isImmigrationRelevant(item.title, item.description)) {
+    score = Math.max(score, 3)
+    if (!countries.length && source?.countries?.length) countries = [...source.countries]
+    if (!stages.length) stages = ['visa']
+  }
+  return applySourceFloor({ ...item, stages, countries, score }, source)
 }
 
 export interface KnowledgeIngestOptions {
@@ -383,10 +455,10 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
           result.errors.push(`${source.id}: ${sub.error}`)
         }
       } else {
-      const raw = parseFeed(await fetchFeedText(source.url), limit)
+      const raw = parseFeed(await fetchFeedText(source.url, { fallbackUrl: source.fallbackUrl }), limit)
       per.fetched = raw.length; result.itemsFetched += raw.length
       for (const item of raw) {
-        const tagged = tagItem(item)
+        const tagged = tagItem(item, source)
         if (!tagged.score) { result.skipped += 1; continue }
         const dedupeKey = normalizeUrl(tagged.link)
         let aiSummary: string | null = null
@@ -451,7 +523,8 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
       const msg = e instanceof Error ? e.message : String(e); per.error = msg.slice(0, 200); result.errors.push(`${source.id}: ${msg.slice(0, 160)}`)
     }
     result.sourcesRun += 1; result.perSource.push(per)
-    opts.onProgress?.('store', `${source.label}: ${per.stored} stored · ${per.fetched} fetched`, per.error)
+    const skipNote = !per.error && per.fetched > 0 && per.stored === 0 ? 'none matched immigration / SEO ontology' : per.error
+    opts.onProgress?.('store', `${source.label}: ${per.stored} stored · ${per.fetched} fetched`, skipNote)
   }
   return result
 }

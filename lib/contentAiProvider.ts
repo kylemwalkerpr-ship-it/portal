@@ -159,6 +159,11 @@ export interface ContentAiOptions {
   /** Override reasoning budget. Draft Grok stays low on long outputs; the
    *  Master Engine pair sends Grok high + Parasail GLM medium. */
   reasoningEffort?: 'low' | 'medium' | 'high'
+  /**
+   * Honor `timeoutMs` exactly — do not raise it to the Grok 180s drafting
+   * floor. Visibility audits and other bounded pings must fail fast.
+   */
+  strictTimeout?: boolean
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -667,11 +672,13 @@ async function grokResponsesFetch(
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
   const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort)
-  const timeoutMs = Math.max(
-    opts.timeoutMs ?? 0,
-    deadlineForProvider('grok', opts.timeoutMs),
-    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '180000', 10) || 180_000,
-  )
+  const timeoutMs = opts.strictTimeout && opts.timeoutMs != null
+    ? Math.max(2_000, opts.timeoutMs)
+    : Math.max(
+      opts.timeoutMs ?? 0,
+      deadlineForProvider('grok', opts.timeoutMs),
+      Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '180000', 10) || 180_000,
+    )
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response
@@ -718,7 +725,7 @@ async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<Cont
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
   const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort)
-  const timeoutMs = deadlineForProvider('grok', opts.timeoutMs)
+  const timeoutMs = deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true)
   yield { type: 'provider', provider: 'grok', model: `${model} · ${limits.reasoningEffort} effort` }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -2445,8 +2452,9 @@ const GROK_MIN_TIMEOUT_MS = Math.max(
   Number.parseInt(process.env.CONTENT_AI_GROK_TIMEOUT_MS || '180000', 10) || 180_000,
 )
 
-export function deadlineForProvider(label: string, requested?: number): number {
+export function deadlineForProvider(label: string, requested?: number, strict = false): number {
   const base = requested ?? COMPLETE_TIMEOUT_MS
+  if (strict && requested != null) return Math.max(2_000, requested)
   return label === 'grok' ? Math.max(base, GROK_MIN_TIMEOUT_MS) : base
 }
 
@@ -2614,14 +2622,14 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       continue
     }
     try {
-      return await withDeadline(c.label, deadlineForProvider(c.label, opts.timeoutMs), c.run())
+      return await withDeadline(c.label, deadlineForProvider(c.label, opts.timeoutMs, opts.strictTimeout === true), c.run())
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       errors.push(`${c.label}: ${msg}`)
       const paymentFail = isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
       if (paymentFail) {
         try {
-          return await withDeadline('grok', deadlineForProvider('grok', opts.timeoutMs), grokComplete(opts))
+          return await withDeadline('grok', deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true), grokComplete(opts))
         } catch (grokErr) {
           const grokMsg = grokErr instanceof Error ? grokErr.message : String(grokErr)
           errors.push(`grok: ${grokMsg}`)

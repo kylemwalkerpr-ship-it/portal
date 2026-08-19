@@ -716,9 +716,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
         pillar: `${stageDef.label} in ${country}: the complete guide`,
         spokes: related.slice(0, 3).map((t) => `${t}: deep dive`),
         faq: [
-          `What are the ${country} ${stageDef.label.toLowerCase()} requirements?`,
-          `How long does ${stageDef.label.toLowerCase()} take in ${country}?`,
-          `What documents do I need for ${stageDef.label.toLowerCase()} in ${country}?`,
+          `What are the ${primaryTerm} requirements?`,
+          `How long does ${primaryTerm} take in ${country}?`,
+          `What documents do I need for ${primaryTerm}?`,
         ],
         contentType,
         services: stageDef.services,

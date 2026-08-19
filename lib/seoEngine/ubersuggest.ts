@@ -153,6 +153,30 @@ function parseMcpBody(text: string): JsonRpc {
   throw new Error('Ubersuggest MCP returned a non-JSON body')
 }
 
+export function isTransientMcpStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504
+}
+
+export function isTransientMcpFailure(err: unknown): boolean {
+  const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  return /\b502\b|\b503\b|\b504\b|temporarily unavailable/.test(m)
+}
+
+/** One-line MCP errors — never dump HTML into the planner livestream. */
+export function sanitizeMcpError(status: number, body: string): string {
+  const raw = String(body || '')
+  if (status === 503 || /temporarily unavailable/i.test(raw)) {
+    return 'Ubersuggest MCP 503 (temporarily unavailable)'
+  }
+  if (status === 502) return 'Ubersuggest MCP 502 (upstream error)'
+  if (status === 504) return 'Ubersuggest MCP 504 (upstream timeout)'
+  if (!raw.trim() || /<\s*html|<!doctype/i.test(raw)) {
+    return `Ubersuggest MCP ${status}`
+  }
+  const text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  return `Ubersuggest MCP ${status}: ${text.slice(0, 120)}`
+}
+
 let mcpSessionId: string | null = null
 let mcpSessionToken: string | null = null
 
@@ -213,23 +237,33 @@ export async function ubersuggestRpc(
     ? { jsonrpc: '2.0', method, params }
     : { jsonrpc: '2.0', id, method, params }
 
-  const res = await fetch(cfg.mcpUrl || UBERSUGGEST_MCP_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(method === 'tools/call' ? 20_000 : 12_000),
-  })
-  const sid = res.headers.get('mcp-session-id')
-  if (sid) {
-    mcpSessionId = sid
-    mcpSessionToken = token
+  const timeoutMs = method === 'tools/call' ? 20_000 : 12_000
+  let lastStatus = 0
+  let lastText = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(cfg.mcpUrl || UBERSUGGEST_MCP_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    const sid = res.headers.get('mcp-session-id')
+    if (sid) {
+      mcpSessionId = sid
+      mcpSessionToken = token
+    }
+    lastStatus = res.status
+    lastText = await res.text()
+    if (res.ok) {
+      if (id === null) return null
+      const rpc = parseMcpBody(lastText)
+      if (rpc.error) throw new Error(rpc.error.message || `MCP error ${rpc.error.code}`)
+      return rpc.result
+    }
+    if (!isTransientMcpStatus(res.status) || attempt === 1) break
+    await new Promise((r) => setTimeout(r, 400))
   }
-  const text = await res.text()
-  if (!res.ok) throw new Error(`Ubersuggest MCP ${res.status}: ${text.slice(0, 180)}`)
-  if (id === null) return null
-  const rpc = parseMcpBody(text)
-  if (rpc.error) throw new Error(rpc.error.message || `MCP error ${rpc.error.code}`)
-  return rpc.result
+  throw new Error(sanitizeMcpError(lastStatus, lastText))
 }
 
 function isUnauthorizedMcp(err: unknown): boolean {
@@ -367,18 +401,14 @@ function cachedSignals(cfg: UbersuggestConfig): GscSignalInput[] {
 }
 
 async function listToolNames(cfg: UbersuggestConfig): Promise<string[]> {
-  try {
-    await ubersuggestRpc(cfg, 'initialize', {
-      protocolVersion: MCP_PROTOCOL,
-      capabilities: {},
-      clientInfo: { name: 'yousafe-content-studio', version: '1.0' },
-    }, 1)
-    try { await ubersuggestRpc(cfg, 'notifications/initialized', {}, null) } catch { /* optional */ }
-    const listed = await ubersuggestRpc(cfg, 'tools/list', {}, 2) as { tools?: Array<{ name?: string }> }
-    return (listed.tools || []).map((t) => String(t.name || '')).filter(Boolean)
-  } catch {
-    return []
-  }
+  await ubersuggestRpc(cfg, 'initialize', {
+    protocolVersion: MCP_PROTOCOL,
+    capabilities: {},
+    clientInfo: { name: 'yousafe-content-studio', version: '1.0' },
+  }, 1)
+  try { await ubersuggestRpc(cfg, 'notifications/initialized', {}, null) } catch { /* optional */ }
+  const listed = await ubersuggestRpc(cfg, 'tools/list', {}, 2) as { tools?: Array<{ name?: string }> }
+  return (listed.tools || []).map((t) => String(t.name || '')).filter(Boolean)
 }
 
 export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
@@ -406,12 +436,13 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
   const collected: Array<{ term: string; volume: number; position?: number }> = []
   let calls = 0
   let exhausted = false
+  let transientDown = false
   let lastErr = ''
   const toolsUsed: string[] = []
   const layers = new Set<UberLayer>()
 
   const runCall = async (name: string, args: Record<string, unknown>, layer: UberLayer, allowZero = false) => {
-    if (exhausted || calls >= UBERSUGGEST_CALL_BUDGET) return
+    if (exhausted || transientDown || calls >= UBERSUGGEST_CALL_BUDGET) return
     calls += 1
     const parse = (raw: unknown) => parseUbersuggestKeywords(unwrapToolPayload(raw), { allowZeroVolume: allowZero || layer === 'keyword' && name === 'google_suggestions' })
     try {
@@ -435,6 +466,7 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
           lastErr = retryErr instanceof Error ? retryErr.message : String(retryErr)
         }
       }
+      if (isTransientMcpFailure(err)) transientDown = true
       if (isCreditOrAuthFailure(err)) exhausted = true
     }
   }
@@ -442,12 +474,13 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
   try {
     const names = new Set(await listToolNames(cfg))
     for (const step of ubersuggestSpendPlan()) {
-      if (exhausted || calls >= UBERSUGGEST_CALL_BUDGET) break
+      if (exhausted || transientDown || calls >= UBERSUGGEST_CALL_BUDGET) break
       if (names.size && !names.has(step.name)) continue
       await runCall(step.name, step.args, step.layer, step.name === 'google_suggestions' || step.name === 'content_ideas')
     }
   } catch (err) {
     lastErr = err instanceof Error ? err.message : String(err)
+    if (isTransientMcpFailure(err)) transientDown = true
     if (isCreditOrAuthFailure(err)) exhausted = true
   }
 

@@ -51,6 +51,9 @@ const STOP = new Set([
 
 const QUERY_RE = /(visa|permit|immigration|opt|pgwp|cas|i-20|green card|ilr|crs|subclass|skilled worker|f-1|h-1b|study|spouse|nomination|express entry|citizenship)/i
 
+/** Ontology stage labels ("Schools & study") are not search queries. */
+const STAGE_LABEL_RE = /intent to move|schools\s*&\s*study|work\s*&\s*career|housing\s*&\s*settling|visa\s*&\s*legal pathway|settlement\s*&\s*integration|pr\s*&\s*citizenship|family,\s*marriage|moving relatives/i
+
 export function normalizeAuditQuery(q: string): string {
   return String(q || '').toLowerCase().replace(/\s+/g, ' ').trim()
 }
@@ -86,6 +89,7 @@ export function queryAffinity(a: string, b: string): number {
 export function usableQuery(raw: string): string | null {
   const q = String(raw || '').replace(/\s+/g, ' ').trim()
   if (q.length < 8 || q.length > 140) return null
+  if (STAGE_LABEL_RE.test(q)) return null
   if (!QUERY_RE.test(q) && q.split(' ').length < 4) return null
   return q
 }

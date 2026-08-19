@@ -1,5 +1,12 @@
 import { ga4RowsToSignals, landingPathToTerm, normalizeGa4PropertyId } from '@/lib/seoEngine/ga4'
-import { isCreditOrAuthFailure, parseUbersuggestKeywords, ubersuggestVolumeToImpressions } from '@/lib/seoEngine/ubersuggest'
+import {
+  isCreditOrAuthFailure,
+  isTransientMcpFailure,
+  parseUbersuggestKeywords,
+  sanitizeMcpError,
+  ubersuggestRpc,
+  ubersuggestVolumeToImpressions,
+} from '@/lib/seoEngine/ubersuggest'
 import { UBERSUGGEST_TOOL_CATALOG, ubersuggestSpendPlan } from '@/lib/seoEngine/ubersuggestCatalog'
 import { mergeDemandSignals } from '@/lib/seoEngine/keywordDemand'
 import { safePull } from '@/lib/seoEngine/demandFeeders'
@@ -82,6 +89,29 @@ describe('feeder isolation', () => {
     expect(isCreditOrAuthFailure(new Error('401 unauthorized'))).toBe(true)
     expect(isCreditOrAuthFailure(new Error('insufficient credits'))).toBe(true)
     expect(isCreditOrAuthFailure(new Error('timeout'))).toBe(false)
+  })
+
+  it('sanitizes HTML 503 bodies so the planner tape stays one line', () => {
+    const html = `<html><head><title>503 Service Temporarily Unavailable</title></head><body><center><h1>503 Service Temporarily Unavailable</h1></center></body></html>`
+    expect(sanitizeMcpError(503, html)).toBe('Ubersuggest MCP 503 (temporarily unavailable)')
+    expect(sanitizeMcpError(502, '<html>bad gateway</html>')).toBe('Ubersuggest MCP 502 (upstream error)')
+    expect(isTransientMcpFailure(new Error(sanitizeMcpError(503, html)))).toBe(true)
+    expect(isTransientMcpFailure(new Error('timeout'))).toBe(false)
+  })
+
+  it('retries a 503 once then throws a clean error (no HTML dump)', async () => {
+    const html = '<html><head><title>503 Service Temporarily Unavailable</title></head></html>'
+    const prev = global.fetch
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: false, status: 503, headers: { get: () => null }, text: async () => html })
+      .mockResolvedValueOnce({ ok: false, status: 503, headers: { get: () => null }, text: async () => html }) as unknown as typeof fetch
+    try {
+      await expect(ubersuggestRpc({ accessToken: 'tok', mcpUrl: 'https://ubersuggest-mcp.neilpatelapi.com/mcp' }, 'initialize'))
+        .rejects.toThrow('Ubersuggest MCP 503 (temporarily unavailable)')
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    } finally {
+      global.fetch = prev
+    }
   })
 
   it('weights Ubersuggest volume above typical GSC gaps', () => {

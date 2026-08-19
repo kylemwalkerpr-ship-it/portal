@@ -93,11 +93,20 @@ export function ga4RowsToSignals(
   return out
 }
 
+export let lastGa4Pull: { reason?: string } | null = null
+
 export async function pullGa4Signals(): Promise<GscSignalInput[]> {
+  lastGa4Pull = null
   const cfg = await loadGa4Config()
-  if (!cfg.enabled || !cfg.propertyId) return []
+  if (!cfg.enabled || !cfg.propertyId) {
+    lastGa4Pull = { reason: 'not connected' }
+    return []
+  }
   const token = await getGa4AccessToken()
-  if (!token) return []
+  if (!token) {
+    lastGa4Pull = { reason: 'no service-account token' }
+    return []
+  }
   try {
     const res = await fetch(
       `https://analyticsdata.googleapis.com/v1beta/properties/${cfg.propertyId}:runReport`,
@@ -119,6 +128,7 @@ export async function pullGa4Signals(): Promise<GscSignalInput[]> {
     )
     if (!res.ok) {
       const text = await res.text().catch(() => '')
+      lastGa4Pull = { reason: `GA4 ${res.status}` }
       console.warn('[ga4] runReport failed', res.status, text.slice(0, 180))
       return []
     }
@@ -133,6 +143,7 @@ export async function pullGa4Signals(): Promise<GscSignalInput[]> {
     }))
     return ga4RowsToSignals(mapped)
   } catch (err) {
+    lastGa4Pull = { reason: err instanceof Error ? err.message.slice(0, 120) : 'GA4 pull failed' }
     console.warn('[ga4] pull failed', err instanceof Error ? err.message : err)
     return []
   }
