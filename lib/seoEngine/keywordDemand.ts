@@ -114,6 +114,7 @@ export async function loadKeywordDemandSignals(limit = 80): Promise<GscSignalInp
       impressions: c.impressions,
       position: 80,
       ctr: 0,
+      source: 'ads' as const,
     }))
   } catch {
     return []
@@ -137,6 +138,9 @@ function mergeTwo(a: GscSignalInput[], b: GscSignalInput[]): GscSignalInput[] {
         existing.clicks = s.clicks
         existing.position = s.position
         existing.ctr = s.ctr
+      }
+      if (s.source === 'ubersuggest' || existing.source === 'ubersuggest') {
+        existing.source = (existing.clicks || 0) > 0 ? existing.source : 'ubersuggest'
       }
     } else {
       byTerm.set(k, { ...s })

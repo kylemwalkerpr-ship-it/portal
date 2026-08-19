@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
       connectedAt: new Date().toISOString(),
       lastError: null,
       toolCount: probe.toolCount,
+      creditsExhaustedUntil: null,
     })
     return NextResponse.json({ ok: true, connected: true, ...redactUbersuggestConfig(cfg) })
   } catch (e) {

@@ -46,12 +46,15 @@ import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 
+export type DemandSourceId = 'gsc' | 'ga4' | 'ubersuggest' | 'ads'
+
 export interface GscSignalInput {
   term: string
   clicks: number
   impressions: number
   position: number
   ctr?: number
+  source?: DemandSourceId
 }
 
 export interface PlanRequest {
@@ -435,6 +438,7 @@ export async function pullGscSignals(): Promise<GscSignalInput[]> {
             impressions: r.impressions,
             position: r.position,
             ctr: r.ctr,
+            source: 'gsc' as const,
           }))
           .slice(0, 150)
       }
@@ -449,6 +453,7 @@ export async function pullGscSignals(): Promise<GscSignalInput[]> {
         impressions: Number(q.impressions) || 0,
         position: Number(q.position) || 100,
         ctr: Number(q.ctr) || 0,
+        source: 'gsc' as const,
       }))
     }
     return []
@@ -508,28 +513,20 @@ export interface PlannerRun {
 
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const pair = emptyPairRollup()
-  req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC + GA4 + Ubersuggest + Ads demand…')
+  req.onProgress?.('signals', req.signals ? 'Using supplied demand signals' : 'Pulling Ubersuggest + GSC + GA4 + Ads (skip any feeder that fails)…')
   let signals = req.signals
   if (!signals) {
-    const gsc = await pullGscSignals()
-    let ga4: typeof gsc = []
-    let uber: typeof gsc = []
-    let market: typeof gsc = []
-    try {
-      const { pullGa4Signals } = await import('./ga4')
-      ga4 = await pullGa4Signals()
-    } catch { /* GA4 is optional */ }
-    try {
-      const { pullUbersuggestSignals } = await import('./ubersuggest')
-      uber = await pullUbersuggestSignals()
-    } catch { /* MCP is optional */ }
-    try {
-      const { loadKeywordDemandSignals } = await import('./keywordDemand')
-      market = await loadKeywordDemandSignals()
-    } catch { /* Ads file is optional */ }
-    const { mergeDemandSignals } = await import('./keywordDemand')
-    signals = mergeDemandSignals(gsc, ga4, uber, market)
-    req.onProgress?.('signals', `${gsc.length} GSC · ${ga4.length} GA4 · ${uber.length} Ubersuggest · ${market.length} Ads`)
+    const { pullAllDemand } = await import('./demandFeeders')
+    const pulled = await pullAllDemand(req.onProgress)
+    signals = pulled.signals
+    const skipped = pulled.feeders.filter((f) => f.skipped || f.usedCache)
+    if (skipped.length) {
+      req.onProgress?.(
+        'signals',
+        `Skipped/cached: ${skipped.map((f) => f.source).join(', ')}`,
+        skipped.map((f) => f.reason).filter(Boolean).join('; ') || undefined,
+      )
+    }
   }
   req.onProgress?.('signals', `${signals.length} demand signal(s) loaded`)
   req.onProgress?.('knowledge', 'Loading knowledge + predictive intelligence…')
@@ -592,12 +589,16 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   }
   const ownedSite = (sig: GscSignalInput) =>
     (Number(sig.clicks) || 0) > 0 || (Number(sig.position) || 100) < 70
-  const owned = candidates.filter((c) => ownedSite(c.sig)).sort((a, b) => b.rankedScore - a.rankedScore)
-  const market = candidates.filter((c) => !ownedSite(c.sig)).sort((a, b) => b.rankedScore - a.rankedScore)
+  const preferred = candidates
+    .filter((c) => c.sig.source === 'ubersuggest' || ownedSite(c.sig))
+    .sort((a, b) => b.rankedScore - a.rankedScore)
+  const fallback = candidates
+    .filter((c) => c.sig.source !== 'ubersuggest' && !ownedSite(c.sig))
+    .sort((a, b) => b.rankedScore - a.rankedScore)
   const cap = limit * 2
-  const reserved = Math.min(owned.length, cap)
+  const reserved = Math.min(preferred.length, cap)
   candidates.length = 0
-  candidates.push(...owned.slice(0, reserved), ...market.slice(0, Math.max(0, cap - reserved)))
+  candidates.push(...preferred.slice(0, reserved), ...fallback.slice(0, Math.max(0, cap - reserved)))
 
   const plans: ClusterPlan[] = []
   const usedTerms = new Set<string>()

@@ -4580,7 +4580,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [ga4PropertyInput, setGa4PropertyInput] = React.useState('')
   const [ga4Busy, setGa4Busy] = React.useState(false)
   const [ga4Notice, setGa4Notice] = React.useState<string | null>(null)
-  const [uberStatus, setUberStatus] = React.useState<{ connected?: boolean; hasToken?: boolean; toolCount?: number; lastError?: string | null } | null>(null)
+  const [uberStatus, setUberStatus] = React.useState<{ connected?: boolean; hasToken?: boolean; toolCount?: number; lastError?: string | null; creditsExhaustedUntil?: string | null } | null>(null)
   const [uberTokenInput, setUberTokenInput] = React.useState('')
   const [uberBusy, setUberBusy] = React.useState(false)
   const [uberNotice, setUberNotice] = React.useState<string | null>(null)
@@ -6951,7 +6951,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                   }} />
                   <div>
                     <div style={{ fontFamily: C.serif, fontSize: 16, fontWeight: 600, color: E.ink }}>
-                      {uberStatus?.connected ? `Connected · ${uberStatus.toolCount || 'MCP'} tools` : 'Disconnected'}
+                      {uberStatus?.creditsExhaustedUntil && Date.parse(uberStatus.creditsExhaustedUntil) > Date.now()
+                        ? 'Credits paused · using last good pull'
+                        : uberStatus?.connected ? `Connected · ${uberStatus.toolCount || 'MCP'} tools` : 'Disconnected'}
                     </div>
                     <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
                       <a href="https://app.neilpatel.com/en/mcp" target="_blank" rel="noreferrer" style={{ color: E.gold }}>Authorize at neilpatel.com/en/mcp</a>

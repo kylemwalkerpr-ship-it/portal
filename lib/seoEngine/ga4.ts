@@ -87,6 +87,7 @@ export function ga4RowsToSignals(
       clicks: engaged,
       position: Math.max(5, Math.round(bounce * 80) || 40),
       ctr: sessions ? engaged / sessions : 0,
+      source: 'ga4',
     })
   }
   return out
