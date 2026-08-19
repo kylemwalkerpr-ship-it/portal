@@ -120,24 +120,33 @@ export async function loadKeywordDemandSignals(limit = 80): Promise<GscSignalInp
   }
 }
 
-export function mergeDemandSignals(gsc: GscSignalInput[], market: GscSignalInput[]): GscSignalInput[] {
+function mergeTwo(a: GscSignalInput[], b: GscSignalInput[]): GscSignalInput[] {
   const byTerm = new Map<string, GscSignalInput>()
-  for (const s of gsc) {
+  for (const s of a) {
     const k = normalizePlannerTopic(s.term)
     if (!k) continue
     byTerm.set(k, { ...s })
   }
-  for (const s of market) {
+  for (const s of b) {
     const k = normalizePlannerTopic(s.term)
     if (!k) continue
     const existing = byTerm.get(k)
     if (existing) {
       existing.impressions = Math.max(existing.impressions, s.impressions)
+      if ((existing.clicks || 0) === 0 && (s.clicks || 0) > 0) {
+        existing.clicks = s.clicks
+        existing.position = s.position
+        existing.ctr = s.ctr
+      }
     } else {
       byTerm.set(k, { ...s })
     }
   }
   return Array.from(byTerm.values())
+}
+
+export function mergeDemandSignals(head: GscSignalInput[], ...more: GscSignalInput[][]): GscSignalInput[] {
+  return more.reduce((acc, list) => mergeTwo(acc, list), head)
 }
 
 export async function ingestKeywordDemandSource(opts: {

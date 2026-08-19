@@ -159,6 +159,8 @@ test.describe('Stage VII · Configure — System Configurator', () => {
       'RANKING MODEL CALIBRATION',
       'SYSTEM HEALTH SUMMARY',
       'SEARCH CONSOLE',
+      'GOOGLE ANALYTICS 4',
+      'UBERSUGGEST MCP',
       'DEEP INTERLINKS',
     ]
 

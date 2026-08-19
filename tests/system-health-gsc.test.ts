@@ -31,6 +31,14 @@ jest.mock('@/lib/gscConfig', () => ({
   getGscConfig: jest.fn(),
 }))
 
+jest.mock('@/lib/seoEngine/ga4', () => ({
+  loadGa4Config: jest.fn(async () => ({ enabled: false, propertyId: '' })),
+}))
+
+jest.mock('@/lib/seoEngine/ubersuggest', () => ({
+  loadUbersuggestConfig: jest.fn(async () => ({ enabled: false, accessToken: '' })),
+}))
+
 // The route still queries the other health tables (api keys, interlinks,
 // content jobs) — a uniform thenable builder resolves each chain without
 // hitting the network.

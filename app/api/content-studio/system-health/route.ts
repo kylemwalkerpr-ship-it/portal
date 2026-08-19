@@ -13,6 +13,8 @@
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { getGscConfig } from '@/lib/gscConfig'
+import { loadGa4Config } from '@/lib/seoEngine/ga4'
+import { loadUbersuggestConfig } from '@/lib/seoEngine/ubersuggest'
 import { createClient } from '@supabase/supabase-js'
 
 export async function GET() {
@@ -55,6 +57,10 @@ export async function GET() {
     const gscEmail = gscCfg.connectedEmail ?? null
     const gscExpiresAt = null
     const gscConnectedSince = gscCfg.connectedAt ?? null
+    const ga4Cfg = await loadGa4Config().catch(() => ({ enabled: false, propertyId: '' }))
+    const uberCfg = await loadUbersuggestConfig().catch(() => ({ enabled: false, accessToken: '' }))
+    const ga4Connected = Boolean(ga4Cfg.enabled && ga4Cfg.propertyId)
+    const ubersuggestConnected = Boolean(uberCfg.enabled && uberCfg.accessToken)
 
     // ── Interlink registry size ──
     const { count: interlinkCount, error: interlinkError } = await supabase
@@ -92,6 +98,8 @@ export async function GET() {
       apiKeysConfigured: (!keysError ? apiKeysCount : null) ?? 0,
       gscConnected,
       gscMode,
+      ga4Connected,
+      ubersuggestConnected,
       gscEmail,
       gscExpiresAt,
       gscConnectedSince,

@@ -508,18 +508,28 @@ export interface PlannerRun {
 
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const pair = emptyPairRollup()
-  req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC + market-demand signals…')
+  req.onProgress?.('signals', req.signals ? 'Using supplied GSC signals' : 'Pulling GSC + GA4 + Ubersuggest + Ads demand…')
   let signals = req.signals
   if (!signals) {
     const gsc = await pullGscSignals()
+    let ga4: typeof gsc = []
+    let uber: typeof gsc = []
+    let market: typeof gsc = []
     try {
-      const { loadKeywordDemandSignals, mergeDemandSignals } = await import('./keywordDemand')
-      const market = await loadKeywordDemandSignals()
-      signals = mergeDemandSignals(gsc, market)
-      req.onProgress?.('signals', `${gsc.length} GSC + ${market.length} market-demand signal(s)`)
-    } catch {
-      signals = gsc
-    }
+      const { pullGa4Signals } = await import('./ga4')
+      ga4 = await pullGa4Signals()
+    } catch { /* GA4 is optional */ }
+    try {
+      const { pullUbersuggestSignals } = await import('./ubersuggest')
+      uber = await pullUbersuggestSignals()
+    } catch { /* MCP is optional */ }
+    try {
+      const { loadKeywordDemandSignals } = await import('./keywordDemand')
+      market = await loadKeywordDemandSignals()
+    } catch { /* Ads file is optional */ }
+    const { mergeDemandSignals } = await import('./keywordDemand')
+    signals = mergeDemandSignals(gsc, ga4, uber, market)
+    req.onProgress?.('signals', `${gsc.length} GSC · ${ga4.length} GA4 · ${uber.length} Ubersuggest · ${market.length} Ads`)
   }
   req.onProgress?.('signals', `${signals.length} demand signal(s) loaded`)
   req.onProgress?.('knowledge', 'Loading knowledge + predictive intelligence…')

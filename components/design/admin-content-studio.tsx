@@ -4576,6 +4576,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [gscStatus, setGscStatus] = React.useState<Record<string, unknown> | null>(null)
   const gscStatusRef = React.useRef<Record<string, unknown> | null>(null)
   const [gscConnectOpen, setGscConnectOpen] = React.useState(false)
+  const [ga4Status, setGa4Status] = React.useState<{ connected?: boolean; propertyId?: string | null; lastError?: string | null } | null>(null)
+  const [ga4PropertyInput, setGa4PropertyInput] = React.useState('')
+  const [ga4Busy, setGa4Busy] = React.useState(false)
+  const [ga4Notice, setGa4Notice] = React.useState<string | null>(null)
+  const [uberStatus, setUberStatus] = React.useState<{ connected?: boolean; hasToken?: boolean; toolCount?: number; lastError?: string | null } | null>(null)
+  const [uberTokenInput, setUberTokenInput] = React.useState('')
+  const [uberBusy, setUberBusy] = React.useState(false)
+  const [uberNotice, setUberNotice] = React.useState<string | null>(null)
 
   // Model calibration status — fetched once on mount + polled every 5 min
   const [modelCalibration, setModelCalibration] = React.useState<{
@@ -4592,6 +4600,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     apiKeysConfigured: number
     gscConnected: boolean
     gscMode: string | null
+    ga4Connected?: boolean
+    ubersuggestConnected?: boolean
     interlinkTotal: number
     interlinkActive: number
     lastSiteScan: string | null
@@ -5049,6 +5059,30 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const id = setInterval(loadGscStatus, 30_000)
     return () => clearInterval(id)
   }, [loadGscStatus])
+
+  const loadGa4Status = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/content-studio/ga4/status', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (res.ok) {
+        setGa4Status(data)
+        if (data.propertyId) setGa4PropertyInput((prev) => prev || String(data.propertyId))
+      }
+    } catch { /* silent */ }
+  }, [])
+
+  const loadUberStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/content-studio/ubersuggest/status', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (res.ok) setUberStatus(data)
+    } catch { /* silent */ }
+  }, [])
+
+  React.useEffect(() => {
+    void loadGa4Status()
+    void loadUberStatus()
+  }, [loadGa4Status, loadUberStatus])
 
   const loadModelCalibration = React.useCallback(async () => {
     try {
@@ -6514,6 +6548,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             scope={[
               { chip: '🔑 AI keys', text: 'Manage API keys for every content provider (OpenAI, Nemotron, Grok, DeepSeek, GLM, Gemini, and more).' },
               { chip: '🔗 GSC', text: 'Connect Search Console via OAuth or service-account JSON. Live status with green / amber / red indicator.' },
+              { chip: '📈 GA4', text: 'Wire Google Analytics 4 (same service account as GSC) so the engine consumes landing-page sessions.' },
+              { chip: '◇ Ubersuggest', text: 'Connect or disconnect the Ubersuggest MCP so the planner can pull keyword volume at will.' },
               { chip: '🩺 Health', text: 'Site-wide audit, broken link detection, deep interlink registry, and system diagnostics.' },
             ]}
             prev="VI · Track"
@@ -6665,6 +6701,20 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                       color: systemHealth.gscConnected ? E.mossGreen : C.red,
                     },
                     {
+                      label: 'Google Analytics',
+                      value: systemHealth.ga4Connected ? 'Connected' : 'Offline',
+                      sub: ga4Status?.propertyId ? `property ${ga4Status.propertyId}` : 'no property ID',
+                      icon: systemHealth.ga4Connected ? '📈' : '📉',
+                      color: systemHealth.ga4Connected ? E.mossGreen : C.red,
+                    },
+                    {
+                      label: 'Ubersuggest MCP',
+                      value: systemHealth.ubersuggestConnected ? 'Connected' : 'Disconnected',
+                      sub: uberStatus?.toolCount ? `${uberStatus.toolCount} tools` : 'toggle in configurator',
+                      icon: systemHealth.ubersuggestConnected ? '◇' : '○',
+                      color: systemHealth.ubersuggestConnected ? E.mossGreen : C.red,
+                    },
+                    {
                       label: 'Site Scanned',
                       value: systemHealth.lastSiteScan
                         ? new Date(systemHealth.lastSiteScan).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -6793,6 +6843,191 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 >
                   {gscStatus?.connected ? '↻ Reconnect GSC' : '→ Connect GSC'}
                 </button>
+              </section>
+
+              {/* Google Analytics 4 */}
+              <section style={{
+                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+              }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>📈</span>GOOGLE ANALYTICS 4
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                    background: ga4Status?.connected ? '#16A34A' : '#DC2626',
+                    boxShadow: ga4Status?.connected ? '0 0 0 3px rgba(22,163,74,0.16)' : '0 0 0 3px rgba(220,38,38,0.16)',
+                  }} />
+                  <div>
+                    <div style={{ fontFamily: C.serif, fontSize: 16, fontWeight: 600, color: E.ink }}>
+                      {ga4Status?.connected ? 'Connected · landing-page demand' : 'Not connected'}
+                    </div>
+                    <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
+                      Reuses the GSC service-account key · add the SA as a Viewer on the GA4 property
+                    </div>
+                  </div>
+                </div>
+                <input
+                  value={ga4PropertyInput}
+                  onChange={(e) => setGa4PropertyInput(e.target.value)}
+                  placeholder="GA4 property ID (e.g. 123456789)"
+                  style={{
+                    width: '100%', marginBottom: 8, padding: '8px 10px',
+                    border: `1px solid ${E.hairline}`, background: E.ivory,
+                    fontFamily: C.mono, fontSize: 12, color: E.ink,
+                  }}
+                />
+                {ga4Notice && (
+                  <div style={{ fontSize: 10, fontFamily: C.mono, color: ga4Status?.connected ? E.mossGreen : C.red, marginBottom: 8 }}>{ga4Notice}</div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    disabled={ga4Busy}
+                    onClick={async () => {
+                      setGa4Busy(true)
+                      setGa4Notice(null)
+                      try {
+                        const res = await fetch('/api/content-studio/ga4/connect', {
+                          method: 'POST',
+                          credentials: 'same-origin',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ propertyId: ga4PropertyInput, enabled: true }),
+                        })
+                        const data = await res.json()
+                        if (!res.ok) throw new Error(data.error || 'GA4 connect failed')
+                        setGa4Notice(`Live · ${data.sessions ?? 0} sessions in last 7 days`)
+                        await loadGa4Status()
+                        await loadSystemHealth()
+                      } catch (e) {
+                        setGa4Notice(e instanceof Error ? e.message : 'GA4 connect failed')
+                      } finally { setGa4Busy(false) }
+                    }}
+                    style={{
+                      flex: 1, padding: '8px 0', borderRadius: 0,
+                      border: `1px solid ${E.gold}`, background: E.gold, color: E.ivory,
+                      cursor: ga4Busy ? 'progress' : 'pointer',
+                      fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                    }}
+                  >
+                    {ga4Busy ? 'Connecting…' : ga4Status?.connected ? '↻ Re-test GA4' : '→ Connect GA4'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={ga4Busy || !ga4Status?.connected}
+                    onClick={async () => {
+                      setGa4Busy(true)
+                      try {
+                        await fetch('/api/content-studio/ga4/connect', { method: 'DELETE', credentials: 'same-origin' })
+                        setGa4Notice('Disconnected')
+                        await loadGa4Status()
+                        await loadSystemHealth()
+                      } finally { setGa4Busy(false) }
+                    }}
+                    style={{
+                      padding: '8px 12px', borderRadius: 0,
+                      border: `1px solid ${E.hairline}`, background: 'transparent', color: E.inkMuted,
+                      cursor: ga4Status?.connected ? 'pointer' : 'not-allowed',
+                      fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </section>
+
+              {/* Ubersuggest MCP */}
+              <section style={{
+                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+              }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>◇</span>UBERSUGGEST MCP
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                    background: uberStatus?.connected ? '#16A34A' : '#DC2626',
+                    boxShadow: uberStatus?.connected ? '0 0 0 3px rgba(22,163,74,0.16)' : '0 0 0 3px rgba(220,38,38,0.16)',
+                  }} />
+                  <div>
+                    <div style={{ fontFamily: C.serif, fontSize: 16, fontWeight: 600, color: E.ink }}>
+                      {uberStatus?.connected ? `Connected · ${uberStatus.toolCount || 'MCP'} tools` : 'Disconnected'}
+                    </div>
+                    <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
+                      <a href="https://app.neilpatel.com/en/mcp" target="_blank" rel="noreferrer" style={{ color: E.gold }}>Authorize at neilpatel.com/en/mcp</a>
+                      {' '}then paste the bearer token. Disconnect keeps the token for one-click reconnect.
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="password"
+                  value={uberTokenInput}
+                  onChange={(e) => setUberTokenInput(e.target.value)}
+                  placeholder={uberStatus?.hasToken ? 'Token saved · paste a new one to replace' : 'Ubersuggest MCP bearer token'}
+                  style={{
+                    width: '100%', marginBottom: 8, padding: '8px 10px',
+                    border: `1px solid ${E.hairline}`, background: E.ivory,
+                    fontFamily: C.mono, fontSize: 12, color: E.ink,
+                  }}
+                />
+                {uberNotice && (
+                  <div style={{ fontSize: 10, fontFamily: C.mono, color: uberStatus?.connected ? E.mossGreen : C.red, marginBottom: 8 }}>{uberNotice}</div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    disabled={uberBusy}
+                    onClick={async () => {
+                      setUberBusy(true)
+                      setUberNotice(null)
+                      try {
+                        const res = await fetch('/api/content-studio/ubersuggest/connect', {
+                          method: 'POST',
+                          credentials: 'same-origin',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ accessToken: uberTokenInput || undefined, enabled: true }),
+                        })
+                        const data = await res.json()
+                        if (!res.ok) throw new Error(data.error || 'Ubersuggest connect failed')
+                        setUberTokenInput('')
+                        setUberNotice('MCP connected — planner will pull keyword volume')
+                        await loadUberStatus()
+                        await loadSystemHealth()
+                      } catch (e) {
+                        setUberNotice(e instanceof Error ? e.message : 'Ubersuggest connect failed')
+                      } finally { setUberBusy(false) }
+                    }}
+                    style={{
+                      flex: 1, padding: '8px 0', borderRadius: 0,
+                      border: `1px solid ${E.gold}`, background: E.gold, color: E.ivory,
+                      cursor: uberBusy ? 'progress' : 'pointer',
+                      fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                    }}
+                  >
+                    {uberBusy ? 'Connecting…' : uberStatus?.connected ? '↻ Reconnect MCP' : '→ Connect MCP'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={uberBusy || !uberStatus?.connected}
+                    onClick={async () => {
+                      setUberBusy(true)
+                      try {
+                        await fetch('/api/content-studio/ubersuggest/connect', { method: 'DELETE', credentials: 'same-origin' })
+                        setUberNotice('Disconnected — token kept for reconnect')
+                        await loadUberStatus()
+                        await loadSystemHealth()
+                      } finally { setUberBusy(false) }
+                    }}
+                    style={{
+                      padding: '8px 12px', borderRadius: 0,
+                      border: `1px solid ${E.hairline}`, background: 'transparent', color: E.inkMuted,
+                      cursor: uberStatus?.connected ? 'pointer' : 'not-allowed',
+                      fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </section>
 
               {/* Site Health */}

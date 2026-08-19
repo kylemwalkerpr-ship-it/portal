@@ -43,7 +43,7 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return buf.buffer
 }
 
-interface ServiceAccount {
+export interface ServiceAccount {
   client_email: string
   private_key: string
   token_uri?: string
@@ -79,11 +79,14 @@ export function parseServiceAccountJson(raw: string): ServiceAccount {
   return parsed
 }
 
-async function tokenFromServiceAccount(sa: ServiceAccount): Promise<string> {
+export async function mintServiceAccountToken(
+  sa: ServiceAccount,
+  scope = 'https://www.googleapis.com/auth/webmasters.readonly',
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   const claim = {
     iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+    scope,
     aud: sa.token_uri || 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
@@ -179,7 +182,7 @@ export async function getGscAccess(): Promise<GscAccess | null> {
   if (saJson) {
     try {
       const sa = parseServiceAccountJson(saJson)
-      const accessToken = await tokenFromServiceAccount(sa)
+      const accessToken = await mintServiceAccountToken(sa)
       return { accessToken, mode: 'service_account', siteUrl }
     } catch (err) {
       console.warn('[gscAuth] Service account failed', err instanceof Error ? err.message : err)
