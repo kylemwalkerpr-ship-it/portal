@@ -150,15 +150,14 @@ export async function ingestKeywordDemandSource(opts: {
     const selected = selectKeywordDemandCandidates(file.rows).slice(0, limit)
     const skipped = Math.max(0, fetched - selected.length)
     const supabase = createSupabaseAdminClient()
-    let stored = 0
-    for (const c of selected) {
+    const rows = selected.map((c) => {
       const slug = normalizePlannerTopic(c.term).replace(/\s+/g, '-')
       const dedupeKey = `keyword-demand://${slug}`
       const summary =
         `Market demand ${c.volume.toLocaleString('en-US')} monthly searches · ` +
         `competition ${c.competition} (${c.competitionIndex}) · ` +
         `lifecycle ${c.stage}/${c.country}.`
-      const { error } = await supabase.from('seo_knowledge').upsert({
+      return {
         source: KEYWORD_DEMAND_SOURCE_ID,
         source_label: KEYWORD_DEMAND_SOURCE_LABEL,
         kind: 'trend',
@@ -172,13 +171,13 @@ export async function ingestKeywordDemandSource(opts: {
         confidence: Math.min(0.86, 0.45 + Math.log10(c.volume + 10) / 12),
         published_at: file.updatedAt || null,
         dedupe_key: dedupeKey,
-      }, { onConflict: 'dedupe_key' })
-      if (error && !/42P01|relation .* does not exist/i.test(error.message)) {
-        return { fetched, stored, skipped, error: error.message.slice(0, 160) }
       }
-      if (!error) stored += 1
+    })
+    const { error } = await supabase.from('seo_knowledge').upsert(rows, { onConflict: 'dedupe_key' })
+    if (error && !/42P01|relation .* does not exist/i.test(error.message)) {
+      return { fetched, stored: 0, skipped, error: error.message.slice(0, 160) }
     }
-    return { fetched, stored, skipped }
+    return { fetched, stored: error ? 0 : rows.length, skipped }
   } catch (e) {
     return {
       fetched: 0,

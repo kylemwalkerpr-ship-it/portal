@@ -1,4 +1,4 @@
-import { fetchFeedText } from '@/lib/seoEngine/knowledge'
+import { defaultFeedTimeoutMs, fetchFeedText, withTimeout } from '@/lib/seoEngine/knowledge'
 
 describe('fetchFeedText (Google News rate-limit resilience)', () => {
   const realFetch = global.fetch
@@ -43,6 +43,23 @@ describe('fetchFeedText (Google News rate-limit resilience)', () => {
     }) as unknown as typeof fetch
     await expect(fetchFeedText('https://x/feed')).rejects.toThrow('HTTP 404')
     expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses a shorter budget for Google News / Trends than gov feeds', () => {
+    expect(defaultFeedTimeoutMs('https://news.google.com/rss/search?q=USCIS')).toBe(6_000)
+    expect(defaultFeedTimeoutMs('https://trends.google.com/trending/rss?geo=US')).toBe(6_000)
+    expect(defaultFeedTimeoutMs('https://www.gov.uk/search/news-and-communications.atom')).toBe(8_000)
+  })
+
+  it('fails fast when fetch never resolves (does not hang the ingest tape)', async () => {
+    global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch
+    const start = Date.now()
+    await expect(fetchFeedText('https://news.google.com/rss/search?q=USCIS', { timeoutMs: 250 })).rejects.toThrow(/timed out after 250ms/)
+    expect(Date.now() - start).toBeLessThan(1500)
+  })
+
+  it('withTimeout rejects even if the inner work ignores AbortSignal', async () => {
+    await expect(withTimeout(50, () => new Promise(() => {}), 'source')).rejects.toThrow(/timed out after 50ms/)
   })
 
   it('throws after two empty bodies', async () => {

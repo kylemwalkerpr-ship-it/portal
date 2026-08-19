@@ -5785,13 +5785,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     // before the first SSE frame arrives, so a busy button is never silent.
     setEngineTrace([{ seq: -1, phase: 'connect', message: 'Connecting to engine stream…', tone: 'info' }])
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 90_000)
+    const timeoutMs = kind === 'ingest' ? 180_000 : 90_000
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const res = await fetch('/api/seo-engine/action-stream', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-        body: JSON.stringify({ kind, limit: 10, draftBriefs: false, maxAudits: 6, limitPerSource: 8, maxAiItems: 8 }),
+        body: JSON.stringify({
+          kind,
+          limit: 10,
+          draftBriefs: false,
+          maxAudits: 6,
+          limitPerSource: 8,
+          maxAiItems: 0,
+          aiSummarize: false,
+        }),
         signal: controller.signal,
       })
       if (!res.ok || !res.body) {
@@ -5816,12 +5825,27 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           throw new Error(String(ev.error || 'Engine action failed'))
         }
       })
+      if (!summary && kind === 'ingest') {
+        setEngineTrace((prev) => [...prev, { seq: 9000, phase: 'fallback', message: 'Stream ended before done — finishing ingest without live tape…', tone: 'warn' }])
+        const fb = await fetch('/api/seo-engine/knowledge', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limitPerSource: 8, maxAiItems: 0, aiSummarize: false }),
+        })
+        const fbData = await fb.json().catch(() => ({})) as { itemsStored?: number; sourcesRun?: number; error?: string }
+        if (!fb.ok) throw new Error(fbData.error || 'Knowledge ingest fallback failed')
+        summary = `Ingested ${fbData.itemsStored ?? 0} items from ${fbData.sourcesRun ?? 0} sources`
+        setEngineTrace((prev) => [...prev, { seq: 9001, phase: 'done', message: summary || 'Ingest complete', tone: 'ok' }])
+      }
       if (summary) setActionNotice(summary)
       await fetchEngineStatus()
     } catch (e) {
-      const message = e instanceof Error && e.name === 'AbortError'
-        ? `${kind} timed out after 90s — the engine action did not finish`
+      const timedOut = e instanceof Error && e.name === 'AbortError'
+      const message = timedOut
+        ? `${kind} timed out after ${Math.round(timeoutMs / 1000)}s — hung feeds were skipped`
         : e instanceof Error ? e.message : `${kind} failed`
+      setEngineTrace((prev) => [...prev, { seq: 9999, phase: timedOut ? 'timeout' : 'error', message, tone: 'warn' }])
       setError(message)
     } finally {
       clearTimeout(timeout)

@@ -67,6 +67,9 @@ export async function POST(request: Request) {
       const onProgress = (phase: string, message: string, detail?: string) => emitStep(phase, message, detail)
 
       const KIND_LABEL: Record<ActionKind, string> = { ingest: 'knowledge ingestion', plan: 'planner', llm: 'LLM visibility audit' }
+      const heartbeat = setInterval(() => {
+        emitStep('wait', 'Still running — hung feeds are skipped after 6–8s…')
+      }, 8_000)
 
       try {
         emitStep('boot', `Authenticated · running ${KIND_LABEL[kind]} …`)
@@ -75,8 +78,10 @@ export async function POST(request: Request) {
           const result = await ingestKnowledge({
             sources: Array.isArray(body.sources) ? (body.sources as string[]) : undefined,
             limitPerSource: body.limitPerSource != null ? Number(body.limitPerSource) : 8,
-            aiSummarize: body.aiSummarize !== false,
-            maxAiItems: body.maxAiItems != null ? Number(body.maxAiItems) : 8,
+            // Floor ingest must finish the tape. AI summaries are cron-only;
+            // a single hung Parasail call used to freeze "Fetching Google News".
+            aiSummarize: body.aiSummarize === true,
+            maxAiItems: body.maxAiItems != null ? Number(body.maxAiItems) : 0,
             onProgress,
           })
           const { classifyEngineRunStatus } = await import('@/lib/seoEngine/engineRunSummary')
@@ -143,6 +148,7 @@ export async function POST(request: Request) {
         } catch { /* best-effort */ }
         send({ type: 'error', error: `${KIND_LABEL[kind]} failed: ${message}` })
       } finally {
+        clearInterval(heartbeat)
         if (!closed) {
           try {
             controller.enqueue(encoder.encode('data: [DONE]\n\n'))

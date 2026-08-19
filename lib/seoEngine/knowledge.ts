@@ -40,6 +40,14 @@ export interface KnowledgeSource {
 // ── Source registry (deterministic, overridable via seo_engine_config) ───────
 export const DEFAULT_SOURCES: KnowledgeSource[] = [
   {
+    id: 'keyword-demand',
+    label: 'Caseworks keyword demand (Ads)',
+    kind: 'trend',
+    url: 'https://portal.yousafeconsultancy.com/seo-data/keyword-demand.json',
+    countries: ['US', 'UK', 'CA', 'AU'],
+    limit: 80,
+  },
+  {
     id: 'home-office',
     label: 'UK Home Office (immigration)',
     kind: 'policy',
@@ -115,14 +123,6 @@ export const DEFAULT_SOURCES: KnowledgeSource[] = [
   {
     id: 'google-trends-au', label: 'Google Trends (AU)', kind: 'trend', url: 'https://trends.google.com/trending/rss?geo=AU', countries: ['AU'], limit: 10,
   },
-  {
-    id: 'keyword-demand',
-    label: 'Caseworks keyword demand (Ads)',
-    kind: 'trend',
-    url: 'https://portal.yousafeconsultancy.com/seo-data/keyword-demand.json',
-    countries: ['US', 'UK', 'CA', 'AU'],
-    limit: 80,
-  },
 ]
 
 interface RawItem {
@@ -144,30 +144,69 @@ function decodeXml(s: string): string {
  */
 const FEED_UA = 'Mozilla/5.0 (compatible; YouSafeContentStudio/1.0; +https://portal.yousafeconsultancy.com)'
 
-/** Fetch a feed URL with a retry on transient rate-limits / empty bodies. */
-export async function fetchFeedText(url: string): Promise<string> {
+/** Google News / Trends often hold the TCP connection; fail faster than gov feeds. */
+export function defaultFeedTimeoutMs(url: string): number {
+  return /news\.google\.com|trends\.google\.com/i.test(url) ? 6_000 : 8_000
+}
+
+/**
+ * Race `work` against a timer. Cloudflare `fetch` to news.google.com frequently
+ * ignores AbortSignal, so we cannot rely on AbortSignal.timeout alone — the
+ * ingest livestream would freeze on "Fetching Google News · USCIS…" forever.
+ */
+export async function withTimeout<T>(ms: number, work: (signal: AbortSignal) => Promise<T>, label: string): Promise<T> {
+  const ac = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      ac.abort()
+      reject(new Error(`${label} timed out after ${ms}ms`))
+    }, ms)
+  })
+  try {
+    return await Promise.race([work(ac.signal), timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/** Fetch a feed URL with a hard timeout and one retry on 429/503 or empty body. */
+export async function fetchFeedText(url: string, opts?: { timeoutMs?: number }): Promise<string> {
+  const timeoutMs = Math.max(250, opts?.timeoutMs ?? defaultFeedTimeoutMs(url))
   let lastStatus = '?'
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/rss+xml, application/atom+xml, text/xml, */*',
-        'User-Agent': FEED_UA,
-      },
-      signal: AbortSignal.timeout(15_000),
-    })
-    lastStatus = String(res.status)
-    if (!res.ok) {
-      if ((res.status === 429 || res.status === 503) && attempt === 0) {
-        await new Promise((r) => setTimeout(r, 800))
+    try {
+      const res = await withTimeout(
+        timeoutMs,
+        (signal) =>
+          fetch(url, {
+            headers: {
+              Accept: 'application/rss+xml, application/atom+xml, text/xml, */*',
+              'User-Agent': FEED_UA,
+            },
+            signal,
+          }),
+        'Feed',
+      )
+      lastStatus = String(res.status)
+      if (!res.ok) {
+        if ((res.status === 429 || res.status === 503) && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 400))
+          continue
+        }
+        throw new Error(`HTTP ${res.status}`)
+      }
+      const text = await withTimeout(timeoutMs, () => res.text(), 'Feed body')
+      if (text.trim()) return text
+      if (attempt === 0) continue
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/timed out/i.test(msg)) throw new Error(`Feed timed out after ${timeoutMs}ms`)
+      if (attempt === 0 && /HTTP 429|HTTP 503/.test(msg)) {
+        await new Promise((r) => setTimeout(r, 400))
         continue
       }
-      throw new Error(`HTTP ${res.status}`)
-    }
-    const text = await res.text()
-    if (text.trim()) return text
-    if (attempt === 0) {
-      await new Promise((r) => setTimeout(r, 800))
-      continue
+      throw e instanceof Error ? e : new Error(msg)
     }
   }
   throw new Error(`Empty feed body (HTTP ${lastStatus})`)
@@ -329,10 +368,11 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
   for (const source of sources) {
     const per: KnowledgeIngestResult['perSource'][number] = { id: source.id, label: source.label, fetched: 0, stored: 0 }
     opts.onProgress?.('fetch', `Fetching ${source.label}…`)
+    const sourceMs = source.id.startsWith('gnews') || source.id.startsWith('google-trends') ? 10_000 : 18_000
     try {
       if (source.id === 'keyword-demand') {
         const { ingestKeywordDemandSource } = await import('./keywordDemand')
-        const sub = await ingestKeywordDemandSource({ limit: Math.max(limit, source.limit) })
+        const sub = await withTimeout(sourceMs, () => ingestKeywordDemandSource({ limit: Math.max(limit, source.limit) }), source.label)
         per.fetched = sub.fetched
         per.stored = sub.stored
         result.itemsFetched += sub.fetched
@@ -342,11 +382,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
           per.error = sub.error
           result.errors.push(`${source.id}: ${sub.error}`)
         }
-        result.sourcesRun += 1
-        result.perSource.push(per)
-        opts.onProgress?.('store', `${source.label}: ${per.stored} stored · ${per.fetched} fetched`, per.error)
-        continue
-      }
+      } else {
       const raw = parseFeed(await fetchFeedText(source.url), limit)
       per.fetched = raw.length; result.itemsFetched += raw.length
       for (const item of raw) {
@@ -409,6 +445,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
         }
         await persistIntelligenceSnapshot(source, tagged, aiSummary)
         result.itemsStored += 1; per.stored += 1
+      }
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e); per.error = msg.slice(0, 200); result.errors.push(`${source.id}: ${msg.slice(0, 160)}`)

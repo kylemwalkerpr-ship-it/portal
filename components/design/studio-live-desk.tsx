@@ -27,7 +27,7 @@ export const ENGINE_ACTION_LABEL: Record<string, string> = {
 }
 
 export const ENGINE_PARAMS: Record<string, string> = {
-  ingest: 'limitPerSource=8 · maxAiItems=8 · aiSummarize=on',
+  ingest: 'limitPerSource=8 · maxAiItems=0 · hung feeds skip after 6–8s',
   plan: 'GSC demand + knowledge · limit=10',
   llm: 'adaptive slate · skip recent · planner + losses',
 }
