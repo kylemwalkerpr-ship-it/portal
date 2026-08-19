@@ -10,6 +10,7 @@ import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { loadEngineConfig, saveEngineConfig } from './engineConfig'
 import type { GscSignalInput } from './planner'
 import { refreshUbersuggestToken, UBERSUGGEST_MCP_URL as DEFAULT_MCP_URL } from './ubersuggestOAuth'
+import { ubersuggestSpendPlan, type UberLayer } from './ubersuggestCatalog'
 
 export const UBERSUGGEST_MCP_URL = DEFAULT_MCP_URL
 const MCP_PROTOCOL = '2025-03-26'
@@ -28,6 +29,15 @@ export interface UbersuggestConfig {
   creditsExhaustedUntil?: string | null
   lastGoodAt?: string | null
   lastGoodSignals?: Array<{ term: string; impressions: number }>
+  lastIntel?: UbersuggestIntel | null
+}
+
+export interface UbersuggestIntel {
+  pulledAt: string
+  toolsUsed: string[]
+  layers: UberLayer[]
+  keywordCount: number
+  calls: number
 }
 
 /** Budget of MCP tool calls per planner run — spend them, then stop. */
@@ -63,6 +73,7 @@ export async function loadUbersuggestConfig(): Promise<UbersuggestConfig> {
     creditsExhaustedUntil: stored?.creditsExhaustedUntil ?? null,
     lastGoodAt: stored?.lastGoodAt ?? null,
     lastGoodSignals: Array.isArray(stored?.lastGoodSignals) ? stored.lastGoodSignals : [],
+    lastIntel: stored?.lastIntel && typeof stored.lastIntel === 'object' ? stored.lastIntel : null,
   }
 }
 
@@ -89,6 +100,7 @@ export function redactUbersuggestConfig(cfg: UbersuggestConfig): RedactedUbersug
     tokenExpiresAt: cfg.tokenExpiresAt ?? null,
     creditsExhaustedUntil: cfg.creditsExhaustedUntil ?? null,
     lastGoodAt: cfg.lastGoodAt ?? null,
+    lastIntel: cfg.lastIntel ?? null,
   }
 }
 
@@ -104,6 +116,7 @@ export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>)
     oauth: next.oauth !== undefined ? next.oauth : current.oauth,
     mcpUrl: next.mcpUrl || current.mcpUrl || UBERSUGGEST_MCP_URL,
     lastGoodSignals: next.lastGoodSignals !== undefined ? next.lastGoodSignals : current.lastGoodSignals,
+    lastIntel: next.lastIntel !== undefined ? next.lastIntel : current.lastIntel,
   }
   await saveEngineConfig('ubersuggest', {
     enabled: merged.enabled,
@@ -119,6 +132,7 @@ export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>)
     creditsExhaustedUntil: merged.creditsExhaustedUntil ?? null,
     lastGoodAt: merged.lastGoodAt ?? null,
     lastGoodSignals: (merged.lastGoodSignals || []).slice(0, 80),
+    lastIntel: merged.lastIntel ?? null,
   })
   return merged
 }
@@ -203,7 +217,7 @@ export async function ubersuggestRpc(
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(method === 'tools/call' ? 20_000 : 12_000),
   })
   const sid = res.headers.get('mcp-session-id')
   if (sid) {
@@ -275,22 +289,38 @@ export function isCreditOrAuthFailure(err: unknown): boolean {
   return /401|403|429|quota|credit|limit exceeded|exhaust|payment required|upgrade|not connected|unauthorized|forbidden|insufficient/.test(m)
 }
 
-export function parseUbersuggestKeywords(raw: unknown): Array<{ term: string; volume: number }> {
+export function parseUbersuggestKeywords(
+  raw: unknown,
+  opts: { allowZeroVolume?: boolean } = {},
+): Array<{ term: string; volume: number; position?: number }> {
   const bag: unknown[] = Array.isArray(raw)
     ? raw
     : raw && typeof raw === 'object'
-      ? (['keywords', 'data', 'results', 'items', 'suggestions', 'related']
+      ? (['keywords', 'data', 'results', 'items', 'suggestions', 'related', 'ideas', 'pages']
           .map((k) => (raw as Record<string, unknown>)[k])
           .find((v) => Array.isArray(v)) as unknown[] | undefined) || [raw]
-      : []
-  const out: Array<{ term: string; volume: number }> = []
+      : typeof raw === 'string'
+        ? [raw]
+        : []
+  const out: Array<{ term: string; volume: number; position?: number }> = []
   for (const item of bag) {
+    if (typeof item === 'string') {
+      const term = item.trim()
+      if (!term || isJunkQuery(term) || !opts.allowZeroVolume) continue
+      out.push({ term, volume: 40 })
+      continue
+    }
     if (!item || typeof item !== 'object') continue
     const rec = item as Record<string, unknown>
-    const term = String(rec.keyword || rec.term || rec.query || rec.phrase || rec.title || '').trim()
-    const volume = Number(rec.volume || rec.search_volume || rec.searchVolume || rec.monthly_searches || rec.traffic || 0) || 0
-    if (!term || volume < 20 || isJunkQuery(term)) continue
-    out.push({ term, volume })
+    const term = String(rec.keyword || rec.term || rec.query || rec.phrase || rec.title || rec.kw || '').trim()
+    let volume = Number(rec.volume || rec.search_volume || rec.searchVolume || rec.monthly_searches || rec.traffic || rec.visits || 0) || 0
+    if (!term || isJunkQuery(term)) continue
+    if (volume < 20) {
+      if (!opts.allowZeroVolume) continue
+      volume = Math.max(volume, 40)
+    }
+    const position = Number(rec.position || rec.rank || rec.pos)
+    out.push({ term, volume, position: Number.isFinite(position) && position > 0 ? position : undefined })
   }
   return out
 }
@@ -300,23 +330,6 @@ export function ubersuggestVolumeToImpressions(volume: number): number {
   const v = Math.max(0, Number(volume) || 0)
   return Math.max(40, Math.min(4000, Math.round(v * 0.15)))
 }
-
-const SEEDS: Array<{ q: string; loc: number; country: string }> = [
-  { q: 'uk graduate visa', loc: 2826, country: 'uk' },
-  { q: 'uk student visa', loc: 2826, country: 'uk' },
-  { q: 'uk spouse visa', loc: 2826, country: 'uk' },
-  { q: 'skilled worker visa uk', loc: 2826, country: 'uk' },
-  { q: 'f-1 visa', loc: 2840, country: 'us' },
-  { q: 'opt stem', loc: 2840, country: 'us' },
-  { q: 'h-1b visa', loc: 2840, country: 'us' },
-  { q: 'green card', loc: 2840, country: 'us' },
-  { q: 'canada study permit', loc: 2124, country: 'ca' },
-  { q: 'express entry canada', loc: 2124, country: 'ca' },
-  { q: 'canada spousal sponsorship', loc: 2124, country: 'ca' },
-  { q: 'australia student visa', loc: 2036, country: 'au' },
-  { q: '485 visa', loc: 2036, country: 'au' },
-  { q: 'subclass 189', loc: 2036, country: 'au' },
-]
 
 function unwrapToolPayload(result: unknown): unknown {
   const content = result && typeof result === 'object' && Array.isArray((result as { content?: unknown[] }).content)
@@ -355,13 +368,6 @@ async function listToolNames(cfg: UbersuggestConfig): Promise<string[]> {
   }
 }
 
-function pickTools(names: string[]): { keyword: string[]; domain: string[] } {
-  const keyword = names.filter((n) => /keyword|suggest|idea|question|related|overview/i.test(n)).slice(0, 4)
-  const domain = names.filter((n) => /domain|organic|top.?page|competitor/i.test(n) && !keyword.includes(n)).slice(0, 2)
-  if (!keyword.length) keyword.push('keyword_overview')
-  return { keyword, domain }
-}
-
 export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
   lastUbersuggestPull = { usedCache: false, calls: 0, exhausted: false }
   const loaded = await loadUbersuggestConfig()
@@ -384,17 +390,22 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
     return cachedSignals(cfg)
   }
 
-  const collected: Array<{ term: string; volume: number }> = []
+  const collected: Array<{ term: string; volume: number; position?: number }> = []
   let calls = 0
   let exhausted = false
   let lastErr = ''
+  const toolsUsed: string[] = []
+  const layers = new Set<UberLayer>()
 
-  const runCall = async (name: string, args: Record<string, unknown>) => {
+  const runCall = async (name: string, args: Record<string, unknown>, layer: UberLayer, allowZero = false) => {
     if (exhausted || calls >= UBERSUGGEST_CALL_BUDGET) return
     calls += 1
+    const parse = (raw: unknown) => parseUbersuggestKeywords(unwrapToolPayload(raw), { allowZeroVolume: allowZero || layer === 'keyword' && name === 'google_suggestions' })
     try {
       const result = await ubersuggestRpc(cfg, 'tools/call', { name, arguments: args }, 10 + calls)
-      collected.push(...parseUbersuggestKeywords(unwrapToolPayload(result)))
+      collected.push(...parse(result))
+      toolsUsed.push(name)
+      layers.add(layer)
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err)
       if (isUnauthorizedMcp(err) && cfg.refreshToken) {
@@ -402,7 +413,9 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
           const fresh = await refreshUbersuggestAccessToken(cfg, true)
           cfg = { ...cfg, accessToken: fresh }
           const result = await ubersuggestRpc(cfg, 'tools/call', { name, arguments: args }, 10 + calls)
-          collected.push(...parseUbersuggestKeywords(unwrapToolPayload(result)))
+          collected.push(...parse(result))
+          toolsUsed.push(name)
+          layers.add(layer)
           lastErr = ''
           return
         } catch (retryErr) {
@@ -414,28 +427,18 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
   }
 
   try {
-    const names = await listToolNames(cfg)
-    const tools = pickTools(names)
-    for (const seed of SEEDS) {
+    const names = new Set(await listToolNames(cfg))
+    for (const step of ubersuggestSpendPlan()) {
       if (exhausted || calls >= UBERSUGGEST_CALL_BUDGET) break
-      const tool = tools.keyword[calls % Math.max(1, tools.keyword.length)]
-      await runCall(tool, {
-        keyword: seed.q,
-        query: seed.q,
-        country: seed.country,
-        loc_id: seed.loc,
-        location: seed.country,
-      })
-    }
-    if (!exhausted && calls < UBERSUGGEST_CALL_BUDGET && tools.domain[0]) {
-      await runCall(tools.domain[0], { domain: 'yousafeconsultancy.com', url: 'https://yousafeconsultancy.com' })
+      if (names.size && !names.has(step.name)) continue
+      await runCall(step.name, step.args, step.layer, step.name === 'google_suggestions' || step.name === 'content_ideas')
     }
   } catch (err) {
     lastErr = err instanceof Error ? err.message : String(err)
     if (isCreditOrAuthFailure(err)) exhausted = true
   }
 
-  const best = new Map<string, { term: string; volume: number }>()
+  const best = new Map<string, { term: string; volume: number; position?: number }>()
   for (const row of collected) {
     const k = row.term.toLowerCase()
     const prev = best.get(k)
@@ -448,10 +451,18 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       term: row.term,
       impressions: ubersuggestVolumeToImpressions(row.volume),
       clicks: 0,
-      position: 55,
+      position: row.position && row.position < 70 ? row.position : 55,
       ctr: 0,
       source: 'ubersuggest' as const,
     }))
+
+  const intel: UbersuggestIntel = {
+    pulledAt: new Date().toISOString(),
+    toolsUsed: [...new Set(toolsUsed)],
+    layers: [...layers],
+    keywordCount: live.length,
+    calls,
+  }
 
   if (exhausted) {
     const pauseUntil = new Date(Date.now() + 6 * 3600_000).toISOString()
@@ -460,6 +471,7 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       creditsExhaustedUntil: pauseUntil,
       lastGoodSignals: live.length ? live.map((s) => ({ term: s.term, impressions: s.impressions })) : cfg.lastGoodSignals,
       lastGoodAt: live.length ? new Date().toISOString() : cfg.lastGoodAt,
+      lastIntel: intel,
     }).catch(() => undefined)
     lastUbersuggestPull = {
       usedCache: live.length === 0,
@@ -476,6 +488,7 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       creditsExhaustedUntil: null,
       lastGoodSignals: live.map((s) => ({ term: s.term, impressions: s.impressions })),
       lastGoodAt: new Date().toISOString(),
+      lastIntel: intel,
     }).catch(() => undefined)
     lastUbersuggestPull = { usedCache: false, calls, exhausted: false }
     return live

@@ -1,5 +1,6 @@
 import { ga4RowsToSignals, landingPathToTerm, normalizeGa4PropertyId } from '@/lib/seoEngine/ga4'
 import { isCreditOrAuthFailure, parseUbersuggestKeywords, ubersuggestVolumeToImpressions } from '@/lib/seoEngine/ubersuggest'
+import { UBERSUGGEST_TOOL_CATALOG, ubersuggestSpendPlan } from '@/lib/seoEngine/ubersuggestCatalog'
 import { mergeDemandSignals } from '@/lib/seoEngine/keywordDemand'
 import { safePull } from '@/lib/seoEngine/demandFeeders'
 
@@ -36,6 +37,27 @@ describe('Ubersuggest MCP keyword payload', () => {
     expect(a[0].volume).toBe(5400)
     const b = parseUbersuggestKeywords([{ query: 'f-1 visa', monthly_searches: 8100 }])
     expect(b[0].term).toBe('f-1 visa')
+    const c = parseUbersuggestKeywords(['uk graduate visa questions'], { allowZeroVolume: true })
+    expect(c[0].term).toBe('uk graduate visa questions')
+    const d = parseUbersuggestKeywords({ keywords: [{ keyword: 'opt stem', volume: 1200, position: 11 }] })
+    expect(d[0].position).toBe(11)
+  })
+})
+
+describe('Ubersuggest MCP catalog → engine spend', () => {
+  it('maps all 42 live tools and spends the hot path on named MCP tools', () => {
+    expect(UBERSUGGEST_TOOL_CATALOG).toHaveLength(42)
+    expect(UBERSUGGEST_TOOL_CATALOG.map((t) => t.name)).toEqual(expect.arrayContaining([
+      'keyword_suggestions', 'match_keywords', 'google_suggestions', 'keyword_overview',
+      'content_ideas', 'domain_overview', 'domain_keywords', 'domain_top_pages',
+      'serp_analysis', 'backlinks_overview', 'list_projects',
+    ]))
+    const plan = ubersuggestSpendPlan()
+    expect(plan).toHaveLength(16)
+    expect(plan.every((step) => UBERSUGGEST_TOOL_CATALOG.some((t) => t.name === step.name))).toBe(true)
+    expect(plan.filter((s) => s.layer === 'keyword').length).toBeGreaterThanOrEqual(6)
+    expect(plan.some((s) => s.layer === 'domain')).toBe(true)
+    expect(plan.some((s) => s.layer === 'backlink')).toBe(true)
   })
 })
 

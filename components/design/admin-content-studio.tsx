@@ -4604,6 +4604,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     lastError?: string | null
     creditsExhaustedUntil?: string | null
     mode?: 'oauth' | 'token' | null
+    lastIntel?: { keywordCount?: number; toolsUsed?: string[]; layers?: string[]; pulledAt?: string } | null
   } | null>(null)
   const [uberTokenInput, setUberTokenInput] = React.useState('')
   const [uberShowToken, setUberShowToken] = React.useState(false)
@@ -7075,7 +7076,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                     </div>
                     <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
                       {uberStatus?.mode === 'oauth' ? 'OAuth · ' : ''}
-                      Official MCP at ubersuggest-mcp.neilpatelapi.com — Connect opens Neil Patel login, then returns here.
+                      {uberStatus?.lastIntel?.keywordCount
+                        ? `Last engine pull: ${uberStatus.lastIntel.keywordCount} keywords · ${(uberStatus.lastIntel.layers || []).join(', ') || 'layers'} · ${uberStatus.lastIntel.toolsUsed?.length || 0} tools`
+                        : 'Planner spends 16 MCP calls per run: keyword markets first, then owned-domain, SERP, content, backlinks. Failed tools skip.'}
                     </div>
                   </div>
                 </div>
