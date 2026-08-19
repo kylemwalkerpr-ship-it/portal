@@ -90,7 +90,7 @@ export const UBERSUGGEST_MARKETS: Array<{ country: string; locId: number; langua
   { country: 'uk', locId: 2826, language: 'en', seeds: ['uk graduate visa', 'uk student visa', 'uk spouse visa', 'skilled worker visa uk'] },
   { country: 'us', locId: 2840, language: 'en', seeds: ['f-1 visa', 'opt stem', 'h-1b visa', 'green card'] },
   { country: 'ca', locId: 2124, language: 'en', seeds: ['canada study permit', 'express entry canada', 'canada spousal sponsorship'] },
-  { country: 'au', locId: 2036, language: 'en', seeds: ['australia student visa', '485 visa', 'subclass 189'] },
+  { country: 'au', locId: 2036, language: 'en', seeds: ['australia student visa', '485 graduate visa', 'subclass 189'] },
 ]
 
 export interface UberSpendCall {

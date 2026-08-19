@@ -258,6 +258,11 @@ export function extractRouteSubtypes(text: string): string[] {
     norm = ROUTE_SUBTYPE_SPELLING[norm] || norm
     if (norm) seen.add(norm)
   }
+  // AU subclass 485 is the Temporary Graduate visa — map the bare number to the
+  // "graduate" route subtype so a "485 visa" keyword matches graduate-485 pages
+  // (never the English-requirements-student page). "i-485" (US adjustment of
+  // status) is not a route subtype and must not read as one.
+  if (/(?<![a-z0-9-])485\b/i.test(text || '')) seen.add('graduate')
   return [...seen]
 }
 

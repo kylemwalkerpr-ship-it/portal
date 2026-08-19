@@ -106,6 +106,11 @@ describe('baseten DeepSeek V4 Flash · empty-content hardening', () => {
         system: 'Write.',
         prompt: 'Draft.',
         aiProvider: 'baseten-deepseek',
+        // Pin the empty-content retry to a single provider so the assertion
+        // counts only baseten-deepseek's 2 attempts (initial + thinking-off
+        // rescue). A non-exclusive pin now cascades to baseten-deepseek-pro +
+        // baseten-glm-fast (3 providers × 4 calls = 12).
+        exclusive: true,
       }),
     ).rejects.toThrow(/returned empty content/i)
 

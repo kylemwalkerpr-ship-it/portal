@@ -301,6 +301,18 @@ export function contentAiEnv(name: string): string {
   return env(name)
 }
 
+/**
+ * A provider base-URL override must be an http(s) URL. The AI Key Vault or a
+ * Worker secret can hold a pasted API key / truncated value in the base-URL
+ * field (2026-08: Baseten shipped "Invalid URL: <key>/chat/completions" when
+ * BASETEN_BASE_URL resolved to a non-URL string). Anything that isn't an
+ * http(s) URL is ignored so the provider falls back to its known-good default.
+ */
+function validBaseUrl(raw: string, fallback: string): string {
+  const v = String(raw || '').trim()
+  return /^https?:\/\//i.test(v) ? v.replace(/\/+$/, '') : fallback
+}
+
 /** Workers AI daily-neuron exhaustion is permanent until the quota resets. */
 function isDailyQuotaError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
@@ -689,7 +701,7 @@ function grokAuthHeader(): { apiKey: string; baseURL: string } {
   }
   return {
     apiKey,
-    baseURL: (env('XAI_BASE_URL') || 'https://api.x.ai/v1').replace(/\/$/, ''),
+    baseURL: validBaseUrl(env('XAI_BASE_URL'), 'https://api.x.ai/v1'),
   }
 }
 
@@ -897,7 +909,7 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'nvidia-nemotron',
-    baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
+    baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
     apiKey,
     model: env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
@@ -923,7 +935,7 @@ export function getNvidiaGlmProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'nvidia-glm',
-    baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
+    baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
     apiKey,
     model: env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
@@ -946,7 +958,7 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'nvidia-deepseek',
-    baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
+    baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
     apiKey,
     // NVIDIA NIM catalog id is lowercase; still the dated 0731 checkpoint,
     // not the undated DeepSeek-V4-Flash preview.
@@ -981,7 +993,7 @@ export function getBasetenProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'baseten-deepseek',
-    baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
+    baseURL: validBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL),
     apiKey,
     model: canonicalizeDeepseekModelId(env('BASETEN_MODEL') || BASETEN_MODEL, 'flash'),
     maxTokensCap: BASETEN_MAX_TOKENS,
@@ -1001,7 +1013,7 @@ export function getBasetenDeepseekProProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'baseten-deepseek-pro',
-    baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
+    baseURL: validBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL),
     apiKey,
     model: canonicalizeDeepseekModelId(env('BASETEN_PRO_MODEL') || BASETEN_PRO_MODEL, 'pro'),
     maxTokensCap: BASETEN_MAX_TOKENS,
@@ -1018,7 +1030,7 @@ export function getBasetenGlmFastProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'baseten-glm-fast',
-    baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
+    baseURL: validBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL),
     apiKey,
     model: env('BASETEN_GLM_MODEL') || BASETEN_GLM_MODEL,
     maxTokensCap: BASETEN_MAX_TOKENS,
@@ -1033,7 +1045,7 @@ export function getAihubmixGlmFastProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'aihubmix-glm-fast',
-    baseURL: env('AIHUBMIX_BASE_URL') || AIHUBMIX_BASE_URL,
+    baseURL: validBaseUrl(env('AIHUBMIX_BASE_URL'), AIHUBMIX_BASE_URL),
     apiKey,
     model: env('AIHUBMIX_GLM_MODEL') || AIHUBMIX_GLM_MODEL,
     maxTokensCap: AIHUBMIX_MAX_TOKENS,
@@ -1065,7 +1077,7 @@ export function isParasailConfigured(): boolean {
 }
 
 function parasailBaseURL(): string {
-  return (env('PARASAIL_BASE_URL') || PARASAIL_BASE_URL).replace(/\/$/, '')
+  return validBaseUrl(env('PARASAIL_BASE_URL'), PARASAIL_BASE_URL)
 }
 
 /** Drafting/writing: DeepSeek V4 Flash on Parasail. */
@@ -1179,7 +1191,7 @@ export function getZaiGlmProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'zai-glm',
-    baseURL: env('ZAI_BASE_URL') || ZAI_BASE_URL,
+    baseURL: validBaseUrl(env('ZAI_BASE_URL'), ZAI_BASE_URL),
     apiKey,
     model: env('ZAI_GLM_MODEL') || ZAI_GLM_MODEL,
     maxTokensCap: ZAI_MAX_TOKENS,
@@ -1827,7 +1839,7 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
   if (isGrokConfigured()) {
     out.push({
       label: 'grok',
-      baseURL: env('XAI_BASE_URL') || 'https://api.x.ai/v1',
+      baseURL: validBaseUrl(env('XAI_BASE_URL'), 'https://api.x.ai/v1'),
       apiKey: env('XAI_API_KEY'),
       model: env('XAI_MODEL') || 'grok-4.6',
     })

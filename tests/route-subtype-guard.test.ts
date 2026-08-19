@@ -73,6 +73,12 @@ describe('extractRouteSubtypes', () => {
       'child',
     ])
   })
+
+  it('maps subclass 485 to the graduate route but not US i-485', () => {
+    expect(extractRouteSubtypes('485 visa')).toEqual(['graduate'])
+    expect(extractRouteSubtypes('australia 485 visa english requirements')).toEqual(['graduate'])
+    expect(extractRouteSubtypes('i-485 adjustment of status')).toEqual([])
+  })
 })
 
 describe('extractGeoModifiers', () => {
@@ -196,6 +202,15 @@ describe('pathSlugConflict (keyword vs target path, including new files)', () =>
     expect(pathSlugConflict('llc formation service', 'app/us/llc-formation-service/page.tsx').conflict).toBe(
       false,
     )
+  })
+
+  it('allows 485 visa on the temporary-graduate-485 slug and refuses it on a student-only slug', () => {
+    expect(
+      pathSlugConflict('485 visa', 'app/au/temporary-graduate-485-checklist/page.tsx').conflict,
+    ).toBe(false)
+    expect(
+      pathSlugConflict('485 visa', 'app/au/student-visa-subclass-500-checklist/page.tsx').conflict,
+    ).toBe(true)
   })
 })
 

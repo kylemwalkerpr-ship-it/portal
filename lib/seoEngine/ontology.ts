@@ -251,7 +251,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
         neighbors: { prev: 'work', next: 'housing', across: ['visa|us', 'visa|uk', 'visa|au'] },
       },
       AU: {
-        seedKeywords: K(['australia visa application process', 'australia pr points test calculator', 'australia visa documents checklist 2026', 'migration agent australia', 'australia visa refusal appeal', '485 visa']),
+        seedKeywords: K(['australia visa application process', 'australia pr points test calculator', 'australia visa documents checklist 2026', 'migration agent australia', 'australia visa refusal appeal', '485 graduate visa']),
         statutoryAnchors: ['Migration Act 1958', 'Migration Regulations 1994'],
         authorities: ['Department of Home Affairs', 'MARA'],
         neighbors: { prev: 'work', next: 'housing', across: ['visa|us', 'visa|uk', 'visa|ca'] },
