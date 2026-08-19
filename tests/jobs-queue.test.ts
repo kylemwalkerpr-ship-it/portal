@@ -1,4 +1,5 @@
 import {
+  asQueueUiFilter,
   queueClearConfirmCopy,
   queueClearSpec,
   queueDeleteConfirmCopy,
@@ -36,6 +37,16 @@ describe('queueClearConfirmCopy', () => {
     expect(queueClearConfirmCopy('clear_drafts', 1)).toBe(
       'Click again to confirm abandoning 1 queued draft.',
     )
+  })
+})
+
+describe('asQueueUiFilter', () => {
+  it('keeps desk filters and drops job statuses the queue UI does not have', () => {
+    expect(asQueueUiFilter('failed')).toBe('failed')
+    expect(asQueueUiFilter('all')).toBe('all')
+    expect(asQueueUiFilter('stuck')).toBe('stuck')
+    expect(asQueueUiFilter('closed')).toBe('all')
+    expect(asQueueUiFilter('publishing')).toBe('all')
   })
 })
 

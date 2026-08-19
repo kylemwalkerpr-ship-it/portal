@@ -38,6 +38,14 @@ export function queueClearConfirmCopy(action: QueueClearAction, count: number): 
 
 export type QueueUiFilter = 'all' | 'pending' | 'drafting' | 'pr_created' | 'merged' | 'failed' | 'stuck'
 
+const QUEUE_UI_FILTERS: readonly QueueUiFilter[] = [
+  'all', 'pending', 'drafting', 'pr_created', 'merged', 'failed', 'stuck',
+]
+
+export function asQueueUiFilter(value: string): QueueUiFilter {
+  return (QUEUE_UI_FILTERS as readonly string[]).includes(value) ? (value as QueueUiFilter) : 'all'
+}
+
 /** Status query for GET /jobs so the failed tab loads failed rows, not the latest mixed 100. */
 export function queueListStatusParam(filter: QueueUiFilter): string | null {
   if (filter === 'all') return null

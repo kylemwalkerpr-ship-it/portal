@@ -28,6 +28,7 @@ import { consumeSseStream } from '@/lib/seoFactory/sse'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
+  asQueueUiFilter,
   queueClearConfirmCopy,
   queueDeleteConfirmCopy,
   queueJobsListPath,
@@ -6070,7 +6071,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         onPlan={() => void runEngineAction('plan')}
         onLlm={() => void runEngineAction('llm')}
         onOpenJob={(job) => { setSelectedJob(job); selectTab('draft') }}
-        onFilterQueue={(status) => { setQueueStatusFilter(status); selectTab('draft') }}
+        onFilterQueue={(status) => { setQueueStatusFilter(asQueueUiFilter(status)); selectTab('draft') }}
         onRefresh={() => { void fetchJobs(); void fetchEngineStatus() }}
       />
 
