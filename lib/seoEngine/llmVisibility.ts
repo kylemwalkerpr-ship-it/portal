@@ -550,6 +550,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   shareOfVoice: number
   engine: string
   selected?: Array<{ query: string; source: string; score: number; reasons: string[] }>
+  remediations?: import('./citationRemediation').CitationRemediation[]
 }> {
   const cap = Math.min(15, opts.maxAudits ?? 10)
   const maxEngines = Math.max(1, Math.min(3, opts.maxEngines ?? 2))
@@ -610,6 +611,22 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   const cited = audits.filter((a) => a.cited).length
   const total = audits.length
   const failed = audits.filter((a) => !a.engines.some((e) => e.ok)).length
+  let remediations: import('./citationRemediation').CitationRemediation[] = []
+  try {
+    const { remediateVisibilityAudits } = await import('./citationRemediation')
+    remediations = await remediateVisibilityAudits(audits.map((a) => ({
+      query: a.query,
+      cited: a.cited,
+      shareOfVoice: a.shareOfVoice,
+      topCompetitor: a.topCompetitor?.domain ?? null,
+      competitorShare: a.topCompetitor?.share ?? null,
+      stage: a.stage,
+      country: a.country,
+      actions: a.actions,
+    })))
+  } catch {
+    remediations = []
+  }
   return {
     audits,
     cited,
@@ -618,6 +635,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     shareOfVoice: total ? Math.round((cited / total) * 100) : 0,
     engine,
     selected,
+    remediations,
   }
 }
 
@@ -627,6 +645,7 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
   cited: number
   total: number
   byStage: Record<string, number>
+  remediations: import('./citationRemediation').CitationRemediation[]
 }> {
   try {
     const supabase = createSupabaseAdminClient()
@@ -657,15 +676,38 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
         cited: Boolean(r.cited),
       })
     }
+    let remediations: import('./citationRemediation').CitationRemediation[] = []
+    try {
+      const { remediateVisibilityAudits } = await import('./citationRemediation')
+      remediations = await remediateVisibilityAudits(rows.map((r) => ({
+        id: r.id ? String(r.id) : null,
+        query: String(r.query || ''),
+        cited: Boolean(r.cited),
+        shareOfVoice: Number(r.share_of_voice),
+        topCompetitor: r.top_competitor ? String(r.top_competitor) : null,
+        competitorShare: Number(r.competitor_share),
+        stage: r.stage ? String(r.stage) : null,
+        country: r.country ? String(r.country) : null,
+        actions: Array.isArray(r.actions) ? r.actions as import('./citationRemediation').CitationRemediation['actions'] : null,
+      })))
+      const byQuery = new Map(remediations.map((item) => [item.query.toLowerCase(), item]))
+      for (const r of rows) {
+        const hit = byQuery.get(String(r.query || '').toLowerCase())
+        if (hit) (r as Record<string, unknown>).remediation = hit
+      }
+    } catch {
+      remediations = []
+    }
     return {
       audits: rows,
       shareOfVoice: rows.length ? Math.round((cited / rows.length) * 100) : 0,
       cited,
       total: rows.length,
       byStage,
+      remediations,
     }
   } catch {
-    return { audits: [], shareOfVoice: 0, cited: 0, total: 0, byStage: {} }
+    return { audits: [], shareOfVoice: 0, cited: 0, total: 0, byStage: {}, remediations: [] }
   }
 }
 

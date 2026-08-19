@@ -20,6 +20,8 @@
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
 import { StudioLiveDesk, ENGINE_ACTION_LABEL, type DeskLiveState } from './studio-live-desk'
+import { AeoRemediationQueue } from './studio-aeo-remediation'
+import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/seoEngine/citationRemediation'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
@@ -175,6 +177,13 @@ interface AISuggestion {
   sourcePage?: string
   /** Lean ranking-model view (total · confidence · recommendedActions · forecast) — attached by the suggestions API. */
   ranking?: LeanRanking
+  aeoRemediation?: {
+    query: string
+    url: string | null
+    jobId: string | null
+    mode: 'expand' | 'new'
+    actions: Array<{ priority: number; action: string; evidence: string }>
+  }
 }
 
 // ── Options ──
@@ -2203,6 +2212,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
   // H2 outline — editable
   const [h2s, setH2s] = React.useState<string[]>(() => {
+    if (selectedBrief?.aeoRemediation?.actions?.length) return actionHeadings(selectedBrief.aeoRemediation.actions)
     if (selectedBrief?.keywords?.length) {
       const stems = selectedBrief.keywords.filter(k => k.length > 4).slice(0, 5)
         .map(k => k.charAt(0).toUpperCase() + k.slice(1).toLowerCase())
@@ -2218,6 +2228,15 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       keywords: String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
     })
   })?.slice(0, 4) ?? [])
+  React.useEffect(() => {
+    const aeo = selectedBrief?.aeoRemediation
+    if (!aeo?.actions?.length) return
+    const heads = actionHeadings(aeo.actions)
+    if (heads.length) setH2s(heads)
+    if (aeo.url) {
+      setSources((prev) => (prev.includes(aeo.url!) ? prev : [aeo.url!, ...prev].slice(0, 8)))
+    }
+  }, [selectedBrief])
   const [minWords, setMinWords] = React.useState<number>(() => contentType === 'blog_post' ? 900 : contentType === 'regional_page' ? 1400 : 1800)
   const [maxWords, setMaxWords] = React.useState<number>(() => contentType === 'blog_post' ? 1600 : contentType === 'regional_page' ? 2200 : 2800)
   const [targetSlug, setTargetSlug] = React.useState('')
@@ -2470,6 +2489,25 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           Every field below becomes part of the AI\'s strict template. Nothing is guessed — tweak before you generate.
         </p>
       </div>
+
+      {selectedBrief?.aeoRemediation && (
+        <div data-testid="aeo-brief-checklist" style={{ padding: 12, border: `1px solid ${E.gold}`, background: E.cream }}>
+          <div style={{ fontFamily: C.mono, fontSize: 9, letterSpacing: '0.14em', color: E.goldDeep, fontWeight: 700, textTransform: 'uppercase' }}>
+            LLM audit retrofit · {selectedBrief.aeoRemediation.mode === 'expand' ? 'existing page' : 'new canonical'}
+          </div>
+          <div style={{ marginTop: 4, fontFamily: C.serif, fontSize: 13, color: E.inkBlack, fontWeight: 700 }}>{selectedBrief.aeoRemediation.query}</div>
+          {selectedBrief.aeoRemediation.url && (
+            <a href={selectedBrief.aeoRemediation.url} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: 4, fontFamily: C.mono, fontSize: 10, color: E.goldDeep }}>
+              {selectedBrief.aeoRemediation.url}
+            </a>
+          )}
+          <ol style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, lineHeight: 1.45, color: E.ink }}>
+            {selectedBrief.aeoRemediation.actions.slice(0, 4).map((act) => (
+              <li key={act.action}>{act.action}</li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* ── IDENTITY ROW: content type, region, tone, AI provider ── */}
       <div style={fieldSection}>
@@ -3964,7 +4002,7 @@ function JobDetail({
 // ── UNIFIED WORK PLAN TABLE ──
 // Aggregates all signal sources (radar, cannibal, merges, backlinks, visibility)
 // into one sortable, filterable table. Multi-select sends items to Research.
-type WorkPlanCategory = 'gap' | 'refresh' | 'expansion' | 'cannibal' | 'merge' | 'backlink' | 'visibility'
+type WorkPlanCategory = 'gap' | 'refresh' | 'expansion' | 'cannibal' | 'merge' | 'backlink' | 'visibility' | 'ubersuggest'
 interface WorkPlanItem {
   id: string
   category: WorkPlanCategory
@@ -3989,6 +4027,7 @@ const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: s
   merge: { label: 'MERGE', bg: '#F3E8FF', fg: '#6B21A8', icon: '🔀' },
   backlink: { label: 'BACKLINK', bg: '#FFF7ED', fg: '#9A3412', icon: '🔗' },
   visibility: { label: 'AEO GAP', bg: '#ECFDF5', fg: '#065F46', icon: '◎' },
+  ubersuggest: { label: 'UBER', bg: '#EDE9FE', fg: '#5B21B6', icon: '◇' },
 }
 
 /** Mirror of lib/seoFactory/cannibalMerge.ts `canonicalStem` — kept local so the
@@ -4018,8 +4057,10 @@ function buildWorkPlan(
   radarMeta: Record<string, unknown> | null,
   merges: CannibalMergeRecord[],
   clearedTopics: Set<string> = new Set(),
+  uberBriefs: AISuggestion[] = [],
 ): WorkPlanItem[] {
   const items: WorkPlanItem[] = []
+  const radarTopics = new Set(radar.map((s) => String(s.topic || '').toLowerCase()).filter(Boolean))
   // Radar opportunities → gaps, quick wins, refreshes
   for (const s of radar) {
     if (s.play === 'cannibalization' && isJunkQuery(s.topic)) continue
@@ -4033,6 +4074,23 @@ function buildWorkPlan(
       topic: s.topic,
       source: 'Radar',
       priority: s.opportunityScore ?? s.demandScore ?? 0,
+      signals: s.signals ?? [s.reason],
+      keywords: s.keywords,
+      audience: s.audience,
+      play: s.play,
+      suggestion: s,
+    })
+  }
+  for (const s of uberBriefs) {
+    const topicKey = String(s.topic || '').toLowerCase()
+    if (!topicKey || radarTopics.has(topicKey) || isJunkQuery(s.topic)) continue
+    items.push({
+      id: `uber-${s.topic}`,
+      category: 'ubersuggest',
+      title: s.title || s.topic,
+      topic: s.topic,
+      source: 'Ubersuggest',
+      priority: (s.opportunityScore ?? s.demandScore ?? 0) + 8,
       signals: s.signals ?? [s.reason],
       keywords: s.keywords,
       audience: s.audience,
@@ -4115,6 +4173,7 @@ function WorkPlanTable({
     { key: 'merge', label: '🔀 Merges' },
     { key: 'backlink', label: '🔗 Backlinks' },
     { key: 'visibility', label: '◎ AEO Gaps' },
+    { key: 'ubersuggest', label: '◇ Ubersuggest' },
   ]
 
   return (
@@ -4552,6 +4611,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [interlinkStage, setInterlinkStage] = React.useState('visa')
   const [showRadar, setShowRadar] = React.useState(true)
   const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
+  const [aeoRemediations, setAeoRemediations] = React.useState<CitationRemediation[]>([])
+  const [aeoOpenedQuery, setAeoOpenedQuery] = React.useState<string | null>(null)
   // Imperative handle for the Brief Assembly panel — lets the pinned-topic CTA
   // below the panel trigger the exact same full-brief submit the in-panel
   // button uses (title, topic, keywords, H2 outline, sources, min/max words,
@@ -4743,9 +4804,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [competingUrls, setCompetingUrls] = React.useState<Array<{ url: string; title: string; primaryKeyword?: string | null }>>([])
 
   const [clearedCannibalTopics, setClearedCannibalTopics] = React.useState<Set<string>>(new Set())
+  const [uberOpps, setUberOpps] = React.useState<AISuggestion[]>([])
+  const [uberOppsLoading, setUberOppsLoading] = React.useState(false)
+  const [uberOppsMeta, setUberOppsMeta] = React.useState<{ connected?: boolean; source?: string; lastError?: string | null }>({})
+
   const workPlanItems = React.useMemo(
-    () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics),
-    [radar, radarMeta, merges, clearedCannibalTopics],
+    () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics, uberOpps),
+    [radar, radarMeta, merges, clearedCannibalTopics, uberOpps],
   )
 
   const handleSendToResearch = React.useCallback((selected: WorkPlanItem[]) => {
@@ -4754,12 +4819,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     // Populate research fields from the first selected item
     setTopic(first.topic)
     if (first.suggestion) {
+      const extraKw = selected.slice(1).map((item) => item.topic).filter(Boolean)
+      const keywords = [...new Set([...(first.suggestion.keywords || []), ...extraKw])].filter(Boolean)
       setTitle(first.suggestion.title)
-      if (first.suggestion.keywords) setKeywords(first.suggestion.keywords.join(', '))
+      if (keywords.length) setKeywords(keywords.join(', '))
       if (first.suggestion.audience) setAudience(first.suggestion.audience)
       if (first.suggestion.contentType && !contentTypeTouched) setContentType(first.suggestion.contentType as ContentType)
-      setSelectedBrief(first.suggestion)
+      setSelectedBrief({ ...first.suggestion, keywords: keywords.length ? keywords : first.suggestion.keywords })
       setBriefInterlinks(first.suggestion.interlinks ?? [])
+    } else {
+      setTitle(first.title || first.topic)
     }
     // ── Competing URL detection (anti-cannibalization) ──
     // Wire the Discover stage to call checkCompetingPages() when sending
@@ -4800,7 +4869,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
     setSelectedWorkPlanIds(new Set())
     selectTab('research')
-  }, [selectTab, setActionNotice, radarMeta])
+  }, [selectTab, setActionNotice, radarMeta, contentTypeTouched])
 
   React.useEffect(() => {
     const requested = resolveStudioStage(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('tab'))
@@ -5088,6 +5157,48 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally { setSuggestionsLoading(false) }
   }, [])
 
+  const fetchUberOpps = React.useCallback(async (refresh = false) => {
+    setUberOppsLoading(true)
+    try {
+      const res = await fetch('/api/content-studio/ubersuggest/opportunities', {
+        method: refresh ? 'POST' : 'GET',
+        credentials: 'same-origin',
+        headers: refresh ? { 'Content-Type': 'application/json' } : undefined,
+        body: refresh ? JSON.stringify({ refresh: true }) : undefined,
+      })
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean
+        connected?: boolean
+        source?: string
+        lastError?: string | null
+        opportunities?: AISuggestion[]
+      }
+      if (!res.ok) {
+        setUberOppsMeta({ connected: false, source: 'error', lastError: data.lastError || 'Ubersuggest opportunities failed' })
+        return
+      }
+      setUberOpps(Array.isArray(data.opportunities) ? data.opportunities : [])
+      setUberOppsMeta({ connected: Boolean(data.connected), source: data.source, lastError: data.lastError || null })
+      if (!refresh && data.connected && !(data.opportunities || []).length) {
+        const live = await fetch('/api/content-studio/ubersuggest/opportunities', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh: true }),
+        })
+        const liveData = await live.json().catch(() => ({})) as typeof data
+        if (live.ok) {
+          setUberOpps(Array.isArray(liveData.opportunities) ? liveData.opportunities : [])
+          setUberOppsMeta({ connected: Boolean(liveData.connected), source: liveData.source, lastError: liveData.lastError || null })
+        }
+      }
+    } catch (err) {
+      setUberOppsMeta({ connected: false, source: 'error', lastError: err instanceof Error ? err.message : 'Ubersuggest opportunities failed' })
+    } finally {
+      setUberOppsLoading(false)
+    }
+  }, [])
+
   // GSC live probe — polled so the composer shows token health + a connect
   // CTA. On the false→true transition the radar rescans so suggestions flip
   // from snapshot to live immediately after connecting.
@@ -5173,9 +5284,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const err = params.get('uber_error')
     if (!connected && !err) return
     if (connected === 'true') {
-      setUberNotice('Ubersuggest MCP authorized — planner will pull keyword volume')
+      setUberNotice('Ubersuggest MCP authorized — Discover will list market opportunities')
       void loadUberStatus()
       void loadSystemHealth()
+      void fetchUberOpps(true)
     } else if (err) {
       setUberNotice(err)
     }
@@ -5183,7 +5295,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     params.delete('uber_error')
     params.set('tab', 'configure')
     window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
-  }, [loadUberStatus, loadSystemHealth])
+  }, [loadUberStatus, loadSystemHealth, fetchUberOpps])
 
   // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
@@ -5198,9 +5310,67 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])
     selectTab('research')
     setShowRadar(true)
-  }, [])
+  }, [contentTypeTouched, selectTab])
+
+  const openAeoRemediation = React.useCallback(async (item: CitationRemediation, opts?: { openUrl?: boolean }) => {
+    const brief = item.brief as unknown as AISuggestion
+    applyBrief(brief)
+    setAeoOpenedQuery(item.query)
+    const hostCountry = countryFromUrl(item.match.url)
+    if (hostCountry === 'US' || hostCountry === 'UK' || hostCountry === 'CA' || hostCountry === 'AU') {
+      setRegion(hostCountry)
+    }
+    if (opts?.openUrl && item.match.url) {
+      window.open(item.match.url, '_blank', 'noopener,noreferrer')
+    }
+    if (item.match.jobId) {
+      try {
+        const res = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(item.match.jobId)}`, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({})) as { job?: ContentJob }
+        if (res.ok && data.job) {
+          setSelectedJob(data.job)
+          selectTab('draft')
+          setActionNotice(`AEO retrofit · ${item.query} · existing job opened. Apply the four citation actions on this URL.`)
+          return
+        }
+      } catch { /* brief is already loaded */ }
+    }
+    selectTab('research')
+    setActionNotice(
+      item.match.url
+        ? `AEO retrofit · ${item.query} · brief prefilled for ${item.match.url}`
+        : `AEO retrofit · ${item.query} · no live URL — draft one canonical`,
+    )
+  }, [applyBrief, selectTab, setActionNotice])
+
+  const aeoDeepLinkRef = React.useRef(false)
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || aeoDeepLinkRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    const aeoId = params.get('aeo')
+    if (!aeoId) return
+    aeoDeepLinkRef.current = true
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/seo-engine/llm-visibility', { credentials: 'same-origin', cache: 'no-store' })
+        const data = await res.json().catch(() => ({})) as { remediations?: CitationRemediation[]; audits?: Array<{ id?: string; remediation?: CitationRemediation }> }
+        if (!res.ok || cancelled) return
+        const list = Array.isArray(data.remediations) ? data.remediations : []
+        setAeoRemediations(list)
+        const hit = list.find((item) => item.id === aeoId)
+          || data.audits?.find((row) => String(row.id) === aeoId)?.remediation
+        if (hit) await openAeoRemediation(hit, { openUrl: true })
+      } catch { /* deep-link is best-effort */ }
+      if (cancelled) return
+      params.delete('aeo')
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
+    })()
+    return () => { cancelled = true }
+  }, [openAeoRemediation])
 
   React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
+  React.useEffect(() => { void fetchUberOpps(false) }, [fetchUberOpps])
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
   React.useEffect(() => { fetchMergeIndex(); void fetchMergeHistory() }, [fetchMergeIndex, fetchMergeHistory])
 
@@ -5912,6 +6082,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           }
         } else if (ev.type === 'done') {
           summary = String((ev as { summary?: string }).summary || 'Engine action complete')
+          if (kind === 'llm') {
+            const rem = (ev as { result?: { remediations?: CitationRemediation[] } }).result?.remediations
+            if (Array.isArray(rem)) {
+              setAeoRemediations(rem)
+              if (rem[0]) void openAeoRemediation(rem[0], { openUrl: true })
+            }
+          }
         } else if (ev.type === 'error') {
           throw new Error(String(ev.error || 'Engine action failed'))
         }
@@ -6038,6 +6215,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         onOpenJob={(job) => { setSelectedJob(job); selectTab('draft') }}
         onFilterQueue={(status) => { setQueueStatusFilter(asQueueUiFilter(status)); selectTab('draft') }}
         onRefresh={() => { void fetchJobs(); void fetchEngineStatus() }}
+      />
+
+      <AeoRemediationQueue
+        items={aeoRemediations}
+        autoOpenedQuery={aeoOpenedQuery}
+        onOpen={(item) => void openAeoRemediation(item, { openUrl: true })}
       />
 
       <StudioStageNav
@@ -6516,7 +6699,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             chapterKey="discover"
             scope={[
               { chip: 'Signals', text: 'Live GSC, committed snapshots, engine knowledge, LLM/AEO visibility, and site-health signals.' },
-              { chip: 'Opportunity', text: 'Radar and reward forecasts expose gaps, rising demand, weak families, and cannibalization risk.' },
+              { chip: 'Opportunity', text: 'Radar, Ubersuggest market demand (no planner required), reward forecasts, weak families, and cannibalization risk.' },
               { chip: 'Constraints', text: 'Ownership registry, destination repo, format rules, and canonical supply are known before research begins.' },
             ]}
             next="II · Research"
@@ -6530,10 +6713,28 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                   <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>WORK PLAN — ALL SIGNALS AGGREGATED</div>
                   <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 20, color: E.ink }}>Select opportunities to research</h3>
                   <p style={{ margin: '2px 0 0', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 12 }}>
-                    Radar gaps · cannibalization alerts · merge candidates · backlink targets · AEO visibility gaps — every signal, one table.
+                    Radar gaps · Ubersuggest market demand · cannibalization · merges · AEO visibility — every signal, one table. Ubersuggest briefs do not need a planner run.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void fetchUberOpps(true)}
+                  disabled={uberOppsLoading}
+                  title={uberOppsMeta.connected === false ? 'Connect Ubersuggest in Configure first' : 'Pull fresh Ubersuggest market opportunities (uses MCP credits)'}
+                  style={{
+                    padding: '6px 12px', border: `1px solid ${E.gold}`, background: E.cream, color: E.goldDeep,
+                    fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    cursor: uberOppsLoading ? 'wait' : 'pointer',
+                  }}
+                >
+                  {uberOppsLoading ? '◇ Loading Ubersuggest…' : `◇ Refresh Ubersuggest (${uberOpps.length})`}
+                </button>
               </div>
+              {uberOppsMeta.lastError && !uberOpps.length && (
+                <div style={{ marginBottom: 8, fontFamily: C.mono, fontSize: 10, color: C.red }}>
+                  Ubersuggest: {uberOppsMeta.lastError}{uberOppsMeta.connected === false ? ' — connect it in Configure.' : ''}
+                </div>
+              )}
               <WorkPlanTable
                 items={workPlanItems}
                 selectedIds={selectedWorkPlanIds}

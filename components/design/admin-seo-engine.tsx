@@ -749,6 +749,14 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                         {(a.actions as Array<{ action: string }>).slice(0, 3).map((act) => (
                           <div key={act.action} style={{ fontSize: 10, color: C.text, lineHeight: 1.5 }}>→ {act.action}</div>
                         ))}
+                        {!a.cited && (
+                          <a
+                            href={`/dashboard/admin/content?tab=research&aeo=${encodeURIComponent(String(a.id || ''))}`}
+                            style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontFamily: C.mono, fontWeight: 700, color: C.violet, textDecoration: 'none' }}
+                          >
+                            Fix on matching URL →
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>
