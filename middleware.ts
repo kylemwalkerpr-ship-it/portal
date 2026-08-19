@@ -58,6 +58,10 @@ const isPublicRoute = createRouteMatcher([
   // /sign-in/student which then bounces to portal — perceived as
   // "the marketplace redirects to sign-in after I sign out".
   '/api/profile',
+  // Native app session route is cookieless (Bearer Clerk JWT) — it must not
+  // be 401'd by cookie-based clerkMiddleware before the handler can verify
+  // the token itself. Same self-enforcing pattern as marketplace reads.
+  '/api/mobile(.*)',
   '/api/sellers(.*)',
   // IndexNow submission endpoint — self-gates on the IndexNow key, no
   // session needed (called after content deploys / by schedulers).
