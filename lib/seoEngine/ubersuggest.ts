@@ -2,19 +2,25 @@
  * Ubersuggest MCP client for the Master Engine.
  *
  * Official endpoint: https://ubersuggest-mcp.neilpatelapi.com/mcp
- * Auth: OAuth/bearer token stored in seo_engine_config.ubersuggest.
- * Disconnect is an enabled=false toggle — the token is kept so reconnect
- * is one click.
+ * Auth: OAuth 2.0 + PKCE (public client) via Content Studio Configure.
+ * A pasted bearer is a fallback only. Disconnect is enabled=false — tokens
+ * stay so reconnect is one click.
  */
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { loadEngineConfig, saveEngineConfig } from './engineConfig'
 import type { GscSignalInput } from './planner'
+import { refreshUbersuggestToken, UBERSUGGEST_MCP_URL as DEFAULT_MCP_URL } from './ubersuggestOAuth'
 
-export const UBERSUGGEST_MCP_URL = 'https://ubersuggest-mcp.neilpatelapi.com/mcp'
+export const UBERSUGGEST_MCP_URL = DEFAULT_MCP_URL
+const MCP_PROTOCOL = '2025-03-26'
 
 export interface UbersuggestConfig {
   enabled: boolean
   accessToken: string
+  refreshToken?: string
+  tokenExpiresAt?: string | null
+  clientId?: string
+  oauth?: boolean
   mcpUrl: string
   connectedAt?: string | null
   lastError?: string | null
@@ -41,9 +47,15 @@ export async function loadUbersuggestConfig(): Promise<UbersuggestConfig> {
   const accessToken = String(
     stored?.accessToken || process.env.UBERSUGGEST_MCP_TOKEN || process.env.UBERSUGGEST_API_KEY || '',
   ).trim()
+  const refreshToken = String(stored?.refreshToken || '').trim()
+  const hasCreds = Boolean(accessToken || refreshToken)
   return {
-    enabled: stored?.enabled === true && Boolean(accessToken),
+    enabled: stored?.enabled === true && hasCreds,
     accessToken,
+    refreshToken,
+    tokenExpiresAt: stored?.tokenExpiresAt ?? null,
+    clientId: String(stored?.clientId || '').trim(),
+    oauth: stored?.oauth === true || Boolean(refreshToken),
     mcpUrl: String(stored?.mcpUrl || UBERSUGGEST_MCP_URL),
     connectedAt: stored?.connectedAt ?? null,
     lastError: stored?.lastError ?? null,
@@ -54,16 +66,61 @@ export async function loadUbersuggestConfig(): Promise<UbersuggestConfig> {
   }
 }
 
-export function redactUbersuggestConfig(cfg: UbersuggestConfig): Omit<UbersuggestConfig, 'accessToken'> & { hasToken: boolean } {
+export type RedactedUbersuggestConfig = Omit<UbersuggestConfig, 'accessToken' | 'refreshToken'> & {
+  hasToken: boolean
+  hasRefresh: boolean
+  mode: 'oauth' | 'token' | null
+}
+
+export function redactUbersuggestConfig(cfg: UbersuggestConfig): RedactedUbersuggestConfig {
+  const hasToken = Boolean(cfg.accessToken)
+  const hasRefresh = Boolean(cfg.refreshToken)
   return {
     enabled: cfg.enabled,
     mcpUrl: cfg.mcpUrl,
     connectedAt: cfg.connectedAt,
     lastError: cfg.lastError,
     toolCount: cfg.toolCount,
-    hasToken: Boolean(cfg.accessToken),
+    hasToken,
+    hasRefresh,
+    mode: cfg.oauth || hasRefresh ? 'oauth' : hasToken ? 'token' : null,
+    oauth: cfg.oauth === true || hasRefresh,
+    clientId: cfg.clientId || undefined,
+    tokenExpiresAt: cfg.tokenExpiresAt ?? null,
     creditsExhaustedUntil: cfg.creditsExhaustedUntil ?? null,
+    lastGoodAt: cfg.lastGoodAt ?? null,
   }
+}
+
+export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>): Promise<UbersuggestConfig> {
+  const current = await loadUbersuggestConfig()
+  const merged: UbersuggestConfig = {
+    ...current,
+    ...next,
+    accessToken: next.accessToken !== undefined ? next.accessToken : current.accessToken,
+    refreshToken: next.refreshToken !== undefined ? next.refreshToken : current.refreshToken,
+    tokenExpiresAt: next.tokenExpiresAt !== undefined ? next.tokenExpiresAt : current.tokenExpiresAt,
+    clientId: next.clientId !== undefined ? next.clientId : current.clientId,
+    oauth: next.oauth !== undefined ? next.oauth : current.oauth,
+    mcpUrl: next.mcpUrl || current.mcpUrl || UBERSUGGEST_MCP_URL,
+    lastGoodSignals: next.lastGoodSignals !== undefined ? next.lastGoodSignals : current.lastGoodSignals,
+  }
+  await saveEngineConfig('ubersuggest', {
+    enabled: merged.enabled,
+    accessToken: merged.accessToken,
+    refreshToken: merged.refreshToken || '',
+    tokenExpiresAt: merged.tokenExpiresAt ?? null,
+    clientId: merged.clientId || '',
+    oauth: merged.oauth === true,
+    mcpUrl: merged.mcpUrl,
+    connectedAt: merged.connectedAt ?? null,
+    lastError: merged.lastError ?? null,
+    toolCount: merged.toolCount ?? 0,
+    creditsExhaustedUntil: merged.creditsExhaustedUntil ?? null,
+    lastGoodAt: merged.lastGoodAt ?? null,
+    lastGoodSignals: (merged.lastGoodSignals || []).slice(0, 80),
+  })
+  return merged
 }
 
 interface JsonRpc {
@@ -82,48 +139,127 @@ function parseMcpBody(text: string): JsonRpc {
   throw new Error('Ubersuggest MCP returned a non-JSON body')
 }
 
+let mcpSessionId: string | null = null
+let mcpSessionToken: string | null = null
+
+export function resetUbersuggestMcpSession(): void {
+  mcpSessionId = null
+  mcpSessionToken = null
+}
+
+function tokenStillFresh(expiresAt?: string | null, skewMs = 60_000): boolean {
+  if (!expiresAt) return true
+  const exp = Date.parse(expiresAt)
+  return Number.isFinite(exp) && exp - skewMs > Date.now()
+}
+
+export async function refreshUbersuggestAccessToken(cfg: UbersuggestConfig, force = false): Promise<string> {
+  if (!force && cfg.accessToken && tokenStillFresh(cfg.tokenExpiresAt)) return cfg.accessToken
+  const refreshToken = String(cfg.refreshToken || '').trim()
+  if (!refreshToken) {
+    if (cfg.accessToken) return cfg.accessToken
+    throw new Error('Ubersuggest MCP is not authorized')
+  }
+  const tokens = await refreshUbersuggestToken({
+    refreshToken,
+    clientId: cfg.clientId || undefined,
+  })
+  resetUbersuggestMcpSession()
+  await persistUbersuggestConfig({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken || refreshToken,
+    tokenExpiresAt: tokens.expiresAt,
+    clientId: tokens.clientId || cfg.clientId,
+    oauth: true,
+    lastError: null,
+  })
+  return tokens.accessToken
+}
+
 export async function ubersuggestRpc(
   cfg: Pick<UbersuggestConfig, 'accessToken' | 'mcpUrl'>,
   method: string,
   params: Record<string, unknown> = {},
-  id = 1,
+  id: number | null = 1,
 ): Promise<unknown> {
+  const token = String(cfg.accessToken || '').trim()
+  if (!token) throw new Error('Ubersuggest MCP is not authorized')
+  if (mcpSessionToken && mcpSessionToken !== token) resetUbersuggestMcpSession()
+  if (method === 'initialize') resetUbersuggestMcpSession()
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    Authorization: `Bearer ${token}`,
+    'MCP-Protocol-Version': MCP_PROTOCOL,
+  }
+  if (mcpSessionId) headers['Mcp-Session-Id'] = mcpSessionId
+
+  const payload = id === null
+    ? { jsonrpc: '2.0', method, params }
+    : { jsonrpc: '2.0', id, method, params }
+
   const res = await fetch(cfg.mcpUrl || UBERSUGGEST_MCP_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream',
-      Authorization: `Bearer ${cfg.accessToken}`,
-    },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+    headers,
+    body: JSON.stringify(payload),
     signal: AbortSignal.timeout(12_000),
   })
+  const sid = res.headers.get('mcp-session-id')
+  if (sid) {
+    mcpSessionId = sid
+    mcpSessionToken = token
+  }
   const text = await res.text()
   if (!res.ok) throw new Error(`Ubersuggest MCP ${res.status}: ${text.slice(0, 180)}`)
+  if (id === null) return null
   const rpc = parseMcpBody(text)
   if (rpc.error) throw new Error(rpc.error.message || `MCP error ${rpc.error.code}`)
   return rpc.result
 }
 
+function isUnauthorizedMcp(err: unknown): boolean {
+  const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  return /401|invalid_token|unauthorized|expired/.test(m)
+}
+
+export async function ubersuggestRpcAuthed(
+  method: string,
+  params: Record<string, unknown> = {},
+  id: number | null = 1,
+): Promise<unknown> {
+  let cfg = await loadUbersuggestConfig()
+  const token = await refreshUbersuggestAccessToken(cfg).catch(() => cfg.accessToken)
+  try {
+    return await ubersuggestRpc({ ...cfg, accessToken: token }, method, params, id)
+  } catch (err) {
+    if (!isUnauthorizedMcp(err) || !cfg.refreshToken) throw err
+    const fresh = await refreshUbersuggestAccessToken(cfg, true)
+    cfg = await loadUbersuggestConfig()
+    return ubersuggestRpc({ ...cfg, accessToken: fresh }, method, params, id)
+  }
+}
+
 export async function probeUbersuggest(accessToken: string, mcpUrl?: string): Promise<{ ok: boolean; toolCount: number; error?: string }> {
+  const cfg = { accessToken, mcpUrl: mcpUrl || UBERSUGGEST_MCP_URL }
   try {
     const result = await ubersuggestRpc(
-      { accessToken, mcpUrl: mcpUrl || UBERSUGGEST_MCP_URL },
+      cfg,
       'initialize',
       {
-        protocolVersion: '2024-11-05',
+        protocolVersion: MCP_PROTOCOL,
         capabilities: {},
-        clientInfo: { name: 'yousafe-seo-engine', version: '1.0' },
+        clientInfo: { name: 'yousafe-content-studio', version: '1.0' },
       },
     )
+    try {
+      await ubersuggestRpc(cfg, 'notifications/initialized', {}, null)
+    } catch {
+      /* some MCP servers ignore the initialized notification */
+    }
     let toolCount = 0
     try {
-      const listed = await ubersuggestRpc(
-        { accessToken, mcpUrl: mcpUrl || UBERSUGGEST_MCP_URL },
-        'tools/list',
-        {},
-        2,
-      ) as { tools?: unknown[] }
+      const listed = await ubersuggestRpc(cfg, 'tools/list', {}, 2) as { tools?: unknown[] }
       toolCount = Array.isArray(listed?.tools) ? listed.tools.length : 0
     } catch {
       toolCount = result ? 1 : 0
@@ -206,6 +342,12 @@ function cachedSignals(cfg: UbersuggestConfig): GscSignalInput[] {
 
 async function listToolNames(cfg: UbersuggestConfig): Promise<string[]> {
   try {
+    await ubersuggestRpc(cfg, 'initialize', {
+      protocolVersion: MCP_PROTOCOL,
+      capabilities: {},
+      clientInfo: { name: 'yousafe-content-studio', version: '1.0' },
+    }, 1)
+    try { await ubersuggestRpc(cfg, 'notifications/initialized', {}, null) } catch { /* optional */ }
     const listed = await ubersuggestRpc(cfg, 'tools/list', {}, 2) as { tools?: Array<{ name?: string }> }
     return (listed.tools || []).map((t) => String(t.name || '')).filter(Boolean)
   } catch {
@@ -222,10 +364,18 @@ function pickTools(names: string[]): { keyword: string[]; domain: string[] } {
 
 export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
   lastUbersuggestPull = { usedCache: false, calls: 0, exhausted: false }
-  const cfg = await loadUbersuggestConfig()
-  if (!cfg.enabled || !cfg.accessToken) {
+  const loaded = await loadUbersuggestConfig()
+  if (!loaded.enabled || (!loaded.accessToken && !loaded.refreshToken)) {
     lastUbersuggestPull.reason = 'disconnected'
     return []
+  }
+  let cfg = loaded
+  try {
+    const token = await refreshUbersuggestAccessToken(loaded)
+    cfg = { ...loaded, accessToken: token }
+  } catch (err) {
+    lastUbersuggestPull.reason = err instanceof Error ? err.message : 'not authorized'
+    return cachedSignals(loaded)
   }
 
   const until = cfg.creditsExhaustedUntil ? Date.parse(cfg.creditsExhaustedUntil) : 0
@@ -247,6 +397,18 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       collected.push(...parseUbersuggestKeywords(unwrapToolPayload(result)))
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err)
+      if (isUnauthorizedMcp(err) && cfg.refreshToken) {
+        try {
+          const fresh = await refreshUbersuggestAccessToken(cfg, true)
+          cfg = { ...cfg, accessToken: fresh }
+          const result = await ubersuggestRpc(cfg, 'tools/call', { name, arguments: args }, 10 + calls)
+          collected.push(...parseUbersuggestKeywords(unwrapToolPayload(result)))
+          lastErr = ''
+          return
+        } catch (retryErr) {
+          lastErr = retryErr instanceof Error ? retryErr.message : String(retryErr)
+        }
+      }
       if (isCreditOrAuthFailure(err)) exhausted = true
     }
   }
@@ -321,27 +483,4 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
 
   lastUbersuggestPull = { usedCache: true, calls, exhausted: false, reason: lastErr || 'empty live pull' }
   return cachedSignals(cfg)
-}
-
-export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>): Promise<UbersuggestConfig> {
-  const current = await loadUbersuggestConfig()
-  const merged: UbersuggestConfig = {
-    ...current,
-    ...next,
-    accessToken: next.accessToken !== undefined ? next.accessToken : current.accessToken,
-    mcpUrl: next.mcpUrl || current.mcpUrl || UBERSUGGEST_MCP_URL,
-    lastGoodSignals: next.lastGoodSignals !== undefined ? next.lastGoodSignals : current.lastGoodSignals,
-  }
-  await saveEngineConfig('ubersuggest', {
-    enabled: merged.enabled,
-    accessToken: merged.accessToken,
-    mcpUrl: merged.mcpUrl,
-    connectedAt: merged.connectedAt ?? null,
-    lastError: merged.lastError ?? null,
-    toolCount: merged.toolCount ?? 0,
-    creditsExhaustedUntil: merged.creditsExhaustedUntil ?? null,
-    lastGoodAt: merged.lastGoodAt ?? null,
-    lastGoodSignals: (merged.lastGoodSignals || []).slice(0, 80),
-  })
-  return merged
 }

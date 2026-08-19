@@ -5,6 +5,7 @@ import {
   persistUbersuggestConfig,
   probeUbersuggest,
   redactUbersuggestConfig,
+  refreshUbersuggestAccessToken,
   UBERSUGGEST_MCP_URL,
 } from '@/lib/seoEngine/ubersuggest'
 
@@ -18,31 +19,60 @@ export async function POST(req: NextRequest) {
       accessToken?: string
       mcpUrl?: string
       enabled?: boolean
+      forget?: boolean
     }
     const current = await loadUbersuggestConfig()
+
+    if (body.forget) {
+      const cfg = await persistUbersuggestConfig({
+        enabled: false,
+        accessToken: '',
+        refreshToken: '',
+        tokenExpiresAt: null,
+        lastError: null,
+        connectedAt: null,
+        toolCount: 0,
+        oauth: false,
+      })
+      return NextResponse.json({ ok: true, connected: false, ...redactUbersuggestConfig(cfg) })
+    }
 
     if (body.enabled === false) {
       const cfg = await persistUbersuggestConfig({ enabled: false, lastError: null })
       return NextResponse.json({ ok: true, connected: false, ...redactUbersuggestConfig(cfg) })
     }
 
-    const token = String(body.accessToken || current.accessToken || '').trim()
+    const pasted = String(body.accessToken || '').trim()
+    let token = pasted
+    if (!token) {
+      try {
+        token = await refreshUbersuggestAccessToken(current)
+      } catch {
+        token = current.accessToken
+      }
+    }
     if (!token) {
       return NextResponse.json({
         ok: false,
-        error: 'Paste an Ubersuggest MCP bearer token (authorize at app.neilpatel.com/en/mcp).',
+        needsOAuth: true,
+        error: 'Connect Ubersuggest MCP with OAuth from Configure — pasted API keys are not accepted by the official MCP.',
       }, { status: 400 })
     }
     const mcpUrl = String(body.mcpUrl || current.mcpUrl || UBERSUGGEST_MCP_URL)
     const probe = await probeUbersuggest(token, mcpUrl)
     if (!probe.ok) {
       await persistUbersuggestConfig({
-        accessToken: token,
+        accessToken: pasted ? token : current.accessToken,
         mcpUrl,
         enabled: false,
         lastError: probe.error || 'probe failed',
+        oauth: pasted ? false : current.oauth,
       })
-      return NextResponse.json({ ok: false, error: probe.error || 'Ubersuggest MCP probe failed' }, { status: 400 })
+      return NextResponse.json({
+        ok: false,
+        needsOAuth: /401|invalid_token|unauthorized/i.test(probe.error || ''),
+        error: probe.error || 'Ubersuggest MCP probe failed',
+      }, { status: 400 })
     }
     const cfg = await persistUbersuggestConfig({
       accessToken: token,
@@ -52,6 +82,7 @@ export async function POST(req: NextRequest) {
       lastError: null,
       toolCount: probe.toolCount,
       creditsExhaustedUntil: null,
+      oauth: pasted ? false : current.oauth,
     })
     return NextResponse.json({ ok: true, connected: true, ...redactUbersuggestConfig(cfg) })
   } catch (e) {

@@ -58,9 +58,9 @@ export async function GET() {
     const gscExpiresAt = null
     const gscConnectedSince = gscCfg.connectedAt ?? null
     const ga4Cfg = await loadGa4Config().catch(() => ({ enabled: false, propertyId: '' }))
-    const uberCfg = await loadUbersuggestConfig().catch(() => ({ enabled: false, accessToken: '' }))
+    const uberCfg = await loadUbersuggestConfig().catch(() => ({ enabled: false, accessToken: '', refreshToken: '' }))
     const ga4Connected = Boolean(ga4Cfg.enabled && ga4Cfg.propertyId)
-    const ubersuggestConnected = Boolean(uberCfg.enabled && uberCfg.accessToken)
+    const ubersuggestConnected = Boolean(uberCfg.enabled && (uberCfg.accessToken || uberCfg.refreshToken))
 
     // ── Interlink registry size ──
     const { count: interlinkCount, error: interlinkError } = await supabase

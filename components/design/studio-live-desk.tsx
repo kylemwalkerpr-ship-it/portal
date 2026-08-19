@@ -12,7 +12,8 @@
 import React from 'react'
 import { studioTokens as E } from './studio-tokens'
 import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
-import type { ContentJob, JobStatus, QueueSummary } from './studio-ui-shared'
+import type { QueueUiFilter } from '@/lib/seoFactory/jobsQueue'
+import type { ContentJob, QueueSummary } from './studio-ui-shared'
 
 const KEYFRAMES = `
 @keyframes deskPulse { 0%,100% { opacity: 1 } 50% { opacity: 0.28 } }
@@ -148,7 +149,7 @@ export function StudioLiveDesk({
   onPlan: () => void
   onLlm: () => void
   onOpenJob?: (job: ContentJob) => void
-  onFilterQueue?: (status: JobStatus | 'all' | 'failed') => void
+  onFilterQueue?: (status: QueueUiFilter) => void
   onRefresh?: () => void
 }) {
   const [now, setNow] = React.useState(() => Date.now())

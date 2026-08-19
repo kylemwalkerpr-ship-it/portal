@@ -4,7 +4,7 @@
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export async function loadEngineConfig<T extends Record<string, unknown>>(key: string): Promise<T | null> {
+export async function loadEngineConfig<T extends object = Record<string, unknown>>(key: string): Promise<T | null> {
   try {
     const { data } = await createSupabaseAdminClient()
       .from('seo_engine_config')

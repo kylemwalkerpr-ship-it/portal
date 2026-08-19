@@ -4595,8 +4595,17 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [ga4PropertyInput, setGa4PropertyInput] = React.useState('')
   const [ga4Busy, setGa4Busy] = React.useState(false)
   const [ga4Notice, setGa4Notice] = React.useState<string | null>(null)
-  const [uberStatus, setUberStatus] = React.useState<{ connected?: boolean; hasToken?: boolean; toolCount?: number; lastError?: string | null; creditsExhaustedUntil?: string | null } | null>(null)
+  const [uberStatus, setUberStatus] = React.useState<{
+    connected?: boolean
+    hasToken?: boolean
+    hasRefresh?: boolean
+    toolCount?: number
+    lastError?: string | null
+    creditsExhaustedUntil?: string | null
+    mode?: 'oauth' | 'token' | null
+  } | null>(null)
   const [uberTokenInput, setUberTokenInput] = React.useState('')
+  const [uberShowToken, setUberShowToken] = React.useState(false)
   const [uberBusy, setUberBusy] = React.useState(false)
   const [uberNotice, setUberNotice] = React.useState<string | null>(null)
 
@@ -5167,6 +5176,25 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const id = setInterval(loadSystemHealth, 5 * 60_000)
     return () => clearInterval(id)
   }, [loadSystemHealth])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const connected = params.get('uber_connected')
+    const err = params.get('uber_error')
+    if (!connected && !err) return
+    if (connected === 'true') {
+      setUberNotice('Ubersuggest MCP authorized — planner will pull keyword volume')
+      void loadUberStatus()
+      void loadSystemHealth()
+    } else if (err) {
+      setUberNotice(err)
+    }
+    params.delete('uber_connected')
+    params.delete('uber_error')
+    params.set('tab', 'configure')
+    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`)
+  }, [loadUberStatus, loadSystemHealth])
 
   // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
@@ -6634,7 +6662,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               { chip: '🔑 AI keys', text: 'Manage API keys for every content provider (OpenAI, Nemotron, Grok, DeepSeek, GLM, Gemini, and more).' },
               { chip: '🔗 GSC', text: 'Connect Search Console via OAuth or service-account JSON. Live status with green / amber / red indicator.' },
               { chip: '📈 GA4', text: 'Wire Google Analytics 4 (same service account as GSC) so the engine consumes landing-page sessions.' },
-              { chip: '◇ Ubersuggest', text: 'Connect or disconnect the Ubersuggest MCP so the planner can pull keyword volume at will.' },
+              { chip: '◇ Ubersuggest', text: 'Authorize the official Ubersuggest MCP over OAuth from this tab — connect or disconnect at will.' },
               { chip: '🩺 Health', text: 'Site-wide audit, broken link detection, deep interlink registry, and system diagnostics.' },
             ]}
             prev="VI · Track"
@@ -6795,7 +6823,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                     {
                       label: 'Ubersuggest MCP',
                       value: systemHealth.ubersuggestConnected ? 'Connected' : 'Disconnected',
-                      sub: uberStatus?.toolCount ? `${uberStatus.toolCount} tools` : 'toggle in configurator',
+                      sub: uberStatus?.connected
+                        ? (uberStatus.mode === 'oauth' ? `OAuth · ${uberStatus.toolCount || 0} tools` : `${uberStatus.toolCount || 0} tools`)
+                        : 'authorize in configurator',
                       icon: systemHealth.ubersuggestConnected ? '◇' : '○',
                       color: systemHealth.ubersuggestConnected ? E.mossGreen : C.red,
                     },
@@ -7038,29 +7068,20 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                     <div style={{ fontFamily: C.serif, fontSize: 16, fontWeight: 600, color: E.ink }}>
                       {uberStatus?.creditsExhaustedUntil && Date.parse(uberStatus.creditsExhaustedUntil) > Date.now()
                         ? 'Credits paused · using last good pull'
-                        : uberStatus?.connected ? `Connected · ${uberStatus.toolCount || 'MCP'} tools` : 'Disconnected'}
+                        : uberStatus?.connected
+                          ? `Connected · ${uberStatus.toolCount || 'MCP'} tools`
+                          : 'Not connected'}
                     </div>
                     <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
-                      <a href="https://app.neilpatel.com/en/mcp" target="_blank" rel="noreferrer" style={{ color: E.gold }}>Authorize at neilpatel.com/en/mcp</a>
-                      {' '}then paste the bearer token. Disconnect keeps the token for one-click reconnect.
+                      {uberStatus?.mode === 'oauth' ? 'OAuth · ' : ''}
+                      Official MCP at ubersuggest-mcp.neilpatelapi.com — Connect opens Neil Patel login, then returns here.
                     </div>
                   </div>
                 </div>
-                <input
-                  type="password"
-                  value={uberTokenInput}
-                  onChange={(e) => setUberTokenInput(e.target.value)}
-                  placeholder={uberStatus?.hasToken ? 'Token saved · paste a new one to replace' : 'Ubersuggest MCP bearer token'}
-                  style={{
-                    width: '100%', marginBottom: 8, padding: '8px 10px',
-                    border: `1px solid ${E.hairline}`, background: E.ivory,
-                    fontFamily: C.mono, fontSize: 12, color: E.ink,
-                  }}
-                />
                 {uberNotice && (
-                  <div style={{ fontSize: 10, fontFamily: C.mono, color: uberStatus?.connected ? E.mossGreen : C.red, marginBottom: 8 }}>{uberNotice}</div>
+                  <div style={{ fontSize: 10, fontFamily: C.mono, color: uberStatus?.connected && !/fail|error|denied|mismatch/i.test(uberNotice) ? E.mossGreen : C.red, marginBottom: 8 }}>{uberNotice}</div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     disabled={uberBusy}
@@ -7068,24 +7089,32 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                       setUberBusy(true)
                       setUberNotice(null)
                       try {
-                        const res = await fetch('/api/content-studio/ubersuggest/connect', {
-                          method: 'POST',
-                          credentials: 'same-origin',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ accessToken: uberTokenInput || undefined, enabled: true }),
-                        })
+                        if (!uberStatus?.connected && (uberStatus?.hasRefresh || uberStatus?.hasToken) && !uberTokenInput) {
+                          const res = await fetch('/api/content-studio/ubersuggest/connect', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: true }),
+                          })
+                          const data = await res.json()
+                          if (res.ok) {
+                            setUberNotice('MCP re-enabled — planner will pull keyword volume')
+                            await loadUberStatus()
+                            await loadSystemHealth()
+                            return
+                          }
+                          if (!data.needsOAuth) throw new Error(data.error || 'Ubersuggest connect failed')
+                        }
+                        const res = await fetch('/api/content-studio/ubersuggest/auth', { credentials: 'same-origin' })
                         const data = await res.json()
-                        if (!res.ok) throw new Error(data.error || 'Ubersuggest connect failed')
-                        setUberTokenInput('')
-                        setUberNotice('MCP connected — planner will pull keyword volume')
-                        await loadUberStatus()
-                        await loadSystemHealth()
+                        if (!res.ok || !data.authUrl) throw new Error(data.error || 'Could not start Ubersuggest OAuth')
+                        window.location.href = data.authUrl
                       } catch (e) {
                         setUberNotice(e instanceof Error ? e.message : 'Ubersuggest connect failed')
                       } finally { setUberBusy(false) }
                     }}
                     style={{
-                      flex: 1, padding: '8px 0', borderRadius: 0,
+                      flex: 1, minWidth: 160, padding: '8px 0', borderRadius: 0,
                       border: `1px solid ${E.gold}`, background: E.gold, color: E.ivory,
                       cursor: uberBusy ? 'progress' : 'pointer',
                       fontFamily: C.serif, fontSize: 13, fontWeight: 600,
@@ -7100,7 +7129,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                       setUberBusy(true)
                       try {
                         await fetch('/api/content-studio/ubersuggest/connect', { method: 'DELETE', credentials: 'same-origin' })
-                        setUberNotice('Disconnected — token kept for reconnect')
+                        setUberNotice('Disconnected — OAuth tokens kept for one-click reconnect')
                         await loadUberStatus()
                         await loadSystemHealth()
                       } finally { setUberBusy(false) }
@@ -7115,6 +7144,65 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                     Disconnect
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setUberShowToken((v) => !v)}
+                  style={{
+                    marginTop: 10, padding: 0, border: 'none', background: 'transparent',
+                    color: E.inkMuted, cursor: 'pointer', fontFamily: C.mono, fontSize: 10,
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {uberShowToken ? 'Hide advanced token paste' : 'Advanced · paste a bearer token'}
+                </button>
+                {uberShowToken && (
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      type="password"
+                      value={uberTokenInput}
+                      onChange={(e) => setUberTokenInput(e.target.value)}
+                      placeholder={uberStatus?.hasToken ? 'Token saved · paste a new one to replace' : 'Ubersuggest MCP bearer token'}
+                      style={{
+                        width: '100%', marginBottom: 8, padding: '8px 10px',
+                        border: `1px solid ${E.hairline}`, background: E.ivory,
+                        fontFamily: C.mono, fontSize: 12, color: E.ink,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={uberBusy || !uberTokenInput.trim()}
+                      onClick={async () => {
+                        setUberBusy(true)
+                        setUberNotice(null)
+                        try {
+                          const res = await fetch('/api/content-studio/ubersuggest/connect', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ accessToken: uberTokenInput, enabled: true }),
+                          })
+                          const data = await res.json()
+                          if (!res.ok) throw new Error(data.error || 'Ubersuggest connect failed')
+                          setUberTokenInput('')
+                          setUberShowToken(false)
+                          setUberNotice('MCP connected with pasted token')
+                          await loadUberStatus()
+                          await loadSystemHealth()
+                        } catch (e) {
+                          setUberNotice(e instanceof Error ? e.message : 'Ubersuggest connect failed')
+                        } finally { setUberBusy(false) }
+                      }}
+                      style={{
+                        padding: '6px 12px', borderRadius: 0,
+                        border: `1px solid ${E.hairline}`, background: 'transparent', color: E.ink,
+                        cursor: uberTokenInput.trim() ? 'pointer' : 'not-allowed',
+                        fontFamily: C.serif, fontSize: 12, fontWeight: 600,
+                      }}
+                    >
+                      Save token
+                    </button>
+                  </div>
+                )}
               </section>
 
               {/* Site Health */}

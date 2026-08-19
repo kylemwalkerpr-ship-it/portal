@@ -18,6 +18,10 @@ const isPublicRoute = createRouteMatcher([
   // self-enforce admin via requireAdminUser. Do NOT wildcard the whole GSC
   // tree — that left status/data unauthenticated at the middleware layer.
   '/api/content-studio/gsc/callback',
+  // Ubersuggest MCP OAuth callback — Neil Patel redirects here after consent.
+  // PKCE verifier + state cookies bind the exchange; do not wildcard the
+  // ubersuggest tree (auth/connect/status stay admin-gated).
+  '/api/content-studio/ubersuggest/callback',
   // GitHub webhook for Content Studio PR status (HMAC-verified in handler).
   '/api/content-studio/webhook',
   // Cron endpoints authenticate with a Bearer CRON_SECRET (no Clerk session),
