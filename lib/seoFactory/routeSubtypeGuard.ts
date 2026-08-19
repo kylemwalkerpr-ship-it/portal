@@ -18,8 +18,10 @@
  *
  * Fail-closed on ambiguity is NOT desired here (parse failures must not block
  * legitimate new-page ships), so the guard only blocks when a conflict is
- * clearly detectable. A missing existing file (new page) or an unparseable
- * existing subject passes.
+ * clearly detectable. A missing existing file (new page) used to pass even
+ * when the TARGET SLUG already named a different route (2026-08-19: ASU
+ * visa requirements created /uk/.../uk-dependent-visa-child-requirements-2026/).
+ * New pages are now checked against the path slug itself.
  */
 
 import { getRepoFileContent } from '@/lib/githubContents'
@@ -51,6 +53,33 @@ export function routeSubtypeConflict(
   const overlap = a.filter((x) => b.includes(x))
   if (overlap.length === 0) return { conflict: true, article: a, existing: b }
   return { conflict: false }
+}
+
+/** Last path segment of a caseworks/regional file path, spaces not hyphens. */
+export function slugSubjectFromFilePath(filePath: string): string {
+  const cleaned = String(filePath || '')
+    .replace(/\\/g, '/')
+    .replace(/\/page\.tsx$/i, '')
+    .replace(/\/+$/, '')
+  const slug = cleaned.split('/').filter(Boolean).pop() || ''
+  return slug.replace(/[-_]+/g, ' ')
+}
+
+/**
+ * Keyword vs TARGET PATH — runs even when the file does not exist yet.
+ * If the slug names a specific visa route (dependent/child/spouse/graduate/…)
+ * and the incoming keyword never mentions that route, refuse the ship.
+ */
+export function pathSlugConflict(
+  articleSubject: string,
+  filePath: string,
+): RouteSubtypeConflict {
+  const slugSubject = slugSubjectFromFilePath(filePath)
+  const slugRoutes = extractRouteSubtypes(slugSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const kwRoutes = extractRouteSubtypes(articleSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  if (!slugRoutes.length) return { conflict: false }
+  if (kwRoutes.some((r) => slugRoutes.includes(r))) return { conflict: false }
+  return { conflict: true, article: kwRoutes, existing: slugRoutes }
 }
 
 /**
@@ -121,8 +150,18 @@ export async function assertNoRouteSubtypeConflict(opts: {
   branch?: string
 }): Promise<void> {
   const branch = opts.branch ?? 'main'
+  const slug = pathSlugConflict(opts.primaryKeyword, opts.filePath)
+  if (slug.conflict) {
+    throw new Error(
+      `Ship refused — path/slug conflict: "${opts.primaryKeyword}" resolves to ${opts.filePath}, ` +
+        `but that slug names route [${(slug.existing || []).join(', ')}] which the keyword never mentions` +
+        (slug.article?.length ? ` (keyword routes: [${slug.article.join(', ')}])` : '') +
+        `. This would create a subject-mismatch page. Re-plan the keyword/slug before shipping.`,
+    )
+  }
+
   const existing = await getRepoFileContent(opts.owner, opts.repo, opts.filePath, branch)
-  if (!existing) return // new page — nothing to conflict with
+  if (!existing) return // new page — slug already checked above
 
   const subject = extractExistingPageSubject(existing, opts.filePath)
   if (!subject) return // can't determine existing subject — do not block

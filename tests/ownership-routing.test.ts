@@ -74,6 +74,23 @@ describe('ownership resolver — visa route subtype separation', () => {
 })
 
 describe('ownership resolver — university/geo modifier vs generic hub separation', () => {
+  it('never routes asu visa requirements onto the UK dependent-child canon', async () => {
+    // 2026-08-19: Jaccard hit exactly 45 against "uk dependent visa child
+    // requirements" (overlap: visa, requirements; uk dropped as length 2)
+    // because ASU has no route subtype and was not a geo token. CI then
+    // red-X'd every later PR via check-subject-mismatch.
+    const p = await resolveOwner({
+      primaryKeyword: 'asu visa requirements',
+      contentType: 'legal_guide',
+      region: 'US',
+    })
+    expect(p.canonicalUrl).not.toContain('dependent')
+    expect(p.canonicalUrl).not.toContain('child')
+    expect(p.filePath).not.toContain('uk-dependent-visa-child')
+    expect(p.filePath).not.toMatch(/\/uk\//)
+    expect(p.routingSource).toBe('standing_rules')
+  })
+
   it('never routes a university modifier (boulder student visas) to the generic student-visas hub', async () => {
     const p = await resolveOwner({
       primaryKeyword: 'boulder student visas',

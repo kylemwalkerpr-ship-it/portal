@@ -8,7 +8,9 @@ import {
   assertNoRouteSubtypeConflict,
   extractExistingPageSubject,
   geoScopeConflict,
+  pathSlugConflict,
   routeSubtypeConflict,
+  slugSubjectFromFilePath,
 } from '@/lib/seoFactory/routeSubtypeGuard'
 import { getRepoFileContent } from '@/lib/githubContents'
 
@@ -81,6 +83,7 @@ describe('extractGeoModifiers', () => {
     )
     expect(extractGeoModifiers('austin student housing')).toEqual(['austin'])
     expect(extractGeoModifiers('texas student visas')).toEqual(['texas'])
+    expect(extractGeoModifiers('asu visa requirements')).toEqual(['asu'])
   })
 
   it('returns nothing for generic route keywords', () => {
@@ -157,6 +160,45 @@ describe('routeSubtypeConflict', () => {
   })
 })
 
+describe('pathSlugConflict (keyword vs target path, including new files)', () => {
+  it('reads the last path segment as a slug subject', () => {
+    expect(
+      slugSubjectFromFilePath('app/uk/immigration/uk-dependent-visa-child-requirements-2026/page.tsx'),
+    ).toBe('uk dependent visa child requirements 2026')
+  })
+
+  it('refuses asu visa requirements on the UK dependent-child slug', () => {
+    const c = pathSlugConflict(
+      'asu visa requirements',
+      'app/uk/immigration/uk-dependent-visa-child-requirements-2026/page.tsx',
+    )
+    expect(c.conflict).toBe(true)
+    expect(c.existing).toEqual(expect.arrayContaining(['dependent', 'child']))
+  })
+
+  it('allows uk graduate visa requirements on its own graduate slug', () => {
+    expect(
+      pathSlugConflict('uk graduate visa requirements', 'app/uk/uk-graduate-visa-requirements/page.tsx')
+        .conflict,
+    ).toBe(false)
+  })
+
+  it('refuses uk graduate visa requirements on a dependent-child slug', () => {
+    expect(
+      pathSlugConflict(
+        'uk graduate visa requirements',
+        'app/uk/immigration/uk-dependent-visa-child-requirements-2026/page.tsx',
+      ).conflict,
+    ).toBe(true)
+  })
+
+  it('passes when the slug has no visa-route token', () => {
+    expect(pathSlugConflict('llc formation service', 'app/us/llc-formation-service/page.tsx').conflict).toBe(
+      false,
+    )
+  })
+})
+
 describe('geoScopeConflict', () => {
   it('conflicts when a geo-specific article targets a generic hub (the boulder incident)', () => {
     const c = geoScopeConflict('boulder student visas', 'US student visas: F-1, CPT, OPT & STEM OPT')
@@ -227,7 +269,7 @@ describe('assertNoRouteSubtypeConflict', () => {
         filePath: 'app/uk/immigration/uk-spouse-visa-document-checklist-2026/page.tsx',
         primaryKeyword: 'uk graduate visa requirements',
       }),
-    ).rejects.toThrow(/route-subtype conflict/i)
+    ).rejects.toThrow(/path\/slug conflict|route-subtype conflict/i)
   })
 
   it('passes for a legitimate expansion of the same subtype', async () => {
@@ -252,6 +294,18 @@ describe('assertNoRouteSubtypeConflict', () => {
         primaryKeyword: 'uk graduate visa requirements',
       }),
     ).resolves.toBeUndefined()
+  })
+
+  it('throws on a new page whose slug names a different visa route (ASU → UK child)', async () => {
+    mockedGet.mockResolvedValue(undefined)
+    await expect(
+      assertNoRouteSubtypeConflict({
+        owner: 'kylemwalkerpr-ship-it',
+        repo: 'caseworks',
+        filePath: 'app/uk/immigration/uk-dependent-visa-child-requirements-2026/page.tsx',
+        primaryKeyword: 'asu visa requirements',
+      }),
+    ).rejects.toThrow(/path\/slug conflict/i)
   })
 
   it('throws when a geo-specific article targets the generic student-visas hub', async () => {

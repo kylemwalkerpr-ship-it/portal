@@ -217,6 +217,7 @@ const GEO_UNIVERSITY_TOKENS =
   // universities with caseworks/regional pages or registry rows
   'cornell|auburn|kansas state|utah|creighton|american university|king\'s college|' +
   'washington|nyu|mit|harvard|stanford|ucla|berkeley|' +
+  'asu|arizona state|' +
   // cities (estate + majors)
   'boulder|austin|boston|seattle|omaha|atlanta|chicago|dallas|denver|houston|' +
   'los angeles|miami|new york|phoenix|portland|san diego|san francisco|' +
@@ -318,9 +319,18 @@ function intentMismatchPenalty(keyword: string, primary: string): number {
   // route subtype is the real subject. When both sides carry a DIFFERENT route
   // subtype (graduate ≠ spouse ≠ dependent ≠ child ≠ student …), hard-penalize so
   // the match falls back to standing rules instead of a wrong canonical.
-  const kwR = extractRouteSubtypes(kw)[0] ?? null
-  const prR = extractRouteSubtypes(pr)[0] ?? null
-  if (kwR && prR && kwR !== prR) {
+  //
+  // 2026-08-19 companion: "asu visa requirements" has NO route subtype, so the
+  // both-sides check was a no-op, Jaccard hit exactly 45, and ASU F-1 copy
+  // landed on /uk/immigration/uk-dependent-visa-child-requirements-2026/.
+  // A registry row that names a specific route must not match a keyword that
+  // never mentions that route.
+  const UMBRELLA = new Set(['family'])
+  const kwRs = extractRouteSubtypes(kw).filter((x) => !UMBRELLA.has(x))
+  const prRs = extractRouteSubtypes(pr).filter((x) => !UMBRELLA.has(x))
+  if (kwRs.length && prRs.length && !kwRs.some((x) => prRs.includes(x))) {
+    penalty += 55
+  } else if (!kwRs.length && prRs.length) {
     penalty += 55
   }
 
@@ -356,7 +366,7 @@ function regionMismatchPenalty(keyword: string, primary: string, ownerUrl?: stri
   const pr = (primary + ' ' + (ownerUrl || '')).toLowerCase()
   const kwCa = /\bcanada|canadian|ircc|pgwp|express entry\b/.test(kw)
   const kwUk = /\buk\b|british|ukvi|ilr|appendix fm|skilled worker\b/.test(kw)
-  const kwUs = /\b(us|usa|f-1|f1|opt|uscis|sevis)\b/.test(kw)
+  const kwUs = /\b(us|usa|f-1|f1|opt|uscis|sevis|asu|arizona state)\b/.test(kw)
   const kwAu = /\b(australia|485|subclass|home affairs|pte)\b/.test(kw)
   const prCa = /\bcanada|canadian|ircc|\/ca\/|ca\.yousafe/.test(pr)
   const prUk = /\buk\b|british|ukvi|\/uk\/|uk\.yousafe|gov\.uk/.test(pr)
