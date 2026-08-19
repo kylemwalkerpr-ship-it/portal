@@ -5,6 +5,7 @@ import { resolveBriefAiProvider, generateBriefText } from '@/lib/seoFactory/brie
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
+import { formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import {
   clampBriefWordBudget,
@@ -62,9 +63,18 @@ export async function POST(req: NextRequest) {
     const backlinkGaps = Array.isArray(body.backlinkGaps)
       ? body.backlinkGaps.map(String).slice(0, 5)
       : [] as string[]
+    const researchCtx = await loadResearchDemandContext(topic, primaryKeyword)
+    const pickedKw = pickResearchKeywords(researchCtx, topic)
+    const researchBlock = formatResearchPromptBlock(researchCtx, pickedKw)
     const completedWork = Array.isArray(body.completedWork)
       ? body.completedWork.map((w: any) => typeof w === 'object' && w ? { slug: String(w.slug || ''), topic: String(w.topic || '') } : { slug: '', topic: '' }).filter((w) => w.slug)
       : [] as Array<{ slug: string; topic: string }>
+    for (const page of researchCtx.shipped) {
+      const slug = String(page.url || '').replace(/^https?:\/\/[^/]+/, '') || page.primaryKeyword || ''
+      if (slug && !completedWork.some((w) => w.slug === slug || w.topic === page.primaryKeyword)) {
+        completedWork.push({ slug, topic: page.primaryKeyword || page.title })
+      }
+    }
 
     // Verified interlink allowlist (from the registry, live-filtered)
     const interlinks = Array.isArray(body.interlinks)
@@ -183,6 +193,7 @@ export async function POST(req: NextRequest) {
         ? `GSC LIVE DATA: ${gscImpressions.toLocaleString()} impressions · ${gscClicks.toLocaleString()} clicks · avg position #${Math.round(gscPosition)}`
         : 'GSC: not connected (treat as zero-demand baseline)',
       engineFeed.promptBlock || '',
+      researchBlock,
       radarGaps.length > 0
         ? `RADAR GAP OPPORTUNITIES (underserved demand — fill these): ${radarGaps.join(' | ')}`
         : '',
@@ -283,8 +294,8 @@ export async function POST(req: NextRequest) {
     const modelShort = Array.isArray(parsed.shortTail) ? parsed.shortTail.map(String).filter(Boolean) : []
     const modelLong = Array.isArray(parsed.longTail) ? parsed.longTail.map(String).filter(Boolean) : []
     const merged = mergeBriefKeywords({
-      modelShort,
-      modelLong,
+      modelShort: [...pickedKw.shortTail, ...modelShort],
+      modelLong: [...pickedKw.longTail, ...modelLong],
       primaryTerm: primaryKeyword,
     })
 
@@ -303,6 +314,10 @@ export async function POST(req: NextRequest) {
         grade: engineFeed.grade,
         recommendationCount: engineFeed.recommendationCount,
       },
+      fromEngine: researchCtx.engineTerms.slice(0, 16),
+      fromUbersuggest: researchCtx.uberTerms.slice(0, 16),
+      blockedCanonicals: pickedKw.skippedCanonicals,
+      competing: researchCtx.competing.competing.slice(0, 8),
       suggestedH1: String(parsed.suggestedH1 || ''),
       h2Outline: Array.isArray(parsed.h2Outline) ? parsed.h2Outline.slice(0, 12) : [],
       shortTail: merged.short.slice(0, 8),

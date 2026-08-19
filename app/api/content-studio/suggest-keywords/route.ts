@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateEngineText } from '@/lib/seoEngine/engineAi'
+import { formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 
 /**
  * POST /api/content-studio/suggest-keywords
@@ -28,6 +29,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'topic is required' }, { status: 400 })
     }
 
+    const researchCtx = await loadResearchDemandContext(topic, primaryKeyword)
+    const picked = pickResearchKeywords(researchCtx, topic)
+    const researchBlock = formatResearchPromptBlock(researchCtx, picked)
+
     const contentTypeLabels: Record<string, string> = {
       blog_post: 'blog post (~1,000 words)',
       article: 'long-form legal guide (~2,200 words)',
@@ -43,6 +48,7 @@ export async function POST(req: NextRequest) {
       '- Long-tail keywords: 4+ words each. Suggest exactly 6-8.',
       '- Prefer keywords with clear search intent (informational or commercial).',
       '- Avoid overly broad terms that cannibalize existing pages.',
+      '- Prefer MASTER ENGINE and UBERSUGGEST terms from the live context. Never invent a sibling of a SHIPPED canonical URL.',
       '- Favor specific, actionable queries real immigrants would search.',
       '- Consider the region — use region-specific terminology where relevant.',
       '- If GSC position data shows the page already ranks for a term, deprioritize it.',
@@ -68,6 +74,7 @@ export async function POST(req: NextRequest) {
       gscImpressions > 0 ? `GSC DATA: ${gscImpressions.toLocaleString()} impressions, ${gscClicks.toLocaleString()} clicks, position #${Math.round(gscPosition)}` : '',
       competitorTerms.length > 0 ? `COMPETITOR TERMS: ${competitorTerms.join(', ')}` : '',
       existingCoverage.length > 0 ? `EXISTING COVERAGE (DO NOT duplicate): ${existingCoverage.join(', ')}` : '',
+      researchBlock,
       '',
       'Suggest the optimal keyword strategy for this piece of content.',
     ].filter(Boolean).join('\n')
@@ -96,13 +103,19 @@ export async function POST(req: NextRequest) {
       }, { status: 502 })
     }
 
+    const shortTail = [...picked.shortTail, ...parsed.shortTail.map(String)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 10)
+    const longTail = [...picked.longTail, ...parsed.longTail.map(String)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 8)
     return NextResponse.json({
       ok: true,
-      shortTail: parsed.shortTail.slice(0, 10),
-      longTail: parsed.longTail.slice(0, 8),
+      shortTail,
+      longTail,
       reasoning: String(parsed.reasoning || ''),
       suggestedH1: String(parsed.suggestedH1 || ''),
       suggestedH2s: Array.isArray(parsed.suggestedH2s) ? parsed.suggestedH2s.slice(0, 8) : [],
+      fromEngine: researchCtx.engineTerms.slice(0, 16),
+      fromUbersuggest: researchCtx.uberTerms.slice(0, 16),
+      blockedCanonicals: picked.skippedCanonicals,
+      competing: researchCtx.competing.competing.slice(0, 8),
     })
 
   } catch (err) {

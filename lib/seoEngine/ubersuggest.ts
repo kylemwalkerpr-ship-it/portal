@@ -289,19 +289,29 @@ export function isCreditOrAuthFailure(err: unknown): boolean {
   return /401|403|429|quota|credit|limit exceeded|exhaust|payment required|upgrade|not connected|unauthorized|forbidden|insufficient/.test(m)
 }
 
+const KEYWORD_ARRAY_KEYS = [
+  'keywords', 'data', 'results', 'items', 'suggestions', 'related', 'ideas', 'pages',
+  'searched_keywords', 'organic', 'organicKeywords',
+]
+
+function collectKeywordBags(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') return [raw]
+  if (!raw || typeof raw !== 'object') return []
+  const rec = raw as Record<string, unknown>
+  const bags: unknown[] = []
+  for (const k of KEYWORD_ARRAY_KEYS) {
+    if (Array.isArray(rec[k])) bags.push(...(rec[k] as unknown[]))
+  }
+  bags.push(raw)
+  return bags
+}
+
 export function parseUbersuggestKeywords(
   raw: unknown,
   opts: { allowZeroVolume?: boolean } = {},
 ): Array<{ term: string; volume: number; position?: number }> {
-  const bag: unknown[] = Array.isArray(raw)
-    ? raw
-    : raw && typeof raw === 'object'
-      ? (['keywords', 'data', 'results', 'items', 'suggestions', 'related', 'ideas', 'pages']
-          .map((k) => (raw as Record<string, unknown>)[k])
-          .find((v) => Array.isArray(v)) as unknown[] | undefined) || [raw]
-      : typeof raw === 'string'
-        ? [raw]
-        : []
+  const bag = collectKeywordBags(raw)
   const out: Array<{ term: string; volume: number; position?: number }> = []
   for (const item of bag) {
     if (typeof item === 'string') {
@@ -313,7 +323,10 @@ export function parseUbersuggestKeywords(
     if (!item || typeof item !== 'object') continue
     const rec = item as Record<string, unknown>
     const term = String(rec.keyword || rec.term || rec.query || rec.phrase || rec.title || rec.kw || '').trim()
-    let volume = Number(rec.volume || rec.search_volume || rec.searchVolume || rec.monthly_searches || rec.traffic || rec.visits || 0) || 0
+    const monthly = Array.isArray(rec.monthly_searches)
+      ? Number((rec.monthly_searches[0] as { search_volume?: number } | undefined)?.search_volume)
+      : 0
+    let volume = Number(rec.volume || rec.search_volume || rec.searchVolume || rec.monthly_searches || rec.traffic || rec.visits || monthly || 0) || 0
     if (!term || isJunkQuery(term)) continue
     if (volume < 20) {
       if (!opts.allowZeroVolume) continue
@@ -494,6 +507,11 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
     return live
   }
 
-  lastUbersuggestPull = { usedCache: true, calls, exhausted: false, reason: lastErr || 'empty live pull' }
+  const emptyReason = lastErr || (calls === 0 ? 'no MCP tools called' : 'empty live pull')
+  await persistUbersuggestConfig({
+    lastError: emptyReason,
+    lastIntel: intel,
+  }).catch(() => undefined)
+  lastUbersuggestPull = { usedCache: true, calls, exhausted: false, reason: emptyReason }
   return cachedSignals(cfg)
 }

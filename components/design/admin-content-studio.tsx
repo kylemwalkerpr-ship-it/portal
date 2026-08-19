@@ -2361,7 +2361,12 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
         const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
         setKeywords(all.join(', '))
-        setActionNotice?.(`AI suggested ${all.length} keywords${data.reasoning ? ': ' + String(data.reasoning).slice(0, 100) + '…' : ''}`)
+        const blocked = Array.isArray(data.blockedCanonicals) ? (data.blockedCanonicals as string[]).length : 0
+        const competingN = Array.isArray(data.competing) ? (data.competing as unknown[]).length : 0
+        const guard = blocked || competingN
+          ? ` Skipped ${blocked} shipped canonicals; ${competingN} competing page(s).`
+          : ''
+        setActionNotice?.(`Engine + Ubersuggest keywords (${all.length}).${guard}${data.reasoning ? ' ' + String(data.reasoning).slice(0, 100) + '…' : ''}`)
         if (Array.isArray(data.suggestedH2s) && data.suggestedH2s.length > 0) {
           setH2s(data.suggestedH2s as string[])
         }
