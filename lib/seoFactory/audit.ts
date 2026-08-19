@@ -224,12 +224,13 @@ export function auditContent(opts: {
     region: fm.region,
     topic: opts.primaryKeyword || fm.primaryKeyword || fm.title,
     primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
+    body: content,
   }))
   add(hasGov, {
     code: 'citations',
     severity: wantIndexable ? 'blocker' : 'warning',
-    message: hasGov ? 'Official .gov/.edu citations present' : 'Missing official authority citations',
-    fix: 'Cite USCIS, IRCC, UKVI, or Home Affairs with live URLs',
+    message: hasGov ? 'Official authority citations present' : 'Missing official authority citations',
+    fix: 'Cite the issuing body for this claim (exam/licensing board) or the same-region immigration department with a live official URL',
   }, AUDIT_POINT_WEIGHTS.citations)
 
   // Schema

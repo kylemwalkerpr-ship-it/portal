@@ -1,4 +1,12 @@
-import { queueClearConfirmCopy, queueClearSpec } from '@/lib/seoFactory/jobsQueue'
+import {
+  queueClearConfirmCopy,
+  queueClearSpec,
+  queueDeleteConfirmCopy,
+  queueJobsListPath,
+  queueListStatusParam,
+  queueMatchedCount,
+  queueTabCount,
+} from '@/lib/seoFactory/jobsQueue'
 
 describe('queueClearSpec', () => {
   it('targets pending drafts only', () => {
@@ -28,5 +36,28 @@ describe('queueClearConfirmCopy', () => {
     expect(queueClearConfirmCopy('clear_drafts', 1)).toBe(
       'Click again to confirm abandoning 1 queued draft.',
     )
+  })
+})
+
+describe('queue list filter vs window', () => {
+  const summary = { total: 233, pending: 0, drafting: 1, publishing: 0, pr_created: 0, merged: 113, failed: 62, closed: 57 }
+  const window = { total: 100, pending: 0, drafting: 1, failed: 0, stuck: 0, pr_created: 0, merged: 99 }
+
+  it('asks the API for failed rows instead of filtering the latest mixed window', () => {
+    expect(queueListStatusParam('failed')).toBe('failed')
+    expect(queueListStatusParam('all')).toBeNull()
+    expect(queueListStatusParam('stuck')).toBe('drafting,pending')
+    expect(queueJobsListPath({ limit: 100, filter: 'failed' })).toBe('/api/content-studio/jobs?limit=100&status=failed')
+  })
+
+  it('shows the table failed count on the tab even when the loaded window has none', () => {
+    expect(queueTabCount('failed', summary, window)).toBe(62)
+    expect(queueTabCount('all', summary, window)).toBe(233)
+    expect(queueTabCount('merged', summary, window)).toBe(113)
+    expect(queueMatchedCount('failed', { failed: 62, merged: 113 }, 233)).toBe(62)
+  })
+
+  it('arms a real delete confirm, not abandon', () => {
+    expect(queueDeleteConfirmCopy(62)).toBe('Click again to permanently delete 62 jobs from the queue.')
   })
 })

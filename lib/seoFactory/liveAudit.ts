@@ -141,7 +141,12 @@ export function auditLiveHtml(opts: {
   const internalHrefs = new Set(hrefs.filter((u) => u.startsWith('/') || estateRe.test(u)))
   const internalLinks = internalHrefs.size
 
-  const hasGovCitations = hrefs.some((u) => isCreamSource(u))
+  const creamCtx = {
+    topic: opts.primaryKeyword || h1 || undefined,
+    keywords: opts.primaryKeyword ? [opts.primaryKeyword] : undefined,
+    body: text.slice(0, 2500),
+  }
+  const hasGovCitations = hrefs.some((u) => isCreamSource(u, creamCtx))
   const hasDisclaimer = DISCLAIMER_RE.test(text)
   const hasTldr = TLDR_RE.test(text)
 

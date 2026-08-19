@@ -195,6 +195,13 @@ describe('unwrapWholeDocumentFence + honest body-word display', () => {
     expect(unwrapWholeDocumentFence('```md\nhello world\n```').trim()).toBe('hello world')
   })
 
+  it('unwraps a reviewer preamble + fenced article (DeepSeek V4 Pro habit)', () => {
+    const inner = '# Title\n\n' + Array.from({ length: 80 }, () => 'word').join(' ')
+    const wrapped = `Here is the complete article:\n\n\`\`\`text\n${inner}\n\`\`\`\n`
+    expect(unwrapWholeDocumentFence(wrapped).trim()).toBe(inner)
+    expect(countBodyWords(wrapped)).toBe(countBodyWords(inner))
+  })
+
   it('does not hide a 0-word editor behind a stale stored count', () => {
     expect(formatBodyWordDisplay(0, 2618)).toBe('0 (stored 2618 — not in editor)')
     expect(formatBodyWordDisplay(2618, 2618)).toBe('2618')

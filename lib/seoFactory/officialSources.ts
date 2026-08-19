@@ -289,17 +289,28 @@ export function isPrimaryDisciplineAuthority(url: string): boolean {
 export function isCitationRelevant(url: string, ctx?: CitationContext | null, title?: string): boolean {
   if (!ctx || (!ctx.topic && !ctx.keywords?.length && !ctx.body)) return true
   if (!citationRegionMatch(url, ctx)) return false
+  if (isReputablePublication(url)) return true
+  if (isContextualAuthority(url, ctx)) return true
   if (isPrimaryDisciplineAuthority(url)) return true
   return scoreUrlRelevance(url, ctx, title) >= MIN_CITATION_RELEVANCE
 }
 
 export function sourcesForBrief(ctx?: CitationContext | null): OfficialSource[] {
-  const bank = sourcesForRegion(ctx?.region)
-  return [...bank]
-    .map((s) => ({ s, score: scoreSourceRelevance(s, ctx) }))
+  const extra = disciplineSourcesForBrief(ctx)
+  const extraUrls = new Set(extra.map((s) => s.url))
+  const bank = [...extra, ...sourcesForRegion(ctx?.region)]
+  const seen = new Set<string>()
+  return bank
+    .map((s) => ({ s, score: scoreSourceRelevance(s, ctx) + (extraUrls.has(s.url) ? 8 : 0) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.s)
+    .filter((s) => {
+      const k = normalizeOfficialUrl(s.url)
+      if (!k || seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
 }
 
 /** Hosts a reader can trust as a primary source (not a blog or competitor). */
@@ -348,6 +359,7 @@ const AUTHORITY_HOSTS = new Set([
 
 const GOV_SUFFIXES = ['.gov', '.gov.uk', '.gov.au', '.gc.ca', '.mil', '.govt.nz', '.gov.sg']
 const SCHOOL_SUFFIXES = ['.edu', '.ac.uk', '.edu.au', '.ac.nz', '.edu.sg', '.ac.za']
+const INSTITUTIONAL_ORG_SUFFIXES = ['.org', '.org.uk', '.org.au', '.org.nz', '.org.sg', '.int']
 
 const LOW_VALUE_HOSTS = new Set([
   'bit.ly', 't.co', 'tinyurl.com', 'ow.ly', 'goo.gl', 'is.gd', 'buff.ly', 'cutt.ly', 'rebrand.ly', 'lnkd.in',
@@ -360,6 +372,31 @@ const LOW_VALUE_HOSTS = new Set([
 
 const LOW_VALUE_HOST_RE =
   /^(facebook|fb|instagram|tiktok|twitter|x|linkedin|youtube|youtu\.be|reddit|pinterest|medium|quora|substack|wikipedia)\./i
+
+/** Named newsrooms and journals — cream when they are not already junk hosts. */
+const REPUTABLE_PUBLICATION_HOSTS = new Set([
+  'nytimes.com', 'washingtonpost.com', 'wsj.com', 'ft.com', 'economist.com',
+  'reuters.com', 'apnews.com', 'bbc.com', 'bbc.co.uk', 'theguardian.com',
+  'bloomberg.com', 'npr.org', 'pbs.org', 'nbcnews.com', 'cbsnews.com',
+  'abcnews.go.com', 'usatoday.com', 'latimes.com', 'chicagotribune.com',
+  'theatlantic.com', 'newyorker.com', 'time.com', 'nature.com', 'science.org',
+  'sciencemag.org', 'aljazeera.com', 'cbc.ca', 'abc.net.au', 'smh.com.au',
+  'theglobeandmail.com', 'thestar.com', 'independent.co.uk', 'telegraph.co.uk',
+  'politico.com', 'axios.com', 'propublica.org', 'theconversation.com',
+])
+
+export function isReputablePublication(url: string): boolean {
+  if (isLowValueHost(url)) return false
+  const host = hostnameOf(url)
+  if (!host) return false
+  const bare = bareHost(host)
+  if (REPUTABLE_PUBLICATION_HOSTS.has(bare)) return true
+  const parts = bare.split('.')
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (REPUTABLE_PUBLICATION_HOSTS.has(parts.slice(i).join('.'))) return true
+  }
+  return false
+}
 
 const SCHOOL_JUNK_SUBHOST =
   /^(blog|blogs|news|magazine|newspaper|students|clubs|events|alumni-news|give|shop|store)$/i
@@ -430,9 +467,210 @@ export function isLowValueHost(url: string): boolean {
   return false
 }
 
+/**
+ * Professional boards, exam administrators, and statutory regulators.
+ * A host is cream ONLY when the article or the URL itself is about that
+ * discipline — NCSBN is an authority for NCLEX, not for F-1 visas.
+ * Add rows here as new licensed professions appear in the estate; do not
+ * special-case a single article.
+ */
+export const DISCIPLINE_AUTHORITIES: Array<OfficialSource & { match: RegExp }> = [
+  // Nursing / NCLEX
+  { title: 'NCSBN — NCLEX', url: 'https://www.ncsbn.org/exams/nclex', regions: ['US'], topics: ['education', 'study'], match: /\b(nclex|ncsbn|nursing licensure|rn exam|pn exam)\b/i },
+  { title: 'NCSBN', url: 'https://www.ncsbn.org/', regions: ['US'], topics: ['education', 'study'], match: /\b(nclex|ncsbn|nursing licensure)\b/i },
+  { title: 'Pearson VUE — NCLEX', url: 'https://www.pearsonvue.com/us/en/nclex.html', regions: ['US'], topics: ['education', 'study'], match: /\bnclex\b/i },
+  { title: 'NCLEX.com (NCSBN)', url: 'https://www.nclex.com/', regions: ['US'], topics: ['education', 'study'], match: /\b(nclex|ncsbn)\b/i },
+  { title: 'NMC — UK nursing register', url: 'https://www.nmc.org.uk/', regions: ['UK'], topics: ['education', 'work'], match: /\b(nmc|nursing and midwifery council)\b/i },
+  { title: 'CNO — Ontario nursing', url: 'https://www.cno.org/', regions: ['CA'], topics: ['education', 'work'], match: /\b(cno|college of nurses of ontario)\b/i },
+  { title: 'NNAS', url: 'https://www.nnas.ca/', regions: ['CA'], topics: ['education', 'work'], match: /\b(nnas|national nursing assessment)\b/i },
+  { title: 'CGFNS / VisaScreen', url: 'https://www.cgfns.org/', regions: ['US'], topics: ['education', 'work'], match: /\b(cgfns|visa ?screen|ces report)\b/i },
+  { title: 'AHPRA', url: 'https://www.ahpra.gov.au/', regions: ['AU'], topics: ['education', 'work'], match: /\b(ahpra|nursing and midwifery board of australia)\b/i },
+  { title: 'ANMAC', url: 'https://www.anmac.org.au/', regions: ['AU'], topics: ['education', 'work'], match: /\banmac\b/i },
+  // English-language tests
+  { title: 'IELTS', url: 'https://ielts.org/', regions: ['ALL'], topics: ['education', 'study'], match: /\bielts\b/i },
+  { title: 'British Council — IELTS', url: 'https://takeielts.britishcouncil.org/', regions: ['ALL'], topics: ['education', 'study'], match: /\bielts\b/i },
+  { title: 'IDP IELTS', url: 'https://ielts.idp.com/', regions: ['ALL'], topics: ['education', 'study'], match: /\bielts\b/i },
+  { title: 'ETS — TOEFL', url: 'https://www.ets.org/toefl.html', regions: ['ALL'], topics: ['education', 'study'], match: /\btoefl\b/i },
+  { title: 'ETS — GRE', url: 'https://www.ets.org/gre.html', regions: ['ALL'], topics: ['education', 'study'], match: /\bgre\b/i },
+  { title: 'PTE Academic', url: 'https://www.pearsonpte.com/', regions: ['ALL'], topics: ['education', 'study'], match: /\b(pte academic|pearson test of english|pte)\b/i },
+  { title: 'OET', url: 'https://oet.com/', regions: ['ALL'], topics: ['education', 'study', 'health'], match: /\b(occupational english test|oet)\b/i },
+  { title: 'CELPIP', url: 'https://www.celpip.ca/', regions: ['CA'], topics: ['education', 'study'], match: /\bcelpip\b/i },
+  { title: 'Duolingo English Test', url: 'https://englishtest.duolingo.com/', regions: ['ALL'], topics: ['education', 'study'], match: /\b(duolingo english|duolingo test)\b/i },
+  { title: 'Cambridge English', url: 'https://www.cambridgeenglish.org/', regions: ['ALL'], topics: ['education', 'study'], match: /\b(cambridge english|c1 advanced|b2 first)\b/i },
+  // Medicine
+  { title: 'GMC — UK medical register', url: 'https://www.gmc-uk.org/', regions: ['UK'], topics: ['education', 'work'], match: /\b(gmc|general medical council)\b/i },
+  { title: 'PLAB / GMC tests', url: 'https://www.gmc-uk.org/registration-and-licensing/join-the-register/plab', regions: ['UK'], topics: ['education', 'work'], match: /\bplab\b/i },
+  { title: 'NBME / USMLE', url: 'https://www.usmle.org/', regions: ['US'], topics: ['education', 'study'], match: /\b(usmle|nbme|step 1|step 2 ck)\b/i },
+  { title: 'ECFMG / Intealth', url: 'https://www.ecfmg.org/', regions: ['US'], topics: ['education', 'work'], match: /\b(ecfmg|intealth)\b/i },
+  { title: 'FSMB', url: 'https://www.fsmb.org/', regions: ['US'], topics: ['education', 'work'], match: /\b(fsmb|federation of state medical)\b/i },
+  { title: 'Medical Council of Canada', url: 'https://mcc.ca/', regions: ['CA'], topics: ['education', 'work'], match: /\b(mccqe|medical council of canada)\b/i },
+  { title: 'Australian Medical Council', url: 'https://www.amc.org.au/', regions: ['AU'], topics: ['education', 'work'], match: /\b(australian medical council|\bamc exam\b)\b/i },
+  // Law
+  { title: 'LSAC — LSAT', url: 'https://www.lsac.org/', regions: ['US'], topics: ['education', 'study'], match: /\b(lsat|lsac)\b/i },
+  { title: 'NCBE — bar exam', url: 'https://www.ncbex.org/', regions: ['US'], topics: ['education', 'study'], match: /\b(bar exam|ube\b|ncbe|mpre)\b/i },
+  { title: 'SRA', url: 'https://www.sra.org.uk/', regions: ['UK'], topics: ['education', 'work'], match: /\b(solicitors regulation|sra|sqe)\b/i },
+  { title: 'Bar Standards Board', url: 'https://www.barstandardsboard.org.uk/', regions: ['UK'], topics: ['education', 'work'], match: /\b(bar standards|bar course|btpc)\b/i },
+  { title: 'NCA Canada', url: 'https://nca.legal/', regions: ['CA'], topics: ['education', 'work'], match: /\b(national committee on accreditation|nca)\b/i },
+  // Accounting / pharmacy / dental / engineering
+  { title: 'AICPA', url: 'https://www.aicpa-cima.com/', regions: ['US'], topics: ['education', 'work'], match: /\b(cpa exam|aicpa|uniform cpa)\b/i },
+  { title: 'CPA Australia', url: 'https://www.cpaaustralia.com.au/', regions: ['AU'], topics: ['education', 'work'], match: /\b(cpa australia)\b/i },
+  { title: 'ACCA', url: 'https://www.accaglobal.com/', regions: ['ALL'], topics: ['education', 'work'], match: /\b(acca|association of chartered certified)\b/i },
+  { title: 'NABP / NAPLEX', url: 'https://nabp.pharmacy/', regions: ['US'], topics: ['education', 'work'], match: /\b(nabp|naplex|mpje)\b/i },
+  { title: 'GPhC', url: 'https://www.pharmacyregulation.org/', regions: ['UK'], topics: ['education', 'work'], match: /\b(gphc|pharmacy regulation|ospap)\b/i },
+  { title: 'GDC', url: 'https://www.gdc-uk.org/', regions: ['UK'], topics: ['education', 'work'], match: /\b(general dental council|gdc|ore exam)\b/i },
+  { title: 'NDEB', url: 'https://ndeb-bned.ca/', regions: ['CA'], topics: ['education', 'work'], match: /\b(ndeb|national dental examining)\b/i },
+  { title: 'NCEES', url: 'https://ncees.org/', regions: ['US'], topics: ['education', 'work'], match: /\b(ncees|fe exam|pe exam)\b/i },
+  { title: 'Engineers Australia', url: 'https://www.engineersaustralia.org.au/', regions: ['AU'], topics: ['education', 'work'], match: /\b(engineers australia|competency demonstration|cdr)\b/i },
+  // Credential evaluation
+  { title: 'NARIC / Ecctis', url: 'https://www.ecctis.com/', regions: ['UK'], topics: ['education'], match: /\b(uk naric|ecctis|statement of comparability)\b/i },
+  { title: 'WES', url: 'https://www.wes.org/', regions: ['US', 'CA'], topics: ['education'], match: /\b(wes|world education services|credential evaluation)\b/i },
+]
+
+const CLAIM_STOP = new Set([
+  'about', 'contact', 'public', 'files', 'exams', 'exam', 'test', 'plan', 'english', 'final',
+  'official', 'guide', 'student', 'students', 'visa', 'application', 'requirements', 'international',
+  'university', 'college', 'index', 'page', 'home', 'www', 'https', 'http', 'html', 'pdf', 'org',
+  'com', 'net', 'document', 'download', 'resources', 'news', 'blog', 'prep', 'preparation', 'help',
+  'complete', 'complete', 'with', 'from', 'this', 'that', 'your', 'their', 'have', 'will', 'into',
+])
+
+function hostMatchesAuthority(url: string, authorityUrl: string): boolean {
+  const a = hostnameOf(url)
+  const b = hostnameOf(authorityUrl)
+  if (!a || !b) return false
+  const left = bareHost(a)
+  const right = bareHost(b)
+  return left === right || left.endsWith(`.${right}`) || right.endsWith(`.${left}`)
+}
+
+export function citationBlob(ctx?: CitationContext | null, extra?: string): string {
+  const body = String(ctx?.body || '')
+    .slice(0, 4000)
+    .replace(/https?:\/\/[^\s)<>\]"'`]+/gi, ' ')
+  return [ctx?.topic, ...(ctx?.keywords || []), body, extra || '']
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** Distinctive claim tokens — exam names, board acronyms — not generic SEO words. */
+export function distinctiveClaimTokens(ctx?: CitationContext | null, extra?: string): string[] {
+  const blob = citationBlob(ctx, extra).toLowerCase().replace(/[^a-z0-9\s-]/g, ' ')
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const w of blob.split(/\s+/)) {
+    const t = w.replace(/^-+|-+$/g, '')
+    if (t.length < 4 || CLAIM_STOP.has(t) || seen.has(t)) continue
+    seen.add(t)
+    out.push(t)
+  }
+  return out
+}
+
+export function isInstitutionalHost(url: string): boolean {
+  if (isLowValueHost(url)) return false
+  const host = hostnameOf(url)
+  if (!host) return false
+  const bare = bareHost(host)
+  if (GOV_SUFFIXES.some((sfx) => bare.endsWith(sfx))) return true
+  if (SCHOOL_SUFFIXES.some((sfx) => bare.endsWith(sfx))) return isOfficialSchoolPage(url)
+  if (!INSTITUTIONAL_ORG_SUFFIXES.some((sfx) => bare.endsWith(sfx))) return false
+  const first = bare.split('.')[0]
+  if (SCHOOL_JUNK_SUBHOST.test(first)) return false
+  try {
+    const path = new URL(url).pathname.toLowerCase()
+    if (SCHOOL_JUNK_PATH.test(path)) return false
+  } catch {
+    return false
+  }
+  return true
+}
+
+/** Host is a listed exam/licensing/credential body. Not cream by itself. */
+export function isKnownDisciplineHost(url: string): boolean {
+  if (!url || isLowValueHost(url)) return false
+  return DISCIPLINE_AUTHORITIES.some((row) => hostMatchesAuthority(url, row.url))
+}
+
+/**
+ * Article claim from H1 / YAML title when a caller forgot to pass topic.
+ * Later articles still resolve issuing-body links from the page itself.
+ */
+export function inferArticleClaim(content: string): string {
+  const src = String(content || '')
+  const md = src.match(/^#\s+(.+)$/m)
+  if (md?.[1]) return md[1].replace(/[#*_`]/g, '').trim()
+  const html = src.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)
+  if (html?.[1]) return html[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const fm = src.match(/^title:\s*["']?(.+?)["']?\s*$/m)
+  if (fm?.[1]) return fm[1].trim()
+  return ''
+}
+
+/**
+ * True when this URL is the issuing body for the article/claim — not because
+ * the host is famous, but because the page and the surrounding topic name
+ * the same exam, licence, or statutory function.
+ */
+function stripLinkArtefacts(body: string | null | undefined, url?: string): string {
+  let s = String(body || '')
+  s = s.replace(/\[([^\]]*)\]\([^)]+\)/g, ' ')
+  s = s.replace(/<a\s[^>]*>[\s\S]*?<\/a>/gi, ' ')
+  s = s.replace(/https?:\/\/[^\s)<>\]"'`]+/gi, ' ')
+  const host = url ? hostnameOf(url) : null
+  if (host) {
+    const brand = bareHost(host).split('.')[0]
+    if (brand.length >= 3) s = s.replace(new RegExp(`\\b${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ')
+  }
+  return s
+}
+
+export function isContextualAuthority(url: string, ctx?: CitationContext | null): boolean {
+  if (!url || isLowValueHost(url)) return false
+  const article = citationBlob({ ...ctx, body: stripLinkArtefacts(ctx?.body, url) })
+  if (!article.trim()) return false
+  for (const row of DISCIPLINE_AUTHORITIES) {
+    if (!hostMatchesAuthority(url, row.url)) continue
+    if (row.match.test(article)) return true
+  }
+  if (!isInstitutionalHost(url)) return false
+  const tokens = distinctiveClaimTokens({ topic: ctx?.topic, keywords: ctx?.keywords, region: ctx?.region })
+  if (!tokens.length) return false
+  const hay = `${hostnameOf(url) || ''} ${url}`.toLowerCase()
+  return tokens.some((t) => t.length >= 4 && hay.includes(t))
+}
+
+export function disciplineSourcesForBrief(ctx?: CitationContext | null): OfficialSource[] {
+  const blob = citationBlob(ctx)
+  if (!blob.trim()) return []
+  return DISCIPLINE_AUTHORITIES
+    .filter((s) => s.match.test(blob))
+    .map(({ match: _m, ...s }) => s)
+}
+
 /** Cream-of-the-crop predicate used from Research through ship. */
-export function isCreamSource(url: string): boolean {
-  return isAuthorityHost(url) && !isLowValueHost(url)
+export function isCreamSource(url: string, ctx?: CitationContext | null): boolean {
+  if (isLowValueHost(url)) return false
+  if (isAuthorityHost(url)) return true
+  if (isReputablePublication(url)) return true
+  if (ctx && isContextualAuthority(url, ctx)) return true
+  return false
+}
+
+export function claimIsLicensingExam(ctx?: CitationContext | null, extra?: string): boolean {
+  const blob = citationBlob({ ...ctx, body: stripLinkArtefacts(ctx?.body) }, extra)
+  if (!blob.trim()) return false
+  return DISCIPLINE_AUTHORITIES.some((row) => row.match.test(blob))
+}
+
+/** Issuing-body and reputable-news hrefs must survive remediator + re-audit.
+ *  Do not use isCreamSource here — that would freeze every .gov page in place,
+ *  including HUD on an OPT article and a 404 USCIS path. */
+export function shouldKeepExternalHref(url: string, ctx?: CitationContext | null): boolean {
+  if (!url || isLowValueHost(url)) return false
+  if (isReputablePublication(url)) return true
+  if (isContextualAuthority(url, ctx)) return true
+  if (isKnownDisciplineHost(url) && claimIsLicensingExam(ctx, inferArticleClaim(ctx?.body || ''))) return true
+  return false
 }
 
 export function officialSourceLines(region?: string | null): string[] {

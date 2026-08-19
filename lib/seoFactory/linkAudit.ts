@@ -31,14 +31,20 @@
  */
 
 import {
+  DISCIPLINE_AUTHORITIES,
+  claimIsLicensingExam,
+  inferArticleClaim,
   isAuthorityHost,
   isCitationRelevant,
   isCreamSource,
+  isKnownDisciplineHost,
   isPrimaryDisciplineAuthority,
+  isReputablePublication,
+  shouldKeepExternalHref,
   sourcesForBrief,
   type CitationContext,
 } from './officialSources'
-import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
+import { applyCitationPolicy, citationContextForContent } from './citationPolicy'
 
 export const ESTATE_BASE = 'https://legal.yousafeconsultancy.com'
 
@@ -404,12 +410,17 @@ export function auditLinksSync(
       continue
     }
     if (isExternalHttpUrl(url)) {
-      if (!isCreamSource(url)) {
+      const localCtx: CitationContext = {
+        ...citationContext,
+        topic: citationContext?.topic || inferArticleClaim(content),
+        body: `${citationContext?.body || ''} ${content.slice(0, 2500)}`,
+      }
+      if (!isCreamSource(url, localCtx)) {
         findings.push({
           code: 'untrusted_external_link',
           severity: 'blocker',
           url,
-          message: `Untrusted external link (${url}) — not a government, official school, or named authority page.`,
+          message: `Untrusted external link (${url}) — not a government, official school, named authority, or the issuing body for this article’s claim.`,
         })
         continue
       }
@@ -526,7 +537,9 @@ export function classifyLiveStatus(
   status: number,
 ): { ok: boolean; blocker: boolean; code: LinkAuditFinding['code']; message: string } {
   const estate = isEstateUrl(url)
-  const authority = isAuthorityHost(url)
+  // Issuing bodies (.org boards, Pearson, IELTS) often 403 bot crawlers the
+  // same way .gov does. Exempt them from "dead" without making the host cream.
+  const authority = isAuthorityHost(url) || isKnownDisciplineHost(url) || isReputablePublication(url)
   if (status >= 200 && status < 400) {
     return { ok: true, blocker: false, code: estate ? 'dead_internal_link' : 'dead_external_link', message: '' }
   }
@@ -713,7 +726,7 @@ export async function filterVerifiedCitationUrls(
     .map((u) => String(u || '').trim())
     .filter((u) => /^https?:\/\//i.test(u))
     .filter((u) => !isPlaceholderUrl(u).hit && !isMalformedUrl(u) && !isSkippableHref(u))
-    .filter((u) => isCreamSource(u))
+    .filter((u) => isCreamSource(u, context))
     .filter((u) => isCitationRelevant(u, context))
   if (candidates.length === 0) return []
   const results = await verifyUrlsLive(candidates)
@@ -799,6 +812,17 @@ function tokenOverlapScore(context: string, title: string, url: string): number 
   const ctx = context.toLowerCase()
   if (/\b(hous|rent|meal|dorm|campus|tenant)\b/.test(ctx) && /legal\.yousafeconsultancy|yousafeconsultancy\.com\/?$/.test(url)) score += 3
   if (/\b(visa|opt|permit|uscis|sevis|i-20|ircc|ukvi)\b/.test(ctx) && /uscis|studyinthestates|sevis|canada\.ca|gov\.uk|homeaffairs/.test(url)) score += 3
+  if (claimIsLicensingExam({ body: context }) && isKnownDisciplineHost(url)) score += 12
+  if (claimIsLicensingExam({ body: context }) && /uscis\.gov|hud\.gov|studyinthestates/.test(url) && !/\b(visa|opt|uscis|i-765)\b/i.test(ctx)) score -= 10
+  // Issuing body for this claim always outranks a generic immigration homepage.
+  for (const row of DISCIPLINE_AUTHORITIES) {
+    if (!row.match.test(ctx)) continue
+    const host = (() => {
+      try { return new URL(row.url).hostname.replace(/^www\./, '') } catch { return '' }
+    })()
+    if (host && hay.includes(host.split('.')[0])) score += 8
+    if (row.match.test(hay)) score += 4
+  }
   return score
 }
 
@@ -889,7 +913,7 @@ export async function remediateDeadLinksInContext(
 
   const safePool = pool.filter((c) => {
     if (isEstateUrl(c.url)) return true
-    return isCreamSource(c.url) && isCitationRelevant(c.url, ctx)
+    return isCreamSource(c.url, ctx) && isCitationRelevant(c.url, ctx)
   })
 
   for (const f of dead) {
@@ -900,12 +924,22 @@ export async function remediateDeadLinksInContext(
     }
     const localPool = safePool.filter((c) => c.url !== f.url && isCitationRelevant(c.url, localCtx))
     const alt = pickBestAlternative(around, localPool.length ? localPool : safePool)
-    const keepCream =
-      f.code === 'irrelevant_external_link' && isPrimaryDisciplineAuthority(f.url) && isCitationRelevant(f.url, ctx)
-    if (keepCream) continue
+    if (
+      (f.code === 'untrusted_external_link' || f.code === 'irrelevant_external_link' || f.code === 'unreachable_external_link')
+      && (shouldKeepExternalHref(f.url, localCtx) || shouldKeepExternalHref(f.url, ctx))
+    ) continue
+    if (
+      f.code === 'irrelevant_external_link' &&
+      isPrimaryDisciplineAuthority(f.url) &&
+      isCitationRelevant(f.url, ctx)
+    ) continue
 
-    const preferReplace = f.code === 'irrelevant_external_link' || f.code === 'dead_external_link' || f.code === 'dead_internal_link'
-    const unwrapOnly = f.code === 'untrusted_external_link' || f.code === 'placeholder_link'
+    const preferReplace =
+      f.code === 'irrelevant_external_link' ||
+      f.code === 'dead_external_link' ||
+      f.code === 'dead_internal_link' ||
+      f.code === 'untrusted_external_link'
+    const unwrapOnly = f.code === 'placeholder_link'
     if (alt && preferReplace && !unwrapOnly) {
       const r = rewriteHref(next, f.url, alt.url)
       if (r.hits > 0) {
@@ -915,7 +949,7 @@ export async function remediateDeadLinksInContext(
         continue
       }
     }
-    if (f.code === 'irrelevant_external_link' && isCreamSource(f.url)) {
+    if (f.code === 'irrelevant_external_link' && isCreamSource(f.url, ctx)) {
       // Live official page — leave it rather than unwrap into a bare claim.
       if (!alt || alt.url === f.url) continue
       const r = rewriteHref(next, f.url, alt.url)
@@ -971,7 +1005,7 @@ export async function sanitizeDraftLinksLive(
   findings: LinkAuditFinding[]
   remediations: DeadLinkRemediation[]
 }> {
-  const citationContext = buildCitationContext({
+  const citationContext = citationContextForContent(content, {
     region: opts?.region,
     topic: opts?.topic,
     keywords: opts?.keywords,

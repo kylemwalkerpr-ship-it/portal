@@ -64,7 +64,7 @@ export function QueueStats({ jobs, total: totalOverride, summary }: {
 }
 
 
-export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId, onLoadMore, selectedIds, onToggleSelect, onToggleSelectAll, onBulkAction, bulkBusy, bulkAction }: {
+export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId, onLoadMore, selectedIds, onToggleSelect, onToggleSelectAll, onBulkAction, bulkBusy, bulkAction, hideFilters }: {
   jobs: ContentJob[]
   total?: number
   summary?: QueueSummary | null
@@ -80,10 +80,11 @@ export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex
   onBulkAction?: (kind: string) => void
   bulkBusy?: boolean
   bulkAction?: string | null
+  hideFilters?: boolean
 }) {
   const [filter, setFilter] = React.useState<'all' | 'active' | 'pr_created' | 'merged' | 'failed'>('all')
   const [search, setSearch] = React.useState('')
-  const [showAll, setShowAll] = React.useState(false)
+  const [showAll, setShowAll] = React.useState(Boolean(hideFilters))
 
   const mergeHitFor = (j: ContentJob): MergeUrlHit | null => {
     const path = jobWebPath(j)
@@ -164,6 +165,7 @@ export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex
           </div>
         }
       />
+      {!hideFilters && (
       <div style={{ padding: '10px 16px 0', display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {QUEUE_FILTERS.map(f => (
           <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
@@ -174,6 +176,7 @@ export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex
           </button>
         ))}
       </div>
+      )}
       <div style={{ overflowX: 'auto', marginTop: 6 }}>
         {loading ? (
           <div style={{ padding: 28, textAlign: 'center', fontSize: 12, color: C.textDim }}>Loading jobs…</div>
@@ -181,8 +184,17 @@ export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex
           <div style={{ padding: 32, textAlign: 'center' }}>
             <div style={{ fontSize: 28, marginBottom: 4 }}>📭</div>
             <div style={{ fontSize: 12, color: C.textMuted }}>
-              {jobs.length === 0 ? 'No jobs yet — head to the Create tab and launch your first piece.' : 'No jobs match this filter / search.'}
+              {jobs.length === 0 && (total ?? 0) > 0
+                ? `${total} job(s) match this filter but are outside the loaded window.`
+                : jobs.length === 0
+                  ? 'No jobs yet — head to the Create tab and launch your first piece.'
+                  : 'No jobs match this filter / search.'}
             </div>
+            {jobs.length === 0 && (total ?? 0) > 0 && onLoadMore && (
+              <button type="button" onClick={onLoadMore} style={{ ...btnGhost, marginTop: 12 }}>
+                Load matching jobs
+              </button>
+            )}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
@@ -273,11 +285,13 @@ export function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex
           </table>
         )}
       </div>
-      {filtered.length > 12 && (
+      {(filtered.length > 12 || (typeof total === 'number' && total > jobs.length && onLoadMore)) && (
         <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {filtered.length > 12 && (
           <button type="button" onClick={() => setShowAll(!showAll)} style={btnGhost}>
             {showAll ? '▲ Show fewer' : `▼ Show all ${filtered.length} matching`}
           </button>
+          )}
           {typeof total === 'number' && total > 0 && jobs.length < total && onLoadMore && (
             <button type="button" onClick={onLoadMore} style={btnGhost}>
               Load more ({total - jobs.length} remaining)

@@ -27,7 +27,14 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream } from '@/lib/seoFactory/sse'
 import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
-import { queueClearConfirmCopy, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
+import {
+  queueClearConfirmCopy,
+  queueDeleteConfirmCopy,
+  queueJobsListPath,
+  queueTabCount,
+  type QueueClearAction,
+  type QueueUiFilter,
+} from '@/lib/seoFactory/jobsQueue'
 import { countBodyWords, formatBodyWordDisplay } from '@/lib/seoFactory/contentDepth'
 import {
   extractMetricValues,
@@ -2222,7 +2229,11 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   })
   const [sources, setSources] = React.useState<string[]>(() => selectedBrief?.signals?.filter((s: string) => {
     const url = String(s).match(/https?:\/\/[^\s)]+/)?.[0] || String(s)
-    return /^https?:\/\//i.test(url) && isCreamSource(url)
+    return /^https?:\/\//i.test(url) && isCreamSource(url, {
+      region,
+      topic: topic || title,
+      keywords: String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
+    })
   })?.slice(0, 4) ?? [])
   const [minWords, setMinWords] = React.useState<number>(() => contentType === 'blog_post' ? 900 : contentType === 'regional_page' ? 1400 : 1800)
   const [maxWords, setMaxWords] = React.useState<number>(() => contentType === 'blog_post' ? 1600 : contentType === 'regional_page' ? 2200 : 2800)
@@ -2368,8 +2379,12 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     const raw = newSource.trim()
     if (!raw) return
     const url = raw.match(/https?:\/\/[^\s)]+/)?.[0] || raw
-    if (!/^https?:\/\//i.test(url) || !isCreamSource(url)) {
-      setActionNotice?.('Only crème-de-la-crème official URLs can be cited — immigration/gov departments, official school pages, or named intergovernmental bodies. Blogs, news, Wikipedia, and consultants are rejected.')
+    if (!/^https?:\/\//i.test(url) || !isCreamSource(url, {
+      region,
+      topic: topic || title,
+      keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
+    })) {
+      setActionNotice?.('Only official URLs can be cited — the issuing body for this topic (exam/licensing board), immigration/gov departments, or official school pages. Blogs, news, Wikipedia, and consultants are rejected.')
       return
     }
     setSources((p) => [...p, raw])
@@ -4659,7 +4674,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [queueBulkBusy, setQueueBulkBusy] = React.useState(false)
   const [queueBulkAction, setQueueBulkAction] = React.useState<string | null>(null)
   const [queueBulkProgress, setQueueBulkProgress] = React.useState<{ done: number; total: number; failed: number } | null>(null)
-  const [queueStatusFilter, setQueueStatusFilter] = React.useState<ContentJob['status'] | 'all' | 'failed' | 'stuck'>('all')
+  const [queueStatusFilter, setQueueStatusFilter] = React.useState<QueueUiFilter>('all')
+  const queueStatusFilterRef = React.useRef<QueueUiFilter>('all')
+  queueStatusFilterRef.current = queueStatusFilter
+  const [jobMatched, setJobMatched] = React.useState(0)
+  const [queueViewJobs, setQueueViewJobs] = React.useState<ContentJob[] | null>(null)
   // Keep the queue's last refresh timestamped so the refresh button has something
   // honest to display instead of a silent void.
   const [lastRefreshAt, setLastRefreshAt] = React.useState<number | null>(null)
@@ -4836,13 +4855,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const fetchJobs = React.useCallback(async (): Promise<ContentJob[]> => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return []
     try {
-      const res = await fetch('/api/content-studio/jobs?limit=100', { credentials: 'same-origin', cache: 'no-store' })
+      const res = await fetch(queueJobsListPath({ limit: 100, filter: 'all' }), { credentials: 'same-origin', cache: 'no-store' })
       if (res.status === 503) { setError('Server busy (503). Waiting before next refresh…'); return [] }
-      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary; error?: string }
+      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; matched?: number; summary?: QueueSummary; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       const nextJobs = data.jobs ?? []
       setJobs(nextJobs)
       setJobTotal(typeof data.total === 'number' ? data.total : nextJobs.length)
+      if (queueStatusFilterRef.current === 'all') {
+        setJobMatched(typeof data.matched === 'number' ? data.matched : (typeof data.total === 'number' ? data.total : nextJobs.length))
+      }
       setJobSummary(data.summary ?? null)
       setError(null)
       return nextJobs
@@ -4851,6 +4873,40 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       return []
     } finally { setLoading(false) }
   }, [])
+
+  const fetchQueueView = React.useCallback(async (filter: QueueUiFilter, offset = 0, append = false) => {
+    if (filter === 'all') {
+      setQueueViewJobs(null)
+      return
+    }
+    try {
+      const res = await fetch(queueJobsListPath({ limit: 100, offset, filter }), { credentials: 'same-origin', cache: 'no-store' })
+      if (res.status === 503) return
+      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; matched?: number; summary?: QueueSummary; error?: string }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const next = data.jobs ?? []
+      setQueueViewJobs((prev) => {
+        if (!append || !prev) return next
+        const seen = new Set(prev.map((j) => j.id))
+        return [...prev, ...next.filter((j) => !seen.has(j.id))]
+      })
+      if (typeof data.total === 'number') setJobTotal(data.total)
+      if (typeof data.matched === 'number') setJobMatched(data.matched)
+      if (data.summary) setJobSummary(data.summary)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load filtered jobs')
+    }
+  }, [])
+
+  React.useEffect(() => {
+    setSelectedJobIds(new Set())
+    if (queueStatusFilter === 'all') {
+      setQueueViewJobs(null)
+      setJobMatched(jobTotal)
+      return
+    }
+    void fetchQueueView(queueStatusFilter, 0, false)
+  }, [queueStatusFilter, fetchQueueView])
 
   // Deep-link from the Rhythm Alerts panel: fetch the job by id (it may not be
   // in the current queue view) and open the JobDetail modal for remediation.
@@ -5402,7 +5458,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // ── Bulk queue actions: rerun, resume, clear queue, re-audit, refresh PR, abandon ──
   // The bulk_* POST handler accepts up to 25 ids per request; we chunk large
   // selections and surface a progress bar so the admin sees the work moving.
-  const runBulkQueueAction = React.useCallback(async (kind: 'bulk_reaudit' | 'bulk_abandon' | 'bulk_approve' | 'bulk_monitor' | 'rerun_resume' | 'refresh_pr' | 'clear_drafts' | 'clear_stuck' | 'clear_failed') => {
+  const runBulkQueueAction = React.useCallback(async (kind: 'bulk_reaudit' | 'bulk_abandon' | 'bulk_approve' | 'bulk_monitor' | 'rerun_resume' | 'refresh_pr' | 'clear_drafts' | 'clear_stuck' | 'clear_failed' | 'bulk_delete') => {
     if (queueBulkBusy) return
     const isClearBucket = kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed'
     const ids: string[] = isClearBucket ? [] : Array.from(selectedJobIds)
@@ -5411,7 +5467,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       return
     }
     // Destructive ops require a second click (toggle arming).
-    if ((isClearBucket || kind === 'bulk_abandon') && queueBulkConfirmArmed !== kind) {
+    if ((isClearBucket || kind === 'bulk_abandon' || kind === 'bulk_delete') && queueBulkConfirmArmed !== kind) {
       setQueueBulkConfirmArmed(kind)
       // Status-scoped clears act on the FULL bucket, not the 100-row window,
       // so the confirm count comes from the real table summary (jobSummary),
@@ -5422,7 +5478,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const n = isClearBucket ? bucketCount : ids.length
       const confirmCopy = isClearBucket
         ? queueClearConfirmCopy(kind as QueueClearAction, n)
-        : `Click again to confirm abandon on ${n} job(s).`
+        : kind === 'bulk_delete'
+          ? queueDeleteConfirmCopy(n)
+          : `Click again to confirm abandon on ${n} job(s).`
       setActionNotice(confirmCopy)
       return
     }
@@ -5502,6 +5560,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       )
       setSelectedJobIds(new Set())
       await fetchJobs()
+      if (queueStatusFilterRef.current !== 'all') {
+        await fetchQueueView(queueStatusFilterRef.current, 0, false)
+      }
       await fetchGateRuns()
     } catch (e) {
       setError(e instanceof Error ? e.message : `${kind} failed`)
@@ -5510,7 +5571,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setQueueBulkAction(null)
       setTimeout(() => setQueueBulkProgress(null), 1500)
     }
-  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, jobSummary, fetchJobs, fetchGateRuns, setActionNotice, setError])
+  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, jobSummary, fetchJobs, fetchQueueView, fetchGateRuns, setActionNotice, setError])
 
   const queueSelectionCounts = React.useMemo(() => {
     const counts = { pending: 0, drafting: 0, failed: 0, stuck: 0, total: 0 }
@@ -5529,10 +5590,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const visibleQueueJobs = React.useMemo(() => {
     if (queueStatusFilter === 'all') return jobs
     if (queueStatusFilter === 'stuck') {
-      return jobs.filter((j) => (j.status === 'drafting' || j.status === 'pending') && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000)
+      const pool = queueViewJobs ?? jobs
+      return pool.filter((j) => (j.status === 'drafting' || j.status === 'pending') && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000)
     }
-    return jobs.filter((j) => j.status === queueStatusFilter)
-  }, [jobs, queueStatusFilter])
+    return queueViewJobs ?? jobs.filter((j) => j.status === queueStatusFilter)
+  }, [jobs, queueStatusFilter, queueViewJobs])
 
   // Auto-interlink: Master Engine ontology + live estate registry/inventory.
   const runAutoInterlink = React.useCallback(async () => {
@@ -5577,10 +5639,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   // Page further into the queue — older jobs stay reachable beyond the window.
   const loadMoreJobs = React.useCallback(async () => {
+    if (queueStatusFilter !== 'all') {
+      const loaded = (queueViewJobs ?? []).length
+      await fetchQueueView(queueStatusFilter, loaded, true)
+      return
+    }
     try {
-      const res = await fetch(`/api/content-studio/jobs?limit=100&offset=${jobs.length}`, { credentials: 'same-origin' })
+      const res = await fetch(queueJobsListPath({ limit: 100, offset: jobs.length, filter: 'all' }), { credentials: 'same-origin' })
       if (res.status === 503) return
-      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary; error?: string }
+      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; matched?: number; summary?: QueueSummary; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       const more = data.jobs ?? []
       setJobs(prev => {
@@ -5588,9 +5655,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         return [...prev, ...more.filter(j => !seen.has(j.id))]
       })
       if (typeof data.total === 'number') setJobTotal(data.total)
+      if (typeof data.matched === 'number') setJobMatched(data.matched)
       if (data.summary) setJobSummary(data.summary)
     } catch { /* silent */ }
-  }, [jobs.length])
+  }, [jobs.length, queueStatusFilter, queueViewJobs, fetchQueueView])
 
   // Poll active jobs — pause while a detail modal is open so the queue
   // refresh cannot freeze the dialog on a fat JSON parse.
@@ -6242,12 +6310,25 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                     ? '⚠ Confirm abandon'
                     : `🗑 Abandon (${selectedJobIds.size || 0})`}
               </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('bulk_delete') }}
+                disabled={queueBulkBusy || !selectedJobIds.size}
+                style={queueBulkAction === 'bulk_delete' || queueBulkConfirmArmed === 'bulk_delete' ? actionDisabledStyle(E.ember) : actionBtnStyle(E.ember)}
+                title={queueBulkConfirmArmed === 'bulk_delete' ? `Click again to permanently delete ${selectedJobIds.size} selected job(s)` : 'Permanently delete selected jobs from the queue'}
+              >
+                {queueBulkAction === 'bulk_delete'
+                  ? '⏳ Deleting…'
+                  : queueBulkConfirmArmed === 'bulk_delete'
+                    ? `⚠ Confirm delete (${selectedJobIds.size})`
+                    : `⌫ Delete (${selectedJobIds.size || 0})`}
+              </button>
               <span style={{ width: 1, height: 22, background: E.hairline, margin: '0 4px' }} />
               {/* Status-filter clear buttons (act on the visible bucket, not selection) */}
               <button
                 type="button"
                 onClick={() => { void runBulkQueueAction('clear_drafts') }}
-                disabled={queueBulkBusy}
+                disabled={queueBulkBusy || (jobSummary?.pending ?? 0) === 0}
                 style={queueBulkConfirmArmed === 'clear_drafts' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
                 title={queueBulkConfirmArmed === 'clear_drafts' ? `Click again to confirm clearing all ${jobSummary?.pending ?? 0} queued drafts` : `Clear all ${jobSummary?.pending ?? 0} pending drafts`}
               >
@@ -6258,7 +6339,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               <button
                 type="button"
                 onClick={() => { void runBulkQueueAction('clear_stuck') }}
-                disabled={queueBulkBusy}
+                disabled={queueBulkBusy || queueSelectionCounts.stuck === 0}
                 style={queueBulkConfirmArmed === 'clear_stuck' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
                 title={queueBulkConfirmArmed === 'clear_stuck' ? `Click again to confirm abandoning ${queueSelectionCounts.stuck} stuck jobs` : `Abandon ${queueSelectionCounts.stuck} stuck jobs (>30min in drafting/pending)`}
               >
@@ -6269,7 +6350,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               <button
                 type="button"
                 onClick={() => { void runBulkQueueAction('clear_failed') }}
-                disabled={queueBulkBusy}
+                disabled={queueBulkBusy || (jobSummary?.failed ?? 0) === 0}
                 style={queueBulkConfirmArmed === 'clear_failed' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
                 title={queueBulkConfirmArmed === 'clear_failed' ? `Click again to confirm abandoning ${jobSummary?.failed ?? 0} failed jobs` : `Abandon ${jobSummary?.failed ?? 0} failed jobs`}
               >
@@ -6286,12 +6367,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               <span style={{ ...TYPE.microFig, color: E.inkDim, fontSize: 10, fontWeight: 800 }}>FILTER</span>
               {(['all', 'pending', 'drafting', 'pr_created', 'merged', 'failed', 'stuck'] as const).map((s) => {
                 const active = queueStatusFilter === s
-                const count = s === 'all' ? queueSelectionCounts.total
-                  : s === 'pending' ? queueSelectionCounts.pending
-                  : s === 'drafting' ? queueSelectionCounts.drafting
-                  : s === 'failed' ? queueSelectionCounts.failed
-                  : s === 'stuck' ? queueSelectionCounts.stuck
-                  : jobs.filter((j) => j.status === s).length
+                const count = queueTabCount(s, jobSummary, {
+                  total: jobTotal || queueSelectionCounts.total,
+                  pending: queueSelectionCounts.pending,
+                  drafting: queueSelectionCounts.drafting,
+                  failed: queueSelectionCounts.failed,
+                  stuck: queueSelectionCounts.stuck,
+                  pr_created: jobs.filter((j) => j.status === 'pr_created').length,
+                  merged: jobs.filter((j) => j.status === 'merged').length,
+                })
                 return (
                   <button
                     key={s}
@@ -6320,16 +6404,17 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                     cursor: 'pointer', textTransform: 'uppercase',
                   }}
                 >
-                  ↺ Reset
+                  ↺ Reset filter
                 </button>
               </span>
             </div>
           )}
 
-          {(jobs.length > 0 || jobTotal > 0) && <QueueTable
+          {(jobs.length > 0 || jobTotal > 0 || (jobSummary?.failed ?? 0) > 0) && <QueueTable
             jobs={visibleQueueJobs}
-            total={visibleQueueJobs.length}
+            total={jobMatched || jobTotal || visibleQueueJobs.length}
             summary={jobSummary}
+            hideFilters
             onSelect={(job) => { setQueueFocusJobId(null); setSelectedJob(job) }}
             selectedIds={selectedJobIds}
             onToggleSelect={(jobId) => {

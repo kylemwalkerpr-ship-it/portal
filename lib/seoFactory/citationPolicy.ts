@@ -8,6 +8,7 @@
  */
 
 import {
+  inferArticleClaim,
   isCitationRelevant,
   isCreamSource,
   sourcesForBrief,
@@ -35,21 +36,46 @@ export function buildCitationContext(opts: {
   title?: string | null
   primaryKeyword?: string | null
   keywords?: string[]
+  body?: string | null
 }): CitationContext {
   const keywords = [opts.primaryKeyword, ...(opts.keywords || [])]
     .map((k) => String(k || '').trim())
     .filter(Boolean)
+  const topic = String(opts.topic || opts.primaryKeyword || opts.title || inferArticleClaim(opts.body || '') || '')
+    .trim() || undefined
   return {
     region: opts.region || undefined,
-    topic: String(opts.topic || opts.primaryKeyword || opts.title || '').trim() || undefined,
+    topic,
     keywords,
+    body: opts.body ? String(opts.body).slice(0, 4000) : undefined,
   }
+}
+
+/** Single context builder for brief, gate, remediator, reaudit, and ship. */
+export function citationContextForContent(
+  content: string,
+  opts?: {
+    region?: string | null
+    topic?: string | null
+    title?: string | null
+    primaryKeyword?: string | null
+    keywords?: string[]
+  },
+): CitationContext {
+  return buildCitationContext({
+    region: opts?.region,
+    topic: opts?.topic || opts?.primaryKeyword || opts?.title,
+    title: opts?.title,
+    primaryKeyword: opts?.primaryKeyword,
+    keywords: opts?.keywords,
+    body: content,
+  })
 }
 
 /** True when the draft already cites a live-policy official URL for this brief. */
 export function articleHasOfficialCitation(content: string, ctx?: CitationContext | null): boolean {
   for (const url of extractHttpUrls(content)) {
-    if (isCreamSource(url) && isCitationRelevant(url, ctx)) return true
+    if (isCreamSource(url, ctx) && isCitationRelevant(url, ctx)) return true
   }
   return false
 }
@@ -57,7 +83,7 @@ export function articleHasOfficialCitation(content: string, ctx?: CitationContex
 /** Topic-ranked official pages that are allowed on this brief. Never invents. */
 export function pickOfficialCitations(ctx?: CitationContext | null, limit = 2): OfficialSource[] {
   return sourcesForBrief(ctx)
-    .filter((s) => isCreamSource(s.url) && isCitationRelevant(s.url, ctx))
+    .filter((s) => isCreamSource(s.url, ctx) && isCitationRelevant(s.url, ctx))
     .slice(0, Math.max(1, limit))
 }
 

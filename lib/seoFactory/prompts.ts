@@ -142,7 +142,7 @@ export function buildFactorySystemPrompt(opts: {
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
     'ZERO outcome promises. No guarantees of visas, approvals, timelines, or results.',
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
-    'Cite only crème-de-la-crème official sources with full https URLs: immigration departments, government departments, official school pages, and named intergovernmental bodies (USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP, HUD, HMRC, CRA, TEQSA).',
+    'Cite official sources with full https URLs: immigration departments, government departments, official school pages, named intergovernmental bodies, AND the issuing body for the article’s claim (exam boards, licensing councils — e.g. NCSBN for NCLEX, IELTS.org for IELTS, NMC/GMC for UK professional registration). A host is valid because it issues that rule or exam, not because it is on a generic .gov list.',
     '',
     'SHIP GATES — pass ALL of these before you submit; the audit re-checks every one and blocks the ship on any failure:',
     `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`,
@@ -152,8 +152,8 @@ export function buildFactorySystemPrompt(opts: {
     '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
     '- KEYWORDS: every short keyword appears ≥1× and ≤4×; every long-tail keyword ≥1× and ≤2× (details in KEYWORD COVERAGE below).',
     '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
-    '- SOURCES: only crème-de-la-crème official URLs, taken VERBATIM from SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST. Same-region immigration departments and official school pages are always valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
-    '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. Prefer the allowlist page that matches the claim (housing → HUD / GOV.UK renting; visa → USCIS/IRCC/UKVI/Home Affairs). Do not add extra official URLs that are not in the allowlist.',
+    '- SOURCES: official URLs taken VERBATIM from SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
+    '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
@@ -850,7 +850,7 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
     '2) Practitioner voice: second person, plain English (~8th grade), define legal terms on first use, sentences under ~20 words.',
     '3) ZERO outcome promises — no guarantees of visas, approvals, success rates, or results. Educational only.',
     '4) Use the brief keywords naturally (short + long-tail). Never stuff.',
-    '5) Cite official sources with full https URLs (USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP) where they support a claim — inline where helpful.',
+    '5) Cite official sources with full https URLs where they support a claim — immigration departments AND the issuing body for this topic (exam/licensing board). Use exact allowlist URLs only.',
     isLast
       ? '6) This part closes the article: finish with ## FAQ (4-6 Q&A, each answer 40-80 words, self-contained for LLM citation), ## Sources (bullet list of official URLs only), Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks, and a short educational disclaimer.'
       : '6) Stop cleanly at the end of this part\'s sections. Do not write the FAQ/Sources/JSON-LD — a later part owns them.'

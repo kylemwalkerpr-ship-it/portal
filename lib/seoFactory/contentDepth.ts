@@ -143,10 +143,30 @@ export function clampBriefWordBudget(
 export function unwrapWholeDocumentFence(content: string): string {
   const raw = String(content || '')
   const trimmed = raw.trim()
-  const wrapped = trimmed.match(/^```(?:markdown|md|mdx)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i)
-  if (wrapped) {
-    const inner = wrapped[1].replace(/\s+$/, '')
-    if (inner.trim()) return inner + '\n'
+  const take = (inner: string): string | null => {
+    const t = inner.replace(/\s+$/, '')
+    return t.trim() ? `${t}\n` : null
+  }
+  const exact = trimmed.match(/^```(?:markdown|md|mdx)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i)
+  if (exact) {
+    const inner = take(exact[1])
+    if (inner) return inner
+  }
+  // Reviewer/reasoning models (DeepSeek V4 Pro especially) often prefix
+  // "Here is the complete article:" and then fence the body — sometimes as
+  // ```text / ```article, not ```markdown. Unwrap when the fence is clearly
+  // the article and the preamble is a short acknowledgement.
+  const fenced = trimmed.match(/```(?:markdown|md|mdx|text|article|tsx|html)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*\s*$/i)
+  if (fenced) {
+    const inner = fenced[1]
+    const fenceAt = trimmed.indexOf('```')
+    const preamble = fenceAt > 0 ? trimmed.slice(0, fenceAt).trim() : ''
+    const innerWords = inner.split(/\s+/).filter(Boolean).length
+    const preWords = preamble ? preamble.split(/\s+/).filter(Boolean).length : 0
+    if (innerWords >= 40 && innerWords > preWords) {
+      const taken = take(inner)
+      if (taken) return taken
+    }
   }
   return raw
 }

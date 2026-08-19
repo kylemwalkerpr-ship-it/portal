@@ -188,10 +188,10 @@ export async function fetchAhrefsSiteAudit(opts: {
   return normalizeAhrefsPayload(json, { projectId, date, dateCompared })
 }
 
-export async function persistAhrefsSnapshot(snap: AhrefsSnapshot): Promise<void> {
+export async function persistAhrefsSnapshot(snap: AhrefsSnapshot): Promise<{ ok: boolean; error?: string }> {
   try {
     const supabase = createSupabaseAdminClient()
-    await supabase.from('seo_ahrefs_snapshots').insert({
+    const { error } = await supabase.from('seo_ahrefs_snapshots').insert({
       project_id: snap.projectId,
       fetched_at: snap.fetchedAt,
       crawl_date: snap.date,
@@ -203,8 +203,15 @@ export async function persistAhrefsSnapshot(snap: AhrefsSnapshot): Promise<void>
       issues: snap.issues,
       source: snap.source,
     })
-  } catch {
-    /* table may not exist yet */
+    if (error) {
+      console.warn('[seoEngine] persistAhrefsSnapshot', error.message)
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'persistAhrefsSnapshot failed'
+    console.warn('[seoEngine] persistAhrefsSnapshot', error)
+    return { ok: false, error }
   }
 }
 

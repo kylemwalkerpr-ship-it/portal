@@ -258,9 +258,14 @@ export async function listTargetOpportunities(opts: {
     if (opts.kind) q = q.eq('kind', opts.kind)
     if (opts.lane) q = q.eq('lane', opts.lane)
     if (opts.status) q = q.eq('status', opts.status)
-    const { data } = await q
+    const { data, error } = await q
+    if (error) {
+      console.warn('[seoEngine] listTargetOpportunities', error.message)
+      return []
+    }
     return ((data as Array<Record<string, unknown>>) || []).map(rowToTarget)
-  } catch {
+  } catch (e) {
+    console.warn('[seoEngine] listTargetOpportunities', e instanceof Error ? e.message : e)
     return []
   }
 }
@@ -322,7 +327,10 @@ export async function recordOutreach(input: {
       .insert(row)
       .select('*')
       .single()
-    if (error || !data) return null
+    if (error || !data) {
+      console.warn('[seoEngine] recordOutreach', error?.message || 'no row')
+      return null
+    }
     // Bump the parent target's last_touched_at so dashboards stay fresh.
     await supabase
       .from('seo_backlink_targets')
@@ -380,8 +388,9 @@ export async function draftOutreachMessage(opts: {
   target: BacklinkTarget
   briefContext?: { topic?: string; stage?: LifecycleStage; country?: Country; url?: string }
   whyWeFit?: string
+  skipAi?: boolean
 }): Promise<{ subject: string; body: string; model: string | null }> {
-  const { target, briefContext, whyWeFit } = opts
+  const { target, briefContext, whyWeFit, skipAi } = opts
   const fitLine = whyWeFit || target.rationale ||
     `We publish ${((target.stages && target.stages.length) ? target.stages.join(', ') : 'comprehensive life-cycle coverage')} for ${((target.countries && target.countries.length) ? target.countries.join(' / ') : 'the global immigration audience')} and have a strong track record of citing primary sources like ${target.domain}.`
   const briefLine = briefContext
@@ -410,7 +419,7 @@ Hard rules:
 
 Return ONLY JSON. No commentary.`
 
-  try {
+  if (!skipAi) try {
     const res = await generateEngineText({
       system: 'You are a senior outreach copywriter who writes short, honest, copy-edit-ready outreach emails. Output strict JSON: { "subject", "body" }. Return ONLY JSON, no commentary.',
       prompt,

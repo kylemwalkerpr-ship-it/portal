@@ -3,14 +3,20 @@
  * Persists daily GSC payloads for decay-delta (latest vs 7-days-ago) so War Room
  * can prioritize defend plays. Identical contract to src/convex/gscHistory.ts.
  */
-import { createClient } from '@supabase/supabase-js'
-function dbc(){ return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth:{autoRefreshToken:false,persistSession:false}})
-}
+import { createSupabaseAdminClient } from '@/lib/supabase'
+function dbc() { return createSupabaseAdminClient() }
 export async function saveSnapshotVersion(siteUrl: string, dateKey: string, rows: number, payload: string) {
   const db = dbc()
-  const { data: existing } = await (db as any).from('gsc_snapshots').select('id').eq('site_url', siteUrl).eq('date_key', dateKey).maybeSingle()
-  if (existing) await (db as any).from('gsc_snapshots').update({ rows, payload: JSON.parse(payload), created_at: new Date().toISOString() }).eq('id', existing.id)
-  else await (db as any).from('gsc_snapshots').insert({ site_url: siteUrl, date_key: dateKey, rows, payload: JSON.parse(payload) })
+  const parsed = JSON.parse(payload)
+  const { data: existing, error: readErr } = await db.from('gsc_snapshots').select('id').eq('site_url', siteUrl).eq('date_key', dateKey).maybeSingle()
+  if (readErr) throw new Error(readErr.message)
+  if (existing) {
+    const { error } = await db.from('gsc_snapshots').update({ rows, payload: parsed, created_at: new Date().toISOString() }).eq('id', existing.id)
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await db.from('gsc_snapshots').insert({ site_url: siteUrl, date_key: dateKey, rows, payload: parsed })
+    if (error) throw new Error(error.message)
+  }
 }
 export async function listSnapshots(siteUrl: string, limit = 14) {
   const db = dbc()

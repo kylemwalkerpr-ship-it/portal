@@ -141,17 +141,38 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // Abort any in-flight AI fix when the editor unmounts.
   useEffect(() => () => { fixAbortRef.current?.abort() }, [])
 
+  // Restore the latest persisted review body so a re-audit never rewinds to
+  // the first generated draft after a Worker restart.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/content-studio/drafts?jobId=${encodeURIComponent(jobId)}&latest=1`, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
+        const latest = data.latest?.content || ''
+        if (cancelled || !latest) return
+        const incoming = countBodyWords(content)
+        const stored = Number(data.latest?.wordCount) || countBodyWords(latest)
+        if (stored >= 40 && (incoming < 40 || stored > incoming + 40)) {
+          onChange(latest)
+        }
+      } catch { /* keep the in-pane body */ }
+    })()
+    return () => { cancelled = true }
+  }, [jobId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-save (debounced 2s)
   useEffect(() => {
     if (!dirty) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       try {
-        await fetch('/api/content-studio/drafts', {
+        const res = await fetch('/api/content-studio/drafts', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobId, content }),
+          body: JSON.stringify({ jobId, content, source: 'autosave' }),
         })
+        if (!res.ok) return
         setLastSaved(new Date().toLocaleTimeString())
         setDirty(false)
       } catch { /* silent */ }
@@ -550,6 +571,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   }, [warningItems, annotations])
   // Brief context spread into every re-audit/fix body so gates use the real type.
   const briefMeta = {
+    jobId,
     ...(contentType ? { contentType } : {}),
     ...(primaryKeyword ? { primaryKeyword } : {}),
     ...(typeof indexable === 'boolean' ? { indexable } : {}),

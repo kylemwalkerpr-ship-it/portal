@@ -22,22 +22,26 @@ describe('content_jobs select lists stay slim', () => {
     expect(JOB_BODY_COLUMNS.split(',')).toContain('content')
   })
 
-  it('does not auto-load the body on failed / regen-needed jobs', () => {
+  it('auto-loads a stored body even when the job failed the gate', () => {
     expect(jobDetailShouldAutoLoadBody({
       status: 'drafting',
       error_message: 'All content AI providers failed',
       word_count: 2386,
-    })).toBe(false)
+    })).toBe(true)
     expect(jobDetailShouldAutoLoadBody({
       status: 'failed',
       error_message: 'quality gate',
       content: '# draft',
-    })).toBe(false)
+    })).toBe(true)
     expect(jobDetailShouldAutoLoadBody({
       status: 'drafting',
       error_message: null,
       word_count: 1800,
     })).toBe(true)
+    expect(jobDetailShouldAutoLoadBody({
+      status: 'failed',
+      error_message: 'quality gate',
+    })).toBe(false)
   })
 
   it('strips heavy blobs before a job row is sent to the modal', () => {

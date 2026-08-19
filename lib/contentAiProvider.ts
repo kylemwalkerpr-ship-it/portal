@@ -471,6 +471,14 @@ async function openAiCompatFetch(
       }
     }
     delete body.reasoning_budget
+    // Parasail Pro ships extraBody.reasoning_effort. Leaving it on the
+    // rescue re-ask makes disableThinking a no-op — the second call still
+    // spends the budget on reasoning_content and the reviewer returns 0
+    // countable words. Pin the lowest effort instead of deleting it
+    // (absent effort can default higher on some hosts).
+    if (typeof body.reasoning_effort === 'string') {
+      body.reasoning_effort = 'low'
+    }
     // Only CUSTOM OpenAI-compatible endpoints accept a top-level
     // enable_thinking flag. OpenAI itself REJECTS it (400 "Unknown
     // parameter: enable_thinking") — a GPT reasoning model that burned its

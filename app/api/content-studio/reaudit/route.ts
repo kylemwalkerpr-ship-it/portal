@@ -141,12 +141,20 @@ async function mergeLinkAudit(
   region?: string,
   targetUrl?: string,
   topic?: string,
+  keywords?: string[],
 ): Promise<string> {
   let effective = content
   try {
+    const citationContext = {
+      region,
+      topic,
+      keywords,
+      body: content.slice(0, 4000),
+    }
     const sanitized = await sanitizeDraftLinksLive(content, {
       region,
       topic,
+      keywords,
       knownLiveUrls: targetUrl ? [targetUrl] : undefined,
     })
     effective = sanitized.content
@@ -178,6 +186,7 @@ async function mergeLinkAudit(
 
     const remaining = await auditLinksLive(effective, {
       knownLiveUrls: targetUrl ? [targetUrl] : undefined,
+      citationContext,
     })
     const blockers = remaining.filter((f) => f.severity === 'blocker')
     const warnings = remaining.filter((f) => f.severity === 'warning')
@@ -189,7 +198,7 @@ async function mergeLinkAudit(
           : code === 'dead_external_link'
             ? 'Read the surrounding sentence. Swap this href for a live official government/school page that supports the same claim, or remove it and add that citation under Official sources.'
             : code === 'untrusted_external_link'
-              ? 'Drop competitor/blog/news/Wikipedia/shortener hrefs. Keep the sentence and cite a live official government, school, or named authority source instead.'
+              ? 'Keep the sentence. If this URL is the issuing body for the claim, leave it. Otherwise replace the href in place with a live official URL that supports the same claim — do not unwrap and do not swap to an off-topic .gov homepage.'
               : code === 'irrelevant_external_link'
                 ? 'This official URL does not support the claim. Swap it for an on-topic live authority page, or remove the hyperlink.'
               : 'Re-verify the URL before shipping.'
@@ -273,26 +282,40 @@ export async function POST(request: NextRequest) {
     // body. Structural placeholder checks still run inside the quality gate.
     // Opt in with liveLinks:true (the PATCH fix path still live-audits).
     if ((body as { liveLinks?: boolean }).liveLinks === true) {
-      effective = await mergeLinkAudit(response, effective, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
+      effective = await mergeLinkAudit(
+        response,
+        effective,
+        region,
+        (body as { targetUrl?: string }).targetUrl,
+        primaryKeyword,
+        [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
+      )
     }
     if (effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
     }
-    if (jobId && response.shipReady) {
+    if (jobId) {
       try {
-        const { createSupabaseAdminClient } = await import('@/lib/supabase')
-        const db = createSupabaseAdminClient()
-        const { data: row } = await db.from('content_jobs').select('status').eq('id', jobId).maybeSingle()
-        const patch: Record<string, unknown> = {
-          error_message: null,
+        const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
+        await persistReviewSnapshot({
+          jobId,
           content: effective,
-          seo_score: response.score,
-          word_count: countBodyWords(effective),
-          indexable: true,
+          source: 'reaudit',
+          qualityOk: response.ok,
+          shipReady: response.shipReady ?? null,
+          blockers: response.blockersData || [],
+          warnings: response.warningsData || [],
+          appliedRepairs: response.appliedRepairs || [],
+        })
+        if (response.shipReady) {
+          const { createSupabaseAdminClient } = await import('@/lib/supabase')
+          const db = createSupabaseAdminClient()
+          const { data: row } = await db.from('content_jobs').select('status').eq('id', jobId).maybeSingle()
+          if (row?.status === 'failed') {
+            await db.from('content_jobs').update({ status: 'drafting', error_message: null }).eq('id', jobId)
+          }
         }
-        if (row?.status === 'failed') patch.status = 'drafting'
-        await db.from('content_jobs').update(patch).eq('id', jobId)
       } catch {
         /* persist is best-effort — the editor already has the passing draft */
       }
@@ -331,8 +354,9 @@ export async function PATCH(request: NextRequest) {
       /** Override the review model (gpt-5.6-sol by default). Set to
        *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
       reviewModel?: string
+      jobId?: string
     }
-    const { action, content, annotations, annotation, warnings, blockers, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel } = body
+    const { action, content, annotations, annotation, warnings, blockers, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel, jobId } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -426,7 +450,7 @@ ${warningList}
 ## INSTRUCTIONS
 1. Address the PRIORITIZED ENGINE GAPS first, in the exact order listed — highest expected value first
 2. Then fix EVERY blocker listed above - these are mandatory
-3. Dead/untrusted links: read the sentence around each URL. Prefer an in-place swap to a live official .gov/.edu or estate hub that matches the claim. If the anchor is a competitor/placeholder, drop the href and introduce a new verifiable citation in that paragraph or under ## Official sources.
+3. Dead/untrusted links: ONE pass. KEEP the href if it is the issuing body for the claim (exam board, licensing council). If it is a competitor/blog/news/shortener, REPLACE the href in place with the allowlist official URL for the SAME claim — do not unwrap and do not swap a board URL for a generic immigration homepage. Never invent a URL.
 4. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
 5. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
 6. Add specific data, examples, or concrete details where the article is vague
@@ -522,6 +546,7 @@ ${enginePlan.promptBlock}`
       const sanitized = await sanitizeDraftLinksLive(mechanical.content, {
         region,
         topic: primaryKeyword,
+        keywords: [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
         knownLiveUrls: (body as { targetUrl?: string }).targetUrl
           ? [(body as { targetUrl?: string }).targetUrl as string]
           : undefined,
@@ -535,13 +560,29 @@ ${enginePlan.promptBlock}`
         requiredLongTailKeywords,
         region,
       })
-      const leftoverLinks = (await auditLinksLive(sanitized.content)).filter((f) => f.severity === 'blocker')
+      const leftoverLinks = (await auditLinksLive(sanitized.content, {
+        knownLiveUrls: (body as { targetUrl?: string }).targetUrl
+          ? [(body as { targetUrl?: string }).targetUrl as string]
+          : undefined,
+        citationContext: {
+          region,
+          topic: primaryKeyword,
+          keywords: [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
+          body: sanitized.content.slice(0, 4000),
+        },
+      })).filter((f) => f.severity === 'blocker')
       if (afterMech.ok && leftoverLinks.length === 0) {
         fixedContent = sanitized.content
       } else {
         const leftover = [
           ...afterMech.blockersData,
-          ...leftoverLinks.map((f) => ({ code: f.code, message: f.message, fix: 'Remove or replace the dead URL.' })),
+          ...leftoverLinks.map((f) => ({
+            code: f.code,
+            message: f.message,
+            fix: f.code === 'untrusted_external_link'
+              ? 'Keep the sentence. If this URL is the issuing body for the claim, leave it. Otherwise replace the href in place with the allowlist official URL for the same claim — do not unwrap and do not swap to a generic .gov homepage.'
+              : 'Remove or replace the dead URL with a live official page that supports the same claim.',
+          })),
         ]
         const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.'
         fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, leftover.length ? leftover : list), 16384, reviewModel)
@@ -638,12 +679,34 @@ ${enginePlan.promptBlock}`
       // Let the editor show which engine gaps the fix targeted, in order.
       ...(enginePlan ? { enginePriorities: enginePlan.priorities } : {}),
     }
-    fixedContent = await mergeLinkAudit(response, fixedContent, region, (body as { targetUrl?: string }).targetUrl, primaryKeyword)
+    fixedContent = await mergeLinkAudit(
+      response,
+      fixedContent,
+      region,
+      (body as { targetUrl?: string }).targetUrl,
+      primaryKeyword,
+      [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
+    )
     const applied: string[] = []
     if (depthRepair) applied.push(depthRepair)
     if (repaired.applied.length) applied.push(...repaired.applied)
     if (response.appliedRepairs?.length) applied.push(...response.appliedRepairs)
     if (applied.length) response.appliedRepairs = [...new Set(applied)]
+    if (jobId && response.fixedContent) {
+      try {
+        const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
+        await persistReviewSnapshot({
+          jobId,
+          content: response.fixedContent,
+          source: 'fix',
+          qualityOk: response.ok,
+          shipReady: response.shipReady ?? null,
+          blockers: response.blockersData || [],
+          warnings: response.warningsData || [],
+          appliedRepairs: response.appliedRepairs || [],
+        })
+      } catch { /* editor still holds the repaired body */ }
+    }
     return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI fix failed'

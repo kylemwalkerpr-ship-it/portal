@@ -118,6 +118,15 @@ CREATE INDEX IF NOT EXISTS idx_backlink_outreach_status ON public.seo_backlink_o
 CREATE INDEX IF NOT EXISTS idx_backlink_outreach_follow_up ON public.seo_backlink_outreach (follow_up_due_at)
   WHERE follow_up_due_at IS NOT NULL AND status NOT IN ('won','lost','withdrawn');
 
+ALTER TABLE public.seo_backlink_targets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.seo_backlink_outreach ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Engine backlink targets full access" ON public.seo_backlink_targets;
+CREATE POLICY "Engine backlink targets full access" ON public.seo_backlink_targets
+  FOR ALL TO public USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Engine backlink outreach full access" ON public.seo_backlink_outreach;
+CREATE POLICY "Engine backlink outreach full access" ON public.seo_backlink_outreach
+  FOR ALL TO public USING (true) WITH CHECK (true);
+
 CREATE OR REPLACE VIEW public.seo_backlink_dashboard AS
 SELECT
   t.id,
@@ -252,3 +261,5 @@ VALUES
    'Authentic-experience surface: community Q&A drives linkbacks. We participate by linking to relevant casework.',
    'reddit.com')
 ON CONFLICT (dedupe_key) DO NOTHING;
+
+NOTIFY pgrst, 'reload schema';

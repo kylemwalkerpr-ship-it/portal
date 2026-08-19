@@ -733,12 +733,13 @@ export function evaluateContentQuality(opts: {
       topic: opts.primaryKeyword,
       primaryKeyword: opts.primaryKeyword,
       keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+      body: String(opts.content || '').slice(0, 4000),
     }))) {
       add({
         code: 'missing_official_sources',
         severity: 'blocker',
-        message: 'Missing official government source URLs',
-        fix: 'Cite a live official URL from the Research-stage allowlist (immigration/gov department, official school page, or named authority) that is on-topic for this article — never invent a path.',
+        message: 'Missing official source URLs',
+        fix: 'Cite a live official URL from the Research-stage allowlist — the issuing body for this claim (exam board, licensing council), the same-region immigration department, or an official school page. Never invent a path and never swap a board URL for a generic .gov homepage.',
       })
     }
     if (!DISCLAIMER_RE.test(body)) {
@@ -900,6 +901,7 @@ export function evaluateContentQuality(opts: {
         region: opts.region,
         topic: opts.primaryKeyword,
         keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+        body: String(opts.content || '').slice(0, 4000),
       },
     )
     for (const f of linkFindings) {
@@ -915,7 +917,7 @@ export function evaluateContentQuality(opts: {
             : f.code === 'insecure_internal_link'
               ? 'Upgrade to https://.'
               : f.code === 'untrusted_external_link'
-                ? 'Remove blogs, news, Wikipedia, competitors, and shorteners. Cite only a live official government, school, or named authority URL that supports the claim.'
+                ? 'Keep the sentence. If this URL is the issuing body for the claim (exam board, licensing council), leave it. Otherwise replace the href in place with the allowlist official URL that supports the same claim — do not unwrap into a bare assertion.'
                 : f.code === 'irrelevant_external_link'
                   ? 'That official URL does not support this article. Swap it for a live on-topic authority page from the Research allowlist, or remove the hyperlink.'
                 : f.code === 'dead_external_link'
@@ -1154,10 +1156,10 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
       lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Do NOT regenerate the full article — only fix the repetitive openings.`)
     } else if (b.code === 'missing_disclaimer') {
       lines.push(
-        '- BLOCKER [missing_disclaimer]: The page has NO disclaimer and YMYL rules forbid shipping without one. Add this exact block near the end (before or inside Sources):\n' +
-          '  ```\n  **Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
+        '- BLOCKER [missing_disclaimer]: The page has NO disclaimer and YMYL rules forbid shipping without one. Add this exact block near the end (before or inside Sources), as markdown — never wrap the article or this block in a code fence:\n' +
+          '  **Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
           'Immigration rules change; verify every requirement against official government sources and consult a ' +
-          'licensed attorney, solicitor, or registered migration agent for your situation.\n  ```',
+          'licensed attorney, solicitor, or registered migration agent for your situation.',
       )
     } else {
       lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''}`)

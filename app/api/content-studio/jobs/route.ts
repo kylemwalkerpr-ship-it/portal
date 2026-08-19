@@ -10,7 +10,7 @@ import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
-import { queueClearSpec, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
+import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
 import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
@@ -199,12 +199,14 @@ export async function GET(request: NextRequest) {
       statusTotals,
       scored: jobs,
     })
+    const matched = queueMatchedCount(status, statusTotals, total)
 
     return NextResponse.json({
       jobs,
       count: jobs.length,
       total,
-      hasMore: offset + jobs.length < total,
+      matched,
+      hasMore: offset + jobs.length < matched,
       offset,
       limit,
       summary,
@@ -243,9 +245,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const action = String(body.action || '').trim()
-    const ids: string[] = Array.isArray(body.ids)
-      ? body.ids.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 25)
+    const rawIds: string[] = Array.isArray(body.ids)
+      ? body.ids.map((x: unknown) => String(x).trim()).filter(Boolean)
       : []
+    const idCap = action === 'bulk_delete' || action === 'bulk_abandon' || action === 'clear_failed' || action === 'clear_drafts' || action === 'clear_stuck'
+      ? 500
+      : 25
+    const ids = rawIds.slice(0, idCap)
 
     // Accept both old-style 'bulk_*' and new-style queue maintenance actions.
     // Status-scoped ops (clear_*, archive_*) are allowed without explicit ids
@@ -280,24 +286,49 @@ export async function POST(request: NextRequest) {
       const spec = queueClearSpec(action as QueueClearAction)
       const statusFilter = [...spec.statuses]
 
-      // One UPDATE for the whole bucket. A per-row loop of 62+ jobs blows the
-      // Worker subrequest budget and the confirm click comes back as 500/422
-      // with an empty body — the desk then looks like "clear failed".
+      // Failed jobs are purged (DELETE) so they leave the queue and the desk
+      // count. Drafts/stuck are closed so they can still be inspected.
+      // One statement for the whole bucket — a per-row loop of 62+ jobs blows
+      // the Worker subrequest budget and the confirm click 500s.
+      if (action === 'clear_failed') {
+        let q = supabase.from('content_jobs').delete().in('status', statusFilter)
+        if (ids.length) q = q.in('id', ids)
+        const { data, error } = await q.select('id')
+        if (error) {
+          return NextResponse.json(
+            { ok: false, action, error: error.message, processed: 0, succeeded: 0, failed: 0 },
+            { status: 422 },
+          )
+        }
+        const processed = Array.isArray(data) ? data.length : 0
+        return NextResponse.json({
+          ok: true,
+          action,
+          message: processed
+            ? `Removed ${processed} failed job(s) from the queue`
+            : 'No failed jobs to clear',
+          processed,
+          succeeded: processed,
+          failed: 0,
+          results: [],
+        })
+      }
+
       let q = supabase
         .from('content_jobs')
-        .update({ status: 'closed', closed_at: now }, { count: 'exact' })
+        .update({ status: 'closed', closed_at: now })
         .in('status', statusFilter)
       if (spec.staleBefore) q = q.lt('updated_at', spec.staleBefore)
       if (ids.length) q = q.in('id', ids)
 
-      const { error, count } = await q
+      const { data, error } = await q.select('id')
       if (error) {
         return NextResponse.json(
           { ok: false, action, error: error.message, processed: 0, succeeded: 0, failed: 0 },
           { status: 422 },
         )
       }
-      const processed = typeof count === 'number' ? count : 0
+      const processed = Array.isArray(data) ? data.length : 0
       return NextResponse.json({
         ok: true,
         action,
@@ -369,16 +400,28 @@ export async function POST(request: NextRequest) {
 
     // ── Hard delete (admin-only purge) ──
     if (action === 'bulk_delete') {
-      const results: Array<{ id: string; ok: boolean; error?: string }> = []
-      for (const jid of ids.slice(0, 100)) {
-        const { error } = await supabase.from('content_jobs').delete().eq('id', jid)
-        results.push({ id: jid, ok: !error, error: error?.message })
+      if (!ids.length) {
+        return NextResponse.json(
+          { ok: false, action, error: 'bulk_delete requires ids[]', processed: 0, succeeded: 0, failed: 0 },
+          { status: 400 },
+        )
       }
-      const okCount = results.filter((r) => r.ok).length
+      const { data, error } = await supabase.from('content_jobs').delete().in('id', ids).select('id')
+      if (error) {
+        return NextResponse.json(
+          { ok: false, action, error: error.message, processed: 0, succeeded: 0, failed: ids.length },
+          { status: 422 },
+        )
+      }
+      const processed = Array.isArray(data) ? data.length : 0
       return NextResponse.json({
-        ok: okCount === results.length, action,
-        processed: results.length, succeeded: okCount,
-        failed: results.length - okCount, results,
+        ok: true,
+        action,
+        message: `Deleted ${processed} job(s) from the queue`,
+        processed,
+        succeeded: processed,
+        failed: 0,
+        results: (data ?? []).map((r: { id: string }) => ({ id: r.id, ok: true })),
       })
     }
 
@@ -444,19 +487,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: okCount === results.length, action, processed: results.length, succeeded: okCount, failed: results.length - okCount, results })
     }
 
+    if (action === 'bulk_abandon') {
+      if (!ids.length) {
+        return NextResponse.json(
+          { ok: false, action, error: 'bulk_abandon requires ids[]', processed: 0, succeeded: 0, failed: 0 },
+          { status: 400 },
+        )
+      }
+      const now = new Date().toISOString()
+      const { data, error } = await supabase
+        .from('content_jobs')
+        .update({ status: 'closed', closed_at: now })
+        .in('id', ids)
+        .select('id')
+      if (error) {
+        return NextResponse.json(
+          { ok: false, action, error: error.message, processed: 0, succeeded: 0, failed: ids.length },
+          { status: 422 },
+        )
+      }
+      const processed = Array.isArray(data) ? data.length : 0
+      return NextResponse.json({
+        ok: true,
+        action,
+        message: `Abandoned ${processed} job(s)`,
+        processed,
+        succeeded: processed,
+        failed: 0,
+        results: (data ?? []).map((r: { id: string }) => ({ id: r.id, ok: true })),
+      })
+    }
+
     // ── Legacy bulk_* actions (id-level, max 25) ──
     const results: Array<{ id: string; ok: boolean; error?: string; detail?: unknown }> = []
 
     for (const id of ids) {
       try {
-        if (action === 'bulk_abandon') {
-          const { error } = await supabase
-            .from('content_jobs')
-            .update({ status: 'closed', closed_at: new Date().toISOString() })
-            .eq('id', id)
-          if (error) throw error
-          results.push({ id, ok: true })
-        } else if (action === 'bulk_monitor') {
+        if (action === 'bulk_monitor') {
           const mon = await monitorContentJob(id, {
             openIssueOnFailure: body.openIssue !== false,
             waitMs: 0,

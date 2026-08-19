@@ -311,6 +311,36 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(findings.every((f) => f.severity === 'blocker')).toBe(true)
   })
 
+  it('does not block the exam board that issues the article’s subject', () => {
+    const findings = auditLinksSync(
+      'Register for the [NCLEX](https://www.ncsbn.org/exams/nclex) and read the [RN test plan](https://www.ncsbn.org/public-files/2023_RN_Test_Plan_English_FINAL.pdf).',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'NCLEX preparation help', keywords: ['nclex'] },
+    )
+    expect(findings.filter((f) => f.code === 'untrusted_external_link').length).toBe(0)
+  })
+
+  it('still blocks a competitor even when the article is about that exam', () => {
+    const findings = auditLinksSync(
+      'See this [NCLEX course](https://www.boundless.com/nclex).',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'NCLEX preparation help', keywords: ['nclex'] },
+    )
+    expect(findings.some((f) => f.code === 'untrusted_external_link' && f.url.includes('boundless'))).toBe(true)
+  })
+
+  it('does not treat NCSBN as an authority on an unrelated visa article', () => {
+    const findings = auditLinksSync(
+      'File OPT on [NCSBN](https://www.ncsbn.org/exams/nclex).',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'f-1 visa opt', keywords: ['opt', 'f-1'] },
+    )
+    expect(findings.some((f) => f.code === 'untrusted_external_link')).toBe(true)
+  })
+
   it('marks a 404 government path as a dead_external_link blocker', async () => {
     process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
     process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
@@ -334,6 +364,40 @@ describe('linkAudit · external citations must be live official sources', () => 
     const verdict = classifyLiveStatus('https://www.uscis.gov/working-in-the-united-states', 403)
     expect(verdict.ok).toBe(true)
     expect(classifyLiveStatus('https://www.uscis.gov/missing', 404).ok).toBe(false)
+  })
+
+  it('does not block a reputable newsroom on an immigration article', () => {
+    const findings = auditLinksSync(
+      'The [Times](https://www.nytimes.com/2026/08/01/us/opt.html) reported the OPT change.',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'F-1 OPT employment', keywords: ['opt'] },
+    )
+    expect(findings.some((f) => f.url.includes('nytimes.com') && f.severity === 'blocker')).toBe(false)
+  })
+
+  it('does not treat bot-blocked exam and licensing hosts as dead', () => {
+    expect(classifyLiveStatus('https://www.ncsbn.org/exams/nclex', 403).ok).toBe(true)
+    expect(classifyLiveStatus('https://ielts.org/', 429).ok).toBe(true)
+    expect(classifyLiveStatus('https://www.gmc-uk.org/', 403).ok).toBe(true)
+    expect(classifyLiveStatus('https://www.boundless.com/nclex', 403).ok).toBe(false)
+  })
+
+  it('infers the article claim from the H1 when no citation context is passed', () => {
+    const keep = auditLinksSync(
+      '# NCLEX preparation help 2026\n\nRegister on [NCSBN](https://www.ncsbn.org/exams/nclex).',
+    )
+    expect(keep.filter((f) => f.code === 'untrusted_external_link')).toHaveLength(0)
+
+    const ielts = auditLinksSync(
+      '# IELTS for UKVI 2026\n\nBook the test on [IELTS](https://ielts.org/for-test-takers).',
+    )
+    expect(ielts.filter((f) => f.code === 'untrusted_external_link')).toHaveLength(0)
+
+    const visa = auditLinksSync(
+      '# F-1 visa interview 2026\n\nFile OPT on [NCSBN](https://www.ncsbn.org/exams/nclex).',
+    )
+    expect(visa.some((f) => f.code === 'untrusted_external_link')).toBe(true)
   })
 
   it('drops invented official paths from the citation allowlist', async () => {
@@ -413,6 +477,55 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(result.remediations.some((r) => r.action === 'replaced')).toBe(true)
   })
 
+  it('keeps the exam board URL and replaces a competitor href in one pass', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      return okJson()
+    }) as typeof fetch
+    const draft =
+      'Sit the [NCLEX](https://www.ncsbn.org/exams/nclex) after you finish this [Boundless course](https://www.boundless.com/nclex).'
+    const result = await sanitizeDraftLinksLive(draft, {
+      region: 'US',
+      topic: 'NCLEX preparation help',
+      keywords: ['nclex', 'rn exam'],
+    })
+    expect(result.content).toContain('ncsbn.org/exams/nclex')
+    expect(result.content).not.toContain('boundless.com')
+    expect(result.content).toContain('Boundless course')
+    expect(result.content).not.toMatch(/uscis\.gov\/working-in-the-united-states\/students-and-employment/)
+  })
+
+  it('keeps IELTS.org and GMC and replaces a competitor in one pass on later topics', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      return okJson()
+    }) as typeof fetch
+    const ielts = await sanitizeDraftLinksLive(
+      'Book [IELTS](https://ielts.org/for-test-takers) rather than this [Boundless IELTS pack](https://www.boundless.com/ielts).',
+      { region: 'UK', topic: 'IELTS for UKVI', keywords: ['ielts'] },
+    )
+    expect(ielts.content).toContain('ielts.org')
+    expect(ielts.content).not.toContain('boundless.com')
+    expect(ielts.content).toContain('Boundless IELTS pack')
+
+    const gmc = await sanitizeDraftLinksLive(
+      'Apply on the [GMC register](https://www.gmc-uk.org/) not this [Boundless GMC guide](https://www.boundless.com/gmc).',
+      { region: 'UK', topic: 'GMC registration for IMGs', keywords: ['gmc'] },
+    )
+    expect(gmc.content).toContain('gmc-uk.org')
+    expect(gmc.content).not.toContain('boundless.com')
+  })
+
   it('replaces a dead official path in-place with a live official URL that fits the sentence', async () => {
     process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
     process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
@@ -445,7 +558,7 @@ describe('linkAudit · external citations must be live official sources', () => 
     const result = await sanitizeDraftLinksLive(draft, { region: 'US' })
     expect(result.content).not.toContain('boundless.com')
     expect(result.content).toContain('Boundless')
-    expect(result.content).toMatch(/uscis\.gov|studyinthestates|legal\.yousafeconsultancy\.com/)
-    expect(result.remediations.some((r) => r.action === 'removed_and_injected')).toBe(true)
+    expect(result.content).toMatch(/uscis\.gov|studyinthestates|legal\.yousafeconsultancy\.com|hud\.gov/)
+    expect(result.remediations.some((r) => r.action === 'replaced' || r.action === 'removed_and_injected')).toBe(true)
   })
 })

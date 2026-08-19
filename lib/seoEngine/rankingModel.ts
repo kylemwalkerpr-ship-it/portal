@@ -847,14 +847,14 @@ async function db(): Promise<Db | null> {
   }
 }
 
-export async function persistRankingScore(score: RankingScore): Promise<void> {
+export async function persistRankingScore(score: RankingScore): Promise<{ ok: boolean; error?: string }> {
   try {
     const client = await db()
-    if (!client) return
+    if (!client) return { ok: false, error: 'no db' }
     const key = score.subjectKey || `${score.scope}:${score.topic}`
     // computed_at is set explicitly so re-scoring an existing subject refreshes
     // its ordering (upsert otherwise leaves the original default untouched).
-    await client.from('seo_ranking_scores').upsert({
+    const { error } = await client.from('seo_ranking_scores').upsert({
       model_version: score.modelVersion,
       scope: score.scope,
       subject_key: key,
@@ -873,8 +873,15 @@ export async function persistRankingScore(score: RankingScore): Promise<void> {
       reasons: score.reasons,
       computed_at: new Date().toISOString(),
     }, { onConflict: 'subject_key' })
-  } catch {
-    // additive table; persistence is best-effort
+    if (error) {
+      console.warn('[seoEngine] persistRankingScore', error.message)
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'persistRankingScore failed'
+    console.warn('[seoEngine] persistRankingScore', error)
+    return { ok: false, error }
   }
 }
 
@@ -893,14 +900,20 @@ export async function loadRankingScores(opts: { limit?: number; scope?: string; 
   }
 }
 
-export async function persistForecast(topic: string, forecast: ForecastResult, subjectKey?: string | null): Promise<void> {
+export async function persistForecast(
+  topic: string,
+  forecast: ForecastResult,
+  subjectKey?: string | null,
+  opts?: { runDate?: string },
+): Promise<{ ok: boolean; error?: string; wrote: number }> {
   try {
     const client = await db()
-    if (!client) return
-    const runDate = new Date().toISOString().slice(0, 10)
+    if (!client) return { ok: false, error: 'no db', wrote: 0 }
+    const runDate = (opts?.runDate || new Date().toISOString().slice(0, 10)).slice(0, 10)
+    let wrote = 0
     for (const p of forecast.points) {
       // One row per (topic, subject, horizon, day) — the daily cron does not pile up duplicates.
-      await client.from('seo_forecast_runs').upsert({
+      const { error } = await client.from('seo_forecast_runs').upsert({
         model_version: RANKING_MODEL_VERSION,
         topic: topic.slice(0, 400),
         subject_key: subjectKey || '',
@@ -912,9 +925,17 @@ export async function persistForecast(topic: string, forecast: ForecastResult, s
         assumptions: forecast.assumptions,
         run_date: runDate,
       }, { onConflict: 'topic,subject_key,horizon_days,run_date' })
+      if (error) {
+        console.warn('[seoEngine] persistForecast', error.message)
+        return { ok: false, error: error.message, wrote }
+      }
+      wrote += 1
     }
-  } catch {
-    // best-effort
+    return { ok: true, wrote }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'persistForecast failed'
+    console.warn('[seoEngine] persistForecast', error)
+    return { ok: false, error, wrote: 0 }
   }
 }
 
@@ -929,11 +950,11 @@ export async function loadForecasts(limit = 30): Promise<Array<Record<string, un
   }
 }
 
-export async function persistRewardEvent(event: RewardEvent): Promise<void> {
+export async function persistRewardEvent(event: RewardEvent): Promise<{ ok: boolean; error?: string }> {
   try {
     const client = await db()
-    if (!client) return
-    await client.from('seo_reward_events').insert({
+    if (!client) return { ok: false, error: 'no db' }
+    const { error } = await client.from('seo_reward_events').insert({
       model_version: event.modelVersion,
       page_url: event.pageUrl,
       topic: event.topic || null,
@@ -945,8 +966,15 @@ export async function persistRewardEvent(event: RewardEvent): Promise<void> {
       attribution: event.attribution as unknown as Record<string, unknown>,
       note: event.note || null,
     })
-  } catch {
-    // best-effort
+    if (error) {
+      console.warn('[seoEngine] persistRewardEvent', error.message)
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'persistRewardEvent failed'
+    console.warn('[seoEngine] persistRewardEvent', error)
+    return { ok: false, error }
   }
 }
 
@@ -961,18 +989,25 @@ export async function loadRewardLedger(limit = 40): Promise<Array<Record<string,
   }
 }
 
-export async function recordCalibration(weights: Record<SignalFamily, number>, eventsCount: number, note: string): Promise<void> {
+export async function recordCalibration(weights: Record<SignalFamily, number>, eventsCount: number, note: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const client = await db()
-    if (!client) return
-    await client.from('seo_model_calibration').insert({
+    if (!client) return { ok: false, error: 'no db' }
+    const { error } = await client.from('seo_model_calibration').insert({
       model_version: RANKING_MODEL_VERSION,
       weights,
       events_count: eventsCount,
       note: note.slice(0, 500),
     })
-  } catch {
-    // best-effort
+    if (error) {
+      console.warn('[seoEngine] recordCalibration', error.message)
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'recordCalibration failed'
+    console.warn('[seoEngine] recordCalibration', error)
+    return { ok: false, error }
   }
 }
 

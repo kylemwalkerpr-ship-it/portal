@@ -1,5 +1,11 @@
+jest.mock('@/lib/aiKeyVault', () => ({
+  buildVaultEnvOverrides: jest.fn(async () => ({})),
+  AI_PROVIDERS: jest.requireActual('@/lib/aiKeyVault').AI_PROVIDERS,
+}))
+
 import {
   canonicalizeDeepseekModelId,
+  generateContentText,
   getParasailDeepseekProProvider,
   getParasailDeepseekProvider,
   getParasailGlmProvider,
@@ -124,5 +130,34 @@ describe('content AI · Parasail (psk- keys)', () => {
     const pro = resolveAiProviderPin('deepseek-ai/DeepSeek-V4-Pro-0813')
     expect(pro.explicit).toBe('parasail-deepseek-pro')
     expect(pro.prefer).toBe('parasail-deepseek-pro')
+  })
+
+  it('reviewer exclusive pin skips the drafter quality contract', async () => {
+    process.env.PARASAIL_API_KEY = 'psk-test-dedicated'
+    const originalFetch = global.fetch
+    const bodies: Array<Record<string, unknown>> = []
+    global.fetch = jest.fn(async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '## Fixed\n\nDisclaimer added.' }, finish_reason: 'stop' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      await generateContentText({
+        aiProvider: 'parasail-deepseek-pro',
+        exclusive: true,
+        skipQualityContract: true,
+        system: 'You are a master SEO content editor. Return ONLY the complete fixed article.',
+        prompt: 'Fix missing_disclaimer',
+        maxTokens: 2048,
+      })
+      const system = String((bodies[0].messages as Array<{ role: string; content: string }>)[0].content)
+      expect(system).toContain('master SEO content editor')
+      expect(system).not.toContain('MANDATORY QUALITY RULES')
+      expect(bodies[0].model).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
+    } finally {
+      global.fetch = originalFetch
+    }
   })
 })

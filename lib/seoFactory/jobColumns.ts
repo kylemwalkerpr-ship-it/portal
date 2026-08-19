@@ -58,8 +58,8 @@ export function jobDetailShouldAutoLoadBody(job: {
   content?: string | null
   word_count?: number | null
 }): boolean {
-  const failed = Boolean(job.error_message) && ['drafting', 'failed', 'pending'].includes(String(job.status || ''))
-  if (failed) return false
+  // Always load a stored body in review — skipping failed jobs rewound the
+  // editor to the first generation after a gate-clearing repair.
   return Boolean(job.content) || Number(job.word_count) > 0
 }
 

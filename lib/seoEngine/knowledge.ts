@@ -456,10 +456,19 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
   return result
 }
 
-export async function recordEngineRun(kind: 'knowledge' | 'plan' | 'daily' | 'forecast-reward' | 'manual', status: 'running' | 'success' | 'partial' | 'failed', summary: Record<string, unknown>, errors: string[] = [], triggeredBy = 'cron'): Promise<void> {
+export async function recordEngineRun(kind: 'knowledge' | 'plan' | 'daily' | 'forecast-reward' | 'manual', status: 'running' | 'success' | 'partial' | 'failed', summary: Record<string, unknown>, errors: string[] = [], triggeredBy = 'cron'): Promise<{ ok: boolean; error?: string }> {
   try {
-    await createSupabaseAdminClient().from('seo_engine_runs').insert({ kind, status, summary, errors: errors.slice(0, 20), triggered_by: triggeredBy, finished_at: status === 'running' ? null : new Date().toISOString() })
-  } catch { /* best effort */ }
+    const { error } = await createSupabaseAdminClient().from('seo_engine_runs').insert({ kind, status, summary, errors: errors.slice(0, 20), triggered_by: triggeredBy, finished_at: status === 'running' ? null : new Date().toISOString() })
+    if (error) {
+      console.warn('[seoEngine] recordEngineRun', error.message)
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'recordEngineRun failed'
+    console.warn('[seoEngine] recordEngineRun', error)
+    return { ok: false, error }
+  }
 }
 
 export async function latestEngineRuns(limit = 10): Promise<Array<Record<string, unknown>>> {

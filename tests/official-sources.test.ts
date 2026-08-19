@@ -2,7 +2,10 @@ import {
   CURATED_OFFICIAL_SOURCES,
   isAuthorityHost,
   isCitationRelevant,
+  isContextualAuthority,
   isCreamSource,
+  isReputablePublication,
+  shouldKeepExternalHref,
   isLowValueHost,
   isOfficialSchoolPage,
   scoreUrlRelevance,
@@ -64,5 +67,58 @@ describe('officialSources · crème-de-la-crème allowlist', () => {
   it('keeps a non-empty regional bank', () => {
     expect(sourcesForRegion('US').length).toBeGreaterThan(5)
     expect(CURATED_OFFICIAL_SOURCES.length).toBeGreaterThan(40)
+  })
+
+  it('treats the issuing body as cream only when the article is about that discipline', () => {
+    const nclex = { region: 'US', topic: 'NCLEX preparation help 2026', keywords: ['nclex', 'rn exam'] }
+    const ielts = { region: 'UK', topic: 'IELTS for UKVI', keywords: ['ielts'] }
+    const visa = { region: 'US', topic: 'f-1 visa interview', keywords: ['f-1', 'visa'] }
+
+    expect(isCreamSource('https://www.ncsbn.org/exams/nclex', nclex)).toBe(true)
+    expect(isContextualAuthority('https://www.ncsbn.org/public-files/2023_RN_Test_Plan.pdf', nclex)).toBe(true)
+    expect(isCreamSource('https://www.ncsbn.org/exams/nclex', visa)).toBe(false)
+    expect(isCreamSource('https://ielts.org/for-test-takers', ielts)).toBe(true)
+    expect(isCreamSource('https://ielts.org/', visa)).toBe(false)
+    expect(isCreamSource('https://www.boundless.com/nclex', nclex)).toBe(false)
+    expect(isCreamSource('https://www.nclex.com/', nclex)).toBe(true)
+    expect(sourcesForBrief(nclex)[0].url).toMatch(/ncsbn\.org/)
+  })
+
+  it('allows reputable newsrooms and still rejects consultants', () => {
+    const visa = { region: 'US', topic: 'f-1 visa interview', keywords: ['f-1'] }
+    expect(isCreamSource('https://www.nytimes.com/2026/08/01/us/opt-rule.html', visa)).toBe(true)
+    expect(isReputablePublication('https://www.reuters.com/world/us/immigration')).toBe(true)
+    expect(shouldKeepExternalHref('https://www.bbc.com/news/uk', { region: 'UK', topic: 'skilled worker visa' })).toBe(true)
+    expect(isCreamSource('https://www.boundless.com/blog', visa)).toBe(false)
+    expect(isCreamSource('https://en.wikipedia.org/wiki/F-1_visa', visa)).toBe(false)
+  })
+
+  it('ranks the matching board first for later exam and licensing topics', () => {
+    expect(sourcesForBrief({ region: 'UK', topic: 'IELTS for UKVI', keywords: ['ielts'] })[0].url).toMatch(/ielts/)
+    expect(sourcesForBrief({ region: 'UK', topic: 'GMC registration for IMGs', keywords: ['gmc'] })[0].url).toMatch(/gmc-uk/)
+    expect(sourcesForBrief({ region: 'US', topic: 'USMLE Step 1', keywords: ['usmle'] })[0].url).toMatch(/usmle/)
+    expect(sourcesForBrief({ region: 'US', topic: 'WES credential evaluation', keywords: ['wes'] })[0].url).toMatch(/wes\.org/)
+    expect(sourcesForBrief({ region: 'CA', topic: 'CELPIP for express entry', keywords: ['celpip'] })[0].url).toMatch(/celpip/)
+    expect(sourcesForBrief({ region: 'AU', topic: 'AHPRA nursing registration', keywords: ['ahpra'] })[0].url).toMatch(/ahpra/)
+  })
+
+  it('does not treat those boards as cream on an unrelated visa article', () => {
+    const visa = { region: 'US', topic: 'f-1 visa interview', keywords: ['f-1', 'visa'] }
+    expect(isCreamSource('https://ielts.org/', visa)).toBe(false)
+    expect(isCreamSource('https://www.gmc-uk.org/', visa)).toBe(false)
+    expect(isCreamSource('https://www.usmle.org/', visa)).toBe(false)
+    expect(isCreamSource('https://www.wes.org/', visa)).toBe(false)
+    expect(isCreamSource('https://www.celpip.ca/', visa)).toBe(false)
+  })
+
+  it('treats an unlisted institutional .org as cream when a distinctive topic token is in the URL', () => {
+    const naplex = { region: 'US', topic: 'NAPLEX score transfer', keywords: ['naplex'] }
+    expect(isContextualAuthority('https://www.example-board.org/naplex-bulletin', naplex)).toBe(true)
+    expect(isCreamSource('https://www.example-board.org/naplex-bulletin', naplex)).toBe(true)
+    expect(isCreamSource('https://www.example-board.org/naplex-bulletin', {
+      region: 'US',
+      topic: 'f-1 visa interview',
+      keywords: ['opt'],
+    })).toBe(false)
   })
 })

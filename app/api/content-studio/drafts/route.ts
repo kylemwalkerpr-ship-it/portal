@@ -1,20 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { countBodyWords } from '@/lib/seoFactory/contentDepth'
-
-function sb() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
-}
-
-// In-memory version history for the GET endpoint (draft revision timeline).
-// The canonical draft lives in content_jobs.content — this store keeps a
-// rolling window of snapshots so the admin can diff or roll back.
-const store = new Map<string, Array<{ id: string; jobId: string; content: string;
-  createdAt: string; wordCount: number }>>()
+import { latestReviewSnapshot, listReviewSnapshots, persistReviewSnapshot } from '@/lib/seoFactory/reviewSnapshots'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser()
@@ -23,17 +9,34 @@ export async function GET(request: NextRequest) {
   }
   const jobId = new URL(request.url).searchParams.get('jobId')
   if (!jobId) return NextResponse.json({ error: 'jobId required' }, { status: 400 })
-  const drafts = (store.get(jobId) || []).map((d, i) => {
-    const prev = i > 0 ? (store.get(jobId) || [])[i - 1] : null
-    let diff = ''
+  const latestOnly = new URL(request.url).searchParams.get('latest') === '1'
+  if (latestOnly) {
+    const latest = await latestReviewSnapshot(jobId)
+    return NextResponse.json({ drafts: latest ? [latest] : [], latest: latest || null })
+  }
+  const rows = await listReviewSnapshots(jobId, 20)
+  const drafts = rows.map((d, i) => {
+    const prev = i > 0 ? rows[i - 1] : null
+    let diffSummary = ''
     if (prev) {
       const a = Math.max(0, d.content.length - prev.content.length)
       const r = Math.max(0, prev.content.length - d.content.length)
-      diff = a > 0 && r === 0 ? `+${a} chars` : r > 0 ? `-${r} chars` : `${a - r > 0 ? '+' : ''}${a - r} chars`
+      diffSummary = a > 0 && r === 0 ? `+${a} chars` : r > 0 ? `-${r} chars` : `${a - r > 0 ? '+' : ''}${a - r} chars`
     }
-    return { ...d, diffSummary: diff }
+    return {
+      id: d.id,
+      jobId: d.jobId,
+      content: d.content,
+      createdAt: d.createdAt,
+      wordCount: d.wordCount,
+      diffSummary,
+      source: d.source,
+    }
   })
-  return NextResponse.json({ drafts })
+  return NextResponse.json({
+    drafts: latestOnly ? drafts.slice(-1) : drafts,
+    latest: drafts[drafts.length - 1] || null,
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -43,46 +46,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    const { jobId, content } = await request.json() as { jobId: string; content: string }
+    const { jobId, content, source } = await request.json() as { jobId: string; content: string; source?: string }
     if (!jobId || !content) {
       return NextResponse.json({ error: 'jobId and content required' }, { status: 400 })
     }
 
-    const words = countBodyWords(content)
-    const entry = {
-      id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      jobId, content, createdAt: new Date().toISOString(),
-      wordCount: words,
-    }
-
-    // In-memory version history (rollback / diff)
-    const existing = store.get(jobId) || []
-    existing.push(entry)
-    if (existing.length > 20) existing.shift()
-    store.set(jobId, existing)
-
-    // Persist to content_jobs so the draft survives deploys and is visible
-    // in the Review stage / AdminInlineEditor.
-    const supabase = sb()
-    const { error: upErr } = await supabase
-      .from('content_jobs')
-      .update({
-        content,
-        word_count: words,
-        error_message: null,
-      })
-      .eq('id', jobId)
-
-    if (upErr) {
-      console.error('[drafts/save] Supabase update failed:', upErr.message)
-      // Don't fail the save — the in-memory version is still available
-    }
-
-    return NextResponse.json({
-      draft: entry,
-      versionCount: existing.length,
-      persisted: !upErr,
+    const origin = source === 'manual' || source === 'restore' || source === 'fix' || source === 'reaudit'
+      ? source
+      : 'autosave'
+    const { snapshot, persisted, error } = await persistReviewSnapshot({
+      jobId,
+      content,
+      source: origin,
     })
+    if (!persisted) {
+      return NextResponse.json(
+        { error: error || 'Failed to persist review snapshot', draft: snapshot, persisted: false },
+        { status: 503 },
+      )
+    }
+    return NextResponse.json({ draft: snapshot, persisted: true })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Save failed' }, { status: 500 })

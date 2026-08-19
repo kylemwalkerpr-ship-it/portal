@@ -47,4 +47,22 @@ describe('citationPolicy — factory-wide contract', () => {
     expect(picks.length).toBeGreaterThan(0)
     expect(picks[0].url).toMatch(/hud\.gov/)
   })
+
+  it('picks the issuing board for exam topics instead of a generic immigration homepage', () => {
+    const nclex = buildCitationContext({
+      region: 'US',
+      topic: 'NCLEX preparation help',
+      primaryKeyword: 'nclex',
+      keywords: ['rn exam'],
+    })
+    const ielts = buildCitationContext({
+      region: 'UK',
+      topic: 'IELTS for UKVI',
+      primaryKeyword: 'ielts',
+    })
+    expect(pickOfficialCitations(nclex, 1)[0].url).toMatch(/ncsbn\.org/)
+    expect(pickOfficialCitations(ielts, 1)[0].url).toMatch(/ielts/)
+    expect(articleHasOfficialCitation('See [NCSBN](https://www.ncsbn.org/exams/nclex).', nclex)).toBe(true)
+    expect(articleHasOfficialCitation('See [IELTS](https://ielts.org/).', ielts)).toBe(true)
+  })
 })

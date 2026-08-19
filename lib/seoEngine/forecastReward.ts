@@ -176,8 +176,8 @@ export async function runForecastRewardPass(opts: { limit?: number; now?: string
     const events = buildForecastRewardEvents(evaluated, alreadyCredited, nowIso)
     let inserted = 0
     for (const e of events) {
-      await persistRewardEvent(e)
-      inserted += 1
+      const wrote = await persistRewardEvent(e)
+      if (wrote.ok) inserted += 1
     }
 
     // Bounded recalibration — only when the week carries enough NEW evidence.
@@ -192,13 +192,15 @@ export async function runForecastRewardPass(opts: { limit?: number; now?: string
       const next = recalibrateWeights(current, events, CALIBRATION_LEARNING_RATE)
       weightsChanged = SIGNAL_FAMILIES.some((f) => Math.abs(Number(next[f]) - Number(current[f])) > 1e-9)
       if (weightsChanged) {
-        await recordCalibration(
+        const cal = await recordCalibration(
           next,
           events.length,
           `weekly forecast-reward pass · ${evaluated.length} evaluated · positionBias ${report.summary.positionBias} · action ${FORECAST_REWARD_ACTION}`,
         )
-        weights = next
-        recalibrated = true
+        if (cal.ok) {
+          weights = next
+          recalibrated = true
+        }
       }
     }
 
