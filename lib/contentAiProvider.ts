@@ -97,8 +97,20 @@ export function canonicalizeDeepseekModelId(raw?: string | null, lane: 'flash' |
   if (/0731/.test(lower)) return PARASAIL_DEEPSEEK_MODEL
   return PARASAIL_DEEPSEEK_MODEL
 }
-/** Official Parasail catalog id — not the internal pin `parasail-glm`. */
-const PARASAIL_GLM_MODEL = 'nvidia/GLM-5.2-NVFP4'
+/**
+ * Parasail GLM 5.2 catalog id. `nvidia/GLM-5.2-NVFP4` 404s on api.parasail.io
+ * ("Deployment doesn't exist"). NVIDIA NIM / Parasail both serve `z-ai/glm-5.2`.
+ */
+const PARASAIL_GLM_MODEL = 'z-ai/glm-5.2'
+
+/** Map retired Parasail GLM ids onto the live deployment. */
+export function canonicalizeParasailGlmModelId(raw?: string | null): string {
+  const id = String(raw || '').trim()
+  if (!id) return PARASAIL_GLM_MODEL
+  const lower = id.toLowerCase()
+  if (/nvfp4/.test(lower) || /nvidia\/glm-5\.2/.test(lower)) return PARASAIL_GLM_MODEL
+  return id
+}
 const PARASAIL_MAX_TOKENS = 16384
 const DEEPSEEK_OFFICIAL_BASE_URL = 'https://api.deepseek.com/v1'
 const DEEPSEEK_OFFICIAL_FLASH_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
@@ -386,6 +398,12 @@ function buildContinuationPrompt(partial: string): string {
 /** Reasoning-capable models accept max_completion_tokens + reasoning_content. */
 export function isReasoningModelId(model: string): boolean {
   return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|zai-org\/glm|parasail-(?:deepseek|glm)|nemotron|grok)/i.test(model)
+}
+
+/** Host says the pinned deployment is gone — retrying the same model cannot recover. */
+export function isUnavailableDeploymentError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || '')
+  return /\b404\b|doesn't exist|isn't accessible|model_not_found|not_found|unknown model|invalid model/i.test(msg)
 }
 
 /** Unpaid / quota / billing failures — SuperGrok is the studio-wide second option. */
@@ -1082,7 +1100,7 @@ export function getParasailGlmProvider(effort?: 'low' | 'medium' | 'high'): Open
     label: 'parasail-glm',
     baseURL: parasailBaseURL(),
     apiKey,
-    model: env('PARASAIL_GLM_MODEL') || PARASAIL_GLM_MODEL,
+    model: canonicalizeParasailGlmModelId(env('PARASAIL_GLM_MODEL') || PARASAIL_GLM_MODEL),
     maxTokensCap: PARASAIL_MAX_TOKENS,
     extraBody: reasoning ? { reasoning_effort: reasoning } : undefined,
   }
@@ -2635,10 +2653,10 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
           errors.push(`grok: ${grokMsg}`)
         }
       }
-      // When the admin explicitly chose this provider, stop the cascade so
-      // the dashboard sees exactly why their selection didn't ship — except
-      // unpaid/quota failures, which always try SuperGrok second.
-      if (explicit && c.label === prefer && !paymentFail) {
+      // Exclusive pins (Research brief) stay fail-closed. A draft picker
+      // selection must cascade — a missing GLM deployment must not abandon
+      // the job at 0 words.
+      if (opts.exclusive && explicit && c.label === prefer && !paymentFail) {
         throw new Error(
           `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}. ` +
           `Check the API key and model in repo secrets (OPENAI_API_KEY, etc). ` +
@@ -3027,9 +3045,10 @@ export async function* generateContentTextStream(
             provider: c.label,
             model: `FAILED: ${failure}`,
           }
-          // Grok drafts are allowed to cascade (long-form + SuperGrok can
-          // stall). Other explicit pins still fail closed.
-          if (prefer !== 'grok') throw new Error(failure)
+          // Research briefs (`exclusive`) stay pinned. Draft picker pins
+          // cascade so a 404 GLM deployment falls through to DeepSeek/Grok
+          // instead of closing the job with an empty body.
+          if (opts.exclusive) throw new Error(failure)
         }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
         // Do not immediately call the same provider again through its

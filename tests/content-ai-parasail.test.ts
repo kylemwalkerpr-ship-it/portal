@@ -5,11 +5,14 @@ jest.mock('@/lib/aiKeyVault', () => ({
 
 import {
   canonicalizeDeepseekModelId,
+  canonicalizeParasailGlmModelId,
   generateContentText,
+  generateContentTextStream,
   getParasailDeepseekProProvider,
   getParasailDeepseekProvider,
   getParasailGlmProvider,
   isParasailConfigured,
+  isUnavailableDeploymentError,
   listConfiguredContentProviders,
   looksLikeParasailKey,
   parasailProReasoningEffort,
@@ -90,7 +93,7 @@ describe('content AI · Parasail (psk- keys)', () => {
     const glm = getParasailGlmProvider()
     expect(flash!.model).toBe('deepseek-ai/DeepSeek-V4-Flash-0731')
     expect(pro!.model).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
-    expect(glm!.model).toBe('nvidia/GLM-5.2-NVFP4')
+    expect(glm!.model).toBe('z-ai/glm-5.2')
     expect(pro!.extraBody).toEqual({ reasoning_effort: 'low' })
     expect(parasailProReasoningEffort()).toBe('low')
     process.env.PARASAIL_PRO_REASONING_EFFORT = 'medium'
@@ -127,6 +130,8 @@ describe('content AI · Parasail (psk- keys)', () => {
     expect(glm.explicit).toBe('parasail-glm')
     expect(glm.prefer).toBe('parasail-glm')
     expect(resolveAiProviderPin('nvidia/GLM-5.2-NVFP4').prefer).toBe('parasail-glm')
+    expect(canonicalizeParasailGlmModelId('nvidia/GLM-5.2-NVFP4')).toBe('z-ai/glm-5.2')
+    expect(canonicalizeParasailGlmModelId('')).toBe('z-ai/glm-5.2')
     const pro = resolveAiProviderPin('deepseek-ai/DeepSeek-V4-Pro-0813')
     expect(pro.explicit).toBe('parasail-deepseek-pro')
     expect(pro.prefer).toBe('parasail-deepseek-pro')
@@ -156,6 +161,73 @@ describe('content AI · Parasail (psk- keys)', () => {
       expect(system).toContain('master SEO content editor')
       expect(system).not.toContain('MANDATORY QUALITY RULES')
       expect(bodies[0].model).toBe('deepseek-ai/DeepSeek-V4-Pro-0813')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('remaps a retired NVFP4 env onto the live Parasail GLM id', () => {
+    process.env.PARASAIL_API_KEY = 'psk-test-dedicated'
+    process.env.PARASAIL_GLM_MODEL = 'nvidia/GLM-5.2-NVFP4'
+    expect(getParasailGlmProvider()!.model).toBe('z-ai/glm-5.2')
+    expect(isUnavailableDeploymentError(new Error('parasail-glm stream 404: Deployment nvidia/GLM-5.2-NVFP4 doesn\'t exist or isn\'t accessible.'))).toBe(true)
+  })
+
+  it('draft picker 404 on GLM cascades to the next Parasail model instead of closing the job', async () => {
+    process.env.PARASAIL_API_KEY = 'psk-test-dedicated'
+    const originalFetch = global.fetch
+    const models: string[] = []
+    global.fetch = jest.fn(async (_input, init) => {
+      const payload = JSON.parse(String(init?.body || '{}')) as { model?: string }
+      models.push(String(payload.model || ''))
+      if (payload.model === 'z-ai/glm-5.2') {
+        return new Response(
+          JSON.stringify({ error: { message: "Deployment nvidia/GLM-5.2-NVFP4 doesn't exist or isn't accessible.", type: 'invalid_request_error' } }),
+          { status: 404, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'Fallback draft body' } }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(chunks, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+    try {
+      const events: Array<{ type: string; text?: string; model?: string }> = []
+      for await (const ev of generateContentTextStream({
+        system: 'Write.',
+        prompt: 'Hello',
+        aiProvider: 'parasail-glm',
+        maxTokens: 400,
+      })) {
+        events.push(ev)
+      }
+      expect(models[0]).toBe('z-ai/glm-5.2')
+      expect(events.some((e) => e.type === 'provider' && String(e.model || '').includes('FAILED'))).toBe(true)
+      expect(events.some((e) => e.type === 'delta' && String(e.text || '').includes('Fallback draft body'))).toBe(true)
+      expect(events.at(-1)).toMatchObject({ type: 'done', text: 'Fallback draft body' })
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('exclusive GLM pin still fail-closes (Research brief)', async () => {
+    process.env.PARASAIL_API_KEY = 'psk-test-dedicated'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async () => new Response(
+      JSON.stringify({ error: { message: "Deployment doesn't exist or isn't accessible." } }),
+      { status: 404 },
+    )) as typeof fetch
+    try {
+      await expect((async () => {
+        for await (const _ev of generateContentTextStream({
+          system: 'Write.',
+          prompt: 'Hello',
+          aiProvider: 'parasail-glm',
+          exclusive: true,
+          maxTokens: 200,
+        })) { /* drain */ }
+      })()).rejects.toThrow(/Explicit AI provider "parasail-glm" failed/)
     } finally {
       global.fetch = originalFetch
     }

@@ -125,7 +125,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'baseten-deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
   'parasail-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'parasail-deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
-  'parasail-glm': 'nvidia/GLM-5.2-NVFP4',
+  'parasail-glm': 'z-ai/glm-5.2',
   'nvidia-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'deepseek-flash': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',

@@ -3,7 +3,7 @@
  *
  * Default path is a Grok-led pair:
  *   · Grok 4.6 at high reasoning effort (lead — biased final judgment)
- *   · GLM 5.2 via Parasail (`nvidia/GLM-5.2-NVFP4`) at medium effort
+ *   · GLM 5.2 via Parasail (`z-ai/glm-5.2`) at medium effort
  * Both ingest the same Master Engine payload; Grok then merges, keeping its
  * structure and adopting GLM facts / statutes / blockers it missed.
  *
@@ -273,7 +273,7 @@ export async function generateEnginePairText(
   if (!lead && !complement) {
     throw new Error(
       `Engine pair failed. Lead (Grok 4.6 high): ${leadErr.slice(0, 280) || 'empty'}. ` +
-        `Complement (GLM 5.2 Parasail nvidia/GLM-5.2-NVFP4 medium): ${complementErr.slice(0, 280) || 'empty'}.`,
+        `Complement (GLM 5.2 Parasail z-ai/glm-5.2 medium): ${complementErr.slice(0, 280) || 'empty'}.`,
     )
   }
 
@@ -307,7 +307,7 @@ export async function generateEnginePairText(
       maxTokens: Math.min(opts.maxTokens ?? HARMONY_MAX_TOKENS, HARMONY_MAX_TOKENS),
       system:
         `${opts.system}\n\nYou are the lead Master Engine reasoner (Grok 4.6). ` +
-        `GLM 5.2 (nvidia/GLM-5.2-NVFP4) reviewed the same payload. Produce one final answer. ` +
+        `GLM 5.2 (z-ai/glm-5.2) reviewed the same payload. Produce one final answer. ` +
         `Keep your structure, judgment, and priorities. Adopt GLM facts, statutes, ` +
         `URLs, numbers, or blockers you missed when they match the payload. ` +
         `Discard GLM claims that contradict the payload. Do not mention either model.` +

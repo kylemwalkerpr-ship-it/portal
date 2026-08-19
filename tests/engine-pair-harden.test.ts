@@ -56,7 +56,7 @@ describe('pair tape on engine runs', () => {
     const rollup = emptyPairRollup()
     accumulatePairRollup(rollup, {
       leadModel: 'grok-4.6',
-      complementModel: 'nvidia/GLM-5.2-NVFP4',
+      complementModel: 'z-ai/glm-5.2',
       merged: true,
       leadOnly: false,
       complementOnly: false,

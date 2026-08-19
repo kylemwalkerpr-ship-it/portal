@@ -134,7 +134,7 @@ describe('Master Engine pair — Grok 4.6 high + Parasail GLM 5.2 medium', () =>
     expect(result.provider).toBe('grok')
     expect(result.text).toMatch(/MERGED-ENGINE|GROK-LEAD/)
     expect(seen.some((s) => s.url.includes('api.x.ai') && s.effort === 'high')).toBe(true)
-    expect(seen.some((s) => s.url.includes('parasail.io') && (s.effort === 'medium' || s.model === 'nvidia/GLM-5.2-NVFP4'))).toBe(true)
+    expect(seen.some((s) => s.url.includes('parasail.io') && (s.effort === 'medium' || s.model === 'z-ai/glm-5.2'))).toBe(true)
     expect(result.pair?.disagreed).toBe(true)
   })
 
