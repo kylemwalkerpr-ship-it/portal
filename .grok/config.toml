@@ -6,4 +6,12 @@ command = "/Users/phantomdarne/.local/bin/uvx"
 args = ["mcp-search-console"]
 enabled = true
 startup_timeout_sec = 90
-env = { GSC_CREDENTIALS_PATH = "/Users/phantomdarne/.config/gsc/service_account.json", GSC_SKIP_OAUTH = "true", GSC_DATA_STATE = "all" }
+
+[mcp_servers.gsc.env]
+GSC_CREDENTIALS_PATH = "/Users/phantomdarne/.config/gsc/service_account.json"
+GSC_SKIP_OAUTH = "true"
+GSC_DATA_STATE = "all"
+
+[mcp_servers.ubersuggest]
+url = "https://ubersuggest-mcp.neilpatelapi.com/mcp"
+enabled = true
