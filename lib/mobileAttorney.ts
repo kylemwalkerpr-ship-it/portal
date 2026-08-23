@@ -84,7 +84,7 @@ export async function attorneyInquiries(req: Request, auth: Extract<MobileAttorn
     ])
     const ids = [...new Set([...(msgs ?? []).map((r: any) => r.inquiry_id), ...(offers ?? []).map((r: any) => r.inquiry_id)])]
     if (!ids.length) return Response.json({ inquiries: [] })
-    const { data } = await db.from('inquiries').select('*').in('id', ids).order('created_at', { ascending: false })
+    const { data } = await db.from('inquiries').select('id, email, full_name, case_type, case_type_label, urgency, status, created_at, target_attorney_profile_id, source').in('id', ids).order('created_at', { ascending: false })
     rows = (data ?? []).filter((q: any) => q.source !== 'portal_attorney_chat')
   } else {
     const q = applyOpenQueueFilter(db.from('inquiries').select('id, email, full_name, case_type, case_type_label, urgency, status, created_at, target_attorney_profile_id').order('created_at', { ascending: false }).limit(200), acceptedIds)

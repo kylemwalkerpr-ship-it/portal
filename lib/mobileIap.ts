@@ -27,15 +27,31 @@ export function unauthorizedRes(reason: 'missing' | 'invalid') {
 
 // ── IAP verify ──────────────────────────────────────────────
 
+/**
+ * Whether StoreKit local-testing JWS tokens (environment=LocalTesting/Xcode)
+ * can be accepted without a live Apple verification call.
+ *
+ * LocalTesting acceptance is gated behind:
+ *   1. NODE_ENV must NOT be 'production'
+ *   2. ALLOW_STOREKIT_LOCAL_TESTING must be 'true' (opt-in safety net)
+ *
+ * In production, LocalTesting JWS tokens are treated the same as Production
+ * tokens — they go through verifyWithApple(). If Apple verification is not
+ * configured, the handler returns 503. No paid row is ever inserted.
+ */
+function allowStoreKitLocalTesting(): boolean {
+  if (process.env.NODE_ENV === 'production') return false
+  return process.env.ALLOW_STOREKIT_LOCAL_TESTING === 'true'
+}
+
 const APPLE_VERIFY_URL = 'https://api.storekit.itunes.apple.com/inApps/v1/transactions/'
 
 /**
  * Verify a StoreKit 2 JWS with Apple's production server.
  * Returns the parsed payload on success, or null.
  *
- * This requires APPLE_IAP_SHARED_SECRET and APPLE_ISSUER_ID / APPLE_KEY_ID /
- * APPLE_PRIVATE_KEY env vars. If not configured, Apple verification is
- * unavailable and the handler returns 503.
+ * Requires APPLE_IAP_SHARED_SECRET and APPLE_ISSUER_ID / APPLE_KEY_ID /
+ * APPLE_PRIVATE_KEY env vars. If not configured, returns null (503 path).
  */
 async function verifyWithApple(jws: string): Promise<{ transactionId: string; productId: string; environment: string } | null> {
   const sharedSecret = process.env.APPLE_IAP_SHARED_SECRET
@@ -47,7 +63,6 @@ async function verifyWithApple(jws: string): Promise<{ transactionId: string; pr
     return null // not configured — graceful 503
   }
 
-  // Decode JWS to extract transactionId for the lookup URL
   let transactionId: string
   try {
     const parts = jws.split('.')
@@ -59,12 +74,7 @@ async function verifyWithApple(jws: string): Promise<{ transactionId: string; pr
     return null
   }
 
-  // Call Apple's App Store Server API
-  // For now: human-gated credentials not available → return null (503 path)
-  // When credentials are configured, this would:
-  // 1. Generate a JWT signed with the private key
-  // 2. GET {APPLE_VERIFY_URL}{transactionId}
-  // 3. Validate response matches productId
+  // Apple API call not yet wired (human-gated credentials)
   return null
 }
 
@@ -78,31 +88,18 @@ export async function handleIapVerify(req: Request, auth: Extract<MobileUserResu
     return Response.json({ error: { message: 'Missing receipt (JWS) or productId.' } }, { status: 400 })
   }
 
-  // Derive slug from product ID if not provided
   const resolvedSlug = slug || productIdToSlug(productId)
   if (!resolvedSlug) return Response.json({ error: { message: 'Unknown product.' } }, { status: 400 })
 
   const pack = getTemplatePack(resolvedSlug)
   if (!pack) return Response.json({ error: { message: 'Template not found.' } }, { status: 404 })
 
-  // Validate the JWS productId matches the pack slug
   const expectedProductId = `com.yousafeconsultancy.app.template.${resolvedSlug}`
   if (productId !== expectedProductId) {
     return Response.json({ error: { message: 'Product mismatch — JWS productId does not match the template slug.' } }, { status: 400 })
   }
 
-  // ── Verification gate ──────────────────────────────────────
-  //
-  // SIMULATOR / DEBUG (StoreKit local testing):
-  //   Accept the JWS only if it is valid JSON with a transactionId, AND the
-  //   productId maps to a real pack. Never skip validation just because the
-  //   environment says "LocalTesting" — still require a transactionId.
-  //
-  // PRODUCTION:
-  //   Must verify with Apple's App Store Server API. If Apple verification is
-  //   not configured (credentials human-gated), return 503 — never insert
-  //   a paid row based on a self-signed JWS.
-  //
+  // ── Parse JWS ──────────────────────────────────────────────
   let transactionId = ''
   let environment = 'Production'
 
@@ -122,14 +119,27 @@ export async function handleIapVerify(req: Request, auth: Extract<MobileUserResu
     return Response.json({ error: { message: 'No transactionId in JWS — cannot verify.' } }, { status: 400 })
   }
 
-  // Determine verification path
+  // ── Verification gate ──────────────────────────────────────
+  //
+  // LocalTesting / Xcode environments:
+  //   Accepted only if ALLOW_STOREKIT_LOCAL_TESTING is true AND
+  //   NODE_ENV is not production. Otherwise → same as Production.
+  //
+  // Production environment:
+  //   MUST verify with Apple's App Store Server API. If Apple
+  //   verification returns null (credentials human-gated), return
+  //   503. NEVER insert a paid row based on an unverified JWS.
+  //
   const isLocalTesting = environment === 'LocalTesting' || environment === 'Xcode'
 
-  if (!isLocalTesting) {
-    // Production: must verify with Apple
+  if (isLocalTesting && allowStoreKitLocalTesting()) {
+    // Simulator/DEBUG — JWS parsed, product maps to real pack,
+    // transactionId present. Accept.
+  } else {
+    // Production (or LocalTesting in production NODE_ENV):
+    // must verify with Apple.
     const appleResult = await verifyWithApple(jws)
     if (!appleResult) {
-      // Apple verification not configured — this is a human-gated blocker
       return Response.json({
         error: {
           message: 'IAP verification is not yet configured. Please contact support.',
@@ -137,28 +147,20 @@ export async function handleIapVerify(req: Request, auth: Extract<MobileUserResu
         },
       }, { status: 503 })
     }
-    // Validate that Apple's response matches what we expect
     if (appleResult.productId !== productId) {
       return Response.json({ error: { message: 'Product mismatch with Apple verification.' } }, { status: 400 })
     }
   }
 
-  // At this point we have either:
-  // - LocalTesting: JWS parsed successfully, productId maps to real pack, transactionId present
-  // - Production: Apple verified the transaction
-  // We can now record the purchase.
-
+  // ── Record purchase ────────────────────────────────────────
   const email = (auth.profile.email || '').toLowerCase()
   if (!email) return Response.json({ error: { message: 'No email on profile — cannot record purchase.' } }, { status: 400 })
 
-  // Check duplicate
   const alreadyOwns = await userOwnsSlug(auth.db, email, resolvedSlug)
   if (alreadyOwns) {
     return Response.json({ success: true, owned: true, slug: resolvedSlug, orderId: null }, { status: 200 })
   }
 
-  // Record the purchase using REAL template_orders columns:
-  // id, created_at, email, name, slugs, amount_cents, transaction_id, status, gateway
   const orderId = randomUUID()
   const priceCents = getTemplatePackPriceCents(resolvedSlug) || Math.round(pack.price_usd * 100)
 
@@ -198,18 +200,23 @@ export async function handleIapRestore(req: Request, auth: Extract<MobileUserRes
     if (!pack) continue
 
     const owns = await userOwnsSlug(auth.db, email, slug)
-    if (owns) slugs.push(slug)
-    else {
-      // Check if we have a record from a previous device
-      const { data: existing } = await auth.db.from('template_orders')
-        .select('id')
-        .eq('email', email)
-        .eq('gateway', 'apple_iap')
-        .eq('status', 'paid')
-        .maybeSingle()
-      if (existing) {
-        slugs.push(slug)
-      }
+    if (owns) {
+      slugs.push(slug)
+      continue
+    }
+
+    // Check if there is a paid apple_iap row whose slugs array contains
+    // THIS specific slug. Owning pack A must not restore pack B.
+    const { data: existing } = await auth.db.from('template_orders')
+      .select('id')
+      .eq('email', email)
+      .eq('gateway', 'apple_iap')
+      .eq('status', 'paid')
+      .contains('slugs', [slug])
+      .maybeSingle()
+
+    if (existing) {
+      slugs.push(slug)
     }
   }
 
@@ -230,7 +237,6 @@ export async function handleMobileTemplateDownload(req: Request, auth: Extract<M
   const isOwner = auth.profile.role === 'admin' || await userOwnsSlug(auth.db, email, slug)
   if (!isOwner) return Response.json({ error: { message: 'You have not purchased this template.' } }, { status: 403 })
 
-  // Try existing render first
   const { data: render } = await admin.from('template_pdf_renders').select('storage_path, storage_bucket').eq('profile_id', auth.profile.id).eq('slug', slug).order('created_at', { ascending: false }).limit(1).maybeSingle()
 
   const objectPath = render?.storage_path || `${slug}/pack.zip`

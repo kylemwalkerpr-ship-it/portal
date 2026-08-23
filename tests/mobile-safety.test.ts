@@ -41,7 +41,6 @@ function jsonServer(handler: (req: Request) => Promise<Response>) {
 
 class Query {
   rows: any[]
-  _pendingInsert: any[] = []
 
   constructor(_table: string, rows: any[]) { this.rows = Array.isArray(rows) ? [...rows] : [] }
 
@@ -52,16 +51,6 @@ class Query {
     const row = this.rows[0] ?? null
     return Promise.resolve({ data: row, error: row ? null : { message: 'no rows' } })
   }
-  insert(rows: any) {
-    const arr = Array.isArray(rows) ? rows : [rows]
-    this._pendingInsert.push(...arr)
-    return this
-  }
-  upsert(rows: any, _opts?: any) {
-    const arr = Array.isArray(rows) ? rows : [rows]
-    this._pendingInsert.push(...arr)
-    return this
-  }
   then<T>(onFulfilled: (v: { data: any[] | null; error: any; count: number | null }) => T) {
     return Promise.resolve({ data: this.rows, error: null, count: null }).then(onFulfilled)
   }
@@ -70,7 +59,6 @@ class Query {
 function makeDb() {
   const rows: Record<string, any[]> = {
     profiles: [{ id: 'prof_1', clerk_user_id: 'user_known', role: 'client' }],
-    support_tickets: [],
   }
   return { from: (table: string) => new Query(table, rows[table] ?? []) }
 }
@@ -108,13 +96,15 @@ describe('POST /api/mobile/report', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 200 with reported flag', async () => {
+  // LEFTOVER C: report returns 501, not 200 with a fake success flag
+  it('returns 501 — server report persistence not yet implemented', async () => {
     const { POST } = await import('@/app/api/mobile/report/route')
     const res = await request(jsonServer(POST)).post('/api')
       .set('Authorization', 'Bearer good.token')
       .send({ targetUserId: 'prof_other', reason: 'Inappropriate behaviour', context: 'Details here' })
-    expect(res.status).toBe(200)
-    expect(res.body.reported).toBe(true)
+    expect(res.status).toBe(501)
+    expect(res.body.error).toBeTruthy()
+    expect(res.body.reported).toBeFalsy()
   })
 })
 
@@ -137,13 +127,14 @@ describe('POST /api/mobile/block', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 200 with blocked flag (local block, no imaginary table insert)', async () => {
+  // LEFTOVER C: block returns 501, not 200 with a fake success flag
+  it('returns 501 — server block persistence not yet implemented', async () => {
     const { POST } = await import('@/app/api/mobile/block/route')
     const res = await request(jsonServer(POST)).post('/api')
       .set('Authorization', 'Bearer good.token')
       .send({ targetUserId: 'prof_other' })
-    expect(res.status).toBe(200)
-    expect(res.body.blocked).toBe(true)
-    expect(res.body.note).toBeTruthy()
+    expect(res.status).toBe(501)
+    expect(res.body.error).toBeTruthy()
+    expect(res.body.blocked).toBeFalsy()
   })
 })

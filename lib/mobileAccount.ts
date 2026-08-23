@@ -50,11 +50,15 @@ export async function handleAccountDelete(req: Request) {
   // conversations, etc.). Deleting the row could cascade-wipe financial
   // records. Anonymise the profile so the Clerk user is disassociated but
   // financial history remains intact.
+  //
+  // Status: use 'suspended' (known valid in profiles CHECK) — 'deleted'
+  // may not be an allowed value. Combined with clerk_user_id=null, this
+  // permanently breaks the Clerk link while preserving financial records.
   const anonymised = {
     full_name: `Deleted User ${profile.id.slice(0, 8)}`,
     email: `deleted-${profile.id.slice(0, 8)}@anonymised.yousafeconsultancy.com`,
     clerk_user_id: null,                 // break the Clerk link
-    status: 'deleted',
+    status: 'suspended',                 // known-valid status, blocks re-login
     phone: null,
     avatar_url: null,
     country_code: null,
@@ -66,11 +70,11 @@ export async function handleAccountDelete(req: Request) {
     console.error('[mobile/account/delete] anonymise failed:', updateErr.message)
 
     // If anonymise fails (e.g. unique constraint on email), try a fallback:
-    // just null out PII fields and set status='deleted'.
+    // just null out PII fields and set status='suspended'.
     const { error: fallbackErr } = await db.from('profiles').update({
       full_name: null,
       clerk_user_id: null,
-      status: 'deleted',
+      status: 'suspended',
       phone: null,
       avatar_url: null,
     }).eq('id', profile.id)

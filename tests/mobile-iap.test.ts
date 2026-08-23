@@ -7,7 +7,8 @@ jest.mock('@clerk/backend', () => ({ verifyToken: (...a: unknown[]) => mockVerif
 let db: any
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn(() => db) }))
 
-jest.mock('@/lib/templateEntitlements', () => ({ userOwnsSlug: jest.fn().mockResolvedValue(false) }))
+const mockUserOwnsSlug = jest.fn().mockResolvedValue(false)
+jest.mock('@/lib/templateEntitlements', () => ({ userOwnsSlug: (...a: unknown[]) => mockUserOwnsSlug(...a) }))
 
 function jsonServer(h: (req: Request, ctx?: any) => Promise<Response>) {
   return http.createServer(async (req, res) => {
@@ -31,7 +32,13 @@ class Query {
   select() { return this }
   eq(k: string, v: any) { this.rows = this.rows.filter((r: any) => r[k] === v); return this }
   in() { return this }
-  contains() { return this }
+  contains(_col: string, vals: any[]) {
+    this.rows = this.rows.filter((r: any) => {
+      const arr = r.slugs || r[_col] || []
+      return vals.every((v: any) => arr.includes(v))
+    })
+    return this
+  }
   order() { return this }
   limit() { return this }
   single() { return this.rows.length ? Promise.resolve({ data: this.rows[0], error: null }) : Promise.resolve({ data: null, error: { message: 'none' } }) }
@@ -69,12 +76,24 @@ const TIER = {
   is_active: true,
 }
 
+// ── Set ALLOW_STOREKIT_LOCAL_TESTING=true so that LocalTesting tests
+//    pass in the jest (NODE_ENV=test) environment. Without this env var,
+//    LocalTesting JWS tokens would be rejected (503) — that's tested below.
+const OLD_ENV = { ...process.env }
+
 beforeEach(() => {
   mockVerifyToken.mockReset()
   mockVerifyToken.mockResolvedValue({ sub: 'u1' })
+  mockUserOwnsSlug.mockResolvedValue(false)
+  // @ts-ignore
+  process.env.ALLOW_STOREKIT_LOCAL_TESTING = 'true'
+  // @ts-ignore
+  process.env.NODE_ENV = 'test' // ensures not 'production'
   db = makeDb({
     profiles: [PROFILE],
-    template_orders: [],
+    template_orders: [
+      { id: 't1', email: 's@t.com', gateway: 'apple_iap', status: 'paid', slugs: ['us-f1-student-visa-ds160-i20-pack'] },
+    ],
     template_pdf_renders: [],
     gigs: [GIG],
     gig_tiers: [TIER],
@@ -82,6 +101,13 @@ beforeEach(() => {
     wallets: [],
     wallet_ledger: [],
   })
+})
+
+afterEach(() => {
+  // @ts-ignore
+  process.env.NODE_ENV = OLD_ENV.NODE_ENV
+  // @ts-ignore
+  process.env.ALLOW_STOREKIT_LOCAL_TESTING = OLD_ENV.ALLOW_STOREKIT_LOCAL_TESTING
 })
 
 describe('GET /api/mobile/templates/catalogue', () => {
@@ -125,7 +151,7 @@ describe('POST /api/mobile/iap/verify', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 201 for valid LocalTesting IAP', async () => {
+  it('returns 201 for valid LocalTesting IAP (ALLOW_STOREKIT_LOCAL_TESTING=true, NODE_ENV=test)', async () => {
     const { POST } = await import('@/app/api/mobile/iap/verify/route')
     const res = await request(jsonServer(POST)).post('/verify').set('Authorization', 'Bearer t').send({
       productId: 'com.yousafeconsultancy.app.template.us-f1-student-visa-ds160-i20-pack',
@@ -147,6 +173,32 @@ describe('POST /api/mobile/iap/verify', () => {
     expect(res.body.error.retryable).toBe(true)
   })
 
+  it('returns 503 for LocalTesting JWS when ALLOW_STOREKIT_LOCAL_TESTING is not set', async () => {
+    // @ts-ignore
+    delete process.env.ALLOW_STOREKIT_LOCAL_TESTING
+    const { POST } = await import('@/app/api/mobile/iap/verify/route')
+    const res = await request(jsonServer(POST)).post('/verify').set('Authorization', 'Bearer t').send({
+      productId: 'com.yousafeconsultancy.app.template.us-f1-student-visa-ds160-i20-pack',
+      slug: 'us-f1-student-visa-ds160-i20-pack',
+      receipt: 'eyJhbGci.eyJ0cmFuc2FjdGlvbklkIjoiMTAwMDAwMDEiLCJlbnZpcm9ubWVudCI6IkxvY2FsVGVzdGluZyJ9.sig',
+    })
+    // LocalTesting w/o ALLOW_STOREKIT_LOCAL_TESTING → same as Production → verifyWithApple returns null → 503
+    expect(res.status).toBe(503)
+  })
+
+  it('returns 503 for LocalTesting JWS when NODE_ENV=production', async () => {
+    // @ts-ignore
+    process.env.NODE_ENV = 'production'
+    const { POST } = await import('@/app/api/mobile/iap/verify/route')
+    const res = await request(jsonServer(POST)).post('/verify').set('Authorization', 'Bearer t').send({
+      productId: 'com.yousafeconsultancy.app.template.us-f1-student-visa-ds160-i20-pack',
+      slug: 'us-f1-student-visa-ds160-i20-pack',
+      receipt: 'eyJhbGci.eyJ0cmFuc2FjdGlvbklkIjoiMTAwMDAwMDEiLCJlbnZpcm9ubWVudCI6IkxvY2FsVGVzdGluZyJ9.sig',
+    })
+    // Even with ALLOW_STOREKIT_LOCAL_TESTING=true, NODE_ENV=production blocks LocalTesting
+    expect(res.status).toBe(503)
+  })
+
   it('rejects JWS without transactionId even in LocalTesting', async () => {
     const { POST } = await import('@/app/api/mobile/iap/verify/route')
     const res = await request(jsonServer(POST)).post('/verify').set('Authorization', 'Bearer t').send({
@@ -166,10 +218,33 @@ describe('POST /api/mobile/iap/restore', () => {
   })
 
   it('returns empty slugs when nothing purchased', async () => {
+    db = makeDb({ profiles: [PROFILE], template_orders: [], template_pdf_renders: [] })
     const { POST } = await import('@/app/api/mobile/iap/restore/route')
     const res = await request(jsonServer(POST)).post('/restore').set('Authorization', 'Bearer t').send({ productIds: [] })
     expect(res.status).toBe(200)
     expect(res.body.slugs).toEqual([])
+  })
+
+  // LEFTOVER B: owning pack A must NOT restore pack B
+  it('restores only slugs the user actually owns', async () => {
+    const ownSlug = 'us-f1-student-visa-ds160-i20-pack'
+    const otherSlug = 'canada-study-permit-complete-pack'
+
+    // Mock: userOwnsSlug returns true only for the owned slug
+    mockUserOwnsSlug.mockImplementation((_db: any, _email: string, slug: string) =>
+      Promise.resolve(slug === ownSlug)
+    )
+
+    const { POST } = await import('@/app/api/mobile/iap/restore/route')
+    const res = await request(jsonServer(POST)).post('/restore').set('Authorization', 'Bearer t').send({
+      productIds: [
+        `com.yousafeconsultancy.app.template.${ownSlug}`,
+        `com.yousafeconsultancy.app.template.${otherSlug}`,
+      ],
+    })
+    expect(res.status).toBe(200)
+    // Only the owned slug should be restored
+    expect(res.body.slugs).toEqual([ownSlug])
   })
 })
 
@@ -195,7 +270,6 @@ describe('Payment split guard', () => {
         paymentMethod: 'wallet',
       })
     expect(res.status).toBe(400)
-    // Must say gig-only
     expect(res.body.error.message).toMatch(/gig/i)
   })
 
@@ -238,13 +312,11 @@ describe('Payment split guard', () => {
         paymentMethod: 'wallet',
       })
     expect(res.status).not.toBe(200)
-    // Must NOT succeed with a template purchase
     expect(res.body.success).toBeFalsy()
   })
 
   it('gig with valid ID does not get gig-only rejection', async () => {
     const { POST } = await import('@/app/api/mobile/checkout/order/route')
-    // node http lowercases all headers, so su replicatet passes idempotency-key
     const res = await request(jsonServer(POST)).post('/order')
       .set('Authorization', 'Bearer t')
       .set('Idempotency-key', 'ik-gig-1')
@@ -254,8 +326,6 @@ describe('Payment split guard', () => {
         tierId: 'tier_1',
         paymentMethod: 'wallet',
       })
-    // Should NOT be the generic "gig-only" rejection (that's the split-guard error)
-    // It may fail on wallet/mock — that's a different kind of failure
     if (res.body.error?.message) {
       expect(res.body.error.message).not.toMatch(/gig.only|Invalid checkout source/i)
     }
