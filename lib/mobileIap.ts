@@ -40,8 +40,12 @@ export function unauthorizedRes(reason: 'missing' | 'invalid') {
  * configured, the handler returns 503. No paid row is ever inserted.
  */
 function allowStoreKitLocalTesting(): boolean {
-  if (process.env.NODE_ENV === 'production') return false
-  return process.env.ALLOW_STOREKIT_LOCAL_TESTING === 'true'
+  const allowed = process.env.ALLOW_STOREKIT_LOCAL_TESTING === 'true'
+  if (!allowed) return false
+  // Only test or development are explicitly local. Production, unset,
+  // empty, or any other value → fail closed (treat as Production).
+  const nodeEnv = process.env.NODE_ENV
+  return nodeEnv === 'test' || nodeEnv === 'development'
 }
 
 const APPLE_VERIFY_URL = 'https://api.storekit.itunes.apple.com/inApps/v1/transactions/'

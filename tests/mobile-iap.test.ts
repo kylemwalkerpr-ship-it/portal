@@ -199,6 +199,19 @@ describe('POST /api/mobile/iap/verify', () => {
     expect(res.status).toBe(503)
   })
 
+  it('returns 503 for LocalTesting JWS when NODE_ENV is unset', async () => {
+    // @ts-ignore
+    delete process.env.NODE_ENV
+    const { POST } = await import('@/app/api/mobile/iap/verify/route')
+    const res = await request(jsonServer(POST)).post('/verify').set('Authorization', 'Bearer t').send({
+      productId: 'com.yousafeconsultancy.app.template.us-f1-student-visa-ds160-i20-pack',
+      slug: 'us-f1-student-visa-ds160-i20-pack',
+      receipt: 'eyJhbGci.eyJ0cmFuc2FjdGlvbklkIjoiMTAwMDAwMDEiLCJlbnZpcm9ubWVudCI6IkxvY2FsVGVzdGluZyJ9.sig',
+    })
+    // NODE_ENV unset → not 'test' or 'development' → same as production → 503
+    expect(res.status).toBe(503)
+  })
+
   it('rejects JWS without transactionId even in LocalTesting', async () => {
     const { POST } = await import('@/app/api/mobile/iap/verify/route')
     const res = await request(jsonServer(POST)).post('/verify').set('Authorization', 'Bearer t').send({
