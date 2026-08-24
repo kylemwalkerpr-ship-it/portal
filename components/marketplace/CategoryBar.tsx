@@ -144,7 +144,7 @@ export function CategoryBar({ country }: Props) {
           border-bottom: 1px solid ${T.rule};
           /* Varying tone from the white top menu: a soft slate wash so the
              category pills read as their own elegant band. */
-          background: #F1F3F8;
+          background: ${T.paper2};
         }
         @media (max-width: 720px) {
           .ys-cat-bar { top: ${TOPNAV_OFFSET_MOBILE}px; }
@@ -180,8 +180,8 @@ export function CategoryBar({ country }: Props) {
           opacity: 0;
           transition: opacity 0.15s ease-out;
         }
-        .ys-cat-fade.left  { left: 0;  background: linear-gradient(to right, #F1F3F8 30%, rgba(0,0,0,0)); }
-        .ys-cat-fade.right { right: 0; background: linear-gradient(to left,  #F1F3F8 30%, rgba(0,0,0,0)); }
+        .ys-cat-fade.left  { left: 0;  background: linear-gradient(to right, ${T.paper2} 30%, rgba(0,0,0,0)); }
+        .ys-cat-fade.right { right: 0; background: linear-gradient(to left,  ${T.paper2} 30%, rgba(0,0,0,0)); }
         .ys-cat-fade.on { opacity: 1; }
         .ys-cat-chev {
           position: absolute;
@@ -256,28 +256,28 @@ export function CategoryBar({ country }: Props) {
                       padding: '0 16px',
                       height: '36px',
                       borderRadius: '999px',
-                      border: `1px solid ${isOpen ? T.ink : isActive ? T.ink : T.rule}`,
-                      background: isOpen ? T.ink : isActive ? T.ink : '#fff',
-                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
+                      border: `1px solid ${isOpen || isActive ? T.indigo : T.rule}`,
+                      background: isOpen || isActive ? T.indigo : T.vellum,
+                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(14,124,116,0.08)',
                       fontFamily: F.ui,
                       fontSize: '13.5px',
-                      fontWeight: isActive || isOpen ? 600 : 500,
+                      fontWeight: isActive || isOpen ? 700 : 600,
                       color: isOpen || isActive ? '#fff' : T.inkMid,
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
-                      transition: 'all 0.12s',
+                      transition: 'all 0.18s cubic-bezier(0.22,1,0.36,1)',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isOpen) {
-                        e.currentTarget.style.color = T.ink
-                        e.currentTarget.style.borderColor = T.inkMid
+                      if (!isOpen && !isActive) {
+                        e.currentTarget.style.color = T.indigo
+                        e.currentTarget.style.borderColor = T.indigo
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (!isOpen) {
                         e.currentTarget.style.color = isActive ? '#fff' : T.inkMid
-                        e.currentTarget.style.borderColor = isActive ? T.ink : T.rule
+                        e.currentTarget.style.borderColor = isActive ? T.indigo : T.rule
                       }
                     }}
                   >

@@ -118,7 +118,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       {/* Gold accent stripe — same visual signature as marketplace header */}
       <div style={{
         height: 3,
-        background: `linear-gradient(90deg, ${T.gold} 0%, #C4A45A 50%, ${T.gold} 100%)`,
+        background: `linear-gradient(90deg, ${T.gold} 0%, ${T.gold} 50%, ${T.gold} 100%)`,
       }} />
 
       {/* Eyebrow */}

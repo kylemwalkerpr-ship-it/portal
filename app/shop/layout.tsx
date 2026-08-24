@@ -11,7 +11,7 @@ import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 export default function ShopLayout({ children }: { children: ReactNode }) {
   return (
     <CartProvider>
-      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#F7F8FA' }} />}>
+      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#F6F1E8' }} />}>
         <MarketplaceShell>{children}</MarketplaceShell>
       </Suspense>
     </CartProvider>

@@ -1,30 +1,32 @@
-// Editorial design tokens for the public marketplace surface.
-// Mirror of the T/F objects inlined in PublicMarketplaceLanding.tsx so
-// secondary marketplace pages (gig detail, provider profile, etc.) can
-// stay visually consistent with the landing without copy-pasting palette
-// values.
+// Mahogany veneer under a lit epoxy coat.
+// Keep `indigo` / `brick` keys so existing T.indigo call sites stay teal inlay.
+// T.ink stays dark for type on ivory cards. On-wood type uses T.cream.
 
 export const T = {
-  paper: '#F7F8FA',
-  paper2: '#EEF1F6',
-  paper3: '#DDE3EA',
-  vellum: '#FFFFFF',
-  ink: '#0F172A',
-  inkMid: '#334155',
-  inkSoft: '#64748B',
-  rule: '#E2E8F0',
-  ruleSoft: '#F1F5F9',
-  indigo: '#3C3B6E',
-  indigoDeep: '#2A2A55',
-  indigoSoft: 'rgba(60,59,110,0.08)',
-  brick: '#B22234',
-  gold: '#C4A45A',
-  moss: '#5F6B3A',
-  star: '#C68B27',
+  paper: '#2C1410',
+  paper2: '#3A1C14',
+  paper3: '#4A2518',
+  vellum: '#FFF8F0',
+  cream: '#F6EBD8',
+  ink: '#1A120E',
+  inkMid: '#4A3A32',
+  inkSoft: '#7A6A5E',
+  rule: 'rgba(246,235,216,0.16)',
+  ruleSoft: 'rgba(246,235,216,0.08)',
+  indigo: '#0E7C74',
+  indigoDeep: '#085E58',
+  indigoSoft: 'rgba(14,124,116,0.16)',
+  brick: '#D4532A',
+  gold: '#E0B45A',
+  moss: '#3F6B4A',
+  star: '#E0B45A',
+  teal: '#0E7C74',
+  tealDeep: '#085E58',
+  footer: '#1A0C08',
 } as const
 
 export const F = {
-  display: "var(--font-lora), 'Lora', Georgia, 'Times New Roman', serif",
-  ui: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  display: "var(--font-fraunces), 'Fraunces', Georgia, 'Times New Roman', serif",
+  ui: "var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   mono: "var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace",
 } as const

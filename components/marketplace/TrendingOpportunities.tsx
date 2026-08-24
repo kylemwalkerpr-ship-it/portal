@@ -29,8 +29,8 @@ type Opportunity = {
 }
 
 const URGENCY: Record<string, { label: string; color: string; bg: string }> = {
-  urgent: { label: 'Urgent', color: T.brick, bg: 'rgba(178,34,52,0.08)' },
-  high: { label: 'High priority', color: T.brick, bg: 'rgba(178,34,52,0.08)' },
+  urgent: { label: 'Urgent', color: T.brick, bg: 'rgba(212,83,42,0.10)' },
+  high: { label: 'High priority', color: T.brick, bg: 'rgba(212,83,42,0.10)' },
   normal: { label: 'Standard', color: T.indigo, bg: T.indigoSoft },
   low: { label: 'Flexible', color: T.inkSoft, bg: T.ruleSoft },
 }
@@ -135,7 +135,7 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
       </div>
 
       {error && (
-        <div style={{ background: 'rgba(178,34,52,0.06)', border: '1px solid rgba(178,34,52,0.2)', borderRadius: 10, padding: '14px 18px', color: T.brick, fontSize: 13, marginBottom: 18, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ background: 'rgba(212,83,42,0.08)', border: '1px solid rgba(212,83,42,0.22)', borderRadius: 10, padding: '14px 18px', color: T.brick, fontSize: 13, marginBottom: 18, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <span>{error}</span>
           <button onClick={load} style={{ background: 'none', border: 'none', color: T.brick, textDecoration: 'underline', cursor: 'pointer', fontFamily: F.ui, fontSize: 13 }}>Retry</button>
         </div>

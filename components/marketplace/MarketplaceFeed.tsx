@@ -25,17 +25,19 @@ type Status = {
   viewed: boolean
 }
 
-const INDIGO = '#3C3B6E'
-const BRICK = '#B22234'
-const INK = '#0F172A'
-const INK_MID = '#334155'
-const INK_SOFT = '#64748B'
-const BORDER = '#E2E8F0'
-const PAPER = '#F7F8FA'
-const VELLUM = '#FFFFFF'
-const SOFT_BORDER = '#F1F5F9'
-const SERIF = "var(--font-lora), Lora, Georgia, serif"
-const SANS = "var(--font-inter), Inter, system-ui, sans-serif"
+import { T, F } from './tokens'
+
+const INDIGO = T.indigo
+const BRICK = T.brick
+const INK = T.ink
+const INK_MID = T.inkMid
+const INK_SOFT = T.inkSoft
+const BORDER = T.rule
+const PAPER = T.paper
+const VELLUM = T.vellum
+const SOFT_BORDER = T.ruleSoft
+const SERIF = F.display
+const SANS = F.ui
 
 function urgencyColor(u: string | null | undefined): string {
   const v = (u || '').toLowerCase()

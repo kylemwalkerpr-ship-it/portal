@@ -259,12 +259,12 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         position: 'sticky',
         top: 0,
         zIndex: 200,
-        background: 'rgba(255,255,255,0.94)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${T.rule}`,
-        boxShadow: scrolled ? '0 2px 16px rgba(15,23,42,0.08)' : 'none',
-        transition: 'box-shadow 0.2s',
+        background: 'linear-gradient(180deg, rgba(90,42,28,0.72) 0%, rgba(44,20,16,0.88) 100%)',
+        backdropFilter: 'blur(16px) saturate(1.2)',
+        WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
+        borderBottom: '1px solid rgba(224,180,90,0.28)',
+        boxShadow: scrolled ? '0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,236,200,0.18)' : 'inset 0 1px 0 rgba(255,236,200,0.14)',
+        transition: 'box-shadow 0.22s cubic-bezier(0.22,1,0.36,1)',
         fontFamily: F.ui,
       }}
     >
@@ -362,7 +362,9 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             background: shopActive ? T.indigoDeep : T.indigo,
             borderRadius: 999,
             height: 38,
-            boxShadow: '0 8px 18px -12px rgba(60,59,110,0.8)',
+            boxShadow: shopActive ? '0 0 0 2px #E8B931, 0 8px 18px -10px rgba(14,124,116,0.7)' : '0 8px 18px -10px rgba(14,124,116,0.7)',
+            letterSpacing: '-0.01em',
+            transition: 'background .18s cubic-bezier(0.22,1,0.36,1), box-shadow .18s cubic-bezier(0.22,1,0.36,1)',
           }}
         >
           File shop

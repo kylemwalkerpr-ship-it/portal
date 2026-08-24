@@ -65,24 +65,27 @@ function withCountry(href: string, country: string): string {
   return `${href}${sep}country=${country}`
 }
 
-const INDIGO = '#3C3B6E'
-const INDIGO_DEEP = '#2A2A55'
-const INK = '#0F172A'
-const INK_SOFT = '#64748B'
-const RULE = '#E2E8F0'
-const PAPER2 = '#EEF1F6'
-const BRICK = '#B22234'
-const MOSS = '#5F6B3A'
-const STAR = '#C68B27'
-const SERIF = "var(--font-lora), 'Lora', Georgia, 'Times New Roman', serif"
-const MONO = "var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace"
-const UI = "var(--font-inter), var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)"
-
 export default function HeroCaseFileSlideshow({
   slides,
   currency,
   T,
+  F,
 }: Props) {
+  // Palette resolved from the shared tokens passed over the RSC boundary.
+  const INDIGO = T.indigo
+  const INDIGO_DEEP = T.indigoDeep
+  const INK = T.ink
+  const INK_SOFT = T.inkSoft
+  const RULE = T.rule
+  const PAPER2 = T.paper2
+  const VELLUM = T.vellum
+  const BRICK = T.brick
+  const MOSS = T.moss
+  const STAR = T.star
+  const SERIF = F.display
+  const MONO = F.mono
+  const UI = F.ui
+
   const [index, setIndex] = React.useState(0)
   const [paused, setPaused] = React.useState(false)
   const [prefersReduced, setPrefersReduced] = React.useState(false)
@@ -117,7 +120,7 @@ export default function HeroCaseFileSlideshow({
   // returns no jurisdictions with caseFiles.
   if (count === 0) {
     return (
-      <aside className="hero-empty" style={{ background: '#fff', border: `1px dashed ${RULE}`, borderRadius: 18, padding: '48px 32px', textAlign: 'center', color: INK_SOFT, fontFamily: SERIF, fontStyle: 'italic', fontSize: 18, lineHeight: 1.5 }}>
+      <aside className="hero-empty" style={{ background: VELLUM, border: `1px dashed ${RULE}`, borderRadius: 18, padding: '48px 32px', textAlign: 'center', color: INK_SOFT, fontFamily: SERIF, fontStyle: 'italic', fontSize: 18, lineHeight: 1.5 }}>
         No active briefs yet — be the first to <a href="https://portal.yousafeconsultancy.com/sign-up/attorney" style={{ color: INDIGO, borderBottom: `1px solid ${INDIGO}` }}>list one</a>.
       </aside>
     )
@@ -154,7 +157,7 @@ export default function HeroCaseFileSlideshow({
           gap: 6,
           padding: '4px 12px',
           borderRadius: 999,
-          background: '#fff',
+          background: VELLUM,
           border: `1px solid ${RULE}`,
           boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
           color: INK,
@@ -262,7 +265,7 @@ export default function HeroCaseFileSlideshow({
               height: 28,
               borderRadius: 999,
               border: `1px solid ${RULE}`,
-              background: '#fff',
+              background: VELLUM,
               color: INK,
               display: 'inline-grid',
               placeItems: 'center',
@@ -303,7 +306,7 @@ export default function HeroCaseFileSlideshow({
               height: 28,
               borderRadius: 999,
               border: `1px solid ${RULE}`,
-              background: '#fff',
+              background: VELLUM,
               color: INK,
               display: 'inline-grid',
               placeItems: 'center',

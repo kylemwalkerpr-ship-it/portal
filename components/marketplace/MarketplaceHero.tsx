@@ -23,7 +23,7 @@ const gigImage: CSSProperties = {
   width: '100%',
   height: '140px',
   objectFit: 'cover',
-  background: `linear-gradient(135deg, ${T.paper2}, #E8EEF6)`,
+  background: `linear-gradient(135deg, ${T.paper2}, ${T.paper3})`,
 }
 
 const gigContent: CSSProperties = {
@@ -199,7 +199,7 @@ export function GigCard({ gig }: GigCardProps) {
             position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: '50%',
             border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'rgba(255,255,255,0.92)', boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
-            fontSize: 15, lineHeight: 1, color: saved ? '#B22234' : '#7a8294',
+            fontSize: 15, lineHeight: 1, color: saved ? T.brick : T.inkSoft,
             transition: 'transform 120ms ease, color 120ms ease',
             transform: hovered || saved ? 'scale(1)' : 'scale(0.96)',
           }}

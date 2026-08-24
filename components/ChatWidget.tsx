@@ -16,8 +16,8 @@ const SUPPORT_API_DEFAULT = 'https://support.yousafeconsultancy.com/api/chat/wid
 const SUPPORT_POLL_MS = 5000
 
 const styles = {
-  bubbleBg: '#3C3B6E',
-  bubbleBgHover: '#2d2a5e',
+  bubbleBg: '#0E7C74',
+  bubbleBgHover: '#085E58',
   bubbleText: '#FFFFFF',
   panelBg: '#FFFFFF',
   panelBorder: '#E5E7EB',
