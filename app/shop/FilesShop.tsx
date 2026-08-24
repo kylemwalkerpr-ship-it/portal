@@ -184,10 +184,9 @@ function Stat({ n, label }: { n: string; label: string }) {
 function Cover({ product, large }: { product: FileShopProduct; large?: boolean }) {
   const tone = CAT_TONE[product.cat]
   return (
-    <div className={`ys-shop-cover${large ? ' large' : ''}`} style={{ background: tone.wash, color: tone.ink }}>
+    <div className={`ys-shop-cover${large ? ' large' : ''}`}>
+      <img src={product.cover} alt="" width={1200} height={1600} />
       <span className="ys-shop-cover-cat">{tone.label}</span>
-      <span className="ys-shop-cover-file">File {product.file}</span>
-      <span className="ys-shop-cover-fmt">{product.format}</span>
     </div>
   )
 }
@@ -292,13 +291,15 @@ const SHOP_CSS = `
     box-shadow: 0 18px 40px -24px rgba(15,23,42,0.35);
   }
   .ys-shop-cover {
-    padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 108px;
-    border-bottom: 1px solid ${T.ruleSoft};
+    position: relative; padding: 0; aspect-ratio: 4 / 3; overflow: hidden; background: ${T.paper2};
   }
-  .ys-shop-cover.large { min-height: 132px; }
-  .ys-shop-cover-cat { font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
-  .ys-shop-cover-file { font-family: ${F.display}; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
-  .ys-shop-cover-fmt { font-size: 12px; opacity: 0.8; }
+  .ys-shop-cover.large { aspect-ratio: 16 / 10; }
+  .ys-shop-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ys-shop-cover-cat {
+    position: absolute; left: 12px; bottom: 12px;
+    font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    color: #fff; background: rgba(15,23,42,0.72); padding: 5px 8px; border-radius: 6px;
+  }
   .ys-shop-card-body { padding: 18px 18px 16px; display: flex; flex-direction: column; flex: 1; }
   .ys-shop-card-body h3 { font-family: ${F.display}; font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 8px; }
   .ys-shop-card-body p { font-size: 14px; line-height: 1.55; color: ${T.inkMid}; margin: 0 0 12px; flex: 1; }
