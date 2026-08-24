@@ -75,6 +75,9 @@ const isPublicRoute = createRouteMatcher([
   // entry drops the middleware gate to match. Auth-only actions (message,
   // order) gate themselves downstream.
   '/sellers(.*)',
+  // Instant-download file shop (Payhip catalog) on the market host.
+  '/shop',
+  '/shop(.*)',
 ])
 
 // Origins we permit for cross-origin API calls. The market subdomain
@@ -286,7 +289,13 @@ export default clerkMiddleware(
     // Market domain: rewrite /xyz → /marketplace/xyz (except API, static, and
     // already-prefixed paths). Portal domain: redirect /marketplace/* to market.
     if (hostname === MARKET_HOST) {
-      if (pathname.startsWith('/api/') || pathname.startsWith('/_next/') || pathname.startsWith('/sellers')) {
+      if (
+        pathname.startsWith('/api/') ||
+        pathname.startsWith('/_next/') ||
+        pathname.startsWith('/sellers') ||
+        pathname === '/shop' ||
+        pathname.startsWith('/shop/')
+      ) {
         // pass through — /sellers lives at its on-disk path (no /marketplace
         // prefix) and is now public, so gig-card seller clicks on the market
         // host serve directly instead of bouncing to portal + sign-in.
@@ -327,6 +336,9 @@ export default clerkMiddleware(
     } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {
       const redirectPath = pathname.slice('/marketplace'.length) || '/'
       const redirectUrl = new URL(redirectPath + search, `https://${MARKET_HOST}`)
+      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
+    } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {
+      const redirectUrl = new URL(pathname + search, `https://${MARKET_HOST}`)
       return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 

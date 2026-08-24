@@ -34,6 +34,7 @@ interface FooterLink {
 
 const NAV_LINKS: FooterLink[] = [
   { label: 'Browse', href: '/marketplace' },
+  { label: 'File shop', href: '/shop' },
   { label: 'Categories', href: '/marketplace/categories' },
   { label: 'For attorneys', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
   { label: 'For consultants', href: 'https://portal.yousafeconsultancy.com/sign-up/consultant' },

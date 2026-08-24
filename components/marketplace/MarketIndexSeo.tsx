@@ -35,7 +35,11 @@ export function CategoriesIndexSeo() {
         </a>
         . Prefer self-serve worksheets? Open{' '}
         <Link href="/templates" style={{ color: '#1E3A5F' }}>
-          template packs
+          visa template packs
+        </Link>
+        {' '}or the{' '}
+        <Link href="/shop" style={{ color: '#1E3A5F' }}>
+          file shop
         </Link>
         . Marketplace orders are preparation and consulting engagements unless your contract states
         attorney representation.
@@ -134,7 +138,9 @@ export function MarketplaceHomeSeo() {
         {' · '}
         <Link href="/categories/legal" style={{ color: '#1E3A5F' }}>Legal</Link>
         {' · '}
-        <Link href="/templates" style={{ color: '#1E3A5F' }}>Templates</Link>
+        <Link href="/templates" style={{ color: '#1E3A5F' }}>Visa kits</Link>
+        {' · '}
+        <Link href="/shop" style={{ color: '#1E3A5F' }}>File shop</Link>
         {' · '}
         <Link href="/providers" style={{ color: '#1E3A5F' }}>Providers</Link>
       </p>

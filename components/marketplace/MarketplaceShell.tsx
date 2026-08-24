@@ -342,6 +342,30 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
           </svg>
         </a>
 
+        <Link
+          href="/shop"
+          aria-label="Instant-download file shop"
+          className="ys-shell-shop"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '0 14px',
+            marginRight: 4,
+            color: T.inkSoft,
+            fontSize: 13,
+            fontWeight: 500,
+            fontFamily: F.ui,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            transition: 'color 120ms ease',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.ink }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.inkSoft }}
+        >
+          File shop
+        </Link>
+
         {/* Nav tabs — scrollable on mobile; the active item scrolls itself
             into view so the user always sees which section they're on
             even after they've scrolled the tab strip sideways. */}
