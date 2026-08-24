@@ -12,10 +12,10 @@
  * VI  Track      — publication ledger, canonical verification, GSC position tracking
  * VII Configure  — AI models, API keys, GSC connection, system settings
  */
-export type StudioStage = 'discover' | 'research' | 'draft' | 'approve' | 'configure'
+export type StudioStage = 'discover' | 'research' | 'draft' | 'approve' | 'configure' | 'shop'
 
 export const DISSERTATION_STAGES: readonly StudioStage[] = [
-  'discover', 'research', 'draft', 'approve', 'configure',
+  'discover', 'research', 'draft', 'approve', 'configure', 'shop',
 ] as const
 
 /**

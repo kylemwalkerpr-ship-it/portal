@@ -7,7 +7,7 @@ import type { StudioStage } from '@/lib/seoFactory/studioPipeline'
 /** Local alias matching admin-content-studio.tsx (`type StudioTab = StudioStage`). */
 type StudioTab = StudioStage
 
-const ORDER: StudioTab[] = ['discover', 'research', 'draft', 'approve', 'configure']
+const ORDER: StudioTab[] = ['discover', 'research', 'draft', 'approve', 'configure', 'shop']
 
 const NUMERALS: Record<StudioTab, string> = {
   discover: 'I',
@@ -15,6 +15,7 @@ const NUMERALS: Record<StudioTab, string> = {
   draft: 'III',
   approve: 'IV',
   configure: 'V',
+  shop: 'VI',
 }
 
 const TITLES: Record<StudioTab, string> = {
@@ -23,6 +24,7 @@ const TITLES: Record<StudioTab, string> = {
   draft: 'Draft & Review',
   approve: 'Approve & Track',
   configure: 'Configure',
+  shop: 'Shop SEO',
 }
 
 /**

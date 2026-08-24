@@ -94,6 +94,7 @@ import {
 import { QueueStats, QueueTable } from './studio-queue'
 import { ReviewDraftsPanel } from './studio-review-panels'
 import { MasterEnginePanel } from './master-engine-panel'
+import AdminShopSeo from './admin-shop-seo'
 
 
 const C = E
@@ -4773,6 +4774,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     draft: { available: hasBriefReady || hasDraft, reason: 'Complete the research brief, or open an existing draft from the queue to review.' },
     approve: { available: hasApproval, reason: 'A completed draft or open PR must exist before approval.' },
     configure: { available: true, reason: 'System configuration is always accessible.' },
+    shop: { available: true, reason: 'Shop product blog pipeline — generate and manage product articles.' },
   }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
 
   const pendingDeepLinkRef = React.useRef<StudioTab | null>(null)
@@ -6138,6 +6140,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     { key: 'draft',     numeral: 'III', label: 'Draft & Review',   sub: 'Generate · Gate · Fix',    hint: `${jobTotal || jobs.length} jobs · queue · review` },
     { key: 'approve',   numeral: 'IV',  label: 'Approve & Track',  sub: 'Merge · Deploy · Verify',  hint: 'PR · deploy · ledger · GSC' },
     { key: 'configure', numeral: 'V',   label: 'Configure',     sub: 'System Settings',        hint: 'AI models · API keys · GSC · health' },
+    { key: 'shop',      numeral: 'VI',  label: 'Shop SEO',   sub: 'Product Blog Pipeline',   hint: '20 products · queue · draft · ship' },
   ]
 
   return (
@@ -7429,6 +7432,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onConnected={() => loadGscStatus()}
           onClose={() => setGscConnectOpen(false)}
         />
+      )}
+
+      {/* ── VI · SHOP SEO ── */}
+      {tab === 'shop' && (
+        <>
+          <div id="studio-panel-shop" role="tabpanel" aria-labelledby="studio-tab-shop" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <AdminShopSeo />
+          </div>
+        </>
       )}
 
       {/* ── Sticky bottom navigation — appears when work plan items are selected ── */}
