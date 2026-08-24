@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
-import { MarketplaceHomeSeo } from '@/components/marketplace/MarketIndexSeo'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 // ISR: revalidate at most once per hour
@@ -90,10 +89,5 @@ export default async function Page({
   // cookies + hit Supabase on EVERY anonymous landing render for no used
   // return value, pure Worker CPU burn (CF error 1102 contributor).
 
-  return (
-    <>
-      <MarketplaceHomeSeo />
-      <PublicMarketplaceLanding country={country} />
-    </>
-  )
+  return <PublicMarketplaceLanding country={country} />
 }

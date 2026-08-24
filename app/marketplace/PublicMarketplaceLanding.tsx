@@ -9,10 +9,12 @@ import { unstable_cache } from 'next/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
+import { MarketplaceHomeSeo } from '@/components/marketplace/MarketIndexSeo'
 import { CountryPicker } from '@/components/marketplace/CountryTabs'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 import HeroCaseFileSlideshow, { HeroSlide } from '@/components/marketplace/HeroCaseFileSlideshow'
+import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -631,8 +633,8 @@ const CSS = `
 .cw-market .hero-search input::placeholder { color: ${T.inkSoft}; }
 .cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 46px; border-left: 1px solid ${T.ruleSoft}; color: ${T.inkSoft}; font-size: 13px; white-space: nowrap; }
 .cw-market .hero-search .pick b { color: ${T.ink}; font-weight: 600; }
-.cw-market .hero-search button.search-go { height: 46px; padding: 0 26px; background: ${T.ink}; color: #fff; border-radius: 9px; font-weight: 600; font-size: 14px; letter-spacing: 0.01em; transition: background .15s; }
-.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; }
+.cw-market .hero-search button.search-go { height: 46px; padding: 0 28px; background: ${T.indigo}; color: #fff; border-radius: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.01em; transition: background .15s, transform .12s; }
+.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); }
 .cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
 .cw-market .suggest span.lbl { font-family: ${F.ui}; color: rgba(255,255,255,0.6); letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
 .cw-market .suggest a { display: inline-flex; align-items: center; padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; color: rgba(255,255,255,0.88); font-weight: 500; transition: all .15s; }
@@ -668,6 +670,19 @@ const CSS = `
 .cw-market .trust-inner .label { color: ${T.inkMid}; font-weight: 600; }
 .cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
 .cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: #16a34a; }
+
+.cw-files-rail { padding: 22px 0 8px; background: #fff; border-bottom: 1px solid ${T.rule}; }
+.cw-files-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.cw-files-rail-head h2 { font-family: ${F.ui}; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.cw-files-rail-head a { font-size: 13px; font-weight: 700; color: ${T.indigo}; }
+.cw-files-scroller { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
+.cw-files-scroller::-webkit-scrollbar { display: none; }
+.cw-files-card { flex: 0 0 196px; scroll-snap-align: start; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; overflow: hidden; text-decoration: none; color: inherit; transition: transform .15s, box-shadow .15s; }
+.cw-files-card:hover { transform: translateY(-3px); box-shadow: 0 16px 28px -20px rgba(15,23,42,0.35); }
+.cw-files-card img { width: 100%; height: 124px; object-fit: cover; display: block; background: ${T.paper2}; }
+.cw-files-card .body { padding: 10px 12px 12px; }
+.cw-files-card h3 { margin: 0 0 4px; font-size: 13.5px; font-weight: 650; line-height: 1.3; }
+.cw-files-card .price { font-weight: 700; font-size: 14px; }
 
 .cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
 .cw-market .section-head h2 { font-family: ${F.display}; font-weight: 500; font-size: clamp(22px, 2.6vw, 30px); line-height: 1.15; letter-spacing: -0.014em; margin: 0; color: ${T.ink}; max-width: 24ch; }
@@ -1071,6 +1086,26 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </div>
 
+      <section className="cw-files-rail" aria-label="Instant-download file shop">
+        <div className="wrap">
+          <div className="cw-files-rail-head">
+            <h2>Instant downloads — from $7</h2>
+            <a href="/shop">See all files →</a>
+          </div>
+          <div className="cw-files-scroller">
+            {FILE_SHOP_PRODUCTS.slice(0, 10).map((p) => (
+              <a key={p.id} className="cw-files-card" href={p.href} rel="noopener noreferrer">
+                <img src={p.cover} alt="" width="196" height="124" />
+                <div className="body">
+                  <h3>{p.title}</h3>
+                  <div className="price">${p.price}</div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Featured gigs */}
       {featuredToShow.length > 0 ? (
         <section className="featured">
@@ -1264,27 +1299,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </section>
 
-      <section aria-label="File shop" style={{ background: T.vellum, borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
-        <div className="wrap" style={{ padding: '36px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
-          <div style={{ maxWidth: 640 }}>
-            <div style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.indigo, fontWeight: 600, marginBottom: 8 }}>Instant downloads</div>
-            <h2 style={{ fontFamily: F.display, fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em', margin: '0 0 8px' }}>Need a file today, not a consultant?</h2>
-            <p style={{ margin: 0, color: T.inkMid, fontSize: 15, lineHeight: 1.55 }}>
-              20 workbooks, templates, and short guides. Pay once on Payhip, download in the same session.
-            </p>
-          </div>
-          <a
-            href="/shop"
-            style={{
-              display: 'inline-flex', alignItems: 'center', background: T.indigo, color: '#fff',
-              fontWeight: 700, fontSize: 14, padding: '12px 18px', borderRadius: 999, textDecoration: 'none',
-            }}
-          >
-            Open the file shop
-          </a>
-        </div>
-      </section>
-
       {/* Payments & trust strip */}
       <section className="payments">
         <div className="wrap payments-inner">
@@ -1326,6 +1340,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       </section>
 
       <MarketplaceFooter />
+      <MarketplaceHomeSeo />
     </div>
   )
 }

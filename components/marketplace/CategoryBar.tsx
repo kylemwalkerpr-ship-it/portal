@@ -254,15 +254,15 @@ export function CategoryBar({ country }: Props) {
                       alignItems: 'center',
                       gap: '6px',
                       padding: '0 16px',
-                      height: '34px',
+                      height: '36px',
                       borderRadius: '999px',
-                      border: `1px solid ${isOpen ? T.ink : isActive ? T.inkMid : T.rule}`,
-                      background: isOpen ? T.ink : '#fff',
+                      border: `1px solid ${isOpen ? T.ink : isActive ? T.ink : T.rule}`,
+                      background: isOpen ? T.ink : isActive ? T.ink : '#fff',
                       boxShadow: isOpen ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
                       fontFamily: F.ui,
                       fontSize: '13.5px',
                       fontWeight: isActive || isOpen ? 600 : 500,
-                      color: isOpen ? '#fff' : isActive ? T.ink : T.inkMid,
+                      color: isOpen || isActive ? '#fff' : T.inkMid,
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
@@ -276,8 +276,8 @@ export function CategoryBar({ country }: Props) {
                     }}
                     onMouseLeave={(e) => {
                       if (!isOpen) {
-                        e.currentTarget.style.color = isActive ? T.ink : T.inkMid
-                        e.currentTarget.style.borderColor = isActive ? T.inkMid : T.rule
+                        e.currentTarget.style.color = isActive ? '#fff' : T.inkMid
+                        e.currentTarget.style.borderColor = isActive ? T.ink : T.rule
                       }
                     }}
                   >

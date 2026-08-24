@@ -43,32 +43,32 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
       <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 8 }} suppressHydrationWarning>
         <button
           type="button"
-          onClick={() => clerk.openSignUp({
-            unsafeMetadata: { requestedRole: 'attorney', signupSource: 'marketplace_join_panel' },
-            forceRedirectUrl: `${PORTAL_URL}/dashboard`,
-            fallbackRedirectUrl: `${PORTAL_URL}/dashboard`,
-            signInUrl: `${PORTAL_URL}/sign-in/attorney`,
-          })}
-          style={{
-            fontFamily: F.ui, fontSize: 13, fontWeight: 600,
-            color: '#fff', background: T.indigo,
-            padding: '8px 16px', borderRadius: 999,
-            border: 'none', cursor: 'pointer',
-          }}
-        >Join Panel</button>
-        <button
-          type="button"
           onClick={() => clerk.openSignIn({
             forceRedirectUrl: `${PORTAL_URL}/dashboard`,
             signUpUrl: `${PORTAL_URL}/sign-up/student`,
           })}
           style={{
-            fontFamily: F.ui, fontSize: 13, fontWeight: 500,
+            fontFamily: F.ui, fontSize: 13, fontWeight: 600,
             color: T.ink, background: 'transparent',
             padding: '8px 14px', borderRadius: 999,
-            border: 'none', cursor: 'pointer',
+            border: `1px solid ${T.rule}`, cursor: 'pointer',
           }}
         >Sign in</button>
+        <button
+          type="button"
+          onClick={() => clerk.openSignUp({
+            unsafeMetadata: { requestedRole: 'client', signupSource: 'marketplace_join' },
+            forceRedirectUrl: `${PORTAL_URL}/dashboard`,
+            fallbackRedirectUrl: `${PORTAL_URL}/dashboard`,
+            signInUrl: `${PORTAL_URL}/sign-in/student`,
+          })}
+          style={{
+            fontFamily: F.ui, fontSize: 13, fontWeight: 700,
+            color: '#fff', background: T.ink,
+            padding: '9px 18px', borderRadius: 999,
+            border: 'none', cursor: 'pointer',
+          }}
+        >Join</button>
       </nav>
     )
   }

@@ -349,22 +349,21 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            padding: '0 14px',
-            marginRight: 4,
-            color: shopActive ? T.indigo : T.inkSoft,
+            gap: 6,
+            padding: '0 16px',
+            marginRight: 8,
+            color: '#fff',
             fontSize: 13,
-            fontWeight: shopActive ? 700 : 500,
+            fontWeight: 700,
             fontFamily: F.ui,
             textDecoration: 'none',
             whiteSpace: 'nowrap',
             flexShrink: 0,
-            transition: 'color 120ms ease',
-            background: shopActive ? T.indigoSoft : 'transparent',
-            borderRadius: 9,
-            height: 36,
+            background: shopActive ? T.indigoDeep : T.indigo,
+            borderRadius: 999,
+            height: 38,
+            boxShadow: '0 8px 18px -12px rgba(60,59,110,0.8)',
           }}
-          onMouseEnter={(e) => { if (!shopActive) (e.currentTarget as HTMLElement).style.color = T.ink }}
-          onMouseLeave={(e) => { if (!shopActive) (e.currentTarget as HTMLElement).style.color = T.inkSoft }}
         >
           File shop
         </Link>
@@ -375,28 +374,49 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         <nav
           ref={navScrollRef}
           className="ys-market-nav"
-          style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const, scrollSnapType: 'x mandatory' as const, WebkitOverflowScrolling: 'touch' as const }}
         >
           {links.map(link => {
-            const active = link.view === activeView
+            const active = link.view === activeView && !shopActive
             return (
               <button
                 key={link.view}
                 ref={(el) => { if (active) activeNavRef.current = el }}
                 onClick={() => onNav(link.view as Section)}
-                onMouseEnter={(e) => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.color = T.ink; el.style.background = T.paper2 } }}
-                onMouseLeave={(e) => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.color = T.inkMid; el.style.background = 'none' } }}
+                onMouseEnter={(e) => {
+                  if (active) return
+                  const el = e.currentTarget as HTMLElement
+                  if (link.view === 'attorneys') {
+                    el.style.background = '#1E293B'
+                  } else {
+                    el.style.color = T.ink
+                    el.style.background = T.paper2
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (active) return
+                  const el = e.currentTarget as HTMLElement
+                  if (link.view === 'attorneys') {
+                    el.style.background = T.ink
+                    el.style.color = '#fff'
+                  } else {
+                    el.style.color = T.inkMid
+                    el.style.background = 'none'
+                  }
+                }}
                 style={{
                   display: 'inline-flex', alignItems: 'center',
-                  padding: '9px 16px',
-                  borderRadius: 9,
-                  fontSize: '14px', fontWeight: active ? 700 : 500,
-                  color: active ? T.indigo : T.inkMid,
-                  background: active ? T.indigoSoft : 'none',
+                  padding: link.view === 'attorneys' ? '0 18px' : '9px 16px',
+                  height: 38,
+                  borderRadius: 999,
+                  fontSize: '14px', fontWeight: active || link.view === 'attorneys' ? 700 : 500,
+                  color: link.view === 'attorneys' ? '#fff' : active ? T.indigo : T.inkMid,
+                  background: link.view === 'attorneys' ? T.ink : active ? T.indigoSoft : 'none',
                   border: 'none',
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
                   letterSpacing: '-0.005em',
                   flexShrink: 0,
+                  scrollSnapAlign: 'start' as const,
                   transition: 'color 0.12s, background 0.12s',
                   fontFamily: F.ui,
                 }}
@@ -529,7 +549,9 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           .ys-shell-home { padding: 0 8px !important; }
           .ys-shell-home span { display: none !important; }
           .ys-shell-home svg:last-child { display: none !important; }
-          .ys-shell-shop { padding: 0 10px !important; font-size: 12px !important; }
+          .ys-shell-shop { padding: 0 12px !important; font-size: 12px !important; height: 34px !important; }
+          .ys-market-nav { scrollbar-width: none; }
+          .ys-market-nav::-webkit-scrollbar { display: none; }
           .ys-shell-brand { padding-right: 10px !important; }
           .ys-shell-brand-sub { display: none !important; }
           .ys-shell-aux { padding-left: 6px !important; }

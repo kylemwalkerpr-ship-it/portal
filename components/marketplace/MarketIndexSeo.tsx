@@ -118,32 +118,49 @@ export function ProvidersIndexSeo() {
 }
 
 export function MarketplaceHomeSeo() {
+  const chips = [
+    { href: '/categories/immigration', label: 'Immigration' },
+    { href: '/categories/education', label: 'Education' },
+    { href: '/categories/legal', label: 'Legal' },
+    { href: '/templates', label: 'Visa kits' },
+    { href: '/shop', label: 'File shop' },
+    { href: '/providers', label: 'Providers' },
+  ]
   return (
-    <section
-      aria-label="Marketplace overview"
-      style={{ ...wrap, paddingTop: 24, paddingBottom: 8 }}
-    >
-      <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 10px' }}>How YouSafe Marketplace works</h2>
-      <p style={{ fontSize: 15, lineHeight: 1.65, margin: '0 0 10px', maxWidth: '44rem' }}>
-        Browse fixed-price briefs for immigration, education, legal review, settlement, and career
-        support across the US, UK, Canada, and Australia. Compare delivery times and provider roles,
-        then request work through secure checkout. Free procedural guides live on MyCaseworks; this
-        market is for paid, scoped human help and template kits.
-      </p>
-      <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, maxWidth: '44rem' }}>
-        Popular entry points:{' '}
-        <Link href="/categories/immigration" style={{ color: '#1E3A5F' }}>Immigration</Link>
-        {' · '}
-        <Link href="/categories/education" style={{ color: '#1E3A5F' }}>Education</Link>
-        {' · '}
-        <Link href="/categories/legal" style={{ color: '#1E3A5F' }}>Legal</Link>
-        {' · '}
-        <Link href="/templates" style={{ color: '#1E3A5F' }}>Visa kits</Link>
-        {' · '}
-        <Link href="/shop" style={{ color: '#1E3A5F' }}>File shop</Link>
-        {' · '}
-        <Link href="/providers" style={{ color: '#1E3A5F' }}>Providers</Link>
-      </p>
+    <section aria-label="Marketplace overview" style={{ borderTop: '1px solid #E2E8F0', background: '#F8FAFC', padding: '28px 20px 36px' }}>
+      <div style={{ maxWidth: 1120, margin: '0 auto' }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748B', margin: '0 0 8px' }}>
+          How it works
+        </p>
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', letterSpacing: '-0.02em' }}>
+          Fixed-price briefs. Pay when the work lands.
+        </h2>
+        <p style={{ fontSize: 15, lineHeight: 1.55, margin: '0 0 16px', maxWidth: '40rem', color: '#475569' }}>
+          Compare scoped immigration, education, legal, settlement, and career help across the US, UK,
+          Canada, and Australia. Checkout is escrowed. Instant downloads live in the file shop.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {chips.map((c) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '8px 14px',
+                borderRadius: 999,
+                background: '#0F172A',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              {c.label}
+            </Link>
+          ))}
+        </div>
+      </div>
     </section>
   )
 }
