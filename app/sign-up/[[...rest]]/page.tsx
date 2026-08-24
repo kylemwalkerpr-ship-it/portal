@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const lang = await activeLang()
   const lane = await activeLane()
   const titleEn = 'Create your YouSafe account'
-  const descEn  = 'Sign up for YouSafe Consultancy — students, attorneys, and consultants. Free to start, secure by design.'
+  const descEn  = 'Sign up for YouSafe Consultancy — clients, attorneys, and consultants. Free to start, secure by design.'
   const [title, description] = await translateBatch([titleEn, descEn], lang)
   return {
     title,

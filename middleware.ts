@@ -337,9 +337,6 @@ export default clerkMiddleware(
       const redirectPath = pathname.slice('/marketplace'.length) || '/'
       const redirectUrl = new URL(redirectPath + search, `https://${MARKET_HOST}`)
       return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
-    } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {
-      const redirectUrl = new URL(pathname + search, `https://${MARKET_HOST}`)
-      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 
     if (pathname !== '/' && isPublicRoute(req)) {

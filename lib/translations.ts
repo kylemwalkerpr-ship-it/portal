@@ -141,6 +141,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Attorney panel": "Panel de abogado",
     "Student": "Estudiante",
     "Student portal": "Portal del estudiante",
+    "Client portal": "Portal del cliente",
     "Consultant": "Consultor",
     "Consultants": "Consultores",
     "Senior Consultant": "Consultor senior",

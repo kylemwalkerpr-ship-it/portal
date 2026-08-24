@@ -1,65 +1,113 @@
 'use client'
 
-import { useState } from 'react'
-import { FILE_SHOP_FILTERS, FILE_SHOP_PRODUCTS, type FileShopCategory } from '@/lib/files-shop-catalog'
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
+import { T, F } from '@/components/marketplace/tokens'
+import { FILE_SHOP_FILTERS, FILE_SHOP_PRODUCTS, type FileShopCategory, type FileShopProduct } from '@/lib/files-shop-catalog'
 
 type FilterId = 'all' | FileShopCategory
 
+const CAT_TONE: Record<FileShopCategory, { wash: string; ink: string; label: string }> = {
+  spreadsheet: { wash: '#EEF0F7', ink: T.indigo, label: 'Workbook' },
+  guide: { wash: '#F2F4EC', ink: T.moss, label: 'Guide' },
+  template: { wash: '#F7EEF0', ink: T.brick, label: 'Template' },
+  craft: { wash: '#F7F3E8', ink: '#8A6A22', label: 'Print' },
+}
+
 export default function FilesShop() {
   const [filter, setFilter] = useState<FilterId>('all')
-  const visible = FILE_SHOP_PRODUCTS.filter((p) => filter === 'all' || p.cat === filter)
+  const [query, setQuery] = useState('')
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return FILE_SHOP_PRODUCTS.filter((p) => {
+      if (filter !== 'all' && p.cat !== filter) return false
+      if (!q) return true
+      return `${p.title} ${p.desc} ${p.format} ${p.bullets.join(' ')}`.toLowerCase().includes(q)
+    })
+  }, [filter, query])
+
+  const featured = FILE_SHOP_PRODUCTS.filter((p) => p.id === 'consultant-toolkit' || p.id === 'ai-prompts-business')
 
   return (
-    <div className="files-shop">
-      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-      <link
-        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
-        rel="stylesheet"
-      />
+    <div className="ys-files-shop">
       <style>{SHOP_CSS}</style>
-      <header>
-        <div className="wrap header-row">
-          <div className="wordmark">Yousafe <span>Consultancy</span></div>
-          <nav>
-            <a href="#catalog">Tools</a>
-            <a href="#trust">Why Us</a>
-            <a href="/">Marketplace</a>
-            <a href="/templates">Visa kits</a>
-          </nav>
-        </div>
-      </header>
 
-      <section className="hero">
-        <div className="wrap">
-          <div className="eyebrow">Field-tested tools, not theory</div>
-          <h1>Systems for people who <em>run their business alone.</em></h1>
-          <p>
-            Spreadsheets, templates, and short guides — built for freelancers, consultants, and solo
-            operators. Pay once, download instantly. Checkout is handled securely on Payhip.
-          </p>
-          <div className="file-index">
-            <span>CATALOG — {FILE_SHOP_PRODUCTS.length} FILES</span>
-            <span>FORMAT — INSTANT DOWNLOAD</span>
-            <span>NO SUBSCRIPTION REQUIRED</span>
+      <div className="ys-shop-hero">
+        <div className="ys-shop-wrap">
+          <nav className="ys-shop-crumbs" aria-label="Breadcrumb">
+            <a href="https://yousafeconsultancy.com/">Home</a>
+            <span aria-hidden="true">/</span>
+            <Link href="/marketplace">Marketplace</Link>
+            <span aria-hidden="true">/</span>
+            <span>File shop</span>
+          </nav>
+
+          <div className="ys-shop-hero-grid">
+            <div>
+              <p className="ys-shop-kicker">Instant download · Pay once</p>
+              <h1>Tools you can open today and run the business with.</h1>
+              <p className="ys-shop-lede">
+                Spreadsheets, templates, and short guides for consultants, operators, and families.
+                Checkout is on Payhip. Your file arrives in the same session — no subscription, no
+                waiting on fulfilment.
+              </p>
+              <div className="ys-shop-cta-row">
+                <a className="ys-shop-btn primary" href="#catalog">Browse the catalog</a>
+                <Link className="ys-shop-btn ghost" href="/marketplace">Back to marketplace</Link>
+              </div>
+            </div>
+            <aside className="ys-shop-stats" aria-label="Shop facts">
+              <Stat n={String(FILE_SHOP_PRODUCTS.length)} label="files in catalog" />
+              <Stat n="$7–16" label="one-time USD price" />
+              <Stat n="0" label="subscriptions" />
+              <Stat n="Payhip" label="secure checkout" />
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <section className="ys-shop-featured" aria-labelledby="featured-heading">
+        <div className="ys-shop-wrap">
+          <div className="ys-shop-section-head">
+            <p className="ys-shop-kicker">Start here</p>
+            <h2 id="featured-heading">Most used this week</h2>
+          </div>
+          <div className="ys-shop-featured-grid">
+            {featured.map((p) => (
+              <FeaturedCard key={p.id} product={p} />
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="catalog" id="catalog">
-        <div className="wrap">
-          <div className="catalog-head">
+      <section className="ys-shop-catalog" id="catalog">
+        <div className="ys-shop-wrap">
+          <div className="ys-shop-section-head row">
             <div>
-              <div className="eyebrow">Open files — {FILE_SHOP_PRODUCTS.length} on record</div>
-              <h2>Pick your tool</h2>
+              <p className="ys-shop-kicker">Full catalog</p>
+              <h2>Every file, ready to download</h2>
             </div>
+            <label className="ys-shop-search">
+              <span className="sr-only">Search files</span>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search workbooks, resumes, planners…"
+              />
+            </label>
           </div>
 
-          <div className="filter-row">
+          <div className="ys-shop-filters" role="tablist" aria-label="File type">
             {FILE_SHOP_FILTERS.map((pill) => (
               <button
                 key={pill.id}
                 type="button"
-                className={`filter-pill${filter === pill.id ? ' active' : ''}`}
+                role="tab"
+                aria-selected={filter === pill.id}
+                className={filter === pill.id ? 'on' : undefined}
                 onClick={() => setFilter(pill.id)}
               >
                 {pill.label}
@@ -67,185 +115,237 @@ export default function FilesShop() {
             ))}
           </div>
 
-          <div className="files">
-            {visible.map((p) => (
-              <article key={p.id} className="file-card">
-                <div className="file-tab">FILE {p.file}</div>
-                <div className="stamp">
-                  {p.stamp.split('\n').map((line) => (
-                    <span key={line}>
-                      {line}
-                      <br />
-                    </span>
-                  ))}
-                </div>
-                <div className="file-format">{p.format}</div>
-                <h3>{p.title}</h3>
-                <p className="desc">{p.desc}</p>
-                <ul>
-                  <li>{p.bullets[0]}</li>
-                  <li>{p.bullets[1]}</li>
-                </ul>
-                <div className="file-footer">
-                  <div className="price">
-                    ${p.price}
-                    <sup>.00</sup>
-                  </div>
-                  {p.published ? (
-                    <a className="buy-btn" href={p.href} data-product={p.id} rel="noopener noreferrer">
-                      Get file →
-                    </a>
-                  ) : (
-                    <span className="buy-btn soon">Coming soon</span>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
+          <p className="ys-shop-count">
+            {visible.length} {visible.length === 1 ? 'file' : 'files'}
+            {filter !== 'all' ? ` in ${FILE_SHOP_FILTERS.find((f) => f.id === filter)?.label}` : ''}
+          </p>
+
+          {visible.length === 0 ? (
+            <div className="ys-shop-empty">
+              <p>No files match that search. Try a category instead.</p>
+              <button type="button" onClick={() => { setQuery(''); setFilter('all') }}>Clear filters</button>
+            </div>
+          ) : (
+            <div className="ys-shop-grid">
+              {visible.map((p) => (
+                <ProductCard key={p.id} product={p} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="trust" id="trust">
-        <div className="wrap">
-          <div className="eyebrow">Why these files</div>
-          <div className="trust-grid">
-            <div className="trust-item">
-              <h4>Built for one-person operations</h4>
-              <p>No team seats, no onboarding calls. Every file is designed to be opened and used the same day, by someone with no time to learn new software.</p>
-            </div>
-            <div className="trust-item">
-              <h4>No subscriptions, ever</h4>
-              <p>Pay once, own it. No recurring charges, no feature paywalls, no “upgrade to unlock” tricks.</p>
-            </div>
-            <div className="trust-item">
-              <h4>Delivered instantly</h4>
-              <p>Checkout is on Payhip. Your download link arrives in seconds — no waiting, no manual fulfillment.</p>
-            </div>
+      <section className="ys-shop-trust" aria-labelledby="trust-heading">
+        <div className="ys-shop-wrap">
+          <p className="ys-shop-kicker">How it works</p>
+          <h2 id="trust-heading">Buy on Payhip, keep the file.</h2>
+          <div className="ys-shop-trust-grid">
+            <article>
+              <span>01</span>
+              <h3>Pick a file</h3>
+              <p>Every listing names the format, page or sheet count, and what it actually does. No “unlock the rest” upsells.</p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3>Checkout on Payhip</h3>
+              <p>Card and PayPal on a PCI-certified cart. YouSafe never stores your card number on this page.</p>
+            </article>
+            <article>
+              <span>03</span>
+              <h3>Download immediately</h3>
+              <p>The receipt email carries the file. Open it the same day — Excel, Sheets, Word, PowerPoint, or PDF.</p>
+            </article>
           </div>
-        </div>
-      </section>
-
-      <footer>
-        <div className="wrap footer-row">
-          <p>YOUSAFE CONSULTANCY — MARKET.YOUSAFECONSULTANCY.COM/SHOP</p>
-          <p>
-            QUESTIONS:{' '}
-            <a href="mailto:hello@yousafeconsultancy.com">HELLO@YOUSAFECONSULTANCY.COM</a>
+          <p className="ys-shop-return">
+            Need a consultant or attorney instead?{' '}
+            <Link href="/marketplace">Return to the marketplace</Link>
             {' · '}
-            <a href="/">BACK TO MARKETPLACE</a>
+            <a href="https://portal.yousafeconsultancy.com/dashboard">Open your dashboard</a>
+            {' · '}
+            <a href="https://yousafeconsultancy.com/">YouSafe home</a>
           </p>
         </div>
-      </footer>
+      </section>
+
+      <MarketplaceFooter />
     </div>
   )
 }
 
+function Stat({ n, label }: { n: string; label: string }) {
+  return (
+    <div className="ys-shop-stat">
+      <strong>{n}</strong>
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function Cover({ product, large }: { product: FileShopProduct; large?: boolean }) {
+  const tone = CAT_TONE[product.cat]
+  return (
+    <div className={`ys-shop-cover${large ? ' large' : ''}`} style={{ background: tone.wash, color: tone.ink }}>
+      <span className="ys-shop-cover-cat">{tone.label}</span>
+      <span className="ys-shop-cover-file">File {product.file}</span>
+      <span className="ys-shop-cover-fmt">{product.format}</span>
+    </div>
+  )
+}
+
+function ProductCard({ product: p }: { product: FileShopProduct }) {
+  return (
+    <article className="ys-shop-card">
+      <Cover product={p} />
+      <div className="ys-shop-card-body">
+        <h3>{p.title}</h3>
+        <p>{p.desc}</p>
+        <ul>
+          <li>{p.bullets[0]}</li>
+          <li>{p.bullets[1]}</li>
+        </ul>
+        <div className="ys-shop-card-foot">
+          <div className="ys-shop-price">
+            ${p.price}<sup>.00</sup>
+          </div>
+          <a className="ys-shop-buy" href={p.href} rel="noopener noreferrer">
+            Get file
+          </a>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function FeaturedCard({ product: p }: { product: FileShopProduct }) {
+  const tone = CAT_TONE[p.cat]
+  return (
+    <article className="ys-shop-featured-card">
+      <Cover product={p} large />
+      <div className="ys-shop-card-body">
+        <span className="ys-shop-pill" style={{ color: tone.ink, background: tone.wash }}>{tone.label}</span>
+        <h3>{p.title}</h3>
+        <p>{p.desc}</p>
+        <div className="ys-shop-card-foot">
+          <div className="ys-shop-price">
+            ${p.price}<sup>.00</sup>
+          </div>
+          <a className="ys-shop-buy" href={p.href} rel="noopener noreferrer">
+            Get file
+          </a>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 const SHOP_CSS = `
-  .files-shop{
-    --navy:#1B2436;
-    --navy-soft:#3A4459;
-    --paper:#F1EFE6;
-    --paper-raised:#FBFAF5;
-    --mustard:#C28E1B;
-    --teal:#0F766E;
-    --line:#D8D4C4;
-    --muted:#6B6A5F;
-    background:var(--paper);
-    color:var(--navy);
-    font-family:'IBM Plex Sans', sans-serif;
-    -webkit-font-smoothing:antialiased;
-    min-height:100vh;
-    background-image:
-      radial-gradient(circle at 20% 10%, rgba(194,142,27,0.05), transparent 40%),
-      radial-gradient(circle at 90% 30%, rgba(15,118,110,0.05), transparent 45%);
+  .ys-files-shop { background: ${T.paper}; color: ${T.ink}; font-family: ${F.ui}; }
+  .ys-shop-wrap { width: min(1120px, calc(100vw - 40px)); margin: 0 auto; }
+  .ys-shop-kicker {
+    font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: ${T.indigo}; font-weight: 600; margin: 0 0 10px;
   }
-  .files-shop *{box-sizing:border-box;}
-  .files-shop .wrap{max-width:1080px;margin:0 auto;padding:0 28px;}
-  .files-shop a{color:inherit;}
-  .files-shop header{padding:28px 0 20px;border-bottom:1px solid var(--line);}
-  .files-shop .header-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
-  .files-shop .wordmark{font-family:'Fraunces', serif;font-weight:600;font-size:20px;letter-spacing:0.02em;}
-  .files-shop .wordmark span{color:var(--teal);}
-  .files-shop nav a{
-    font-family:'IBM Plex Mono', monospace;font-size:12px;text-transform:uppercase;
-    letter-spacing:0.08em;text-decoration:none;color:var(--navy-soft);margin-left:22px;
+  .ys-shop-crumbs {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    font-size: 13px; color: ${T.inkSoft}; margin-bottom: 28px;
   }
-  .files-shop .eyebrow{
-    font-family:'IBM Plex Mono', monospace;font-size:12px;letter-spacing:0.14em;
-    text-transform:uppercase;color:var(--mustard);display:flex;align-items:center;gap:10px;
+  .ys-shop-crumbs a { color: ${T.inkMid}; text-decoration: none; }
+  .ys-shop-crumbs a:hover { color: ${T.indigo}; }
+  .ys-shop-hero { padding: 36px 0 48px; border-bottom: 1px solid ${T.rule}; background: linear-gradient(180deg, #fff 0%, ${T.paper} 100%); }
+  .ys-shop-hero-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(240px, 0.7fr); gap: 40px; align-items: end; }
+  .ys-shop-hero h1 {
+    font-family: ${F.display}; font-weight: 600; font-size: clamp(32px, 4.6vw, 52px);
+    line-height: 1.12; letter-spacing: -0.02em; margin: 0 0 16px; max-width: 16ch;
   }
-  .files-shop .eyebrow::before{content:"";width:22px;height:1px;background:var(--mustard);display:inline-block;}
-  .files-shop .hero{padding:76px 0 56px;}
-  .files-shop .hero h1{
-    font-family:'Fraunces', serif;font-weight:600;font-size:clamp(34px, 5.2vw, 58px);
-    line-height:1.08;margin:18px 0 20px;max-width:820px;
+  .ys-shop-lede { font-size: 17px; line-height: 1.6; color: ${T.inkMid}; max-width: 54ch; margin: 0 0 28px; }
+  .ys-shop-cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ys-shop-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 11px 18px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    text-decoration: none; font-family: ${F.ui};
   }
-  .files-shop .hero h1 em{font-style:italic;font-weight:500;color:var(--teal);}
-  .files-shop .hero p{max-width:560px;font-size:17px;line-height:1.6;color:var(--navy-soft);margin-bottom:0;}
-  .files-shop .file-index{
-    font-family:'IBM Plex Mono', monospace;font-size:12px;color:var(--muted);
-    margin-top:34px;padding-top:18px;border-top:1px dashed var(--line);display:flex;gap:36px;flex-wrap:wrap;
+  .ys-shop-btn.primary { background: ${T.indigo}; color: #fff; }
+  .ys-shop-btn.primary:hover { background: ${T.indigoDeep}; }
+  .ys-shop-btn.ghost { background: #fff; color: ${T.ink}; border: 1px solid ${T.rule}; }
+  .ys-shop-btn.ghost:hover { border-color: ${T.inkSoft}; }
+  .ys-shop-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: ${T.rule};
+    border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden;
   }
-  .files-shop section.catalog{padding:36px 0 70px;}
-  .files-shop .catalog-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:34px;flex-wrap:wrap;gap:14px;}
-  .files-shop .catalog-head h2{font-family:'Fraunces', serif;font-weight:600;font-size:28px;margin:6px 0 0;}
-  .files-shop .files{display:grid;grid-template-columns:repeat(3, 1fr);gap:22px;}
-  @media (max-width:920px){ .files-shop .files{grid-template-columns:1fr 1fr;} }
-  @media (max-width:600px){ .files-shop .files{grid-template-columns:1fr;} }
-  .files-shop .file-card{
-    background:var(--paper-raised);border:1px solid var(--line);position:relative;
-    padding:28px 24px 24px;display:flex;flex-direction:column;
-    transition:transform .18s ease, box-shadow .18s ease;
+  .ys-shop-stat { background: #fff; padding: 18px 16px; }
+  .ys-shop-stat strong { display: block; font-family: ${F.display}; font-size: 22px; font-weight: 600; }
+  .ys-shop-stat span { font-size: 12px; color: ${T.inkSoft}; }
+  .ys-shop-featured { padding: 48px 0 20px; }
+  .ys-shop-section-head { margin-bottom: 22px; }
+  .ys-shop-section-head h2, .ys-shop-trust h2, .ys-shop-catalog h2 {
+    font-family: ${F.display}; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin: 0;
   }
-  .files-shop .file-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -18px rgba(27,36,54,0.35);}
-  .files-shop .file-tab{
-    position:absolute;top:-13px;left:28px;background:var(--navy);color:var(--paper-raised);
-    font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:0.08em;padding:5px 12px;
+  .ys-shop-section-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .ys-shop-featured-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .ys-shop-featured-card, .ys-shop-card {
+    background: #fff; border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden;
+    display: flex; flex-direction: column; min-height: 100%;
+    transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
   }
-  .files-shop .file-format{
-    font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:0.06em;
-    color:var(--muted);text-transform:uppercase;margin-bottom:14px;
+  .ys-shop-featured-card:hover, .ys-shop-card:hover {
+    transform: translateY(-3px); border-color: ${T.paper3};
+    box-shadow: 0 18px 40px -24px rgba(15,23,42,0.35);
   }
-  .files-shop .file-card h3{font-family:'Fraunces', serif;font-weight:600;font-size:19px;line-height:1.28;margin:0 0 10px;}
-  .files-shop .file-card p.desc{font-size:13.5px;line-height:1.55;color:var(--navy-soft);margin:0 0 16px;flex-grow:1;}
-  .files-shop .file-card ul{list-style:none;padding:0;margin:0 0 18px;font-size:12.5px;color:var(--navy-soft);}
-  .files-shop .file-card ul li{padding-left:16px;position:relative;margin-bottom:6px;line-height:1.45;}
-  .files-shop .file-card ul li::before{content:"—";position:absolute;left:0;color:var(--teal);}
-  .files-shop .file-footer{margin-top:auto;display:flex;align-items:center;justify-content:space-between;padding-top:18px;border-top:1px dashed var(--line);}
-  .files-shop .price{font-family:'Fraunces', serif;font-weight:600;font-size:19px;}
-  .files-shop .price sup{font-size:11px;font-weight:500;}
-  .files-shop .buy-btn{
-    font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;
-    text-decoration:none;background:var(--navy);color:var(--paper-raised);padding:10px 16px;display:inline-block;
+  .ys-shop-cover {
+    padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 108px;
+    border-bottom: 1px solid ${T.ruleSoft};
   }
-  .files-shop .buy-btn:hover{background:var(--teal);}
-  .files-shop .buy-btn.soon{
-    background:transparent;color:var(--muted);border:1px solid var(--line);cursor:default;padding:9px 16px;
+  .ys-shop-cover.large { min-height: 132px; }
+  .ys-shop-cover-cat { font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
+  .ys-shop-cover-file { font-family: ${F.display}; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .ys-shop-cover-fmt { font-size: 12px; opacity: 0.8; }
+  .ys-shop-card-body { padding: 18px 18px 16px; display: flex; flex-direction: column; flex: 1; }
+  .ys-shop-card-body h3 { font-family: ${F.display}; font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 8px; }
+  .ys-shop-card-body p { font-size: 14px; line-height: 1.55; color: ${T.inkMid}; margin: 0 0 12px; flex: 1; }
+  .ys-shop-card-body ul { list-style: none; padding: 0; margin: 0 0 16px; font-size: 13px; color: ${T.inkSoft}; }
+  .ys-shop-card-body ul li { padding-left: 14px; position: relative; margin-bottom: 4px; }
+  .ys-shop-card-body ul li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: ${T.indigo}; position: absolute; left: 0; top: 0.55em; }
+  .ys-shop-pill { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; margin-bottom: 8px; }
+  .ys-shop-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 12px; border-top: 1px solid ${T.ruleSoft}; }
+  .ys-shop-price { font-family: ${F.display}; font-size: 22px; font-weight: 600; }
+  .ys-shop-price sup { font-size: 11px; font-weight: 500; }
+  .ys-shop-buy {
+    font-size: 13px; font-weight: 700; color: #fff; background: ${T.indigo};
+    padding: 9px 14px; border-radius: 999px; text-decoration: none;
   }
-  .files-shop .buy-btn.soon:hover{background:transparent;color:var(--muted);}
-  .files-shop .stamp{
-    position:absolute;top:20px;right:20px;width:44px;height:44px;border:1.5px solid var(--mustard);
-    border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-8deg);
-    font-family:'IBM Plex Mono', monospace;font-size:7px;letter-spacing:0.04em;color:var(--mustard);
-    text-align:center;line-height:1.25;opacity:0.85;
+  .ys-shop-buy:hover { background: ${T.indigoDeep}; }
+  .ys-shop-catalog { padding: 28px 0 64px; }
+  .ys-shop-search input {
+    width: min(320px, 100%); border: 1px solid ${T.rule}; background: #fff; border-radius: 999px;
+    padding: 10px 16px; font-size: 14px; font-family: ${F.ui}; color: ${T.ink};
   }
-  .files-shop .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:28px;}
-  .files-shop .filter-pill{
-    font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;
-    padding:7px 14px;border:1px solid var(--line);background:transparent;color:var(--navy-soft);cursor:pointer;
+  .ys-shop-search input:focus { outline: 2px solid ${T.indigoSoft}; border-color: ${T.indigo}; }
+  .ys-shop-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; }
+  .ys-shop-filters button {
+    border: 1px solid ${T.rule}; background: #fff; color: ${T.inkMid}; border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: ${F.ui};
   }
-  .files-shop .filter-pill:hover, .files-shop .filter-pill.active{
-    background:var(--navy);color:var(--paper-raised);border-color:var(--navy);
+  .ys-shop-filters button.on, .ys-shop-filters button:hover { background: ${T.indigo}; color: #fff; border-color: ${T.indigo}; }
+  .ys-shop-count { font-size: 13px; color: ${T.inkSoft}; margin: 0 0 18px; }
+  .ys-shop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .ys-shop-empty { background: #fff; border: 1px dashed ${T.rule}; border-radius: 16px; padding: 36px; text-align: center; color: ${T.inkSoft}; }
+  .ys-shop-empty button { margin-top: 12px; border: 0; background: ${T.indigo}; color: #fff; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  .ys-shop-trust { padding: 8px 0 56px; border-top: 1px solid ${T.rule}; }
+  .ys-shop-trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 22px 0 28px; }
+  .ys-shop-trust article { background: #fff; border: 1px solid ${T.rule}; border-radius: 16px; padding: 22px; }
+  .ys-shop-trust article span { font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.14em; color: ${T.indigo}; }
+  .ys-shop-trust article h3 { font-family: ${F.display}; font-size: 18px; margin: 8px 0 8px; }
+  .ys-shop-trust article p { margin: 0; color: ${T.inkMid}; font-size: 14px; line-height: 1.55; }
+  .ys-shop-return { font-size: 14px; color: ${T.inkSoft}; }
+  .ys-shop-return a { color: ${T.indigo}; font-weight: 600; text-decoration: none; }
+  .ys-shop-return a:hover { text-decoration: underline; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+  @media (max-width: 920px) {
+    .ys-shop-hero-grid, .ys-shop-featured-grid, .ys-shop-trust-grid { grid-template-columns: 1fr; }
+    .ys-shop-grid { grid-template-columns: 1fr 1fr; }
   }
-  .files-shop .trust{padding:50px 0 60px;border-top:1px solid var(--line);}
-  .files-shop .trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:30px;}
-  @media (max-width:720px){ .files-shop .trust-grid{grid-template-columns:1fr;} }
-  .files-shop .trust-item h4{
-    font-family:'IBM Plex Mono', monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;
-    color:var(--teal);margin:0 0 10px;
+  @media (max-width: 600px) {
+    .ys-shop-grid { grid-template-columns: 1fr; }
+    .ys-shop-hero { padding: 24px 0 32px; }
   }
-  .files-shop .trust-item p{font-size:14.5px;line-height:1.6;color:var(--navy-soft);margin:0;}
-  .files-shop footer{border-top:1px solid var(--line);padding:30px 0 40px;}
-  .files-shop .footer-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
-  .files-shop footer p{font-family:'IBM Plex Mono', monospace;font-size:12px;color:var(--muted);margin:0;}
 `

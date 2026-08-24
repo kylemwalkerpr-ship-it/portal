@@ -28,5 +28,6 @@ export function signUpForLane(lane: AuthLane): string {
 }
 
 export function roleLabel(role: string): string {
-  return role === 'client' ? 'student' : role
+  if (role === 'client' || role === 'student') return 'client'
+  return role
 }

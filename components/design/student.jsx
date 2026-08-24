@@ -1747,6 +1747,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavGroupLabel label="Overview" first />
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="🏬" label="Marketplace" active={typeof window !== 'undefined' && window.location.pathname === '/marketplace'} onClick={() => goToRoute('/marketplace')} />
+        <NavItem icon="🗂️" label="File shop" active={typeof window !== 'undefined' && window.location.pathname === '/shop'} onClick={() => goToRoute('/shop')} />
         <NavGroupLabel label="My Work" />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Services & Templates" active={page === 'services'} onClick={() => setPage('services')} />
@@ -1766,10 +1767,10 @@ function StudentApp({ onLogout, userId, userName }) {
           Wallet: {formatMoney(walletSummary.available, 'usd')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name={profileData.name || 'Student'} size={32} />
+          <Avatar name={profileData.name || 'Client'} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileData.name || 'Student'}</div>
-            <div style={{ fontSize: '11px', color: C.textMuted }}>Student</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileData.name || 'Client'}</div>
+            <div style={{ fontSize: '11px', color: C.textMuted }}>Client</div>
           </div>
           <SidebarLogoutBtn />
         </div>
@@ -1797,8 +1798,8 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
         </div>
         <UserMenu
-          name={profileData.name || 'Student'}
-          role="Student"
+          name={profileData.name || 'Client'}
+          role="Client"
           email={profileData.email}
           onNavigate={setPage}
           onLogout={onLogout}
@@ -1884,6 +1885,7 @@ function StudentApp({ onLogout, userId, userName }) {
             { icon: '🎯', label: 'Find Your Specialist', sub: 'Consultants + attorneys panel', action: () => setPage('attorneys') },
             { icon: '🛒', label: 'Services & templates', sub: 'Catalogue and digital templates', action: () => setPage('services') },
             { icon: '🏬', label: 'Marketplace', sub: 'Browse all gigs & services', action: () => goToRoute('/marketplace') },
+            { icon: '🗂️', label: 'File shop', sub: 'Instant-download tools & templates', action: () => goToRoute('/shop') },
             { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
             { icon: '📋', label: 'Documents', sub: 'Securely shared files', action: () => setPage('documents') },
             { icon: '💳', label: 'Billing', sub: 'Receipts and methods', action: () => setPage('billing') },

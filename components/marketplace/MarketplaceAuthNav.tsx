@@ -134,6 +134,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
 
           {/* Links */}
           <a role="menuitem" href={`${PORTAL_URL}/dashboard`} style={linkStyle}>Go to Dashboard</a>
+          <a role="menuitem" href="/shop" style={linkStyle}>File shop</a>
           <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=orders`} style={linkStyle}>My Orders</a>
           <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=messages`} style={linkStyle}>Messages</a>
           <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=settings`} style={linkStyle}>Profile settings</a>

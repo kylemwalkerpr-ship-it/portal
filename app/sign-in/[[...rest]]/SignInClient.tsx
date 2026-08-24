@@ -20,7 +20,7 @@ export default function SignInClient() {
   const redirectUrl = returnTo || (laneSegment === 'admin' ? '/dashboard?lane=admin' : dashboardForLane(lane))
   const signInPath = `/sign-in/${laneSegment || 'student'}`
   const signUpUrl = `${signUpForLane(lane)}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
-  const laneLabel = laneSegment === 'admin' ? 'admin' : lane === 'client' ? 'student / client' : lane
+  const laneLabel = laneSegment === 'admin' ? 'admin' : lane === 'client' ? 'client' : lane
 
   useEffect(() => {
     if (isInvalidLane) window.location.replace(STUDENT_SIGN_IN_URL)

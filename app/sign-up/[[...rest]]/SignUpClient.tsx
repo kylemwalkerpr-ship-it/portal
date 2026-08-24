@@ -40,7 +40,7 @@ export default function SignUpClient() {
   }, [returnTo, lane, action, meta])
 
   const signInUrl = `${signInForLane(lane)}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
-  const laneLabel = lane === 'client' ? 'student / client' : lane
+  const laneLabel = lane === 'client' ? 'client' : lane
 
   useEffect(() => {
     if (laneSegment === 'admin') window.location.replace(ADMIN_SIGN_IN_URL)

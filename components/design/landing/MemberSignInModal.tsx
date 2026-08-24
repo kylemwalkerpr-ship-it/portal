@@ -20,7 +20,7 @@ interface Role {
 const ROLES: Role[] = [
   {
     id: 'student',
-    label: 'Student / Client',
+    label: 'Client',
     blurb: 'Place orders, talk to your consultant, manage documents and inquiries.',
     primary: 'Sign in',
     secondary: 'Create account',
@@ -45,7 +45,7 @@ const ROLES: Role[] = [
   {
     id: 'consultant',
     label: 'Consultant',
-    blurb: 'Manage assigned students, deliverables, escrow releases and your profile.',
+    blurb: 'Manage assigned clients, deliverables, escrow releases and your profile.',
     primary: 'Sign in',
     secondary: 'Apply as consultant',
     icon: Briefcase,

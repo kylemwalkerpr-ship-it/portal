@@ -26,7 +26,7 @@ export const metadata = {
   metadataBase: new URL('https://portal.yousafeconsultancy.com'),
   title: 'YouSafe Portal — Study & Legal Services',
   description:
-    'YouSafe members portal — study-abroad consulting + US / UK / Canada legal document review. Students, attorneys, consultants and admins in one secure portal.',
+    'YouSafe members portal — study-abroad consulting + US / UK / Canada legal document review. Clients, attorneys, consultants and admins in one secure portal.',
   // Portal members area pages (dashboard, sign-in, sign-up) opt into
   // noindex individually via per-page generateMetadata. The marketing
   // subdomains (usa.*, ca.*, legal.*, uk.*, market.*) must remain
@@ -45,7 +45,7 @@ export const metadata = {
   manifest: '/site.webmanifest',
   openGraph: {
     title: 'YouSafe Portal — Study & Legal Services',
-    description: 'Members portal for YouSafe Consultancy. Student, attorney, consultant, and admin access.',
+    description: 'Members portal for YouSafe Consultancy. Client, attorney, consultant, and admin access.',
     type: 'website',
     siteName: 'YouSafe Portal',
     locale: 'en_US',

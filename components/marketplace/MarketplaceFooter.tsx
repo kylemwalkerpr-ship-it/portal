@@ -33,13 +33,14 @@ interface FooterLink {
 }
 
 const NAV_LINKS: FooterLink[] = [
-  { label: 'Browse', href: '/marketplace' },
+  { label: 'Home', href: 'https://yousafeconsultancy.com/' },
+  { label: 'Marketplace', href: '/marketplace' },
   { label: 'File shop', href: '/shop' },
   { label: 'Categories', href: '/marketplace/categories' },
   { label: 'For attorneys', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
   { label: 'For consultants', href: 'https://portal.yousafeconsultancy.com/sign-up/consultant' },
-  { label: 'Open portal', href: 'https://portal.yousafeconsultancy.com/' },
-  { label: 'Help', href: '#faq' },
+  { label: 'Dashboard', href: 'https://portal.yousafeconsultancy.com/dashboard' },
+  { label: 'Help', href: '/marketplace#faq' },
 ]
 
 const LEGAL_LINKS: FooterLink[] = [

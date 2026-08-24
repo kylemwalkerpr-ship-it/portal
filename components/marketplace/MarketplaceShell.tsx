@@ -216,7 +216,7 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
 
 // ─── top nav bar ─────────────────────────────────────────────────────────────
 
-function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au' }) {
+function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au'; shopActive?: boolean }) {
   const [scrolled, setScrolled] = React.useState(false)
   // Refs for the scrollable nav strip + the currently-active button so we
   // can auto-scroll the active tab into view on mobile. Without this, when
@@ -351,17 +351,20 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
             alignItems: 'center',
             padding: '0 14px',
             marginRight: 4,
-            color: T.inkSoft,
+            color: shopActive ? T.indigo : T.inkSoft,
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: shopActive ? 700 : 500,
             fontFamily: F.ui,
             textDecoration: 'none',
             whiteSpace: 'nowrap',
             flexShrink: 0,
             transition: 'color 120ms ease',
+            background: shopActive ? T.indigoSoft : 'transparent',
+            borderRadius: 9,
+            height: 36,
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.ink }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.inkSoft }}
+          onMouseEnter={(e) => { if (!shopActive) (e.currentTarget as HTMLElement).style.color = T.ink }}
+          onMouseLeave={(e) => { if (!shopActive) (e.currentTarget as HTMLElement).style.color = T.inkSoft }}
         >
           File shop
         </Link>
@@ -467,11 +470,14 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   }, [refreshRole])
 
   // Sync section from URL ?view= param (so back/forward works and direct links work)
+  const onShop = pathname === '/shop' || pathname.startsWith('/shop/')
+
   React.useEffect(() => {
     const view = searchParams?.get('view')
-    if (view) setSection(view as Section)
+    if (onShop) setSection('shop')
+    else if (view) setSection(view as Section)
     else if (pathname !== '/marketplace' && !pathname.includes('?')) setSection('browse')
-  }, [searchParams, pathname])
+  }, [searchParams, pathname, onShop])
 
   // When a nav button is clicked, update state AND URL so browser history works
   const handleNav = React.useCallback((view: Section) => {
@@ -523,6 +529,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           .ys-shell-home { padding: 0 8px !important; }
           .ys-shell-home span { display: none !important; }
           .ys-shell-home svg:last-child { display: none !important; }
+          .ys-shell-shop { padding: 0 10px !important; font-size: 12px !important; }
           .ys-shell-brand { padding-right: 10px !important; }
           .ys-shell-brand-sub { display: none !important; }
           .ys-shell-aux { padding-left: 6px !important; }
@@ -535,11 +542,11 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       `}</style>
       {/* Top nav — always visible once role is known */}
       {roleLoaded && (
-        <TopNav role={role} activeView={section} onNav={handleNav} country={country} />
+        <TopNav role={role} activeView={section} onNav={handleNav} country={country} shopActive={onShop} />
       )}
 
-      {/* Sub-nav — category bar, visible on browse for all users */}
-      {roleLoaded && section === 'browse' && (
+      {/* Sub-nav — visa category bar stays on marketplace browse, not the file shop */}
+      {roleLoaded && section === 'browse' && !onShop && (
         <CategoryBar country={country} />
       )}
 

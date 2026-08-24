@@ -26,7 +26,7 @@ interface Role {
 const ROLES: Role[] = [
   {
     id: 'student',
-    label: 'Student / Client',
+    label: 'Client',
     blurb: 'Place orders, talk to your consultant, manage documents and inquiries.',
     Icon: Cap,
     accent: T.indigo,

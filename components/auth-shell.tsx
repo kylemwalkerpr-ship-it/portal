@@ -10,6 +10,7 @@ const FAMILY_ORIGINS = new Set([
   'https://uk.yousafeconsultancy.com',
   'https://legal.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
+  'https://market.yousafeconsultancy.com',
   'https://support.yousafeconsultancy.com',
 ])
 
@@ -74,7 +75,7 @@ export function AuthShell({
   children: ReactNode
 }) {
   const detailItems = [
-    'Role-based dashboards for students, consultants, attorneys, and support',
+    'Role-based dashboards for clients, consultants, attorneys, and support',
     'Escrow-protected orders, private files, and message threads in one place',
     'Secure Clerk sign-in with NMI-powered payments and payouts',
   ]
