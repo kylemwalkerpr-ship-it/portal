@@ -1264,6 +1264,27 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </section>
 
+      <section aria-label="File shop" style={{ background: T.vellum, borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
+        <div className="wrap" style={{ padding: '36px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
+          <div style={{ maxWidth: 640 }}>
+            <div style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.indigo, fontWeight: 600, marginBottom: 8 }}>Instant downloads</div>
+            <h2 style={{ fontFamily: F.display, fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em', margin: '0 0 8px' }}>Need a file today, not a consultant?</h2>
+            <p style={{ margin: 0, color: T.inkMid, fontSize: 15, lineHeight: 1.55 }}>
+              20 workbooks, templates, and short guides. Pay once on Payhip, download in the same session.
+            </p>
+          </div>
+          <a
+            href="/shop"
+            style={{
+              display: 'inline-flex', alignItems: 'center', background: T.indigo, color: '#fff',
+              fontWeight: 700, fontSize: 14, padding: '12px 18px', borderRadius: 999, textDecoration: 'none',
+            }}
+          >
+            Open the file shop
+          </a>
+        </div>
+      </section>
+
       {/* Payments & trust strip */}
       <section className="payments">
         <div className="wrap payments-inner">
