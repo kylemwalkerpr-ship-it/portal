@@ -9,13 +9,14 @@ import {
   transferCompetingWinner,
 } from '@/lib/seoFactory/studioPipeline'
 
-describe('studioPipeline · discover → configure order', () => {
-  it('starts with Discover and ends with Configure (draft+review, approve+track merged)', () => {
+describe('studioPipeline · discover → shop order', () => {
+  it('starts with Discover and ends with Shop SEO (configure stays the last settings chapter)', () => {
     expect(DISSERTATION_STAGES).toEqual([
-      'discover', 'research', 'draft', 'approve', 'configure',
+      'discover', 'research', 'draft', 'approve', 'configure', 'shop',
     ])
     expect(DISSERTATION_STAGES[0]).toBe('discover')
-    expect(DISSERTATION_STAGES.at(-1)).toBe('configure')
+    expect(DISSERTATION_STAGES.at(-1)).toBe('shop')
+    expect(DISSERTATION_STAGES.at(-2)).toBe('configure')
   })
 
   it('keeps every legacy entry point attached to the correct stage', () => {
