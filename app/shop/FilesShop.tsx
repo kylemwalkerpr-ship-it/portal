@@ -412,8 +412,8 @@ const SHOP_CSS = `
   }
   .ys-shop-featured-card .ys-shop-card-body h3 { font-size: 21px; font-weight: 800; }
   .ys-shop-card-body p {
-    font-size: 13px; line-height: 1.5; color: ${V.inkMid}; margin: 0 0 12px; font-weight: 500;
-    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+    font-family: ${UI}; font-size: 14px; line-height: 1.5; color: ${V.ink}; margin: 0 0 12px; font-weight: 600;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .ys-shop-featured-card .ys-shop-card-body p { font-size: 14px; -webkit-line-clamp: 2; margin-bottom: 14px; }
   .ys-shop-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; min-height: 36px; }
