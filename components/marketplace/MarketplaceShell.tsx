@@ -260,7 +260,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         position: 'sticky',
         top: 0,
         zIndex: 200,
-        background: 'linear-gradient(180deg, rgba(90,42,28,0.72) 0%, rgba(44,20,16,0.88) 100%)',
+        background: T.paper2,
         backdropFilter: 'blur(16px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
         borderBottom: '1px solid rgba(224,180,90,0.28)',
@@ -288,7 +288,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
               />
               <span style={{
                 fontFamily: F.ui, fontSize: 19, fontWeight: 800,
-                color: T.ink, letterSpacing: '-0.02em',
+                color: T.cream, letterSpacing: '-0.02em',
               }}>YouSafe</span>
             </div>
           ) : (
@@ -301,8 +301,8 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                 style={{ width: 30, height: 30, objectFit: 'contain' }}
               />
               <div style={{ textAlign: 'left' as const }}>
-                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.ink, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.cream, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.gold, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
                   {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
                 </div>
               </div>
@@ -321,17 +321,18 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             gap: 6,
             padding: '0 14px',
             marginRight: 4,
-            color: T.inkSoft,
+            color: T.cream,
             fontSize: 13,
             fontWeight: 500,
             fontFamily: F.ui,
             textDecoration: 'none',
             whiteSpace: 'nowrap',
             flexShrink: 0,
-            transition: 'color 120ms ease',
+            opacity: 0.72,
+            transition: 'color 120ms ease, opacity 120ms ease',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.ink }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.inkSoft }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.gold; (e.currentTarget as HTMLElement).style.opacity = '1' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.cream; (e.currentTarget as HTMLElement).style.opacity = '0.72' }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />
@@ -392,7 +393,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                   if (link.view === 'attorneys') {
                     el.style.background = '#1E293B'
                   } else {
-                    el.style.color = T.ink
+                    el.style.color = T.cream
                     el.style.background = T.paper2
                   }
                 }}
@@ -403,7 +404,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                     el.style.background = T.ink
                     el.style.color = '#fff'
                   } else {
-                    el.style.color = T.inkMid
+                    el.style.color = T.cream
                     el.style.background = 'none'
                   }
                 }}
@@ -413,8 +414,8 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                   height: 38,
                   borderRadius: 999,
                   fontSize: '14px', fontWeight: active || link.view === 'attorneys' ? 700 : 500,
-                  color: link.view === 'attorneys' ? '#fff' : active ? T.indigo : T.inkMid,
-                  background: link.view === 'attorneys' ? T.ink : active ? T.indigoSoft : 'none',
+                  color: link.view === 'attorneys' ? '#fff' : active ? '#fff' : T.cream,
+                  background: link.view === 'attorneys' ? T.ink : active ? T.indigo : 'none',
                   border: 'none',
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
                   letterSpacing: '-0.005em',

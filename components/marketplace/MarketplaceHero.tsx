@@ -270,6 +270,6 @@ const trustChip: CSSProperties = {
   borderRadius: 999,
   background: T.paper,
   border: `1px solid ${T.ruleSoft}`,
-  color: T.inkMid,
+  color: T.cream,
   whiteSpace: 'nowrap',
 }

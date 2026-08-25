@@ -196,7 +196,7 @@ export function CategoryBar({ country }: Props) {
           display: flex;
           align-items: center;
           justify-content: center;
-          color: ${T.ink};
+          color: ${T.cream};
           cursor: pointer;
           z-index: 3;
           transition: background 0.12s, transform 0.12s, opacity 0.12s;

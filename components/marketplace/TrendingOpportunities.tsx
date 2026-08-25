@@ -200,16 +200,16 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {o.country && (
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.inkMid, background: T.paper }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.cream, background: T.paper }}>
                       {o.country}
                     </span>
                   )}
                   {o.tier && (
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.inkMid, background: T.paper }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.cream, background: T.paper }}>
                       {String(o.tier).replace(/_/g, ' ')}
                     </span>
                   )}
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.moss, background: T.paper }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.gold, background: T.paper }}>
                     Escrow protected
                   </span>
                 </div>

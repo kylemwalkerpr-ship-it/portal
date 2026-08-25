@@ -432,7 +432,7 @@ function ProviderSidePane({ a, onClose }) {
           <button
             onClick={onClose}
             aria-label="Close"
-            style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${T.rule}`, background: T.paper, color: T.ink, fontSize: 20, cursor: 'pointer', flexShrink: 0 }}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${T.rule}`, background: T.paper, color: T.cream, fontSize: 20, cursor: 'pointer', flexShrink: 0 }}
           >×</button>
         </div>
 

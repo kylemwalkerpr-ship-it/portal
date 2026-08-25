@@ -175,7 +175,7 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
                 padding: '9px 14px', border: 'none', cursor: 'pointer', fontFamily: F.ui, fontSize: 13.5,
-                background: i === highlight ? T.paper2 : 'transparent', color: T.ink,
+                background: i === highlight ? T.paper2 : 'transparent', color: T.cream,
               }}
             >
               <span style={{ fontSize: 13, width: 18, textAlign: 'center', color: T.inkSoft }}>
