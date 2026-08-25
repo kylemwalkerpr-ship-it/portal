@@ -303,6 +303,29 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(hit?.message).toContain('hud.gov')
   })
 
+  it('allows a live canada.ca page on a US article that discusses Canada (lenient cross-jurisdiction policy)', () => {
+    const findings = auditLinksSync(
+      'IRCC publishes processing times for study permits on [the official page](https://www.canada.ca/en/immigration-refugees-citizenship/services/application/check-processing-times.html). Canadian processing times are typically faster than US ones for comparison.',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'F-1 vs Canadian study permit processing', keywords: ['f-1', 'canada', 'processing times'] },
+    )
+    expect(findings.some((f) => f.url.includes('canada.ca'))).toBe(false)
+    expect(findings.some((f) => f.code === 'irrelevant_external_link')).toBe(false)
+  })
+
+  it('still flags a canada.ca page when the article never mentions Canada', () => {
+    const findings = auditLinksSync(
+      'File the I-765 on time and keep your [employment authorization](https://www.canada.ca/en/immigration-refugees-citizenship/services/application/check-processing-times.html) current.',
+      undefined,
+      undefined,
+      { region: 'US', topic: 'F-1 OPT employment', keywords: ['opt', 'i-765'] },
+    )
+    const hit = findings.find((f) => f.code === 'irrelevant_external_link')
+    expect(hit).toBeTruthy()
+    expect(hit?.url).toContain('canada.ca')
+  })
+
   it('blocks competitor, shortener, and invented commercial URLs without a network call', () => {
     const findings = auditLinksSync(
       'See [Boundless](https://www.boundless.com/f1) and [promo](https://bit.ly/visa).',

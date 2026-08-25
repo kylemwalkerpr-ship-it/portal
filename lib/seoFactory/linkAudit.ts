@@ -429,7 +429,7 @@ export function auditLinksSync(
           code: 'irrelevant_external_link',
           severity: 'warning',
           url,
-          message: `Official page is a weak fit for this article (${url}) — swap for an on-topic authority or remove the hyperlink.`,
+          message: `Official page may be a weak fit for this article (${url}) — keep it if live; only swap or remove when the link is dead or clearly unrelated to the topic.`,
         })
         continue
       }

@@ -919,7 +919,7 @@ export function evaluateContentQuality(opts: {
               : f.code === 'untrusted_external_link'
                 ? 'This link is not a verified official source. If the URL is live and relevant to the claim, leave it. Only replace if the link is dead (404) or clearly unrelated to the surrounding content.'
                 : f.code === 'irrelevant_external_link'
-                  ? 'That official URL does not support this article. Swap it for a live on-topic authority page from the Research allowlist, or remove the hyperlink.'
+                  ? 'That official URL is live. Keep it if it supports the surrounding claim — only swap or remove when the page is dead (404) or clearly unrelated to the topic.'
                 : f.code === 'dead_external_link'
                   ? 'That government/external path does not resolve. Use an exact live URL from the official source allowlist.'
                   : 'Re-verify the URL against the live site before shipping.',

@@ -266,6 +266,38 @@ export function citationRegionMatch(url: string, ctx?: CitationContext | null): 
   return regions.includes(want) || regions.includes('ALL')
 }
 
+/** Jurisdiction mention patterns — used to decide whether a cross-jurisdiction
+ *  official link is genuinely off-topic or the article actually discusses that
+ *  country (multi-country guides, comparison sections). The US pattern avoids
+ *  the bare pronoun "us" (too common) and keys on unmistakable markers. */
+const REGION_MENTION_PATTERNS: Record<SourceRegion, RegExp[]> = {
+  US: [
+    /\bunited states\b/i,
+    /\buscis\b/i,
+    /\bstate department\b/i,
+    /\bgreen card\b/i,
+    /\bi-?20\b/i,
+    /\bds-?160\b/i,
+  ],
+  UK: [/uk\b/i, /\bunited kingdom\b/i, /\bbritain\b/i, /\bbritish\b/i, /\bgov\.?uk\b/i],
+  CA: [/\bcanada\b/i, /\bcanadian\b/i, /\bircc\b/i],
+  AU: [/\baustralia\b/i, /\baustralian\b/i, /\bhome affairs\b/i],
+  ALL: [/(?:)/], // intergovernmental bodies — always "mentioned"
+}
+
+/** True when the article's topic/keywords/body mention the jurisdiction of the
+ *  URL — a canada.ca page cited inside a US article that discusses Canada is
+ *  on-topic and must be allowed through (lenient link policy). */
+export function regionMentionedInContext(url: string, ctx?: CitationContext | null): boolean {
+  if (!ctx) return true
+  const regions = findCuratedSource(url)?.regions || regionOfUrl(url)
+  const blob = [ctx.topic, ...(ctx.keywords || []), ctx.body ? String(ctx.body).slice(0, 6000) : '']
+    .filter(Boolean)
+    .join(' ')
+  if (!blob.trim()) return false
+  return regions.some((r) => (REGION_MENTION_PATTERNS[r] || []).some((re) => re.test(blob)))
+}
+
 export function isPrimaryDisciplineAuthority(url: string): boolean {
   const host = hostnameOf(url)
   if (!host) return false
@@ -288,7 +320,14 @@ export function isPrimaryDisciplineAuthority(url: string): boolean {
  */
 export function isCitationRelevant(url: string, ctx?: CitationContext | null, title?: string): boolean {
   if (!ctx || (!ctx.topic && !ctx.keywords?.length && !ctx.body)) return true
-  if (!citationRegionMatch(url, ctx)) return false
+  if (!citationRegionMatch(url, ctx)) {
+    // Lenient cross-jurisdiction policy: an official page from another
+    // country is only "irrelevant" when the article never mentions that
+    // jurisdiction. A canada.ca processing-times link inside a US article
+    // that discusses Canada stays relevant — do not strip a live official
+    // link on a "weak fit" guess.
+    if (!regionMentionedInContext(url, ctx)) return false
+  }
   if (isReputablePublication(url)) return true
   if (isContextualAuthority(url, ctx)) return true
   if (isPrimaryDisciplineAuthority(url)) return true

@@ -266,7 +266,7 @@ async function mergeLinkAudit(
             : code === 'untrusted_external_link'
               ? 'This link is from a non-verified source. If it is live and relevant to the claim, keep it. Only replace if the link is broken (404) or clearly unrelated to the surrounding content.'
               : code === 'irrelevant_external_link'
-                ? 'This official URL does not support the claim. Swap it for an on-topic live authority page, or remove the hyperlink.'
+                ? 'This official URL is live. Keep it if it supports the surrounding claim — only swap or remove when the page is dead (404) or clearly unrelated to the topic.'
               : 'Re-verify the URL before shipping.'
     if (blockers.length) {
       response.ok = false
