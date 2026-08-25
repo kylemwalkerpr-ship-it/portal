@@ -80,9 +80,11 @@ export async function GET(req: Request) {
   // For DB-side text search we use ilike on reason (free text). Names/emails
   // are joined post-fetch from profiles, so we filter those in-memory below.
   if (q && q.length >= 2 && q.length < 80) {
-    const safeQ = q.replace(/[^a-zA-Z0-9\s'"-]/g, ' ').trim().slice(0, 60)
+    // plainto_tsquery (`plfts`): `-`/quotes in user queries can never raise
+    // "syntax error in tsquery" (to_tsquery parses `-` as NOT).
+    const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ) {
-      query = query.or(`reason.fts.${safeQ},detail.fts.${safeQ}`)
+      query = query.or(`reason.plfts.${safeQ},detail.plfts.${safeQ}`)
     }
   }
 

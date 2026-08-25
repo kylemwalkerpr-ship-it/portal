@@ -84,9 +84,11 @@ export async function GET(req: Request) {
       // FTS on natural language columns (tagline, bio) — indexed via GIN.
       // Jurisdictions/practice_areas are short taxonomy lists handled by the
       // post-fetch filter below — no need for DB-side ilike on those.
-      const safeQ = q.replace(/[^a-zA-Z0-9\s'"-]/g, ' ').trim().slice(0, 60)
+      // plainto_tsquery (`plfts`): `-`/quotes in user queries can never raise
+      // "syntax error in tsquery" (to_tsquery parses `-` as NOT).
+      const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
       if (safeQ && safeQ.length >= 2) {
-        qb = qb.or(`tagline.fts.${safeQ},bio.fts.${safeQ}`)
+        qb = qb.or(`tagline.plfts.${safeQ},bio.plfts.${safeQ}`)
       }
     }
     return qb

@@ -123,9 +123,11 @@ export async function GET(req: Request) {
       query = query.or(`order_number.ilike.%${q}%,id::text.ilike.%${q}%`)
     } else {
       // Free text — FTS on revision_reason (indexed) + ilike on order_number
-      const safeQ = q.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+      const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
       if (safeQ && safeQ.length >= 2) {
-        query = query.or(`revision_reason.fts.${safeQ},order_number.ilike.%${q}%`)
+        // plainto_tsquery (`plfts`): `-`/quotes in user queries can never
+        // raise "syntax error in tsquery" (to_tsquery parses `-` as NOT).
+        query = query.or(`revision_reason.plfts.${safeQ},order_number.ilike.%${q}%`)
       } else {
         query = query.ilike('order_number', `%${q}%`)
       }

@@ -78,9 +78,11 @@ export async function GET(req: Request) {
       const safe = q.replace(/[%_,]/g, m => '\\' + m)
       // FTS on full_name (indexed via idx_consultant_applications_name_fts pattern);
       // email is short — keep ilike.
-      const safeQ = safe.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+      const safeQ = safe.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
       if (safeQ && safeQ.length >= 2) {
-        query = query.or(`full_name.fts.${safeQ},email.ilike.%${safe}%`)
+        // plainto_tsquery (`plfts`): `-`/quotes in user queries can never
+        // raise "syntax error in tsquery" (to_tsquery parses `-` as NOT).
+        query = query.or(`full_name.plfts.${safeQ},email.ilike.%${safe}%`)
       } else {
         query = query.or(`email.ilike.%${safe}%`)
       }

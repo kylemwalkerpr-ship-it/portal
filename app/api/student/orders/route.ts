@@ -72,9 +72,11 @@ export async function GET(req: Request) {
   if (escrowParam !== 'all') qb = qb.eq('escrow_status', escrowParam)
   if (q && q.length >= 2) {
     // FTS on requirements (natural language); order_number is a code — keep ilike.
-    const safeQ = q.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+    // plainto_tsquery (`plfts`): `-`/quotes in user queries can never raise
+    // "syntax error in tsquery" (to_tsquery parses `-` as NOT).
+    const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ && safeQ.length >= 2) {
-      qb = qb.or(`requirements.fts.${safeQ},order_number.ilike.%${q}%`)
+      qb = qb.or(`requirements.plfts.${safeQ},order_number.ilike.%${q}%`)
     } else {
       qb = qb.or(`order_number.ilike.%${q}%`)
     }

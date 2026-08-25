@@ -63,9 +63,14 @@ export async function GET(req: Request) {
 
   if (q.length >= 2) {
     // FTS across title, pitch, description — each has a dedicated GIN index.
-    const safeQ = q.replace(/[^a-zA-Z0-9\s'"-]/g, ' ').trim().slice(0, 60)
+    // Use plainto_tsquery (PostgREST `plfts`): to_tsquery (`.fts.`) parses `-`
+    // as the NOT operator, so a user query like "F-1 denial" or "h-1b visa"
+    // raised "syntax error in tsquery" → 500. plfts treats the input as plain
+    // text (safe for any user input). Only PostgREST filter-structural chars
+    // (`, ( ) " ' \`) are stripped so the .or() filter itself stays parseable.
+    const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ) {
-      query = query.or(`title.fts.${safeQ},pitch.fts.${safeQ},description.fts.${safeQ}`)
+      query = query.or(`title.plfts.${safeQ},pitch.plfts.${safeQ},description.plfts.${safeQ}`)
     }
   }
   if (categories.length > 0) {
