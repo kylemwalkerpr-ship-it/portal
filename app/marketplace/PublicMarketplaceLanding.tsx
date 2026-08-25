@@ -532,17 +532,15 @@ const CSS = `
   content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background-color: ${T.paper};
   background-image:
-    repeating-linear-gradient(92deg, rgba(0,0,0,0.12) 0px, transparent 1px, rgba(255,255,255,0.04) 2px, transparent 5px, rgba(0,0,0,0.06) 7px, transparent 11px),
-    repeating-linear-gradient(0deg, rgba(0,0,0,0.08) 0px, transparent 3px, rgba(0,0,0,0.04) 6px, transparent 14px);
+    repeating-linear-gradient(92deg, rgba(0,0,0,0.06) 0px, transparent 1px, transparent 5px, rgba(0,0,0,0.03) 7px, transparent 11px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, transparent 3px, transparent 6px, transparent 14px);
   background-size: 180px 100%, 100% 28px;
 }
 .cw-market::after {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,255,255,0.12), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 85% 110%, rgba(255,255,255,0.06), transparent 50%),
-    linear-gradient(118deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 36%, rgba(255,255,255,0.01) 40%, rgba(255,255,255,0.04) 72%, transparent 100%);
-  mix-blend-mode: screen;
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,255,255,0.04), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 85% 110%, rgba(255,255,255,0.02), transparent 50%);
 }
 .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
 .cw-market a { color: inherit; text-decoration: none; }
@@ -552,7 +550,7 @@ const CSS = `
 .cw-market .serif { font-family: ${F.display}; }
 .cw-market .mono  { font-family: ${F.mono}; }
 
-.cw-market .topbar { border-bottom: 1px solid ${T.rule}; background: rgba(255,254,249,0.85); backdrop-filter: blur(6px); font-size: 12px; color: ${T.inkMid}; }
+.cw-market .topbar { border-bottom: 1px solid ${T.rule}; background: ${T.vellum}; backdrop-filter: blur(6px); font-size: 12px; color: ${T.inkMid}; }
 .cw-market .topbar-inner { display: flex; align-items: center; justify-content: space-between; height: 32px; }
 .cw-market .topbar-left { display: flex; gap: 22px; align-items: center; }
 .cw-market .topbar-left .mono { letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
@@ -560,7 +558,7 @@ const CSS = `
 .cw-market .pill-mini { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: ${T.paper2}; border: 1px solid ${T.rule}; font-size: 11px; font-weight: 600; color: ${T.inkMid}; }
 .cw-market .pill-mini::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: ${T.moss}; box-shadow: 0 0 0 3px rgba(95,107,58,0.18); }
 
-.cw-market header.nav { position: sticky; top: 0; z-index: 50; background: rgba(251,250,247,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid ${T.rule}; }
+.cw-market header.nav { position: sticky; top: 0; z-index: 50; background: ${T.vellum}; backdrop-filter: blur(10px); border-bottom: 1px solid ${T.rule}; }
 .cw-market .nav-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; height: 60px; }
 .cw-market .brand { display: inline-flex; align-items: center; gap: 12px; }
 .cw-market .brand-mark { width: 38px; height: 38px; border-radius: 8px; background: ${T.indigo}; color: #fff; display: inline-grid; place-items: center; font-family: ${F.display}; font-size: 22px; font-weight: 700; box-shadow: 0 10px 22px -10px rgba(14,124,116,0.55); position: relative; overflow: hidden; }
