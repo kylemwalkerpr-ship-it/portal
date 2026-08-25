@@ -373,6 +373,12 @@ export interface VaultStatusRow {
   configured: boolean
   source: 'vault' | 'env' | 'oauth' | 'none'
   maskedKey: string | null
+  /** True when BOTH a vault key and a Worker env secret exist — the env key is
+   *  shadowed (vault wins) and would only take effect if the vault row is
+   *  removed. Lets the operator see the precedence at a glance. */
+  envShadowed?: boolean
+  /** Masked form of the Worker env secret when one exists (sk-…abcd). */
+  envMasked?: string | null
   baseUrl: string | null
   model: string | null
   defaultModel: string
@@ -623,6 +629,10 @@ export async function listVaultStatus(): Promise<VaultStatusRow[]> {
       configured: fromVault || fromEnv || fromOauth,
       source: fromOauth ? 'oauth' : fromVault ? 'vault' : fromEnv ? 'env' : 'none',
       maskedKey,
+      // Diagnostic: when both exist, the vault row wins and the env secret is
+      // shadowed — surface it so the operator sees the effective source.
+      envShadowed: fromVault && fromEnv,
+      envMasked: fromEnv ? maskKey(envKey) : null,
       baseUrl,
       model,
       defaultModel: def.defaultModel,

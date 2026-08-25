@@ -38,6 +38,8 @@ interface VaultStatusRow {
   configured: boolean
   source: 'vault' | 'env' | 'oauth' | 'none'
   maskedKey: string | null
+  envShadowed?: boolean
+  envMasked?: string | null
   baseUrl: string | null
   model: string | null
   defaultModel: string
@@ -120,16 +122,34 @@ const btn = (bg?: string, strong?: boolean): React.CSSProperties => ({
 })
 
 function SourceBadge({ source }: { source: VaultStatusRow['source'] }) {
+  const base: React.CSSProperties = { padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, cursor: 'help' }
   if (source === 'oauth') {
-    return <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.violetSoft, color: C.violet, border: `1px solid #DDD6FE` }}>SUPERGROK</span>
+    return <span title="SuperGrok OAuth token — stored via device login" style={{ ...base, background: C.violetSoft, color: C.violet, border: '1px solid #DDD6FE' }}>SUPERGROK</span>
   }
   if (source === 'vault') {
-    return <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.greenSoft, color: C.green, border: `1px solid ${C.greenBorder}` }}>VAULT</span>
+    return <span title="Vault key (Supabase) — WINS over the Worker env secret" style={{ ...base, background: C.greenSoft, color: C.green, border: `1px solid ${C.greenBorder}` }}>VAULT · WINS</span>
   }
   if (source === 'env') {
-    return <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.blueSoft, color: C.blue, border: `1px solid ${C.blueBorder}` }}>ENV</span>
+    return <span title="Worker secret (env) — used because no vault key is stored for this provider" style={{ ...base, background: C.blueSoft, color: C.blue, border: `1px solid ${C.blueBorder}` }}>ENV</span>
   }
-  return <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: '#F3F4F6', color: '#6B7280' }}>—</span>
+  return <span title="No key configured for this provider" style={{ ...base, background: '#F3F4F6', color: '#6B7280' }}>—</span>
+}
+
+/**
+ * Shows when a provider has BOTH a vault key and a Worker env secret — the
+ * env secret is shadowed by the vault row and only takes effect if the vault
+ * key is removed. Makes the precedence visible instead of silently hiding it.
+ */
+function ShadowedEnv({ row }: { row: VaultStatusRow }) {
+  if (!row.envShadowed || !row.envMasked) return null
+  return (
+    <span
+      title="A Worker env secret also exists for this provider. The vault key wins; this env secret only takes effect if the vault row is removed."
+      style={{ fontSize: 9, fontFamily: C.mono, color: C.orange }}
+    >
+      env also set: {row.envMasked} (shadowed)
+    </span>
+  )
 }
 
 export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void }) {
@@ -503,6 +523,20 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         </div>
       </div>
 
+      {/* Source precedence legend */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        padding: '6px 10px', borderRadius: C.radiusXs, marginBottom: 8,
+        background: C.surface2, border: `1px solid ${C.border}`,
+        fontSize: 9.5, color: C.textMuted,
+      }}>
+        <span style={{ fontWeight: 700, color: C.text }}>Key source — which one is actually used:</span>
+        <SourceBadge source="vault" />
+        <span>wins over</span>
+        <SourceBadge source="env" />
+        <span>· <strong style={{ color: C.text }}>VAULT</strong> = stored here (Supabase) · <strong style={{ color: C.text }}>ENV</strong> = Worker secret, used only when no vault key · “env also set (shadowed)” = both exist</span>
+      </div>
+
       {/* Defaults */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'minmax(150px, 1.2fr) minmax(140px, 1fr) 90px auto', gap: 8,
@@ -546,6 +580,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                 {h.members.map((m) => m.model || m.defaultModel).join(' · ')}
               </span>
               <SourceBadge source={h.source} />
+              {h.members.some((m) => m.envShadowed) && <ShadowedEnv row={h.members.find((m) => m.envShadowed)!} />}
               <button type="button" onClick={() => moveHost(h.host, -1)} disabled={index === 0} aria-label={`Move ${h.label} up`} style={{ ...btn(), padding: '3px 7px', opacity: index === 0 ? 0.4 : 1 }}>↑</button>
               <button type="button" onClick={() => moveHost(h.host, 1)} disabled={index === priorityHosts.length - 1} aria-label={`Move ${h.label} down`} style={{ ...btn(), padding: '3px 7px', opacity: index === priorityHosts.length - 1 ? 0.4 : 1 }}>↓</button>
             </div>
@@ -571,6 +606,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <SourceBadge source={g.source} />
+                {g.lead.envShadowed && <ShadowedEnv row={g.lead} />}
                 <span style={{ fontSize: 10, fontFamily: C.mono, color: g.configured ? C.green : C.textDim }}>
                   {g.lead.maskedKey || 'no key'}
                 </span>
@@ -639,6 +675,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                   <strong style={{ fontSize: 11, color: C.text }}>{r.label}</strong>
                   <SourceBadge source={r.source} />
+                  <ShadowedEnv row={r} />
                   {r.role === 'primary' && (
                     <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.goldSoft, color: C.gold }}>PRIMARY</span>
                   )}
