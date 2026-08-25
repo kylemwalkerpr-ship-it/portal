@@ -527,22 +527,21 @@ const FAQ_JSONLD = {
 /* ───────────────────────── CSS ─────────────────────────── */
 
 const CSS = `
-.cw-market { color: ${T.cream}; background: #2C1410; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
+.cw-market { color: ${T.cream}; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
 .cw-market::before {
   content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
-  background-color: #2C1410;
+  background-color: ${T.paper};
   background-image:
-    repeating-linear-gradient(92deg, rgba(0,0,0,0.18) 0px, transparent 1px, rgba(255,196,120,0.05) 2px, transparent 5px, rgba(0,0,0,0.10) 7px, transparent 11px),
-    repeating-linear-gradient(0deg, rgba(90,40,24,0.35) 0px, transparent 3px, rgba(20,8,4,0.2) 6px, transparent 14px),
-    linear-gradient(165deg, #5A2A1C 0%, #2C1410 42%, #1A0C08 72%, #3A1C14 100%);
-  background-size: 180px 100%, 100% 28px, 100% 100%;
+    repeating-linear-gradient(92deg, rgba(0,0,0,0.12) 0px, transparent 1px, rgba(255,255,255,0.04) 2px, transparent 5px, rgba(0,0,0,0.06) 7px, transparent 11px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.08) 0px, transparent 3px, rgba(0,0,0,0.04) 6px, transparent 14px);
+  background-size: 180px 100%, 100% 28px;
 }
 .cw-market::after {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,230,190,0.22), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 85% 110%, rgba(224,180,90,0.10), transparent 50%),
-    linear-gradient(118deg, rgba(255,255,255,0) 0%, rgba(255,248,235,0.14) 36%, rgba(255,255,255,0.02) 40%, rgba(255,220,170,0.06) 72%, transparent 100%);
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,255,255,0.12), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 85% 110%, rgba(255,255,255,0.06), transparent 50%),
+    linear-gradient(118deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 36%, rgba(255,255,255,0.01) 40%, rgba(255,255,255,0.04) 72%, transparent 100%);
   mix-blend-mode: screen;
 }
 .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }

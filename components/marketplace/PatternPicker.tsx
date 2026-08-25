@@ -121,16 +121,25 @@ export function PatternPicker() {
     }
   }, [open])
 
-  // Apply pattern to .cw-market on change
+  // Apply pattern by injecting a <style> tag that overrides .cw-market::before.
+  // The ::before pseudo-element has position:fixed inset:0 z-index:-2 and
+  // covers the entire viewport — setting backgroundImage on .cw-market itself
+  // is invisible behind it.
   const applyPattern = useCallback((id: PatternId) => {
-    const root = document.querySelector('.cw-market') as HTMLElement | null
-    if (!root) return
     const css = getPatternCss(id)
     const bgSize = getPatternBackgroundSize(id)
     const bgPos = getPatternPosition(id)
-    root.style.backgroundImage = css
-    root.style.backgroundSize = bgSize
-    root.style.backgroundPosition = bgPos
+    let tag = document.getElementById('ys-pattern-override') as HTMLStyleElement | null
+    if (!tag) {
+      tag = document.createElement('style')
+      tag.id = 'ys-pattern-override'
+      document.head.appendChild(tag)
+    }
+    if (id === 'none') {
+      tag.textContent = ''
+    } else {
+      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; }`
+    }
   }, [])
 
   useEffect(() => {
