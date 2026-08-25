@@ -39,7 +39,7 @@ const chipStyle = (active) => ({
 
 const selectStyle = {
   padding: '8px 10px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6,
-  background: T.paper, color: T.ink, fontFamily: F.ui, cursor: 'pointer',
+  background: T.paper, color: T.cream, fontFamily: F.ui, cursor: 'pointer',
 }
 
 const checkboxLabel = {
@@ -139,7 +139,7 @@ export function MarketplaceProvidersIndex() {
   ].filter(Boolean)
 
   return (
-    <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui, color: T.ink }}>
+    <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui, color: T.cream }}>
       <div style={{ width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '32px 0 64px' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.inkMid, fontFamily: F.mono }}>
@@ -174,7 +174,7 @@ export function MarketplaceProvidersIndex() {
                     value={searchInput}
                     onChange={e => setSearchInput(e.target.value)}
                     placeholder="Name, expertise, bio…"
-                    style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6, background: T.paper, color: T.ink, fontFamily: F.ui, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6, background: T.paper, color: T.cream, fontFamily: F.ui, boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
@@ -424,7 +424,7 @@ function ProviderSidePane({ a, onClose }) {
               </div>
               {a.bar_number && (
                 <div style={{ fontFamily: F.mono, fontSize: 11, color: T.inkMid, marginTop: 2 }}>
-                  Bar / Reg #: <b style={{ color: T.ink }}>{a.bar_number}</b>
+                  Bar / Reg #: <b style={{ color: T.cream }}>{a.bar_number}</b>
                 </div>
               )}
             </div>
@@ -441,13 +441,13 @@ function ProviderSidePane({ a, onClose }) {
           {a.rating_avg !== null && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.paper, border: `1px solid ${T.paper2}`, borderRadius: 10 }}>
               <Stars value={a.rating_avg} size={16} />
-              <span style={{ fontFamily: F.mono, fontWeight: 700, fontSize: 14, color: T.ink }}>{a.rating_avg}</span>
+              <span style={{ fontFamily: F.mono, fontWeight: 700, fontSize: 14, color: T.cream }}>{a.rating_avg}</span>
               <span style={{ fontFamily: F.mono, fontSize: 12, color: T.inkSoft }}>({a.rating_count} {a.rating_count === 1 ? 'review' : 'reviews'})</span>
             </div>
           )}
 
           {a.tagline && (
-            <p style={{ margin: 0, fontFamily: F.display, fontStyle: 'italic', fontSize: 17, lineHeight: 1.5, color: T.ink }}>
+            <p style={{ margin: 0, fontFamily: F.display, fontStyle: 'italic', fontSize: 17, lineHeight: 1.5, color: T.cream }}>
               "{a.tagline}"
             </p>
           )}
@@ -465,14 +465,14 @@ function ProviderSidePane({ a, onClose }) {
           {a.languages?.length > 0 && (
             <div>
               <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkSoft, marginBottom: 8 }}>Languages</div>
-              <div style={{ fontSize: 13.5, color: T.ink }}>{a.languages.join(' · ')}</div>
+              <div style={{ fontSize: 13.5, color: T.cream }}>{a.languages.join(' · ')}</div>
             </div>
           )}
 
           {a.bio && (
             <div>
               <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkSoft, marginBottom: 8 }}>About</div>
-              <div style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: T.ink }}>{renderBioMarkdown(a.bio)}</div>
+              <div style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: T.cream }}>{renderBioMarkdown(a.bio)}</div>
             </div>
           )}
 

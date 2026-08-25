@@ -21,7 +21,7 @@ import { T, F } from './tokens'
 const pageShell: CSSProperties = {
   minHeight: '100vh',
   background: T.paper,
-  color: T.ink,
+  color: T.cream,
   fontFamily: F.ui,
 }
 
@@ -108,7 +108,7 @@ const sectionTitle: CSSProperties = {
   fontWeight: 500,
   letterSpacing: '-0.01em',
   margin: '0 0 16px',
-  color: T.ink,
+  color: '#fff',
 }
 
 const gigTitle: CSSProperties = {
@@ -117,7 +117,7 @@ const gigTitle: CSSProperties = {
   fontWeight: 500,
   letterSpacing: '-0.01em',
   margin: '0 0 12px',
-  color: T.ink,
+  color: '#fff',
   lineHeight: 1.2,
 }
 
@@ -129,14 +129,14 @@ const gigMeta: CSSProperties = {
   fontSize: '11px',
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
-  color: T.inkSoft,
+  color: T.cream,
   marginBottom: '16px',
 }
 
 const gigDescription: CSSProperties = {
   fontSize: '15px',
   lineHeight: 1.75,
-  color: T.ink,
+  color: T.cream,
   whiteSpace: 'pre-wrap',
   fontFamily: F.ui,
 }
