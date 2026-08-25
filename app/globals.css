@@ -1027,3 +1027,212 @@ section[id] {
   -webkit-appearance: none !important;
   opacity: 0 !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MARKETPLACE LEGIBILITY — forced paper + ink
+
+   Every marketplace page must have:
+   - A light, paper-like background
+   - Dark, ink-like text
+   The palette picker can still change accent colors (indigo, gold, teal,
+   brick, moss) but the base must always be high-contrast legible.
+   ═══════════════════════════════════════════════════════════════════════ */
+.cw-market {
+  --ys-paper: #FAFAF7;
+  --ys-paper2: #F0EDE6;
+  --ys-paper3: #E6E1D6;
+  --ys-vellum: #FFFFFF;
+  --ys-cream: #FAFAF7;
+  --ys-ink: #1A120E;
+  --ys-inkMid: #3D3530;
+  --ys-inkSoft: #6B6058;
+  background: var(--ys-paper);
+  color: var(--ys-ink);
+}
+
+/* Hero section — dark cinematic overlay for visual impact */
+.cw-market .hero,
+.cw-market .hero-media-overlay {
+  color: #FFFFFF;
+}
+.cw-market .hero h1,
+.cw-market .hero p,
+.cw-market .hero .hero-eyebrow,
+.cw-market .hero .suggest a,
+.cw-market .hero .suggest span {
+  color: #FFFFFF;
+}
+
+/* Accent cards with dark backgrounds get light text */
+.cw-market .seller-card,
+.cw-market [style*="background: var(--ys-indigo)"],
+.cw-market [style*="background:var(--ys-indigo)"] {
+  color: #FFFFFF;
+}
+
+/* Brand mark — white on accent */
+.cw-market .brand-mark {
+  color: #FFFFFF;
+}
+
+/* Buttons on accent backgrounds — white text */
+.cw-market .btn.primary,
+.cw-market nav.nav-links a.cta,
+.cw-market .country-bar a.active,
+.cw-market .filters a.on,
+.cw-market button[style*="background: var(--ys-indigo)"],
+.cw-market button[style*="background:var(--ys-indigo)"] {
+  color: #FFFFFF !important;
+}
+
+/* Price badges on dark pill backgrounds */
+.cw-market .gig .price b,
+.cw-market .cw-files-card .price,
+.cw-market .gig .plate-tag {
+  color: #FFFFFF !important;
+}
+
+/* Nav and topbar — light glass on paper */
+.cw-market header.nav,
+.cw-market .topbar {
+  background: var(--ys-vellum);
+  color: var(--ys-ink);
+}
+
+/* All text on light card backgrounds — dark ink */
+.cw-market .gig,
+.cw-market .faq-item,
+.cw-market .how-grid,
+.cw-market .cw-files-card,
+.cw-market .cw-all-card,
+.cw-market .quote,
+.cw-market .trust,
+.cw-market .close-strip,
+.cw-market .cw-help-panel {
+  color: var(--ys-ink);
+}
+
+/* Category bar pills — dark text on light pill */
+.cw-market .cw-cat-trigger,
+.cw-market .country-bar a {
+  color: var(--ys-ink);
+  background: var(--ys-vellum);
+  border-color: var(--ys-rule);
+}
+.cw-market .cw-cat-trigger:hover,
+.cw-market .country-bar a:hover {
+  background: var(--ys-paper2);
+}
+
+/* Search inputs — dark text on white */
+.cw-market input,
+.cw-market .nav-search input,
+.cw-market .hero-search input,
+.cw-market .cw-all-sort {
+  color: var(--ys-ink);
+}
+
+/* Section headings on paper background — dark */
+.cw-market .section-head h2,
+.cw-market .faq-heading,
+.cw-market .cw-files-rail-head h2 {
+  color: var(--ys-ink);
+}
+
+/* Section meta text — readable mid-tone */
+.cw-market .section-head .meta,
+.cw-market .section-head .meta a {
+  color: var(--ys-inkMid);
+}
+
+/* View toggle, filter pills, sort — light bg, dark text */
+.cw-market .filters a:not(.on),
+.cw-market .filters a:hover:not(.on) {
+  color: var(--ys-ink);
+  background: var(--ys-vellum);
+  border-color: var(--ys-rule);
+}
+
+/* Gig detail page text */
+.cw-market [style*="color: #fff"],
+.cw-market [style*="color:#fff"] {
+  /* Keep white on accent backgrounds (seller cards, hero) */
+}
+
+/* Link colors — always visible */
+.cw-market a {
+  color: inherit;
+}
+.cw-market .section-head .meta a {
+  color: var(--ys-ink);
+  border-bottom: 1px solid var(--ys-ink);
+}
+.cw-market .cw-all-trigger {
+  color: var(--ys-ink);
+  border-bottom-color: var(--ys-ink);
+}
+
+/* Trust bar — dark text on paper */
+.cw-market .trust-inner .label {
+  color: var(--ys-inkMid);
+}
+.cw-market .trust-inner .item {
+  color: var(--ys-ink);
+}
+
+/* FAQ answers */
+.cw-market .faq-summary,
+.cw-market .faq-body,
+.cw-market .faq-sym {
+  color: var(--ys-ink);
+}
+.cw-market .faq-body {
+  color: var(--ys-inkMid);
+}
+
+/* Drawer, modal — paper bg, ink text */
+.cw-market .cw-all-drawer,
+.cw-market .cw-all-head,
+.cw-market .cw-all-body {
+  background: var(--ys-vellum);
+  color: var(--ys-ink);
+}
+.cw-market .cw-all-side {
+  background: var(--ys-paper2);
+  color: var(--ys-ink);
+}
+.cw-market .cw-all-card-body h4,
+.cw-market .cw-all-card-meta,
+.cw-market .cw-all-card-foot,
+.cw-market .cw-all-card-price,
+.cw-market .cw-all-card-delivery,
+.cw-market .cw-all-eyebrow,
+.cw-market .cw-all-title,
+.cw-market .cw-all-count,
+.cw-market .cw-all-empty {
+  color: var(--ys-ink);
+}
+.cw-market .cw-all-card-meta,
+.cw-market .cw-all-card-delivery,
+.cw-market .cw-all-eyebrow,
+.cw-market .cw-all-count {
+  color: var(--ys-inkSoft);
+}
+
+/* Seller directory, providers index, categories index */
+.cw-market [style*="background: var(--ys-paper)"],
+.cw-market [style*="background:var(--ys-paper)"] {
+  background: var(--ys-paper);
+  color: var(--ys-ink);
+}
+
+/* Gig discovery — search page */
+.cw-market .ys-market-nav,
+.cw-market [class*="filter"] {
+  color: var(--ys-ink);
+}
+
+/* Chat side pane — keep dark only on accent bg */
+.cw-market .chat-side-pane {
+  color: var(--ys-ink);
+}

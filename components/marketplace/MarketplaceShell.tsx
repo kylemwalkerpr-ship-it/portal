@@ -289,7 +289,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
               />
               <span style={{
                 fontFamily: F.ui, fontSize: 19, fontWeight: 800,
-                color: T.cream, letterSpacing: '-0.02em',
+                color: T.ink, letterSpacing: '-0.02em',
               }}>YouSafe</span>
             </div>
           ) : (
@@ -302,8 +302,8 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                 style={{ width: 30, height: 30, objectFit: 'contain' }}
               />
               <div style={{ textAlign: 'left' as const }}>
-                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.cream, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.cream, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.ink, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
                   {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
                 </div>
               </div>
@@ -322,7 +322,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             gap: 6,
             padding: '0 14px',
             marginRight: 4,
-            color: T.cream,
+            color: T.inkMid,
             fontSize: 13,
             fontWeight: 500,
             fontFamily: F.ui,
@@ -417,7 +417,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                   height: 38,
                   borderRadius: 999,
                   fontSize: '14px', fontWeight: active || link.view === 'attorneys' ? 700 : 500,
-                  color: link.view === 'attorneys' ? '#fff' : active ? '#fff' : T.cream,
+                  color: link.view === 'attorneys' ? '#fff' : active ? '#fff' : T.ink,
                   background: link.view === 'attorneys' ? T.ink : active ? T.indigo : 'none',
                   border: 'none',
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
