@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
+import { PalettePicker } from './PalettePicker'
 import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
@@ -435,8 +436,11 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           </div>
         )}
 
-        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
+        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '8px', flexShrink: 0 }}>
           <GlobalLanguageBar />
+        </div>
+        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '6px', flexShrink: 0 }}>
+          <PalettePicker />
         </div>
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />

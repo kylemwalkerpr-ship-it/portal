@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { CartProvider } from '@/components/cart/CartProvider'
+import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 
 /**
@@ -19,10 +20,12 @@ export const metadata: Metadata = {
 export default function MarketplaceLayout({ children }: { children: React.ReactNode }) {
   return (
     <CartProvider>
-      {/* Suspense is required because MarketplaceShell uses useSearchParams() */}
-      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#2C1410' }} />}>
-        <MarketplaceShell>{children}</MarketplaceShell>
-      </Suspense>
+      <PaletteProvider>
+        {/* Suspense is required because MarketplaceShell uses useSearchParams() */}
+        <Suspense fallback={<div style={{ minHeight: '100vh', background: '#2C1410' }} />}>
+          <MarketplaceShell>{children}</MarketplaceShell>
+        </Suspense>
+      </PaletteProvider>
     </CartProvider>
   )
 }
