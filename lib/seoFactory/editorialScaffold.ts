@@ -9,7 +9,7 @@
 import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from './contentDepth'
-import { countEstateLinks, ESTATE_ANCHOR_LINKS } from './linkAudit'
+import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
 
@@ -1066,6 +1066,29 @@ export function applyDeterministicRepairs(opts: {
         }
       }
     }
+  }
+
+  // ── Malformed URL cleanup ──────────────────────────────────────────
+  // The AI generates URLs like `https://www.canada.On` where a sentence
+  // word ("On") is concatenated onto the TLD. Detect and strip these so
+  // the link audit doesn't flag them as untrusted and the fix-all doesn't
+  // enter an infinite loop trying to "fix" them.
+  {
+    const urlBefore = b
+    // Fix markdown link URLs: [text](https://www.canada.On) → [text](https://www.canada.ca)
+    b = b.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, (match, text, url) => {
+      const cleanedUrl = cleanTldSentenceWords(url)
+      const cleanedText = cleanLinkTextSentenceWord(text, url)
+      if (cleanedUrl !== url || cleanedText !== text) {
+        return `[${cleanedText}](${cleanedUrl})`
+      }
+      return match
+    })
+    // Fix bare URLs: https://www.canada.On → https://www.canada.ca
+    b = b.replace(/(https?:\/\/[^\s)\]"'`]+)/g, (url) => {
+      return cleanTldSentenceWords(url)
+    })
+    if (b !== urlBefore) applied.push('malformed_tld_urls_cleaned')
   }
 
   // ── Trim to the hard max word window ────────────────────────────────

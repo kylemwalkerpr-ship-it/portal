@@ -159,6 +159,13 @@ export type ReauditContractInput = {
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
   region?: string
+  /** Canonical URL — so the Ahrefs meta-description check and link audit
+   *  can validate against the real target. The ship gate always has this;
+   *  the re-audit must too, or the gates disagree. */
+  targetUrl?: string
+  /** Verified internal URLs from the brief — internal links outside this
+   *  set are flagged. Same parameter the ship gate uses. */
+  linkAllowlist?: string[]
 }
 
 /** The contract fields that POST + PATCH both return (route adds
@@ -194,7 +201,7 @@ export type ReauditContractOutput = {
  *  6. shipReady      → quality.ok && depthGate.ok — warnings never block
  */
 export function evaluateReauditContract(input: ReauditContractInput): ReauditContractOutput {
-  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, region } = input
+  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, region, targetUrl, linkAllowlist } = input
 
   const result = evaluateContentQuality({
     content,
@@ -204,6 +211,8 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     requiredShortKeywords,
     requiredLongTailKeywords,
     region,
+    targetUrl,
+    linkAllowlist,
   })
 
   const annotations: InlineAnnotation[] = []

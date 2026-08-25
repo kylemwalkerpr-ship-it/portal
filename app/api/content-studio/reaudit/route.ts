@@ -344,6 +344,7 @@ export async function POST(request: NextRequest) {
         requiredShortKeywords,
         requiredLongTailKeywords,
         region,
+        targetUrl,
       }),
     }
     // Live HEAD/GET of every URL is a Worker subrequest bomb. The desk auto-gate
@@ -481,6 +482,7 @@ export async function PATCH(request: NextRequest) {
         requiredShortKeywords,
         requiredLongTailKeywords,
         region,
+        targetUrl,
       })
       const leftover = leftoverAnnotationCodes(annotations, afterMech)
       if (leftover.length === 0) {
@@ -596,6 +598,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         requiredShortKeywords,
         requiredLongTailKeywords,
         region,
+        targetUrl,
       })
       const afterCodes = new Set([
         ...(afterMech.blockersData || []).map((b) => b.code),
@@ -626,6 +629,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         requiredShortKeywords,
         requiredLongTailKeywords,
         region,
+        targetUrl,
       })
       const stillPresent = new Set([
         ...(postDepth.blockersData || []).map((b) => b.code),
@@ -680,6 +684,7 @@ ${enginePlan.promptBlock}`
         requiredShortKeywords,
         requiredLongTailKeywords,
         region,
+        targetUrl,
       })
       const leftoverLinks = (await auditLinksLive(sanitized.content, {
         knownLiveUrls: targetUrl ? [targetUrl] : undefined,
@@ -793,6 +798,7 @@ ${enginePlan.promptBlock}`
         requiredShortKeywords,
         requiredLongTailKeywords,
         region,
+        targetUrl,
       }),
       fixedContent,
       // Let the editor show which engine gaps the fix targeted, in order.

@@ -586,3 +586,52 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(result.content).toContain('Boundless')
   })
 })
+
+describe('cleanTldSentenceWords — TLD + sentence word cleanup', () => {
+  it('strips a sentence word appended to .ca TLD', () => {
+    const { cleanTldSentenceWords } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanTldSentenceWords('https://www.canada.On')).toBe('https://www.canada.ca/')
+  })
+
+  it('strips a sentence word appended to .ca path', () => {
+    const { cleanTldSentenceWords } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanTldSentenceWords('https://www.quebec.Typically')).toBe('https://www.quebec.ca/')
+  })
+
+  it('strips a sentence word appended to .gov.uk', () => {
+    const { cleanTldSentenceWords } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanTldSentenceWords('https://www.gov.uk.Meanwhile')).toBe('https://www.gov.uk/')
+  })
+
+  it('leaves valid URLs untouched', () => {
+    const { cleanTldSentenceWords } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanTldSentenceWords('https://www.canada.ca/en/immigration')).toBe('https://www.canada.ca/en/immigration')
+  })
+
+  it('leaves relative URLs untouched', () => {
+    const { cleanTldSentenceWords } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanTldSentenceWords('/us/some-page')).toBe('/us/some-page')
+  })
+
+  it('leaves URLs with valid path segments untouched', () => {
+    const { cleanTldSentenceWords } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanTldSentenceWords('https://www.canada.ca/en/immigration.html')).toBe('https://www.canada.ca/en/immigration.html')
+  })
+})
+
+describe('cleanLinkTextSentenceWord — link text cleanup', () => {
+  it('strips trailing word from link text when URL was cleaned', () => {
+    const { cleanLinkTextSentenceWord } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanLinkTextSentenceWord('Canada On', 'https://www.canada.On')).toBe('Canada')
+  })
+
+  it('leaves link text untouched when URL is valid', () => {
+    const { cleanLinkTextSentenceWord } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanLinkTextSentenceWord('Canada', 'https://www.canada.ca')).toBe('Canada')
+  })
+
+  it('leaves link text untouched when word does not match', () => {
+    const { cleanLinkTextSentenceWord } = require('@/lib/seoFactory/linkAudit')
+    expect(cleanLinkTextSentenceWord('Read more', 'https://www.canada.On')).toBe('Read more')
+  })
+})

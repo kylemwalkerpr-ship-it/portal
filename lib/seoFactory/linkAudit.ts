@@ -351,6 +351,87 @@ export function isMalformedUrl(url: string): boolean {
 }
 
 /**
+ * Detect URLs where a sentence word has been concatenated onto the TLD.
+ * The AI often produces `https://www.canada.On` (where "On" is the next
+ * word in the sentence) instead of `https://www.canada.ca`.
+ *
+ * Returns the cleaned URL if a fix is possible, or the original if not.
+ */
+export function cleanTldSentenceWords(url: string): string {
+  const u = url.trim()
+  if (!/^https?:\/\//i.test(u)) return url
+  try {
+    const parsed = new URL(u)
+    // Extract hostname preserving case — URL.hostname lowercases, which
+    // breaks detection of sentence words that start with a capital letter.
+    const rawHost = u.replace(/^https?:\/\/([^/]+).*$/i, '$1')
+    const host = parsed.hostname // lowercase version for matching
+
+    // Pattern 1: domain.TLD + sentence word appended (case-insensitive)
+    // e.g. immi.homeaffairs.gov.au.Meanwhile → immi.homeaffairs.gov.au
+    const appendMatch = rawHost.match(/^(.+?\.(?:ca|com|org|net|gov|edu|co\.uk|co\.nz|co\.za|com\.au|gov\.uk|gov\.ca|gov\.au|gov\.nz|gov\.sg|gov\.ie))\.([A-Za-z][a-z]+)$/)
+    if (appendMatch) {
+      parsed.hostname = appendMatch[1]
+      return parsed.toString()
+    }
+
+    // Pattern 2: known country name + sentence word (replaced TLD)
+    // e.g. www.canada.On → www.canada.ca, www.quebec.Typically → www.quebec.ca
+    const TLD_MAP: Record<string, string> = {
+      'canada': '.ca', 'quebec': '.ca', 'britain': '.co.uk',
+      'america': '.gov', 'australia': '.gov.au',
+    }
+    for (const [country, tld] of Object.entries(TLD_MAP)) {
+      const re = new RegExp(`^(.+\.${country})\.([A-Za-z][a-z]+)$`, 'i')
+      const m = rawHost.match(re)
+      if (m) {
+        parsed.hostname = m[1] + tld
+        return parsed.toString()
+      }
+    }
+  } catch { /* invalid URL — leave as-is */ }
+  return url
+}
+
+/**
+ * Strip sentence-word suffixes from markdown link text.
+ * E.g. `[Canada On](https://www.canada.On)` → `[Canada](https://www.canada.ca)`
+ * The link text often has the same sentence word appended.
+ */
+export function cleanLinkTextSentenceWord(text: string, url: string): string {
+  // If the URL was cleaned (TLD sentence word removed/replaced), check if
+  // the link text ends with the sentence word that was in the original URL.
+  const urlDiff = url !== cleanTldSentenceWords(url)
+  if (!urlDiff) return text
+  const cleanedUrl = cleanTldSentenceWords(url)
+  // Find the sentence word by comparing hostnames — the word after the
+  // common prefix is what got replaced/stripped.
+  const origHost = (() => { try { return new URL(url).hostname } catch { return '' } })()
+  const cleanHost = (() => { try { return new URL(cleanedUrl).hostname } catch { return '' } })()
+  if (origHost === cleanHost) return text
+  // Find common prefix length (case-insensitive — URL.hostname lowercases)
+  const origLower = origHost.toLowerCase()
+  const cleanLower = cleanHost.toLowerCase()
+  let prefixLen = 0
+  while (prefixLen < origLower.length && prefixLen < cleanLower.length && origLower[prefixLen] === cleanLower[prefixLen]) {
+    prefixLen++
+  }
+  // The remaining part of the original hostname is the sentence word
+  const strippedWord = origHost.slice(prefixLen)
+  // Case-insensitive check: text might have 'On' while hostname has 'on'
+  if (strippedWord && text.toLowerCase().endsWith(' ' + strippedWord.toLowerCase())) {
+    // Find the actual ending in the original text and remove it
+    const lowerText = text.toLowerCase()
+    const lowerWord = ' ' + strippedWord.toLowerCase()
+    const idx = lowerText.lastIndexOf(lowerWord)
+    if (idx >= 0) {
+      return text.slice(0, idx)
+    }
+  }
+  return text
+}
+
+/**
  * Synchronous structural audit — no network. Pass the verified internal URL
  * set (from the brief's interlink allowlist and/or the live sitemap) to also
  * flag internal paths that are not known to exist.
