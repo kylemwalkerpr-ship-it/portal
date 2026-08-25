@@ -50,7 +50,15 @@ const NVIDIA_DEEPSEEK_MODEL_DEFAULT = 'deepseek-ai/deepseek-v4-flash-0731'
 export function canonicalizeNvidiaModelId(raw?: string | null): string {
   const id = String(raw || '').trim()
   if (!id) return NVIDIA_DEEPSEEK_MODEL_DEFAULT
-  return id.toLowerCase()
+  const lower = id.toLowerCase()
+  // DeepSeek V4 Pro reached EOL on NVIDIA on 2026-08-07 (410 Gone) and the
+  // bare `deepseek-ai/deepseek-v4-pro` id (NO -0813 suffix) is the retired
+  // base checkpoint. Remap it to the live Flash checkpoint so a stale Worker
+  // secret, vault model row, or pass-through id can never send the retired
+  // model to integrate.api.nvidia.com again (410 regression). Pro-0813 is a
+  // DIFFERENT id (live on Parasail/Baseten, not NVIDIA) and passes through.
+  if (/deepseek-v4-pro(?!-0813)/i.test(lower)) return NVIDIA_DEEPSEEK_MODEL_DEFAULT
+  return lower
 }
 
 /**

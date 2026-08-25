@@ -76,6 +76,23 @@ describe('content AI · NVIDIA model-id canonicalization', () => {
     expect(canonicalizeNvidiaModelId('')).toBe('deepseek-ai/deepseek-v4-flash-0731')
   })
 
+  it('never sends the EOL bare deepseek-v4-pro id to NVIDIA — remaps to Flash (410 regression)', () => {
+    expect(canonicalizeNvidiaModelId('deepseek-ai/deepseek-v4-pro')).toBe('deepseek-ai/deepseek-v4-flash-0731')
+    expect(canonicalizeNvidiaModelId('deepseek-ai/DeepSeek-V4-Pro')).toBe('deepseek-ai/deepseek-v4-flash-0731')
+    // Pro-0813 is a different checkpoint (live on Parasail/Baseten, not NVIDIA) — untouched.
+    expect(canonicalizeNvidiaModelId('deepseek-ai/DeepSeek-V4-Pro-0813')).toBe('deepseek-ai/deepseek-v4-pro-0813')
+    expect(canonicalizeNvidiaModelId('deepseek-ai/deepseek-v4-pro-0813')).toBe('deepseek-ai/deepseek-v4-pro-0813')
+  })
+
+  it('a stale vault/Worker NVIDIA_DEEPSEEK_MODEL holding the EOL id cannot 410 drafts either', () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    // Simulate the deployed secret/vault row that caused the original 410 Gone.
+    process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/deepseek-v4-pro'
+    const provider = getNvidiaDeepseekProvider() as unknown as { label: string; model: string }
+    expect(provider.label).toBe('nvidia-deepseek')
+    expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-0731')
+  })
+
   it('NVIDIA DeepSeek provider always sends the lowercase model id even when the vault override is mixed-case', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     // The vault can hold the Parasail/Baseten form — NVIDIA 404s on it.
