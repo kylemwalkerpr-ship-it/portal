@@ -380,6 +380,7 @@ export function cleanTldSentenceWords(url: string): string {
     const TLD_MAP: Record<string, string> = {
       'canada': '.ca', 'quebec': '.ca', 'britain': '.co.uk',
       'america': '.gov', 'australia': '.gov.au',
+      'uscis': '.gov', 'homeaffairs': '.gov.au', 'gov': '.gov',
     }
     for (const [country, tld] of Object.entries(TLD_MAP)) {
       const re = new RegExp(`^(.+\.${country})\.([A-Za-z][a-z]+)$`, 'i')

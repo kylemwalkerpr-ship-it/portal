@@ -617,6 +617,25 @@ export function applyDeterministicRepairs(opts: {
     applied.push('whilst_normalized')
   }
 
+  // ── Bare URL auto-fix: www.example.com → https://www.example.com ───
+  // The AI generates markdown links with bare domain URLs (no scheme),
+  // which the link audit flags as MALFORMED_LINK blockers. Deterministically
+  // prefix these with https:// so the gate clears without an AI rewrite.
+  {
+    const urlBefore = b
+    // Markdown links: [text](www.example.com) → [text](https://www.example.com)
+    b = b.replace(/\[([^\]]*)\]\((www\.[^)\s]+)\)/g, (_, text, url) => {
+      return `[${text}](https://${url})`
+    })
+    // Bare domain references that look like URLs (not already in a link)
+    b = b.replace(/(?<!\()(www\.[a-z0-9][-a-z0-9]*\.[a-z]{2,}(?:\/[^\s)\]"'`]*)?)/gi, (url) => {
+      // Don't double-prefix if already https://
+      if (url.startsWith('https://') || url.startsWith('http://')) return url
+      return `https://${url}`
+    })
+    if (b !== urlBefore) applied.push('bare_urls_prefixed')
+  }
+
   // ── Sentence-opening rhythm smoothing ────────────────────────────────
   // The quality gate flags ≥5 prose sentences sharing the same 12-char
   // opening ("The UK dependent visa" ×5 — the 2026-08 live-run case) as
