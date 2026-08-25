@@ -1,5 +1,6 @@
 import {
   canonicalizeNvidiaModelId,
+  fetchStreamWithRetry,
   getNvidiaDeepseekProvider,
   getNvidiaNemotronProvider,
   listConfiguredContentProviders,
@@ -82,5 +83,48 @@ describe('content AI · NVIDIA model-id canonicalization', () => {
     process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-Custom'
     const provider = getNvidiaDeepseekProvider() as unknown as { label: string; model: string }
     expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-custom')
+  })
+})
+
+describe('content AI · stream overload retry (NVIDIA 529)', () => {
+  const originalRetry = process.env.CONTENT_AI_STREAM_RETRY
+
+  afterEach(() => {
+    if (originalRetry == null) delete process.env.CONTENT_AI_STREAM_RETRY
+    else process.env.CONTENT_AI_STREAM_RETRY = originalRetry
+  })
+
+  it('retries a 529 overload with backoff and succeeds on a later attempt', async () => {
+    let calls = 0
+    const ok = new Response('ok', { status: 200 })
+    const { res, attempts } = await fetchStreamWithRetry(() => {
+      calls++
+      if (calls === 1) {
+        return Promise.reject(new Error('nvidia-deepseek stream 529: {"message":"Service temporarily overloaded","type":"Overloaded","code":529}'))
+      }
+      return Promise.resolve(ok)
+    })
+    expect(calls).toBe(2)
+    expect(attempts).toBe(2)
+    expect(res.status).toBe(200)
+  })
+
+  it('propagates a non-transient 404 immediately (no retries)', async () => {
+    let calls = 0
+    await expect(fetchStreamWithRetry(() => {
+      calls++
+      return Promise.reject(new Error('nvidia-deepseek stream 404: page not found'))
+    })).rejects.toThrow(/404/)
+    expect(calls).toBe(1)
+  })
+
+  it('respects CONTENT_AI_STREAM_RETRY=0 as a single attempt', async () => {
+    process.env.CONTENT_AI_STREAM_RETRY = '0'
+    let calls = 0
+    await expect(fetchStreamWithRetry(() => {
+      calls++
+      return Promise.reject(new Error('nvidia-deepseek stream 529: overloaded'))
+    })).rejects.toThrow(/529/)
+    expect(calls).toBe(1)
   })
 })

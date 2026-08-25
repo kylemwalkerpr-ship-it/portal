@@ -385,7 +385,10 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
       return await fn()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      const retryable = /\b(503|429|524)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(msg)
+      // 529 = NVIDIA "Service temporarily overloaded" (verified live). It is
+      // recoverable — a short pause often drains the worker — so it retries
+      // with backoff like 503/429 before the cascade moves to the next host.
+      const retryable = /\b(503|429|524|529)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(msg)
       if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
       // Exponential backoff: 1.5s → 3s → 6s (with ±20% jitter)
       const baseMs = 1500 * 2 ** (attempt - 1)
@@ -1461,6 +1464,43 @@ function parseChoiceFinishReason(payload: string): { finish_reason?: string | nu
   }
 }
 
+/** Transient HTTP overloads worth a bounded backoff before the provider
+ *  cascade gives up on a host: NVIDIA 529 "Service temporarily overloaded"
+ *  (verified live), 503 capacity, 429 rate limits, 524 gateways. */
+const TRANSIENT_STREAM_ERROR_RE =
+  /\b(529|503|429|524)\b|overload|high.demand|rate.?limit|UNAVAILABLE|ResourceExhausted/i
+
+/**
+ * Re-open an SSE stream with bounded exponential backoff on transient
+ * overload errors (NVIDIA 529 / 503 / 429 / 524). A 529 often drains in a
+ * second or two — retrying keeps the request on the intended host instead of
+ * bouncing the whole cascade. After retries the error propagates and the
+ * ordered cascade moves to the next provider, so an overloaded NVIDIA never
+ * fails the job outright. Non-transient errors (auth 401/403, model 404,
+ * subrequest-limit) propagate immediately.
+ */
+export async function fetchStreamWithRetry(
+  open: () => Promise<Response>,
+  maxAttempts = 3,
+): Promise<{ res: Response; attempts: number }> {
+  const envVal = Number(process.env.CONTENT_AI_STREAM_RETRY)
+  const attempts = isNaN(envVal) ? Math.max(1, maxAttempts) : Math.max(1, envVal)
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return { res: await open(), attempts: attempt }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const transient = TRANSIENT_STREAM_ERROR_RE.test(msg)
+      if (attempt >= attempts || !transient || /Too many subrequest/i.test(msg)) throw e
+      // Exponential backoff: 1s → 2s → 4s (with ±20% jitter)
+      const baseMs = 1000 * 2 ** (attempt - 1)
+      const jitter = baseMs * (0.8 + Math.random() * 0.4)
+      await new Promise((r) => setTimeout(r, jitter))
+    }
+  }
+  throw new Error('stream retries exhausted')
+}
+
 async function* parseOpenAiSse(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<string> {
@@ -1584,7 +1624,13 @@ async function* openAiCompatibleStream(
   let prompt = opts.prompt
   while (continuations <= MAX_CONTINUATIONS) {
     try {
-      for await (const delta of parseOpenAiSse((await streamOnce(prompt)).body)) {
+      // Bounded backoff on transient overloads (NVIDIA 529 etc.) before the
+      // cascade gives up — an overloaded NVIDIA must not fail the job outright.
+      const { res: streamRes, attempts } = await fetchStreamWithRetry(() => streamOnce(prompt))
+      if (attempts > 1) {
+        yield { type: 'provider', provider: `${p.label} (overload retry ${attempts})`, model: p.model }
+      }
+      for await (const delta of parseOpenAiSse(streamRes.body)) {
         full += delta
         yield { type: 'delta', text: delta }
       }
@@ -1611,7 +1657,8 @@ async function* openAiCompatibleStream(
   if (!full.trim() && isReasoningModel) {
     const retryPrompt =
       opts.prompt + '\n\n(Previous attempt produced no visible text — write the complete answer now, without a reasoning chain.)'
-    for await (const delta of parseOpenAiSse((await streamOnce(retryPrompt, true)).body)) {
+    const { res: retryRes } = await fetchStreamWithRetry(() => streamOnce(retryPrompt, true))
+    for await (const delta of parseOpenAiSse(retryRes.body)) {
       full += delta
       yield { type: 'delta', text: delta }
     }
