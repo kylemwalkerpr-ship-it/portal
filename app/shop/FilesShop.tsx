@@ -3,37 +3,47 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
-import { T, F } from '@/components/marketplace/tokens'
+import { F } from '@/components/marketplace/tokens'
 import { FILE_SHOP_FILTERS, FILE_SHOP_PRODUCTS, type FileShopCategory, type FileShopProduct } from '@/lib/files-shop-catalog'
 
 type FilterId = 'all' | FileShopCategory
 
-/** Shop palette — hardcoded so indigo never shows if tokens.ts still lags. */
-const C = {
-  ...T,
-  paper: '#F6F1E8',
-  paper2: '#EDE6D9',
-  vellum: '#FFFCF7',
-  ink: '#1A1714',
-  inkMid: '#4A433C',
-  inkSoft: '#7A7268',
-  rule: '#E4D9CB',
-  teal: '#0E7C74',
-  tealDeep: '#085E58',
-  gold: '#E8B931',
-  terracotta: '#D4532A',
-  moss: '#3F6B4A',
+/**
+ * Shop palette — every colour is a CSS custom-property reference driven by the
+ * marketplace palette picker (see contexts/palette-context.tsx). Fallbacks match
+ * the default "Polished Walnut" palette so the page renders correctly on SSR /
+ * first paint before the provider applies the selected colourway.
+ */
+const V = {
+  paper: 'var(--ys-paper, #4A2A1A)',
+  paper2: 'var(--ys-paper2, #553222)',
+  paper3: 'var(--ys-paper3, #603A28)',
+  vellum: 'var(--ys-vellum, #FFF9F2)',
+  cream: 'var(--ys-cream, #F7EDE0)',
+  ink: 'var(--ys-ink, #1C1410)',
+  inkMid: 'var(--ys-inkMid, #4A3C34)',
+  inkSoft: 'var(--ys-inkSoft, #7A6C64)',
+  rule: 'var(--ys-rule, rgba(247,237,224,0.16))',
+  teal: 'var(--ys-teal, #0B7A6E)',
+  tealDeep: 'var(--ys-tealDeep, #086356)',
+  gold: 'var(--ys-gold, #8E6818)',
+  star: 'var(--ys-star, #8E6818)',
+  // Neutral, palette-independent borders for light cards (works on cream across every colourway)
+  cardRule: 'rgba(24,20,16,0.10)',
+  cardRuleSoft: 'rgba(24,20,16,0.06)',
 } as const
 
 const DISPLAY = F.display.includes('fraunces') ? F.display : "var(--font-fraunces), 'Fraunces', Georgia, serif"
 const UI = F.ui.includes('outfit') ? F.ui : "var(--font-outfit), 'Outfit', system-ui, sans-serif"
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
+// Category badges sit on top of cover *photos*, so they keep fixed pastel washes
+// for legibility regardless of the active palette.
 const CAT_TONE: Record<FileShopCategory, { wash: string; ink: string; label: string }> = {
-  spreadsheet: { wash: '#C5E8E3', ink: C.tealDeep, label: 'Workbook' },
-  guide: { wash: '#D2E6D4', ink: C.moss, label: 'Guide' },
-  template: { wash: '#F6D2C6', ink: C.terracotta, label: 'Template' },
-  craft: { wash: '#F6E4A8', ink: '#7A5A10', label: 'Print' },
+  spreadsheet: { wash: '#C5E8E3', ink: '#06534D', label: 'Workbook' },
+  guide: { wash: '#D2E6D4', ink: '#24502B', label: 'Guide' },
+  template: { wash: '#F6D2C6', ink: '#7A2E14', label: 'Template' },
+  craft: { wash: '#F6E4A8', ink: '#6B4E0A', label: 'Print' },
 }
 
 export default function FilesShop() {
@@ -43,17 +53,29 @@ export default function FilesShop() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return FILE_SHOP_PRODUCTS.filter((p) => {
+      if (!p.published) return false
       if (filter !== 'all' && p.cat !== filter) return false
       if (!q) return true
       return `${p.title} ${p.desc} ${p.format} ${p.bullets.join(' ')}`.toLowerCase().includes(q)
     })
   }, [filter, query])
 
-  const featured = FILE_SHOP_PRODUCTS.filter((p) => p.id === 'consultant-toolkit' || p.id === 'ai-prompts-business')
+  const featured = FILE_SHOP_PRODUCTS.filter(
+    (p) => p.published && (p.id === 'consultant-toolkit' || p.id === 'ai-prompts-business'),
+  )
 
   return (
     <div className="ys-files-shop">
       <style>{SHOP_CSS}</style>
+
+      {/* Announcement strip */}
+      <div className="ys-shop-bar">
+        <div className="ys-shop-wrap">
+          <span>⚡ Instant download</span>
+          <span>🔒 Secure Payhip checkout</span>
+          <span>♾️ Pay once — keep the file forever</span>
+        </div>
+      </div>
 
       <div className="ys-shop-hero">
         <div className="ys-shop-wrap">
@@ -67,12 +89,12 @@ export default function FilesShop() {
 
           <div className="ys-shop-hero-grid">
             <div>
-              <p className="ys-shop-kicker">Instant download · Pay once</p>
+              <p className="ys-shop-kicker">The YouSafe file shop</p>
               <h1>Tools you can open today and run the business with.</h1>
               <p className="ys-shop-lede">
                 Spreadsheets, templates, and short guides for consultants, operators, and families.
-                Checkout is on Payhip. Your file arrives in the same session — no subscription, no
-                waiting on fulfilment.
+                Checkout is on Payhip and your file arrives in the same session — no subscription,
+                no waiting on fulfilment.
               </p>
               <div className="ys-shop-cta-row">
                 <a className="ys-shop-btn primary" href="#catalog">Browse the catalog</a>
@@ -80,7 +102,7 @@ export default function FilesShop() {
               </div>
             </div>
             <aside className="ys-shop-stats" aria-label="Shop facts">
-              <Stat n={String(FILE_SHOP_PRODUCTS.length)} label="files in catalog" />
+              <Stat n={String(FILE_SHOP_PRODUCTS.filter((p) => p.published).length)} label="files in catalog" />
               <Stat n="$7–16" label="one-time USD price" />
               <Stat n="0" label="subscriptions" />
               <Stat n="Payhip" label="secure checkout" />
@@ -208,6 +230,9 @@ function Cover({ product, large }: { product: FileShopProduct; large?: boolean }
     <div className={`ys-shop-cover${large ? ' large' : ''}`}>
       <img src={product.cover} alt="" width={1200} height={1600} />
       <span className="ys-shop-cover-cat" style={{ background: tone.wash, color: tone.ink }}>{tone.label}</span>
+      {product.stamp ? (
+        <span className="ys-shop-cover-stamp">{product.stamp.replace(/\n/g, ' ')}</span>
+      ) : null}
       <span className="ys-shop-cover-price">${product.price}</span>
     </div>
   )
@@ -240,6 +265,7 @@ function FeaturedCard({ product: p }: { product: FileShopProduct }) {
         <Cover product={p} large />
       </a>
       <div className="ys-shop-card-body">
+        <span className="ys-shop-badge">Bestseller</span>
         <h3>{p.title}</h3>
         <p>{p.desc}</p>
         <a className="ys-shop-buy always" href={p.href} rel="noopener noreferrer">
@@ -252,55 +278,73 @@ function FeaturedCard({ product: p }: { product: FileShopProduct }) {
 
 const SHOP_CSS = `
   .ys-files-shop {
-    background: ${C.paper};
-    color: ${C.ink};
+    background: ${V.paper};
+    color: ${V.cream};
     font-family: ${UI};
     font-weight: 500;
   }
   .ys-shop-wrap { width: min(1180px, calc(100vw - 40px)); margin: 0 auto; }
   .ys-shop-kicker {
-    font-family: ${UI}; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
-    color: ${C.teal}; font-weight: 700; margin: 0 0 10px;
+    font-family: ${UI}; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: ${V.cream}; font-weight: 800; margin: 0 0 10px; opacity: 0.9;
   }
   .ys-shop-crumbs {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 500; color: ${C.inkSoft}; margin-bottom: 28px;
+    font-size: 13px; font-weight: 500; color: ${V.cream}; opacity: 0.72; margin-bottom: 28px;
   }
-  .ys-shop-crumbs a { color: ${C.inkMid}; text-decoration: none; transition: color .2s ${EASE}; }
-  .ys-shop-crumbs a:hover { color: ${C.teal}; }
+  .ys-shop-crumbs a { color: ${V.cream}; text-decoration: none; transition: color .2s ${EASE}, opacity .2s ${EASE}; }
+  .ys-shop-crumbs a:hover { color: ${V.cream}; opacity: 1; }
+
+  /* Announcement strip */
+  .ys-shop-bar {
+    background: ${V.paper2};
+    border-bottom: 1px solid ${V.rule};
+  }
+  .ys-shop-bar .ys-shop-wrap {
+    display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center;
+    padding: 9px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; color: ${V.cream};
+  }
+  .ys-shop-bar span { opacity: 0.9; white-space: nowrap; }
+
+  /* Hero */
   .ys-shop-hero {
-    padding: 36px 0 48px; border-bottom: 1px solid ${C.rule};
-    background: #fff;
+    padding: 44px 0 56px;
+    background: radial-gradient(120% 160% at 85% -10%, ${V.paper3} 0%, ${V.paper} 55%);
+    border-bottom: 1px solid ${V.rule};
   }
-  .ys-shop-hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.65fr); gap: 40px; align-items: end; }
+  .ys-shop-hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.65fr); gap: 40px; align-items: center; }
   .ys-shop-hero h1 {
-    font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(34px, 4.8vw, 56px);
-    line-height: 1.08; letter-spacing: -0.03em; margin: 0 0 16px; max-width: 16ch; color: ${C.ink};
+    font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(36px, 5vw, 58px);
+    line-height: 1.06; letter-spacing: -0.03em; margin: 0 0 16px; max-width: 16ch; color: ${V.cream};
   }
-  .ys-shop-lede { font-size: 16px; line-height: 1.6; color: ${C.inkMid}; max-width: 54ch; margin: 0 0 28px; font-weight: 500; }
+  .ys-shop-lede { font-size: 16px; line-height: 1.6; color: ${V.cream}; opacity: 0.85; max-width: 54ch; margin: 0 0 28px; font-weight: 500; }
   .ys-shop-cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
   .ys-shop-btn {
     display: inline-flex; align-items: center; justify-content: center;
-    padding: 12px 20px; border-radius: 999px; font-size: 14px; font-weight: 700;
+    padding: 12px 22px; border-radius: 999px; font-size: 14px; font-weight: 700;
     text-decoration: none; font-family: ${UI};
     transition: background .2s ${EASE}, border-color .2s ${EASE}, transform .2s ${EASE}, color .2s ${EASE};
   }
-  .ys-shop-btn.primary { background: ${C.teal}; color: #fff; }
-  .ys-shop-btn.primary:hover { background: ${C.tealDeep}; transform: translateY(-1px); }
-  .ys-shop-btn.ghost { background: ${C.vellum}; color: ${C.ink}; border: 1px solid ${C.rule}; }
-  .ys-shop-btn.ghost:hover { border-color: ${C.teal}; color: ${C.tealDeep}; }
+  .ys-shop-btn.primary { background: ${V.teal}; color: #fff; }
+  .ys-shop-btn.primary:hover { background: ${V.tealDeep}; transform: translateY(-1px); }
+  .ys-shop-btn.ghost { background: transparent; color: ${V.cream}; border: 1px solid ${V.rule}; }
+  .ys-shop-btn.ghost:hover { border-color: ${V.cream}; color: ${V.cream}; }
+
+  /* Stats — light cards that pop against the wood */
   .ys-shop-stats {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: ${C.rule};
-    border: 1px solid ${C.rule}; border-top: 3px solid ${C.gold}; border-radius: 16px; overflow: hidden;
-    box-shadow: 0 18px 40px -28px rgba(17,20,24,0.35);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: ${V.cardRule};
+    border: 1px solid ${V.cardRule}; border-radius: 16px; overflow: hidden;
+    box-shadow: 0 18px 40px -24px rgba(0,0,0,0.55);
   }
-  .ys-shop-stat { background: ${C.vellum}; padding: 18px 16px; }
-  .ys-shop-stat strong { display: block; font-family: ${DISPLAY}; font-size: 22px; font-weight: 800; color: ${C.ink}; letter-spacing: -0.02em; }
-  .ys-shop-stat span { font-size: 12px; color: ${C.inkSoft}; font-weight: 500; }
-  .ys-shop-featured { padding: 48px 0 12px; background: ${C.paper2}; }
+  .ys-shop-stat { background: ${V.vellum}; padding: 20px 18px; }
+  .ys-shop-stat strong { display: block; font-family: ${DISPLAY}; font-size: 24px; font-weight: 800; color: ${V.ink}; letter-spacing: -0.02em; }
+  .ys-shop-stat span { font-size: 12px; color: ${V.inkSoft}; font-weight: 600; }
+
+  /* Section headers */
+  .ys-shop-featured { padding: 52px 0 12px; background: ${V.paper}; }
   .ys-shop-section-head { margin-bottom: 22px; }
   .ys-shop-section-head h2, .ys-shop-trust h2, .ys-shop-catalog h2 {
-    font-family: ${DISPLAY}; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: ${C.ink};
+    font-family: ${DISPLAY}; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: ${V.cream};
   }
   .ys-shop-section-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
   .ys-shop-featured-rail {
@@ -310,23 +354,25 @@ const SHOP_CSS = `
   }
   .ys-shop-featured-rail::-webkit-scrollbar { display: none; }
   .ys-shop-featured-card {
-    flex: 0 0 min(520px, calc(100% - 12px)); min-width: 280px; scroll-snap-align: start;
-    background: ${C.vellum}; border: 1px solid ${C.rule}; border-radius: 16px; overflow: hidden;
+    flex: 0 0 min(540px, calc(100% - 12px)); min-width: 280px; scroll-snap-align: start;
+    background: ${V.vellum}; border: 1px solid ${V.cardRule}; border-radius: 18px; overflow: hidden;
     display: flex; flex-direction: column;
     transition: box-shadow .2s ${EASE}, transform .2s ${EASE}, border-color .2s ${EASE};
   }
+
+  /* Product cards */
   .ys-shop-card {
-    background: ${C.vellum}; border: 1px solid ${C.rule}; border-radius: 16px; overflow: hidden;
+    background: ${V.vellum}; border: 1px solid ${V.cardRule}; border-radius: 18px; overflow: hidden;
     display: flex; flex-direction: column; min-height: 100%;
     transition: box-shadow .2s ${EASE}, transform .2s ${EASE}, border-color .2s ${EASE};
   }
   .ys-shop-featured-card:hover, .ys-shop-card:hover {
     transform: translateY(-5px); border-color: transparent;
-    box-shadow: 0 22px 44px rgba(15,18,24,0.14);
+    box-shadow: 0 26px 50px rgba(0,0,0,0.30);
   }
   .ys-shop-card-media { display: block; color: inherit; text-decoration: none; }
   .ys-shop-cover {
-    position: relative; padding: 0; aspect-ratio: 4 / 5; overflow: hidden; background: ${C.paper2};
+    position: relative; padding: 0; aspect-ratio: 4 / 5; overflow: hidden; background: ${V.paper2};
   }
   .ys-shop-cover.large { aspect-ratio: 16 / 10; }
   .ys-shop-cover img {
@@ -335,48 +381,59 @@ const SHOP_CSS = `
   }
   .ys-shop-featured-card:hover .ys-shop-cover img, .ys-shop-card:hover .ys-shop-cover img { transform: scale(1.04); }
   .ys-shop-cover::after {
-    content: ""; position: absolute; inset: auto 0 0; height: 42%;
-    background: linear-gradient(180deg, transparent 0%, rgba(17,20,24,0.38) 100%);
+    content: ""; position: absolute; inset: auto 0 0; height: 46%;
+    background: linear-gradient(180deg, transparent 0%, rgba(10,8,6,0.42) 100%);
     pointer-events: none;
   }
-  .ys-shop-cover-cat {
-    position: absolute; left: 12px; top: 12px; z-index: 1;
+  .ys-shop-cover-cat, .ys-shop-cover-stamp {
+    position: absolute; top: 12px; z-index: 1;
     font-family: ${UI}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800;
     padding: 5px 9px; border-radius: 999px;
   }
+  .ys-shop-cover-cat { left: 12px; }
+  .ys-shop-cover-stamp { right: 12px; background: ${V.teal}; color: #fff; }
   .ys-shop-cover-price {
     position: absolute; right: 12px; bottom: 12px; z-index: 1;
     font-family: ${UI}; font-size: 14px; font-weight: 800; letter-spacing: -0.02em;
-    color: ${C.ink}; background: ${C.vellum}; padding: 6px 11px; border-radius: 999px;
-    box-shadow: 0 8px 20px -12px rgba(17,20,24,0.5);
+    color: ${V.ink}; background: ${V.vellum}; padding: 6px 12px; border-radius: 999px;
+    box-shadow: 0 8px 20px -12px rgba(0,0,0,0.6);
   }
-  .ys-shop-card-body { padding: 14px 14px 14px; display: flex; flex-direction: column; flex: 1; }
-  .ys-shop-featured-card .ys-shop-card-body { padding: 16px 18px 18px; }
+  .ys-shop-card-body { padding: 16px 16px 16px; display: flex; flex-direction: column; flex: 1; }
+  .ys-shop-featured-card .ys-shop-card-body { padding: 18px 20px 20px; }
+  .ys-shop-badge {
+    align-self: flex-start; font-family: ${UI}; font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; font-weight: 800; color: ${V.tealDeep};
+    background: ${V.cardRuleSoft}; border: 1px solid ${V.cardRule};
+    padding: 4px 9px; border-radius: 999px; margin-bottom: 8px;
+  }
   .ys-shop-card-body h3 {
-    font-family: ${UI}; font-size: 16px; font-weight: 700; line-height: 1.3; margin: 0 0 6px; color: ${C.ink};
+    font-family: ${UI}; font-size: 16px; font-weight: 700; line-height: 1.3; margin: 0 0 6px; color: ${V.ink};
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .ys-shop-featured-card .ys-shop-card-body h3 { font-size: 20px; font-weight: 800; }
+  .ys-shop-featured-card .ys-shop-card-body h3 { font-size: 21px; font-weight: 800; }
   .ys-shop-card-body p {
-    font-size: 13px; line-height: 1.45; color: ${C.inkMid}; margin: 0 0 12px; font-weight: 500;
+    font-size: 13px; line-height: 1.5; color: ${V.inkMid}; margin: 0 0 12px; font-weight: 500;
     display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
   }
   .ys-shop-featured-card .ys-shop-card-body p { font-size: 14px; -webkit-line-clamp: 2; margin-bottom: 14px; }
   .ys-shop-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; min-height: 36px; }
-  .ys-shop-format { font-size: 12px; color: ${C.inkSoft}; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ys-shop-format { font-size: 12px; color: ${V.inkSoft}; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ys-shop-buy {
-    font-size: 13px; font-weight: 800; color: #fff; background: ${C.teal}; font-family: ${UI};
-    padding: 8px 14px; border-radius: 999px; text-decoration: none; white-space: nowrap;
+    font-size: 13px; font-weight: 800; color: #fff; background: ${V.teal}; font-family: ${UI};
+    padding: 8px 15px; border-radius: 999px; text-decoration: none; white-space: nowrap;
     transition: background .2s ${EASE}, transform .2s ${EASE};
   }
-  .ys-shop-buy:hover { background: ${C.tealDeep}; transform: translateY(-1px); }
-  .ys-shop-catalog { padding: 28px 0 64px; background: ${C.paper2}; }
+  .ys-shop-buy:hover { background: ${V.tealDeep}; transform: translateY(-1px); }
+
+  /* Catalog */
+  .ys-shop-catalog { padding: 28px 0 68px; background: ${V.paper}; }
   .ys-shop-search input {
-    width: min(320px, 100%); border: 1px solid ${C.rule}; background: ${C.vellum}; border-radius: 999px;
-    padding: 10px 16px; font-size: 14px; font-family: ${UI}; color: ${C.ink}; font-weight: 500;
+    width: min(320px, 100%); border: 1px solid ${V.cardRule}; background: ${V.vellum}; border-radius: 999px;
+    padding: 11px 16px; font-size: 14px; font-family: ${UI}; color: ${V.ink}; font-weight: 500;
     transition: border-color .2s ${EASE}, box-shadow .2s ${EASE};
   }
-  .ys-shop-search input:focus { outline: none; border-color: ${C.teal}; box-shadow: 0 0 0 3px rgba(14,124,116,0.18); }
+  .ys-shop-search input::placeholder { color: ${V.inkSoft}; }
+  .ys-shop-search input:focus { outline: none; border-color: ${V.teal}; box-shadow: 0 0 0 3px rgba(11,122,110,0.22); }
   .ys-shop-filters {
     display: flex; flex-wrap: nowrap; gap: 8px; margin: 8px 0 16px;
     overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
@@ -385,29 +442,31 @@ const SHOP_CSS = `
   .ys-shop-filters::-webkit-scrollbar { display: none; }
   .ys-shop-filters button {
     flex: 0 0 auto; scroll-snap-align: start;
-    border: 1px solid ${C.rule}; background: ${C.vellum}; color: ${C.inkMid}; border-radius: 999px;
-    padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: ${UI};
+    border: 1px solid ${V.rule}; background: transparent; color: ${V.cream}; border-radius: 999px;
+    padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: ${UI};
     transition: background .2s ${EASE}, color .2s ${EASE}, border-color .2s ${EASE}, transform .2s ${EASE};
   }
-  .ys-shop-filters button:hover { border-color: ${C.teal}; color: ${C.tealDeep}; }
+  .ys-shop-filters button:hover { border-color: ${V.cream}; }
   .ys-shop-filters button.on, .ys-shop-filters button.on:hover {
-    background: ${C.teal}; color: #fff; border-color: ${C.teal};
+    background: ${V.teal}; color: #fff; border-color: ${V.teal};
   }
-  .ys-shop-count { font-size: 13px; color: ${C.inkSoft}; margin: 0 0 18px; font-weight: 500; }
+  .ys-shop-count { font-size: 13px; color: ${V.cream}; opacity: 0.72; margin: 0 0 18px; font-weight: 500; }
   .ys-shop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-  .ys-shop-empty { background: ${C.vellum}; border: 1px dashed ${C.rule}; border-radius: 16px; padding: 36px; text-align: center; color: ${C.inkSoft}; }
+  .ys-shop-empty { background: ${V.vellum}; border: 1px dashed ${V.cardRule}; border-radius: 18px; padding: 40px; text-align: center; color: ${V.inkSoft}; }
   .ys-shop-empty button {
-    margin-top: 12px; border: 0; background: ${C.teal}; color: #fff; border-radius: 999px;
-    padding: 8px 14px; cursor: pointer; font-family: ${UI}; font-weight: 700;
+    margin-top: 12px; border: 0; background: ${V.teal}; color: #fff; border-radius: 999px;
+    padding: 9px 16px; cursor: pointer; font-family: ${UI}; font-weight: 700;
   }
-  .ys-shop-trust { padding: 8px 0 56px; border-top: 1px solid ${C.rule}; }
+
+  /* Trust */
+  .ys-shop-trust { padding: 12px 0 60px; background: ${V.paper}; border-top: 1px solid ${V.rule}; }
   .ys-shop-trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 28px; }
-  .ys-shop-trust article { background: ${C.vellum}; border: 1px solid ${C.rule}; border-radius: 16px; padding: 18px 18px 16px; }
-  .ys-shop-trust article span { font-family: ${UI}; font-size: 22px; font-weight: 800; letter-spacing: -0.04em; color: ${C.teal}; display: block; line-height: 1; }
-  .ys-shop-trust article h3 { font-family: ${UI}; font-size: 16px; font-weight: 800; margin: 10px 0 6px; color: ${C.ink}; }
-  .ys-shop-trust article p { margin: 0; color: ${C.inkMid}; font-size: 13px; line-height: 1.5; font-weight: 500; }
-  .ys-shop-return { font-size: 14px; color: ${C.inkSoft}; font-weight: 500; }
-  .ys-shop-return a { color: ${C.teal}; font-weight: 700; text-decoration: none; }
+  .ys-shop-trust article { background: ${V.vellum}; border: 1px solid ${V.cardRule}; border-radius: 18px; padding: 20px 20px 18px; }
+  .ys-shop-trust article span { font-family: ${UI}; font-size: 24px; font-weight: 800; letter-spacing: -0.04em; color: ${V.teal}; display: block; line-height: 1; }
+  .ys-shop-trust article h3 { font-family: ${UI}; font-size: 16px; font-weight: 800; margin: 10px 0 6px; color: ${V.ink}; }
+  .ys-shop-trust article p { margin: 0; color: ${V.inkMid}; font-size: 13px; line-height: 1.5; font-weight: 500; }
+  .ys-shop-return { font-size: 14px; color: ${V.cream}; opacity: 0.8; font-weight: 500; }
+  .ys-shop-return a { color: ${V.cream}; font-weight: 700; text-decoration: none; }
   .ys-shop-return a:hover { text-decoration: underline; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
@@ -420,7 +479,7 @@ const SHOP_CSS = `
   }
   @media (max-width: 600px) {
     .ys-shop-grid { grid-template-columns: 1fr; }
-    .ys-shop-hero { padding: 24px 0 32px; }
+    .ys-shop-hero { padding: 28px 0 36px; }
     .ys-shop-hero h1 { max-width: none; }
     .ys-shop-wrap { width: min(1180px, calc(100vw - 28px)); }
   }

@@ -1,19 +1,27 @@
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { CartProvider } from '@/components/cart/CartProvider'
+import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 
 /**
  * File shop uses the same marketplace chrome as /marketplace so signed-in
  * clients keep Home, Dashboard, and account nav. Canonical lives on the
  * market host; portal /shop is the same page (no bounce).
+ *
+ * MarketplaceShell mounts <PalettePicker>, which calls usePalette() — so the
+ * shop layout must provide <PaletteProvider> exactly like the marketplace
+ * layout does, or the page crashes with "usePalette must be used within
+ * PaletteProvider".
  */
 export default function ShopLayout({ children }: { children: ReactNode }) {
   return (
     <CartProvider>
-      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#F6F1E8' }} />}>
-        <MarketplaceShell>{children}</MarketplaceShell>
-      </Suspense>
+      <PaletteProvider>
+        <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--ys-paper, #4A2A1A)' }} />}>
+          <MarketplaceShell>{children}</MarketplaceShell>
+        </Suspense>
+      </PaletteProvider>
     </CartProvider>
   )
 }
