@@ -1,4 +1,6 @@
 import {
+  canonicalizeNvidiaModelId,
+  getNvidiaDeepseekProvider,
   getNvidiaNemotronProvider,
   listConfiguredContentProviders,
 } from '@/lib/contentAiProvider'
@@ -43,5 +45,42 @@ describe('content AI · NVIDIA Nemotron', () => {
     const provider = getNvidiaNemotronProvider() as unknown as { label: string; model: string }
     expect(provider.label).toBe('nvidia-nemotron')
     expect(provider.model).toBe('nvidia/nemotron-custom-test')
+  })
+})
+
+describe('content AI · NVIDIA model-id canonicalization', () => {
+  const originalKey = process.env.NVIDIA_API_KEY
+  const originalDeepseekModel = process.env.NVIDIA_DEEPSEEK_MODEL
+  const originalNvidiaModel = process.env.NVIDIA_MODEL
+
+  afterEach(() => {
+    if (originalKey == null) delete process.env.NVIDIA_API_KEY
+    else process.env.NVIDIA_API_KEY = originalKey
+    if (originalDeepseekModel == null) delete process.env.NVIDIA_DEEPSEEK_MODEL
+    else process.env.NVIDIA_DEEPSEEK_MODEL = originalDeepseekModel
+    if (originalNvidiaModel == null) delete process.env.NVIDIA_MODEL
+    else process.env.NVIDIA_MODEL = originalNvidiaModel
+  })
+
+  it('canonicalizes the mixed-case Baseten/Parasail id to the lowercase NVIDIA catalog id', () => {
+    expect(canonicalizeNvidiaModelId('deepseek-ai/DeepSeek-V4-Flash-0731')).toBe('deepseek-ai/deepseek-v4-flash-0731')
+    expect(canonicalizeNvidiaModelId('deepseek-ai/DeepSeek-V4-Flash-0731')).not.toContain('DeepSeek')
+    expect(canonicalizeNvidiaModelId('')).toBe('deepseek-ai/deepseek-v4-flash-0731')
+  })
+
+  it('NVIDIA DeepSeek provider always sends the lowercase model id even when the vault override is mixed-case', () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    // The vault can hold the Parasail/Baseten form — NVIDIA 404s on it.
+    process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+    const provider = getNvidiaDeepseekProvider() as unknown as { label: string; model: string }
+    expect(provider.label).toBe('nvidia-deepseek')
+    expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-0731')
+  })
+
+  it('honors a custom NVIDIA model override but still lowercases it', () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-Custom'
+    const provider = getNvidiaDeepseekProvider() as unknown as { label: string; model: string }
+    expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-custom')
   })
 })

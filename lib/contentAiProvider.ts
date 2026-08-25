@@ -38,6 +38,22 @@ const NVIDIA_INTEGRATE_BASE_DEFAULT = 'https://integrate.api.nvidia.com/v1'
 const NVIDIA_DEEPSEEK_MODEL_DEFAULT = 'deepseek-ai/deepseek-v4-flash-0731'
 
 /**
+ * NVIDIA NIM catalog ids are ALL-LOWERCASE. The Baseten/Parasail form of the
+ * same DeepSeek checkpoint is mixed-case (`deepseek-ai/DeepSeek-V4-Flash-0731`),
+ * and if that string reaches integrate.api.nvidia.com NVIDIA answers "404 page
+ * not found" — the model is not recognized. The vault/env model override can
+ * carry either case (the admin may paste the Baseten id into the NVIDIA slot),
+ * so canonicalize to the lowercase catalog form before any request leaves the
+ * NVIDIA host. Verified live: lowercase 0731 → model found (529 overload),
+ * mixed-case 0731 → 404. Safe for GLM / Nemotron too — every NVIDIA catalog id
+ * is lowercase. */
+export function canonicalizeNvidiaModelId(raw?: string | null): string {
+  const id = String(raw || '').trim()
+  if (!id) return NVIDIA_DEEPSEEK_MODEL_DEFAULT
+  return id.toLowerCase()
+}
+
+/**
  * NVIDIA GLM 5.2 (z-ai/glm-5.2) — verified live against integrate.api.nvidia.com/v1
  * with NVAPI auth in 2026 Q3. Same base URL + OpenAI-compatible API as NVIDIA
  * DeepSeek, but with stronger multi-language / instruction-following in YMYL
@@ -911,7 +927,7 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
     label: 'nvidia-nemotron',
     baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
     apiKey,
-    model: env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT,
+    model: canonicalizeNvidiaModelId(env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
     // Separate reasoning budget (mirrors the operator's own working NIM example:
@@ -937,7 +953,7 @@ export function getNvidiaGlmProvider(): OpenAiCompat | null {
     label: 'nvidia-glm',
     baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
     apiKey,
-    model: env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT,
+    model: canonicalizeNvidiaModelId(env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
     // NOTE: NO reasoning_budget here — NVIDIA rejects it for GLM with a 400
@@ -960,11 +976,11 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
     label: 'nvidia-deepseek',
     baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
     apiKey,
-    // NVIDIA NIM catalog id is lowercase; still the dated 0731 checkpoint,
-    // not the undated DeepSeek-V4-Flash preview.
-    model: /0731/i.test(env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT)
-      ? (env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT)
-      : NVIDIA_DEEPSEEK_MODEL_DEFAULT,
+    // NVIDIA NIM catalog id is lowercase and case-sensitive — a mixed-case
+    // override (the Baseten/Parasail form of the same checkpoint) 404s with
+    // "page not found". Canonicalize so the dated 0731 checkpoint is always
+    // sent in the case NVIDIA actually serves.
+    model: canonicalizeNvidiaModelId(env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
     // NOTE: NO reasoning_budget here — NVIDIA DeepSeek V4 Flash returns a 400
@@ -2583,6 +2599,15 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     'parasail-pro': 'parasail-deepseek-pro',
     'deepseek-v4-pro': 'parasail-deepseek-pro',
     'deepseek-ai/deepseek-v4-pro-0813': 'parasail-deepseek-pro',
+    // Raw DeepSeek V4 model ids can be forwarded as the provider pin (the
+    // studio picker labels the model with its dated checkpoint id). NVIDIA's
+    // catalog id is the lowercase form; the mixed-case form is what
+    // Parasail/Baseten serve. Map the lowercase flash id to NVIDIA (the
+    // documented default for a bare deepseek pin) so it never falls through
+    // to the early-fail "not configured" throw. The pin lowercases before
+    // lookup, so both cases collapse onto the lowercase key.
+    'deepseek-ai/deepseek-v4-flash-0731': 'nvidia-deepseek',
+    'deepseek-ai/deepseek-v4-flash': 'nvidia-deepseek',
     'baseten-deepseek-pro': 'baseten-deepseek-pro',
     'deepseek-pro': 'deepseek-pro',
     'deepseek-flash': 'deepseek-flash',

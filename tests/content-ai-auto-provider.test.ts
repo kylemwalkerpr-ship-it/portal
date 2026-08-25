@@ -65,6 +65,24 @@ describe('content AI · auto provider pin', () => {
     expect(prefer).toBe('parasail-deepseek')
   })
 
+  it("routes a raw DeepSeek V4 Flash model id to NVIDIA (never 'not configured')", () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    // The studio picker labels the model with its dated checkpoint id and the
+    // pipeline can forward it as the provider pin. Both cases must resolve to
+    // the nvidia-deepseek pin instead of falling through as an unknown label.
+    for (const raw of ['deepseek-ai/deepseek-v4-flash-0731', 'deepseek-ai/DeepSeek-V4-Flash-0731']) {
+      const { explicit, prefer } = resolveAiProviderPin(raw)
+      expect(explicit).toBe('nvidia-deepseek')
+      expect(prefer).toBe('nvidia-deepseek')
+    }
+  })
+
+  it("routes the lowercase Pro-0813 model id to the Parasail Pro pin", () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const { explicit } = resolveAiProviderPin('deepseek-ai/deepseek-v4-pro-0813')
+    expect(explicit).toBe('parasail-deepseek-pro')
+  })
+
   it("is case/whitespace insensitive ('  AUTO ' behaves like auto)", () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     const { explicit, prefer } = resolveAiProviderPin('  AUTO ')

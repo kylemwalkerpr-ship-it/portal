@@ -79,10 +79,14 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
   const isAihubmixGlmFast =
     effectiveModel === 'aihubmix-glm-fast' || effectiveModel === 'aihubmix-glm' || effectiveModel === 'glm-fast-aihubmix'
+  // The NVIDIA catalog id is the LOWERCASE form; the mixed-case form is the
+  // Parasail/Baseten id of the same checkpoint. Route each to its own host —
+  // sending the mixed-case id to NVIDIA 404s with "page not found".
+  const isNvidiaDeepseekModel =
+    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731'
   const isDeepseekFlash =
     effectiveModel === 'baseten-deepseek' ||
     effectiveModel === 'deepseek-v4-flash' ||
-    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731' ||
     effectiveModel === 'deepseek-ai/DeepSeek-V4-Flash-0731'
   const isParasailDeepseekPro =
     effectiveModel === 'parasail' ||
@@ -101,7 +105,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     effectiveModel === 'nvidia/GLM-5.2-NVFP4'
   const isBasetenPro = effectiveModel === 'baseten-deepseek-pro'
   const isNvidiaGlm = effectiveModel === 'nvidia-glm'
-  const isNvidiaDeepseek = effectiveModel === 'nvidia-deepseek'
+  const isNvidiaDeepseek = effectiveModel === 'nvidia-deepseek' || isNvidiaDeepseekModel
   const isDeepseekOfficialPro = effectiveModel === 'deepseek-pro'
   const isDeepseekOfficialFlash = effectiveModel === 'deepseek-flash'
   const isZaiGlm = effectiveModel === 'zai-glm' || effectiveModel === 'zai'
