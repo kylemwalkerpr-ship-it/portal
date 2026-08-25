@@ -68,6 +68,11 @@ type Props = {
   /** Region (US/CA/UK/AU…) — threaded into depth-expansion prompts so new
    *  sections carry the right jurisdictional detail. */
   region?: string
+  /** The live estate URL this draft will publish to (job.canonical_url).
+   *  Threaded into re-audit/fix so the Ahrefs canonical repair can inject
+   *  canonicalUrl into the front matter — otherwise ahrefs_canonical_missing
+   *  recurs on every re-audit because the repair never learns the URL. */
+  targetUrl?: string
   /** Review model override — defaults to gpt-5.6-sol (senior editor).
    *  grok is SuperGrok 4.6; gpt-5.6-terra is the faster OpenAI alternative;
    *  GLM 5.2 Fast is the efficient open-source editor. Sent to the reaudit
@@ -91,7 +96,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, reviewModel, onReviewModelChange, competingSnippets, competingUrls }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -576,6 +581,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(primaryKeyword ? { primaryKeyword } : {}),
     ...(typeof indexable === 'boolean' ? { indexable } : {}),
     ...(region ? { region } : {}),
+    ...(targetUrl ? { targetUrl } : {}),
     ...(reviewModel ? { reviewModel } : {}),
     ...(competingSnippets?.length ? { competingSnippets } : {}),
     ...(competingUrls?.length ? { competingUrls } : {}),

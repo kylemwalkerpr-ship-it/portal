@@ -3956,7 +3956,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
@@ -6646,6 +6646,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 primaryKeyword={selectedJob.primary_keyword ?? undefined}
                 indexable={selectedJob.indexable}
                 region={selectedJob.region ?? undefined}
+                targetUrl={selectedJob.canonical_url ?? undefined}
                 competingSnippets={selectedJob.competing_snippets ?? undefined}
                 competingUrls={selectedJob.competing_urls ?? undefined}
                 reviewModel={reviewModel}

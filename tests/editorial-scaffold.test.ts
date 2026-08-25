@@ -520,6 +520,36 @@ One practical step here.
     expect(audit.blockers.some((b) => b.code === 'sentence_start_repetition')).toBe(false)
   })
 
+  it('injects canonicalUrl from targetUrl so ahrefs_canonical_missing clears', () => {
+    const body = [
+      '# US Visa Renewal Guide',
+      '',
+      '## In 60 seconds',
+      '- Check which visa category applies to your situation',
+      '- Gather passport and supporting documents',
+      '- File before your current visa expires',
+      '',
+      '## Eligibility',
+      'US visa renewal eligibility depends on your current status and the category you hold.',
+      '',
+      '## FAQ',
+      '### Can I renew before my current visa expires?',
+      'Yes, and you should. Starting early protects you if processing takes longer than expected.',
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: body,
+      contentType: 'legal_guide',
+      primaryKeyword: 'us visa renewal',
+      title: 'US Visa Renewal Guide',
+      region: 'US',
+      indexable: true,
+      targetUrl: 'https://legal.yousafeconsultancy.com/us/visa-renewal/',
+    })
+    expect(content).toMatch(/canonicalUrl:\s*https:\/\/legal\.yousafeconsultancy\.com\/us\/visa-renewal\//)
+    const audit = auditContent({ content, contentType: 'legal_guide', primaryKeyword: 'us visa renewal', indexable: true })
+    expect(audit.warnings.some((w) => w.code === 'ahrefs_canonical_missing')).toBe(false)
+  })
+
   it('clears 5× "US immigration…" openings with adverbial rewrites when the tail is not a verb', () => {
     const body = [
       '# Education Verification',

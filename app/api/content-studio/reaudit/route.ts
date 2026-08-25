@@ -10,6 +10,31 @@ import { auditLinksLive, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAud
 
 export type { ReauditResponse }
 
+/**
+ * Resolve the canonical/target URL for a job so the Ahrefs canonical repair
+ * can inject canonicalUrl into the front matter. The editor does not always
+ * know the job's live estate URL, so when the request body omits targetUrl we
+ * fall back to the job's stored canonical_url. Without this, ahrefs_canonical_missing
+ * recurs on every re-audit because the repair never learns the URL.
+ */
+async function resolveTargetUrl(jobId?: string, bodyTargetUrl?: string): Promise<string | undefined> {
+  if (bodyTargetUrl) return bodyTargetUrl
+  if (!jobId) return undefined
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    const db = createSupabaseAdminClient()
+    const { data } = await db
+      .from('content_jobs')
+      .select('canonical_url')
+      .eq('id', jobId)
+      .maybeSingle()
+    const url = (data?.canonical_url || '').trim()
+    return url || undefined
+  } catch {
+    return undefined
+  }
+}
+
 // ---------- AI-powered fix endpoints ----------
 
 /**
@@ -246,6 +271,9 @@ export async function POST(request: NextRequest) {
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
+    // Resolve the canonical URL from the job when the body omits it — the
+    // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
+    const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
     // Deterministic compliance repair first: a missing disclaimer or broken
     // reader TOC is a mechanical fix — apply it now so the audit reflects the
     // content that can actually ship, and return the repaired draft so the
@@ -261,7 +289,7 @@ export async function POST(request: NextRequest) {
       requiredShortKeywords,
       requiredLongTailKeywords,
     competingUrls: (body as any).competingUrls,
-      targetUrl: (body as any).targetUrl,
+      targetUrl,
     })
     let effective = repaired.content
     // Contract evaluation (quality gate + audit + warningsData merge + depth
@@ -286,7 +314,7 @@ export async function POST(request: NextRequest) {
         response,
         effective,
         region,
-        (body as { targetUrl?: string }).targetUrl,
+        targetUrl,
         primaryKeyword,
         [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
       )
@@ -351,6 +379,9 @@ export async function PATCH(request: NextRequest) {
       competingSnippets?: string[]
       /** Pages already targeting the same intent (cannibalization). */
       competingUrls?: string[]
+      /** Live estate URL this draft publishes to (job.canonical_url). Injects
+       *  canonicalUrl into front matter so ahrefs_canonical_missing clears. */
+      targetUrl?: string
       /** Override the review model (gpt-5.6-sol by default). Set to
        *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
       reviewModel?: string
@@ -366,6 +397,9 @@ export async function PATCH(request: NextRequest) {
         needLoadDraft: true,
       }, { status: 409 })
     }
+    // Resolve the canonical URL from the job when the body omits it — the
+    // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
+    const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
 
     let fixedContent: string
     // Master Engine fix plan — the engine's highest-priority gaps, rendered
@@ -396,7 +430,7 @@ export async function PATCH(request: NextRequest) {
         requiredShortKeywords,
         requiredLongTailKeywords,
         competingUrls: competingUrls as any,
-        targetUrl: (body as { targetUrl?: string }).targetUrl,
+        targetUrl,
       })
       const afterMech = evaluateReauditContract({
         content: mechanical.content,
@@ -481,37 +515,85 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       fixedContent = await callAiFix(sys, prompt, 8192, reviewModel)
 
     } else if (action === 'fix_warnings' && warnings && warnings.length) {
-      // Warnings-only sweep. Many quality warnings (tone_whilst, emdash_spam,
-      // missing_second_person, wall_of_text, missing_reader_path…) carry no
-      // inline evidence, so they were never fixable before. The sweep prompt
-      // lists them with their remediation and asks for minimal edits.
-      //
-      // word_count_target is special: the sweep is told NOT to pad, so it can
-      // never add the missing words. Route it through the append-only depth
-      // expansion (same as fix_depth) so "Fix all warnings" actually clears it.
-      fixedContent = content
-      const hasDepthWarning = warnings.some((w) => w.code === 'word_count_target')
+      // Warnings-only sweep — DETERMINISTIC FIRST so mechanical warnings
+      // (schema_faq, meta_description, internal_links, sentence rhythm,
+      // ahrefs_canonical_missing, dashes, whilst) and link warnings
+      // (untrusted/irrelevant/dead external links) clear without an AI call.
+      // The old sweep handed the model evidence-less warnings it routinely
+      // ignored, so the same codes recurred on every re-audit.
+      const requestedCodes = new Set(warnings.map((w) => w.code))
+      // 1) Mechanical repairs (front matter, schema, FAQ, rhythm, meta…)
+      const mechanical = applyDeterministicRepairs({
+        content,
+        primaryKeyword: primaryKeyword || 'guide',
+        region,
+        indexable,
+        contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        competingUrls: competingUrls as any,
+        targetUrl,
+      })
+      // 2) Live link remediation — replace/remove dead + irrelevant + untrusted
+      //    (non-official) URLs so link warnings stop recurring.
+      let current = mechanical.content
+      try {
+        const sanitized = await sanitizeDraftLinksLive(current, {
+          region,
+          topic: primaryKeyword,
+          keywords: [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
+          knownLiveUrls: targetUrl ? [targetUrl] : undefined,
+        })
+        if (sanitized.content && sanitized.content !== current) current = sanitized.content
+      } catch { /* live audit is best-effort; structural gate still applies */ }
+      // 3) Re-evaluate to find which requested warnings actually remain.
+      const afterMech = evaluateReauditContract({
+        content: current,
+        contentType,
+        primaryKeyword,
+        indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        region,
+      })
+      const afterCodes = new Set([
+        ...(afterMech.blockersData || []).map((b) => b.code),
+        ...(afterMech.warningsData || []).map((w) => w.code),
+      ])
+      let leftover = warnings.filter((w) => requestedCodes.has(w.code) && afterCodes.has(w.code))
+      fixedContent = current
+      // 4) word_count_target → append-only depth expansion (the sweep cannot pad).
+      const hasDepthWarning = leftover.some((w) => w.code === 'word_count_target')
       if (hasDepthWarning) {
-        depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
+        depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
         if (!depthPlan.ok && depthPlan.prompt) {
           const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
           const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
-          const merged = mergeAppendedSections(content, appended)
-          if (countBodyWords(merged) > countBodyWords(content)) {
+          const merged = mergeAppendedSections(fixedContent, appended)
+          if (countBodyWords(merged) > countBodyWords(fixedContent)) {
             fixedContent = merged
             depthExpandedForWarnings = true
           }
         }
       }
-      // Sweep the REMAINING warnings with minimal edits (depth already handled
-      // above — do not ask the sweep to pad on top of the expansion).
-      const rest = warnings.filter((w) => w.code !== 'word_count_target')
+      // 5) Recompute leftovers after depth expansion, then AI-sweep the rest.
+      const postDepth = evaluateReauditContract({
+        content: fixedContent,
+        contentType,
+        primaryKeyword,
+        indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        region,
+      })
+      const stillPresent = new Set([
+        ...(postDepth.blockersData || []).map((b) => b.code),
+        ...(postDepth.warningsData || []).map((w) => w.code),
+      ])
+      const rest = leftover.filter((w) => w.code !== 'word_count_target' && stillPresent.has(w.code))
       if (rest.length) {
-        // The sweep is minimal-edit by design, but it still gets the engine's
-        // top gaps so structure-level wins (reader path, second person,
-        // table/example) are addressed before the fine-grained polish.
         enginePlan = masterEngineFixPlan({
-          content,
+          content: fixedContent,
           primaryKeyword,
           contentType,
           region,
@@ -541,15 +623,13 @@ ${enginePlan.promptBlock}`
         contentType,
         requiredShortKeywords,
         requiredLongTailKeywords,
-        targetUrl: (body as { targetUrl?: string }).targetUrl,
+        targetUrl,
       })
       const sanitized = await sanitizeDraftLinksLive(mechanical.content, {
         region,
         topic: primaryKeyword,
         keywords: [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
-        knownLiveUrls: (body as { targetUrl?: string }).targetUrl
-          ? [(body as { targetUrl?: string }).targetUrl as string]
-          : undefined,
+        knownLiveUrls: targetUrl ? [targetUrl] : undefined,
       })
       const afterMech = evaluateReauditContract({
         content: sanitized.content,
@@ -561,9 +641,7 @@ ${enginePlan.promptBlock}`
         region,
       })
       const leftoverLinks = (await auditLinksLive(sanitized.content, {
-        knownLiveUrls: (body as { targetUrl?: string }).targetUrl
-          ? [(body as { targetUrl?: string }).targetUrl as string]
-          : undefined,
+        knownLiveUrls: targetUrl ? [targetUrl] : undefined,
         citationContext: {
           region,
           topic: primaryKeyword,
@@ -643,7 +721,7 @@ ${enginePlan.promptBlock}`
       requiredShortKeywords,
       requiredLongTailKeywords,
       competingUrls: (body as any).competingUrls,
-        targetUrl: (body as any).targetUrl,
+        targetUrl,
       // The append prompt demands ≥500 new words even for a small target gap —
       // the deterministic trim keeps an overshooting expansion inside the
       // type's window (2026-08-13 regression: fix_depth overshot past max).
@@ -683,10 +761,15 @@ ${enginePlan.promptBlock}`
       response,
       fixedContent,
       region,
-      (body as { targetUrl?: string }).targetUrl,
+      targetUrl,
       primaryKeyword,
       [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
     )
+    // mergeLinkAudit sanitizes links (dead/untrusted/irrelevant) and updates
+    // the response's blockers/warnings/annotations — but it does NOT rewrite
+    // response.fixedContent. Without this, the editor receives the pre-sanitize
+    // body, the bad links stay in the draft, and re-audit re-flags them.
+    response.fixedContent = fixedContent
     const applied: string[] = []
     if (depthRepair) applied.push(depthRepair)
     if (repaired.applied.length) applied.push(...repaired.applied)
