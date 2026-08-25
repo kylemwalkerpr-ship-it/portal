@@ -198,7 +198,7 @@ async function mergeLinkAudit(
           : code === 'dead_external_link'
             ? 'Read the surrounding sentence. Swap this href for a live official government/school page that supports the same claim, or remove it and add that citation under Official sources.'
             : code === 'untrusted_external_link'
-              ? 'Keep the sentence. If this URL is the issuing body for the claim, leave it. Otherwise replace the href in place with a live official URL that supports the same claim — do not unwrap and do not swap to an off-topic .gov homepage.'
+              ? 'This link is from a non-verified source. If it is live and relevant to the claim, keep it. Only replace if the link is broken (404) or clearly unrelated to the surrounding content.'
               : code === 'irrelevant_external_link'
                 ? 'This official URL does not support the claim. Swap it for an on-topic live authority page, or remove the hyperlink.'
               : 'Re-verify the URL before shipping.'
@@ -580,7 +580,7 @@ ${enginePlan.promptBlock}`
             code: f.code,
             message: f.message,
             fix: f.code === 'untrusted_external_link'
-              ? 'Keep the sentence. If this URL is the issuing body for the claim, leave it. Otherwise replace the href in place with the allowlist official URL for the same claim — do not unwrap and do not swap to a generic .gov homepage.'
+              ? 'This link is from a non-verified source. If it is live and relevant to the claim, keep it. Only replace if the link is broken (404) or unrelated to the surrounding content.'
               : 'Remove or replace the dead URL with a live official page that supports the same claim.',
           })),
         ]

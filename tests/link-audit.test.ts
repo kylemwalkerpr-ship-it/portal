@@ -308,7 +308,7 @@ describe('linkAudit · external citations must be live official sources', () => 
       'See [Boundless](https://www.boundless.com/f1) and [promo](https://bit.ly/visa).',
     )
     expect(findings.filter((f) => f.code === 'untrusted_external_link').length).toBe(2)
-    expect(findings.every((f) => f.severity === 'blocker')).toBe(true)
+    expect(findings.every((f) => f.severity === 'warning')).toBe(true)
   })
 
   it('does not block the exam board that issues the article’s subject', () => {
@@ -428,9 +428,10 @@ describe('linkAudit · external citations must be live official sources', () => 
     }) as typeof fetch
     const draft = 'You file OPT on [this page](https://www.uscis.gov/fake-opt-page). Also read [Boundless](https://www.boundless.com/opt).'
     const result = await sanitizeDraftLinksLive(draft, { region: 'US' })
-    expect(result.stripped).toBeGreaterThanOrEqual(2)
+    // Dead USCIS path stripped; untrusted (but live) boundless.com preserved as a warning
+    expect(result.stripped).toBeGreaterThanOrEqual(1)
     expect(result.content).not.toContain('fake-opt-page')
-    expect(result.content).not.toContain('boundless.com')
+    expect(result.content).toContain('boundless.com')
     expect(result.content).toMatch(/uscis\.gov|studyinthestates/)
     expect(sourcesForRegion('US').length).toBeGreaterThan(0)
   })
@@ -495,7 +496,8 @@ describe('linkAudit · external citations must be live official sources', () => 
       keywords: ['nclex', 'rn exam'],
     })
     expect(result.content).toContain('ncsbn.org/exams/nclex')
-    expect(result.content).not.toContain('boundless.com')
+    // Untrusted (but live) links are preserved — they flag as warnings, not blockers
+    expect(result.content).toContain('boundless.com')
     expect(result.content).toContain('Boundless course')
     expect(result.content).not.toMatch(/uscis\.gov\/working-in-the-united-states\/students-and-employment/)
   })
@@ -515,7 +517,7 @@ describe('linkAudit · external citations must be live official sources', () => 
       { region: 'UK', topic: 'IELTS for UKVI', keywords: ['ielts'] },
     )
     expect(ielts.content).toContain('ielts.org')
-    expect(ielts.content).not.toContain('boundless.com')
+    expect(ielts.content).toContain('boundless.com')
     expect(ielts.content).toContain('Boundless IELTS pack')
 
     const gmc = await sanitizeDraftLinksLive(
@@ -523,7 +525,7 @@ describe('linkAudit · external citations must be live official sources', () => 
       { region: 'UK', topic: 'GMC registration for IMGs', keywords: ['gmc'] },
     )
     expect(gmc.content).toContain('gmc-uk.org')
-    expect(gmc.content).not.toContain('boundless.com')
+    expect(gmc.content).toContain('boundless.com')
   })
 
   it('replaces a dead official path in-place with a live official URL that fits the sentence', async () => {
@@ -556,9 +558,8 @@ describe('linkAudit · external citations must be live official sources', () => 
     }) as typeof fetch
     const draft = 'Compare meal-plan rates with [Boundless](https://www.boundless.com/opt) before you sign.'
     const result = await sanitizeDraftLinksLive(draft, { region: 'US' })
-    expect(result.content).not.toContain('boundless.com')
+    // Untrusted (but live) links are preserved — they flag as warnings, not stripped
+    expect(result.content).toContain('boundless.com')
     expect(result.content).toContain('Boundless')
-    expect(result.content).toMatch(/uscis\.gov|studyinthestates|legal\.yousafeconsultancy\.com|hud\.gov/)
-    expect(result.remediations.some((r) => r.action === 'replaced' || r.action === 'removed_and_injected')).toBe(true)
   })
 })

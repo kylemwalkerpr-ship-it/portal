@@ -418,7 +418,7 @@ export function auditLinksSync(
       if (!isCreamSource(url, localCtx)) {
         findings.push({
           code: 'untrusted_external_link',
-          severity: 'blocker',
+          severity: 'warning',
           url,
           message: `Untrusted external link (${url}) — not a government, official school, named authority, or the issuing body for this article’s claim.`,
         })
@@ -705,7 +705,6 @@ const STRIP_CODES = new Set<LinkAuditFinding['code']>([
   'dead_internal_link',
   'dead_external_link',
   'placeholder_link',
-  'untrusted_external_link',
   'irrelevant_external_link',
   'malformed_link',
   'unreachable_internal_link',
@@ -937,8 +936,7 @@ export async function remediateDeadLinksInContext(
     const preferReplace =
       f.code === 'irrelevant_external_link' ||
       f.code === 'dead_external_link' ||
-      f.code === 'dead_internal_link' ||
-      f.code === 'untrusted_external_link'
+      f.code === 'dead_internal_link'
     const unwrapOnly = f.code === 'placeholder_link'
     if (alt && preferReplace && !unwrapOnly) {
       const r = rewriteHref(next, f.url, alt.url)
@@ -949,8 +947,11 @@ export async function remediateDeadLinksInContext(
         continue
       }
     }
-    if (f.code === 'irrelevant_external_link' && isCreamSource(f.url, ctx)) {
-      // Live official page — leave it rather than unwrap into a bare claim.
+    if (
+      (f.code === 'irrelevant_external_link' || f.code === 'untrusted_external_link') &&
+      isCreamSource(f.url, ctx)
+    ) {
+      // Live official/relevant page — leave it rather than unwrap into a bare claim.
       if (!alt || alt.url === f.url) continue
       const r = rewriteHref(next, f.url, alt.url)
       if (r.hits > 0) {
@@ -960,6 +961,11 @@ export async function remediateDeadLinksInContext(
       }
       continue
     }
+
+    // Untrusted links that are live and not dead/malformed should be preserved —
+    // they're flagged as warnings, not blockers, so the human reviewer decides.
+    if (f.code === 'untrusted_external_link') continue
+
     const r = rewriteHref(next, f.url, unwrapOnly ? null : alt?.url || null)
     next = r.content
     stripped += r.hits

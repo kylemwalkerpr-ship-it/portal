@@ -917,7 +917,7 @@ export function evaluateContentQuality(opts: {
             : f.code === 'insecure_internal_link'
               ? 'Upgrade to https://.'
               : f.code === 'untrusted_external_link'
-                ? 'Keep the sentence. If this URL is the issuing body for the claim (exam board, licensing council), leave it. Otherwise replace the href in place with the allowlist official URL that supports the same claim — do not unwrap into a bare assertion.'
+                ? 'This link is not a verified official source. If the URL is live and relevant to the claim, leave it. Only replace if the link is dead (404) or clearly unrelated to the surrounding content.'
                 : f.code === 'irrelevant_external_link'
                   ? 'That official URL does not support this article. Swap it for a live on-topic authority page from the Research allowlist, or remove the hyperlink.'
                 : f.code === 'dead_external_link'
