@@ -528,11 +528,12 @@ ${warningList}
 1. Address the PRIORITIZED ENGINE GAPS first, in the exact order listed — highest expected value first
 2. Then fix EVERY blocker listed above - these are mandatory
 3. Dead/untrusted links: ONE pass. KEEP the href if it is the issuing body for the claim (exam board, licensing council). If it is a competitor/blog/news/shortener, REPLACE the href in place with the allowlist official URL for the SAME claim — do not unwrap and do not swap a board URL for a generic immigration homepage. Never invent a URL.
-4. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
-5. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
-6. Add specific data, examples, or concrete details where the article is vague
-7. Keep all original headings, interlinks, and key facts intact
-8. Return the COMPLETE fixed article, nothing else`
+4. CRITICAL — NEVER modify TLDs: Do NOT append sentence words to domain names. URLs like uscis.gov, canada.ca, homeaffairs.gov.au, gov.uk must appear EXACTLY as-is. NEVER produce uscis.Typically, canada.On, gov.uk.Meanwhile, or any domain with a sentence word replacing or appended to the TLD. Keep the full URL intact including the TLD and path.
+5. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
+6. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
+7. Add specific data, examples, or concrete details where the article is vague
+8. Keep all original headings, interlinks, and key facts intact
+9. Return the COMPLETE fixed article, nothing else`
 
       fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
       }

@@ -100,8 +100,176 @@ export function documentPreviewSource(source: string): string {
   return md.replace(/\n{3,}/g, '\n\n').trim()
 }
 
+function isHtmlContent(s: string): boolean {
+  // Detect if the content is primarily HTML (contains block-level tags)
+  // rather than markdown. The AI sometimes generates HTML instead of markdown.
+  return /<h[1-6][\s>]|<p[\s>]|<ul[\s>]|<ol[\s>]|<a\s+href|<table[\s>]|<blockquote[\s>]/i.test(s)
+}
+
+/** Render HTML content as styled React elements. Used when the article
+ *  contains raw HTML (e.g. from a caseworks page.tsx or AI-generated HTML)
+ *  instead of markdown. */
+function renderHtmlContent(html: string, k: { v: number }): React.ReactNode[] {
+  // Split into block-level segments and render each
+  const blocks: React.ReactNode[] = []
+  // Simple block-level HTML parser — splits on block tags
+  const blockRe = /(<\/?(?:h[1-6]|p|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|pre|code|div|span|a|strong|em|br|hr)[^>]*>)/gi
+  const segments = html.split(blockRe)
+  
+  let inList = false
+  let listItems: React.ReactNode[] = []
+  let listType: 'ul' | 'ol' = 'ul'
+  
+  for (let idx = 0; idx < segments.length; idx++) {
+    const seg = segments[idx]
+    if (!seg) continue
+    const t = seg.trim()
+    if (!t) continue
+    
+    // Block-level tags
+    const hMatch = t.match(/^<h([1-6])[^>]*>/i)
+    if (hMatch) {
+      const level = Math.min(parseInt(hMatch[1]), 4) as 1 | 2 | 3 | 4
+      const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4'
+      // Extract content until closing tag using current index
+      let closeIdx = -1
+      for (let j = idx + 1; j < segments.length; j++) {
+        if (segments[j]?.trim().toLowerCase() === `</${Tag}>`) { closeIdx = j; break }
+      }
+      const inner = closeIdx > -1 
+        ? segments.slice(idx + 1, closeIdx).join('')
+        : segments.slice(idx + 1).join('')
+      blocks.push(<Tag key={k.v++} style={headingStyle[level]}>{inline(inner)}</Tag>)
+      continue
+    }
+    if (/^<\/h[1-6]>/i.test(t)) continue
+    
+    if (/^<p[\s>]/i.test(t)) {
+      let closeIdx = -1
+      for (let j = idx + 1; j < segments.length; j++) {
+        if (segments[j]?.trim().toLowerCase() === '</p>') { closeIdx = j; break }
+      }
+      const inner = closeIdx > -1
+        ? segments.slice(idx + 1, closeIdx).join('')
+        : segments.slice(idx + 1).join('')
+      blocks.push(<p key={k.v++} style={paraStyle}>{inline(inner)}</p>)
+      continue
+    }
+    if (/^<\/p>/i.test(t)) continue
+    
+    if (/^<ul[\s>]/i.test(t)) { inList = true; listType = 'ul'; listItems = []; continue }
+    if (/^<ol[\s>]/i.test(t)) { inList = true; listType = 'ol'; listItems = []; continue }
+    if (/^<\/ul>/i.test(t) || /^<\/ol>/i.test(t)) {
+      if (inList && listItems.length) {
+        const ListTag = listType as 'ul' | 'ol'
+        blocks.push(<ListTag key={k.v++} style={listStyle}>{listItems}</ListTag>)
+      }
+      inList = false
+      listItems = []
+      continue
+    }
+    if (/^<li[\s>]/i.test(t)) {
+      let closeIdx = -1
+      for (let j = idx + 1; j < segments.length; j++) {
+        if (segments[j]?.trim().toLowerCase() === '</li>') { closeIdx = j; break }
+      }
+      const inner = closeIdx > -1
+        ? segments.slice(idx + 1, closeIdx).join('')
+        : segments.slice(idx + 1).join('')
+      listItems.push(<li key={k.v++} style={liStyle}>{inline(inner)}</li>)
+      continue
+    }
+    if (/^<\/li>/i.test(t)) continue
+    
+    if (/^<blockquote[\s>]/i.test(t)) {
+      let closeIdx = -1
+      for (let j = idx + 1; j < segments.length; j++) {
+        if (segments[j]?.trim().toLowerCase() === '</blockquote>') { closeIdx = j; break }
+      }
+      const inner = closeIdx > -1
+        ? segments.slice(idx + 1, closeIdx).join('')
+        : segments.slice(idx + 1).join('')
+      blocks.push(<blockquote key={k.v++} style={blockquoteStyle}><p style={{ margin: 0 }}>{inline(inner)}</p></blockquote>)
+      continue
+    }
+    if (/^<\/blockquote>/i.test(t)) continue
+    
+    if (/^<a\s+href/i.test(t)) {
+      // Inline link — extract href and content
+      const hrefMatch = t.match(/href=["']([^"']*)["']/i)
+      const href = hrefMatch?.[1] || '#'
+      let closeIdx = -1
+      for (let j = idx + 1; j < segments.length; j++) {
+        if (segments[j]?.trim().toLowerCase() === '</a>') { closeIdx = j; break }
+      }
+      const inner = closeIdx > -1
+        ? segments.slice(idx + 1, closeIdx).join('')
+        : segments.slice(idx + 1).join('')
+      blocks.push(<a key={k.v++} href={href} target="_blank" rel="noopener noreferrer" style={linkStyle}>{inline(inner)}</a>)
+      continue
+    }
+    if (/^<\/a>/i.test(t)) continue
+    
+    // Skip unknown tags but render their inner text
+    if (/^<[^/]/.test(t) && !/^<(?:br|hr|img)\b/i.test(t)) {
+      // Opening tag — skip it, content will be rendered by inline()
+      continue
+    }
+    if (/^<\//.test(t)) continue // closing tag
+    
+    // Bare text — render as paragraph if not in a list
+    if (!inList && t && !/^<(?:br|hr|img)\b/i.test(t)) {
+      blocks.push(<p key={k.v++} style={paraStyle}>{inline(t)}</p>)
+    }
+  }
+  
+  // Flush any remaining list items
+  if (inList && listItems.length) {
+    const ListTag = listType as 'ul' | 'ol'
+    blocks.push(<ListTag key={k.v++} style={listStyle}>{listItems}</ListTag>)
+  }
+  
+  return blocks
+}
+
 export function MarkdownDocument({ source }: { source: string }) {
   const md = documentPreviewSource(source)
+
+  // If content is primarily HTML, render it as styled HTML via dangerouslySetInnerHTML
+  if (isHtmlContent(md)) {
+    return (
+      <div style={pageStyle}>
+        <div
+          dangerouslySetInnerHTML={{ __html: md }}
+          className="markdown-doc"
+          style={{
+            fontFamily: FONT_SERIF, fontSize: 17, lineHeight: 1.8, color: INK,
+            letterSpacing: '-0.003em',
+          }}
+        />
+        <style>{`
+          .markdown-doc h1 { font-family: ${FONT_SANS}; font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; color: ${INK}; margin: 0 0 20px; }
+          .markdown-doc h2 { font-family: ${FONT_SANS}; font-size: 22px; font-weight: 700; line-height: 1.3; letter-spacing: -0.02em; color: ${INK}; margin: 32px 0 12px; }
+          .markdown-doc h3 { font-family: ${FONT_SANS}; font-size: 19px; font-weight: 600; line-height: 1.35; letter-spacing: -0.02em; color: ${INK}; margin: 24px 0 10px; }
+          .markdown-doc h4 { font-family: ${FONT_SANS}; font-size: 17px; font-weight: 600; line-height: 1.4; letter-spacing: -0.02em; color: ${INK}; margin: 20px 0 8px; }
+          .markdown-doc p { margin: 0 0 16px; }
+          .markdown-doc ul, .markdown-doc ol { margin: 0 0 16px; padding-left: 28px; }
+          .markdown-doc li { margin: 0 0 6px; }
+          .markdown-doc blockquote { margin: 20px 0; padding: 12px 20px; border-left: 3px solid #D1D5DB; color: ${MUTED}; font-style: italic; font-size: 16px; line-height: 1.7; }
+          .markdown-doc a { color: #1D4ED8; text-decoration: underline; }
+          .markdown-doc a:hover { color: #1E40AF; }
+          .markdown-doc strong { font-weight: 700; }
+          .markdown-doc em { font-style: italic; }
+          .markdown-doc code { background: #F3F4F6; padding: 1px 6px; border-radius: 4px; font-size: 0.85em; font-family: ${FONT_MONO}; color: #111827; }
+          .markdown-doc pre { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; overflow: auto; font-size: 13px; line-height: 1.6; color: #111827; font-family: ${FONT_MONO}; margin: 20px 0; }
+          .markdown-doc table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 20px 0; }
+          .markdown-doc th, .markdown-doc td { border: 1px solid #E5E7EB; padding: 8px 12px; text-align: left; vertical-align: top; }
+          .markdown-doc th { font-family: ${FONT_SANS}; font-weight: 700; background: #F9FAFB; font-size: 14px; }
+          .markdown-doc hr { border: none; border-top: 1px solid #E5E7EB; margin: 28px 0; }
+        `}</style>
+      </div>
+    )
+  }
 
   const lines = md.split('\n')
   const blocks: React.ReactNode[] = []

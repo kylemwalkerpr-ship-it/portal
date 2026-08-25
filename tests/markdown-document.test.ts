@@ -69,3 +69,51 @@ The DSO writes the campus letter.
     expect(html).not.toContain('mainEntity')
   })
 })
+
+describe('MarkdownDocument — HTML content rendering', () => {
+  it('renders HTML h2 tags as styled headings', () => {
+    const html = '<h2>In 60 seconds</h2><p>The F-1 visa lets students study.</p>'
+    const { renderToStaticMarkup } = require('react-dom/server')
+    const React = require('react')
+    const { MarkdownDocument } = require('@/lib/markdownDocument')
+    const result = renderToStaticMarkup(React.createElement(MarkdownDocument, { source: html }))
+    expect(result).toContain('<h2')
+    expect(result).toContain('In 60 seconds')
+    expect(result).not.toContain('&lt;h2&gt;')
+  })
+
+  it('renders HTML anchor tags as styled links', () => {
+    const html = '<p>Visit <a href="https://www.uscis.gov">USCIS</a> for details.</p>'
+    const { renderToStaticMarkup } = require('react-dom/server')
+    const React = require('react')
+    const { MarkdownDocument } = require('@/lib/markdownDocument')
+    const result = renderToStaticMarkup(React.createElement(MarkdownDocument, { source: html }))
+    expect(result).toContain('<a')
+    expect(result).toContain('https://www.uscis.gov')
+    expect(result).toContain('USCIS')
+    expect(result).not.toContain('&lt;a href')
+  })
+
+  it('renders HTML list tags as styled lists', () => {
+    const html = '<ul><li><strong>Stream 1:</strong> Post-Study Work</li><li><strong>Stream 2:</strong> Graduate</li></ul>'
+    const { renderToStaticMarkup } = require('react-dom/server')
+    const React = require('react')
+    const { MarkdownDocument } = require('@/lib/markdownDocument')
+    const result = renderToStaticMarkup(React.createElement(MarkdownDocument, { source: html }))
+    expect(result).toContain('<ul')
+    expect(result).toContain('<li')
+    expect(result).toContain('Post-Study Work')
+    expect(result).not.toContain('&lt;ul&gt;')
+  })
+
+  it('still renders pure markdown as before', () => {
+    const md = '## Heading\n\nParagraph with **bold**.'
+    const { renderToStaticMarkup } = require('react-dom/server')
+    const React = require('react')
+    const { MarkdownDocument } = require('@/lib/markdownDocument')
+    const result = renderToStaticMarkup(React.createElement(MarkdownDocument, { source: md }))
+    expect(result).toContain('<h2')
+    expect(result).toContain('Heading')
+    expect(result).toContain('<strong>bold</strong>')
+  })
+})
