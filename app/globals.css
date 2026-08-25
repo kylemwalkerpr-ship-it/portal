@@ -45,7 +45,7 @@ html, body {
      on the root, which silently disables position: sticky everywhere.
      `clip` prevents horizontal overflow without breaking sticky. */
   overflow-x: clip;
-  background: #F7F8FA;
+  background: var(--ys-paper, #F7F8FA);
   color: #1F2937;
   font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

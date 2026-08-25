@@ -42,6 +42,8 @@ export const F = {
 
 /**
  * Apply a palette's tokens as CSS custom properties on a DOM element.
+ * Also sets them on `document.documentElement` so `body` and other
+ * full-page elements outside `.cw-market` follow the same colourway.
  * Call this from a `useEffect` after the palette name changes.
  */
 export function applyPaletteCssVars(
@@ -70,7 +72,9 @@ export function applyPaletteCssVars(
     '--ys-tealDeep':    tokens.tealDeep,
     '--ys-footer':      tokens.footer,
   }
+  const root = document.documentElement
   for (const [prop, value] of Object.entries(map)) {
     el.style.setProperty(prop, value)
+    root.style.setProperty(prop, value)
   }
 }

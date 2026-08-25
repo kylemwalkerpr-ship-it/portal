@@ -170,29 +170,31 @@ const MODERN_LUXURY: PaletteTokens = {
 }
 
 // ─── Palette 5 — Santorini ──────────────────────────────────────────────────
-// Deep Aegean turquoise + Crisp White + Warm Sun Gold + Coral
+// Bright Aegean turquoise water + Crisp White + Warm Sun Gold + Coral
+// Inspired by the caldera: shallow turquoise waters, whitewashed buildings,
+// blue-domed chapels, and golden hour sunlight on the cliffs.
 
 const SANTORINI: PaletteTokens = {
-  paper: '#0A3D54',
-  paper2: '#0D4A66',
-  paper3: '#115578',
+  paper: '#006A80',
+  paper2: '#005D71',
+  paper3: '#005164',
   vellum: '#FFFFFF',
-  cream: '#F0F4F8',
-  ink: '#0A1929',
-  inkMid: '#1A3A4A',
-  inkSoft: '#4A6A7A',
-  rule: 'rgba(240,248,252,0.15)',
-  ruleSoft: 'rgba(240,248,252,0.08)',
-  indigo: '#087089',
-  indigoDeep: '#065A6E',
-  indigoSoft: 'rgba(8,112,137,0.20)',
-  brick: '#D1442F',
-  gold: '#F0C060',
-  moss: '#2E7A5E',
-  star: '#F0C060',
-  teal: '#087089',
-  tealDeep: '#065A6E',
-  footer: '#072838',
+  cream: '#F0FAFD',
+  ink: '#081F2D',
+  inkMid: '#1A3D52',
+  inkSoft: '#4A6D82',
+  rule: 'rgba(240,250,253,0.14)',
+  ruleSoft: 'rgba(240,250,253,0.07)',
+  indigo: '#08709A',
+  indigoDeep: '#065D82',
+  indigoSoft: 'rgba(8,112,154,0.18)',
+  brick: '#CC3E2A',
+  gold: '#8A6C22',
+  moss: '#2D7A5E',
+  star: '#8A6C22',
+  teal: '#08709A',
+  tealDeep: '#065D82',
+  footer: '#054D5E',
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────

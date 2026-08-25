@@ -302,7 +302,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
               />
               <div style={{ textAlign: 'left' as const }}>
                 <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.cream, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.gold, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.cream, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
                   {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
                 </div>
               </div>
