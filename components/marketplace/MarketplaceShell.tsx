@@ -345,8 +345,10 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         </a>
 
         <Link
-          href="/shop"
+          href="https://yousafeconsultancy.com/shop"
           aria-label="Instant-download file shop"
+          target="_blank"
+          rel="noopener"
           className="ys-shell-shop"
           style={{
             display: 'inline-flex',
