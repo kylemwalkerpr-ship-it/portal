@@ -190,6 +190,9 @@ export async function POST(request: Request) {
             .slice(0, 10)
         : undefined,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
+      // Client disconnect / tab close: abort upstream generation immediately
+      // instead of writing the full article into the Worker's memory.
+      signal: request.signal,
       interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,
       // Brief Assembly Panel fields — the full template from Stage II

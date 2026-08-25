@@ -206,6 +206,12 @@ export interface ContentAiOptions {
    * floor. Visibility audits and other bounded pings must fail fast.
    */
   strictTimeout?: boolean
+  /**
+   * Abort the upstream provider fetch when this signal fires (client
+   * disconnect, cancellation). Stops an abandoned stream from generating
+   * the full article into memory after the consumer is gone.
+   */
+  signal?: AbortSignal
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -1640,6 +1646,12 @@ async function* parseOpenAiSse(
       }
     }
   } finally {
+    // Cancel the underlying body when the stream is abandoned (provider
+    // cascade switch, deadline, client disconnect). releaseLock alone lets
+    // the upstream SSE keep streaming into the process and grow memory on
+    // every abandoned generation — reader.cancel() propagates to the fetch
+    // body so the socket is released immediately.
+    await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 }
@@ -1668,11 +1680,20 @@ async function* openAiCompatibleStream(
   // reasoning_content, so they get the completion-token param for headroom.
   const isReasoningModel = isReasoningModelId(model)
 
+  // Client disconnect / cancellation: abort the in-flight provider fetch so
+  // the upstream body stops streaming into this process the moment the
+  // consumer goes away (otherwise every closed tab or regenerated article
+  // leaks a full background generation into memory).
+  const abort = new AbortController()
+  const onAbort = () => abort.abort()
+  opts.signal?.addEventListener('abort', onAbort, { once: true })
+
   /** Open one SSE request for a given user prompt and return the response. */
   const streamOnce = async (userContent: string, disableThinking = false): Promise<Response> => {
     const res = await fetch(url, {
       method: 'POST',
       headers,
+      signal: abort.signal,
       body: JSON.stringify({
         model,
         stream: true,

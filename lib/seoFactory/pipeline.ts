@@ -169,6 +169,9 @@ export interface PipelineInput {
    *  guard. Stored in content_jobs.competing_urls so the quality gate and
    *  deterministic repair fire on reaudit / ship. */
   competingUrls?: Array<{ url?: string; title?: string; primaryKeyword?: string | null }>
+  /** Client disconnect / cancellation — abort upstream generation instead of
+   *  writing the full article into memory for a consumer that is gone. */
+  signal?: AbortSignal
 }
 
 export interface PipelineResult {

@@ -323,6 +323,12 @@ export async function* runSeoFactoryPipelineStream(
     // ── PASS 1: Main refine loop (depth + quality) ───────────────────────
     for (let i = 0; i <= maxRefine; i++) {
       attempts = i + 1
+      // Client went away — stop refining instead of starting a new generation
+      // that nobody will read (the single biggest stream-memory leak).
+      if (input.signal?.aborted) {
+        yield { type: 'error', error: 'Generation cancelled (client disconnected)' }
+        return
+      }
       const underDepth = Boolean(content) && countBodyWords(content) < minWords
 
       // Capture pre-generate state for progress tracking (state from previous iteration)
@@ -433,6 +439,7 @@ export async function* runSeoFactoryPipelineStream(
               maxTokens: 16384,
               temperature: 0.5,
               aiProvider: input.aiProvider,
+              signal: input.signal,
             })) {
               if (ev.type === 'provider') {
                 provider = ev.provider
@@ -485,6 +492,12 @@ export async function* runSeoFactoryPipelineStream(
         }
       }
 
+      // Client went away — do NOT fall back to single-pass generation for a
+      // dead consumer (would stream the whole article into memory).
+      if (input.signal?.aborted) {
+        yield { type: 'error', error: 'Generation cancelled (client disconnected)' }
+        return
+      }
       if (!attemptText) {
         for await (const ev of generateContentTextStream({
           system,
@@ -492,6 +505,7 @@ export async function* runSeoFactoryPipelineStream(
           maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 16384 : 16384,
           temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
           aiProvider: input.aiProvider,
+          signal: input.signal,
         })) {
           if (ev.type === 'provider') {
             provider = ev.provider

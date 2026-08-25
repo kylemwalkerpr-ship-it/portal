@@ -143,4 +143,75 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
     expect(texts).toEqual(['Part one of the draft.', '\n\n', 'Part two continues.'])
     expect(events.at(-1)).toMatchObject({ type: 'done', text: 'Part one of the draft.\n\nPart two continues.', provider: 'nvidia-nemotron', model: 'nvidia/nemotron-3-ultra-550b-a55b' })
   })
+
+  it('cancels the upstream body when the consumer abandons the stream (no memory leak)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+
+    const cancelSpy = jest.fn()
+    const encoder = new TextEncoder()
+    // A provider body that keeps streaming forever — like a long draft.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Part one.' } }] })}\n\n`))
+        // Intentionally never close — a real provider would keep sending.
+      },
+      cancel: cancelSpy,
+    })
+
+    global.fetch = jest.fn(async () => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })) as typeof fetch
+
+    const gen = generateContentTextStream({
+      system: 'Write a concise factual answer.',
+      prompt: 'Explain the topic.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })
+
+    // Abandon mid-stream — exactly what a closed tab / regenerated article does.
+    for await (const event of gen) {
+      if (event.type === 'delta') break
+    }
+
+    // reader.cancel() must propagate to the fetch body so the socket is
+    // released immediately instead of buffering the rest of the generation.
+    expect(cancelSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts the in-flight provider fetch when the caller signal fires', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let fetchSignal: AbortSignal | null = null
+
+    global.fetch = jest.fn(async (_input, init) => {
+      fetchSignal = (init?.signal as AbortSignal) ?? null
+      const encoder = new TextEncoder()
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'one' } }] })}\n\n`))
+        },
+      })
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+
+    const controller = new AbortController()
+    const gen = generateContentTextStream({
+      system: 'Write a concise factual answer.',
+      prompt: 'Explain the topic.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+      signal: controller.signal,
+    })
+
+    for await (const event of gen) {
+      if (event.type === 'delta') break
+    }
+    expect(fetchSignal).not.toBeNull()
+    expect(fetchSignal!.aborted).toBe(false)
+
+    controller.abort()
+    // The caller's abort must bridge to the provider fetch's own signal so
+    // the upstream request is torn down (openAiCompatibleStream wires it).
+    expect(fetchSignal!.aborted).toBe(true)
+  })
 })
