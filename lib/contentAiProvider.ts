@@ -178,6 +178,12 @@ export interface ContentAiOptions {
    *  pinned provider fails or is unconfigured, the call throws instead of
    *  silently shipping a brief drafted by baseten/nvidia/cloudflare. */
   exclusive?: boolean
+  /** With exclusive: true, still fall through to the rest of the chain when
+   *  the pinned provider fails with a TRANSIENT infrastructure error (529
+   *  overload, upstream timeout, request abort). A capacity hiccup must not
+   *  fail a review sweep — the fix ships via the next provider. Auth/model/
+   *  contract errors keep failing loudly. Reviewer (callAiFix) opts in. */
+  cascadeOnCapacity?: boolean
   /** Skip the universal quality contract (the prose-writing rules block).
    *  Lane-2 scoring modules (contentQuality / semanticNlp / eeatTrust /
    *  competitiveGap / localSeo) emit structured JSON judgments, not articles,
@@ -339,6 +345,19 @@ function isDailyQuotaError(value: unknown): boolean {
 function isNoRetryProviderError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
   return /\b524\b|gateway timeout|upstream.*timeout|timed out/i.test(message) || isDailyQuotaError(message)
+}
+
+/**
+ * Transient infrastructure failures — capacity overloads, upstream timeouts,
+ * and request aborts ("The operation was aborted"). The pinned provider may
+ * recover a moment later, so an exclusive pin with cascadeOnCapacity falls
+ * through to the next provider instead of hard-failing the call. Auth
+ * (401/403), model (404/410), and contract errors are NOT transient and
+ * still fail loudly.
+ */
+function isTransientInfraError(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value || '')
+  return /\b(429|503|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error/i.test(message)
 }
 
 /** Keep provider diagnostics useful without surfacing auth/token fingerprints. */
@@ -575,6 +594,15 @@ async function openAiCompatFetch(
         )
       }),
     ])
+  } catch (e) {
+    // The abort timer and the friendly timeout reject at the same instant;
+    // the raw AbortError ("The operation was aborted") usually wins the race
+    // and leaks to the UI. Normalize it so callers see the readable timeout
+    // (which isTransientInfraError can also classify for cascading).
+    if (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message))) {
+      throw new Error(`${p.label} timed out after ${Math.round(timeoutMs / 1000)}s`)
+    }
+    throw e
   } finally {
     // Clear BOTH timers so a hung fetch that resolves via abort does not leave
     // a pending handle behind (jest/workers flag it as an open handle).
@@ -2739,9 +2767,17 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Exclusive pin (e.g. the Research brief): OpenAI ChatGPT alone must draft
   // it — never silently fall back to the open-source backends. Truncate the
   // cascade to just the pinned provider so any failure surfaces loudly.
+  const allCandidates = candidates
   if (opts.exclusive) {
     candidates = candidates.filter((c) => c.label === prefer)
   }
+  // Reviewer-style exclusive pins opt into cascadeOnCapacity: on a transient
+  // infrastructure failure (529 overload, timeout, abort) the fix falls
+  // through to the rest of the chain instead of hard-failing.
+  const cascadeChain =
+    opts.exclusive && opts.cascadeOnCapacity
+      ? allCandidates.filter((c) => c.label !== prefer)
+      : []
 
   // Early-fail: if the admin explicitly selected a provider but it isn't
   // in the cascade (missing API key), throw immediately with a clear
@@ -2768,7 +2804,8 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     )
   }
 
-  for (const c of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i]
     if (subrequestBudgetExhausted) {
       errors.push(`${c.label}: skipped — subrequest budget exhausted`)
       continue
@@ -2789,11 +2826,21 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       }
       // Exclusive pins (Research brief) stay fail-closed. A draft picker
       // selection must cascade — a missing GLM deployment must not abandon
-      // the job at 0 words.
+      // the job at 0 words. The reviewer (cascadeOnCapacity) is the one
+      // exception: a transient overload/timeout on the pinned provider falls
+      // through to the next host so the fix sweep still ships.
       if (opts.exclusive && explicit && c.label === prefer && !paymentFail) {
+        if (opts.cascadeOnCapacity && isTransientInfraError(e) && cascadeChain.length) {
+          console.warn(
+            `[contentAi] explicit ${prefer} transient failure (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`,
+          )
+          candidates = cascadeChain
+          i = -1 // restart at the first fallback (cascadeChain excludes prefer)
+          continue
+        }
         throw new Error(
           `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}. ` +
-          `Check the API key and model in repo secrets (OPENAI_API_KEY, etc). ` +
+          `Check the API key and model in repo secrets or the AI Key Vault (Command Center → Configure). ` +
           `Provider errors: ${errors.join(' | ')}`,
         )
       }
@@ -3137,12 +3184,18 @@ export async function* generateContentTextStream(
 
   // Exclusive pin: only the selected provider may serve this request — no
   // cascade to other backends (the Research brief belongs to ChatGPT alone).
+  const allStreamCandidates = unique
   if (opts.exclusive) {
     unique = unique.filter((c) => c.label === prefer)
   }
+  const cascadeChain =
+    opts.exclusive && opts.cascadeOnCapacity
+      ? allStreamCandidates.filter((c) => c.label !== prefer)
+      : []
 
   let explicitProviderFailed = false
-  for (const c of unique) {
+  for (let i = 0; i < unique.length; i++) {
+    const c = unique[i]
     if (subrequestBudgetExhausted) {
       errors.push(`${c.label}: skipped — subrequest budget exhausted`)
       continue
@@ -3181,8 +3234,18 @@ export async function* generateContentTextStream(
           }
           // Research briefs (`exclusive`) stay pinned. Draft picker pins
           // cascade so a 404 GLM deployment falls through to DeepSeek/Grok
-          // instead of closing the job with an empty body.
-          if (opts.exclusive) throw new Error(failure)
+          // instead of closing the job with an empty body. The reviewer
+          // (cascadeOnCapacity) falls through on transient overloads/timeouts
+          // so the fix sweep still ships.
+          if (opts.exclusive) {
+            if (opts.cascadeOnCapacity && isTransientInfraError(e) && cascadeChain.length) {
+              unique = cascadeChain
+              i = -1 // restart at the first fallback (cascadeChain excludes prefer)
+              console.warn(`[contentAi] explicit ${prefer} transient failure (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
+              continue
+            }
+            throw new Error(failure)
+          }
         }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
         // Do not immediately call the same provider again through its
@@ -3205,6 +3268,14 @@ export async function* generateContentTextStream(
           yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
           yield* completeAsStream(() => grokComplete(opts))
           return
+        }
+        // Reviewer-style exclusive pins cascade on transient infra errors
+        // even when the pinned provider had no SSE path.
+        if (opts.exclusive && opts.cascadeOnCapacity && isTransientInfraError(e2) && cascadeChain.length) {
+          unique = cascadeChain
+          i = -1
+          console.warn(`[contentAi] explicit ${prefer} transient failure (${msg2.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
+          continue
         }
       }
       if (isSubrequestLimitError(e2)) {

@@ -174,6 +174,107 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
   })
 })
 
+describe('content AI · reviewer cascade on transient infra errors (cascadeOnCapacity)', () => {
+  const envKeys = ['BASETEN_API_KEY', 'PARASAIL_API_KEY', 'CONTENT_AI_RETRY'] as const
+  const original: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const k of envKeys) {
+      original[k] = process.env[k]
+      delete process.env[k]
+    }
+    process.env.CONTENT_AI_RETRY = '1' // one attempt per provider — keep the test fast
+  })
+
+  afterEach(() => {
+    for (const k of envKeys) {
+      if (original[k] == null) delete process.env[k]
+      else process.env[k] = original[k]
+    }
+  })
+
+  const REVIEW_OPTS = {
+    system: 'Review.',
+    prompt: 'Fix it',
+    maxTokens: 2048,
+    skipQualityContract: true,
+    aiProvider: 'baseten-deepseek',
+    exclusive: true,
+  } as const
+
+  it('an AbortError on the pinned Baseten host cascades to the next provider (never "The operation was aborted")', async () => {
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      if (String(input).includes('inference.baseten.co')) {
+        const err = new Error('The operation was aborted')
+        err.name = 'AbortError'
+        throw err
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
+      expect(res.provider).toBe('parasail-deepseek')
+      expect(res.text).toContain('Fixed via fallback')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('a 529 overload on the pinned Baseten host cascades to the next provider', async () => {
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      if (String(input).includes('inference.baseten.co')) {
+        return new Response(
+          JSON.stringify({ message: 'Service temporarily overloaded', type: 'Overloaded', code: 529 }),
+          { status: 529, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
+      expect(res.provider).toBe('parasail-deepseek')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('without cascadeOnCapacity an exclusive reviewer still hard-fails (existing behavior) and the abort is a readable timeout', async () => {
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      if (String(input).includes('inference.baseten.co')) {
+        const err = new Error('The operation was aborted')
+        err.name = 'AbortError'
+        throw err
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      await expect(
+        generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: false }),
+      ).rejects.toThrow(/Explicit AI provider "baseten-deepseek" failed.*timed out after/)
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+})
+
 describe('content AI · stream overload retry (NVIDIA 529)', () => {
   const originalRetry = process.env.CONTENT_AI_STREAM_RETRY
 

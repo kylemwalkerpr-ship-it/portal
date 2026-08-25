@@ -161,6 +161,9 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     temperature: 0.2,
     aiProvider,
     exclusive: Boolean(aiProvider),
+    // A capacity hiccup on the pinned reviewer (NVIDIA 529, Baseten timeout/
+    // abort) must not fail the fix sweep — fall through to the next provider.
+    cascadeOnCapacity: Boolean(aiProvider),
     // Reviewer is not a first-pass drafter. The universal quality contract
     // ("Every article you write…") makes Pro-0813 rewrite the whole guide
     // as schema/YAML or a fenced stub — countBodyWords then reads 0 and
