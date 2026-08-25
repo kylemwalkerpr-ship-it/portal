@@ -572,9 +572,14 @@ async function openAiCompatFetch(
     if (!p.extraBody && p.label === 'custom') body.enable_thinking = false
   }
   // Per-fetch deadline — a hung upstream must fail fast so the cascade can
-  // move on instead of burning the whole per-candidate budget.
+  // move on instead of burning the whole per-candidate budget. A caller-supplied
+  // timeoutMs (the reviewer passes a larger one) overrides the global 120s
+  // default so a slow-but-funded host gets real headroom; the abort is then
+  // normalized to the friendly "timed out after Ns" message above.
   const timeoutMs =
-    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
+    opts.timeoutMs != null
+      ? Math.max(2_000, opts.timeoutMs)
+      : Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let raceTimer: ReturnType<typeof setTimeout> | undefined
@@ -666,7 +671,9 @@ async function openAiCompatibleComplete(
   // NVIDIA/Baseten, which previously ignored it and used the env secret.
   const model = resolveEffectiveModel(p, opts)
   const patched = { ...p, model }
-  return withRetry(p.label, async () => {
+  const startedAt = Date.now()
+  try {
+    return await withRetry(p.label, async () => {
     // A cut-off completion is recoverable: continue from the partial text ONCE
     // on the same provider instead of bouncing to the next (which usually hits
     // the same shared cap and is what made whole cascades fail on long guides).
@@ -692,13 +699,21 @@ async function openAiCompatibleComplete(
         finishReason = cont.finishReason
       }
     }
-    if (!text) throw new Error(`${p.label} returned empty content`)
-    // Still cut off after the continuation — cascade to the next provider.
-    if (finishReason === 'length') {
-      throw new Error(`${p.label} output was truncated (token limit) — trying next provider`)
+      if (!text) throw new Error(`${p.label} returned empty content`)
+      // Still cut off after the continuation — cascade to the next provider.
+      if (finishReason === 'length') {
+        throw new Error(`${p.label} output was truncated (token limit) — trying next provider`)
+      }
+      return { text, provider: p.label, model }
+    })
+  } finally {
+    // Watch latency: a slow host is a signal the reviewer fetch deadline needs
+    // raising (or the host is unhealthy). Surfaced in Worker logs.
+    const elapsedSec = Math.round((Date.now() - startedAt) / 1000)
+    if (elapsedSec >= 60) {
+      console.warn(`[contentAi] ${p.label} completion took ${elapsedSec}s — slow host (reviewer fetch headroom may need raising)`)
     }
-    return { text, provider: p.label, model }
-  })
+  }
 }
 
 /** NVIDIA Integrate API key for DeepSeek (long-form primary). */
@@ -2826,27 +2841,32 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       }
       // Exclusive pins (Research brief) stay fail-closed. A draft picker
       // selection must cascade — a missing GLM deployment must not abandon
-      // the job at 0 words. The reviewer (cascadeOnCapacity) is the one
-      // exception: a transient overload/timeout on the pinned provider falls
-      // through to the next host so the fix sweep still ships.
-      if (opts.exclusive && explicit && c.label === prefer && !paymentFail) {
-        if (opts.cascadeOnCapacity && isTransientInfraError(e) && cascadeChain.length) {
+      // the job at 0 words. The reviewer (cascadeOnCapacity) is the exception:
+      // a provider that cannot serve RIGHT NOW — transient overload/timeout OR
+      // billing/quota (Baseten 402 "payment status") — falls through to the
+      // next host so the fix sweep still ships.
+      if (opts.exclusive && explicit && c.label === prefer) {
+        if (
+          opts.cascadeOnCapacity &&
+          cascadeChain.length &&
+          (isTransientInfraError(e) || isPaymentOrQuotaFailure(e))
+        ) {
           console.warn(
-            `[contentAi] explicit ${prefer} transient failure (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`,
+            `[contentAi] explicit ${prefer} unavailable (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`,
           )
           candidates = cascadeChain
           i = -1 // restart at the first fallback (cascadeChain excludes prefer)
           continue
         }
+        if (paymentFail) {
+          throw new Error(
+            `Explicit AI provider "${prefer}" failed on billing/quota and SuperGrok fallback also failed. ` +
+            `Provider errors: ${errors.join(' | ')}`,
+          )
+        }
         throw new Error(
           `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}. ` +
           `Check the API key and model in repo secrets or the AI Key Vault (Command Center → Configure). ` +
-          `Provider errors: ${errors.join(' | ')}`,
-        )
-      }
-      if (explicit && c.label === prefer && paymentFail) {
-        throw new Error(
-          `Explicit AI provider "${prefer}" failed on billing/quota and SuperGrok fallback also failed. ` +
           `Provider errors: ${errors.join(' | ')}`,
         )
       }
@@ -3238,10 +3258,14 @@ export async function* generateContentTextStream(
           // (cascadeOnCapacity) falls through on transient overloads/timeouts
           // so the fix sweep still ships.
           if (opts.exclusive) {
-            if (opts.cascadeOnCapacity && isTransientInfraError(e) && cascadeChain.length) {
+            if (
+              opts.cascadeOnCapacity &&
+              cascadeChain.length &&
+              (isTransientInfraError(e) || isPaymentOrQuotaFailure(e))
+            ) {
               unique = cascadeChain
               i = -1 // restart at the first fallback (cascadeChain excludes prefer)
-              console.warn(`[contentAi] explicit ${prefer} transient failure (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
+              console.warn(`[contentAi] explicit ${prefer} unavailable (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
               continue
             }
             throw new Error(failure)
@@ -3269,12 +3293,17 @@ export async function* generateContentTextStream(
           yield* completeAsStream(() => grokComplete(opts))
           return
         }
-        // Reviewer-style exclusive pins cascade on transient infra errors
-        // even when the pinned provider had no SSE path.
-        if (opts.exclusive && opts.cascadeOnCapacity && isTransientInfraError(e2) && cascadeChain.length) {
+        // Reviewer-style exclusive pins cascade on transient infra / billing
+        // failures even when the pinned provider had no SSE path.
+        if (
+          opts.exclusive &&
+          opts.cascadeOnCapacity &&
+          cascadeChain.length &&
+          (isTransientInfraError(e2) || isPaymentOrQuotaFailure(e2))
+        ) {
           unique = cascadeChain
           i = -1
-          console.warn(`[contentAi] explicit ${prefer} transient failure (${msg2.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
+          console.warn(`[contentAi] explicit ${prefer} unavailable (${msg2.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
           continue
         }
       }

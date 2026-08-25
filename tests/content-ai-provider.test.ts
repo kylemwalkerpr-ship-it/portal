@@ -250,6 +250,31 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
     }
   })
 
+  it('a 402 billing failure on the pinned Baseten host cascades to the next provider (Baseten out-of-credits)', async () => {
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      if (String(input).includes('inference.baseten.co')) {
+        return new Response(
+          JSON.stringify({ error: 'please check your current payment status.' }),
+          { status: 402, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
+      expect(res.provider).toBe('parasail-deepseek')
+      expect(res.text).toContain('Fixed via fallback')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
   it('without cascadeOnCapacity an exclusive reviewer still hard-fails (existing behavior) and the abort is a readable timeout', async () => {
     process.env.BASETEN_API_KEY = 'test-baseten-key'
     process.env.PARASAIL_API_KEY = 'psk-test-fallback'

@@ -44,9 +44,20 @@ async function resolveTargetUrl(jobId?: string, bodyTargetUrl?: string): Promise
  * Same engine the generator uses, so fix prompts get the same model
  * routing, retries and fallbacks as first-pass generation.
  */
+/** Per-provider budget for one reviewer fix call. Larger than the default
+ *  120s fetch timeout so a slow-but-funded host (Baseten Flash + thinking on
+ *  a long fix prompt) gets real headroom before the cascade moves on. */
+const FIX_CANDIDATE_TIMEOUT_MS = Math.max(
+  30_000,
+  Number.parseInt(process.env.CONTENT_STUDIO_FIX_CANDIDATE_TIMEOUT_MS || '200000', 10) || 200_000,
+)
+
+/** Overall fix deadline. With the reviewer cascade enabled, allow the pinned
+ *  provider plus at least one fallback within the budget. */
 const FIX_TIMEOUT_MS = Math.max(
   15_000,
   Number.parseInt(process.env.CONTENT_STUDIO_FIX_TIMEOUT_MS || '240000', 10) || 240_000,
+  FIX_CANDIDATE_TIMEOUT_MS + 120_000,
 )
 
 /** Hard deadline so an AI fix can never hang the request past the Worker limit. */
@@ -162,8 +173,11 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     aiProvider,
     exclusive: Boolean(aiProvider),
     // A capacity hiccup on the pinned reviewer (NVIDIA 529, Baseten timeout/
-    // abort) must not fail the fix sweep — fall through to the next provider.
+    // abort, Baseten 402 billing) must not fail the fix sweep — fall through
+    // to the next provider.
     cascadeOnCapacity: Boolean(aiProvider),
+    // Per-candidate fetch/complete headroom (overrides the 120s global).
+    timeoutMs: FIX_CANDIDATE_TIMEOUT_MS,
     // Reviewer is not a first-pass drafter. The universal quality contract
     // ("Every article you write…") makes Pro-0813 rewrite the whole guide
     // as schema/YAML or a fenced stub — countBodyWords then reads 0 and
