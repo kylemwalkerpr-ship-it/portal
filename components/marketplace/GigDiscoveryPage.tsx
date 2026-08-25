@@ -18,7 +18,7 @@ import { T, F } from './tokens'
 const pageShell: CSSProperties = {
   minHeight: '100vh',
   background: T.paper,
-  color: T.ink,
+  color: T.cream,
   fontFamily: F.ui,
 }
 
@@ -51,7 +51,7 @@ const titleStyle: CSSProperties = {
   fontWeight: 500,
   letterSpacing: '-0.012em',
   margin: 0,
-  color: T.ink,
+  color: '#fff',
 }
 
 const contentLayout: CSSProperties = {

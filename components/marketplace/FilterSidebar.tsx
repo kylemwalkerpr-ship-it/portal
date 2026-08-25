@@ -21,7 +21,7 @@ const sectionStyle: CSSProperties = {
 const sectionTitle: CSSProperties = {
   fontSize: '11px',
   fontWeight: 700,
-  color: T.ink,
+  color: T.cream,
   margin: '0 0 12px',
   textTransform: 'uppercase',
   letterSpacing: '0.12em',
@@ -35,7 +35,7 @@ const checkboxStyle: CSSProperties = {
   padding: '8px 0',
   cursor: 'pointer',
   fontSize: '14px',
-  color: T.ink,
+  color: T.cream,
 }
 
 const checkboxInput: CSSProperties = {
@@ -63,9 +63,9 @@ const rangeInput: CSSProperties = {
   flex: '0 0 auto',
   boxSizing: 'border-box',
   padding: '8px 12px',
-  border: `1px solid ${T.ruleSoft}`,
+  border: `1px solid ${T.rule}`,
   borderRadius: '8px',
-  background: T.paper2,
+  background: T.vellum,
   color: T.ink,
   fontSize: '14px',
   fontFamily: 'inherit',
@@ -278,7 +278,7 @@ export function FilterSidebar({
   return (
     <aside style={sidebarStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: T.ink }}>Filters</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#fff' }}>Filters</h2>
         {hasActiveFilters && (
           <button onClick={onClear} style={clearButton}>
             Clear all

@@ -220,7 +220,7 @@ export function ViewToggle({ view, onChange }: ViewToggleProps) {
     <div
       style={{
         display: 'flex',
-        background: T.paper2,
+        background: T.vellum,
         borderRadius: '10px',
         padding: '4px',
         border: `1px solid ${T.rule}`,
@@ -286,7 +286,7 @@ export function ActiveFilters({ filters, onRemove, onClearAll }: ActiveFiltersPr
         marginBottom: '20px',
       }}
     >
-      <span style={{ fontSize: '13px', color: T.inkMid, fontWeight: 600 }}>Active filters:</span>
+      <span style={{ fontSize: '13px', color: T.cream, fontWeight: 600 }}>Active filters:</span>
       {filters.map(filter => (
         <Badge
           key={filter.id}
@@ -329,8 +329,8 @@ interface ResultsCountProps {
 
 export function ResultsCount({ total, showing }: ResultsCountProps) {
   return (
-    <div style={{ fontSize: '14px', color: T.inkMid }}>
-      <span style={{ fontWeight: 700, color: T.ink }}>{total}</span> services found
+    <div style={{ fontSize: '14px', color: T.cream }}>
+      <span style={{ fontWeight: 700, color: '#fff' }}>{total}</span> services found
       {showing < total && ` (showing ${showing})`}
     </div>
   )
