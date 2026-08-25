@@ -38,9 +38,11 @@ function buildProvider(provider: Provider) {
         process.env.NVIDIA_BASE_URL ??
         "https://integrate.api.nvidia.com/v1",
     });
+    // deepseek-ai/deepseek-v4-pro is EOL on NVIDIA (410 Gone since 2026-08-07) —
+    // the NVIDIA default is the Flash checkpoint NVIDIA actually serves.
     const model = provider === "nvidia-nemotron"
       ? (process.env.NVIDIA_NEMOTRON_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b")
-      : (process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-pro");
+      : (process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-flash-0731");
     return {
       model: openai(model),
       label: provider === "nvidia-nemotron" ? "nvidia-nemotron" : "nvidia-deepseek",
@@ -69,7 +71,7 @@ async function generateWithNvidia(args: {
     process.env.NVIDIA_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
   const model = provider === "nvidia-nemotron"
     ? (process.env.NVIDIA_NEMOTRON_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b")
-    : (process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-pro");
+    : (process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-flash-0731");
   if (!apiKey) throw new Error("NVIDIA_API_KEY is not set");
 
   const res = await fetch(`${baseUrl}/chat/completions`, {

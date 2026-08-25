@@ -131,7 +131,7 @@ function makeFailingJob(opts: {
     closed_at: null,
     error_message: opts.errorMessage,
     ai_provider: 'nvidia-deepseek',
-    ai_model: 'deepseek-ai/deepseek-v4-pro',
+    ai_model: 'deepseek-ai/deepseek-v4-flash-0731',
     word_count: 1200,
     seo_score: opts.seoScore,
     audit_json: {

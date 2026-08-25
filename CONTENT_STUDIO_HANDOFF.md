@@ -51,11 +51,12 @@ grok mcp doctor gsc
 
 ### AI provider priority (content generation)
 
-**Primary writer:** DeepSeek V4 Pro via NVIDIA Integrate  
-(`deepseek-ai/deepseek-v4-pro`, provider id `nvidia-deepseek`) — `lib/contentAiProvider.ts`.
+**Primary writer:** DeepSeek V4 Flash via NVIDIA Integrate  
+(`deepseek-ai/deepseek-v4-flash-0731`, provider id `nvidia-deepseek`) — `lib/contentAiProvider.ts`.  
+*Note: `deepseek-ai/deepseek-v4-pro` is EOL on NVIDIA (410 Gone since 2026-08-07); Pro-0813 runs on Parasail / Baseten / DeepSeek.com only.*
 
 **Chain (hard order):**
-1. **DeepSeek V4 Pro (NVIDIA)** — `NVIDIA_API_KEY` / `NVAPI_KEY`
+1. **DeepSeek V4 Flash (NVIDIA)** — `NVIDIA_API_KEY` / `NVAPI_KEY`
 2. **Cloudflare Workers AI** — first fallback (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)
 3. Groq → Gemini → OpenRouter → custom → xAI → OpenAI → DeepSeek.com
 
@@ -65,7 +66,7 @@ grok mcp doctor gsc
 - Worker always pins `CONTENT_AI_PROVIDER=nvidia-deepseek` on deploy
 
 Override only if you must pin a different lead: `CONTENT_AI_PROVIDER=cloudflare` (etc.).  
-Unknown values fall back to DeepSeek V4 Pro.
+Unknown values fall back to DeepSeek V4 Flash.
 
 **Ship / deploy:** Markdown from any provider is re-rendered through `renderTargetFile` +
 `assertShipAllowed` (CTAPanel contract, balanced JSX, FM) before any GitHub write so
