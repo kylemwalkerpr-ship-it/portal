@@ -7,7 +7,7 @@ import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, t
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
-import { auditLinksLive, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
+import { auditLinksLive, auditLinksSync, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
 
@@ -201,6 +201,80 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
  *  invented links (2026-08 example.com incident) block ship with evidence.
  *  After the audit, mechanically strips every dead link so the AI editor
  *  and ship gate never see a URL that doesn't resolve. */
+/**
+ * Synchronous link audit — structural checks only (malformed URLs, TLD
+ * patterns, placeholder links, citation relevance). No live HTTP requests.
+ * Returns deterministic results so consecutive re-audits of the same
+ * content produce the same findings.
+ */
+function mergeLinkAuditSync(
+  response: ReauditResponse,
+  content: string,
+  region?: string,
+  targetUrl?: string,
+  topic?: string,
+  keywords?: string[],
+): string {
+  let effective = content
+  try {
+    const citationContext = {
+      region,
+      topic,
+      keywords,
+      body: content.slice(0, 4000),
+    }
+    // Structural-only: no live HTTP checks, deterministic results
+    const findings = auditLinksSync(
+      effective,
+      targetUrl ? new Set([targetUrl]) : undefined,
+      undefined,
+      citationContext,
+    )
+    if (!findings.length) return effective
+
+    const blockers = findings.filter((f) => f.severity === 'blocker')
+    const warnings = findings.filter((f) => f.severity === 'warning')
+    const linkFix = (code: string) =>
+      code === 'placeholder_link'
+        ? 'Replace with a verified estate URL from the research-stage INTERNAL LINK ALLOWLIST.'
+        : code === 'malformed_link'
+          ? 'Fix the URL scheme — prefix with https:// if it is a valid domain.'
+          : code === 'untrusted_external_link'
+            ? 'This link is from a non-verified source. If it is live and relevant to the claim, keep it. Only replace if the link is broken (404) or clearly unrelated to the surrounding content.'
+            : code === 'irrelevant_external_link'
+              ? 'This official URL may be a weak fit for this article — keep it if it supports the surrounding claim; only swap or remove when the link is dead or clearly unrelated to the topic.'
+              : 'Re-verify the URL before shipping.'
+    if (blockers.length) {
+      response.ok = false
+      response.shipReady = false
+    }
+    response.blockers = (response.blockers || 0) + blockers.length
+    response.warnings = (response.warnings || 0) + warnings.length
+    response.blockersData = [
+      ...(response.blockersData || []),
+      ...blockers.map((f) => ({ code: f.code, message: f.message, fix: linkFix(f.code) })),
+    ]
+    response.warningsData = [
+      ...(response.warningsData || []),
+      ...warnings.map((f) => ({ code: f.code, message: f.message, fix: linkFix(f.code) })),
+    ]
+    const linkAnns = blockers.flatMap((f) =>
+      findingToAnnotations(effective, {
+        code: f.code,
+        severity: 'blocker',
+        message: f.message,
+        fix: linkFix(f.code),
+        evidence: f.url,
+      }),
+    )
+    response.annotations = [...(response.annotations || []), ...linkAnns]
+    response.linkAudit = findings
+  } catch {
+    // Structural audit is best-effort; the quality gate still enforces placeholders.
+  }
+  return effective
+}
+
 async function mergeLinkAudit(
   response: ReauditResponse,
   content: string,
@@ -805,7 +879,7 @@ ${enginePlan.promptBlock}`
       // Let the editor show which engine gaps the fix targeted, in order.
       ...(enginePlan ? { enginePriorities: enginePlan.priorities } : {}),
     }
-    fixedContent = await mergeLinkAudit(
+    fixedContent = mergeLinkAuditSync(
       response,
       fixedContent,
       region,
@@ -813,10 +887,9 @@ ${enginePlan.promptBlock}`
       primaryKeyword,
       [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
     )
-    // mergeLinkAudit sanitizes links (dead/untrusted/irrelevant) and updates
-    // the response's blockers/warnings/annotations — but it does NOT rewrite
-    // response.fixedContent. Without this, the editor receives the pre-sanitize
-    // body, the bad links stay in the draft, and re-audit re-flags them.
+    // mergeLinkAuditSync uses structural-only link checks (no live HTTP) so
+    // consecutive re-audits of the same content produce identical results.
+    // Live link verification happens at ship time, not during review.
     response.fixedContent = fixedContent
     const applied: string[] = []
     if (depthRepair) applied.push(depthRepair)
