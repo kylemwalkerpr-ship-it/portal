@@ -172,7 +172,7 @@ export default function HeroCaseFileSlideshow({
             width: 7,
             height: 7,
             borderRadius: '50%',
-            background: '#1A6B45',
+            background: T.moss,
           }}
         />
         {jxLabel} · {slide.label}

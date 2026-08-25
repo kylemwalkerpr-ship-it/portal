@@ -323,7 +323,7 @@ export default function GalleryManager({
                         const fb = document.createElement('div')
                         fb.setAttribute('data-gallery-err', '1')
                         fb.style.cssText =
-                          'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fde2e2;color:#a52a2a;font-size:10px;text-align:center;padding:4px;font-family:inherit;'
+                          'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(212,86,46,0.12);color:T.brick;font-size:10px;text-align:center;padding:4px;font-family:inherit;'
                         fb.textContent = "Can't load"
                         parent.appendChild(fb)
                       }

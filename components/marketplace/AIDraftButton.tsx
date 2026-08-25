@@ -271,7 +271,7 @@ export default function AIDraftButton({
           style={{
             position: 'absolute' as const,
             top: 'calc(100% + 6px)', right: 0,
-            background: '#FFFFFF',
+            background: T.vellum,
             border: `1px solid ${T.indigo}33`,
             borderRadius: '10px',
             boxShadow: '0 10px 30px rgba(15,23,42,0.14), 0 3px 10px rgba(15,23,42,0.06)',
@@ -319,7 +319,7 @@ export default function AIDraftButton({
                   padding: '8px 10px',
                   borderRadius: '7px',
                   border: `1px solid ${T.rule}`,
-                  background: '#FFFFFF',
+                  background: T.vellum,
                   fontFamily: F.ui, fontSize: '12px',
                   color: T.ink, outline: 'none', resize: 'vertical' as const,
                   lineHeight: 1.5,
@@ -379,7 +379,7 @@ export default function AIDraftButton({
                 <div style={{
                   marginBottom: '10px',
                   padding: '8px 10px',
-                  background: '#FFFFFF',
+                  background: T.vellum,
                   border: `1px solid ${T.indigo}22`,
                   borderRadius: '8px',
                 }}>
@@ -544,7 +544,7 @@ function TagsPreview({ tags, onChange }: { tags: string[]; onChange: (next: stri
         <span key={t} style={{
           display: 'inline-flex', alignItems: 'center', gap: '4px',
           padding: '4px 9px', borderRadius: '999px',
-          background: '#FFFFFF', border: `1px solid ${T.indigo}40`,
+          background: T.vellum, border: `1px solid ${T.indigo}40`,
           fontSize: '12px', fontWeight: 600, color: T.indigo,
         }}>
           {t}
@@ -619,7 +619,7 @@ function FaqPreview({
     padding: '7px 9px',
     borderRadius: '6px',
     border: `1px solid ${T.rule}`,
-    background: '#FFFFFF',
+    background: T.vellum,
     fontFamily: F.ui, fontSize: '12.5px',
     color: T.ink, outline: 'none',
     lineHeight: 1.45,
@@ -735,7 +735,7 @@ function FeaturesPreview({
               padding: '6px 8px',
               borderRadius: '5px',
               border: `1px solid ${T.rule}`,
-              background: '#FFFFFF',
+              background: T.vellum,
               fontFamily: F.ui, fontSize: '12.5px',
               color: T.ink, outline: 'none',
               lineHeight: 1.4,

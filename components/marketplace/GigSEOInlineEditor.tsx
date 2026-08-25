@@ -243,7 +243,7 @@ export default function GigSEOInlineEditor({
     fontFamily: F.ui,
     fontSize: '13px',
     color: T.ink,
-    background: '#FFFFFF',
+    background: T.vellum,
     outline: 'none',
     lineHeight: 1.55,
     resize: 'vertical' as const,
@@ -254,7 +254,7 @@ export default function GigSEOInlineEditor({
       style={{
         marginTop: '10px',
         padding: '14px 16px',
-        background: '#FFFFFF',
+        background: T.vellum,
         border: `1px solid ${T.indigo}33`,
         borderRadius: '10px',
         boxShadow: `0 4px 16px ${T.indigoSoft}`,
@@ -319,7 +319,7 @@ export default function GigSEOInlineEditor({
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: '6px',
             padding: '8px', border: `1px solid ${T.rule}`, borderRadius: '8px',
-            background: '#FFFFFF', minHeight: '40px',
+            background: T.vellum, minHeight: '40px',
           }}>
             {(Array.isArray(value) ? value : []).map((tag) => (
               <span
@@ -384,7 +384,7 @@ export default function GigSEOInlineEditor({
                 border: `1px solid ${T.rule}`,
                 borderRadius: '6px',
                 fontFamily: F.ui, fontSize: '12px', color: T.ink,
-                background: '#FFFFFF', outline: 'none',
+                background: T.vellum, outline: 'none',
               }}
             />
             <button

@@ -167,7 +167,7 @@ export default function MarketplaceFeed() {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: '#1A6B45',
+              background: T.moss,
               boxShadow: '0 0 0 0 rgba(26,107,69,0.6)',
               animation: 'msgPulse 1.6s ease-out infinite',
             }}

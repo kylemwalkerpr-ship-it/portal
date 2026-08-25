@@ -393,7 +393,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                   if (active) return
                   const el = e.currentTarget as HTMLElement
                   if (link.view === 'attorneys') {
-                    el.style.background = '#1E293B'
+                    el.style.background = T.ink
                   } else {
                     el.style.color = T.cream
                     el.style.background = T.paper2

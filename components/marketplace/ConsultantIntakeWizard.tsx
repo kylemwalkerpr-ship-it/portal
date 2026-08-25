@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { T, F } from './tokens'
 import ProfileAIDraftButton from '@/components/profile/ProfileAIDraftButton'
 import { resizeAvatarFile } from '@/lib/imageResize'
 
@@ -223,7 +224,7 @@ export function ConsultantIntakeWizard() {
         </p>
         <div style={scoreRow}>
           <div style={progressTrack}>
-            <div style={{ ...progressFill, width: `${score}%`, background: ready ? '#1A6B3A' : '#3C3B6E' }} />
+            <div style={{ ...progressFill, width: `${score}%`, background: ready ? T.moss : T.indigo }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <span style={scoreLabel(ready)}>{score}% · {ready ? 'ready to publish' : `${Math.max(0, threshold - score)}% to go`}</span>
@@ -364,8 +365,8 @@ function HandleStep({ form, setField }: { form: Form; setField: any }) {
           maxLength={32}
           style={inputStyle}
         />
-        {raw && !valid && <p style={{ color: '#B22234', fontSize: 12, margin: '6px 0 0' }}>Doesn't match the slug pattern.</p>}
-        {raw && valid && <p style={{ color: '#1A6B3A', fontSize: 12, margin: '6px 0 0' }}>Your profile will live at <b>/providers/{raw}</b>.</p>}
+        {raw && !valid && <p style={{ color: T.brick, fontSize: 12, margin: '6px 0 0' }}>Doesn't match the slug pattern.</p>}
+        {raw && valid && <p style={{ color: T.moss, fontSize: 12, margin: '6px 0 0' }}>Your profile will live at <b>/providers/{raw}</b>.</p>}
       </Field>
     </div>
   )
@@ -379,7 +380,7 @@ function PhotoStep({ form, setField, onUpload, uploading }: { form: Form; setFie
           <div style={photoFrame}>
             {form.headshot_url
               ? <img src={form.headshot_url} alt="Headshot preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ fontFamily: "'Lora', serif", fontSize: 28, color: '#64748B' }}>?</span>}
+              : <span style={{ fontFamily: "'Lora', serif", fontSize: 28, color: T.inkSoft }}>?</span>}
           </div>
           <label style={uploadCta(uploading)}>
             {uploading ? 'Uploading…' : form.headshot_url ? 'Replace photo' : 'Upload photo'}
@@ -491,7 +492,7 @@ function ReviewStep({ form, strength, ready, threshold }: { form: Form; strength
   const missing = strength?.checks?.filter((c) => !c.done) ?? []
   return (
     <div style={fieldStack}>
-      <div style={{ ...summaryBox, borderColor: ready ? '#1A6B3A' : '#3C3B6E' }}>
+      <div style={{ ...summaryBox, borderColor: ready ? T.moss : T.indigo }}>
         <div style={summaryEyebrow}>{ready ? 'Profile ready to publish' : 'Almost there'}</div>
         <h3 style={summaryTitle}>
           {strength?.score ?? 0}% complete — {ready ? 'you can publish your first gig' : `${Math.max(0, threshold - (strength?.score ?? 0))}% to reach the ${threshold}% publish gate`}
@@ -499,10 +500,10 @@ function ReviewStep({ form, strength, ready, threshold }: { form: Form; strength
         {!ready && missing.length > 0 && (
           <ul style={{ margin: '10px 0 0', padding: '12px 0 0', borderTop: '1px solid #F1F5F9', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {missing.slice(0, 8).map((c) => (
-              <li key={c.id} style={{ fontSize: 13, color: '#334155', display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                <span style={{ color: '#B22234' }}>•</span>
-                <span><b style={{ color: '#0F172A' }}>{c.label}</b>{c.hint ? <span style={{ color: '#64748B' }}> — {c.hint}</span> : null}{' '}
-                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: '#64748B' }}>+{c.weight}%</span></span>
+              <li key={c.id} style={{ fontSize: 13, color: T.inkMid, display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ color: T.brick }}>•</span>
+                <span><b style={{ color: T.ink }}>{c.label}</b>{c.hint ? <span style={{ color: T.inkSoft }}> — {c.hint}</span> : null}{' '}
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: T.inkSoft }}>+{c.weight}%</span></span>
               </li>
             ))}
           </ul>
@@ -526,9 +527,9 @@ function ReviewStep({ form, strength, ready, threshold }: { form: Form; strength
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #F1F5F9', borderRadius: 10, padding: '10px 14px' }}>
-      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748B', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 14, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+    <div style={{ background: T.vellum, border: '1px solid #F1F5F9', borderRadius: 10, padding: '10px 14px' }}>
+      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.inkSoft, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 14, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
     </div>
   )
 }
@@ -543,18 +544,18 @@ function Field({ label, help, required, children, right }: { label: string; help
     <TagName style={{ display: 'block' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13.5, color: '#0F172A' }}>{label}</span>
-          {required && <span style={{ color: '#B22234', fontSize: 13, fontWeight: 700 }}>*</span>}
+          <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13.5, color: T.ink }}>{label}</span>
+          {required && <span style={{ color: T.brick, fontSize: 13, fontWeight: 700 }}>*</span>}
         </div>
         {right}
       </div>
-      {help && <p style={{ margin: '0 0 8px', fontSize: 12.5, color: '#64748B', lineHeight: 1.5 }}>{help}</p>}
+      {help && <p style={{ margin: '0 0 8px', fontSize: 12.5, color: T.inkSoft, lineHeight: 1.5 }}>{help}</p>}
       {children}
     </TagName>
   )
 }
 function CharCount({ n, min, max }: { n: number; min: number; max: number }) {
-  const tone = n < min ? '#B22234' : n > max ? '#B22234' : '#1A6B3A'
+  const tone = n < min ? T.brick : n > max ? T.brick : T.moss
   return (
     <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: tone, marginTop: 4 }}>
       {n} / {max} chars{n < min ? ` · ${min - n} more to reach the recommended minimum` : ''}
@@ -574,38 +575,38 @@ function ChipPicker({ all, selected, onToggle }: { all: string[]; selected: stri
 
 /* ─────────────────────────── styles ───────────────────────────── */
 
-const pageWrap: React.CSSProperties = { minHeight: '100vh', background: '#F7F8FA', fontFamily: "var(--font-inter), Inter, system-ui, sans-serif", color: '#0F172A', padding: '24px 16px 60px' }
+const pageWrap: React.CSSProperties = { minHeight: '100vh', background: T.cream, fontFamily: "var(--font-inter), Inter, system-ui, sans-serif", color: T.ink, padding: '24px 16px 60px' }
 const headerStyle: React.CSSProperties = { width: 'min(900px, calc(100vw - 32px))', margin: '0 auto 18px' }
-const breadStyle: React.CSSProperties = { fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#334155', textDecoration: 'none' }
-const titleStyle: React.CSSProperties = { margin: '8px 0 6px', fontFamily: "var(--font-lora), Lora, Georgia, serif", fontSize: 32, fontWeight: 500, letterSpacing: '-0.018em', color: '#0F172A' }
-const subtitleStyle: React.CSSProperties = { margin: 0, fontSize: 14.5, lineHeight: 1.55, color: '#334155', maxWidth: '60ch' }
+const breadStyle: React.CSSProperties = { fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.inkMid, textDecoration: 'none' }
+const titleStyle: React.CSSProperties = { margin: '8px 0 6px', fontFamily: "var(--font-lora), Lora, Georgia, serif", fontSize: 32, fontWeight: 500, letterSpacing: '-0.018em', color: T.ink }
+const subtitleStyle: React.CSSProperties = { margin: 0, fontSize: 14.5, lineHeight: 1.55, color: T.inkMid, maxWidth: '60ch' }
 const scoreRow: React.CSSProperties = { marginTop: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }
-const progressTrack: React.CSSProperties = { flex: 1, minWidth: 200, height: 8, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }
+const progressTrack: React.CSSProperties = { flex: 1, minWidth: 200, height: 8, background: T.ruleSoft, borderRadius: 999, overflow: 'hidden' }
 const progressFill: React.CSSProperties = { height: '100%', borderRadius: 999, transition: 'width .3s ease, background .3s ease' }
-const scoreLabel = (ready: boolean): React.CSSProperties => ({ fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', textTransform: 'uppercase', color: ready ? '#1A6B3A' : '#3C3B6E', fontWeight: 600 })
-const savedBadge: React.CSSProperties = { fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 11, color: '#1A6B3A', fontWeight: 700 }
+const scoreLabel = (ready: boolean): React.CSSProperties => ({ fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', textTransform: 'uppercase', color: ready ? T.moss : T.indigo, fontWeight: 600 })
+const savedBadge: React.CSSProperties = { fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 11, color: T.moss, fontWeight: 700 }
 const stepsRow: React.CSSProperties = { width: 'min(900px, calc(100vw - 32px))', margin: '0 auto 14px', display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' as const }
-const stepChip = (active: boolean, done: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, border: `1px solid ${active ? '#0F172A' : '#E2E8F0'}`, background: active ? '#0F172A' : (done ? '#EEF1F6' : '#FFFFFF'), color: active ? '#fff' : '#0F172A', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' })
-const stepNum = (active: boolean, done: boolean): React.CSSProperties => ({ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: '50%', fontSize: 10, fontWeight: 700, background: active ? '#fff' : (done ? '#1A6B3A' : '#fff'), color: active ? '#0F172A' : (done ? '#fff' : '#0F172A'), border: done ? 'none' : '1px solid #E2E8F0' })
-const cardStyle: React.CSSProperties = { width: 'min(900px, calc(100vw - 32px))', margin: '0 auto', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '22px 26px 18px', boxShadow: '0 14px 30px -22px rgba(29,36,51,0.2)' }
+const stepChip = (active: boolean, done: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, border: `1px solid ${active ? T.ink : T.rule}`, background: active ? T.ink : (done ? T.cream : T.vellum), color: active ? '#fff' : T.ink, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' })
+const stepNum = (active: boolean, done: boolean): React.CSSProperties => ({ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: '50%', fontSize: 10, fontWeight: 700, background: active ? '#fff' : (done ? T.moss : '#fff'), color: active ? T.ink : (done ? '#fff' : T.ink), border: done ? 'none' : '1px solid #E2E8F0' })
+const cardStyle: React.CSSProperties = { width: 'min(900px, calc(100vw - 32px))', margin: '0 auto', background: T.vellum, border: '1px solid #E2E8F0', borderRadius: 14, padding: '22px 26px 18px', boxShadow: '0 14px 30px -22px rgba(29,36,51,0.2)' }
 const stepHead: React.CSSProperties = { marginBottom: 18 }
-const stepEyebrow: React.CSSProperties = { fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748B' }
-const stepTitle: React.CSSProperties = { margin: '4px 0 4px', fontFamily: "var(--font-lora), Lora, serif", fontSize: 24, fontWeight: 500, letterSpacing: '-0.012em', color: '#0F172A' }
-const stepSub: React.CSSProperties = { margin: 0, color: '#334155', fontSize: 13.5 }
+const stepEyebrow: React.CSSProperties = { fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.inkSoft }
+const stepTitle: React.CSSProperties = { margin: '4px 0 4px', fontFamily: "var(--font-lora), Lora, serif", fontSize: 24, fontWeight: 500, letterSpacing: '-0.012em', color: T.ink }
+const stepSub: React.CSSProperties = { margin: 0, color: T.inkMid, fontSize: 13.5 }
 const fieldStack: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18 }
-const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, background: '#FFFFFF', fontSize: 14, color: '#0F172A', fontFamily: 'inherit', boxSizing: 'border-box' }
+const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8, background: T.vellum, fontSize: 14, color: T.ink, fontFamily: 'inherit', boxSizing: 'border-box' }
 const footerRow: React.CSSProperties = { marginTop: 18, paddingTop: 14, borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }
-const primaryBtn: React.CSSProperties = { background: '#0F172A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 999, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
-const ghostBtn: React.CSSProperties = { background: '#FFFFFF', color: '#0F172A', border: '1px solid #E2E8F0', padding: '9px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
-const pillBtn = (on: boolean): React.CSSProperties => ({ padding: '6px 14px', borderRadius: 999, border: `1px solid ${on ? '#0F172A' : '#E2E8F0'}`, background: on ? '#0F172A' : '#FFFFFF', color: on ? '#fff' : '#334155', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' })
-const photoFrame: React.CSSProperties = { width: 96, height: 96, borderRadius: '50%', overflow: 'hidden', background: '#EEF1F6', display: 'grid', placeItems: 'center', border: '1px solid #E2E8F0' }
-const uploadCta = (uploading: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', padding: '9px 16px', background: uploading ? '#64748B' : '#3C3B6E', color: '#fff', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: uploading ? 'wait' : 'pointer' })
-const summaryBox: React.CSSProperties = { background: '#EEF1F6', border: '1px solid', borderRadius: 12, padding: '14px 16px' }
-const summaryEyebrow: React.CSSProperties = { fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#334155' }
-const summaryTitle: React.CSSProperties = { margin: '4px 0 0', fontFamily: "var(--font-lora), serif", fontSize: 18, fontWeight: 500, color: '#0F172A' }
+const primaryBtn: React.CSSProperties = { background: T.ink, color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 999, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+const ghostBtn: React.CSSProperties = { background: T.vellum, color: T.ink, border: '1px solid #E2E8F0', padding: '9px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+const pillBtn = (on: boolean): React.CSSProperties => ({ padding: '6px 14px', borderRadius: 999, border: `1px solid ${on ? T.ink : T.rule}`, background: on ? T.ink : T.vellum, color: on ? '#fff' : T.inkMid, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' })
+const photoFrame: React.CSSProperties = { width: 96, height: 96, borderRadius: '50%', overflow: 'hidden', background: T.cream, display: 'grid', placeItems: 'center', border: '1px solid #E2E8F0' }
+const uploadCta = (uploading: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', padding: '9px 16px', background: uploading ? T.inkSoft : T.indigo, color: '#fff', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: uploading ? 'wait' : 'pointer' })
+const summaryBox: React.CSSProperties = { background: T.cream, border: '1px solid', borderRadius: 12, padding: '14px 16px' }
+const summaryEyebrow: React.CSSProperties = { fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.inkMid }
+const summaryTitle: React.CSSProperties = { margin: '4px 0 0', fontFamily: "var(--font-lora), serif", fontSize: 18, fontWeight: 500, color: T.ink }
 const errorBox: React.CSSProperties = { background: 'rgba(178,34,52,0.08)', border: '1px solid rgba(178,34,52,0.32)', borderRadius: 8, padding: '10px 14px', color: '#8B1A1A', fontSize: 13, marginBottom: 14 }
-const notice: React.CSSProperties = { textAlign: 'center', color: '#64748B', fontSize: 14 }
-const tipText: React.CSSProperties = { width: 'min(900px, calc(100vw - 32px))', margin: '14px auto 0', fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, letterSpacing: '0.06em', color: '#64748B', textAlign: 'center' }
+const notice: React.CSSProperties = { textAlign: 'center', color: T.inkSoft, fontSize: 14 }
+const tipText: React.CSSProperties = { width: 'min(900px, calc(100vw - 32px))', margin: '14px auto 0', fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, letterSpacing: '0.06em', color: T.inkSoft, textAlign: 'center' }
 const globalCss = `
   main, h1, h2, h3, p, label, button, input, textarea, select { font-family: inherit; }
   input:focus, textarea:focus, select:focus { outline: none; border-color: #0F172A; box-shadow: 0 0 0 3px rgba(29,36,51,0.08); }

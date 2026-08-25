@@ -1,11 +1,10 @@
 /**
- * Marketplace color palettes.
+ * Marketplace color palettes — lighter, more vibrant, ultra-modern luxury.
  *
- * Each palette maps the token keys used by `tokens.ts` to a distinct
- * colourway. The values are plain hex/css strings — the runtime
- * resolves them into CSS custom properties on `.cw-market`.
- *
- * Palette 0 is the original mahogany + epoxy (always the default/fallback).
+ * Every palette uses the `paper`/`paper2`/`paper3` layers for the background
+ * shell (body, header, cards) and the text tokens (`cream`, `ink`) for
+ * foreground.  CSS custom properties on `:root` + `.cw-market` apply the
+ * chosen palette globally, with a 0.3s transition for smooth switching.
  */
 
 export interface PaletteTokens {
@@ -40,211 +39,217 @@ export interface PaletteDef {
   tokens: PaletteTokens
 }
 
-// ─── Palette 0 — Mahogany + Epoxy (default) ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Palette 0 — Polished Walnut  (lighter, luxurious mahogany)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const MAHOGANY: PaletteTokens = {
-  paper: '#2C1410',
-  paper2: '#3A1C14',
-  paper3: '#4A2518',
-  vellum: '#FFF8F0',
-  cream: '#F6EBD8',
-  ink: '#1A120E',
-  inkMid: '#4A3A32',
-  inkSoft: '#7A6A5E',
-  rule: 'rgba(246,235,216,0.16)',
-  ruleSoft: 'rgba(246,235,216,0.08)',
-  indigo: '#0E7C74',
-  indigoDeep: '#085E58',
-  indigoSoft: 'rgba(14,124,116,0.16)',
-  brick: '#D4532A',
-  gold: '#E0B45A',
-  moss: '#3F6B4A',
-  star: '#E0B45A',
-  teal: '#0E7C74',
-  tealDeep: '#085E58',
-  footer: '#1A0C08',
+  paper:       '#4A2A1A',
+  paper2:      '#553222',
+  paper3:      '#603A28',
+  vellum:      '#FFF9F2',
+  cream:       '#F7EDE0',
+  ink:         '#1C1410',
+  inkMid:      '#4A3C34',
+  inkSoft:     '#7A6C64',
+  rule:        'rgba(247,237,224,0.16)',
+  ruleSoft:    'rgba(247,237,224,0.08)',
+  indigo:      '#0B7A6E',
+  indigoDeep:  '#086356',
+  indigoSoft:  'rgba(11,122,110,0.18)',
+  brick:       '#C44020',
+  gold:        '#8E6818',
+  moss:        '#448050',
+  star:        '#8E6818',
+  teal:        '#0B7A6E',
+  tealDeep:    '#086356',
+  footer:      '#3A1E14',
 }
 
-// ─── Palette 1 — Luxury Classic ──────────────────────────────────────────────
-// Mahogany + Ivory + Champagne Gold + Charcoal
+// ═══════════════════════════════════════════════════════════════════════════════
+// Palette 1 — Luxury Classic
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const LUXURY_CLASSIC: PaletteTokens = {
-  paper: '#4A2418',
-  paper2: '#5C2E1F',
-  paper3: '#6B3828',
-  vellum: '#F5EFE2',
-  cream: '#EDE3CE',
-  ink: '#211A17',
-  inkMid: '#3D3330',
-  inkSoft: '#6B5E58',
-  rule: 'rgba(212,175,106,0.18)',
-  ruleSoft: 'rgba(212,175,106,0.09)',
-  indigo: '#A67C2E',
-  indigoDeep: '#8A6422',
-  indigoSoft: 'rgba(166,124,46,0.16)',
-  brick: '#B8452E',
-  gold: '#D4AF6A',
-  moss: '#4A6B3F',
-  star: '#D4AF6A',
-  teal: '#A67C2E',
-  tealDeep: '#8A6422',
-  footer: '#1A1110',
+  paper:       '#5C3220',
+  paper2:      '#6A3C28',
+  paper3:      '#784634',
+  vellum:      '#F7F1E5',
+  cream:       '#EFE6D2',
+  ink:         '#211A17',
+  inkMid:      '#3D3330',
+  inkSoft:     '#6B5E58',
+  rule:        'rgba(212,175,106,0.18)',
+  ruleSoft:    'rgba(212,175,106,0.09)',
+  indigo:      '#9A6E20',
+  indigoDeep:  '#7C5816',
+  indigoSoft:  'rgba(154,110,32,0.18)',
+  brick:       '#C04A30',
+  gold:        '#D8B46E',
+  moss:        '#507840',
+  star:        '#D8B46E',
+  teal:        '#B0802E',
+  tealDeep:    '#946C22',
+  footer:      '#4A2418',
 }
 
-// ─── Palette 2 — Executive ───────────────────────────────────────────────────
-// Mahogany + Warm White + Deep Navy + Gold
+// ═══════════════════════════════════════════════════════════════════════════════
+// Palette 2 — Executive
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const EXECUTIVE: PaletteTokens = {
-  paper: '#542A1B',
-  paper2: '#653424',
-  paper3: '#76402E',
-  vellum: '#FAF7F0',
-  cream: '#F2EBD8',
-  ink: '#0F1923',
-  inkMid: '#2D3540',
-  inkSoft: '#5C6673',
-  rule: 'rgba(16,42,67,0.14)',
-  ruleSoft: 'rgba(16,42,67,0.08)',
-  indigo: '#102A43',
-  indigoDeep: '#0B1E32',
-  indigoSoft: 'rgba(16,42,67,0.14)',
-  brick: '#C44A2E',
-  gold: '#C9A45C',
-  moss: '#3D5A3E',
-  star: '#C9A45C',
-  teal: '#102A43',
-  tealDeep: '#0B1E32',
-  footer: '#0F1923',
+  paper:       '#5A3422',
+  paper2:      '#683E2C',
+  paper3:      '#764836',
+  vellum:      '#FAF8F3',
+  cream:       '#F2ECDE',
+  ink:         '#0F1923',
+  inkMid:      '#2D3540',
+  inkSoft:     '#5C6673',
+  rule:        'rgba(16,42,67,0.14)',
+  ruleSoft:    'rgba(16,42,67,0.08)',
+  indigo:      '#153D5E',
+  indigoDeep:  '#0F2D46',
+  indigoSoft:  'rgba(21,61,94,0.16)',
+  brick:       '#C94E30',
+  gold:        '#CDAA64',
+  moss:        '#446A42',
+  star:        '#CDAA64',
+  teal:        '#153D5E',
+  tealDeep:    '#0F2D46',
+  footer:      '#0F1923',
 }
 
-// ─── Palette 3 — Rich Heritage ───────────────────────────────────────────────
-// Dark Mahogany + Cream + Antique Gold + Espresso
+// ═══════════════════════════════════════════════════════════════════════════════
+// Palette 3 — Rich Heritage
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const RICH_HERITAGE: PaletteTokens = {
-  paper: '#35170F',
-  paper2: '#3F1D14',
-  paper3: '#4D2418',
-  vellum: '#F2E3C2',
-  cream: '#E8D7AE',
-  ink: '#1A0E0A',
-  inkMid: '#3A2822',
-  inkSoft: '#6B5148',
-  rule: 'rgba(184,149,85,0.18)',
-  ruleSoft: 'rgba(184,149,85,0.09)',
-  indigo: '#8A6E3B',
-  indigoDeep: '#6E5428',
-  indigoSoft: 'rgba(138,110,59,0.16)',
-  brick: '#A83E2A',
-  gold: '#B89555',
-  moss: '#3D5538',
-  star: '#B89555',
-  teal: '#8A6E3B',
-  tealDeep: '#6E5428',
-  footer: '#120807',
+  paper:       '#3E1F12',
+  paper2:      '#482718',
+  paper3:      '#54301E',
+  vellum:      '#F3E6C8',
+  cream:       '#E8D8AE',
+  ink:         '#1A0E0A',
+  inkMid:      '#3A2822',
+  inkSoft:     '#6B5148',
+  rule:        'rgba(184,149,85,0.18)',
+  ruleSoft:    'rgba(184,149,85,0.09)',
+  indigo:      '#947A3E',
+  indigoDeep:  '#78602C',
+  indigoSoft:  'rgba(148,122,62,0.18)',
+  brick:       '#B0422C',
+  gold:        '#BE9A58',
+  moss:        '#42603C',
+  star:        '#BE9A58',
+  teal:        '#947A3E',
+  tealDeep:    '#78602C',
+  footer:      '#160A06',
 }
 
-// ─── Palette 4 — Modern Luxury ───────────────────────────────────────────────
-// Mahogany + Soft Beige + Muted Gold + Slate
+// ═══════════════════════════════════════════════════════════════════════════════
+// Palette 4 — Modern Luxury
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const MODERN_LUXURY: PaletteTokens = {
-  paper: '#5A2C1E',
-  paper2: '#6B3526',
-  paper3: '#7C4030',
-  vellum: '#E8DDCE',
-  cream: '#DED0BC',
-  ink: '#24272D',
-  inkMid: '#3D4148',
-  inkSoft: '#6B7078',
-  rule: 'rgba(197,164,109,0.16)',
-  ruleSoft: 'rgba(197,164,109,0.08)',
-  indigo: '#30343B',
-  indigoDeep: '#24272D',
-  indigoSoft: 'rgba(48,52,59,0.14)',
-  brick: '#C44D2E',
-  gold: '#C5A46D',
-  moss: '#4A6B44',
-  star: '#C5A46D',
-  teal: '#30343B',
-  tealDeep: '#24272D',
-  footer: '#1A120E',
+  paper:       '#64402C',
+  paper2:      '#724A36',
+  paper3:      '#805440',
+  vellum:      '#EAE0D4',
+  cream:       '#DED0BE',
+  ink:         '#24272D',
+  inkMid:      '#3D4148',
+  inkSoft:     '#6B7078',
+  rule:        'rgba(197,164,109,0.16)',
+  ruleSoft:    'rgba(197,164,109,0.08)',
+  indigo:      '#3A4248',
+  indigoDeep:  '#2A3036',
+  indigoSoft:  'rgba(58,66,72,0.16)',
+  brick:       '#C85034',
+  gold:        '#C9AA74',
+  moss:        '#507A48',
+  star:        '#C9AA74',
+  teal:        '#3A4248',
+  tealDeep:    '#2A3036',
+  footer:      '#26140C',
 }
 
-// ─── Palette 5 — Santorini ──────────────────────────────────────────────────
-// Bright Aegean turquoise water + Crisp White + Warm Sun Gold + Coral
-// Inspired by the caldera: shallow turquoise waters, whitewashed buildings,
-// blue-domed chapels, and golden hour sunlight on the cliffs.
+// ═══════════════════════════════════════════════════════════════════════════════
+// Palette 5 — Santorini
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const SANTORINI: PaletteTokens = {
-  paper: '#006A80',
-  paper2: '#005D71',
-  paper3: '#005164',
-  vellum: '#FFFFFF',
-  cream: '#F0FAFD',
-  ink: '#081F2D',
-  inkMid: '#1A3D52',
-  inkSoft: '#4A6D82',
-  rule: 'rgba(240,250,253,0.14)',
-  ruleSoft: 'rgba(240,250,253,0.07)',
-  indigo: '#08709A',
-  indigoDeep: '#065D82',
-  indigoSoft: 'rgba(8,112,154,0.18)',
-  brick: '#CC3E2A',
-  gold: '#8A6C22',
-  moss: '#2D7A5E',
-  star: '#8A6C22',
-  teal: '#08709A',
-  tealDeep: '#065D82',
-  footer: '#054D5E',
+  paper:       '#006A80',
+  paper2:      '#005D71',
+  paper3:      '#005164',
+  vellum:      '#FFFFFF',
+  cream:       '#F0FAFD',
+  ink:         '#081F2D',
+  inkMid:      '#1A3D52',
+  inkSoft:     '#4A6D82',
+  rule:        'rgba(240,250,253,0.14)',
+  ruleSoft:    'rgba(240,250,253,0.07)',
+  indigo:      '#08709A',
+  indigoDeep:  '#065D82',
+  indigoSoft:  'rgba(8,112,154,0.18)',
+  brick:       '#CC3E2A',
+  gold:        '#8A6C22',
+  moss:        '#2D7A5E',
+  star:        '#8A6C22',
+  teal:        '#08709A',
+  tealDeep:    '#065D82',
+  footer:      '#054D5E',
 }
 
-// ─── Registry ────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Registry
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const PALETTES: PaletteDef[] = [
   {
     name: 'mahogany',
-    label: 'Mahogany + Epoxy',
+    label: 'Polished Walnut',
     emoji: '🪵',
-    description: 'Dark wood, warm cream, teal inlay. The original.',
+    description: 'Warm walnut wood, cream parchment, teal inlay. Refined & luxurious.',
     tokens: MAHOGANY,
   },
   {
     name: 'luxury-classic',
     label: 'Luxury Classic',
     emoji: '🥇',
-    description: 'Mahogany + Ivory + Champagne Gold + Charcoal. Premium consultancy.',
+    description: 'Rich mahogany + ivory + champagne gold + charcoal.',
     tokens: LUXURY_CLASSIC,
   },
   {
     name: 'executive',
     label: 'Executive',
     emoji: '🏛️',
-    description: 'Mahogany + Warm White + Deep Navy + Gold. Corporate/professional.',
+    description: 'Warm wood + crisp white + deep navy + gold. Boardroom ready.',
     tokens: EXECUTIVE,
   },
   {
     name: 'rich-heritage',
     label: 'Rich Heritage',
     emoji: '🌰',
-    description: 'Dark Mahogany + Cream + Antique Gold + Espresso. Traditional, established.',
+    description: 'Dark chestnut + cream + antique gold + espresso.',
     tokens: RICH_HERITAGE,
   },
   {
     name: 'modern-luxury',
     label: 'Modern Luxury',
     emoji: '✨',
-    description: 'Mahogany + Soft Beige + Muted Gold + Slate. Contemporary.',
+    description: 'Warm oak + soft beige + muted gold + slate grey.',
     tokens: MODERN_LUXURY,
   },
   {
     name: 'santorini',
     label: 'Santorini',
     emoji: '🇬🇷',
-    description: 'Aegean turquoise waters + crisp white + warm sun gold + coral. Bright Mediterranean.',
+    description: 'Aegean turquoise + crisp white + sun gold + coral.',
     tokens: SANTORINI,
   },
 ]
 
-/** Look up a palette by its name. Falls back to mahogany. */
 export function getPalette(name: string): PaletteDef {
   return PALETTES.find(p => p.name === name) ?? PALETTES[0]
 }
