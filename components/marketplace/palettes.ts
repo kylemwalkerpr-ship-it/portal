@@ -169,6 +169,32 @@ const MODERN_LUXURY: PaletteTokens = {
   footer: '#1A120E',
 }
 
+// ─── Palette 5 — Santorini ──────────────────────────────────────────────────
+// Deep Aegean turquoise + Crisp White + Warm Sun Gold + Coral
+
+const SANTORINI: PaletteTokens = {
+  paper: '#0A3D54',
+  paper2: '#0D4A66',
+  paper3: '#115578',
+  vellum: '#FFFFFF',
+  cream: '#F0F4F8',
+  ink: '#0A1929',
+  inkMid: '#1A3A4A',
+  inkSoft: '#4A6A7A',
+  rule: 'rgba(240,248,252,0.15)',
+  ruleSoft: 'rgba(240,248,252,0.08)',
+  indigo: '#087089',
+  indigoDeep: '#065A6E',
+  indigoSoft: 'rgba(8,112,137,0.20)',
+  brick: '#D1442F',
+  gold: '#F0C060',
+  moss: '#2E7A5E',
+  star: '#F0C060',
+  teal: '#087089',
+  tealDeep: '#065A6E',
+  footer: '#072838',
+}
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 export const PALETTES: PaletteDef[] = [
@@ -206,6 +232,13 @@ export const PALETTES: PaletteDef[] = [
     emoji: '✨',
     description: 'Mahogany + Soft Beige + Muted Gold + Slate. Contemporary.',
     tokens: MODERN_LUXURY,
+  },
+  {
+    name: 'santorini',
+    label: 'Santorini',
+    emoji: '🇬🇷',
+    description: 'Aegean turquoise waters + crisp white + warm sun gold + coral. Bright Mediterranean.',
+    tokens: SANTORINI,
   },
 ]
 
