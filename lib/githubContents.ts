@@ -98,6 +98,15 @@ export async function githubFetch(path: string, init: RequestInit = {}): Promise
     }
     const text = await res.text().catch(() => '')
     lastErr = `GitHub ${res.status}: ${text.slice(0, 400)}`
+    // GitHub 401 means the GITHUB_TOKEN Worker secret is expired/revoked.
+    // Provide an actionable message instead of the raw "Bad credentials" JSON.
+    if (res.status === 401) {
+      throw new Error(
+        'GitHub 401 — the GITHUB_TOKEN secret deployed to the Cloudflare Worker has expired or been revoked. ' +
+        'Regenerate a fine-grained PAT with Contents: Read and Write + Pull requests: Read and Write on the yousafe-portal and caseworks repos, ' +
+        'then update the CONTENT_STUDIO_GITHUB_TOKEN / GITHUB_TOKEN_CONTENT secret in GitHub Actions and redeploy.'
+      )
+    }
     if (!isGithubRateLimit(res.status, text) || attempt === 3) {
       throw new Error(lastErr)
     }

@@ -110,11 +110,14 @@ export async function GET() {
         })
         if (!res.ok) {
           const t = await res.text()
+          const detail = res.status === 401
+            ? '401 Bad credentials — the GITHUB_TOKEN Worker secret has expired or been revoked. Regenerate the PAT and redeploy.'
+            : `${res.status}: ${t.slice(0, 120)}`
           checks.push({
             id: 'github',
             label: 'GitHub ship token',
             ok: false,
-            detail: `${res.status}: ${t.slice(0, 120)}`,
+            detail,
           })
         } else {
           const u = (await res.json()) as { login?: string }
