@@ -80,10 +80,10 @@ describe('content AI catalog — model × host', () => {
     expect(pinFor('deepseek-v4-pro', 'deepseek')).toBe('deepseek-pro')
   })
 
-  it('defaults draft to Flash-0731 and brief/review to Pro-0813', () => {
+  it('defaults draft to Flash-0731, brief to Pro-0813, and reviewer to Flash via NVIDIA (Pro is EOL there)', () => {
     expect(DEFAULT_DRAFT_PIN).toBe('parasail-deepseek')
     expect(DEFAULT_BRIEF_PIN).toBe('parasail-deepseek-pro')
-    expect(DEFAULT_REVIEW_PIN).toBe('parasail-deepseek-pro')
+    expect(DEFAULT_REVIEW_PIN).toBe('nvidia-deepseek')
     expect(parseStudioPin(DEFAULT_DRAFT_PIN)).toMatchObject({
       model: { apiModel: DEEPSEEK_V4_FLASH_ID },
       host: { id: 'parasail' },
@@ -91,6 +91,10 @@ describe('content AI catalog — model × host', () => {
     expect(parseStudioPin(DEFAULT_BRIEF_PIN)).toMatchObject({
       model: { apiModel: DEEPSEEK_V4_PRO_ID },
       host: { id: 'parasail' },
+    })
+    expect(parseStudioPin(DEFAULT_REVIEW_PIN)).toMatchObject({
+      model: { apiModel: DEEPSEEK_V4_FLASH_ID },
+      host: { id: 'nvidia' },
     })
   })
 

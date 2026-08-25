@@ -152,7 +152,7 @@ Depth floors (Google-aligned): legal 1800w · regional 1200w · blog 1000w · gi
 
 # Worker secrets (pinned on every portal deploy)
 CONTENT_AI_PROVIDER=nvidia-deepseek
-NVIDIA_DEEPSEEK_MODEL=deepseek-ai/deepseek-v4-pro
+NVIDIA_DEEPSEEK_MODEL=deepseek-ai/deepseek-v4-flash-0731
 NVIDIA_API_KEY=…
 GITHUB_TOKEN=…   # content ship PAT
 CRON_SECRET=…

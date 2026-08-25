@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
+import { parseStudioPin } from '@/lib/contentAiCatalog'
 import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
@@ -66,13 +67,27 @@ function withDeadline<T>(ms: number, label: string, promise: Promise<T>): Promis
   }
 }
 
+/**
+ * Resolve the actual upstream API model id for a reviewer pin. The studio
+ * picker stores a pin (`nvidia-deepseek`, `parasail-deepseek-pro`, …), which
+ * is NOT a model id — sending the pin as the model would 404. Real API ids
+ * (containing a host slash) pass through untouched; pins map through the
+ * catalog to the model's canonical apiModel (e.g. nvidia-deepseek →
+ * deepseek-ai/DeepSeek-V4-Flash-0731).
+ */
+function reviewApiModel(pin: string): string | undefined {
+  const raw = String(pin || '').trim()
+  if (!raw) return undefined
+  if (raw.includes('/')) return raw
+  return parseStudioPin(raw).model.apiModel
+}
+
 async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewModel?: string): Promise<string> {
-  // GPT-5.6 Sol is the senior editor / quality reviewer. It has flagship
-  // reasoning capability and evaluates gate compliance with higher accuracy
-  // than Terra (Research) or Luna (high-volume drafting).
-  const effectiveModel = reviewModel || 'parasail-deepseek-pro'
+  // DeepSeek V4 Flash via NVIDIA is the default reviewer. Flash is the
+  // checkpoint NVIDIA currently serves — Pro-0813 is EOL on NVIDIA (410) and
+  // must be routed to Parasail/Baseten/DeepSeek instead.
+  const effectiveModel = reviewModel || 'nvidia-deepseek'
   // Pin the provider so the selected review model actually applies.
-  // Review default is DeepSeek V4 Pro-0813; Flash-0731 is the other named option.
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
   const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
   const isGlmFast =
@@ -80,14 +95,15 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   const isAihubmixGlmFast =
     effectiveModel === 'aihubmix-glm-fast' || effectiveModel === 'aihubmix-glm' || effectiveModel === 'glm-fast-aihubmix'
   // The NVIDIA catalog id is the LOWERCASE form; the mixed-case form is the
-  // Parasail/Baseten id of the same checkpoint. Route each to its own host —
-  // sending the mixed-case id to NVIDIA 404s with "page not found".
+  // Parasail/Baseten id of the same checkpoint. Either case of the Flash id
+  // means NVIDIA (resolveAiProviderPin lowercases it to the NVIDIA pin) —
+  // only bare legacy pins mean Baseten.
   const isNvidiaDeepseekModel =
-    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731'
+    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731' ||
+    effectiveModel === 'deepseek-ai/DeepSeek-V4-Flash-0731'
   const isDeepseekFlash =
     effectiveModel === 'baseten-deepseek' ||
-    effectiveModel === 'deepseek-v4-flash' ||
-    effectiveModel === 'deepseek-ai/DeepSeek-V4-Flash-0731'
+    effectiveModel === 'deepseek-v4-flash'
   const isParasailDeepseekPro =
     effectiveModel === 'parasail' ||
     effectiveModel === 'parasail-deepseek-pro' ||
@@ -151,7 +167,11 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     // the shrink guard discards it. Lane-2 scorers already skip this.
     skipQualityContract: true,
     reasoningEffort: 'low',
-    model: isGrok ? grokModelId({ model: effectiveModel }) : effectiveModel,
+    // Send the real API model id, never the pin. Pins like 'nvidia-deepseek'
+    // map through the catalog to the Flash checkpoint the user selected;
+    // otherwise the provider default (deployed NVIDIA_DEEPSEEK_MODEL secret)
+    // would be used — that is what sent EOL'd deepseek-v4-pro (410 Gone).
+    model: isGrok ? grokModelId({ model: effectiveModel }) : reviewApiModel(effectiveModel) || effectiveModel,
   }))
   const text = unwrapWholeDocumentFence((result?.text || '').trim())
   if (!text.trim()) throw new Error('AI fix returned empty content')

@@ -2830,7 +2830,7 @@ function DraftWorkspace({
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
-  const [reviewModel, setReviewModel] = React.useState('parasail-deepseek-pro')
+  const [reviewModel, setReviewModel] = React.useState('nvidia-deepseek')
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
@@ -3582,7 +3582,7 @@ function JobDetail({
   const [aiProvider, setAiProvider] = React.useState<string>(() =>
     /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'parasail-deepseek',
   )
-  const [reviewModel, setReviewModel] = React.useState<string>('parasail-deepseek-pro')
+  const [reviewModel, setReviewModel] = React.useState<string>('nvidia-deepseek')
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
@@ -4604,7 +4604,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [tone, setTone] = React.useState<Tone>('educational')
   // Draft lead is DeepSeek V4 Flash-0731; Grok is second. Review default is Pro-0813.
   const [aiProvider, setAiProvider] = React.useState('parasail-deepseek')
-  const [reviewModel, setReviewModel] = React.useState('parasail-deepseek-pro')
+  const [reviewModel, setReviewModel] = React.useState('nvidia-deepseek')
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')

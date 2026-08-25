@@ -1,9 +1,16 @@
+jest.mock('@/lib/aiKeyVault', () => ({
+  buildVaultEnvOverrides: jest.fn(async () => ({})),
+  AI_PROVIDERS: jest.requireActual('@/lib/aiKeyVault').AI_PROVIDERS,
+}))
+
 import {
   canonicalizeNvidiaModelId,
   fetchStreamWithRetry,
+  generateContentText,
   getNvidiaDeepseekProvider,
   getNvidiaNemotronProvider,
   listConfiguredContentProviders,
+  resolveEffectiveModel,
 } from '@/lib/contentAiProvider'
 
 describe('content AI · NVIDIA Nemotron', () => {
@@ -83,6 +90,87 @@ describe('content AI · NVIDIA model-id canonicalization', () => {
     process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-Custom'
     const provider = getNvidiaDeepseekProvider() as unknown as { label: string; model: string }
     expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-custom')
+  })
+})
+
+describe('content AI · request-level model override (reviewer path)', () => {
+  const nvidiaProvider = {
+    label: 'nvidia-deepseek',
+    baseURL: 'https://integrate.api.nvidia.com/v1',
+    apiKey: 'test-nvidia-key',
+    model: 'deepseek-ai/deepseek-v4-pro', // stale EOL secret, as deployed
+  } as unknown as Parameters<typeof resolveEffectiveModel>[0]
+
+  it('a real API id (mixed-case Flash) overrides the stale env secret and is canonicalized lowercase', () => {
+    expect(resolveEffectiveModel(nvidiaProvider, { model: 'deepseek-ai/DeepSeek-V4-Flash-0731' } as never)).toBe(
+      'deepseek-ai/deepseek-v4-flash-0731',
+    )
+  })
+
+  it('a bare pin is never sent as the model — the provider default wins', () => {
+    expect(resolveEffectiveModel(nvidiaProvider, { model: 'nvidia-deepseek' } as never)).toBe(
+      'deepseek-ai/deepseek-v4-pro',
+    )
+  })
+
+  it('no request model → provider default', () => {
+    expect(resolveEffectiveModel(nvidiaProvider, {} as never)).toBe('deepseek-ai/deepseek-v4-pro')
+  })
+
+  it('canonicalizes GLM/Nemotron ids for their NVIDIA pins too', () => {
+    const glm = { ...nvidiaProvider, label: 'nvidia-glm' } as Parameters<typeof resolveEffectiveModel>[0]
+    expect(resolveEffectiveModel(glm, { model: 'z-ai/GLM-5.2' } as never)).toBe('z-ai/glm-5.2')
+  })
+})
+
+describe('content AI · reviewer regression — EOL Pro secret must not reach NVIDIA', () => {
+  const envKeys = ['NVIDIA_API_KEY', 'NVIDIA_DEEPSEEK_MODEL', 'NVIDIA_MODEL'] as const
+  const original: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const k of envKeys) {
+      original[k] = process.env[k]
+      delete process.env[k]
+    }
+  })
+
+  afterEach(() => {
+    for (const k of envKeys) {
+      if (original[k] == null) delete process.env[k]
+      else process.env[k] = original[k]
+    }
+  })
+
+  it('reviewer pinned to nvidia-deepseek sends the Flash id even when the env secret is EOL Pro (410 regression)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    // Simulate the stale deployed secret that caused the 410 Gone.
+    process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/deepseek-v4-pro'
+    const originalFetch = global.fetch
+    const bodies: Array<{ model?: string }> = []
+    global.fetch = jest.fn(async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body || '{}')) as { model?: string })
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Fixed.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      await generateContentText({
+        aiProvider: 'nvidia-deepseek',
+        // What callAiFix now sends: the Flash API id from the catalog pin.
+        model: 'deepseek-ai/DeepSeek-V4-Flash-0731',
+        exclusive: true,
+        skipQualityContract: true,
+        system: 'Review.',
+        prompt: 'Fix it',
+        maxTokens: 2048,
+      })
+      expect(bodies.length).toBeGreaterThan(0)
+      expect(bodies[0].model).toBe('deepseek-ai/deepseek-v4-flash-0731')
+      expect(bodies[0].model).not.toContain('v4-pro')
+    } finally {
+      global.fetch = originalFetch
+    }
   })
 })
 

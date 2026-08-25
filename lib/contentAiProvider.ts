@@ -598,14 +598,45 @@ async function openAiCompatFetch(
   return { text: extractMessageText(choice?.message?.content), finishReason: choice?.finish_reason }
 }
 
+/**
+ * Resolve the model id actually sent to a provider.
+ *
+ * A request-level `opts.model` wins over the provider default ONLY when it is
+ * a real API id (contains a host slash like `deepseek-ai/…` / `z-ai/…`, or is
+ * a GPT-5.6 alias). Bare pins (`nvidia-deepseek`, `parasail-deepseek-pro`, …)
+ * are NOT model ids and must never be sent as the model — they fall back to
+ * the provider default. NVIDIA ids are canonicalized to the lowercase catalog
+ * form (mixed-case 404s on integrate.api.nvidia.com). Without this, a reviewer
+ * pinned to `nvidia-deepseek` silently used the deployed NVIDIA_DEEPSEEK_MODEL
+ * secret (defaulted to the EOL'd deepseek-v4-pro → 410 Gone) instead of the
+ * Flash checkpoint the user actually selected.
+ */
+export function resolveEffectiveModel(p: OpenAiCompat, opts: ContentAiOptions): string {
+  const requested = String(opts.model || '').trim()
+  if (!requested) return p.model
+  const isRealModelId = requested.includes('/') || GPT_ALIAS_RE.test(requested)
+  if (!isRealModelId) return p.model
+  if (p.label === 'openai' || p.label === 'custom') {
+    return requested.replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
+  }
+  if (p.label === 'nvidia-deepseek' || p.label === 'nvidia-glm' || p.label === 'nvidia-nemotron') {
+    return canonicalizeNvidiaModelId(requested)
+  }
+  if (p.label === 'baseten-deepseek' || p.label === 'baseten-deepseek-pro') {
+    return canonicalizeDeepseekModelId(requested, p.label === 'baseten-deepseek-pro' ? 'pro' : 'flash')
+  }
+  return requested
+}
+
 async function openAiCompatibleComplete(
   p: OpenAiCompat,
   opts: ContentAiOptions,
 ): Promise<ContentAiResult> {
   // gpt-5.6 bare → gpt-5.6-sol (GPT-5.6 flagship alias).
   // Terra = strong/balanced, Luna = efficient/high-volume.
-  // Only apply opts.model override for OpenAI/custom providers.
-  const model = (opts.model && (p.label === 'openai' || p.label === 'custom') ? opts.model : p.model).replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
+  // opts.model (a real API id) overrides the provider default — including
+  // NVIDIA/Baseten, which previously ignored it and used the env secret.
+  const model = resolveEffectiveModel(p, opts)
   const patched = { ...p, model }
   return withRetry(p.label, async () => {
     // A cut-off completion is recoverable: continue from the partial text ONCE
@@ -1576,11 +1607,15 @@ async function* openAiCompatibleStream(
     headers['X-Title'] = 'YouSafe Content Studio'
   }
   const maxTokens = resolveMaxTokens(p, opts)
+  // A real request-level model id wins over the provider default (see
+  // resolveEffectiveModel) — otherwise a reviewer pinned to nvidia-deepseek
+  // would stream the EOL'd env-secret model instead of the selected Flash id.
+  const model = resolveEffectiveModel(p, opts)
   // Reasoning models require max_completion_tokens instead of max_tokens
   // (OpenAI rejects max_tokens on these models). DeepSeek V4 / GLM / Nemotron
   // are also reasoning-capable — they consume part of the budget on
   // reasoning_content, so they get the completion-token param for headroom.
-  const isReasoningModel = isReasoningModelId(p.model)
+  const isReasoningModel = isReasoningModelId(model)
 
   /** Open one SSE request for a given user prompt and return the response. */
   const streamOnce = async (userContent: string, disableThinking = false): Promise<Response> => {
@@ -1588,7 +1623,7 @@ async function* openAiCompatibleStream(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: (opts.model && (p.label === 'openai' || p.label === 'custom') ? opts.model : p.model),
+        model,
         stream: true,
         ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
         ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
@@ -1614,7 +1649,7 @@ async function* openAiCompatibleStream(
     return res
   }
 
-  yield { type: 'provider', provider: p.label, model: p.model }
+  yield { type: 'provider', provider: p.label, model }
   let full = ''
   let continuations = 0
   // 2026-08-11: raised from 1→3 — long-form legal guides (2200–2800 words)
@@ -1628,7 +1663,7 @@ async function* openAiCompatibleStream(
       // cascade gives up — an overloaded NVIDIA must not fail the job outright.
       const { res: streamRes, attempts } = await fetchStreamWithRetry(() => streamOnce(prompt))
       if (attempts > 1) {
-        yield { type: 'provider', provider: `${p.label} (overload retry ${attempts})`, model: p.model }
+        yield { type: 'provider', provider: `${p.label} (overload retry ${attempts})`, model }
       }
       for await (const delta of parseOpenAiSse(streamRes.body)) {
         full += delta
@@ -1640,7 +1675,7 @@ async function* openAiCompatibleStream(
       const truncated = /output was truncated \(token limit\)/.test(msg)
       if (!truncated || continuations >= MAX_CONTINUATIONS) throw e
       continuations++
-      yield { type: 'provider', provider: `${p.label} (cont ${continuations}/${MAX_CONTINUATIONS})`, model: p.model }
+      yield { type: 'provider', provider: `${p.label} (cont ${continuations}/${MAX_CONTINUATIONS})`, model }
       prompt = full.trim()
         ? buildContinuationPrompt(full)
         : opts.prompt + '\n\n(Previous attempt produced no visible text — write the complete answer now, keeping it within the token budget.)'
@@ -1664,7 +1699,7 @@ async function* openAiCompatibleStream(
     }
   }
   if (!full.trim()) throw new Error(`${p.label} stream returned empty content`)
-  yield { type: 'done', text: full.trim(), provider: p.label, model: p.model }
+  yield { type: 'done', text: full.trim(), provider: p.label, model }
 }
 
 async function* cloudflareAiStream(

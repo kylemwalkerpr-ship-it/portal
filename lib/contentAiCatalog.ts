@@ -64,8 +64,10 @@ export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 export const DEFAULT_DRAFT_PIN = 'parasail-deepseek'
 /** Research / Generate Full Brief lead: Pro-0813 via Parasail. */
 export const DEFAULT_BRIEF_PIN = 'parasail-deepseek-pro'
-/** Reviewer / Editor lead: same Pro-0813 pin so the API id is what we send. */
-export const DEFAULT_REVIEW_PIN = 'parasail-deepseek-pro'
+/** Reviewer / Editor lead: DeepSeek V4 Flash via NVIDIA. Pro-0813 is EOL on
+ *  NVIDIA (410 Gone since 2026-08-07) and Flash is the checkpoint NVIDIA
+ *  actually serves — so the default reviewer is the Flash pin. */
+export const DEFAULT_REVIEW_PIN = 'nvidia-deepseek'
 
 /** Host picker order — skip a host when that model is not served there. */
 export const STUDIO_HOST_ORDER: StudioHostId[] = [

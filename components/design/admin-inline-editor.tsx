@@ -871,7 +871,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
-            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'parasail-deepseek-pro')}
+            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'nvidia-deepseek')}
             onPinChange={onReviewModelChange}
             disabled={allBusy}
             modelAriaLabel="Review AI model"
