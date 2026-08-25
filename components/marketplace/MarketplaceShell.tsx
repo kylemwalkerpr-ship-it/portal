@@ -6,6 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { PalettePicker } from './PalettePicker'
+import { PatternPicker } from './PatternPicker'
 import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
@@ -445,6 +446,9 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '6px', flexShrink: 0 }}>
           <PalettePicker />
         </div>
+        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '4px', flexShrink: 0 }}>
+          <PatternPicker />
+        </div>
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
         </div>
@@ -548,7 +552,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   const country = (searchParams?.get('country') as 'all' | 'us' | 'uk' | 'ca') ?? 'all'
 
   return (
-    <div className="cw-market" style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui }}>
+    <div className="cw-market" style={{ minHeight: '100vh', backgroundColor: T.paper, fontFamily: F.ui }}>
       {/* Mobile-specific overrides for the top nav + category bar. Inline
           styles can't carry media queries, so we attach class names to
           the affected elements and let CSS take over below 720px. */}

@@ -18,31 +18,9 @@ import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
-const T = {
-  paper: '#2C1410',
-  paper2: '#3A1C14',
-  paper3: '#4A2518',
-  vellum: '#FFF8F0',
-  cream: '#F6EBD8',
-  ink: '#1A120E',
-  inkMid: '#4A3A32',
-  inkSoft: '#7A6A5E',
-  rule: 'rgba(246,235,216,0.16)',
-  ruleSoft: 'rgba(246,235,216,0.08)',
-  indigo: '#0E7C74',
-  indigoDeep: '#085E58',
-  indigoSoft: 'rgba(14,124,116,0.16)',
-  brick: '#D4532A',
-  gold: '#E0B45A',
-  moss: '#3F6B4A',
-  star: '#E0B45A',
-}
-
-const F = {
-  display: "var(--font-fraunces), 'Fraunces', Georgia, 'Times New Roman', serif",
-  ui: "var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  mono: "var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace",
-}
+/* Use the shared CSS-variable tokens so the palette picker affects
+   the full landing page — not just the shell navbar. */
+import { T, F } from '@/components/marketplace/tokens'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
