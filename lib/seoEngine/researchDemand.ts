@@ -69,8 +69,25 @@ export async function loadShippedCoverage(limit = 300): Promise<ResearchShippedP
   }
 }
 
-export async function loadResearchDemandContext(topic: string, primaryKeyword?: string): Promise<ResearchDemandContext> {
+/** Region-specific keyword markers for filtering Ubersuggest terms. */
+const REGION_MARKERS: Record<string, RegExp> = {
+  US: /\b(h-?1b|h-?2a|opt|cpt|eb-[123]|green card|uscis|i-?\d|lse|naturalization| Adjustment of Status)\b/i,
+  CA: /\b(express entry|study permit|pgwp|cec|lmia|ircc|provincial nominee|pnp|super visa|caq|quebec|cad|canadian)\b/i,
+  UK: /\b(gucas|ucas|graduate route|skilled worker visa|tvl|brp|evisa|settlement|indifinite leave|british)\b/i,
+  AU: /\b(subclass|485|500|189|190|491|494|australia|australian|dha|homeaffairs|monash|bridging visa)\b/i,
+}
+
+/** Check if a keyword is clearly from a specific region. */
+function keywordRegion(term: string): string | null {
+  for (const [region, re] of Object.entries(REGION_MARKERS)) {
+    if (re.test(term)) return region
+  }
+  return null
+}
+
+export async function loadResearchDemandContext(topic: string, primaryKeyword?: string, region?: string): Promise<ResearchDemandContext> {
   const pk = (primaryKeyword || topic || '').trim()
+  const regionCode = String(region || 'US').toUpperCase().slice(0, 2)
   const [plansDash, uberCfg, shipped] = await Promise.all([
     loadPlansDashboard(40).catch(() => ({ plans: [] as Array<Record<string, unknown>> })),
     loadUbersuggestConfig().catch(() => null),
@@ -79,13 +96,26 @@ export async function loadResearchDemandContext(topic: string, primaryKeyword?: 
 
   const engineTerms: string[] = []
   for (const p of plansDash.plans || []) {
+    // Filter master engine plans by the selected region/country.
+    // Plans without a country default to the selected region.
+    const planCountry = String(p.country || regionCode || 'US').toUpperCase().slice(0, 2)
+    if (planCountry !== regionCode && planCountry !== 'ALL') continue
     const primary = String(p.primary_term || '').trim()
     if (primary) engineTerms.push(primary)
     const related = Array.isArray(p.related_terms) ? p.related_terms.map(String) : []
     engineTerms.push(...related.filter(Boolean))
   }
 
-  const uberTerms = (uberCfg?.lastGoodSignals || []).map((s) => s.term).filter(Boolean)
+  // Filter Ubersuggest terms — keep only terms that match the selected region
+  // or have no clear region marker (generic immigration terms).
+  const uberTerms = (uberCfg?.lastGoodSignals || [])
+    .map((s) => s.term)
+    .filter((term) => {
+      if (!term) return false
+      const termRegion = keywordRegion(term)
+      // Keep if: no region marker (generic) OR matches selected region
+      return !termRegion || termRegion === regionCode
+    })
 
   const competing = checkCompetingPages({
     primaryKeyword: pk,

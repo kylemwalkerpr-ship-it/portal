@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'topic is required' }, { status: 400 })
     }
 
-    const researchCtx = await loadResearchDemandContext(topic, primaryKeyword)
+    const researchCtx = await loadResearchDemandContext(topic, primaryKeyword, region)
     const picked = pickResearchKeywords(researchCtx, topic)
     const researchBlock = formatResearchPromptBlock(researchCtx, picked)
 
@@ -50,7 +50,9 @@ export async function POST(req: NextRequest) {
       '- Avoid overly broad terms that cannibalize existing pages.',
       '- Prefer MASTER ENGINE and UBERSUGGEST terms from the live context. Never invent a sibling of a SHIPPED canonical URL.',
       '- Favor specific, actionable queries real immigrants would search.',
-      '- Consider the region — use region-specific terminology where relevant.',
+      '- CRITICAL: Only suggest keywords relevant to the specified REGION. Never include keywords from other countries (e.g. do not include "canada study permit" or "uk graduate visa" in a US article).',
+      '- Use region-specific terminology: for US use USCIS/H-1B/Green Card; for CA use IRCC/Express Entry/Study Permit; for UK use UCAS/Graduate Route; for AU use DHA/Subclass/Student Visa.',
+      '- The MASTER ENGINE and UBERSUGGEST terms in the context are already filtered to the selected region.',
       '- If GSC position data shows the page already ranks for a term, deprioritize it.',
       '- If competitor terms are listed, suggest variations that differentiate.',
       '- Consider the content type: blogs need conversational keywords; guides need technical/legal terms.',

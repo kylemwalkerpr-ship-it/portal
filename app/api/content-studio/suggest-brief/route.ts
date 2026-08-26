@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const backlinkGaps = Array.isArray(body.backlinkGaps)
       ? body.backlinkGaps.map(String).slice(0, 5)
       : [] as string[]
-    const researchCtx = await loadResearchDemandContext(topic, primaryKeyword)
+    const researchCtx = await loadResearchDemandContext(topic, primaryKeyword, region)
     const pickedKw = pickResearchKeywords(researchCtx, topic)
     const researchBlock = formatResearchPromptBlock(researchCtx, pickedKw)
     const completedWork = Array.isArray(body.completedWork)
