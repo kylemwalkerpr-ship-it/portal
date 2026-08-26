@@ -3809,7 +3809,10 @@ function JobDetail({
       if (!response.ok) throw new Error(data.error || data.message || `HTTP ${response.status}`)
       if (data.job) {
         setDetail(data.job)
-        if (data.job.content != null && action !== 'regenerate') setEditorContent(data.job.content)
+        if (data.job.content != null && action !== 'regenerate') {
+          const c = String(data.job.content)
+          setEditorContent(c.length > 60_000 ? c.slice(0, 60_000) + '\n\n<!-- Truncated -->' : c)
+        }
       }
       if (data.audit) setAudit(data.audit)
       const message = data.message || `${action.replace('_', ' ')} complete`
@@ -4732,6 +4735,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [mergeIndex, setMergeIndex] = React.useState<{ byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }>({ byPath: new Map(), byStem: new Map() })
   const [merges, setMerges] = React.useState<CannibalMergeRecord[]>([])
   const [engineStatus, setEngineStatus] = React.useState<Record<string, unknown> | null>(null)
+
+  // Clear stale generation state when the selected job changes so the modal
+  // does not hold onto large generationText / events / triedProviders in memory.
+  React.useEffect(() => {
+    setGenerationText('')
+    setGenerationEvents([])
+    setGenerationChars(0)
+    setTriedProviders([])
+    setRescueStats(null)
+  }, [selectedJob?.id])
   const [gateByJob, setGateByJob] = React.useState<Map<string, { score: number; passed: boolean }>>(new Map())
   // Full re-audit result for the Review stage — includes blockers, warnings, annotations.
   // Populated by auto-gate-run when entering Review and by AdminInlineEditor re-audits.
