@@ -5,8 +5,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
-import { PalettePicker } from './PalettePicker'
-import { PatternPicker } from './PatternPicker'
+import { ThemePicker } from './ThemePicker'
 import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
@@ -322,18 +321,18 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             gap: 6,
             padding: '0 14px',
             marginRight: 4,
-            color: T.inkMid,
+            color: T.ink,
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: 600,
             fontFamily: F.ui,
             textDecoration: 'none',
             whiteSpace: 'nowrap',
             flexShrink: 0,
-            opacity: 0.72,
+            opacity: 0.88,
             transition: 'color 120ms ease, opacity 120ms ease',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.gold; (e.currentTarget as HTMLElement).style.opacity = '1' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.cream; (e.currentTarget as HTMLElement).style.opacity = '0.72' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.indigo; (e.currentTarget as HTMLElement).style.opacity = '1' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.ink; (e.currentTarget as HTMLElement).style.opacity = '0.88' }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />
@@ -344,6 +343,35 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             <path d="M9 7h8v8" />
           </svg>
         </a>
+
+        {/* Marketplace landing page link */}
+        <Link
+          href="/marketplace"
+          className="ys-shell-market"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '0 14px',
+            marginRight: 4,
+            color: T.ink,
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: F.ui,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            background: 'transparent',
+            borderRadius: 999,
+            border: `1px solid ${T.rule}`,
+            height: 34,
+            transition: 'border-color 120ms, background 120ms',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.indigo; (e.currentTarget as HTMLElement).style.background = T.indigoSoft }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.rule; (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          Market
+        </Link>
 
         <Link
           href="https://yousafeconsultancy.com/shop"
@@ -444,10 +472,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           <GlobalLanguageBar />
         </div>
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '6px', flexShrink: 0 }}>
-          <PalettePicker />
-        </div>
-        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '4px', flexShrink: 0 }}>
-          <PatternPicker />
+          <ThemePicker />
         </div>
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />

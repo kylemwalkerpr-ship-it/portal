@@ -781,10 +781,10 @@ const CSS = `
 .cw-market .seller-card p { margin: 0 0 14px; max-width: 56ch; font-size: 13.5px; line-height: 1.55; color: rgba(255,255,255,0.78); }
 .cw-market .seller-card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .cw-market .seller-card .btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 999px; font-weight: 600; font-size: 13px; transition: transform .12s, background .12s; }
-.cw-market .seller-card .btn.primary { background: #fff; color: ${T.indigo}; }
-.cw-market .seller-card .btn.primary:hover { transform: translateY(-1px); }
-.cw-market .seller-card .btn.ghost { border: 1px solid rgba(255,255,255,0.4); color: #FFFFFF; }
-.cw-market .seller-card .btn.ghost:hover { background: rgba(255,255,255,0.08); }
+.cw-market .seller-card .btn.primary { background: ${T.indigoDeep}; color: #FFFFFF; border: 1px solid ${T.indigoDeep}; }
+.cw-market .seller-card .btn.primary:hover { transform: translateY(-1px); background: ${T.indigo}; }
+.cw-market .seller-card .btn.ghost { border: 1px solid rgba(255,255,255,0.5); color: #FFFFFF; background: rgba(255,255,255,0.08); }
+.cw-market .seller-card .btn.ghost:hover { background: rgba(255,255,255,0.18); }
 .cw-market .seller-card .stats { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 0 4px; position: relative; z-index: 1; }
 .cw-market .seller-card .stat { border-left: 2px solid rgba(255,255,255,0.3); padding-left: 12px; }
 .cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1; color: #FFFFFF; letter-spacing: -0.01em; }
