@@ -7,6 +7,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
+import { providerDisplayLabel } from '@/lib/providerDisplayName'
 
 // ISR: revalidate at most once per hour
 export const revalidate = 3600
@@ -240,12 +241,14 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const ssrTiers = Array.isArray(gig?.tiers) ? (gig.tiers as Array<{ title?: string; tier?: string; price?: number; delivery_days?: number; description?: string }>) : []
   const ssrTags = Array.isArray(gig?.tags) ? (gig.tags as string[]).filter(Boolean).slice(0, 12) : []
   const categoryLabel = gig?.category ? getCategoryById(gig.category as CategoryId)?.name : null
-  const providerName =
-    gig?.provider && !Array.isArray(gig.provider)
-      ? (gig.provider as { full_name?: string | null })?.full_name
-      : Array.isArray(gig?.provider)
-        ? (gig.provider[0] as { full_name?: string | null } | undefined)?.full_name
-        : null
+  // Shared display-name chain — full_name can be an empty string in the DB,
+  // which left the gig hero rendering "Licensed attorney" with NO name.
+  const providerName = gig?.provider
+    ? providerDisplayLabel(
+        Array.isArray(gig.provider) ? (gig.provider[0] as any) : (gig.provider as any),
+        (gig as any).provider_type,
+      )
+    : null
 
   return (
     <>

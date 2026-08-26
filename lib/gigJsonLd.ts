@@ -1,3 +1,5 @@
+import { providerDisplayName } from './providerDisplayName'
+
 // Builds the schema.org JSON-LD graph rendered on every public gig page.
 //
 // Why an @graph instead of multiple <script> blocks: Google links the entities
@@ -165,7 +167,7 @@ export function buildGigJsonLd(input: GigJsonLdInput): object {
   // `Service.provider` is the seller, so the Person we emit IS the attorney /
   // consultant. The organisation gets its own node referenced by `brand` and
   // `worksFor` so reviewers see both linked.
-  const providerName = provider?.full_name || provider?.username || 'Service provider'
+  const providerName = providerDisplayName(provider, 'Service provider')
   const providerNode: Record<string, unknown> = {
     '@type': 'Person',
     '@id': providerId,

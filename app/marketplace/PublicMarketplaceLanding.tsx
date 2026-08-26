@@ -8,6 +8,7 @@ import {
 import { unstable_cache } from 'next/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { MarketplaceHomeSeo } from '@/components/marketplace/MarketIndexSeo'
 import { CountryPicker } from '@/components/marketplace/CountryTabs'
@@ -297,7 +298,9 @@ async function loadLandingData(): Promise<LandingData> {
       order_count: Number(row.order_count ?? 0),
       starting_price: cheapest ? cheapest.price : null,
       delivery_days: cheapest ? cheapest.delivery_days : null,
-      providerName: row.provider?.full_name ?? 'YouSafe provider',
+      // Empty-string full_name must fall through — a blank name next to
+      // "Licensed attorney" on the hero case-file card was the symptom.
+      providerName: providerDisplayName(row.provider),
       providerCountry: country,
       providerHeadshot: headshotByProfileId.get(row.provider_id) ?? null,
       jx: gigJx ?? resolveJurisdiction(country),
@@ -580,12 +583,12 @@ const CSS = `
 .cw-cat-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; display: grid; grid-template-columns: 240px 380px; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; box-shadow: 0 30px 60px -20px rgba(29,36,51,0.25); overflow: hidden; min-width: 620px; max-width: calc(100vw - 32px); }
 @media (max-width: 720px) { .cw-cat-panel { grid-template-columns: 1fr; min-width: min(360px, calc(100vw - 32px)); } .cw-cat-detail { display: none; } }
 .cw-cat-list { list-style: none; margin: 0; padding: 10px 0; border-right: 1px solid ${T.ruleSoft}; background: ${T.paper2}; max-height: 440px; overflow-y: auto; }
-.cw-cat-list li a { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 16px; font-size: 13.5px; color: #1A120E; }
+.cw-cat-list li a { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 16px; font-size: 13.5px; color: ${T.onPaper}; }
 .cw-cat-list li a:hover, .cw-cat-list li a.is-focus { background: ${T.paper3}; color: #FFFFFF; }
 .cw-cat-icon { font-size: 14px; line-height: 1; }
 .cw-cat-name { font-weight: 500; }
-.cw-cat-count { font-family: ${F.mono}; font-size: 10.5px; color: #1A120E; opacity: 0.6; letter-spacing: 0.04em; }
-.cw-cat-arrow { color: #1A120E; opacity: 0.6; }
+.cw-cat-count { font-family: ${F.mono}; font-size: 10.5px; color: ${T.onPaperSoft}; letter-spacing: 0.04em; }
+.cw-cat-arrow { color: ${T.onPaperSoft}; }
 .cw-cat-detail { padding: 22px 24px; background: ${T.vellum}; display: flex; flex-direction: column; gap: 12px; max-height: 440px; overflow-y: auto; }
 .cw-cat-detail-eyebrow { font-family: ${F.display}; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; color: ${T.ink}; }
 .cw-cat-detail-desc { margin: 0; font-size: 13px; line-height: 1.5; color: ${T.inkMid}; }
@@ -646,16 +649,16 @@ const CSS = `
 .cw-market .hero-card .stamp { display: none; }
 .cw-market .hero-empty { background: #fff; border: 1px dashed ${T.rule}; border-radius: 16px; padding: 48px 32px; text-align: center; color: ${T.inkSoft}; font-family: ${F.ui}; font-size: 15px; line-height: 1.5; }
 
-.cw-market .trust { padding: 16px 0; border-bottom: 1px solid ${T.rule}; background: transparent; font-family: ${F.ui}; font-size: 13px; letter-spacing: 0; text-transform: none; color: #1A120E; }
+.cw-market .trust { padding: 16px 0; border-bottom: 1px solid ${T.rule}; background: transparent; font-family: ${F.ui}; font-size: 13px; letter-spacing: 0; text-transform: none; color: ${T.onPaper}; }
 .cw-market .trust-inner { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; justify-content: space-between; }
-.cw-market .trust-inner .label { color: #1A120E; font-weight: 600; opacity: 0.7; }
+.cw-market .trust-inner .label { color: ${T.onPaper}; font-weight: 600; opacity: 0.85; }
 .cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
 .cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: #16a34a; }
 
 .cw-files-rail { padding: 28px 0 16px; background: transparent; border-bottom: 1px solid ${T.rule}; }
 .cw-files-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .cw-files-rail-head h2 { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; }
-.cw-files-rail-head a { font-size: 13px; font-weight: 700; color: #1A120E; }
+.cw-files-rail-head a { font-size: 13px; font-weight: 700; color: ${T.onPaper}; }
 .cw-files-scroller { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 12px; }
 .cw-files-scroller::-webkit-scrollbar { display: none; }
 .cw-files-card { position: relative; flex: 0 0 220px; scroll-snap-align: start; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden; text-decoration: none; color: ${T.ink}; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform .22s, box-shadow .22s; }
@@ -669,8 +672,8 @@ const CSS = `
 .cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
 .cw-market .section-head h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.12; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; max-width: 24ch; }
 .cw-market .section-head h2 em { font-style: italic; color: ${T.gold}; }
-.cw-market .section-head .meta { display: flex; flex-direction: column; gap: 6px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #1A120E; text-align: right; }
-.cw-market .section-head .meta a { color: #1A120E; border-bottom: 1px solid #1A120E; padding-bottom: 1px; }
+.cw-market .section-head .meta { display: flex; flex-direction: column; gap: 6px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.onPaperSoft}; text-align: right; }
+.cw-market .section-head .meta a { color: ${T.onPaper}; border-bottom: 1px solid ${T.onPaperSoft}; padding-bottom: 1px; }
 .cw-market .section-head .meta a:hover { color: ${T.indigo}; border-color: ${T.indigo}; }
 
 .cw-market .featured { padding: 36px 0 40px; border-top: 0; background: transparent; }
@@ -762,9 +765,9 @@ const CSS = `
 .cw-market .quotes { padding: 36px 0; border-top: 1px solid ${T.rule}; background: transparent; }
 .cw-market .quotes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
 @media (max-width: 900px) { .cw-market .quotes-grid { grid-template-columns: 1fr; gap: 28px; } }
-.cw-market .quote { border-top: 2px solid ${T.gold}; padding-top: 14px; color: #1A120E; }
+.cw-market .quote { border-top: 2px solid ${T.gold}; padding-top: 14px; color: ${T.onPaper}; }
 .cw-market .quote .stars { margin-bottom: 10px; }
-.cw-market .quote blockquote { margin: 0 0 12px; font-family: ${F.display}; font-size: 16px; line-height: 1.45; color: #1A120E; letter-spacing: -0.005em; text-wrap: pretty; }
+.cw-market .quote blockquote { margin: 0 0 12px; font-family: ${F.display}; font-size: 16px; line-height: 1.45; color: ${T.onPaper}; letter-spacing: -0.005em; text-wrap: pretty; }
 .cw-market .quote blockquote em { color: ${T.indigo}; font-style: italic; }
 .cw-market .quote cite { display: flex; align-items: center; gap: 10px; font-style: normal; font-size: 13px; color: ${T.inkMid}; }
 .cw-market .quote cite b { color: ${T.ink}; font-weight: 600; }
@@ -798,11 +801,11 @@ const CSS = `
 .cw-market .quotes-empty a { color: ${T.indigo}; text-decoration: none; }
 
 .cw-market .close-strip { padding: 14px 0; border-top: 1px solid ${T.rule}; background: transparent; }
-.cw-market .close-strip-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; font-size: 12.5px; font-weight: 600; color: #1A120E; letter-spacing: 0.01em; }
-.cw-market .close-strip-inner .dot { width: 3px; height: 3px; border-radius: 50%; background: #1A120E; opacity: 0.3; }
+.cw-market .close-strip-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; font-size: 12.5px; font-weight: 600; color: ${T.onPaper}; letter-spacing: 0.01em; }
+.cw-market .close-strip-inner .dot { width: 3px; height: 3px; border-radius: 50%; background: ${T.onPaperSoft}; opacity: 0.6; }
 
 .cw-market .faq-section { padding: 28px 0 36px; background: transparent; }
-.cw-market .faq-heading { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 14px; color: #1A120E; }
+.cw-market .faq-heading { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 14px; color: ${T.onPaper}; }
 .cw-market .faq-grid { display: grid; gap: 8px; max-width: 820px; }
 .cw-market .faq-item { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 10px; padding: 12px 16px; color: ${T.ink}; transition: border-color .12s; }
 .cw-market .faq-item:hover, .cw-market .faq-item.is-open { border-color: ${T.gold}; }

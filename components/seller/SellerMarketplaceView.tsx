@@ -3,6 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { getCategoriesForRole, type Role } from '@/lib/categories'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
 const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
@@ -384,7 +385,7 @@ function SellerMarketCard({ gig, viewerProfileId, viewerRole }: { gig: Marketpla
   const cover = coverFor(gig)
   const price = startingPriceFor(gig)
   const isOwn = gig.provider_id === viewerProfileId
-  const providerName = gig.provider?.full_name || gig.provider?.email || 'YouSafe provider'
+  const providerName = providerDisplayName(gig.provider, 'YouSafe provider')
   const reviewCount = gig.review_count ?? 0
   const rating = gig.avg_rating ?? 0
 

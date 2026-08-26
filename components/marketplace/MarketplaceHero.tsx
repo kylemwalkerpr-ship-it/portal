@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { T, F } from './tokens'
 import { responsiveImageProps } from '@/lib/responsiveImage'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const gigCard: CSSProperties = {
   background: T.vellum,
@@ -147,7 +148,7 @@ export function GigCard({ gig }: GigCardProps) {
   const price = gig.starting_price ? (gig.starting_price / 100).toFixed(0) : null
   const rating = gig.avg_rating?.toFixed(1) || '0'
   const reviewCount = gig.review_count || 0
-  const providerName = gig.provider?.full_name || gig.provider?.email || 'YouSafe Provider'
+  const providerName = providerDisplayName(gig.provider, 'YouSafe Provider')
   const providerId = gig.provider?.id || gig.provider_id
   const deliveryDays = (gig as any).min_delivery_days ?? (gig as any).delivery_days ?? null
 
