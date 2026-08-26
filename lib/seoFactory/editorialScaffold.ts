@@ -1094,11 +1094,23 @@ export function applyDeterministicRepairs(opts: {
   // enter an infinite loop trying to "fix" them.
   {
     const urlBefore = b
+    // Fix double-protocol: https://https://example.com → https://example.com
+    b = b.replace(/(https?:\/\/)+/gi, (match) => {
+      // Keep only the last scheme
+      const schemes = match.match(/https?:\/\//gi) || []
+      return schemes[schemes.length - 1] || match
+    })
     // Fix markdown link URLs: [text](https://www.canada.On) → [text](https://www.canada.ca)
     b = b.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, (match, text, url) => {
-      const cleanedUrl = cleanTldSentenceWords(url)
-      const cleanedText = cleanLinkTextSentenceWord(text, url)
-      if (cleanedUrl !== url || cleanedText !== text) {
+      let fixedUrl = url
+      // Fix double-protocol inside markdown links too
+      fixedUrl = fixedUrl.replace(/(https?:\/\/)+/gi, (m) => {
+        const schemes = m.match(/https?:\/\//gi) || []
+        return schemes[schemes.length - 1] || m
+      })
+      const cleanedUrl = cleanTldSentenceWords(fixedUrl)
+      const cleanedText = cleanLinkTextSentenceWord(text, fixedUrl)
+      if (cleanedUrl !== fixedUrl || cleanedText !== text || fixedUrl !== url) {
         return `[${cleanedText}](${cleanedUrl})`
       }
       return match

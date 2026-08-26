@@ -343,6 +343,8 @@ export function isMalformedUrl(url: string): boolean {
   if (!u) return true
   if (/\s/.test(u)) return true
   if (/^javascript:/i.test(u)) return true
+  // Double protocol: https://https://example.com → malformed
+  if (/^https?:\/\/https?:\/\//i.test(u)) return true
   // No scheme and not relative/anchor → junk.
   if (!/^https?:\/\//i.test(u) && !u.startsWith('/') && !u.startsWith('#') && !/^(mailto|tel|data):/i.test(u)) {
     return true
@@ -365,9 +367,7 @@ export function cleanTldSentenceWords(url: string): string {
     // Extract hostname preserving case — URL.hostname lowercases, which
     // breaks detection of sentence words that start with a capital letter.
     const rawHost = u.replace(/^https?:\/\/([^/]+).*$/i, '$1')
-    const host = parsed.hostname // lowercase version for matching
-
-    // Pattern 1: domain.TLD + sentence word appended (case-insensitive)
+    const host = parsed.hostname // lowercase version for matching    // Pattern 1: domain.TLD + sentence word appended (case-insensitive)
     // e.g. immi.homeaffairs.gov.au.Meanwhile → immi.homeaffairs.gov.au
     const appendMatch = rawHost.match(/^(.+?\.(?:ca|com|org|net|gov|edu|co\.uk|co\.nz|co\.za|com\.au|gov\.uk|gov\.ca|gov\.au|gov\.nz|gov\.sg|gov\.ie))\.([A-Za-z][a-z]+)$/)
     if (appendMatch) {
@@ -375,12 +375,35 @@ export function cleanTldSentenceWords(url: string): string {
       return parsed.toString()
     }
 
+    // Pattern 1b: single-level TLD + sentence word (e.g. gov.Typically → gov.au)
+    // The AI sometimes replaces the TLD entirely: immi.homeaffairs.gov.Typically
+    const singleTldMatch = rawHost.match(/^(.+?\.(?:gov|edu|org|com|net|co))\.([A-Za-z][a-z]+)$/)
+    if (singleTldMatch) {
+      const base = singleTldMatch[1]
+      const word = singleTldMatch[2]
+      // Guess the correct TLD from context
+      if (/\.gov\.au$/i.test(base + '.' + word) || /homeaffairs|immi|health|afp|naati|art\.gov/i.test(base)) {
+        parsed.hostname = base + '.au'
+        return parsed.toString()
+      }
+      if (/\.gov\.uk$/i.test(base + '.' + word) || /gov\.uk$/i.test(base)) {
+        parsed.hostname = base
+        return parsed.toString()
+      }
+      if (/\.gc\.ca$/i.test(base + '.' + word) || /canada|quebec/i.test(base)) {
+        parsed.hostname = base + '.ca'
+        return parsed.toString()
+      }
+      // Generic: just strip the sentence word
+      parsed.hostname = base
+      return parsed.toString()
+    }
+
     // Pattern 2: known country name + sentence word (replaced TLD)
     // e.g. www.canada.On → www.canada.ca, www.quebec.Typically → www.quebec.ca
     const TLD_MAP: Record<string, string> = {
       'canada': '.ca', 'quebec': '.ca', 'britain': '.co.uk',
-      'america': '.gov', 'australia': '.gov.au',
-      'uscis': '.gov', 'homeaffairs': '.gov.au', 'gov': '.gov',
+      'america': '.gov', 'australia': '.gov.au', 'uscis': '.gov', 'homeaffairs': '.gov.au', 'gov': '.gov',
     }
     for (const [country, tld] of Object.entries(TLD_MAP)) {
       const re = new RegExp(`^(.+\.${country})\.([A-Za-z][a-z]+)$`, 'i')
@@ -450,8 +473,17 @@ export function auditLinksSync(
   const findings: LinkAuditFinding[] = []
   const links = extractLinks(content)
 
-  for (const { url } of links) {
-    if (SKIP_PREFIXES.some((p) => url.trim().startsWith(p)) || isSkippableHref(url)) continue
+  for (const { url: rawUrl } of links) {
+    if (SKIP_PREFIXES.some((p) => rawUrl.trim().startsWith(p)) || isSkippableHref(rawUrl)) continue
+    // Clean corrupted URLs before checking: double-protocol, TLD sentence words
+    let url = rawUrl
+    // Fix double-protocol: https://https://example.com → https://example.com
+    url = url.replace(/(https?:\/\/)+/gi, (match) => {
+      const schemes = match.match(/https?:\/\//gi) || []
+      return schemes[schemes.length - 1] || match
+    })
+    // Fix TLD sentence words: immi.homeaffairs.gov.Typically → immi.homeaffairs.gov.au
+    url = cleanTldSentenceWords(url)
     const placeholder = isPlaceholderUrl(url)
     if (placeholder.hit) {
       findings.push({
