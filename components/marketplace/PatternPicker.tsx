@@ -18,53 +18,39 @@ interface PatternDef {
   label: string
   emoji: string
   css: string  // CSS background-image value
-}
-
-const PATTERNS: PatternDef[] = [
+}const PATTERNS: PatternDef[] = [
   { id: 'none', label: 'Solid', emoji: '◼️', css: 'none' },
   {
-    id: 'linen',
-    label: 'Linen',
-    emoji: '🧵',
-    css: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 4px)',
+    id: 'linen', label: 'Linen', emoji: '🧵',
+    css: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 4px)',
   },
   {
-    id: 'dots',
-    label: 'Dots',
-    emoji: '🔲',
-    css: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)',
+    id: 'dots', label: 'Dots', emoji: '🔲',
+    css: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)',
   },
   {
-    id: 'diagonal',
-    label: 'Diagonal',
-    emoji: '📐',
-    css: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px)',
+    id: 'diagonal', label: 'Diagonal', emoji: '📐',
+    css: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
   },
   {
-    id: 'woodgrain',
-    label: 'Wood grain',
-    emoji: '🪵',
+    id: 'woodgrain', label: 'Wood grain', emoji: '🪵',
     css: [
-      'repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px)',
-      'repeating-linear-gradient(2deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 6px)',
+      'repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 3px)',
+      'repeating-linear-gradient(2deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 6px)',
     ].join(', '),
   },
   {
-    id: 'crosshatch',
-    label: 'Crosshatch',
-    emoji: '🔺',
+    id: 'crosshatch', label: 'Crosshatch', emoji: '🔺',
     css: [
-      'repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px)',
-      'repeating-linear-gradient(-45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px)',
+      'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
+      'repeating-linear-gradient(-45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
     ].join(', '),
   },
   {
-    id: 'diamonds',
-    label: 'Diamonds',
-    emoji: '💎',
+    id: 'diamonds', label: 'Diamonds', emoji: '💎',
     css: [
-      'linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.04) 75%)',
-      'linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.04) 75%)',
+      'linear-gradient(45deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 75%)',
+      'linear-gradient(45deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 75%)',
     ].join(', '),
   },
 ]
@@ -243,7 +229,7 @@ export function PatternPicker() {
                       width: 22,
                       height: 22,
                       borderRadius: 3,
-                      background: '#3A2A1A',
+                      background: '#FAFAF7',
                       backgroundImage: p.css,
                       backgroundSize: getPatternBackgroundSize(p.id),
                       backgroundPosition: getPatternPosition(p.id),

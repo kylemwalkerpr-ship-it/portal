@@ -527,8 +527,9 @@ const FAQ_JSONLD = {
 /* ───────────────────────── CSS ─────────────────────────── */
 
 const CSS = `
-.cw-market { color: #1A120E; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; }
-.cw-market::before, .cw-market::after { content: none; }
+.cw-market { color: #1A120E; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
+.cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; }
+.cw-market::after { content: none; }
 .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
 .cw-market a { color: inherit; text-decoration: none; }
 .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
