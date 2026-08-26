@@ -102,11 +102,11 @@ describe('content AI · NVIDIA model-id canonicalization', () => {
     expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-0731')
   })
 
-  it('honors a custom NVIDIA model override but still lowercases it', () => {
+  it('rejects a non-catalog NVIDIA DeepSeek override instead of sending an unknown deployment', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-Custom'
     const provider = getNvidiaDeepseekProvider() as unknown as { label: string; model: string }
-    expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-custom')
+    expect(provider.model).toBe('deepseek-ai/deepseek-v4-flash-0731')
   })
 })
 
@@ -192,7 +192,7 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
 })
 
 describe('content AI · reviewer cascade on transient infra errors (cascadeOnCapacity)', () => {
-  const envKeys = ['BASETEN_API_KEY', 'PARASAIL_API_KEY', 'CONTENT_AI_RETRY'] as const
+  const envKeys = ['BASETEN_API_KEY', 'PARASAIL_API_KEY', 'NVIDIA_API_KEY', 'NVIDIA_BASE_URL', 'NVIDIA_DEEPSEEK_MODEL', 'CONTENT_AI_RETRY'] as const
   const original: Record<string, string | undefined> = {}
 
   beforeEach(() => {
@@ -218,6 +218,35 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
     aiProvider: 'baseten-deepseek',
     exclusive: true,
   } as const
+
+  it('an NVIDIA chat deployment 404 cascades to the next provider instead of hard-failing Fix All', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      if (String(input).includes('integrate.api.nvidia.com')) {
+        return new Response(
+          JSON.stringify({ detail: "Function id 'test' version 'null': Specified function in account 'test' is not found" }),
+          { status: 404, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Fixed via Parasail.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({
+        system: 'Review.', prompt: 'Fix it', maxTokens: 2048,
+        skipQualityContract: true, aiProvider: 'nvidia-deepseek',
+        exclusive: true, cascadeOnCapacity: true,
+      })
+      expect(res.provider).toBe('parasail-deepseek')
+      expect(res.text).toContain('Fixed via Parasail')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
 
   it('an AbortError on the pinned Baseten host cascades to the next provider (never "The operation was aborted")', async () => {
     process.env.BASETEN_API_KEY = 'test-baseten-key'

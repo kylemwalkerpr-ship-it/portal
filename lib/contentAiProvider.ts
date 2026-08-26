@@ -121,6 +121,28 @@ export function canonicalizeDeepseekModelId(raw?: string | null, lane: 'flash' |
   if (/0731/.test(lower)) return PARASAIL_DEEPSEEK_MODEL
   return PARASAIL_DEEPSEEK_MODEL
 }
+
+/**
+ * Strict host-lane normalizer. The legacy normalizer intentionally accepts a
+ * Pro-looking value when called for a Pro lane, but that flexibility is not
+ * safe for a provider slot: a stale vault value must never turn a Flash lane
+ * into a Pro request (or vice versa). Only the exact dated SKU for the lane
+ * is accepted; every other value falls back to that lane's default.
+ */
+export function canonicalizeDeepseekLaneModelId(
+  raw: string | null | undefined,
+  lane: 'flash' | 'pro',
+): string {
+  const lower = String(raw || '').trim().toLowerCase()
+  if (lane === 'pro') {
+    return lower === 'deepseek-ai/deepseek-v4-pro-0813'
+      ? 'deepseek-ai/DeepSeek-V4-Pro-0813'
+      : PARASAIL_DEEPSEEK_PRO_MODEL
+  }
+  return lower === 'deepseek-ai/deepseek-v4-flash-0731'
+    ? PARASAIL_DEEPSEEK_MODEL
+    : PARASAIL_DEEPSEEK_MODEL
+}
 /**
  * Parasail GLM 5.2 catalog id. `nvidia/GLM-5.2-NVFP4` 404s on api.parasail.io
  * ("Deployment doesn't exist"). NVIDIA NIM / Parasail both serve `z-ai/glm-5.2`.
@@ -349,6 +371,42 @@ function validBaseUrl(raw: string, fallback: string): string {
   return /^https?:\/\//i.test(v) ? v.replace(/\/+$/, '') : fallback
 }
 
+/**
+ * Provider endpoints are part of the provider identity. A model-specific
+ * vault row must never be able to redirect NVIDIA traffic through a stale
+ * Cloudflare Worker, or redirect Baseten traffic to another host. Keep the
+ * operator override only when its hostname is the provider's documented host.
+ */
+function providerBaseUrl(raw: string, fallback: string, allowedHosts: string[]): string {
+  const candidate = validBaseUrl(raw, fallback)
+  try {
+    const host = new URL(candidate).hostname.toLowerCase()
+    return allowedHosts.includes(host) ? candidate : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** NVIDIA's DeepSeek lane may never inherit Nemotron, GLM, Pro, or custom IDs. */
+export function canonicalizeNvidiaDeepseekModelId(raw?: string | null): string {
+  const id = String(raw || '').trim().toLowerCase()
+  return id === NVIDIA_DEEPSEEK_MODEL_DEFAULT ? id : NVIDIA_DEEPSEEK_MODEL_DEFAULT
+}
+
+/** NVIDIA's GLM lane may never inherit DeepSeek or Nemotron IDs. */
+export function canonicalizeNvidiaGlmModelId(raw?: string | null): string {
+  const id = String(raw || '').trim().toLowerCase()
+  return id === 'z-ai/glm-5.2' ? id : NVIDIA_GLM_MODEL_DEFAULT
+}
+
+/** NVIDIA's Nemotron lane may never inherit DeepSeek or GLM IDs. */
+export function canonicalizeNvidiaNemotronModelId(raw?: string | null): string {
+  const id = String(raw || '').trim().toLowerCase()
+  // Keep explicitly selected NVIDIA Nemotron deployments, but never accept a
+  // DeepSeek/GLM/Parasail model in this lane.
+  return /^nvidia\/nemotron(?:-|\/)/.test(id) ? id : NVIDIA_NEMOTRON_MODEL_DEFAULT
+}
+
 /** Workers AI daily-neuron exhaustion is permanent until the quota resets. */
 function isDailyQuotaError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
@@ -371,7 +429,7 @@ function isNoRetryProviderError(value: unknown): boolean {
  */
 function isTransientInfraError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
-  return /\b(429|503|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error/i.test(message)
+  return /\b(429|503|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error|Function id .* not found|Specified function in account .* is not found/i.test(message)
 }
 
 /** Keep provider diagnostics useful without surfacing auth/token fingerprints. */
@@ -666,11 +724,11 @@ export function resolveEffectiveModel(p: OpenAiCompat, opts: ContentAiOptions): 
   if (p.label === 'openai' || p.label === 'custom') {
     return requested.replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
   }
-  if (p.label === 'nvidia-deepseek' || p.label === 'nvidia-glm' || p.label === 'nvidia-nemotron') {
-    return canonicalizeNvidiaModelId(requested)
-  }
+  if (p.label === 'nvidia-deepseek') return canonicalizeNvidiaDeepseekModelId(requested)
+  if (p.label === 'nvidia-glm') return canonicalizeNvidiaGlmModelId(requested)
+  if (p.label === 'nvidia-nemotron') return canonicalizeNvidiaNemotronModelId(requested)
   if (p.label === 'baseten-deepseek' || p.label === 'baseten-deepseek-pro') {
-    return canonicalizeDeepseekModelId(requested, p.label === 'baseten-deepseek-pro' ? 'pro' : 'flash')
+    return canonicalizeDeepseekLaneModelId(requested, p.label === 'baseten-deepseek-pro' ? 'pro' : 'flash')
   }
   return requested
 }
@@ -1016,9 +1074,9 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'nvidia-nemotron',
-    baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
+    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
     apiKey,
-    model: canonicalizeNvidiaModelId(env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT),
+    model: canonicalizeNvidiaNemotronModelId(env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
     // Separate reasoning budget (mirrors the operator's own working NIM example:
@@ -1042,9 +1100,9 @@ export function getNvidiaGlmProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'nvidia-glm',
-    baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
+    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
     apiKey,
-    model: canonicalizeNvidiaModelId(env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT),
+    model: canonicalizeNvidiaGlmModelId(env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
     // NOTE: NO reasoning_budget here — NVIDIA rejects it for GLM with a 400
@@ -1065,13 +1123,11 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'nvidia-deepseek',
-    baseURL: validBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT),
+    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
     apiKey,
-    // NVIDIA NIM catalog id is lowercase and case-sensitive — a mixed-case
-    // override (the Baseten/Parasail form of the same checkpoint) 404s with
-    // "page not found". Canonicalize so the dated 0731 checkpoint is always
-    // sent in the case NVIDIA actually serves.
-    model: canonicalizeNvidiaModelId(env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT),
+    // NVIDIA's DeepSeek lane is isolated from the shared Nemotron/GLM
+    // settings. A cross-wired vault value falls back to Flash-0731.
+    model: canonicalizeNvidiaDeepseekModelId(env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
     // NOTE: NO reasoning_budget here — NVIDIA DeepSeek V4 Flash returns a 400
@@ -1100,9 +1156,9 @@ export function getBasetenProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'baseten-deepseek',
-    baseURL: validBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL),
+    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
     apiKey,
-    model: canonicalizeDeepseekModelId(env('BASETEN_MODEL') || BASETEN_MODEL, 'flash'),
+    model: canonicalizeDeepseekLaneModelId(env('BASETEN_MODEL') || BASETEN_MODEL, 'flash'),
     maxTokensCap: BASETEN_MAX_TOKENS,
     // Thinking mode ON — reasoning improves quality. The SSE parser consumes
     // ONLY delta.content, so reasoning chains never leak into the article.
@@ -1120,9 +1176,9 @@ export function getBasetenDeepseekProProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'baseten-deepseek-pro',
-    baseURL: validBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL),
+    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
     apiKey,
-    model: canonicalizeDeepseekModelId(env('BASETEN_PRO_MODEL') || BASETEN_PRO_MODEL, 'pro'),
+    model: canonicalizeDeepseekLaneModelId(env('BASETEN_PRO_MODEL') || BASETEN_PRO_MODEL, 'pro'),
     maxTokensCap: BASETEN_MAX_TOKENS,
     extraBody: {
       chat_template_kwargs: { enable_thinking: true },
@@ -1137,9 +1193,9 @@ export function getBasetenGlmFastProvider(): OpenAiCompat | null {
   if (!apiKey) return null
   return {
     label: 'baseten-glm-fast',
-    baseURL: validBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL),
+    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
     apiKey,
-    model: env('BASETEN_GLM_MODEL') || BASETEN_GLM_MODEL,
+    model: env('BASETEN_GLM_MODEL') === BASETEN_GLM_MODEL ? BASETEN_GLM_MODEL : BASETEN_GLM_MODEL,
     maxTokensCap: BASETEN_MAX_TOKENS,
   }
 }
@@ -1184,7 +1240,7 @@ export function isParasailConfigured(): boolean {
 }
 
 function parasailBaseURL(): string {
-  return validBaseUrl(env('PARASAIL_BASE_URL'), PARASAIL_BASE_URL)
+  return providerBaseUrl(env('PARASAIL_BASE_URL'), PARASAIL_BASE_URL, ['api.parasail.io'])
 }
 
 /** Drafting/writing: DeepSeek V4 Flash on Parasail. */
@@ -1195,7 +1251,7 @@ export function getParasailDeepseekProvider(): OpenAiCompat | null {
     label: 'parasail-deepseek',
     baseURL: parasailBaseURL(),
     apiKey,
-    model: canonicalizeDeepseekModelId(env('PARASAIL_DEEPSEEK_MODEL') || PARASAIL_DEEPSEEK_MODEL, 'flash'),
+    model: canonicalizeDeepseekLaneModelId(env('PARASAIL_DEEPSEEK_MODEL') || PARASAIL_DEEPSEEK_MODEL, 'flash'),
     maxTokensCap: PARASAIL_MAX_TOKENS,
   }
 }
@@ -1218,7 +1274,7 @@ export function getParasailDeepseekProProvider(): OpenAiCompat | null {
     label: 'parasail-deepseek-pro',
     baseURL: parasailBaseURL(),
     apiKey,
-    model: canonicalizeDeepseekModelId(env('PARASAIL_DEEPSEEK_PRO_MODEL') || PARASAIL_DEEPSEEK_PRO_MODEL, 'pro'),
+    model: canonicalizeDeepseekLaneModelId(env('PARASAIL_DEEPSEEK_PRO_MODEL') || PARASAIL_DEEPSEEK_PRO_MODEL, 'pro'),
     maxTokensCap: PARASAIL_MAX_TOKENS,
     extraBody: { reasoning_effort: parasailProReasoningEffort() },
   }
@@ -1252,8 +1308,7 @@ export function isDeepseekOfficialConfigured(): boolean {
 
 function deepseekOfficialBaseURL(): string {
   const raw = env('DEEPSEEK_BASE_URL')
-  if (/^https?:\/\/api\.deepseek\.com/i.test(raw)) return raw.replace(/\/$/, '')
-  return DEEPSEEK_OFFICIAL_BASE_URL
+  return providerBaseUrl(raw, DEEPSEEK_OFFICIAL_BASE_URL, ['api.deepseek.com'])
 }
 
 function deepseekOfficialProvider(label: string, model: string): OpenAiCompat | null {

@@ -9,7 +9,7 @@
 import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from './contentDepth'
-import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord } from './linkAudit'
+import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
 
@@ -1135,6 +1135,12 @@ export function applyDeterministicRepairs(opts: {
     // Fix markdown link URLs: [text](https://www.canada.On) → [text](https://www.canada.ca)
     b = b.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, (match, text, url) => {
       let fixedUrl = url
+      // PERMANENT MALFORMED_LINK fix: run-on sentences inside the URL
+      // (https://immi.homeaffairs.Typically, gov.au/path) — repair the span
+      // BEFORE the TLD cleanup, which cannot run on whitespace-bearing URLs.
+      if (needsUrlSpanRepair(fixedUrl)) {
+        fixedUrl = repairMalformedUrlSpan(fixedUrl)
+      }
       // Fix double-protocol inside markdown links too
       fixedUrl = fixedUrl.replace(/(https?:\/\/)+/gi, (m) => {
         const schemes = m.match(/https?:\/\//gi) || []
@@ -1148,7 +1154,11 @@ export function applyDeterministicRepairs(opts: {
       return match
     })
     // Fix bare URLs: https://www.canada.On → https://www.canada.ca
-    b = b.replace(/(https?:\/\/[^\s)\]"'`]+)/g, (url) => {
+    // The span-aware variant also captures comma-space run-ons
+    // (https://host.Word, rest.tld/path) that the whitespace-anchored regex
+    // below can never see.
+    b = b.replace(/(https?:\/\/[^\s)\]"'`]*(?:,\s*[^\s)\]"'`]+)*)/g, (url) => {
+      if (needsUrlSpanRepair(url)) return repairMalformedUrlSpan(url)
       return cleanTldSentenceWords(url)
     })
     if (b !== urlBefore) applied.push('malformed_tld_urls_cleaned')

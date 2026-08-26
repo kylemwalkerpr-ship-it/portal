@@ -12,6 +12,7 @@
  *   ai_settings(key PK, value, updated_by, updated_at)
  */
 import { createClient } from '@supabase/supabase-js'
+import { resolveSupabaseKey } from './supabaseKey'
 
 export interface AiProviderDef {
   id: string
@@ -405,10 +406,12 @@ export interface AiSettings {
 }
 
 function sb() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  // Supabase now issues `sb_secret_...` keys, but supabase-js v2 only
+  // accepts legacy JWT keys. Use the centralized resolver so the vault panel
+  // and runtime overlay do not fail silently when the service key format
+  // changes; the legacy service/anon key is selected when available.
+  const key = resolveSupabaseKey()
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key!)
 }
 
 export function maskKey(key: string): string {
@@ -477,8 +480,12 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   for (const row of rows) {
     const def = providerDef(row.provider)
     if (!def) continue
-    if (row.api_key) out[def.keyEnv] = row.api_key
-    if (row.base_url && def.baseUrlEnv) out[def.baseUrlEnv] = row.base_url
+    // Several lanes intentionally share one host credential/base URL
+    // (NVIDIA, Baseten, Parasail). First row wins deterministically instead
+    // of the last alphabetically sorted row silently overwriting the key or
+    // endpoint selected by another lane. Model envs remain lane-specific.
+    if (row.api_key && !(def.keyEnv in out)) out[def.keyEnv] = row.api_key
+    if (row.base_url && def.baseUrlEnv && !(def.baseUrlEnv in out)) out[def.baseUrlEnv] = row.base_url
     if (row.model && def.modelEnv) out[def.modelEnv] = row.model
   }
   // Default provider / model pins. A provider-specific model wins; otherwise

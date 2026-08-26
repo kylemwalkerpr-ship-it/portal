@@ -100,3 +100,30 @@ describe('sentence_start_repetition — mechanical smoothing stays available pos
     expect(out.applied.join(' ')).toMatch(/sentence_rhythm/)
   })
 })
+
+describe('MALFORMED_LINK — run-on URLs with embedded comma-space are permanently repairable', () => {
+  const { repairMalformedUrlSpan, needsUrlSpanRepair, cleanTldSentenceWords } = require('../lib/seoFactory/linkAudit')
+  const { applyDeterministicRepairs: adr } = require('../lib/seoFactory/editorialScaffold')
+
+  it('repairs the exact live-case URL: immi.homeaffairs.Typically, gov.au', () => {
+    const broken = 'https://immi.homeaffairs.Typically, gov.au/visas/getting-a-visa'
+    expect(needsUrlSpanRepair(broken)).toBe(true)
+    const fixed = repairMalformedUrlSpan(broken)
+    expect(fixed).toBe('https://immi.homeaffairs.gov.au/visas/getting-a-visa')
+  })
+
+  it('leaves clean URLs untouched', () => {
+    const ok = 'https://immi.homeaffairs.gov.au/visas'
+    expect(needsUrlSpanRepair(ok)).toBe(false)
+    expect(repairMalformedUrlSpan(ok)).toBe(ok)
+  })
+
+  it('the deterministic repair pass clears the malformed link from a full draft', () => {
+    const draft = `---\ntitle: "Skills Assessment"\ndescription: A long enough meta description that passes the one hundred character floor for the audit gate to accept.\n---\n\n# Skills assessment validity\n\nSee [home affairs](https://immi.homeaffairs.Typically, gov.au/visas/getting-a-visa) for lodgement rules and the [processing times](https://immi.homeaffairs.Typically, gov.au/what-we-do/services/national-police-checks/) page.`
+
+    const out = adr({ content: draft, title: 'Skills Assessment', primaryKeyword: 'skills assessment', region: 'AU' })
+    expect(out.content).not.toContain('Typically')
+    expect(out.content).toContain('https://immi.homeaffairs.gov.au/visas/getting-a-visa')
+    expect(out.applied).toContain('malformed_tld_urls_cleaned')
+  })
+})

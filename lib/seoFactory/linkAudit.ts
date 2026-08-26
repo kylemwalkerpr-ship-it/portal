@@ -354,6 +354,37 @@ export function isMalformedUrl(url: string): boolean {
 }
 
 /**
+ * PERMANENT fix for the MALFORMED_LINK loop: the AI sometimes runs a
+ * sentence straight through a URL, producing spans with embedded
+ * comma-space — `https://immi.homeaffairs.Typically, gov.au/path`.
+ * Every previous cleaner bailed on these: cleanTldSentenceWords calls
+ * new URL() (throws on whitespace) and the bare-URL extraction regexes
+ * stop at the first space — so the deterministic pass could never repair
+ * them, the AI regenerated them, and the blocker recurred forever.
+ *
+ * Repair: `.SentenceWord, ` → `.` (the run-on word and comma collapse into
+ * the host boundary), remaining spaces/commas removed, then the normal
+ * TLD sentence-word cleanup runs on the rejoined host.
+ */
+export function needsUrlSpanRepair(url: string): boolean {
+  return /^https?:\/\//i.test(url) && /[\s,]/.test(url)
+}
+
+export function repairMalformedUrlSpan(url: string): string {
+  const u = url.trim()
+  if (!needsUrlSpanRepair(u)) return url
+  let next = u
+  // `.Typically, gov.au` → `.gov.au` — the sentence word + comma-space
+  // between host labels collapses into a single host boundary.
+  next = next.replace(/\.[A-Za-z]{2,},\s*/g, '.')
+  // Any leftover spaces/commas inside the span (path run-ons).
+  next = next.replace(/[\s,]+/g, '')
+  // Sentence-word TLD cleanup on the now-whitespace-free URL.
+  next = cleanTldSentenceWords(next)
+  return next
+}
+
+/**
  * Detect URLs where a sentence word has been concatenated onto the TLD.
  * The AI often produces `https://www.canada.On` (where "On" is the next
  * word in the sentence) instead of `https://www.canada.ca`.
@@ -371,7 +402,12 @@ export function cleanTldSentenceWords(url: string): string {
     const host = parsed.hostname // lowercase version for matching    // Pattern 1: domain.TLD + sentence word appended (case-insensitive)
     // e.g. immi.homeaffairs.gov.au.Meanwhile → immi.homeaffairs.gov.au
     const appendMatch = rawHost.match(/^(.+?\.(?:ca|com|org|net|gov|edu|co\.uk|co\.nz|co\.za|com\.au|gov\.uk|gov\.ca|gov\.au|gov\.nz|gov\.sg|gov\.ie))\.([A-Za-z][a-z]+)$/)
-    if (appendMatch) {
+    // GUARD: the trailing word must not itself be a ccTLD second-level part
+    // (au, uk, ca, nz…). The alternation matches `gov` before `gov.au`, so
+    // without this guard every CLEAN .gov.au URL was "repaired" to .gov —
+    // the deterministic pass was itself manufacturing malformed links.
+    const CC_PARTS = new Set(['au', 'uk', 'ca', 'nz', 'za', 'ie', 'sg', 'us', 'in', 'br', 'mx', 'jp', 'cn', 'de', 'fr', 'it', 'es', 'pl', 'pt', 'ru', 'tr', 'kr', 'my', 'ph', 'th', 'vn', 'id', 'pk', 'bd', 'lk', 'np', 'ke', 'ng', 'gh'])
+    if (appendMatch && !CC_PARTS.has(appendMatch[2].toLowerCase())) {
       parsed.hostname = appendMatch[1]
       return parsed.toString()
     }
@@ -382,6 +418,11 @@ export function cleanTldSentenceWords(url: string): string {
     if (singleTldMatch) {
       const base = singleTldMatch[1]
       const word = singleTldMatch[2]
+      // A valid second-level country suffix is not a sentence word.
+      // Pattern 1 can leave `.gov.au` for this fallback when the host has no
+      // appended word; never reduce it to `.gov`.
+      const CC_PARTS = new Set(['au', 'uk', 'ca', 'nz', 'za', 'ie', 'sg', 'us', 'in', 'br', 'mx', 'jp', 'cn', 'de', 'fr', 'it', 'es', 'pl', 'pt', 'ru', 'tr', 'kr', 'my', 'ph', 'th', 'vn', 'id', 'pk', 'bd', 'lk', 'np', 'ke', 'ng', 'gh'])
+      if (CC_PARTS.has(word.toLowerCase())) return url
       // Guess the correct TLD from context
       if (/\.gov\.au$/i.test(base + '.' + word) || /homeaffairs|immi|health|afp|naati|art\.gov/i.test(base)) {
         parsed.hostname = base + '.au'
