@@ -287,13 +287,13 @@ const pageTitle = {
   fontFamily: F.display,
   fontSize: '32px',
   fontWeight: 600,
-  color: T.ink,
+  color: '#FFFFFF',
   margin: '0 0 8px',
   letterSpacing: '-0.02em',
 }
 
 const pageSub = {
-  color: T.inkMid,
+  color: 'rgba(255,255,255,0.7)',
   fontSize: '15px',
   lineHeight: 1.5,
   margin: 0,

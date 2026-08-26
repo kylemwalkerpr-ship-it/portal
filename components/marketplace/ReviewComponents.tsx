@@ -189,7 +189,7 @@ const sortSelect = {
   padding: '8px 12px',
   borderRadius: '999px',
   border: `1px solid ${T.rule}`,
-  background: T.paper,
+  background: T.vellum,
   color: T.ink,
   fontFamily: F.ui,
   fontSize: '13px',
@@ -342,14 +342,14 @@ const replyButtons = {
 const emptyState = {
   textAlign: 'center' as const,
   padding: '48px 24px',
-  color: T.inkSoft,
+  color: T.inkMid,
   fontFamily: F.ui,
 }
 
 const emptyIcon = {
   fontSize: '40px',
   marginBottom: '12px',
-  color: T.inkSoft,
+  color: T.inkMid,
 }
 
 const emptyTitle = {
@@ -806,47 +806,49 @@ export function ReviewsSection({
   }
 
   return (
-    <div style={containerStyle}>
-      {showFilters && (
-        <div style={sidebarStyle}>
-          <ReviewFilters
-            filters={filters}
-            onFilterChange={setFilters}
-            sort={sort}
-            onSortChange={setSort}
-            average={summary.average}
-            total={summary.total}
-            breakdown={summary.breakdown}
+    <Card style={{ padding: '24px' }}>
+      <div style={containerStyle}>
+        {showFilters && (
+          <div style={sidebarStyle}>
+            <ReviewFilters
+              filters={filters}
+              onFilterChange={setFilters}
+              sort={sort}
+              onSortChange={setSort}
+              average={summary.average}
+              total={summary.total}
+              breakdown={summary.breakdown}
+            />
+          </div>
+        )}
+
+        <div style={mainStyle}>
+          <div style={reviewsHeader}>
+            <div>
+              <h2 style={reviewsTitle}>Reviews</h2>
+              <div style={reviewsCount}>{reviews.length} reviews</div>
+            </div>
+            <select
+              value={sort}
+              onChange={e => setSort(e.target.value)}
+              style={sortSelect}
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="highest">Highest Rated</option>
+              <option value="lowest">Lowest Rated</option>
+            </select>
+          </div>
+
+          <ReviewsList
+            reviews={reviews}
+            loading={loading}
+            canReply={canReply}
+            onReply={handleReply}
+            onDeleteReply={handleDeleteReply}
           />
         </div>
-      )}
-
-      <div style={mainStyle}>
-        <div style={reviewsHeader}>
-          <div>
-            <h2 style={reviewsTitle}>Reviews</h2>
-            <div style={reviewsCount}>{reviews.length} reviews</div>
-          </div>
-          <select
-            value={sort}
-            onChange={e => setSort(e.target.value)}
-            style={sortSelect}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="highest">Highest Rated</option>
-            <option value="lowest">Lowest Rated</option>
-          </select>
-        </div>
-
-        <ReviewsList
-          reviews={reviews}
-          loading={loading}
-          canReply={canReply}
-          onReply={handleReply}
-          onDeleteReply={handleDeleteReply}
-        />
       </div>
-    </div>
+    </Card>
   )
 }

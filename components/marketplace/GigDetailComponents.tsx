@@ -511,7 +511,7 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
   }
 
   return (
-    <div>
+    <Card style={{ padding: '24px' }}>
       <h3 style={{ fontFamily: F.display, fontSize: '24px', fontWeight: 500, letterSpacing: '-0.01em', margin: '0 0 16px', color: T.ink }}>
         Similar Services
       </h3>
@@ -547,7 +547,7 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
           )
         })}
       </div>
-    </div>
+    </Card>
   )
 }
 

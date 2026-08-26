@@ -36,13 +36,13 @@ export function ContinueBrowsingRail({ hidden = false }: { hidden?: boolean }) {
   return (
     <section aria-label="Continue browsing" style={{ marginBottom: 22 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-        <h2 style={{ fontFamily: F.display, fontSize: 20, fontWeight: 600, color: T.ink, margin: 0, letterSpacing: '-0.01em' }}>
+        <h2 style={{ fontFamily: F.display, fontSize: 20, fontWeight: 600, color: '#FFFFFF', margin: 0, letterSpacing: '-0.01em' }}>
           Continue browsing
         </h2>
         <button
           type="button"
           onClick={clear}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui, fontSize: 11.5, fontWeight: 600, color: T.inkSoft, padding: 0 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui, fontSize: 11.5, fontWeight: 600, color: 'rgba(255,255,255,0.6)', padding: 0 }}
         >
           Clear history
         </button>

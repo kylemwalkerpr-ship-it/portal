@@ -152,8 +152,8 @@ export function SellerProfilePage({
         </button>
       </div>
 
-      {/* Tab Content */}
-      <div style={tabContent}>
+      {/* Tab Content — Card wrapper for light paper background */}
+      <div style={{ ...tabContent, background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '14px', padding: '24px' }}>
         {activeTab === 'about' && <SellerAbout seller={seller} />}
         {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
         {activeTab === 'reviews' && <SellerReviews reviews={reviews} />}
@@ -194,25 +194,25 @@ const breadcrumb = {
 }
 
 const breadcrumbLink = {
-  color: T.inkMid,
+  color: '#FFFFFF',
   textDecoration: 'none',
   transition: 'color 150ms',
 }
 
 const breadcrumbSeparator = {
-  color: T.inkSoft,
+  color: 'rgba(255,255,255,0.4)',
 }
 
 const breadcrumbCurrent = {
-  color: T.ink,
+  color: '#FFFFFF',
   fontWeight: 500,
 }
 
 const tabsContainer = {
   display: 'flex',
   gap: '4px',
-  marginBottom: '24px',
-  borderBottom: `1px solid ${T.rule}`,
+  marginBottom: '0',
+  borderBottom: `1px solid rgba(255,255,255,0.12)`,
 }
 
 const tabStyle = {
@@ -221,7 +221,7 @@ const tabStyle = {
   padding: '12px 20px',
   fontSize: '14px',
   fontWeight: 500,
-  color: T.inkMid,
+  color: 'rgba(255,255,255,0.6)',
   cursor: 'pointer',
   borderBottom: '2px solid transparent',
   transition: 'color 150ms, border-color 150ms',
@@ -229,7 +229,7 @@ const tabStyle = {
 
 const activeTabStyle = {
   ...tabStyle,
-  color: T.ink,
+  color: '#FFFFFF',
   borderBottomColor: T.indigo,
 }
 

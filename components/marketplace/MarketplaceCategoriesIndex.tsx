@@ -45,17 +45,17 @@ export function MarketplaceCategoriesIndex() {
     <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui, color: T.cream }}>
       <div style={{ width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '32px 0 64px' }}>
         {/* Breadcrumb */}
-        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.inkMid, fontFamily: F.mono }}>
-          <Link href="/" style={{ color: T.indigo, textDecoration: 'none' }}>Marketplace</Link>
-          <span>›</span>
-          <span>Categories</span>
+        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: F.mono }}>
+          <Link href="/" style={{ color: '#FFFFFF', textDecoration: 'none' }}>Marketplace</Link>
+          <span style={{ color: 'rgba(255,255,255,0.4)' }}>›</span>
+          <span style={{ color: '#FFFFFF' }}>Categories</span>
         </div>
 
         {/* Header */}
         <div style={{ marginBottom: 22 }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.gold, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Browse</div>
-          <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: T.ink, margin: 0, letterSpacing: '-.012em' }}>All categories.</h1>
-          <div style={{ fontSize: 14, color: T.inkMid, marginTop: 6, maxWidth: 720 }}>
+          <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: '#FFFFFF', margin: 0, letterSpacing: '-.012em' }}>All categories.</h1>
+          <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 6, maxWidth: 720 }}>
             {CATEGORIES.length} categories spanning {CATEGORIES.reduce((s, c) => s + (c.subcategories?.length || 0), 0)} subcategories. Each tile opens curated gigs and templates.
           </div>
         </div>
@@ -71,12 +71,12 @@ export function MarketplaceCategoriesIndex() {
         {/* Toolbar */}
         <div style={{ background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 18 }}>
           <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 220 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.inkSoft, fontSize: 14 }}>🔍</span>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>🔍</span>
             <input
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder="Search categories, subcategories, keywords…"
-              style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6, background: T.paper, color: T.ink, fontFamily: F.ui, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6, background: T.vellum, color: T.ink, fontFamily: F.ui, boxSizing: 'border-box' }}
             />
           </div>
           <select value={verticalFilter} onChange={e => setVerticalFilter(e.target.value)} style={{ ...selectStyle, fontFamily: F.ui }}>
@@ -86,7 +86,7 @@ export function MarketplaceCategoriesIndex() {
           {(q || verticalFilter !== 'all') && (
             <Btn variant="ghost" size="sm" onClick={() => { setQ(''); setVerticalFilter('all') }}>Reset</Btn>
           )}
-          <span style={{ fontSize: 12, color: T.inkMid, marginLeft: 'auto', fontFamily: F.mono }}>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginLeft: 'auto', fontFamily: F.mono }}>
             Showing {filtered.length} of {CATEGORIES.length}
           </span>
         </div>

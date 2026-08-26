@@ -142,18 +142,18 @@ export function MarketplaceProvidersIndex() {
     <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui, color: T.cream }}>
       <div style={{ width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '32px 0 64px' }}>
         {/* Breadcrumb */}
-        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.inkMid, fontFamily: F.mono }}>
-          <Link href="/" style={{ color: T.indigo, textDecoration: 'none' }}>Marketplace</Link>
-          <span>›</span>
-          <span>Providers</span>
+        <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: F.mono }}>
+          <Link href="/" style={{ color: '#FFFFFF', textDecoration: 'none' }}>Marketplace</Link>
+          <span style={{ color: 'rgba(255,255,255,0.4)' }}>›</span>
+          <span style={{ color: '#FFFFFF' }}>Providers</span>
         </div>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.gold, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Verified panel</div>
-            <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: T.ink, margin: 0, letterSpacing: '-.012em' }}>All providers.</h1>
-            <div style={{ fontSize: 14, color: T.inkMid, marginTop: 6 }}>
+            <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: '#FFFFFF', margin: 0, letterSpacing: '-.012em' }}>All providers.</h1>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 6 }}>
               {loading ? 'Searching the panel…' : <>{fmtN(total)} {total === 1 ? 'provider matches' : 'providers match'} your filters.</>}
             </div>
           </div>
@@ -168,13 +168,12 @@ export function MarketplaceProvidersIndex() {
             <aside style={{ background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, alignSelf: 'flex-start', position: 'sticky', top: 18 }}>
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkSoft, fontFamily: F.mono, marginBottom: 6 }}>Search</div>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: T.inkSoft, fontSize: 13 }}>🔍</span>
+                <div style={{ position: 'relative' }}>                    <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>🔍</span>
                   <input
                     value={searchInput}
                     onChange={e => setSearchInput(e.target.value)}
                     placeholder="Name, expertise, bio…"
-                    style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6, background: T.paper, color: T.cream, fontFamily: F.ui, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6, background: T.vellum, color: T.ink, fontFamily: F.ui, boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
