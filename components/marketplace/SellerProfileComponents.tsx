@@ -675,10 +675,11 @@ const bioSection = {
   borderTop: `1px solid ${T.rule}`,
   paddingTop: '20px',
   marginBottom: '20px',
+  color: T.ink, // ensure bio text is always dark on light card
 }
 
 const bioText = {
-  color: T.inkMid,
+  color: T.ink,
   fontSize: '14px',
   lineHeight: 1.7,
   margin: 0,

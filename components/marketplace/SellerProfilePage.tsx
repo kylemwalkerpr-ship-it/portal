@@ -179,7 +179,7 @@ export function SellerProfilePage({
 const pageShell = {
   minHeight: '100vh',
   background: T.paper,
-  color: T.cream,
+  color: T.ink, // dark text default — cards override as needed
   padding: '24px 32px',
   maxWidth: '1200px',
   margin: '0 auto',

@@ -531,6 +531,10 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         .cw-market a { color: inherit; text-decoration: none; }
         .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
         .cw-market img, .cw-market svg { display: block; max-width: 100%; }
+        /* Legibility: force dark text inside light-background containers so
+           palette switching never creates gold-on-white or cream-on-white. */
+        .cw-market [style*="background: var(--ys-vellum"] { color: var(--ys-ink, #1C1410) !important; }
+        .cw-market [style*="background-color: var(--ys-vellum"] { color: var(--ys-ink, #1C1410) !important; }
         @media (max-width: 720px) {
           .ys-shell-header-inner { padding: 0 12px !important; height: 60px !important; }
           .ys-market-nav { scrollbar-width: none; }

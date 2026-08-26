@@ -471,7 +471,7 @@ function ProviderSidePane({ a, onClose }) {
           {a.bio && (
             <div>
               <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkSoft, marginBottom: 8 }}>About</div>
-              <div style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: T.cream }}>{renderBioMarkdown(a.bio)}</div>
+              <div style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: T.ink }}>{renderBioMarkdown(a.bio)}</div>
             </div>
           )}
 

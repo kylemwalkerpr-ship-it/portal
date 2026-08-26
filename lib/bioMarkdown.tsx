@@ -34,7 +34,7 @@ export function renderBioMarkdown(bio: string | null | undefined): React.ReactNo
         // H2 (## …)
         if (trimmed.startsWith('## ')) {
           return (
-            <h3 key={i} style={{ margin: '20px 0 8px', fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>
+            <h3 key={i} style={{ margin: '20px 0 8px', fontSize: 17, fontWeight: 600, lineHeight: 1.3, color: '#1C1410' }}>
               {trimmed.replace(/^## /, '')}
             </h3>
           )
@@ -42,7 +42,7 @@ export function renderBioMarkdown(bio: string | null | undefined): React.ReactNo
         // H3 (### …)
         if (trimmed.startsWith('### ')) {
           return (
-            <h4 key={i} style={{ margin: '16px 0 6px', fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>
+            <h4 key={i} style={{ margin: '16px 0 6px', fontSize: 15, fontWeight: 600, lineHeight: 1.3, color: '#1C1410' }}>
               {trimmed.replace(/^### /, '')}
             </h4>
           )
@@ -51,7 +51,7 @@ export function renderBioMarkdown(bio: string | null | undefined): React.ReactNo
         const lines = trimmed.split('\n')
         if (lines.length > 0 && lines.every(l => /^\s*[*\-]\s+/.test(l))) {
           return (
-            <ul key={i} style={{ margin: '8px 0 12px', paddingLeft: 22, lineHeight: 1.7 }}>
+            <ul key={i} style={{ margin: '8px 0 12px', paddingLeft: 22, lineHeight: 1.7, color: '#1C1410' }}>
               {lines.map((l, j) => (
                 <li key={j}>{l.replace(/^\s*[*\-]\s+/, '')}</li>
               ))}
@@ -60,7 +60,7 @@ export function renderBioMarkdown(bio: string | null | undefined): React.ReactNo
         }
         // Plain paragraph — preserve internal single newlines via white-space:pre-line
         return (
-          <p key={i} style={{ margin: '0 0 12px', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
+          <p key={i} style={{ margin: '0 0 12px', lineHeight: 1.7, whiteSpace: 'pre-line', color: '#1C1410' }}>
             {trimmed}
           </p>
         )
