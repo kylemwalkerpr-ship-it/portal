@@ -82,7 +82,7 @@ const gigImage: CSSProperties = {
   objectFit: 'cover',
   borderRadius: '14px',
   border: `1px solid ${T.rule}`,
-  background: T.paper2,
+  background: T.vellum,
 }
 
 const galleryGrid: CSSProperties = {
@@ -117,7 +117,7 @@ const gigTitle: CSSProperties = {
   fontWeight: 500,
   letterSpacing: '-0.01em',
   margin: '0 0 12px',
-  color: '#fff',
+  color: T.ink,
   lineHeight: 1.2,
 }
 
@@ -129,7 +129,7 @@ const gigMeta: CSSProperties = {
   fontSize: '11px',
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
-  color: '#FFFFFF',
+  color: T.inkMid,
   marginBottom: '16px',
 }
 
@@ -526,7 +526,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
 
         <div style={contentLayout} className="ys-content-layout">
           <div style={mainContent}>
-            <div>
+            <Card style={{ padding: '24px' }}>
               {mainImage ? (
                 <img style={gigImage} {...responsiveImageProps(mainImage, gig.title, true)} />
               ) : (
@@ -559,9 +559,9 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
 
-            <div>
+            <Card style={{ padding: '24px' }}>
               <h1 style={gigTitle}>{gig.title}</h1>
               <div style={gigMeta}>
                 <span style={{ color: T.star }}>★ {gig.avg_rating?.toFixed(1) || '0'}</span>
@@ -571,11 +571,11 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 <span>{gig.order_count || 0} orders</span>
               </div>
               {gig.pitch && (
-                <p style={{ fontFamily: F.ui, fontSize: '16px', color: '#E0D6CC', marginBottom: '16px', lineHeight: 1.55 }}>
+                <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, marginBottom: '16px', lineHeight: 1.55 }}>
                   {gig.pitch}
                 </p>
               )}
-            </div>
+            </Card>
 
             <Card style={{ padding: '24px' }}>
               <h3 style={sectionTitle}>About This Service</h3>
