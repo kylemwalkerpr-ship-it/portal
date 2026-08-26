@@ -172,8 +172,8 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
   }
 
   const statBox: CSSProperties = {
-    background: T.paper2,
-    border: `1px solid ${T.ruleSoft}`,
+    background: T.vellum,
+    border: `1px solid ${T.rule}`,
     borderRadius: '10px',
     padding: '10px',
     textAlign: 'center',
@@ -259,8 +259,8 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
     display: 'flex',
     gap: '4px',
     marginBottom: '14px',
-    background: T.paper2,
-    border: `1px solid ${T.ruleSoft}`,
+    background: T.vellum,
+    border: `1px solid ${T.rule}`,
     borderRadius: '999px',
     padding: '4px',
   }
@@ -598,20 +598,20 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
             savedGigRecordId={savedGigRecordId}
           />
         ) : (
-          <Btn
-            variant="secondary"
-            fullWidth
-            onClick={onSave}
-            style={{
-              fontSize: '13px',
-              fontFamily: F.ui,
-              background: T.paper,
-              color: T.ink,
-              border: `1px solid ${T.rule}`,
-            }}
-          >
-            {isSaved ? '♥ Saved' : '♡ Save'}
-          </Btn>
+        <Btn
+          variant="secondary"
+          fullWidth
+          onClick={onSave}
+          style={{
+            fontSize: '13px',
+            fontFamily: F.ui,
+            background: T.vellum,
+            color: T.ink,
+            border: `1px solid ${T.rule}`,
+          }}
+        >
+          {isSaved ? '♥ Saved' : '♡ Save'}
+        </Btn>
         )}
         <Btn
           variant="secondary"
@@ -620,7 +620,7 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
           style={{
             fontSize: '13px',
             fontFamily: F.ui,
-            background: T.paper,
+            background: T.vellum,
             color: T.ink,
             border: `1px solid ${T.rule}`,
           }}

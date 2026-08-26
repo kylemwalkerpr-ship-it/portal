@@ -653,7 +653,7 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
                 fontSize: '13px',
                 fontWeight: 600,
                 color: T.indigo,
-                background: T.paper,
+                background: T.vellum,
                 border: `1px solid ${T.indigo}`,
                 borderRadius: '999px',
                 cursor: 'pointer',

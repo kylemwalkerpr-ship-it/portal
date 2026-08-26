@@ -552,11 +552,16 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   const country = (searchParams?.get('country') as 'all' | 'us' | 'uk' | 'ca') ?? 'all'
 
   return (
-    <div className="cw-market" style={{ minHeight: '100vh', backgroundColor: T.paper, fontFamily: F.ui }}>
-      {/* Mobile-specific overrides for the top nav + category bar. Inline
-          styles can't carry media queries, so we attach class names to
-          the affected elements and let CSS take over below 720px. */}
+    <div className="cw-market" style={{ minHeight: '100vh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
+      {/* Base CSS for the pattern picker ::before pseudo-element and
+          consistent marketplace styling across ALL pages (landing + siblings). */}
       <style>{`
+        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; }
+        .cw-market::after { content: none; }
+        .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
+        .cw-market a { color: inherit; text-decoration: none; }
+        .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+        .cw-market img, .cw-market svg { display: block; max-width: 100%; }
         @media (max-width: 720px) {
           .ys-shell-header-inner { padding: 0 12px !important; height: 60px !important; }
           .ys-shell-home { padding: 0 8px !important; }
