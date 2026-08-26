@@ -499,30 +499,39 @@ export async function* runSeoFactoryPipelineStream(
         return
       }
       if (!attemptText) {
-        for await (const ev of generateContentTextStream({
-          system,
-          prompt: generationPrompt,
-          maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 16384 : 16384,
-          temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
-          aiProvider: input.aiProvider,
-          signal: input.signal,
-        })) {
-          if (ev.type === 'provider') {
-            provider = ev.provider
-            model = ev.model
-            yield { type: 'provider', provider, model }
-          } else if (ev.type === 'delta') {
-            attemptText += ev.text
-            const grewEnough = attemptText.length - lastDraftSent >= 2000
-            if (grewEnough) lastDraftSent = attemptText.length
-            const checkpointDraft =
-              grewEnough && attemptText.length >= content.length ? attemptText : undefined
-            yield { type: 'delta', text: ev.text, attempt: attempts, draft: checkpointDraft }
-          } else if (ev.type === 'done') {
-            attemptText = ev.text
-            provider = ev.provider
-            model = ev.model
+        try {
+          for await (const ev of generateContentTextStream({
+            system,
+            prompt: generationPrompt,
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 16384 : 16384,
+            temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
+            aiProvider: input.aiProvider,
+            signal: input.signal,
+          })) {
+            if (ev.type === 'provider') {
+              provider = ev.provider
+              model = ev.model
+              yield { type: 'provider', provider, model }
+            } else if (ev.type === 'delta') {
+              attemptText += ev.text
+              const grewEnough = attemptText.length - lastDraftSent >= 2000
+              if (grewEnough) lastDraftSent = attemptText.length
+              const checkpointDraft =
+                grewEnough && attemptText.length >= content.length ? attemptText : undefined
+              yield { type: 'delta', text: ev.text, attempt: attempts, draft: checkpointDraft }
+            } else if (ev.type === 'done') {
+              attemptText = ev.text
+              provider = ev.provider
+              model = ev.model
+            }
           }
+        } catch (streamErr) {
+          const msg = streamErr instanceof Error ? streamErr.message : String(streamErr)
+          // Do NOT let an unhandled provider cascade error freeze the UI.
+          // Yield an error event so the SSE stream terminates with a visible
+          // message instead of hanging indefinitely.
+          yield { type: 'error', error: msg }
+          return
         }
       }
 

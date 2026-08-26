@@ -1724,10 +1724,11 @@ async function* openAiCompatibleStream(
   yield { type: 'provider', provider: p.label, model }
   let full = ''
   let continuations = 0
-  // 2026-08-11: raised from 1→3 — long-form legal guides (2200–2800 words)
-  // routinely need 2+ continuations after reaching the model's per-response
-  // token cap. One continuation was ≈40% of long drafts truncated.
-  const MAX_CONTINUATIONS = 3
+  // 2026-08-26: raised from 3→5 — Baseten/Parasail V4 Flash has a ~16k
+  // effective output cap (reasoning_content eats headroom). Long guides
+  // (2500+ words) need 4+ continuations. Each continuation appends ~16k tokens
+  // so 5 continuations cover 80k+ tokens — more than enough for any brief.
+  const MAX_CONTINUATIONS = 5
   let prompt = opts.prompt
   while (continuations <= MAX_CONTINUATIONS) {
     try {

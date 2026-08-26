@@ -609,7 +609,15 @@ ${warningList}
 8. Keep all original headings, interlinks, and key facts intact
 9. Return the COMPLETE fixed article, nothing else`
 
-      fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
+      try {
+        fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
+      } catch (fixErr) {
+        const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
+        return NextResponse.json({
+          error: `Fix-all AI call failed: ${fixMsg.slice(0, 400)}. The article was NOT modified — try again or use a different review model.`,
+          fixedContent: content,
+        }, { status: 502 })
+      }
       }
 
     } else if (action === 'fix_one' && annotation) {
@@ -630,7 +638,15 @@ ${content}
 ## Instructions
 Fix ONLY this specific issue. Keep everything else exactly the same. Return the COMPLETE article.`
 
-      fixedContent = await callAiFix(sys, prompt, 8192, reviewModel)
+      try {
+        fixedContent = await callAiFix(sys, prompt, 8192, reviewModel)
+      } catch (fixErr) {
+        const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
+        return NextResponse.json({
+          error: `Fix-one AI call failed: ${fixMsg.slice(0, 400)}. The article was NOT modified — try again or use a different review model.`,
+          fixedContent: content,
+        }, { status: 502 })
+      }
 
     } else if (action === 'fix_warnings' && warnings && warnings.length) {
       // Warnings-only sweep — DETERMINISTIC FIRST so mechanical warnings
@@ -687,11 +703,17 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
         if (!depthPlan.ok && depthPlan.prompt) {
           const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
-          const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
-          const merged = mergeAppendedSections(fixedContent, appended)
-          if (countBodyWords(merged) > countBodyWords(fixedContent)) {
-            fixedContent = merged
-            depthExpandedForWarnings = true
+          try {
+            const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+            const merged = mergeAppendedSections(fixedContent, appended)
+            if (countBodyWords(merged) > countBodyWords(fixedContent)) {
+              fixedContent = merged
+              depthExpandedForWarnings = true
+            }
+          } catch (fixErr) {
+            // Depth expansion is best-effort — if the AI call fails, continue
+            // with the current content and let the warnings sweep proceed.
+            console.warn('[reaudit] depth expansion AI call failed (non-blocking):', fixErr instanceof Error ? fixErr.message : fixErr)
           }
         }
       }
@@ -724,7 +746,15 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         const sys = `You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.
 
 ${enginePlan.promptBlock}`
-        fixedContent = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+        try {
+          fixedContent = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+        } catch (fixErr) {
+          const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
+          return NextResponse.json({
+            error: `Warning fix AI call failed: ${fixMsg.slice(0, 400)}. The article was NOT modified — try again or use a different review model.`,
+            fixedContent: content,
+          }, { status: 502 })
+        }
       }
 
     } else if (action === 'fix_blockers' && (blockers?.length || annotations?.some((a) => a.severity === 'blocker'))) {
@@ -784,7 +814,15 @@ ${enginePlan.promptBlock}`
           })),
         ]
         const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.'
-        fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, leftover.length ? leftover : list), 16384, reviewModel)
+        try {
+          fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, leftover.length ? leftover : list), 16384, reviewModel)
+        } catch (fixErr) {
+          const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
+          return NextResponse.json({
+            error: `Blocker fix AI call failed: ${fixMsg.slice(0, 400)}. The article was NOT modified — try again or use a different review model.`,
+            fixedContent: sanitized.content,
+          }, { status: 502 })
+        }
       }
 
     } else if (action === 'fix_depth') {
@@ -805,7 +843,16 @@ ${enginePlan.promptBlock}`
       } else {
         const before = countBodyWords(content)
         const sys = 'You are a master SEO content editor expanding an immigration legal guide to clear the Google depth floor. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
-        const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+        let appended = ''
+        try {
+          appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+        } catch (fixErr) {
+          const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
+          return NextResponse.json({
+            error: `Depth expansion AI call failed: ${fixMsg.slice(0, 400)}. The article was NOT modified — try again or use a different review model.`,
+            fixedContent: content,
+          }, { status: 502 })
+        }
         const merged = mergeAppendedSections(content, appended)
         const after = countBodyWords(merged)
         if (after <= before) {
