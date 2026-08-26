@@ -200,7 +200,7 @@ const SANTORINI: PaletteTokens = {
   inkMid:      '#1A3D52',
   inkSoft:     '#4A6D82',
   onPaper:     '#F0FAFD',
-  onPaperSoft: 'rgba(240,250,253,0.76)',
+  onPaperSoft: 'rgba(240,250,253,0.85)',
   rule:        'rgba(240,250,253,0.14)',
   ruleSoft:    'rgba(240,250,253,0.07)',
   indigo:      '#08709A',
