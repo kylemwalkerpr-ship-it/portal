@@ -9,8 +9,11 @@
  * shipped with "SOURCES TO CITE (0 SPECIFIED)" and citation-starved drafts.
  */
 import {
+  CURATED_OFFICIAL_SOURCES,
+  findCuratedSource,
   isCitableSource,
   isCreamSource,
+  sourcesForBrief,
   STRONG_CITATION_RELEVANCE,
   type CitationContext,
 } from '../lib/seoFactory/officialSources'
@@ -82,5 +85,44 @@ describe('isCitableSource (unified brief + reviewer policy)', () => {
 
   it('exports the strong-relevance bar above the normal floor', () => {
     expect(STRONG_CITATION_RELEVANCE).toBeGreaterThan(3)
+  })
+})
+
+describe('curated authority bank — named authorities as brief seeds', () => {
+  it('includes NAATI and the named skills/credential authorities', () => {
+    const urls = new Set(CURATED_OFFICIAL_SOURCES.map((s) => s.url))
+    expect(urls.has('https://naati.com.au/')).toBe(true)
+    expect(urls.has('https://www.vetassess.com.au/')).toBe(true)
+    expect(urls.has('https://www.acs.org.au/')).toBe(true)
+    expect(urls.has('https://enic.org.uk/')).toBe(true)
+    expect(urls.has('https://www.naces.org/')).toBe(true)
+    expect(urls.has('https://www.wes.org/')).toBe(true)
+  })
+
+  it('seeds NAATI into an AU student-visa brief', () => {
+    const seeds = sourcesForBrief({
+      region: 'AU',
+      topic: 'Australia student visa subclass 500 document checklist',
+      keywords: ['subclass 500', 'naati translation', 'document checklist'],
+      body: 'Certified NAATI translations are required for documents not in English.',
+    }).map((s) => s.url)
+    expect(seeds).toContain('https://naati.com.au/')
+  })
+
+  it('does not seed AU-only authorities into a US brief', () => {
+    const seeds = sourcesForBrief(US_F1_CTX).map((s) => s.url)
+    expect(seeds).not.toContain('https://naati.com.au/')
+    expect(seeds).not.toContain('https://www.vetassess.com.au/')
+  })
+
+  it('curated NAATI is citable via the strong-relevance path (no body mention needed)', () => {
+    const ctx: CitationContext = {
+      region: 'AU',
+      topic: 'subclass 500 document checklist',
+      keywords: ['document checklist', 'study'],
+      body: 'The subclass 500 document checklist covers study and identity documents.',
+    }
+    expect(findCuratedSource('https://naati.com.au/')).not.toBeNull()
+    expect(isCitableSource('https://naati.com.au/', ctx)).toBe(true)
   })
 })

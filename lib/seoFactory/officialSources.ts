@@ -3,9 +3,10 @@
  *
  * External hrefs may only be formal authorities in the discipline:
  * immigration departments, government departments, official school pages,
- * and a tiny named set of intergovernmental / statutory bodies.
- * Blogs, news, consultants, social, Wikipedia, and invented .gov paths
- * are never allowlisted.
+ * named standards / skills-assessment / credential authorities (NAATI,
+ * VETASSESS, ACS, UK ENIC, WES, NACES…), and a small set of
+ * intergovernmental bodies. Blogs, news, consultants, social, Wikipedia,
+ * and invented .gov paths are never allowlisted.
  *
  * Deep official URLs are preferred. Homepages are last-resort fallbacks
  * so a rotting deep link never ships. Every URL that leaves this module
@@ -62,6 +63,8 @@ export const CURATED_OFFICIAL_SOURCES: OfficialSource[] = [
   { title: 'DOL FLAG — Labor certification & LCA', url: 'https://flag.dol.gov/', regions: ['US'], topics: ['labor', 'work', 'immigration'] },
   { title: 'Federal Student Aid', url: 'https://studentaid.gov/', regions: ['US'], topics: ['education', 'finance', 'study'] },
   { title: 'U.S. Department of Education', url: 'https://www.ed.gov/', regions: ['US'], topics: ['education'] },
+  { title: 'NACES — credential evaluation association', url: 'https://www.naces.org/', regions: ['US'], topics: ['education', 'study'] },
+  { title: 'WES — credential evaluation', url: 'https://www.wes.org/', regions: ['US'], topics: ['education', 'study'] },
   { title: 'HUD — Housing', url: 'https://www.hud.gov/', regions: ['US'], topics: ['housing'] },
   { title: 'HUD — Rental assistance', url: 'https://www.hud.gov/topics/rental_assistance', regions: ['US'], topics: ['housing'] },
   { title: 'CFPB — Consumer finance', url: 'https://www.consumerfinance.gov/', regions: ['US'], topics: ['finance'] },
@@ -86,6 +89,7 @@ export const CURATED_OFFICIAL_SOURCES: OfficialSource[] = [
   { title: 'GOV.UK — Money and tax', url: 'https://www.gov.uk/browse/tax', regions: ['UK'], topics: ['tax', 'finance'] },
   { title: 'Office for Students', url: 'https://www.officeforstudents.org.uk/', regions: ['UK'], topics: ['education', 'study'] },
   { title: 'UKCISA — International student advice', url: 'https://www.ukcisa.org.uk/', regions: ['UK'], topics: ['study', 'immigration', 'education'] },
+  { title: 'UK ENIC — credential comparability', url: 'https://enic.org.uk/', regions: ['UK'], topics: ['education', 'study'] },
 
   // ── Canada ───────────────────────────────────────────────────────────
   { title: 'IRCC — Study permit', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada.html', regions: ['CA'], topics: ['immigration', 'study'] },
@@ -96,6 +100,8 @@ export const CURATED_OFFICIAL_SOURCES: OfficialSource[] = [
   { title: 'IRCC — Express Entry', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry.html', regions: ['CA'], topics: ['immigration', 'work'] },
   { title: 'IRCC home', url: 'https://www.canada.ca/en/immigration-refugees-citizenship.html', regions: ['CA'], topics: ['immigration'] },
   { title: 'Educanada — Study in Canada', url: 'https://www.educanada.ca/', regions: ['CA'], topics: ['study', 'education'] },
+  { title: 'WES Canada — credential evaluation', url: 'https://www.wes.org/', regions: ['CA'], topics: ['education', 'study'] },
+  { title: 'IQAS — International Qualifications Assessment Service', url: 'https://www.alberta.ca/iqas.aspx', regions: ['CA'], topics: ['education', 'work'] },
   { title: 'Canada — Housing benefits', url: 'https://www.canada.ca/en/services/benefits/housing.html', regions: ['CA'], topics: ['housing'] },
   { title: 'CMHC', url: 'https://www.cmhc-schl.gc.ca/', regions: ['CA'], topics: ['housing'] },
   { title: 'Canada Revenue Agency', url: 'https://www.canada.ca/en/revenue-agency.html', regions: ['CA'], topics: ['tax', 'finance'] },
@@ -111,6 +117,10 @@ export const CURATED_OFFICIAL_SOURCES: OfficialSource[] = [
   { title: 'Home Affairs — Immigration and citizenship', url: 'https://immi.homeaffairs.gov.au/', regions: ['AU'], topics: ['immigration', 'citizenship'] },
   { title: 'Study Australia', url: 'https://www.studyaustralia.gov.au/', regions: ['AU'], topics: ['study', 'education'] },
   { title: 'TEQSA', url: 'https://www.teqsa.gov.au/', regions: ['AU'], topics: ['education'] },
+  { title: 'NAATI — certified translations & interpreting', url: 'https://naati.com.au/', regions: ['AU'], topics: ['immigration', 'study'] },
+  { title: 'VETASSESS — skills assessment', url: 'https://www.vetassess.com.au/', regions: ['AU'], topics: ['work', 'immigration', 'education'] },
+  { title: 'ACS — Australian Computer Society skills assessment', url: 'https://www.acs.org.au/', regions: ['AU'], topics: ['work', 'immigration', 'education'] },
+  { title: 'PrivateHealth.gov.au — OSHC & private health insurance', url: 'https://www.privatehealth.gov.au/', regions: ['AU'], topics: ['health', 'study'] },
   { title: 'Australian Taxation Office', url: 'https://www.ato.gov.au/', regions: ['AU'], topics: ['tax', 'finance'] },
   { title: 'Fair Work Ombudsman', url: 'https://www.fairwork.gov.au/', regions: ['AU'], topics: ['labor', 'work'] },
   { title: 'Services Australia', url: 'https://www.servicesaustralia.gov.au/', regions: ['AU'], topics: ['health', 'finance'] },
@@ -121,6 +131,11 @@ export const CURATED_OFFICIAL_SOURCES: OfficialSource[] = [
   { title: 'World Health Organization', url: 'https://www.who.int/', regions: ['ALL'], topics: ['health'] },
   { title: 'OECD — Education', url: 'https://www.oecd.org/', regions: ['ALL'], topics: ['education'] },
   { title: 'International Labour Organization', url: 'https://www.ilo.org/', regions: ['ALL'], topics: ['labor', 'work'] },
+
+  // ── Named language-test & standards authorities (all regions) ────────
+  { title: 'IELTS', url: 'https://ielts.org/', regions: ['ALL'], topics: ['study', 'education', 'immigration'] },
+  { title: 'ETS — TOEFL', url: 'https://www.ets.org/toefl.html', regions: ['ALL'], topics: ['study', 'education'] },
+  { title: 'PTE Academic', url: 'https://www.pearsonpte.com/', regions: ['ALL'], topics: ['study', 'education', 'immigration'] },
 ]
 
 const TOPIC_SIGNALS: Array<{ topic: SourceTopic; re: RegExp }> = [
