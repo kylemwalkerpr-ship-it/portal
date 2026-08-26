@@ -211,7 +211,11 @@ export interface LinkAuditFinding {
   status?: number
 }
 
-const MARKDOWN_LINK_RE = /\[([^\]]*)\]\((\S+?)(?:\s+"[^"]*")?\)/g
+// Capture the complete markdown destination, including malformed run-on URLs
+// that contain a space. The repair pass must see the whole href; a `\\S+?`
+// destination truncates `https://host.Typically, gov.au` at the first space and
+// lets the truncated fragment reappear as a blocker on the next audit.
+const MARKDOWN_LINK_RE = /\[([^\]]*)\]\(([^)\r\n]+?)(?:\s+"[^"]*")?\)/g
 const HTML_HREF_RE = /href=["']([^"']+)["']/gi
 
 /** Normalize a citation URL for allowlist comparison. */
@@ -265,6 +269,10 @@ export function isEstateUrl(url: string): boolean {
 export function extractLinks(content: string): LinkRef[] {
   const out: LinkRef[] = []
   const seen = new Set<string>()
+  // Bare URL extraction must not re-extract the truncated prefix inside a
+  // markdown/HTML href. That prefix used to create a second, false blocker
+  // beside the full href that the repair had already fixed.
+  const occupied: Array<{ start: number; end: number }> = []
   const push = (raw: string, url: string) => {
     const clean = stripTrailingPunct(url.trim())
     if (!clean || seen.has(clean) || isSkippableHref(clean)) return
@@ -276,14 +284,19 @@ export function extractLinks(content: string): LinkRef[] {
   while ((m = markdown.exec(content)) !== null) {
     // Skip images: ![alt](url)
     if (m.index > 0 && content[m.index - 1] === '!') continue
+    const urlStart = m.index + m[0].indexOf(m[2] || '')
+    occupied.push({ start: urlStart, end: urlStart + (m[2] || '').length })
     push(m[1] || '', m[2] || '')
   }
   const html = new RegExp(HTML_HREF_RE.source, 'gi')
   while ((m = html.exec(content)) !== null) {
+    const urlStart = m.index + m[0].indexOf(m[1] || '')
+    occupied.push({ start: urlStart, end: urlStart + (m[1] || '').length })
     push('', m[1] || '')
   }
   const bare = /https?:\/\/[^\s)<>\]"'`]+/gi
   while ((m = bare.exec(content)) !== null) {
+    if (occupied.some((r) => m!.index >= r.start && m!.index < r.end)) continue
     push('', m[0] || '')
   }
   return out

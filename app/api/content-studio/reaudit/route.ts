@@ -1017,7 +1017,43 @@ ${enginePlan.promptBlock}`
         })
       } catch { /* editor still holds the repaired body */ }
     }
-    return NextResponse.json(response)
+    // Rebuild the complete contract from the final normalized content. The
+    // link pass may change hrefs after the first evaluation; returning that
+    // earlier evaluation caused the editor to show a stale MALFORMED_LINK
+    // blocker beside already-repaired content.
+    const finalContract = evaluateReauditContract({
+      content: fixedContent,
+      contentType,
+      primaryKeyword,
+      indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+      region,
+      targetUrl,
+    })
+    const finalResponse: ReauditResponse = {
+      ...finalContract,
+      fixedContent,
+      ...(response.appliedRepairs?.length ? { appliedRepairs: response.appliedRepairs } : {}),
+      ...(response.enginePriorities?.length ? { enginePriorities: response.enginePriorities } : {}),
+      ...(response.linkAudit?.length ? { linkAudit: response.linkAudit } : {}),
+    }
+    if (jobId && finalResponse.fixedContent) {
+      try {
+        const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
+        await persistReviewSnapshot({
+          jobId,
+          content: finalResponse.fixedContent,
+          source: 'fix',
+          qualityOk: finalResponse.ok,
+          shipReady: finalResponse.shipReady ?? null,
+          blockers: finalResponse.blockersData || [],
+          warnings: finalResponse.warningsData || [],
+          appliedRepairs: finalResponse.appliedRepairs || [],
+        })
+      } catch { /* editor still holds the repaired body */ }
+    }
+    return NextResponse.json(finalResponse)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI fix failed'
     const timedOut = /timed out/i.test(message)

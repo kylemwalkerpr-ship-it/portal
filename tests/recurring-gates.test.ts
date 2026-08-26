@@ -125,5 +125,16 @@ describe('MALFORMED_LINK — run-on URLs with embedded comma-space are permanent
     expect(out.content).not.toContain('Typically')
     expect(out.content).toContain('https://immi.homeaffairs.gov.au/visas/getting-a-visa')
     expect(out.applied).toContain('malformed_tld_urls_cleaned')
+
+    const { auditLinksSync } = require('../lib/seoFactory/linkAudit')
+    const findings = auditLinksSync(out.content)
+    expect(findings.some((f: { code: string }) => f.code === 'malformed_link')).toBe(false)
+  })
+
+  it('extracts a run-on markdown href as one complete link, not a truncated blocker', () => {
+    const { extractLinks } = require('../lib/seoFactory/linkAudit')
+    const links = extractLinks('[home affairs](https://immi.homeaffairs.Typically, gov.au/visas)')
+    expect(links).toHaveLength(1)
+    expect(links[0].url).toBe('https://immi.homeaffairs.Typically, gov.au/visas')
   })
 })
