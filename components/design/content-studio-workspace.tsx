@@ -475,11 +475,7 @@ export default function ContentStudioWorkspace({
               <button type="button" disabled={busy || !job} onClick={onMonitor} style={btn()}>
                 Monitor CI
               </button>
-              {onReaudit && (
-                <button type="button" disabled={busy || !job || !editorContent.trim()} onClick={onReaudit} style={btn()}>
-                  Re-audit
-                </button>
-              )}
+
               <button type="button" disabled={busy || !job} onClick={onRegenerate} style={btn()}>
                 Regenerate
               </button>

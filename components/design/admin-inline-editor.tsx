@@ -156,6 +156,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
         const latest = data.latest?.content || ''
         if (cancelled || !latest) return
+        // Guard: skip very large content that could freeze the editor
+        if (latest.length > 200_000) {
+          console.warn('[editor] draft too large, skipping auto-load:', latest.length, 'chars')
+          return
+        }
         const incoming = countBodyWords(content)
         const stored = Number(data.latest?.wordCount) || countBodyWords(latest)
         if (stored >= 40 && (incoming < 40 || stored > incoming + 40)) {
@@ -166,9 +171,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     return () => { cancelled = true }
   }, [jobId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-save (debounced 2s)
+  // Auto-save (debounced 2s) — skip when content is empty or too small
   useEffect(() => {
     if (!dirty) return
+    if (!content || countBodyWords(content) < 10) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       try {
@@ -214,6 +220,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const res = await fetch(`/api/content-studio/drafts?jobId=${encodeURIComponent(jobId)}&latest=1`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
       const latest = data.latest?.content || ''
+      // Guard: skip very large content that could freeze the editor
+      if (latest.length > 200_000) return content
       if (latest && countBodyWords(latest) >= 40) return latest
     } catch { /* fall through to in-pane content */ }
     return content
