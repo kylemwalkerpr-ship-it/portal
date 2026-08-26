@@ -693,6 +693,22 @@ export function classifyLiveStatus(
  * Async full audit: structural findings + live verification of internal
  * AND external http(s) links that are not already in the verified set.
  */
+
+/** Strip duplicate URL schemes: https://https://example.com → https://example.com */
+const DOUBLE_SCHEME_RE = new RegExp('(https?://)+', 'gi')
+const SINGLE_SCHEME_RE = new RegExp('https?://', 'gi')
+function stripDoubleScheme(s: string): string {
+  return s.replace(DOUBLE_SCHEME_RE, (match) => {
+    const schemes = match.match(SINGLE_SCHEME_RE) || []
+    return schemes[schemes.length - 1] || match
+  })
+}
+
+/** Clean a raw URL the same way auditLinksSync does: strip double-scheme + TLD sentence words. */
+function cleanRawUrl(rawUrl: string): string {
+  return cleanTldSentenceWords(stripDoubleScheme(rawUrl))
+}
+
 export async function auditLinksLive(
   content: string,
   opts?: { knownLiveUrls?: Set<string> | string[]; externalAllowlist?: string[]; citationContext?: CitationContext },
@@ -701,21 +717,36 @@ export async function auditLinksLive(
   const findings = structural.filter((f) => f.code !== 'unverified_internal_link')
   const liveSet = await fetchLiveEstateUrls(opts?.knownLiveUrls)
   const toVerify: string[] = []
-  for (const { url } of extractLinks(content)) {
+  const verifiedUrls = new Set<string>() // deduplicate: one live check per URL
+  for (const { url: rawUrl } of extractLinks(content)) {
+    // Clean corrupted URLs (double-protocol, TLD sentence words) before
+    // checking — matches what auditLinksSync does in-memory so findings
+    // and live-check URLs are consistent.
+    const url = cleanRawUrl(rawUrl)
     if (SKIP_PREFIXES.some((p) => url.trim().startsWith(p)) || isSkippableHref(url)) continue
     if (isPlaceholderUrl(url).hit || isMalformedUrl(url)) continue
     if (isEstateUrl(url)) {
       const normalized = resolveEstateUrl(url)
-      if (!liveSet.has(normalized) && !toVerify.includes(normalized)) toVerify.push(normalized)
+      if (!liveSet.has(normalized) && !verifiedUrls.has(normalized)) {
+        verifiedUrls.add(normalized)
+        toVerify.push(normalized)
+      }
       continue
     }
-    if (isExternalHttpUrl(url) && !toVerify.includes(url)) toVerify.push(url)
+    if (isExternalHttpUrl(url) && !verifiedUrls.has(url)) {
+      verifiedUrls.add(url)
+      toVerify.push(url)
+    }
   }
   if (toVerify.length > 0) {
     const results = await verifyUrlsLive(toVerify)
     for (const [url, r] of results) {
       const verdict = classifyLiveStatus(url, r.status)
       if (verdict.ok) continue
+      // Deduplicate: if auditLinksSync already flagged this URL (cleaned),
+      // skip the live-check finding to avoid double-reporting.
+      const alreadyFlagged = findings.some((f) => f.url === url)
+      if (alreadyFlagged) continue
       findings.push({
         code: verdict.code,
         severity: verdict.blocker ? 'blocker' : 'warning',
@@ -1030,7 +1061,22 @@ export async function remediateDeadLinksInContext(
   })
 
   for (const f of dead) {
-    const around = contextAround(next, f.url)
+    let around = contextAround(next, f.url)
+    // Reverse TLD lookup: if the finding URL was cleaned by auditLinksSync
+    // (e.g. https://www.canada.ca) but the content still has the malformed
+    // version (https://www.canada.Typically), find the malformed URL so
+    // rewriteHref can locate and fix it.
+    if (!around && f.url) {
+      const allUrls = extractLinks(next)
+      for (const { url: rawUrl } of allUrls) {
+        if (cleanRawUrl(rawUrl) === f.url) {
+          around = contextAround(next, rawUrl)
+          // Patch the finding URL to the raw URL so rewriteHref can find it
+          ;(f as any).url = rawUrl
+          break
+        }
+      }
+    }
     const localCtx: CitationContext = {
       ...ctx,
       body: around,
