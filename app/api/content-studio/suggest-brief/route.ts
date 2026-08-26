@@ -5,7 +5,7 @@ import { resolveBriefAiProvider, generateBriefText } from '@/lib/seoFactory/brie
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
-import { formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
+import { detectRegionFromText, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import {
   clampBriefWordBudget,
@@ -35,10 +35,22 @@ export async function POST(req: NextRequest) {
     const topic = String(body.topic || '').trim()
     if (!topic) return NextResponse.json({ error: 'topic is required' }, { status: 400 })
 
-    const region = String(body.region || 'US')
+    let region = String(body.region || 'US')
     const contentType = String(body.contentType || 'article')
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
+
+    // ── REGION AUTO-SELECT ──────────────────────────────────────────────
+    // Same policy as suggest-keywords: when the topic text confidently names
+    // a different country than the picker's (default-US) value, the topic
+    // wins. Every downstream input (demand context, engine feed, source
+    // allowlist, interlink anchors) is keyed off this ONE region value.
+    const detected = detectRegionFromText(`${topic} ${primaryKeyword}`)
+    let regionAutoSelected = false
+    if (detected && detected.region !== region.toUpperCase().slice(0, 2)) {
+      region = detected.region
+      regionAutoSelected = true
+    }
     // OpenAI ChatGPT is the PRIMARY brief model (see lib/seoFactory/briefModel).
     // GPT-5.6 Sol (flagship) when explicitly requested; every other value —
     // including 'auto' or a stale drafting provider id — coerces to GPT-5.6
@@ -291,11 +303,30 @@ export async function POST(req: NextRequest) {
     // the deterministic partitioner so the floor is ALWAYS met. The
     // partitioner derives short heads from the primary's own word windows
     // (handles long primaries like "study abroad statement of purpose").
-    const modelShort = Array.isArray(parsed.shortTail) ? parsed.shortTail.map(String).filter(Boolean) : []
-    const modelLong = Array.isArray(parsed.longTail) ? parsed.longTail.map(String).filter(Boolean) : []
+    // ── BRIEF COHERENCE GUARD (deterministic, model-independent) ─────────
+    // The prompt forbids cross-region keywords/H2s; this ENFORCES it. A
+    // model that echoes "canada study permit" into a US brief gets it
+    // stripped here — and the kwH2Map entry goes with it, so the drafting AI
+    // can never inherit a mixed-region placement.
+    const modelShortRaw = Array.isArray(parsed.shortTail) ? parsed.shortTail.map(String).filter(Boolean) : []
+    const modelLongRaw = Array.isArray(parsed.longTail) ? parsed.longTail.map(String).filter(Boolean) : []
+    const shortFilter = filterKeywordsByRegion(modelShortRaw, region)
+    const longFilter = filterKeywordsByRegion(modelLongRaw, region)
+    const droppedOffRegion = [...shortFilter.dropped, ...longFilter.dropped]
+
+    const rawOutline = Array.isArray(parsed.h2Outline) ? parsed.h2Outline.map(String).filter(Boolean) : []
+    const outlineFilter = filterOutlineByRegion(rawOutline, region)
+    droppedOffRegion.push(...outlineFilter.dropped)
+
+    const rawKwH2Map = parsed.kwH2Map && typeof parsed.kwH2Map === 'object' ? parsed.kwH2Map as Record<string, string> : {}
+    const kwMapFilter = filterKeywordsByRegion(Object.keys(rawKwH2Map), region)
+    const coherentKwH2Map: Record<string, string> = {}
+    for (const k of kwMapFilter.kept) coherentKwH2Map[k] = String(rawKwH2Map[k] || '')
+    droppedOffRegion.push(...kwMapFilter.dropped)
+
     const merged = mergeBriefKeywords({
-      modelShort: [...pickedKw.shortTail, ...modelShort],
-      modelLong: [...pickedKw.longTail, ...modelLong],
+      modelShort: [...pickedKw.shortTail, ...shortFilter.kept],
+      modelLong: [...pickedKw.longTail, ...longFilter.kept],
       primaryTerm: primaryKeyword,
     })
 
@@ -307,6 +338,9 @@ export async function POST(req: NextRequest) {
       provider: ai.provider,
       model: ai.model,
       fallbackUsed,
+      region,
+      regionAutoSelected,
+      droppedOffRegion: [...new Set(droppedOffRegion)].slice(0, 12),
       masterEngine: {
         ok: engineFeed.ok,
         intent: engineFeed.intent,
@@ -319,10 +353,10 @@ export async function POST(req: NextRequest) {
       blockedCanonicals: pickedKw.skippedCanonicals,
       competing: researchCtx.competing.competing.slice(0, 8),
       suggestedH1: String(parsed.suggestedH1 || ''),
-      h2Outline: Array.isArray(parsed.h2Outline) ? parsed.h2Outline.slice(0, 12) : [],
+      h2Outline: outlineFilter.kept.slice(0, 12),
       shortTail: merged.short.slice(0, 8),
       longTail: merged.longTail.slice(0, 6),
-      kwH2Map: parsed.kwH2Map && typeof parsed.kwH2Map === 'object' ? parsed.kwH2Map as Record<string, string> : {},
+      kwH2Map: coherentKwH2Map,
       sources: await assembleDraftSourceAllowlist(
         region,
         Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],

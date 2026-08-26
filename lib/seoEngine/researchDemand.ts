@@ -71,18 +71,103 @@ export async function loadShippedCoverage(limit = 300): Promise<ResearchShippedP
 
 /** Region-specific keyword markers for filtering Ubersuggest terms. */
 const REGION_MARKERS: Record<string, RegExp> = {
-  US: /\b(h-?1b|h-?2a|opt|cpt|eb-[123]|green card|uscis|i-?\d|lse|naturalization| Adjustment of Status)\b/i,
-  CA: /\b(express entry|study permit|pgwp|cec|lmia|ircc|provincial nominee|pnp|super visa|caq|quebec|cad|canadian)\b/i,
-  UK: /\b(gucas|ucas|graduate route|skilled worker visa|tvl|brp|evisa|settlement|indifinite leave|british)\b/i,
-  AU: /\b(subclass|485|500|189|190|491|494|australia|australian|dha|homeaffairs|monash|bridging visa)\b/i,
+  US: /\b(h-?1b|h-?2a|h-?4|l-?1|o-?1|f-?1|f-?2|m-?1|j-?1|opt|cpt|eb-[123]|green card|uscis|i-?94|i-?20|i-?130|i-?485|i-?765|i-?539|ds-?160|sevis|naturalization|adjustment of status|travel\.state\.gov|studentaid\.gov|studyinthestates)\b/i,
+  CA: /\b(express entry|study permit|work permit|pgwp|cec|lmia|ircc|provincial nominee|pnp|super visa|caq|quebec|canada\.ca|canadian|canada)\b/i,
+  UK: /\b(\buk\b|gucas|ucas|graduate route|student visa uk|skilled worker visa|tvl|brp|evisa|settlement|indefinite leave|british|home office|gov\.uk|united kingdom)\b/i,
+  AU: /\b(subclass|485|500|189|190|491|494|820|801|australia|australian|dha|homeaffairs|immi\.homeaffairs|monash|bridging visa|naati)\b/i,
+}
+
+/** Explicit country names — the strongest region signal for auto-detection. */
+const COUNTRY_NAMES: Record<string, RegExp> = {
+  US: /\b(united states|usa|u\.s\.a|america[n]?|uscis)\b/i,
+  CA: /\b(canada|canadian)\b/i,
+  UK: /\b(united kingdom|\buk\b|britain|england|scotland|wales)\b/i,
+  AU: /\b(australia|australian|aussie)\b/i,
 }
 
 /** Check if a keyword is clearly from a specific region. */
-function keywordRegion(term: string): string | null {
+export function keywordRegion(term: string): string | null {
   for (const [region, re] of Object.entries(REGION_MARKERS)) {
     if (re.test(term)) return region
   }
   return null
+}
+
+/**
+ * Detect the region a topic/keyword text belongs to.
+ *
+ * Confidence rules:
+ *  - An explicit country name ("Australia", "Canada", "UK", "United States")
+ *    is ALWAYS confident — return that region immediately.
+ *  - Otherwise count visa-programme marker hits per region; the region with
+ *    the most hits wins, but only when it has ≥2 hits (a single generic term
+ *    like "study permit" is not enough to override the user's pick).
+ *
+ * Returns null when nothing points at a region.
+ */
+export function detectRegionFromText(text: string): { region: string; confident: boolean; hits: number } | null {
+  const t = String(text || '')
+  if (!t.trim()) return null
+
+  // 1) Explicit country name wins outright.
+  for (const [region, re] of Object.entries(COUNTRY_NAMES)) {
+    if (re.test(t)) return { region, confident: true, hits: 99 }
+  }
+
+  // 2) Marker-hit count, needs ≥2 to be actionable.
+  const counts: Record<string, number> = { US: 0, CA: 0, UK: 0, AU: 0 }
+  for (const [region, re] of Object.entries(REGION_MARKERS)) {
+    const matches = t.match(new RegExp(re.source, 'gi'))
+    counts[region] = matches ? matches.length : 0
+  }
+  let best: string | null = null
+  let bestHits = 0
+  for (const [region, n] of Object.entries(counts)) {
+    if (n > bestHits) { best = region; bestHits = n }
+  }
+  if (best && bestHits >= 2) return { region: best, confident: true, hits: bestHits }
+  if (best && bestHits === 1) return { region: best, confident: false, hits: 1 }
+  return null
+}
+
+/**
+ * Deterministically drop keywords that belong to a DIFFERENT region than the
+ * one selected. Generic terms (no region marker) always pass. This is the
+ * hard backstop that stops the AI model's own output from re-introducing a
+ * "canada study permit" into a US keyword set after the prompt asked it not to.
+ */
+export function filterKeywordsByRegion(terms: string[], regionCode: string): { kept: string[]; dropped: string[] } {
+  const rc = String(regionCode || 'US').toUpperCase().slice(0, 2)
+  const kept: string[] = []
+  const dropped: string[] = []
+  for (const term of terms) {
+    const t = String(term || '').trim()
+    if (!t) continue
+    const kr = keywordRegion(t)
+    if (kr && kr !== rc) dropped.push(t)
+    else kept.push(t)
+  }
+  return { kept, dropped }
+}
+
+/**
+ * Drop H2 outline entries that clearly belong to another region (e.g. a
+ * "Canada Express Entry timeline" H2 inside a US article). An entry passes
+ * when it has NO other-region marker; entries carrying the selected region's
+ * own markers always pass.
+ */
+export function filterOutlineByRegion(headings: string[], regionCode: string): { kept: string[]; dropped: string[] } {
+  const rc = String(regionCode || 'US').toUpperCase().slice(0, 2)
+  const kept: string[] = []
+  const dropped: string[] = []
+  for (const h of headings) {
+    const t = String(h || '').trim()
+    if (!t) continue
+    const kr = keywordRegion(t)
+    if (kr && kr !== rc) dropped.push(t)
+    else kept.push(t)
+  }
+  return { kept, dropped }
 }
 
 export async function loadResearchDemandContext(topic: string, primaryKeyword?: string, region?: string): Promise<ResearchDemandContext> {

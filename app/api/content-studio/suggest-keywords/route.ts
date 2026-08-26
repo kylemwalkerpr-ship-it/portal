@@ -2,7 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateEngineText } from '@/lib/seoEngine/engineAi'
-import { formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
+import { detectRegionFromText, filterKeywordsByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 
 /**
  * POST /api/content-studio/suggest-keywords
@@ -15,9 +15,21 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
-    const region = String(body.region || 'US')
+    let region = String(body.region || 'US')
     const contentType = String(body.contentType || 'article')
     const primaryKeyword = String(body.primaryKeyword || topic)
+
+    // ── REGION AUTO-SELECT ──────────────────────────────────────────────
+    // A topic like "Australia student visa fee" names its own country. When
+    // the topic text confidently points at a DIFFERENT region than the
+    // picker's (default-US) value, the topic wins — a US-keyword brief for an
+    // Australian topic is exactly the mixed-region failure we are preventing.
+    const detected = detectRegionFromText(`${topic} ${primaryKeyword}`)
+    let regionAutoSelected = false
+    if (detected && detected.region !== region.toUpperCase().slice(0, 2)) {
+      region = detected.region
+      regionAutoSelected = true
+    }
     const audience = String(body.audience || '')
     const gscImpressions = Number(body.gscImpressions) || 0
     const gscPosition = Number(body.gscPosition) || 0
@@ -105,10 +117,23 @@ export async function POST(req: NextRequest) {
       }, { status: 502 })
     }
 
-    const shortTail = [...picked.shortTail, ...parsed.shortTail.map(String)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 10)
-    const longTail = [...picked.longTail, ...parsed.longTail.map(String)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 8)
+    // ── REGION HARD FILTER (deterministic backstop) ─────────────────────
+    // The prompt tells the model to stay in-region; this PROVES it. Any
+    // cross-region keyword the model echoes (or that leaked from a stale
+    // signal) is dropped here, no matter how the model behaved.
+    const modelShortRaw = parsed.shortTail.map(String)
+    const modelLongRaw = parsed.longTail.map(String)
+    const shortFilter = filterKeywordsByRegion(modelShortRaw, region)
+    const longFilter = filterKeywordsByRegion(modelLongRaw, region)
+    const droppedOffRegion = [...shortFilter.dropped, ...longFilter.dropped]
+
+    const shortTail = [...picked.shortTail, ...shortFilter.kept].filter((v, i, a) => a.indexOf(v) === i).slice(0, 10)
+    const longTail = [...picked.longTail, ...longFilter.kept].filter((v, i, a) => a.indexOf(v) === i).slice(0, 8)
     return NextResponse.json({
       ok: true,
+      region,
+      regionAutoSelected,
+      droppedOffRegion,
       shortTail,
       longTail,
       reasoning: String(parsed.reasoning || ''),

@@ -2290,6 +2290,19 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
       if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
+      // Region auto-select: when the topic named a different country than the
+      // picker (e.g. "Australia student visa fee" while picker said US), the
+      // server re-keyed the whole brief to the detected region. Sync the UI
+      // so downstream drafting + audits use the SAME region.
+      let regionNote = ''
+      if (data.regionAutoSelected && typeof data.region === 'string') {
+        setRegion(data.region as Region)
+        regionNote = ` · Region auto-selected: ${data.region}`
+      }
+      const dropped = Array.isArray(data.droppedOffRegion) ? (data.droppedOffRegion as string[]) : []
+      if (dropped.length) {
+        regionNote += ` · Dropped ${dropped.length} off-region item(s): ${dropped.slice(0, 3).join(', ')}${dropped.length > 3 ? '…' : ''}`
+      }
       if (typeof data.suggestedH1 === 'string' && data.suggestedH1.trim()) setTitle(data.suggestedH1)
       if (Array.isArray(data.h2Outline) && data.h2Outline.length) setH2s(data.h2Outline.map(String))
       if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
@@ -2323,7 +2336,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       const engineBit = engine?.ok
         ? ` · engine ${engine.grade || ''} ${engine.composite != null ? engine.composite + '/100' : ''} · ${engine.recommendationCount ?? 0} actions`
         : ''
-      setActionNotice?.(`🧠 Full brief ready${engineBit}: ${String(data.reasoning || '').slice(0, 120)}`)
+      setActionNotice?.(`🧠 Full brief ready${regionNote}${engineBit}: ${String(data.reasoning || '').slice(0, 120)}`)
     } catch (err) {
       const aborted = err instanceof DOMException && err.name === 'AbortError'
       setActionNotice?.(
@@ -2360,6 +2373,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
       if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
+      if (data.regionAutoSelected && typeof data.region === 'string') {
+        setRegion(data.region as Region)
+      }
       if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
         const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
         setKeywords(all.join(', '))
