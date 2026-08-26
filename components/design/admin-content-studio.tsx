@@ -4015,6 +4015,7 @@ interface WorkPlanItem {
   keywords?: string[]
   audience?: string
   play?: string
+  shipped?: boolean
   suggestion?: AISuggestion
   mergeRecord?: CannibalMergeRecord
   competingPages?: string[]
@@ -4085,17 +4086,20 @@ function buildWorkPlan(
   for (const s of uberBriefs) {
     const topicKey = String(s.topic || '').toLowerCase()
     if (!topicKey || radarTopics.has(topicKey) || isJunkQuery(s.topic)) continue
+    // play === 'refresh' means the server already matched this against shipped content
+    const isShipped = s.play === 'refresh'
     items.push({
       id: `uber-${s.topic}`,
       category: 'ubersuggest',
       title: s.title || s.topic,
       topic: s.topic,
       source: 'Ubersuggest',
-      priority: (s.opportunityScore ?? s.demandScore ?? 0) + 8,
+      priority: isShipped ? 10 : ((s.opportunityScore ?? s.demandScore ?? 0) + 8),
       signals: s.signals ?? [s.reason],
       keywords: s.keywords,
       audience: s.audience,
       play: s.play,
+      shipped: isShipped,
       suggestion: s,
     })
   }
@@ -4159,10 +4163,16 @@ function WorkPlanTable({
   resolvedIds?: Set<string>
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
-  const activeItems = items.filter((i) => i.category !== 'cannibal' || !resolvedIds?.has(i.id))
+  const [showShipped, setShowShipped] = React.useState(false)
+  const shippedCount = items.filter((i) => i.shipped).length
+  const activeItems = items.filter((i) => {
+    if (i.category === 'cannibal' && resolvedIds?.has(i.id)) return false
+    if (i.shipped && !showShipped) return false
+    return true
+  })
   const filtered = filterCat === 'all' ? activeItems : activeItems.filter((i) => i.category === filterCat)
   const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id))
-  const selectedItems = activeItems.filter((i) => selectedIds.has(i.id))
+  const selectedItems = activeItems.filter((i) => selectedIds.has(i.id) && !i.shipped)
   const cannibalItems = activeItems.filter((i) => i.category === 'cannibal')
 
   const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
@@ -4206,8 +4216,22 @@ function WorkPlanTable({
           >
             {resolvingAll ? 'Resolving…' : `⚠ Resolve all${cannibalItems.length ? ` (${cannibalItems.length})` : ''}`}
           </button>
+          {shippedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowShipped(!showShipped)}
+              style={{
+                padding: '5px 10px', borderRadius: 0, border: `1px solid ${E.green}`,
+                background: showShipped ? E.greenSoft : 'transparent', color: E.green,
+                fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {showShipped ? `✓ Hide shipped (${shippedCount})` : `✓ Show shipped (${shippedCount})`}
+            </button>
+          )}
           <span style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono }}>
-            {selectedItems.length} selected · {items.length} total
+            {selectedItems.length} selected · {filtered.length} shown · {items.length} total
           </span>
           {selectedItems.length > 0 && (
             <>
@@ -4251,26 +4275,28 @@ function WorkPlanTable({
               <div key={item.id} style={{
                 display: 'grid', gridTemplateColumns: '32px 80px 50px 1fr 100px', gap: 0,
                 padding: '9px 12px', borderBottom: i < filtered.length - 1 ? `1px solid ${E.hairlineSoft}` : 'none',
-                background: checked ? '#FFFDF5' : 'transparent',
+                background: checked ? '#FFFDF5' : item.shipped ? 'rgba(220,252,231,0.3)' : 'transparent',
                 alignItems: 'center',
                 transition: 'background 0.1s',
+                opacity: item.shipped ? 0.6 : 1,
               }}>
                 <div>
                   <input type="checkbox" checked={checked} onChange={() => onToggleSelect(item.id)}
-                    style={{ cursor: 'pointer', accentColor: E.gold }} />
+                    style={{ cursor: 'pointer', accentColor: E.gold }} disabled={item.shipped} />
                 </div>
                 <div>
                   <span style={{
                     display: 'inline-block', padding: '2px 6px', borderRadius: 3,
                     fontSize: 8, fontWeight: 700, fontFamily: C.mono,
-                    background: cm.bg, color: cm.fg, whiteSpace: 'nowrap',
-                  }}>{cm.icon} {cm.label}</span>
+                    background: item.shipped ? '#DCFCE7' : cm.bg,
+                    color: item.shipped ? '#166534' : cm.fg, whiteSpace: 'nowrap',
+                  }}>{item.shipped ? '✓ SHIPPED' : `${cm.icon} ${cm.label}`}</span>
                 </div>
-                <div style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 800, color: item.priority >= 70 ? C.green : item.priority >= 40 ? C.orange : C.textDim }}>
+                <div style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 800, color: item.shipped ? '#86EFAC' : item.priority >= 70 ? C.green : item.priority >= 40 ? C.orange : C.textDim, textDecoration: item.shipped ? 'line-through' : 'none' }}>
                   {item.priority}
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: E.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: E.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: item.shipped ? 'line-through' : 'none' }}>
                     {item.title}
                   </div>
                   <div style={{ fontSize: 8.5, color: E.inkDim, fontFamily: C.mono, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

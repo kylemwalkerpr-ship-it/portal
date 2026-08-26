@@ -26,25 +26,44 @@ function stem(term: string): string {
   return normalizePlannerTopic(term)
 }
 
-export async function loadShippedCoverage(limit = 200): Promise<ResearchShippedPage[]> {
+export async function loadShippedCoverage(limit = 300): Promise<ResearchShippedPage[]> {
   try {
     const db = createSupabaseAdminClient()
-    const { data, error } = await db
-      .from('content_jobs')
-      .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-      .in('status', ['merged', 'pr_created', 'publishing'])
-      .order('updated_at', { ascending: false })
-      .limit(limit)
-    if (error) return []
-    return (data || []).map((row: Record<string, unknown>) => {
+    // Pull from BOTH content_jobs (active) AND content_jobs_archive (cold storage)
+    // so merged jobs that were archived are still matched against.
+    const [activeResult, archiveResult] = await Promise.all([
+      db
+        .from('content_jobs')
+        .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
+        .in('status', ['merged', 'pr_created', 'publishing'])
+        .order('updated_at', { ascending: false })
+        .limit(limit),
+      db
+        .from('content_jobs_archive')
+        .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
+        .in('status', ['merged', 'pr_created', 'publishing', 'closed'])
+        .order('archived_at', { ascending: false })
+        .limit(limit),
+    ])
+    const rows = [
+      ...(activeResult.data || []),
+      ...(archiveResult.data || []),
+    ]
+    // Dedupe by title+keyword so a job in both tables isn't double-counted
+    const seen = new Set<string>()
+    const out: ResearchShippedPage[] = []
+    for (const row of rows) {
       const url = String(row.canonical_url || row.content_path || row.pr_url || '').trim()
-      return {
-        url,
-        title: String(row.title || row.topic || ''),
-        primaryKeyword: row.primary_keyword ? String(row.primary_keyword) : (row.topic ? String(row.topic) : null),
-        status: String(row.status || ''),
+      const title = String(row.title || row.topic || '')
+      const pk = row.primary_keyword ? String(row.primary_keyword) : (row.topic ? String(row.topic) : null)
+      const key = `${title.toLowerCase()}|${(pk || '').toLowerCase()}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (url || pk) {
+        out.push({ url, title, primaryKeyword: pk, status: String(row.status || '') })
       }
-    }).filter((p) => p.url || p.primaryKeyword)
+    }
+    return out
   } catch {
     return []
   }

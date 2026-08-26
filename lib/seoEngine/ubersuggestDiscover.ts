@@ -52,11 +52,46 @@ function stem(term: string): string {
   return normalizePlannerTopic(term).split(/\s+/).slice(0, 4).join(' ')
 }
 
+/** Tokenise a keyword into meaningful lowercase words (>= 3 chars, no junk). */
+function tokens(term: string): string[] {
+  return String(term || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/[\s-]+/)
+    .filter((t) => t.length >= 3 && !STOP.has(t))
+}
+const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'that', 'this', 'how', 'what', 'are', 'can', 'not', 'has', 'was', 'but', 'its', 'you', 'all', 'any', 'our', 'who', 'why', 'when', 'where'])
+
+/** Check whether a Ubersuggest term is already covered by shipped content.
+ * Uses three strategies in order:
+ *   1. Exact stem match (f-1 visa interview == f-1 visa interview)
+ *   2. Substring containment (f-1 visa interview tips contains f-1 visa interview)
+ *   3. Token overlap — 70%+ of the signal's meaningful tokens appear in a shipped title/keyword
+ *      (catches paraphrases like "F1 visa interview prep" vs "F-1 Visa Interview")
+ */
+function isCovered(term: string, shippedStems: Set<string>, shippedTokens: string[][]): boolean {
+  const s = stem(term)
+  if (shippedStems.has(s)) return true
+  const key = normalizePlannerTopic(term)
+  for (const ss of shippedStems) {
+    if (key.includes(ss) || ss.includes(key)) return true
+  }
+  const termTokens = tokens(term)
+  if (termTokens.length < 2) return false
+  for (const st of shippedTokens) {
+    if (st.length === 0) continue
+    const overlap = termTokens.filter((t) => st.includes(t)).length
+    if (overlap / termTokens.length >= 0.7) return true
+  }
+  return false
+}
+
 export function ubersuggestSignalsToDiscover(
   signals: UbersuggestSignalRow[],
   opts: { shippedKeywords?: string[]; excludeTopics?: string[]; limit?: number } = {},
 ): UbersuggestDiscoverBrief[] {
-  const shipped = new Set((opts.shippedKeywords || []).map(stem).filter(Boolean))
+  const shippedStems = new Set((opts.shippedKeywords || []).map(stem).filter(Boolean))
+  const shippedTokensList = (opts.shippedKeywords || []).map(tokens).filter((t) => t.length > 0)
   const excluded = new Set((opts.excludeTopics || []).map((t) => normalizePlannerTopic(t)).filter(Boolean))
   const cap = Math.max(1, Math.min(40, opts.limit ?? 24))
   const seen = new Set<string>()
@@ -72,7 +107,7 @@ export function ubersuggestSignalsToDiscover(
     const key = normalizePlannerTopic(row.term)
     if (!key || seen.has(key) || excluded.has(key)) continue
     seen.add(key)
-    const covered = shipped.has(stem(row.term)) || [...shipped].some((s) => s && (key.includes(s) || s.includes(key)))
+    const covered = isCovered(row.term, shippedStems, shippedTokensList)
     const score = ubersuggestOpportunityScore(row.impressions)
     out.push({
       topic: row.term,
@@ -99,7 +134,7 @@ export function ubersuggestSignalsToDiscover(
       signals: [
         'Ubersuggest',
         `${row.impressions} est. monthly demand`,
-        covered ? 'estate already covers this stem' : 'no shipped canonical on this stem',
+        covered ? 'estate already covers this topic' : 'no shipped canonical on this stem',
       ],
       source: 'ubersuggest',
     })
