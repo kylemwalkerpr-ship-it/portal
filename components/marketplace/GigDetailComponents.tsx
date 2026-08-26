@@ -507,7 +507,7 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
     justifyContent: 'center',
     fontFamily: F.display,
     fontSize: '32px',
-    color: T.inkSoft,
+    color: T.onPaperSoft,
   }
 
   return (

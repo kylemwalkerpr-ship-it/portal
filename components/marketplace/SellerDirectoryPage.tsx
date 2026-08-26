@@ -272,8 +272,8 @@ function SellerLevelBadge({ level }: { level: string }) {
 
 const pageShell = {
   minHeight: '100vh',
-  background: T.paper,
-  color: T.cream,
+  /* transparent — shell owns the paper + pattern */
+  color: T.onPaper,
   padding: '24px 32px',
   maxWidth: '1200px',
   margin: '0 auto',

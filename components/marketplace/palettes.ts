@@ -17,6 +17,8 @@ export interface PaletteTokens {
   ink: string
   inkMid: string
   inkSoft: string
+  onPaper: string
+  onPaperSoft: string
   rule: string
   ruleSoft: string
   indigo: string
@@ -52,6 +54,8 @@ const MAHOGANY: PaletteTokens = {
   ink:         '#1C1410',
   inkMid:      '#4A3C34',
   inkSoft:     '#7A6C64',
+  onPaper:     '#F7EDE0',
+  onPaperSoft: 'rgba(247,237,224,0.72)',
   rule:        'rgba(247,237,224,0.16)',
   ruleSoft:    'rgba(247,237,224,0.08)',
   indigo:      '#0B7A6E',
@@ -79,6 +83,8 @@ const LUXURY_CLASSIC: PaletteTokens = {
   ink:         '#211A17',
   inkMid:      '#3D3330',
   inkSoft:     '#6B5E58',
+  onPaper:     '#EFE6D2',
+  onPaperSoft: 'rgba(239,230,210,0.72)',
   rule:        'rgba(212,175,106,0.18)',
   ruleSoft:    'rgba(212,175,106,0.09)',
   indigo:      '#9A6E20',
@@ -106,6 +112,8 @@ const EXECUTIVE: PaletteTokens = {
   ink:         '#0F1923',
   inkMid:      '#2D3540',
   inkSoft:     '#5C6673',
+  onPaper:     '#F2ECDE',
+  onPaperSoft: 'rgba(242,236,222,0.72)',
   rule:        'rgba(16,42,67,0.14)',
   ruleSoft:    'rgba(16,42,67,0.08)',
   indigo:      '#153D5E',
@@ -133,6 +141,8 @@ const RICH_HERITAGE: PaletteTokens = {
   ink:         '#1A0E0A',
   inkMid:      '#3A2822',
   inkSoft:     '#6B5148',
+  onPaper:     '#E8D8AE',
+  onPaperSoft: 'rgba(232,216,174,0.74)',
   rule:        'rgba(184,149,85,0.18)',
   ruleSoft:    'rgba(184,149,85,0.09)',
   indigo:      '#947A3E',
@@ -160,6 +170,8 @@ const MODERN_LUXURY: PaletteTokens = {
   ink:         '#24272D',
   inkMid:      '#3D4148',
   inkSoft:     '#6B7078',
+  onPaper:     '#F4EDE2',
+  onPaperSoft: 'rgba(244,237,226,0.74)',
   rule:        'rgba(197,164,109,0.16)',
   ruleSoft:    'rgba(197,164,109,0.08)',
   indigo:      '#3A4248',
@@ -187,6 +199,8 @@ const SANTORINI: PaletteTokens = {
   ink:         '#081F2D',
   inkMid:      '#1A3D52',
   inkSoft:     '#4A6D82',
+  onPaper:     '#F0FAFD',
+  onPaperSoft: 'rgba(240,250,253,0.76)',
   rule:        'rgba(240,250,253,0.14)',
   ruleSoft:    'rgba(240,250,253,0.07)',
   indigo:      '#08709A',

@@ -20,6 +20,11 @@ export const T = {
   ink:         'var(--ys-ink, #1C1410)',
   inkMid:      'var(--ys-inkMid, #4A3C34)',
   inkSoft:     'var(--ys-inkSoft, #7A6C64)',
+  /** Light text for DARK surfaces (header, nav, footer, page background).
+   *  Every palette guarantees strong contrast of onPaper against paper*. */
+  onPaper:     'var(--ys-onPaper, #F7EDE0)',
+  /** Secondary light text on dark surfaces (labels, meta). */
+  onPaperSoft: 'var(--ys-onPaperSoft, rgba(247,237,224,0.72))',
   rule:        'var(--ys-rule, rgba(247,237,224,0.16))',
   ruleSoft:    'var(--ys-ruleSoft, rgba(247,237,224,0.08))',
   indigo:      'var(--ys-indigo, #0B7A6E)',
@@ -49,8 +54,7 @@ export const F = {
 export function applyPaletteCssVars(
   el: HTMLElement,
   tokens: Record<string, string>,
-) {
-  const map: Record<string, string> = {
+) {  const map: Record<string, string> = {
     '--ys-paper':       tokens.paper,
     '--ys-paper2':      tokens.paper2,
     '--ys-paper3':      tokens.paper3,
@@ -59,6 +63,8 @@ export function applyPaletteCssVars(
     '--ys-ink':         tokens.ink,
     '--ys-inkMid':      tokens.inkMid,
     '--ys-inkSoft':     tokens.inkSoft,
+    '--ys-onPaper':     tokens.onPaper,
+    '--ys-onPaperSoft': tokens.onPaperSoft,
     '--ys-rule':        tokens.rule,
     '--ys-ruleSoft':    tokens.ruleSoft,
     '--ys-indigo':      tokens.indigo,
@@ -77,4 +83,8 @@ export function applyPaletteCssVars(
     el.style.setProperty(prop, value)
     root.style.setProperty(prop, value)
   }
+  // Paint the body so overscroll / rubber-banding shows the palette instead
+  // of a white flash. PaletteProvider clears this on unmount so leaving the
+  // marketplace restores the portal's own body background.
+  if (tokens.paper) document.body.style.backgroundColor = tokens.paper
 }

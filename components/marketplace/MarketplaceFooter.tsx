@@ -32,11 +32,11 @@ export function MarketplaceFooter() {
       <style>{`
         .cw-mkt-footer {
           background: ${T.footer};
-          color: ${T.cream};
+          color: ${T.onPaper};
           font-family: ${F.ui};
           font-size: 13px;
-          border-top: 1px solid rgba(224,180,90,0.28);
-          box-shadow: inset 0 1px 0 rgba(255,236,200,0.12);
+          border-top: 1px solid ${T.rule};
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .cw-mkt-footer-inner {
           width: min(1280px, calc(100vw - 32px));
@@ -52,7 +52,7 @@ export function MarketplaceFooter() {
           display: inline-flex;
           align-items: center;
           gap: 10px;
-          color: #FFFBF4;
+          color: ${T.onPaper};
           text-decoration: none;
           font-weight: 800;
           font-size: 16px;
@@ -66,15 +66,15 @@ export function MarketplaceFooter() {
           justify-content: flex-end;
         }
         .cw-mkt-footer-nav a {
-          color: rgba(255,251,244,0.82);
+          color: ${T.onPaperSoft};
           text-decoration: none;
           font-weight: 600;
           padding: 4px 0;
           transition: color .15s cubic-bezier(0.22,1,0.36,1);
         }
-        .cw-mkt-footer-nav a:hover { color: #EDE3C8; }
+        .cw-mkt-footer-nav a:hover { color: #FFFFFF; }
         .cw-mkt-footer-legal {
-          border-top: 1px solid rgba(255,251,244,0.10);
+          border-top: 1px solid rgba(255,255,255,0.10);
         }
         .cw-mkt-footer-legal-inner {
           width: min(1280px, calc(100vw - 32px));
@@ -85,16 +85,16 @@ export function MarketplaceFooter() {
           align-items: center;
           gap: 8px 14px;
           font-size: 12px;
-          color: rgba(255,251,244,0.55);
+          color: ${T.onPaperSoft};
         }
         .cw-mkt-footer-legal-inner a {
-          color: rgba(255,251,244,0.62);
+          color: ${T.onPaperSoft};
           text-decoration: none;
         }
-        .cw-mkt-footer-legal-inner a:hover { color: #FFFBF4; }
+        .cw-mkt-footer-legal-inner a:hover { color: #FFFFFF; }
         .cw-mkt-footer-legal-inner .dot {
           width: 3px; height: 3px; border-radius: 50%;
-          background: rgba(255,251,244,0.28);
+          background: rgba(255,255,255,0.28);
         }
         @media (max-width: 720px) {
           .cw-mkt-footer-inner { padding: 14px 0 12px; }

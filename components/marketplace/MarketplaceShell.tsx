@@ -263,8 +263,8 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         background: T.paper2,
         backdropFilter: 'blur(16px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
-        borderBottom: '1px solid rgba(224,180,90,0.28)',
-        boxShadow: scrolled ? '0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,236,200,0.18)' : 'inset 0 1px 0 rgba(255,236,200,0.14)',
+        borderBottom: `1px solid ${T.rule}`,
+        boxShadow: scrolled ? '0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)' : 'inset 0 1px 0 rgba(255,255,255,0.05)',
         transition: 'box-shadow 0.22s cubic-bezier(0.22,1,0.36,1)',
         fontFamily: F.ui,
       }}
@@ -288,7 +288,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
               />
               <span style={{
                 fontFamily: F.ui, fontSize: 19, fontWeight: 800,
-                color: T.ink, letterSpacing: '-0.02em',
+                color: T.onPaper, letterSpacing: '-0.02em',
               }}>YouSafe</span>
             </div>
           ) : (
@@ -301,8 +301,8 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                 style={{ width: 30, height: 30, objectFit: 'contain' }}
               />
               <div style={{ textAlign: 'left' as const }}>
-                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.ink, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.onPaper, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.onPaperSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
                   {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
                 </div>
               </div>
@@ -325,16 +325,16 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             textDecoration: 'none', whiteSpace: 'nowrap' as const, flexShrink: 0,
             border: isActive ? 'none' : `1px solid ${T.rule}`,
             background: isActive ? T.indigo : 'transparent',
-            color: isActive ? '#fff' : T.ink,
+            color: isActive ? '#fff' : T.onPaper,
             transition: 'all 150ms ease',
           }
           const hoverIn = (e: React.MouseEvent) => {
             const el = e.currentTarget as HTMLElement
-            if (!isActive) { el.style.background = T.indigoSoft; el.style.borderColor = T.indigo; el.style.color = T.indigo }
+            if (!isActive) { el.style.background = 'rgba(255,255,255,0.10)'; el.style.borderColor = 'rgba(255,255,255,0.32)'; el.style.color = '#FFFFFF' }
           }
           const hoverOut = (e: React.MouseEvent) => {
             const el = e.currentTarget as HTMLElement
-            if (!isActive) { el.style.background = 'transparent'; el.style.borderColor = T.rule; el.style.color = T.ink }
+            if (!isActive) { el.style.background = 'transparent'; el.style.borderColor = T.rule; el.style.color = T.onPaper }
           }
           if (btn.external) {
             return (
@@ -373,16 +373,16 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                 onMouseEnter={(e) => {
                   if (active) return
                   const el = e.currentTarget as HTMLElement
-                  el.style.background = T.indigoSoft
-                  el.style.borderColor = T.indigo
-                  el.style.color = T.indigo
+                  el.style.background = 'rgba(255,255,255,0.10)'
+                  el.style.borderColor = 'rgba(255,255,255,0.32)'
+                  el.style.color = '#FFFFFF'
                 }}
                 onMouseLeave={(e) => {
                   if (active) return
                   const el = e.currentTarget as HTMLElement
                   el.style.background = 'transparent'
                   el.style.borderColor = T.rule
-                  el.style.color = T.ink
+                  el.style.color = T.onPaper
                 }}
                 style={{
                   display: 'inline-flex', alignItems: 'center',
@@ -390,7 +390,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                   height: 36,
                   borderRadius: 999,
                   fontSize: 13, fontWeight: active ? 600 : 500,
-                  color: active ? '#fff' : T.ink,
+                  color: active ? '#fff' : T.onPaper,
                   background: active ? T.indigo : 'transparent',
                   border: active ? 'none' : `1px solid ${T.rule}`,
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
@@ -531,10 +531,56 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         .cw-market a { color: inherit; text-decoration: none; }
         .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
         .cw-market img, .cw-market svg { display: block; max-width: 100%; }
-        /* Legibility: force dark text inside light-background containers so
-           palette switching never creates gold-on-white or cream-on-white. */
-        .cw-market [style*="background: var(--ys-vellum"] { color: var(--ys-ink, #1C1410) !important; }
-        .cw-market [style*="background-color: var(--ys-vellum"] { color: var(--ys-ink, #1C1410) !important; }
+
+        /* ══════════ PALETTE / LEGIBILITY CONTRACT ══════════
+           The marketplace has exactly two surface classes and each owns
+           its ink colour. Every page and subpage inherits this contract
+           from the shell — no component may fight it.
+
+             DARK surface  (paper / paper2 / paper3 — page bg, header,
+             footer)        → light text: var(--ys-onPaper)
+             LIGHT surface (vellum / cream — cards, sheets, modals)
+                            → dark text:  var(--ys-ink)
+
+           Solid accent fills (indigo / indigoDeep / tealDeep) always
+           carry white labels. */
+
+        /* 1. The page owns the palette: text sitting directly on the dark
+              paper background defaults to light. Pages that set their own
+              cream color still work — this is the inherited fallback. */
+        .cw-market { color: var(--ys-onPaper, #F7EDE0); }
+
+        /* 2. Dark paper surfaces always carry light text (fixes any
+              component that hardcodes ink on a paper background). */
+        .cw-market [style*="background: var(--ys-paper)"],
+        .cw-market [style*="background-color: var(--ys-paper)"],
+        .cw-market [style*="background: var(--ys-paper2)"],
+        .cw-market [style*="background-color: var(--ys-paper2)"],
+        .cw-market [style*="background: var(--ys-paper3)"],
+        .cw-market [style*="background-color: var(--ys-paper3)"] {
+          color: var(--ys-onPaper, #F7EDE0) !important;
+        }
+
+        /* 3. Light card surfaces always carry dark ink — palette switching
+              can never create cream-on-white or gold-on-white. */
+        .cw-market [style*="background: var(--ys-vellum"],
+        .cw-market [style*="background-color: var(--ys-vellum"],
+        .cw-market [style*="background: var(--ys-cream"],
+        .cw-market [style*="background-color: var(--ys-cream"] {
+          color: var(--ys-ink, #1C1410) !important;
+        }
+
+        /* 4. Solid accent fills always carry white labels (exact-match so
+              indigoSoft / indigoDeep tints are not caught). */
+        .cw-market [style*="background: var(--ys-indigo)"],
+        .cw-market [style*="background-color: var(--ys-indigo)"],
+        .cw-market [style*="background: var(--ys-indigoDeep)"],
+        .cw-market [style*="background-color: var(--ys-indigoDeep)"],
+        .cw-market [style*="background: var(--ys-tealDeep)"],
+        .cw-market [style*="background-color: var(--ys-tealDeep)"] {
+          color: #FFFFFF !important;
+        }
+
         @media (max-width: 720px) {
           .ys-shell-header-inner { padding: 0 12px !important; height: 60px !important; }
           .ys-market-nav { scrollbar-width: none; }

@@ -42,6 +42,14 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
     applyPaletteCssVars(root, palette.tokens)
   }, [paletteName, palette.tokens])
 
+  // Leaving the marketplace unmounts this provider — restore the portal's
+  // own body background so the dark market paper doesn't leak into it.
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') document.body.style.backgroundColor = ''
+    }
+  }, [])
+
   // Also apply on first mount once .cw-market exists
   useEffect(() => {
     const id = requestAnimationFrame(() => {

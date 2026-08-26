@@ -178,8 +178,8 @@ export function SellerProfilePage({
 
 const pageShell = {
   minHeight: '100vh',
-  background: T.paper,
-  color: T.ink, // dark text default — cards override as needed
+  /* transparent — shell owns the paper + pattern */
+  color: T.onPaper, // light text default on the dark paper shell — vellum cards set ink themselves
   padding: '24px 32px',
   maxWidth: '1200px',
   margin: '0 auto',

@@ -42,7 +42,7 @@ export function MarketplaceCategoriesIndex() {
   const popular = CATEGORIES.filter(c => c.popular).slice(0, 4)
 
   return (
-    <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui, color: T.cream }}>
+    <div style={{ minHeight: '100vh', fontFamily: F.ui, color: T.onPaper }}>
       <div style={{ width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '32px 0 64px' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: F.mono }}>

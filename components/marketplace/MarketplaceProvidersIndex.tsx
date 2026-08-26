@@ -39,7 +39,7 @@ const chipStyle = (active) => ({
 
 const selectStyle = {
   padding: '8px 10px', fontSize: 13, border: `1px solid ${T.rule}`, borderRadius: 6,
-  background: T.paper, color: T.cream, fontFamily: F.ui, cursor: 'pointer',
+  background: T.paper, color: T.onPaper, fontFamily: F.ui, cursor: 'pointer',
 }
 
 const checkboxLabel = {
@@ -139,7 +139,7 @@ export function MarketplaceProvidersIndex() {
   ].filter(Boolean)
 
   return (
-    <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui, color: T.cream }}>
+    <div style={{ minHeight: '100vh', fontFamily: F.ui, color: T.onPaper }}>
       <div style={{ width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '32px 0 64px' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: F.mono }}>
@@ -423,7 +423,7 @@ function ProviderSidePane({ a, onClose }) {
               </div>
               {a.bar_number && (
                 <div style={{ fontFamily: F.mono, fontSize: 11, color: T.inkMid, marginTop: 2 }}>
-                  Bar / Reg #: <b style={{ color: T.cream }}>{a.bar_number}</b>
+                  Bar / Reg #: <b style={{ color: T.onPaper }}>{a.bar_number}</b>
                 </div>
               )}
             </div>
@@ -431,7 +431,7 @@ function ProviderSidePane({ a, onClose }) {
           <button
             onClick={onClose}
             aria-label="Close"
-            style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${T.rule}`, background: T.paper, color: T.cream, fontSize: 20, cursor: 'pointer', flexShrink: 0 }}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${T.rule}`, background: T.paper, color: T.onPaper, fontSize: 20, cursor: 'pointer', flexShrink: 0 }}
           >×</button>
         </div>
 
@@ -440,13 +440,13 @@ function ProviderSidePane({ a, onClose }) {
           {a.rating_avg !== null && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.paper, border: `1px solid ${T.paper2}`, borderRadius: 10 }}>
               <Stars value={a.rating_avg} size={16} />
-              <span style={{ fontFamily: F.mono, fontWeight: 700, fontSize: 14, color: T.cream }}>{a.rating_avg}</span>
+              <span style={{ fontFamily: F.mono, fontWeight: 700, fontSize: 14, color: T.onPaper }}>{a.rating_avg}</span>
               <span style={{ fontFamily: F.mono, fontSize: 12, color: T.inkSoft }}>({a.rating_count} {a.rating_count === 1 ? 'review' : 'reviews'})</span>
             </div>
           )}
 
           {a.tagline && (
-            <p style={{ margin: 0, fontFamily: F.display, fontStyle: 'italic', fontSize: 17, lineHeight: 1.5, color: T.cream }}>
+            <p style={{ margin: 0, fontFamily: F.display, fontStyle: 'italic', fontSize: 17, lineHeight: 1.5, color: T.onPaper }}>
               "{a.tagline}"
             </p>
           )}
@@ -464,7 +464,7 @@ function ProviderSidePane({ a, onClose }) {
           {a.languages?.length > 0 && (
             <div>
               <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkSoft, marginBottom: 8 }}>Languages</div>
-              <div style={{ fontSize: 13.5, color: T.cream }}>{a.languages.join(' · ')}</div>
+              <div style={{ fontSize: 13.5, color: T.onPaper }}>{a.languages.join(' · ')}</div>
             </div>
           )}
 

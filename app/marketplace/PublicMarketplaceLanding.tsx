@@ -527,7 +527,7 @@ const FAQ_JSONLD = {
 /* ───────────────────────── CSS ─────────────────────────── */
 
 const CSS = `
-.cw-market { color: #1A120E; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
+.cw-market { color: ${T.onPaper}; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
 .cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; }
 .cw-market::after { content: none; }
 .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
@@ -543,7 +543,7 @@ const CSS = `
 .cw-market .topbar-left { display: flex; gap: 22px; align-items: center; }
 .cw-market .topbar-left .mono { letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
 .cw-market .topbar-right { display: flex; gap: 18px; align-items: center; }
-.cw-market .pill-mini { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: ${T.paper2}; border: 1px solid ${T.rule}; font-size: 11px; font-weight: 600; color: ${T.inkMid}; }
+.cw-market .pill-mini { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: ${T.paper2}; border: 1px solid ${T.rule}; font-size: 11px; font-weight: 600; color: ${T.onPaper}; }
 .cw-market .pill-mini::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: ${T.moss}; box-shadow: 0 0 0 3px rgba(95,107,58,0.18); }
 
 .cw-market header.nav { position: sticky; top: 0; z-index: 50; background: ${T.vellum}; backdrop-filter: blur(10px); border-bottom: 1px solid ${T.rule}; }
@@ -570,12 +570,12 @@ const CSS = `
 .cw-market .country-bar { border-bottom: 1px solid ${T.rule}; background: ${T.vellum}; }
 .cw-market .country-bar-inner { display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
 .cw-market .country-bar .label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-right: 4px; }
-.cw-market .country-bar a { padding: 6px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.inkMid}; transition: all .12s; cursor: pointer; }
-.cw-market .country-bar a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
+.cw-market .country-bar a { padding: 6px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.onPaper}; transition: all .12s; cursor: pointer; }
+.cw-market .country-bar a:hover { color: #FFFFFF; border-color: ${T.onPaperSoft}; }
 .cw-market .country-bar a.active { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; font-weight: 600; }
 .cw-market .country-bar .divider { height: 18px; width: 1px; background: ${T.rule}; margin: 0 6px; }
 
-.cw-cat-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid ${T.rule}; background: ${T.paper2}; border-radius: 999px; font-size: 13px; font-weight: 600; color: #1A120E; font-family: ${F.ui}; transition: all .12s; }
+.cw-cat-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid ${T.rule}; background: ${T.paper2}; border-radius: 999px; font-size: 13px; font-weight: 600; color: ${T.onPaper}; font-family: ${F.ui}; transition: all .12s; }
 .cw-cat-trigger:hover { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; }
 .cw-cat-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; display: grid; grid-template-columns: 240px 380px; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; box-shadow: 0 30px 60px -20px rgba(29,36,51,0.25); overflow: hidden; min-width: 620px; max-width: calc(100vw - 32px); }
 @media (max-width: 720px) { .cw-cat-panel { grid-template-columns: 1fr; min-width: min(360px, calc(100vw - 32px)); } .cw-cat-detail { display: none; } }
@@ -654,7 +654,7 @@ const CSS = `
 
 .cw-files-rail { padding: 28px 0 16px; background: transparent; border-bottom: 1px solid ${T.rule}; }
 .cw-files-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.cw-files-rail-head h2 { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: #1A120E; }
+.cw-files-rail-head h2 { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; }
 .cw-files-rail-head a { font-size: 13px; font-weight: 700; color: #1A120E; }
 .cw-files-scroller { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 12px; }
 .cw-files-scroller::-webkit-scrollbar { display: none; }
@@ -667,7 +667,7 @@ const CSS = `
 .cw-files-card .price { position: absolute; top: 12px; right: 12px; font-family: ${F.ui}; font-weight: 800; font-size: 13px; color: #FFFFFF; background: ${T.indigo}; padding: 4px 10px; border-radius: 999px; box-shadow: 0 8px 16px -10px rgba(4,31,30,0.7); }
 
 .cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
-.cw-market .section-head h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.12; letter-spacing: -0.02em; margin: 0; color: #1A120E; max-width: 24ch; }
+.cw-market .section-head h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.12; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; max-width: 24ch; }
 .cw-market .section-head h2 em { font-style: italic; color: ${T.gold}; }
 .cw-market .section-head .meta { display: flex; flex-direction: column; gap: 6px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #1A120E; text-align: right; }
 .cw-market .section-head .meta a { color: #1A120E; border-bottom: 1px solid #1A120E; padding-bottom: 1px; }

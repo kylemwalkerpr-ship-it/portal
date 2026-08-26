@@ -20,8 +20,8 @@ import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
-  background: T.paper,
-  color: T.cream,
+  /* transparent — the shell owns the paper background + pattern layer */
+  color: T.onPaper,
   fontFamily: F.ui,
 }
 
