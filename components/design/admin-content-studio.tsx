@@ -3608,7 +3608,14 @@ function JobDetail({
       if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
       const next = { ...job, ...data.job, id: jobIdRef.current }
       setDetail(next)
-      if (typeof data.job.content === 'string') setEditorContent(data.job.content)
+      if (typeof data.job.content === 'string') {
+        // Guard: huge content (failed jobs with error logs) freezes the editor
+        if (data.job.content.length > 60_000) {
+          setEditorContent(data.job.content.slice(0, 60_000) + '\n\n<!-- Content truncated — ' + (data.job.content.length - 60_000).toLocaleString() + ' chars omitted -->')
+        } else {
+          setEditorContent(data.job.content)
+        }
+      }
       setActionError(null)
       if (next.error_message && (next.status === 'drafting' || next.status === 'failed' || next.status === 'pending')) {
         setResumeAvailable(Boolean(next.content || job.content))
@@ -3972,7 +3979,6 @@ function JobDetail({
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>✏️ Editing the draft</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
           {actionBtn('💾 Save draft', { border: C.gold, bg: dirty ? '#FFFBEB' : C.surface2, disabled: busy || !dirty || !editorContent.trim(), onClick: () => void runAction('save'), title: 'Persist your edits to the job' })}
-          {actionBtn('🔍 Re-audit', { border: C.blue, fg: C.blue, disabled: busy || !editorContent.trim(), onClick: () => void runAction('reaudit'), title: 'Re-run the quality audit on the current text' })}
           {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy, onClick: () => void runAction('regenerate'), title: 'Rewrite the full piece with AI (creates a replacement job)' })}
           {generationFailed && storedDraftLikely && actionBtn(loading ? '↻ Loading draft…' : '↻ Load saved draft', { border: C.navy, fg: C.navy, disabled: busy || loading, onClick: () => void loadDetail({ body: true }), title: 'Fetch the stored draft body so you can edit it' })}
           {generationFailed && !storedDraftLikely && actionBtn('↻ Retry load', { border: C.navy, fg: C.navy, disabled: busy, onClick: () => void loadDetail({ body: true }), title: 'Fetch the stored draft again' })}

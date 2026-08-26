@@ -235,8 +235,10 @@ function renderHtmlContent(html: string, k: { v: number }): React.ReactNode[] {
 export function MarkdownDocument({ source }: { source: string }) {
   const md = documentPreviewSource(source)
 
-  // If content is primarily HTML, render it as styled HTML via dangerouslySetInnerHTML
-  if (isHtmlContent(md)) {
+  // If content is primarily HTML, render it as styled HTML via dangerouslySetInnerHTML.
+  // Guard: HTML parsing freezes the browser above ~40k chars — fall back to a
+  // safe prose preview so the editor stays responsive.
+  if (isHtmlContent(md) && md.length < 40_000) {
     return (
       <div style={pageStyle}>
         <div
@@ -272,6 +274,17 @@ export function MarkdownDocument({ source }: { source: string }) {
   }
 
   const lines = md.split('\n')
+  // Guard: rendering more than 800 lines of markdown is O(n²) in the
+  // inline() regex loop and will freeze Safari on failed-job content.
+  if (lines.length > 800) {
+    return (
+      <div style={pageStyle}>
+        <pre style={{ ...preStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {md}
+        </pre>
+      </div>
+    )
+  }
   const blocks: React.ReactNode[] = []
   let i = 0
   let k = 0

@@ -156,9 +156,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
         const latest = data.latest?.content || ''
         if (cancelled || !latest) return
-        // Guard: skip very large content that could freeze the editor
-        if (latest.length > 200_000) {
-          console.warn('[editor] draft too large, skipping auto-load:', latest.length, 'chars')
+        // Guard: skip content that could freeze the editor (Safari caps at ~80k)
+        if (latest.length > 50_000) {
+          console.warn('[editor] draft too large for auto-load:', latest.length, 'chars — use Load draft')
           return
         }
         const incoming = countBodyWords(content)
@@ -220,8 +220,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const res = await fetch(`/api/content-studio/drafts?jobId=${encodeURIComponent(jobId)}&latest=1`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
       const latest = data.latest?.content || ''
-      // Guard: skip very large content that could freeze the editor
-      if (latest.length > 200_000) return content
+      // Guard: skip content that could freeze the editor
+      if (latest.length > 50_000) return content
       if (latest && countBodyWords(latest) >= 40) return latest
     } catch { /* fall through to in-pane content */ }
     return content
@@ -929,7 +929,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8',
               minHeight: 320, maxHeight: 760, overflow: 'auto',
             }}>
-              <MarkdownDocument source={content} />
+              {content.length > 50_000 ? (
+                <div style={{ padding: 20, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: C.text }}>Document view unavailable for large drafts</div>
+                  <div>This draft is {(content.length / 1000).toFixed(0)}k characters. The document renderer cannot safely render content this large without freezing the browser.</div>
+                  <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Fix All</strong> to reduce the content size.</div>
+                </div>
+              ) : (
+                <MarkdownDocument source={content} />
+              )}
             </div>
           ) : (
             <>
