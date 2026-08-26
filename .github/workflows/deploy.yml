@@ -139,11 +139,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NMI_SECURITY_KEY: ${{ secrets.NMI_SECURITY_KEY }}
-          # Backlink provider (lib/seoFactory/backlinkProvider.ts, DataForSEO)
-          # — feeds per-URL referring-domain snapshots into the SEO master
-          # engine (broken-link recovery, anchors, confidence weighting).
-          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
-          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
         run: |
           # Cloudflare's secret API occasionally rejects subsequent secret
           # pushes within the same workflow run with "Secret edit failed.
@@ -273,9 +268,6 @@ jobs:
           put_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
           put_secret RESEND_API_KEY            "$RESEND_API_KEY"
           put_secret NMI_SECURITY_KEY          "$NMI_SECURITY_KEY"
-          # Backlink snapshots for the SEO master engine (DataForSEO)
-          put_secret DATAFORSEO_LOGIN          "$DATAFORSEO_LOGIN"
-          put_secret DATAFORSEO_PASSWORD       "$DATAFORSEO_PASSWORD"
 
       # Mirror the just-synced Worker secrets into the Supabase AI Key Vault
       # (ai_provider_keys). The runtime reads the vault overlay BEFORE Worker
