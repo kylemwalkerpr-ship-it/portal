@@ -47,11 +47,11 @@ const breadcrumb: CSSProperties = {
   fontSize: '11px',
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
-  color: T.inkSoft,
+  color: 'rgba(255,255,255,0.6)',
 }
 
 const breadcrumbLink: CSSProperties = {
-  color: T.indigo,
+  color: '#FFFFFF',
   textDecoration: 'none',
   fontWeight: 600,
 }
@@ -108,7 +108,7 @@ const sectionTitle: CSSProperties = {
   fontWeight: 500,
   letterSpacing: '-0.01em',
   margin: '0 0 16px',
-  color: '#fff',
+  color: T.ink,
 }
 
 const gigTitle: CSSProperties = {
@@ -129,14 +129,14 @@ const gigMeta: CSSProperties = {
   fontSize: '11px',
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
-  color: T.cream,
+  color: '#FFFFFF',
   marginBottom: '16px',
 }
 
 const gigDescription: CSSProperties = {
   fontSize: '15px',
   lineHeight: 1.75,
-  color: T.cream,
+  color: T.ink,
   whiteSpace: 'pre-wrap',
   fontFamily: F.ui,
 }
@@ -150,11 +150,11 @@ const tagsContainer: CSSProperties = {
 
 const tagBadge: CSSProperties = {
   padding: '5px 11px',
-  background: T.paper2,
+  background: T.vellum,
   border: `1px solid ${T.rule}`,
   borderRadius: '999px',
   fontSize: '12.5px',
-  color: T.inkMid,
+  color: T.ink,
   fontWeight: 500,
   fontFamily: F.ui,
 }
@@ -455,10 +455,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             <Link href="/" style={breadcrumbLink}>
               Marketplace
             </Link>
-            <span style={{ color: T.rule }}>/</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>/</span>
             <span>{gig.category || 'Service'}</span>
-            <span style={{ color: T.rule }}>/</span>
-            <span style={{ color: T.ink }}>{gig.title}</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>/</span>
+            <span style={{ color: '#FFFFFF' }}>{gig.title}</span>
           </div>
         </div>
 
@@ -571,7 +571,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 <span>{gig.order_count || 0} orders</span>
               </div>
               {gig.pitch && (
-                <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, marginBottom: '16px', lineHeight: 1.55 }}>
+                <p style={{ fontFamily: F.ui, fontSize: '16px', color: '#E0D6CC', marginBottom: '16px', lineHeight: 1.55 }}>
                   {gig.pitch}
                 </p>
               )}

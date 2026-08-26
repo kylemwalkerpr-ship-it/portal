@@ -266,8 +266,7 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
   }
 
   return (
-    <Card style={{ padding: '20px' }}>
-      <h3 style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 14px', color: T.inkSoft }}>
+    <Card style={{ padding: '20px' }}>              <h3 style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 14px', color: T.inkMid }}>
         Pricing
       </h3>
 
