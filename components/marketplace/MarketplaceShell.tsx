@@ -310,98 +310,50 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           )}
         </Link>
 
-        {/* Home — links to the brand marketing site */}
-        <a
-          href="https://yousafeconsultancy.com/"
-          aria-label="YouSafe Consultancy home"
-          className="ys-shell-home"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '0 14px',
-            marginRight: 4,
-            color: T.ink,
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: F.ui,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-            opacity: 0.88,
-            transition: 'color 120ms ease, opacity 120ms ease',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.indigo; (e.currentTarget as HTMLElement).style.opacity = '1' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.ink; (e.currentTarget as HTMLElement).style.opacity = '0.88' }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />
-          </svg>
-          <span>Home</span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ opacity: 0.55 }}>
-            <path d="M7 17 17 7" />
-            <path d="M9 7h8v8" />
-          </svg>
-        </a>
-
-        {/* Marketplace landing page link */}
-        <Link
-          href="/marketplace"
-          className="ys-shell-market"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '0 14px',
-            marginRight: 4,
-            color: T.ink,
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: F.ui,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-            background: 'transparent',
-            borderRadius: 999,
-            border: `1px solid ${T.rule}`,
-            height: 34,
-            transition: 'border-color 120ms, background 120ms',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.indigo; (e.currentTarget as HTMLElement).style.background = T.indigoSoft }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.rule; (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        >
-          Market
-        </Link>
-
-        <Link
-          href="https://yousafeconsultancy.com/shop"
-          aria-label="Instant-download file shop"
-          target="_blank"
-          rel="noopener"
-          className="ys-shell-shop"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '0 16px',
-            marginRight: 8,
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 700,
-            fontFamily: F.ui,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-            background: shopActive ? T.indigoDeep : T.indigo,
-            borderRadius: 999,
-            height: 38,
-            boxShadow: shopActive ? '0 0 0 2px #E8B931, 0 8px 18px -10px rgba(14,124,116,0.7)' : '0 8px 18px -10px rgba(14,124,116,0.7)',
-            letterSpacing: '-0.01em',
-            transition: 'background .18s cubic-bezier(0.22,1,0.36,1), box-shadow .18s cubic-bezier(0.22,1,0.36,1)',
-          }}
-        >
-          File shop
-        </Link>
+        {/* Uniform pill buttons — Home, Market, File shop */}
+        {[
+          { label: 'Home', href: 'https://yousafeconsultancy.com/', external: false, icon: 'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z' },
+          { label: 'Market', href: '/marketplace', external: false, icon: '' },
+          { label: 'File shop', href: 'https://yousafeconsultancy.com/shop', external: true, icon: '' },
+        ].map((btn) => {
+          const isActive = btn.label === 'File shop' ? shopActive : false
+          const sharedStyle: React.CSSProperties = {
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '0 16px', marginRight: 6,
+            height: 36, borderRadius: 999,
+            fontSize: 13, fontWeight: 600, fontFamily: F.ui,
+            textDecoration: 'none', whiteSpace: 'nowrap' as const, flexShrink: 0,
+            border: isActive ? 'none' : `1px solid ${T.rule}`,
+            background: isActive ? T.indigo : 'transparent',
+            color: isActive ? '#fff' : T.ink,
+            transition: 'all 150ms ease',
+          }
+          const hoverIn = (e: React.MouseEvent) => {
+            const el = e.currentTarget as HTMLElement
+            if (!isActive) { el.style.background = T.indigoSoft; el.style.borderColor = T.indigo; el.style.color = T.indigo }
+          }
+          const hoverOut = (e: React.MouseEvent) => {
+            const el = e.currentTarget as HTMLElement
+            if (!isActive) { el.style.background = 'transparent'; el.style.borderColor = T.rule; el.style.color = T.ink }
+          }
+          if (btn.external) {
+            return (
+              <a key={btn.label} href={btn.href} target="_blank" rel="noopener" style={sharedStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+                {btn.label}
+              </a>
+            )
+          }
+          return (
+            <Link key={btn.label} href={btn.href} style={sharedStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+              {btn.icon && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d={btn.icon} />
+                </svg>
+              )}
+              {btn.label}
+            </Link>
+          )
+        })}
 
         {/* Nav tabs — scrollable on mobile; the active item scrolls itself
             into view so the user always sees which section they're on
@@ -421,38 +373,30 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                 onMouseEnter={(e) => {
                   if (active) return
                   const el = e.currentTarget as HTMLElement
-                  if (link.view === 'attorneys') {
-                    el.style.background = T.ink
-                  } else {
-                    el.style.color = T.cream
-                    el.style.background = T.paper2
-                  }
+                  el.style.background = T.indigoSoft
+                  el.style.borderColor = T.indigo
+                  el.style.color = T.indigo
                 }}
                 onMouseLeave={(e) => {
                   if (active) return
                   const el = e.currentTarget as HTMLElement
-                  if (link.view === 'attorneys') {
-                    el.style.background = T.ink
-                    el.style.color = '#fff'
-                  } else {
-                    el.style.color = T.cream
-                    el.style.background = 'none'
-                  }
+                  el.style.background = 'transparent'
+                  el.style.borderColor = T.rule
+                  el.style.color = T.ink
                 }}
                 style={{
                   display: 'inline-flex', alignItems: 'center',
-                  padding: link.view === 'attorneys' ? '0 18px' : '9px 16px',
-                  height: 38,
+                  padding: '0 16px',
+                  height: 36,
                   borderRadius: 999,
-                  fontSize: '14px', fontWeight: active || link.view === 'attorneys' ? 700 : 500,
-                  color: link.view === 'attorneys' ? '#fff' : active ? '#fff' : T.ink,
-                  background: link.view === 'attorneys' ? T.ink : active ? T.indigo : 'none',
-                  border: 'none',
+                  fontSize: 13, fontWeight: active ? 600 : 500,
+                  color: active ? '#fff' : T.ink,
+                  background: active ? T.indigo : 'transparent',
+                  border: active ? 'none' : `1px solid ${T.rule}`,
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
-                  letterSpacing: '-0.005em',
                   flexShrink: 0,
                   scrollSnapAlign: 'start' as const,
-                  transition: 'color 0.12s, background 0.12s',
+                  transition: 'all 150ms ease',
                   fontFamily: F.ui,
                 }}
               >
@@ -589,10 +533,6 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         .cw-market img, .cw-market svg { display: block; max-width: 100%; }
         @media (max-width: 720px) {
           .ys-shell-header-inner { padding: 0 12px !important; height: 60px !important; }
-          .ys-shell-home { padding: 0 8px !important; }
-          .ys-shell-home span { display: none !important; }
-          .ys-shell-home svg:last-child { display: none !important; }
-          .ys-shell-shop { padding: 0 12px !important; font-size: 12px !important; height: 34px !important; }
           .ys-market-nav { scrollbar-width: none; }
           .ys-market-nav::-webkit-scrollbar { display: none; }
           .ys-shell-brand { padding-right: 10px !important; }
