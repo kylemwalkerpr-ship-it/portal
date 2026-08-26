@@ -206,25 +206,44 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
   const editorHasNoBody = countBodyWords(content) < 40
 
-  // Re-audit
+  // Fetch the latest draft from Supabase — always audit the most recent
+  // version, not a stale in-pane buffer.
+  const fetchLatestDraft = useCallback(async (): Promise<string> => {
+    if (!jobId) return content
+    try {
+      const res = await fetch(`/api/content-studio/drafts?jobId=${encodeURIComponent(jobId)}&latest=1`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
+      const latest = data.latest?.content || ''
+      if (latest && countBodyWords(latest) >= 40) return latest
+    } catch { /* fall through to in-pane content */ }
+    return content
+  }, [jobId, content])
+
+  // Re-audit — always reads the latest draft from Supabase first
   const handleReaudit = useCallback(async () => {
-    if (countBodyWords(content) < 40) {
-      setError('This editor has no countable body words (YAML/schema only, or the draft never loaded). Click Load saved draft, then Re-audit.')
-      return
-    }
     setBusy(true); setError(null); setNotice(null)
     try {
+      // Always audit the most recent draft from the database
+      const latestContent = await fetchLatestDraft()
+      if (countBodyWords(latestContent) < 40) {
+        setError('No countable body words found in the latest draft. Load a draft first, then Re-audit.')
+        return
+      }
+      // Sync the editor if Supabase had a newer version
+      if (latestContent !== content) {
+        onChange(latestContent)
+      }
       const res = await fetch('/api/content-studio/reaudit', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, jobId, ...briefMeta }),
+        body: JSON.stringify({ content: latestContent, jobId, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       // Deterministic repairs (disclaimer / TOC / dashes) come back as
       // fixedContent — apply them so the editor matches the audited draft and
       // the blocker is visibly cleared, not stuck at "100/100 but blocked".
-      if (data.fixedContent && data.fixedContent !== content) {
+      if (data.fixedContent && data.fixedContent !== latestContent) {
         onChange(data.fixedContent)
         setDirty(true)
       }
@@ -245,15 +264,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft])
 
-  // Fix ALL annotations via AI (clicking again while running cancels the request)
+  // Fix ALL issues via AI — one button fixes blockers, warnings, and engine gaps.
+  // Clicking again while running cancels the request.
   const handleFixAll = useCallback(async () => {
     if (countBodyWords(content) < 40) {
-      setError('This editor has no countable body words. Load the saved draft before Fix all — otherwise the audit scores an empty buffer as 0 words.')
+      setError('No countable body words. Load a draft before Fix all.')
       return
     }
-    if (!annotations.length) return
     if (fixingAll) {
       fixAbortRef.current?.abort()
       return
@@ -265,12 +284,16 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     const startedAt = Date.now()
     const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
     try {
+      // Always fix the latest draft from Supabase
+      const latestContent = await fetchLatestDraft()
+      const contentToFix = countBodyWords(latestContent) >= 40 ? latestContent : content
+      if (latestContent !== content) onChange(latestContent)
       const res = await fetchWithTimeout('/api/content-studio/reaudit', {
         method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        timeoutMs: 260_000,
-        body: JSON.stringify({ action: 'fix_all', content, annotations, ...briefMeta }),
+        timeoutMs: 300_000,
+        body: JSON.stringify({ action: 'fix_all', content: contentToFix, annotations, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -282,15 +305,16 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAnnotations(data.annotations || [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      setDepthGate(data.depthGate || null)
+      setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
       const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number; evidence?: string }>
-      // Persist the targeted plan so the checklist renders below — the notice
-      // stays a one-liner, the full prioritized list lives in the panel.
       setEnginePlan(engine.length ? engine : null)
-      setNotice(
-        `AI fix applied - new score ${data.score}/100 - ${data.ok ? 'PASSED' : 'BLOCKED'}`
-        + (engine.length ? ` · targeted ${engine.length} engine gap${engine.length === 1 ? '' : 's'} — see checklist` : ''),
-      )
+      const parts = [`Score ${data.score}/100`]
+      if (data.ok) { parts.push('PASSED') } else { parts.push('BLOCKED') }
+      if (engine.length) { parts.push(`${engine.length} engine gap${engine.length === 1 ? '' : 's'} targeted`) }
+      setNotice(`AI fix applied — ${parts.join(' · ')}`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'AI fix failed')
@@ -302,7 +326,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, annotations, fixingAll, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, annotations, fixingAll, onChange, onScoreChange, fetchLatestDraft, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
@@ -685,22 +709,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             <span style={{ fontSize: 10, fontWeight: 800, fontFamily: C.mono, letterSpacing: '0.08em', color: C.red, textTransform: 'uppercase' }}>
               {Math.max(blockerItems.length, auditResult.blockers)} ship blocker{Math.max(blockerItems.length, auditResult.blockers) === 1 ? '' : 's'}
             </span>
-            <button
-              type="button"
-              data-testid="studio-fix-blockers"
-              disabled={busy || disabled}
-              onClick={handleFixBlockers}
-              style={btnStyle({
-                bg: fixingBlockers ? '#FEE2E2' : '#FFF5F5',
-                border: C.red,
-                color: C.red,
-                disabled: busy || disabled,
-              })}
-            >
-              {fixingBlockers
-                ? `Fixing blockers… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''} (click to cancel)`
-                : 'Fix blockers'}
-            </button>
+            <span style={{ fontSize: 10, color: C.red, fontFamily: C.mono }}>
+              Use Fix All above to resolve blockers
+            </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {(blockerItems.length ? blockerItems : annotations.filter((a) => a.severity === 'blocker').map((a) => ({ code: a.code, message: a.message, fix: a.fix }))).map((b) => (
@@ -730,21 +741,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             <span style={{ fontSize: 10, fontWeight: 800, fontFamily: C.mono, letterSpacing: '0.08em', color: '#92400E', textTransform: 'uppercase' }}>
               {warningsData.length} quality warning{warningsData.length === 1 ? '' : 's'}
             </span>
-            <button
-              type="button"
-              disabled={busy || disabled || !warningsData.length}
-              onClick={handleFixWarnings}
-              style={btnStyle({
-                bg: fixingWarnings ? '#FEE2E2' : '#FFF7ED',
-                border: fixingWarnings ? C.red : '#D97706',
-                color: fixingWarnings ? C.red : '#92400E',
-                disabled: busy || disabled || !warningsData.length,
-              })}
-            >
-              {fixingWarnings
-                ? `Fixing warnings… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''} (click to cancel)`
-                : `Fix all warnings (${warningsData.length})`}
-            </button>
+            <span style={{ fontSize: 10, color: '#92400E', fontFamily: C.mono }}>
+              Use Fix All above to resolve warnings
+            </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {warningsData.map((w) => (
@@ -755,7 +754,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             ))}
           </div>
           <div style={{ fontSize: 10, color: C.textDim }}>
-            Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Use <strong>Fix all warnings</strong> or the per-issue AI Fix in the issues panel.
+            Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Click <strong>Fix All</strong> above to resolve all issues at once.
           </div>
         </div>
       )}
@@ -825,26 +824,24 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           ))}
         </div>
 
-        {/* Re-audit */}
-        <button type="button" disabled={allBusy || !content.trim()} onClick={handleReaudit}
-          style={btnStyle({ bg: '#EFF6FF', border: C.blue, color: C.blue, disabled: allBusy || !content.trim() })}>
-          {busy ? 'Auditing...' : 'Re-audit'}
+        {/* Audit — reads latest draft from Supabase */}
+        <button type="button" disabled={allBusy} onClick={handleReaudit}
+          style={btnStyle({ bg: '#EFF6FF', border: C.blue, color: C.blue, disabled: allBusy })}>
+          {busy ? '⏳ Auditing...' : '🔍 Audit'}
         </button>
 
-        {/* Fix All — while running, the button becomes a live progress/cancel control */}
-        {annotations.length > 0 && (
-          <button type="button" disabled={busy || disabled} onClick={handleFixAll}
-            style={btnStyle({
-              bg: fixingAll ? '#FEE2E2' : '#F3E8FF',
-              border: fixingAll ? C.red : C.purple,
-              color: fixingAll ? C.red : C.purple,
-              disabled: busy || disabled,
-            })}>
+        {/* Fix All — single button for blockers + warnings + engine gaps */}
+        <button type="button" disabled={busy || disabled} onClick={handleFixAll}
+          style={btnStyle({
+            bg: fixingAll ? '#FEE2E2' : '#F3E8FF',
+            border: fixingAll ? C.red : C.purple,
+            color: fixingAll ? C.red : C.purple,
+            disabled: busy || disabled,
+          })}>
             {fixingAll
-              ? `Fixing all… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
-              : `Fix all (${annotations.length})`}
+              ? `⏳ Fixing... ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
+              : annotations.length > 0 ? `✨ Fix All (${annotations.length})` : '✨ Fix All'}
           </button>
-        )}
 
         {/* Toggle annotations */}
         {annotations.length > 0 && (
