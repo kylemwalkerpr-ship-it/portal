@@ -587,6 +587,11 @@ export async function PATCH(request: NextRequest) {
         .join('\n')
 
       const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. For dead links: read the surrounding sentence and either swap in a live official/estate URL that fits the claim, or remove the href and add a new verifiable citation. Never invent URLs. Return ONLY the complete fixed article. Do not add explanations.'
+
+      // Count currently-failing issues so the model understands scope.
+      const failingCount = annotations.filter((a) => a.severity === 'blocker').length
+        + annotations.filter((a) => a.severity === 'warning').length
+
       const prompt = `${enginePlan.promptBlock}
 ## Original Article
 
@@ -598,14 +603,23 @@ ${blockerList}
 ## WARNINGS (FIX WHERE POSSIBLE)
 ${warningList}
 
+## CRITICAL CONSTRAINTS
+- Fix ONLY the issues listed above. Do NOT touch anything that is not listed.
+- Do NOT rewrite paragraphs, sections, or headings that are not flagged.
+- Do NOT add new content, examples, or sections unless a specific warning asks for it.
+- Do NOT modify URLs that are not flagged as problematic.
+- Do NOT change the article structure, tone, or voice unless specifically asked.
+- The goal is MINIMAL surgical edits — fix what is broken, leave everything else untouched.
+- Every currently-passing check MUST remain passing after your edits.
+
 ## INSTRUCTIONS
 1. Address the PRIORITIZED ENGINE GAPS first, in the exact order listed — highest expected value first
 2. Then fix EVERY blocker listed above - these are mandatory
 3. Dead/untrusted links: ONE pass. KEEP the href if it is the issuing body for the claim (exam board, licensing council). If it is a competitor/blog/news/shortener, REPLACE the href in place with the allowlist official URL for the SAME claim — do not unwrap and do not swap a board URL for a generic immigration homepage. Never invent a URL.
-4. CRITICAL — NEVER modify TLDs: Do NOT append sentence words to domain names. URLs like uscis.gov, canada.ca, homeaffairs.gov.au, gov.uk must appear EXACTLY as-is. NEVER produce uscis.Typically, canada.On, gov.uk.Meanwhile, or any domain with a sentence word replacing or appended to the TLD. Keep the full URL intact including the TLD and path.
+4. CRITICAL — NEVER modify TLDs: Do NOT append sentence words to domain names. URLs like uscis.gov, canada.ca, homeaffairs.gov.au, gov.uk must appear EXACTLY as-is. NEVER produce uscis.Typically, canada.On, gov.uk.Meanwill, or any domain with a sentence word replacing or appended to the TLD. Keep the full URL intact including the TLD and path.
 5. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
-6. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
-7. Add specific data, examples, or concrete details where the article is vague
+6. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language — ONLY in the sentences that contain these cliches
+7. Add specific data, examples, or concrete details where the article is vague — ONLY where a warning explicitly asks for it
 8. Keep all original headings, interlinks, and key facts intact
 9. Return the COMPLETE fixed article, nothing else`
 
@@ -814,8 +828,9 @@ ${enginePlan.promptBlock}`
           })),
         ]
         const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.'
+        const blockerList = leftover.length ? leftover : list
         try {
-          fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, leftover.length ? leftover : list), 16384, reviewModel)
+          fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, blockerList), 16384, reviewModel)
         } catch (fixErr) {
           const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
           return NextResponse.json({

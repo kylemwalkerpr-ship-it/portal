@@ -201,6 +201,14 @@ export function buildBlockersFixPrompt(
     'BLOCKERS TO RESOLVE:',
     list,
     '',
+    '',
+    'CRITICAL CONSTRAINTS:',
+    '- Fix ONLY the blockers listed above. Do NOT touch anything that is not flagged.',
+    '- Do NOT rewrite paragraphs, sections, or headings that are not listed.',
+    '- Do NOT add new content unless a blocker explicitly requires it.',
+    '- Do NOT modify URLs that are not flagged as problematic.',
+    '- The goal is MINIMAL surgical edits — fix what is broken, leave everything else.',
+    '',
     'RULES:',
     '1. Title must be 30–60 characters. Meta description must be 70–160 characters.',
     '2. Keep a single H1. Set robots to index,follow. Add ogImage: /og-image.png if missing.',
@@ -218,7 +226,10 @@ export function buildBlockersFixPrompt(
   ].join('\n')
 }
 
-export function buildWarningsFixPrompt(content: string, warnings: Array<{ code: string; message: string; fix?: string }>): string {
+export function buildWarningsFixPrompt(
+  content: string,
+  warnings: Array<{ code: string; message: string; fix?: string }>,
+): string {
   const list = warnings.map((w) => `- [${w.code}] ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`).join('\n')
   return [
     '## WARNINGS SWEEP — resolve ONLY the quality warnings below',
@@ -228,6 +239,14 @@ export function buildWarningsFixPrompt(content: string, warnings: Array<{ code: 
     '',
     'WARNINGS TO RESOLVE:',
     list,
+    '',
+    '',
+    'CRITICAL CONSTRAINTS:',
+    '- Fix ONLY the warnings listed above. Do NOT touch anything that is not flagged.',
+    '- Do NOT rewrite paragraphs, sections, or headings that are not listed.',
+    '- Do NOT add new content unless a warning explicitly asks for it.',
+    '- Do NOT modify URLs that are not flagged as problematic.',
+    '- The goal is MINIMAL surgical edits — fix what is broken, leave everything else.',
     '',
     'RULES:',
     '1. Keep every heading, fact, official citation, interlink, and paragraph meaning.',
