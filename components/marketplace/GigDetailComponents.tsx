@@ -501,7 +501,7 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
   const imgPlaceholder: CSSProperties = {
     width: '100%',
     height: '140px',
-    background: `linear-gradient(135deg, ${T.paper2}, ${T.paper3})`,
+    background: T.paper2,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

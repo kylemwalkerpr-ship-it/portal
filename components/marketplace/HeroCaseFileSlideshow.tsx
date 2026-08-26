@@ -210,7 +210,7 @@ export default function HeroCaseFileSlideshow({
                 style={{ objectFit: 'cover' }}
               />
             ) : (
-              <div className="avatar" style={{ background: `linear-gradient(135deg, ${INDIGO}, ${INDIGO_DEEP})` }}>
+              <div className="avatar" style={{ background: INDIGO }}>
                 {initialsOf(slide.providerName)}
               </div>
             )}

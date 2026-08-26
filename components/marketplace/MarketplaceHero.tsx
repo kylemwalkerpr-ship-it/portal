@@ -23,7 +23,7 @@ const gigImage: CSSProperties = {
   width: '100%',
   height: '140px',
   objectFit: 'cover',
-  background: `linear-gradient(135deg, ${T.paper2}, ${T.paper3})`,
+  background: T.paper2,
 }
 
 const gigContent: CSSProperties = {

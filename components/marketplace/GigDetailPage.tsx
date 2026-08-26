@@ -82,7 +82,7 @@ const gigImage: CSSProperties = {
   objectFit: 'cover',
   borderRadius: '14px',
   border: `1px solid ${T.rule}`,
-  background: `linear-gradient(135deg, ${T.paper2}, ${T.paper3})`,
+  background: T.paper2,
 }
 
 const galleryGrid: CSSProperties = {

@@ -499,7 +499,7 @@ const avatarPlaceholder = {
   width: '120px',
   height: '120px',
   borderRadius: '50%',
-  background: `linear-gradient(135deg, ${T.indigo} 0%, ${T.indigoDeep} 100%)`,
+  background: T.indigo,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -764,7 +764,7 @@ const gigImage = {
 const gigImagePlaceholder = {
   width: '100%',
   height: '180px',
-  background: `linear-gradient(135deg, ${T.indigo} 0%, ${T.indigoDeep} 100%)`,
+  background: T.indigo,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

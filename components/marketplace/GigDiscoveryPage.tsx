@@ -90,7 +90,7 @@ const gigListImage: CSSProperties = {
   height: '140px',
   objectFit: 'cover',
   borderRadius: '12px',
-  background: `linear-gradient(135deg, ${T.paper2}, ${T.paper2})`,
+  background: T.paper2,
 }
 
 const pagination: CSSProperties = {

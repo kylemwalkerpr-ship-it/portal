@@ -31,7 +31,7 @@ export function MarketplaceFooter() {
     <footer className="cw-mkt-footer">
       <style>{`
         .cw-mkt-footer {
-          background: linear-gradient(180deg, ${T.paper2} 0%, ${T.footer} 100%);
+          background: ${T.footer};
           color: ${T.cream};
           font-family: ${F.ui};
           font-size: 13px;
