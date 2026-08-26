@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { usePalette } from '@/contexts/palette-context'
-import { getPatternCss, getPatternBackgroundSize, getPatternPosition } from './PatternPicker'
+import { getPatternCss, getPatternCssAdaptive, getPatternOpacity, getPatternBackgroundSize, getPatternPosition } from './PatternPicker'
 import type { PatternId } from './PatternPicker'
 
 const STORAGE_KEY = 'ys-marketplace-pattern'
@@ -70,7 +70,11 @@ export function ThemePicker() {
     if (id === 'none') {
       tag.textContent = ''
     } else {
-      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; }`
+      // Fallback (black strokes) then palette-adaptive color-mix layer, with
+      // the per-pattern opacity cap — same contract as PatternPicker.
+      const adaptive = getPatternCssAdaptive(id)
+      const opacity = getPatternOpacity(id)
+      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-image: ${adaptive} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; opacity: ${opacity} !important; }`
     }
   }, [])
 

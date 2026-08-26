@@ -18,36 +18,39 @@ interface PatternDef {
   label: string
   emoji: string
   css: string  // CSS background-image value
+  /** Max strength of the texture layer — keeps patterns subtle behind vellum
+   *  cards on every palette. Denser textures get lower caps. */
+  opacity: number
 }const PATTERNS: PatternDef[] = [
-  { id: 'none', label: 'Solid', emoji: '◼️', css: 'none' },
+  { id: 'none', label: 'Solid', emoji: '◼️', css: 'none', opacity: 0 },
   {
-    id: 'linen', label: 'Linen', emoji: '🧵',
+    id: 'linen', label: 'Linen', emoji: '🧵', opacity: 0.4,
     css: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 4px)',
   },
   {
-    id: 'dots', label: 'Dots', emoji: '🔲',
+    id: 'dots', label: 'Dots', emoji: '🔲', opacity: 0.6,
     css: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)',
   },
   {
-    id: 'diagonal', label: 'Diagonal', emoji: '📐',
+    id: 'diagonal', label: 'Diagonal', emoji: '📐', opacity: 0.45,
     css: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
   },
   {
-    id: 'woodgrain', label: 'Wood grain', emoji: '🪵',
+    id: 'woodgrain', label: 'Wood grain', emoji: '🪵', opacity: 0.4,
     css: [
       'repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 3px)',
       'repeating-linear-gradient(2deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 6px)',
     ].join(', '),
   },
   {
-    id: 'crosshatch', label: 'Crosshatch', emoji: '🔺',
+    id: 'crosshatch', label: 'Crosshatch', emoji: '🔺', opacity: 0.4,
     css: [
       'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
       'repeating-linear-gradient(-45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
     ].join(', '),
   },
   {
-    id: 'diamonds', label: 'Diamonds', emoji: '💎',
+    id: 'diamonds', label: 'Diamonds', emoji: '💎', opacity: 0.5,
     css: [
       'linear-gradient(45deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 75%)',
       'linear-gradient(45deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 75%)',
@@ -57,6 +60,25 @@ interface PatternDef {
 
 export function getPatternCss(id: PatternId): string {
   return PATTERNS.find(p => p.id === id)?.css ?? 'none'
+}
+
+export function getPatternOpacity(id: PatternId): number {
+  return PATTERNS.find(p => p.id === id)?.opacity ?? 0.5
+}
+
+/**
+ * Palette-adaptive variant of a pattern's CSS: the fixed black strokes are
+ * swapped for the ACTIVE PALETTE's onPaper tint via color-mix, so the same
+ * texture is a faint cream weave on dark mahogany and a faint ink weave on
+ * light vellum — visible-but-subtle on every palette. Browsers without
+ * color-mix keep the original black-stroke fallback (declared first in the
+ * injected rule).
+ */
+export function getPatternCssAdaptive(id: PatternId): string {
+  return getPatternCss(id).replace(
+    /rgba\(0,\s*0,\s*0,\s*([\d.]+)\)/g,
+    (_m, a: string) => `color-mix(in srgb, var(--ys-onPaper, #F7EDE0) ${Math.round(parseFloat(a) * 100)}%, transparent)`,
+  )
 }
 
 export function getPatternBackgroundSize(id: PatternId): string {
@@ -124,7 +146,12 @@ export function PatternPicker() {
     if (id === 'none') {
       tag.textContent = ''
     } else {
-      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; }`
+      // Fallback (fixed black strokes) first, then the palette-adaptive
+      // color-mix layer — unsupported browsers keep the fallback. The
+      // per-pattern opacity cap keeps every texture subtle behind vellum.
+      const adaptive = getPatternCssAdaptive(id)
+      const opacity = getPatternOpacity(id)
+      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-image: ${adaptive} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; opacity: ${opacity} !important; }`
     }
   }, [])
 

@@ -525,7 +525,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       {/* Base CSS for the pattern picker ::before pseudo-element and
           consistent marketplace styling across ALL pages (landing + siblings). */}
       <style>{`
-        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; }
+        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; opacity: 0.5; }
         .cw-market::after { content: none; }
         .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
         .cw-market a { color: inherit; text-decoration: none; }
