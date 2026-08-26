@@ -36,6 +36,7 @@ import {
   inferArticleClaim,
   isAuthorityHost,
   isCitationRelevant,
+  isCitableSource,
   isCreamSource,
   isKnownDisciplineHost,
   isPrimaryDisciplineAuthority,
@@ -856,9 +857,10 @@ const STRIP_CODES = new Set<LinkAuditFinding['code']>([
 ])
 
 /**
- * Keep only authority (or extra-allowlisted) URLs that resolve for a reader.
- * Used by Full Brief + the drafting prompt so invented .gov paths never
- * become "SOURCES TO CITE".
+ * Keep only citable URLs (unified policy — see isCitableSource) that resolve
+ * for a reader. Used by Full Brief + the drafting prompt so invented paths
+ * never become "SOURCES TO CITE". Cream authorities are kept ahead of
+ * merely-relevant institutional pages (formal bias) when the list is capped.
  */
 export async function filterVerifiedCitationUrls(
   urls: string[],
@@ -870,15 +872,21 @@ export async function filterVerifiedCitationUrls(
     .map((u) => String(u || '').trim())
     .filter((u) => /^https?:\/\//i.test(u))
     .filter((u) => !isPlaceholderUrl(u).hit && !isMalformedUrl(u) && !isSkippableHref(u))
-    .filter((u) => isCreamSource(u, context))
+    .filter((u) => isCitableSource(u, context))
     .filter((u) => isCitationRelevant(u, context))
-  if (candidates.length === 0) return []
-  const results = await verifyUrlsLive(candidates)
-  return candidates.filter((u) => {
+  // Formal bias: cream authorities sort ahead of relevant institutional pages.
+  const ranked = [...candidates].sort(
+    (a, b) => Number(isCreamSource(b, context)) - Number(isCreamSource(a, context)),
+  )
+  if (ranked.length === 0) return []
+  const results = await verifyUrlsLive(ranked)
+  const alive = ranked.filter((u) => {
     const r = results.get(u)
     if (!r) return false
     return classifyLiveStatus(u, r.status).ok
   })
+  // Restore the caller's original order for stable output.
+  return candidates.filter((u) => alive.includes(u))
 }
 
 export function urlsFromAllowlistLines(lines: string[]): string[] {

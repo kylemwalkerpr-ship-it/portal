@@ -152,7 +152,7 @@ export function buildFactorySystemPrompt(opts: {
     '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
     '- KEYWORDS: every short keyword appears ≥1× and ≤4×; every long-tail keyword ≥1× and ≤2× (details in KEYWORD COVERAGE below).',
     '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
-    '- SOURCES: official URLs taken VERBATIM from SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
+    '- SOURCES: prefer URLs VERBATIM from SOURCES TO CITE / SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are always valid. On-topic institutional pages (.org / .edu / official boards) that directly support a claim are also valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
     '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
@@ -197,12 +197,12 @@ export function buildFactorySystemPrompt(opts: {
       '',
     ]),
     ...(sources && sources.length ? [
-      'SOURCES TO CITE / OFFICIAL SOURCE ALLOWLIST (use ONLY these exact URLs for external links):',
+      'SOURCES TO CITE / SOURCE ALLOWLIST (cite these VERBATIM; on-topic live institutional pages may be added):',
       ...sources.map((s, i) => `${i + 1}. ${s}`),
-      'Cite a source only where it supports the surrounding claim. Do not fabricate additional URLs. Do not invent a deeper path on the same host. Do not cite an official page that is off-topic for this article.',
+      'Cite a source only where it supports the surrounding claim. You may add a real, live institutional page (.gov / .edu / .org / official board) when it directly supports a specific claim — the reviewer live-checks every URL. Do not fabricate URLs. Do not invent a deeper path on the same host. No blogs, Wikipedia, social media, or content mills.',
       '',
     ] : [
-      'OFFICIAL SOURCE ALLOWLIST is EMPTY — do NOT create ANY external http(s) links. Write agency names as plain text (USCIS, IRCC, UKVI, Home Affairs). Inventing a .gov path is a hard error.',
+      'SOURCE ALLOWLIST is EMPTY — prefer writing agency names as plain text (USCIS, IRCC, UKVI, Home Affairs). You may cite a real, live institutional page (.gov / .edu / .org / official board) only when you are certain of its exact URL and it directly supports the claim; the reviewer live-checks every URL. Inventing or guessing a path is a hard error. No blogs, Wikipedia, or social media.',
       '',
     ]),
     ...(interlinkAllowlist && interlinkAllowlist.length ? [

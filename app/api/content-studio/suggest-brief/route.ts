@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
       '3. Target the word count range based on content type + Google SEO floor (2,200 min for legal guides).',
       '4. Every short-tail keyword must appear in kwH2Map mapped to exactly one H2 section.',
       '5. Every long-tail keyword must also appear in kwH2Map.',
-      '6. Sources must be copied verbatim from the VERIFIED OFFICIAL SOURCE ALLOWLIST. Only immigration departments, government departments, official school pages, and named intergovernmental bodies. Never Wikipedia, news, blogs, or off-topic official pages.',
+      '6. Sources must be real, live, and on-topic. PREFER the VERIFIED SOURCE ALLOWLIST verbatim (government departments, official school pages, intergovernmental bodies, issuing bodies). You may also cite institutional pages (.org / .edu / official exam boards) when they directly support a claim in THIS article. Never Wikipedia, social media, URL shorteners, content-mill blogs, or low-authority sites. Every URL is live-checked; dead or off-topic citations are stripped before ship.',
       '7. targetSlug must be kebab-case, descriptive, and not collide with any completedWork slug.',
       '8. The h2Outline order must follow search intent flow: answer-first → evidence → process → FAQ.',
       '9. Prefer keywords with clear informational or commercial intent — avoid terms without a search volume signal.',
@@ -222,8 +222,8 @@ export async function POST(req: NextRequest) {
         ? `VERIFIED INTERNAL LINK ALLOWLIST (only these URLs may be used):\n${interlinks.map((l) => `  - [${l.label}] ${l.url}`).join('\n')}`
         : 'VERIFIED INTERNAL LINK ALLOWLIST: none provided — rely exclusively on sitemap-verified estate URLs.',
       seedOfficialSources.length
-        ? `VERIFIED OFFICIAL SOURCE ALLOWLIST (live-checked crème-de-la-crème authorities for this topic — copy URLs VERBATIM into "sources"; do not invent paths or add blogs/news/Wikipedia):\n${seedOfficialSources.map((s) => `  - ${s}`).join('\n')}`
-        : 'VERIFIED OFFICIAL SOURCE ALLOWLIST: empty after live check — return an empty sources array. Never invent a .gov path.',
+        ? `VERIFIED SOURCE ALLOWLIST (live-checked authorities for this topic — copy URLs VERBATIM into "sources"; government/edu/intergov preferred, on-topic institutional pages allowed; no blogs/Wikipedia/social):\n${seedOfficialSources.map((s) => `  - ${s}`).join('\n')}`
+        : 'VERIFIED SOURCE ALLOWLIST: empty after live check — return an empty sources array or cite only institutional pages you are certain exist and are on-topic. Never invent a path.',
       sitemapCount > 0
         ? `ESTATE SITEMAP SIZE: ${sitemapCount} pages live — find adjacency opportunities.`
         : '',

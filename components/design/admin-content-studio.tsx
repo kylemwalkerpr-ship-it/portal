@@ -28,7 +28,7 @@ import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
-import { isCreamSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
+import { isCitableSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
   asQueueUiFilter,
@@ -2223,7 +2223,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   })
   const [sources, setSources] = React.useState<string[]>(() => selectedBrief?.signals?.filter((s: string) => {
     const url = String(s).match(/https?:\/\/[^\s)]+/)?.[0] || String(s)
-    return /^https?:\/\//i.test(url) && isCreamSource(url, {
+    return /^https?:\/\//i.test(url) && isCitableSource(url, {
       region,
       topic: topic || title,
       keywords: String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
@@ -2403,12 +2403,12 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     const raw = newSource.trim()
     if (!raw) return
     const url = raw.match(/https?:\/\/[^\s)]+/)?.[0] || raw
-    if (!/^https?:\/\//i.test(url) || !isCreamSource(url, {
+    if (!/^https?:\/\//i.test(url) || !isCitableSource(url, {
       region,
       topic: topic || title,
       keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
     })) {
-      setActionNotice?.('Only official URLs can be cited — the issuing body for this topic (exam/licensing board), immigration/gov departments, or official school pages. Blogs, news, Wikipedia, and consultants are rejected.')
+      setActionNotice?.('Citable sources: government/edu/intergov pages, issuing bodies, reputable publications, and on-topic institutional pages (.org/.edu). Random blogs, Wikipedia, social media, and low-authority sites are rejected. Every URL is live-checked before ship.')
       return
     }
     setSources((p) => [...p, raw])
@@ -2701,7 +2701,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
         <label style={labelBase}>Sources to Cite ({sources.length} specified)</label>
         <p style={{ margin: '0 0 8px', fontFamily: C.serif, fontSize: 12, color: E.inkMuted, lineHeight: 1.45 }}>
-          Crème de la crème only — immigration departments, government departments, official school pages, and named intergovernmental bodies. Generate Full Brief live-checks every URL. Off-topic or broken citations are stripped before ship.
+          Relevant and alive, biased toward formal sources — government departments, official school pages, intergovernmental and issuing bodies preferred; on-topic institutional pages (.org/.edu) allowed. Random low-authority blogs, Wikipedia, and social media are gated out. Generate Full Brief live-checks every URL; dead or off-topic citations are stripped before ship.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
           {sources.map((s, i) => (

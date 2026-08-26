@@ -695,6 +695,52 @@ export function isCreamSource(url: string, ctx?: CitationContext | null): boolea
   return false
 }
 
+/**
+ * The single CITABILITY policy — aligned with the reviewer gates.
+ *
+ * A source may be cited when:
+ *  1. It is NOT a low-authority host (social, wikis, URL shorteners,
+ *     content-mill blogs, competitor sites) — the junk gate; AND
+ *  2. Either it is a cream authority (government / official school /
+ *     intergovernmental / issuing body / reputable publication — the
+ *     formal bias), OR it is an institutional page (.org / .edu / .gov
+ *     family) that is clearly RELEVANT to this article's claims.
+ *
+ * This replaces the old "crème de la crème ONLY" hard gate on the brief
+ * side: relevant, alive institutional pages (NAATI, WES, a university
+ * admissions page, an exam board) are now citable, while random unknown
+ * blogs with little authority stay blocked.
+ */
+export function isCitableSource(url: string, ctx?: CitationContext | null): boolean {
+  if (!url || isLowValueHost(url)) return false
+  if (isCreamSource(url, ctx)) return true
+  if (!ctx || (!ctx.topic && !ctx.keywords?.length && !ctx.body)) return false
+  if (!isCitationRelevant(url, ctx)) return false
+  // Institutional pages (.gov/.edu/.org family) pass on normal relevance.
+  // Non-institutional hosts (e.g. naati.com.au, a named industry body on a
+  // .com) must either score STRONGLY on-topic OR be named in the article
+  // itself — an authority the body explicitly cites ("NAATI accredited
+  // translations") supports the claim by definition. Random unknown blogs
+  // with little authority satisfy neither and stay gated out.
+  if (isInstitutionalHost(url)) return true
+  if (scoreUrlRelevance(url, ctx) >= STRONG_CITATION_RELEVANCE) return true
+  return hostBrandMentionedInContext(url, ctx)
+}
+
+/** Non-institutional hosts must clear this higher bar to be citable. */
+export const STRONG_CITATION_RELEVANCE = 5
+
+/** True when the article context names the host's brand (e.g. "NAATI" for naati.com.au). */
+function hostBrandMentionedInContext(url: string, ctx?: CitationContext | null): boolean {
+  const host = hostnameOf(url)
+  if (!host) return false
+  const brand = bareHost(host).split('.')[0].toLowerCase()
+  if (brand.length < 4) return false
+  const blob = citationBlob(ctx).toLowerCase()
+  if (!blob.trim()) return false
+  return blob.includes(brand)
+}
+
 export function claimIsLicensingExam(ctx?: CitationContext | null, extra?: string): boolean {
   const blob = citationBlob({ ...ctx, body: stripLinkArtefacts(ctx?.body) }, extra)
   if (!blob.trim()) return false
