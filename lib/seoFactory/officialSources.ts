@@ -728,6 +728,19 @@ export function isCreamSource(url: string, ctx?: CitationContext | null): boolea
  */
 export function isCitableSource(url: string, ctx?: CitationContext | null): boolean {
   if (!url || isLowValueHost(url)) return false
+  // Discipline-scoped authorities (exam boards, regulators — the
+  // DISCIPLINE_AUTHORITIES rows) are citable ONLY when the article is
+  // actually about their discipline: NCSBN is an NCLEX source, not an F-1
+  // source; a housing authority is not an OPT source. Institutional status
+  // and raw relevance do NOT override this scoping. Link artefacts (the
+  // link's own anchor text and URL brand) are stripped first — a link that
+  // merely names itself ("[NCSBN](ncsbn.org)" on an OPT article) is not a
+  // body mention of the discipline.
+  for (const row of DISCIPLINE_AUTHORITIES) {
+    if (hostMatchesAuthority(url, row.url)) {
+      return row.match.test(citationBlob({ ...ctx, body: stripLinkArtefacts(ctx?.body, url) }))
+    }
+  }
   if (isCreamSource(url, ctx)) return true
   if (!ctx || (!ctx.topic && !ctx.keywords?.length && !ctx.body)) return false
   if (!isCitationRelevant(url, ctx)) return false
@@ -763,8 +776,9 @@ export function claimIsLicensingExam(ctx?: CitationContext | null, extra?: strin
 }
 
 /** Issuing-body and reputable-news hrefs must survive remediator + re-audit.
- *  Do not use isCreamSource here — that would freeze every .gov page in place,
- *  including HUD on an OPT article and a 404 USCIS path. */
+ *  Deliberately narrow — NOT isCitableSource: a merely-relevant link flagged
+ *  as a weak fit must stay swappable by the remediator (HUD rental assistance
+ *  on an OPT article gets replaced, not preserved). */
 export function shouldKeepExternalHref(url: string, ctx?: CitationContext | null): boolean {
   if (!url || isLowValueHost(url)) return false
   if (isReputablePublication(url)) return true

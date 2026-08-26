@@ -636,6 +636,38 @@ export function applyDeterministicRepairs(opts: {
     if (b !== urlBefore) applied.push('bare_urls_prefixed')
   }
 
+  // ── Broken JSON-LD removal (ahrefs_schema_invalid recurrence fix) ───
+  // The audit's hard error is "JSON-LD does not parse". Models regularly
+  // emit a malformed <script type="application/ld+json"> block, and the
+  // injectors below skip regeneration because the broken block still
+  // contains "@type": "Article" — so the same parse failure survived every
+  // fix sweep forever. Deterministic repair: DROP every ld+json block that
+  // fails JSON.parse; the injectors below then regenerate valid Article /
+  // FAQPage blocks from the front matter. A parse-valid block is never
+  // touched (its field warnings are model-fixable, not mechanical).
+  // NOTE: this runs BEFORE the meta-description step so script blocks never
+  // leak into the YAML description (a leaked <script> there would itself be
+  // matched by this removal on the next run, corrupting the front matter).
+  {
+    const before = b
+    b = b.replace(
+      /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi,
+      (block) => {
+        const m = block.match(/>([\s\S]*?)<\/script>/i)
+        const raw = (m?.[1] || '').trim()
+        if (!raw) return block
+        try {
+          JSON.parse(raw)
+          return block
+        } catch {
+          return ''
+        }
+      },
+    )
+    b = b.replace(/\n{3,}/g, '\n\n')
+    if (b !== before) applied.push('broken_jsonld_removed')
+  }
+
   // ── Sentence-opening rhythm smoothing ────────────────────────────────
   // The quality gate flags ≥5 prose sentences sharing the same 12-char
   // opening ("The UK dependent visa" ×5 — the 2026-08 live-run case) as

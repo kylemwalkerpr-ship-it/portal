@@ -7,7 +7,7 @@ import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, t
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
-import { auditLinksLive, auditLinksSync, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
+import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
 
@@ -617,14 +617,45 @@ ${warningList}
 2. Then fix EVERY blocker listed above - these are mandatory
 3. Dead/untrusted links: ONE pass. KEEP the href if it is the issuing body for the claim (exam board, licensing council). If it is a competitor/blog/news/shortener, REPLACE the href in place with the allowlist official URL for the SAME claim — do not unwrap and do not swap a board URL for a generic immigration homepage. Never invent a URL.
 4. CRITICAL — NEVER modify TLDs: Do NOT append sentence words to domain names. URLs like uscis.gov, canada.ca, homeaffairs.gov.au, gov.uk must appear EXACTLY as-is. NEVER produce uscis.Typically, canada.On, gov.uk.Meanwill, or any domain with a sentence word replacing or appended to the TLD. Keep the full URL intact including the TLD and path.
-5. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
+5. Vary sentence openings: no more than 2 consecutive sentences starting with the same word. If sentence_start_repetition is listed, find EVERY sentence starting with the repeated prefix and rewrite all but two of them with different openings (a concrete noun, a time reference, a condition, or a direct instruction).
+5a. JSON-LD / schema issues: if any <script type="application/ld+json"> block is listed as invalid, DELETE that entire block — a valid Article + FAQPage block is regenerated automatically. Never hand-edit JSON inside a script block.
+5b. Internal links: use ONLY URLs from the VERIFIED INTERNAL URLS list below. If an internal link is not in that list, either swap it for the closest listed URL that matches the anchor's topic, or remove the href and keep the anchor text. Never guess or invent an internal path.
 6. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language — ONLY in the sentences that contain these cliches
 7. Add specific data, examples, or concrete details where the article is vague — ONLY where a warning explicitly asks for it
 8. Keep all original headings, interlinks, and key facts intact
 9. Return the COMPLETE fixed article, nothing else`
 
+      // Verified internal URL list — the model cannot fix unverified internal
+      // links without knowing which URLs actually exist. Cached sitemap fetch.
+      let verifiedInternalBlock = ''
       try {
-        fixedContent = await callAiFix(sys, prompt, 16384, reviewModel)
+        const live = await fetchLiveEstateUrls()
+        const urls = Array.from(live).sort().slice(0, 80)
+        if (urls.length) verifiedInternalBlock = `\n## VERIFIED INTERNAL URLS (the ONLY internal links you may use)\n${urls.map((u) => `- ${u}`).join('\n')}\n`
+      } catch { /* sitemap unreachable — skip the block */ }
+
+      const fullPrompt = `${prompt}${verifiedInternalBlock}`
+
+      try {
+        const aiOut = await callAiFix(sys, fullPrompt, 16384, reviewModel)
+        // POST-AI NORMALIZATION — the model regularly re-introduces the exact
+        // gated issues it was told to fix (broken JSON-LD, repeated sentence
+        // openings, em-dashes, bare URLs). Re-running the deterministic
+        // repairs on the AI OUTPUT guarantees the returned draft is always
+        // at least as clean as the mechanical pass, breaking the
+        // fix→re-audit→new-issue→fix loop.
+        const postNorm = applyDeterministicRepairs({
+          content: aiOut,
+          primaryKeyword: primaryKeyword || 'guide',
+          region,
+          indexable,
+          contentType,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          competingUrls: competingUrls as any,
+          targetUrl,
+        })
+        fixedContent = postNorm.content
       } catch (fixErr) {
         const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
         return NextResponse.json({
@@ -761,7 +792,20 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
 
 ${enginePlan.promptBlock}`
         try {
-          fixedContent = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+          const aiOut = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+          // Post-AI normalization — same guarantee as fix_all: the model can
+          // never hand back a draft that re-introduces mechanically-fixable
+          // gated issues (broken JSON-LD, rhythm, dashes, bare URLs).
+          fixedContent = applyDeterministicRepairs({
+            content: aiOut,
+            primaryKeyword: primaryKeyword || 'guide',
+            region,
+            indexable,
+            contentType,
+            requiredShortKeywords,
+            requiredLongTailKeywords,
+            targetUrl,
+          }).content
         } catch (fixErr) {
           const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
           return NextResponse.json({

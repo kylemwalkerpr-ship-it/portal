@@ -530,12 +530,12 @@ export function auditLinksSync(
         topic: citationContext?.topic || inferArticleClaim(content),
         body: `${citationContext?.body || ''} ${content.slice(0, 2500)}`,
       }
-      if (!isCreamSource(url, localCtx)) {
+      if (!isCitableSource(url, localCtx)) {
         findings.push({
           code: 'untrusted_external_link',
           severity: 'warning',
           url,
-          message: `Untrusted external link (${url}) — not a government, official school, named authority, or the issuing body for this article’s claim.`,
+          message: `External link (${url}) is not a recognised authority for this claim — keep it only if it is live and directly supports the surrounding text; otherwise swap it for an on-topic authority (see the source allowlist) or remove it.`,
         })
         continue
       }
@@ -1065,7 +1065,7 @@ export async function remediateDeadLinksInContext(
 
   const safePool = pool.filter((c) => {
     if (isEstateUrl(c.url)) return true
-    return isCreamSource(c.url, ctx) && isCitationRelevant(c.url, ctx)
+    return isCitableSource(c.url, ctx)
   })
 
   for (const f of dead) {
@@ -1117,7 +1117,7 @@ export async function remediateDeadLinksInContext(
     }
     if (
       (f.code === 'irrelevant_external_link' || f.code === 'untrusted_external_link') &&
-      isCreamSource(f.url, ctx)
+      isCitableSource(f.url, ctx)
     ) {
       // Live official/relevant page — leave it rather than unwrap into a bare claim.
       if (!alt || alt.url === f.url) continue
@@ -1159,6 +1159,47 @@ export async function remediateDeadLinksInContext(
 }
 
 /**
+ * Deterministic repair for unverified_internal_link — the warning that
+ * recurred forever because no fix path existed (STRIP_CODES excludes it).
+ * For every estate-internal href NOT in the verified live set:
+ *   1. Same path under the canonical estate base (fixes typo hosts like
+ *      legal.yousafeconsult.com and legacy caseworks.com) → rewrite.
+ *   2. Same final path segment in the live set (moved page) → swap.
+ *   3. Otherwise unwrap the href, keeping the anchor text — a dead internal
+ *      link must never ship, and inventing a URL is forbidden.
+ */
+export function repairUnverifiedInternalLinks(
+  content: string,
+  liveUrls: Set<string>,
+): { content: string; rewritten: number; unwrapped: number } {
+  let next = content
+  let rewritten = 0
+  let unwrapped = 0
+  const bySegment = new Map<string, string>()
+  for (const u of liveUrls) {
+    const seg = u.replace(/\/$/, '').split('/').pop()?.toLowerCase()
+    if (seg && seg.length > 3 && !bySegment.has(seg)) bySegment.set(seg, u)
+  }
+  const markdown = new RegExp(MARKDOWN_LINK_RE.source, 'g')
+  next = next.replace(markdown, (full, text: string, href: string) => {
+    if (!isEstateUrl(href)) return full
+    const resolved = resolveEstateUrl(href)
+    if (liveUrls.has(resolved)) return full
+    // 2) same-slug live page
+    const seg = resolved.replace(/\/$/, '').split('/').pop()?.toLowerCase()
+    const moved = seg ? bySegment.get(seg) : null
+    if (moved) {
+      rewritten++
+      return `[${text}](${moved})`
+    }
+    // 3) unwrap — keep the words, drop the dead href
+    unwrapped++
+    return text
+  })
+  return { content: next, rewritten, unwrapped }
+}
+
+/**
  * Post-draft sanitizer: remediates every dead / invented / untrusted URL
  * from article context (replace with a live alternative, or remove and
  * introduce a new verifiable citation). Never invents URLs.
@@ -1195,8 +1236,19 @@ export async function sanitizeDraftLinksLive(
     keywords: opts?.keywords,
   })
   const cited = applyCitationPolicy(remediated.content, citationContext)
+  // Unverified internal links have no remediation path in
+  // remediateDeadLinksInContext (they are warnings, not STRIP_CODES) — repair
+  // them here against the verified live set so the warning cannot recur.
+  let finalContent = cited.content
+  try {
+    const live = await fetchLiveEstateUrls(opts?.knownLiveUrls)
+    const internal = repairUnverifiedInternalLinks(finalContent, live)
+    finalContent = internal.content
+  } catch {
+    // Sitemap unreachable — leave internal links untouched rather than unwrap blindly.
+  }
   return {
-    content: cited.content,
+    content: finalContent,
     stripped: remediated.stripped,
     injected: remediated.injected + (cited.applied.length ? 1 : 0),
     findings,
