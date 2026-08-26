@@ -2877,6 +2877,12 @@ function DraftWorkspace({
   }, [generationText])
 
   const elapsed = generationStartedAt ? fmtDur(Date.now() - generationStartedAt) : ''
+  // Word count recomputed only when the (throttled) stream text changes —
+  // not twice per render on every keystroke of the stream.
+  const generationWordCount = React.useMemo(
+    () => (generating ? countBodyWords(generationText) : 0),
+    [generating, generationText],
+  )
   const hasContent = draftContent.length > 0
   const latestEvent = generationEvents[generationEvents.length - 1]
   const isStreaming = generating
@@ -3022,7 +3028,7 @@ function DraftWorkspace({
           <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
             {(() => {
               const wc = generating
-                ? countBodyWords(generationText)
+                ? generationWordCount
                 : wordCount
               const minW = completedJob?.content_type === 'blog_post' ? 800 : completedJob?.content_type === 'regional_page' ? 1200 : 2200
               const maxW = completedJob?.content_type === 'blog_post' ? 1500 : completedJob?.content_type === 'regional_page' ? 2000 : 2800
@@ -3075,7 +3081,7 @@ function DraftWorkspace({
                 ✍️ AI WRITING LIVE
               </span>
               <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>
-                {generationText.length.toLocaleString()} chars · {countBodyWords(generationText).toLocaleString()} body words
+                {generationText.length.toLocaleString()} chars · {generationWordCount.toLocaleString()} body words
                 {streamView === 'document' ? ' · live page preview' : ' · raw markdown'}
               </span>
             </div>
@@ -4741,6 +4747,24 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generationChars, setGenerationChars] = React.useState(0)
   const [generationText, setGenerationText] = React.useState('')
   const [triedProviders, setTriedProviders] = React.useState<string[]>([])
+  // ── STREAM BUFFER (performance) ────────────────────────────────────────
+  // SSE delta chunks arrive dozens of times per second. Setting state per
+  // chunk re-rendered this 7.5k-line component AND re-parsed the entire
+  // MarkdownDocument preview per chunk — O(n²) total work that made the
+  // page sluggish and scrolling stutter during drafting. Chunks accumulate
+  // in a ref and flush to state at most every 400ms (~2.5 renders/sec).
+  const generationBufRef = React.useRef('')
+  const generationFlushTimerRef = React.useRef<number | null>(null)
+  const flushGenerationBuffer = React.useCallback(() => {
+    setGenerationText(generationBufRef.current)
+    setGenerationChars(generationBufRef.current.length)
+  }, [])
+  const stopGenerationFlush = React.useCallback(() => {
+    if (generationFlushTimerRef.current != null) {
+      window.clearInterval(generationFlushTimerRef.current)
+      generationFlushTimerRef.current = null
+    }
+  }, [])
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
   // Depth-rescue (PASS 2) stats — expansion rounds, stalls, time budget, set
@@ -5960,7 +5984,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setError(null)
     setGenerationStartedAt(Date.now())
     setGenerationChars(0)
+    generationBufRef.current = ''
     setGenerationText('')
+    stopGenerationFlush()
+    generationFlushTimerRef.current = window.setInterval(flushGenerationBuffer, 400)
     setRescueStats(null)
     setTriedProviders([])
     setGenerationEvents([{ id: `start-${Date.now()}`, ts: Date.now(), stage: 'connect', message: 'Connecting to the SEO generation pipeline…', level: 'info' }])
@@ -6058,10 +6085,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           record('refine', `Depth rescue complete · ${s.expandPasses} expand/append pass${s.expandPasses === 1 ? '' : 'es'}${s.stallCount > 0 ? ` · ${s.stallCount} stall${s.stallCount === 1 ? '' : 's'}` : ''} · ${fmtDur(s.timeMs)} used`, s.stallCount > 0 ? 'warn' : 'success')
         }
         else if (event.type === 'delta') {
-          const chunk = String(event.text || '')
-          streamChars += chunk.length
-          setGenerationChars(streamChars)
-          setGenerationText((prev) => prev + chunk)
+          // Buffer only — the 400ms flush interval owns the state updates.
+          generationBufRef.current += String(event.text || '')
+          streamChars = generationBufRef.current.length
         } else if (event.type === 'ship') record('ship', event.ship?.prUrl ? `Pull request opened · audit passed` : event.shipError ? `Ship paused: ${event.shipError}` : 'Draft audited; preparing delivery', event.shipError ? 'warn' : 'info')
         else if (event.type === 'final') {
           record('complete', event.result?.ship?.prUrl ? 'PR opened. The job is now ready for review.' : 'Generation complete. Job details are being refreshed.', 'success')
@@ -6096,7 +6122,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setError(message)
       setActionNotice(`Content generation failed — ${message}`)
       fetchJobs().catch(() => {})
-    } finally { setGenerating(false) }
+    } finally {
+      stopGenerationFlush()
+      flushGenerationBuffer()
+      setGenerating(false)
+    }
   }
 
   const runEngineAction = async (kind: 'plan' | 'llm' | 'ingest') => {

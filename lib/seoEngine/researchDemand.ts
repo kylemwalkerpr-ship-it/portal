@@ -3,16 +3,14 @@
  * last-good pull + already-shipped Approval/Track pages. Used so Keywords &
  * Brief consume live intel instead of inventing siblings of a canonical.
  */
-import { createSupabaseAdminClient } from '@/lib/supabase'
 import { checkCompetingPages, loadPlansDashboard, normalizePlannerTopic } from './planner'
 import { loadUbersuggestConfig } from './ubersuggest'
+import { loadShippedCoverage, type ShippedPage as ResearchShippedPage } from './shippedCoverage'
 
-export interface ResearchShippedPage {
-  url: string
-  title: string
-  primaryKeyword: string | null
-  status: string
-}
+// Shipped coverage lives in its own module so the planner can consume it
+// without a circular import. Re-exported for existing callers.
+export { loadShippedCoverage }
+export type { ResearchShippedPage }
 
 export interface ResearchDemandContext {
   engineTerms: string[]
@@ -24,49 +22,6 @@ export interface ResearchDemandContext {
 
 function stem(term: string): string {
   return normalizePlannerTopic(term)
-}
-
-export async function loadShippedCoverage(limit = 300): Promise<ResearchShippedPage[]> {
-  try {
-    const db = createSupabaseAdminClient()
-    // Pull from BOTH content_jobs (active) AND content_jobs_archive (cold storage)
-    // so merged jobs that were archived are still matched against.
-    const [activeResult, archiveResult] = await Promise.all([
-      db
-        .from('content_jobs')
-        .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-        .in('status', ['merged', 'pr_created', 'publishing'])
-        .order('updated_at', { ascending: false })
-        .limit(limit),
-      db
-        .from('content_jobs_archive')
-        .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-        .in('status', ['merged', 'pr_created', 'publishing', 'closed'])
-        .order('archived_at', { ascending: false })
-        .limit(limit),
-    ])
-    const rows = [
-      ...(activeResult.data || []),
-      ...(archiveResult.data || []),
-    ]
-    // Dedupe by title+keyword so a job in both tables isn't double-counted
-    const seen = new Set<string>()
-    const out: ResearchShippedPage[] = []
-    for (const row of rows) {
-      const url = String(row.canonical_url || row.content_path || row.pr_url || '').trim()
-      const title = String(row.title || row.topic || '')
-      const pk = row.primary_keyword ? String(row.primary_keyword) : (row.topic ? String(row.topic) : null)
-      const key = `${title.toLowerCase()}|${(pk || '').toLowerCase()}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      if (url || pk) {
-        out.push({ url, title, primaryKeyword: pk, status: String(row.status || '') })
-      }
-    }
-    return out
-  } catch {
-    return []
-  }
 }
 
 /** Region-specific keyword markers for filtering Ubersuggest terms. */

@@ -45,6 +45,7 @@ import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
+import { buildShippedStems, shippedOverlap } from './shippedCoverage'
 
 export type DemandSourceId = 'gsc' | 'ga4' | 'ubersuggest' | 'ads'
 
@@ -532,6 +533,19 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   req.onProgress?.('knowledge', 'Loading knowledge + predictive intelligence…')
   const knowledge = (req.knowledge as unknown as Array<Record<string, unknown>>) || (await pullLatestKnowledge())
   const intelligence = await pullLatestIntelligence()
+
+  // ── SHIPPED / PUBLISHED SUPPRESSION ────────────────────────────────────
+  // A topic that has already been taken all the way to a live article must
+  // NOT keep surfacing as a fresh opportunity. Exact stem matches drop off
+  // the plan entirely; partial overlaps (≥70% token match) sink to minimal
+  // priority so the plan fills with genuinely NEW demand first. Refreshes
+  // of live pages are the master engine's refresh-play job, not the
+  // planner's.
+  const { loadShippedCoverage } = await import('./shippedCoverage')
+  const shippedPages = await loadShippedCoverage().catch(() => [])
+  const shippedStems = buildShippedStems(shippedPages)
+  let droppedShipped = 0
+  let penalizedShipped = 0
   const bias = knowledgeBias(knowledge)
   const predictiveByTopic = new Map<string, PredictiveSignal>()
   for (const row of intelligence) {
@@ -584,7 +598,23 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     const predictiveAdjustment = predictive
       ? 0.9 + Math.min(0.1, Math.max(0, predictive.confidence * predictive.freshness) * 0.1)
       : 0.9
-    const rankedScore = opportunityScore(sig, pri, cellBias / 8) * predictiveAdjustment
+    // Published-topic suppression: exact shipped stem → drop; partial
+    // overlap → heavy penalty (sinks below all fresh demand).
+    const overlap = shippedOverlap(sig.term, shippedStems)
+    if (overlap) {
+      if (normalizePlannerTopic(sig.term) === overlap) {
+        droppedShipped++
+        continue
+      }
+      penalizedShipped++
+    }
+    const shippedPenalty = overlap ? 0.15 : 1
+    // Ubersuggest carries real market search volume — the strongest
+    // available proxy for demand we do not yet own. Give it a deliberate
+    // edge over equal GSC-only signals so the plan leads with market-sized
+    // opportunities rather than long-tail impressions we happen to rank for.
+    const uberBoost = sig.source === 'ubersuggest' ? 1.25 : 1
+    const rankedScore = opportunityScore(sig, pri, cellBias / 8) * predictiveAdjustment * shippedPenalty * uberBoost
     candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score, rankedScore })
   }
   const ownedSite = (sig: GscSignalInput) =>
@@ -599,6 +629,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const reserved = Math.min(preferred.length, cap)
   candidates.length = 0
   candidates.push(...preferred.slice(0, reserved), ...fallback.slice(0, Math.max(0, cap - reserved)))
+  if (droppedShipped || penalizedShipped) {
+    req.onProgress?.('plan', `Published-topic suppression: ${droppedShipped} exact match(es) dropped · ${penalizedShipped} partial overlap(s) de-prioritized`)
+  }
 
   const plans: ClusterPlan[] = []
   const usedTerms = new Set<string>()
