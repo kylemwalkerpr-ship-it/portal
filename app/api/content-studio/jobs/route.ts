@@ -1507,9 +1507,15 @@ export async function PATCH(request: NextRequest) {
       if (!content?.trim()) {
         return NextResponse.json({ error: 'Job has no content to ship' }, { status: 400 })
       }
-      // Respect content_type override from request body
+      // Respect overrides from request body
       if (body.content_type || body.contentType) {
         job.content_type = String(body.content_type || body.contentType)
+      }
+      if (body.primary_keyword || body.primaryKeyword) {
+        job.primary_keyword = String(body.primary_keyword || body.primaryKeyword)
+      }
+      if (body.region) {
+        job.region = String(body.region)
       }
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
