@@ -17,8 +17,8 @@ const MARKET_HOST = 'market.yousafeconsultancy.com'
  *
  * Host-aware: the same app serves market.yousafeconsultancy.com. Never
  * emit a non-standard `host:` field (Bing can misread it; Google ignores
- * it). Sitemap must match the request host so market does not advertise
- * portal as preferred host (2026-07-14 SEO audit T2).
+ * it). Sitemap must match the request host. Portal emits an empty
+ * sitemap; only market lists commercial URLs (2026-08-27 crawl).
  *
  * /api/ stays disallowed — JSON endpoints with no SEO value.
  */
@@ -40,8 +40,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       allow: '/',
       disallow: ['/api/', '/_next/static/'],
     },
-    // Sitemap body already emits market.* URLs; both hosts may list it.
-    // Prefer the request host so crawlers on market do not see portal Host.
     sitemap: `${base}/sitemap.xml`,
   }
 }
