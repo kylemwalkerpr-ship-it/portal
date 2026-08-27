@@ -33,6 +33,10 @@ type Candidate = FactoryOpportunity & {
   modelTotal?: number | null
 }
 
+function cruciblePick(o: WarOpportunity): number {
+  return o.crucibleScore ?? o.priorityScore ?? 0
+}
+
 /**
  * POST /api/seo-factory/auto-run
  *
@@ -184,8 +188,8 @@ export async function POST(request: NextRequest) {
       })
       // Autopilot picks are ordered by the crucible only (war room already sorted).
       room.queue = [...room.queue].sort(
-        (a, b) => ((b as WarOpportunity).crucibleScore ?? (b as WarOpportunity).priorityScore || 0)
-          - ((a as WarOpportunity).crucibleScore ?? (a as WarOpportunity).priorityScore || 0),
+        (a, b) => cruciblePick(b as WarOpportunity)
+          - cruciblePick(a as WarOpportunity),
       ) as WarOpportunity[]
       const crucibleAvg = room.queue.length
         ? Math.round(room.queue.reduce((s, o) => s + ((o as WarOpportunity).crucibleScore || (o as WarOpportunity).priorityScore || 0), 0) / room.queue.length)
@@ -308,8 +312,8 @@ export async function POST(request: NextRequest) {
             regionFilter: regionFilter || undefined,
           })
           room.queue = [...room.queue].sort(
-            (a, b) => ((b as WarOpportunity).crucibleScore ?? (b as WarOpportunity).priorityScore || 0)
-              - ((a as WarOpportunity).crucibleScore ?? (a as WarOpportunity).priorityScore || 0),
+            (a, b) => cruciblePick(b as WarOpportunity)
+              - cruciblePick(a as WarOpportunity),
           ) as WarOpportunity[]
           candidates = []
           for (const o of room.queue) {
