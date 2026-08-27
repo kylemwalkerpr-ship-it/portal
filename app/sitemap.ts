@@ -12,14 +12,31 @@ const PORTAL_HOST = 'portal.yousafeconsultancy.com'
 // index and cloning market's 40 URLs. Portal must emit an empty map.
 export const dynamic = 'force-dynamic'
 
+function firstHost(value: string | null): string {
+  if (!value) return ''
+  return value.split(',')[0].trim().split(':')[0].toLowerCase()
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Default-deny: empty map unless we positively identify the market host
+  // AND never see the portal host. OpenNext/CF often bakes `host` as the
+  // first custom domain (market) at prerender, which cloned 40 locs onto
+  // portal.yousafeconsultancy.com after PR 5. Middleware also intercepts.
   let host = PORTAL_HOST
   try {
     const h = await headers()
-    const raw = h.get('host')?.split(':')[0]?.toLowerCase()
-    if (raw === MARKET_HOST || raw === PORTAL_HOST) host = raw
+    const candidates = [
+      firstHost(h.get('x-forwarded-host')),
+      firstHost(h.get('x-original-host')),
+      firstHost(h.get('host')),
+    ].filter(Boolean)
+    if (candidates.some((c) => c === PORTAL_HOST || c.startsWith('portal.'))) {
+      return []
+    }
+    if (candidates.some((c) => c === MARKET_HOST)) host = MARKET_HOST
   } catch {
-    // Build-time fallback — portal is the default app host.
+    // Build-time fallback — portal is the default app host (empty sitemap).
+    return []
   }
 
   if (host !== MARKET_HOST) {
