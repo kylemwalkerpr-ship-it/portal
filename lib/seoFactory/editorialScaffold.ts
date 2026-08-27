@@ -729,6 +729,107 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // ── Duplicate TOC / list-item deduplication ──────────────────────────
+  // AI models repeat the Table of Contents entries 3-5× to pad word count.
+  // The TOC block has proper markdown links first, then 3+ copies of the
+  // same entries as plain text. Detect consecutive repeated list items and
+  // remove duplicates (keep first occurrence within each block).
+  {
+    const before = b
+    const lines = b.split('\n')
+    const dedupedLines: string[] = []
+    let removedLines = 0
+    // Track recent list items for dedup within a contiguous list block
+    let inListBlock = false
+    let seenInBlock = new Set<string>()
+    for (const line of lines) {
+      const isListItem = /^\s*[-*+]\s/.test(line) || /^\s*\d+[.)]\s/.test(line)
+      if (isListItem) {
+        if (!inListBlock) {
+          inListBlock = true
+          seenInBlock = new Set()
+        }
+        // Normalize for comparison: strip markdown links, bold, leading whitespace
+        const normalized = line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+          .replace(/\*\*|__/g, '')
+          .trim()
+          .toLowerCase()
+        if (normalized.length > 5 && seenInBlock.has(normalized)) {
+          removedLines++
+          continue // skip duplicate list item
+        }
+        if (normalized.length > 5) seenInBlock.add(normalized)
+      } else {
+        inListBlock = false
+        seenInBlock = new Set()
+      }
+      dedupedLines.push(line)
+    }
+    if (removedLines > 0) {
+      b = dedupedLines.join('\n').replace(/\n{3,}/g, '\n\n')
+      applied.push(`duplicate_toc_lines_removed (${removedLines})`)
+    }
+  }
+
+  // ── Duplicate JSON-LD block removal ─────────────────────────────────
+  // AI models emit multiple <script type="application/ld+json"> blocks.
+  // Keep only the FIRST parse-valid block; remove all later duplicates.
+  {
+    const before = b
+    const jsonLdBlocks: Array<{ start: number; end: number; valid: boolean }> = []
+    const ldRegex = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi
+    let m: RegExpExecArray | null
+    while ((m = ldRegex.exec(b)) !== null) {
+      const block = m[0]
+      const inner = (block.match(/>([\s\S]*?)<\/script>/i) || [])[1] || ''
+      let valid = false
+      try { JSON.parse(inner.trim()); valid = true } catch { /* invalid */ }
+      jsonLdBlocks.push({ start: m.index, end: m.index + block.length, valid })
+    }
+    if (jsonLdBlocks.length > 1) {
+      // Keep first valid block, or first block if none valid; remove rest
+      const keepIdx = jsonLdBlocks.findIndex((b) => b.valid)
+      const removeBlocks = jsonLdBlocks.filter((_, i) => i !== (keepIdx >= 0 ? keepIdx : 0))
+      // Remove in reverse order to preserve indices
+      for (let i = removeBlocks.length - 1; i >= 0; i--) {
+        const rb = removeBlocks[i]
+        b = b.slice(0, rb.start) + b.slice(rb.end)
+      }
+      b = b.replace(/\n{3,}/g, '\n\n')
+      if (b !== before) applied.push(`duplicate_jsonld_removed (${removeBlocks.length})`)
+    }
+  }
+
+  // ── Duplicate FAQ answer removal ────────────────────────────────────
+  // AI models sometimes repeat FAQ Q&A blocks. Deduplicate identical
+  // FAQ answers (### question blocks with the same answer text).
+  {
+    const before = b
+    const faqSection = b.match(/^(## FAQ\s*\n[\s\S]*?)(?=^## |$)/m)
+    if (faqSection) {
+      const faqBlock = faqSection[1]
+      const qaBlocks = faqBlock.split(/(?=^### )/m)
+      const seenAnswers = new Map<string, number>() // normalized answer → first index
+      const dedupedQA: string[] = []
+      let removedQA = 0
+      for (const qa of qaBlocks) {
+        const answerMatch = qa.match(/\n\n([\s\S]+)$/)
+        const answerKey = answerMatch ? answerMatch[1].trim().slice(0, 200).toLowerCase() : ''
+        if (answerKey.length > 20 && seenAnswers.has(answerKey)) {
+          removedQA++
+          continue
+        }
+        if (answerKey.length > 20) seenAnswers.set(answerKey, dedupedQA.length)
+        dedupedQA.push(qa)
+      }
+      if (removedQA > 0) {
+        const newFaq = dedupedQA.join('')
+        b = b.replace(faqSection[0], newFaq)
+        applied.push(`duplicate_faq_answers_removed (${removedQA})`)
+      }
+    }
+  }
+
   // ── Meta description: inject description: into YAML front matter ────
   // The audit checks fm.description || fm.metaDescription in the front matter
   // (120–170 chars). If missing or too short, inject one using the same
