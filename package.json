@@ -11,8 +11,8 @@
     "sync:seo-strategies": "node scripts/sync-seo-strategies.mjs",
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "prebuild": "node scripts/sync-seo-strategies.mjs",
-    "build": "next build --webpack && opennextjs-cloudflare build --skipNextBuild",
-    "pages:build": "opennextjs-cloudflare build",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' next build --webpack && NODE_OPTIONS='--max-old-space-size=4096' opennextjs-cloudflare build --skipNextBuild",
+    "pages:build": "NODE_OPTIONS='--max-old-space-size=4096' opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
