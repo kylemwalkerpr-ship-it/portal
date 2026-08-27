@@ -8,10 +8,82 @@ import {
   fetchStreamWithRetry,
   generateContentText,
   getNvidiaDeepseekProvider,
+  getNvidiaMinimaxProvider,
   getNvidiaNemotronProvider,
   listConfiguredContentProviders,
   resolveEffectiveModel,
 } from '@/lib/contentAiProvider'
+
+describe('content AI · NVIDIA MiniMax drafting', () => {
+  const originalKey = process.env.NVIDIA_API_KEY
+  const originalModel = process.env.NVIDIA_MINIMAX_MODEL
+  const originalTemperature = process.env.NVIDIA_TEMPERATURE
+
+  afterEach(() => {
+    if (originalKey == null) delete process.env.NVIDIA_API_KEY
+    else process.env.NVIDIA_API_KEY = originalKey
+    if (originalModel == null) delete process.env.NVIDIA_MINIMAX_MODEL
+    else process.env.NVIDIA_MINIMAX_MODEL = originalModel
+    if (originalTemperature == null) delete process.env.NVIDIA_TEMPERATURE
+    else process.env.NVIDIA_TEMPERATURE = originalTemperature
+    jest.restoreAllMocks()
+  })
+
+  it('exposes the exact MiniMax model on NVIDIA Integrate', () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_MINIMAX_MODEL
+    const provider = getNvidiaMinimaxProvider() as unknown as {
+      label: string
+      baseURL: string
+      model: string
+      maxTokensCap?: number
+    }
+    expect(provider).toMatchObject({
+      label: 'nvidia-minimax',
+      baseURL: 'https://integrate.api.nvidia.com/v1',
+      model: 'minimaxai/minimax-m3',
+      maxTokensCap: 16384,
+    })
+  })
+
+  it('routes the selected drafting pin through NVIDIA with the documented payload', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const originalFetch = global.fetch
+    let requestBody: Record<string, unknown> | null = null
+    global.fetch = jest.fn(async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'A completed MiniMax draft.', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const result = await generateContentText({
+        aiProvider: 'nvidia-minimax',
+        system: 'Write a concise article.',
+        prompt: 'Draft the article.',
+        maxTokens: 2048,
+        skipQualityContract: true,
+      })
+      expect(result).toMatchObject({
+        provider: 'nvidia-minimax',
+        model: 'minimaxai/minimax-m3',
+        text: 'A completed MiniMax draft.',
+      })
+      expect(requestBody).toMatchObject({
+        model: 'minimaxai/minimax-m3',
+        stream: false,
+        max_tokens: 2048,
+        temperature: 1,
+        top_p: 0.95,
+      })
+      expect(requestBody).not.toHaveProperty('max_completion_tokens')
+      expect(requestBody).not.toHaveProperty('reasoning_budget')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+})
 
 describe('content AI · NVIDIA Nemotron', () => {
   const originalKey = process.env.NVIDIA_API_KEY
@@ -47,12 +119,12 @@ describe('content AI · NVIDIA Nemotron', () => {
     ]))
   })
 
-  it('honors an admin model override without changing the provider ID', () => {
+  it('normalizes any Nemotron model override to NVIDIA exact lowercase catalog casing', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
-    process.env.NVIDIA_NEMOTRON_MODEL = 'nvidia/nemotron-custom-test'
+    process.env.NVIDIA_NEMOTRON_MODEL = 'NVIDIA/Nemotron-3-Ultra-550B-A55B'
     const provider = getNvidiaNemotronProvider() as unknown as { label: string; model: string }
     expect(provider.label).toBe('nvidia-nemotron')
-    expect(provider.model).toBe('nvidia/nemotron-custom-test')
+    expect(provider.model).toBe('nvidia/nemotron-3-ultra-550b-a55b')
   })
 })
 
@@ -163,7 +235,7 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
     // Simulate the stale deployed secret that caused the 410 Gone.
     process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/deepseek-v4-pro'
     const originalFetch = global.fetch
-    const bodies: Array<{ model?: string }> = []
+    const bodies: Array<{ model?: string; stream?: boolean }> = []
     global.fetch = jest.fn(async (_input, init) => {
       bodies.push(JSON.parse(String(init?.body || '{}')) as { model?: string })
       return new Response(
@@ -184,6 +256,7 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
       })
       expect(bodies.length).toBeGreaterThan(0)
       expect(bodies[0].model).toBe('deepseek-ai/deepseek-v4-flash-0731')
+      expect(bodies[0].stream).toBe(false)
       expect(bodies[0].model).not.toContain('v4-pro')
     } finally {
       global.fetch = originalFetch
@@ -223,15 +296,27 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     process.env.PARASAIL_API_KEY = 'psk-test-fallback'
     const originalFetch = global.fetch
-    global.fetch = jest.fn(async (input) => {
-      if (String(input).includes('integrate.api.nvidia.com')) {
+    global.fetch = jest.fn(async (input, init) => {
+      const url = String(input)
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
+      // Every NVIDIA lane shares the host credential. Fail only the pinned
+      // DeepSeek lane, then let the next NVIDIA lane prove the cascade.
+      if (url.includes('integrate.api.nvidia.com') && body.model !== 'nvidia/nemotron-3-ultra-550b-a55b') {
         return new Response(
           JSON.stringify({ detail: "Function id 'test' version 'null': Specified function in account 'test' is not found" }),
           { status: 404, headers: { 'content-type': 'application/json' } },
         )
       }
+      if (url.includes('integrate.api.nvidia.com')) {
+        const sse = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: 'Fixed via NVIDIA fallback.' } }] })}`,
+          'data: [DONE]',
+          '',
+        ].join('\n\n') + '\n'
+        return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }
       return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed via Parasail.', finish_reason: 'stop' } }] }),
+        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }) as typeof fetch
@@ -241,8 +326,8 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
         skipQualityContract: true, aiProvider: 'nvidia-deepseek',
         exclusive: true, cascadeOnCapacity: true,
       })
-      expect(res.provider).toBe('parasail-deepseek')
-      expect(res.text).toContain('Fixed via Parasail')
+      expect(res.provider).toBe('nvidia-nemotron')
+      expect(res.text).toContain('Fixed via NVIDIA fallback')
     } finally {
       global.fetch = originalFetch
     }

@@ -137,4 +137,14 @@ describe('MALFORMED_LINK — run-on URLs with embedded comma-space are permanent
     expect(links).toHaveLength(1)
     expect(links[0].url).toBe('https://immi.homeaffairs.Typically, gov.au/visas')
   })
+
+  it('removes prose inserted between a valid authority host and duplicated AU path', () => {
+    const { repairMalformedUrlSpan } = require('../lib/seoFactory/linkAudit')
+    expect(repairMalformedUrlSpan('https://immi.homeaffairs.gov.au/ applicants, au/visas/working-in-australia/english-language')).toBe(
+      'https://immi.homeaffairs.gov.au/au/visas/working-in-australia/english-language',
+    )
+    expect(repairMalformedUrlSpan('https://immi.homeaffairs.gov.au/ the ground, au/visas/working-in-australia/skill-occupation-list')).toBe(
+      'https://immi.homeaffairs.gov.au/au/visas/working-in-australia/skill-occupation-list',
+    )
+  })
 })

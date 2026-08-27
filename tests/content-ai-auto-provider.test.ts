@@ -53,7 +53,7 @@ describe('content AI · auto provider pin', () => {
     expect(prefer).toBe('openai')
   })
 
-  it("resolves 'auto' to Parasail even when a stale saved order leads with Baseten", () => {
+  it("resolves 'auto' to NVIDIA MiniMax even when a stale saved order leads with Baseten", () => {
     process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
       'baseten-deepseek',
       'nvidia-nemotron',
@@ -62,7 +62,7 @@ describe('content AI · auto provider pin', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     const { explicit, prefer } = resolveAiProviderPin('auto')
     expect(explicit).toBe('')
-    expect(prefer).toBe('parasail-deepseek')
+    expect(prefer).toBe('nvidia-minimax')
   })
 
   it("routes a raw DeepSeek V4 Flash model id to NVIDIA (never 'not configured')", () => {
@@ -130,13 +130,22 @@ describe('content AI · auto provider pin', () => {
     expect(model).toBe('gpt-5.6-luna')
   })
 
-  it("keeps the drafting default 'parasail-deepseek' on DeepSeek V4 Flash-0731 — never GPT", () => {
+  it("keeps the drafting default 'nvidia-minimax' on MiniMax M3 — never GPT", () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.PARASAIL_API_KEY = 'psk-test'
-    const { explicit, prefer, model } = resolveAiProviderPin('parasail-deepseek')
-    expect(explicit).toBe('parasail-deepseek')
-    expect(prefer).toBe('parasail-deepseek')
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('nvidia-minimax')
+    expect(explicit).toBe('nvidia-minimax')
+    expect(prefer).toBe('nvidia-minimax')
     expect(model || '').not.toMatch(/^gpt-/)
+  })
+
+  it("maps MiniMax model aliases to the NVIDIA MiniMax provider", () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    for (const raw of ['minimax', 'minimax-m3', 'minimaxai/minimax-m3']) {
+      const { explicit, prefer } = resolveAiProviderPin(raw)
+      expect(explicit).toBe('nvidia-minimax')
+      expect(prefer).toBe('nvidia-minimax')
+    }
   })
 
   it("maps the 'glm-fast' alias to baseten-glm-fast (drafting quick-select)", () => {

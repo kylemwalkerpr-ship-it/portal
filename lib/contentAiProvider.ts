@@ -2,16 +2,16 @@
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
  * DEFAULT CHAIN (hard order):
- *   1. GLM Fast / NVIDIA GLM / Baseten DeepSeek (draft primaries)
+ *   1. NVIDIA MiniMax M3 (draft primary)
  *   2. xAI Grok (SuperGrok OAuth or XAI_API_KEY) — default fallback
- *   3. NVIDIA DeepSeek → Cloudflare → Groq → Gemini → rest
+ *   3. NVIDIA GLM / DeepSeek → Baseten / Parasail → Cloudflare → rest
  *   4. getChatProvider() bridge
  *
  * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
  * CF auth: CLOUDFLARE_AI_TOKEN | CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
  *
  * Override with CONTENT_AI_PROVIDER / AI_PROVIDER only if you must pin a backend.
- * Default / auto / deepseek → NVIDIA DeepSeek primary, Cloudflare fallback.
+ * Default / auto / primary → NVIDIA MiniMax M3 for drafting, with configured fallbacks.
  */
 
 import { qualityPromptBlock } from './seoFactory/contentQualityGate'
@@ -35,6 +35,8 @@ function maxProviderCandidates(): number {
 }
 
 const NVIDIA_INTEGRATE_BASE_DEFAULT = 'https://integrate.api.nvidia.com/v1'
+const NVIDIA_MINIMAX_MODEL_DEFAULT = 'minimaxai/minimax-m3'
+const NVIDIA_MINIMAX_MAX_TOKENS = 16384
 const NVIDIA_DEEPSEEK_MODEL_DEFAULT = 'deepseek-ai/deepseek-v4-flash-0731'
 
 /**
@@ -76,7 +78,7 @@ export function canonicalizeNvidiaModelId(raw?: string | null): string {
  */
 const NVIDIA_GLM_MODEL_DEFAULT = 'z-ai/glm-5.2'
 const NVIDIA_GLM_MAX_TOKENS = 16384
-/** NVIDIA Nemotron 3 Ultra — reasoning budget from the supplied NIM example. */
+/** NVIDIA Nemotron 3 Ultra — retained as an explicit reasoning alternative. */
 const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
 const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
 const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
@@ -164,20 +166,12 @@ const DEEPSEEK_OFFICIAL_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 const ZAI_BASE_URL = 'https://api.z.ai/api/paas/v4'
 const ZAI_GLM_MODEL = 'glm-5.2'
 const ZAI_MAX_TOKENS = 16384
-/** Default separate reasoning budget for NVIDIA NIM models that ACCEPT the
- *  `reasoning_budget` body param. Verified live: only Nemotron accepts it —
- *  NVIDIA DeepSeek V4 Flash returns 400 "Unsupported parameter(s)" for it, so
- *  GLM/DeepSeek must never send it (they rely on the continuation retry).
- *  Set the matching NVIDIA_*_REASONING_BUDGET env to '0' to disable. */
+/**
+ * Kept as a compatibility note for older configuration rows. Nemotron now
+ * follows NVIDIA's current hosted API example and does not emit a separate
+ * `reasoning_budget` field.
+ */
 export const NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT = 8192
-
-/** Parse a reasoning-budget env: absent → default; explicit '0' → disabled (undefined). */
-function reasoningBudgetFromEnv(name: string): number | undefined {
-  const raw = (process.env[name] || '').trim()
-  if (!raw) return NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : undefined
-}
 // Raised from 16384: DeepSeek V4 Flash is a reasoning model that spends part of
 // the budget on reasoning_content. With thinking disabled (extraBody below) the
 // full budget goes to the article, but a 32768 cap leaves headroom for long
@@ -283,12 +277,16 @@ export function setVaultOverlay(overlay: Record<string, string> | null): void {
 export async function refreshAiVault(): Promise<string[]> {
   try {
     const vault = await import('@/lib/aiKeyVault')
-    const overlay = await vault.buildVaultEnvOverrides(true)
+    // Persist/migrate the drafting default before building the overlay. If the
+    // order is reversed, this request keeps the previous provider in memory
+    // and only the next request sees the new default.
     try {
-      await vault.ensureParasailDefaultSettings()
+      const ensureDefault = vault.ensureDraftDefaultSettings || vault.ensureParasailDefaultSettings
+      if (typeof ensureDefault === 'function') await ensureDefault()
     } catch {
       /* settings persist is best-effort */
     }
+    const overlay = await vault.buildVaultEnvOverrides(true)
     try {
       if (typeof vault.getAiSettings === 'function') {
         const { ensureSuperGrokAccessToken, XAI_DEFAULT_MODEL } = await import('@/lib/xaiSuperGrokOAuth')
@@ -399,12 +397,17 @@ export function canonicalizeNvidiaGlmModelId(raw?: string | null): string {
   return id === 'z-ai/glm-5.2' ? id : NVIDIA_GLM_MODEL_DEFAULT
 }
 
+/** NVIDIA's MiniMax lane always uses the exact hosted catalog id. */
+export function canonicalizeNvidiaMinimaxModelId(_raw?: string | null): string {
+  return NVIDIA_MINIMAX_MODEL_DEFAULT
+}
+
 /** NVIDIA's Nemotron lane may never inherit DeepSeek or GLM IDs. */
-export function canonicalizeNvidiaNemotronModelId(raw?: string | null): string {
-  const id = String(raw || '').trim().toLowerCase()
-  // Keep explicitly selected NVIDIA Nemotron deployments, but never accept a
-  // DeepSeek/GLM/Parasail model in this lane.
-  return /^nvidia\/nemotron(?:-|\/)/.test(id) ? id : NVIDIA_NEMOTRON_MODEL_DEFAULT
+export function canonicalizeNvidiaNemotronModelId(_raw?: string | null): string {
+  // NVIDIA's documented deployment is case-sensitive. Do not allow a vault or
+  // Worker override from another Nemotron deployment to change the request;
+  // always emit the exact lowercase catalog id from NVIDIA's example.
+  return NVIDIA_NEMOTRON_MODEL_DEFAULT
 }
 
 /** Workers AI daily-neuron exhaustion is permanent until the quota resets. */
@@ -590,9 +593,12 @@ async function openAiCompatFetch(
     headers['X-Title'] = 'YouSafe Content Studio'
   }
   const maxTokens = resolveMaxTokens(p, opts)
-  // GPT-5.x / o-series reasoning models require max_completion_tokens
-  // instead of max_tokens (OpenAI rejects max_tokens on these models).
-  const isReasoningModel = isReasoningModelId(p.model)
+  // NVIDIA's MiniMax and Nemotron lanes follow NVIDIA's OpenAI-compatible
+  // examples: max_tokens, temperature, top_p, and an explicit stream mode.
+  // OpenAI/o-series providers use max_completion_tokens instead.
+  const isNvidiaNemotron = p.label === 'nvidia-nemotron'
+  const isNvidiaMinimax = p.label === 'nvidia-minimax'
+  const isReasoningModel = isReasoningModelId(p.model) && !isNvidiaNemotron && !isNvidiaMinimax
   // Only apply opts.model override for OpenAI / custom providers (where the
   // model name is meaningful). Non-OpenAI providers (NVIDIA, Baseten, Groq,
   // Gemini, etc.) always use their own p.model so an OpenAI-specific model
@@ -600,7 +606,11 @@ async function openAiCompatFetch(
   const effectiveModel = opts.model && (p.label === 'openai' || p.label === 'custom') ? opts.model : p.model
   const body: Record<string, unknown> = {
     model: effectiveModel,
-    ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
+    // NVIDIA's non-streaming example is explicit about the transport mode;
+    // keep this path deterministic even when an OpenAI-compatible server has a
+    // different default.
+    stream: false,
+    ...(isReasoningModel || isNvidiaNemotron || isNvidiaMinimax ? { temperature: opts.temperature ?? (isNvidiaNemotron ? 1 : isNvidiaMinimax ? 1 : DEFAULT_TEMPERATURE) } : {}),
     ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
     messages: [
       { role: 'system', content: opts.system },
@@ -726,6 +736,7 @@ export function resolveEffectiveModel(p: OpenAiCompat, opts: ContentAiOptions): 
   }
   if (p.label === 'nvidia-deepseek') return canonicalizeNvidiaDeepseekModelId(requested)
   if (p.label === 'nvidia-glm') return canonicalizeNvidiaGlmModelId(requested)
+  if (p.label === 'nvidia-minimax') return canonicalizeNvidiaMinimaxModelId(requested)
   if (p.label === 'nvidia-nemotron') return canonicalizeNvidiaNemotronModelId(requested)
   if (p.label === 'baseten-deepseek' || p.label === 'baseten-deepseek-pro') {
     return canonicalizeDeepseekLaneModelId(requested, p.label === 'baseten-deepseek-pro' ? 'pro' : 'flash')
@@ -1068,6 +1079,24 @@ export function isNvidiaNemotronConfigured(): boolean {
   return Boolean(resolveNvidiaApiKey())
 }
 
+export function isNvidiaMinimaxConfigured(): boolean {
+  return Boolean(resolveNvidiaApiKey())
+}
+
+/** NVIDIA-hosted MiniMax M3 — OpenAI-compatible drafting model. */
+export function getNvidiaMinimaxProvider(): OpenAiCompat | null {
+  const apiKey = resolveNvidiaApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'nvidia-minimax',
+    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
+    apiKey,
+    model: canonicalizeNvidiaMinimaxModelId(env('NVIDIA_MINIMAX_MODEL') || NVIDIA_MINIMAX_MODEL_DEFAULT),
+    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
+    maxTokensCap: NVIDIA_MINIMAX_MAX_TOKENS,
+  }
+}
+
 /** NVIDIA-hosted Nemotron 3 Ultra — reasoning-enabled OpenAI-compatible NIM. */
 export function getNvidiaNemotronProvider(): OpenAiCompat | null {
   const apiKey = resolveNvidiaApiKey()
@@ -1079,15 +1108,10 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
     model: canonicalizeNvidiaNemotronModelId(env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT),
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
-    // Separate reasoning budget (mirrors the operator's own working NIM example:
-    // max_tokens 16384 + reasoning_budget 16384). VERIFIED live that Nemotron
-    // accepts it (DeepSeek/GLM do NOT — see getters above). Reasoning is capped
-    // at 8192 so the 16k completion budget is actually spent on the article.
-    reasoningBudget: reasoningBudgetFromEnv('NVIDIA_NEMOTRON_REASONING_BUDGET'),
-    // Thinking mode ON — reasoning improves factual/structured output. The SSE
-    // parser consumes ONLY delta.content, so reasoning chains never leak into
-    // the article (see parseOpenAiSse). Segmented writing keeps each run small
-    // enough that thinking + content fit the token budget.
+    // Thinking mode ON, matching NVIDIA's documented integration example. The
+    // request builder uses the Nemotron-specific `max_tokens` contract below;
+    // reasoning_content is discarded by the SSE parser so it never enters the
+    // article.
     extraBody: {
       chat_template_kwargs: { enable_thinking: true },
     },
@@ -1470,6 +1494,18 @@ async function nvidiaGlmComplete(opts: ContentAiOptions): Promise<ContentAiResul
   })
 }
 
+/** NVIDIA-hosted MiniMax M3 — the default long-form drafting transport. */
+async function nvidiaMinimaxComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getNvidiaMinimaxProvider()
+  if (!p) throw new Error('NVIDIA MiniMax not configured (NVIDIA_API_KEY / NVAPI_KEY)')
+  const maxTokens = Math.min(opts.maxTokens ?? NVIDIA_MINIMAX_MAX_TOKENS, NVIDIA_MINIMAX_MAX_TOKENS)
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens,
+    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '1') || 1),
+  })
+}
+
 async function nvidiaNemotronComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
   const p = getNvidiaNemotronProvider()
   if (!p) throw new Error('NVIDIA Nemotron not configured (NVIDIA_API_KEY / NVAPI_KEY)')
@@ -1725,6 +1761,8 @@ async function* openAiCompatibleStream(
     headers['X-Title'] = 'YouSafe Content Studio'
   }
   const maxTokens = resolveMaxTokens(p, opts)
+  const isNvidiaNemotron = p.label === 'nvidia-nemotron'
+  const isNvidiaMinimax = p.label === 'nvidia-minimax'
   // A real request-level model id wins over the provider default (see
   // resolveEffectiveModel) — otherwise a reviewer pinned to nvidia-deepseek
   // would stream the EOL'd env-secret model instead of the selected Flash id.
@@ -1733,7 +1771,7 @@ async function* openAiCompatibleStream(
   // (OpenAI rejects max_tokens on these models). DeepSeek V4 / GLM / Nemotron
   // are also reasoning-capable — they consume part of the budget on
   // reasoning_content, so they get the completion-token param for headroom.
-  const isReasoningModel = isReasoningModelId(model)
+  const isReasoningModel = isReasoningModelId(model) && !isNvidiaNemotron && !isNvidiaMinimax
 
   // Client disconnect / cancellation: abort the in-flight provider fetch so
   // the upstream body stops streaming into this process the moment the
@@ -1752,13 +1790,13 @@ async function* openAiCompatibleStream(
       body: JSON.stringify({
         model,
         stream: true,
-        ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
+        ...(isReasoningModel || isNvidiaNemotron || isNvidiaMinimax ? { temperature: opts.temperature ?? (isNvidiaNemotron ? 1 : isNvidiaMinimax ? 1 : DEFAULT_TEMPERATURE) } : {}),
         ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
         messages: [
           { role: 'system', content: opts.system },
           { role: 'user', content: userContent },
         ],
-        ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
+        ...(p.topP != null && (!isReasoningModel || isNvidiaNemotron || isNvidiaMinimax) ? { top_p: p.topP } : {}),
         // Separate reasoning budget keeps thinking ON without starving content.
         ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
         ...(p.extraBody || {}),
@@ -2112,6 +2150,12 @@ export function listConfiguredContentProviders(): Array<{
 }> {
   return [
     {
+      id: 'nvidia-minimax',
+      label: 'NVIDIA MiniMax M3 · minimaxai/minimax-m3',
+      configured: isNvidiaMinimaxConfigured(),
+      role: 'primary',
+    },
+    {
       id: 'nvidia-nemotron',
       label: 'NVIDIA Nemotron 3 Ultra · nvidia/nemotron-3-ultra-550b-a55b',
       configured: isNvidiaNemotronConfigured(),
@@ -2119,7 +2163,7 @@ export function listConfiguredContentProviders(): Array<{
     },
     {
       id: 'nvidia-glm',
-      label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 — preferred lead)',
+      label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 — fallback)',
       configured: isNvidiaGlmConfigured(),
       role: 'primary',
     },
@@ -2185,7 +2229,7 @@ export function listConfiguredContentProviders(): Array<{
     },
     {
       id: 'nvidia-deepseek',
-      label: 'DeepSeek V4 Flash via NVIDIA (primary)',
+      label: 'DeepSeek V4 Flash via NVIDIA (fallback)',
       configured: isNvidiaDeepseekConfigured(),
       role: 'primary',
     },
@@ -2208,12 +2252,12 @@ export function listConfiguredContentProviders(): Array<{
 /**
  * Resolve preferred provider label.
  *
- * HARD DEFAULT: DeepSeek V4 Flash via NVIDIA (`nvidia-deepseek`).
- * Cloudflare is always the first fallback in orderedCompleters — never the
- * default lead unless CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
+ * HARD DEFAULT: NVIDIA MiniMax M3 (`nvidia-minimax`) for drafting.
+ * Cloudflare remains a fallback and never becomes the default lead unless
+ * CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
  *
- * Empty / unknown / legacy "primary" values all map back to nvidia-deepseek
- * so a stale Worker secret cannot silently demote the writer.
+ * Empty / unknown / legacy "primary" values resolve through the configured
+ * order, whose default lead is nvidia-minimax.
  */
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
@@ -2245,6 +2289,14 @@ function preferProvider(): string {
     explicit === 'nvidia-nemotron'
   ) {
     return 'nvidia-nemotron'
+  }
+  if (
+    explicit === 'minimax' ||
+    explicit === 'minimax-m3' ||
+    explicit === 'minimaxai/minimax-m3' ||
+    explicit === 'nvidia-minimax'
+  ) {
+    return 'nvidia-minimax'
   }
   // Aliases → Baseten GLM 5.2 Fast (mirrors configuredProviderOrder)
   if (explicit === 'glm-fast' || explicit === 'baseten-glm' || explicit === 'baseten-glm-fast') {
@@ -2315,6 +2367,7 @@ function preferProvider(): string {
     'xai',
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
+    'nvidia-minimax', // NVIDIA MiniMax M3 drafting model
     'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
     'baseten', 'baseten-deepseek', 'baseten-deepseek-pro', 'baseten-glm-fast',
     'aihubmix', 'aihubmix-glm', 'aihubmix-glm-fast', // AIHubmix GLM 5.2 Fast
@@ -2337,6 +2390,7 @@ function isNvidiaPrefer(prefer: string): boolean {
     prefer === 'nvidia-deepseek' ||
     prefer === 'nvidia-glm' ||
     prefer === 'nvidia-nemotron' ||
+    prefer === 'nvidia-minimax' ||
     prefer === 'glm' ||
     prefer === 'z-ai' ||
     prefer === 'deepseek' ||
@@ -2353,8 +2407,8 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
-function promoteParasailAsLead(order: string[]): string[] {
-  const pin = 'parasail-deepseek'
+function promoteMinimaxAsLead(order: string[]): string[] {
+  const pin = 'nvidia-minimax'
   const at = order.indexOf(pin)
   if (at < 0) order.unshift(pin)
   else if (at > 0) {
@@ -2379,11 +2433,11 @@ function promoteGrokAsSecond(order: string[]): string[] {
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
   if (!raw) {
-    return promoteGrokAsSecond(promoteParasailAsLead([
-      'parasail-deepseek', 'baseten-deepseek', 'grok', 'nvidia-deepseek', 'deepseek-flash',
-      'parasail-glm', 'baseten-glm-fast', 'nvidia-glm',
+    return promoteGrokAsSecond(promoteMinimaxAsLead([
+      'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+      'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast',
       'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
-      'nvidia-nemotron', 'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro',
+      'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro',
       'deepseek-pro', 'zai-glm',
     ]))
   }
@@ -2409,7 +2463,7 @@ function configuredProviderOrder(): string[] {
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
   const known = new Set([
-    'nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
+    'nvidia-minimax', 'nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
     'baseten-glm-fast', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
     'parasail-glm', 'nvidia-deepseek', 'deepseek-flash', 'deepseek-pro', 'zai-glm',
     'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
@@ -2417,7 +2471,7 @@ function configuredProviderOrder(): string[] {
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
-  return promoteGrokAsSecond(promoteParasailAsLead(merged))
+  return promoteGrokAsSecond(promoteMinimaxAsLead(merged))
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
@@ -2434,7 +2488,7 @@ type CompleteFn = () => Promise<ContentAiResult>
 
 /**
  * Fixed factory order unless CONTENT_AI_PROVIDER pins a different lead:
- * DeepSeek (NVIDIA) → Cloudflare → Groq → Gemini → OpenRouter → rest.
+ * NVIDIA MiniMax → Grok → NVIDIA GLM/DeepSeek → configured fallbacks.
  */
 function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
   const items: Array<{ label: string; run: CompleteFn }> = []
@@ -2445,6 +2499,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushOpenAi = () => {
     const p = listOpenAiFallbackProviders().find((x) => x.label === 'openai')
     if (p) items.push({ label: 'openai', run: () => openAiCompatibleComplete(p, opts) })
+  }
+  const pushMinimax = () => {
+    if (isNvidiaMinimaxConfigured()) {
+      items.push({ label: 'nvidia-minimax', run: () => nvidiaMinimaxComplete(opts) })
+    }
   }
   const pushNemotron = () => {
     if (isNvidiaNemotronConfigured()) {
@@ -2617,6 +2676,12 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (prefer === 'nvidia-minimax') {
+    pushMinimax()
+    pushNemotron()
+    pushGlm()
+    pushNvidia()
+    pushCf()
   } else if (prefer === 'nvidia-nemotron') {
     if (isNvidiaNemotronConfigured()) items.push({ label: 'nvidia-nemotron', run: () => nvidiaNemotronComplete(opts) })
     pushGlm()
@@ -2637,18 +2702,21 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: Parasail DeepSeek V4 Flash-0731 lead ($25 credit host), Grok 4.6 second.
-    pushParasailDeepseek()
-    pushBaseten()
+    // DEFAULT: NVIDIA MiniMax M3 lead, Grok 4.6 second.
+    pushMinimax()
+    pushNemotron()
     pushGrok()
+    pushGlm()
     pushNvidia()
+    pushBaseten()
     pushDeepseekFlash()
     pushCf()
   }
 
   // Fill remaining cascade (deduped below).
-  // Nemotron, GLM, and Baseten are included so an explicit pin still gets the preferred
+  // MiniMax, Nemotron, GLM, and Baseten are included so an explicit pin still gets the preferred
   // long-form providers before we drop out to the broader fallback set.
+  pushMinimax()
   pushNemotron()
   pushBasetenGlmFast()
   pushGlm()
@@ -2836,6 +2904,9 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     'nvidia-glm-5.2': 'nvidia-glm',
     nemotron: 'nvidia-nemotron',
     'nemotron-3-ultra': 'nvidia-nemotron',
+    minimax: 'nvidia-minimax',
+    'minimax-m3': 'nvidia-minimax',
+    'minimaxai/minimax-m3': 'nvidia-minimax',
     baseten: 'baseten-deepseek',
     deepseek: 'nvidia-deepseek',
     'deepseek-v4': 'nvidia-deepseek',
@@ -2900,7 +2971,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
 
   if (!candidates.length) {
     throw new Error(
-      'No content AI provider configured. Set NVIDIA_API_KEY (DeepSeek primary) and/or Cloudflare AI token as fallback.',
+      'No content AI provider configured. Set NVIDIA_API_KEY (MiniMax drafting primary) and/or Cloudflare AI token as fallback.',
     )
   }
 
@@ -3138,6 +3209,19 @@ export async function* generateContentTextStream(
   }
 
   // NVIDIA DeepSeek remains available as a separate fallback/explicit pin.
+  const minimax = getNvidiaMinimaxProvider()
+  if (minimax) {
+    candidates.push({
+      label: 'nvidia-minimax',
+      stream: () => openAiCompatibleStream(minimax, {
+        ...opts,
+        maxTokens: Math.min(opts.maxTokens ?? NVIDIA_MINIMAX_MAX_TOKENS, NVIDIA_MINIMAX_MAX_TOKENS),
+        temperature: opts.temperature ?? 1,
+      }),
+      complete: () => nvidiaMinimaxComplete(opts),
+    })
+  }
+
   const nvidia = getNvidiaDeepseekProvider()
   if (nvidia) {
     candidates.push({
@@ -3152,9 +3236,8 @@ export async function* generateContentTextStream(
     })
   }
 
-  // NVIDIA Nemotron is appended after the established NVIDIA providers so
-  // auto-streaming remains backward-compatible; explicit pins and saved admin
-  // order are promoted below.
+  // NVIDIA Nemotron remains available as an explicit alternative; the drafting
+  // default is MiniMax and saved admin order promotes it below.
   const nemotron = getNvidiaNemotronProvider()
   if (nemotron) {
     candidates.push({
@@ -3233,6 +3316,28 @@ export async function* generateContentTextStream(
     const rank = new Map(adminOrder.map((id, index) => [id, index]))
     candidates.sort((a, b) => (rank.get(a.label) ?? 10000) - (rank.get(b.label) ?? 10000))
   }
+  // A persisted order can be older than the current provider set. In that
+  // case a small max-provider cap may fill with billing-blocked or unrelated
+  // providers before the configured long-form fallback that the operator
+  // selected for this drafting lane. Keep MiniMax first, but reserve the next
+  // slots for the same-model Baseten/Parasail lanes before broad fallbacks.
+  // This is deliberately limited to the MiniMax drafting lane; explicit
+  // reviewer/research pins retain their configured order and semantics.
+  if (prefer === 'nvidia-minimax') {
+    const fallbackRank = new Map([
+      ['nvidia-minimax', 0],
+      ['baseten-deepseek', 1],
+      ['parasail-deepseek', 2],
+      ['baseten-glm-fast', 3],
+      ['aihubmix-glm-fast', 4],
+      ['nvidia-glm', 5],
+      ['nvidia-deepseek', 6],
+      ['nvidia-nemotron', 7],
+      ['grok', 8],
+      ['cloudflare-ai', 9],
+    ])
+    candidates.sort((a, b) => (fallbackRank.get(a.label) ?? 10000) - (fallbackRank.get(b.label) ?? 10000))
+  }
   if (isCloudflareExclusive(prefer)) {
     const idx = candidates.findIndex((c) => c.label === 'cloudflare-ai')
     if (idx > 0) {
@@ -3256,7 +3361,7 @@ export async function* generateContentTextStream(
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  } else if (prefer === 'nvidia-glm' || prefer === 'nvidia-deepseek' || prefer === 'nvidia-nemotron') {
+  } else if (prefer === 'nvidia-glm' || prefer === 'nvidia-deepseek' || prefer === 'nvidia-nemotron' || prefer === 'nvidia-minimax') {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
@@ -3277,7 +3382,27 @@ export async function* generateContentTextStream(
     }
   }
 
-  // Dedupe preserving order (DeepSeek first, Cloudflare second by default)
+  // A saved admin order can be stale relative to the current provider set.
+  // Preserve MiniMax as the drafting lead, but keep a configured same-model
+  // fallback inside the provider cap. Otherwise a MiniMax 429 can be followed
+  // by billing-blocked Grok/Nemotron while Baseten Flash is never attempted.
+  if (prefer === 'nvidia-minimax') {
+    const fallbackRank = new Map([
+      ['nvidia-minimax', 0],
+      ['baseten-deepseek', 1],
+      ['parasail-deepseek', 2],
+      ['baseten-glm-fast', 3],
+      ['aihubmix-glm-fast', 4],
+      ['nvidia-glm', 5],
+      ['nvidia-deepseek', 6],
+      ['nvidia-nemotron', 7],
+      ['grok', 8],
+      ['cloudflare-ai', 9],
+    ])
+    candidates.sort((a, b) => (fallbackRank.get(a.label) ?? 10000) - (fallbackRank.get(b.label) ?? 10000))
+  }
+
+  // Dedupe preserving the MiniMax-first default order.
   const seen = new Set<string>()
   let unique = candidates
     .filter((c) => {

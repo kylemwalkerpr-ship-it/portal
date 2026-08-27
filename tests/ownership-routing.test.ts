@@ -188,6 +188,21 @@ describe('ownership resolver — explicit blog / regional destinations stay off 
     expect(p.canonicalUrl).toContain('legal.yousafeconsultancy.com')
   })
 
+  it('recomputes the repo and content type when a cluster overrides a regional blog to legal', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'study permit refusal reapply canada 2026',
+      contentType: 'blog_post',
+      region: 'CA',
+      ownerUrlHint: 'https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply-2026/',
+    })
+    expect(p.host).toBe('legal')
+    expect(p.repo).toBe('caseworks')
+    expect(p.filePath).toBe('app/ca/study-permit-refusal-reapply-2026/page.tsx')
+    expect(p.contentType).toBe('legal_guide')
+    expect(p.intentClass).toBe('procedural')
+    expect(p.canonicalUrl).toContain('legal.yousafeconsultancy.com')
+  })
+
   it('does not send visa blog_summary to caseworks', () => {
     const rules = standingRulesHost({
       primaryKeyword: 'uk graduate visa news update',

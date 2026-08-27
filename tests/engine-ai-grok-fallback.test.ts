@@ -7,6 +7,7 @@ jest.mock('@/lib/aiKeyVault', () => ({
   getAiSettings: jest.fn(async () => ({})),
   setAiSetting: jest.fn(async () => undefined),
   deleteAiSetting: jest.fn(async () => undefined),
+  ensureDraftDefaultSettings: jest.fn(async () => undefined),
   ensureParasailDefaultSettings: jest.fn(async () => undefined),
 }))
 

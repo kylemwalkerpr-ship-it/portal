@@ -30,6 +30,7 @@ export type BriefProviderChoice =
   | { aiProvider: 'parasail-glm'; model?: undefined }
   | { aiProvider: 'nvidia-glm'; model?: undefined }
   | { aiProvider: 'nvidia-deepseek'; model?: undefined }
+  | { aiProvider: 'nvidia-minimax'; model?: undefined }
   | { aiProvider: 'deepseek-flash'; model?: undefined }
   | { aiProvider: 'deepseek-pro'; model?: undefined }
   | { aiProvider: 'zai-glm'; model?: undefined }
@@ -93,6 +94,10 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   if (pin === 'nvidia-deepseek') {
     return { aiProvider: 'nvidia-deepseek' }
   }
+  // NVIDIA MiniMax M3 — the drafting default; also available for briefs.
+  if (pin === 'nvidia-minimax' || pin === 'minimax' || pin === 'minimax-m3' || pin === 'minimaxai/minimax-m3') {
+    return { aiProvider: 'nvidia-minimax' }
+  }
   if (pin === 'deepseek-pro' || pin === 'deepseek-official-pro') {
     return { aiProvider: 'deepseek-pro' }
   }
@@ -119,6 +124,96 @@ export interface BriefTextResult {
   ai: ContentAiResult
   /** True when the primary failed and Grok drafted the brief. */
   fallbackUsed: boolean
+}
+
+/**
+ * Escape literal JSON control characters that reasoning models sometimes put
+ * inside a quoted value (most commonly a raw newline in `reasoning`). This is
+ * deliberately a narrow repair: it does not remove fields, invent values, or
+ * tolerate malformed syntax outside strings. The brief contract still fails
+ * closed when the response is not a JSON object.
+ */
+function escapeJsonStringControls(source: string): string {
+  let out = ''
+  let inString = false
+  let escaped = false
+
+  for (const char of source) {
+    if (inString) {
+      if (escaped) {
+        out += char
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        out += char
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        out += char
+        inString = false
+        continue
+      }
+      const code = char.charCodeAt(0)
+      if (code < 0x20) {
+        if (char === '\n') out += '\\n'
+        else if (char === '\r') out += '\\r'
+        else if (char === '\t') out += '\\t'
+        else out += `\\u${code.toString(16).padStart(4, '0')}`
+      } else {
+        out += char
+      }
+    } else {
+      out += char
+      if (char === '"') inString = true
+    }
+  }
+  return out
+}
+
+/**
+ * Parse the model's JSON brief without allowing a single raw control
+ * character in a quoted value to take down the whole Research stage.
+ */
+export function parseBriefJson(raw: string): Record<string, unknown> {
+  let text = String(raw || '').trim()
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace > firstBrace) text = text.slice(firstBrace, lastBrace + 1)
+  text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
+
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Brief JSON must be an object')
+    }
+    return parsed as Record<string, unknown>
+  } catch (firstError) {
+    const repaired = escapeJsonStringControls(text)
+    if (repaired !== text) {
+      try {
+        const parsed = JSON.parse(repaired) as unknown
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>
+        }
+      } catch { /* fall through to aggressive */ }
+    }
+    // Aggressive fallback: strip ALL raw control characters globally,
+    // then re-extract the JSON. This catches cases where
+    // escapeJsonStringControls misses characters outside string contexts.
+    const aggressive = text.replace(/[\x00-\x08\x0e-\x1f]/g, '')
+    const aggressiveRepaired = escapeJsonStringControls(aggressive)
+    if (aggressiveRepaired !== text) {
+      try {
+        const parsed = JSON.parse(aggressiveRepaired) as unknown
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>
+        }
+      } catch { /* fall through */ }
+    }
+    throw firstError
+  }
 }
 
 /**
@@ -167,7 +262,9 @@ export async function generateBriefText(opts: {
                   ? 'GLM 5.2 (NVIDIA)'
                   : primaryPin === 'nvidia-deepseek'
                     ? 'DeepSeek V4 Flash (NVIDIA)'
-                    : primaryPin === 'deepseek-pro'
+                    : primaryPin === 'nvidia-minimax'
+                      ? 'MiniMax M3 (NVIDIA)'
+                      : primaryPin === 'deepseek-pro'
                       ? 'DeepSeek V4 Pro 0813 (DeepSeek.com)'
                       : primaryPin === 'deepseek-flash'
                         ? 'DeepSeek V4 Flash (DeepSeek.com)'

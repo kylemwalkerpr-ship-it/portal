@@ -2,7 +2,7 @@ jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
 }))
 
-import { generateContentTextStream, NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT } from '@/lib/contentAiProvider'
+import { generateContentTextStream } from '@/lib/contentAiProvider'
 
 describe('content AI · NVIDIA Nemotron streaming', () => {
   const originalKey = process.env.NVIDIA_API_KEY
@@ -15,6 +15,49 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
     if (originalModel == null) delete process.env.NVIDIA_NEMOTRON_MODEL
     else process.env.NVIDIA_NEMOTRON_MODEL = originalModel
     global.fetch = originalFetch
+  })
+
+  it('sends the MiniMax drafting payload through NVIDIA Integrate', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    let requestBody: Record<string, unknown> | null = null
+
+    global.fetch = jest.fn(async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'MiniMax draft text' } }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(chunks, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-minimax',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(requestBody).toMatchObject({
+      model: 'minimaxai/minimax-m3',
+      stream: true,
+      max_tokens: 1200,
+      temperature: 1,
+      top_p: 0.95,
+    })
+    expect(requestBody).not.toHaveProperty('max_completion_tokens')
+    expect(events).toContainEqual({ type: 'delta', text: 'MiniMax draft text' })
+    expect(events.at(-1)).toMatchObject({
+      type: 'done',
+      provider: 'nvidia-minimax',
+      model: 'minimaxai/minimax-m3',
+      text: 'MiniMax draft text',
+    })
   })
 
   it('sends the Nemotron reasoning payload and emits answer deltas only', async () => {
@@ -134,14 +177,70 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
       (bodies[1].messages as Array<{ role: string; content: string }>)?.find((m) => m.role === 'user')?.content || ''
     expect(secondUser).toContain('CONTINUE WRITING THE DRAFT')
     expect(secondUser).toContain('Part one of the draft.')
-    // The separate reasoning budget is sent so thinking stays ON without
-    // starving content (NVIDIA NIM `reasoning_budget` from the operator example).
-    expect(bodies[0].reasoning_budget).toBe(NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT)
+    // Nemotron uses NVIDIA's documented `max_tokens` contract; do not send
+    // the unsupported generic reasoning_budget field.
+    expect(bodies[0].max_tokens).toBe(1200)
+    expect(bodies[0]).not.toHaveProperty('reasoning_budget')
     // Both parts stream (with a clean paragraph break) and the done payload
     // carries the recovered full text.
     const texts = events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text)
     expect(texts).toEqual(['Part one of the draft.', '\n\n', 'Part two continues.'])
     expect(events.at(-1)).toMatchObject({ type: 'done', text: 'Part one of the draft.\n\nPart two continues.', provider: 'nvidia-nemotron', model: 'nvidia/nemotron-3-ultra-550b-a55b' })
+  })
+
+  it('falls through from a MiniMax 429 to configured Baseten Flash before the provider cap', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    process.env.BASETEN_API_KEY = 'test-baseten-key'
+    process.env.CONTENT_AI_STREAM_RETRY = '0'
+    const originalFetch = global.fetch
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input, init) => {
+      const url = String(input)
+      urls.push(url)
+      const request = JSON.parse(String(init?.body || '{}')) as { model?: string }
+      if (url.includes('integrate.api.nvidia.com') && request.model === 'minimaxai/minimax-m3') {
+        return new Response(JSON.stringify({ status: 429, title: 'Too Many Requests' }), {
+          status: 429,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.includes('inference.baseten.co')) {
+        const chunks = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: 'Baseten fallback draft.' } }] })}`,
+          'data: [DONE]',
+          '',
+        ].join('\n\n') + '\n'
+        return new Response(chunks, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        })
+      }
+      return new Response(JSON.stringify({ error: 'unexpected provider' }), { status: 500 })
+    }) as typeof fetch
+
+    try {
+      const events = []
+      for await (const event of generateContentTextStream({
+        system: 'Write an article.',
+        prompt: 'Draft the article.',
+        aiProvider: 'nvidia-minimax',
+        maxTokens: 1200,
+      })) {
+        events.push(event)
+      }
+      expect(urls[0]).toContain('integrate.api.nvidia.com')
+      expect(urls.some((url) => url.includes('inference.baseten.co'))).toBe(true)
+      expect(events.at(-1)).toMatchObject({
+        type: 'done',
+        provider: 'baseten-deepseek',
+        model: 'deepseek-ai/DeepSeek-V4-Flash-0731',
+        text: 'Baseten fallback draft.',
+      })
+    } finally {
+      global.fetch = originalFetch
+      delete process.env.BASETEN_API_KEY
+      delete process.env.CONTENT_AI_STREAM_RETRY
+    }
   })
 
   it('cancels the upstream body when the consumer abandons the stream (no memory leak)', async () => {

@@ -13,7 +13,8 @@ for (const line of envContent.split('\n')) {
 const clerkKey = process.env.CLERK_SECRET_KEY
 if (!clerkKey) { console.error('Missing CLERK_SECRET_KEY'); process.exit(1) }
 
-const res = await fetch('https://api.clerk.com/v1/users?email_address=admin%40yousafeconsultancy.com', {
+const email = process.argv[2] || 'admin@yousafeconsultancy.com'
+const res = await fetch(`https://api.clerk.com/v1/users?email_address=${encodeURIComponent(email)}`, {
   headers: { Authorization: `Bearer ${clerkKey}`, 'Content-Type': 'application/json' },
 })
 const users = await res.json()

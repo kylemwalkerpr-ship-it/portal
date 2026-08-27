@@ -386,15 +386,55 @@ export function needsUrlSpanRepair(url: string): boolean {
 export function repairMalformedUrlSpan(url: string): string {
   const u = url.trim()
   if (!needsUrlSpanRepair(u)) return url
-  let next = u
-  // `.Typically, gov.au` → `.gov.au` — the sentence word + comma-space
-  // between host labels collapses into a single host boundary.
-  next = next.replace(/\.[A-Za-z]{2,},\s*/g, '.')
-  // Any leftover spaces/commas inside the span (path run-ons).
-  next = next.replace(/[\s,]+/g, '')
-  // Sentence-word TLD cleanup on the now-whitespace-free URL.
-  next = cleanTldSentenceWords(next)
-  return next
+
+  const scheme = u.match(/^https?:\/\//i)?.[0] || ''
+  if (!scheme) return url
+  const rest = u.slice(scheme.length)
+  const suffixAt = rest.search(/[/?#]/)
+  const rawHost = suffixAt >= 0 ? rest.slice(0, suffixAt) : rest
+  const path = suffixAt >= 0 ? rest.slice(suffixAt) : ''
+  // Sentence words are only removed from the authority portion. Keeping the
+  // path separate avoids corrupting legitimate commas/spaces in prose after a
+  // malformed href. `gov. Typically, au` therefore becomes `gov.Typicallyau`
+  // before the domain-shape repair below.
+  // Preserve the original `.Typically, gov.au` form before compacting; the
+  // comma marks the sentence-word boundary and must not be joined to `gov`.
+  // A valid host can also be followed by a sentence fragment before a
+  // duplicated country path: `gov.au/ applicants, au/visas/...`. Remove the
+  // fragment only for the known authority host and retain `/au/...` as path.
+  const authorityPath = rest.match(/^((?:immi\.homeaffairs\.gov\.au|www\.homeaffairs\.gov\.au)\/)\s*[^/]*,\s*(au\/.*)$/i)
+  if (authorityPath) return `${scheme}${authorityPath[1]}${authorityPath[2]}`
+
+  let host = rawHost.replace(/\.[a-z]{2,},\s*(?=(?:gov|edu|org|com|net)\b)/gi, '.')
+  host = host.replace(/[\s,]+/g, '')
+
+  // Recover a real root TLD followed by a sentence word and (optionally) a
+  // country suffix: `homeaffairs.gov.Typicallyau` → `homeaffairs.gov.au`.
+  // The suffix list is intentionally limited to public ccTLDs; this cannot
+  // turn an arbitrary prose word into a new domain.
+  const split = host.match(
+    /^(.*\.(?:gov|edu|org|com|net|co\.uk))\.([a-z]+?)(au|uk|ca|nz|ie|sg|us|in|br|mx|jp|cn|de|fr|it|es|pl|pt|ru|tr|kr|my|ph|th|vn|id|pk|bd|lk|np|ke|ng|gh)?$/i,
+  )
+  if (split) {
+    const base = split[1]
+    const country = split[3]?.toLowerCase()
+    if (country) host = `${base}.${country}`
+    else if (/homeaffairs|immi|health|afp|naati|art\.gov/i.test(base) && /\.gov$/i.test(base)) host = `${base}.au`
+    else host = base
+  }
+
+  // Known issuing bodies whose sentence word replaced the complete TLD:
+  // `uscis.Typically` → `uscis.gov`, `homeaffairs.gov.Typically` →
+  // `homeaffairs.gov.au`. These mappings restore only established authority
+  // hosts already used by the source bank.
+  if (/uscis$/i.test(host)) host += '.gov'
+  if (/homeaffairs|immi/i.test(host) && /\.gov$/i.test(host)) host += '.au'
+
+  const repaired = `${scheme}${host}${path}`
+  // Do not call cleanTldSentenceWords here: that function delegates to this
+  // span repair for whitespace-bearing URLs. The compacted result is safe to
+  // pass through the non-recursive TLD cleanup only when no whitespace remains.
+  return /\s/.test(repaired) ? repaired : cleanTldSentenceWordsNonRecursive(repaired)
 }
 
 /**
@@ -404,7 +444,7 @@ export function repairMalformedUrlSpan(url: string): string {
  *
  * Returns the cleaned URL if a fix is possible, or the original if not.
  */
-export function cleanTldSentenceWords(url: string): string {
+function cleanTldSentenceWordsNonRecursive(url: string): string {
   const u = url.trim()
   if (!/^https?:\/\//i.test(u)) return url
   try {
@@ -470,6 +510,12 @@ export function cleanTldSentenceWords(url: string): string {
     }
   } catch { /* invalid URL — leave as-is */ }
   return url
+}
+
+export function cleanTldSentenceWords(url: string): string {
+  const u = url.trim()
+  if (needsUrlSpanRepair(u)) return repairMalformedUrlSpan(u)
+  return cleanTldSentenceWordsNonRecursive(u)
 }
 
 /**

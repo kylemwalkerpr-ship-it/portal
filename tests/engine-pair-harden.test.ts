@@ -13,7 +13,7 @@ import {
   resetEnginePairBreaker,
 } from '@/lib/seoEngine/enginePairBreaker'
 import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
-import { parasailFirstProviderOrder } from '@/lib/aiKeyVault'
+import { nemotronFirstProviderOrder, parasailFirstProviderOrder } from '@/lib/aiKeyVault'
 
 describe('harvestComplementExtras', () => {
   it('keeps statutes and URLs GLM found that Grok omitted', () => {
@@ -71,8 +71,15 @@ describe('pair tape on engine runs', () => {
   })
 })
 
-describe('parasailFirstProviderOrder', () => {
-  it('moves Parasail Flash to the front of a Baseten-era saved order', () => {
+describe('provider order defaults', () => {
+  it('moves NVIDIA Nemotron to the front of a saved drafting order', () => {
+    const next = nemotronFirstProviderOrder(JSON.stringify([
+      'baseten-deepseek', 'nvidia-nemotron', 'grok', 'parasail-deepseek',
+    ]))
+    expect(JSON.parse(next)[0]).toBe('nvidia-nemotron')
+  })
+
+  it('keeps the legacy Parasail order helper available for explicit callers', () => {
     const next = parasailFirstProviderOrder(JSON.stringify([
       'baseten-deepseek', 'nvidia-nemotron', 'grok', 'parasail-deepseek',
     ]))

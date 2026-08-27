@@ -56,6 +56,7 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
     'z-ai/glm-5.2',
   ],
   nvidia: [
+    'minimaxai/minimax-m3',
     'nvidia/nemotron-3-ultra-550b-a55b',
     'z-ai/glm-5.2',
     'deepseek-ai/deepseek-v4-flash-0731',
@@ -108,6 +109,20 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
 
 export const AI_PROVIDERS: AiProviderDef[] = [
   {
+    id: 'nvidia-minimax',
+    label: 'NVIDIA MiniMax M3 · minimaxai/minimax-m3',
+    keyEnv: 'NVIDIA_API_KEY',
+    baseUrlEnv: 'NVIDIA_BASE_URL',
+    modelEnv: 'NVIDIA_MINIMAX_MODEL',
+    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
+    defaultModel: 'minimaxai/minimax-m3',
+    role: 'primary',
+    hint: 'Drafting lead — validated on long-form SEO briefs via NVIDIA Integrate',
+    vaultGroup: 'nvidia',
+    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
+    modelOptions: HOST_MODEL_OPTIONS.nvidia,
+  },
+  {
     id: 'nvidia-nemotron',
     label: 'NVIDIA Nemotron 3 Ultra · nvidia/nemotron-3-ultra-550b-a55b',
     keyEnv: 'NVIDIA_API_KEY',
@@ -130,7 +145,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
     defaultModel: 'z-ai/glm-5.2',
     role: 'primary',
-    hint: 'Preferred lead — verified NVIDIA Integrate endpoint',
+    hint: 'Selectable NVIDIA fallback — verified NVIDIA Integrate endpoint',
     vaultGroup: 'nvidia',
     vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
     modelOptions: HOST_MODEL_OPTIONS.nvidia,
@@ -351,9 +366,9 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'parasail-deepseek', 'baseten-deepseek', 'grok', 'nvidia-deepseek', 'deepseek-flash',
-  'parasail-glm', 'baseten-glm-fast', 'nvidia-glm', 'openai',
-  'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron',
+  'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+  'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
+  'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
 ] as const
 
@@ -492,7 +507,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   // the admin's default model is applied to the selected primary provider.
   const defaultProvider = String(settings.default_provider || '').trim()
   out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider)
-    ? 'parasail-deepseek'
+    ? 'nvidia-minimax'
     : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
@@ -547,9 +562,53 @@ export async function deleteVaultKey(providerId: string): Promise<void> {
   vaultCache = null
 }
 
-const STALE_DEFAULT_PROVIDERS = new Set(['', 'baseten-deepseek', 'baseten-glm-fast', 'auto'])
+const STALE_DEFAULT_PROVIDERS = new Set([
+  '',
+  'auto',
+  'nvidia-nemotron',
+  'baseten-deepseek',
+  'baseten-glm-fast',
+  'parasail-deepseek',
+  'nvidia-deepseek',
+])
 
-/** Move Parasail Flash to the front of a saved provider-order JSON/CSV. */
+/** Move NVIDIA MiniMax to the front of a saved provider-order JSON/CSV. */
+export function minimaxFirstProviderOrder(raw?: string | null): string {
+  const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
+  if (!raw || !String(raw).trim()) return fallback
+  let values: unknown
+  try { values = JSON.parse(raw) } catch { values = String(raw).split(',') }
+  if (!Array.isArray(values)) return fallback
+  const order = values.map((v) => String(v).trim()).filter(Boolean)
+  const pin = 'nvidia-minimax'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return JSON.stringify(order)
+}
+
+/** Move NVIDIA Nemotron to the front of a saved provider-order JSON/CSV. */
+export function nemotronFirstProviderOrder(raw?: string | null): string {
+  const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
+  if (!raw || !String(raw).trim()) return fallback
+  let values: unknown
+  try { values = JSON.parse(raw) } catch { values = String(raw).split(',') }
+  if (!Array.isArray(values)) return fallback
+  const order = values.map((v) => String(v).trim()).filter(Boolean)
+  const pin = 'nvidia-nemotron'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return JSON.stringify(order)
+}
+
+/** Backward-compatible helper for callers that intentionally prioritize Parasail. */
 export function parasailFirstProviderOrder(raw?: string | null): string {
   const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
   if (!raw || !String(raw).trim()) return fallback
@@ -567,21 +626,28 @@ export function parasailFirstProviderOrder(raw?: string | null): string {
   return JSON.stringify(order)
 }
 
-let parasailDefaultsEnsured = false
+let draftDefaultsEnsured = false
 
-/** Persist Parasail as the studio default when the saved pin is missing or Baseten-era. */
-export async function ensureParasailDefaultSettings(updatedBy = 'engine-harden'): Promise<void> {
-  if (parasailDefaultsEnsured) return
-  parasailDefaultsEnsured = true
+/** Persist NVIDIA MiniMax as the drafting default when the saved pin is
+ * missing or belongs to the previous Nemotron/Parasail/Baseten default path. */
+export async function ensureDraftDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
+  if (draftDefaultsEnsured) return
+  draftDefaultsEnsured = true
   const settings = await getAiSettings(true)
   const current = String(settings.default_provider || '').trim()
   if (STALE_DEFAULT_PROVIDERS.has(current)) {
-    await setAiSetting('default_provider', 'parasail-deepseek', updatedBy)
+    await setAiSetting('default_provider', 'nvidia-minimax', updatedBy)
   }
-  const nextOrder = parasailFirstProviderOrder(settings.provider_order)
+  const nextOrder = minimaxFirstProviderOrder(settings.provider_order)
   if (nextOrder !== settings.provider_order) {
     await setAiSetting('provider_order', nextOrder, updatedBy)
   }
+}
+
+/** Legacy export retained for older test/module mocks; new runtime callers use
+ * ensureDraftDefaultSettings so the name reflects the actual default. */
+export async function ensureParasailDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
+  return ensureDraftDefaultSettings(updatedBy)
 }
 
 export async function setAiSetting(key: string, value: string, updatedBy = 'admin'): Promise<void> {

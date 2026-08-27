@@ -398,11 +398,11 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     const restStart = s.clean.toLowerCase().slice(prefixLower.length).trimStart()
     const restFirst = restStart.split(/[^a-z0-9]+/)[0] || ''
     if (!TAIL_OPENERS.has(restFirst)) {
-      // Noun-phrase tail ("US immigration services require…") — splicing a
-      // pronoun would become "It services require…". Change the 12-char
-      // opener with a rotating adverbial instead so the gate clears without
-      // mangling grammar. This is the 2026-08 education-verification case.
-      const ADVERBIAL = ['In practice,', 'On the ground,', 'Typically,', 'Meanwhile,', 'For applicants,']
+      // Corrupted repeated prefix ("Australia Im...", "US immi...") — the
+      // tail verb-check fails because the prefix captured by the 12-char
+      // gate includes part of the next word. Forcibly replace with a
+      // rotating adverbial so the gate clears.
+      const ADVERBIAL = ['In practice,', 'For applicants,', 'In this case,', 'As a result,', 'On review,', 'Typically,', 'Meanwhile,', 'On the ground,']
       let adverb = ''
       for (let r = 0; r < ADVERBIAL.length; r++) {
         const cand = ADVERBIAL[(n + r) % ADVERBIAL.length]
@@ -676,11 +676,19 @@ export function applyDeterministicRepairs(opts: {
   // leading noun phrase with a rotating pronoun (It / This / That / They…),
   // which is exactly what a human editor does, so the warning clears on the
   // same repair run without another AI call.
+  // Iterative rhythm smoothing: the AI fixer sometimes replaces one repeated
+  // opener but introduces a NEW repeated pattern elsewhere. Loop until no
+  // more repetitions fire (max 3 passes to prevent infinite loops).
   {
-    const rhythm = smoothSentenceRhythm(b)
-    if (rhythm.replaced > 0) {
+    let totalRhythm = 0
+    for (let pass = 0; pass < 3; pass++) {
+      const rhythm = smoothSentenceRhythm(b)
+      if (rhythm.replaced === 0) break
       b = rhythm.content
-      applied.push(`sentence_rhythm (${rhythm.replaced})`)
+      totalRhythm += rhythm.replaced
+    }
+    if (totalRhythm > 0) {
+      applied.push(`sentence_rhythm (${totalRhythm})`)
     }
   }
 

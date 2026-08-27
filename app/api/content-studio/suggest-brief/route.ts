@@ -1,7 +1,7 @@
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveBriefAiProvider, generateBriefText } from '@/lib/seoFactory/briefModel'
+import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
@@ -244,20 +244,13 @@ export async function POST(req: NextRequest) {
       prompt,
       maxTokens: 8000,
       temperature: 0.3,
-      timeoutMs: aiProvider === 'grok' ? 180_000 : 120_000,
+      timeoutMs: 300_000,
     })
 
-    // Strip markdown code fences + extract JSON object from model response.
-    // Some models wrap JSON in ```json ... ``` fences, others add preamble
-    // text before the JSON. Find the outermost { } block and parse only that.
-    let rawText = (ai.text || '').trim()
-    const firstBrace = rawText.indexOf('{')
-    const lastBrace = rawText.lastIndexOf('}')
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      rawText = rawText.slice(firstBrace, lastBrace + 1)
-    }
-    rawText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
-    const parsed = JSON.parse(rawText || '{}')
+    // Models occasionally return a raw newline/tab inside a quoted JSON
+    // value. parseBriefJson performs only the narrow safe recovery for those
+    // control characters and still fails closed on malformed JSON structure.
+    const parsed = parseBriefJson(ai.text || '')
 
     if (!parsed.suggestedH1 && !parsed.h2Outline) {
       return NextResponse.json({

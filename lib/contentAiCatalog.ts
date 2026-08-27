@@ -7,13 +7,16 @@
  * in agreement.
  *
  * Host dropdown order (when the host actually serves that model):
- *   Parasail (default — $25 credit) → Baseten → NVIDIA → DeepSeek.com → Zai
+ *   Parasail → Baseten → NVIDIA → DeepSeek.com → Zai
+ * Drafting's default pin is NVIDIA MiniMax M3; this order only controls the
+ * host choices shown for a selected model.
  */
 
 export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
 
 export type StudioModelId =
   | 'auto'
+  | 'minimax-m3'
   | 'deepseek-v4-flash'
   | 'deepseek-v4-pro'
   | 'glm-5.2'
@@ -60,14 +63,14 @@ export interface StudioModelOption {
 export const DEEPSEEK_V4_FLASH_ID = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 
-/** Draft lead: Flash-0731 via Parasail ($25 credit host — same model id on Baseten / NVIDIA / DeepSeek.com). */
-export const DEFAULT_DRAFT_PIN = 'parasail-deepseek'
+/** Draft lead: MiniMax M3 via NVIDIA Integrate. */
+export const DEFAULT_DRAFT_PIN = 'nvidia-minimax'
 /** Research / Generate Full Brief lead: Pro-0813 via Parasail. */
 export const DEFAULT_BRIEF_PIN = 'parasail-deepseek-pro'
-/** Reviewer / Editor lead: DeepSeek V4 Flash via NVIDIA. Pro-0813 is EOL on
- *  NVIDIA (410 Gone since 2026-08-07) and Flash is the checkpoint NVIDIA
- *  actually serves — so the default reviewer is the Flash pin. */
-export const DEFAULT_REVIEW_PIN = 'nvidia-deepseek'
+/** Reviewer / Editor lead: DeepSeek V4 Flash via Baseten, dated 0731.
+ *  Keep this separate from the NVIDIA MiniMax drafting default so reviewer
+ *  capacity and model selection remain independently controllable. */
+export const DEFAULT_REVIEW_PIN = 'baseten-deepseek'
 
 /** Host picker order — skip a host when that model is not served there. */
 export const STUDIO_HOST_ORDER: StudioHostId[] = [
@@ -89,6 +92,7 @@ export const STUDIO_HOST_ORDER: StudioHostId[] = [
 const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
   draft: [
     'auto',
+    'minimax-m3',
     'deepseek-v4-flash',
     'grok-4.6',
     'glm-5.2',
@@ -118,6 +122,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
   ],
   command: [
     'auto',
+    'minimax-m3',
     'deepseek-v4-pro',
     'glm-5.2',
     'deepseek-v4-flash',
@@ -201,6 +206,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-sol' }],
   },
   {
+    id: 'minimax-m3',
+    label: 'MiniMax M3 · NVIDIA',
+    apiModel: 'minimaxai/minimax-m3',
+    lanes: ['draft', 'command'],
+    hosts: [{ id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-minimax' }],
+  },
+  {
     id: 'nemotron-3-ultra',
     label: 'Nemotron 3 Ultra',
     lanes: ['draft', 'command'],
@@ -259,6 +271,9 @@ const PIN_ALIASES: Record<string, string> = {
   'baseten-glm': 'baseten-glm-fast',
   'aihubmix-glm': 'aihubmix-glm-fast',
   'glm-fast-aihubmix': 'aihubmix-glm-fast',
+  'minimax': 'nvidia-minimax',
+  'minimax-m3': 'nvidia-minimax',
+  'minimaxai/minimax-m3': 'nvidia-minimax',
   'glm-5.2-fast': 'baseten-glm-fast',
   nvidia: 'nvidia-deepseek',
   nim: 'nvidia-deepseek',

@@ -120,6 +120,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'gpt-5.6-terra': 'gpt-5.6-terra',
   grok: 'grok-4.6',
   deepseek: 'deepseek-chat',
+  'nvidia-minimax': 'minimaxai/minimax-m3',
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia-glm': 'z-ai/glm-5.2',
   'baseten-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
@@ -2846,7 +2847,7 @@ function DraftWorkspace({
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
-  const [reviewModel, setReviewModel] = React.useState('nvidia-deepseek')
+  const [reviewModel, setReviewModel] = React.useState('baseten-deepseek')
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
@@ -3600,11 +3601,11 @@ function JobDetail({
   const [activeAction, setActiveAction] = React.useState<string | null>(null)
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
-  // Draft lead is DeepSeek V4 Flash-0731; Grok is the second favorite.
+  // Draft lead is NVIDIA MiniMax M3; Grok remains the fallback favorite.
   const [aiProvider, setAiProvider] = React.useState<string>(() =>
-    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'parasail-deepseek',
+    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'nvidia-minimax',
   )
-  const [reviewModel, setReviewModel] = React.useState<string>('nvidia-deepseek')
+  const [reviewModel, setReviewModel] = React.useState<string>('baseten-deepseek')
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
@@ -4659,9 +4660,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [contentTypeTouched, setContentTypeTouched] = React.useState(false)
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
-  // Draft lead is DeepSeek V4 Flash-0731; Grok is second. Review default is Pro-0813.
-  const [aiProvider, setAiProvider] = React.useState('parasail-deepseek')
-  const [reviewModel, setReviewModel] = React.useState('nvidia-deepseek')
+  // Draft lead is NVIDIA MiniMax M3; review remains a separate lane.
+  const [aiProvider, setAiProvider] = React.useState('nvidia-minimax')
+  const [reviewModel, setReviewModel] = React.useState('baseten-deepseek')
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')

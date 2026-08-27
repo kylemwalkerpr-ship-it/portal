@@ -73,10 +73,8 @@ type Props = {
    *  canonicalUrl into the front matter — otherwise ahrefs_canonical_missing
    *  recurs on every re-audit because the repair never learns the URL. */
   targetUrl?: string
-  /** Review model override — defaults to gpt-5.6-sol (senior editor).
-   *  grok is SuperGrok 4.6; gpt-5.6-terra is the faster OpenAI alternative;
-   *  GLM 5.2 Fast is the efficient open-source editor. Sent to the reaudit
-   *  API as the reviewModel field. */
+  /** Review model override — defaults to Baseten DeepSeek V4 Flash 0731.
+   *  The selected provider/model is sent to the reaudit API as reviewModel. */
   reviewModel?: string
   onReviewModelChange?: (m: string) => void
   /** SERP competitor snippets (Discover/Research stage) — fed into the fix
@@ -876,7 +874,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
-            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'nvidia-deepseek')}
+            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'baseten-deepseek')}
             onPinChange={onReviewModelChange}
             disabled={allBusy}
             modelAriaLabel="Review AI model"

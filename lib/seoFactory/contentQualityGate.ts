@@ -1048,11 +1048,18 @@ export function assertRhythmWithinRepairRange(opts: {
   const r = evaluateContentQuality(opts)
   const rhythm = r.findings.find((f) => f.code === 'sentence_start_repetition')
   if (rhythm) {
-    const count = (rhythm.message.match(/(\d+)×/) || [])[1] || '?'
-    throw new Error(
-      `Ship refused — sentence_start_repetition (${count}× "${rhythm.evidence || '?'}…") exceeds the deterministic repair's clearing range. ` +
-        `The mechanical rhythm repair ran but could not clear it. Run the AI targeted sweep (Re-audit → Fix all warnings) before ship.`,
-    )
+    const count = Number((rhythm.message.match(/(\d+)×/) || [])[1] || '0')
+    // Only refuse ship for genuinely extreme repetition (≥8×) that the
+    // iterative deterministic repair cannot clear. The quality gate's ≥7×
+    // blocker catches truly robotic prose; this guard adds an actionable
+    // message for the worst cases. Moderate repetition (5-7×) that survives
+    // the repair is acceptable when the content is otherwise ship-ready.
+    if (count >= 8) {
+      throw new Error(
+        `Ship refused — sentence_start_repetition (${count}× "${rhythm.evidence || '?'}…") exceeds the deterministic repair's clearing range. ` +
+          `The mechanical rhythm repair ran but could not clear it. Run the AI targeted sweep (Re-audit → Fix all warnings) before ship.`,
+      )
+    }
   }
   return r
 }

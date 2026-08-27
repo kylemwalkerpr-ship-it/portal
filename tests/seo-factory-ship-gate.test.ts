@@ -109,6 +109,20 @@ describe('validateShipPlan', () => {
     }
   })
 
+  it('blocks a blog kind on a non-blog legal canonical path', () => {
+    const r = validateShipPlan({
+      plan: plan({
+        host: 'legal',
+        repo: 'caseworks',
+        filePath: 'app/ca/study-permit-refusal-reapply-2026/page.tsx',
+        canonicalUrl: 'https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply-2026/',
+      }),
+      contentType: 'blog_post',
+    })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e) => /Blog content on legal must use app\/blog/i.test(e))).toBe(true)
+  })
+
   it('blocks market gig on legal', () => {
     const r = validateShipPlan({
       plan: plan({

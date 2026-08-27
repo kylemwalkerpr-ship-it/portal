@@ -464,9 +464,9 @@ export default function AdminCommandCenter({
   const [shipMode, setShipMode] = React.useState<ShipMode>('merge')
   const [minAudit, setMinAudit] = React.useState(65)
   const [maxRefine, setMaxRefine] = React.useState(2)
-  // Drafting leads with GLM 5.2 Fast (open-source, fast, cheap); GPT remains
-  // selectable here for research/plan-heavy full runs.
-  const [aiProvider, setAiProvider] = React.useState('parasail-deepseek')
+  // Drafting leads with NVIDIA MiniMax M3; other providers remain
+  // selectable here as explicit alternatives or fallbacks.
+  const [aiProvider, setAiProvider] = React.useState('nvidia-minimax')
 
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])

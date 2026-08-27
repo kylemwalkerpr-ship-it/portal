@@ -114,14 +114,21 @@ export function reconcileContentTypeWithPath(opts: {
   ) {
     return { contentType: 'regional_page', intentClass: intentClass === 'procedural' ? 'hub' : intentClass }
   }
-  // Legal host: regional_* types are wrong — force guide
-  if (
-    opts.host === 'legal' &&
-    (contentType === 'regional_university' ||
+  // Legal host: only app/blog/* is a legal blog route. Any other caseworks
+  // app/* path is a legal canonical/guide path, so never let a caller or
+  // cluster hint carry blog/regional semantics into it. This is especially
+  // important when Discover supplies a legal ownerUrlHint while the UI still
+  // has the generic blog_post selection from the previous job.
+  if (opts.host === 'legal' && /^app\//.test(p) && !/^app\/blog\//.test(p)) {
+    if (
+      contentType === 'blog_post' ||
+      contentType === 'blog_summary' ||
+      contentType === 'regional_university' ||
       contentType === 'regional_from' ||
-      contentType === 'regional_page')
-  ) {
-    return { contentType: 'legal_guide', intentClass: 'procedural' }
+      contentType === 'regional_page'
+    ) {
+      return { contentType: 'legal_guide', intentClass: 'procedural' }
+    }
   }
   return { contentType, intentClass }
 }
@@ -939,7 +946,7 @@ export async function resolveOwner(opts: {
     host = 'legal'
   }
 
-  const repo = HOST_REPO[host]
+  let repo = HOST_REPO[host]
   // Indexability is the DEFAULT for any article that passes review and merges
   // to live. A registry action (noindex / supply_first) may flag a page for
   // manual handling, but it never silently forces a noindex directive — only
@@ -1029,6 +1036,10 @@ export async function resolveOwner(opts: {
       const mapped = filePathFromOwnerUrl(opts.ownerUrlHint, hintHost)
       if (mapped) {
         host = hintHost
+        // ownerUrlHint is the final canonical authority. Recompute the repo
+        // with the overridden host so a regional plan cannot retain
+        // `yousafe-consultancy` after being redirected to caseworks/legal.
+        repo = HOST_REPO[host]
         filePath = mapped.filePath
         urlPath = mapped.urlPath
         canonicalUrl = sanitizeOwnerUrl(opts.ownerUrlHint.replace(/\/+$/, '') + '/')
