@@ -5,6 +5,7 @@ import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
+import GoogleAnalytics from '@/components/GoogleAnalytics'
 // HreflangTags removed — portal is noindex sitewide and has no per-locale
 // URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
 // Canonical" flags. Re-introduce once we have real `/es/...` routes.
@@ -36,7 +37,6 @@ export const metadata = {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
     ],
     apple: [
       { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
@@ -87,6 +87,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             itself is async, but preconnect shaves ~100ms off the eventual
             fetch on cold visits. */}
         <link rel="preconnect" href="https://clerk.portal.yousafeconsultancy.com" crossOrigin="anonymous" />
+        {/* GA4 gtag — same G-FTKZCVNW4B property as consultancy hosts.
+            Shared root layout covers both market.* and portal.* custom domains. */}
+        <GoogleAnalytics />
         {/* hreflang removed pending per-locale URL routes */}
         {/* Stale-chunk handler. After a deploy, the build's hashed JS
             chunks rotate but users + crawlers may hold cached HTML
