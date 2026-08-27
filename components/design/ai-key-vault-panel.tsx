@@ -209,6 +209,28 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     }
   }
 
+  const purgeGroup = async (g: ProviderGroup) => {
+    if (!window.confirm(`Remove vault keys for ${g.label}? Worker env secrets (if any) will remain active.`)) return
+    setBusy(`purge-group-${g.name}`)
+    try {
+      const res = await fetch('/api/seo-factory/ai-keys?purgeGroup=true', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providers: g.members.map((m) => m.id) }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setNote({ ok: true, text: `${g.label}: removed ${j.purged ?? '?'} vault key(s)` })
+      await load()
+      onChanged?.()
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message : 'Group purge failed' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   React.useEffect(() => {
     void load()
   }, [load])
@@ -678,6 +700,11 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
               <button type="button" onClick={() => void testGroup(g)} disabled={busy === `test-${g.lead.id}`} style={btn(C.cyan2, true)}>
                 {busy === `test-${g.lead.id}` ? '…' : 'Test'}
               </button>
+              {g.configured && (
+                <button type="button" onClick={() => void purgeGroup(g)} disabled={busy === `purge-group-${g.name}`} style={btn(C.redSoft)}>
+                  {busy === `purge-group-${g.name}` ? '…' : 'Remove keys'}
+                </button>
+              )}
             </div>
           </div>
         )

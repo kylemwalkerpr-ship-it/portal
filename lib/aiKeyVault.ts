@@ -589,6 +589,19 @@ export async function purgeAllVaultKeys(): Promise<number> {
   return (data || []).length
 }
 
+/** Delete vault keys for a specific list of provider ids (host group purge). */
+export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number> {
+  if (!providerIds.length) return 0
+  const { data, error } = await sb()
+    .from('ai_provider_keys')
+    .delete()
+    .in('provider', providerIds)
+    .select('provider')
+  if (error) throw new Error(error.message)
+  vaultCache = null
+  return (data || []).length
+}
+
 const STALE_DEFAULT_PROVIDERS = new Set([
   '',
   'auto',

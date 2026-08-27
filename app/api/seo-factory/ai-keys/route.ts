@@ -7,6 +7,7 @@ import {
   upsertVaultKey,
   deleteVaultKey,
   purgeAllVaultKeys,
+  purgeGroupVaultKeys,
   maskKey,
 } from '@/lib/aiKeyVault'
 import { getSuperGrokStatus } from '@/lib/xaiSuperGrokOAuth'
@@ -81,6 +82,16 @@ export async function DELETE(request: NextRequest) {
     if (request.nextUrl.searchParams.get('purge') === 'true') {
       const count = await purgeAllVaultKeys()
       return NextResponse.json({ ok: true, purged: count })
+    }
+    // ?purgeGroup=true with body { providers: string[] } → delete keys for a host group
+    if (request.nextUrl.searchParams.get('purgeGroup') === 'true') {
+      const body = await request.json().catch(() => ({}))
+      const ids = Array.isArray(body.providers) ? body.providers.map((v: unknown) => String(v).trim()).filter(Boolean) : []
+      if (!ids.length) {
+        return NextResponse.json({ error: 'providers array required' }, { status: 400 })
+      }
+      const count = await purgeGroupVaultKeys(ids)
+      return NextResponse.json({ ok: true, purged: count, providers: ids })
     }
     const provider = request.nextUrl.searchParams.get('provider')
     if (!provider) {
