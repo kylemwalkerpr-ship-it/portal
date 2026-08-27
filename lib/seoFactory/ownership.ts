@@ -805,6 +805,30 @@ export async function resolveOwner(opts: {
   const blockers: string[] = []
   const keyword = opts.primaryKeyword || ''
 
+  // ── Explicit blog_post always ships to apex (the yousafe-consultancy /blog/ tree).
+  //    Registry matches must never redirect a studio blog_post to a regional or
+  //    legal host — the standing rules are the single source of truth for blogs.
+  if (opts.contentType === 'blog_post' && isExplicitDestinationType(normalizeStudioContentType(opts.contentType || ''))) {
+    const slug = opts.slug || slugify(keyword || 'blog')
+    const fb = pathForHostFallback('apex', opts.region, slug, 'blog_post')
+    return {
+      matched: null,
+      matchScore: 0,
+      host: 'apex',
+      repo: HOST_REPO['apex'],
+      filePath: fb.filePath,
+      canonicalUrl: sanitizeOwnerUrl(`${HOST_PUBLIC['apex']}${fb.urlPath}`),
+      indexable: opts.indexable !== false,
+      action: 'build',
+      intentClass: 'news_summary',
+      contentType: 'blog_post',
+      warnings: ['Explicit blog_post → apex (standing rules override registry match)'],
+      blockers: [],
+      ymy: false,
+      routingSource: 'standing_rules',
+    }
+  }
+
   // ── Strike-seed routing (Phase C): the five locked GSC pages always EXPAND
   //    their existing owner URL — never a sibling, never standing rules. ──
   const seed = matchStrikeSeed(keyword)
