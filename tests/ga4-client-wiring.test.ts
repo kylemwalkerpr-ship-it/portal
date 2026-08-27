@@ -71,7 +71,9 @@ describe('GA4 client wiring helpers', () => {
 
   it('forwards page_view and conversion helpers to window.gtag when present', () => {
     const gtag = jest.fn()
-    const root = globalThis as typeof globalThis & { window?: { gtag?: typeof gtag } }
+    // Assigning a stub onto the real Window type errors; cast through unknown
+    // so the stub and its finally-block restore are shaped as our stub object.
+    const root = globalThis as unknown as { window?: { gtag?: typeof gtag } }
     const prev = root.window
     root.window = { gtag }
     try {
