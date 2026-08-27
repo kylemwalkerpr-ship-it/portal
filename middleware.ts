@@ -78,6 +78,7 @@ const isPublicRoute = createRouteMatcher([
   // Instant-download file shop (Payhip catalog) on the market host.
   '/shop',
   '/shop(.*)',
+  '/sitemap.xml',
 ])
 
 // Origins we permit for cross-origin API calls. The market subdomain
@@ -241,7 +242,25 @@ export default clerkMiddleware(
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
 
-    // ── Strip tracking params (301) ──────────────────────────────────────
+    // Portal sitemap must stay empty. OpenNext prerenders app/sitemap.ts into
+    // .open-next/assets/sitemap.xml; the matcher used to skip dotted paths so
+    // both custom domains served the baked market map (40 locs after PR 5).
+    // Intercept here using the request host. Market keeps the generated map.
+    if (pathname === '/sitemap.xml' || pathname === '/sitemap.xml/') {
+      if (hostname !== MARKET_HOST) {
+        const empty =
+          '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n'
+        return new NextResponse(empty, {
+          status: 200,
+          headers: {
+            'content-type': 'application/xml; charset=utf-8',
+            'cache-control': 'private, no-store',
+          },
+        })
+      }
+    }
+
+    // ── Strip tracking params (301) ─────────────────────────────────────
     // Caseworks cluster CTAs append utm_* to market category URLs. Google
     // indexes those variants as distinct "Excluded by noindex" rows (100+
     // of the GSC noindex count). Always consolidate to the clean canonical.
@@ -256,7 +275,7 @@ export default clerkMiddleware(
       }
     }
 
-    // ── CORS preflight ───────────────────────────────────────────────────
+    // ── CORS preflight ─────────────────────────────────────────
     // OPTIONS from an allowed cross-origin gets a 204 with the right
     // Access-Control-* headers. Covers:
     //   • /api/*           — JSON endpoints (most common case)
@@ -285,7 +304,7 @@ export default clerkMiddleware(
       }
     }
 
-    // ── Hostname-based routing ───────────────────────────────────────────
+    // ── Hostname-based routing ───────────────────────────────────
     // Market domain: rewrite /xyz → /marketplace/xyz (except API, static, and
     // already-prefixed paths). Portal domain: redirect /marketplace/* to market.
     if (hostname === MARKET_HOST) {
@@ -409,5 +428,10 @@ export const config = {
   // Running clerkMiddleware (cookie parsing + session resolution) on every
   // translation batch was pure CPU burn on the hottest shared Worker —
   // a direct CF 1102 contributor.
-  matcher: ['/((?!_next|api/translate|api/webhooks|.*\\..*).*)'],
+  // /sitemap.xml is listed explicitly: the dotted-path exclusion otherwise
+  // lets OpenNext serve a prerendered market sitemap on portal (40 locs).
+  matcher: [
+    '/((?!_next|api/translate|api/webhooks|.*\\..*).*)',
+    '/sitemap.xml',
+  ],
 }
