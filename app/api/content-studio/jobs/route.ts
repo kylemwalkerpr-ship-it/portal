@@ -1068,6 +1068,11 @@ export async function PATCH(request: NextRequest) {
       if (rawContent == null || !String(rawContent).trim()) {
         return NextResponse.json({ error: 'content required' }, { status: 400 })
       }
+      // Respect content_type override from request body so callers can
+      // switch a job from article → blog_post in one save call.
+      if (body.content_type || body.contentType) {
+        job.content_type = String(body.content_type || body.contentType)
+      }
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
@@ -1100,6 +1105,7 @@ export async function PATCH(request: NextRequest) {
         .update({
           content: String(content),
           title: title || job.title,
+          content_type: job.content_type,
           word_count: words,
           seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
           audit_json: audit
@@ -1500,6 +1506,10 @@ export async function PATCH(request: NextRequest) {
       let content = body.content != null ? String(body.content) : job.content
       if (!content?.trim()) {
         return NextResponse.json({ error: 'Job has no content to ship' }, { status: 400 })
+      }
+      // Respect content_type override from request body
+      if (body.content_type || body.contentType) {
+        job.content_type = String(body.content_type || body.contentType)
       }
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
