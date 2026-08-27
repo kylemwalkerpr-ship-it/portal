@@ -182,14 +182,19 @@ export async function POST(request: NextRequest) {
         minImpressions: minImpressions || 2,
         regionFilter: regionFilter || undefined,
       })
-      // Autopilot picks are ordered by ranking-model total (fallback: priority score).
-      const enriched = enrichQueueWithRanking(room.queue)
-      room.queue = sortByModelTotal(enriched.queue, (o) => (o as WarOpportunity).priorityScore || 0) as WarOpportunity[]
+      // Autopilot picks are ordered by the crucible only (war room already sorted).
+      room.queue = [...room.queue].sort(
+        (a, b) => ((b as WarOpportunity).crucibleScore ?? (b as WarOpportunity).priorityScore || 0)
+          - ((a as WarOpportunity).crucibleScore ?? (a as WarOpportunity).priorityScore || 0),
+      ) as WarOpportunity[]
+      const crucibleAvg = room.queue.length
+        ? Math.round(room.queue.reduce((s, o) => s + ((o as WarOpportunity).crucibleScore || (o as WarOpportunity).priorityScore || 0), 0) / room.queue.length)
+        : 0
       planMeta = {
         mode: 'war-room',
         summary: room.summary,
         source: room.source,
-        kpis: { ...room.kpis, modelAvg: enriched.modelAvg },
+        kpis: { ...room.kpis, modelAvg: crucibleAvg, crucibleAvg },
         buckets: Object.fromEntries(
           Object.entries(room.buckets).map(([k, v]) => [k, (v as WarOpportunity[]).length]),
         ),
@@ -302,8 +307,10 @@ export async function POST(request: NextRequest) {
             minImpressions: minImpressions || 2,
             regionFilter: regionFilter || undefined,
           })
-          const enrichedRelaxed = enrichQueueWithRanking(room.queue)
-          room.queue = sortByModelTotal(enrichedRelaxed.queue, (o) => (o as WarOpportunity).priorityScore || 0) as WarOpportunity[]
+          room.queue = [...room.queue].sort(
+            (a, b) => ((b as WarOpportunity).crucibleScore ?? (b as WarOpportunity).priorityScore || 0)
+              - ((a as WarOpportunity).crucibleScore ?? (a as WarOpportunity).priorityScore || 0),
+          ) as WarOpportunity[]
           candidates = []
           for (const o of room.queue) {
             if (candidates.length >= limit) break

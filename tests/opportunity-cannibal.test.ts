@@ -51,3 +51,62 @@ describe('opportunity engine — cannibal classification', () => {
     ])
   })
 })
+
+describe('opportunity engine — monetary ranking', () => {
+  it('ranks transactional hire queries above high-traffic informational guides', () => {
+    const result = scoreOpportunities({
+      queries: [
+        { term: 'what is an f-1 visa', impressions: 9000, clicks: 200, ctr: 0.022, position: 8 },
+        { term: 'hire immigration lawyer', impressions: 400, clicks: 30, ctr: 0.075, position: 11 },
+      ],
+      limit: 10,
+    })
+    expect(result.opportunities[0].topic).toBe('hire immigration lawyer')
+    expect(result.opportunities[0].profitability).toBe('high')
+    expect(result.opportunities[0].contentType).toBe('marketplace_gig')
+    expect(result.opportunities[0].signals.join(' ')).toMatch(/purchase funnel/i)
+  })
+
+  it('GA4 revenue outranks a high-traffic zero-revenue guide', () => {
+    const result = scoreOpportunities({
+      queries: [
+        { term: 'what is an f-1 visa', impressions: 9000, clicks: 200, ctr: 0.022, position: 8, revenue: 0 },
+        { term: 'uk graduate visa', impressions: 300, clicks: 12, ctr: 0.04, position: 16, revenue: 2400, purchases: 4 },
+      ],
+      limit: 10,
+    })
+    expect(result.opportunities[0].topic).toBe('uk graduate visa')
+    expect(result.opportunities[0].profitability).toBe('high')
+    expect(result.opportunities[0].revenue).toBe(2400)
+    expect(result.opportunities[0].signals.join(' ')).toMatch(/GA4 revenue/i)
+  })
+})
+
+describe('opportunity engine — crucible feeder fields', () => {
+  it('preserves volume, KD, and backlink counts onto scored opportunities', () => {
+    const result = scoreOpportunities({
+      queries: [
+        {
+          term: 'uk graduate visa',
+          impressions: 800,
+          clicks: 20,
+          ctr: 0.025,
+          position: 14,
+          volume: 5400,
+          keywordDifficulty: 22,
+          backlinkTargetsAvailable: 9,
+          referringDomains: 4,
+          competitorReferringDomains: 18,
+        },
+      ],
+      limit: 5,
+    })
+    expect(result.opportunities[0].topic).toBe('uk graduate visa')
+    expect(result.opportunities[0].volume).toBe(5400)
+    expect(result.opportunities[0].keywordDifficulty).toBe(22)
+    expect(result.opportunities[0].backlinkTargetsAvailable).toBe(9)
+    expect(result.opportunities[0].referringDomains).toBe(4)
+    expect(result.opportunities[0].competitorReferringDomains).toBe(18)
+  })
+})
+

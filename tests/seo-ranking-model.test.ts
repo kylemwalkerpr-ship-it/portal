@@ -33,7 +33,24 @@ describe('ranking model · intent taxonomy', () => {
     const intent = classifyIntent('yousafe portal login')
     expect(intent.primary).toBe('navigational')
   })
-})
+
+  it('ranks a hire/consult query above an informational how-to at equal demand', () => {
+    const gsc = { impressions: 1200, clicks: 40, ctr: 0.033, position: 12 }
+    const hire = computeRankingScore({ topic: 'hire an immigration lawyer', gsc })
+    const howto = computeRankingScore({ topic: 'how to apply for a student visa', gsc })
+    expect(hire.intent.primary).toBe('transactional')
+    expect(howto.intent.primary).toBe('informational')
+    expect(hire.total).toBeGreaterThan(howto.total)
+  })
+
+  it('GA4 purchase revenue beats a sessions-only twin', () => {
+    const gsc = { impressions: 800, clicks: 24, ctr: 0.03, position: 14 }
+    const paid = computeRankingScore({ topic: 'uk graduate visa', gsc, revenue: 2400 })
+    const traffic = computeRankingScore({ topic: 'uk graduate visa', gsc, revenue: 0 })
+    expect(paid.total).toBeGreaterThan(traffic.total)
+  })
+}
+)
 
 describe('ranking model · composite score', () => {
   const baseInput: RankingModelInput = {

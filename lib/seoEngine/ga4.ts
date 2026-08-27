@@ -1,6 +1,7 @@
 /**
  * Google Analytics 4 Data API — owned-site engagement demand for the
- * Master Engine. Complements GSC (queries) with landing-page sessions.
+ * Master Engine. Complements GSC (queries) with landing-page sessions
+ * and purchase revenue so ranking can prefer money over vanity traffic.
  *
  * Auth: same service-account JSON as GSC, scoped to analytics.readonly.
  * Property: GA4_PROPERTY_ID env or seo_engine_config.ga4.propertyId.
@@ -9,7 +10,7 @@ import { getGscConfig } from '@/lib/gscConfig'
 import { mintServiceAccountToken, parseServiceAccountJson } from '@/lib/gscAuth'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { loadEngineConfig, saveEngineConfig } from './engineConfig'
-import type { GscSignalInput } from './planner'
+import { normalizePlannerTopic, type GscSignalInput } from './planner'
 
 const GA4_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly'
 
@@ -71,26 +72,73 @@ export async function getGa4AccessToken(): Promise<string | null> {
 }
 
 export function ga4RowsToSignals(
-  rows: Array<{ path: string; sessions: number; engaged: number; bounceRate: number }>,
+  rows: Array<{
+    path: string
+    sessions: number
+    engaged: number
+    bounceRate: number
+    revenue?: number
+    purchases?: number
+  }>,
 ): GscSignalInput[] {
   const out: GscSignalInput[] = []
   for (const row of rows) {
     const term = landingPathToTerm(row.path)
     if (!term || term.length < 4 || isJunkQuery(term)) continue
     const sessions = Math.max(0, Number(row.sessions) || 0)
-    if (sessions < 5) continue
+    const revenue = Math.max(0, Number(row.revenue) || 0)
+    const purchases = Math.max(0, Number(row.purchases) || 0)
+    // Keep low-session pages that already convert — money beats vanity traffic.
+    if (sessions < 5 && revenue <= 0) continue
     const engaged = Math.max(0, Number(row.engaged) || 0)
     const bounce = Math.min(1, Math.max(0, Number(row.bounceRate) || 0))
-    out.push({
+    const signal: GscSignalInput = {
       term,
-      impressions: sessions,
+      impressions: Math.max(sessions, revenue > 0 ? 5 : 0),
       clicks: engaged,
       position: Math.max(5, Math.round(bounce * 80) || 40),
       ctr: sessions ? engaged / sessions : 0,
       source: 'ga4',
-    })
+    }
+    if (revenue > 0) signal.revenue = Math.round(revenue * 100) / 100
+    if (purchases > 0) signal.purchases = purchases
+    out.push(signal)
   }
   return out
+}
+
+
+/** Match GA4 landing revenue onto GSC/query rows by normalized term overlap. */
+export function attachGa4Revenue<T extends { term: string }>(
+  rows: T[],
+  ga4: Array<{ term: string; revenue?: number; purchases?: number }>,
+): Array<T & { revenue?: number; purchases?: number }> {
+  const indexed = ga4
+    .map((g) => ({
+      key: normalizePlannerTopic(g.term),
+      revenue: Math.max(0, Number(g.revenue) || 0),
+      purchases: Math.max(0, Number(g.purchases) || 0),
+    }))
+    .filter((g) => g.key && (g.revenue > 0 || g.purchases > 0))
+  if (!indexed.length) return rows
+  return rows.map((row) => {
+    const key = normalizePlannerTopic(row.term)
+    if (!key) return row
+    let bestRev = 0
+    let bestPurch = 0
+    for (const g of indexed) {
+      if (key === g.key || key.includes(g.key) || g.key.includes(key)) {
+        if (g.revenue > bestRev) bestRev = g.revenue
+        if (g.purchases > bestPurch) bestPurch = g.purchases
+      }
+    }
+    if (bestRev <= 0 && bestPurch <= 0) return row
+    return {
+      ...row,
+      revenue: bestRev || undefined,
+      purchases: bestPurch || undefined,
+    }
+  })
 }
 
 export let lastGa4Pull: { reason?: string } | null = null
@@ -107,8 +155,16 @@ export async function pullGa4Signals(): Promise<GscSignalInput[]> {
     lastGa4Pull = { reason: 'no service-account token' }
     return []
   }
-  try {
-    const res = await fetch(
+  const postReport = async (withPurchases: boolean) => {
+    const metrics = [
+      { name: 'sessions' },
+      { name: 'engagedSessions' },
+      { name: 'bounceRate' },
+      ...(withPurchases
+        ? [{ name: 'purchaseRevenue' }, { name: 'ecommercePurchases' }]
+        : []),
+    ]
+    return fetch(
       `https://analyticsdata.googleapis.com/v1beta/properties/${cfg.propertyId}:runReport`,
       {
         method: 'POST',
@@ -116,16 +172,23 @@ export async function pullGa4Signals(): Promise<GscSignalInput[]> {
         body: JSON.stringify({
           dateRanges: [{ startDate: '90daysAgo', endDate: 'yesterday' }],
           dimensions: [{ name: 'landingPage' }],
-          metrics: [
-            { name: 'sessions' },
-            { name: 'engagedSessions' },
-            { name: 'bounceRate' },
-          ],
-          limit: 50,
-          orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+          metrics,
+          limit: 100,
+          orderBys: [{ metric: { metricName: withPurchases ? 'purchaseRevenue' : 'sessions' }, desc: true }],
         }),
       },
     )
+  }
+  try {
+    let withPurchases = true
+    let res = await postReport(true)
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      // Ecommerce metrics 400 on properties that never enabled purchases — retry sessions-only.
+      console.warn('[ga4] purchase report failed, retrying sessions-only', res.status, text.slice(0, 180))
+      withPurchases = false
+      res = await postReport(false)
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       lastGa4Pull = { reason: `GA4 ${res.status}` }
@@ -140,6 +203,8 @@ export async function pullGa4Signals(): Promise<GscSignalInput[]> {
       sessions: Number(r.metricValues?.[0]?.value) || 0,
       engaged: Number(r.metricValues?.[1]?.value) || 0,
       bounceRate: Number(r.metricValues?.[2]?.value) || 0,
+      revenue: withPurchases ? Number(r.metricValues?.[3]?.value) || 0 : 0,
+      purchases: withPurchases ? Number(r.metricValues?.[4]?.value) || 0 : 0,
     }))
     return ga4RowsToSignals(mapped)
   } catch (err) {

@@ -233,6 +233,21 @@ export async function listOutboundGaps(opts: {
 }
 
 // ── 3. Target opportunities ─────────────────────────────────────────────────
+/** Viable outreach rows (not lost/skipped). Undefined when the ledger is unreachable. */
+export async function countViableBacklinkTargets(): Promise<number | undefined> {
+  try {
+    const supabase = createSupabaseAdminClient()
+    const { count, error } = await supabase
+      .from('seo_backlink_targets')
+      .select('id', { count: 'exact', head: true })
+      .not('status', 'in', '(lost,skipped)')
+    if (error || typeof count !== 'number') return undefined
+    return count
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Curated list of external sites we want a backlink FROM. Filterable by
  * country, stage, kind, lane, and status. Sorted by authority_score desc.

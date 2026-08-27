@@ -59,6 +59,18 @@ export function volumeToPlannerImpressions(volume: number): number {
   return Math.max(12, Math.round(Math.log10(v + 10) * 18))
 }
 
+/**
+ * Ads `competitionIndex` in keyword-demand.json is 0–100 integers.
+ * Ubersuggest-style 0–1 fractions still scale ×100. Values of exactly 1 stay
+ * as KD 1 (the Ads file ships integer 1 for easy terms).
+ */
+export function competitionIndexToKd(index: number): number {
+  const v = Number(index)
+  if (!Number.isFinite(v) || v < 0) return 0
+  if (v > 0 && v < 1) return Math.round(v * 100)
+  return Math.round(Math.min(100, v))
+}
+
 export interface KeywordDemandCandidate {
   term: string
   volume: number
@@ -115,6 +127,8 @@ export async function loadKeywordDemandSignals(limit = 80): Promise<GscSignalInp
       position: 80,
       ctr: 0,
       source: 'ads' as const,
+      volume: c.volume,
+      keywordDifficulty: competitionIndexToKd(c.competitionIndex),
     }))
   } catch {
     return []
@@ -139,6 +153,15 @@ function mergeTwo(a: GscSignalInput[], b: GscSignalInput[]): GscSignalInput[] {
         existing.position = s.position
         existing.ctr = s.ctr
       }
+      const rev = Math.max(Number(existing.revenue) || 0, Number(s.revenue) || 0)
+      const purch = Math.max(Number(existing.purchases) || 0, Number(s.purchases) || 0)
+      if (rev > 0) existing.revenue = rev
+      if (purch > 0) existing.purchases = purch
+      const vol = Math.max(Number(existing.volume) || 0, Number(s.volume) || 0)
+      if (vol > 0) existing.volume = vol
+      if (existing.keywordDifficulty == null && s.keywordDifficulty != null) {
+        existing.keywordDifficulty = s.keywordDifficulty
+      }
       if (s.source === 'ubersuggest' || existing.source === 'ubersuggest') {
         existing.source = (existing.clicks || 0) > 0 ? existing.source : 'ubersuggest'
       }
@@ -151,6 +174,93 @@ function mergeTwo(a: GscSignalInput[], b: GscSignalInput[]): GscSignalInput[] {
 
 export function mergeDemandSignals(head: GscSignalInput[], ...more: GscSignalInput[][]): GscSignalInput[] {
   return more.reduce((acc, list) => mergeTwo(acc, list), head)
+}
+
+export interface KeywordResearchRow {
+  term: string
+  volume?: number
+  keywordDifficulty?: number
+}
+
+/** Join Ads / cached Ubersuggest volume + KD onto GSC-shaped `{ term }` rows. */
+export function attachKeywordResearch<T extends { term: string }>(
+  rows: T[],
+  research: KeywordResearchRow[],
+): Array<T & { volume?: number; keywordDifficulty?: number }> {
+  const indexed = research
+    .map((r) => ({
+      key: normalizePlannerTopic(r.term),
+      volume: Math.max(0, Number(r.volume) || 0),
+      keywordDifficulty:
+        r.keywordDifficulty != null && Number.isFinite(Number(r.keywordDifficulty))
+          ? Number(r.keywordDifficulty)
+          : undefined,
+    }))
+    .filter((r) => r.key && (r.volume > 0 || r.keywordDifficulty != null))
+  if (!indexed.length) return rows
+  return rows.map((row) => {
+    const key = normalizePlannerTopic(row.term)
+    if (!key) return row
+    let best: (typeof indexed)[number] | null = null
+    let bestScore = -1
+    for (const r of indexed) {
+      let score = -1
+      if (key === r.key) score = 1_000_000 + r.volume
+      else if (key.includes(r.key) || r.key.includes(key)) score = r.key.length * 10 + r.volume / 1e6
+      if (score > bestScore) {
+        bestScore = score
+        best = r
+      }
+    }
+    if (!best) return row
+    const current = row as T & { volume?: number; keywordDifficulty?: number }
+    const volume = current.volume == null && best.volume > 0 ? best.volume : current.volume
+    const keywordDifficulty =
+      current.keywordDifficulty == null && best.keywordDifficulty != null
+        ? best.keywordDifficulty
+        : current.keywordDifficulty
+    if (volume == null && keywordDifficulty == null) return row
+    return { ...row, ...(volume != null ? { volume } : {}), ...(keywordDifficulty != null ? { keywordDifficulty } : {}) }
+  })
+}
+
+/**
+ * Local keyword-research index for War Room / opportunities.
+ * Always reads keyword-demand.json. Optionally forwards KD/volume already
+ * stamped on Ubersuggest lastGoodSignals — never a live MCP pull.
+ */
+export async function loadKeywordResearchIndex(): Promise<KeywordResearchRow[]> {
+  const out: KeywordResearchRow[] = []
+  try {
+    const file = await loadKeywordDemandFile()
+    for (const c of selectKeywordDemandCandidates(file.rows)) {
+      out.push({
+        term: c.term,
+        volume: c.volume,
+        keywordDifficulty: competitionIndexToKd(c.competitionIndex),
+      })
+    }
+  } catch {
+    /* ads file optional */
+  }
+  try {
+    const { loadUbersuggestConfig } = await import('./ubersuggest')
+    const cfg = await loadUbersuggestConfig()
+    for (const row of cfg.lastGoodSignals || []) {
+      const rec = row as { term?: string; volume?: number; keywordDifficulty?: number }
+      const term = String(rec.term || '').trim()
+      if (!term) continue
+      if (rec.volume == null && rec.keywordDifficulty == null) continue
+      out.push({
+        term,
+        volume: rec.volume,
+        keywordDifficulty: rec.keywordDifficulty,
+      })
+    }
+  } catch {
+    /* cached uber optional — no live MCP */
+  }
+  return out
 }
 
 export async function ingestKeywordDemandSource(opts: {

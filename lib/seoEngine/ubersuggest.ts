@@ -341,12 +341,38 @@ function collectKeywordBags(raw: unknown): unknown[] {
   return bags
 }
 
+export type ParsedUbersuggestKeyword = {
+  term: string
+  volume: number
+  position?: number
+  keywordDifficulty?: number
+}
+
+/** Pull 0–100 KD from the field names Ubersuggest actually ships. */
+export function parseUbersuggestDifficulty(rec: Record<string, unknown>): number | undefined {
+  const scale100 = ['sd', 'seo_difficulty', 'seoDifficulty', 'difficulty', 'keyword_difficulty', 'kd']
+  for (const k of scale100) {
+    const v = Number(rec[k])
+    if (!Number.isFinite(v) || v < 0) continue
+    return Math.round(Math.min(100, v <= 1 ? v * 100 : v))
+  }
+  const indexed = Number(rec.competition_index)
+  if (Number.isFinite(indexed) && indexed >= 0) {
+    return Math.round(Math.min(100, indexed <= 1 ? indexed * 100 : indexed))
+  }
+  const competition = Number(rec.competition)
+  if (Number.isFinite(competition) && competition >= 0) {
+    return Math.round(Math.min(100, competition <= 1 ? competition * 100 : competition))
+  }
+  return undefined
+}
+
 export function parseUbersuggestKeywords(
   raw: unknown,
   opts: { allowZeroVolume?: boolean } = {},
-): Array<{ term: string; volume: number; position?: number }> {
+): ParsedUbersuggestKeyword[] {
   const bag = collectKeywordBags(raw)
-  const out: Array<{ term: string; volume: number; position?: number }> = []
+  const out: ParsedUbersuggestKeyword[] = []
   for (const item of bag) {
     if (typeof item === 'string') {
       const term = item.trim()
@@ -367,7 +393,13 @@ export function parseUbersuggestKeywords(
       volume = Math.max(volume, 40)
     }
     const position = Number(rec.position || rec.rank || rec.pos)
-    out.push({ term, volume, position: Number.isFinite(position) && position > 0 ? position : undefined })
+    const keywordDifficulty = parseUbersuggestDifficulty(rec)
+    out.push({
+      term,
+      volume,
+      position: Number.isFinite(position) && position > 0 ? position : undefined,
+      ...(keywordDifficulty != null ? { keywordDifficulty } : {}),
+    })
   }
   return out
 }
@@ -433,7 +465,7 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
     return cachedSignals(cfg)
   }
 
-  const collected: Array<{ term: string; volume: number; position?: number }> = []
+  const collected: ParsedUbersuggestKeyword[] = []
   let calls = 0
   let exhausted = false
   let transientDown = false
@@ -484,23 +516,31 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
     if (isCreditOrAuthFailure(err)) exhausted = true
   }
 
-  const best = new Map<string, { term: string; volume: number; position?: number }>()
+  const best = new Map<string, ParsedUbersuggestKeyword>()
   for (const row of collected) {
     const k = row.term.toLowerCase()
     const prev = best.get(k)
     if (!prev || row.volume > prev.volume) best.set(k, row)
+    else if (row.volume === prev.volume && prev.keywordDifficulty == null && row.keywordDifficulty != null) {
+      prev.keywordDifficulty = row.keywordDifficulty
+    }
   }
   const live: GscSignalInput[] = Array.from(best.values())
     .sort((a, b) => b.volume - a.volume)
     .slice(0, 80)
-    .map((row) => ({
-      term: row.term,
-      impressions: ubersuggestVolumeToImpressions(row.volume),
-      clicks: 0,
-      position: row.position && row.position < 70 ? row.position : 55,
-      ctr: 0,
-      source: 'ubersuggest' as const,
-    }))
+    .map((row) => {
+      const signal: GscSignalInput = {
+        term: row.term,
+        impressions: ubersuggestVolumeToImpressions(row.volume),
+        clicks: 0,
+        position: row.position && row.position < 70 ? row.position : 55,
+        ctr: 0,
+        source: 'ubersuggest',
+        volume: row.volume,
+      }
+      if (row.keywordDifficulty != null) signal.keywordDifficulty = row.keywordDifficulty
+      return signal
+    })
 
   const intel: UbersuggestIntel = {
     pulledAt: new Date().toISOString(),

@@ -109,6 +109,35 @@ export function classifyIntent(term: string): IntentClassification {
   return { primary, subType: sub.sub, reward }
 }
 
+/**
+ * Purchase-funnel bias applied to the composite total.
+ * Transactional/commercial outrank informational at equal demand;
+ * visa/work/housing/citizenship/family stages get an extra lift.
+ */
+/**
+ * Real GA4 purchase revenue lift. $0 → 1×; ~$1k → ~1.5×; capped at 1.85×.
+ * Sessions alone never produce this — only attributed purchaseRevenue.
+ */
+export function revenueLift(revenue?: number | null): number {
+  const r = Math.max(0, Number(revenue) || 0)
+  if (r <= 0) return 1
+  return Math.min(1.85, 1 + Math.log10(r + 10) / 5)
+}
+
+export function monetaryBias(
+  intent: IntentClassification,
+  stage?: string | null,
+  revenue?: number | null,
+): number {
+  let b = 1
+  if (intent.primary === 'transactional') b = 1.35
+  else if (intent.primary === 'commercial') b = 1.2
+  else if (intent.primary === 'navigational') b = 0.5
+  if (intent.subType === 'cost' || intent.subType === 'eligibility') b += 0.08
+  if (stage && /^(visa|work|housing|citizenship|family)$/i.test(stage)) b += 0.12
+  return b * revenueLift(revenue)
+}
+
 // ── Model input / output ─────────────────────────────────────────────────────
 export interface RankingModelInput {
   topic: string
@@ -162,6 +191,10 @@ export interface RankingModelInput {
   evidence?: EvidenceLineage[]
   /** 0–1 fresh policy/trend bias for this topic's (stage × country) cell. */
   knowledgeBias?: number
+  /** GA4 purchaseRevenue (USD) attributed to this topic/landing. */
+  revenue?: number
+  /** GA4 ecommercePurchases attributed to this topic/landing. */
+  purchases?: number
   /**
    * MEASURED LLM/AEO citation evidence for this topic's cluster: how many
    * fan-out sub-query audits cited the estate. Feeds the aeoGeo family with
@@ -245,7 +278,7 @@ function scoreIntent(term: string, intent: IntentClassification): FamilyScore {
     reasons.push('Geo-modified intent — build a journey page that hands off to the canonical.')
     return { score: 62, weight: FAMILY_WEIGHTS.intent, reasons }
   }
-  const base = intent.primary === 'commercial' ? 58 : intent.primary === 'transactional' ? 62 : 55
+  const base = intent.primary === 'transactional' ? 90 : intent.primary === 'commercial' ? 78 : 55
   const subBonus: Record<IntentSubType, number> = {
     procedural: 26, checklist: 24, document: 22, definitional: 20,
     eligibility: 20, comparative: 18, timeline: 16, cost: 16, general: 6,
@@ -613,10 +646,16 @@ export function computeRankingScore(input: RankingModelInput): RankingScore {
     : clamp01((Number.isFinite(Number(g.impressions)) || Boolean(input.audit)) ? 0.5 : 0.25)
 
   const rawTotal = SIGNAL_FAMILIES.reduce((s, fam) => s + families[fam].score * families[fam].weight, 0)
-  const total = clamp100(rawTotal * (0.7 + confidence * 0.3))
+  const total = clamp100(rawTotal * (0.7 + confidence * 0.3) * monetaryBias(intent, input.stage, input.revenue))
 
   // Recommended actions from weak families
   const recommendedActions: string[] = []
+  if (intent.primary === 'transactional' || intent.primary === 'commercial') {
+    recommendedActions.push('End every section with a marketplace CTA to the matching consult/visa/housing gig')
+  }
+  if ((Number(input.revenue) || 0) > 0) {
+    recommendedActions.push(`Protect the purchase path — this landing already made $${Math.round(Number(input.revenue))} in GA4`)
+  }
   if (families.aeoGeo.score < 55) recommendedActions.push('Add answer capsule + FAQ block + stats panel (AEO/GEO)')
   if (families.indexability.score < 60) recommendedActions.push('Fix canonical/schema/crawlability; add llms.txt coverage')
   if (families.eeat.score < 55) recommendedActions.push('Add named author credentials, gov citations, YMYL disclaimer')
@@ -737,6 +776,8 @@ export interface OpportunityRankingSource {
   region?: string
   stage?: string
   lifecycleStage?: string
+  revenue?: number
+  purchases?: number
 }
 
 /** Compute the full ranking score for an opportunity/radar row (deterministic). */
@@ -746,6 +787,8 @@ export function rankingForOpportunity(o: OpportunityRankingSource): RankingScore
     scope: 'topic',
     country: o.region || null,
     stage: o.stage || o.lifecycleStage || null,
+    revenue: Number(o.revenue) || 0,
+    purchases: Number(o.purchases) || 0,
     gsc: {
       impressions: Number(o.impressions) || 0,
       clicks: Number(o.clicks) || 0,
@@ -813,6 +856,8 @@ export interface PlanTermRow {
   ctr?: number
   position?: number
   region?: string
+  revenue?: number
+  purchases?: number
 }
 
 /**
@@ -829,7 +874,7 @@ export function orderTermsByModel(terms: string[], plan: PlanTermRow[] = []): st
     const r = row(t)
     return modelTotalForOpportunity(
       r
-        ? { term: r.term, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, position: r.position, region: r.region }
+        ? { term: r.term, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, position: r.position, region: r.region, revenue: r.revenue, purchases: r.purchases }
         : { term: t },
     )
   }
@@ -1028,7 +1073,14 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
     const { loadPlansDashboard, pullGscSignals } = await import('./planner')
     const { loadKnowledgeFeed } = await import('./knowledge')
     const { plans } = await loadPlansDashboard(limit)
-    const signals = await pullGscSignals()
+    let signals = await pullGscSignals()
+    try {
+      const { pullGa4Signals, attachGa4Revenue } = await import('./ga4')
+      const ga4 = await pullGa4Signals()
+      if (ga4.length) signals = attachGa4Revenue(signals, ga4)
+    } catch {
+      /* GA4 optional */
+    }
     // Real intel bias per plan: count fresh knowledge items matching the cell.
     const feed = await loadKnowledgeFeed(40)
     const cellBias = (stage: string, country: string): number => {
@@ -1063,6 +1115,8 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
         country: country || null,
         stage: stage || null,
         gsc: sig ? { impressions: sig.impressions, clicks: sig.clicks, ctr: sig.ctr, position: sig.position } : undefined,
+        revenue: sig ? Number(sig.revenue) || 0 : 0,
+        purchases: sig ? Number(sig.purchases) || 0 : 0,
         knowledgeBias: cellBias(stage, country),
         // Explicit 0/0 when the cluster has no measured evidence: undefined is
         // intentionally silent (radar rows that never carry visibility), but

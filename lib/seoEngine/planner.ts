@@ -56,6 +56,14 @@ export interface GscSignalInput {
   position: number
   ctr?: number
   source?: DemandSourceId
+  /** GA4 purchaseRevenue attributed to this landing/term (USD). */
+  revenue?: number
+  /** GA4 ecommercePurchases count attributed to this landing/term. */
+  purchases?: number
+  /** Keyword-research monthly volume (Ubersuggest / Ads). Distinct from scaled impressions. */
+  volume?: number
+  /** 0–100 keyword difficulty (Ubersuggest SD / Ads competition). */
+  keywordDifficulty?: number
 }
 
 export interface PlanRequest {
@@ -315,7 +323,14 @@ function opportunityScore(sig: GscSignalInput, stagePriority: number, knowledgeB
   const gap = Math.min(2, 50 / Math.max(5, position))
   const demand = Math.log10(impressions + 10) * 12
   const clickBonus = clicks > 0 ? Math.min(15, clicks / 10) : 0
-  return Math.round((demand + clickBonus) * gap * (stagePriority / 5) * (1 + knowledgeBias))
+  const term = String(sig.term || '').toLowerCase()
+  const money =
+    /\b(hire|lawyer|attorney|consult|agency|service|gig|book|retain|quote)\b/.test(term) ? 1.4 :
+    /\b(fee|cost|price|apply|application)\b/.test(term) ? 1.15 : 1
+  const revenue = Math.max(0, Number(sig.revenue) || 0)
+  // Real GA4 purchase revenue outranks keyword heuristics: $0 → 1×, ~$1k → ~1.4×, capped.
+  const revenueLift = revenue > 0 ? Math.min(1.8, 1 + Math.log10(revenue + 10) / 6) : 1
+  return Math.round((demand + clickBonus) * gap * (stagePriority / 5) * (1 + knowledgeBias) * money * revenueLift)
 }
 
 /**
@@ -718,6 +733,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
             `AUTHORITIES: ${cell.authorities.join(', ')}`,
             `PROOF POINTS: ${stageDef.proofPoints.join('; ')}`,
             `TARGET ESTATE: ${targetsFor(stageDef, country).map((t) => `${t.repo}/${t.path}`).join(', ')}`,
+            `PURCHASE PATH: Close the brief with a marketplace CTA to ${primaryServiceFor(stageDef)} — every mission must funnel a reader to a paid consult/gig, not a dead-end article.`,
           ].join('\n'),
           maxTokens: 600,
           temperature: 0.4,

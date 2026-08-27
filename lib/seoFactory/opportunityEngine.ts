@@ -42,6 +42,15 @@ export interface OpportunityQuery {
   trend?: -1 | 0 | 1
   /** Position trajectory over time (oldest → newest). Fills trendScore when present. */
   history?: Array<{ date?: string; position: number; impressions: number; clicks?: number }>
+  /** GA4 purchaseRevenue attributed to this query/landing (USD). */
+  revenue?: number
+  /** GA4 ecommercePurchases count. */
+  purchases?: number
+  volume?: number
+  keywordDifficulty?: number
+  referringDomains?: number
+  competitorReferringDomains?: number
+  backlinkTargetsAvailable?: number
 }
 
 export interface CoverageItem {
@@ -87,6 +96,13 @@ export interface Opportunity {
   coverage: { matched: boolean; matches: string[] }
   sourcePage?: string
   profitability: 'high' | 'medium' | 'low'
+  /** GA4 purchaseRevenue when known. */
+  revenue?: number
+  volume?: number
+  keywordDifficulty?: number
+  referringDomains?: number
+  competitorReferringDomains?: number
+  backlinkTargetsAvailable?: number
   reason: string
   /** Position trajectory (oldest → newest) when GSC history is available. */
   history?: Array<{ date?: string; position: number; impressions: number }>
@@ -191,9 +207,9 @@ function classifyIntent(term: string, page?: string): Intent {
 }
 
 function contentTypeFor(intent: Intent): Opportunity['contentType'] {
+  if (intent === 'transactional') return 'marketplace_gig'
   if (intent === 'local') return 'regional_page'
   if (intent === 'commercial') return 'article'
-  if (intent === 'transactional') return 'article'
   return 'blog_post'
 }
 
@@ -218,9 +234,10 @@ function titleFor(term: string, intent: Intent, play: Play): string {
   return `Complete Guide: ${titleCase} ${year}`
 }
 
-function profitabilityFor(intent: Intent, impressions: number): Opportunity['profitability'] {
+function profitabilityFor(intent: Intent, impressions: number, revenue = 0): Opportunity['profitability'] {
+  if (revenue >= 100) return 'high'
   if (intent === 'transactional' || intent === 'commercial') return 'high'
-  if (impressions > 500) return 'medium'
+  if (revenue > 0 || impressions > 500) return 'medium'
   return 'low'
 }
 
@@ -336,7 +353,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
 
     const playBonus =
       play === 'quick_win' ? 7 : play === 'content_gap' ? 5 : play === 'refresh' ? 3 : play === 'defend' ? 0 : -45
-    const opportunityScore = Math.max(
+    const rawOpportunity = Math.max(
       0,
       Math.min(
         100,
@@ -347,6 +364,14 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     )
 
     const intent = classifyIntent(term, q.page)
+    const revenue = Math.max(0, Number(q.revenue) || 0)
+    const monetaryMultiplier =
+      intent === 'transactional' ? 1.45 : intent === 'commercial' ? 1.25 : intent === 'navigational' ? 0.45 : 1
+    const revenueMultiplier = revenue > 0 ? Math.min(1.8, 1 + Math.log10(revenue + 10) / 6) : 1
+    const opportunityScore = Math.max(
+      0,
+      Math.min(100, Math.round(rawOpportunity * monetaryMultiplier * revenueMultiplier)),
+    )
     const trendLabel: Trend = trend === 1 ? 'rising' : trend === -1 ? 'declining' : 'flat'
 
     // ── Signals trail (transparency) ──
@@ -397,6 +422,13 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     }))
 
     const keywords = (relatedByTerm[term] || []).slice(0, 5)
+    if (intent === 'transactional' || intent === 'commercial') {
+      signals.unshift('Purchase funnel: pair this page with a marketplace gig CTA')
+    }
+    if (revenue > 0) {
+      signals.unshift(`GA4 revenue $${Math.round(revenue).toLocaleString()} · protect the purchase path`)
+    }
+
     const audience = AUDIENCE_BY_REGION[region] || AUDIENCE_BY_REGION.US
 
     opportunities.push({
@@ -417,13 +449,19 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       trend: trendLabel,
       play,
       intent,
-      contentType: contentTypeFor(intent),
+      contentType: revenue >= 50 || intent === 'transactional' ? 'marketplace_gig' : contentTypeFor(intent),
       signals: signals.slice(0, 4),
       interlinks: interlinkTargets,
       coverage: { matched: matches.length > 0, matches: matches.slice(0, 3) },
       sourcePage: seedUrl || q.page,
-      profitability: profitabilityFor(intent, impressions),
-      reason: `${play.replace('_', ' ')} · #${position} · ${fmt(impressions)} imp/mo · ${intent}`,
+      profitability: profitabilityFor(intent, impressions, revenue),
+      revenue: revenue > 0 ? Math.round(revenue * 100) / 100 : undefined,
+      volume: q.volume,
+      keywordDifficulty: q.keywordDifficulty,
+      referringDomains: q.referringDomains,
+      competitorReferringDomains: q.competitorReferringDomains,
+      backlinkTargetsAvailable: q.backlinkTargetsAvailable,
+      reason: `${play.replace('_', ' ')} · #${position} · ${fmt(impressions)} imp/mo · ${intent} · ${profitabilityFor(intent, impressions, revenue)} $`,
       history: q.history
         ? q.history.filter((h) => h.position > 0).map((h) => ({ date: h.date, position: h.position, impressions: h.impressions }))
         : undefined,
@@ -439,7 +477,10 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     }
   }
 
-  opportunities.sort((a, b) => b.opportunityScore - a.opportunityScore)
+  const profitRank = (p: Opportunity['profitability']) => (p === 'high' ? 2 : p === 'medium' ? 1 : 0)
+  opportunities.sort(
+    (a, b) => profitRank(b.profitability) - profitRank(a.profitability) || b.opportunityScore - a.opportunityScore,
+  )
   const top = opportunities.slice(0, limit)
   const covered = top.filter((o) => o.coverage.matched).length
 

@@ -55,8 +55,8 @@ describe('auto-run · orderTermsByModel regression', () => {
     // mechanism) also fails this regression. Verified against the live model.
     const EXPECTED_FIXTURE_ORDER = [
       'skilled worker visa application steps uk',
-      'express entry crs points calculator',
       'us green card lottery fee',
+      'express entry crs points calculator',
       'subclass 189 visa requirements',
     ]
     expect(result).toEqual(EXPECTED_FIXTURE_ORDER)
@@ -104,8 +104,8 @@ describe('auto-run · orderTermsByModel regression', () => {
     // the no-signal term last (no demand / no entities → lowest total here).
     expect(withUnknown).toEqual([
       'skilled worker visa application steps uk',
-      'express entry crs points calculator',
       'us green card lottery fee',
+      'express entry crs points calculator',
       'subclass 189 visa requirements',
       'unknown term xyz',
     ])

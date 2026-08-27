@@ -1,3 +1,5 @@
+import { scoreCrucible } from '@/lib/seoEngine/crucible'
+import { bestCellForTerm } from '@/lib/seoEngine/planner'
 /**
  * SEO War Room — powered by the Opportunity Intelligence Engine.
  *
@@ -84,6 +86,13 @@ export interface WarOpportunity {
   positionDelta?: number
   /** Keyword-cluster resolution (anti-cannibalization) when clusters were built. */
   cluster?: ClusterResolution
+  /** GA4 purchaseRevenue when attached. */
+  revenue?: number
+  /** Crucible total (the only selection key). */
+  crucibleScore?: number
+  crucibleKill?: string | null
+  service?: string | null
+  stage?: string | null
 }
 
 export interface WarRoomResult {
@@ -296,6 +305,40 @@ export async function buildSeoWarRoom(opts?: {
   }
   deduped.sort((a, b) => b.impressions - a.impressions)
 
+  try {
+    const { pullGa4Signals, attachGa4Revenue } = await import('@/lib/seoEngine/ga4')
+    const ga4 = await pullGa4Signals()
+    if (ga4.length) {
+      const withMoney = attachGa4Revenue(deduped, ga4)
+      deduped.length = 0
+      deduped.push(...withMoney)
+    }
+  } catch {
+    /* GA4 optional — war room still ranks without purchase data. */
+  }
+
+  try {
+    const { attachKeywordResearch, loadKeywordResearchIndex } = await import('@/lib/seoEngine/keywordDemand')
+    const research = await loadKeywordResearchIndex()
+    if (research.length) {
+      const withKd = attachKeywordResearch(deduped, research)
+      deduped.length = 0
+      deduped.push(...withKd)
+    }
+  } catch {
+    /* Ads / cached Ubersuggest optional — competitorOpen falls back to rank proxy. */
+  }
+
+  try {
+    const { countViableBacklinkTargets } = await import('@/lib/seoEngine/backlinkEngine')
+    const targets = await countViableBacklinkTargets()
+    if (targets != null) {
+      for (const q of deduped) q.backlinkTargetsAvailable = targets
+    }
+  } catch {
+    /* ledger optional — linkAttainability stays mid without it. */
+  }
+
   // ── 2. Content inventory (coverage) ──────────────────────────────────────
   let coverage: CoverageItem[] = []
   try {
@@ -368,11 +411,29 @@ export async function buildSeoWarRoom(opts?: {
       // Strike-seed routing (Phase C): the five locked pages carry their owner
       // URL / repo / file path so auto-run expands them instead of a sibling.
       const seedTarget = matchStrikeSeed(o.topic, o.sourcePage)
+      const cell = bestCellForTerm(o.topic)
+      const crucible = scoreCrucible({
+        term: o.topic,
+        impressions: o.impressions,
+        clicks: o.clicks,
+        ctr: o.ctr,
+        position: o.position,
+        intent: o.intent,
+        play: o.play,
+        stage: cell.stage,
+        country: cell.country,
+        revenue: o.revenue,
+        volume: o.volume,
+        keywordDifficulty: o.keywordDifficulty,
+        referringDomains: o.referringDomains,
+        competitorReferringDomains: o.competitorReferringDomains,
+        backlinkTargetsAvailable: o.backlinkTargetsAvailable,
+      })
       return {
         id: o.topic,
         term: o.topic,
         play: (PLAY_MAP[o.play] || PLAY_MAP.content_gap) as WarPlay,
-        priorityScore: o.opportunityScore,
+        priorityScore: crucible.killed ? 0 : crucible.total,
         impressions: o.impressions,
         clicks: o.clicks,
         ctr: o.ctr,
@@ -380,7 +441,7 @@ export async function buildSeoWarRoom(opts?: {
         expectedCtr: expCtr,
         ctrGap,
         estimatedGainClicks: estimatedGain,
-        region: regionFilter || 'US',
+        region: regionFilter || cell.country || 'US',
         contentType: o.contentType,
         host: seedTarget ? seedTarget.host : null,
         repo: seedTarget ? seedTarget.repo : null,
@@ -389,7 +450,7 @@ export async function buildSeoWarRoom(opts?: {
         authorityScore: 100 - o.difficultyScore,
         contentAngle: null,
         writeHint: o.signals.slice(0, 2).join('; '),
-        rationale: o.signals.join(' · '),
+        rationale: [...o.signals, ...crucible.reasons.slice(0, 2)].join(' · '),
         shipHint: 'pr' as const,
         // Engine-native (for progressive UI adoption)
         opportunityScore: o.opportunityScore,
@@ -406,8 +467,15 @@ export async function buildSeoWarRoom(opts?: {
         history: o.history,
         positionDelta: o.positionDelta,
         cluster: clusterResult.byTerm[o.topic],
+        revenue: o.revenue,
+        crucibleScore: crucible.total,
+        crucibleKill: crucible.killReason,
+        service: crucible.service,
+        stage: cell.stage,
       }
     })
+    .filter((w) => !w.crucibleKill)
+    .sort((a, b) => (b.crucibleScore || 0) - (a.crucibleScore || 0))
 
   const buckets: Record<string, WarOpportunity[]> = {
     strike_distance: [], deep_demand_build: [], decay_refresh: [],
