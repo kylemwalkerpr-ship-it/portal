@@ -2258,7 +2258,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Research/Plan brief model — GPT Sol (flagship), GPT Terra (balanced), or
   // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
   // brief endpoint (lib/seoFactory/briefModel) honors all three.
-  const [briefModel, setBriefModel] = React.useState('parasail-deepseek-pro')
+  const [briefModel, setBriefModel] = React.useState('baseten-glm-53-flash')
   const briefParsed = parseStudioPin(briefModel)
   const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
   const handleGenerateBrief = async () => {

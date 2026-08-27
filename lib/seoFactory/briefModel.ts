@@ -22,6 +22,7 @@ export type BriefProviderChoice =
   | { aiProvider: 'openai'; model: 'gpt-5.6-sol' | 'gpt-5.6-terra' }
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
   | { aiProvider: 'baseten-glm-fast'; model?: undefined }
+  | { aiProvider: 'baseten-glm-53-flash'; model?: undefined }
   | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
   | { aiProvider: 'baseten-deepseek'; model?: undefined }
   | { aiProvider: 'baseten-deepseek-pro'; model?: undefined }
@@ -47,6 +48,9 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
     return { aiProvider: BRIEF_FALLBACK_PROVIDER }
   }
   // GLM 5.2 Fast (Baseten) — still selectable in Research.
+  if (pin === 'baseten-glm-53-flash' || pin === 'glm-5.3-flash' || pin === 'zai-org/glm-5.3-flash') {
+    return { aiProvider: 'baseten-glm-53-flash' }
+  }
   if (pin === 'baseten-glm-fast' || pin === 'glm-5.2-fast') {
     return { aiProvider: 'baseten-glm-fast' }
   }

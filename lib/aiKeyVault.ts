@@ -44,6 +44,7 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
     'deepseek-ai/DeepSeek-V4-Pro-0813',
     'deepseek-ai/DeepSeek-V4-Pro',
     'zai-org/GLM-5.2-Fast',
+    'zai-org/GLM-5.3-Flash',
     'zai-org/GLM-5.2',
     'zai-org/GLM-4.7',
     'moonshotai/Kimi-K3',
@@ -188,6 +189,20 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'deepseek-ai/DeepSeek-V4-Pro-0813',
     role: 'fallback',
     hint: 'Research + Review — same Baseten key, Pro-0813 model id',
+    vaultGroup: 'baseten',
+    vaultGroupLabel: 'Baseten · inference.baseten.co',
+    modelOptions: HOST_MODEL_OPTIONS.baseten,
+  },
+  {
+    id: 'baseten-glm-53-flash',
+    label: 'GLM 5.3 Flash · Baseten',
+    keyEnv: 'BASETEN_API_KEY',
+    baseUrlEnv: 'BASETEN_BASE_URL',
+    modelEnv: 'BASETEN_GLM_53_MODEL',
+    fixedBaseUrl: 'https://inference.baseten.co/v1',
+    defaultModel: 'zai-org/GLM-5.3-Flash',
+    role: 'fallback',
+    hint: 'Efficient Baseten fallback for brief, writing, audit, and editor stages.',
     vaultGroup: 'baseten',
     vaultGroupLabel: 'Baseten · inference.baseten.co',
     modelOptions: HOST_MODEL_OPTIONS.baseten,
@@ -369,7 +384,7 @@ export const DEFAULT_PROVIDER_ORDER = [
   'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
   'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
-  'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
+  'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
 ] as const
 
 export interface VaultKeyRow {

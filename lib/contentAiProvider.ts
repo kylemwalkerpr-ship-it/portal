@@ -86,6 +86,8 @@ const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 const BASETEN_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 /** Baseten-hosted GLM 5.2 Fast — efficient high-volume drafting partner. */
 const BASETEN_GLM_MODEL = 'zai-org/GLM-5.2-Fast'
+/** Baseten-hosted GLM 5.3 Flash — low-token fallback for every stage. */
+const BASETEN_GLM_53_MODEL = 'zai-org/GLM-5.3-Flash'
 /** AIHubmix OpenAI-compatible aggregator (aihubmix.com/v1) — GLM 5.2 Fast
  *  is served as `glm-5.2-fast-preview` (the high-speed flagship route). */
 const AIHUBMIX_BASE_URL = 'https://aihubmix.com/v1'
@@ -1212,6 +1214,18 @@ export function getBasetenDeepseekProProvider(): OpenAiCompat | null {
 
 /** Baseten-hosted GLM 5.2 Fast — a fast, efficient partner for drafting.
  *  Reuses the same BASETEN_API_KEY; model overridable via BASETEN_GLM_MODEL. */
+export function getBasetenGlm53FlashProvider(): OpenAiCompat | null {
+  const apiKey = resolveBasetenApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'baseten-glm-53-flash',
+    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
+    apiKey,
+    model: BASETEN_GLM_53_MODEL,
+    maxTokensCap: BASETEN_MAX_TOKENS,
+  }
+}
+
 export function getBasetenGlmFastProvider(): OpenAiCompat | null {
   const apiKey = resolveBasetenApiKey()
   if (!apiKey) return null
@@ -2367,9 +2381,10 @@ function preferProvider(): string {
     'xai',
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
+    'baseten-glm-53-flash', // Baseten GLM 5.3 Flash — low-token fallback
     'nvidia-minimax', // NVIDIA MiniMax M3 drafting model
     'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
-    'baseten', 'baseten-deepseek', 'baseten-deepseek-pro', 'baseten-glm-fast',
+    'baseten', 'baseten-deepseek', 'baseten-deepseek-pro', 'baseten-glm-fast', 'baseten-glm-53-flash',
     'aihubmix', 'aihubmix-glm', 'aihubmix-glm-fast', // AIHubmix GLM 5.2 Fast
     'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm',
     'deepseek-flash', 'deepseek-pro', 'zai-glm',
@@ -2435,8 +2450,8 @@ function configuredProviderOrder(): string[] {
   if (!raw) {
     return promoteGrokAsSecond(promoteMinimaxAsLead([
       'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
-      'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast',
-      'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+      'parasail-deepseek', 'deepseek-flash', 'parasail-glm',    'baseten-glm-fast', 'baseten-glm-53-flash',
+    'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
       'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro',
       'deepseek-pro', 'zai-glm',
     ]))
@@ -2449,6 +2464,7 @@ function configuredProviderOrder(): string[] {
     nemotron: 'nvidia-nemotron', 'nemotron-3-ultra': 'nvidia-nemotron',
     baseten: 'baseten-deepseek', 'baseten-deepseek': 'baseten-deepseek',
     'glm-fast': 'baseten-glm-fast', 'baseten-glm': 'baseten-glm-fast',
+    'glm-5.3-flash': 'baseten-glm-53-flash', 'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
     aihubmix: 'aihubmix-glm-fast', 'aihubmix-glm': 'aihubmix-glm-fast',
     'glm-fast-aihubmix': 'aihubmix-glm-fast',
     parasail: 'parasail-deepseek', 'parasail-deepseek-v4-flash': 'parasail-deepseek',
@@ -2463,8 +2479,8 @@ function configuredProviderOrder(): string[] {
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
   const known = new Set([
-    'nvidia-minimax', 'nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
-    'baseten-glm-fast', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
+    'nvidia-minimax', 'nvidia-nemotron',    'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
+    'baseten-glm-fast', 'baseten-glm-53-flash', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
     'parasail-glm', 'nvidia-deepseek', 'deepseek-flash', 'deepseek-pro', 'zai-glm',
     'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   ])
@@ -2519,6 +2535,9 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (isBasetenConfigured()) {
       items.push({ label: 'baseten-deepseek', run: () => basetenComplete(opts) })
     }
+  }
+  const pushBasetenGlm53Flash = () => {
+    if (isBasetenConfigured()) items.push({ label: 'baseten-glm-53-flash', run: () => openAiCompatibleComplete(getBasetenGlm53FlashProvider()!, opts) })
   }
   const pushBasetenGlmFast = () => {
     if (isBasetenConfigured()) {
@@ -2621,6 +2640,10 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (prefer === 'baseten-glm-53-flash') {
+    pushBasetenGlm53Flash()
+    pushBasetenGlmFast()
+    pushBaseten()
   } else if (prefer === 'baseten-glm-fast') {
     pushBasetenGlmFast()
     pushBaseten()
@@ -2718,6 +2741,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   // long-form providers before we drop out to the broader fallback set.
   pushMinimax()
   pushNemotron()
+  pushBasetenGlm53Flash()
   pushBasetenGlmFast()
   pushGlm()
   pushBaseten()
@@ -2867,6 +2891,8 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
   const aliasMap: Record<string, string> = {
     'glm-fast': 'baseten-glm-fast',
     'baseten-glm': 'baseten-glm-fast',
+    'glm-5.3-flash': 'baseten-glm-53-flash',
+    'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
     'aihubmix-glm-fast': 'aihubmix-glm-fast',
     'aihubmix-glm': 'aihubmix-glm-fast',
     'glm-fast-aihubmix': 'aihubmix-glm-fast',
@@ -3071,6 +3097,18 @@ export async function* generateContentTextStream(
 
   // Stream cascade lead is DeepSeek V4 Flash (Baseten / Parasail) then Grok.
   // GLM Fast remains available as an explicit pin.
+  const basetenGlm53Flash = getBasetenGlm53FlashProvider()
+  if (basetenGlm53Flash) {
+    candidates.push({
+      label: 'baseten-glm-53-flash',
+      stream: () => openAiCompatibleStream(basetenGlm53Flash, {
+        ...opts,
+        maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+      }),
+      complete: () => openAiCompatibleComplete(basetenGlm53Flash, opts),
+    })
+  }
+
   const basetenGlmFast = getBasetenGlmFastProvider()
   if (basetenGlmFast) {
     candidates.push({
@@ -3345,6 +3383,7 @@ export async function* generateContentTextStream(
       candidates.unshift(pref)
     }
   } else if (
+    prefer === 'baseten-glm-53-flash' ||
     prefer === 'baseten-deepseek' ||
     prefer === 'baseten-deepseek-pro' ||
     prefer === 'baseten-glm-fast' ||
