@@ -23,10 +23,29 @@ describe('Ubersuggest live payload shapes', () => {
 })
 
 describe('Research keyword pick vs shipped canonicals', () => {
+  it('rejects unrelated snapshot terms and brand/domain noise for a non-immigration topic', () => {
+    const ctx: ResearchDemandContext = {
+      engineTerms: ['f-1 visa', 'yousafeconsultancy.com', 'ministerial direction 111', 'bookkeeping service for llc'],
+      uberTerms: ['yousafe', 'uk student visa process for warwick university', 'bookkeeping service for llc'],
+      shipped: [],
+      competing: { competing: [], suggestions: [] },
+      blockedStems: new Set(),
+    }
+    const picked = pickResearchKeywords(ctx, 'How to Apply for Bookkeeping Service For Llc')
+    expect(picked.longTail).toEqual(['bookkeeping service for llc'])
+    expect(picked.shortTail.concat(picked.longTail)).not.toEqual(expect.arrayContaining([
+      'f-1 visa',
+      'yousafeconsultancy.com',
+      'yousafe',
+      'ministerial direction 111',
+      'uk student visa process for warwick university',
+    ]))
+  })
+
   it('prefers engine and Ubersuggest terms and drops shipped primaries', () => {
     const ctx: ResearchDemandContext = {
       engineTerms: ['uk graduate visa', 'graduate route uk'],
-      uberTerms: ['uk student visa cost', 'f-1 visa'],
+      uberTerms: ['uk student visa cost', 'f-1 visa', 'student visa requirements'],
       shipped: [
         { url: 'https://uk.yousafeconsultancy.com/graduate-visa/', title: 'UK Graduate Visa', primaryKeyword: 'uk graduate visa', status: 'merged' },
       ],

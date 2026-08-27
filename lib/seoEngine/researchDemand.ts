@@ -183,6 +183,36 @@ export async function loadResearchDemandContext(topic: string, primaryKeyword?: 
 }
 
 /** Prefer engine + Ubersuggest terms that are not already a shipped canonical. */
+const KEYWORD_NOISE_RE = /(?:yousafe|mycaseworks|\.com\b|https?:\/\/|\.pdf\b|sites\/default|user\d+|meal\s+plan|room\s+and\s+meal|ministerial\s+direction|status\s+violation|tier\s+5\s+to\s+tier\s+2|\b485\b|\bf-?1\b|\b(?:uk|canada|australia)\s+student\s+visa\b)/i
+
+const KEYWORD_STOPWORDS = new Set(['a', 'an', 'and', 'for', 'from', 'how', 'in', 'is', 'of', 'on', 'or', 'the', 'to', 'what', 'with'])
+
+function keywordTokens(term: string): Set<string> {
+  return new Set(
+    normalizePlannerTopic(term)
+      .split(/\s+/)
+      .filter((token) => token.length > 2 && !KEYWORD_STOPWORDS.has(token)),
+  )
+}
+
+function isRelevantResearchKeyword(term: string, topic: string): boolean {
+  if (KEYWORD_NOISE_RE.test(term)) return false
+  const candidate = keywordTokens(term)
+  const subject = keywordTokens(topic)
+  if (!candidate.size || !subject.size) return false
+  const overlap = [...candidate].filter((token) => subject.has(token)).length
+  if (overlap === 0) return false
+  // Preserve an exact topic/primary term even when it is four or more words;
+  // the caller's canonical topic is the one safe exception to the short-list
+  // relevance rule.
+  if (normalizePlannerTopic(term) === normalizePlannerTopic(topic)) return true
+  // A single shared generic word (e.g. "visa") is not enough to import a
+  // keyword from another engine cluster. Require a meaningful topic overlap.
+  const genericOnly = candidate.size === 1 && /^(visa|service|guide|requirements?|application|process|documents?)$/i.test([...candidate][0])
+  const topicalAnchor = [...candidate].some((token) => subject.has(token) && !KEYWORD_STOPWORDS.has(token))
+  return overlap >= 1 && !genericOnly && topicalAnchor && (overlap >= 2 || candidate.size <= 2 || subject.size <= 2)
+}
+
 export function pickResearchKeywords(
   ctx: ResearchDemandContext,
   topic: string,
@@ -200,6 +230,7 @@ export function pickResearchKeywords(
   const seen = new Set<string>()
 
   for (const term of pool) {
+    if (!isRelevantResearchKeyword(term, topic)) continue
     const s = stem(term)
     if (!s || seen.has(s)) continue
     if (ctx.blockedStems.has(s) && s !== topicStem) {
