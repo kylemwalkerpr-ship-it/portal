@@ -178,10 +178,10 @@ function escapeJsonStringControls(source: string): string {
  */
 export function parseBriefJson(raw: string): Record<string, unknown> {
   let text = String(raw || '').trim()
+  text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
   const firstBrace = text.indexOf('{')
   const lastBrace = text.lastIndexOf('}')
   if (firstBrace !== -1 && lastBrace > firstBrace) text = text.slice(firstBrace, lastBrace + 1)
-  text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
 
   try {
     const parsed = JSON.parse(text) as unknown
