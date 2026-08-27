@@ -210,7 +210,8 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   }
 
   const purgeGroup = async (g: ProviderGroup) => {
-    if (!window.confirm(`Remove vault keys for ${g.label}? Worker env secrets (if any) will remain active.`)) return
+    const vaultCount = g.members.filter((m) => m.source === 'vault').length
+    if (!window.confirm(`Remove ${vaultCount} vault key(s) for ${g.label}? Provider cards will fall back to Worker env secrets (if configured).`)) return
     setBusy(`purge-group-${g.name}`)
     try {
       const res = await fetch('/api/seo-factory/ai-keys?purgeGroup=true', {
@@ -700,9 +701,9 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
               <button type="button" onClick={() => void testGroup(g)} disabled={busy === `test-${g.lead.id}`} style={btn(C.cyan2, true)}>
                 {busy === `test-${g.lead.id}` ? '…' : 'Test'}
               </button>
-              {g.configured && (
+              {g.members.some((m) => m.source === 'vault') && (
                 <button type="button" onClick={() => void purgeGroup(g)} disabled={busy === `purge-group-${g.name}`} style={btn(C.redSoft)}>
-                  {busy === `purge-group-${g.name}` ? '…' : 'Remove keys'}
+                  {busy === `purge-group-${g.name}` ? '…' : 'Remove vault keys'}
                 </button>
               )}
             </div>
