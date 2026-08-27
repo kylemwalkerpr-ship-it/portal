@@ -700,11 +700,8 @@ function pathForHostFallback(
     }
   }
   if (contentType === 'blog_post' || contentType === 'blog_summary') {
-    // Apex blogs deploy as static pages under landing-page/app/blog/<slug>/
-    // — the precedence set by the existing yousafe-consultancy blog posts.
-    if (host === 'apex') {
-      return { filePath: `${app}/app/blog/${slug}/page.tsx`, urlPath: `/blog/${slug}/` }
-    }
+    // All blog posts ship as Markdown under content/blog/ — the ship gate
+    // enforces .md format for yousafe-consultancy.
     return { filePath: `${app}/content/blog/${slug}.md`, urlPath: `/blog/${slug}/` }
   }
   return { filePath: `${app}/content/${slug}.md`, urlPath: `/${slug}/` }
