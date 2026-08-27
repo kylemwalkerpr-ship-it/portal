@@ -109,7 +109,7 @@ export default function Hero({ onSignup }: HeroProps) {
         margin: '0 auto',
       }}
     >
-      {/* ── Left: copy ──────────────────────────────────────────────── */}
+      {/* ── Left: copy ──────────────────────────────── */}
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
           <span
@@ -153,7 +153,7 @@ export default function Hero({ onSignup }: HeroProps) {
             fontWeight: 500,
           }}
         >
-          Your team for the
+          Your team for
           <br />
           <em
             style={{
@@ -163,7 +163,7 @@ export default function Hero({ onSignup }: HeroProps) {
               display: 'inline-block',
             }}
           >
-            moves that matter
+            the moves that matter
             <span
               aria-hidden="true"
               style={{
@@ -270,7 +270,7 @@ export default function Hero({ onSignup }: HeroProps) {
         </div>
       </div>
 
-      {/* ── Right: media card ──────────────────────────────────────── */}
+      {/* ── Right: media card ──────────────────────────── */}
       <div
         className="ys-hero__media"
         style={{
