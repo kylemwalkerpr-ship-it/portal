@@ -258,6 +258,11 @@ export default clerkMiddleware(
           },
         })
       }
+      // Market host: pass /sitemap.xml straight through so app/sitemap.ts
+      // runs (it is host-aware and emits the market map). Previously this
+      // fell through to the /marketplace${pathname} rewrite → 404 HTML even
+      // though the apex sitemap-index lists the market loc.
+      return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
 
     // ── Strip tracking params (301) ─────────────────────────────────────
@@ -313,7 +318,11 @@ export default clerkMiddleware(
         pathname.startsWith('/_next/') ||
         pathname.startsWith('/sellers') ||
         pathname === '/shop' ||
-        pathname.startsWith('/shop/')
+        pathname.startsWith('/shop/') ||
+        // Belt and braces: never rewrite the sitemap onto /marketplace/
+        // (no such route → 404 HTML that Google is being pointed at).
+        pathname === '/sitemap.xml' ||
+        pathname === '/sitemap.xml/'
       ) {
         // pass through — /sellers lives at its on-disk path (no /marketplace
         // prefix) and is now public, so gig-card seller clicks on the market
