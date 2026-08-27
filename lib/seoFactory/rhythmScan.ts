@@ -105,9 +105,13 @@ export async function runRhythmScan(opts: { limit?: number; maxRows?: number } =
     }
     if (!hit) continue
 
+    // The deterministic repair has a bounded pronoun-rotation strategy. Once
+    // repetition exceeds that cap it cannot be a one-click fix, even if the
+    // simulated gate happens to clear for another reason.
+    let remediable = hit.count < 26
     // Determine remediability WITHOUT writing: run the deterministic repair
     // off to the side and re-check the gate.
-    let remediable = false
+    let repairedClears = false
     try {
       const repaired = applyDeterministicRepairs({
         content,
@@ -122,7 +126,8 @@ export async function runRhythmScan(opts: { limit?: number; maxRows?: number } =
         primaryKeyword: row.primary_keyword || '',
         indexable: true,
       })
-      remediable = ![...after.blockers, ...after.warnings].some((x) => x.code === 'sentence_start_repetition')
+      repairedClears = ![...after.blockers, ...after.warnings].some((x) => x.code === 'sentence_start_repetition')
+      remediable = remediable && repairedClears
     } catch {
       remediable = false
     }

@@ -700,8 +700,11 @@ function pathForHostFallback(
     }
   }
   if (contentType === 'blog_post' || contentType === 'blog_summary') {
-    // All blog posts ship as Markdown under content/blog/ — the ship gate
-    // enforces .md format for yousafe-consultancy.
+    // Apex blogs use the established static-page layout; regional blogs remain
+    // Markdown under their host's content tree.
+    if (host === 'apex') {
+      return { filePath: `${app}/app/blog/${slug}/page.tsx`, urlPath: `/blog/${slug}/` }
+    }
     return { filePath: `${app}/content/blog/${slug}.md`, urlPath: `/blog/${slug}/` }
   }
   return { filePath: `${app}/content/${slug}.md`, urlPath: `/${slug}/` }
@@ -802,10 +805,10 @@ export async function resolveOwner(opts: {
   const blockers: string[] = []
   const keyword = opts.primaryKeyword || ''
 
-  // ── Explicit blog_post always ships to apex (the yousafe-consultancy /blog/ tree).
-  //    Registry matches must never redirect a studio blog_post to a regional or
-  //    legal host — the standing rules are the single source of truth for blogs.
-  if (opts.contentType === 'blog_post' && isExplicitDestinationType(normalizeStudioContentType(opts.contentType || ''))) {
+  // ── Explicit blog_post ships to apex unless a cluster explicitly supplies a
+  //    canonical owner URL. Registry matches alone must not redirect a studio
+  //    blog_post to a regional or legal host.
+  if (opts.contentType === 'blog_post' && !opts.ownerUrlHint && isExplicitDestinationType(normalizeStudioContentType(opts.contentType || ''))) {
     const slug = opts.slug || slugify(keyword || 'blog')
     const fb = pathForHostFallback('apex', opts.region, slug, 'blog_post')
     return {
@@ -819,7 +822,7 @@ export async function resolveOwner(opts: {
       action: 'build',
       intentClass: 'news_summary',
       contentType: 'blog_post',
-      warnings: ['Explicit blog_post → apex (standing rules override registry match)'],
+      warnings: ['Explicit blog_post → apex (standing rules override registry match; matched legal pillar stays on legal)'],
       blockers: [],
       ymy: false,
       routingSource: 'standing_rules',
