@@ -6270,7 +6270,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 fetchEngineStatus(),
               ])
               setLastRefreshAt(Date.now())
-              setActionNotice(`Studio data refreshed · ${jobs.length} jobs, ${merges.length} merged PRs`)
+              setActionNotice(null)
             } catch (e) {
               const msg = e instanceof Error ? e.message : 'Refresh failed'
               setError(msg)

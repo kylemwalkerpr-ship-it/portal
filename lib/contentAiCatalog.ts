@@ -20,6 +20,7 @@ export type StudioModelId =
   | 'deepseek-v4-flash'
   | 'deepseek-v4-pro'
   | 'glm-5.2'
+  | 'glm-5.3-flash'
   | 'glm-5.2-fast'
   | 'grok-4.6'
   | 'gpt-5.6-terra'
@@ -96,6 +97,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'deepseek-v4-flash',
     'grok-4.6',
     'glm-5.2',
+    'glm-5.3-flash',
     'glm-5.2-fast',
     'nemotron-3-ultra',
     'cloudflare-llama',
@@ -105,6 +107,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
   brief: [
     'deepseek-v4-pro',
     'glm-5.2',
+    'glm-5.3-flash',
     'deepseek-v4-flash',
     'grok-4.6',
     'glm-5.2-fast',
@@ -115,6 +118,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'deepseek-v4-pro',
     'deepseek-v4-flash',
     'glm-5.2',
+    'glm-5.3-flash',
     'grok-4.6',
     'glm-5.2-fast',
     'gpt-5.6-sol',
@@ -125,6 +129,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'minimax-m3',
     'deepseek-v4-pro',
     'glm-5.2',
+    'glm-5.3-flash',
     'deepseek-v4-flash',
     'grok-4.6',
     'glm-5.2-fast',
@@ -183,6 +188,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     label: 'Grok 4.6',
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [{ id: 'xai', label: 'SuperGrok / xAI', pin: 'grok' }],
+  },
+  {
+    id: 'glm-5.3-flash',
+    label: 'GLM 5.3 Flash',
+    apiModel: 'zai-org/GLM-5.3-Flash',
+    lanes: ['draft', 'brief', 'review', 'command'],
+    hosts: [{ id: 'baseten', label: 'Baseten', pin: 'baseten-glm-53-flash' }],
   },
   {
     id: 'glm-5.2-fast',
@@ -268,6 +280,9 @@ const PIN_ALIASES: Record<string, string> = {
   supergrok: 'grok',
   'super-grok': 'grok',
   'glm-fast': 'baseten-glm-fast',
+  'baseten-glm-53-flash': 'baseten-glm-53-flash',
+  'glm-5.3-flash': 'baseten-glm-53-flash',
+  'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
   'baseten-glm': 'baseten-glm-fast',
   'aihubmix-glm': 'aihubmix-glm-fast',
   'glm-fast-aihubmix': 'aihubmix-glm-fast',
