@@ -189,6 +189,26 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     }
   }, [])
 
+  const purgeAll = async () => {
+    if (!window.confirm('Remove ALL vault keys? Workers will fall back to env secrets only. You can re-paste keys after.')) return
+    setBusy('purge-all')
+    try {
+      const res = await fetch('/api/seo-factory/ai-keys?purge=true', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setNote({ ok: true, text: `Purged ${j.purged ?? '?'} vault key(s) — env secrets now active` })
+      await load()
+      onChanged?.()
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message : 'Purge failed' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   React.useEffect(() => {
     void load()
   }, [load])
@@ -519,6 +539,9 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
           )}
           <button type="button" onClick={() => void load()} disabled={loading} style={btn()}>
             {loading ? 'Loading…' : '↻ Refresh'}
+          </button>
+          <button type="button" onClick={() => void purgeAll()} disabled={busy === 'purge-all'} style={btn(C.redSoft)}>
+            {busy === 'purge-all' ? 'Purging…' : '🗑 Clear all vault keys'}
           </button>
         </div>
       </div>

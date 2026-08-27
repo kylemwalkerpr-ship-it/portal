@@ -577,6 +577,18 @@ export async function deleteVaultKey(providerId: string): Promise<void> {
   vaultCache = null
 }
 
+/** Delete every vault key so only Worker env secrets remain active. */
+export async function purgeAllVaultKeys(): Promise<number> {
+  const { data, error } = await sb()
+    .from('ai_provider_keys')
+    .delete()
+    .neq('provider', '__none__')
+    .select('provider')
+  if (error) throw new Error(error.message)
+  vaultCache = null
+  return (data || []).length
+}
+
 const STALE_DEFAULT_PROVIDERS = new Set([
   '',
   'auto',

@@ -6,6 +6,7 @@ import {
   listVaultStatus,
   upsertVaultKey,
   deleteVaultKey,
+  purgeAllVaultKeys,
   maskKey,
 } from '@/lib/aiKeyVault'
 import { getSuperGrokStatus } from '@/lib/xaiSuperGrokOAuth'
@@ -75,6 +76,11 @@ export async function DELETE(request: NextRequest) {
     const auth = await requireAdminUser()
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+    // ?purge=true → delete ALL vault keys (admin reset)
+    if (request.nextUrl.searchParams.get('purge') === 'true') {
+      const count = await purgeAllVaultKeys()
+      return NextResponse.json({ ok: true, purged: count })
     }
     const provider = request.nextUrl.searchParams.get('provider')
     if (!provider) {
