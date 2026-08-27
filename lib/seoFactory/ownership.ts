@@ -130,6 +130,9 @@ export function reconcileContentTypeWithPath(opts: {
       return { contentType: 'legal_guide', intentClass: 'procedural' }
     }
   }
+  // A legal owner URL is authoritative for explicit cluster overrides. Reconcile
+  // the destination type before resolving the final host/repo so a blog_post
+  // cannot leave the apex route when ownerUrlHint names a legal page.
   return { contentType, intentClass }
 }
 
@@ -883,6 +886,7 @@ export async function resolveOwner(opts: {
   }
   const callerExplicit = isExplicitDestinationType(normalizeStudioContentType(opts.contentType || ''))
   let host: OwnerHost
+  let repo: ContentRepo
   let routingSource: OwnerPlan['routingSource']
   let filePath: string
   let urlPath: string
@@ -894,15 +898,39 @@ export async function resolveOwner(opts: {
     ? hostFromUrl(matched.owner_url) ||
       (HOST_REPO[matched.owner_host as OwnerHost] ? (matched.owner_host as OwnerHost) : 'legal')
     : null
+  // An explicit legal ownerUrlHint is an authoritative cluster destination.
+  // Recompute both host and content type from that URL before registry matching,
+  // so the caller's generic blog_post type cannot keep this plan on apex.
+  const hintedHost = opts.ownerUrlHint ? hostFromUrl(opts.ownerUrlHint) : null
+  let hintedOwnerPath: { filePath: string; urlPath: string } | null = null
+  if (hintedHost === 'legal' && opts.ownerUrlHint) {
+    hintedOwnerPath = filePathFromOwnerUrl(opts.ownerUrlHint, hintedHost)
+    if (hintedOwnerPath) {
+      host = hintedHost
+      repo = HOST_REPO[hintedHost]
+      filePath = hintedOwnerPath.filePath
+      urlPath = hintedOwnerPath.urlPath
+      canonicalUrl = sanitizeOwnerUrl(opts.ownerUrlHint)
+      contentType = 'legal_guide'
+      intentClass = 'procedural'
+      routingSource = 'registry_owner_url'
+      action = 'expand'
+      warnings.push(`Explicit ownerUrlHint → legal/caseworks owner ${canonicalUrl}`)
+    }
+  }
   // Explicit blog/regional ships must not overwrite a legal pillar just because
   // the keyword matched a caseworks registry row.
   const stealLegalPillar =
     Boolean(matched) &&
     callerExplicit &&
     registryHost === 'legal' &&
-    contentType !== 'legal_guide'
+    contentType !== 'legal_guide' &&
+    hintedHost !== 'legal'
 
-  if (matched && !stealLegalPillar) {
+  if (hintedOwnerPath) {
+    // Keep the explicit legal owner URL selected above; registry keyword matches
+    // must not overwrite a caller-supplied cluster destination.
+  } else if (matched && !stealLegalPillar) {
     intentClass = String(matched.intent_class || 'procedural')
     contentType = contentTypeFromIntent(intentClass, contentType)
     action = matched.action || 'build'
@@ -969,8 +997,8 @@ export async function resolveOwner(opts: {
     warnings.push(`Unknown host ${host}; forcing legal/caseworks`)
     host = 'legal'
   }
+  repo = HOST_REPO[host]
 
-  let repo = HOST_REPO[host]
   // Indexability is the DEFAULT for any article that passes review and merges
   // to live. A registry action (noindex / supply_first) may flag a page for
   // manual handling, but it never silently forces a noindex directive — only

@@ -108,6 +108,9 @@ export async function runRhythmScan(opts: { limit?: number; maxRows?: number } =
     // The deterministic repair has a bounded pronoun-rotation strategy. Once
     // repetition exceeds that cap it cannot be a one-click fix, even if the
     // simulated gate happens to clear for another reason.
+    // The deterministic repair has a bounded pronoun-rotation strategy. At
+    // 26+ repetitions it cannot clear every repeated opener, so classify the
+    // alert as non-remediable even if a gate recheck happens to pass.
     let remediable = hit.count < 26
     // Determine remediability WITHOUT writing: run the deterministic repair
     // off to the side and re-check the gate.
