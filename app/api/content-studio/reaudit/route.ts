@@ -12,6 +12,30 @@ import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinks
 
 export type { ReauditResponse }
 
+type CompetingUrlInput = string | { url?: string; title?: string; primaryKeyword?: string | null }
+
+function normalizeCompetingUrls(raw: unknown): Array<{ url: string; title: string; primaryKeyword?: string | null }> | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const out: Array<{ url: string; title: string; primaryKeyword?: string | null }> = []
+  for (const item of raw as CompetingUrlInput[]) {
+    if (typeof item === 'string') {
+      const url = item.trim()
+      if (url) out.push({ url, title: url })
+      continue
+    }
+    if (item && typeof item === 'object') {
+      const url = String(item.url || '').trim()
+      if (!url) continue
+      out.push({
+        url,
+        title: String(item.title || url),
+        primaryKeyword: item.primaryKeyword ?? null,
+      })
+    }
+  }
+  return out.length ? out : undefined
+}
+
 /**
  * Resolve the canonical/target URL for a job so the Ahrefs canonical repair
  * can inject canonicalUrl into the front matter. The editor does not always
@@ -386,6 +410,8 @@ export async function POST(request: NextRequest) {
       requiredShortKeywords?: string[]; requiredLongTailKeywords?: string[]
       jobId?: string
       region?: string
+      targetUrl?: string
+      competingUrls?: CompetingUrlInput[]
     }
     const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, jobId, region } = body
     if (!content || typeof content !== 'string') {
@@ -393,16 +419,8 @@ export async function POST(request: NextRequest) {
     }
     // Resolve the canonical URL from the job when the body omits it — the
     // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
-    const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
-    const competingUrls = Array.isArray((body as { competingUrls?: unknown }).competingUrls)
-      ? ((body as { competingUrls: Array<{ url?: string; title?: string; primaryKeyword?: string | null } | string> }).competingUrls)
-          .map((c) =>
-            typeof c === 'string'
-              ? { url: c, title: c }
-              : { url: String(c.url || ''), title: String(c.title || c.url || ''), primaryKeyword: c.primaryKeyword ?? null },
-          )
-          .filter((c) => c.url)
-      : undefined
+    const targetUrl = await resolveTargetUrl(jobId, body.targetUrl)
+    const competingUrls = normalizeCompetingUrls(body.competingUrls)
     // Deterministic compliance repair first: a missing disclaimer or broken
     // reader TOC is a mechanical fix — apply it now so the audit reflects the
     // content that can actually ship, and return the repaired draft so the
@@ -507,7 +525,7 @@ export async function PATCH(request: NextRequest) {
        *  deterministic floor. */
       competingSnippets?: string[]
       /** Pages already targeting the same intent (cannibalization). */
-      competingUrls?: string[]
+      competingUrls?: CompetingUrlInput[]
       /** Live estate URL this draft publishes to (job.canonical_url). Injects
        *  canonicalUrl into front matter so ahrefs_canonical_missing clears. */
       targetUrl?: string
@@ -529,19 +547,7 @@ export async function PATCH(request: NextRequest) {
     // Resolve the canonical URL from the job when the body omits it — the
     // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
     const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
-    const competingPages = Array.isArray(competingUrls)
-      ? competingUrls
-          .map((c) =>
-            typeof c === 'string'
-              ? { url: c, title: c }
-              : {
-                  url: String((c as { url?: string }).url || ''),
-                  title: String((c as { title?: string; url?: string }).title || (c as { url?: string }).url || ''),
-                  primaryKeyword: (c as { primaryKeyword?: string | null }).primaryKeyword ?? null,
-                },
-          )
-          .filter((c) => c.url)
-      : undefined
+    const competingPages = normalizeCompetingUrls(competingUrls)
 
     let fixedContent: string
     // Master Engine fix plan — the engine's highest-priority gaps, rendered
@@ -600,7 +606,7 @@ export async function PATCH(request: NextRequest) {
         region,
         indexable,
         competingSnippets,
-        competingUrls,
+        competingUrls: competingPages?.map((c) => c.url),
       })
       const leftoverSet = new Set(leftover)
       // Build a comprehensive fix prompt listing every issue
@@ -903,7 +909,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
           region,
           indexable,
           competingSnippets,
-          competingUrls,
+          competingUrls: competingPages?.map((c) => c.url),
         })
         const sys = `You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.
 
