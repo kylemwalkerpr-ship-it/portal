@@ -729,6 +729,94 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // ── Repeated phrase / paragraph deduplication ──────────────────────
+  // AI models pad word count by repeating entire paragraphs or sentences
+  // that differ by only 1-2 words. The sentence_start_repetition gate
+  // only fires when 5+ sentences share the same 12-char opening, but
+  // duplicated paragraphs with slightly different openings slip through.
+  // This pass catches:
+  //  1. Exact paragraph duplicates (after normalizing whitespace)
+  //  2. Near-duplicate paragraphs (≥80% token overlap)
+  //  3. Repeated sentence triples (3+ consecutive words in common)
+  {
+    const before = b
+    // Split into paragraphs (double-newline separated)
+    const paragraphs = b.split(/\n\n+/)
+    const seenParaHashes = new Map<string, number>() // normalized → first index
+    const tokenOverlap = (a: string, b: string): number => {
+      const tokensA = new Set(a.toLowerCase().split(/\W+/).filter(t => t.length > 2))
+      const tokensB = new Set(b.toLowerCase().split(/\W+/).filter(t => t.length > 2))
+      if (tokensA.size === 0 || tokensB.size === 0) return 0
+      let overlap = 0
+      for (const t of tokensA) if (tokensB.has(t)) overlap++
+      return overlap / Math.max(tokensA.size, tokensB.size)
+    }
+    const dedupedParas: string[] = []
+    let removedPara = 0
+    for (const para of paragraphs) {
+      const normalized = para.replace(/\s+/g, ' ').trim().toLowerCase()
+      // Only dedup paragraphs that are long enough to be real content
+      // (≥60 words ≈ 3+ sentences). Short paragraphs (single sentences,
+      // bullet items, headings) are structural — deduplicating them causes
+      // false positives on legitimately similar content.
+      const paraWords = normalized.split(/\s+/).length
+      if (paraWords < 60) {
+        dedupedParas.push(para)
+        continue
+      }
+      // Exact duplicate check
+      const hashKey = normalized.slice(0, 200)
+      if (seenParaHashes.has(hashKey)) {
+        removedPara++
+        continue
+      }
+      // Near-duplicate check (token overlap ≥ 92% — high threshold to avoid
+      // false positives on legitimately similar paragraphs).
+      let isNearDupe = false
+      for (const [prevKey] of seenParaHashes) {
+        const prevNormalized = prevKey
+        if (tokenOverlap(normalized, prevNormalized) >= 0.92) {
+          isNearDupe = true
+          break
+        }
+      }
+      if (isNearDupe) {
+        removedPara++
+        continue
+      }
+      seenParaHashes.set(hashKey, dedupedParas.length)
+      dedupedParas.push(para)
+    }
+    // Also strip repeated sentence triples within each remaining paragraph.
+    // "The applicant must submit the form. The applicant must submit the form
+    //  before the deadline. The applicant must submit the form promptly." →
+    // keep first two, remove the third.
+    const dedupedSentences = dedupedParas.map((para) => {
+      if (para.length < 150) return para // too short for sentence-level dedup
+      const sentences = para.split(/(?<=[.!?])\s+/)
+      if (sentences.length < 5) return para
+      const seen3 = new Map<string, number>() // 3-word sliding window → count
+      return sentences.map((sent) => {
+        const words = sent.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/).filter(Boolean)
+        // Check all 3-word windows in this sentence against seen phrases
+        for (let i = 0; i <= words.length - 3; i++) {
+          const trigram = words.slice(i, i + 3).join(' ')
+          const count = (seen3.get(trigram) || 0) + 1
+          seen3.set(trigram, count)
+          // If this trigram has appeared 4+ times, this sentence is padding
+          if (count >= 4) {
+            return '' // remove the sentence
+          }
+        }
+        return sent
+      }).filter(Boolean).join(' ')
+    })
+    if (removedPara > 0 || dedupedSentences.some((p, i) => p !== dedupedParas[i])) {
+      b = dedupedSentences.join('\n\n').replace(/\n{3,}/g, '\n\n')
+      if (removedPara > 0) applied.push(`duplicate_paragraphs_removed (${removedPara})`)
+    }
+  }
+
   // ── Duplicate TOC / list-item deduplication ──────────────────────────
   // AI models repeat the Table of Contents entries 3-5× to pad word count.
   // The TOC block has proper markdown links first, then 3+ copies of the

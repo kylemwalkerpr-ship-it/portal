@@ -617,7 +617,13 @@ ${warningList}
 2. Then fix EVERY blocker listed above - these are mandatory
 3. Dead/untrusted links: ONE pass. KEEP the href if it is the issuing body for the claim (exam board, licensing council). If it is a competitor/blog/news/shortener, REPLACE the href in place with the allowlist official URL for the SAME claim — do not unwrap and do not swap a board URL for a generic immigration homepage. Never invent a URL.
 4. CRITICAL — NEVER modify TLDs: Do NOT append sentence words to domain names. URLs like uscis.gov, canada.ca, homeaffairs.gov.au, gov.uk must appear EXACTLY as-is. NEVER produce uscis.Typically, canada.On, gov.uk.Meanwill, or any domain with a sentence word replacing or appended to the TLD. Keep the full URL intact including the TLD and path.
-5. Vary sentence openings: no more than 2 consecutive sentences starting with the same word. If sentence_start_repetition is listed, find EVERY sentence starting with the repeated prefix and rewrite all but two of them with different openings (a concrete noun, a time reference, a condition, or a direct instruction).
+5. REPETITION ELIMINATION — this is the #1 recurring failure. You MUST:
+   a) No more than 2 consecutive sentences starting with the same word.
+   b) No sentence may appear more than once in the entire article — even if it is slightly reworded. If you see two sentences that say the same thing with different words, DELETE the weaker one.
+   c) No paragraph may be duplicated or nearly-duplicated (≥80% same words). If two paragraphs cover the same point, MERGE them into one.
+   d) No section heading may appear more than once.
+   e) NO padding: do NOT repeat sentences, paragraphs, or TOC entries to fill space. If the article is short, write NEW substantive content instead.
+   f) If sentence_start_repetition is listed, find EVERY sentence starting with the repeated prefix and rewrite all but two with different openings.
 5a. JSON-LD / schema issues: if any <script type="application/ld+json"> block is listed as invalid, DELETE that entire block — a valid Article + FAQPage block is regenerated automatically. Never hand-edit JSON inside a script block.
 5b. Internal links: use ONLY URLs from the VERIFIED INTERNAL URLS list below. If an internal link is not in that list, either swap it for the closest listed URL that matches the anchor's topic, or remove the href and keep the anchor text. Never guess or invent an internal path.
 5c. External links marked dead: REMOVE the href entirely — keep the anchor text as plain text. Do NOT replace dead external links with new URLs you think exist. Never invent or guess external URLs.
@@ -672,31 +678,73 @@ ${warningList}
       // Deduplication and mechanical repairs can strip duplicate TOC lines,
       // duplicate H2 sections, or duplicate JSON-LD blocks — dropping the
       // word count below the content-type floor or target. The old code
-      // only ran depth expansion for fix_depth and fix_warnings; fix_all
-      // silently shipped under-length drafts. Run the same append-only
-      // expansion here so fix_all converges in one sweep.
+      // ── Word-count convergence loop for fix_all ───────────────
+      // Deduplication and mechanical repairs can strip duplicate TOC lines,
+      // duplicate H2 sections, or duplicate JSON-LD blocks — dropping the
+      // word count below the content-type floor or target. The old single-
+      // shot expansion silently failed when the AI returned too few words
+      // or the post-fix deterministic trim stripped expansion content.
+      // This convergence loop retries up to 3 times, each time asking the
+      // model to fill the REMAINING deficit so the draft lands inside the
+      // target window.
       if (fixedContent) {
-        const postFixWords = countBodyWords(fixedContent)
-        const targetWords = targetWordsForType(String(contentType || 'legal_guide'))
-        const minWords = minWordsForType(String(contentType || 'legal_guide'))
-        const needsExpansion = postFixWords < minWords || postFixWords < targetWords * 0.85
-        if (needsExpansion) {
+        const ct = String(contentType || 'legal_guide')
+        const targetWords = targetWordsForType(ct)
+        const minWords = minWordsForType(ct)
+        const maxWords = maxWordsForType(ct)
+        const CONVERGE_MAX = 3
+        for (let attempt = 0; attempt < CONVERGE_MAX; attempt++) {
+          const curWords = countBodyWords(fixedContent)
+          const deficit = targetWords - curWords
+          if (curWords >= minWords && deficit <= 0) break // target met
+          // Build a precise prompt: tell the model exactly how many new words
+          // to write and what topics are missing, so it doesn't under- or
+          // over-shoot.
+          const needWords = Math.max(300, deficit + 200) // overshoot buffer
+          const depthPrompt = `Write approximately ${needWords} NEW words of markdown H2 sections to expand this article from ${curWords} to ${targetWords} words.
+
+EXISTING HEADINGS (do NOT duplicate these):
+${(fixedContent.match(/^##\s+.+$/gm) || []).join('\n')}
+
+TOPICS TO EXPAND (pick the ones most relevant to the article's primary keyword "${primaryKeyword || 'immigration guide'}"):
+- Practical examples, worked scenarios, or case studies
+- Common mistakes, pitfalls, or red flags to avoid
+- Timeline expectations and processing durations
+- Cost breakdowns, fee schedules, or budget guidance
+- Comparison tables or step-by-step checklists
+- Regional variations (if the article covers multiple countries)
+
+RULES:
+- Write ONLY new H2 sections — no front matter, no JSON-LD, no duplicate headings.
+- Each section must contain 3–6 substantive paragraphs (not bullet-only).
+- Preserve every existing section, fact, citation, and interlink.
+- Do NOT repeat content that already exists in the article.
+- Return ONLY the new sections, nothing else.`
           depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
-          if (!depthPlan.ok && depthPlan.prompt) {
-            const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
-            try {
-              const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
-              const merged = mergeAppendedSections(fixedContent, appended)
-              if (countBodyWords(merged) > countBodyWords(fixedContent)) {
-                fixedContent = merged
-                depthExpandedForWarnings = true
-              }
-            } catch {
-              // Depth expansion is best-effort for fix_all — continue with
-              // the current content and let the shared post-fix section
-              // handle the evaluation.
-            }
+          if (depthPlan.ok) break // already at target
+          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+          try {
+            const appended = await callAiFix(sys, depthPrompt, 16384, reviewModel)
+            const merged = mergeAppendedSections(fixedContent, appended)
+            const afterWords = countBodyWords(merged)
+            if (afterWords <= curWords) break // model returned nothing useful
+            fixedContent = merged
+            depthExpandedForWarnings = true
+          } catch {
+            break // AI failure — stop retrying
           }
+        }
+        // Hard cap: never exceed the content-type's max word count.
+        const finalWords = countBodyWords(fixedContent)
+        if (finalWords > maxWords) {
+          fixedContent = applyDeterministicRepairs({
+            content: fixedContent,
+            primaryKeyword: primaryKeyword || 'guide',
+            region, indexable, contentType,
+            requiredShortKeywords, requiredLongTailKeywords,
+            competingUrls: competingUrls as any, targetUrl,
+            maxWords, minWords,
+          }).content
         }
       }
 
