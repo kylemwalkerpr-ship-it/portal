@@ -37,9 +37,9 @@ describe('ahrefs_schema_invalid — broken JSON-LD is deterministically repaired
 
   it('leaves a parse-valid ld+json block untouched', () => {
     const goodLd = `<script type="application/ld+json">\n{ "@context": "https://schema.org", "@type": "Article", "headline": "Ok", "image": ["https://legal.yousafeconsultancy.com/og-image.png"], "datePublished": "2026-08-01", "author": { "@type": "Organization", "name": "X" } }\n</script>`
-    const draft = `# T\n\n${goodLd}\n\n## Body\n\nSome prose here that stands on its own for the body of the article to exist at all in this test.`
+    const draft = `# Valid schema sample\n\n${goodLd}\n\n## Body\n\nSome prose here that stands on its own for the body of the article to exist at all in this test.`
 
-    const out = applyDeterministicRepairs({ content: draft, title: 'T', primaryKeyword: 't' })
+    const out = applyDeterministicRepairs({ content: draft, title: 'Valid schema sample', primaryKeyword: 'schema sample' })
     expect(out.applied).not.toContain('broken_jsonld_removed')
     expect(out.content).toContain('"headline": "Ok"')
   })

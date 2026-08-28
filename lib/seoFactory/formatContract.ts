@@ -149,11 +149,18 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
   }
   const inlineSchemaLines = s.split('\n')
   let inlineSchemaRemoved = 0
+  let inScript = false
   for (let i = 0; i < inlineSchemaLines.length; i++) {
-    const line = inlineSchemaLines[i].trim()
+    const line = inlineSchemaLines[i]
+    const trimmed = line.trim()
+    if (/<script\b/i.test(line)) inScript = true
+    if (inScript) {
+      if (/<\/script>/i.test(line)) inScript = false
+      continue
+    }
     // Only remove a single-line JSON object clearly identified as schema.
     // Multiline JSON-LD is handled by the complete <script> block pass below.
-    if (/^\{.*["']?@context["']?\s*:\s*["']?.*schema\.org.*["']?@type["']?\s*:/i.test(line)) {
+    if (/^\{.*["']?@context["']?\s*:\s*["']?.*schema\.org.*["']?@type["']?\s*:/i.test(trimmed)) {
       inlineSchemaLines[i] = ''
       inlineSchemaRemoved++
     }
@@ -251,7 +258,9 @@ export function isKeywordOnlyTitle(title: string, primaryKeyword: string): boole
   const t = norm(title)
   const k = norm(primaryKeyword)
   if (!t || !k) return false
-  return t === k || (k.length >= 8 && (t.startsWith(k) || k.startsWith(t)) && Math.abs(t.length - k.length) <= 8)
+  if (t === k) return true
+  const stripYear = (v: string) => v.replace(/\b20\d{2}\b/g, '').replace(/\s+/g, ' ').trim()
+  return stripYear(t) === stripYear(k)
 }
 
 /** Title Case helper for synthesized titles. */

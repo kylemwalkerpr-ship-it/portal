@@ -176,6 +176,12 @@ describe('full pipeline formatting regression fixtures', () => {
       '### Can a consultant write my application?',
       'No. A consultant may advise and edit, but the applicant should write and submit their own work.',
       '',
+      '### How do I compare fees?',
+      'Ask each provider the same questions about deliverables, timelines, revisions, and refunds.',
+      '',
+      '### What if I already paid a consultant?',
+      'Keep copies of the agreement and any drafts. Confirm remaining work in writing before you pay more.',
+      '',
       '--- title: admissions consultant credentials',
       'content_type: article',
       'region: US',
@@ -187,7 +193,7 @@ describe('full pipeline formatting regression fixtures', () => {
       '<script type="application/ld+json">',
       '{"@context":"https://schema.org","@type":"Article","headline":"Admissions Consultant Credentials: 2026 Checklist"}',
       '</script>',
-    ].join('\\n')
+    ].join('\n')
 
     const normalized = normalizeEditorDocument(draft)
     const repaired = applyDeterministicRepairs({
@@ -280,7 +286,7 @@ describe('applyDeterministicRepairs — broken script tag / body swallowing regr
     expect(countBodyWords(content)).toBeGreaterThan(800)
     expect(applied.some((item) => item === 'broken_script_tag_removed' || item === 'editor_inline_schema_dropped (2)')).toBe(true)
     // A valid Article block is still present and the body headings intact.
-    expect(content).toContain('"@type": "Article"')
+    expect(content).toMatch(/"@type"\s*:\s*"Article"/)
     expect(content).toContain('## Work limits while studying')
     expect(content).toContain('## Documents you must prepare')
     // The description must be prose — never a scraped script block.

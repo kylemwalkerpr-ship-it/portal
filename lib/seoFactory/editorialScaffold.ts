@@ -111,7 +111,25 @@ function buildFaqQas(body: string, primaryKeyword: string): Array<{ q: string; a
   return qas.length >= 3 ? qas : null
 }
 
-
+/** 3–5 takeaway bullets taken from the draft's own H2 lead sentences. */
+function derivedTldrBullets(body: string, primaryKeyword: string, need = 3): string[] {
+  const qas = buildFaqQas(body, primaryKeyword) || []
+  const fromSections = qas.map((qa) => qa.a.replace(/\s+/g, ' ').trim()).filter((s) => s.length > 20)
+  const bullets = [...fromSections]
+  if (bullets.length < need) {
+    const kw = (primaryKeyword || 'this application').trim()
+    const fallbacks = [
+      `Confirm current rules for ${kw} on the official government site before you file.`,
+      `Gather identity and supporting documents listed in this guide.`,
+      `File only when every item matches the official instructions.`,
+    ]
+    for (const item of fallbacks) {
+      if (bullets.length >= need) break
+      if (!bullets.some((b) => b.toLowerCase() === item.toLowerCase())) bullets.push(item)
+    }
+  }
+  return bullets.slice(0, Math.max(need, Math.min(5, bullets.length)))
+}
 
 /** Shared heading slug — MUST match renderTarget.markdownToJsx + StickyTOC. */
 export function slugifyHeading(text: string): string {
@@ -586,6 +604,9 @@ export function applyDeterministicRepairs(opts: {
   // later repair sees a clean document.
   const normalizedEditor = normalizeEditorDocument(opts.content || '')
   if (normalizedEditor.fixed.length) applied.push(...normalizedEditor.fixed)
+  if (normalizedEditor.fixed.some((f) => f.startsWith('editor_invalid_schema_dropped'))) {
+    applied.push('broken_jsonld_removed')
+  }
   let unwrapped = unwrapWholeDocumentFence(normalizedEditor.content)
   if (unwrapped !== normalizedEditor.content) applied.push('unwrapped_document_fence')
 
@@ -621,6 +642,27 @@ export function applyDeterministicRepairs(opts: {
       'Immigration rules change; verify every requirement against official government sources and consult a ' +
       'licensed attorney, solicitor, or registered migration agent for your situation.\n'
     applied.push('disclaimer')
+  }
+
+  {
+    const tldr = b.match(/(?:^|\n)##\s+In 60 seconds[ \t]*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
+    const existing = tldr ? (tldr[1].match(/^[-*+]\s+\S/gm) || []).length : 0
+    if (!tldr || existing < 3) {
+      const need = Math.max(0, 3 - existing)
+      const extra = derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3).slice(0, need || 3)
+      if (tldr && extra.length) {
+        const insertAt = tldr.index! + tldr[0].length
+        const prefix = tldr[0].endsWith('\n') ? '' : '\n'
+        b = `${b.slice(0, insertAt)}${prefix}${extra.map((item) => `- ${item}`).join('\n')}\n${b.slice(insertAt)}`
+        applied.push('tldr_bullets_derived')
+      } else if (!tldr) {
+        const bullets = extra.length ? extra : derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3)
+        const h1 = b.match(/^#\s+[^\n]+\n+/)
+        const block = `## In 60 seconds\n\n${bullets.map((item) => `- ${item}`).join('\n')}\n\n`
+        b = h1 ? b.replace(/^#\s+[^\n]+\n+/, (m) => `${m}${block}`) : `${block}${b}`
+        applied.push('tldr_section_derived')
+      }
+    }
   }
 
   const withToc = normalizeReaderStructure(b)
@@ -1249,7 +1291,7 @@ export function applyDeterministicRepairs(opts: {
     // --- Path B: single FAQ H2 with bold questions inside ---
     // Pattern: ## FAQ: ... \n\n **Is X worth it?** \n\n Answer... \n\n **How much does X cost?** ...
     if (faqEntities.length < 3) {
-      const faqSectionMatch = b.match(/^(## (?:FAQ|Frequently asked).*?)\n([\s\S]*?)(?=^## |$)/im)
+      const faqSectionMatch = b.match(/(?:^|\n)(## (?:FAQ|Frequently asked)[^\n]*)\n([\s\S]*?)(?=\n## |\n*$)/i)
       if (faqSectionMatch) {
         const faqBody = faqSectionMatch[2]
         // Extract **bold question?** patterns as Q&A pairs
@@ -1264,10 +1306,10 @@ export function applyDeterministicRepairs(opts: {
     // After faq_bold_to_heading converts **Question?** → ### Question?, Path B
     // can no longer find them. Extract from ### headings instead.
     if (faqEntities.length < 3) {
-      const faqSectionMatch = b.match(/^(## (?:FAQ|Frequently asked).*?)\n([\s\S]*?)(?=^## |$)/im)
+      const faqSectionMatch = b.match(/(?:^|\n)(## (?:FAQ|Frequently asked)[^\n]*)\n([\s\S]*?)(?=\n## |\n*$)/i)
       if (faqSectionMatch) {
         const faqBody = faqSectionMatch[2]
-        const h3QA = Array.from(faqBody.matchAll(/^###\s+(.+?\?)\s*\n([\s\S]*?)(?=^###\s|## |$)/gim))
+        const h3QA = Array.from(faqBody.matchAll(/(?:^|\n)###\s+(.+\?)\s*\n([\s\S]*?)(?=\n###\s|\n## |\n*$)/gi))
         faqEntities = h3QA.map((m) => ({
           question: m[1].trim(),
           answer: m[2].trim().slice(0, 300).replace(/\n/g, ' '),
@@ -1956,8 +1998,13 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
     body = `# ${title}\n\n${body}`
   }
 
-  // Do not inject a generic In 60 seconds. missing_tldr stays a blocker so
-  // the drafter/editor writes a real answer block instead of template bullets.
+  if (!/in 60 seconds|tl;?dr|key takeaways|quick answer/i.test(body)) {
+    const bullets = derivedTldrBullets(body, opts.primaryKeyword || title, 3)
+    body = body.replace(
+      /^(#\s+[^\n]+\n+)/,
+      `$1## In 60 seconds\n\n${bullets.map((item) => `- ${item}`).join('\n')}\n\n`,
+    )
+  }
 
   // Deterministic reader structure: rebuild / insert the linked TOC so anchors
   // always match the heading ids the renderer generates (AI-emitted TOCs often

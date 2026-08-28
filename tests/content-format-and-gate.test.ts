@@ -48,6 +48,7 @@ const bodyWithToc = `# N-400 naturalization guide
 ## In 60 seconds
 - Check your continuous presence before you file
 - Gather identity and tax documents early
+- File only when every item matches the official instructions
 
 ## Table of contents
 - [Eligibility requirements for Form N-400](#eligibility-requirements-for-form-n-400)

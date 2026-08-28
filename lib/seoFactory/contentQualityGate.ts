@@ -390,13 +390,19 @@ export function evaluateContentQuality(opts: {
   // cannot make malformed source readable after the fact.
   if (indexable && contentType !== 'marketplace_gig') {
     const raw = String(opts.content || '')
-    if (/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n[\s\S]*?^---[ \t]*\r?\n/m.test(raw)) {
-      add({
-        code: 'embedded_frontmatter',
-        severity: 'blocker',
-        message: 'Duplicate or embedded YAML frontmatter detected',
-        fix: 'Keep exactly one frontmatter block at the very top; remove any embedded YAML from the body.',
-      })
+    {
+      const topFm = raw.match(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/)
+      const rest = topFm ? raw.slice(topFm[0].length) : raw
+      // A second YAML document (--- + key: value). A markdown thematic break
+      // before the disclaimer (`---\n\n**Disclaimer**`) is not frontmatter.
+      if (/^---[ \t]*\r?\n[A-Za-z][A-Za-z0-9_-]*\s*:/m.test(rest)) {
+        add({
+          code: 'embedded_frontmatter',
+          severity: 'blocker',
+          message: 'Duplicate or embedded YAML frontmatter detected',
+          fix: 'Keep exactly one frontmatter block at the very top; remove any embedded YAML from the body.',
+        })
+      }
     }
     if (/^--- title:\s|^\s*\{\s*["']?@context["']?/m.test(body)) {
       add({
@@ -415,7 +421,9 @@ export function evaluateContentQuality(opts: {
         fix: 'Keep one # H1, use ## for major sections and ### only beneath ##.',
       })
     }
-    const tldr = raw.match(/^##\s+In 60 seconds\s*\n([\s\S]*?)(?=^##\s|$)/im)
+    // Do not use the `m` flag with `$` — `$` would match the end of the first
+    // bullet line and truncate the section to one item.
+    const tldr = raw.match(/(?:^|\n)##\s+In 60 seconds[ \t]*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     if (!tldr) {
       add({
         code: 'tldr_format_invalid',
@@ -425,8 +433,8 @@ export function evaluateContentQuality(opts: {
       })
     } else {
       const tldrBody = tldr[1].trim()
-      const bulletCount = (tldrBody.match(/^[-*+]\s+/gm) || []).length
-      if (bulletCount < 3 || /\s[-–]\s/.test(tldrBody) && bulletCount < 3) {
+      const bulletCount = (tldrBody.match(/^[-*+]\s+\S/gm) || []).length
+      if (bulletCount < 3) {
         add({
           code: 'tldr_format_invalid',
           severity: 'blocker',
