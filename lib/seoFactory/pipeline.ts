@@ -923,13 +923,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     )
+    // Jobs refused by quality gate stay 'drafting' so the editor can fix them.
+    // Only set 'failed' when there is no content (pipeline crashed before writing).
     const status =
       shipResult?.status === 'deployed' || shipResult?.status === 'merged'
         ? 'merged'
         : shipResult?.status === 'pr_created'
           ? 'pr_created'
           : shipError && !gateHoldReason
-            ? 'failed'
+            ? (content && content.length > 100 ? 'drafting' : 'failed')
             : gateHoldReason
               ? 'drafting'
               : 'drafting'
