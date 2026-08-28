@@ -140,7 +140,11 @@ export async function POST(request: Request) {
       intelligenceLineage: body.intelligenceLineage && typeof body.intelligenceLineage === 'object' ? body.intelligenceLineage as Record<string, unknown> : null,
       masterEngineBlock: null as string | null,
       title: String(body.title || topic).trim(),
-      primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
+      // When regenerating (supersedesJobId set), always use topic as primaryKeyword
+      // to prevent stale keywords from a prior job from hijacking the new draft.
+      primaryKeyword: body.supersedesJobId
+        ? topic
+        : String(body.primaryKeyword || body.primary_keyword || topic).trim(),
       region: String(body.region || 'US').toUpperCase(),
       contentType: String(body.contentType || body.content_type || 'legal_guide'),
       tone: String(body.tone || 'educational'),

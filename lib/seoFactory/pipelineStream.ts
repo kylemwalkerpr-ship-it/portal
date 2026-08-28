@@ -65,7 +65,17 @@ export async function* runSeoFactoryPipelineStream(
 ): AsyncGenerator<PipelineStreamEvent> {
   try {
     const topic = (input.topic || '').trim()
-    const primaryKeyword = (input.primaryKeyword || topic).trim()
+    let primaryKeyword = (input.primaryKeyword || topic).trim()
+    // Safety: if primaryKeyword shares no significant words with the topic,
+    // it's likely a stale keyword from a prior job — derive from topic.
+    if (topic && primaryKeyword && primaryKeyword !== topic) {
+      const topicWords = new Set(topic.toLowerCase().split(/\s+/).filter(w => w.length > 3))
+      const kwWords = primaryKeyword.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+      const overlap = kwWords.filter(w => topicWords.has(w)).length
+      if (overlap === 0 && kwWords.length > 0) {
+        primaryKeyword = topic
+      }
+    }
     // Partition the user-supplied keywords + primary keyword into ≥5 short / ≥4 long-tail.
     const briefPartition = partitionKeywords(
       Array.isArray(input.keywords) ? input.keywords : [],

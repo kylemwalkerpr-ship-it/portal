@@ -433,10 +433,11 @@ export async function POST(request: NextRequest) {
           const { data: job } = await supabase.from('content_jobs').select('*').eq('id', jid).single()
           if (!job) { results.push({ id: jid, ok: false, error: 'not found' }); continue }
           const userId = job.user_id || 'admin'
+          // Always derive primaryKeyword from topic (source of truth).
           const result = await runSeoFactoryPipeline({
             topic: job.topic,
             title: job.title || job.topic,
-            primaryKeyword: job.primary_keyword || job.topic,
+            primaryKeyword: job.topic || job.primary_keyword || job.topic,
             region: job.region || 'US',
             contentType: job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide',
             tone: job.tone || 'educational',
@@ -1713,10 +1714,13 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'regenerate') {
+      // Always derive primaryKeyword from topic (the source of truth).
+      // job.primary_keyword may be stale from an earlier keyword-research
+      // pass that no longer matches the title/topic.
       const result = await runSeoFactoryPipeline({
         topic: job.topic,
         title: job.title || job.topic,
-        primaryKeyword: job.primary_keyword || job.topic,
+        primaryKeyword: job.topic || job.primary_keyword || job.topic,
         region: job.region || 'US',
         contentType:
           job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide',

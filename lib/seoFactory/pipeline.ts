@@ -217,7 +217,17 @@ function resolveShipMode(
 
 export async function runSeoFactoryPipeline(input: PipelineInput): Promise<PipelineResult> {
   const topic = (input.topic || '').trim()
-  const primaryKeyword = (input.primaryKeyword || topic).trim()
+  let primaryKeyword = (input.primaryKeyword || topic).trim()
+  // Safety: if primaryKeyword shares no significant words with the topic,
+  // it's likely a stale keyword from a prior job — derive from topic.
+  if (topic && primaryKeyword && primaryKeyword !== topic) {
+    const topicWords = new Set(topic.toLowerCase().split(/\s+/).filter(w => w.length > 3))
+    const kwWords = primaryKeyword.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+    const overlap = kwWords.filter(w => topicWords.has(w)).length
+    if (overlap === 0 && kwWords.length > 0) {
+      primaryKeyword = topic
+    }
+  }
   // Partition the user-supplied keywords + primary keyword into short / long-tail so the
   // brief and the gate can enforce ≥5 short and ≥4 long-tail on every draft.
   const userKeywords = Array.isArray(input.keywords) ? input.keywords : []

@@ -32,13 +32,17 @@ export async function POST(request: NextRequest) {
     const shipMode = (String(body.ship_mode || body.shipMode || 'pr').toLowerCase() ||
       'pr') as RequestedShipMode
 
+    // When regenerating (sourceJobId set), always use topic as primaryKeyword.
+    // body.keywords[0] may be stale from a prior job.
+    const isRegen = Boolean(body.sourceJobId)
     const result = await runSeoFactoryPipeline({
       topic,
       title: String(body.title || topic),
-      primaryKeyword:
-        (Array.isArray(body.keywords) && body.keywords[0]
-          ? String(body.keywords[0])
-          : topic) || topic,
+      primaryKeyword: isRegen
+        ? topic
+        : (Array.isArray(body.keywords) && body.keywords[0]
+            ? String(body.keywords[0])
+            : topic) || topic,
       region,
       contentType:
         contentType === 'article'
