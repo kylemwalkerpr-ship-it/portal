@@ -29,6 +29,7 @@ import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { isJunkTopic } from './queryNoise'
+import { applyDeterministicRepairs } from './editorialScaffold'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
 
@@ -1056,6 +1057,51 @@ export async function* runSeoFactoryPipelineStream(
           ownershipBlockers: plan.blockers,
         })
         yield { type: 'attempt', attempt: attempts + 1, score: audit.score, wordCount: audit.wordCount, goodEnough: meetsShipQuality(audit) && audit.score >= minAudit, draft: content }
+      }
+    }
+
+    // ── PASS 5b: Full deterministic repair before the ship decision ─────
+    // PASS 5 only fixes dashes/disclaimer/links. The FULL repair set (schema,
+    // TOC, FAQ formatting, internal links, keyword slots) previously ran only
+    // inside shipContent — AFTER the withhold decision — so a draft that
+    // scores 100 once repaired was withheld at its raw score and never
+    // reached the gates (2026-08-28 live run: AU regen withheld at 55,
+    // repaired to 100 offline). Repair + re-audit HERE so the withhold check
+    // sees the same content the ship gate stack would see.
+    {
+      const repairedFull = applyDeterministicRepairs({
+        content,
+        title: title || primaryKeyword,
+        primaryKeyword,
+        region,
+        indexable: plan.indexable,
+        contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        maxWords: undefined,
+      })
+      if (repairedFull.applied.length) {
+        content = repairedFull.content
+        audit = auditContent({
+          content,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          ownershipBlockers: plan.blockers,
+        })
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Deterministic repair before ship decision: ${repairedFull.applied.slice(0, 6).join(', ')}${repairedFull.applied.length > 6 ? ` +${repairedFull.applied.length - 6} more` : ''}`,
+        }
+        yield {
+          type: 'attempt',
+          attempt: attempts + 1,
+          score: audit.score,
+          wordCount: audit.wordCount,
+          goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+          draft: content,
+        }
       }
     }
 
