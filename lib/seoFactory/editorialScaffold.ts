@@ -737,6 +737,44 @@ export function applyDeterministicRepairs(opts: {
     if (b !== before) applied.push('mixed_bullets_normalized')
   }
 
+  // Split inline numbered lists: "1. A 2. B 3. C" → separate lines.
+  // AI models sometimes cram an entire numbered list onto one line, which
+  // the markdown renderer treats as a single <li> instead of <ol> items.
+  {
+    const before = b
+    const lines = b.split('\n')
+    const expanded: string[] = []
+    for (const line of lines) {
+      if (/^\d+\.\s/.test(line)) {
+        const matches = [...line.matchAll(/(\d+)\.\s/g)]
+        if (matches.length >= 2) {
+          // Split on sequential number boundaries
+          const parts: string[] = []
+          let current = ''
+          for (let i = 0; i < line.length; i++) {
+            const numMatch = line.substring(i).match(/^(\d+)\.\s/)
+            if (numMatch) {
+              const num = parseInt(numMatch[1])
+              if (parts.length === 0 || num === parseInt(parts[parts.length - 1].match(/^(\d+)/)?.[1] || '0') + 1) {
+                if (current.trim()) parts.push(current.trim())
+                current = ''
+              }
+            }
+            current += line[i]
+          }
+          if (current.trim()) parts.push(current.trim())
+          if (parts.length >= 2) {
+            expanded.push(...parts)
+            continue
+          }
+        }
+      }
+      expanded.push(line)
+    }
+    b = expanded.join('\n')
+    if (b !== before) applied.push('inline_numbered_lists_split')
+  }
+
   // whilst → while clears the tone_whilst warning deterministically (mechanical).
   const noWhilst = b.replace(/\bwhilst\b/g, 'while')
   if (noWhilst !== b) {
