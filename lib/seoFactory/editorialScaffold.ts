@@ -732,36 +732,40 @@ export function applyDeterministicRepairs(opts: {
   // ── Duplicate TOC / list-item deduplication ──────────────────────────
   // AI models repeat the Table of Contents entries 3-5× to pad word count.
   // The TOC block has proper markdown links first, then 3+ copies of the
-  // same entries as plain text. Detect consecutive repeated list items and
-  // remove duplicates (keep first occurrence within each block).
+  // same entries as plain text. Some duplicates are non-consecutive (e.g.
+  // FAQ → Sources → Worked Example → FAQ → FAQ) so we must track across
+  // the ENTIRE TOC section, not just contiguous list blocks.
   {
     const before = b
     const lines = b.split('\n')
     const dedupedLines: string[] = []
     let removedLines = 0
-    // Track recent list items for dedup within a contiguous list block
-    let inListBlock = false
-    let seenInBlock = new Set<string>()
+    // Track seen items across the entire TOC section
+    let inTocSection = false
+    let seenInToc = new Set<string>()
     for (const line of lines) {
+      // Detect TOC section start (## Table of contents or ## TOC)
+      if (/^## (table of contents|toc)\s*$/i.test(line.trim())) {
+        inTocSection = true
+        seenInToc = new Set()
+      }
+      // Detect TOC section end (next H2 heading)
+      if (inTocSection && /^## (?!table of contents|toc)/i.test(line.trim())) {
+        inTocSection = false
+        seenInToc = new Set()
+      }
       const isListItem = /^\s*[-*+]\s/.test(line) || /^\s*\d+[.)]\s/.test(line)
-      if (isListItem) {
-        if (!inListBlock) {
-          inListBlock = true
-          seenInBlock = new Set()
-        }
+      if (isListItem && inTocSection) {
         // Normalize for comparison: strip markdown links, bold, leading whitespace
         const normalized = line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
           .replace(/\*\*|__/g, '')
           .trim()
           .toLowerCase()
-        if (normalized.length > 5 && seenInBlock.has(normalized)) {
+        if (normalized.length >= 2 && seenInToc.has(normalized)) {
           removedLines++
-          continue // skip duplicate list item
+          continue // skip duplicate TOC entry
         }
-        if (normalized.length > 5) seenInBlock.add(normalized)
-      } else {
-        inListBlock = false
-        seenInBlock = new Set()
+        if (normalized.length >= 2) seenInToc.add(normalized)
       }
       dedupedLines.push(line)
     }

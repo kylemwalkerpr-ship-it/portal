@@ -200,6 +200,38 @@ export function auditContent(opts: {
     fix: 'Add clear H2 sections covering procedure, documents, risks, FAQ',
   }, AUDIT_POINT_WEIGHTS.h2Structure)
 
+  // TOC duplicate entries — repeated items in the Table of Contents signal
+  // AI word-count padding and hurt SEO (Google sees duplicate internal anchors).
+  {
+    const tocMatch = body.match(/^## (?:Table of contents|TOC)\s*\n([\s\S]*?)(?=^## |$)/im)
+    if (tocMatch) {
+      const tocLines = tocMatch[1].split('\n')
+      const seenToc = new Map<string, number>()
+      let dupCount = 0
+      for (const line of tocLines) {
+        const normalized = line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+          .replace(/^\s*[-*+]\s/, '')
+          .trim()
+          .toLowerCase()
+        if (normalized.length < 2) continue
+        const prev = seenToc.get(normalized)
+        if (prev != null) {
+          dupCount++
+        } else {
+          seenToc.set(normalized, 1)
+        }
+      }
+      if (dupCount > 0) {
+        warnings.push({
+          code: 'toc_duplicates',
+          severity: 'warning',
+          message: `Table of Contents has ${dupCount} duplicate entr${dupCount === 1 ? 'y' : 'ies'}`,
+          fix: 'Remove repeated TOC entries — each section should appear exactly once',
+        })
+      }
+    }
+  }
+
   // Keyword usage
   if (primary) {
     const inTitle = title.toLowerCase().includes(primary.slice(0, Math.min(primary.length, 20)))
