@@ -730,6 +730,13 @@ export function applyDeterministicRepairs(opts: {
     if (b !== before) applied.push('asterisk_normalize')
   }
 
+  // Normalize mixed bullet styles: * text → - text (dash is the standard)
+  {
+    const before = b
+    b = b.replace(/^\* /gm, '- ')
+    if (b !== before) applied.push('mixed_bullets_normalized')
+  }
+
   // whilst → while clears the tone_whilst warning deterministically (mechanical).
   const noWhilst = b.replace(/\bwhilst\b/g, 'while')
   if (noWhilst !== b) {

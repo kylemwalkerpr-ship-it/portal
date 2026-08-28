@@ -389,6 +389,96 @@ export function auditContent(opts: {
     points += Math.floor(AUDIT_POINT_WEIGHTS.humanVoice / 2)
   }
 
+  // ── Formatting hygiene (warnings — fixable deterministically) ──────────
+  {
+    const lines = body.split('\n')
+
+    // Duplicate H2 sections — AI padding / copy-paste artifact
+    const h2Counts = new Map<string, number>()
+    for (const l of lines) {
+      if (/^## /.test(l)) {
+        const key = l.toLowerCase().trim()
+        h2Counts.set(key, (h2Counts.get(key) || 0) + 1)
+      }
+    }
+    for (const [k, v] of h2Counts) {
+      if (v > 1) {
+        warnings.push({
+          code: 'duplicate_h2',
+          severity: 'warning',
+          message: `Duplicate H2 "${k}" appears ${v}×`,
+          fix: 'Remove duplicate H2 sections — each heading should appear exactly once',
+        })
+        break // one finding is enough
+      }
+    }
+
+    // Broken asterisk: *text (no space, no closing *) — renders as literal asterisk
+    for (const l of lines) {
+      if (/^\*[^s*\n]/.test(l) && !/^\*\*/.test(l) && !/^\*\s/.test(l) && !l.endsWith('*')) {
+        warnings.push({
+          code: 'broken_asterisk',
+          severity: 'warning',
+          message: `Broken asterisk: "${l.slice(0, 60)}"`,
+          fix: 'Use *text* for italic or - text for bullets — not *text (no space)',
+        })
+        break
+      }
+    }
+
+    // Bold FAQ questions should be ### headings for FAQPage schema extraction
+    {
+      let inFaq = false
+      let boldQ = 0
+      for (const l of lines) {
+        if (/^## FAQ/i.test(l)) inFaq = true
+        if (inFaq && /^## /.test(l) && !/^## FAQ/i.test(l)) inFaq = false
+        if (inFaq && /^\*\*[^*]+\?\*\*\s*$/.test(l.trim())) boldQ++
+      }
+      if (boldQ > 0) {
+        warnings.push({
+          code: 'bold_faq_questions',
+          severity: 'warning',
+          message: `${boldQ} FAQ question(s) use **bold** instead of ### headings`,
+          fix: 'Convert **Question?** to ### Question? in FAQ sections for schema extraction',
+        })
+      }
+    }
+
+    // Duplicate JSON-LD blocks — should be ≤2 (Article + FAQPage)
+    const jsonLdCount = (body.match(/<script type="application\/ld\+json">/g) || []).length
+    if (jsonLdCount > 2) {
+      warnings.push({
+        code: 'duplicate_jsonld',
+        severity: 'warning',
+        message: `${jsonLdCount} JSON-LD blocks (should be ≤2)`,
+        fix: 'Remove duplicate JSON-LD blocks — keep only Article + FAQPage',
+      })
+    }
+
+    // Stray "## Article" heading — content-type label, not a section
+    if (lines.some(l => /^##\s+article$/i.test(l.trim()))) {
+      warnings.push({
+        code: 'stray_article_heading',
+        severity: 'warning',
+        message: 'Stray "## Article" heading in body',
+        fix: 'Remove "## Article" — it is a content-type label, not a section heading',
+      })
+    }
+
+    // Mixed bullet styles — normalize to - for consistency
+    const dashCount = lines.filter(l => /^- /.test(l)).length
+    const starCount = lines.filter(l => /^\* /.test(l)).length
+    if (dashCount > 5 && starCount > 5) {
+      warnings.push({
+        code: 'mixed_bullets',
+        severity: 'warning',
+        message: `Mixed bullet styles: ${dashCount} dash, ${starCount} star`,
+        fix: 'Normalize all bullets to - (dash) for consistency',
+      })
+    }
+  }
+
   // Never recommend index for under-floor depth or quality blockers
   const indexableRecommended =
     wantIndexable &&
