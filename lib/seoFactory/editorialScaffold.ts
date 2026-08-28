@@ -1244,7 +1244,10 @@ export function applyDeterministicRepairs(opts: {
     // FAQPage questions — visible junk in search rich results.
     const STRUCTURAL_HEADING = /^(?:sources?|references?|related guides?|table of contents?|in 60 seconds?|tl;?dr|faq|frequently asked|worked example|disclaimer|next steps?|conclusion|summary|key takeaways?)$/i
     const isQuestionHeading = (h: string) => /\?\s*$/.test(h) && !STRUCTURAL_HEADING.test(h.trim())
-    const faqH2s = (b.match(/^##\s+.+?\?\s*$/gm) || []).filter((h) => isQuestionHeading(h.replace(/^##\s+/, ''))).length
+    const faqH2s = (b.match(/^##\s+.+?\?\s*$/gm) ?? [])
+      .map((heading) => heading.replace(/^##\s+/, ''))
+      .filter(isQuestionHeading)
+      .length
     let faqEntities: Array<{ question: string; answer: string }> = []
     if (faqH2s >= 3) {
       const faqMatches = Array.from(b.matchAll(/^##\s+(.+?\?)\s*$(?:\n+((?:(?!^##\s).)+))?/gim))
