@@ -1149,6 +1149,20 @@ export function applyDeterministicRepairs(opts: {
         })).filter((e) => e.question && e.answer)
       }
     }
+    // --- Path C: FAQ H2 with ### heading questions (post bold-to-heading repair) ---
+    // After faq_bold_to_heading converts **Question?** → ### Question?, Path B
+    // can no longer find them. Extract from ### headings instead.
+    if (faqEntities.length < 3) {
+      const faqSectionMatch = b.match(/^(## (?:FAQ|Frequently asked).*?)\n([\s\S]*?)(?=^## |$)/im)
+      if (faqSectionMatch) {
+        const faqBody = faqSectionMatch[2]
+        const h3QA = Array.from(faqBody.matchAll(/^###\s+(.+?\?)\s*\n([\s\S]*?)(?=^###\s|## |$)/gim))
+        faqEntities = h3QA.map((m) => ({
+          question: m[1].trim(),
+          answer: m[2].trim().slice(0, 300).replace(/\n/g, ' '),
+        })).filter((e) => e.question && e.answer)
+      }
+    }
     if (faqEntities.length >= 3) {
       const faqSchema = [
         '<script type="application/ld+json">',
