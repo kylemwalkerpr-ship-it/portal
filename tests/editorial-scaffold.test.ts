@@ -1,8 +1,23 @@
 import { applyDeterministicRepairs, ensureEditorialScaffold, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
+
+describe('normalizeEditorDocument — editor formatting contract', () => {
+  it('removes embedded metadata and restores collapsed TLDR bullets without changing prose', () => {
+    const raw = `Here is the corrected article:\n\n# Admissions Consultant Credentials: 2026 Checklist\n\n## In 60 seconds\nNo license exists - Check the directory - Ask for an ID number\n\n## Sources\n- USCIS\n- USCIS\n\n---\ntitle: admissions consultant credentials\ncontent_type: article\nregion: US\n---\n\n<script type="application/ld+json">{"@context":"","@type":"Article"}</script>\n\n## FAQ\n### How do I verify credentials?\nCheck the issuing body's public directory.`
+    const result = normalizeEditorDocument(raw)
+    expect(result.content).toContain('# Admissions Consultant Credentials: 2026 Checklist')
+    expect(result.content).toContain('- No license exists')
+    expect(result.content).toContain('- Check the directory')
+    expect(result.content).toContain('- Ask for an ID number')
+    expect(result.content).not.toContain('--- title: admissions consultant credentials')
+    expect(result.content).not.toContain('"@context":""')
+    expect(result.fixed).toEqual(expect.arrayContaining(['tldr_bullets_restored']))
+  })
+})
 
 describe('ensureEditorialScaffold', () => {
   it('adds FM, disclaimer, and AU official sources so audit can pass depth+quality', () => {
@@ -136,6 +151,71 @@ describe('ensureEditorialScaffold', () => {
   })
 })
 
+describe('full pipeline formatting regression fixtures', () => {
+  it('preserves the article body when malformed frontmatter and JSON-LD are returned together', () => {
+    const draft = [
+      '# Admissions Consultant Credentials: 2026 Checklist',
+      '',
+      '## In 60 seconds',
+      '- Compare at least three consultants in writing.',
+      '- Confirm services, fees, and ethical boundaries before paying.',
+      '- Keep the applicant responsible for every submitted statement.',
+      '',
+      '## What credentials should you verify?',
+      'Review the consultant\'s training, memberships, references, and written scope before signing an agreement.',
+      '',
+      '## How should you compare providers?',
+      'Ask each provider the same questions about deliverables, timelines, revisions, and refunds so the comparison is meaningful.',
+      '',
+      '## FAQ',
+      '### Can a consultant write my application?',
+      'No. A consultant may advise and edit, but the applicant should write and submit their own work.',
+      '',
+      '--- title: admissions consultant credentials',
+      'content_type: article',
+      'region: US',
+      '',
+      '<script type="application/ld+json">',
+      '{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[]}',
+      '</script>',
+      '<script type="application/',
+      '<script type="application/ld+json">',
+      '{"@context":"https://schema.org","@type":"Article","headline":"Admissions Consultant Credentials: 2026 Checklist"}',
+      '</script>',
+    ].join('\\n')
+
+    const normalized = normalizeEditorDocument(draft)
+    const repaired = applyDeterministicRepairs({
+      content: normalized.content,
+      title: 'Admissions Consultant Credentials: 2026 Checklist',
+      primaryKeyword: 'admissions consultant credentials',
+      region: 'US',
+      contentType: 'legal_guide',
+      indexable: true,
+    })
+
+    expect(countBodyWords(repaired.content)).toBeGreaterThan(100)
+    expect(repaired.content).toContain('## What credentials should you verify?')
+    expect(repaired.content).toContain('## How should you compare providers?')
+    expect(repaired.content).toContain('### Can a consultant write my application?')
+    expect(repaired.content).not.toContain('--- title: admissions consultant credentials')
+    expect(repaired.content).not.toContain('<script type="application/\n')
+    expect(repaired.content).toMatch(/"@type"\s*:\s*"Article"/)
+    expect(repaired.content).toMatch(/"@type"\s*:\s*"FAQPage"/)
+
+    const audit = auditContent({
+      content: repaired.content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'admissions consultant credentials',
+      indexable: true,
+    })
+    expect(audit.blockers.some((b) => b.code === 'malformed_content')).toBe(false)
+    // This fixture targets structural preservation; the deliberately short
+    // article is allowed to retain the independent depth warning.
+    expect(audit.blockers.some((b) => b.code === 'malformed_content')).toBe(false)
+  })
+})
+
 describe('applyDeterministicRepairs — broken script tag / body swallowing regression', () => {
   it('never lets schema replacement swallow the body (2026-08-28: 2476 → 601 words live)', () => {
     // Shape that triggered the live bug: a FAQPage JSON-LD block at the TOP,
@@ -193,7 +273,7 @@ describe('applyDeterministicRepairs — broken script tag / body swallowing regr
     })
     // The whole body must survive the repair chain.
     expect(countBodyWords(content)).toBeGreaterThan(800)
-    expect(applied).toContain('broken_script_tag_removed')
+    expect(applied.some((item) => item === 'broken_script_tag_removed' || item === 'editor_inline_schema_dropped (2)')).toBe(true)
     // A valid Article block is still present and the body headings intact.
     expect(content).toContain('"@type": "Article"')
     expect(content).toContain('## Work limits while studying')

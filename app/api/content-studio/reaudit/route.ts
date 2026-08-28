@@ -7,6 +7,7 @@ import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, t
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType, targetWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
+import { normalizeEditorDocument, editorResponseContract } from '@/lib/seoFactory/formatContract'
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
@@ -190,7 +191,11 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     // would be used — that is what sent EOL'd deepseek-v4-pro (410 Gone).
     model: isGrok ? grokModelId({ model: effectiveModel }) : reviewApiModel(effectiveModel) || effectiveModel,
   }))
-  const text = unwrapWholeDocumentFence((result?.text || '').trim())
+  const normalized = normalizeEditorDocument(unwrapWholeDocumentFence((result?.text || '').trim()))
+  const text = normalized.content
+  if (normalized.fixed.length) {
+    console.info('[reaudit] editor return normalized:', normalized.fixed.join(', '))
+  }
   if (!text.trim()) throw new Error('AI fix returned empty content')
   return text
 }
@@ -586,7 +591,7 @@ export async function PATCH(request: NextRequest) {
         .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}"`)
         .join('\n')
 
-      const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. For dead links: read the surrounding sentence and either swap in a live official/estate URL that fits the claim, or remove the href and add a new verifiable citation. Never invent URLs. Return ONLY the complete fixed article. Do not add explanations.'
+      const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. For dead links: read the surrounding sentence and either swap in a live official/estate URL that fits the claim, or remove the href and add a new verifiable citation. Never invent URLs. Return ONLY the complete fixed article. Do not add explanations.' + editorResponseContract()
 
       // Count currently-failing issues so the model understands scope.
       const failingCount = annotations.filter((a) => a.severity === 'blocker').length
@@ -727,7 +732,7 @@ RULES:
 - Return ONLY the new sections, nothing else.`
           depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
           if (depthPlan.ok) break // already at target
-          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.' + editorResponseContract()
           try {
             const appended = await callAiFix(sys, depthPrompt, 16384, reviewModel)
             const merged = mergeAppendedSections(fixedContent, appended)
@@ -754,7 +759,7 @@ RULES:
       }
 
     } else if (action === 'fix_one' && annotation) {
-      const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.'
+      const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.' + editorResponseContract()
       // Document-level warnings (schema, meta description, internal links,
       // AI-answer block…) anchor at line 1 with no highlighted text. Give the
       // model concrete context instead of an empty quote so the fix is precise.
@@ -835,7 +840,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       if (hasDepthWarning) {
         depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
         if (!depthPlan.ok && depthPlan.prompt) {
-          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.' + editorResponseContract()
           try {
             const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
             const merged = mergeAppendedSections(fixedContent, appended)
@@ -878,7 +883,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         })
         const sys = `You are a master SEO content editor. Resolve the listed quality warnings with minimal edits. Preserve every heading, fact, official citation, and interlink. Return ONLY the complete article.
 
-${enginePlan.promptBlock}`
+${enginePlan.promptBlock}` + editorResponseContract()
         try {
           const aiOut = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
           // Post-AI normalization — same guarantee as fix_all: the model can
@@ -959,7 +964,7 @@ ${enginePlan.promptBlock}`
               : 'Remove or replace the dead URL with a live official page that supports the same claim.',
           })),
         ]
-        const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.'
+        const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.' + editorResponseContract()
         const blockerList = leftover.length ? leftover : list
         try {
           fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, blockerList), 16384, reviewModel)

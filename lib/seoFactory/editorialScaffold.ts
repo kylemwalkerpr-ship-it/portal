@@ -12,11 +12,22 @@ import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFe
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
+import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords } from './formatContract'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!m) return { fm: '', body: content.trim() }
-  return { fm: m[1], body: m[2].trim() }
+  // Only accept a bounded, YAML-looking header. A malformed `--- title:`
+  // emitted mid-document must not cause the entire article to be treated as
+  // frontmatter and then reassembled with leaked prose/schema.
+  const header = m[1].trim()
+  const yamlLines = header.split(/\r?\n/).filter((line) => {
+    const trimmed = line.trim()
+    return !trimmed || /^[A-Za-z][A-Za-z0-9_-]*:\s*/.test(trimmed) || /^[-\w]+:\s*/.test(trimmed)
+  })
+  const looksLikeFrontmatter = yamlLines.length >= 2 && yamlLines.length / Math.max(1, header.split(/\r?\n/).length) >= 0.75
+  if (!looksLikeFrontmatter) return { fm: '', body: content.trim() }
+  return { fm: header, body: m[2].trim() }
 }
 
 function hasDisclaimer(body: string): boolean {
@@ -582,8 +593,34 @@ export function applyDeterministicRepairs(opts: {
   minWords?: number
 }): { content: string; applied: string[] } {
   const applied: string[] = []
-  const unwrapped = unwrapWholeDocumentFence(opts.content || '')
-  if (unwrapped !== (opts.content || '')) applied.push('unwrapped_document_fence')
+  // Normalize editor/AI mangling FIRST (fences, chatter, embedded frontmatter,
+  // invalid schema, collapsed TLDR bullets, duplicate source entries) so every
+  // later repair sees a clean document.
+  const normalizedEditor = normalizeEditorDocument(opts.content || '')
+  if (normalizedEditor.fixed.length) applied.push(...normalizedEditor.fixed)
+  let unwrapped = unwrapWholeDocumentFence(normalizedEditor.content)
+  if (unwrapped !== normalizedEditor.content) applied.push('unwrapped_document_fence')
+
+  // ── Keyword-only title repair ────────────────────────────────────────
+  // A keyword pasted as the title ("admissions consultant credentials")
+  // ships a lowercase keyword as the reader-facing H1 and <title>. The brief
+  // stage should prevent this; this repair catches whatever slips through.
+  {
+    const kw = (opts.primaryKeyword || '').trim()
+    const currentTitle = (opts.title || '').trim()
+    if (kw && currentTitle && isKeywordOnlyTitle(currentTitle, kw)) {
+      const synthesized = `${titleCaseWords(kw)}: ${new Date().getFullYear()} Step-by-Step Guide`
+      const fmTitleRe = /^title:\s*.*$/m
+      if (fmTitleRe.test(unwrapped)) {
+        unwrapped = unwrapped.replace(fmTitleRe, `title: ${JSON.stringify(synthesized)}`)
+      }
+      const h1Match = unwrapped.match(/^#\s+(.+)$/m)
+      if (h1Match && (isKeywordOnlyTitle(h1Match[1], kw) || h1Match[1].trim() === currentTitle)) {
+        unwrapped = unwrapped.replace(/^#\s+(.+)$/m, `# ${synthesized}`)
+      }
+      applied.push('title_keyword_only_fixed')
+    }
+  }
   let { fm, body } = stripFm(unwrapped)
   let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
 
@@ -710,9 +747,16 @@ export function applyDeterministicRepairs(opts: {
   const dashCount = (b.match(/[—–]/g) || []).length
   if (dashCount > 0) {
     b = b
-      .replace(/(\d)\s*[—–]\s*(\d)/g, '$1-$2')
+      // Ranges keep their dash: digits, currency and unit ranges
+      // ("250-400", "$250-$400", "12-18 months"). The old blanket
+      // "dash → comma" rule turned "$250–$400" into "$250, $400".
+      .replace(/(\d)\s*[—–]\s*(\d)/g, '$1–$2')
+      .replace(/([$€£¥])\s*[—–]\s*(\d)/g, '$1–$2')
+      .replace(/(\d)\s*[—–]\s*([$€£¥])/g, '$1–$2')
+      // Em-dash used as clause punctuation → comma (AI-slop cleanup).
+      // Remaining UNSPACED en-dashes are preserved ranges/compounds.
       .replace(/\s+[—–]\s+/g, ', ')
-      .replace(/[—–]/g, ', ')
+      .replace(/[—]/g, ', ')
     applied.push('dashes')
   }
 
@@ -848,6 +892,16 @@ export function applyDeterministicRepairs(opts: {
     b = b.replace(/\n{3,}/g, '\n\n')
     if (b !== before) applied.push('broken_jsonld_removed')
   }
+
+  // Protect JSON-LD and other scripts from prose repairs. They are machine
+  // data, not reader text; changing their punctuation or sentence rhythm can
+  // corrupt otherwise valid schema and cause the renderer to leak/fail it.
+  const protectedScripts: string[] = []
+  b = b.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (block) => {
+    const marker = `__SEO_FACTORY_SCRIPT_${protectedScripts.length}__`
+    protectedScripts.push(block)
+    return marker
+  })
 
   // ── Sentence-opening rhythm smoothing ────────────────────────────────
   // The quality gate flags ≥5 prose sentences sharing the same 12-char
@@ -1111,6 +1165,11 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // Restore protected script blocks before metadata/schema injection.
+  if (protectedScripts.length > 0) {
+    b = b.replace(/__SEO_FACTORY_SCRIPT_(\d+)__/g, (_, index) => protectedScripts[Number(index)] || '')
+  }
+
   // ── Meta description: inject description: into YAML front matter ────
   // The audit checks fm.description || fm.metaDescription in the front matter
   // (120–170 chars). If missing or too short, inject one using the same
@@ -1178,13 +1237,19 @@ export function applyDeterministicRepairs(opts: {
   // JSON-LD yet.  The Admissions Consultant draft has 1 FAQ H2 with 6 bold
   // questions — the old gate required faqH2s >= 3 and silently passed.
   if (!/"@type"\s*:\s*"FAQPage"/i.test(b)) {
-    // --- Path A: 3+ FAQ-ish H2 headings (original) ---
-    const faqH2s = (b.match(/^##\s+.*(?:FAQ|frequently asked|eligibility|timeline|document|cost|fee|denial|refusal|reapply|appeal)/gim) || []).length
+    // --- Path A: 3+ QUESTION-form H2 headings ---
+    // A heading qualifies as an FAQ question ONLY when it is phrased as one
+    // (ends with '?'). The old rule took the LAST 8 H2 sections of the
+    // article and turned headings like "Sources" and "Related guides" into
+    // FAQPage questions — visible junk in search rich results.
+    const STRUCTURAL_HEADING = /^(?:sources?|references?|related guides?|table of contents?|in 60 seconds?|tl;?dr|faq|frequently asked|worked example|disclaimer|next steps?|conclusion|summary|key takeaways?)$/i
+    const isQuestionHeading = (h: string) => /\?\s*$/.test(h) && !STRUCTURAL_HEADING.test(h.trim())
+    const faqH2s = (b.match(/^##\s+.+?\?\s*$/gm) || []).filter((h) => isQuestionHeading(h.replace(/^##\s+/, ''))).length
     let faqEntities: Array<{ question: string; answer: string }> = []
     if (faqH2s >= 3) {
-      const faqMatches = Array.from(b.matchAll(/^##\s+(.+?)\s*$(?:\n+((?:(?!^##\s).)+))?/gim)).slice(-8)
+      const faqMatches = Array.from(b.matchAll(/^##\s+(.+?\?)\s*$(?:\n+((?:(?!^##\s).)+))?/gim))
       faqEntities = faqMatches
-        .filter((m) => m[2]?.trim())
+        .filter((m) => m[2]?.trim() && isQuestionHeading(m[1]))
         .map((m) => ({
           question: m[1].trim(),
           answer: (m[2] || '').trim().slice(0, 300).replace(/\n/g, ' '),

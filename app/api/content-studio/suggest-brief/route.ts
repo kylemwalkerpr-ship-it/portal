@@ -7,6 +7,7 @@ import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINK
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
+import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
 import {
   clampBriefWordBudget,
   depthPromptClause,
@@ -170,12 +171,19 @@ export async function POST(req: NextRequest) {
       '9. Prefer keywords with clear informational or commercial intent — avoid terms without a search volume signal.',
       '10. Return ONLY valid JSON — no markdown wrapper, no explanations outside the JSON.',
       '',
+      formatContractBriefBlock(),
+      '',
+      'TITLE SAFETY: suggestedH1 must be a reader-ready title, not the primary keyword alone. It must add a specific benefit, audience, process, comparison, or accurate year. Never return a lowercase keyword-only H1.',
+      'LAYOUT SAFETY: h2Outline is the document skeleton. Include exactly one In 60 seconds H2, one Table of contents marker, one FAQ H2, one Sources H2, and one Worked Example H2; do not put Sources or Related guides into FAQ questions.',
+      '',
       'QUALITY WARNING PREVENTION (these checks are enforced at draft time — the brief must preempt them):',
       '11. ANTI-WALL-OF-TEXT: design H2s so each section is 2-4 short paragraphs (1-3 sentences). No prose block may exceed 180 characters without a visual break — split into bullets, a table, a numbered step, or a checkpoint. Use the h2Outline to guarantee scannability: mix explanatory H2s with checklist, comparison, and FAQ H2s.',
       '12. CONCRETE WORKED EXAMPLE: every long-form page (≥1,000 words) MUST include at least one concrete example with a named individual, their real-world situation, the step they took, and the result. Your h2Outline MUST contain an "Example" or "Worked Example" H2 section. Example markers like "For example," or "For instance," must appear in the body.',
       '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline.',
       '14. SCHEMA FAQ JSON-LD: include 4-6 FAQ questions as H2 sections in the h2Outline. At minimum: eligibility, timeline, required documents, costs, DIY-vs-attorney, and denial/reapply questions. The drafting system wraps these in FAQPage JSON-LD (`{"@type":"FAQPage"}`) so the page qualifies for AI-overview rich results.',
       '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
+      formatContractBriefBlock(),
+      formatContractBriefBlock(),
       '16. INTERNAL LINKS (HARD REQUIREMENT): ALWAYS return at least 2 interlinkTargets — never fewer than 2, prefer 3–4. Each URL must come from the allowlist VERBATIM (no invented, guessed, or modified paths). The draft-time audit blocks on fewer than 2 internal estate links, so a thin interlinkTargets list forces rewrites.',
       ...(contentType === 'blog_post'
         ? [

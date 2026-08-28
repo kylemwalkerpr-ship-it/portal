@@ -20,6 +20,7 @@ import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
 import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
 import { EDITORIAL_FORMATTING_CONTRACT } from './editorialContract'
+import { FORMAT_SKELETON } from './formatContract'
 
 export type QualitySeverity = 'blocker' | 'warning'
 
@@ -383,6 +384,83 @@ export function evaluateContentQuality(opts: {
   const findings: QualityFinding[] = []
 
   const add = (f: QualityFinding) => findings.push(f)
+
+  // ── Canonical formatting contract gates ─────────────────────────────
+  // These are blockers for indexable long-form content because the renderer
+  // cannot make malformed source readable after the fact.
+  if (indexable && contentType !== 'marketplace_gig') {
+    const raw = String(opts.content || '')
+    if (/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n[\s\S]*?^---[ \t]*\r?\n/m.test(raw)) {
+      add({
+        code: 'embedded_frontmatter',
+        severity: 'blocker',
+        message: 'Duplicate or embedded YAML frontmatter detected',
+        fix: 'Keep exactly one frontmatter block at the very top; remove any embedded YAML from the body.',
+      })
+    }
+    if (/^--- title:\s|^\s*\{\s*["']?@context["']?/m.test(body)) {
+      add({
+        code: 'renderable_metadata_leak',
+        severity: 'blocker',
+        message: 'Frontmatter or JSON-LD has leaked into visible body content',
+        fix: 'Remove leaked metadata from the body. Keep frontmatter at the top and schema in complete script blocks only.',
+      })
+    }
+    const h1s = raw.match(/^#\s+[^#].*$/gm) || []
+    if (h1s.length !== 1) {
+      add({
+        code: 'heading_structure_invalid',
+        severity: 'blocker',
+        message: `Expected exactly one H1; found ${h1s.length}`,
+        fix: 'Keep one # H1, use ## for major sections and ### only beneath ##.',
+      })
+    }
+    const tldr = raw.match(/^##\s+In 60 seconds\s*\n([\s\S]*?)(?=^##\s|$)/im)
+    if (!tldr) {
+      add({
+        code: 'tldr_format_invalid',
+        severity: 'blocker',
+        message: 'Missing required In 60 seconds section',
+        fix: 'Add ## In 60 seconds with 3–5 direct takeaway bullets, one `- ` item per line.',
+      })
+    } else {
+      const tldrBody = tldr[1].trim()
+      const bulletCount = (tldrBody.match(/^[-*+]\s+/gm) || []).length
+      if (bulletCount < 3 || /\s[-–]\s/.test(tldrBody) && bulletCount < 3) {
+        add({
+          code: 'tldr_format_invalid',
+          severity: 'blocker',
+          message: 'In 60 seconds must contain 3–5 separate bullet lines',
+          fix: 'Write 3–5 direct takeaways, one `- ` bullet per line; never join bullets with inline hyphens.',
+        })
+      }
+    }
+    const sectionNames = [...raw.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1].trim().toLowerCase())
+    for (const name of ['sources', 'official sources', 'faq', 'frequently asked questions', 'in 60 seconds', 'table of contents']) {
+      if (sectionNames.filter((s) => s === name).length > 1) {
+        add({
+          code: 'duplicate_structural_section',
+          severity: 'blocker',
+          message: `Duplicate structural section: ## ${name}`,
+          fix: `Keep one ## ${name} section and merge its unique content into that section without duplicating entries.`,
+        })
+      }
+    }
+    const sources = sectionNames.filter((s) => s === 'sources' || s === 'official sources')
+    if (sources.length === 1) {
+      const sourceMatch = raw.match(/^##\s+(?:Official )?Sources\s*\n([\s\S]*?)(?=^##\s|$)/im)
+      const sourceLines = sourceMatch?.[1].split('\n').map((l) => l.trim()).filter(Boolean) || []
+      const normalized = sourceLines.map((l) => l.replace(/^[-*+]\s*/, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').toLowerCase())
+      if (new Set(normalized).size < normalized.length) {
+        add({
+          code: 'duplicate_source_entries',
+          severity: 'blocker',
+          message: 'Sources section contains duplicate entries',
+          fix: 'Keep one entry per official source and remove repeated copies.',
+        })
+      }
+    }
+  }
 
   // ── 1. Outcome promises (always blocker) ─────────────────────────────────
   // Scan EVERY match, not just the first: a page can carry a factual
@@ -1184,6 +1262,8 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
  */
 export function formattingRequirementsBlock(): string {
   return [
+    'CANONICAL READER FORMAT (also enforced after every AI return):',
+    FORMAT_SKELETON,
     '## FORMATTING REQUIREMENTS (all jobs, all models)',
     '',
     '- TABLE OF CONTENTS: for guides with 4+ H2 sections, emit exactly:',

@@ -13,6 +13,7 @@ import {
   maxWordsForType as depthMaxWords,
 } from './contentDepth'
 import { qualityPromptBlock, formattingRequirementsBlock } from './contentQualityGate'
+import { formatContractBriefBlock } from './formatContract'
 
 /**
  * Destination format contract — deterministic instructions per host+repo+contentType.
@@ -168,6 +169,8 @@ export function buildFactorySystemPrompt(opts: {
     qualityPromptBlock(),
     '',
     formattingRequirementsBlock(),
+    '',
+    formatContractBriefBlock(),
     '',
     'OWNERSHIP (must follow):',
     `- Host: ${plan.host} → repo ${plan.repo}`,
@@ -440,7 +443,7 @@ export function buildFactoryUserPrompt(opts: {
     playbookDirective(opts.opportunityAction),
     '',
     `LENGTH (${spec.label}): ${spec.minWords}–${spec.maxWords} body words, target ~${spec.targetWords}. BOTH under ${spec.minWords} (thin) and over ${spec.maxWords} (bloated) are rejected by the audit — this is a measured gate, not a suggestion. YAML front matter, JSON-LD, and code fences do NOT count. Write complete but tight: concrete procedures, documents, risks, and FAQs earn length; padding and repetition do not. If you exceed ${spec.maxWords}, stop and trim to the last complete sentence inside the window.`,
-    'Write the full page now. Front matter first, then body. Raw markdown only.',
+    'Write the full page now. Front matter first, then body. Raw markdown only. Follow the DOCUMENT FORMAT CONTRACT exactly.',
   ]
   if (opts.refineNotes) {
     parts.push(
