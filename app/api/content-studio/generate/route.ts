@@ -40,9 +40,7 @@ export async function POST(request: NextRequest) {
       title: String(body.title || topic),
       primaryKeyword: isRegen
         ? topic
-        : (Array.isArray(body.keywords) && body.keywords[0]
-            ? String(body.keywords[0])
-            : topic) || topic,
+        : String(body.primaryKeyword || body.primary_keyword || topic),
       region,
       contentType:
         contentType === 'article'
@@ -55,6 +53,15 @@ export async function POST(request: NextRequest) {
       keywords: Array.isArray(body.keywords)
         ? body.keywords.map(String)
         : undefined,
+      h2Outline: Array.isArray(body.h2Outline) ? body.h2Outline.map(String) : undefined,
+      sources: Array.isArray(body.sources) ? body.sources.map(String) : undefined,
+      minWords: body.minWords != null ? Number(body.minWords) : undefined,
+      maxWords: body.maxWords != null ? Number(body.maxWords) : undefined,
+      targetSlug: body.targetSlug ? String(body.targetSlug) : undefined,
+      kwH2Map:
+        body.kwH2Map && typeof body.kwH2Map === 'object'
+          ? Object.fromEntries(Object.entries(body.kwH2Map as Record<string, unknown>).map(([k, v]) => [String(k), String(v)]))
+          : undefined,
       shipMode,
       dryRun: Boolean(body.dryRun || body.dry_run),
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,

@@ -857,7 +857,7 @@ export function evaluateContentQuality(opts: {
       const shortArr = (opts.requiredShortKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
       const longArr = (opts.requiredLongTailKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
 
-      if (shortArr.length && shortArr.length < minShort) {
+      if (hasShort && shortArr.length < minShort) {
         add({
           code: 'insufficient_short_keywords',
           severity: 'blocker',
@@ -865,7 +865,7 @@ export function evaluateContentQuality(opts: {
           fix: 'Re-run the planner / brief builder to synthesize the missing short keywords (modifiers around the primary term: "guide", "requirements", "application", "eligibility", "documents", "timeline", "rules"…).',
         })
       }
-      if (longArr.length && longArr.length < minLongTail) {
+      if (hasLong && longArr.length < minLongTail) {
         add({
           code: 'insufficient_long_tail_keywords',
           severity: 'blocker',

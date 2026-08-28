@@ -154,6 +154,7 @@ export default function ContentStudioWorkspace({
   onSave,
   onShip,
   onApprove,
+  shipReady,
   onMonitor,
   onRegenerate,
   onRefreshPr,
@@ -181,6 +182,8 @@ export default function ContentStudioWorkspace({
   onShip: () => void
   /** Approve → commit/merge main → Cloudflare deploy + monitor */
   onApprove: () => void
+  /** When false, Approve stays disabled until a passing re-audit. */
+  shipReady?: boolean | null
   onMonitor: () => void
   onRegenerate: () => void
   onRefreshPr: () => void
@@ -457,9 +460,9 @@ export default function ContentStudioWorkspace({
               </button>
               <button
                 type="button"
-                disabled={busy || !job || !editorContent.trim()}
+                disabled={busy || !job || !editorContent.trim() || shipReady === false}
                 onClick={onApprove}
-                title="Save (if needed), commit/merge to main, trigger Cloudflare deploy, run CI monitor"
+                title={shipReady === false ? 'Re-audit and clear blockers before Approve → main' : 'Save (if needed), commit/merge to main, trigger Cloudflare deploy, run CI monitor'}
                 style={btn(C.green, true)}
               >
                 {dryRun ? 'Dry-run approve' : 'Approve → main'}

@@ -166,6 +166,8 @@ export type ReauditContractInput = {
   /** Verified internal URLs from the brief — internal links outside this
    *  set are flagged. Same parameter the ship gate uses. */
   linkAllowlist?: string[]
+  /** Existing estate pages targeting the same intent (cannibalization). */
+  competingUrls?: Array<{ url: string; title: string; primaryKeyword?: string | null }>
 }
 
 /** The contract fields that POST + PATCH both return (route adds
@@ -201,7 +203,7 @@ export type ReauditContractOutput = {
  *  6. shipReady      → quality.ok && depthGate.ok — warnings never block
  */
 export function evaluateReauditContract(input: ReauditContractInput): ReauditContractOutput {
-  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, region, targetUrl, linkAllowlist } = input
+  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, region, targetUrl, linkAllowlist, competingUrls } = input
 
   const result = evaluateContentQuality({
     content,
@@ -213,6 +215,7 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     region,
     targetUrl,
     linkAllowlist,
+    competingUrls,
   })
 
   const annotations: InlineAnnotation[] = []
@@ -229,6 +232,8 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     contentType: contentType || 'legal_guide',
     primaryKeyword,
     indexable,
+    requiredShortKeywords,
+    requiredLongTailKeywords,
   })
   // Audit-only warnings (indexability family) must ALSO get inline annotations
   // so the issues panel renders a per-warning AI Fix button for them — not

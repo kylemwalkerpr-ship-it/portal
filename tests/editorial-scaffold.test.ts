@@ -24,6 +24,11 @@ describe('ensureEditorialScaffold', () => {
     const body = [
       '# 485 English requirements',
       '',
+      '## In 60 seconds',
+      '- Competent English is required for most Temporary Graduate visa streams.',
+      '- Confirm the current instrument on Home Affairs before you book a test.',
+      '- Keep your score valid through lodgement.',
+      '',
       '## Eligibility',
       'You need competent English for the Temporary Graduate visa pathway.',
       '',
@@ -491,7 +496,7 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
     expect(applied.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('backfills missing required long-tail keywords as FAQ questions', () => {
+  it('does not weave missing long-tail keywords into placeholder FAQ questions', () => {
     const draft = `---
 title: Study Abroad Statement of Purpose Guide
 description: A practical guide to the study abroad statement of purpose with steps, samples, and requirements.
@@ -528,18 +533,13 @@ You need a valid passport and admission letter.
       ],
     })
     const out = repaired.content
-    // Every required long-tail phrase must now exist verbatim in the body
-    for (const lt of ['statement of purpose for study abroad sample', 'is it possible to study abroad statement of purpose', 'requirements for a study abroad statement of purpose']) {
-      expect(out.toLowerCase()).toContain(lt)
-    }
-    // They were inserted as FAQ questions (### under ## FAQ)
-    expect(out).toMatch(/### Statement of purpose for study abroad sample\?/)
-    expect(out).toMatch(/### Is it possible to study abroad statement of purpose\?/)
-    expect(out).toMatch(/### Requirements for a study abroad statement of purpose\?/)
-    expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(true)
+    expect(out).not.toMatch(/### Statement of purpose for study abroad sample\?/)
+    expect(out).not.toMatch(/### Is it possible to study abroad statement of purpose\?/)
+    expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(false)
+    expect(repaired.applied.some((a) => a.startsWith('synthetic_'))).toBe(false)
   })
 
-  it('backfills missing required short keywords as In 60 seconds bullets', () => {
+  it('does not weave missing short keywords as In 60 seconds bullets', () => {
     const draft = `---
 title: Study Abroad SOP Guide
 description: Practical study abroad statement of purpose guidance with samples and templates.
@@ -572,12 +572,10 @@ One practical step here.
       requiredLongTailKeywords: ['how to write a study abroad statement of purpose', 'study abroad statement of purpose requirements 2026', 'study abroad statement of purpose sample pdf', 'study abroad statement of purpose template'],
     })
     const out = repaired.content
-    // Missing shorts appear as bullets in the In 60 seconds block
-    for (const k of ['sop writing tips', 'sop sample', 'sop length', 'sop checklist']) {
-      expect(out.toLowerCase()).toContain(k)
-    }
-    expect(out).toMatch(/## In 60 seconds/)
-    expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(true)
+    expect(out.toLowerCase()).not.toContain('sop writing tips')
+    expect(out.toLowerCase()).not.toContain('**sop sample**')
+    expect(repaired.applied.some((a) => a.startsWith('keyword_backfill'))).toBe(false)
+    expect(repaired.applied.some((a) => a.startsWith('synthetic_'))).toBe(false)
   })
 
   // 2026-08-13 live-run regression: GLM 5.2 Fast drafted a 3234-word legal
@@ -963,6 +961,25 @@ One practical step here.
       indexable: true,
     })
     expect(gate.blockers.some((f) => f.code === 'missing_faq')).toBe(false)
+  })
+
+  it('does not inject placeholder FAQ when the draft has too few usable H2s', () => {
+    const draft = [
+      '# Thin note',
+      '',
+      '## Overview',
+      'A short paragraph without enough sections to derive a real FAQ.',
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Thin note',
+      primaryKeyword: 'thin note',
+      indexable: true,
+      contentType: 'article',
+    })
+    expect(applied.some((a) => a.startsWith('faq_section ('))).toBe(false)
+    expect(content).not.toMatch(/^## FAQ$/m)
+    expect(content.toLowerCase()).not.toContain('eligibility depends on the rules')
   })
 
 })

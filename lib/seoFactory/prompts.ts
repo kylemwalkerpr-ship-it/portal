@@ -464,7 +464,7 @@ export function buildFactoryUserPrompt(opts: {
         'Apply the requested fixes and improvements to it; do not discard it or shorten it.',
       '',
       '```markdown',
-      opts.draft.length > 14000 ? opts.draft.slice(0, 14000) + '\n\n[…truncated…]' : opts.draft,
+      opts.draft.length > 45000 ? opts.draft.slice(0, 45000) + '\n\n[…truncated…]' : opts.draft,
       '```',
     )
   }
@@ -495,7 +495,7 @@ export function buildDepthExpandPrompt(opts: {
 }): string {
   const deficit = Math.max(0, opts.minWords - opts.currentWords)
   const maxWords = opts.maxWords ?? 99999
-  const draftSlice = opts.draft.length > 14000 ? opts.draft.slice(0, 14000) + '\n\n[…truncated…]' : opts.draft
+  const draftSlice = opts.draft.length > 45000 ? opts.draft.slice(0, 45000) + '\n\n[…truncated…]' : opts.draft
   const outlineBlock =
     opts.h2Outline && opts.h2Outline.length
       ? [

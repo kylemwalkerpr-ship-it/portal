@@ -111,19 +111,7 @@ function buildFaqQas(body: string, primaryKeyword: string): Array<{ q: string; a
   return qas.length >= 3 ? qas : null
 }
 
-/** Generic, fact-free FAQ Q&A used only when the draft lacks enough H2
- *  sections to derive questions from (a mechanical fallback so missing_faq
- *  still clears without inventing legal facts). */
-function genericFaqQas(primaryKeyword: string, region?: string): Array<{ q: string; a: string }> {
-  const topic = (primaryKeyword || 'this application').trim()
-  const regionPhrase = region ? ` for ${region.toUpperCase()}` : ''
-  return [
-    { q: `Who is eligible for ${topic}?`, a: `Eligibility depends on the rules${regionPhrase}. Check the requirements in the section above and confirm them against official government sources before you apply.` },
-    { q: `What documents are required for ${topic}?`, a: `The document checklist is listed above. Verify the current list against the official government website before you apply.` },
-    { q: `How long does ${topic} take?`, a: `Timelines vary by application and case load. Use the timeline in the section above as a guide and confirm current processing times on the official government site.` },
-    { q: `How much does ${topic} cost?`, a: `Fees change over time. Check the costs section above and confirm the current fee schedule on the official government site before you pay.` },
-  ]
-}
+
 
 /** Shared heading slug — MUST match renderTarget.markdownToJsx + StickyTOC. */
 export function slugifyHeading(text: string): string {
@@ -1328,7 +1316,13 @@ export function applyDeterministicRepairs(opts: {
     if (!hasFaqSection) {
       const pk = (opts.primaryKeyword || opts.title || 'guide').trim()
       const derived = buildFaqQas(b, pk)
-      const qas = derived && derived.length >= 3 ? derived.slice(0, 6) : genericFaqQas(pk, opts.region)
+      // Only reuse the draft's own H2 prose. Placeholder FAQ answers
+      // ("check the section above") used to clear missing_faq while shipping
+      // thin duplicate copy. Fewer than 3 derivable Q&As leaves the blocker.
+      if (!derived || derived.length < 3) {
+        // skip — missing_faq remains for the AI/editor
+      } else {
+      const qas = derived.slice(0, 6)
       const faqBlock = [
         '## FAQ',
         '',
@@ -1362,6 +1356,7 @@ export function applyDeterministicRepairs(opts: {
         ].join('\n')
         b = `${faqSchema}\n\n${b}`
         applied.push('schema_faq')
+      }
       }
     }
   }
@@ -1498,108 +1493,10 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
-  // ── Keyword coverage backfill (missing required short/long-tail) ─────
-  // The quality gate hard-blocks drafts when a required short/long-tail
-  // keyword from the brief never appears in the body. The drafting model
-  // often omits a few — weave the missing ones in mechanically so the gate
-  // can pass on the same run instead of forcing another AI rewrite:
-  //   - missing SHORT keywords → one In 60 seconds bullet each
-  //   - missing LONG-TAIL keywords → one FAQ question each (self-contained
-  //     answer that adds no invented facts)
-  // The PRIMARY keyword is exempt (it appears in the title/H1 by definition
-  // and is checked by keyword_stuffing, not the coverage arrays).
-  //
-  // When the brief shipped too few keywords (< 5 short, < 4 long-tail),
-  // generate synthetic variations from the primary keyword so the coverage
-  // gate can pass without another AI rewrite cycle.
-  {
-    const primaryL = (opts.primaryKeyword || '').trim().toLowerCase()
-    let shorts = (opts.requiredShortKeywords || [])
-      .map((s) => String(s || '').trim())
-      .filter((s) => s && s.toLowerCase() !== primaryL)
-    let longs = (opts.requiredLongTailKeywords || [])
-      .map((s) => String(s || '').trim())
-      .filter((s) => s && s.toLowerCase() !== primaryL)
-
-    // Generate synthetic short-tail variations when below the floor (5).
-    const MIN_SHORT = 5
-    if (shorts.length < MIN_SHORT && primaryL) {
-      const primaryTokens = primaryL.split(/\s+/).filter((t) => t.length > 2)
-      const synthShorts: string[] = []
-      // Single-token variations ("essay" from "mba essay editing")
-      for (const tok of primaryTokens) {
-        if (shorts.concat(synthShorts).some((s) => s.toLowerCase() === tok)) continue
-        if (tok === primaryL) continue
-        synthShorts.push(tok)
-        if (shorts.length + synthShorts.length >= MIN_SHORT) break
-      }
-      // Bigram variations ("mba essay" from "mba essay editing")
-      for (let i = 0; i < primaryTokens.length - 1 && shorts.length + synthShorts.length < MIN_SHORT; i++) {
-        const bigram = `${primaryTokens[i]} ${primaryTokens[i + 1]}`
-        if (shorts.concat(synthShorts).some((s) => s.toLowerCase() === bigram)) continue
-        synthShorts.push(bigram)
-      }
-      if (synthShorts.length) {
-        shorts = [...shorts, ...synthShorts]
-        applied.push(`synthetic_short_keywords (${synthShorts.length})`)
-      }
-    }
-
-    // Generate synthetic long-tail variations when below the floor (4).
-    const MIN_LONG = 4
-    if (longs.length < MIN_LONG && primaryL) {
-      const synthLongs: string[] = [
-        `${primaryL} cost 2026`,
-        `${primaryL} services compared`,
-        `best ${primaryL} guide`,
-        `how to choose ${primaryL}`,
-      ].filter((s) => !longs.some((l) => l.toLowerCase() === s.toLowerCase()))
-      const needed = MIN_LONG - longs.length
-      if (needed > 0) {
-        longs = [...longs, ...synthLongs.slice(0, needed)]
-        applied.push(`synthetic_long_tail_keywords (${Math.min(needed, synthLongs.length)})`)
-      }
-    }
-    const missingShort = shorts.filter((t) => b.toLowerCase().indexOf(t.toLowerCase()) === -1)
-    const missingLong = longs.filter((t) => b.toLowerCase().indexOf(t.toLowerCase()) === -1)
-    const backfilled: string[] = []
-
-    // Missing short keywords → In 60 seconds bullets (only when the block exists).
-    if (missingShort.length) {
-      const sixtyIdx = b.search(/^##\s+In 60 seconds\s*$/im)
-      if (sixtyIdx > -1) {
-        const blockEnd = b.indexOf('\n\n', sixtyIdx)
-        const end = blockEnd > -1 ? blockEnd : b.length
-        const bullets = missingShort
-          .map((t) => `- **${t}** — covered below with practical steps.`)
-          .join('\n')
-        b = b.slice(0, end) + '\n' + bullets + b.slice(end)
-        backfilled.push(...missingShort.map((t) => `short:${t}`))
-      }
-    }
-
-    // Missing long-tail keywords → FAQ questions.
-    if (missingLong.length) {
-      const faqItems = missingLong
-        .map((t) => {
-          const q = t.charAt(0).toUpperCase() + t.slice(1)
-          return `### ${q}?\n\nThe practical steps, documents, and timeline are covered in the sections above. Verify every requirement against official government sources before you apply.`
-        })
-        .join('\n\n')
-      const faqLine = b.match(/^##\s+FAQ\s*$/im)
-      if (faqLine && typeof faqLine.index === 'number') {
-        // Insert directly AFTER the ## FAQ heading line (not before it, which
-        // would duplicate the heading).
-        const insertAt = faqLine.index + faqLine[0].length
-        b = b.slice(0, insertAt) + '\n\n' + faqItems + b.slice(insertAt)
-        backfilled.push(...missingLong.map((t) => `long:${t}`))
-      }
-    }
-
-    if (backfilled.length) {
-      applied.push(`keyword_backfill (${backfilled.length})`)
-    }
-  }
+  // Keyword coverage is a quality-gate blocker, not a mechanical weave.
+  // Synthesizing "best {kw} guide" / stuffing In 60 seconds bullets and FAQ
+  // questions used to make the gate pass on template copy. Missing required
+  // terms stay visible so the editor/Fix path writes them in context.
 
   // ── Keyword density reduction ──────────────────────────────────────
   // When the primary keyword appears too often (≥3.5% density = 8+ hits
@@ -2059,14 +1956,8 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
     body = `# ${title}\n\n${body}`
   }
 
-  // Quality gate requires a TL;DR / "In 60 seconds" block for indexable long-form
-  if (!/in 60 seconds|tl;?dr|key takeaways|quick answer/i.test(body)) {
-    const kw = opts.primaryKeyword || title
-    body = body.replace(
-      /^(#\s+[^\n]+\n+)/,
-      `$1## In 60 seconds\n\n- This guide covers **${kw}** in practical steps.\n- Confirm every rule on official government sites before you apply.\n- Use the document list and FAQ below as a checklist — not a substitute for advice.\n\n`,
-    )
-  }
+  // Do not inject a generic In 60 seconds. missing_tldr stays a blocker so
+  // the drafter/editor writes a real answer block instead of template bullets.
 
   // Deterministic reader structure: rebuild / insert the linked TOC so anchors
   // always match the heading ids the renderer generates (AI-emitted TOCs often

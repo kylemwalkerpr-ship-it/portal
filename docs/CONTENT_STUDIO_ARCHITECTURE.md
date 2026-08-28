@@ -97,7 +97,7 @@ Persisted on `content_jobs` (+ `event_log`, `audit_json`, `deploy_sha`).
 5. **On ship:** `assertContentDepth` → `assertQualityGate` → `assertShipAllowed`  
 6. **On merge:** poll commit checks; merge only if not failed  
 
-Depth floors (Google-aligned): legal 1800w · regional 1200w · blog 1000w · gig 500w.
+Depth floors (Google-aligned): legal 2200w (target 2500, max 2800) · regional 1200w · blog 800w · gig 500w.
 
 ---
 

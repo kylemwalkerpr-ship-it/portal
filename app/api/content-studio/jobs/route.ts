@@ -17,6 +17,8 @@ import {
   JOB_LIST_COLUMNS,
   JOB_MUTATE_COLUMNS,
   JOB_OPEN_COLUMNS,
+  jobCompetingPages,
+  jobRequiredKeywords,
   slimJobForClient,
 } from '@/lib/seoFactory/jobColumns'
 
@@ -591,23 +593,10 @@ export async function POST(request: NextRequest) {
             // they were silently dropped here, so the gates never fired on
             // approve). Empty arrays are no-ops — legacy rows behave exactly
             // as before.
-            const requiredShortKeywords: string[] = Array.isArray(
-              (job as any).required_short_keywords,
+            const { requiredShortKeywords, requiredLongTailKeywords } = jobRequiredKeywords(
+              job as Record<string, unknown>,
             )
-              ? (job as any).required_short_keywords
-              : []
-            const requiredLongTailKeywords: string[] = Array.isArray(
-              (job as any).required_long_tail_keywords,
-            )
-              ? (job as any).required_long_tail_keywords
-              : []
-            const competingUrls: Array<{
-              url: string
-              title: string
-              primaryKeyword?: string | null
-            }> = Array.isArray((job as any).competing_urls)
-              ? (job as any).competing_urls
-              : []
+            const competingUrls = jobCompetingPages(job as Record<string, unknown>)
             const ship = await shipContent({
               mode: 'autodeploy',
               plan,
@@ -1521,6 +1510,10 @@ export async function PATCH(request: NextRequest) {
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
+      const { requiredShortKeywords, requiredLongTailKeywords } = jobRequiredKeywords(
+        job as Record<string, unknown>,
+      )
+      const competingUrls = jobCompetingPages(job as Record<string, unknown>)
       // Deterministic compliance repair before ship — never let a missing
       // disclaimer or broken TOC block a human-approved delivery.
       const shipRepair = applyDeterministicRepairs({
@@ -1530,6 +1523,10 @@ export async function PATCH(request: NextRequest) {
         region: job.region || 'US',
         indexable: job.indexable !== false,
         contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        competingUrls,
+        targetUrl: job.canonical_url ? String(job.canonical_url) : undefined,
       })
       content = shipRepair.content
       const humanApproved = action === 'approve' || body.humanApproved === true
@@ -1545,6 +1542,8 @@ export async function PATCH(request: NextRequest) {
         primaryKeyword,
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
 
       // Approve always targets main (direct commit). Reship respects shipMode.
@@ -1575,17 +1574,16 @@ export async function PATCH(request: NextRequest) {
             .eq('id', id)
         }
 
-        // If PR already open and approve → merge that PR instead of new ship.
-        // mergePullRequest auto-syncs stale branches; if a real file conflict
-        // survives, fall through to forceNewShip (direct main commit) — the
-        // admin already approved this content, so don't dead-end the job with
-        // "fix on GitHub and retry".
+        // If PR already open and approve sent NO editor body → merge that PR.
+        // When the editor sent `content`, ship the gated buffer instead of
+        // merging the (possibly stale) GitHub file that was opened on first draft.
         let mergeFallbackNote: string | null = null
         if (
           humanApproved &&
           job.pr_number &&
           job.status === 'pr_created' &&
-          body.forceNewShip !== true
+          body.forceNewShip !== true &&
+          body.content == null
         ) {
           const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
           try {
@@ -1649,6 +1647,9 @@ export async function PATCH(request: NextRequest) {
           dryRun: Boolean(body.dryRun),
           jobId: id,
           humanApproved,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          competingUrls,
         })
         const now = new Date().toISOString()
         const terminal =

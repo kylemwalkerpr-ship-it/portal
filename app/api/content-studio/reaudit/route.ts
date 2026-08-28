@@ -394,6 +394,15 @@ export async function POST(request: NextRequest) {
     // Resolve the canonical URL from the job when the body omits it — the
     // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
     const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
+    const competingUrls = Array.isArray((body as { competingUrls?: unknown }).competingUrls)
+      ? ((body as { competingUrls: Array<{ url?: string; title?: string; primaryKeyword?: string | null } | string> }).competingUrls)
+          .map((c) =>
+            typeof c === 'string'
+              ? { url: c, title: c }
+              : { url: String(c.url || ''), title: String(c.title || c.url || ''), primaryKeyword: c.primaryKeyword ?? null },
+          )
+          .filter((c) => c.url)
+      : undefined
     // Deterministic compliance repair first: a missing disclaimer or broken
     // reader TOC is a mechanical fix — apply it now so the audit reflects the
     // content that can actually ship, and return the repaired draft so the
@@ -408,12 +417,10 @@ export async function POST(request: NextRequest) {
       contentType,
       requiredShortKeywords,
       requiredLongTailKeywords,
-    competingUrls: (body as any).competingUrls,
+      competingUrls,
       targetUrl,
     })
     let effective = repaired.content
-    // Contract evaluation (quality gate + audit + warningsData merge + depth
-    // gate + shipReady) is shared with PATCH — see lib/seoFactory/reauditContract.
     const response: ReauditResponse = {
       ...evaluateReauditContract({
         content: effective,
@@ -424,6 +431,7 @@ export async function POST(request: NextRequest) {
         requiredLongTailKeywords,
         region,
         targetUrl,
+        competingUrls,
       }),
     }
     // Live HEAD/GET of every URL is a Worker subrequest bomb. The desk auto-gate
@@ -521,6 +529,19 @@ export async function PATCH(request: NextRequest) {
     // Resolve the canonical URL from the job when the body omits it — the
     // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
     const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
+    const competingPages = Array.isArray(competingUrls)
+      ? competingUrls
+          .map((c) =>
+            typeof c === 'string'
+              ? { url: c, title: c }
+              : {
+                  url: String((c as { url?: string }).url || ''),
+                  title: String((c as { title?: string; url?: string }).title || (c as { url?: string }).url || ''),
+                  primaryKeyword: (c as { primaryKeyword?: string | null }).primaryKeyword ?? null,
+                },
+          )
+          .filter((c) => c.url)
+      : undefined
 
     let fixedContent: string
     // Master Engine fix plan — the engine's highest-priority gaps, rendered
@@ -550,7 +571,7 @@ export async function PATCH(request: NextRequest) {
         contentType,
         requiredShortKeywords,
         requiredLongTailKeywords,
-        competingUrls: competingUrls as any,
+        competingUrls: competingPages,
         targetUrl,
       })
       const afterMech = evaluateReauditContract({
@@ -562,6 +583,7 @@ export async function PATCH(request: NextRequest) {
         requiredLongTailKeywords,
         region,
         targetUrl,
+        competingUrls: competingPages,
       })
       const leftover = leftoverAnnotationCodes(annotations, afterMech)
       if (leftover.length === 0) {
@@ -671,7 +693,7 @@ ${warningList}
           contentType,
           requiredShortKeywords,
           requiredLongTailKeywords,
-          competingUrls: competingUrls as any,
+          competingUrls: competingPages,
           targetUrl,
         })
         fixedContent = postNorm.content
@@ -752,7 +774,7 @@ RULES:
             primaryKeyword: primaryKeyword || 'guide',
             region, indexable, contentType,
             requiredShortKeywords, requiredLongTailKeywords,
-            competingUrls: competingUrls as any, targetUrl,
+            competingUrls: competingPages, targetUrl,
             maxWords, minWords,
           }).content
         }
@@ -803,7 +825,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         contentType,
         requiredShortKeywords,
         requiredLongTailKeywords,
-        competingUrls: competingUrls as any,
+        competingUrls: competingPages,
         targetUrl,
       })
       // 2) Live link remediation — replace/remove dead + irrelevant + untrusted
@@ -828,6 +850,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         requiredLongTailKeywords,
         region,
         targetUrl,
+        competingUrls: competingPages,
       })
       const afterCodes = new Set([
         ...(afterMech.blockersData || []).map((b) => b.code),
@@ -865,6 +888,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         requiredLongTailKeywords,
         region,
         targetUrl,
+        competingUrls: competingPages,
       })
       const stillPresent = new Set([
         ...(postDepth.blockersData || []).map((b) => b.code),
@@ -941,6 +965,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         requiredLongTailKeywords,
         region,
         targetUrl,
+        competingUrls: competingPages,
       })
       const leftoverLinks = (await auditLinksLive(sanitized.content, {
         knownLiveUrls: targetUrl ? [targetUrl] : undefined,
@@ -1073,6 +1098,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         requiredLongTailKeywords,
         region,
         targetUrl,
+        competingUrls: competingPages,
       }),
       fixedContent,
       // Let the editor show which engine gaps the fix targeted, in order.
@@ -1270,6 +1296,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
       requiredLongTailKeywords,
       region,
       targetUrl,
+      competingUrls: competingPages,
     })
     const finalResponse: ReauditResponse = {
       ...finalContract,

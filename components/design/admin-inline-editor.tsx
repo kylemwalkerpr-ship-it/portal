@@ -82,7 +82,10 @@ type Props = {
    *  instead of the deterministic floor. */
   competingSnippets?: string[]
   /** Pages already targeting the same intent (cannibalization). */
-  competingUrls?: string[]
+  competingUrls?: Array<{ url?: string; title?: string; primaryKeyword?: string | null } | string>
+  requiredShortKeywords?: string[]
+  requiredLongTailKeywords?: string[]
+  onShipReadyChange?: (ready: boolean | null) => void
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -94,7 +97,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -115,6 +118,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [fixingWarnings, setFixingWarnings] = useState(false)
   const [expandingDepth, setExpandingDepth] = useState(false)
   const [shipReady, setShipReady] = useState<boolean | null>(null)
+  useEffect(() => { onShipReadyChange?.(shipReady) }, [shipReady, onShipReadyChange])
   const [depthGate, setDepthGate] = useState<{ ok: boolean; message: string } | null>(null)
   // Depth-mediation plan — how far below the goal (floor OR word-count target)
   // the draft is, so the ship-gate strip can show "1813/2200 words" or
@@ -242,7 +246,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const res = await fetch('/api/content-studio/reaudit', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: latestContent, jobId, ...briefMeta }),
+        body: JSON.stringify({ content: latestContent, jobId, liveLinks: true, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -270,7 +274,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft])
+  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft, requiredShortKeywords, requiredLongTailKeywords, competingUrls, region, targetUrl])
 
   // Fix ALL issues via AI — one button fixes blockers, warnings, and engine gaps.
   // Clicking again while running cancels the request.
@@ -615,6 +619,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(reviewModel ? { reviewModel } : {}),
     ...(competingSnippets?.length ? { competingSnippets } : {}),
     ...(competingUrls?.length ? { competingUrls } : {}),
+    ...(requiredShortKeywords?.length ? { requiredShortKeywords } : {}),
+    ...(requiredLongTailKeywords?.length ? { requiredLongTailKeywords } : {}),
   }
 
   const allBusy = busy || fixingAll || fixingWarnings || fixingBlockers || disabled

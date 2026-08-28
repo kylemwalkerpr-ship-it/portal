@@ -27,6 +27,8 @@ export const JOB_LIST_COLUMNS = [
   'word_count',
   'seo_score',
   'primary_keyword',
+  'required_short_keywords',
+  'required_long_tail_keywords',
   'competing_urls',
   'owner_host',
   'canonical_url',
@@ -69,6 +71,42 @@ export function slimJobForClient<T extends Record<string, unknown>>(row: T): T {
   delete (next as Record<string, unknown>).lineage
   delete (next as Record<string, unknown>).gsc_json
   return next
+}
+
+/** Brief keyword floors persisted on the job — empty when a legacy row never stored them. */
+export function jobRequiredKeywords(job: Record<string, unknown> | null | undefined): {
+  requiredShortKeywords: string[]
+  requiredLongTailKeywords: string[]
+} {
+  const short = Array.isArray(job?.required_short_keywords) ? job!.required_short_keywords : []
+  const long = Array.isArray(job?.required_long_tail_keywords) ? job!.required_long_tail_keywords : []
+  return {
+    requiredShortKeywords: (short as unknown[]).map(String).map((s) => s.trim()).filter(Boolean),
+    requiredLongTailKeywords: (long as unknown[]).map(String).map((s) => s.trim()).filter(Boolean),
+  }
+}
+
+export type JobCompetingPage = { url: string; title: string; primaryKeyword?: string | null }
+
+/** Normalize competing_urls whether the row stored strings or {url,title} objects. */
+export function jobCompetingPages(job: Record<string, unknown> | null | undefined): JobCompetingPage[] {
+  const raw = job?.competing_urls
+  if (!Array.isArray(raw)) return []
+  const out: JobCompetingPage[] = []
+  for (const c of raw) {
+    if (typeof c === 'string') {
+      const url = c.trim()
+      if (url) out.push({ url, title: url })
+      continue
+    }
+    if (c && typeof c === 'object') {
+      const row = c as { url?: string; title?: string; primaryKeyword?: string | null }
+      const url = String(row.url || '').trim()
+      if (!url) continue
+      out.push({ url, title: String(row.title || url), primaryKeyword: row.primaryKeyword ?? null })
+    }
+  }
+  return out
 }
 
 export const JOB_LINEAGE_COLUMNS = [

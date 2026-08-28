@@ -414,8 +414,8 @@ async function ensureCanonicalOnSitemap(opts: {
 
 /**
  * Human-approved path: commit straight to main when possible.
- * Skips automated score gates (admin already reviewed content in the studio).
- * Still refuses hard ownership/host mismatches.
+ * Still runs the master gate stack (depth · rhythm · quality · shipGate).
+ * `humanApproved` only chooses direct-main vs PR — it never skips gates.
  */
 export async function shipContent(opts: {
   mode: ShipMode

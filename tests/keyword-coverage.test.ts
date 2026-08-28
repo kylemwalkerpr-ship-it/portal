@@ -204,6 +204,28 @@ describe('content quality gate — keyword coverage', () => {
     expect(r.blockers.find((b) => b.code === 'insufficient_short_keywords')).toBeTruthy()
   })
 
+  it('blocks when the caller supplies empty keyword arrays instead of omitting them', () => {
+    const r = evaluateContentQuality({
+      content: makeCompliantBody(['f1 visa'], ['how to apply f-1 visa']),
+      primaryKeyword: 'f1 visa',
+      indexable: true,
+      requiredShortKeywords: [],
+      requiredLongTailKeywords: [],
+    })
+    expect(r.blockers.find((b) => b.code === 'insufficient_short_keywords')).toBeTruthy()
+    expect(r.blockers.find((b) => b.code === 'insufficient_long_tail_keywords')).toBeTruthy()
+  })
+
+  it('still skips keyword coverage when the arrays are omitted (legacy jobs)', () => {
+    const r = evaluateContentQuality({
+      content: makeCompliantBody(['f1 visa'], ['how to apply f-1 visa']),
+      primaryKeyword: 'f1 visa',
+      indexable: true,
+    })
+    expect(r.blockers.find((b) => b.code === 'insufficient_short_keywords')).toBeFalsy()
+    expect(r.blockers.find((b) => b.code === 'missing_short_keyword')).toBeFalsy()
+  })
+
   // 2026-08-12 regression: the primary keyword used to land in the required
   // long-tail array (≥4 words → long-tail bucket) with a 2-hit cap. Natural
   // title + H1 + intro usage blew the cap and blocked every valid article

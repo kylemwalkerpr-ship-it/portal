@@ -117,8 +117,8 @@ export async function* runSeoFactoryPipelineStream(
     // when the cluster says so.
     const clusterKeywords = Array.isArray(input.cluster?.keywords) ? input.cluster!.keywords! : []
     const mergedKeywords = Array.isArray(input.keywords)
-      ? [...new Set([...input.keywords, primaryKeyword, ...clusterKeywords])].slice(0, 10)
-      : [...new Set([primaryKeyword, ...clusterKeywords])].slice(0, 10)
+      ? [...new Set([...input.keywords, primaryKeyword, ...clusterKeywords])].slice(0, 24)
+      : [...new Set([primaryKeyword, ...clusterKeywords])].slice(0, 24)
     const ownerUrlHint =
       input.cluster?.mode === 'expand' && input.cluster?.targetUrl
         ? String(input.cluster.targetUrl)
@@ -139,8 +139,8 @@ export async function* runSeoFactoryPipelineStream(
     else if (plan.intentClass === 'university_modifier') contentType = 'regional_university'
     // Transactional intent is downgraded by standingRulesHost to a blog_summary on
     // legal or the best-fit regional host — the studio never creates marketplace gigs.
-    else if (plan.intentClass === 'transactional') contentType = 'blog_summary'
-    else if (plan.intentClass === 'news_summary') contentType = 'blog_summary'
+    else if (plan.intentClass === 'transactional' && !input.contentType) contentType = 'blog_summary'
+    else if (plan.intentClass === 'news_summary' && !input.contentType) contentType = 'blog_summary'
     else if (plan.host === 'legal' && (contentType === 'regional_page' || !input.contentType)) {
       contentType = 'legal_guide'
     }
@@ -1312,7 +1312,7 @@ export async function* runSeoFactoryPipelineStream(
             ? {
                 clusterId: input.cluster.clusterId || null,
                 canonicalTerm: input.cluster.canonicalTerm || null,
-                keywords: (input.cluster.keywords || []).slice(0, 10),
+                keywords: (input.cluster.keywords || []).slice(0, 24),
                 mode: input.cluster.mode || 'new',
                 targetUrl: input.cluster.targetUrl || null,
                 existingJobId: input.cluster.existingJobId || null,

@@ -3154,6 +3154,8 @@ function DraftWorkspace({
               region={completedJob?.region ?? undefined}
               competingSnippets={completedJob?.competing_snippets ?? undefined}
               competingUrls={completedJob?.competing_urls ?? undefined}
+              requiredShortKeywords={completedJob?.required_short_keywords ?? undefined}
+              requiredLongTailKeywords={completedJob?.required_long_tail_keywords ?? undefined}
               reviewModel={reviewModel}
               onReviewModelChange={setReviewModel}
             />
@@ -3611,6 +3613,8 @@ function JobDetail({
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const regenAutoResumeRef = React.useRef(false)
   const [audit, setAudit] = React.useState<unknown>(null)
+  const [editorShipReady, setEditorShipReady] = React.useState<boolean | null>(false)
+  React.useEffect(() => { setEditorShipReady(false) }, [job.id])
 
   const loadDetail = React.useCallback(async (opts: { body?: boolean } = {}) => {
     const gen = ++loadGenRef.current
@@ -3989,7 +3993,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipReady} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
@@ -4011,8 +4015,8 @@ function JobDetail({
         </div>
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>🚀 Delivering to the sites</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 6 }}>
-          {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal, onClick: () => void runAction('reship'), title: 'Open / update the pull request without merging' })}
-          {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal, onClick: () => void runAction('approve'), title: 'Approve content and trigger deployment to main' })}
+          {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal || editorShipReady !== true, onClick: () => void runAction('reship'), title: editorShipReady !== true ? 'Re-audit until the ship gate is ready, then ship a PR' : 'Open / update the pull request without merging' })}
+          {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal || editorShipReady !== true, onClick: () => void runAction('approve'), title: editorShipReady !== true ? 'Re-audit and clear blockers before Approve → main' : 'Approve content and trigger deployment to main' })}
           {detail.pr_number && !terminal && actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { border: C.green, fg: C.green, bg: '#F0FDF4', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}
           {actionBtn('🩺 Monitor deploy', { disabled: busy, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
           {actionBtn('⧉ Duplicate', { disabled: busy, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}
@@ -5568,6 +5572,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             contentType: selectedJob.content_type,
             primaryKeyword: selectedJob.primary_keyword ?? undefined,
             indexable: selectedJob.indexable,
+            region: selectedJob.region ?? undefined,
+            requiredShortKeywords: selectedJob.required_short_keywords ?? undefined,
+            requiredLongTailKeywords: selectedJob.required_long_tail_keywords ?? undefined,
+            competingUrls: selectedJob.competing_urls ?? undefined,
+            targetUrl: selectedJob.canonical_url ?? undefined,
           }),
         })
         const data = await res.json().catch(() => ({})) as any
@@ -6033,11 +6042,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           topic: formData.topic, title: formData.title || formData.topic,
-          primaryKeyword: (formData.keywords && formData.keywords[0]) || formData.topic,
+          primaryKeyword: formData.topic || (formData.keywords && formData.keywords[0]),
           region: regionArg, contentType: ct,
           tone: formData.tone || 'educational', audience: formData.audience,
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
-          minAuditScore: 55, maxRefine: 2,
+          minAuditScore: 55, maxRefine: 3,
           seoEnrichment,
           interlinks: briefInterlinks,
           opportunity: selectedBrief,
@@ -6741,6 +6750,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 targetUrl={selectedJob.canonical_url ?? undefined}
                 competingSnippets={selectedJob.competing_snippets ?? undefined}
                 competingUrls={selectedJob.competing_urls ?? undefined}
+                requiredShortKeywords={selectedJob.required_short_keywords ?? undefined}
+                requiredLongTailKeywords={selectedJob.required_long_tail_keywords ?? undefined}
                 reviewModel={reviewModel}
                 onReviewModelChange={setReviewModel}
                 onScoreChange={async (_s) => {

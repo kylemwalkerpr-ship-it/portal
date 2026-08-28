@@ -38,11 +38,13 @@ export interface ContentJob {
     rescue?: DepthRescueStats
   } | null
   primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
+  required_short_keywords?: string[] | null
+  required_long_tail_keywords?: string[] | null
   /** SERP competitor snippets (Discover/Research stage) — fed into the fix
    *  loop so the engine's SERP-consensus baseline reflects real competitors. */
   competing_snippets?: string[] | null
   /** Pages already targeting the same intent (cannibalization). */
-  competing_urls?: string[] | null
+  competing_urls?: Array<{ url?: string; title?: string; primaryKeyword?: string | null } | string> | null
   /** Master SEO Engine composite (0-100) + grade, persisted by the backfill. */
   master_engine_score?: number | null
   master_engine_grade?: string | null
