@@ -6,7 +6,7 @@ import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
-import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType, targetWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
@@ -666,6 +666,38 @@ ${warningList}
           fixedContent: content,
         }, { status: 502 })
       }
+      }
+
+      // ── Word-count shortfall mitigation for fix_all ───────────────
+      // Deduplication and mechanical repairs can strip duplicate TOC lines,
+      // duplicate H2 sections, or duplicate JSON-LD blocks — dropping the
+      // word count below the content-type floor or target. The old code
+      // only ran depth expansion for fix_depth and fix_warnings; fix_all
+      // silently shipped under-length drafts. Run the same append-only
+      // expansion here so fix_all converges in one sweep.
+      if (fixedContent) {
+        const postFixWords = countBodyWords(fixedContent)
+        const targetWords = targetWordsForType(String(contentType || 'legal_guide'))
+        const minWords = minWordsForType(String(contentType || 'legal_guide'))
+        const needsExpansion = postFixWords < minWords || postFixWords < targetWords * 0.85
+        if (needsExpansion) {
+          depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
+          if (!depthPlan.ok && depthPlan.prompt) {
+            const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+            try {
+              const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+              const merged = mergeAppendedSections(fixedContent, appended)
+              if (countBodyWords(merged) > countBodyWords(fixedContent)) {
+                fixedContent = merged
+                depthExpandedForWarnings = true
+              }
+            } catch {
+              // Depth expansion is best-effort for fix_all — continue with
+              // the current content and let the shared post-fix section
+              // handle the evaluation.
+            }
+          }
+        }
       }
 
     } else if (action === 'fix_one' && annotation) {

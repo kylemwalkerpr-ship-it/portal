@@ -765,6 +765,29 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
+      {/* Repeated-content warning — the #1 cause of fix-all not clearing
+          issues in one sweep.  sentence_start_repetition and toc_duplicates
+          are triggered by AI models padding word count with duplicated text.
+          The deterministic repair now strips these, but if the admin sees this
+          banner they know the content has structural duplication that may
+          require a manual pass if Fix All doesn't fully clear it. */}
+      {warningsData.some((w) => w.code === 'sentence_start_repetition' || w.code === 'toc_duplicates' || w.code === 'insufficient_short_keywords' || w.code === 'insufficient_long_tail_keywords') && (
+        <div data-testid="studio-repetition-warning" style={{
+          display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 14px',
+          borderRadius: 8, background: '#FEF3C7', border: '1px solid #FDE68A',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 800, fontFamily: C.mono, letterSpacing: '0.08em', color: '#92400E', textTransform: 'uppercase' }}>
+            ⚠ Repeated content or keyword gap detected
+          </div>
+          <div style={{ fontSize: 11, color: '#78350F', lineHeight: 1.5 }}>
+            This draft has duplicate sections or keyword padding that the AI model may
+            re-introduce during Fix All. The deterministic repair now strips duplicates
+            and backfills missing keywords, but if Fix All doesn't clear this in one
+            pass, edit the flagged sections manually and re-audit.
+          </div>
+        </div>
+      )}
+
       {/* Engine gaps targeted — prioritized checklist from the last Fix-all / warnings sweep */}
       {enginePlan && enginePlan.length > 0 && (
         <div data-testid="studio-engine-plan" style={{
