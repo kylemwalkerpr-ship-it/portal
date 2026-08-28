@@ -855,7 +855,42 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let shipResult: ShipResult | null = null
   let shipError: string | null = null
 
-  if (shipMode !== 'none') {
+  // ── Content-topic validation ──────────────────────────────────────────
+  // Prevent the AI from shipping content about a completely different topic
+  // than the job title. This catches cases where the model hallucinates a
+  // different article (e.g. K State housing → Canada Express Entry).
+  {
+    const primaryKwLower = (primaryKeyword || '').toLowerCase()
+    const topicLower = (topic || '').toLowerCase()
+    const contentLower = content.toLowerCase()
+    const h1Match = content.match(/^#\s+(.+)/m)
+    const h1Lower = (h1Match?.[1] || '').toLowerCase()
+
+    // Check 1: primary keyword must appear in the content
+    const kwWords = primaryKwLower.split(/\s+/).filter(w => w.length > 3)
+    const kwHits = kwWords.filter(w => contentLower.includes(w)).length
+    const kwMissing = kwWords.length > 0 && kwHits === 0
+
+    // Check 2: topic words from the title must appear in the content
+    const topicWords = topicLower.split(/\s+/).filter(w => w.length > 4)
+    const topicHits = topicWords.filter(w => contentLower.includes(w)).length
+    const topicMissing = topicWords.length >= 3 && topicHits < topicWords.length * 0.3
+
+    // Check 3: H1 should not be about a completely different subject
+    const h1Mismatch = h1Lower && primaryKwLower && !topicWords.some(w => h1Lower.includes(w)) && h1Lower.length > 10
+
+    if (kwMissing || topicMissing) {
+      const detail = [
+        kwMissing ? `primary keyword "${primaryKeyword}" not found in content` : '',
+        topicMissing ? `topic words from "${topic}" barely appear (${topicHits}/${topicWords.length})` : '',
+        h1Mismatch ? `H1 "${h1Match?.[1]}" doesn't match topic` : '',
+      ].filter(Boolean).join('; ')
+      shipError = `Content-topic mismatch: ${detail}`
+      console.error(`[pipeline] REFUSED ship — ${shipError}`)
+    }
+  }
+
+  if (shipMode !== 'none' && !shipError) {
     try {
       // shipContent enforces shipGate (host · path · format) before any Git write
     shipResult = await shipContent({

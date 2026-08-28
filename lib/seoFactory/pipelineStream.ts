@@ -1108,7 +1108,33 @@ export async function* runSeoFactoryPipelineStream(
     let shipResult: ShipResult | null = null
     let shipError: string | null = null
 
-    if (shipMode !== 'none') {
+    // ── Content-topic validation ────────────────────────────────────────
+    {
+      const primaryKwLower = (primaryKeyword || '').toLowerCase()
+      const topicLower = (topic || '').toLowerCase()
+      const contentLower = content.toLowerCase()
+      const h1Match = content.match(/^#\s+(.+)/m)
+      const h1Lower = (h1Match?.[1] || '').toLowerCase()
+
+      const kwWords = primaryKwLower.split(/\s+/).filter(w => w.length > 3)
+      const kwHits = kwWords.filter(w => contentLower.includes(w)).length
+      const kwMissing = kwWords.length > 0 && kwHits === 0
+
+      const topicWords = topicLower.split(/\s+/).filter(w => w.length > 4)
+      const topicHits = topicWords.filter(w => contentLower.includes(w)).length
+      const topicMissing = topicWords.length >= 3 && topicHits < topicWords.length * 0.3
+
+      if (kwMissing || topicMissing) {
+        const detail = [
+          kwMissing ? `primary keyword "${primaryKeyword}" not found in content` : '',
+          topicMissing ? `topic words from "${topic}" barely appear (${topicHits}/${topicWords.length})` : '',
+        ].filter(Boolean).join('; ')
+        shipError = `Content-topic mismatch: ${detail}`
+        console.error(`[pipelineStream] REFUSED ship — ${shipError}`)
+      }
+    }
+
+    if (shipMode !== 'none' && !shipError) {
       yield {
         type: 'progress',
         stage: 'ship',
