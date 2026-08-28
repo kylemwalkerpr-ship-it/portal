@@ -484,7 +484,11 @@ function renderCaseworksPage(opts: {
   canonicalUrl: string
 }): string {
   const { fm, body } = stripFrontMatter(opts.content)
-  const title = fm.title || opts.title
+  // Use fm.title if it looks like a real title (long, has spaces, not just
+  // a keyword repeated). Otherwise fall back to opts.title (DB title).
+  const fmTitle = fm.title || ''
+  const looksLikeKeyword = fmTitle.length < 25 || !fmTitle.includes(' ')
+  const title = (fmTitle && !looksLikeKeyword) ? fmTitle : (opts.title || fmTitle || opts.primaryKeyword)
   const description =
     fm.description ||
     fm.metaDescription ||
@@ -660,7 +664,11 @@ function renderConsultancyBlogPage(opts: {
   canonicalUrl: string
 }): string {
   const { fm, body } = stripFrontMatter(opts.content)
-  const title = fm.title || opts.title
+  // Use fm.title if it looks like a real title (long, has spaces, not just
+  // a keyword repeated). Otherwise fall back to opts.title (DB title).
+  const fmTitle = fm.title || ''
+  const looksLikeKeyword = fmTitle.length < 25 || !fmTitle.includes(' ')
+  const title = (fmTitle && !looksLikeKeyword) ? fmTitle : (opts.title || fmTitle || opts.primaryKeyword)
   const description =
     fm.description ||
     fm.metaDescription ||
@@ -785,7 +793,10 @@ export function buildBlogPostEntry(opts: {
   region: string
 }): BlogPostEntry {
   const { fm, body } = stripFrontMatter(opts.content)
-  const title = fm.title || opts.title
+  // Use fm.title if it looks like a real title; fall back to opts.title
+  const fmTitle = fm.title || ''
+  const looksLikeKeyword = fmTitle.length < 25 || !fmTitle.includes(' ')
+  const title = (fmTitle && !looksLikeKeyword) ? fmTitle : (opts.title || fmTitle)
   const pathParts = opts.plan.filePath.split('/').filter((p) => p && p !== 'page.tsx')
   const slug = pathParts.slice(-1)[0] || 'blog-post'
   const regionKey = (opts.region || 'US').toUpperCase()
@@ -861,7 +872,11 @@ export function renderTargetFile(opts: {
 
   // Markdown / MDX for portal catalogue and regional content folders
   const { fm, body } = stripFrontMatter(opts.content)
-  const title = fm.title || opts.title
+  // Use fm.title if it looks like a real title (long, has spaces, not just
+  // a keyword repeated). Otherwise fall back to opts.title (DB title).
+  const fmTitle = fm.title || ''
+  const looksLikeKeyword = fmTitle.length < 25 || !fmTitle.includes(' ')
+  const title = (fmTitle && !looksLikeKeyword) ? fmTitle : (opts.title || fmTitle || opts.primaryKeyword)
   const description = fm.description || `${title} — YouSafe Consultancy`
   const robots = opts.indexable ? 'index,follow' : 'noindex,follow'
   const front = [
