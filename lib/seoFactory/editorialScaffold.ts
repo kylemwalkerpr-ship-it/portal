@@ -903,16 +903,37 @@ export function applyDeterministicRepairs(opts: {
     applied.push('schema_article')
   }
 
-  // FAQPage schema: inject if the body has 4+ FAQ-ish H2s but no FAQPage JSON-LD
-  const faqH2s = (b.match(/^##\s+.*(?:FAQ|frequently asked|eligibility|timeline|document|cost|fee|denial|refusal|reapply|appeal)/gim) || []).length
-  if (faqH2s >= 3 && !/"@type"\s*:\s*"FAQPage"/i.test(b)) {
-    const faqMatches = Array.from(b.matchAll(/^##\s+(.+?)\s*$(?:\n+((?:(?!^##\s).)+))?/gim)).slice(-8)
-    const faqEntities = faqMatches
-      .filter((m) => m[2]?.trim())
-      .map((m) => ({
-        question: m[1].trim(),
-        answer: (m[2] || '').trim().slice(0, 300).replace(/\n/g, ' '),
-      }))
+  // FAQPage schema: inject if the body has 3+ FAQ-ish H2s OR a single FAQ
+  // H2 containing bold questions (e.g. '**Is X worth it?**') and no FAQPage
+  // JSON-LD yet.  The Admissions Consultant draft has 1 FAQ H2 with 6 bold
+  // questions — the old gate required faqH2s >= 3 and silently passed.
+  if (!/"@type"\s*:\s*"FAQPage"/i.test(b)) {
+    // --- Path A: 3+ FAQ-ish H2 headings (original) ---
+    const faqH2s = (b.match(/^##\s+.*(?:FAQ|frequently asked|eligibility|timeline|document|cost|fee|denial|refusal|reapply|appeal)/gim) || []).length
+    let faqEntities: Array<{ question: string; answer: string }> = []
+    if (faqH2s >= 3) {
+      const faqMatches = Array.from(b.matchAll(/^##\s+(.+?)\s*$(?:\n+((?:(?!^##\s).)+))?/gim)).slice(-8)
+      faqEntities = faqMatches
+        .filter((m) => m[2]?.trim())
+        .map((m) => ({
+          question: m[1].trim(),
+          answer: (m[2] || '').trim().slice(0, 300).replace(/\n/g, ' '),
+        }))
+    }
+    // --- Path B: single FAQ H2 with bold questions inside ---
+    // Pattern: ## FAQ: ... \n\n **Is X worth it?** \n\n Answer... \n\n **How much does X cost?** ...
+    if (faqEntities.length < 3) {
+      const faqSectionMatch = b.match(/^(## (?:FAQ|Frequently asked).*?)\n([\s\S]*?)(?=^## |$)/im)
+      if (faqSectionMatch) {
+        const faqBody = faqSectionMatch[2]
+        // Extract **bold question?** patterns as Q&A pairs
+        const boldQA = Array.from(faqBody.matchAll(/\*\*([^*]+\?)\*\*[\s\S]*?(?=\*\*[^*]+\?\*\*|## |$)/g))
+        faqEntities = boldQA.map((m) => ({
+          question: m[1].trim(),
+          answer: m[0].replace(/\*\*([^*]+\?)\*\*/, '').trim().slice(0, 300).replace(/\n/g, ' '),
+        })).filter((e) => e.question && e.answer)
+      }
+    }
     if (faqEntities.length >= 3) {
       const faqSchema = [
         '<script type="application/ld+json">',
