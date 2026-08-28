@@ -209,11 +209,15 @@ export function auditContent(opts: {
       const seenToc = new Map<string, number>()
       let dupCount = 0
       for (const line of tocLines) {
-        const normalized = line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-          .replace(/^\s*[-*+]\s/, '')
+        const normalized = line
+          .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+          .replace(/^\s*[-*+•]\s*/, '')
+          .replace(/^\s*\d+[.)]\s*/, '')
+          .replace(/\*\*|__/g, '')
           .trim()
           .toLowerCase()
-        if (normalized.length < 2) continue
+        // Skip blank lines, headings, and long prose — only flag short TOC-like entries
+        if (normalized.length < 2 || normalized.length > 120) continue
         const prev = seenToc.get(normalized)
         if (prev != null) {
           dupCount++

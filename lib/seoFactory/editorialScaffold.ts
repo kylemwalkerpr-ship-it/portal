@@ -754,18 +754,25 @@ export function applyDeterministicRepairs(opts: {
         inTocSection = false
         seenInToc = new Set()
       }
-      const isListItem = /^\s*[-*+]\s/.test(line) || /^\s*\d+[.)]\s/.test(line)
-      if (isListItem && inTocSection) {
-        // Normalize for comparison: strip markdown links, bold, leading whitespace
-        const normalized = line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-          .replace(/\*\*|__/g, '')
+      if (inTocSection) {
+        // Normalize for comparison: strip markdown links, bold, bullet markers,
+        // and leading whitespace.  Catches both "- [FAQ](#faq)" list items
+        // AND bare "FAQ" text lines that have no bullet marker at all.
+        const normalized = line
+          .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')  // strip markdown links
+          .replace(/^\s*[-*+•]\s*/, '')               // strip bullet markers
+          .replace(/^\s*\d+[.)]\s*/, '')              // strip numbered markers
+          .replace(/\*\*|__/g, '')                     // strip bold markers
           .trim()
           .toLowerCase()
-        if (normalized.length >= 2 && seenInToc.has(normalized)) {
+        // Only remove lines that look like real TOC entries (not blank lines,
+        // heading lines, or very long prose lines).
+        const looksLikeTocEntry = normalized.length >= 2 && normalized.length <= 120
+        if (looksLikeTocEntry && seenInToc.has(normalized)) {
           removedLines++
           continue // skip duplicate TOC entry
         }
-        if (normalized.length >= 2) seenInToc.add(normalized)
+        if (looksLikeTocEntry) seenInToc.add(normalized)
       }
       dedupedLines.push(line)
     }
