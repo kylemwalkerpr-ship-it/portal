@@ -1337,6 +1337,97 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // ── Keyword density reduction ──────────────────────────────────────
+  // When the primary keyword appears too often (≥3.5% density = 8+ hits
+  // in a 2200-word guide), the quality gate flags KEYWORD_DENSITY_HIGH.
+  // The AI model often ignores "use synonyms" instructions, so this
+  // deterministic pass replaces the LAST few exact occurrences with
+  // natural paraphrases. The first few occurrences stay (they anchor SEO
+  // signals in the intro and first H2); only later ones are swapped.
+  {
+    const pk = (opts.primaryKeyword || '').trim()
+    if (pk.length >= 4) {
+      const pkLower = pk.toLowerCase()
+      const pkWords = pk.toLowerCase().split(/\s+/).filter(Boolean)
+      const bodyWords = countBodyWords(b)
+      if (bodyWords > 0) {
+        // Count exact occurrences
+        let exactCount = 0
+        const pkLen = pkLower.length
+        let searchFrom = 0
+        while (true) {
+          const idx = b.toLowerCase().indexOf(pkLower, searchFrom)
+          if (idx === -1) break
+          exactCount++
+          searchFrom = idx + pkLen
+        }
+        const density = (exactCount * pkWords.length) / bodyWords
+        // Threshold: density > 3.5% or raw count > 10 in a long guide
+        const threshold = bodyWords >= 2000 ? Math.max(8, Math.floor(bodyWords * 0.003)) : 12
+        if (exactCount > threshold && density > 0.035) {
+          // How many to replace: reduce to ~2.5% density
+          const targetCount = Math.floor((bodyWords * 0.025) / pkWords.length)
+          const toReplace = Math.max(0, exactCount - targetCount)
+          if (toReplace > 0) {
+            // Synonym banks for common immigration/legal terms
+            const SYNONYM_BANK: Record<string, string[]> = {
+              'visa': ['visa', 'permit', 'authorization', 'pass'],
+              'checklist': ['checklist', 'check list', 'requirements list', 'documents needed'],
+              'immigration': ['immigration', 'migration', 'relocation', 'visa process'],
+              'applicant': ['applicant', 'candidate', 'petitioner', 'individual'],
+              'document': ['document', 'paperwork', 'records', 'credentials'],
+              'processing': ['processing', 'handling', 'review', 'assessment'],
+              'fee': ['fee', 'cost', 'charge', 'expense'],
+              'requirement': ['requirement', 'condition', 'criterion', 'prerequisite'],
+              'eligibility': ['eligibility', 'qualifications', 'criteria', 'suitability'],
+              'application': ['application', 'submission', 'filing', 'petition'],
+            }
+            // Build synonym variants for the primary keyword
+            const variants: string[] = []
+            for (const w of pkWords) {
+              const syns = SYNONYM_BANK[w.toLowerCase()]
+              if (syns) variants.push(...syns.filter((s) => s.toLowerCase() !== w.toLowerCase()))
+            }
+            // If no synonyms found from the bank, create generic variants
+            if (variants.length === 0) {
+              // "UK dependent visa documents checklist" → "this guide", "the process", "these requirements"
+              variants.push('this guide', 'the process', 'these requirements', 'this document', 'the application', 'this procedure')
+            }
+            // Find ALL occurrences and replace the LAST `toReplace` ones
+            const occurrences: Array<{ start: number; end: number }> = []
+            searchFrom = 0
+            while (true) {
+              const idx = b.toLowerCase().indexOf(pkLower, searchFrom)
+              if (idx === -1) break
+              occurrences.push({ start: idx, end: idx + pkLen })
+              searchFrom = idx + pkLen
+            }
+            // Keep the first occurrences (they anchor SEO), replace the last ones
+            const toSwap = occurrences.slice(-toReplace)
+            if (toSwap.length > 0 && variants.length > 0) {
+              // Process in reverse order to preserve indices
+              let modified = b
+              for (let i = toSwap.length - 1; i >= 0; i--) {
+                const { start, end } = toSwap[i]
+                const variant = variants[i % variants.length]
+                // Preserve original case: if the original was capitalized, capitalize the variant
+                const original = modified.slice(start, end)
+                const replacement = original[0] === original[0].toUpperCase()
+                  ? variant.charAt(0).toUpperCase() + variant.slice(1)
+                  : variant
+                modified = modified.slice(0, start) + replacement + modified.slice(end)
+              }
+              if (modified !== b) {
+                b = modified
+                applied.push(`keyword_density_reduced (${toSwap.length} → ${variants.slice(0, 2).join('/')})`)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // ── Cannibalization differentiation ─────────────────────────────────
   // When the draft's primary keyword overlaps existing estate pages, the
   // quality gate warns about split ranking signals. Narrow the title/H1

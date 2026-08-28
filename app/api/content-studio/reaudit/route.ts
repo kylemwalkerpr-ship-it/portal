@@ -630,9 +630,14 @@ ${warningList}
 5d. External links marked untrusted or irrelevant: if the URL is live and on-topic, KEEP it. Only remove if truly dead or unrelated.
 6. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language — ONLY in the sentences that contain these cliches
 7. Add specific data, examples, or concrete details where the article is vague — ONLY where a warning explicitly asks for it
-8. Keep all original headings, interlinks, and key facts intact
-9. Do NOT add any new external URLs. Only work with URLs already present in the content.
-10. Return the COMPLETE fixed article, nothing else`
+8. KEYWORD_DENSITY_HIGH — if listed, the primary keyword appears too often (≥3.5% density). Fix by:
+   a) KEEP the first 2–3 occurrences (intro + first H2 anchor SEO signals).
+   b) REPLACE remaining occurrences with natural paraphrases: "this guide", "the process", "these requirements", "this document", "the application", "this procedure".
+   c) NEVER remove the keyword from title, H1, meta description, or first paragraph.
+   d) Target: reduce to ~2–3% density.
+9. Keep all original headings, interlinks, and key facts intact
+10. Do NOT add any new external URLs. Only work with URLs already present in the content.
+11. Return the COMPLETE fixed article, nothing else`
 
       // Verified internal URL list — the model cannot fix unverified internal
       // links without knowing which URLs actually exist. Cached sitemap fetch.
