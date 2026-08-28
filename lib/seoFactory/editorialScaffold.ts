@@ -134,7 +134,7 @@ function plainTitle(title: string): string {
 /** Utility H2s that never belong in a reader TOC. Sources stays included —
  * the reported reader path listed Sources, and jumping to citations is useful. */
 const TOC_EXCLUDE =
-  /^(table of contents|in 60 seconds|tldr|key takeaways|quick answer|disclaimer|related guides|next steps)$/i
+  /^(table of contents|in 60 seconds|tldr|key takeaways|quick answer|disclaimer|related guides|next steps|article)$/i
 
 /**
  * Build a linked `## Table of contents` block from the body's H2 headings.
@@ -599,6 +599,109 @@ export function applyDeterministicRepairs(opts: {
   if (withToc !== b) {
     b = withToc
     applied.push('table_of_contents')
+  }
+
+  // ── Section reordering ──────────────────────────────────────────────
+  // AI models sometimes place sections out of order — e.g. a "Renewing or
+  // replacing" section before the intro, or FAQ answers scattered across
+  // the body. This pass enforces the canonical reader flow:
+  //   intro → In 60 seconds → TOC → content H2s → FAQ → Worked Example
+  //   → Official sources / Sources → Related guides → Disclaimer
+  {
+    const before = b
+    // Split into intro (before first H2) and H2 sections
+    const firstH2 = b.search(/^## /m)
+    if (firstH2 > -1) {
+      const intro = b.slice(0, firstH2).trim()
+      const h2Block = b.slice(firstH2)
+      // Split on H2 boundaries, keeping the heading with its content
+      const sections = h2Block.split(/(?=^## )/m).filter(s => s.trim())
+      // Classify each section
+      const TAIL = /^(?:official sources|sources|references|related guides|next steps|disclaimer)/i
+      const FAQ_RE = /^## FAQ/i
+      const WORKED_RE = /^## Worked Example/i
+      const TOC_RE = /^## Table of contents/i
+      const IN60_RE = /^## In 60 seconds|^## TL;DR|^## Key takeaways/i
+      const DISCLAIMER_RE_PARA = /^---\s*\n\*\*Disclaimer/i
+
+      const introSections: string[] = []   // In 60 seconds, TOC
+      const contentSections: string[] = [] // main body H2s
+      const tailSections: string[] = []    // FAQ, Worked Example, Sources, Related
+      let disclaimer = ''
+
+      for (const sec of sections) {
+        const trimmed = sec.trim()
+        // Check if it's a disclaimer block (--- + **Disclaimer)**)
+        if (DISCLAIMER_RE_PARA.test(trimmed)) {
+          disclaimer = trimmed
+          continue
+        }
+        if (IN60_RE.test(trimmed) || TOC_RE.test(trimmed)) {
+          introSections.push(trimmed)
+          continue
+        }
+        if (FAQ_RE.test(trimmed) || WORKED_RE.test(trimmed) || TAIL.test(trimmed)) {
+          tailSections.push(trimmed)
+          continue
+        }
+        contentSections.push(trimmed)
+      }
+
+      // Enforce order: In 60 seconds before TOC
+      const in60 = introSections.find(s => IN60_RE.test(s))
+      const toc = introSections.find(s => TOC_RE.test(s))
+      const orderedIntro = [in60, toc].filter(Boolean)
+
+      // Enforce tail order: FAQ → Worked Example → Sources/Related
+      const faq = tailSections.find(s => FAQ_RE.test(s))
+      const worked = tailSections.find(s => WORKED_RE.test(s))
+      const sources = tailSections.filter(s => TAIL.test(s) && !FAQ_RE.test(s) && !WORKED_RE.test(s))
+      const orderedTail = [faq, worked, ...sources].filter(Boolean)
+
+      const reordered = [intro, ...orderedIntro, ...contentSections, ...orderedTail, disclaimer]
+        .filter(Boolean)
+        .join('\n\n')
+        .replace(/\n{3,}/g, '\n\n')
+      if (reordered !== before) {
+        b = reordered
+        applied.push('section_reorder')
+      }
+    }
+  }
+
+  // ── Stray content-type label removal ─────────────────────────────
+  // AI models sometimes emit "## Article" as a section heading — it's a
+  // content-type label, not a real section. Strip it so it doesn't appear
+  // in the TOC or the rendered page.
+  {
+    const before = b
+    b = b.replace(/^##\s+Article\s*$(?:\n(?!##\s)|\n$)/gm, '')
+    b = b.replace(/\n{3,}/g, '\n\n')
+    if (b !== before) applied.push('stray_article_heading_removed')
+  }
+
+  // ── FAQ bold-question → ### heading normalization ──────────────────
+  // AI models emit FAQ questions as **bold text** instead of ### headings.
+  // The FAQPage schema extraction and the reader renderer both expect ###
+  // headings. Convert: within a ## FAQ section, **Question text?** on its
+  // own line becomes ### Question text?
+  {
+    const before = b
+    const faqStart = b.search(/^##\s+FAQ/im)
+    if (faqStart > -1) {
+      const faqEnd = b.indexOf('\n## ', faqStart + 1)
+      const faqBlock = faqEnd > -1 ? b.slice(faqStart, faqEnd) : b.slice(faqStart)
+      const fixed = faqBlock.replace(
+        /^\*\*([^*]+\?)\*\*\s*$/gm,
+        (_, q) => `### ${q.trim()}`,
+      )
+      if (fixed !== faqBlock) {
+        b = faqEnd > -1
+          ? b.slice(0, faqStart) + fixed + b.slice(faqEnd)
+          : b.slice(0, faqStart) + fixed
+        applied.push('faq_bold_to_heading')
+      }
+    }
   }
 
   const dashCount = (b.match(/[—–]/g) || []).length
