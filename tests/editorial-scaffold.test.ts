@@ -1,8 +1,8 @@
 import { applyDeterministicRepairs, ensureEditorialScaffold, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
-import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 describe('ensureEditorialScaffold', () => {
   it('adds FM, disclaimer, and AU official sources so audit can pass depth+quality', () => {
@@ -136,6 +136,74 @@ describe('ensureEditorialScaffold', () => {
   })
 })
 
+describe('applyDeterministicRepairs — broken script tag / body swallowing regression', () => {
+  it('never lets schema replacement swallow the body (2026-08-28: 2476 → 601 words live)', () => {
+    // Shape that triggered the live bug: a FAQPage JSON-LD block at the TOP,
+    // the Article JSON-LD at the END behind a BROKEN <script open tag (no `>`).
+    // The old ensureValidArticleJsonLd replace regex ran from the FIRST
+    // <script to the FIRST "Article" type anywhere after it — across the
+    // </script> boundary and the entire article body.
+    const sentences = Array.from({ length: 40 }, (_, i) =>
+      `Step ${i + 1} requires evidence ${i + 1} checked against the official government source before you rely on it.`,
+    ).join(' ')
+    const docSentences = Array.from({ length: 40 }, (_, i) =>
+      `Document ${i + 1} must be certified ${i + 1} and attached before the department issues a decision.`,
+    ).join(' ')
+    const draft = [
+      '---',
+      'title: Australia Student Visa Restrictions: 2026 Guide',
+      'description: Understand the restrictions for 2026.',
+      'region: AU',
+      '---',
+      '',
+      '<script type="application/ld+json">',
+      '{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Q1?","acceptedAnswer":{"@type":"Answer","text":"A1."}}]}',
+      '</script>',
+      '',
+      '# Australia Student Visa Restrictions: 2026 Guide',
+      '',
+      '## In 60 seconds',
+      '- Check the work-hour cap before you plan any shifts.',
+      '- Keep enrolment and OSHC active for the whole visa period.',
+      '',
+      '## Work limits while studying',
+      sentences,
+      '',
+      '## Documents you must prepare',
+      docSentences,
+      '',
+      '## FAQ',
+      '',
+      '### What is the visa?',
+      'It is the permit that lets you study, and the conditions attach from day one of your grant.',
+      '',
+      '<script type="application/',
+      '',
+      '<script type="application/ld+json">',
+      '{"@context":"https://schema.org","@type":"Article","headline":"X","image":["a.png"],"datePublished":"2026-01-01","author":{"@type":"Organization","name":"Y"}}',
+      '</script>',
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Australia Student Visa Restrictions: 2026 Guide',
+      primaryKeyword: 'australia student visa restrictions',
+      region: 'AU',
+      indexable: true,
+      contentType: 'article',
+    })
+    // The whole body must survive the repair chain.
+    expect(countBodyWords(content)).toBeGreaterThan(800)
+    expect(applied).toContain('broken_script_tag_removed')
+    // A valid Article block is still present and the body headings intact.
+    expect(content).toContain('"@type": "Article"')
+    expect(content).toContain('## Work limits while studying')
+    expect(content).toContain('## Documents you must prepare')
+    // The description must be prose — never a scraped script block.
+    const descLine = content.match(/^description:\s*(.+)$/m)?.[1] || ''
+    expect(descLine).not.toContain('<script')
+  })
+})
+
 describe('applyDeterministicRepairs — warning micro-fixes', () => {
   it('injects description: into a draft with NO front matter at all', () => {
     // 2026-08-12 regression: a draft without YAML front matter never received
@@ -165,6 +233,39 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
     expect(content).toMatch(/^---\ntitle: /)
     expect(content).toMatch(/^description: /m)
     expect(content).toContain('region: UK')
+  })
+
+  it('never eats sentences for natural collocation repeats (trigram dedup regression)', () => {
+    // 2026-08-28 regression: the old trigram rule removed every sentence that
+    // contained a 3-word phrase seen 4× in a paragraph. Natural collocations
+    // ("department of home affairs") cross that threshold in ordinary prose
+    // and a live 1328-word draft collapsed to 214 words.
+    const sentences = Array.from({ length: 30 }, (_, i) =>
+      `Requirement ${i + 1} is checked by the department of home affairs against evidence ${i + 1} you provide.`,
+    ).join(' ')
+    const draft = [
+      '# Student Visa Guide',
+      '',
+      'This guide explains the visa conditions you must follow while studying in Australia.',
+      '',
+      '## Conditions while studying',
+      sentences,
+      '',
+      '## Documents',
+      'Passport, CoE, and OSHC certificates. '.repeat(10),
+    ].join('\n')
+    const { content } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Student Visa Guide',
+      primaryKeyword: 'student visa conditions',
+      region: 'AU',
+      indexable: true,
+      contentType: 'article',
+    })
+    // All 30 distinct sentences survive despite the shared collocation.
+    for (let i = 1; i <= 30; i++) {
+      expect(content).toContain(`Requirement ${i} is checked by the department of home affairs`)
+    }
   })
 
   it('normalises whilst → while so the tone_whilst warning is mechanically cleared', () => {

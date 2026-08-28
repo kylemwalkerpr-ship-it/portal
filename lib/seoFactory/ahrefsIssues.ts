@@ -155,7 +155,7 @@ export function urlHasDoubleSlash(url: string): boolean {
 
 function extractJsonLdBlocks(content: string): Array<{ raw: string; data: unknown }> {
   const out: Array<{ raw: string; data: unknown }> = []
-  const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  const re = /<script\b[^>\n]*type=["']application\/ld\+json["'][^>\n]*>([\s\S]*?)<\/script>/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(content))) {
     const raw = m[1].trim()
@@ -405,6 +405,13 @@ export function applyAhrefsDraftRepairs(
   const parsed = parseFm(content)
   let { fm, body } = parsed
   const pk = opts.primaryKeyword || fm.primaryKeyword || ''
+  // Broken/unclosed script open tags (model truncation, e.g. a trailing
+  // `<script type="application/` with no `>` on the line) merge with the NEXT
+  // real tag inside every attribute-span regex (`[^>]*` crosses newlines).
+  // Strip them before any block matching so schema replacement can never
+  // swallow body text (a live run lost 2675 → 601 body words this way).
+  body = body.replace(/^<script\b[^>\n]*$/gim, '')
+  body = body.replace(/\n{3,}/g, '\n\n')
   const rawTitle = fm.title || (body.match(/^#\s+(.+)$/m) || [])[1] || pk || 'Immigration guide'
   const title = clampTitleToAhrefs(rawTitle, pk)
   if (title !== rawTitle) applied.push('ahrefs_title')
@@ -521,10 +528,16 @@ function ensureValidArticleJsonLd(
   if (articleJsonLdErrors(body).length === 0) {
     return { body, changed: false }
   }
-  const replaced = body.replace(
-    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"Article"[\s\S]*?<\/script>/i,
-    script,
-  )
-  if (replaced !== body) return { body: replaced, changed: true }
+  // Replace ONLY the Article JSON-LD block itself. The old regex let the two
+  // lazy `[\s\S]*?` spans run from the FIRST <script tag to the FIRST
+  // "@type": "Article" ANYWHERE after it — crossing </script> boundaries and
+  // the entire article body when the Article script sat behind a FAQPage
+  // block, deleting the body on replace. Match a single block, then swap it.
+  const ldBlockRe = /<script\b[^>\n]*type=["']application\/ld\+json["'][^>\n]*>[\s\S]*?<\/script>/gi
+  const ldBlocks = Array.from(body.matchAll(ldBlockRe)).map((m) => m[0])
+  const articleBlock = ldBlocks.find((blk) => /"@type"\s*:\s*"Article"/i.test(blk))
+  if (articleBlock) {
+    return { body: body.replace(articleBlock, () => script), changed: true }
+  }
   return { body: `${script}\n\n${body.trim()}\n`, changed: true }
 }

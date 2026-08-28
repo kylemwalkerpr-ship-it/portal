@@ -27,6 +27,9 @@ function hasDisclaimer(body: string): boolean {
 
 function metaDescriptionFrom(title: string, body: string, primaryKeyword: string): string {
   const plain = body
+    // Script/JSON-LD blocks are markup, not prose — a FAQPage schema injected
+    // at the top of the body must never be scraped into the YAML description.
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
     .replace(/^#+\s+/gm, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/[*_`]/g, '')
@@ -801,6 +804,19 @@ export function applyDeterministicRepairs(opts: {
     if (b !== urlBefore) applied.push('bare_urls_prefixed')
   }
 
+  // ── Broken/unclosed <script> open-tag removal ───────────────────────
+  // Models sometimes truncate a script open tag (e.g. a trailing
+  // `<script type="application/` line with no closing `>`). Attribute-span
+  // regexes (`[^>]*`) cross newlines, so the broken tag merges with the next
+  // real tag and block matching/replace can swallow body text (a live run
+  // lost 2675 → 601 body words this way). Drop the fragment line entirely.
+  {
+    const before = b
+    b = b.replace(/^<script\b[^>\n]*$/gim, '')
+    b = b.replace(/\n{3,}/g, '\n\n')
+    if (b !== before) applied.push('broken_script_tag_removed')
+  }
+
   // ── Broken JSON-LD removal (ahrefs_schema_invalid recurrence fix) ───
   // The audit's hard error is "JSON-LD does not parse". Models regularly
   // emit a malformed <script type="application/ld+json"> block, and the
@@ -816,7 +832,7 @@ export function applyDeterministicRepairs(opts: {
   {
     const before = b
     b = b.replace(
-      /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi,
+      /<script\b[^>\n]*type=["']application\/ld\+json["'][^>\n]*>[\s\S]*?<\/script>/gi,
       (block) => {
         const m = block.match(/>([\s\S]*?)<\/script>/i)
         const raw = (m?.[1] || '').trim()
@@ -952,26 +968,27 @@ export function applyDeterministicRepairs(opts: {
       seenParaHashes.set(hashKey, dedupedParas.length)
       dedupedParas.push(para)
     }
-    // Also strip repeated sentence triples within each remaining paragraph.
-    // "The applicant must submit the form. The applicant must submit the form
-    //  before the deadline. The applicant must submit the form promptly." →
-    // keep first two, remove the third.
+    // Also strip repeated sentences within each remaining paragraph — but
+    // ONLY exact full-sentence copies (3rd+ occurrence). The previous rule
+    // removed any sentence containing a 3-word trigram seen 4× in the
+    // paragraph, and natural collocations ("checked against the", "the
+    // department of home affairs") cross that threshold in ordinary prose —
+    // a live run collapsed a 1328-word draft to 214 words this way.
     const dedupedSentences = dedupedParas.map((para) => {
       if (para.length < 150) return para // too short for sentence-level dedup
       const sentences = para.split(/(?<=[.!?])\s+/)
       if (sentences.length < 5) return para
-      const seen3 = new Map<string, number>() // 3-word sliding window → count
+      const seenSentence = new Map<string, number>() // exact normalized sentence → count
       return sentences.map((sent) => {
-        const words = sent.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/).filter(Boolean)
-        // Check all 3-word windows in this sentence against seen phrases
-        for (let i = 0; i <= words.length - 3; i++) {
-          const trigram = words.slice(i, i + 3).join(' ')
-          const count = (seen3.get(trigram) || 0) + 1
-          seen3.set(trigram, count)
-          // If this trigram has appeared 4+ times, this sentence is padding
-          if (count >= 4) {
-            return '' // remove the sentence
-          }
+        const key = sent.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+        const wordCount = key.split(' ').filter(Boolean).length
+        // Short fragments ("Yes.", "No.", headers) repeat legitimately
+        if (wordCount < 8) return sent
+        const count = (seenSentence.get(key) || 0) + 1
+        seenSentence.set(key, count)
+        // Only the 3rd+ EXACT copy of a full sentence is padding
+        if (count >= 3) {
+          return '' // remove the sentence
         }
         return sent
       }).filter(Boolean).join(' ')
@@ -1041,7 +1058,7 @@ export function applyDeterministicRepairs(opts: {
   {
     const before = b
     const jsonLdBlocks: Array<{ start: number; end: number; valid: boolean }> = []
-    const ldRegex = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi
+    const ldRegex = /<script\b[^>\n]*type=["']application\/ld\+json["'][^>\n]*>[\s\S]*?<\/script>/gi
     let m: RegExpExecArray | null
     while ((m = ldRegex.exec(b)) !== null) {
       const block = m[0]
