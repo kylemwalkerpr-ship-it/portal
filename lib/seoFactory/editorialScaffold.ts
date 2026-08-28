@@ -713,6 +713,23 @@ export function applyDeterministicRepairs(opts: {
     applied.push('dashes')
   }
 
+  // ── Asterisk normalization ──────────────────────────────────────────
+  // AI models sometimes emit `*text` (no space) at the start of a line.
+  // Markdown treats this as a bullet only with a space after `*`.
+  // Without the space, it renders as a literal asterisk. Normalize:
+  //   `*Disclaimer: ...` → `*Disclaimer: ...` (italic — wrap in *…*)
+  //   `* text` stays as-is (already a valid bullet)
+  //   `**text**` stays as-is (already bold)
+  {
+    const before = b
+    b = b.replace(/^\*([^\s*][^\n]*)$/gm, (_, text) => {
+      // Lines starting with * followed by non-space, non-* = italic text
+      // Wrap in proper italic markers: *text*
+      return `*${text}*`
+    })
+    if (b !== before) applied.push('asterisk_normalize')
+  }
+
   // whilst → while clears the tone_whilst warning deterministically (mechanical).
   const noWhilst = b.replace(/\bwhilst\b/g, 'while')
   if (noWhilst !== b) {
