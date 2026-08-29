@@ -26,10 +26,12 @@ import {
 import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
+import { topicPathMismatch } from './topicPathGuard'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { isJunkTopic } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
+import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
 
@@ -84,7 +86,7 @@ export async function* runSeoFactoryPipelineStream(
     )
     const requiredShortKeywords = briefPartition.short
     const requiredLongTailKeywords = briefPartition.longTail
-    const title = (input.title || topic || primaryKeyword).trim()
+    const title = collapseDuplicatedTitle((input.title || topic || primaryKeyword).trim())
     const region = (input.region || 'US').toUpperCase()
     let contentType = input.contentType || 'legal_guide'
     const tone = input.tone || 'educational'
@@ -1186,6 +1188,24 @@ export async function* runSeoFactoryPipelineStream(
           topicMissing ? `topic words from "${topic}" barely appear (${topicHits}/${topicWords.length})` : '',
         ].filter(Boolean).join('; ')
         shipError = `Content-topic mismatch: ${detail}`
+        console.error(`[pipelineStream] REFUSED ship — ${shipError}`)
+      }
+    }
+
+    // ── Topic vs path-slug validation ────────────────────────────────────
+    // Same ship-refuse guard as the non-streaming pipeline: asylum content
+    // must never land on an OPT slug. No Git write on mismatch.
+    if (!shipError) {
+      const pathMismatch = topicPathMismatch(
+        topic,
+        primaryKeyword,
+        (plan as { filePath?: string; canonicalPath?: string }).filePath ||
+          (plan as { canonicalPath?: string }).canonicalPath ||
+          '',
+      )
+      if (pathMismatch) {
+        shipError = pathMismatch
+        shipMode = 'none'
         console.error(`[pipelineStream] REFUSED ship — ${shipError}`)
       }
     }

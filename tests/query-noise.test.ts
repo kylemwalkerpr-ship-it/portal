@@ -44,6 +44,12 @@ describe('isJunkQuery — GSC noise filter', () => {
     expect(isJunkQuery('')).toBe(true)
     expect(isJunkQuery('   ')).toBe(true)
   })
+
+  it('flags bare brand and campus-CMS leftovers', () => {
+    expect(isJunkQuery('yousafeconsultancy.com')).toBe(true)
+    expect(isJunkQuery('yousafe')).toBe(true)
+    expect(isJunkQuery('pacific.edu/sites/default/files/users/user2983')).toBe(true)
+  })
 })
 
 describe('isFileOrUrlLikeTerm — intake guard', () => {

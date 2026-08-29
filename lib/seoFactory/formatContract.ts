@@ -263,6 +263,23 @@ export function isKeywordOnlyTitle(title: string, primaryKeyword: string): boole
   return stripYear(t) === stripYear(k)
 }
 
+/**
+ * Collapse a duplicated em-dash title ("opt application — opt application")
+ * to one phrase. Live regression: the merged OPT page shipped with an H1 that
+ * repeated the same phrase on both sides of an em dash.
+ */
+export function collapseDuplicatedTitle(title: string): string {
+  const raw = String(title || '')
+  const parts = raw.split(/\s+[—–]\s+/)
+  if (parts.length < 2) return raw.trim()
+  const left = parts[0].trim()
+  const right = parts.slice(1).join(' — ').trim()
+  const norm = (v: string) =>
+    v.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (left && right && norm(left) === norm(right)) return left
+  return raw.trim()
+}
+
 /** Title Case helper for synthesized titles. */
 export function titleCaseWords(phrase: string): string {
   const small = new Set(['a', 'an', 'the', 'for', 'and', 'or', 'of', 'to', 'in', 'on', 'at', 'by', 'with', 'from'])

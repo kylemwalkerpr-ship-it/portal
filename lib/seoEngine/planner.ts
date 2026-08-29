@@ -392,6 +392,11 @@ export function bestCellForTerm(term: string): { stage: string; country: Country
   let best = { stage: '', country: 'US' as Country, score: 0 }
   for (const stage of LIFECYCLE_STAGES) {
     for (const country of COUNTRIES) {
+      // A term that hints at exactly one country must NEVER resolve to a
+      // different one ("uk student visa process for warwick university" is UK,
+      // never US). Skip other countries entirely — their scores are zeroed by
+      // exclusion, not by a penalty the right cell can lose to.
+      if (hints.size === 1 && country !== [...hints][0]) continue
       const cell = stage.countries[country]
       let seedScore = 0
       for (const kw of cell.seedKeywords) {
@@ -529,6 +534,30 @@ export interface PlannerRun {
 
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const pair = emptyPairRollup()
+
+  // Purge legacy junk rows so they cannot reappear on the desk by score
+  // (yousafeconsultancy.com, yousafe, pacific.edu PDF paths). Marked rejected —
+  // never deleted, so the audit trail survives. Best-effort: a missing table
+  // must not fail the run.
+  try {
+    const purgeSb = createSupabaseAdminClient()
+    const { data: existingRows } = await purgeSb
+      .from('seo_cluster_plans')
+      .select('id,primary_term')
+      .limit(500)
+    const junkIds = ((existingRows as Array<{ id: string; primary_term?: string | null }> | null) || [])
+      .filter((r) => isJunkQuery(String(r.primary_term || '')))
+      .map((r) => r.id)
+    for (const id of junkIds) {
+      await purgeSb.from('seo_cluster_plans').update({ status: 'rejected' }).eq('id', id)
+    }
+    if (junkIds.length) {
+      req.onProgress?.('plan', `Rejected ${junkIds.length} junk plan row(s) (brand/URL noise)`)
+    }
+  } catch {
+    // junk purge is best-effort
+  }
+
   req.onProgress?.('signals', req.signals ? 'Using supplied demand signals' : 'Pulling Ubersuggest + GSC + GA4 + Ads (skip any feeder that fails)…')
   let signals = req.signals
   if (!signals) {
@@ -857,7 +886,12 @@ export async function loadPlansDashboard(limit = 30): Promise<{
       .select('cluster_id,primary_term,related_terms,stage,country,intent,opportunity_score,est_monthly_impressions,est_monthly_clicks,position,ctr,plan,compliance_score,status,rationale,generated_at')
       .order('opportunity_score', { ascending: false })
       .limit(limit)
-    const rows = (data as Array<Record<string, unknown>>) || []
+    // The desk GET must never display junk rows. Old seo_cluster_plans rows
+    // persisted before isJunkQuery existed are dropped here (and rejected at
+    // the next runPlanner) so brand/URL noise cannot resurface by score.
+    const rows = ((data as Array<Record<string, unknown>>) || []).filter(
+      (r) => !isJunkQuery(String(r.primary_term || '')),
+    )
 
     const coverageMap = new Map<string, { cell: string; stage: string; country: Country; plans: number; topScore: number }>()
     for (const r of rows) {

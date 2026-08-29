@@ -989,3 +989,46 @@ One practical step here.
   })
 
 })
+
+describe('In 60 seconds — paragraph / numbered TL;DR rewrite (P1 leftover)', () => {
+  const check = (draft: string) => {
+    const { content } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Uk student visa requirements',
+      primaryKeyword: 'uk student visa requirements',
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    const section = content.match(/## In 60 seconds\n([\s\S]*?)(?=\n## |$)/i)?.[1] || ''
+    return { content, section }
+  }
+
+  it('rewrites a paragraph TL;DR into ≥3 bullet lines', () => {
+    const draft = [
+      '# Uk student visa requirements',
+      '',
+      '## In 60 seconds',
+      'This is a paragraph not a list.',
+      '',
+      '## Next',
+      'Follow the next section for the full breakdown of the requirements.',
+    ].join('\n')
+    const { section } = check(draft)
+    expect(section.match(/^[-*+]\s+\S/gm) || []).toHaveLength(3)
+  })
+
+  it('rewrites a numbered TL;DR into ≥3 bullet lines', () => {    const draft = [
+      '# Uk student visa requirements',
+      '',
+      '## In 60 seconds',
+      '1. First',
+      '2. Second',
+      '3. Third',
+      '',
+      '## Eligibility',
+      'You must hold an unconditional offer from a licensed student sponsor.',
+    ].join('\n')
+    const { section } = check(draft)
+    expect(section.match(/^[-*+]\s+\S/gm) || []).toHaveLength(3)
+  })
+})

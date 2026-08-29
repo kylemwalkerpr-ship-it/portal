@@ -59,10 +59,19 @@ import {
   type PipelineStreamEvent,
 } from '@/lib/seoFactory/pipelineStream'
 import type { RequestedShipMode } from '@/lib/seoFactory/pipeline'
+import type { PipelineResult } from '@/lib/seoFactory/pipeline'
+import { finalizeInterruptedJob, interruptedJobPatch } from '@/lib/seoFactory/streamJobFinalizer'
 
 export const runtime = 'nodejs'
 // Allow long generations on platforms that honor this
 export const maxDuration = 300
+
+// Cloudflare kills the isolate at maxDuration. The stream must emit `final`
+// and persist the job row BEFORE that wall — hard-stopping at 270s leaves a
+// 30s margin for the final Supabase writes.
+const STREAM_BUDGET_MS = 270_000
+// SSE heartbeat — an idle SSE is idle-killed by Cloudflare long before 300s.
+const HEARTBEAT_MS = 15_000
 
 /**
  * POST /api/seo-factory/generate-stream
@@ -195,8 +204,9 @@ export async function POST(request: Request) {
         : undefined,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       // Client disconnect / tab close: abort upstream generation immediately
-      // instead of writing the full article into the Worker's memory.
-      signal: request.signal,
+      // instead of writing the full article into the Worker's memory. Routed
+      // through our own controller so the 270s budget wall can abort it too.
+      signal: undefined as unknown as AbortSignal,
       interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,
       // Brief Assembly Panel fields — the full template from Stage II
@@ -215,6 +225,19 @@ export async function POST(request: Request) {
 
     const encoder = new TextEncoder()
     let closed = false
+    // One abort controller drives both client disconnects and the hard budget
+    // wall — the pipeline polls `input.signal.aborted` between refine passes.
+    const streamAbort = new AbortController()
+    input.signal = streamAbort.signal
+    const onClientAbort = () => {
+      try {
+        streamAbort.abort()
+      } catch {
+        /* already aborted */
+      }
+    }
+    if (request.signal.aborted) onClientAbort()
+    else request.signal.addEventListener('abort', onClientAbort, { once: true })
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -235,6 +258,16 @@ export async function POST(request: Request) {
         let checkpointCount = 0
         const MAX_CHECKPOINTS = 6
         let liveJobId = supersedesJobId || null
+        let sawFinal = false
+        let timedOut = false
+        const streamStart = Date.now()
+        const budgetTimer = setTimeout(() => {
+          timedOut = true
+          onClientAbort()
+        }, STREAM_BUDGET_MS)
+
+        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
         try {
         if (!input.competingUrls?.length) {
           try {
@@ -315,9 +348,22 @@ export async function POST(request: Request) {
           console.warn('[seo-factory/generate-stream] master engine feed skipped', e)
         }
 
-        if (supabase && supersedesJobId) {
-          const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', supersedesJobId).single()
+        // Resume/repair mode: load the existing draft so the pipeline continues
+        // from it instead of starting over. Works for both supersedesJobId
+        // (regenerate) and regenerationMode === 'resume' + existingJobId.
+        const resumeJobId =
+          supersedesJobId ||
+          (input.regenerationMode === 'resume'
+            ? String(body.existingJobId || body.supersedesJobId || '').trim() || null
+            : null)
+        if (supabase && resumeJobId) {
+          const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', resumeJobId).single()
           if (existing?.content) input.resumeContent = String(existing.content)
+          else if (input.regenerationMode === 'resume') {
+            send({ type: 'progress', stage: 'plan', message: 'No saved draft found for resume — generating fresh' })
+          }
+        }
+        if (supabase && supersedesJobId) {
           await markSupersededJob(
             supabase,
             supersedesJobId,
@@ -326,9 +372,33 @@ export async function POST(request: Request) {
           )
         }
 
-          for await (const ev of runSeoFactoryPipelineStream(input)) {
-            if (ev.type === 'job') liveJobId = ev.jobId
-            if (liveJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
+        // Manual iteration so a heartbeat can be emitted while the model is
+        // still thinking — an idle SSE connection is idle-killed by Cloudflare.
+        const iterator = runSeoFactoryPipelineStream(input)[Symbol.asyncIterator]()
+        let pending: Promise<IteratorResult<PipelineStreamEvent>> | null = null
+        while (!closed) {
+          if (!pending) pending = iterator.next()
+          const winner = await Promise.race([
+            pending.then((r) => {
+              pending = null
+              return { kind: 'ev' as const, r }
+            }),
+            sleep(HEARTBEAT_MS).then(() => ({ kind: 'tick' as const })),
+          ])
+          if (winner.kind === 'tick') {
+            if (Date.now() - streamStart >= STREAM_BUDGET_MS) {
+              timedOut = true
+              onClientAbort()
+              break
+            }
+            send({ type: 'progress', stage: 'generate', message: 'still drafting' })
+            continue
+          }
+          const ev = winner.r.value
+          if (winner.r.done) break
+          if (ev.type === 'job') liveJobId = ev.jobId
+          if (ev.type === 'final') sawFinal = true
+          if (liveJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
               const draft = String(ev.draft)
               const now = Date.now()
             const shouldCheckpoint =
@@ -360,28 +430,78 @@ export async function POST(request: Request) {
             // final row (e.g. provider cascade exhausted), fail the early row so
             // the queue reflects reality instead of a stuck 'drafting'.
             if (supabase && liveJobId && ev.type === 'error' && !supersedesJobId) {
-              await markSupersededJob(supabase, liveJobId, { status: 'failed', error_message: ev.error }, `Generation failed: ${ev.error}`)
+              await markSupersededJob(
+                supabase,
+                liveJobId,
+                interruptedJobPatch(lastCheckpointDraft, { failedMessage: ev.error }),
+                `Generation failed: ${ev.error}`,
+              )
             }
             send(ev)
             if (ev.type === 'error' || ev.type === 'final') break
+        }
+
+        // ── Hard budget wall ──────────────────────────────────────────────
+        // Stop refine loops inside 270s, keep the last checkpointed draft and
+        // emit `final` with whatever exists — never hang past the isolate kill.
+        if (timedOut && !sawFinal) {
+          sawFinal = true
+          const shipError = 'stream budget exhausted — resume from checkpoint'
+          if (supabase && liveJobId) {
+            await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft, {
+              interruptedMessage: shipError,
+            })
           }
+          send({ type: 'progress', stage: 'ship', message: shipError })
+          send({ type: 'ship', ship: null, shipError, shipMode: 'none' })
+          send({
+            type: 'final',
+            result: {
+              ok: false,
+              content: lastCheckpointDraft,
+              plan: null,
+              audit: null,
+              ship: null,
+              shipError,
+              shipMode: 'none',
+              provider: 'unknown',
+              model: 'unknown',
+              attempts: 0,
+              jobId: liveJobId,
+              error: shipError,
+            } as unknown as PipelineResult,
+          })
+        } else if (!sawFinal && supabase && liveJobId && !closed) {
+          // Generator returned without a final event — never leave a stale row.
+          await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft)
+        }
         } catch (e) {
           const message = e instanceof Error ? e.message : 'Stream failed'
-          if (supabase && liveJobId && lastCheckpointDraft) {
-            await checkpointJob(supabase, liveJobId, lastCheckpointDraft, 'Checkpoint preserved after stream interruption')
-          }
+          // try/finally guarantee: the job row must never be left
+          // status='drafting' with null content (the 12ae1be9 defect).
           if (supabase && supersedesJobId) {
-            await markSupersededJob(supabase, supersedesJobId, { status: 'failed', error_message: message }, `Regeneration failed: ${message}`)
+            await markSupersededJob(
+              supabase,
+              supersedesJobId,
+              interruptedJobPatch(lastCheckpointDraft, { failedMessage: message }),
+              `Regeneration failed: ${message}`,
+            )
           } else if (supabase && liveJobId) {
-            await markSupersededJob(supabase, liveJobId, { status: 'failed', error_message: message }, `Generation failed: ${message}`)
+            await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft, {
+              failedMessage: message,
+            })
           }
           // Supersede edge: if the replacement row already exists when the stream
           // dies, fail it too so the queue never shows a stuck 'drafting'.
           if (supabase && supersedesJobId && liveJobId && liveJobId !== supersedesJobId) {
-            await markSupersededJob(supabase, liveJobId, { status: 'failed', error_message: message }, `Replacement generation failed: ${message}`)
+            await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft, {
+              failedMessage: message,
+            })
           }
           send({ type: 'error', error: message })
         } finally {
+          clearTimeout(budgetTimer)
+          request.signal.removeEventListener('abort', onClientAbort)
           if (!closed) {
             try {
               controller.enqueue(encoder.encode('data: [DONE]\n\n'))

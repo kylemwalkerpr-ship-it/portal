@@ -12,7 +12,7 @@ import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFe
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
-import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords } from './formatContract'
+import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle } from './formatContract'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -614,9 +614,13 @@ export function applyDeterministicRepairs(opts: {
   // A keyword pasted as the title ("admissions consultant credentials")
   // ships a lowercase keyword as the reader-facing H1 and <title>. The brief
   // stage should prevent this; this repair catches whatever slips through.
+  // Also collapses duplicated em-dash titles ("opt application — opt
+  // application") which the merged OPT page shipped with.
   {
     const kw = (opts.primaryKeyword || '').trim()
-    const currentTitle = (opts.title || '').trim()
+    const rawTitle = (opts.title || '').trim()
+    const currentTitle = collapseDuplicatedTitle(rawTitle)
+    if (currentTitle !== rawTitle) applied.push('title_duplicate_collapsed')
     if (kw && currentTitle && isKeywordOnlyTitle(currentTitle, kw)) {
       const synthesized = `${titleCaseWords(kw)}: ${new Date().getFullYear()} Step-by-Step Guide`
       const fmTitleRe = /^title:\s*.*$/m
@@ -632,6 +636,15 @@ export function applyDeterministicRepairs(opts: {
   }
   let { fm, body } = stripFm(unwrapped)
   let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
+  // Duplicate H1 collapse ("opt application — opt application") — both the
+  // reader-facing H1 and frontmatter title must carry one phrase only.
+  {
+    const collapsed = b.replace(/^#\s+(.+)$/m, (_m, t: string) => `# ${collapseDuplicatedTitle(t)}`)
+    if (collapsed !== b) {
+      b = collapsed
+      applied.push('h1_duplicate_collapsed')
+    }
+  }
 
   const requireDisclaimer =
     opts.indexable !== false &&
@@ -648,15 +661,18 @@ export function applyDeterministicRepairs(opts: {
     const tldr = b.match(/(?:^|\n)##\s+In 60 seconds[ \t]*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     const existing = tldr ? (tldr[1].match(/^[-*+]\s+\S/gm) || []).length : 0
     if (!tldr || existing < 3) {
-      const need = Math.max(0, 3 - existing)
-      const extra = derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3).slice(0, need || 3)
-      if (tldr && extra.length) {
-        const insertAt = tldr.index! + tldr[0].length
-        const prefix = tldr[0].endsWith('\n') ? '' : '\n'
-        b = `${b.slice(0, insertAt)}${prefix}${extra.map((item) => `- ${item}`).join('\n')}\n${b.slice(insertAt)}`
+      // A paragraph or `1. 2. 3.` TL;DR does not count — rewrite the section
+      // body wholesale into three `- ` bullets derived from the H2 titles.
+      const bullets = derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3)
+      if (tldr) {
+        const prefixLen = tldr[0].startsWith('\n') ? 1 : 0
+        const start = tldr.index! + prefixLen
+        const inner = tldr[0].slice(prefixLen)
+        const header = inner.slice(0, inner.indexOf('\n')).trim() || '## In 60 seconds'
+        const rewritten = `${header}\n\n${bullets.map((item) => `- ${item}`).join('\n')}\n\n`
+        b = b.slice(0, start) + rewritten + b.slice(start + inner.length)
         applied.push('tldr_bullets_derived')
-      } else if (!tldr) {
-        const bullets = extra.length ? extra : derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3)
+      } else {
         const h1 = b.match(/^#\s+[^\n]+\n+/)
         const block = `## In 60 seconds\n\n${bullets.map((item) => `- ${item}`).join('\n')}\n\n`
         b = h1 ? b.replace(/^#\s+[^\n]+\n+/, (m) => `${m}${block}`) : `${block}${b}`

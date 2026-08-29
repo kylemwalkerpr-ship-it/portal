@@ -469,7 +469,10 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
             const ai = await generateEngineText({
               system: `You are the SEO knowledge analyst for an immigration marketplace. Summarize this item in 2 crisp sentences and tag affected stages: ${stagePromptBanks()}. Reply as JSON {"summary":"...","stages":[],"countries":[]}. Be factual — never invent numbers.`,
               prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`,
-              maxTokens: 400,
+              maxTokens: 250,
+              timeoutMs: 25000,
+              aiProvider: 'runbios-glm-53-flash',
+              skipQualityContract: true,
               temperature: 0.2,
             })
             const parsed = parseKnowledgeAiSummary(ai.text || '')

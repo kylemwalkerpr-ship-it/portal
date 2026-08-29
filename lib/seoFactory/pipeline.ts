@@ -29,6 +29,8 @@ import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { isJunkTopic } from './queryNoise'
+import { topicPathMismatch } from './topicPathGuard'
+import { collapseDuplicatedTitle } from './formatContract'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -237,7 +239,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   )
   const requiredShortKeywords = briefPartition.short
   const requiredLongTailKeywords = briefPartition.longTail
-  const title = (input.title || topic || primaryKeyword).trim()
+  const title = collapseDuplicatedTitle((input.title || topic || primaryKeyword).trim())
   const region = (input.region || 'US').toUpperCase()
   let contentType = input.contentType || 'legal_guide'
   const tone = input.tone || 'educational'
@@ -896,6 +898,24 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         h1Mismatch ? `H1 "${h1Match?.[1]}" doesn't match topic` : '',
       ].filter(Boolean).join('; ')
       shipError = `Content-topic mismatch: ${detail}`
+      console.error(`[pipeline] REFUSED ship — ${shipError}`)
+    }
+  }
+
+  // ── Topic vs path-slug validation ─────────────────────────────────────
+  // An article about topic X must never land on a path whose last slug says
+  // topic Y (asylum draft shipped to an OPT path). Ship-refuse, no Git write.
+  if (!shipError) {
+    const pathMismatch = topicPathMismatch(
+      topic,
+      primaryKeyword,
+      (plan as { filePath?: string; canonicalPath?: string }).filePath ||
+        (plan as { canonicalPath?: string }).canonicalPath ||
+        '',
+    )
+    if (pathMismatch) {
+      shipError = pathMismatch
+      shipMode = 'none'
       console.error(`[pipeline] REFUSED ship — ${shipError}`)
     }
   }
