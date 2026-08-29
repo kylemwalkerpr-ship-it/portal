@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { usePathname, useSearchParams, useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { ThemePicker } from './ThemePicker'
@@ -428,13 +428,30 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
 
 // ─── shell ────────────────────────────────────────────────────────────────────
 
+// Role cache: sessionStorage keeps /api/profile from firing on every market
+// navigation. Fresh cache (<60s) renders the correct nav instantly.
+const ROLE_CACHE_KEY = 'ys-market-role-cache'
+const ROLE_CACHE_MS = 60_000
+
+function readCachedRole(): { role: Role; fresh: boolean } {
+  if (typeof window === 'undefined') return { role: null, fresh: false }
+  try {
+    const raw = window.sessionStorage.getItem(ROLE_CACHE_KEY)
+    if (!raw) return { role: null, fresh: false }
+    const parsed = JSON.parse(raw)
+    const fresh = typeof parsed?.t === 'number' && Date.now() - parsed.t < ROLE_CACHE_MS
+    return { role: (parsed?.role as Role) || null, fresh }
+  } catch {
+    return { role: null, fresh: false }
+  }
+}
+
 export default function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const pathname     = usePathname()
-  const searchParams = useSearchParams()
   const router       = useRouter()
 
-  const [role, setRole]       = React.useState<Role>(null)
-  const [roleLoaded, setRoleLoaded] = React.useState(false)
+  const [role, setRole] = React.useState<Role>(() => readCachedRole().role)
+  const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca'>('all')
   const [section, setSection] = React.useState<Section>('browse')
 
   // Resolve role on mount AND whenever the tab regains focus or the
@@ -444,12 +461,22 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   // Messages for what is now an anon visitor. We also have to set the
   // role explicitly (including to null) so subsequent calls can CLEAR
   // a stale value, not just set it on first sight.
+  // A <60s sessionStorage cache satisfies the fetch instead so inner
+  // navigations never wait on /api/profile.
   const refreshRole = React.useCallback(() => {
+    const cached = readCachedRole()
+    if (cached.fresh) {
+      setRole(cached.role)
+      return
+    }
     fetch('/api/profile', { credentials: 'same-origin', cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { setRole((d?.profile?.role as Role) || null) })
+      .then(d => {
+        const nextRole = (d?.profile?.role as Role) || null
+        setRole(nextRole)
+        try { window.sessionStorage.setItem(ROLE_CACHE_KEY, JSON.stringify({ role: nextRole, t: Date.now() })) } catch { /* storage blocked */ }
+      })
       .catch(() => { setRole(null) })
-      .finally(() => setRoleLoaded(true))
   }, [])
 
   React.useEffect(() => {
@@ -471,15 +498,29 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     }
   }, [refreshRole])
 
-  // Sync section from URL ?view= param (so back/forward works and direct links work)
+  // Sync section + country from the URL. Read via window.location instead of
+  // useSearchParams() so the shell never suspends (and never drags the whole
+  // page tree into a Suspense fallback) on client navigations.
   const onShop = pathname === '/shop' || pathname.startsWith('/shop/')
 
   React.useEffect(() => {
-    const view = searchParams?.get('view')
+    const sp = new URLSearchParams(window.location.search)
+    const view = sp.get('view')
+    setCountry(((sp.get('country') as 'all' | 'us' | 'uk' | 'ca') || 'all'))
     if (onShop) setSection('shop')
     else if (view) setSection(view as Section)
-    else if (pathname !== '/marketplace' && !pathname.includes('?')) setSection('browse')
-  }, [searchParams, pathname, onShop])
+    else if (pathname !== '/marketplace') setSection('browse')
+  }, [pathname, onShop])
+
+  // Palette transitions must read as instant token application, not a 350ms
+  // "theme load". Suppress them from first paint and for 100ms after every
+  // navigation; the CSS below only runs transitions once this flag is set.
+  React.useEffect(() => {
+    const el = document.documentElement
+    el.removeAttribute('data-ys-palette-ready')
+    const t = window.setTimeout(() => el.setAttribute('data-ys-palette-ready', ''), 100)
+    return () => window.clearTimeout(t)
+  }, [pathname])
 
   // When a nav button is clicked, update state AND URL so browser history works
   const handleNav = React.useCallback((view: Section) => {
@@ -518,8 +559,6 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     return null // unknown view → fall through to children
   }, [section, role])
 
-  const country = (searchParams?.get('country') as 'all' | 'us' | 'uk' | 'ca') ?? 'all'
-
   return (
     <div className="cw-market" style={{ minHeight: '100vh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
       {/* Base CSS for the pattern picker ::before pseudo-element and
@@ -554,6 +593,22 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           transition-property: background-color, color, border-color, fill, stroke;
           transition-duration: 0.35s;
           transition-timing-function: ease;
+        }
+
+        /* Navigation / first paint: tokens must apply instantly. Transitions
+           only run once the shell marks the route settled
+           (data-ys-palette-ready, set 100ms after the pathname settles), so a
+           palette change never reads as a slow "theme load" on navigation. */
+        html:not([data-ys-palette-ready]) .cw-market,
+        html:not([data-ys-palette-ready]) .cw-market *,
+        html:not([data-ys-palette-ready]) .cw-market *::before,
+        html:not([data-ys-palette-ready]) .cw-market *::after {
+          transition: none !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after {
+            transition: none !important;
+          }
         }
 
         /* ══════════ PALETTE / LEGIBILITY CONTRACT ══════════
@@ -640,13 +695,13 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           .ys-shell-jx { display: none !important; }
         }
       `}</style>
-      {/* Top nav — always visible once role is known */}
-      {roleLoaded && (
-        <TopNav role={role} activeView={section} onNav={handleNav} country={country} shopActive={onShop} />
-      )}
+      {/* Top nav — renders immediately on every navigation; auth-only links
+          appear once the (cached or fetched) role resolves. Never gated on a
+          network round-trip. */}
+      <TopNav role={role} activeView={section} onNav={handleNav} country={country} shopActive={onShop} />
 
       {/* Sub-nav — visa category bar stays on marketplace browse, not the file shop */}
-      {roleLoaded && section === 'browse' && !onShop && (
+      {section === 'browse' && !onShop && (
         <CategoryBar country={country} />
       )}
 

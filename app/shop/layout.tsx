@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { Suspense } from 'react'
 import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
@@ -21,9 +20,9 @@ export default function ShopLayout({ children }: { children: ReactNode }) {
       {/* Same first-paint boot as the marketplace layout — see palette-boot.ts */}
       <script dangerouslySetInnerHTML={{ __html: buildPaletteBootScript() }} />
       <PaletteProvider>
-        <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--ys-paper, #4A2A1A)', transition: 'background 0.35s ease' }} />}>
-          <MarketplaceShell>{children}</MarketplaceShell>
-        </Suspense>
+        {/* Same no-Suspense contract as app/marketplace/layout.tsx — the shell
+            must stay mounted across /shop navigations. */}
+        <MarketplaceShell>{children}</MarketplaceShell>
       </PaletteProvider>
     </CartProvider>
   )

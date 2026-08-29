@@ -35,29 +35,28 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
 
   const palette = getPalette(paletteName)
 
-  // Apply CSS vars to .cw-market whenever the palette changes
+  // Apply CSS vars to .cw-market whenever the palette ACTUALLY changes.
+  // The blocking boot script already wrote identical vars + set
+  // data-ys-palette before hydration, so on mount (and on every inner
+  // navigation remount) with the same palette this is a no-op — re-applying
+  // here is what made tokens look like they "load" after each navigation.
   useEffect(() => {
     const root = document.querySelector('.cw-market') as HTMLElement | null
     if (!root) return
+    if (document.documentElement.getAttribute('data-ys-palette') === paletteName) return
     applyPaletteCssVars(root, palette.tokens)
+    document.documentElement.setAttribute('data-ys-palette', paletteName)
   }, [paletteName, palette.tokens])
 
   // Leaving the marketplace unmounts this provider — restore the portal's
   // own body background so the dark market paper doesn't leak into it.
+  // Empty deps: this cleanup runs ONLY when the marketplace layout unmounts,
+  // never on inner navigations (which keep the provider mounted).
   useEffect(() => {
     return () => {
       if (typeof document !== 'undefined') document.body.style.backgroundColor = ''
     }
   }, [])
-
-  // Also apply on first mount once .cw-market exists
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const root = document.querySelector('.cw-market') as HTMLElement | null
-      if (root) applyPaletteCssVars(root, palette.tokens)
-    })
-    return () => cancelAnimationFrame(id)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setPaletteName = useCallback((name: string) => {
     setPaletteNameRaw(name)

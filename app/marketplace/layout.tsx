@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { Suspense } from 'react'
 import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
@@ -27,10 +26,11 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
           re-applies identical values after hydration — idempotent. */}
       <script dangerouslySetInnerHTML={{ __html: buildPaletteBootScript() }} />
       <PaletteProvider>
-        {/* Suspense is required because MarketplaceShell uses useSearchParams() */}
-        <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--ys-paper, #4A2A1A)', transition: 'background 0.35s ease' }} />}>
-          <MarketplaceShell>{children}</MarketplaceShell>
-        </Suspense>
+        {/* No Suspense around the shell: MarketplaceShell reads search params
+            via usePathname + window (never useSearchParams), so navigating
+            between market routes keeps the shell + children mounted instead
+            of unmounting everything into a fallback (the nav-lag fix). */}
+        <MarketplaceShell>{children}</MarketplaceShell>
       </PaletteProvider>
     </CartProvider>
   )
