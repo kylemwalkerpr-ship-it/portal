@@ -1,5 +1,8 @@
 /**
- * Master Engine / Discover helper: OpenAI primary, Grok fallback.
+ * Discover / Master Engine AI harmonization: the deterministic SEO engine
+ * stays authoritative; Claude Opus 5 via Run BiOS is the lead harmonizer and
+ * Grok (xAI) is the bounded paired complement + fallback. No other model
+ * silently joins the pair.
  */
 
 jest.mock('@/lib/aiKeyVault', () => ({
@@ -74,8 +77,8 @@ describe('generateEngineText — Grok is the default engine fallback', () => {
   })
 })
 
-describe('Master Engine pair — Run BiOS GLM 5.3 Flash + Parasail GLM 5.2 medium', () => {
-  const envKeys = ['XAI_API_KEY', 'PARASAIL_API_KEY', 'RUNBIOS_API_KEY', 'CONTENT_AI_RETRY'] as const
+describe('Master Engine pair — Run BiOS Claude Opus 5 lead + Grok complement', () => {
+  const envKeys = ['XAI_API_KEY', 'PARASAIL_API_KEY', 'RUNBIOS_API_KEY', 'CONTENT_AI_RETRY', 'XAI_BASE_URL'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
 
@@ -92,31 +95,32 @@ describe('Master Engine pair — Run BiOS GLM 5.3 Flash + Parasail GLM 5.2 mediu
     }
   })
 
-  it('defaults an empty pin to the engine pair when Grok or Parasail is configured', () => {
+  it('defaults an empty pin to the engine pair when Run BiOS or Grok is configured', () => {
     process.env.XAI_API_KEY = 'test-xai-key'
     expect(resolveEngineAiProvider()).toBe(ENGINE_PAIR)
     expect(resolveEngineAiProvider('auto')).toBe(ENGINE_PAIR)
+    expect(resolveEngineAiProvider('engine-pair')).toBe(ENGINE_PAIR)
   })
 
-  it('runs Run BiOS GLM lead + Parasail complement in parallel and returns a lead merge', async () => {
+  it('runs the Run BiOS Opus lead + Grok complement in parallel and returns a lead merge', async () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
-    process.env.PARASAIL_API_KEY = 'psk-test'
+    process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
 
-    const seen: Array<{ url: string; effort?: string; model?: string }> = []
+    const seen: Array<{ url: string; model?: string }> = []
     global.fetch = jest.fn(async (input, init) => {
       const url = String(input)
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {}
-      const reasoning = body.reasoning as { effort?: string } | undefined
-      seen.push({
-        url,
-        effort: reasoning?.effort || (body.reasoning_effort as string | undefined),
-        model: body.model as string | undefined,
-      })
+      seen.push({ url, model: (body.model as string | undefined) || (body as { input?: string }).input as string | undefined })
       const prompt = JSON.stringify(body)
       const text = url.includes('api.runbios.ai')
-        ? (prompt.includes('COMPLEMENT DRAFT') ? 'MERGED-ENGINE' : 'RUNBIOS-LEAD-ENGINE-DRAFT')
-        : 'GLM-COMPLEMENT-ENGINE-DRAFT with extra statute INA 214'
+        ? (prompt.includes('COMPLEMENT DRAFT') ? 'MERGED-ENGINE' : 'RUNBIOS-OPUS-LEAD-ENGINE-DRAFT')
+        : 'GROK-COMPLEMENT-ENGINE-DRAFT with extra statute INA 214'
+      if (url.includes('api.x.ai')) {
+        return new Response(JSON.stringify({ output_text: text, status: 'completed' }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        })
+      }
       return new Response(
         JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -127,17 +131,18 @@ describe('Master Engine pair — Run BiOS GLM 5.3 Flash + Parasail GLM 5.2 mediu
       system: 'Score this cluster.',
       prompt: 'TOPIC: f1 visa',
     })
-    expect(result.provider).toBe('runbios-glm-53-flash')
-    expect(result.text).toMatch(/MERGED-ENGINE|RUNBIOS-LEAD/)
-    expect(seen.some((s) => s.url.includes('api.runbios.ai') && s.model === 'glm-5.3-flash')).toBe(true)
-    expect(seen.some((s) => s.url.includes('parasail.io') && (s.effort === 'medium' || s.model === 'z-ai/glm-5.2'))).toBe(true)
+    expect(result.provider).toBe('runbios-claude-opus')
+    expect(result.text).toMatch(/MERGED-ENGINE|RUNBIOS-OPUS-LEAD/)
+    expect(seen.some((s) => s.url.includes('api.runbios.ai') && s.model === 'claude-opus-5')).toBe(true)
+    // The complement leg runs on the real Grok host, never a RunBiOS Grok.
+    expect(seen.some((s) => s.url.includes('api.x.ai'))).toBe(true)
+    expect(seen.some((s) => s.url.includes('parasail.io'))).toBe(false)
     expect(result.pair?.disagreed).toBe(true)
   })
 
-  it('generateEngineText with no pin uses the pair (not OpenAI) when Grok + Parasail are set', async () => {
+  it('generateEngineText with no pin uses the pair (not OpenAI) when Run BiOS + Grok are set', async () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.XAI_API_KEY = 'test-xai-key'
-    process.env.PARASAIL_API_KEY = 'psk-test'
     process.env.OPENAI_API_KEY = 'sk-should-not-be-called'
     process.env.CONTENT_AI_RETRY = '1'
     const urls: string[] = []
@@ -162,12 +167,12 @@ describe('Master Engine pair — Run BiOS GLM 5.3 Flash + Parasail GLM 5.2 mediu
     expect(result.text).toBe('PAIR-LEAD')
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
     expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
-    expect(urls.some((u) => u.includes('parasail.io'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
   })
 
-  it('runs lead-only when Parasail is not configured — complement leg never fired', async () => {
+  it('runs lead-only when Grok is not configured — complement leg never fired', async () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
-    delete process.env.PARASAIL_API_KEY
+    delete process.env.XAI_API_KEY
     process.env.CONTENT_AI_RETRY = '1'
 
     const urls: string[] = []
@@ -189,9 +194,34 @@ describe('Master Engine pair — Run BiOS GLM 5.3 Flash + Parasail GLM 5.2 mediu
     expect(result.text).toBe('RUNBIOS-LEAD-ONLY-DRAFT')
     expect(result.pair?.leadOnly).toBe(true)
     expect(result.pair?.complementModel).toBeNull()
-    // No dead complement fetch — Parasail host is never contacted.
-    expect(urls.some((u) => u.includes('parasail.io'))).toBe(false)
+    // No dead complement fetch — the Grok host is never contacted.
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
     expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
+  })
+
+  it('complement-only: Grok still harmonizes when the Run BiOS lead is unconfigured', async () => {
+    delete process.env.RUNBIOS_API_KEY
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      return new Response(
+        JSON.stringify({ output_text: 'GROK-COMPLEMENT-ONLY', status: 'completed' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+
+    const result = await generateEnginePairText({
+      system: 'Score this cluster.',
+      prompt: 'TOPIC: f1 visa',
+    })
+    expect(result.text).toBe('GROK-COMPLEMENT-ONLY')
+    expect(result.pair?.complementOnly).toBe(true)
+    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(false)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
   })
 
   it('extractEngineJsonObject recovers fenced JSON and rejects prose', () => {

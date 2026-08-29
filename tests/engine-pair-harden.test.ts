@@ -52,7 +52,7 @@ describe('engine pair circuit breaker', () => {
 })
 
 describe('pair tape on engine runs', () => {
-  it('renders Grok + GLM disagreed/merged for the desk', () => {
+  it('renders Opus + Grok disagreed/merged for the desk', () => {
     const rollup = emptyPairRollup()
     accumulatePairRollup(rollup, {
       leadModel: 'grok-4.6',
@@ -63,11 +63,11 @@ describe('pair tape on engine runs', () => {
       disagreed: true,
       extras: { statutes: ['INA 214(b)'], urls: [] },
     })
-    expect(formatEnginePairTape(rollup)).toBe('GLM 5.3 Flash + complement, disagreed, merged, extras:1')
+    expect(formatEnginePairTape(rollup)).toBe('Claude Opus 5 + Grok complement, disagreed, merged, extras:1')
     expect(formatEngineRunSummary({
       plans: 10,
       pair: formatEnginePairTape(rollup),
-    })).toContain('pair=GLM 5.3 Flash + complement, disagreed, merged, extras:1')
+    })).toContain('pair=Claude Opus 5 + Grok complement, disagreed, merged, extras:1')
   })
 })
 

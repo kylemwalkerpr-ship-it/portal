@@ -6,10 +6,15 @@
  * serves it. One catalog keeps drafting, brief, review, and Command Center
  * in agreement.
  *
+ * Lane policy (single source of truth for UI pickers AND server defaults):
+ *   Draft  — Run BiOS + NVIDIA hosts only; families sorted alphabetically;
+ *            default MiniMax M3 via NVIDIA (`nvidia-minimax`).
+ *   Brief  — exactly three families: Claude Opus 5 (Run BiOS, default),
+ *            Grok (xAI), DeepSeek V4 Flash (Run BiOS + Baseten).
+ *   Review — exactly four: Grok, Claude Opus 5, Claude Sonnet 5 (Run BiOS),
+ *            GLM 5.3 Flash (Run BiOS, default).
  * Host dropdown order (when the host actually serves that model):
- *   Parasail → Baseten → NVIDIA → DeepSeek.com → Zai
- * Drafting's default pin is Run BiOS GLM 5.3 Flash; this order only controls the
- * host choices shown for a selected model.
+ *   Run BiOS → Parasail → Baseten → NVIDIA → DeepSeek.com → Zai
  */
 
 export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
@@ -71,12 +76,25 @@ export interface StudioModelOption {
 export const DEEPSEEK_V4_FLASH_ID = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 
-/** Draft lead: MiniMax M3 via Run BiOS — fastest complete long-form on this host. */
-export const DEFAULT_DRAFT_PIN = 'runbios-minimax'
-/** Research / Generate Full Brief lead: Run BiOS GLM 5.3. */
-export const DEFAULT_BRIEF_PIN = 'runbios-glm-53'
-/** Reviewer / Editor lead: Run BiOS GLM 5.3. */
-export const DEFAULT_REVIEW_PIN = 'runbios-glm-53'
+/** Draft lead: MiniMax M3 via NVIDIA Integrate — drafting default pin. */
+export const DEFAULT_DRAFT_PIN = 'nvidia-minimax'
+/** Research / Generate Full Brief lead: Claude Opus 5 via Run BiOS. */
+export const DEFAULT_BRIEF_PIN = 'runbios-claude-opus'
+/** Reviewer / Editor lead: Run BiOS GLM 5.3 Flash. */
+export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
+
+/**
+ * Lane host allowlists — a lane can only select or execute a pin whose host
+ * serves that lane. Draft is Run BiOS + NVIDIA only; Brief is Run BiOS,
+ * Baseten, and xAI (Grok); Review is Run BiOS + xAI. Command Center keeps the
+ * full host set. `auto` stays a command-only host.
+ */
+export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
+  draft: ['runbios', 'nvidia'],
+  brief: ['runbios', 'baseten', 'xai'],
+  review: ['runbios', 'xai'],
+  command: ['runbios', 'parasail', 'baseten', 'nvidia', 'deepseek', 'zai', 'aihubmix', 'xai', 'openai', 'cloudflare', 'groq', 'google', 'openrouter', 'auto'],
+}
 
 /** Host picker order — skip a host when that model is not served there. */
 export const STUDIO_HOST_ORDER: StudioHostId[] = [
@@ -97,51 +115,32 @@ export const STUDIO_HOST_ORDER: StudioHostId[] = [
 ]
 
 const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
+  // Draft lane is sorted alphabetically by display label in modelsForLane —
+  // this list is the fallback tiebreaker only.
   draft: [
-    'auto',
+    'glm-5.2',
+    'glm-5.3-flash',
+    'kimi-k2.7-code',
     'minimax-m3',
-    'glm-5.3-flash',
-    'deepseek-v4-flash',
-    'glm-5.2',
-    'bios-adaptive',
-    'kimi-k2.7-code',
-    'qwen3.5',
-    'grok-4.6',
-    'glm-5.2-fast',
     'nemotron-3-ultra',
-    'cloudflare-llama',
-    'gemini',
-    'openrouter',
-  ],
-  brief: [
-    'glm-5.3',
-    'glm-5.3-flash',
-    'deepseek-v4-pro',
-    'glm-5.2',
-    'deepseek-v4-flash',
-    'bios-adaptive',
-    'claude-sonnet-5',
-    'kimi-k2.7-code',
     'qwen3.5',
-    'grok-4.6',
-    'glm-5.2-fast',
-    'gpt-5.6-terra',
-    'gpt-5.6-sol',
-    'claude-opus-5',
-  ],
-  review: [
-    'glm-5.3',
-    'glm-5.3-flash',
-    'deepseek-v4-pro',
-    'deepseek-v4-flash',
-    'glm-5.2',
-    'claude-sonnet-5',
     'bios-adaptive',
-    'grok-4.6',
-    'glm-5.2-fast',
-    'gpt-5.6-sol',
-    'gpt-5.6-terra',
+    'deepseek-v4-flash',
+  ],
+  // Brief: exactly three families — Claude Opus 5 (default), Grok,
+  // DeepSeek V4 Flash (Run BiOS + Baseten hosts only).
+  brief: [
     'claude-opus-5',
+    'grok-4.6',
+    'deepseek-v4-flash',
+  ],
+  // Review/Editor: exactly four — Grok, Claude Opus 5, Claude Sonnet 5,
+  // GLM 5.3 Flash (default).
+  review: [
+    'grok-4.6',
+    'claude-opus-5',
+    'claude-sonnet-5',
+    'glm-5.3-flash',
   ],
   command: [
     'auto',
@@ -171,14 +170,14 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'auto',
     label: 'Auto (cascade)',
-    lanes: ['draft', 'command'],
+    lanes: ['command'],
     hosts: [{ id: 'auto', label: 'Auto', pin: 'auto' }],
   },
   {
     id: 'deepseek-v4-pro',
     label: 'deepseek-ai/DeepSeek-V4-Pro-0813',
     apiModel: DEEPSEEK_V4_PRO_ID,
-    lanes: ['brief', 'review', 'command'],
+    lanes: ['command'],
     hosts: [
       { id: 'runbios', label: 'Run BiOS', pin: 'runbios-deepseek-pro' },
       { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek-pro' },
@@ -189,7 +188,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'glm-5.2',
     label: 'GLM 5.2',
-    lanes: ['draft', 'brief', 'review', 'command'],
+    lanes: ['draft', 'command'],
     hosts: [
       { id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-52' },
       { id: 'parasail', label: 'Parasail', pin: 'parasail-glm' },
@@ -201,7 +200,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     id: 'deepseek-v4-flash',
     label: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     apiModel: DEEPSEEK_V4_FLASH_ID,
-    lanes: ['draft', 'brief', 'review', 'command'],
+    lanes: ['draft', 'brief', 'command'],
     hosts: [
       { id: 'runbios', label: 'Run BiOS', pin: 'runbios-deepseek-flash' },
       { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek' },
@@ -213,21 +212,21 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'grok-4.6',
     label: 'Grok 4.6',
-    lanes: ['draft', 'brief', 'review', 'command'],
+    lanes: ['brief', 'review', 'command'],
     hosts: [{ id: 'xai', label: 'SuperGrok / xAI', pin: 'grok' }],
   },
   {
     id: 'glm-5.3',
     label: 'GLM 5.3',
     apiModel: 'glm-5.3',
-    lanes: ['brief', 'review', 'command'],
+    lanes: ['command'],
     hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-53' }],
   },
   {
     id: 'glm-5.3-flash',
     label: 'GLM 5.3 Flash',
     apiModel: 'glm-5.3-flash',
-    lanes: ['draft', 'brief', 'review', 'command'],
+    lanes: ['draft', 'review', 'command'],
     hosts: [
       { id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-53-flash' },
       { id: 'baseten', label: 'Baseten', pin: 'baseten-glm-53-flash' },
@@ -237,28 +236,28 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     id: 'kimi-k2.7-code',
     label: 'Kimi K2.7 Code',
     apiModel: 'kimi-k2.7-code',
-    lanes: ['draft', 'brief', 'command'],
+    lanes: ['draft', 'command'],
     hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-kimi' }],
   },
   {
     id: 'qwen3.5',
     label: 'Qwen3.5 397B',
     apiModel: 'qwen3.5-397b-a17b',
-    lanes: ['draft', 'brief', 'command'],
+    lanes: ['draft', 'command'],
     hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-qwen' }],
   },
   {
     id: 'bios-adaptive',
     label: 'Run BiOS Adaptive',
     apiModel: 'bios-adaptive',
-    lanes: ['draft', 'brief', 'review', 'command'],
+    lanes: ['draft', 'command'],
     hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-adaptive' }],
   },
   {
     id: 'claude-sonnet-5',
     label: 'Claude Sonnet 5',
     apiModel: 'claude-sonnet-5',
-    lanes: ['brief', 'review', 'command'],
+    lanes: ['review', 'command'],
     hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-claude-sonnet' }],
   },
   {
@@ -271,7 +270,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'glm-5.2-fast',
     label: 'GLM 5.2 Fast',
-    lanes: ['draft', 'brief', 'review', 'command'],
+    lanes: ['command'],
     hosts: [
       { id: 'baseten', label: 'Baseten', pin: 'baseten-glm-fast' },
       { id: 'aihubmix', label: 'AIHubmix', pin: 'aihubmix-glm-fast' },
@@ -280,13 +279,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'gpt-5.6-terra',
     label: 'GPT-5.6 Terra',
-    lanes: ['brief', 'review', 'command'],
+    lanes: ['command'],
     hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-terra' }],
   },
   {
     id: 'gpt-5.6-sol',
     label: 'GPT-5.6 Sol',
-    lanes: ['brief', 'review', 'command'],
+    lanes: ['command'],
     hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-sol' }],
   },
   {
@@ -388,7 +387,13 @@ const PIN_ALIASES: Record<string, string> = {
 }
 
 export function modelsForLane(lane: StudioLane): StudioModelOption[] {
-  const list = STUDIO_MODELS.filter((m) => m.lanes.includes(lane))
+  const list = STUDIO_MODELS.filter((m) =>
+    m.lanes.includes(lane) && hostsForModel(m.id, lane).length > 0,
+  )
+  if (lane === 'draft') {
+    // Draft lane sorts model families alphabetically by display label.
+    return [...list].sort((a, b) => a.label.localeCompare(b.label))
+  }
   const order = LANE_MODEL_ORDER[lane]
   if (!order?.length) return list
   return [...list].sort((a, b) => {
@@ -425,8 +430,13 @@ export function pinFor(modelId: StudioModelId, hostId: StudioHostId): string {
   return host.pin
 }
 
-export function hostsForModel(modelId: StudioModelId): StudioHostOption[] {
-  const hosts = findModel(modelId)?.hosts ?? []
+/** Hosts for a model, optionally narrowed to the hosts a lane may use. */
+export function hostsForModel(modelId: StudioModelId, lane?: StudioLane): StudioHostOption[] {
+  let hosts = findModel(modelId)?.hosts ?? []
+  if (lane) {
+    const allowed = new Set(LANE_HOSTS[lane] || [])
+    hosts = hosts.filter((h) => allowed.has(h.id))
+  }
   return [...hosts].sort((a, b) => {
     const ia = STUDIO_HOST_ORDER.indexOf(a.id)
     const ib = STUDIO_HOST_ORDER.indexOf(b.id)

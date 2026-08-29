@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
-import { parseStudioPin } from '@/lib/contentAiCatalog'
+import { DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
+import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
 import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
@@ -212,11 +213,38 @@ function reviewApiModel(pin: string): string | undefined {
 }
 
 async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewModel?: string): Promise<string> {
-  // Baseten DeepSeek V4 Flash 0731 is the default reviewer. This is separate
-  // from the NVIDIA MiniMax drafting default; Pro-0813 remains a distinct
-  // research/review model and is never substituted here.
-  const effectiveModel = reviewModel || 'baseten-deepseek'
-  // Pin the provider so the selected review model actually applies.
+  // Run BiOS GLM 5.3 Flash is the default reviewer (DEFAULT_REVIEW_PIN — the
+  // Review/Editor lane lead). This is separate from the NVIDIA MiniMax
+  // drafting default; the review lane allows only Grok, Claude Opus 5,
+  // Claude Sonnet 5, and GLM 5.3 Flash.
+  const requestedModel = String(reviewModel || DEFAULT_REVIEW_PIN).trim().toLowerCase()
+  const runbiosAlias = isRunbiosPin(requestedModel)
+    ? canonicalizeRunbiosPin(requestedModel)
+    : requestedModel === 'glm-5.3-flash'
+      ? 'runbios-glm-53-flash'
+      : requestedModel === 'claude-opus-5'
+        ? 'runbios-claude-opus'
+        : requestedModel === 'claude-sonnet-5'
+          ? 'runbios-claude-sonnet'
+          : ''
+  const effectiveModel = requestedModel === 'grok' || /^grok(?:-|$)/.test(requestedModel)
+    ? 'grok'
+    : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
+      ? runbiosAlias
+      : DEFAULT_REVIEW_PIN
+  // Run BiOS pins (including the bare 'glm-5.3-flash' alias) execute through
+  // the Run BiOS provider with the exact selected slot.
+  if (isRunbiosPin(effectiveModel)) {
+    return callAiFixWithProvider(
+      sys,
+      prompt,
+      maxTokens,
+      canonicalizeRunbiosPin(effectiveModel),
+      effectiveModel,
+      false,
+    )
+  }
+  /* Legacy reviewer pins deliberately coerce to the lane default above. */
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
   const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
   const isGlmFast =
@@ -283,6 +311,17 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
                           : isDeepseekFlash
                             ? 'baseten-deepseek'
                             : undefined
+  return callAiFixWithProvider(sys, prompt, maxTokens, aiProvider, effectiveModel, isGrok)
+}
+
+async function callAiFixWithProvider(
+  sys: string,
+  prompt: string,
+  maxTokens: number,
+  aiProvider: string | undefined,
+  effectiveModel: string,
+  isGrok: boolean,
+): Promise<string> {
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,

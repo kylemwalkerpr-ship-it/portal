@@ -1,17 +1,13 @@
 /**
- * Brief-model policy — the Research/Plan brief runs ONLY on an explicitly
- * selectable model: GPT-5.6 Sol/Terra (OpenAI), GLM 5.2 Fast (Baseten /
- * AIHubmix), or DeepSeek V4 Flash 0731 (Baseten).
+ * Brief-model policy — the Research/Plan brief offers EXACTLY three model
+ * families on four pins: Claude Opus 5 (Run BiOS, DEFAULT), Grok (xAI /
+ * SuperGrok), and DeepSeek V4 Flash (Run BiOS + Baseten).
  *
- * 2026-08 regression: the suggest-brief route forwarded body.aiProvider
- * verbatim, so a stray 'auto' or a stale drafting provider id ('nvidia-glm'…)
- * silently sent the brief through the open-source drafting cascade instead of
- * a chosen brief model. These tests lock:
+ * Regression lock:
  *
- *  1. resolveBriefAiProvider maps each accepted brief model to its provider,
- *     and coerces EVERY other value to OpenAI/Terra — only an explicit
- *     gpt-5.6-sol request gets Sol; anything else (including 'auto' and any
- *     unrecognized provider id) becomes OpenAI + gpt-5.6-terra.
+ *  1. resolveBriefAiProvider maps each accepted brief pin to its provider,
+ *     and coerces EVERY other value — 'auto', stale drafting ids, removed
+ *     choices — to the Claude Opus 5 default (runbios-claude-opus).
  *  2. exclusive: true means the brief can never cascade to a non-chosen
  *     backend: if the pinned provider fails, the call throws the
  *     explicit-provider error instead of returning prose drafted by another.
@@ -31,31 +27,22 @@ import {
 } from '@/lib/seoFactory/briefModel'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2 Fast + DeepSeek V4 Flash)', () => {
-  it('gpt-5.6-terra and gpt-5.6 default to OpenAI + Terra', () => {
-    expect(resolveBriefAiProvider('gpt-5.6-terra')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
-    })
-    expect(resolveBriefAiProvider('')).toEqual({
-      aiProvider: 'runbios-glm-53-flash',
-    })
+describe('resolveBriefAiProvider — brief model policy (Claude Opus 5 + Grok + DeepSeek V4 Flash)', () => {
+  it('empty / auto / default / stale pins coerce to Claude Opus 5 via Run BiOS', () => {
+    expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'runbios-claude-opus' })
+    for (const raw of ['auto', 'default', 'primary', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6', 'gpt-5.6-luna', 'openai', 'nvidia-minimax', 'minimax', 'nvidia-glm', 'zai-glm', 'baseten-glm-fast', 'glm-5.2-fast', 'aihubmix-glm-fast', 'glm-fast-aihubmix', 'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm', 'nvidia-deepseek', 'deepseek-pro', 'deepseek-flash', 'baseten-deepseek-pro', 'baseten-glm-53-flash', 'runbios-glm-53-flash', 'glm-5.3-flash', 'glm-5.3', 'claude-sonnet-5', 'runbios-claude-sonnet', 'runbios-glm-52', 'nvidia-nemotron', 'cloudflare-ai', 'bios-adaptive', 'runbios-kimi', 'runbios-qwen']) {
+      expect({ raw, resolved: resolveBriefAiProvider(raw) }).toEqual({
+        raw,
+        resolved: { aiProvider: 'runbios-claude-opus' },
+      })
+    }
   })
 
-  it('gpt-5.6-sol (and bare gpt-5.6 alias) → OpenAI + Sol', () => {
-    expect(resolveBriefAiProvider('gpt-5.6-sol')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-sol',
-    })
-    expect(resolveBriefAiProvider('gpt-5.6')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-sol',
-    })
+  it('runbios-claude-opus is the explicit Claude Opus 5 pin', () => {
+    expect(resolveBriefAiProvider('runbios-claude-opus')).toEqual({ aiProvider: 'runbios-claude-opus' })
+    expect(resolveBriefAiProvider('claude-opus-5')).toEqual({ aiProvider: 'runbios-claude-opus' })
     // Case-insensitive
-    expect(resolveBriefAiProvider('GPT-5.6-SOL')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-sol',
-    })
+    expect(resolveBriefAiProvider('RUNBIOS-CLAUDE-OPUS')).toEqual({ aiProvider: 'runbios-claude-opus' })
   })
 
   it('grok / xai / supergrok / grok-4.6 → Grok fallback provider', () => {
@@ -65,98 +52,17 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     expect(resolveBriefAiProvider('grok-4.6')).toEqual({ aiProvider: 'grok' })
   })
 
-  it('baseten-glm-fast (and glm-5.2-fast alias) → GLM 5.2 Fast', () => {
-    expect(resolveBriefAiProvider('baseten-glm-fast')).toEqual({
-      aiProvider: 'baseten-glm-fast',
-    })
-    expect(resolveBriefAiProvider('glm-5.2-fast')).toEqual({
-      aiProvider: 'baseten-glm-fast',
-    })
-    // Case-insensitive
-    expect(resolveBriefAiProvider('BASETEN-GLM-FAST')).toEqual({
-      aiProvider: 'baseten-glm-fast',
-    })
-  })
-
-  it('aihubmix-glm-fast (and aliases) → GLM 5.2 Fast via AIHubmix', () => {
-    expect(resolveBriefAiProvider('aihubmix-glm-fast')).toEqual({
-      aiProvider: 'aihubmix-glm-fast',
-    })
-    expect(resolveBriefAiProvider('aihubmix-glm')).toEqual({
-      aiProvider: 'aihubmix-glm-fast',
-    })
-    expect(resolveBriefAiProvider('glm-fast-aihubmix')).toEqual({
-      aiProvider: 'aihubmix-glm-fast',
-    })
-    // Case-insensitive
-    expect(resolveBriefAiProvider('AIHUBMIX-GLM-FAST')).toEqual({
-      aiProvider: 'aihubmix-glm-fast',
-    })
-  })
-
-  it('parasail DeepSeek on Research maps to Pro-0813; Flash pin stays Flash', () => {
-    expect(resolveBriefAiProvider('parasail')).toEqual({ aiProvider: 'parasail-deepseek-pro' })
-    expect(resolveBriefAiProvider('parasail-deepseek-pro')).toEqual({ aiProvider: 'parasail-deepseek-pro' })
-    expect(resolveBriefAiProvider('deepseek-ai/DeepSeek-V4-Pro-0813')).toEqual({
-      aiProvider: 'parasail-deepseek-pro',
-    })
-    expect(resolveBriefAiProvider('parasail-deepseek')).toEqual({ aiProvider: 'parasail-deepseek' })
-    expect(resolveBriefAiProvider('parasail-glm')).toEqual({ aiProvider: 'parasail-glm' })
-  })
-
-  it('baseten-deepseek (and aliases) → DeepSeek V4 Flash 0731 via Baseten', () => {
-    expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({
-      aiProvider: 'baseten-deepseek',
-    })
-    expect(resolveBriefAiProvider('deepseek-v4-flash')).toEqual({
-      aiProvider: 'baseten-deepseek',
-    })
-    expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash-0731')).toEqual({
-      aiProvider: 'baseten-deepseek',
-    })
-    // Case-insensitive
-    expect(resolveBriefAiProvider('BASETEN-DEEPSEEK')).toEqual({
-      aiProvider: 'baseten-deepseek',
-    })
-  })
-
-  it('auto / empty / unknown coerce to Run BiOS GLM 5.3 Flash', () => {
-    expect(resolveBriefAiProvider('nvidia-glm')).toEqual({ aiProvider: 'nvidia-glm' })
-    expect(resolveBriefAiProvider('zai-glm')).toEqual({ aiProvider: 'zai-glm' })
-    expect(resolveBriefAiProvider('baseten-deepseek-pro')).toEqual({ aiProvider: 'baseten-deepseek-pro' })
-    expect(resolveBriefAiProvider('deepseek-pro')).toEqual({ aiProvider: 'deepseek-pro' })
-    expect(resolveBriefAiProvider('deepseek-flash')).toEqual({ aiProvider: 'deepseek-flash' })
-    expect(resolveBriefAiProvider('nvidia-deepseek')).toEqual({ aiProvider: 'nvidia-deepseek' })
-
-    expect(resolveBriefAiProvider('glm-fast')).toEqual({ aiProvider: 'baseten-glm-fast' })
-    expect(resolveBriefAiProvider('openai')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
-    })
-    expect(resolveBriefAiProvider('gpt-5.6-terra')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
-    })
-
-    const leaks = [
-      'auto',
-      '',
-      'default',
-      'nvidia-nemotron',
-      'cloudflare-ai',
-      'gpt-5.6-luna',
-    ]
-    for (const raw of leaks) {
-      const resolved = resolveBriefAiProvider(raw)
-      expect({ raw, resolved }).toEqual({
-        raw,
-        resolved: { aiProvider: 'runbios-glm-53-flash' },
-      })
-    }
+  it('DeepSeek V4 Flash is offered on both Run BiOS and Baseten', () => {
+    expect(resolveBriefAiProvider('runbios-deepseek-flash')).toEqual({ aiProvider: 'runbios-deepseek-flash' })
+    expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash')).toEqual({ aiProvider: 'runbios-deepseek-flash' })
+    expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({ aiProvider: 'baseten-deepseek' })
+    expect(resolveBriefAiProvider('deepseek-v4-flash')).toEqual({ aiProvider: 'baseten-deepseek' })
+    expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash-0731')).toEqual({ aiProvider: 'baseten-deepseek' })
+    expect(resolveBriefAiProvider('BASETEN-DEEPSEEK')).toEqual({ aiProvider: 'baseten-deepseek' })
   })
 })
 
-describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () => {
+describe('generateBriefText fallback — Grok (SuperGrok) when the primary fails', () => {
   const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'XAI_API_KEY', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'RUNBIOS_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
@@ -260,7 +166,7 @@ describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () =>
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
   })
 
-  it('both-fail path: combined error names GPT and Grok reasons', async () => {
+  it('both-fail path: combined error names the primary and Grok reasons', async () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
     process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
@@ -278,35 +184,39 @@ describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () =>
         system: 'You are the brief architect.',
         prompt: 'TOPIC: dependent visa uk',
       }),
-    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(GPT\)[\s\S]*Fallback \(Grok\)/)
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Claude Opus 5 \(Run BiOS\)\)[\s\S]*Fallback \(Grok\)/)
   })
 
-  it('Run BiOS GLM primary success returns fallbackUsed=false', async () => {
+  it('Run BiOS Claude Opus primary success returns fallbackUsed=false', async () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
 
     const urls: string[] = []
-    global.fetch = jest.fn(async (input) => {
+    const bodies: Array<Record<string, unknown>> = []
+    global.fetch = jest.fn(async (input, init) => {
       const url = String(input)
       urls.push(url)
-      return json({ choices: [{ message: { content: 'RUNBIOS-BRIEF' }, finish_reason: 'stop' }] })
+      try { bodies.push(JSON.parse(String((init as RequestInit | undefined)?.body || '{}'))) } catch { /* ignore */ }
+      return json({ choices: [{ message: { content: 'RUNBIOS-OPUS-BRIEF' }, finish_reason: 'stop' }] })
     }) as typeof fetch
 
     const result = await generateBriefText({
-      aiProvider: 'runbios-glm-53-flash',
+      aiProvider: 'runbios-claude-opus',
       system: 'You are the brief architect.',
       prompt: 'TOPIC: dependent visa uk',
     })
 
     expect(result.fallbackUsed).toBe(false)
-    expect(result.ai.provider).toBe('runbios-glm-53-flash')
-    expect(result.ai.text).toBe('RUNBIOS-BRIEF')
+    expect(result.ai.provider).toBe('runbios-claude-opus')
+    expect(result.ai.text).toBe('RUNBIOS-OPUS-BRIEF')
     expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
     expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
+    // The exact selected slot's API model id was sent — never the pin.
+    expect(bodies.some((b) => b.model === 'claude-opus-5')).toBe(true)
   })
 
-  it('Run BiOS GLM primary hard failure still falls back to Grok', async () => {
+  it('Run BiOS Claude Opus primary hard failure still falls back to Grok', async () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
@@ -322,7 +232,7 @@ describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () =>
     }) as typeof fetch
 
     const result = await generateBriefText({
-      aiProvider: 'runbios-glm-53-flash',
+      aiProvider: 'runbios-claude-opus',
       system: 'You are the brief architect.',
       prompt: 'TOPIC: dependent visa uk',
     })

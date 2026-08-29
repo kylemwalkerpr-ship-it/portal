@@ -302,11 +302,16 @@ export async function refreshAiVault(): Promise<string[]> {
     try {
       if (typeof vault.getAiSettings === 'function') {
         const { ensureSuperGrokAccessToken, XAI_DEFAULT_MODEL } = await import('@/lib/xaiSuperGrokOAuth')
-        const oauth = await ensureSuperGrokAccessToken()
-        if (oauth?.accessToken) {
-          overlay.XAI_API_KEY = oauth.accessToken
-          overlay.XAI_AUTH_MODE = 'supergrok'
-          if (!overlay.XAI_MODEL) overlay.XAI_MODEL = XAI_DEFAULT_MODEL
+        // Configurator precedence: a vault XAI row (admin-pasted key) wins
+        // over the SuperGrok OAuth token — the token only fills the gap when
+        // no explicit XAI credential is configured.
+        if (!overlay.XAI_API_KEY) {
+          const oauth = await ensureSuperGrokAccessToken()
+          if (oauth?.accessToken) {
+            overlay.XAI_API_KEY = oauth.accessToken
+            overlay.XAI_AUTH_MODE = 'supergrok'
+            if (!overlay.XAI_MODEL) overlay.XAI_MODEL = XAI_DEFAULT_MODEL
+          }
         }
       }
     } catch (oauthErr) {
@@ -2407,12 +2412,13 @@ export function listConfiguredContentProviders(): Array<{
 /**
  * Resolve preferred provider label.
  *
- * HARD DEFAULT: Run BiOS GLM 5.3 Flash (`runbios-glm-53-flash`).
+ * HARD DEFAULT: NVIDIA MiniMax M3 (`nvidia-minimax`) — matches the Draft lane
+ * UI default. Run BiOS GLM 5.3 Flash is the auto-cascade runner-up.
  * Cloudflare remains a fallback and never becomes the default lead unless
  * CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
  *
  * Empty / unknown / legacy "primary" values resolve through the configured
- * order, whose default lead is runbios-glm-53-flash.
+ * order, whose default lead is nvidia-minimax.
  */
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
@@ -2540,9 +2546,9 @@ function preferProvider(): string {
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
-      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using nvidia-deepseek (DeepSeek V4 Flash)`,
+      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using nvidia-minimax (the Draft default)`,
     )
-    return 'nvidia-deepseek'
+    return 'nvidia-minimax'
   }
   return explicit
 }
@@ -2570,8 +2576,8 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
-function promoteRunbiosGlmAsLead(order: string[]): string[] {
-  const pin = 'runbios-glm-53-flash'
+function promoteMinimaxAsLead(order: string[]): string[] {
+  const pin = 'nvidia-minimax'
   const at = order.indexOf(pin)
   if (at < 0) order.unshift(pin)
   else if (at > 0) {
@@ -2581,38 +2587,17 @@ function promoteRunbiosGlmAsLead(order: string[]): string[] {
   return order
 }
 
-function promoteMinimaxAsLead(order: string[]): string[] {
-  const pin = 'nvidia-minimax'
-  const at = order.indexOf(pin)
-  if (at < 0) {
-    const lead = order.indexOf('runbios-glm-53-flash')
-    order.splice(lead >= 0 ? lead + 1 : 0, 0, pin)
-  }
-  return order
-}
-
-function promoteGrokAsSecond(order: string[]): string[] {
-  const grokAt = order.indexOf('grok')
-  if (grokAt < 0) {
-    order.splice(Math.min(1, order.length), 0, 'grok')
-  } else if (grokAt > 1) {
-    order.splice(grokAt, 1)
-    order.splice(1, 0, 'grok')
-  }
-  return order
-}
-
 /** Parse the admin-saved order defensively (JSON or CSV). */
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
   if (!raw) {
-    return promoteGrokAsSecond(promoteMinimaxAsLead(promoteRunbiosGlmAsLead([
-      'runbios-glm-53-flash', 'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+    return promoteMinimaxAsLead([
+      'nvidia-minimax', 'runbios-glm-53-flash', 'grok', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
       'parasail-deepseek', 'deepseek-flash', 'parasail-glm',    'baseten-glm-fast', 'baseten-glm-53-flash',
     'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
       'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro',
       'deepseek-pro', 'zai-glm',
-    ])))
+    ])
   }
   let values: unknown = raw
   try { values = JSON.parse(raw) } catch { values = raw.split(',') }
@@ -2648,7 +2633,7 @@ function configuredProviderOrder(): string[] {
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
-  return promoteGrokAsSecond(promoteMinimaxAsLead(promoteRunbiosGlmAsLead(merged)))
+  return promoteMinimaxAsLead(merged)
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {

@@ -1,15 +1,23 @@
 /**
  * Shared AI helper for the SEO Master Engine and Discover intel calls.
  *
- * Default path is Run BiOS GLM 5.3 Flash as lead, with Parasail GLM 5.2 as
- * complement when that host is configured. Explicit pins stay single-model.
+ * The deterministic SEO engine remains the source of evidence/data. Its AI
+ * harmonization is a bounded two-model pair:
+ *   LEAD        — Claude Opus 5 via Run BiOS (`runbios-claude-opus`). It
+ *                 consumes the complete engine result and reconciles titles,
+ *                 keyword research/planning/clustering, sources, internal and
+ *                 external links, H1/H2/H3, related questions, and search
+ *                 intent without inventing or dropping verified evidence.
+ *   COMPLEMENT  — Grok (xAI / SuperGrok). It runs in parallel on the same
+ *                 payload; when the drafts disagree the lead merges, keeping
+ *                 deterministic engine evidence authoritative.
+ * No other model silently joins the pair. Explicit pins stay single-model.
  */
 
 import {
   generateContentText,
   isGrokConfigured,
   isOpenaiConfigured,
-  isParasailConfigured,
   isRunbiosConfigured,
   refreshAiVault,
   type ContentAiOptions,
@@ -24,15 +32,15 @@ import {
 } from '@/lib/seoEngine/enginePairBreaker'
 
 export const ENGINE_FALLBACK_PROVIDER = 'grok' as const
-export const ENGINE_LEAD_PROVIDER = 'runbios-glm-53-flash' as const
-export const ENGINE_COMPLEMENT_PROVIDER = 'parasail-glm' as const
+export const ENGINE_LEAD_PROVIDER = 'runbios-claude-opus' as const
+export const ENGINE_LEAD_MODEL = 'claude-opus-5' as const
+export const ENGINE_COMPLEMENT_PROVIDER = 'grok' as const
 export const ENGINE_PAIR = 'engine-pair' as const
 
 const PAIR_MAX_TOKENS = 4096
 const HARMONY_MAX_TOKENS = 3072
-const PAIR_LEG_TIMEOUT_MS = 45_000
-/** GLM 5.3 Flash reasons for minutes; the 45s pair-leg ceiling must never
- *  cut a Run BiOS lead mid-thought — floor at the Run BiOS deadline. */
+/** Claude Opus 5 harmonization can take minutes on long Discover payloads —
+ *  never cut the Run BiOS lead mid-thought; floor at the Run BiOS deadline. */
 const PAIR_LEAD_MIN_TIMEOUT_MS = 600_000
 
 export interface EnginePairExtras {
@@ -78,7 +86,7 @@ export function resolveEngineAiProvider(preferred?: string): string {
 }
 
 export function enginePairReady(): boolean {
-  return isRunbiosConfigured() || isGrokConfigured() || isParasailConfigured()
+  return isRunbiosConfigured() || isGrokConfigured()
 }
 
 export function extractEngineJsonObject(text: string): Record<string, unknown> | null {
@@ -132,7 +140,7 @@ function uniqueNormalized(values: string[]): string[] {
   return out
 }
 
-/** Statutes / official URLs that GLM found and Grok's winning text omitted. */
+/** Statutes / official URLs that Grok found and the Opus lead's winning text omitted. */
 export function harvestComplementExtras(leadText: string, complementText: string): EnginePairExtras {
   const lead = String(leadText || '')
   const complement = String(complementText || '')
@@ -163,11 +171,11 @@ export function accumulatePairRollup(rollup: EnginePairRollup, meta?: EnginePair
 
 export function formatEnginePairTape(rollup: EnginePairRollup | null | undefined): string {
   if (!rollup || rollup.calls <= 0) return ''
-  const bits = ['GLM 5.3 Flash + complement']
+  const bits = ['Claude Opus 5 + Grok complement']
   if (rollup.disagreed) bits.push('disagreed')
   if (rollup.merged) bits.push('merged')
   if (rollup.leadOnly) bits.push(`lead-only:${rollup.leadOnly}`)
-  if (rollup.complementOnly) bits.push(`glm-only:${rollup.complementOnly}`)
+  if (rollup.complementOnly) bits.push(`grok-only:${rollup.complementOnly}`)
   if (rollup.extrasKept) bits.push(`extras:${rollup.extrasKept}`)
   return bits.join(', ')
 }
@@ -206,39 +214,37 @@ export async function generateEnginePairText(
     skipQualityContract: opts.skipQualityContract !== false,
     exclusive: true as const,
   }
-  // Run BiOS lead gets the reasoning-pass floor (10 min); omitting timeoutMs
-  // lets deadlineForProvider apply the same floor. Parasail stays at 45s.
+  // The Run BiOS Opus lead gets the 10-minute floor; omitting timeoutMs lets
+  // deadlineForProvider apply the same floor. Grok keeps its own provider
+  // deadline floor (180s) when no explicit timeout is passed.
   const leadTimeoutMs =
     opts.timeoutMs != null ? Math.max(opts.timeoutMs, PAIR_LEAD_MIN_TIMEOUT_MS) : undefined
 
-  // Skip a dead complement: when Parasail is not configured, do not fire a
-  // leg that can only fail (and trip its circuit breaker). Same for a lead
-  // with no Run BiOS key — complement-only proceeds.
+  // Skip a dead complement: when Grok is not configured, do not fire a leg
+  // that can only fail (and trip its circuit breaker). Same for a lead with
+  // no Run BiOS key — complement-only proceeds.
   const leadReady = isRunbiosConfigured()
-  const complementReady = isParasailConfigured()
+  const complementReady = isGrokConfigured()
   const notConfigured = (label: string) =>
     ({ status: 'rejected', reason: new Error(`${label}: not configured`) }) as PromiseSettledResult<ContentAiResult>
 
   const [leadSettled, complementSettled] = await Promise.all([
     leadReady
-      ? runPairLeg('runbios-glm', () => generateContentText({
+      ? runPairLeg('runbios-opus', () => generateContentText({
           ...shared,
           ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
           aiProvider: ENGINE_LEAD_PROVIDER,
-          model: 'glm-5.3-flash',
-          reasoningEffort: 'low',
+          model: ENGINE_LEAD_MODEL,
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
-      : Promise.resolve(notConfigured('Run BiOS GLM 5.3 Flash')),
+      : Promise.resolve(notConfigured('Claude Opus 5 (Run BiOS)')),
     complementReady
-      ? runPairLeg('parasail-glm', () => generateContentText({
+      ? runPairLeg('grok', () => generateContentText({
           ...shared,
-          timeoutMs: opts.timeoutMs ?? PAIR_LEG_TIMEOUT_MS,
           aiProvider: ENGINE_COMPLEMENT_PROVIDER,
-          reasoningEffort: 'medium',
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
-      : Promise.resolve(notConfigured('GLM 5.2 Parasail')),
+      : Promise.resolve(notConfigured('Grok (xAI)')),
   ])
 
   const lead = settledText(leadSettled)
@@ -253,7 +259,7 @@ export async function generateEnginePairText(
   if (lead && !complement) {
     return {
       ...lead,
-      model: `${lead.model} · pair (GLM unavailable)`,
+      model: `${lead.model} · pair (Grok unavailable)`,
       pair: {
         leadModel: lead.model,
         complementModel: null,
@@ -268,7 +274,7 @@ export async function generateEnginePairText(
   if (!lead && complement) {
     return {
       ...complement,
-      model: `${complement.model} · pair (Run BiOS unavailable)`,
+      model: `${complement.model} · pair (Run BiOS Opus unavailable)`,
       pair: {
         leadModel: ENGINE_LEAD_PROVIDER,
         complementModel: complement.model,
@@ -283,8 +289,8 @@ export async function generateEnginePairText(
   }
   if (!lead && !complement) {
     throw new Error(
-      `Engine pair failed. Lead (Run BiOS GLM 5.3 Flash): ${leadErr.slice(0, 280) || 'empty'}. ` +
-        `Complement (GLM 5.2 Parasail z-ai/glm-5.2 medium): ${complementErr.slice(0, 280) || 'empty'}.`,
+      `Engine pair failed. Lead (Claude Opus 5 via Run BiOS): ${leadErr.slice(0, 280) || 'empty'}. ` +
+        `Complement (Grok via xAI): ${complementErr.slice(0, 280) || 'empty'}.`,
     )
   }
 
@@ -314,15 +320,16 @@ export async function generateEnginePairText(
       ...shared,
       ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
       aiProvider: ENGINE_LEAD_PROVIDER,
-      model: 'glm-5.3-flash',
-      reasoningEffort: 'low',
+      model: ENGINE_LEAD_MODEL,
       maxTokens: Math.min(opts.maxTokens ?? HARMONY_MAX_TOKENS, HARMONY_MAX_TOKENS),
       system:
-        `${opts.system}\n\nYou are the lead Master Engine reasoner (GLM 5.3 Flash). ` +
-        `A complement model reviewed the same payload. Produce one final answer. ` +
+        `${opts.system}\n\nYou are the lead Master Engine reasoner (Claude Opus 5). ` +
+        `A complement model (Grok) reviewed the same payload. Produce one final answer. ` +
         `Keep your structure, judgment, and priorities. Adopt complement facts, statutes, ` +
         `URLs, numbers, or blockers you missed when they match the payload. ` +
-        `Discard claims that contradict the payload. Do not mention either model.` +
+        `The deterministic engine evidence in the payload is authoritative — never ` +
+        `invent, reorder, or drop verified titles, keywords, sources, links, ` +
+        `headings, related questions, or search intent. Do not mention either model.` +
         (wantsJson(opts) ? ' If the original asked for JSON, return ONLY valid JSON.' : ''),
       prompt:
         `${opts.prompt}\n\n--- LEAD DRAFT ---\n${lead!.text}\n\n--- COMPLEMENT DRAFT ---\n${complement!.text}`,
@@ -330,7 +337,7 @@ export async function generateEnginePairText(
     const text = (harmony.text || '').trim()
     if (text) merged = harmony
   } catch {
-    // Harmony is best-effort — Grok's first pass still stands.
+    // Harmony is best-effort — the Opus lead's first pass still stands.
   }
 
   const chosen = wantsJson(opts) && complement
@@ -341,7 +348,7 @@ export async function generateEnginePairText(
   return {
     text: chosen.text,
     provider: ENGINE_LEAD_PROVIDER,
-    model: `glm-5.3-flash + ${complement!.model}`,
+    model: `${ENGINE_LEAD_MODEL} + ${complement!.model}`,
     pair: {
       leadModel: lead!.model,
       complementModel: complement!.model,

@@ -19,10 +19,11 @@ import {
 /**
  * POST /api/content-studio/suggest-brief
  *
- * The Research-stage intelligence engine. GPT Luna ingests everything Stage I
- * (Discover) gathered — radar gaps, GSC demand, LLM visibility scores, backlink
- * gaps, completed prior work, verified interlinks — and produces a maximally
- * prescriptive brief so the drafting AI has zero room to hallucinate.
+ * The Research-stage intelligence engine. The selected Brief model ingests
+ * everything Stage I (Discover) gathered — radar gaps, GSC demand, LLM
+ * visibility scores, backlink gaps, keyword research, completed prior work,
+ * verified interlinks — and produces a maximally prescriptive brief so the
+ * drafting AI has zero room to hallucinate.
  *
  * Every field the generate-stream route needs is populated from live intel.
  */
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
   // Grok 4.6 reasoning needs 1–3 minutes for a full brief. A 90s/120s
   // ceiling is what produced "timed out after 90s" in the studio.
   const controller = new AbortController()
-  const globalTimer = setTimeout(() => controller.abort(), 210_000)
+  const globalTimer = setTimeout(() => controller.abort(), 660_000)
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
@@ -52,11 +53,12 @@ export async function POST(req: NextRequest) {
       region = detected.region
       regionAutoSelected = true
     }
-    // OpenAI ChatGPT is the PRIMARY brief model (see lib/seoFactory/briefModel).
-    // GPT-5.6 Sol (flagship) when explicitly requested; every other value —
-    // including 'auto' or a stale drafting provider id — coerces to GPT-5.6
-    // Terra on OpenAI. When OpenAI is unconfigured or fails (unpaid account,
-    // quota), the call below falls back to GLM 5.2 Fast via Baseten.
+    // Claude Opus 5 via Run BiOS is the PRIMARY brief model (see
+    // lib/seoFactory/briefModel). Grok and DeepSeek V4 Flash (Run BiOS +
+    // Baseten) are the other two Brief families; every other value —
+    // including 'auto' or a stale drafting provider id — coerces to the
+    // Claude Opus 5 default. When the primary is unconfigured or fails, the
+    // call below falls back to Grok.
     const { aiProvider, model: modelOverride } = resolveBriefAiProvider(
       String(body.aiProvider || ''),
     )
@@ -242,9 +244,9 @@ export async function POST(req: NextRequest) {
       'Produce the complete editorial brief JSON now.',
     ].filter(Boolean).join('\n')
 
-    // Grok 4.6 is the default brief writer and a reasoning model: 90s is
-    // too short (live probe: brief can land at ~43s, or take well over 90s
-    // on a loaded SuperGrok session). Floor at 3 minutes.
+    // Claude Opus 5 / Grok are reasoning models: 90s is too short (live
+    // probe: a brief can land at ~43s, or take well over 90s on a loaded
+    // session). Floor at 5 minutes.
     const { ai, fallbackUsed } = await generateBriefText({
       aiProvider,
       model: modelOverride,
@@ -252,7 +254,7 @@ export async function POST(req: NextRequest) {
       prompt,
       maxTokens: 8000,
       temperature: 0.3,
-      timeoutMs: 300_000,
+      timeoutMs: 600_000,
     })
 
     // Models occasionally return a raw newline/tab inside a quoted JSON
@@ -333,9 +335,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      // Which model actually produced the brief — 'openai' (GPT Sol/Terra) or
-      // 'grok' (SuperGrok fallback) — so the UI can surface a
-      // "GPT unavailable — brief generated via Grok" notice.
+      // Which model actually produced the brief — 'runbios-claude-opus'
+      // (Claude Opus 5) or 'grok' (SuperGrok fallback) — so the UI can
+      // surface a "primary unavailable — brief generated via Grok" notice.
       provider: ai.provider,
       model: ai.model,
       fallbackUsed,

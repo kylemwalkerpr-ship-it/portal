@@ -898,12 +898,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {saving ? 'Saving...' : 'Save'}
         </button>
 
-        {/* Review model selector — GPT Sol (senior editor), SuperGrok, Terra,
-            or the open-source reviewers. */}
+        {/* Review model selector — exactly four: Grok (SuperGrok/xAI),
+            Claude Opus 5, Claude Sonnet 5 (Run BiOS), and the default
+            GLM 5.3 Flash (Run BiOS). */}
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
-            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'baseten-deepseek')}
+            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'runbios-glm-53-flash')}
             onPinChange={onReviewModelChange}
             disabled={allBusy}
             modelAriaLabel="Review AI model"

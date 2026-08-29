@@ -2308,7 +2308,7 @@ function RecheckDuePanel() {
             <div>
               <label style={labelStyle}>AI model / provider</label>
               <StudioModelHostSelect
-                lane="command"
+                lane="draft"
                 pin={aiProvider}
                 onPinChange={setAiProvider}
                 selectStyle={inputStyle}

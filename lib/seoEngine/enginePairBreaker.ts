@@ -1,11 +1,11 @@
 /**
  * 15-minute circuit breaker for the Master Engine pair legs.
  *
- * Knowledge ingest calls the pair once per feed item. A dead Grok or Parasail
+ * Knowledge ingest calls the pair once per feed item. A dead Grok or Run BiOS
  * host must not be retried on every remaining item in the same run.
  */
 
-export type EnginePairLeg = 'grok' | 'parasail-glm' | 'runbios-glm'
+export type EnginePairLeg = 'grok' | 'runbios-opus' | 'parasail-glm' | 'runbios-glm'
 
 export const ENGINE_PAIR_BREAKER_MS = 15 * 60 * 1000
 export const ENGINE_PAIR_BREAKER_THRESHOLD = 2
@@ -58,7 +58,7 @@ export function enginePairBreakerStatus(): Array<{
   open: boolean
   retryInSec: number
 }> {
-  return (['grok', 'parasail-glm'] as const).map((leg) => {
+  return (['runbios-opus', 'grok'] as const).map((leg) => {
     const cur = slots.get(leg)
     const open = isEngineLegOpen(leg)
     return {

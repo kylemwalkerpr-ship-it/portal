@@ -26,7 +26,7 @@ export function StudioModelHostSelect(props: {
   const models = modelsForLane(props.lane)
   const parsed = parseStudioPin(props.pin)
   const modelId = (models.some((m) => m.id === parsed.model.id) ? parsed.model.id : models[0]?.id) as StudioModelId
-  const hosts = models.find((m) => m.id === modelId)?.hosts ?? []
+  const hosts = hostsForModel(modelId, props.lane)
   const hostId = (hosts.some((h) => h.id === parsed.host.id) ? parsed.host.id : hosts[0]?.id) as StudioHostId
   const showHost = hosts.length > 1
 
@@ -49,7 +49,7 @@ export function StudioModelHostSelect(props: {
         aria-label={props.modelAriaLabel || 'AI model'}
         onChange={(e) => {
           const nextModel = e.target.value as StudioModelId
-          const nextHosts = hostsForModel(nextModel)
+          const nextHosts = hostsForModel(nextModel, props.lane)
           const keep = nextHosts.some((h) => h.id === hostId) ? hostId : nextHosts[0]?.id
           props.onPinChange(pinFor(nextModel, keep || 'auto'))
         }}

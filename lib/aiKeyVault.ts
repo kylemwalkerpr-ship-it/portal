@@ -395,9 +395,10 @@ export const AI_PROVIDERS: AiProviderDef[] = [
 export const providerDef = (id: string): AiProviderDef | undefined =>
   AI_PROVIDERS.find((p) => p.id === id)
 
-/** Safe default cascade; Settings can override it without a redeploy. */
+/** Safe default cascade; Settings can override it without a redeploy.
+ *  Draft's lead (MiniMax M3 via NVIDIA) fronts the auto cascade. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'runbios-glm-53-flash', 'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+  'nvidia-minimax', 'runbios-glm-53-flash', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
   'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
@@ -538,7 +539,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   // the admin's default model is applied to the selected primary provider.
   const defaultProvider = String(settings.default_provider || '').trim()
   out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider)
-    ? 'runbios-glm-53-flash'
+    ? 'nvidia-minimax'
     : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
@@ -621,7 +622,7 @@ export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number
 const STALE_DEFAULT_PROVIDERS = new Set([
   '',
   'auto',
-  'nvidia-minimax',
+  'runbios-glm-53-flash',
   'nvidia-nemotron',
   'baseten-deepseek',
   'baseten-glm-fast',
@@ -703,17 +704,18 @@ export function parasailFirstProviderOrder(raw?: string | null): string {
 
 let draftDefaultsEnsured = false
 
-/** Persist Run BiOS GLM 5.3 Flash as the drafting default when the saved pin is
- * missing or belongs to a previous MiniMax/Nemotron/Parasail/Baseten default. */
+/** Persist NVIDIA MiniMax M3 as the drafting default when the saved pin is
+ *  missing or belongs to a previous Run BiOS GLM/Nemotron/Parasail/Baseten
+ *  default. The UI Draft default is `nvidia-minimax`; the backend must match. */
 export async function ensureDraftDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
   if (draftDefaultsEnsured) return
   draftDefaultsEnsured = true
   const settings = await getAiSettings(true)
   const current = String(settings.default_provider || '').trim()
   if (STALE_DEFAULT_PROVIDERS.has(current)) {
-    await setAiSetting('default_provider', 'runbios-glm-53-flash', updatedBy)
+    await setAiSetting('default_provider', 'nvidia-minimax', updatedBy)
   }
-  const nextOrder = runbiosFirstProviderOrder(settings.provider_order)
+  const nextOrder = minimaxFirstProviderOrder(settings.provider_order)
   if (nextOrder !== settings.provider_order) {
     await setAiSetting('provider_order', nextOrder, updatedBy)
   }

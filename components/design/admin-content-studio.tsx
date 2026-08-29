@@ -2258,16 +2258,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
-  const [suggestingKeywords, setSuggestingKeywords] = React.useState(false)
 
-  // AI-powered full-brief generation — GPT Luna ingests ALL Discover intel
-  // (radar gaps, GSC demand, LLM visibility, backlink gaps, completed work,
-  // verified interlinks) and produces a maximally prescriptive brief so the
-  // drafting AI has zero room to hallucinate.
+  // AI-powered full-brief generation — the selected Brief model ingests ALL
+  // Discover intel (radar gaps, GSC demand, keyword research, LLM visibility,
+  // backlink gaps, completed work, verified interlinks) and produces a
+  // maximally prescriptive brief so the drafting AI has zero room to
+  // hallucinate. "Generate Full Brief" is the single integrated action.
   const [briefGenerating, setBriefGenerating] = React.useState(false)
-  // Research/Plan brief model — GPT Sol (flagship), GPT Terra (balanced), or
-  // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
-  // brief endpoint (lib/seoFactory/briefModel) honors all three.
+  // Brief model — exactly three families: Claude Opus 5 (Run BiOS, default),
+  // Grok (xAI), and DeepSeek V4 Flash (Run BiOS + Baseten). The brief
+  // endpoint (lib/seoFactory/briefModel) coerces stale pins to the default.
   const [briefModel, setBriefModel] = React.useState(DEFAULT_BRIEF_PIN)
   const briefParsed = parseStudioPin(briefModel)
   const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
@@ -2275,7 +2275,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
     const briefAbort = new AbortController()
-    const briefTimer = window.setTimeout(() => briefAbort.abort(), 200_000)
+    const briefTimer = window.setTimeout(() => briefAbort.abort(), 660_000)
     try {
       const gscData = (gscStatus && typeof gscStatus === 'object') ? gscStatus as Record<string, unknown> : {}
       const r = (radarMeta && typeof radarMeta === 'object') ? radarMeta as Record<string, unknown> : {}
@@ -2285,9 +2285,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         signal: briefAbort.signal,
         body: JSON.stringify({
           topic, region, contentType, primaryKeyword: title || topic, audience,
-          // Research/Plan model is selectable above (GPT Sol/Terra or GLM 5.2
-          // Fast). We pass the explicit choice; the brief endpoint's policy
-          // coerces unknown values to Terra.
+          // Brief model selected above (Claude Opus 5 / Grok / DeepSeek V4
+          // Flash). We pass the explicit choice; the brief endpoint's policy
+          // coerces unknown values to the Claude Opus 5 default.
           aiProvider: briefModel,
           gscImpressions: gscData.impressions || 0,
           gscPosition: gscData.position || 0,
@@ -2358,55 +2358,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     } finally {
       window.clearTimeout(briefTimer)
       setBriefGenerating(false)
-    }
-  }
-
-  // AI-powered keyword suggestion — analyzes topic + GSC + competition
-  const handleAiSuggest = async () => {
-    if (!topic.trim()) {
-      setActionNotice?.('Enter a topic first before asking for AI keyword suggestions')
-      return
-    }
-    setSuggestingKeywords(true)
-    try {
-      const gscData = (gscStatus && typeof gscStatus === 'object') ? gscStatus as Record<string, unknown> : {}
-      const res = await fetch('/api/content-studio/suggest-keywords', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic, region, contentType, primaryKeyword: title || topic,
-          audience,
-          gscImpressions: gscData.impressions || 0,
-          gscPosition: gscData.position || 0,
-          gscClicks: gscData.clicks || 0,
-          competitorTerms: brief?.keywords?.slice(0, 8) || [],
-        }),
-      })
-      const data = await res.json().catch(() => ({})) as Record<string, unknown>
-      if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
-      if (data.regionAutoSelected && typeof data.region === 'string') {
-        setRegion(data.region as Region)
-      }
-      if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
-        const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
-        setKeywords(all.join(', '))
-        const blocked = Array.isArray(data.blockedCanonicals) ? (data.blockedCanonicals as string[]).length : 0
-        const competingN = Array.isArray(data.competing) ? (data.competing as unknown[]).length : 0
-        const guard = blocked || competingN
-          ? ` Skipped ${blocked} shipped canonicals; ${competingN} competing page(s).`
-          : ''
-        setActionNotice?.(`Engine + Ubersuggest keywords (${all.length}).${guard}${data.reasoning ? ' ' + String(data.reasoning).slice(0, 100) + '…' : ''}`)
-        if (Array.isArray(data.suggestedH2s) && data.suggestedH2s.length > 0) {
-          setH2s(data.suggestedH2s as string[])
-        }
-        if (!title.trim() && typeof data.suggestedH1 === 'string' && data.suggestedH1.trim()) {
-          setTitle(data.suggestedH1)
-        }
-      }
-    } catch (err) {
-      setActionNotice?.(`AI keyword suggestion failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    } finally {
-      setSuggestingKeywords(false)
     }
   }
 
@@ -2624,24 +2575,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <label style={labelBase}>Keywords (comma-separated)</label>
-            <button
-              type="button"
-              onClick={handleAiSuggest}
-              disabled={suggestingKeywords || !topic.trim() || generating}
-              style={{
-                padding: '4px 12px', borderRadius: 6, border: `1px solid ${E.gold}`,
-                background: suggestingKeywords ? E.goldSoft : 'transparent',
-                color: suggestingKeywords ? E.goldDeep : E.gold,
-                cursor: suggestingKeywords || !topic.trim() ? 'not-allowed' : 'pointer',
-                fontSize: 10, fontWeight: 700, fontFamily: E.mono,
-                opacity: suggestingKeywords ? 0.8 : 1,
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s ease',
-              }}
-              title={!topic.trim() ? 'Enter a topic first' : 'AI analyzes your topic + GSC + content type to suggest optimal short & long-tail keywords'}
-            >
-              {suggestingKeywords ? '⏳ AI analyzing…' : '🤖 AI Suggest Keywords'}
-            </button>
+            <span style={{ fontFamily: E.mono, fontSize: 9, color: E.inkMuted, whiteSpace: 'nowrap' }}>
+              Brief model — keywords come from Discover
+            </span>
             <StudioModelHostSelect
               lane="brief"
               pin={briefModel}
@@ -2672,7 +2608,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s ease',
               }}
-              title={!topic.trim() ? 'Enter a topic first' : `${briefModelName} reads all Discover intel — radar, GSC, LLM visibility, backlinks — and builds a complete prescriptive brief`}
+              title={!topic.trim() ? 'Enter a topic first' : `${briefModelName} reads all Discover intel — radar, GSC, keyword research, LLM visibility, backlinks — and builds a complete prescriptive brief. It is the single integrated brief action.`}
             >
               {briefGenerating ? `🧠 ${briefModelName} building brief (up to 3 min)…` : '🧠 Generate Full Brief'}
             </button>
@@ -2857,7 +2793,7 @@ function DraftWorkspace({
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
-  const [reviewModel, setReviewModel] = React.useState('baseten-deepseek')
+  const [reviewModel, setReviewModel] = React.useState(DEFAULT_REVIEW_PIN)
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
@@ -3613,9 +3549,7 @@ function JobDetail({
   const [activeAction, setActiveAction] = React.useState<string | null>(null)
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
-  const [aiProvider, setAiProvider] = React.useState<string>(() =>
-    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : DEFAULT_DRAFT_PIN,
-  )
+  const [aiProvider, setAiProvider] = React.useState<string>(DEFAULT_DRAFT_PIN)
   const [reviewModel, setReviewModel] = React.useState<string>(DEFAULT_REVIEW_PIN)
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
@@ -3930,9 +3864,6 @@ function JobDetail({
               selectStyle={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusXs, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}
             />
           </label>
-          {aiProvider === 'auto' && detail.ai_provider && (
-            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>job default: {aiProviderCard}</span>
-          )}
           {aiProvider !== 'auto' && (
             <span style={{ fontSize: 10, color: C.blue, fontFamily: C.mono }}>regeneration will use: {aiProvider}</span>
           )}
