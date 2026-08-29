@@ -34,6 +34,7 @@ import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
+import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -295,6 +296,44 @@ export async function* runSeoFactoryPipelineStream(
     const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
     yield { type: 'progress', stage: 'brief', message: `Verified ${verifiedSourceUrls.length} live official citation URL${verifiedSourceUrls.length === 1 ? '' : 's'}` }
 
+    // ── Canonical ContentSpec (implementation brief §3.2) ────────────────────
+    // Resolved ONCE at planning/brief start, validated, passed unchanged to
+    // briefing + writer prompts and persisted in the job audit payload. Fails
+    // closed and safe: an invalid/unresolvable spec keeps the pre-spec
+    // behavior (null spec) instead of weakening the run.
+    let contentSpec: ContentSpec | null = null
+    try {
+      const specResolution = resolveContentSpecForJob({
+        jobId: earlyJobId || input.sourceJobId || `plan-${Date.now()}`,
+        contentType,
+        region,
+        indexable: plan.indexable,
+        canonicalUrl: plan.canonicalUrl,
+        primaryKeyword,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        verifiedSourceUrls,
+        outline: input.h2Outline as string[] | undefined,
+        audience: input.audience,
+        topic,
+        minWords,
+        targetWords,
+        maxWords,
+        plannerRunId: input.sourceJobId || undefined,
+      })
+      contentSpec = specResolution.spec
+      if (!contentSpec) {
+        console.warn(
+          '[seoFactory/pipelineStream] ContentSpec not persisted (pre-spec behavior kept):',
+          specResolution.reason,
+          specResolution.issues?.slice(0, 5),
+        )
+      }
+    } catch (specErr) {
+      console.warn('[seoFactory/pipelineStream] ContentSpec resolution skipped', specErr)
+      contentSpec = null
+    }
+
     const system = buildFactorySystemPrompt({
       plan,
       contentType,
@@ -308,6 +347,7 @@ export async function* runSeoFactoryPipelineStream(
       interlinkAllowlist: radarInterlinks as Array<{ label?: string; url?: string }>,
       targetSlug: input.targetSlug as string | undefined,
       kwH2Map: input.kwH2Map as Record<string, string> | undefined,
+      spec: contentSpec ?? undefined,
     })
 
     let content = input.resumeContent?.trim() || ''
@@ -1314,6 +1354,9 @@ export async function* runSeoFactoryPipelineStream(
           attempts,
           model,
           minAudit,
+          // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
+          // reviewer, re-audit, and ship all read this same JSON snapshot.
+          ...(contentSpec ? { contentSpec } : {}),
           rescue: expandPasses > 0
             ? {
                 expandPasses,

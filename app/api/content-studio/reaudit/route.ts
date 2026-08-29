@@ -9,6 +9,9 @@ import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType, targetWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument, editorResponseContract, sanitizeFrontmatter } from '@/lib/seoFactory/formatContract'
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
+import { runAuditEditorLoop, CONTENT_LOOP_BUDGET, type LoopFinding } from '@/lib/seoFactory/auditEditorLoop'
+import { anchorHash, parseEditorPatch } from '@/lib/seoFactory/editorPatch'
+import type { ContentSpec } from '@/lib/seoFactory/contentSpec'
 
 export type { ReauditResponse }
 
@@ -79,6 +82,51 @@ function normalizeCompetingUrls(raw: unknown): Array<{ url: string; title: strin
     }
   }
   return out.length ? out : undefined
+}
+
+/**
+ * Canonical ContentSpec resolution for re-audit (brief §3.2, Milestone C).
+ * The persisted `audit_json.contentSpec` snapshot is the source of truth:
+ * when the job carries one it always wins, and a caller-submitted snapshot
+ * that disagrees with it is REJECTED rather than trusted — the client can
+ * never weaken policy by posting its own spec. When no persisted snapshot
+ * exists (legacy jobs), a valid request snapshot is accepted so the
+ * Milestone B body-contentSpec path keeps working; anything invalid/absent
+ * keeps legacy spec-less behavior.
+ */
+async function resolveCanonicalContentSpec(
+  jobId?: string,
+  requestSpec?: unknown,
+): Promise<{ spec: ContentSpec | null; persisted: boolean; mismatch: boolean }> {
+  const { reviveContentSpec, serializeContentSpec } = await import('@/lib/seoFactory/contentSpec')
+  let persistedSpec: ContentSpec | null = null
+  if (jobId) {
+    try {
+      const { createSupabaseAdminClient } = await import('@/lib/supabase')
+      const db = createSupabaseAdminClient()
+      const { data } = await db
+        .from('content_jobs')
+        .select('audit_json')
+        .eq('id', jobId)
+        .maybeSingle()
+      const snapshot = (data as { audit_json?: { contentSpec?: unknown } } | null)?.audit_json?.contentSpec
+      persistedSpec = reviveContentSpec(snapshot ?? null)
+    } catch {
+      persistedSpec = null
+    }
+  }
+  const requestRevived = reviveContentSpec(requestSpec)
+  const mismatch = Boolean(
+    persistedSpec &&
+      requestRevived &&
+      serializeContentSpec(persistedSpec) !== serializeContentSpec(requestRevived),
+  )
+  return { spec: persistedSpec ?? requestRevived, persisted: Boolean(persistedSpec), mismatch }
+}
+
+const CONTENT_SPEC_MISMATCH_RESPONSE = {
+  error: 'contentSpec snapshot mismatch — the submitted snapshot does not match the persisted audit_json.contentSpec. Reload the job and retry; caller-submitted policy is never trusted over the persisted spec.',
+  contentSpecMismatch: true,
 }
 
 /**
@@ -457,10 +505,20 @@ export async function POST(request: NextRequest) {
       region?: string
       targetUrl?: string
       competingUrls?: CompetingUrlInput[]
+      /** Caller-supplied ContentSpec snapshot — validated against the persisted
+       *  audit_json.contentSpec, never trusted over it (Milestone C). */
+      contentSpec?: unknown
     }
     const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, jobId, region } = body
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
+    }
+    // The persisted audit_json.contentSpec snapshot is canonical. A request
+    // snapshot that disagrees with it is rejected before any evaluation —
+    // fail closed instead of auditing against caller-submitted policy.
+    const canonicalSpec = await resolveCanonicalContentSpec(jobId, body.contentSpec)
+    if (canonicalSpec.mismatch) {
+      return NextResponse.json(CONTENT_SPEC_MISMATCH_RESPONSE, { status: 409 })
     }
     // Resolve the canonical URL from the job when the body omits it — the
     // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
@@ -551,7 +609,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as {
-      action: 'fix_all' | 'fix_one' | 'fix_warnings' | 'fix_depth' | 'fix_blockers'
+      action: 'fix_all' | 'fix_one' | 'fix_warnings' | 'fix_depth' | 'fix_blockers' | 'fix_until_gates'
       content: string
       annotations?: InlineAnnotation[]
       annotation?: InlineAnnotation
@@ -578,6 +636,10 @@ export async function PATCH(request: NextRequest) {
        *  gpt-5.6-terra for faster, lower-cost non-critical fixes. */
       reviewModel?: string
       jobId?: string
+      /** Caller-supplied ContentSpec snapshot (Milestone B path). When the job
+       *  carries a persisted audit_json.contentSpec snapshot that snapshot is
+       *  canonical and a mismatching request snapshot is rejected (Milestone C). */
+      contentSpec?: unknown
     }
     const { action, content, annotations, annotation, warnings, blockers, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel, jobId } = body
     if (!content || !action) {
@@ -594,6 +656,27 @@ export async function PATCH(request: NextRequest) {
     const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
     const competingPages = normalizeCompetingUrls(competingUrls)
 
+    // ── ContentSpec canonical snapshot + reviewer rules (brief §3.2/§5) ─────
+    // The persisted audit_json.contentSpec snapshot is canonical when present;
+    // a request snapshot that disagrees with it is rejected, never trusted.
+    // When a valid canonical spec exists, reviewer prompts get the registry-
+    // rendered rules for the outstanding findings. Preservation fingerprinting
+    // always runs in shadow mode here: it records would-reject reasons in the
+    // response without changing the accepted draft.
+    const canonicalSpec = await resolveCanonicalContentSpec(jobId, body.contentSpec)
+    if (canonicalSpec.mismatch) {
+      return NextResponse.json(CONTENT_SPEC_MISMATCH_RESPONSE, { status: 409 })
+    }
+    const contentSpec = canonicalSpec.spec
+    const { renderReviewerRules, PLAYBOOK_VERSION } = await import('@/lib/seoFactory/contentQualityPlaybook')
+    const specReviewerRules = contentSpec
+      ? renderReviewerRules([...(blockers || []), ...(warnings || [])], contentSpec)
+      : null
+    // Reviewer-model wrapper — identical to callAiFix, with the registry rules
+    // prepended when a spec is present. Legacy behavior when absent.
+    const callAiFixWithSpec = (sys: string, prompt: string, maxTokens?: number, model?: string) =>
+      callAiFix(specReviewerRules ? `${sys}\n\n${specReviewerRules}` : sys, prompt, maxTokens, model)
+
     let fixedContent: string
     // Master Engine fix plan — the engine's highest-priority gaps, rendered
     // into a prompt block so fix_all / fix_warnings address the highest-
@@ -608,6 +691,150 @@ export async function PATCH(request: NextRequest) {
     // depth expansion (the sweep cannot pad) — lets the appliedRepairs block
     // report the growth like fix_depth does.
     let depthExpandedForWarnings = false
+
+    if (action === 'fix_until_gates') {
+      // ── Bounded fix-until-gates loop (implementation brief §5, Milestone C) ─
+      // Default OFF — enable with CONTENT_LOOP_V2=1. Deterministic repairs run
+      // first; only outstanding registered targeted_ai findings go to the
+      // reviewer as structured EditorPatches; human_only findings hold for
+      // review and are never sent to a model; preservation failures reject the
+      // whole patch (the previous document stays authoritative); and the full
+      // loop transcript persists under audit_json.contentLoop.
+      if (process.env.CONTENT_LOOP_V2 !== '1') {
+        return NextResponse.json(
+          { error: 'fix_until_gates is disabled (set CONTENT_LOOP_V2=1)' },
+          { status: 400 },
+        )
+      }
+      // Fail closed: the loop is spec-gated. No canonical ContentSpec snapshot
+      // → no unbounded fixing; hold for review instead.
+      if (!contentSpec) {
+        return NextResponse.json(
+          {
+            error: 'fix_until_gates requires a valid canonical ContentSpec snapshot (persisted audit_json.contentSpec). Run generation with a spec-enabled pipeline first.',
+            heldForReview: true,
+          },
+          { status: 409 },
+        )
+      }
+      const loopCtx = {
+        primaryKeyword: primaryKeyword || 'guide',
+        region,
+        indexable,
+        contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        competingUrls: competingPages,
+        targetUrl,
+      }
+      const evaluate = (c: string): LoopFinding[] => {
+        const gate = evaluateReauditContract({ content: c, ...loopCtx })
+        return [
+          ...(gate.blockersData || []).map((b) => ({ code: b.code, severity: 'blocker' as const, message: b.message })),
+          ...(gate.warningsData || []).map((w) => ({ code: w.code, severity: 'warning' as const, message: w.message })),
+        ]
+      }
+      const deterministicRepair = (c: string) => {
+        const r = applyDeterministicRepairs({ content: c, ...loopCtx })
+        return { content: r.content, repairs: r.applied }
+      }
+      const requestEditorPatch = async (req: {
+        content: string
+        findings: LoopFinding[]
+      }) => {
+        // Registry-derived reviewer rules for THIS round's outstanding
+        // findings, rendered from the canonical snapshot.
+        const roundRules = renderReviewerRules(req.findings, contentSpec)
+        const findingList = req.findings
+          .map((f, i) => `${i + 1}. [${f.code}] ${f.message || 'quality finding'}`)
+          .join('\n')
+        const sys = `You are a surgical SEO content editor. Respond with ONLY a JSON object matching the EditorPatch v1 contract:
+{"version":1,"operations":[{"kind":"replace","findingCode":"<registered code>","anchor":"<an exact full line from the document>","expectedHash":"<ignored; recomputed server-side>","replacement":"<replacement text>"}]}
+Also supported: "insert_after" (uses "insertion") and "remove".
+Rules:
+- Every operation is authorized by exactly ONE listed finding code.
+- The anchor must be an EXACT, UNIQUE line (trimmed) from the document.
+- Replacements must not add headings, frontmatter, code fences, or <script> blocks.
+- Smallest possible targeted edit per finding. Never regenerate the document.
+
+${roundRules}`
+        const prompt = `## Document
+
+${req.content}
+
+## Outstanding findings (fix ONLY these)
+${findingList}
+
+Return ONLY the JSON EditorPatch.`
+        try {
+          const raw = await callAiFix(sys, prompt, 8192, reviewModel)
+          const parsed = parseEditorPatch(raw)
+          if (!parsed.ok) return null
+          // The model cannot compute sha-256 reliably — fill expectedHash
+          // deterministically from the document. An unresolvable anchor keeps
+          // its original hash and is rejected by applyEditorPatch (fail closed).
+          return {
+            version: 1 as const,
+            operations: parsed.patch.operations.map((op) => ({
+              ...op,
+              expectedHash: anchorHash(req.content, op.anchor) || op.expectedHash,
+            })),
+          }
+        } catch {
+          return null // provider failure — the loop holds, content untouched
+        }
+      }
+      const loopResult = await runAuditEditorLoop(
+        { content, spec: contentSpec, playbookVersion: PLAYBOOK_VERSION },
+        { evaluate, deterministicRepair, requestEditorPatch },
+      )
+      const finalContract = evaluateReauditContract({ content: loopResult.content, ...loopCtx })
+      const contentLoop = {
+        action: 'fix_until_gates',
+        status: loopResult.status,
+        stopReason: loopResult.stopReason,
+        leftoverCodes: loopResult.leftoverCodes,
+        specVersion: loopResult.specVersion,
+        playbookVersion: loopResult.playbookVersion,
+        budget: CONTENT_LOOP_BUDGET,
+        rounds: loopResult.rounds,
+        generatedAt: new Date().toISOString(),
+      }
+      // Persist the loop transcript under audit_json.contentLoop so the desk
+      // and future re-audits see exactly what the loop did (best-effort).
+      if (jobId) {
+        try {
+          const { createSupabaseAdminClient } = await import('@/lib/supabase')
+          const db = createSupabaseAdminClient()
+          const { data: row } = await db
+            .from('content_jobs')
+            .select('audit_json')
+            .eq('id', jobId)
+            .maybeSingle()
+          const auditJson = (row as { audit_json?: Record<string, unknown> } | null)?.audit_json
+          const baseAudit = auditJson && typeof auditJson === 'object' ? auditJson : {}
+          await db
+            .from('content_jobs')
+            .update({ audit_json: { ...baseAudit, contentLoop } })
+            .eq('id', jobId)
+        } catch {
+          /* transcript persistence is best-effort */
+        }
+      }
+      const deterministicRepairsApplied = [
+        ...new Set(loopResult.rounds.flatMap((r) => r.deterministicRepairs || [])),
+      ]
+      return NextResponse.json({
+        ...finalContract,
+        fixedContent: loopResult.content,
+        ...(deterministicRepairsApplied.length ? { appliedRepairs: deterministicRepairsApplied } : {}),
+        // A held loop NEVER presents as ship-ready — human_only findings,
+        // exhausted budgets, stalls, and preservation rejections go to a human.
+        shipReady: loopResult.status === 'cleared' ? finalContract.shipReady : false,
+        contentLoop,
+        heldForReview: loopResult.status !== 'cleared',
+      })
+    }
 
     if (action === 'fix_all' && annotations && annotations.length > 0) {
       // Mechanical first — missing_disclaimer / schema_faq / TOC never need a
@@ -729,7 +956,7 @@ ${warningList}
       const fullPrompt = `${prompt}${verifiedInternalBlock}`
 
       try {
-        const aiOut = await callAiFix(sys, fullPrompt, 16384, reviewModel)
+        const aiOut = await callAiFixWithSpec(sys, fullPrompt, 16384, reviewModel)
         // POST-AI NORMALIZATION + STAGE-4 CLOSE — the model regularly
         // re-introduces the exact gated issues it was told to fix (broken
         // JSON-LD, repeated sentence openings, em-dashes, bare URLs, 161-char
@@ -856,7 +1083,10 @@ ${content}
 Fix ONLY this specific issue. Keep everything else exactly the same. Return the COMPLETE article.`
 
       try {
-        fixedContent = closeShipGate(await callAiFix(sys, prompt, 8192, reviewModel), {
+        // Spec-aware wrapper — registry-derived reviewer rules from the
+        // canonical ContentSpec snapshot when present (Milestone C: ALL fix
+        // paths use the same rules, not just the sweep actions).
+        fixedContent = closeShipGate(await callAiFixWithSpec(sys, prompt, 8192, reviewModel), {
           primaryKeyword: primaryKeyword || 'guide',
           region, indexable, contentType,
           requiredShortKeywords, requiredLongTailKeywords,
@@ -976,7 +1206,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
 
 ${enginePlan.promptBlock}` + editorResponseContract()
         try {
-          const aiOut = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
+          const aiOut = await callAiFixWithSpec(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
           // Post-AI normalization + stage-4 close — same guarantee as fix_all:
           // the model can never hand back a draft that re-introduces
           // mechanically-fixable gated issues (broken JSON-LD, rhythm, dashes,
@@ -1060,7 +1290,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.' + editorResponseContract()
         const blockerList = leftover.length ? leftover : list
         try {
-          fixedContent = closeShipGate(await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, blockerList), 16384, reviewModel), {
+          fixedContent = closeShipGate(await callAiFixWithSpec(sys, buildBlockersFixPrompt(sanitized.content, blockerList), 16384, reviewModel), {
             primaryKeyword: primaryKeyword || 'guide',
             region, indexable, contentType,
             requiredShortKeywords, requiredLongTailKeywords,
@@ -1095,7 +1325,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         const sys = 'You are a master SEO content editor expanding an immigration legal guide to clear the Google depth floor. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
         let appended = ''
         try {
-          appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
+          appended = await callAiFixWithSpec(sys, depthPlan.prompt || '', 16384, reviewModel)
         } catch (fixErr) {
           const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
           return NextResponse.json({
@@ -1376,12 +1606,33 @@ ${enginePlan.promptBlock}` + editorResponseContract()
       targetUrl,
       competingUrls: competingPages,
     })
-    const finalResponse: ReauditResponse = {
+    // Shadow-mode preservation check (brief §5.4, Milestone B): record what a
+    // preservation gate WOULD reject about this AI fix. Never alters the
+    // accepted draft — evidence only, bounded to 20 violations.
+    let shadow: Record<string, unknown> | undefined
+    try {
+      const { shadowPreservationCheck } = await import('@/lib/seoFactory/documentFingerprint')
+      const check = shadowPreservationCheck(content, fixedContent)
+      if (check.wouldReject) {
+        console.warn('[reaudit] shadow preservation would-reject', { action, violations: check.violations.length })
+      }
+      shadow = {
+        playbookVersion: PLAYBOOK_VERSION,
+        ...(contentSpec ? { specVersion: contentSpec.version } : {}),
+        beforeHash: check.beforeHash,
+        afterHash: check.afterHash,
+        ok: check.ok,
+        wouldReject: check.wouldReject,
+        violations: check.violations,
+      }
+    } catch { /* shadow evidence is best-effort */ }
+    const finalResponse: ReauditResponse & { shadow?: Record<string, unknown> } = {
       ...finalContract,
       fixedContent,
       ...(response.appliedRepairs?.length ? { appliedRepairs: response.appliedRepairs } : {}),
       ...(response.enginePriorities?.length ? { enginePriorities: response.enginePriorities } : {}),
       ...(response.linkAudit?.length ? { linkAudit: response.linkAudit } : {}),
+      ...(shadow ? { shadow } : {}),
     }
     if (jobId && finalResponse.fixedContent) {
       try {

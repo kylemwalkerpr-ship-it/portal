@@ -14,6 +14,8 @@ import {
 } from './contentDepth'
 import { qualityPromptBlock, formattingRequirementsBlock } from './contentQualityGate'
 import { formatContractBriefBlock } from './formatContract'
+import { renderBriefRules, renderWriterRules } from './contentQualityPlaybook'
+import type { ContentSpec } from './contentSpec'
 
 /**
  * Destination format contract — deterministic instructions per host+repo+contentType.
@@ -134,10 +136,33 @@ export function buildFactorySystemPrompt(opts: {
   targetSlug?: string
   /** Keyword → H2 section placement map from the Brief Assembly Panel */
   kwH2Map?: Record<string, string>
+  /**
+   * Canonical ContentSpec for this job. When present, brief/writer rules and
+   * the keyword/link/source allowlists are rendered from the registry
+   * projections and the spec snapshot — never from duplicated arrays.
+   */
+  spec?: ContentSpec
 }): string {
-  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist } = opts
+  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist, spec } = opts
   const target = targetWordsForType(contentType)
   const maxWords = opts.maxWords ?? depthMaxWords(contentType)
+  // Registry/spec-derived allowlists. A spec only ever NARROWS these lists to
+  // what was verified for this job; when absent (or a field is empty) the
+  // legacy brief-supplied lists are used unchanged.
+  const specShortKeywords = spec
+    ? spec.requiredKeywords.filter((k) => k.kind === 'short' && !k.optional).map((k) => k.phrase)
+    : undefined
+  const specLongTailKeywords = spec
+    ? spec.requiredKeywords.filter((k) => k.kind === 'long_tail' && !k.optional).map((k) => k.phrase)
+    : undefined
+  const requiredShortKeywords = specShortKeywords?.length ? specShortKeywords : opts.requiredShortKeywords
+  const requiredLongTailKeywords = specLongTailKeywords?.length ? specLongTailKeywords : opts.requiredLongTailKeywords
+  const sourceList = spec && spec.approvedSources.length ? spec.approvedSources.map((s) => s.url) : sources
+  const specInterlinks = spec && spec.verifiedEstateLinks.length
+    ? spec.verifiedEstateLinks.map((l) => ({ label: l.anchor, url: l.url }))
+    : undefined
+  const interlinkList = specInterlinks ?? interlinkAllowlist
+  const briefOutline = spec && spec.outline.length ? spec.outline.map((o) => o.heading) : h2Outline
   return [
     'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
@@ -168,6 +193,14 @@ export function buildFactorySystemPrompt(opts: {
     '',
     qualityPromptBlock(),
     '',
+    ...(spec
+      ? [
+          renderBriefRules(spec),
+          '',
+          renderWriterRules(spec),
+          '',
+        ]
+      : []),
     formattingRequirementsBlock(),
     '',
     formatContractBriefBlock(),
@@ -185,9 +218,9 @@ export function buildFactorySystemPrompt(opts: {
     strategyBlock || '',
     '',
     // ══════ BRIEF ASSEMBLY TEMPLATE — admin-defined structure ══════
-    ...(h2Outline && h2Outline.length ? [
+    ...(briefOutline && briefOutline.length ? [
       'BRIEF TEMPLATE — H2 OUTLINE (mandatory structure):',
-      ...h2Outline.map((h, i) => {
+      ...briefOutline.map((h, i) => {
         const placedKw = kwH2Map ? Object.entries(kwH2Map).filter(([, sec]) => sec === h).map(([k]) => k) : []
         return `${i + 1}. ## ${h}${placedKw.length ? ` [must include keyword(s): ${placedKw.join(', ')}]` : ''}`
       }),
@@ -199,18 +232,18 @@ export function buildFactorySystemPrompt(opts: {
       'Cover these topics as H2 sections (##): overview, eligibility/requirements, application process, required documents, timeline/costs, FAQ (4-6 Q&A), worked example, risks/warnings.',
       '',
     ]),
-    ...(sources && sources.length ? [
+    ...(sourceList && sourceList.length ? [
       'SOURCES TO CITE / SOURCE ALLOWLIST (cite these VERBATIM; on-topic live institutional pages may be added):',
-      ...sources.map((s, i) => `${i + 1}. ${s}`),
+      ...sourceList.map((s, i) => `${i + 1}. ${s}`),
       'Cite a source only where it supports the surrounding claim. You may add a real, live institutional page (.gov / .edu / .org / official board) when it directly supports a specific claim — the reviewer live-checks every URL. Do not fabricate URLs. Do not invent a deeper path on the same host. No blogs, Wikipedia, social media, or content mills.',
       '',
     ] : [
       'SOURCE ALLOWLIST is EMPTY — prefer writing agency names as plain text (USCIS, IRCC, UKVI, Home Affairs). You may cite a real, live institutional page (.gov / .edu / .org / official board) only when you are certain of its exact URL and it directly supports the claim; the reviewer live-checks every URL. Inventing or guessing a path is a hard error. No blogs, Wikipedia, or social media.',
       '',
     ]),
-    ...(interlinkAllowlist && interlinkAllowlist.length ? [
+    ...(interlinkList && interlinkList.length ? [
       'INTERNAL LINK ALLOWLIST (use ONLY these exact URLs for internal links — never invent, modify, or shorten them):',
-      ...interlinkAllowlist.map((l, i) => `${i + 1}. ${l.label || l.url} -> ${l.url}`),
+      ...interlinkList.map((l, i) => `${i + 1}. ${l.label || l.url} -> ${l.url}`),
       'NEVER create an internal link to any URL outside this list.',
       '',
     ] : [
@@ -262,16 +295,16 @@ export function buildFactorySystemPrompt(opts: {
     '    - PLACEMENT (plan before you write): assign each keyword a single natural slot — title/H1, the In 60 seconds block, one H2 heading, a checklist item, one FAQ question, or one step description. Do NOT repeat a keyword across several sections; one intentional placement per keyword is enough.',
     '    - Long-tail phrases read as spam when repeated: use the FULL phrase once (a FAQ question is the cleanest slot) and do not echo it again verbatim.',
     '    - After writing, MENTALLY SCAN the body: for each keyword below, confirm it appears at least once and not more than its cap. If you catch an over-repeat, replace the later occurrence with a synonym or rephrase.',
-    ...(opts.requiredShortKeywords
+    ...(requiredShortKeywords
       ? [
           '    SHORT KEYWORDS TO USE (each exactly 1-4 times):',
-          ...opts.requiredShortKeywords.map((k) => `    - "${k}"`),
+          ...requiredShortKeywords.map((k) => `    - "${k}"`),
         ]
       : []),
-    ...(opts.requiredLongTailKeywords
+    ...(requiredLongTailKeywords
       ? [
           '    LONG-TAIL KEYWORDS TO USE (each exactly 1-2 times, in DIFFERENT contexts):',
-          ...opts.requiredLongTailKeywords.map((k) => `    - "${k}"`),
+          ...requiredLongTailKeywords.map((k) => `    - "${k}"`),
         ]
       : []),
   ]
