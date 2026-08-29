@@ -2,19 +2,26 @@
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
  * DEFAULT CHAIN (hard order):
- *   1. NVIDIA MiniMax M3 (draft primary)
- *   2. xAI Grok (SuperGrok OAuth or XAI_API_KEY) — default fallback
- *   3. NVIDIA GLM / DeepSeek → Baseten / Parasail → Cloudflare → rest
- *   4. getChatProvider() bridge
+ *   1. Run BiOS GLM 5.3 Flash (draft / brief / review / engine primary)
+ *   2. NVIDIA MiniMax M3, xAI Grok, NVIDIA GLM / DeepSeek → Baseten / Parasail → rest
+ *   3. getChatProvider() bridge
  *
  * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
  * CF auth: CLOUDFLARE_AI_TOKEN | CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
+ * Run BiOS: RUNBIOS_API_KEY → https://api.runbios.ai/v1  model glm-5.3-flash
  *
  * Override with CONTENT_AI_PROVIDER / AI_PROVIDER only if you must pin a backend.
- * Default / auto / primary → NVIDIA MiniMax M3 for drafting, with configured fallbacks.
+ * Default / auto / primary → Run BiOS GLM 5.3 Flash.
  */
 
 import { qualityPromptBlock } from './seoFactory/contentQualityGate'
+import {
+  canonicalizeRunbiosPin,
+  isRunbiosPin,
+  RUNBIOS_BASE_URL as RUNBIOS_CATALOG_BASE,
+  runbiosSlot,
+  RUNBIOS_SLOTS,
+} from './runbiosCatalog'
 
 const CF_AI_MODEL =
   process.env.CLOUDFLARE_AI_MODEL?.trim() ||
@@ -100,6 +107,9 @@ const AIHUBMIX_MAX_TOKENS = 16384
 const PARASAIL_BASE_URL = 'https://api.parasail.io/v1'
 const PARASAIL_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 const PARASAIL_DEEPSEEK_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+const RUNBIOS_BASE_URL = RUNBIOS_CATALOG_BASE
+const RUNBIOS_GLM_MODEL = 'glm-5.3-flash'
+const RUNBIOS_MAX_TOKENS = 16384
 
 /**
  * Pin DeepSeek V4 to the dated checkpoints. Hosts that accept a bare
@@ -534,7 +544,7 @@ function buildContinuationPrompt(partial: string): string {
 
 /** Reasoning-capable models accept max_completion_tokens + reasoning_content. */
 export function isReasoningModelId(model: string): boolean {
-  return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|zai-org\/glm|parasail-(?:deepseek|glm)|nemotron|grok)/i.test(model)
+  return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|zai-org\/glm|glm-5\.3|parasail-(?:deepseek|glm)|nemotron|grok)/i.test(model)
 }
 
 /** Host says the pinned deployment is gone — retrying the same model cannot recover. */
@@ -575,6 +585,22 @@ export function extractResponsesText(json: unknown): string {
     return extractMessageText(message?.content)
   }
   return ''
+}
+
+/** Node fetch (undici) kills idle responses at 300s unless headersTimeout is raised. */
+function undiciDispatcher(timeoutMs: number): unknown {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const undici = require('undici') as { Agent?: new (opts: Record<string, number>) => unknown }
+    if (typeof undici.Agent !== 'function') return undefined
+    return new undici.Agent({
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+      connectTimeout: 30_000,
+    })
+  } catch {
+    return undefined
+  }
 }
 
 /** One-shot OpenAI-compatible chat completion fetch (complete + continuation). */
@@ -623,6 +649,15 @@ async function openAiCompatFetch(
     ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
     ...(p.extraBody || {}),
   }
+  // GLM 5.3 Flash cannot disable thinking. Default host effort is `max`,
+  // which burns 30–90s before the first prose token. Pin `low` unless the
+  // caller asked for high (Master Engine harmony). `medium` maps to `high`
+  // because the model only accepts low | high | max.
+  if (isRunbiosPin(p.label) && (runbiosSlot(p.label)?.reasoningLow || p.label === 'runbios-glm-53-flash')) {
+    const want = opts.reasoningEffort
+    body.reasoning_effort =
+      want === 'high' || want === 'medium' ? 'high' : 'low'
+  }
   // Empty-content rescue: re-ask the SAME prompt with thinking OFF so a
   // reasoning model that spent its whole budget on chain-of-thought is forced
   // to emit final prose instead of bouncing the entire provider cascade.
@@ -646,6 +681,9 @@ async function openAiCompatFetch(
     if (typeof body.reasoning_effort === 'string') {
       body.reasoning_effort = 'low'
     }
+    if (isRunbiosPin(p.label)) {
+      body.reasoning_effort = 'low'
+    }
     // Only CUSTOM OpenAI-compatible endpoints accept a top-level
     // enable_thinking flag. OpenAI itself REJECTS it (400 "Unknown
     // parameter: enable_thinking") — a GPT reasoning model that burned its
@@ -660,14 +698,21 @@ async function openAiCompatFetch(
   // timeoutMs (the reviewer passes a larger one) overrides the global 120s
   // default so a slow-but-funded host gets real headroom; the abort is then
   // normalized to the friendly "timed out after Ns" message above.
+  const fetchDefault =
+    Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
+  const runbiosFloor =
+    Number.parseInt(process.env.CONTENT_AI_RUNBIOS_TIMEOUT_MS || '600000', 10) || 600_000
   const timeoutMs =
-    opts.timeoutMs != null
-      ? Math.max(2_000, opts.timeoutMs)
-      : Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '120000', 10) || 120_000
+    isRunbiosPin(p.label)
+      ? Math.max(opts.timeoutMs ?? 0, Math.max(180_000, runbiosFloor))
+      : opts.timeoutMs != null
+        ? Math.max(2_000, opts.timeoutMs)
+        : fetchDefault
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let raceTimer: ReturnType<typeof setTimeout> | undefined
   let res: Response
+  const dispatcher = undiciDispatcher(timeoutMs)
   try {
     res = await Promise.race([
       fetch(url, {
@@ -675,7 +720,10 @@ async function openAiCompatFetch(
         headers,
         body: JSON.stringify(body),
         signal: controller.signal,
-      }),
+        // Node/undici defaults headersTimeout to 300s. GLM Flash drafts
+        // routinely exceed that; without this the socket dies as "fetch failed".
+        ...(dispatcher ? { dispatcher } : {}),
+      } as RequestInit),
       new Promise<never>((_, reject) => {
         raceTimer = setTimeout(
           () => reject(new Error(`${p.label} timed out after ${Math.round(timeoutMs / 1000)}s`)),
@@ -1214,6 +1262,37 @@ export function getBasetenDeepseekProProvider(): OpenAiCompat | null {
 
 /** Baseten-hosted GLM 5.2 Fast — a fast, efficient partner for drafting.
  *  Reuses the same BASETEN_API_KEY; model overridable via BASETEN_GLM_MODEL. */
+export function resolveRunbiosApiKey(): string {
+  return env('RUNBIOS_API_KEY')
+}
+
+export function isRunbiosConfigured(): boolean {
+  return Boolean(resolveRunbiosApiKey())
+}
+
+export function getRunbiosProvider(pin?: string): OpenAiCompat | null {
+  const apiKey = resolveRunbiosApiKey()
+  if (!apiKey) return null
+  const id = canonicalizeRunbiosPin(pin || 'runbios-glm-53-flash')
+  const slot = runbiosSlot(id) || RUNBIOS_SLOTS[0]
+  const model =
+    slot.id === 'runbios-glm-53-flash'
+      ? (env('RUNBIOS_GLM_MODEL') || slot.apiModel)
+      : slot.apiModel
+  return {
+    label: slot.id,
+    baseURL: providerBaseUrl(env('RUNBIOS_BASE_URL'), RUNBIOS_BASE_URL, ['api.runbios.ai']),
+    apiKey,
+    model,
+    maxTokensCap: RUNBIOS_MAX_TOKENS,
+    extraBody: slot.reasoningLow ? { reasoning_effort: 'low' } : undefined,
+  }
+}
+
+export function getRunbiosGlm53FlashProvider(): OpenAiCompat | null {
+  return getRunbiosProvider('runbios-glm-53-flash')
+}
+
 export function getBasetenGlm53FlashProvider(): OpenAiCompat | null {
   const apiKey = resolveBasetenApiKey()
   if (!apiKey) return null
@@ -1795,37 +1874,93 @@ async function* openAiCompatibleStream(
   const onAbort = () => abort.abort()
   opts.signal?.addEventListener('abort', onAbort, { once: true })
 
+  // Run BiOS GLM 5.3 Flash streams a 5–10 minute reasoning draft: Node/undici
+  // kills the idle socket at 300s ("fetch failed") unless headersTimeout /
+  // bodyTimeout are raised, and the Studio draft UI rides this stream path —
+  // so the same dispatcher + long deadline as non-stream openAiCompatFetch
+  // applies here. Other providers keep their existing behavior.
+  const isRunbiosLabel =
+    isRunbiosPin(p.label)
+  const streamTimeoutMs = isRunbiosLabel
+    ? Math.max(
+        opts.timeoutMs ?? 0,
+        Math.max(
+          180_000,
+          Number.parseInt(process.env.CONTENT_AI_RUNBIOS_TIMEOUT_MS || '600000', 10) || 600_000,
+        ),
+      )
+    : 0
+  const streamDispatcher = isRunbiosLabel ? undiciDispatcher(streamTimeoutMs) : undefined
+
   /** Open one SSE request for a given user prompt and return the response. */
   const streamOnce = async (userContent: string, disableThinking = false): Promise<Response> => {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      signal: abort.signal,
-      body: JSON.stringify({
-        model,
-        stream: true,
-        ...(isReasoningModel || isNvidiaNemotron || isNvidiaMinimax ? { temperature: opts.temperature ?? (isNvidiaNemotron ? 1 : isNvidiaMinimax ? 1 : DEFAULT_TEMPERATURE) } : {}),
-        ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
-        messages: [
-          { role: 'system', content: opts.system },
-          { role: 'user', content: userContent },
-        ],
-        ...(p.topP != null && (!isReasoningModel || isNvidiaNemotron || isNvidiaMinimax) ? { top_p: p.topP } : {}),
-        // Separate reasoning budget keeps thinking ON without starving content.
-        ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
-        ...(p.extraBody || {}),
-        ...(disableThinking && p.extraBody?.chat_template_kwargs
-          ? { chat_template_kwargs: { ...(p.extraBody.chat_template_kwargs as Record<string, unknown>), enable_thinking: false } }
-          : {}),
-        ...(disableThinking ? { reasoning_budget: undefined } : {}),
-      }),
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(formatProviderFailure(`${p.label} stream`, res.status, body))
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const res = await Promise.race([
+        fetch(url, {
+          method: 'POST',
+          headers,
+          signal: abort.signal,
+          // Raise undici's 300s header/body idle limits so a long GLM draft
+          // survives (see non-stream openAiCompatFetch for the same fix).
+          ...(streamDispatcher ? { dispatcher: streamDispatcher } : {}),
+          body: JSON.stringify({
+            model,
+            stream: true,
+            ...(isReasoningModel || isNvidiaNemotron || isNvidiaMinimax ? { temperature: opts.temperature ?? (isNvidiaNemotron ? 1 : isNvidiaMinimax ? 1 : DEFAULT_TEMPERATURE) } : {}),
+            ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+            messages: [
+              { role: 'system', content: opts.system },
+              { role: 'user', content: userContent },
+            ],
+            ...(p.topP != null && (!isReasoningModel || isNvidiaNemotron || isNvidiaMinimax) ? { top_p: p.topP } : {}),
+            // Separate reasoning budget keeps thinking ON without starving content.
+            ...(p.reasoningBudget != null ? { reasoning_budget: p.reasoningBudget } : {}),
+            ...(p.extraBody || {}),
+            ...(p.label === 'runbios-glm-53-flash'
+              ? {
+                  reasoning_effort:
+                    disableThinking
+                      ? 'low'
+                      : opts.reasoningEffort === 'high' || opts.reasoningEffort === 'medium'
+                        ? 'high'
+                        : 'low',
+                }
+              : {}),
+            ...(disableThinking && p.extraBody?.chat_template_kwargs
+              ? { chat_template_kwargs: { ...(p.extraBody.chat_template_kwargs as Record<string, unknown>), enable_thinking: false } }
+              : {}),
+            ...(disableThinking ? { reasoning_budget: undefined } : {}),
+          }),
+        } as RequestInit),
+        ...(streamTimeoutMs
+          ? [
+              new Promise<never>((_, reject) => {
+                timeoutTimer = setTimeout(
+                  () => reject(new Error(`${p.label} stream timed out after ${Math.round(streamTimeoutMs / 1000)}s`)),
+                  streamTimeoutMs,
+                )
+              }),
+            ]
+          : []),
+      ]) as Response
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        throw new Error(formatProviderFailure(`${p.label} stream`, res.status, body))
+      }
+      if (!res.body) throw new Error(`${p.label} stream: empty body`)
+      return res
+    } catch (e) {
+      // A client disconnect aborts fetch too — keep that signal distinct
+      // from a provider timeout so the UI shows cancellation, not a timeout.
+      if (opts.signal?.aborted) throw e
+      if (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message))) {
+        throw new Error(`${p.label} stream timed out after ${Math.round(streamTimeoutMs / 1000)}s`)
+      }
+      throw e
+    } finally {
+      if (timeoutTimer) clearTimeout(timeoutTimer)
     }
-    if (!res.body) throw new Error(`${p.label} stream: empty body`)
-    return res
   }
 
   yield { type: 'provider', provider: p.label, model }
@@ -2163,6 +2298,12 @@ export function listConfiguredContentProviders(): Array<{
   role: 'primary' | 'fallback'
 }> {
   return [
+    ...RUNBIOS_SLOTS.map((slot) => ({
+      id: slot.id,
+      label: `${slot.label.replace(' · Run BiOS', '')} via Run BiOS`,
+      configured: isRunbiosConfigured(),
+      role: slot.role,
+    })),
     {
       id: 'nvidia-minimax',
       label: 'NVIDIA MiniMax M3 · minimaxai/minimax-m3',
@@ -2266,12 +2407,12 @@ export function listConfiguredContentProviders(): Array<{
 /**
  * Resolve preferred provider label.
  *
- * HARD DEFAULT: NVIDIA MiniMax M3 (`nvidia-minimax`) for drafting.
+ * HARD DEFAULT: Run BiOS GLM 5.3 Flash (`runbios-glm-53-flash`).
  * Cloudflare remains a fallback and never becomes the default lead unless
  * CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
  *
  * Empty / unknown / legacy "primary" values resolve through the configured
- * order, whose default lead is nvidia-minimax.
+ * order, whose default lead is runbios-glm-53-flash.
  */
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
@@ -2282,6 +2423,9 @@ function preferProvider(): string {
   // resolveAiProviderPin so both resolution paths agree).
   if (GPT_ALIAS_RE.test(explicit)) {
     return 'openai'
+  }
+  if (isRunbiosPin(explicit)) {
+    return canonicalizeRunbiosPin(explicit)
   }
   // Aliases → NVIDIA GLM 5.2 (preferred lead on this estate).
   // GLM 5.2 wins the NVIDIA pin even when `nvidia`/`nim` are passed, because the
@@ -2381,7 +2525,11 @@ function preferProvider(): string {
     'xai',
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
-    'baseten-glm-53-flash', // Baseten GLM 5.3 Flash — low-token fallback
+    'baseten-glm-53-flash', // Baseten GLM 5.3 Flash — fallback host
+    'runbios-glm-53-flash',
+    'runbios',
+    'runbios-glm',
+    ...RUNBIOS_SLOTS.map((s) => s.id),
     'nvidia-minimax', // NVIDIA MiniMax M3 drafting model
     'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
     'baseten', 'baseten-deepseek', 'baseten-deepseek-pro', 'baseten-glm-fast', 'baseten-glm-53-flash',
@@ -2422,13 +2570,23 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
-function promoteMinimaxAsLead(order: string[]): string[] {
-  const pin = 'nvidia-minimax'
+function promoteRunbiosGlmAsLead(order: string[]): string[] {
+  const pin = 'runbios-glm-53-flash'
   const at = order.indexOf(pin)
   if (at < 0) order.unshift(pin)
   else if (at > 0) {
     order.splice(at, 1)
     order.unshift(pin)
+  }
+  return order
+}
+
+function promoteMinimaxAsLead(order: string[]): string[] {
+  const pin = 'nvidia-minimax'
+  const at = order.indexOf(pin)
+  if (at < 0) {
+    const lead = order.indexOf('runbios-glm-53-flash')
+    order.splice(lead >= 0 ? lead + 1 : 0, 0, pin)
   }
   return order
 }
@@ -2448,13 +2606,13 @@ function promoteGrokAsSecond(order: string[]): string[] {
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
   if (!raw) {
-    return promoteGrokAsSecond(promoteMinimaxAsLead([
-      'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+    return promoteGrokAsSecond(promoteMinimaxAsLead(promoteRunbiosGlmAsLead([
+      'runbios-glm-53-flash', 'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
       'parasail-deepseek', 'deepseek-flash', 'parasail-glm',    'baseten-glm-fast', 'baseten-glm-53-flash',
     'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
       'aihubmix-glm-fast', 'parasail-deepseek-pro', 'baseten-deepseek-pro',
       'deepseek-pro', 'zai-glm',
-    ]))
+    ])))
   }
   let values: unknown = raw
   try { values = JSON.parse(raw) } catch { values = raw.split(',') }
@@ -2464,7 +2622,8 @@ function configuredProviderOrder(): string[] {
     nemotron: 'nvidia-nemotron', 'nemotron-3-ultra': 'nvidia-nemotron',
     baseten: 'baseten-deepseek', 'baseten-deepseek': 'baseten-deepseek',
     'glm-fast': 'baseten-glm-fast', 'baseten-glm': 'baseten-glm-fast',
-    'glm-5.3-flash': 'baseten-glm-53-flash', 'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
+    runbios: 'runbios-glm-53-flash', 'runbios-glm': 'runbios-glm-53-flash',
+    'glm-5.3-flash': 'runbios-glm-53-flash', 'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
     aihubmix: 'aihubmix-glm-fast', 'aihubmix-glm': 'aihubmix-glm-fast',
     'glm-fast-aihubmix': 'aihubmix-glm-fast',
     parasail: 'parasail-deepseek', 'parasail-deepseek-v4-flash': 'parasail-deepseek',
@@ -2479,6 +2638,8 @@ function configuredProviderOrder(): string[] {
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
   const known = new Set([
+    'runbios-glm-53-flash',
+    ...RUNBIOS_SLOTS.map((s) => s.id),
     'nvidia-minimax', 'nvidia-nemotron',    'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
     'baseten-glm-fast', 'baseten-glm-53-flash', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
     'parasail-glm', 'nvidia-deepseek', 'deepseek-flash', 'deepseek-pro', 'zai-glm',
@@ -2487,7 +2648,7 @@ function configuredProviderOrder(): string[] {
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
-  return promoteGrokAsSecond(promoteMinimaxAsLead(merged))
+  return promoteGrokAsSecond(promoteMinimaxAsLead(promoteRunbiosGlmAsLead(merged)))
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
@@ -2535,6 +2696,10 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (isBasetenConfigured()) {
       items.push({ label: 'baseten-deepseek', run: () => basetenComplete(opts) })
     }
+  }
+  const pushRunbiosGlm = () => {
+    const p = getRunbiosProvider(prefer.startsWith('runbios') ? prefer : 'runbios-glm-53-flash')
+    if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
   }
   const pushBasetenGlm53Flash = () => {
     if (isBasetenConfigured()) items.push({ label: 'baseten-glm-53-flash', run: () => openAiCompatibleComplete(getBasetenGlm53FlashProvider()!, opts) })
@@ -2640,6 +2805,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (isRunbiosPin(prefer)) {
+    pushRunbiosGlm()
+    pushBasetenGlm53Flash()
+    pushBasetenGlmFast()
+    pushGlm()
   } else if (prefer === 'baseten-glm-53-flash') {
     pushBasetenGlm53Flash()
     pushBasetenGlmFast()
@@ -2725,7 +2895,8 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: NVIDIA MiniMax M3 lead, Grok 4.6 second.
+    // DEFAULT: Run BiOS GLM 5.3 Flash lead.
+    pushRunbiosGlm()
     pushMinimax()
     pushNemotron()
     pushGrok()
@@ -2739,6 +2910,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   // Fill remaining cascade (deduped below).
   // MiniMax, Nemotron, GLM, and Baseten are included so an explicit pin still gets the preferred
   // long-form providers before we drop out to the broader fallback set.
+  pushRunbiosGlm()
   pushMinimax()
   pushNemotron()
   pushBasetenGlm53Flash()
@@ -2814,11 +2986,21 @@ const GROK_MIN_TIMEOUT_MS = Math.max(
   180_000,
   Number.parseInt(process.env.CONTENT_AI_GROK_TIMEOUT_MS || '180000', 10) || 180_000,
 )
+/** GLM 5.3 Flash always reasons. Low effort still often needs 3–8 minutes
+ *  to finish a blog-length draft; killing at 180s left empty articles. */
+const RUNBIOS_MIN_TIMEOUT_MS = Math.max(
+  180_000,
+  Number.parseInt(process.env.CONTENT_AI_RUNBIOS_TIMEOUT_MS || '600000', 10) || 600_000,
+)
 
 export function deadlineForProvider(label: string, requested?: number, strict = false): number {
   const base = requested ?? COMPLETE_TIMEOUT_MS
   if (strict && requested != null) return Math.max(2_000, requested)
-  return label === 'grok' ? Math.max(base, GROK_MIN_TIMEOUT_MS) : base
+  if (label === 'grok') return Math.max(base, GROK_MIN_TIMEOUT_MS)
+  if (isRunbiosPin(label)) {
+    return Math.max(base, RUNBIOS_MIN_TIMEOUT_MS)
+  }
+  return base
 }
 
 function withUniversalQualityContract(opts: ContentAiOptions): ContentAiOptions {
@@ -2881,6 +3063,10 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
   if (GPT_ALIAS_RE.test(pin)) {
     return { explicit: 'openai', prefer: 'openai', model: gptAliasModel(pin) }
   }
+  if (isRunbiosPin(pin)) {
+    const id = canonicalizeRunbiosPin(pin)
+    return { explicit: id, prefer: id }
+  }
   const isAutoMode = !pin || pin === 'auto' || pin === 'default' || pin === 'primary'
   // Normalize non-GPT aliases so an explicit quick-select ('glm-fast',
   // 'baseten-glm', 'nvidia', 'nim', 'cloudflare'…) resolves to the canonical
@@ -2891,7 +3077,10 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
   const aliasMap: Record<string, string> = {
     'glm-fast': 'baseten-glm-fast',
     'baseten-glm': 'baseten-glm-fast',
-    'glm-5.3-flash': 'baseten-glm-53-flash',
+    runbios: 'runbios-glm-53-flash',
+    'runbios-glm': 'runbios-glm-53-flash',
+    'runbios-glm-53-flash': 'runbios-glm-53-flash',
+    'glm-5.3-flash': 'runbios-glm-53-flash',
     'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
     'aihubmix-glm-fast': 'aihubmix-glm-fast',
     'aihubmix-glm': 'aihubmix-glm-fast',
@@ -3095,8 +3284,18 @@ export async function* generateContentTextStream(
 
   const candidates: Candidate[] = []
 
-  // Stream cascade lead is DeepSeek V4 Flash (Baseten / Parasail) then Grok.
-  // GLM Fast remains available as an explicit pin.
+  const runbiosGlm = getRunbiosProvider(isRunbiosPin(prefer) ? prefer : 'runbios-glm-53-flash')
+  if (runbiosGlm) {
+    candidates.push({
+      label: runbiosGlm.label,
+      stream: () => openAiCompatibleStream(runbiosGlm, {
+        ...opts,
+        maxTokens: Math.min(opts.maxTokens ?? RUNBIOS_MAX_TOKENS, RUNBIOS_MAX_TOKENS),
+      }),
+      complete: () => openAiCompatibleComplete(runbiosGlm, opts),
+    })
+  }
+
   const basetenGlm53Flash = getBasetenGlm53FlashProvider()
   if (basetenGlm53Flash) {
     candidates.push({
@@ -3383,6 +3582,7 @@ export async function* generateContentTextStream(
       candidates.unshift(pref)
     }
   } else if (
+    isRunbiosPin(prefer) ||
     prefer === 'baseten-glm-53-flash' ||
     prefer === 'baseten-deepseek' ||
     prefer === 'baseten-deepseek-pro' ||

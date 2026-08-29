@@ -8,7 +8,7 @@
  *
  * Host dropdown order (when the host actually serves that model):
  *   Parasail → Baseten → NVIDIA → DeepSeek.com → Zai
- * Drafting's default pin is NVIDIA MiniMax M3; this order only controls the
+ * Drafting's default pin is Run BiOS GLM 5.3 Flash; this order only controls the
  * host choices shown for a selected model.
  */
 
@@ -22,6 +22,11 @@ export type StudioModelId =
   | 'glm-5.2'
   | 'glm-5.3-flash'
   | 'glm-5.2-fast'
+  | 'kimi-k2.7-code'
+  | 'qwen3.5'
+  | 'bios-adaptive'
+  | 'claude-sonnet-5'
+  | 'claude-opus-5'
   | 'grok-4.6'
   | 'gpt-5.6-terra'
   | 'gpt-5.6-sol'
@@ -33,6 +38,7 @@ export type StudioModelId =
 
 export type StudioHostId =
   | 'auto'
+  | 'runbios'
   | 'baseten'
   | 'parasail'
   | 'nvidia'
@@ -64,17 +70,16 @@ export interface StudioModelOption {
 export const DEEPSEEK_V4_FLASH_ID = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 
-/** Draft lead: MiniMax M3 via NVIDIA Integrate. */
-export const DEFAULT_DRAFT_PIN = 'nvidia-minimax'
-/** Research / Generate Full Brief lead: Pro-0813 via Parasail. */
-export const DEFAULT_BRIEF_PIN = 'parasail-deepseek-pro'
-/** Reviewer / Editor lead: DeepSeek V4 Flash via Baseten, dated 0731.
- *  Keep this separate from the NVIDIA MiniMax drafting default so reviewer
- *  capacity and model selection remain independently controllable. */
-export const DEFAULT_REVIEW_PIN = 'baseten-deepseek'
+/** Draft lead: MiniMax M3 via Run BiOS — fastest complete long-form on this host. */
+export const DEFAULT_DRAFT_PIN = 'runbios-minimax'
+/** Research / Generate Full Brief lead: same Run BiOS GLM 5.3 Flash. */
+export const DEFAULT_BRIEF_PIN = 'runbios-glm-53-flash'
+/** Reviewer / Editor lead: same Run BiOS GLM 5.3 Flash. */
+export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
 
 /** Host picker order — skip a host when that model is not served there. */
 export const STUDIO_HOST_ORDER: StudioHostId[] = [
+  'runbios',
   'parasail',
   'baseten',
   'nvidia',
@@ -94,10 +99,13 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
   draft: [
     'auto',
     'minimax-m3',
-    'deepseek-v4-flash',
-    'grok-4.6',
-    'glm-5.2',
     'glm-5.3-flash',
+    'deepseek-v4-flash',
+    'glm-5.2',
+    'bios-adaptive',
+    'kimi-k2.7-code',
+    'qwen3.5',
+    'grok-4.6',
     'glm-5.2-fast',
     'nemotron-3-ultra',
     'cloudflare-llama',
@@ -105,36 +113,49 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'openrouter',
   ],
   brief: [
+    'glm-5.3-flash',
     'deepseek-v4-pro',
     'glm-5.2',
-    'glm-5.3-flash',
     'deepseek-v4-flash',
+    'bios-adaptive',
+    'claude-sonnet-5',
+    'kimi-k2.7-code',
+    'qwen3.5',
     'grok-4.6',
     'glm-5.2-fast',
     'gpt-5.6-terra',
     'gpt-5.6-sol',
+    'claude-opus-5',
   ],
   review: [
+    'glm-5.3-flash',
     'deepseek-v4-pro',
     'deepseek-v4-flash',
     'glm-5.2',
-    'glm-5.3-flash',
+    'claude-sonnet-5',
+    'bios-adaptive',
     'grok-4.6',
     'glm-5.2-fast',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
+    'claude-opus-5',
   ],
   command: [
     'auto',
     'minimax-m3',
+    'glm-5.3-flash',
     'deepseek-v4-pro',
     'glm-5.2',
-    'glm-5.3-flash',
     'deepseek-v4-flash',
+    'bios-adaptive',
+    'kimi-k2.7-code',
+    'qwen3.5',
+    'claude-sonnet-5',
     'grok-4.6',
     'glm-5.2-fast',
     'gpt-5.6-terra',
     'gpt-5.6-sol',
+    'claude-opus-5',
     'nemotron-3-ultra',
     'cloudflare-llama',
     'groq-llama',
@@ -156,6 +177,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     apiModel: DEEPSEEK_V4_PRO_ID,
     lanes: ['brief', 'review', 'command'],
     hosts: [
+      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-deepseek-pro' },
       { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek-pro' },
       { id: 'baseten', label: 'Baseten', pin: 'baseten-deepseek-pro' },
       { id: 'deepseek', label: 'DeepSeek', pin: 'deepseek-pro' },
@@ -166,6 +188,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     label: 'GLM 5.2',
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [
+      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-52' },
       { id: 'parasail', label: 'Parasail', pin: 'parasail-glm' },
       { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-glm' },
       { id: 'zai', label: 'Zai', pin: 'zai-glm' },
@@ -177,6 +200,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     apiModel: DEEPSEEK_V4_FLASH_ID,
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [
+      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-deepseek-flash' },
       { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek' },
       { id: 'baseten', label: 'Baseten', pin: 'baseten-deepseek' },
       { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-deepseek' },
@@ -192,9 +216,47 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'glm-5.3-flash',
     label: 'GLM 5.3 Flash',
-    apiModel: 'zai-org/GLM-5.3-Flash',
+    apiModel: 'glm-5.3-flash',
     lanes: ['draft', 'brief', 'review', 'command'],
-    hosts: [{ id: 'baseten', label: 'Baseten', pin: 'baseten-glm-53-flash' }],
+    hosts: [
+      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-53-flash' },
+      { id: 'baseten', label: 'Baseten', pin: 'baseten-glm-53-flash' },
+    ],
+  },
+  {
+    id: 'kimi-k2.7-code',
+    label: 'Kimi K2.7 Code',
+    apiModel: 'kimi-k2.7-code',
+    lanes: ['draft', 'brief', 'command'],
+    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-kimi' }],
+  },
+  {
+    id: 'qwen3.5',
+    label: 'Qwen3.5 397B',
+    apiModel: 'qwen3.5-397b-a17b',
+    lanes: ['draft', 'brief', 'command'],
+    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-qwen' }],
+  },
+  {
+    id: 'bios-adaptive',
+    label: 'Run BiOS Adaptive',
+    apiModel: 'bios-adaptive',
+    lanes: ['draft', 'brief', 'review', 'command'],
+    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-adaptive' }],
+  },
+  {
+    id: 'claude-sonnet-5',
+    label: 'Claude Sonnet 5',
+    apiModel: 'claude-sonnet-5',
+    lanes: ['brief', 'review', 'command'],
+    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-claude-sonnet' }],
+  },
+  {
+    id: 'claude-opus-5',
+    label: 'Claude Opus 5',
+    apiModel: 'claude-opus-5',
+    lanes: ['brief', 'review', 'command'],
+    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-claude-opus' }],
   },
   {
     id: 'glm-5.2-fast',
@@ -219,10 +281,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   },
   {
     id: 'minimax-m3',
-    label: 'MiniMax M3 · NVIDIA',
-    apiModel: 'minimaxai/minimax-m3',
+    label: 'MiniMax M3',
+    apiModel: 'minimax-m3',
     lanes: ['draft', 'command'],
-    hosts: [{ id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-minimax' }],
+    hosts: [
+      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-minimax' },
+      { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-minimax' },
+    ],
   },
   {
     id: 'nemotron-3-ultra',
@@ -280,8 +345,25 @@ const PIN_ALIASES: Record<string, string> = {
   supergrok: 'grok',
   'super-grok': 'grok',
   'glm-fast': 'baseten-glm-fast',
+  'runbios': 'runbios-glm-53-flash',
+  'runbios-glm': 'runbios-glm-53-flash',
+  'runbios-glm-53-flash': 'runbios-glm-53-flash',
+  'runbios-glm-52': 'runbios-glm-52',
+  'runbios-deepseek-flash': 'runbios-deepseek-flash',
+  'runbios-deepseek-pro': 'runbios-deepseek-pro',
+  'runbios-minimax': 'runbios-minimax',
+  'runbios-kimi': 'runbios-kimi',
+  'runbios-qwen': 'runbios-qwen',
+  'runbios-adaptive': 'runbios-adaptive',
+  'bios-adaptive': 'runbios-adaptive',
+  'runbios-claude-sonnet': 'runbios-claude-sonnet',
+  'runbios-claude-opus': 'runbios-claude-opus',
+  'claude-sonnet-5': 'runbios-claude-sonnet',
+  'claude-opus-5': 'runbios-claude-opus',
+  'kimi-k2.7-code': 'runbios-kimi',
+  'qwen3.5-397b-a17b': 'runbios-qwen',
   'baseten-glm-53-flash': 'baseten-glm-53-flash',
-  'glm-5.3-flash': 'baseten-glm-53-flash',
+  'glm-5.3-flash': 'runbios-glm-53-flash',
   'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
   'baseten-glm': 'baseten-glm-fast',
   'aihubmix-glm': 'aihubmix-glm-fast',

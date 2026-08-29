@@ -40,6 +40,7 @@ describe('Grok 4.6 Responses transport', () => {
   it('treats grok-4.6 as a reasoning model', () => {
     expect(isReasoningModelId('grok-4.6')).toBe(true)
     expect(isReasoningModelId('grok-4.5')).toBe(true)
+    expect(isReasoningModelId('glm-5.3-flash')).toBe(true)
   })
 
   it('never sends the reviewer alias "grok" as an xAI model id', () => {
@@ -53,6 +54,7 @@ describe('Grok 4.6 Responses transport', () => {
 
   it('does not honor a 90s brief deadline for Grok', () => {
     expect(deadlineForProvider('grok', 90_000)).toBeGreaterThanOrEqual(180_000)
+    expect(deadlineForProvider('runbios-glm-53-flash', 90_000)).toBeGreaterThanOrEqual(600_000)
     expect(deadlineForProvider('openai', 90_000)).toBe(90_000)
   })
 

@@ -63,7 +63,7 @@ import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { StudioModelHostSelect } from './studio-model-host-select'
-import { parseStudioPin } from '@/lib/contentAiCatalog'
+import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
 import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioStageNav } from './studio-stage-nav'
 import { ChapterIntro } from './studio-chapter-intro'
@@ -114,6 +114,16 @@ const TYPE = {
 
 // ── Provider → default model (mirrors contentAiProvider defaults) ──
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
+  'runbios-glm-53-flash': 'glm-5.3-flash',
+  'runbios-glm-52': 'glm-5.2',
+  'runbios-deepseek-flash': 'deepseek-v4-flash',
+  'runbios-deepseek-pro': 'deepseek-v4-pro',
+  'runbios-minimax': 'minimax-m3',
+  'runbios-kimi': 'kimi-k2.7-code',
+  'runbios-qwen': 'qwen3.5-397b-a17b',
+  'runbios-adaptive': 'bios-adaptive',
+  'runbios-claude-sonnet': 'claude-sonnet-5',
+  'runbios-claude-opus': 'claude-opus-5',
   openai: 'gpt-5.6-terra',
   custom: 'gpt-5.6-terra',
   'gpt-5.6-sol': 'gpt-5.6-sol',
@@ -2258,7 +2268,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Research/Plan brief model — GPT Sol (flagship), GPT Terra (balanced), or
   // GLM 5.2 Fast (efficient open-source). Terra is the sensible default; the
   // brief endpoint (lib/seoFactory/briefModel) honors all three.
-  const [briefModel, setBriefModel] = React.useState('baseten-glm-53-flash')
+  const [briefModel, setBriefModel] = React.useState(DEFAULT_BRIEF_PIN)
   const briefParsed = parseStudioPin(briefModel)
   const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
   const handleGenerateBrief = async () => {
@@ -3603,11 +3613,10 @@ function JobDetail({
   const [activeAction, setActiveAction] = React.useState<string | null>(null)
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
-  // Draft lead is NVIDIA MiniMax M3; Grok remains the fallback favorite.
   const [aiProvider, setAiProvider] = React.useState<string>(() =>
-    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : 'nvidia-minimax',
+    /all content ai providers failed|insufficient_quota|402/i.test(String(job.error_message || '')) ? 'grok' : DEFAULT_DRAFT_PIN,
   )
-  const [reviewModel, setReviewModel] = React.useState<string>('baseten-deepseek')
+  const [reviewModel, setReviewModel] = React.useState<string>(DEFAULT_REVIEW_PIN)
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
@@ -4664,9 +4673,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [contentTypeTouched, setContentTypeTouched] = React.useState(false)
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
-  // Draft lead is NVIDIA MiniMax M3; review remains a separate lane.
-  const [aiProvider, setAiProvider] = React.useState('nvidia-minimax')
-  const [reviewModel, setReviewModel] = React.useState('baseten-deepseek')
+  const [aiProvider, setAiProvider] = React.useState(DEFAULT_DRAFT_PIN)
+  const [reviewModel, setReviewModel] = React.useState(DEFAULT_REVIEW_PIN)
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')

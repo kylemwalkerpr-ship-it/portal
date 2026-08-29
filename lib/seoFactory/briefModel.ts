@@ -1,19 +1,14 @@
 /**
- * Brief-stage model policy — OpenAI ChatGPT is the PRIMARY model family for
- * the Research/Plan brief, with xAI Grok (SuperGrok) as the default fallback.
+ * Brief-stage model policy — Run BiOS GLM 5.3 Flash is the PRIMARY model
+ * for the Research/Plan brief. Other hosts remain selectable. 'auto', empty,
+ * or unrecognized pins coerce to Run BiOS GLM 5.3 Flash.
  *
- * GPT-5.6 Sol (flagship), GPT-5.6 Terra (balanced), Grok, GLM 5.2 Fast via
- * Baseten / AIHubmix, and DeepSeek V4 Flash 0731 via Baseten are acceptable
- * PRIMARY brief models — all selectable in the Research stage. Everything
- * else — 'auto', a legacy drafting provider id ('nvidia-glm', 'glm-fast'…),
- * or junk — is coerced to GPT-5.6 Terra on the OpenAI provider.
- *
- * FALLBACK: when OpenAI is unconfigured or fails (e.g. an unpaid account
- * returning 429 insufficient_quota), the route falls back to Grok so the
- * Research stage can use the SuperGrok subscription instead of GPT billing.
+ * FALLBACK: when Run BiOS is unconfigured or fails, the route falls back to
+ * Grok (existing resolveBriefFallback).
  */
 
 import { generateContentText, type ContentAiResult } from '@/lib/contentAiProvider'
+import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
 
 /** Provider id for the brief fallback (xAI Grok / SuperGrok). */
 export const BRIEF_FALLBACK_PROVIDER = 'grok' as const
@@ -21,6 +16,8 @@ export const BRIEF_FALLBACK_PROVIDER = 'grok' as const
 export type BriefProviderChoice =
   | { aiProvider: 'openai'; model: 'gpt-5.6-sol' | 'gpt-5.6-terra' }
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
+  | { aiProvider: 'runbios-glm-53-flash'; model?: undefined }
+  | { aiProvider: `runbios-${string}`; model?: undefined }
   | { aiProvider: 'baseten-glm-fast'; model?: undefined }
   | { aiProvider: 'baseten-glm-53-flash'; model?: undefined }
   | { aiProvider: 'aihubmix-glm-fast'; model?: undefined }
@@ -47,11 +44,14 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   ) {
     return { aiProvider: BRIEF_FALLBACK_PROVIDER }
   }
-  // GLM 5.2 Fast (Baseten) — still selectable in Research.
-  if (pin === 'baseten-glm-53-flash' || pin === 'glm-5.3-flash' || pin === 'zai-org/glm-5.3-flash') {
+  if (isRunbiosPin(pin) || pin === 'glm-5.3-flash') {
+    const id = canonicalizeRunbiosPin(pin === 'glm-5.3-flash' ? 'runbios-glm-53-flash' : pin)
+    return { aiProvider: id } as BriefProviderChoice
+  }
+  if (pin === 'baseten-glm-53-flash' || pin === 'zai-org/glm-5.3-flash') {
     return { aiProvider: 'baseten-glm-53-flash' }
   }
-  if (pin === 'baseten-glm-fast' || pin === 'glm-5.2-fast') {
+  if (pin === 'baseten-glm-fast' || pin === 'glm-5.2-fast' || pin === 'glm-fast') {
     return { aiProvider: 'baseten-glm-fast' }
   }
   // GLM 5.2 Fast via AIHubmix — a fourth brief choice (OpenAI-compatible
@@ -116,7 +116,10 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   if (pin === 'gpt-5.6-sol' || pin === 'gpt-5.6') {
     return { aiProvider: 'openai', model: 'gpt-5.6-sol' }
   }
-  return { aiProvider: 'openai', model: 'gpt-5.6-terra' }
+  if (pin === 'gpt-5.6-terra' || pin === 'openai') {
+    return { aiProvider: 'openai', model: 'gpt-5.6-terra' }
+  }
+  return { aiProvider: 'runbios-glm-53-flash' }
 }
 
 /** The fallback brief provider — xAI Grok / SuperGrok. */
@@ -239,6 +242,7 @@ export async function generateBriefText(opts: {
   maxTokens?: number
   temperature?: number
   timeoutMs?: number
+  skipQualityContract?: boolean
 }): Promise<BriefTextResult> {
   const fallback = resolveBriefFallback()
   // When the operator explicitly selected Grok, the fallback and the primary
@@ -246,6 +250,7 @@ export async function generateBriefText(opts: {
   const primaryIsFallback =
     String(opts.aiProvider || '').trim().toLowerCase() === BRIEF_FALLBACK_PROVIDER
   const primaryPin = String(opts.aiProvider || '').trim().toLowerCase()
+  const primaryIsRunbios = primaryPin === 'runbios-glm-53-flash'
   const primaryLabel = primaryIsFallback
     ? 'Grok'
     : primaryPin === 'baseten-glm-fast'
@@ -274,6 +279,8 @@ export async function generateBriefText(opts: {
                         ? 'DeepSeek V4 Flash (DeepSeek.com)'
                         : primaryPin === 'zai-glm'
                           ? 'GLM 5.2 (Zai)'
+                          : primaryPin === 'runbios-glm-53-flash'
+                            ? 'GLM 5.3 Flash (Run BiOS)'
                           : 'GPT'
   try {
     const ai = await generateContentText({
@@ -283,8 +290,15 @@ export async function generateBriefText(opts: {
       prompt: opts.prompt,
       maxTokens: opts.maxTokens,
       temperature: opts.temperature,
-      timeoutMs: opts.timeoutMs,
+      // Run BiOS GLM 5.3 Flash reasons for minutes — never let an unset short
+      // deadline cut the brief; 180s is the floor (deadlineForProvider lifts
+      // it to the 10-minute Run BiOS floor). cascadeOnCapacity lets a first
+      // timeout/overload fall through instead of exclusive-failing the brief;
+      // Grok remains the named fallback when the whole primary fails.
+      timeoutMs: primaryIsRunbios ? Math.max(opts.timeoutMs ?? 0, 180_000) : opts.timeoutMs,
+      ...(primaryIsRunbios ? { cascadeOnCapacity: true } : {}),
       exclusive: true,
+      skipQualityContract: opts.skipQualityContract,
     })
     // SuperGrok can succeed inside generateContentText as the unpaid-quota
     // rescue even when the pin was GPT. Surface that as fallbackUsed so the
@@ -310,6 +324,7 @@ export async function generateBriefText(opts: {
         temperature: opts.temperature,
         timeoutMs: opts.timeoutMs,
         exclusive: true,
+        skipQualityContract: opts.skipQualityContract,
       })
       return { ai, fallbackUsed: true }
     } catch (fallbackErr) {

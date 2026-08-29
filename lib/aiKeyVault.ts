@@ -13,6 +13,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from './supabaseKey'
+import { RUNBIOS_API_MODELS, RUNBIOS_SLOTS } from './runbiosCatalog'
 
 export interface AiProviderDef {
   id: string
@@ -106,9 +107,24 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
     'glm-5.2-fast',
     'glm-5.2',
   ],
+  runbios: RUNBIOS_API_MODELS,
 }
 
 export const AI_PROVIDERS: AiProviderDef[] = [
+  ...RUNBIOS_SLOTS.map((slot) => ({
+    id: slot.id,
+    label: slot.label,
+    keyEnv: 'RUNBIOS_API_KEY',
+    baseUrlEnv: 'RUNBIOS_BASE_URL',
+    modelEnv: slot.id === 'runbios-glm-53-flash' ? 'RUNBIOS_GLM_MODEL' : undefined,
+    fixedBaseUrl: 'https://api.runbios.ai/v1',
+    defaultModel: slot.apiModel,
+    role: slot.role,
+    hint: slot.hint,
+    vaultGroup: 'runbios',
+    vaultGroupLabel: 'Run BiOS · api.runbios.ai',
+    modelOptions: HOST_MODEL_OPTIONS.runbios,
+  })),
   {
     id: 'nvidia-minimax',
     label: 'NVIDIA MiniMax M3 · minimaxai/minimax-m3',
@@ -381,7 +397,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+  'runbios-glm-53-flash', 'nvidia-minimax', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
   'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
@@ -522,7 +538,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   // the admin's default model is applied to the selected primary provider.
   const defaultProvider = String(settings.default_provider || '').trim()
   out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider)
-    ? 'nvidia-minimax'
+    ? 'runbios-glm-53-flash'
     : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
@@ -605,12 +621,31 @@ export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number
 const STALE_DEFAULT_PROVIDERS = new Set([
   '',
   'auto',
+  'nvidia-minimax',
   'nvidia-nemotron',
   'baseten-deepseek',
   'baseten-glm-fast',
   'parasail-deepseek',
   'nvidia-deepseek',
 ])
+
+/** Move Run BiOS GLM 5.3 Flash to the front of a saved provider-order JSON/CSV. */
+export function runbiosFirstProviderOrder(raw?: string | null): string {
+  const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
+  if (!raw || !String(raw).trim()) return fallback
+  let values: unknown
+  try { values = JSON.parse(raw) } catch { values = String(raw).split(',') }
+  if (!Array.isArray(values)) return fallback
+  const order = values.map((v) => String(v).trim()).filter(Boolean)
+  const pin = 'runbios-glm-53-flash'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return JSON.stringify(order)
+}
 
 /** Move NVIDIA MiniMax to the front of a saved provider-order JSON/CSV. */
 export function minimaxFirstProviderOrder(raw?: string | null): string {
@@ -668,17 +703,17 @@ export function parasailFirstProviderOrder(raw?: string | null): string {
 
 let draftDefaultsEnsured = false
 
-/** Persist NVIDIA MiniMax as the drafting default when the saved pin is
- * missing or belongs to the previous Nemotron/Parasail/Baseten default path. */
+/** Persist Run BiOS GLM 5.3 Flash as the drafting default when the saved pin is
+ * missing or belongs to a previous MiniMax/Nemotron/Parasail/Baseten default. */
 export async function ensureDraftDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
   if (draftDefaultsEnsured) return
   draftDefaultsEnsured = true
   const settings = await getAiSettings(true)
   const current = String(settings.default_provider || '').trim()
   if (STALE_DEFAULT_PROVIDERS.has(current)) {
-    await setAiSetting('default_provider', 'nvidia-minimax', updatedBy)
+    await setAiSetting('default_provider', 'runbios-glm-53-flash', updatedBy)
   }
-  const nextOrder = minimaxFirstProviderOrder(settings.provider_order)
+  const nextOrder = runbiosFirstProviderOrder(settings.provider_order)
   if (nextOrder !== settings.provider_order) {
     await setAiSetting('provider_order', nextOrder, updatedBy)
   }

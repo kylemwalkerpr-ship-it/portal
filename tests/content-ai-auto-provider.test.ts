@@ -53,7 +53,7 @@ describe('content AI · auto provider pin', () => {
     expect(prefer).toBe('openai')
   })
 
-  it("resolves 'auto' to NVIDIA MiniMax even when a stale saved order leads with Baseten", () => {
+  it("resolves 'auto' to Run BiOS GLM 5.3 Flash even when a stale saved order leads with Baseten", () => {
     process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
       'baseten-deepseek',
       'nvidia-nemotron',
@@ -62,7 +62,7 @@ describe('content AI · auto provider pin', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     const { explicit, prefer } = resolveAiProviderPin('auto')
     expect(explicit).toBe('')
-    expect(prefer).toBe('nvidia-minimax')
+    expect(prefer).toBe('runbios-glm-53-flash')
   })
 
   it("routes a raw DeepSeek V4 Flash model id to NVIDIA (never 'not configured')", () => {

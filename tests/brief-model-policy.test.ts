@@ -38,8 +38,7 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
       model: 'gpt-5.6-terra',
     })
     expect(resolveBriefAiProvider('')).toEqual({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
+      aiProvider: 'runbios-glm-53-flash',
     })
   })
 
@@ -121,7 +120,7 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     })
   })
 
-  it('EVERY other value coerces to OpenAI + Terra — never a non-chosen provider', () => {
+  it('auto / empty / unknown coerce to Run BiOS GLM 5.3 Flash', () => {
     expect(resolveBriefAiProvider('nvidia-glm')).toEqual({ aiProvider: 'nvidia-glm' })
     expect(resolveBriefAiProvider('zai-glm')).toEqual({ aiProvider: 'zai-glm' })
     expect(resolveBriefAiProvider('baseten-deepseek-pro')).toEqual({ aiProvider: 'baseten-deepseek-pro' })
@@ -129,29 +128,36 @@ describe('resolveBriefAiProvider — brief model policy (GPT Sol/Terra + GLM 5.2
     expect(resolveBriefAiProvider('deepseek-flash')).toEqual({ aiProvider: 'deepseek-flash' })
     expect(resolveBriefAiProvider('nvidia-deepseek')).toEqual({ aiProvider: 'nvidia-deepseek' })
 
+    expect(resolveBriefAiProvider('glm-fast')).toEqual({ aiProvider: 'baseten-glm-fast' })
+    expect(resolveBriefAiProvider('openai')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
+    })
+    expect(resolveBriefAiProvider('gpt-5.6-terra')).toEqual({
+      aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
+    })
+
     const leaks = [
       'auto',
       '',
       'default',
       'nvidia-nemotron',
-      'glm-fast',
       'cloudflare-ai',
-      'openai', // provider id without a model → Terra (balanced default)
-      'gpt-5.6-luna', // Luna is efficient/high-volume — not brief-grade
-      '  gpt-5.6-terra  ', // whitespace normalized
+      'gpt-5.6-luna',
     ]
     for (const raw of leaks) {
       const resolved = resolveBriefAiProvider(raw)
       expect({ raw, resolved }).toEqual({
         raw,
-        resolved: { aiProvider: 'openai', model: 'gpt-5.6-terra' },
+        resolved: { aiProvider: 'runbios-glm-53-flash' },
       })
     }
   })
 })
 
 describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () => {
-  const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'XAI_API_KEY', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'CONTENT_AI_RETRY'] as const
+  const envKeys = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'XAI_API_KEY', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'RUNBIOS_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
 
@@ -273,6 +279,59 @@ describe('generateBriefText fallback — Grok (SuperGrok) when GPT fails', () =>
         prompt: 'TOPIC: dependent visa uk',
       }),
     ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(GPT\)[\s\S]*Fallback \(Grok\)/)
+  })
+
+  it('Run BiOS GLM primary success returns fallbackUsed=false', async () => {
+    process.env.RUNBIOS_API_KEY = 'test-runbios-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      return json({ choices: [{ message: { content: 'RUNBIOS-BRIEF' }, finish_reason: 'stop' }] })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'runbios-glm-53-flash',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    expect(result.fallbackUsed).toBe(false)
+    expect(result.ai.provider).toBe('runbios-glm-53-flash')
+    expect(result.ai.text).toBe('RUNBIOS-BRIEF')
+    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
+  })
+
+  it('Run BiOS GLM primary hard failure still falls back to Grok', async () => {
+    process.env.RUNBIOS_API_KEY = 'test-runbios-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.runbios.ai')) {
+        throw new Error('runbios 401 invalid api key')
+      }
+      return json({ choices: [{ message: { content: 'GROK-AFTER-RUNBIOS' }, finish_reason: 'stop' }] })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'runbios-glm-53-flash',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    expect(result.fallbackUsed).toBe(true)
+    expect(result.ai.provider).toBe('grok')
+    expect(result.ai.text).toBe('GROK-AFTER-RUNBIOS')
+    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
   })
 })
 

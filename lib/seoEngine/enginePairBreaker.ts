@@ -5,7 +5,7 @@
  * host must not be retried on every remaining item in the same run.
  */
 
-export type EnginePairLeg = 'grok' | 'parasail-glm'
+export type EnginePairLeg = 'grok' | 'parasail-glm' | 'runbios-glm'
 
 export const ENGINE_PAIR_BREAKER_MS = 15 * 60 * 1000
 export const ENGINE_PAIR_BREAKER_THRESHOLD = 2

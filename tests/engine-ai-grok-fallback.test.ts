@@ -74,8 +74,8 @@ describe('generateEngineText — Grok is the default engine fallback', () => {
   })
 })
 
-describe('Master Engine pair — Grok 4.6 high + Parasail GLM 5.2 medium', () => {
-  const envKeys = ['XAI_API_KEY', 'PARASAIL_API_KEY', 'CONTENT_AI_RETRY'] as const
+describe('Master Engine pair — Run BiOS GLM 5.3 Flash + Parasail GLM 5.2 medium', () => {
+  const envKeys = ['XAI_API_KEY', 'PARASAIL_API_KEY', 'RUNBIOS_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
 
@@ -98,8 +98,8 @@ describe('Master Engine pair — Grok 4.6 high + Parasail GLM 5.2 medium', () =>
     expect(resolveEngineAiProvider('auto')).toBe(ENGINE_PAIR)
   })
 
-  it('runs Grok high + GLM medium in parallel and returns a Grok-led merge', async () => {
-    process.env.XAI_API_KEY = 'test-xai-key'
+  it('runs Run BiOS GLM lead + Parasail complement in parallel and returns a lead merge', async () => {
+    process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.PARASAIL_API_KEY = 'psk-test'
     process.env.CONTENT_AI_RETRY = '1'
 
@@ -113,15 +113,10 @@ describe('Master Engine pair — Grok 4.6 high + Parasail GLM 5.2 medium', () =>
         effort: reasoning?.effort || (body.reasoning_effort as string | undefined),
         model: body.model as string | undefined,
       })
-      const text = url.includes('api.x.ai')
-        ? (String(body.prompt || body.input || '').includes('GLM 5.2 DRAFT') ? 'MERGED-ENGINE' : 'GROK-LEAD-ENGINE-DRAFT')
+      const prompt = JSON.stringify(body)
+      const text = url.includes('api.runbios.ai')
+        ? (prompt.includes('COMPLEMENT DRAFT') ? 'MERGED-ENGINE' : 'RUNBIOS-LEAD-ENGINE-DRAFT')
         : 'GLM-COMPLEMENT-ENGINE-DRAFT with extra statute INA 214'
-      if (url.includes('api.x.ai')) {
-        return new Response(JSON.stringify({ output_text: text, status: 'completed' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
       return new Response(
         JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -132,14 +127,15 @@ describe('Master Engine pair — Grok 4.6 high + Parasail GLM 5.2 medium', () =>
       system: 'Score this cluster.',
       prompt: 'TOPIC: f1 visa',
     })
-    expect(result.provider).toBe('grok')
-    expect(result.text).toMatch(/MERGED-ENGINE|GROK-LEAD/)
-    expect(seen.some((s) => s.url.includes('api.x.ai') && s.effort === 'high')).toBe(true)
+    expect(result.provider).toBe('runbios-glm-53-flash')
+    expect(result.text).toMatch(/MERGED-ENGINE|RUNBIOS-LEAD/)
+    expect(seen.some((s) => s.url.includes('api.runbios.ai') && s.model === 'glm-5.3-flash')).toBe(true)
     expect(seen.some((s) => s.url.includes('parasail.io') && (s.effort === 'medium' || s.model === 'z-ai/glm-5.2'))).toBe(true)
     expect(result.pair?.disagreed).toBe(true)
   })
 
   it('generateEngineText with no pin uses the pair (not OpenAI) when Grok + Parasail are set', async () => {
+    process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.XAI_API_KEY = 'test-xai-key'
     process.env.PARASAIL_API_KEY = 'psk-test'
     process.env.OPENAI_API_KEY = 'sk-should-not-be-called'
@@ -165,8 +161,37 @@ describe('Master Engine pair — Grok 4.6 high + Parasail GLM 5.2 medium', () =>
     })
     expect(result.text).toBe('PAIR-LEAD')
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
-    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
     expect(urls.some((u) => u.includes('parasail.io'))).toBe(true)
+  })
+
+  it('runs lead-only when Parasail is not configured — complement leg never fired', async () => {
+    process.env.RUNBIOS_API_KEY = 'test-runbios-key'
+    delete process.env.PARASAIL_API_KEY
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'RUNBIOS-LEAD-ONLY-DRAFT' }, finish_reason: 'stop' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+
+    const result = await generateEnginePairText({
+      system: 'Score this cluster.',
+      prompt: 'TOPIC: f1 visa',
+    })
+    expect(result.text).toBe('RUNBIOS-LEAD-ONLY-DRAFT')
+    expect(result.pair?.leadOnly).toBe(true)
+    expect(result.pair?.complementModel).toBeNull()
+    // No dead complement fetch — Parasail host is never contacted.
+    expect(urls.some((u) => u.includes('parasail.io'))).toBe(false)
+    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
   })
 
   it('extractEngineJsonObject recovers fenced JSON and rejects prose', () => {

@@ -28,6 +28,7 @@ import AiKeyVaultPanel from './ai-key-vault-panel'
 import SeoMasterEngine from './admin-seo-engine'
 import { RankingModelBlock } from './admin-ranking-model-block'
 import { StudioModelHostSelect } from './studio-model-host-select'
+import { DEFAULT_DRAFT_PIN } from '@/lib/contentAiCatalog'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { JobSummary } from '@/lib/seoFactory/jobSummary'
 import GscConnectModal from './admin-gsc-connect-modal'
@@ -466,7 +467,7 @@ export default function AdminCommandCenter({
   const [maxRefine, setMaxRefine] = React.useState(2)
   // Drafting leads with NVIDIA MiniMax M3; other providers remain
   // selectable here as explicit alternatives or fallbacks.
-  const [aiProvider, setAiProvider] = React.useState('nvidia-minimax')
+  const [aiProvider, setAiProvider] = React.useState(DEFAULT_DRAFT_PIN)
 
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])

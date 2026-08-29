@@ -13,3 +13,59 @@ test-results/
 .wrangler/
 # smoke-prod baseline (machine-local deploy drift state)
 scripts/.smoke-prod-state.json
+
+# Local investigation artifacts and browser captures
+.admissions-repaired-debug.md
+.regen-*.log
+scripts/*.png
+scripts/*-probe.mjs
+scripts/*-scan.mjs
+scripts/*-analysis.py
+scripts/*-report.json
+scripts/article-content.md
+scripts/art-*.md
+scripts/content-studio.png
+scripts/fix-*.mjs
+scripts/full-*.mjs
+scripts/check-*.mjs
+scripts/final-*.mjs
+scripts/pipeline-*.mjs
+scripts/pv*.mjs
+scripts/reaudit-probe.mjs
+scripts/regen-*.ts
+scripts/repair-*.ts
+scripts/ship-repaired.ts
+scripts/thin-keyword.ts
+
+# Session-only briefs/worklogs are kept outside the tracked application source
+FREEBUFF_BRIEF_*.md
+_WORKLOG_*.md
+
+# OpenCode / GLM local state (repo-local launcher)
+.opencode/
+
+# Secrets and credentials (keep existing .env* rules above)
+*.pem
+*.p12
+*.pfx
+*.key
+id_rsa
+id_ed25519
+credentials.json
+service-account*.json
+
+# Local databases and raw dumps
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+
+# Logs and temp
+*.log
+tmp/
+temp/
+.cache/
+
+# Python leftovers
+__pycache__/
+*.py[cod]

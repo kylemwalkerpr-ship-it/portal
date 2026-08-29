@@ -63,11 +63,11 @@ describe('pair tape on engine runs', () => {
       disagreed: true,
       extras: { statutes: ['INA 214(b)'], urls: [] },
     })
-    expect(formatEnginePairTape(rollup)).toBe('Grok 4.6 + GLM, disagreed, merged, extras:1')
+    expect(formatEnginePairTape(rollup)).toBe('GLM 5.3 Flash + complement, disagreed, merged, extras:1')
     expect(formatEngineRunSummary({
       plans: 10,
       pair: formatEnginePairTape(rollup),
-    })).toContain('pair=Grok 4.6 + GLM, disagreed, merged, extras:1')
+    })).toContain('pair=GLM 5.3 Flash + complement, disagreed, merged, extras:1')
   })
 })
 

@@ -70,6 +70,10 @@ declare global {
     PARASAIL_DEEPSEEK_PRO_MODEL: string
     PARASAIL_PRO_REASONING_EFFORT: string
     PARASAIL_GLM_MODEL: string
+
+    RUNBIOS_API_KEY: string
+    RUNBIOS_BASE_URL: string
+    RUNBIOS_GLM_MODEL: string
   }
 }
 
