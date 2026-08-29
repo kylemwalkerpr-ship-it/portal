@@ -53,7 +53,7 @@ export function MarketplaceCategoriesIndex() {
 
         {/* Header */}
         <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.gold, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Browse</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.onPaperEm, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Browse</div>
           <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: '#FFFFFF', margin: 0, letterSpacing: '-.012em' }}>All categories.</h1>
           <div style={{ fontSize: 14, color: T.onPaperSoft, marginTop: 6, maxWidth: 720 }}>
             {CATEGORIES.length} categories spanning {CATEGORIES.reduce((s, c) => s + (c.subcategories?.length || 0), 0)} subcategories. Each tile opens curated gigs and templates.
@@ -94,7 +94,7 @@ export function MarketplaceCategoriesIndex() {
         {/* Popular row (only when no filters) */}
         {!q && verticalFilter === 'all' && popular.length > 0 && (
           <section style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', color: T.gold, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 8 }}>★ Popular</div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', color: T.onPaperEm, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 8 }}>★ Popular</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
               {popular.map(c => <CategoryTile key={c.id} category={c} compact />)}
             </div>

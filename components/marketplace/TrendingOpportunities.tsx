@@ -118,7 +118,7 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 14, marginBottom: 26 }}>
         <div>
-          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.gold, marginBottom: 6 }}>
+          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.onPaperEm, marginBottom: 6 }}>
             For {role === 'attorney' ? 'attorneys' : 'consultants'} only
           </div>
           <h1 style={{ fontFamily: F.display, fontSize: 34, fontWeight: 600, color: '#FFFFFF', margin: 0, letterSpacing: '-0.015em' }}>
@@ -209,7 +209,7 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
                       {String(o.tier).replace(/_/g, ' ')}
                     </span>
                   )}
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.gold, background: T.paper }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.onPaperEm, background: T.paper }}>
                     Escrow protected
                   </span>
                 </div>

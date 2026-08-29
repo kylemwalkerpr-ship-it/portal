@@ -3,12 +3,17 @@ import Link from 'next/link'
 import { CATEGORIES } from '@/lib/categories'
 import { T } from './tokens'
 
+  // SEO copy sits directly on the dark walnut paper inside MarketplaceShell,
+  // so it lives in one legible vellum box (ink-on-paper rule).
 const wrap: CSSProperties = {
   maxWidth: 960,
   margin: '0 auto',
-  padding: '32px 20px 24px',
+  padding: '32px 24px 40px',
   fontFamily: 'var(--font-inter), system-ui, sans-serif',
   color: T.ink,
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
+  borderRadius: 12,
 }
 
 /**
