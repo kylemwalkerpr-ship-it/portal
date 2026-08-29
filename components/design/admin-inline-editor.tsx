@@ -212,6 +212,20 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } finally { setSaving(false) }
   }, [content, jobId])
 
+  // Persist AI fixes immediately. Waiting for the debounce can leave a
+  // re-audit/refresh reading the pre-fix draft and make a real repair appear
+  // to have done nothing (the editor then shows "Unsaved changes").
+  const persistFixedContent = useCallback(async (fixedContent: string) => {
+    const res = await fetch('/api/content-studio/drafts', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, content: fixedContent, source: 'editor-fix' }),
+    })
+    if (!res.ok) throw new Error(`Fixed draft could not be saved (HTTP ${res.status})`)
+    setDirty(false)
+    setLastSaved(new Date().toLocaleTimeString())
+  }, [jobId])
+
   const editorHasNoBody = countBodyWords(content) < 40
 
   // Fetch the latest draft from Supabase — always audit the most recent
@@ -255,7 +269,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       // the blocker is visibly cleared, not stuck at "100/100 but blocked".
       if (data.fixedContent && data.fixedContent !== latestContent) {
         onChange(data.fixedContent)
-        setDirty(true)
+        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -274,7 +288,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft, requiredShortKeywords, requiredLongTailKeywords, competingUrls, region, targetUrl])
+  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft, persistFixedContent, requiredShortKeywords, requiredLongTailKeywords, competingUrls, region, targetUrl])
 
   // Fix ALL issues via AI — one button fixes blockers, warnings, and engine gaps.
   // Clicking again while running cancels the request.
@@ -309,7 +323,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
-        onChange(data.fixedContent); setDirty(true)
+        onChange(data.fixedContent)
+        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -336,7 +351,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, annotations, fixingAll, onChange, onScoreChange, fetchLatestDraft, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, annotations, fixingAll, onChange, onScoreChange, fetchLatestDraft, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
@@ -362,7 +377,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
-        onChange(data.fixedContent); setDirty(true)
+        onChange(data.fixedContent)
+        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -381,7 +397,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, fixingOne, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, fixingOne, onChange, onScoreChange, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix DEPTH via AI — append-only expansion to clear the Google depth floor.
   // The reaudit fix_depth action asks the review model to write NEW H2
@@ -411,7 +427,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
-        onChange(data.fixedContent); setDirty(true)
+        onChange(data.fixedContent)
+        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -436,7 +453,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, expandingDepth, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, expandingDepth, onChange, onScoreChange, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
 
   // Fix ALL warnings via AI — evidence-less quality warnings AND indexability
   // warnings (schema/meta/internal-links) included. The sweep prompt lists
@@ -471,7 +488,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
-        onChange(data.fixedContent); setDirty(true)
+        onChange(data.fixedContent)
+        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -497,7 +515,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, warningItems, fixingWarnings, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, warningItems, fixingWarnings, onChange, onScoreChange, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
 
   const handleFixBlockers = useCallback(async () => {
     if (countBodyWords(content) < 40) {
@@ -530,7 +548,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
-        onChange(data.fixedContent); setDirty(true)
+        onChange(data.fixedContent)
+        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -556,7 +575,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, blockerItems, annotations, auditResult, fixingBlockers, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, blockerItems, annotations, auditResult, fixingBlockers, onChange, onScoreChange, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
@@ -645,7 +664,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               {auditResult.ok ? 'PASS: Quality gate passed' : 'FAIL: Quality gate blocked'}
             </div>
             <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-              {auditResult.blockers} blocker(s) - {auditResult.warnings} warning(s)
+              Human quality score {auditResult.score}/100 · {auditResult.blockers} blocker(s) - {auditResult.warnings} warning(s)
             </div>
           </div>
           <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, textAlign: 'right' }}>
@@ -875,7 +894,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           })}>
             {fixingAll
               ? `⏳ Fixing... ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
-              : annotations.length > 0 ? `✨ Fix All (${annotations.length})` : '✨ Fix All'}
+              : (annotations.length || warningItems.length + blockerItems.length) > 0
+                ? `✨ Fix All (${Math.max(annotations.length, warningItems.length + blockerItems.length)})`
+                : '✨ Fix All'}
           </button>
 
         {/* Toggle annotations */}

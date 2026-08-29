@@ -1630,6 +1630,28 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         })
       } catch { /* editor still holds the repaired body */ }
     }
+    // Final mechanical convergence pass. AI output and link sanitization can
+    // reintroduce a structural blocker (especially TLDR/disclaimer/schema).
+    // Run the same deterministic repair contract until it reaches a fixed
+    // point, so the response can never advertise repairs while returning a
+    // body that still fails those exact gates.
+    for (let pass = 0; pass < 3; pass++) {
+      const converged = applyDeterministicRepairs({
+        content: fixedContent,
+        primaryKeyword: primaryKeyword || 'guide',
+        region,
+        indexable,
+        contentType,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        competingUrls: competingPages,
+        targetUrl,
+      })
+      if (converged.content === fixedContent) break
+      fixedContent = converged.content
+      response.appliedRepairs = [...(response.appliedRepairs || []), ...converged.applied]
+    }
+
     // Rebuild the complete contract from the final normalized content. The
     // link pass may change hrefs after the first evaluation; returning that
     // earlier evaluation caused the editor to show a stale MALFORMED_LINK

@@ -3685,10 +3685,13 @@ function JobDetail({
         else if (event.type === 'final') record('complete', event.result?.jobId ? `Replacement job ${event.result.jobId} created` : 'Regeneration complete', 'success')
       })
       const replacementId = result?.jobId
-      const message = replacementId
+      const checkpointed = Boolean(result?.shipError && /resume from checkpoint|budget exhausted/i.test(String(result.shipError)))
+      const message = checkpointed
+        ? 'Checkpoint saved. Continue the saved draft when ready; shipping remains paused until the audit completes.'
+        : replacementId
         ? `Regeneration complete. Replacement job ${replacementId} is now in the queue.`
         : 'Regeneration complete. Refresh the queue to view the new job.'
-      setResumeAvailable(false)
+      setResumeAvailable(checkpointed || Boolean(result?.content))
       setLocalActionNotice(message)
       setActionNotice(message)
       if (replacementId) onReplacementJob?.(String(replacementId))
@@ -6090,7 +6093,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const notice = data.ship?.prUrl
         ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
         : data.shipError
-          ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
+          ? /resume from checkpoint|budget exhausted/i.test(String(data.shipError))
+            ? 'Checkpoint saved · continue the draft to complete its audit before shipping'
+            : `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
       // Auto-route: blocked ships land in Review for remediation; clean ships stay in Draft
