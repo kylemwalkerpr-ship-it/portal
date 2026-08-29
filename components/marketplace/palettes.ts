@@ -19,6 +19,11 @@ export interface PaletteTokens {
   inkSoft: string
   onPaper: string
   onPaperSoft: string
+  /** Bright cream-gold for italic headline halves + kickers on dark paper
+   *  and on solid accent fills. Verified ≥ 4.5:1 vs paper/paper2/paper3/
+   *  footer AND indigo/indigoDeep/tealDeep for every palette — see
+   *  tests/marketplace-palette-contrast.test.ts. */
+  onPaperEm: string
   rule: string
   ruleSoft: string
   indigo: string
@@ -61,6 +66,7 @@ const MAHOGANY: PaletteTokens = {
   inkSoft:     '#766860',
   onPaper:     '#F7EDE0',
   onPaperSoft: 'rgba(247,237,224,0.72)',
+  onPaperEm:   '#F9EED9',
   rule:        'rgba(247,237,224,0.16)',
   ruleSoft:    'rgba(247,237,224,0.08)',
   indigo:      '#0B786C',
@@ -90,6 +96,7 @@ const LUXURY_CLASSIC: PaletteTokens = {
   inkSoft:     '#6B5E58',
   onPaper:     '#EFE6D2',
   onPaperSoft: 'rgba(239,230,210,0.8)',
+  onPaperEm:   '#F5EBD9',
   rule:        'rgba(212,175,106,0.18)',
   ruleSoft:    'rgba(212,175,106,0.09)',
   indigo:      '#845E1B',
@@ -119,6 +126,7 @@ const EXECUTIVE: PaletteTokens = {
   inkSoft:     '#5C6673',
   onPaper:     '#F2ECDE',
   onPaperSoft: 'rgba(242,236,222,0.78)',
+  onPaperEm:   '#F4ECDD',
   rule:        'rgba(16,42,67,0.14)',
   ruleSoft:    'rgba(16,42,67,0.08)',
   indigo:      '#153D5E',
@@ -148,6 +156,7 @@ const RICH_HERITAGE: PaletteTokens = {
   inkSoft:     '#6B5148',
   onPaper:     '#E8D8AE',
   onPaperSoft: 'rgba(232,216,174,0.74)',
+  onPaperEm:   '#EADFC9',
   rule:        'rgba(184,149,85,0.18)',
   ruleSoft:    'rgba(184,149,85,0.09)',
   indigo:      '#6F5B2E',
@@ -177,6 +186,7 @@ const MODERN_LUXURY: PaletteTokens = {
   inkSoft:     '#55595F',
   onPaper:     '#F4EDE2',
   onPaperSoft: 'rgba(244,237,226,0.87)',
+  onPaperEm:   '#F7F2EB',
   rule:        'rgba(197,164,109,0.16)',
   ruleSoft:    'rgba(197,164,109,0.08)',
   indigo:      '#3A4248',
@@ -206,6 +216,7 @@ const SANTORINI: PaletteTokens = {
   inkSoft:     '#4A6D82',
   onPaper:     '#F0FAFD',
   onPaperSoft: 'rgba(240,250,253,0.85)',
+  onPaperEm:   '#F9F4E7',
   rule:        'rgba(240,250,253,0.14)',
   ruleSoft:    'rgba(240,250,253,0.07)',
   indigo:      '#08709A',

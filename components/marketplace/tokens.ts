@@ -25,6 +25,9 @@ export const T = {
   onPaper:     'var(--ys-onPaper, #F7EDE0)',
   /** Secondary light text on dark surfaces (labels, meta). */
   onPaperSoft: 'var(--ys-onPaperSoft, rgba(247,237,224,0.72))',
+  /** Bright cream-gold for the italic half of split headlines (h2 em) and
+   *  kickers on dark paper / accent fills. Always ≥ 4.5:1 vs paper*. */
+  onPaperEm:   'var(--ys-onPaperEm, #F9EED9)',
   rule:        'var(--ys-rule, rgba(247,237,224,0.16))',
   ruleSoft:    'var(--ys-ruleSoft, rgba(247,237,224,0.08))',
   indigo:      'var(--ys-indigo, #0B786C)',
@@ -65,6 +68,7 @@ export function applyPaletteCssVars(
     '--ys-inkSoft':     tokens.inkSoft,
     '--ys-onPaper':     tokens.onPaper,
     '--ys-onPaperSoft': tokens.onPaperSoft,
+    '--ys-onPaperEm':   tokens.onPaperEm,
     '--ys-rule':        tokens.rule,
     '--ys-ruleSoft':    tokens.ruleSoft,
     '--ys-indigo':      tokens.indigo,

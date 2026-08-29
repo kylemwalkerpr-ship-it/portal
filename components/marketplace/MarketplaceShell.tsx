@@ -525,8 +525,15 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       {/* Base CSS for the pattern picker ::before pseudo-element and
           consistent marketplace styling across ALL pages (landing + siblings). */}
       <style>{`
-        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; opacity: 0.5; }
+        /* Pattern contract (single source of truth, mirrored in the landing):
+           the fixed ::before texture sits ABOVE the shell's solid paper fill
+           (z-index: 0) and BELOW all page content (direct children are
+           raised to z-index: 1). pointer-events: none keeps it inert.
+           PatternPicker / ThemePicker inject background-image here — nothing
+           may zero it except the picker's "Solid" option. */
+        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.5; }
         .cw-market::after { content: none; }
+        .cw-market > * { position: relative; z-index: 1; }
         .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
         .cw-market a { color: inherit; text-decoration: none; }
         .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
@@ -566,6 +573,27 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
               paper background defaults to light. Pages that set their own
               cream color still work — this is the inherited fallback. */
         .cw-market { color: var(--ys-onPaper, #F7EDE0); }
+
+        /* 1b. Split headlines ("This week's <em>…</em>") keep BOTH halves
+              light on dark paper: plain text = onPaper, italic em =
+              onPaperEm (bright cream-gold, ≥ 4.5:1 vs paper* — verified in
+              tests/marketplace-palette-contrast.test.ts). Kickers on dark
+              paper use the same em token. Applies to every market route. */
+        .cw-market .section-head h2,
+        .cw-market .faq-heading,
+        .cw-market .cw-files-rail-head h2 {
+          color: var(--ys-onPaper, #F7EDE0);
+        }
+        .cw-market .section-head h2 em,
+        .cw-market .seller-card h2 em,
+        .cw-market .cw-files-rail-head h2 em {
+          font-style: italic;
+          color: var(--ys-onPaperEm, var(--ys-onPaper, #F7EDE0));
+        }
+        .cw-market .section-head .meta,
+        .cw-market .section-head .meta a {
+          color: var(--ys-onPaperSoft, rgba(247,237,224,0.72));
+        }
 
         /* 2. Dark paper surfaces always carry light text (fixes any
               component that hardcodes ink on a paper background). */

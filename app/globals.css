@@ -1046,8 +1046,11 @@ section[id] {
   --ys-ink: #1A120E;
   --ys-inkMid: #3D3530;
   --ys-inkSoft: #6B6058;
+  --ys-onPaper: #1A120E;
+  --ys-onPaperSoft: rgba(26,18,14,0.72);
+  --ys-onPaperEm: #1A120E;
   background: var(--ys-paper);
-  color: var(--ys-ink);
+  color: var(--ys-onPaper);
 }
 
 /* Hero section — dark cinematic overlay for visual impact */
@@ -1132,17 +1135,26 @@ section[id] {
   color: var(--ys-ink);
 }
 
-/* Section headings on paper background — dark */
+/* Section headings on the dark paper background — light, never ink.
+   Split headlines ("This week's <em>…</em>") keep BOTH halves light:
+   plain text = onPaper, italic em = onPaperEm (bright cream-gold,
+   verified ≥ 4.5:1 vs paper/paper2/paper3/footer per palette). */
 .cw-market .section-head h2,
 .cw-market .faq-heading,
 .cw-market .cw-files-rail-head h2 {
-  color: var(--ys-ink);
+  color: var(--ys-onPaper);
+}
+.cw-market .section-head h2 em,
+.cw-market .seller-card h2 em,
+.cw-market .cw-files-rail-head h2 em {
+  font-style: italic;
+  color: var(--ys-onPaperEm, var(--ys-onPaper));
 }
 
-/* Section meta text — readable mid-tone */
+/* Section meta text — readable light secondary on dark paper */
 .cw-market .section-head .meta,
 .cw-market .section-head .meta a {
-  color: var(--ys-inkMid);
+  color: var(--ys-onPaperSoft);
 }
 
 /* View toggle, filter pills, sort — light bg, dark text */
@@ -1164,20 +1176,20 @@ section[id] {
   color: inherit;
 }
 .cw-market .section-head .meta a {
-  color: var(--ys-ink);
-  border-bottom: 1px solid var(--ys-ink);
+  color: var(--ys-onPaper);
+  border-bottom: 1px solid var(--ys-onPaperSoft);
 }
 .cw-market .cw-all-trigger {
   color: var(--ys-ink);
   border-bottom-color: var(--ys-ink);
 }
 
-/* Trust bar — dark text on paper */
+/* Trust bar — light text on dark paper */
 .cw-market .trust-inner .label {
-  color: var(--ys-inkMid);
+  color: var(--ys-onPaperSoft);
 }
 .cw-market .trust-inner .item {
-  color: var(--ys-ink);
+  color: var(--ys-onPaper);
 }
 
 /* FAQ answers */
@@ -1219,11 +1231,12 @@ section[id] {
   color: var(--ys-inkSoft);
 }
 
-/* Seller directory, providers index, categories index */
+/* Seller directory, providers index, categories index — paper fills carry
+   light text (the palette contract), never ink-on-dark-paper. */
 .cw-market [style*="background: var(--ys-paper)"],
 .cw-market [style*="background:var(--ys-paper)"] {
   background: var(--ys-paper);
-  color: var(--ys-ink);
+  color: var(--ys-onPaper);
 }
 
 /* Gig discovery — search page */

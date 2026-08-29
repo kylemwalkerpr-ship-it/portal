@@ -124,6 +124,16 @@ describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
           }
           expect(ratio).toBeGreaterThanOrEqual(AA)
         })
+
+        // onPaperEm is the italic-em accent in split headings
+        // ("This week's <em>…</em>") on dark paper
+        it(`onPaperEm on ${surface} ≥ 4.5:1`, () => {
+          const ratio = contrastRatio(t.onPaperEm, t[surface])
+          if (ratio < AA) {
+            console.warn(`${palette.label}: onPaperEm ${t.onPaperEm} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+          }
+          expect(ratio).toBeGreaterThanOrEqual(AA)
+        })
       }
 
       // onPaperSoft is secondary text — it is alpha-blended over the paper

@@ -531,8 +531,11 @@ const FAQ_JSONLD = {
 
 const CSS = `
 .cw-market { color: ${T.onPaper}; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
-.cw-market::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background-color: transparent; opacity: 0.5; }
+.cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.5; }
 .cw-market::after { content: none; }
+/* Pattern contract (matches MarketplaceShell): the fixed ::before texture
+   sits ABOVE the shell's solid paper fill and BELOW all page content. */
+.cw-market > * { position: relative; z-index: 1; }
 .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
 .cw-market a { color: inherit; text-decoration: none; }
 .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
@@ -598,7 +601,7 @@ const CSS = `
 .cw-cat-detail-cta { margin-top: auto; padding-top: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.indigo}; border-top: 1px solid ${T.ruleSoft}; }
 .cw-cat-detail-cta:hover { color: ${T.indigoDeep}; }
 
-.cw-market .hero { position: relative; padding: 64px 0 68px; border-bottom: 0; background: #1A120E; overflow: hidden; }
+.cw-market .hero { position: relative; padding: 64px 0 68px; border-bottom: 0; background: transparent; overflow: hidden; }
 .cw-market .hero-media { position: absolute; inset: 0; pointer-events: none; }
 .cw-market .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; filter: saturate(0.7) contrast(1.08) brightness(0.72) sepia(0.18); }
 .cw-market .hero-media-overlay { position: absolute; inset: 0; background: rgba(26,18,14,0.7); }
@@ -608,7 +611,7 @@ const CSS = `
 .cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 6px 14px; }
 .cw-market .flagbar { display: none; }
 .cw-market .hero h1 { font-family: ${F.display}; font-size: clamp(34px, 4vw, 50px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 800; margin: 16px 0 14px; color: #FFFFFF; text-wrap: balance; }
-.cw-market .hero h1 em { font-style: italic; font-weight: 700; color: ${T.gold}; }
+.cw-market .hero h1 em { font-style: italic; font-weight: 700; color: ${T.onPaperEm}; }
 .cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.84); margin: 0 0 24px; }
 .cw-market .hero-search { display: flex; align-items: center; background: #fff; border: 0; border-radius: 12px; padding: 6px 6px 6px 18px; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,0.32); transition: box-shadow .18s cubic-bezier(0.22,1,0.36,1); }
 .cw-market .hero-search:focus-within { box-shadow: 0 18px 50px rgba(0,0,0,0.38), 0 0 0 3px rgba(14,124,116,0.35); }
@@ -679,7 +682,7 @@ const CSS = `
 
 .cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
 .cw-market .section-head h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.12; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; max-width: 24ch; }
-.cw-market .section-head h2 em { font-style: italic; color: ${T.gold}; }
+.cw-market .section-head h2 em { font-style: italic; color: ${T.onPaperEm}; }
 .cw-market .section-head .meta { display: flex; flex-direction: column; gap: 6px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.onPaperSoft}; text-align: right; }
 .cw-market .section-head .meta a { color: ${T.onPaper}; border-bottom: 1px solid ${T.onPaperSoft}; padding-bottom: 1px; }
 .cw-market .section-head .meta a:hover { color: ${T.indigo}; border-color: ${T.indigo}; }
@@ -776,9 +779,9 @@ const CSS = `
 .cw-market .quote { border-top: 2px solid ${T.gold}; padding-top: 14px; color: ${T.onPaper}; }
 .cw-market .quote .stars { margin-bottom: 10px; }
 .cw-market .quote blockquote { margin: 0 0 12px; font-family: ${F.display}; font-size: 16px; line-height: 1.45; color: ${T.onPaper}; letter-spacing: -0.005em; text-wrap: pretty; }
-.cw-market .quote blockquote em { color: ${T.indigo}; font-style: italic; }
-.cw-market .quote cite { display: flex; align-items: center; gap: 10px; font-style: normal; font-size: 13px; color: ${T.inkMid}; }
-.cw-market .quote cite b { color: ${T.ink}; font-weight: 600; }
+.cw-market .quote blockquote em { color: ${T.onPaperEm}; font-style: italic; }
+.cw-market .quote cite { display: flex; align-items: center; gap: 10px; font-style: normal; font-size: 13px; color: ${T.onPaperSoft}; }
+.cw-market .quote cite b { color: ${T.onPaper}; font-weight: 600; }
 .cw-market .quote cite .av { width: 36px; height: 36px; border-radius: 50%; background: ${T.indigo}; color: #FFFFFF; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; }
 
 .cw-market .seller-cta { padding: 28px 0 32px; border-top: 1px solid ${T.rule}; }
@@ -788,7 +791,7 @@ const CSS = `
 .cw-market .seller-card::after { content: "§"; position: absolute; right: 32px; bottom: -50px; font-family: ${F.display}; font-style: italic; font-weight: 500; font-size: 240px; color: rgba(255,255,255,0.05); pointer-events: none; line-height: 1; }
 .cw-market .seller-card .mono-eyebrow { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
 .cw-market .seller-card h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(22px, 2.8vw, 32px); line-height: 1.1; letter-spacing: -0.014em; margin: 8px 0 10px; color: #FFFFFF; max-width: 20ch; }
-.cw-market .seller-card h2 em { font-style: italic; color: #FFE9A3; }
+.cw-market .seller-card h2 em { font-style: italic; color: ${T.onPaperEm}; }
 .cw-market .seller-card p { margin: 0 0 14px; max-width: 56ch; font-size: 13.5px; line-height: 1.55; color: rgba(255,255,255,0.78); }
 .cw-market .seller-card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .cw-market .seller-card .btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 999px; font-weight: 600; font-size: 13px; transition: transform .12s, background .12s; }
