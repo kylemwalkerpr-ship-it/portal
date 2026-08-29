@@ -316,7 +316,11 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           { label: 'Dashboard', href: 'https://portal.yousafeconsultancy.com/dashboard', external: false, icon: '' },
           { label: 'File shop', href: 'https://market.yousafeconsultancy.com/shop', external: false, icon: '' },
         ].map((btn) => {
-          const isActive = btn.label === 'File shop' ? shopActive : btn.label === 'Home' ? !shopActive : false
+          const isActive = btn.label === 'File shop'
+            ? shopActive
+            : btn.label === 'Home'
+              ? !shopActive && section === 'browse'
+              : false
           const sharedStyle: React.CSSProperties = {
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '0 16px', marginRight: 6,
@@ -344,7 +348,18 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             )
           }
           return (
-            <Link key={btn.label} href={btn.href} style={sharedStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+            <Link
+              key={btn.label}
+              href={btn.href}
+              style={sharedStyle}
+              onMouseEnter={hoverIn}
+              onMouseLeave={hoverOut}
+              onClick={(e) => {
+                if (btn.label !== 'Home') return
+                e.preventDefault()
+                onNav('browse')
+              }}
+            >
               {btn.icon && (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d={btn.icon} />
@@ -511,7 +526,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     setCountry(((sp.get('country') as 'all' | 'us' | 'uk' | 'ca') || 'all'))
     if (onShop) setSection('shop')
     else if (view) setSection(view as Section)
-    else if (pathname !== '/marketplace') setSection('browse')
+    else setSection('browse')
   }, [pathname, onShop])
 
   // Palette transitions must read as instant token application, not a 350ms
