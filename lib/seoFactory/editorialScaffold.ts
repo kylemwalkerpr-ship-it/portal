@@ -140,7 +140,7 @@ function derivedTldrBullets(body: string, primaryKeyword: string, need = 3): str
  * items exist, falls back to derived bullets from the draft's own H2s.
  */
 export function ensureTldrBullets(body: string, primaryKeyword = 'guide'): string {
-  const m = body.match(/(?:^|\n)(##\s+In 60 seconds[ \t]*\r?\n)([\s\S]*?)(?=\n##\s|$)/i)
+  const m = body.match(/(?:^|\n)(##\s+In 60 seconds\s*[:：-]?\s*\r?\n)([\s\S]*?)(?=\n##\s|$)/i)
   if (!m) return body
   const countBullets = (s: string) => (s.match(/^[-*+]\s+\S/gm) || []).length
   const sectionBody = m[2]
@@ -740,7 +740,7 @@ export function applyDeterministicRepairs(opts: {
   }
 
   {
-    const tldr = b.match(/(?:^|\n)##\s+In 60 seconds[ \t]*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
+    const tldr = b.match(/(?:^|\n)##\s+In 60 seconds\s*[:：-]?\s*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     const existing = tldr ? (tldr[1].match(/^[-*+]\s+\S/gm) || []).length : 0
     if (!tldr || existing < 3 || existing > 5) {
       // normalizeEditorDocument + ensureTldrBullets turn paragraphs, numbered
@@ -794,7 +794,7 @@ export function applyDeterministicRepairs(opts: {
       const FAQ_RE = /^## FAQ/i
       const WORKED_RE = /^## Worked Example/i
       const TOC_RE = /^## Table of contents/i
-      const IN60_RE = /^## In 60 seconds|^## TL;DR|^## Key takeaways/i
+      const IN60_RE = /^##\s+(?:In 60 seconds\s*[:：-]?|TL;DR|Key takeaways)/i
       const DISCLAIMER_RE_PARA = /^---\s*\n\*\*Disclaimer/i
 
       const introSections: string[] = []   // In 60 seconds, TOC
@@ -1828,7 +1828,7 @@ export function applyDeterministicRepairs(opts: {
             '',
           ].join('\n')
           // Insert after the first H2 or In 60 seconds block, before the main content
-          const sixtyMatch = b.match(/^##\s+In 60 seconds\s*$/im)
+      const sixtyMatch = b.match(/^##\s+In 60 seconds\s*[:：-]?\s*$/im)
           const sixtyIdx = sixtyMatch ? sixtyMatch.index! + sixtyMatch[0].length : -1
           const firstH2 = b.search(/^##\s+(?!In 60 seconds|Table of contents)/im)
           const insertAt =

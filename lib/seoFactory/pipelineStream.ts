@@ -538,8 +538,12 @@ export async function* runSeoFactoryPipelineStream(
           yield {
             type: 'progress',
             stage: 'generate',
-            message: `Segmented write stalled at part ${parts.length + 1}/${segments.length} (${segmentFailed.slice(0, 120)}) — falling back to single-pass`,
+            message: `Segmented write paused at part ${parts.length + 1}/${segments.length} (${segmentFailed.slice(0, 120)}) — preserving completed parts for append-only continuation`,
           }
+          // Never discard completed sections and ask the model to regenerate
+          // the whole article. Preserve the checkpoint; depth rescue appends
+          // only the missing sections on the next pass/resume.
+          if (parts.length > 0) attemptText = mergeSegmentParts(parts)
         } else if (parts.length > 0) {
           attemptText = mergeSegmentParts(parts)
         }

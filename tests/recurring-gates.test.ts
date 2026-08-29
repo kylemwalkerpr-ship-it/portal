@@ -11,6 +11,9 @@
 import { applyDeterministicRepairs } from '../lib/seoFactory/editorialScaffold'
 import { repairUnverifiedInternalLinks } from '../lib/seoFactory/linkAudit'
 import { articleJsonLdErrors } from '../lib/seoFactory/ahrefsIssues'
+import { evaluateContentQuality } from '../lib/seoFactory/contentQualityGate'
+import { runAuditEditorLoop } from '../lib/seoFactory/auditEditorLoop'
+import { createContentSpec } from '../lib/seoFactory/contentSpec'
 
 const BROKEN_LD = `<script type="application/ld+json">
 { "@context": "https://schema.org", "@type": "Article", "headline": "Broken"
@@ -98,6 +101,71 @@ describe('sentence_start_repetition — mechanical smoothing stays available pos
     const draft = `# T\n\n## A\n\n${s(1)}${s(2)}${s(3)}${s(4)}${s(5)}\n`
     const out = applyDeterministicRepairs({ content: draft, title: 'T', primaryKeyword: 't' })
     expect(out.applied.join(' ')).toMatch(/sentence_rhythm/)
+  })
+})
+
+describe('TLDR and dash gates converge on real drafting variants', () => {
+  it('repairs an In 60 seconds heading with trailing punctuation', () => {
+    const draft = `# Guide\n\n## In 60 seconds:\n\nThis is one prose sentence. It is followed by another useful sentence. A third sentence completes the summary.\n\n## Details\n\nDetailed guidance belongs here.`
+    const out = applyDeterministicRepairs({
+      content: draft,
+      title: 'Guide',
+      primaryKeyword: 'guide',
+      contentType: 'article',
+      indexable: true,
+    })
+    const gate = evaluateContentQuality({
+      content: out.content,
+      contentType: 'article',
+      primaryKeyword: 'guide',
+      indexable: true,
+    })
+    expect(gate.findings.some((f) => f.code === 'tldr_format_invalid')).toBe(false)
+    expect(out.content.match(/^[-*+]\s+\S/gm)?.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('does not treat legitimate numeric ranges as machine-cadence dashes', () => {
+    const ranges = Array.from({ length: 15 }, (_, i) => `${i + 1}–${i + 3} days`).join(', ')
+    const gate = evaluateContentQuality({
+      content: `# Timeline\n\n## In 60 seconds\n\n- Check the timeline.\n- Gather the evidence.\n- Confirm the filing window.\n\n## Details\n\nTypical ranges include ${ranges}.`,
+      contentType: 'article',
+      primaryKeyword: 'timeline',
+      indexable: false,
+    })
+    expect(gate.findings.some((f) => f.code === 'emdash_spam')).toBe(false)
+  })
+})
+
+describe('unified audit/editor loop', () => {
+  it('repairs automatable blockers even when a human-only link warning is also open', async () => {
+    const spec = createContentSpec({
+      jobId: 'loop-regression',
+      contentType: 'article',
+      region: 'us',
+      indexable: true,
+      target: {
+        canonicalUrl: 'https://legal.yousafeconsultancy.com/us/loop-regression',
+        host: 'legal.yousafeconsultancy.com',
+        path: '/us/loop-regression',
+      },
+      intent: { primaryQuery: 'loop regression', reader: 'applicants', queryNeed: 'guidance', stage: 'consideration' },
+      primaryKeyword: 'loop regression',
+      requiredKeywords: [],
+    })
+    const result = await runAuditEditorLoop(
+      { content: 'draft', spec },
+      {
+        evaluate: (content) => content === 'draft'
+          ? [
+              { code: 'tldr_format_invalid', severity: 'blocker', message: 'repair me' },
+              { code: 'unverified_internal_link', severity: 'warning', message: 'verify me' },
+            ]
+          : [{ code: 'unverified_internal_link', severity: 'warning', message: 'verify me' }],
+        deterministicRepair: (content) => ({ content: content === 'draft' ? 'repaired' : content, repairs: ['tldr_bullets_derived'] }),
+      },
+    )
+    expect(result.content).toBe('repaired')
+    expect(result.leftoverCodes).toEqual(['unverified_internal_link'])
   })
 })
 

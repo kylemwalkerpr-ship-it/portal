@@ -33,8 +33,8 @@ export type LoopBudget = { maxAiPasses: number; maxDeterministicRepasses: number
 
 /** One named budget — conservative initial values per brief §5.2. */
 export const CONTENT_LOOP_BUDGET: LoopBudget = {
-  maxAiPasses: 6,
-  maxDeterministicRepasses: 2,
+  maxAiPasses: 3,
+  maxDeterministicRepasses: 3,
   stallRounds: 2,
 } as const
 
@@ -156,7 +156,11 @@ export async function runAuditEditorLoop(
 
     // 6. human_only findings route straight to review — never fabricated by a model.
     const human = humanOnlyCodes(findings)
-    if (human.length) {
+    const automatable = findings.filter((f) => !human.includes(f.code))
+    // Human-only evidence must not prevent deterministic/targeted repairs for
+    // the rest of the document. Hold only when human-only findings are all
+    // that remain.
+    if (human.length && automatable.length === 0) {
       rounds.push({
         round, beforeHash, openFindings: findings, deterministicRepairs: [],
         afterHash: beforeHash, progress: { blockersReduced: false, fingerprintPreserved: true },

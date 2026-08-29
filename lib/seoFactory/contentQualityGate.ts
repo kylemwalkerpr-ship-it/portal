@@ -423,7 +423,7 @@ export function evaluateContentQuality(opts: {
     }
     // Do not use the `m` flag with `$` — `$` would match the end of the first
     // bullet line and truncate the section to one item.
-    const tldr = raw.match(/(?:^|\n)##\s+In 60 seconds[ \t]*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
+    const tldr = raw.match(/(?:^|\n)##\s+In 60 seconds\s*[:：-]?\s*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     if (!tldr) {
       add({
         code: 'tldr_format_invalid',
@@ -564,7 +564,14 @@ export function evaluateContentQuality(opts: {
   let humanScore = 100
 
   // Em-dash / en-dash spam (classic LLM tell)
-  const dashCount = (body.match(/[—–]/g) || []).length
+  // Numeric/currency ranges are legitimate typography, not machine cadence.
+  // Count only clause punctuation so "$250–$400" and "3–5 days" cannot
+  // manufacture an emdash_spam blocker that the repair intentionally keeps.
+  const proseDashBody = body
+    .replace(/\d\s*[—–]\s*\d/g, '')
+    .replace(/[$€£¥]\s*[—–]\s*\d/g, '')
+    .replace(/\d\s*[—–]\s*[$€£¥]/g, '')
+  const dashCount = (proseDashBody.match(/[—–]/g) || []).length
   if (dashCount >= 8 || (words > 0 && dashCount / words > 0.012)) {
     humanScore -= 15
     add({

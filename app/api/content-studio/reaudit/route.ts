@@ -12,7 +12,7 @@ import { normalizeEditorDocument, editorResponseContract, sanitizeFrontmatter } 
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 import { runAuditEditorLoop, CONTENT_LOOP_BUDGET, type LoopFinding } from '@/lib/seoFactory/auditEditorLoop'
 import { anchorHash, parseEditorPatch } from '@/lib/seoFactory/editorPatch'
-import type { ContentSpec } from '@/lib/seoFactory/contentSpec'
+import { resolveContentSpecForJob, type ContentSpec } from '@/lib/seoFactory/contentSpec'
 
 export type { ReauditResponse }
 
@@ -706,7 +706,7 @@ export async function PATCH(request: NextRequest) {
     if (canonicalSpec.mismatch) {
       return NextResponse.json(CONTENT_SPEC_MISMATCH_RESPONSE, { status: 409 })
     }
-    const contentSpec = canonicalSpec.spec
+    let contentSpec = canonicalSpec.spec
     const { renderReviewerRules, PLAYBOOK_VERSION } = await import('@/lib/seoFactory/contentQualityPlaybook')
     const specReviewerRules = contentSpec
       ? renderReviewerRules([...(blockers || []), ...(warnings || [])], contentSpec)
@@ -733,29 +733,44 @@ export async function PATCH(request: NextRequest) {
 
     if (action === 'fix_until_gates') {
       // ── Bounded fix-until-gates loop (implementation brief §5, Milestone C) ─
-      // Default OFF — enable with CONTENT_LOOP_V2=1. Deterministic repairs run
+      // Deterministic repairs run
       // first; only outstanding registered targeted_ai findings go to the
       // reviewer as structured EditorPatches; human_only findings hold for
       // review and are never sent to a model; preservation failures reject the
       // whole patch (the previous document stays authoritative); and the full
       // loop transcript persists under audit_json.contentLoop.
-      if (process.env.CONTENT_LOOP_V2 !== '1') {
-        return NextResponse.json(
-          { error: 'fix_until_gates is disabled (set CONTENT_LOOP_V2=1)' },
-          { status: 400 },
-        )
+      // Legacy drafts predate ContentSpec persistence. Derive one canonical
+      // snapshot from the immutable job metadata once, then use that same
+      // snapshot for every round. This keeps old jobs fixable without letting
+      // any model invent a new brief mid-loop.
+      if (!contentSpec) {
+        const derived = resolveContentSpecForJob({
+          jobId: jobId || 'legacy-editor-draft',
+          contentType: contentType || 'legal_guide',
+          region,
+          indexable: indexable !== false,
+          canonicalUrl: targetUrl || '',
+          primaryKeyword: primaryKeyword || 'guide',
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          outline: (content.match(/^##\s+(.+)$/gm) || []).map((h) => h.replace(/^##\s+/, '')),
+          topic: primaryKeyword || 'guide',
+        })
+        contentSpec = derived.spec
       }
-      // Fail closed: the loop is spec-gated. No canonical ContentSpec snapshot
-      // → no unbounded fixing; hold for review instead.
       if (!contentSpec) {
         return NextResponse.json(
           {
-            error: 'fix_until_gates requires a valid canonical ContentSpec snapshot (persisted audit_json.contentSpec). Run generation with a spec-enabled pipeline first.',
+            error: 'Audit & Fix needs canonical job metadata (target URL, content type, and primary keyword). Refresh the job and try again.',
             heldForReview: true,
           },
           { status: 409 },
         )
       }
+      let verifiedEstateUrls: string[] = []
+      try {
+        verifiedEstateUrls = Array.from(await fetchLiveEstateUrls())
+      } catch { /* live verification remains best-effort */ }
       const loopCtx = {
         primaryKeyword: primaryKeyword || 'guide',
         region,
@@ -765,6 +780,7 @@ export async function PATCH(request: NextRequest) {
         requiredLongTailKeywords,
         competingUrls: competingPages,
         targetUrl,
+        linkAllowlist: verifiedEstateUrls,
       }
       const evaluate = (c: string): LoopFinding[] => {
         const gate = evaluateReauditContract({ content: c, ...loopCtx })
@@ -823,8 +839,22 @@ Return ONLY the JSON EditorPatch.`
           return null // provider failure — the loop holds, content untouched
         }
       }
+      // Resolve live links once before the loop. Dead/unverified hrefs are
+      // replaced or unwrapped; later rounds therefore cannot stall forever on
+      // a human-only UNVERIFIED_INTERNAL_LINK warning.
+      let loopStartContent = content
+      try {
+        const sanitized = await sanitizeDraftLinksLive(content, {
+          region,
+          topic: primaryKeyword,
+          keywords: [...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])],
+          knownLiveUrls: verifiedEstateUrls,
+        })
+        loopStartContent = sanitized.content
+      } catch { /* keep the current body if live audit is unavailable */ }
+
       const loopResult = await runAuditEditorLoop(
-        { content, spec: contentSpec, playbookVersion: PLAYBOOK_VERSION },
+        { content: loopStartContent, spec: contentSpec, playbookVersion: PLAYBOOK_VERSION },
         { evaluate, deterministicRepair, requestEditorPatch },
       )
       const finalContract = evaluateReauditContract({ content: loopResult.content, ...loopCtx })

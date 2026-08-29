@@ -290,11 +290,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } finally { setBusy(false) }
   }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft, persistFixedContent, requiredShortKeywords, requiredLongTailKeywords, competingUrls, region, targetUrl])
 
-  // Fix ALL issues via AI — one button fixes blockers, warnings, and engine gaps.
-  // Clicking again while running cancels the request.
+  // One closed Audit & Fix loop: audit → deterministic repair → targeted AI
+  // patch → re-audit, repeated server-side until gates clear or the bounded
+  // three-pass budget is exhausted. Clicking again while running cancels.
   const handleFixAll = useCallback(async () => {
     if (countBodyWords(content) < 40) {
-      setError('No countable body words. Load a draft before Fix all.')
+      setError('No countable body words. Load a draft before Audit & Fix.')
       return
     }
     if (fixingAll) {
@@ -317,7 +318,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 300_000,
-        body: JSON.stringify({ action: 'fix_all', content: contentToFix, annotations, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_until_gates', content: contentToFix, annotations, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -338,11 +339,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setEnginePlan(engine.length ? engine : null)
       const parts = [`Score ${data.score}/100`]
       if (data.ok) { parts.push('PASSED') } else { parts.push('BLOCKED') }
+      if (data.contentLoop?.rounds?.length) parts.push(`${data.contentLoop.rounds.length} audit/fix round(s)`)
       if (engine.length) { parts.push(`${engine.length} engine gap${engine.length === 1 ? '' : 's'} targeted`) }
-      setNotice(`AI fix applied — ${parts.join(' · ')}`)
+      setNotice(`Audit & Fix complete — ${parts.join(' · ')}`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
-      setError(err instanceof Error ? err.message : 'AI fix failed')
+      setError(err instanceof Error ? err.message : 'Audit & Fix failed')
     } finally {
       clearInterval(tick)
       if (seq === fixSeqRef.current) {
@@ -741,7 +743,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               {Math.max(blockerItems.length, auditResult.blockers)} ship blocker{Math.max(blockerItems.length, auditResult.blockers) === 1 ? '' : 's'}
             </span>
             <span style={{ fontSize: 10, color: C.red, fontFamily: C.mono }}>
-              Use Fix All above to resolve blockers
+              Use Audit &amp; Fix above to resolve blockers
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -773,7 +775,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               {warningsData.length} quality warning{warningsData.length === 1 ? '' : 's'}
             </span>
             <span style={{ fontSize: 10, color: '#92400E', fontFamily: C.mono }}>
-              Use Fix All above to resolve warnings
+              Use Audit &amp; Fix above to resolve warnings
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -785,7 +787,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             ))}
           </div>
           <div style={{ fontSize: 10, color: C.textDim }}>
-            Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Click <strong>Fix All</strong> above to resolve all issues at once.
+            Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Click <strong>Audit &amp; Fix</strong> above to run the closed remediation loop.
           </div>
         </div>
       )}
@@ -878,13 +880,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           ))}
         </div>
 
-        {/* Audit — reads latest draft from Supabase */}
-        <button type="button" disabled={allBusy} onClick={handleReaudit}
-          style={btnStyle({ bg: '#EFF6FF', border: C.blue, color: C.blue, disabled: allBusy })}>
-          {busy ? '⏳ Auditing...' : '🔍 Audit'}
-        </button>
-
-        {/* Fix All — single button for blockers + warnings + engine gaps */}
+        {/* One canonical audit/editor loop — no separate one-shot audit and fix. */}
         <button type="button" disabled={busy || disabled} onClick={handleFixAll}
           style={btnStyle({
             bg: fixingAll ? '#FEE2E2' : '#F3E8FF',
@@ -893,10 +889,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             disabled: busy || disabled,
           })}>
             {fixingAll
-              ? `⏳ Fixing... ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
+              ? `⏳ Auditing & fixing... ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
               : (annotations.length || warningItems.length + blockerItems.length) > 0
-                ? `✨ Fix All (${Math.max(annotations.length, warningItems.length + blockerItems.length)})`
-                : '✨ Fix All'}
+                ? `✨ Audit & Fix (${Math.max(annotations.length, warningItems.length + blockerItems.length)})`
+                : '✨ Audit & Fix'}
           </button>
 
         {/* Toggle annotations */}
@@ -982,7 +978,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 <div style={{ padding: 20, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
                   <div style={{ fontWeight: 600, marginBottom: 8, color: C.text }}>Document view unavailable for large drafts</div>
                   <div>This draft is {(content.length / 1000).toFixed(0)}k characters. The document renderer cannot safely render content this large without freezing the browser.</div>
-                  <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Fix All</strong> to reduce the content size.</div>
+                  <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Audit &amp; Fix</strong> to reduce the content size.</div>
                 </div>
               ) : (
                 <MarkdownDocument source={content} />
@@ -1066,18 +1062,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   <button type="button" onClick={() => jumpToAnnotation(a)}
                     style={smallBtnStyle({ bg: C.blue, color: '#FFF' })}>
                     Jump to line
-                  </button>
-                  <button type="button"
-                    disabled={allBusy || (fixingOne !== null && fixingOne !== a.id)}
-                    onClick={() => handleFixOne(a)}
-                    style={smallBtnStyle({
-                      bg: fixingOne === a.id ? '#FEE2E2' : C.purple,
-                      color: '#FFF',
-                      disabled: allBusy || (fixingOne !== null && fixingOne !== a.id),
-                    })}>
-                    {fixingOne === a.id
-                      ? `Cancel · ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}`
-                      : 'AI Fix'}
                   </button>
                 </div>
               </div>
