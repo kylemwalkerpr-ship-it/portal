@@ -272,8 +272,8 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
       <div className="ys-shell-header-inner" style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', height: 72 }}>
 
         {/* Brand */}
-        <Link
-          href={role === null ? '/marketplace' : 'https://portal.yousafeconsultancy.com/dashboard'}
+        <a
+          href="https://yousafeconsultancy.com/"
           className="ys-shell-brand"
           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', textDecoration: 'none', flexShrink: 0 }}
         >
@@ -308,15 +308,15 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
               </div>
             </div>
           )}
-        </Link>
+        </a>
 
-        {/* Uniform pill buttons — Home, Market, File shop */}
+        {/* Uniform pill buttons — Home, Dashboard, File shop */}
         {[
-          { label: 'Home', href: 'https://yousafeconsultancy.com/', external: false, icon: 'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z' },
-          { label: 'Market', href: '/marketplace', external: false, icon: '' },
+          { label: 'Home', href: '/marketplace', external: false, icon: 'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z' },
+          { label: 'Dashboard', href: 'https://portal.yousafeconsultancy.com/dashboard', external: false, icon: '' },
           { label: 'File shop', href: 'https://yousafeconsultancy.com/shop', external: true, icon: '' },
         ].map((btn) => {
-          const isActive = btn.label === 'File shop' ? shopActive : false
+          const isActive = btn.label === 'File shop' ? shopActive : btn.label === 'Home' ? !shopActive : false
           const sharedStyle: React.CSSProperties = {
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '0 16px', marginRight: 6,
