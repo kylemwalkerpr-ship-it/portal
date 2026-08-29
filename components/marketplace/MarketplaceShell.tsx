@@ -408,7 +408,9 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
 
         {role !== null && (
           <div className="ys-shell-jx" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
-            <JurisdictionDropdown active={country} />
+            <React.Suspense fallback={null}>
+              <JurisdictionDropdown active={country} />
+            </React.Suspense>
           </div>
         )}
 
@@ -702,7 +704,9 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
 
       {/* Sub-nav — visa category bar stays on marketplace browse, not the file shop */}
       {section === 'browse' && !onShop && (
-        <CategoryBar country={country} />
+        <React.Suspense fallback={null}>
+          <CategoryBar country={country} />
+        </React.Suspense>
       )}
 
       {/* Section content OR marketplace pages */}

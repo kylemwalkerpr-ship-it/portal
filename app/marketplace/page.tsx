@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
@@ -74,7 +75,11 @@ export default async function Page({
     sp.min_price || sp.max_price || sp.min_rating || sp.delivery_days,
   )
   if (hasFilters) {
-    return <GigDiscoveryPage />
+    return (
+      <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #4A2A1A)' }} />}>
+        <GigDiscoveryPage />
+      </Suspense>
+    )
   }
 
   // No role-gating on the marketplace landing. Anyone — anon, client,

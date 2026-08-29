@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
@@ -43,6 +43,14 @@ interface SavedCard {
 }
 
 export default function CartPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #4A2A1A)' }} />}>
+      <CartPageInner />
+    </Suspense>
+  )
+}
+
+function CartPageInner() {
   const { items, removeItem, setQuantity, subtotalCents, clear, addItem } = useCart()
   const searchParams = useSearchParams()
   const router = useRouter()
