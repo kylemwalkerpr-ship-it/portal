@@ -319,7 +319,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           const isActive = btn.label === 'File shop'
             ? shopActive
             : btn.label === 'Home'
-              ? !shopActive && section === 'browse'
+              ? !shopActive && activeView === 'browse'
               : false
           const sharedStyle: React.CSSProperties = {
             display: 'inline-flex', alignItems: 'center', gap: 6,

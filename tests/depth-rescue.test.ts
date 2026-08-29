@@ -64,7 +64,21 @@ function buildDraft(bodyWords: number): string {
 /** A single H2 append section whose body carries exactly `words` body words.
  *  Appends carry no front matter and no duplicate of existing skeleton. */
 function buildAppendSection(heading: string, words: number): string {
-  return `## ${heading}\n\n` + Array(words).fill('word').join(' ')
+  const vocabPool = [
+    ['guidance', 'steps', 'documents', 'timeline', 'fees', 'checklist', 'requirements'],
+    ['regional', 'dependents', 'family', 'local', 'office', 'appointment', ' nuances'],
+    ['processing', 'payment', 'logistics', 'schedule', 'receipt', 'portal', 'invoice'],
+    ['refusal', 'mistake', 'avoidance', 'evidence', 'interview', 'preparation', 'risk'],
+    ['costs', 'charges', 'currency', 'refund', 'deadline', 'form', 'fee'],
+    ['checklist', 'prepare', 'before', 'arrive', 'appointment', 'print', 'copy'],
+  ]
+  const hash = heading.split('').reduce((h, c) => h + c.charCodeAt(0), 0)
+  const vocab = vocabPool[hash % vocabPool.length]
+  const filler = Array(words)
+    .fill(0)
+    .map((_, i) => vocab[i % vocab.length])
+    .join(' ')
+  return `## ${heading}\n\n${filler}`
 }
 
 /** Wrap a deterministic text factory into the injected generateText contract. */
@@ -80,9 +94,8 @@ function makeGenerate(
     const model = step.append ? 'mock-append' : 'mock-expand'
     let text = ''
     if (step.append) {
-      // Append passes return ONLY new sections (mirrors mergeAppendedSections).
-      const merged = mergeAppendedSections(buildDraft(0), step.append)
-      text = merged
+      // Append passes return ONLY new sections; the rescue itself merges them.
+      text = step.append
     } else if (step.growText !== undefined) {
       text = step.growText
     } else {
@@ -320,6 +333,54 @@ describe('runDepthRescue', () => {
     expect(rescueLines.length).toBe(2)
     expect(rescueLines[0].message).toContain('Depth rescue 1/10')
     expect(rescueLines[1].message).toContain('Depth rescue 2/10')
+  })
+
+  it('rejects an append chunk that parrots an existing paragraph instead of growing', async () => {
+    const existingParagraph =
+      'Applicants must submit a valid passport, admission letter, and proof of funds before the visa interview can be scheduled.'
+    // Build a long body (just under the floor) that contains the paragraph the
+    // model will try to re-append.
+    const longBody = [
+      '---',
+      `title: Student Visa Guide`,
+      `primaryKeyword: ${PRIMARY}`,
+      '---',
+      '',
+      '# Student Visa Guide',
+      '',
+      '## Eligibility Requirements',
+      '',
+      Array(50).fill(existingParagraph).join(' '),
+      '',
+      '## Application Process',
+      '',
+      'Start by choosing a SEVP-certified school and paying the required application fee.',
+      '',
+      '## Documents Checklist',
+      '',
+      'Gather financial evidence, transcripts, and identification before the interview.',
+      '',
+      '## Sources',
+      '',
+      '- https://example.gov/student-visa',
+      '',
+      'Disclaimer: educational only, not legal advice.',
+    ].join('\n')
+    const duplicateAppend = `## Rejected Duplicate Section\n\n${existingParagraph}`
+    const { gen, calls } = makeGenerate([
+      { growText: longBody }, // pass 1: expand to a long rewrite that keeps the paragraph
+      { append: duplicateAppend }, // pass 2: tries to re-append the same paragraph
+    ])
+    const { done } = await drain(baseOpts({ content: longBody, generateText: gen }))
+
+    // The duplicate was detected and rejected, so it never became part of the draft.
+    expect(done).not.toBeNull()
+    expect(done!.content).not.toMatch(/Rejected Duplicate Section/)
+    // Because the duplicate added no new words, the rescue stalled after the
+    // allowed number of no-growth passes rather than looping forever.
+    expect(done!.stallCount).toBeGreaterThanOrEqual(1)
+    // The rejected pass still counted as an attempt; the loop terminated.
+    expect(calls.length).toBeLessThanOrEqual(4)
   })
 
   it('skips rescue for critically-thin drafts (below 200 words) and yields done immediately', async () => {

@@ -61,6 +61,97 @@ export const APPEND_FOCUSES = [
   'Costs, fees, or logistics (official schedules only)',
 ]
 
+const SIMILARITY_THRESHOLD = 0.85
+const SIMILARITY_MIN_SENTENCE_LEN = 40
+
+function tokenize(s: string): string[] {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 2)
+}
+
+function termFreq(tokens: string[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const t of tokens) map.set(t, (map.get(t) || 0) + 1)
+  return map
+}
+
+function cosineSimilarity(a: string, b: string): number {
+  const A = termFreq(tokenize(a))
+  const B = termFreq(tokenize(b))
+  if (A.size === 0 || B.size === 0) return 0
+  let dot = 0
+  let normA = 0
+  let normB = 0
+  for (const [t, c] of A) {
+    normA += c * c
+    const cb = B.get(t) || 0
+    dot += c * cb
+  }
+  for (const c of B.values()) normB += c * c
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom === 0 ? 0 : dot / denom
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const A = new Set(tokenize(a))
+  const B = new Set(tokenize(b))
+  if (A.size === 0 || B.size === 0) return 0
+  let inter = 0
+  for (const t of A) if (B.has(t)) inter++
+  return inter / (A.size + B.size - inter)
+}
+
+function extractLongSentences(text: string, minLen = SIMILARITY_MIN_SENTENCE_LEN): string[] {
+  return String(text || '')
+    .replace(/\[[^\]]+\]\([^)]+\)/g, ' ') // drop link syntax
+    .replace(/[*_`#]/g, '')
+    .split(/(?<=[.!?])\s+|\n{2,}/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= minLen)
+}
+
+function h2Set(text: string): Set<string> {
+  const set = new Set<string>()
+  const re = /^##\s+(.+?)$/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    set.add(m[1].trim().toLowerCase())
+  }
+  return set
+}
+
+function repeatedH2Count(existing: string, candidate: string): number {
+  const existingH2s = h2Set(existing)
+  const candidateH2s = h2Set(candidate)
+  let repeats = 0
+  for (const h of candidateH2s) if (existingH2s.has(h)) repeats++
+  return repeats
+}
+
+/** True when the candidate expansion is just parroting existing prose or
+ *  re-uses an existing H2 heading. We reject these so depth rescue pads word
+ *  count with NEW substance instead of cloning paragraphs.
+ *  `checkH2s` is true for append-only chunks (new sections must not repeat
+ *  existing headings) and false for full-rewrites (which legitimately keep
+ *  the same outline). */
+function isParrot(existing: string, candidate: string, checkH2s = true): boolean {
+  if (checkH2s && repeatedH2Count(existing, candidate) > 0) return true
+  const existingSentences = extractLongSentences(existing)
+  const candidateSentences = extractLongSentences(candidate)
+  if (existingSentences.length === 0 || candidateSentences.length === 0) return false
+  for (const cand of candidateSentences) {
+    for (const ex of existingSentences) {
+      const cos = cosineSimilarity(cand, ex)
+      const jac = jaccardSimilarity(cand, ex)
+      if (cos > SIMILARITY_THRESHOLD || jac > SIMILARITY_THRESHOLD) return true
+    }
+  }
+  return false
+}
+
 export interface DepthRescueOptions {
   content: string
   audit: SeoFactoryAudit
@@ -141,6 +232,8 @@ export async function* runDepthRescue(
   const rescueStart = now()
   let expandPasses = 0
   let attempts = 0
+  let appendAttempts = 0
+  let expandSucceeded = false
 
   // ── Critically-thin guard: skip rescue for drafts too small to expand ──
   // A 36-word draft cannot be expanded to a 2200-word article — the model
@@ -185,7 +278,7 @@ export async function* runDepthRescue(
       message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words (${Math.max(0, minWords - currentWords)} to add)…`,
     }
     try {
-      if (expandPasses === 1) {
+      if (!expandSucceeded) {
         const ai = await generateText({
           system,
           prompt: buildDepthExpandPrompt({
@@ -224,11 +317,13 @@ export async function* runDepthRescue(
           // the rescue never ships a robotic-rhythm rewrite.
           const rhythm = smoothSentenceRhythm(ai.text)
           content = rhythm.replaced > 0 ? rhythm.content : ai.text
+          expandSucceeded = true
           yield { type: 'delta', text: '\n\n<!-- depth expand applied -->\n\n', attempt: attempts }
           yield { type: 'delta', text: content.slice(0, 500), attempt: attempts }
         }
       } else {
-        const focus = APPEND_FOCUSES[(expandPasses - 2) % APPEND_FOCUSES.length]
+        const focus = APPEND_FOCUSES[appendAttempts % APPEND_FOCUSES.length]
+        appendAttempts++
         const ai = await generateText({
           system:
             'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
@@ -252,19 +347,27 @@ export async function* runDepthRescue(
         })
         provider = ai.provider
         model = ai.model
-        let merged = mergeAppendedSections(content, ai.text)
-        // Rhythm guard on appended sections: the append prompt now asks the
-        // model to vary openings, but a model that already wrote "The UK
-        // dependent visa …" 5× in the original will repeat the opener in the
-        // NEW sections too. Deterministically smooth repeated 12-char
-        // openings (same repair applyDeterministicRepairs runs at ship) so
-        // the rescue never ships a robotic-rhythm draft.
-        const rhythm = smoothSentenceRhythm(merged)
-        if (rhythm.replaced > 0) {
-          merged = rhythm.content
-        }
-        if (countBodyWords(merged) > currentWords) {
-          content = merged
+        if (isParrot(content, ai.text)) {
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: `Depth rescue pass ${expandPasses} rejected: appended section repeats existing prose or headings`,
+          }
+        } else {
+          let merged = mergeAppendedSections(content, ai.text)
+          // Rhythm guard on appended sections: the append prompt now asks the
+          // model to vary openings, but a model that already wrote "The UK
+          // dependent visa …" 5× in the original will repeat the opener in the
+          // NEW sections too. Deterministically smooth repeated 12-char
+          // openings (same repair applyDeterministicRepairs runs at ship) so
+          // the rescue never ships a robotic-rhythm draft.
+          const rhythm = smoothSentenceRhythm(merged)
+          if (rhythm.replaced > 0) {
+            merged = rhythm.content
+          }
+          if (countBodyWords(merged) > currentWords) {
+            content = merged
+          }
         }
       }
     } catch (e) {

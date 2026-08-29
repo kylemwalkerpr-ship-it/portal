@@ -86,12 +86,51 @@ function isTableSeparator(line: string): boolean {
  * scripts, and trailing incomplete schema so the stream does not render as a
  * raw `{ "@context": ... }` dump.
  */
+const FM_KEYS = new Set([
+  'title',
+  'content_type',
+  'primaryKeyword',
+  'description',
+  'metaDescription',
+  'region',
+  'canonicalUrl',
+  'canonical',
+  'robots',
+  'ogImage',
+  'og:image',
+  'image',
+])
+
 export function documentPreviewSource(source: string): string {
   let md = String(source || '')
   if (md.startsWith('---')) {
     const end = md.indexOf('\n---', 3)
-    if (end !== -1) md = md.slice(end + 4).replace(/^\n+/, '')
+    if (end !== -1) {
+      // Complete frontmatter block — strip it and any trailing blank lines.
+      md = md.slice(end + 4).replace(/^\n+/, '')
+    } else {
+      // Streaming frontmatter: the model has emitted `---` but not closed it
+      // yet. Strip everything up to the first real heading so the preview does
+      // not show raw YAML tokens (`title:`, `description:`) as prose.
+      const firstHeading = md.search(/\n#[ \t]+/)
+      md = firstHeading !== -1 ? md.slice(firstHeading + 1).replace(/^\n+/, '') : ''
+    }
   }
+  // Streaming can also leave stray frontmatter keys before the first heading.
+  // Only strip a contiguous run of known frontmatter keys at the top of the
+  // body, so normal prose like "Note: this is important" is never removed.
+  const lines = md.split('\n')
+  let cut = 0
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim()
+    if (!t) { cut = i + 1; continue }
+    if (/^---$/.test(t)) { cut = i + 1; continue }
+    const m = t.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/)
+    if (m && FM_KEYS.has(m[1])) { cut = i + 1; continue }
+    break
+  }
+  if (cut > 0) md = lines.slice(cut).join('\n')
+
   md = md.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '\n')
   md = md.replace(/<script\b[^>]*>[\s\S]*$/i, '\n')
   md = md.replace(/```(?:json|ld\+json|html)[\s\S]*?```/gi, '\n')
@@ -460,6 +499,10 @@ const pageStyle: React.CSSProperties = {
   margin: '0 auto',
   padding: '44px 52px',
   boxSizing: 'border-box',
+  minHeight: '75vh',
+  borderRadius: 2,
+  border: '1px solid #E5E5E5',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24), 0 8px 16px rgba(0,0,0,0.08)',
 }
 
 const headingStyle: Record<1 | 2 | 3 | 4, React.CSSProperties> = {

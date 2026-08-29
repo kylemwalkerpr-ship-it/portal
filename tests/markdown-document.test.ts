@@ -116,4 +116,17 @@ describe('MarkdownDocument — HTML content rendering', () => {
     expect(result).toContain('Heading')
     expect(result).toContain('<strong>bold</strong>')
   })
+
+  it('strips a partial streamed frontmatter block before the heading', () => {
+    const streaming = '---\ntitle: F-1 Guide\ncontent_type: article\nregion: US\ndescription: "F-1 Student Visa Guide"\n# F-1 Student Visa Guide\n\nBody text.'
+    const { renderToStaticMarkup } = require('react-dom/server')
+    const React = require('react')
+    const { MarkdownDocument } = require('@/lib/markdownDocument')
+    const result = renderToStaticMarkup(React.createElement(MarkdownDocument, { source: streaming }))
+    expect(result).toContain('<h1')
+    expect(result).toContain('F-1 Student Visa Guide')
+    expect(result).toContain('Body text')
+    expect(result).not.toContain('content_type')
+    expect(result).not.toContain('description:')
+  })
 })

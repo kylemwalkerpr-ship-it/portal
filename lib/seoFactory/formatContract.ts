@@ -142,7 +142,10 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
   // Only remove the bounded metadata run, stopping at the next real heading
   // or at the first prose line after the schema fragment; never consume the
   // article body.
-  const inlineFm = /(?:^|\n)\s*---\s+title:\s+[\s\S]*?(?=\n\s*(?:##?\s|Cross[‑-]border|[A-Z][^\n]{0,80}\n))/i
+  // Only strip INLINE metadata fragments where `--- title:` appears on the
+  // same line. A real top-of-document frontmatter block uses `---` on its own
+  // line followed by `title:` on the next line, and must NOT be swallowed here.
+  const inlineFm = /(?:^|\n)\s*--- title:\s+[\s\S]*?(?=\n\s*(?:##?\s|Cross[‑-]border|[A-Z][^\n]{0,80}\n))/i
   if (inlineFm.test(s)) {
     s = s.replace(inlineFm, '\n')
     fixed.push('editor_inline_frontmatter_dropped')
@@ -287,4 +290,151 @@ export function titleCaseWords(phrase: string): string {
     .split(/\s+/)
     .map((w, i) => (i > 0 && small.has(w.toLowerCase()) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1)))
     .join(' ')
+}
+
+const KNOWN_FM_KEYS = new Set([
+  'title',
+  'content_type',
+  'primaryKeyword',
+  'description',
+  'metaDescription',
+  'region',
+  'canonicalUrl',
+  'canonical',
+  'robots',
+  'ogImage',
+  'og:image',
+  'image',
+])
+
+function parseSimpleFm(body: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const m = trimmed.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/)
+    if (!m) continue
+    let key = m[1]
+    let val = m[2].trim()
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1)
+    }
+    if (key === 'metaDescription') key = 'description'
+    if (key === 'og:image') key = 'ogImage'
+    if (key === 'canonical') key = 'canonicalUrl'
+    out[key] = val
+  }
+  return out
+}
+
+function stringifyFmValue(key: string, value: string): string {
+  if (value === '') return `${key}: ""`
+  const needsQuotes =
+    value.includes('"') ||
+    value.includes('\n') ||
+    value.includes('\r') ||
+    value.startsWith(' ') ||
+    value.endsWith(' ') ||
+    /^:/.test(value) ||
+    /:\s/.test(value)
+  return `${key}: ${needsQuotes ? JSON.stringify(value) : value}`
+}
+
+function deriveDescription(body: string, title: string, primaryKeyword: string): string {
+  const plain = body
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/^#+\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  let desc = plain.slice(0, 155).trim()
+  if (desc.length < 70) {
+    desc = `${title} — practical guidance on ${primaryKeyword || title}. Editorial only; not legal advice.`
+  }
+  desc = desc.slice(0, 160).trim()
+  if (desc.length > 155) {
+    desc = desc.slice(0, 155).replace(/\s+\S*$/, '') + '…'
+  }
+  if (desc.length < 70) {
+    desc = (desc + ' Verify every rule against official government sources before you apply.').slice(0, 160)
+  }
+  return desc
+}
+
+function cleanLeakedYaml(body: string): string {
+  // Drop any complete frontmatter-like blocks that leaked into the body.
+  body = body.replace(/\n?---\r?\n[\s\S]*?\r?\n---\r?\n?/g, '\n\n')
+  // Drop leading lines that look like known frontmatter keys (and any stray ---).
+  const lines = body.split(/\r?\n/)
+  let i = 0
+  while (i < lines.length) {
+    const trimmed = lines[i].trim()
+    if (trimmed === '') {
+      i++
+      continue
+    }
+    if (trimmed === '---') {
+      i++
+      continue
+    }
+    const m = trimmed.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/)
+    if (m && KNOWN_FM_KEYS.has(m[1])) {
+      i++
+      continue
+    }
+    break
+  }
+  if (i > 0) body = lines.slice(i).join('\n')
+  return body.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
+ * Canonical frontmatter sanitizer. Guarantees exactly one `---\n...\n---`
+ * block at the top of the document, a single-line description between 70 and
+ * 160 characters, and a body with no leaked YAML tokens.
+ *
+ * Call this at the end of every deterministic repair and every AI fix pass
+ * so the renderer never ships a mangled nested-YAML header.
+ */
+export function sanitizeFrontmatter(content: string): string {
+  const raw = String(content || '').trim()
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
+  const fields: Record<string, string> = fmMatch ? parseSimpleFm(fmMatch[1]) : {}
+  let body = fmMatch ? raw.slice(fmMatch.index + fmMatch[0].length) : raw
+  body = cleanLeakedYaml(body)
+
+  const title = fields.title || (body.match(/^#\s+(.+)$/m) || [])[1] || 'Guide'
+  const pk = fields.primaryKeyword || ''
+
+  if (!fields.content_type) fields.content_type = 'article'
+  if (!fields.robots) fields.robots = 'index,follow'
+  if (!fields.ogImage) fields.ogImage = '/og-image.png'
+
+  if (!fields.description || fields.description.length < 70 || fields.description.length > 160) {
+    fields.description = deriveDescription(body, title, pk)
+  }
+
+  // Final description hardening: single line, bounded.
+  fields.description = fields.description
+    .replace(/[\n\r]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (fields.description.length > 160) {
+    fields.description = fields.description.slice(0, 157).replace(/\s+\S*$/, '') + '…'
+  }
+  if (fields.description.length < 70) {
+    fields.description = (fields.description + ' Check official guidance before applying.').slice(0, 160)
+  }
+
+  fields.title = title
+
+  const orderedKeys = ['title', 'content_type', 'primaryKeyword', 'region', 'description', 'canonicalUrl', 'robots', 'ogImage']
+    .filter((k) => fields[k] !== undefined && fields[k] !== '')
+  for (const k of Object.keys(fields)) {
+    if (!orderedKeys.includes(k)) orderedKeys.push(k)
+  }
+
+  const fmOut = orderedKeys.map((k) => stringifyFmValue(k, fields[k])).join('\n')
+  return `---\n${fmOut}\n---\n\n${body.trim()}\n`
 }

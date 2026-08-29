@@ -12,7 +12,7 @@ import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFe
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
-import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle } from './formatContract'
+import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -2009,8 +2009,11 @@ export function applyDeterministicRepairs(opts: {
     targetUrl: opts.targetUrl,
   })
   const post = smoothSentenceRhythm(ahrefs.content)
+  const preSanitize = post.replaced > 0 ? post.content : ahrefs.content
+  const sanitized = sanitizeFrontmatter(preSanitize)
+  if (sanitized !== preSanitize) applied.push('frontmatter_sanitized')
   return {
-    content: post.replaced > 0 ? post.content : ahrefs.content,
+    content: sanitized,
     applied: post.replaced > 0
       ? [...applied, ...ahrefs.applied, `sentence_rhythm_ahrefs (${post.replaced})`]
       : [...applied, ...ahrefs.applied],

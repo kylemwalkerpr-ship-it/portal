@@ -7,7 +7,7 @@ import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, t
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
 import { countBodyWords, maxWordsForType, minWordsForType, targetWordsForType, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
-import { normalizeEditorDocument, editorResponseContract } from '@/lib/seoFactory/formatContract'
+import { normalizeEditorDocument, editorResponseContract, sanitizeFrontmatter } from '@/lib/seoFactory/formatContract'
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
@@ -56,7 +56,7 @@ function closeShipGate(raw: string, ctx: RepairCtx): string {
     if (!codes.has('tldr_format_invalid') && !codes.has('ahrefs_meta_too_long')) break
     out = applyDeterministicRepairs({ content: out, ...ctx }).content
   }
-  return out
+  return sanitizeFrontmatter(out)
 }
 
 function normalizeCompetingUrls(raw: unknown): Array<{ url: string; title: string; primaryKeyword?: string | null }> | undefined {
