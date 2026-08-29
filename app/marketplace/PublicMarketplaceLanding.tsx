@@ -16,6 +16,7 @@ import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 import HeroCaseFileSlideshow, { HeroSlide } from '@/components/marketplace/HeroCaseFileSlideshow'
 import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
+import { FilesRailScroller } from '@/components/marketplace/FilesRailScroller'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -670,7 +671,11 @@ const CSS = `
 .cw-files-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .cw-files-rail-head h2 { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; }
 .cw-files-rail-head a { font-size: 13px; font-weight: 700; color: ${T.onPaper}; }
+.cw-files-scroller-wrap { position: relative; }
 .cw-files-scroller { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 12px; }
+.cw-files-scroller-wrap::after { content: ""; pointer-events: none; position: absolute; top: 4px; right: 0; bottom: 12px; width: 56px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ys-paper, #4A2A1A) 88%, transparent)); }
+.cw-files-scroller-next { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 999px; border: 1px solid ${T.rule}; background: ${T.vellum}; color: ${T.ink}; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(0,0,0,0.14); cursor: pointer; }
+.cw-files-scroller-next:hover { background: #fff; }
 .cw-files-scroller::-webkit-scrollbar { display: none; }
 .cw-files-card { position: relative; flex: 0 0 220px; scroll-snap-align: start; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden; text-decoration: none; color: ${T.ink}; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform .22s, box-shadow .22s; }
 .cw-files-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
@@ -1090,17 +1095,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             <h2>Instant downloads — from $7</h2>
             <a href="/shop">See all files →</a>
           </div>
-          <div className="cw-files-scroller">
-            {FILE_SHOP_PRODUCTS.slice(0, 10).map((p) => (
-              <a key={p.id} className="cw-files-card" href={p.href} rel="noopener noreferrer">
-                <img src={p.cover} alt="" width="196" height="124" />
-                <div className="body">
-                  <h3>{p.title}</h3>
-                  <div className="price">${p.price}</div>
-                </div>
-              </a>
-            ))}
-          </div>
+          <FilesRailScroller products={FILE_SHOP_PRODUCTS.filter((p) => p.published).slice(0, 10)} />
         </div>
       </section>
 
