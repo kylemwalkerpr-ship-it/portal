@@ -40,6 +40,17 @@ export function interruptedJobPatch(
   }
 }
 
+/** Keep the latest full draft from SSE events. Token deltas append; snapshot `draft` replaces. */
+export function ingestStreamDraft(
+  current: string,
+  ev: { type?: string; draft?: string; text?: string },
+): string {
+  const snapshot = typeof ev.draft === 'string' ? ev.draft : ''
+  if (snapshot.trim().length > 0) return snapshot
+  if (ev.type === 'delta' && typeof ev.text === 'string' && ev.text) return current + ev.text
+  return current
+}
+
 export async function finalizeInterruptedJob(
   supabase: StreamFinalizerClient,
   jobId: string | null | undefined,

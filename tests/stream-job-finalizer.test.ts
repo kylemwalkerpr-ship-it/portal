@@ -1,4 +1,4 @@
-import { interruptedJobPatch } from '@/lib/seoFactory/streamJobFinalizer'
+import { interruptedJobPatch, ingestStreamDraft } from '@/lib/seoFactory/streamJobFinalizer'
 
 const LONG = 'Draft paragraph with substantial checkpoint content that survived the stream interruption. '.repeat(6)
 
@@ -47,5 +47,11 @@ describe('interruptedJobPatch', () => {
     const patch = interruptedJobPatch(LONG, { interruptedMessage: 'custom resume message' })
     expect(patch.status).toBe('drafting')
     expect(patch.error_message).toBe('custom resume message')
+  })
+
+  it('ingestStreamDraft appends token deltas and prefers full snapshots', () => {
+    expect(ingestStreamDraft('', { type: 'delta', text: 'Hello ' })).toBe('Hello ')
+    expect(ingestStreamDraft('Hello ', { type: 'delta', text: 'world' })).toBe('Hello world')
+    expect(ingestStreamDraft('Hello world', { type: 'attempt', draft: '# Full article\n\nBody.' })).toBe('# Full article\n\nBody.')
   })
 })

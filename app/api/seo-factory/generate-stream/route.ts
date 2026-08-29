@@ -60,7 +60,7 @@ import {
 } from '@/lib/seoFactory/pipelineStream'
 import type { RequestedShipMode } from '@/lib/seoFactory/pipeline'
 import type { PipelineResult } from '@/lib/seoFactory/pipeline'
-import { finalizeInterruptedJob, interruptedJobPatch } from '@/lib/seoFactory/streamJobFinalizer'
+import { finalizeInterruptedJob, interruptedJobPatch, ingestStreamDraft } from '@/lib/seoFactory/streamJobFinalizer'
 
 export const runtime = 'nodejs'
 // Allow long generations on platforms that honor this
@@ -256,7 +256,7 @@ export async function POST(request: Request) {
         let lastCheckpointChars = 0
         let lastCheckpointAt = 0
         let checkpointCount = 0
-        const MAX_CHECKPOINTS = 6
+        const MAX_CHECKPOINTS = 24
         let liveJobId = supersedesJobId || null
         let sawFinal = false
         let timedOut = false
@@ -398,24 +398,23 @@ export async function POST(request: Request) {
           if (winner.r.done) break
           if (ev.type === 'job') liveJobId = ev.jobId
           if (ev.type === 'final') sawFinal = true
-          if (liveJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
-              const draft = String(ev.draft)
+          lastCheckpointDraft = ingestStreamDraft(lastCheckpointDraft, ev)
+          if (ev.type === 'final' && ev.result?.content) {
+            lastCheckpointDraft = ingestStreamDraft(lastCheckpointDraft, { type: 'final', draft: String(ev.result.content) })
+          }
+          if (supabase && liveJobId && lastCheckpointDraft && checkpointCount < MAX_CHECKPOINTS) {
+              const draft = lastCheckpointDraft
               const now = Date.now()
             const shouldCheckpoint =
                 ev.type === 'attempt' ||
-                draft.length >= lastCheckpointChars + 8000 ||
-                now - lastCheckpointAt >= 20000
-              if (shouldCheckpoint && draft.length >= lastCheckpointChars) {
-                lastCheckpointDraft = draft
+                ev.type === 'final' ||
+                draft.length >= lastCheckpointChars + 2000 ||
+                now - lastCheckpointAt >= 15000
+              if (shouldCheckpoint && draft.length >= Math.min(lastCheckpointChars, draft.length)) {
                 lastCheckpointChars = draft.length
                 lastCheckpointAt = now
                 checkpointCount++
-                await checkpointJob(
-                  supabase,
-                  liveJobId!,
-                  draft,
-                  ev.type === 'attempt' ? `Checkpoint saved after attempt ${ev.attempt}` : undefined,
-                )
+                await checkpointJob(supabase, liveJobId, draft)
               }
             }
             if (supabase && supersedesJobId && ev.type === 'final' && ev.result?.jobId && ev.result.jobId !== supersedesJobId) {
@@ -447,6 +446,20 @@ export async function POST(request: Request) {
         if (timedOut && !sawFinal) {
           sawFinal = true
           const shipError = 'stream budget exhausted — resume from checkpoint'
+          if (supabase && !liveJobId && lastCheckpointDraft.trim().length > 200) {
+            const inserted = await supabase.from('content_jobs').insert({
+              user_id: 'admin',
+              title: String(input.title || input.topic || 'Draft'),
+              topic: String(input.topic || ''),
+              status: 'drafting',
+              content: lastCheckpointDraft,
+              word_count: countBodyWords(lastCheckpointDraft),
+              error_message: shipError,
+              region: String(input.region || 'US'),
+              primary_keyword: String(input.primaryKeyword || ''),
+            }).select('id').single()
+            if (inserted.data?.id) liveJobId = inserted.data.id
+          }
           if (supabase && liveJobId) {
             await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft, {
               interruptedMessage: shipError,
