@@ -620,7 +620,7 @@ const CSS = `
 .cw-market .hero-search button.search-go { height: 48px; padding: 0 28px; background: ${T.indigo}; color: #FFFFFF; border-radius: 10px; font-weight: 800; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 10px 22px rgba(14,124,116,0.38); transition: background .15s, transform .12s, box-shadow .15s; }
 .cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); box-shadow: 0 14px 26px rgba(14,124,116,0.48); }
 .cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
-.cw-market .suggest span.lbl { font-family: ${F.ui}; color: rgba(255,255,255,0.6); letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
+.cw-market .suggest span.lbl { font-family: ${F.ui}; color: ${T.onPaperSoft}; letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
 .cw-market .suggest a { display: inline-flex; align-items: center; padding: 7px 14px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; color: #FFFFFF; font-weight: 600; transition: background .15s, color .15s, border-color .15s, transform .15s; }
 .cw-market .suggest a:hover { background: #fff; border-color: #FFFFFF; color: ${T.ink}; transform: translateY(-1px); }
 
@@ -654,6 +654,14 @@ const CSS = `
 .cw-market .trust-inner .label { color: ${T.onPaper}; font-weight: 600; opacity: 0.85; }
 .cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
 .cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: #16a34a; }
+
+.cw-files-band { padding: 22px 0; background: ${T.indigo}; border-bottom: 1px solid ${T.rule}; }
+.cw-files-band-inner { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.cw-files-band .kicker { margin: 0; font-family: ${F.ui}; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.78); }
+.cw-files-band h2 { margin: 6px 0 0; font-family: ${F.display}; font-size: clamp(22px, 3vw, 32px); font-weight: 700; letter-spacing: -0.02em; color: #FFFFFF; }
+.cw-files-band p.lede { margin: 6px 0 0; max-width: 52ch; color: rgba(255,255,255,0.9); font-size: 15px; line-height: 1.45; }
+.cw-files-band-cta { display: inline-flex; align-items: center; background: #FFFFFF; color: ${T.indigoDeep}; font-family: ${F.ui}; font-weight: 800; font-size: 15px; padding: 12px 22px; border-radius: 10px; box-shadow: 0 8px 18px rgba(4,31,30,0.22); }
+.cw-files-band-cta:hover { transform: translateY(-1px); }
 
 .cw-files-rail { padding: 28px 0 16px; background: transparent; border-bottom: 1px solid ${T.rule}; }
 .cw-files-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
@@ -1061,6 +1069,17 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           ))}
         </div>
       </div>
+
+      <section className="cw-files-band" aria-label="Open the file shop">
+        <div className="wrap cw-files-band-inner">
+          <div>
+            <p className="kicker">Instant downloads · $7–16 · keep the file</p>
+            <h2>Open the file shop</h2>
+            <p className="lede">Workbooks, templates, and short guides. Pay once on Payhip, download immediately.</p>
+          </div>
+          <a className="cw-files-band-cta" href="/shop">Browse files</a>
+        </div>
+      </section>
 
       <section className="cw-files-rail" aria-label="Instant-download file shop">
         <div className="wrap">

@@ -15,7 +15,7 @@ const C = {
   cyan: '#3C3B6E',
   text: '#1F2937',
   textMuted: '#6B7280',
-  textDim: '#9CA3AF',
+  textDim: '#6B7280',
   danger: '#8B1A1A',
   dangerBg: '#FAEAEA',
   success: '#1A6B45',
@@ -449,7 +449,7 @@ export default function CartPage() {
                     background: 'transparent',
                     cursor: 'pointer',
                     fontSize: '18px',
-                    color: C.textDim,
+                    color: C.textMuted,
                   }}
                   aria-label="Remove item"
                   title="Remove"
@@ -739,7 +739,7 @@ export default function CartPage() {
                             />
                           </div>
                         </div>
-                        <p style={{ fontSize: '12px', color: C.textDim, marginTop: '8px' }}>
+                        <p style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>
                           Card data is tokenized securely. It never reaches our servers.
                         </p>
                       </div>

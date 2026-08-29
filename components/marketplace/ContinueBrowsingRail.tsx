@@ -42,7 +42,7 @@ export function ContinueBrowsingRail({ hidden = false }: { hidden?: boolean }) {
         <button
           type="button"
           onClick={clear}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui, fontSize: 11.5, fontWeight: 600, color: 'rgba(255,255,255,0.6)', padding: 0 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui, fontSize: 11.5, fontWeight: 600, color: T.onPaperSoft, padding: 0 }}
         >
           Clear history
         </button>

@@ -39,7 +39,7 @@ const C = {
   cyan: '#3C3B6E',
   text: '#1F2937',
   textMuted: '#6B7280',
-  textDim: '#9CA3AF',
+  textDim: '#6B7280',
 }
 
 const SERIF = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"

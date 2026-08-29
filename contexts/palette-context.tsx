@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { PALETTES, getPalette, type PaletteDef } from '@/components/marketplace/palettes'
+import { PALETTES, DEFAULT_PALETTE_NAME, getPalette, type PaletteDef } from '@/components/marketplace/palettes'
 import { applyPaletteCssVars } from '@/components/marketplace/tokens'
 
 const STORAGE_KEY = 'ys-marketplace-palette'
@@ -25,12 +25,12 @@ export function usePalette(): PaletteContextValue {
 
 export function PaletteProvider({ children }: { children: React.ReactNode }) {
   const [paletteName, setPaletteNameRaw] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'mahogany'
+    if (typeof window === 'undefined') return DEFAULT_PALETTE_NAME
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY)
       if (stored && PALETTES.some(p => p.name === stored)) return stored
     } catch { /* localStorage blocked */ }
-    return 'mahogany'
+    return DEFAULT_PALETTE_NAME
   })
 
   const palette = getPalette(paletteName)

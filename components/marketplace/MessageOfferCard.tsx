@@ -44,7 +44,7 @@ function formatMoney(cents: number, currency = 'USD'): string {
 }
 
 const STATUS_CONFIG: Record<OfferStatus, { label: string; bg: string; fg: string }> = {
-  pending:   { label: 'Awaiting response', bg: `${T.gold}1A`, fg: T.gold },
+  pending:   { label: 'Awaiting response', bg: `${T.star}1A`, fg: T.star },
   accepted:  { label: 'Accepted',          bg: `${T.moss}1A`, fg: T.moss },
   paid:      { label: 'Paid',              bg: `${T.moss}1A`, fg: T.moss },
   declined:  { label: 'Declined',          bg: `${T.brick}1A`,   fg: T.brick },
@@ -128,7 +128,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       }}>
         <span style={{
           fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase',
-          color: T.gold, fontFamily: F.mono,
+          color: T.star, fontFamily: F.mono,
         }}>
           💼 Custom offer
         </span>
@@ -172,7 +172,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
               </span>
               <span style={{
                 fontSize: 10, fontWeight: 800, letterSpacing: '0.04em',
-                background: `${T.gold}1A`, color: T.gold,
+                background: `${T.star}1A`, color: T.star,
                 padding: '2px 8px', borderRadius: 999, fontFamily: F.mono,
               }}>
                 −{formatMoney(offer.discount_cents as number, currency)} OFF

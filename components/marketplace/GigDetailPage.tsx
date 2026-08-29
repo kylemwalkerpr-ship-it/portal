@@ -47,11 +47,11 @@ const breadcrumb: CSSProperties = {
   fontSize: '11px',
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
-  color: 'rgba(255,255,255,0.6)',
+  color: T.onPaperSoft,
 }
 
 const breadcrumbLink: CSSProperties = {
-  color: '#FFFFFF',
+  color: T.onPaper,
   textDecoration: 'none',
   fontWeight: 600,
 }
@@ -455,10 +455,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             <Link href="/" style={breadcrumbLink}>
               Marketplace
             </Link>
-            <span style={{ color: 'rgba(255,255,255,0.4)' }}>/</span>
+            <span style={{ color: T.onPaperSoft }}>/</span>
             <span>{gig.category || 'Service'}</span>
-            <span style={{ color: 'rgba(255,255,255,0.4)' }}>/</span>
-            <span style={{ color: '#FFFFFF' }}>{gig.title}</span>
+            <span style={{ color: T.onPaperSoft }}>/</span>
+            <span style={{ color: T.onPaper }}>{gig.title}</span>
           </div>
         </div>
 
@@ -498,12 +498,12 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               fontWeight: 700,
               letterSpacing: '0.06em',
               textTransform: 'uppercase' as const,
-              background: gig.status === 'active' ? T.moss : T.gold,
+              background: gig.status === 'active' ? T.moss : T.brick,
               color: '#FFFFFF',
             }}>
               {gig.status === 'active' ? 'Live preview' : `Owner preview · ${gig.status}`}
             </span>
-            <span style={{ fontSize: '13px', color: T.inkMid, lineHeight: 1.4, flex: 1, minWidth: '180px' }}>
+            <span style={{ fontSize: '13px', color: T.onPaperSoft, lineHeight: 1.4, flex: 1, minWidth: '180px' }}>
               {gig.status === 'active'
                 ? "This is exactly what buyers see. Edit any field, swap images, and tune SEO from the wizard."
                 : "Only you can see this preview. Edit text, swap gallery images, and tune SEO — then publish when ready."}

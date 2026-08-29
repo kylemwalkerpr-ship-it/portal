@@ -66,7 +66,7 @@ const starButtonActive = {
 }
 
 const starButtonHover = {
-  color: T.gold,
+  color: T.star,
 }
 
 const ratingLabels = {

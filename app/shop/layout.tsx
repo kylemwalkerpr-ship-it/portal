@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
+import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
 
 /**
  * File shop uses the same marketplace chrome as /marketplace so signed-in
@@ -17,8 +18,10 @@ import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 export default function ShopLayout({ children }: { children: ReactNode }) {
   return (
     <CartProvider>
+      {/* Same first-paint boot as the marketplace layout — see palette-boot.ts */}
+      <script dangerouslySetInnerHTML={{ __html: buildPaletteBootScript() }} />
       <PaletteProvider>
-        <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--ys-paper, #4A2A1A)' }} />}>
+        <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--ys-paper, #4A2A1A)', transition: 'background 0.35s ease' }} />}>
           <MarketplaceShell>{children}</MarketplaceShell>
         </Suspense>
       </PaletteProvider>

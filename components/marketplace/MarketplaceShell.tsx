@@ -532,6 +532,23 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         .cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
         .cw-market img, .cw-market svg { display: block; max-width: 100%; }
 
+        /* Palette changes transition smoothly (~350ms). Only paint props
+           transition — never "all", and no opacity-based "theme load"
+           animation. Scoped to the shell chrome + card surfaces, not "*". */
+        .cw-market,
+        .cw-market header, .cw-market footer, .cw-market nav,
+        .cw-market section, .cw-market aside,
+        .cw-market .gig, .cw-market .seller-card, .cw-market .faq-item,
+        .cw-market .cw-files-card, .cw-market .cw-all-card, .cw-market .quote,
+        .cw-market .trust, .cw-market .hero, .cw-market .pill-mini,
+        .cw-market .topbar, .cw-market .country-bar, .cw-market .ys-cat-bar,
+        .cw-market .cw-all-drawer, .cw-market .cw-help-panel, .cw-market .chat-side-pane,
+        .cw-market button, .cw-market a, .cw-market input {
+          transition-property: background-color, color, border-color, fill, stroke;
+          transition-duration: 0.35s;
+          transition-timing-function: ease;
+        }
+
         /* ══════════ PALETTE / LEGIBILITY CONTRACT ══════════
            The marketplace has exactly two surface classes and each owns
            its ink colour. Every page and subpage inherits this contract

@@ -1,12 +1,32 @@
 /**
- * Marketplace palette contrast gate.
+ * Marketplace palette contrast gate (WCAG AA).
  *
- * The marketplace design contract has exactly two surface classes:
- *   DARK  (paper / paper2 / paper3 / footer) → light text (onPaper)
- *   LIGHT (vellum / cream)                   → dark text  (ink)
- * This test fails CI when ANY palette breaks the WCAG AA 4.5:1 floor for
- * its surface/text pairs — the mechanical guarantee behind "legibility is
- * paramount".
+ * Role matrix — every token pair actually used in the market UI:
+ *
+ *   DARK surfaces  (paper / paper2 / paper3 / footer)
+ *     → onPaper            (body copy, headings, nav)
+ *     → onPaperSoft        (secondary copy; alpha-blended over the surface,
+ *                           tested at the exact shipped alpha)
+ *     → gold               (light accent: eyebrows, hero italics, prices)
+ *     → #FFFFFF            (labels on solid accent fills that sit on dark
+ *                           paper, e.g. seller CTA card)
+ *
+ *   LIGHT surfaces (vellum / cream)
+ *     → ink / inkMid / inkSoft          (body / meta / muted copy)
+ *     → star                            (ratings)
+ *     → indigo / teal / brick / moss    (links, badges, accent text)
+ *
+ *   ACCENT fills   (indigo / indigoDeep / teal / tealDeep / brick / moss /
+ *                   ink / inkSoft — dual-role tokens)
+ *     → #FFFFFF and onPaper labels (buttons, chips, disabled upload CTAs)
+ *
+ * Floor: 4.5:1 for all normal-size text. No large-text (3:1) exceptions are
+ * relied on: the smallest accent copy in the UI is 9–11px bold, which is
+ * normal-size text under WCAG.
+ *
+ * `gold` is intentionally NOT required to pass on light surfaces (its role
+ * is dark-surface-only) and `star` NOT on dark surfaces (light-surface-only)
+ * — components that violated that split were migrated to the correct token.
  */
 import { PALETTES } from '../components/marketplace/palettes'
 
@@ -67,6 +87,11 @@ export function contrastRatio(fg: string, bg: string): number {
 
 const AA = 4.5
 
+const DARK_SURFACES = ['paper', 'paper2', 'paper3', 'footer'] as const
+const LIGHT_SURFACES = ['vellum', 'cream'] as const
+const ACCENT_FILLS = ['indigo', 'indigoDeep', 'teal', 'tealDeep', 'brick', 'moss', 'ink', 'inkSoft'] as const
+const ACCENT_TEXT = ['indigo', 'teal', 'brick', 'moss'] as const
+
 describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
   it('has palettes to test', () => {
     expect(PALETTES.length).toBeGreaterThanOrEqual(6)
@@ -76,9 +101,9 @@ describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
     describe(palette.label, () => {
       const t = palette.tokens
 
-      // DARK surfaces carry the light onPaper text — the header, nav,
-      // page background, and footer all read through these pairs.
-      for (const surface of ['paper', 'paper2', 'paper3', 'footer'] as const) {
+      // ── DARK surfaces ──────────────────────────────────────────────────
+
+      for (const surface of DARK_SURFACES) {
         it(`onPaper on ${surface} ≥ 4.5:1`, () => {
           const ratio = contrastRatio(t.onPaper, t[surface])
           if (ratio < AA) {
@@ -86,26 +111,85 @@ describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
           }
           expect(ratio).toBeGreaterThanOrEqual(AA)
         })
+
+        it(`white on ${surface} ≥ 4.5:1 (hardcoded labels on dark)`, () => {
+          expect(contrastRatio('#FFFFFF', t[surface])).toBeGreaterThanOrEqual(AA)
+        })
+
+        // gold is the light-on-dark accent (eyebrows, hero italics, prices)
+        it(`gold on ${surface} ≥ 4.5:1`, () => {
+          const ratio = contrastRatio(t.gold, t[surface])
+          if (ratio < AA) {
+            console.warn(`${palette.label}: gold ${t.gold} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+          }
+          expect(ratio).toBeGreaterThanOrEqual(AA)
+        })
       }
 
       // onPaperSoft is secondary text — it is alpha-blended over the paper
-      // surface, so test the BLENDED result at the exact alpha shipped.
-      it('onPaperSoft blended over paper ≥ 4.5:1', () => {
-        const soft = parseRgba(t.onPaperSoft)
-        const blended = toHex(blendOver(soft, parseHex(t.paper)))
-        const ratio = contrastRatio(blended, t.paper)
-        if (ratio < AA) {
-          console.warn(`${palette.label}: onPaperSoft ${t.onPaperSoft} (→ ${blended}) on ${t.paper} = ${ratio.toFixed(2)}:1`)
-        }
-        expect(ratio).toBeGreaterThanOrEqual(AA)
-      })
-
-      // LIGHT card surfaces carry dark ink — every vellum/cream card.
-      for (const surface of ['vellum', 'cream'] as const) {
-        it(`ink on ${surface} ≥ 4.5:1`, () => {
-          const ratio = contrastRatio(t.ink, t[surface])
+      // surface, so test the BLENDED result at the exact alpha shipped,
+      // against every dark surface it appears on.
+      for (const surface of DARK_SURFACES) {
+        it(`onPaperSoft blended over ${surface} ≥ 4.5:1`, () => {
+          const soft = parseRgba(t.onPaperSoft)
+          const blended = toHex(blendOver(soft, parseHex(t[surface])))
+          const ratio = contrastRatio(blended, t[surface])
           if (ratio < AA) {
-            console.warn(`${palette.label}: ink ${t.ink} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+            console.warn(`${palette.label}: onPaperSoft ${t.onPaperSoft} (→ ${blended}) on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+          }
+          expect(ratio).toBeGreaterThanOrEqual(AA)
+        })
+      }
+
+      // ── LIGHT surfaces ─────────────────────────────────────────────────
+
+      for (const surface of LIGHT_SURFACES) {
+        for (const text of ['ink', 'inkMid', 'inkSoft'] as const) {
+          it(`${text} on ${surface} ≥ 4.5:1`, () => {
+            const ratio = contrastRatio(t[text], t[surface])
+            if (ratio < AA) {
+              console.warn(`${palette.label}: ${text} ${t[text]} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+            }
+            expect(ratio).toBeGreaterThanOrEqual(AA)
+          })
+        }
+
+        // star is the dark-on-light accent (ratings on cards)
+        it(`star on ${surface} ≥ 4.5:1`, () => {
+          const ratio = contrastRatio(t.star, t[surface])
+          if (ratio < AA) {
+            console.warn(`${palette.label}: star ${t.star} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+          }
+          expect(ratio).toBeGreaterThanOrEqual(AA)
+        })
+
+        // accent tokens are used as link/badge text on light cards
+        for (const text of ACCENT_TEXT) {
+          it(`${text} on ${surface} ≥ 4.5:1`, () => {
+            const ratio = contrastRatio(t[text], t[surface])
+            if (ratio < AA) {
+              console.warn(`${palette.label}: ${text} ${t[text]} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+            }
+            expect(ratio).toBeGreaterThanOrEqual(AA)
+          })
+        }
+      }
+
+      // ── ACCENT fills carry white AND onPaper labels (buttons, chips) ───
+
+      for (const fill of ACCENT_FILLS) {
+        it(`white on ${fill} ≥ 4.5:1 (button labels)`, () => {
+          const ratio = contrastRatio('#FFFFFF', t[fill])
+          if (ratio < AA) {
+            console.warn(`${palette.label}: white on ${fill} ${t[fill]} = ${ratio.toFixed(2)}:1`)
+          }
+          expect(ratio).toBeGreaterThanOrEqual(AA)
+        })
+
+        it(`onPaper on ${fill} ≥ 4.5:1`, () => {
+          const ratio = contrastRatio(t.onPaper, t[fill])
+          if (ratio < AA) {
+            console.warn(`${palette.label}: onPaper ${t.onPaper} on ${fill} ${t[fill]} = ${ratio.toFixed(2)}:1`)
           }
           expect(ratio).toBeGreaterThanOrEqual(AA)
         })

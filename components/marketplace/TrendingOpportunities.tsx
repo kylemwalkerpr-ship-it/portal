@@ -124,7 +124,7 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
           <h1 style={{ fontFamily: F.display, fontSize: 34, fontWeight: 600, color: '#FFFFFF', margin: 0, letterSpacing: '-0.015em' }}>
             Trending opportunities
           </h1>
-          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', margin: '8px 0 0', maxWidth: 560, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14, color: T.onPaperSoft, margin: '8px 0 0', maxWidth: 560, lineHeight: 1.6 }}>
             Live inquiries filed by students. Fixed fees, escrowed, refundable — respond first and win the brief.
           </p>
         </div>

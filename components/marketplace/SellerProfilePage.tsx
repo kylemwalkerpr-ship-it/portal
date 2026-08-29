@@ -200,7 +200,7 @@ const breadcrumbLink = {
 }
 
 const breadcrumbSeparator = {
-  color: 'rgba(255,255,255,0.4)',
+  color: T.onPaperSoft,
 }
 
 const breadcrumbCurrent = {
@@ -212,7 +212,7 @@ const tabsContainer = {
   display: 'flex',
   gap: '4px',
   marginBottom: '0',
-  borderBottom: `1px solid rgba(255,255,255,0.12)`,
+  borderBottom: `1px solid ${T.rule}`,
 }
 
 const tabStyle = {
@@ -221,7 +221,7 @@ const tabStyle = {
   padding: '12px 20px',
   fontSize: '14px',
   fontWeight: 500,
-  color: 'rgba(255,255,255,0.6)',
+  color: T.onPaperSoft,
   cursor: 'pointer',
   borderBottom: '2px solid transparent',
   transition: 'color 150ms, border-color 150ms',
