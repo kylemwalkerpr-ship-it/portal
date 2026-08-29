@@ -4140,6 +4140,7 @@ function WorkPlanTable({
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
   const [showShipped, setShowShipped] = React.useState(false)
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
   const shippedCount = items.filter((i) => i.shipped).length
   const activeItems = items.filter((i) => {
     if (i.category === 'cannibal' && resolvedIds?.has(i.id)) return false
@@ -4150,6 +4151,12 @@ function WorkPlanTable({
   const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id))
   const selectedItems = activeItems.filter((i) => selectedIds.has(i.id) && !i.shipped)
   const cannibalItems = activeItems.filter((i) => i.category === 'cannibal')
+  const actionableItems = activeItems.filter((i) => !i.shipped && i.category !== 'merge')
+  const highPriority = actionableItems.filter((i) => i.priority >= 70).length
+  const sourceCount = new Set(activeItems.map((i) => i.source)).size
+  const averagePriority = actionableItems.length
+    ? Math.round(actionableItems.reduce((sum, item) => sum + item.priority, 0) / actionableItems.length)
+    : 0
 
   const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
@@ -4163,17 +4170,47 @@ function WorkPlanTable({
     { key: 'ubersuggest', label: '◇ Ubersuggest' },
   ]
 
+  const toggleExpanded = (id: string) => setExpandedIds((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Executive readout: answer "what did the engine find?" before showing rows. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', border: `1px solid ${E.hairline}`, background: E.inkBlack }}>
+        {[
+          { label: 'Open opportunities', value: actionableItems.length, detail: `${sourceCount} signal sources`, color: '#F8E7B0' },
+          { label: 'High priority', value: highPriority, detail: 'score 70 or higher', color: '#86EFAC' },
+          { label: 'Cannibal risks', value: cannibalItems.length, detail: cannibalItems.length ? 'needs consolidation' : 'estate is clear', color: cannibalItems.length ? '#FCA5A5' : '#86EFAC' },
+          { label: 'Portfolio score', value: averagePriority || '—', detail: 'average opportunity', color: '#93C5FD' },
+        ].map((metric, index) => (
+          <div key={metric.label} style={{ padding: '16px 18px', borderRight: index < 3 ? '1px solid rgba(255,255,255,0.12)' : 'none' }}>
+            <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.52)' }}>{metric.label}</div>
+            <div style={{ marginTop: 5, fontFamily: C.serif, fontSize: 28, lineHeight: 1, fontWeight: 700, color: metric.color }}>{metric.value}</div>
+            <div style={{ marginTop: 5, fontFamily: C.mono, fontSize: 8.5, color: 'rgba(255,255,255,0.58)' }}>{metric.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontFamily: C.mono, fontSize: 9, color: E.goldDeep, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Engine recommendation stack</div>
+          <div style={{ marginTop: 3, fontFamily: C.serif, fontSize: 14, color: E.inkSoft }}>Ranked by opportunity strength. Open a card to inspect the evidence behind the recommendation.</div>
+        </div>
+        <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim }}>{filtered.length} shown · {items.length} total</div>
+      </div>
+
+      {/* Filters are compact and secondary to the ranked recommendations. */}
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', paddingBottom: 12, borderBottom: `1px solid ${E.hairline}` }}>
         {CATS.map((c) => (
           <button key={c.key} type="button" onClick={() => setFilterCat(c.key)}
             style={{
-              padding: '5px 10px', borderRadius: 999, border: filterCat === c.key ? `1px solid ${E.gold}` : `1px solid ${E.hairline}`,
-              background: filterCat === c.key ? E.goldSoft : 'transparent',
-              color: filterCat === c.key ? E.gold : E.inkMuted,
-              fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: C.mono,
+              padding: '6px 10px', borderRadius: 999, border: filterCat === c.key ? `1px solid ${E.inkBlack}` : `1px solid ${E.hairline}`,
+              background: filterCat === c.key ? E.inkBlack : E.paper,
+              color: filterCat === c.key ? E.ivory : E.inkMuted,
+              fontSize: 9, fontWeight: 700, cursor: 'pointer', fontFamily: C.mono,
             }}
           >{c.label}</button>
         ))}
@@ -4206,80 +4243,74 @@ function WorkPlanTable({
               {showShipped ? `✓ Hide shipped (${shippedCount})` : `✓ Show shipped (${shippedCount})`}
             </button>
           )}
-          <span style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono }}>
-            {selectedItems.length} selected · {filtered.length} shown · {items.length} total
-          </span>
-          {selectedItems.length > 0 && (
-            <>
-              <button type="button" onClick={onClearSelection} style={actionGhostStyle()}>Clear</button>
-              <button type="button" onClick={() => onSendToResearch(selectedItems)}
-                style={{ ...actionBtnStyle(E.gold), background: E.gold, color: E.ivory }}>
-                Send to Research →
-              </button>
-            </>
-          )}
         </div>
       </div>
 
-      {/* Table */}
-      <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0, overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: '32px 80px 50px 1fr 100px', gap: 0,
-          padding: '8px 12px', borderBottom: `1px solid ${E.hairline}`, background: E.parchment,
-          fontSize: 9, fontFamily: C.mono, fontWeight: 700, color: E.inkMuted,
-          textTransform: 'uppercase', letterSpacing: '0.08em',
-        }}>
-          <div>
-            <input type="checkbox" checked={allSelected} onChange={allSelected ? onClearSelection : onSelectAll}
-              style={{ cursor: 'pointer', accentColor: E.gold }} />
-          </div>
-          <div>Category</div>
-          <div>Score</div>
-          <div>Opportunity</div>
-          <div>Action</div>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, cursor: filtered.length ? 'pointer' : 'default' }}>
+          <input type="checkbox" checked={allSelected} onChange={allSelected ? onClearSelection : onSelectAll} disabled={!filtered.length} style={{ cursor: 'pointer', accentColor: E.gold }} />
+          {allSelected ? 'Clear visible selection' : 'Select every visible opportunity'}
+        </label>
+        {selectedItems.length > 0 && <span style={{ fontFamily: C.mono, fontSize: 9.5, color: E.goldDeep, fontWeight: 800 }}>{selectedItems.length} queued for Research</span>}
+      </div>
+
+      {/* Ranked cards expose title, rationale and evidence without horizontal scanning. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: 10 }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
-            No work plan items yet. Run the planner from the masthead to ingest knowledge and discover opportunities.
+          <div style={{ gridColumn: '1 / -1', padding: '34px 24px', textAlign: 'center', color: E.inkMuted, background: E.cream, border: `1px dashed ${E.hairline}`, fontFamily: C.serif, fontStyle: 'italic', fontSize: 14 }}>
+            No recommendations in this view. Run the Master Engine planner or choose another signal filter.
           </div>
         ) : (
           filtered.map((item, i) => {
             const cm = CATEGORY_META[item.category]
             const checked = selectedIds.has(item.id)
+            const expanded = expandedIds.has(item.id)
             return (
               <div key={item.id} style={{
-                display: 'grid', gridTemplateColumns: '32px 80px 50px 1fr 100px', gap: 0,
-                padding: '9px 12px', borderBottom: i < filtered.length - 1 ? `1px solid ${E.hairlineSoft}` : 'none',
-                background: checked ? '#FFFDF5' : item.shipped ? 'rgba(220,252,231,0.3)' : 'transparent',
-                alignItems: 'center',
-                transition: 'background 0.1s',
+                display: 'flex', flexDirection: 'column', minHeight: 174,
+                padding: 16, border: checked ? `1px solid ${E.gold}` : `1px solid ${E.hairline}`,
+                borderTop: `3px solid ${item.shipped ? E.green : cm.fg}`,
+                background: checked ? '#FFFDF5' : item.shipped ? 'rgba(236,253,245,0.55)' : E.paper,
+                boxShadow: checked ? E.goldGlow : E.paperShadow,
+                transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                 opacity: item.shipped ? 0.6 : 1,
               }}>
-                <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                   <input type="checkbox" checked={checked} onChange={() => onToggleSelect(item.id)}
                     style={{ cursor: 'pointer', accentColor: E.gold }} disabled={item.shipped} />
-                </div>
-                <div>
                   <span style={{
-                    display: 'inline-block', padding: '2px 6px', borderRadius: 3,
+                    display: 'inline-block', padding: '3px 7px', borderRadius: 3,
                     fontSize: 8, fontWeight: 700, fontFamily: C.mono,
                     background: item.shipped ? '#DCFCE7' : cm.bg,
                     color: item.shipped ? '#166534' : cm.fg, whiteSpace: 'nowrap',
                   }}>{item.shipped ? '✓ SHIPPED' : `${cm.icon} ${cm.label}`}</span>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                    <div style={{ fontFamily: C.serif, fontSize: 24, lineHeight: 0.9, fontWeight: 800, color: item.priority >= 70 ? E.green : item.priority >= 40 ? E.orange : E.inkMuted }}>{item.priority}</div>
+                    <div style={{ marginTop: 4, fontFamily: C.mono, fontSize: 7.5, color: E.inkDim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>priority</div>
+                  </div>
                 </div>
-                <div style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 800, color: item.shipped ? '#86EFAC' : item.priority >= 70 ? C.green : item.priority >= 40 ? C.orange : C.textDim, textDecoration: item.shipped ? 'line-through' : 'none' }}>
-                  {item.priority}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: E.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: item.shipped ? 'line-through' : 'none' }}>
+                <div style={{ marginTop: 12, minWidth: 0 }}>
+                  <div style={{ fontFamily: C.serif, fontSize: 17, lineHeight: 1.18, fontWeight: 700, color: E.ink, textDecoration: item.shipped ? 'line-through' : 'none' }}>
                     {item.title}
                   </div>
-                  <div style={{ fontSize: 8.5, color: E.inkDim, fontFamily: C.mono, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.source} · {item.signals[0] || ''}
+                  <div style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono, marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {item.source} · {item.play || item.category}
                   </div>
+                  <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.45, color: E.inkSoft }}>{item.signals[0] || 'Engine-ranked opportunity.'}</div>
+                  {expanded && item.signals.slice(1).map((signal, signalIndex) => (
+                    <div key={`${item.id}-signal-${signalIndex}`} style={{ marginTop: 5, paddingLeft: 11, borderLeft: `2px solid ${E.goldSoft}`, fontSize: 10.5, lineHeight: 1.4, color: E.inkMuted }}>↳ {signal}</div>
+                  ))}
+                  {expanded && item.keywords && item.keywords.length > 0 && (
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 9 }}>
+                      {item.keywords.slice(0, 7).map((keyword) => <span key={keyword} style={{ padding: '3px 6px', background: E.surface2, border: `1px solid ${E.hairlineSoft}`, fontFamily: C.mono, fontSize: 8.5, color: E.inkMuted }}>{keyword}</span>)}
+                    </div>
+                  )}
                 </div>
-                <div>
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 'auto', paddingTop: 14 }}>
+                  {(item.signals.length > 1 || Boolean(item.keywords?.length)) && (
+                    <button type="button" onClick={() => toggleExpanded(item.id)} style={{ ...actionGhostStyle(), padding: '4px 8px', fontSize: 8.5 }}>{expanded ? 'Less evidence' : `Evidence (${item.signals.length})`}</button>
+                  )}
+                  <div style={{ marginLeft: 'auto' }}>
                   {item.category === 'cannibal' ? (
                     resolvedIds?.has(item.id) ? (
                       <span
@@ -4315,17 +4346,29 @@ function WorkPlanTable({
                       }
                     }}
                       style={{ padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.gold}`, background: 'transparent', color: E.gold, cursor: 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono }}>
-                      Brief →
+                      Build brief →
                     </button>
                   ) : (
                     <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>—</span>
                   )}
+                  </div>
                 </div>
               </div>
             )
           })
         )}
       </div>
+
+      {selectedItems.length > 0 && (
+        <div style={{ position: 'sticky', bottom: 12, zIndex: 4, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: E.inkBlack, color: E.ivory, boxShadow: '0 12px 30px rgba(17,21,28,0.24)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: C.mono, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#F8E7B0' }}>{selectedItems.length} recommendation{selectedItems.length === 1 ? '' : 's'} selected</div>
+            <div style={{ marginTop: 3, fontFamily: C.serif, fontSize: 12, color: 'rgba(255,255,255,0.66)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedItems.map((item) => item.topic).join(' · ')}</div>
+          </div>
+          <button type="button" onClick={onClearSelection} style={{ ...actionGhostStyle(), color: E.ivory, borderColor: 'rgba(255,255,255,0.3)' }}>Clear</button>
+          <button type="button" onClick={() => onSendToResearch(selectedItems)} style={{ ...actionBtnStyle('#F8E7B0'), background: '#F8E7B0', color: E.inkBlack }}>Send to Research →</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -6753,14 +6796,19 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           />
           <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
-            <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>WORK PLAN — ALL SIGNALS AGGREGATED</div>
-                  <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 20, color: E.ink }}>Select opportunities to research</h3>
-                  <p style={{ margin: '2px 0 0', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 12 }}>
-                    Radar gaps · Ubersuggest market demand · cannibalization · merges · AEO visibility — every signal, one table. Ubersuggest briefs do not need a planner run.
+            <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow, overflow: 'hidden' }}>
+              <div style={{ padding: '22px 22px 18px', background: `linear-gradient(120deg, ${E.inkBlack} 0%, #202A3A 72%, #473B25 100%)`, color: E.ivory, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+                <div style={{ maxWidth: 780 }}>
+                  <div style={{ fontSize: 9, color: '#E8C979', fontFamily: C.mono, letterSpacing: '0.18em', fontWeight: 800, textTransform: 'uppercase' }}>SEO Master Engine · decision output</div>
+                  <h3 style={{ margin: '7px 0 0', fontFamily: C.serif, fontSize: 27, lineHeight: 1.08, color: '#FFFFFF' }}>What the search landscape says to do next</h3>
+                  <p style={{ margin: '8px 0 0', maxWidth: 690, color: 'rgba(255,255,255,0.68)', fontFamily: C.serif, fontSize: 13.5, lineHeight: 1.5 }}>
+                    One ranked view of demand, topical gaps, estate conflicts and answer-engine visibility. Select only the opportunities worth turning into a research brief.
                   </p>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 13 }}>
+                    {['GSC demand', 'Master Engine', 'Ubersuggest', 'Estate graph', 'AEO visibility'].map((source) => (
+                      <span key={source} style={{ padding: '4px 7px', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.72)', fontFamily: C.mono, fontSize: 8, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{source}</span>
+                    ))}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -6768,7 +6816,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                   disabled={uberOppsLoading}
                   title={uberOppsMeta.connected === false ? 'Connect Ubersuggest in Configure first' : 'Pull fresh Ubersuggest market opportunities (uses MCP credits)'}
                   style={{
-                    padding: '6px 12px', border: `1px solid ${E.gold}`, background: E.cream, color: E.goldDeep,
+                    padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
                     fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
                     cursor: uberOppsLoading ? 'wait' : 'pointer',
                   }}
@@ -6776,8 +6824,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                   {uberOppsLoading ? '◇ Loading Ubersuggest…' : `◇ Refresh Ubersuggest (${uberOpps.length})`}
                 </button>
               </div>
+              <div style={{ padding: 18 }}>
               {uberOppsMeta.lastError && !uberOpps.length && (
-                <div style={{ marginBottom: 8, fontFamily: C.mono, fontSize: 10, color: C.red }}>
+                <div style={{ marginBottom: 12, padding: '9px 11px', background: E.redSoft, border: `1px solid ${E.redBorder}`, fontFamily: C.mono, fontSize: 10, color: C.red }}>
                   Ubersuggest: {uberOppsMeta.lastError}{uberOppsMeta.connected === false ? ' — connect it in Configure.' : ''}
                 </div>
               )}
@@ -6798,6 +6847,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 resolvingAll={resolvingAllCannibal}
                 resolvedIds={resolvedCannibalIds}
               />
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
