@@ -144,7 +144,16 @@ export function ensureTldrBullets(body: string, primaryKeyword = 'guide'): strin
   if (!m) return body
   const countBullets = (s: string) => (s.match(/^[-*+]\s+\S/gm) || []).length
   const sectionBody = m[2]
-  if (countBullets(sectionBody) >= 3 && countBullets(sectionBody) <= 5) return body
+  if (countBullets(sectionBody) >= 3 && countBullets(sectionBody) <= 5) {
+    // A single visual line of five `- ` items joined with " - " still
+    // counts as one bullet; explode it so rhythm + the gate see 3–5 lines.
+    const lines = sectionBody.split(/\n/).filter((l) => l.trim())
+    if (lines.length === 1 && /\s+[-–—]\s+/.test(lines[0])) {
+      /* fall through to rewrite */
+    } else {
+      return body
+    }
+  }
 
   const items: string[] = []
   const seen = new Set<string>()
@@ -437,10 +446,14 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
     }
   })
   const totalProse = allSpans.filter((s) => s.keep).length
-  if (totalProse < 8) return { content: body, replaced: 0 }
   const repeated = new Set<string>()
   for (const [k, v] of freq) if (v >= 5) repeated.add(k)
+  // The quality gate only *flags* when it has ≥8 sentences, but a jammed
+  // TL;DR line can be 5 identical openers with few other prose spans.
+  // Still rewrite those keys so a later scaffold (FAQ, sources) cannot
+  // push the document over the gate with the same opener.
   if (repeated.size === 0) return { content: body, replaced: 0 }
+  if (totalProse < 5) return { content: body, replaced: 0 }
 
   // First occurrence per key (whole document) — the "canonical" subject other
   // occurrences are rewritten to refer back to.
@@ -742,6 +755,16 @@ export function applyDeterministicRepairs(opts: {
         b = h1 ? b.replace(/^#\s+[^\n]+\n+/, (m) => `${m}${block}`) : `${block}${b}`
         applied.push('tldr_section_derived')
       }
+    }
+  }
+
+  // TL;DR rewrite can reintroduce identical bullet openers ("The UK
+  // dependent visa" ×5). Rhythm ran earlier; one more pass after bullets.
+  {
+    const rhythm = smoothSentenceRhythm(b)
+    if (rhythm.replaced > 0) {
+      b = rhythm.content
+      applied.push(`sentence_rhythm_after_tldr (${rhythm.replaced})`)
     }
   }
 
@@ -1970,6 +1993,14 @@ export function applyDeterministicRepairs(opts: {
     if (cutNames.length) applied.push(`trim_to_max_words (cut: ${cutNames.join(', ')})`)
   }
 
+  {
+    const rhythm = smoothSentenceRhythm(b)
+    if (rhythm.replaced > 0) {
+      b = rhythm.content
+      applied.push(`sentence_rhythm_final (${rhythm.replaced})`)
+    }
+  }
+
   const out = fm
     ? `---\n${fm}\n---\n\n${b.trim()}\n`
     : `${b.trim()}\n`
@@ -1977,7 +2008,13 @@ export function applyDeterministicRepairs(opts: {
     primaryKeyword: opts.primaryKeyword,
     targetUrl: opts.targetUrl,
   })
-  return { content: ahrefs.content, applied: [...applied, ...ahrefs.applied] }
+  const post = smoothSentenceRhythm(ahrefs.content)
+  return {
+    content: post.replaced > 0 ? post.content : ahrefs.content,
+    applied: post.replaced > 0
+      ? [...applied, ...ahrefs.applied, `sentence_rhythm_ahrefs (${post.replaced})`]
+      : [...applied, ...ahrefs.applied],
+  }
 }
 
 /**

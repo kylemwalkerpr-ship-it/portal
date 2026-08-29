@@ -42,7 +42,7 @@ function makeDom(stored: string | null) {
 
 const EXPECTED_KEYS = [
   '--ys-paper', '--ys-paper2', '--ys-paper3', '--ys-vellum', '--ys-cream',
-  '--ys-ink', '--ys-inkMid', '--ys-inkSoft', '--ys-onPaper', '--ys-onPaperSoft',
+  '--ys-ink', '--ys-inkMid', '--ys-inkSoft', '--ys-onPaper', '--ys-onPaperEm', '--ys-onPaperSoft',
   '--ys-rule', '--ys-ruleSoft', '--ys-indigo', '--ys-indigoDeep', '--ys-indigoSoft',
   '--ys-brick', '--ys-gold', '--ys-moss', '--ys-star', '--ys-teal', '--ys-tealDeep',
   '--ys-footer',
