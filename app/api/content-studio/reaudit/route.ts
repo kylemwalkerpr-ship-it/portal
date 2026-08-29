@@ -14,6 +14,51 @@ export type { ReauditResponse }
 
 type CompetingUrlInput = string | { url?: string; title?: string; primaryKeyword?: string | null }
 
+type RepairCtx = {
+  primaryKeyword?: string
+  region?: string
+  indexable?: boolean
+  contentType?: string
+  requiredShortKeywords?: string[]
+  requiredLongTailKeywords?: string[]
+  competingUrls?: Array<{ url: string; title: string; primaryKeyword?: string | null }>
+  targetUrl?: string
+  maxWords?: number
+  minWords?: number
+}
+
+/**
+ * Stage-4 ship-gate closer — runs after EVERY callAiFix result.
+ * Deterministic repairs first, then contract evaluation. If
+ * tldr_format_invalid or ahrefs_meta_too_long survive, loop the
+ * deterministic repairs (max 2 extra passes) instead of firing another
+ * 16k-token LLM call for those two codes — the model already failed to
+ * fix them once and burns the budget on rewrites.
+ */
+function closeShipGate(raw: string, ctx: RepairCtx): string {
+  let out = applyDeterministicRepairs({ content: raw, ...ctx }).content
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const gate = evaluateReauditContract({
+      content: out,
+      contentType: ctx.contentType,
+      primaryKeyword: ctx.primaryKeyword,
+      indexable: ctx.indexable,
+      requiredShortKeywords: ctx.requiredShortKeywords,
+      requiredLongTailKeywords: ctx.requiredLongTailKeywords,
+      region: ctx.region,
+      targetUrl: ctx.targetUrl,
+      competingUrls: ctx.competingUrls,
+    })
+    const codes = new Set([
+      ...(gate.blockersData || []).map((b) => b.code),
+      ...(gate.warningsData || []).map((w) => w.code),
+    ])
+    if (!codes.has('tldr_format_invalid') && !codes.has('ahrefs_meta_too_long')) break
+    out = applyDeterministicRepairs({ content: out, ...ctx }).content
+  }
+  return out
+}
+
 function normalizeCompetingUrls(raw: unknown): Array<{ url: string; title: string; primaryKeyword?: string | null }> | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined
   const out: Array<{ url: string; title: string; primaryKeyword?: string | null }> = []
@@ -685,14 +730,15 @@ ${warningList}
 
       try {
         const aiOut = await callAiFix(sys, fullPrompt, 16384, reviewModel)
-        // POST-AI NORMALIZATION — the model regularly re-introduces the exact
-        // gated issues it was told to fix (broken JSON-LD, repeated sentence
-        // openings, em-dashes, bare URLs). Re-running the deterministic
-        // repairs on the AI OUTPUT guarantees the returned draft is always
-        // at least as clean as the mechanical pass, breaking the
-        // fix→re-audit→new-issue→fix loop.
-        const postNorm = applyDeterministicRepairs({
-          content: aiOut,
+        // POST-AI NORMALIZATION + STAGE-4 CLOSE — the model regularly
+        // re-introduces the exact gated issues it was told to fix (broken
+        // JSON-LD, repeated sentence openings, em-dashes, bare URLs, 161-char
+        // meta, paragraph TL;DR). Re-running the deterministic repairs on the
+        // AI OUTPUT guarantees the returned draft is always at least as clean
+        // as the mechanical pass, breaking the fix→re-audit→new-issue→fix
+        // loop. tldr/meta regressions get a second deterministic pass, never
+        // another 16k LLM call.
+        fixedContent = closeShipGate(aiOut, {
           primaryKeyword: primaryKeyword || 'guide',
           region,
           indexable,
@@ -702,7 +748,6 @@ ${warningList}
           competingUrls: competingPages,
           targetUrl,
         })
-        fixedContent = postNorm.content
       } catch (fixErr) {
         const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
         return NextResponse.json({
@@ -766,7 +811,13 @@ RULES:
             const merged = mergeAppendedSections(fixedContent, appended)
             const afterWords = countBodyWords(merged)
             if (afterWords <= curWords) break // model returned nothing useful
-            fixedContent = merged
+            fixedContent = closeShipGate(merged, {
+              primaryKeyword: primaryKeyword || 'guide',
+              region, indexable, contentType,
+              requiredShortKeywords, requiredLongTailKeywords,
+              competingUrls: competingPages, targetUrl,
+              maxWords, minWords,
+            })
             depthExpandedForWarnings = true
           } catch {
             break // AI failure — stop retrying
@@ -805,7 +856,12 @@ ${content}
 Fix ONLY this specific issue. Keep everything else exactly the same. Return the COMPLETE article.`
 
       try {
-        fixedContent = await callAiFix(sys, prompt, 8192, reviewModel)
+        fixedContent = closeShipGate(await callAiFix(sys, prompt, 8192, reviewModel), {
+          primaryKeyword: primaryKeyword || 'guide',
+          region, indexable, contentType,
+          requiredShortKeywords, requiredLongTailKeywords,
+          competingUrls: competingPages, targetUrl,
+        })
       } catch (fixErr) {
         const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
         return NextResponse.json({
@@ -874,7 +930,12 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
             const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
             const merged = mergeAppendedSections(fixedContent, appended)
             if (countBodyWords(merged) > countBodyWords(fixedContent)) {
-              fixedContent = merged
+              fixedContent = closeShipGate(merged, {
+                primaryKeyword: primaryKeyword || 'guide',
+                region, indexable, contentType,
+                requiredShortKeywords, requiredLongTailKeywords,
+                competingUrls: competingPages, targetUrl,
+              })
               depthExpandedForWarnings = true
             }
           } catch (fixErr) {
@@ -916,19 +977,20 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
 ${enginePlan.promptBlock}` + editorResponseContract()
         try {
           const aiOut = await callAiFix(sys, buildWarningsFixPrompt(fixedContent, rest), 16384, reviewModel)
-          // Post-AI normalization — same guarantee as fix_all: the model can
-          // never hand back a draft that re-introduces mechanically-fixable
-          // gated issues (broken JSON-LD, rhythm, dashes, bare URLs).
-          fixedContent = applyDeterministicRepairs({
-            content: aiOut,
+          // Post-AI normalization + stage-4 close — same guarantee as fix_all:
+          // the model can never hand back a draft that re-introduces
+          // mechanically-fixable gated issues (broken JSON-LD, rhythm, dashes,
+          // bare URLs, 161-char meta, paragraph TL;DR).
+          fixedContent = closeShipGate(aiOut, {
             primaryKeyword: primaryKeyword || 'guide',
             region,
             indexable,
             contentType,
             requiredShortKeywords,
             requiredLongTailKeywords,
+            competingUrls: competingPages,
             targetUrl,
-          }).content
+          })
         } catch (fixErr) {
           const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
           return NextResponse.json({
@@ -998,7 +1060,12 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         const sys = 'You are a master SEO content editor. Clear EVERY listed ship blocker with the smallest possible edit. Return ONLY the complete article.' + editorResponseContract()
         const blockerList = leftover.length ? leftover : list
         try {
-          fixedContent = await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, blockerList), 16384, reviewModel)
+          fixedContent = closeShipGate(await callAiFix(sys, buildBlockersFixPrompt(sanitized.content, blockerList), 16384, reviewModel), {
+            primaryKeyword: primaryKeyword || 'guide',
+            region, indexable, contentType,
+            requiredShortKeywords, requiredLongTailKeywords,
+            competingUrls: competingPages, targetUrl,
+          })
         } catch (fixErr) {
           const fixMsg = fixErr instanceof Error ? fixErr.message : String(fixErr)
           return NextResponse.json({
@@ -1043,7 +1110,12 @@ ${enginePlan.promptBlock}` + editorResponseContract()
             `Depth expansion added no new words (${before} → ${after}). The model returned no usable sections — try again or expand sections manually.`,
           )
         }
-        fixedContent = merged
+        fixedContent = closeShipGate(merged, {
+          primaryKeyword: primaryKeyword || 'guide',
+          region, indexable, contentType,
+          requiredShortKeywords, requiredLongTailKeywords,
+          competingUrls: competingPages, targetUrl,
+        })
       }
 
     } else {

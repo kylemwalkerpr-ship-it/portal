@@ -11,7 +11,7 @@ import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
-import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs } from './ahrefsIssues'
+import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle } from './formatContract'
 
 function stripFm(content: string): { fm: string; body: string } {
@@ -129,6 +129,75 @@ function derivedTldrBullets(body: string, primaryKeyword: string, need = 3): str
     }
   }
   return bullets.slice(0, Math.max(need, Math.min(5, bullets.length)))
+}
+
+/**
+ * Guarantee the `## In 60 seconds` section body is 3–5 separate
+ * `^[-*+] ` bullet lines — the exact shape the quality gate's
+ * `/^[-*+]\s+\S/gm` regex counts. Handles every malformed variant the
+ * models emit: one prose paragraph, `1. 2. 3.` numbered lists, a single
+ * `a - b - c` line, and indented bullets. When fewer than 3 usable
+ * items exist, falls back to derived bullets from the draft's own H2s.
+ */
+export function ensureTldrBullets(body: string, primaryKeyword = 'guide'): string {
+  const m = body.match(/(?:^|\n)(##\s+In 60 seconds[ \t]*\r?\n)([\s\S]*?)(?=\n##\s|$)/i)
+  if (!m) return body
+  const countBullets = (s: string) => (s.match(/^[-*+]\s+\S/gm) || []).length
+  const sectionBody = m[2]
+  if (countBullets(sectionBody) >= 3 && countBullets(sectionBody) <= 5) return body
+
+  const items: string[] = []
+  const seen = new Set<string>()
+  const push = (raw: string) => {
+    const t = raw.replace(/^[-*+]\s*/, '').replace(/^\s*\d+[.)]\s*/, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()
+    const key = t.toLowerCase()
+    if (t.length > 2 && !seen.has(key)) {
+      seen.add(key)
+      items.push(t)
+    }
+  }
+  const nonEmptyLines = sectionBody.split(/\n/).filter((l) => l.trim())
+  if (nonEmptyLines.length === 1) {
+    const line = nonEmptyLines[0].trim()
+    if (/^[-*+]\s+\S/.test(line)) {
+      // Single collapsed bullet line holding several " - " separated items.
+      if (/\s+[-–—]\s+\S/.test(line.replace(/^[-*+]\s*/, ''))) {
+        for (const seg of line.replace(/^[-*+]\s*/, '').split(/\s+[-–—]\s+/)) push(seg)
+      } else {
+        push(line)
+      }
+    } else if (/^\s*\d+[.)]\s+/.test(line) || /;/.test(line)) {
+      // "1. a 2. b 3. c" on one line, or semicolon-joined items.
+      for (const seg of line.split(/(?:\s*\d+[.)]\s+)|\s*;\s+/).filter(Boolean)) push(seg)
+    } else {
+      // Prose paragraph — split into sentences.
+      for (const seg of line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/)) push(seg)
+    }
+  } else {
+    for (const line of nonEmptyLines) {
+      const t = line.trim()
+      if (/^[-*+]\s+\S/.test(t) || /^\s*[-*+]\s+\S/.test(line) || /^\d+[.)]\s+\S/.test(t)) {
+        push(t)
+      } else if (/^\s*[-*+]\s+/.test(line)) {
+        push(line.replace(/^\s*[-*+]\s+/, '- '))
+      } else {
+        // Prose line(s) inside the section — sentence-split each.
+        for (const seg of t.split(/(?<=[.!?])\s+(?=[A-Z0-9])/)) push(seg)
+      }
+    }
+  }
+  let bullets = items.map((t) => (t.length > 180 ? `${t.slice(0, 177).replace(/\s+\S*$/, '')}…` : t))
+  if (bullets.length < 3) {
+    for (const derived of derivedTldrBullets(body, primaryKeyword, 3)) {
+      if (bullets.length >= 3) break
+      if (!seen.has(derived.toLowerCase())) bullets.push(derived)
+    }
+  }
+  bullets = bullets.slice(0, 5)
+  if (bullets.length < 3) return body
+  const prefix = m[0].startsWith('\n') ? '\n' : ''
+  const rewritten = `${prefix}${m[1].trimEnd()}\n\n${bullets.map((t) => `- ${t}`).join('\n')}\n`
+  return body.slice(0, m.index) + rewritten + body.slice(m.index + m[0].length)
 }
 
 /** Shared heading slug — MUST match renderTarget.markdownToJsx + StickyTOC. */
@@ -660,19 +729,14 @@ export function applyDeterministicRepairs(opts: {
   {
     const tldr = b.match(/(?:^|\n)##\s+In 60 seconds[ \t]*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     const existing = tldr ? (tldr[1].match(/^[-*+]\s+\S/gm) || []).length : 0
-    if (!tldr || existing < 3) {
-      // A paragraph or `1. 2. 3.` TL;DR does not count — rewrite the section
-      // body wholesale into three `- ` bullets derived from the H2 titles.
-      const bullets = derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3)
-      if (tldr) {
-        const prefixLen = tldr[0].startsWith('\n') ? 1 : 0
-        const start = tldr.index! + prefixLen
-        const inner = tldr[0].slice(prefixLen)
-        const header = inner.slice(0, inner.indexOf('\n')).trim() || '## In 60 seconds'
-        const rewritten = `${header}\n\n${bullets.map((item) => `- ${item}`).join('\n')}\n\n`
-        b = b.slice(0, start) + rewritten + b.slice(start + inner.length)
-        applied.push('tldr_bullets_derived')
-      } else {
+    if (!tldr || existing < 3 || existing > 5) {
+      // normalizeEditorDocument + ensureTldrBullets turn paragraphs, numbered
+      // lists, and collapsed `a - b - c` lines into 3–5 separate bullets.
+      const before = b
+      b = ensureTldrBullets(b, opts.primaryKeyword || opts.title || 'guide')
+      if (b !== before) applied.push('tldr_bullets_derived')
+      if (!tldr) {
+        const bullets = derivedTldrBullets(b, opts.primaryKeyword || opts.title || 'guide', 3)
         const h1 = b.match(/^#\s+[^\n]+\n+/)
         const block = `## In 60 seconds\n\n${bullets.map((item) => `- ${item}`).join('\n')}\n\n`
         b = h1 ? b.replace(/^#\s+[^\n]+\n+/, (m) => `${m}${block}`) : `${block}${b}`
@@ -1228,6 +1292,7 @@ export function applyDeterministicRepairs(opts: {
   // skipping — otherwise a FM-less draft can never clear META_DESCRIPTION.
   {
     const existingDesc = fm ? fm.match(/^description:\s*(.+)$/m) : null
+    const rawDescVal = existingDesc ? existingDesc[1].trim().replace(/^["']|["']$/g, '') : ''
     const desc = metaDescriptionFrom(opts.title || '', b, (opts.primaryKeyword || opts.title || 'Immigration guide').trim())
     if (!fm) {
       fm = [
@@ -1237,7 +1302,14 @@ export function applyDeterministicRepairs(opts: {
         `description: ${desc}`,
       ].filter(Boolean).join('\n')
       applied.push('meta_description')
-    } else if (!existingDesc || (existingDesc[1] && existingDesc[1].length < 100)) {
+    } else if (existingDesc && metaDescriptionLength(rawDescVal) > 160) {
+      // 161-char meta survived every previous pass (the old `< 100` rule
+      // never touched it). Clamp with the SAME measure the gate uses.
+      const clamped = clampMetaToAhrefs(rawDescVal, opts.title || '', (opts.primaryKeyword || opts.title || 'Immigration guide').trim())
+      const needsQuotes = clamped.includes(':') || /^\d+$/.test(clamped)
+      fm = fm.replace(existingDesc[0], `description: ${needsQuotes ? JSON.stringify(clamped) : clamped}`)
+      applied.push('meta_description')
+    } else if (!existingDesc || (existingDesc[1] && metaDescriptionLength(rawDescVal) < 100)) {
       if (existingDesc) {
         fm = fm.replace(existingDesc[0], `description: ${desc}`)
       } else {
@@ -1331,6 +1403,18 @@ export function applyDeterministicRepairs(opts: {
           answer: m[2].trim().slice(0, 300).replace(/\n/g, ' '),
         })).filter((e) => e.question && e.answer)
       }
+    }
+    // --- Path D: loose ### question headings anywhere in the body ---
+    // A draft can carry `### Question?` FAQ headings without a parent
+    // `## FAQ` H2 (or the FAQ H2 was renamed). Paths A–C all anchor on an
+    // FAQ H2 or question-form H2s, so the FAQPage JSON-LD is never built
+    // and schema_faq recurs. Harvest ### questions from the whole body.
+    if (faqEntities.length < 3) {
+      const h3QA = Array.from(b.matchAll(/(?:^|\n)###\s+(.+\?)\s*\n([\s\S]*?)(?=\n###\s|\n## |\n*$)/g))
+      faqEntities = h3QA.map((m) => ({
+        question: m[1].trim(),
+        answer: m[2].trim().slice(0, 300).replace(/\n/g, ' '),
+      })).filter((e) => e.question && e.answer)
     }
     if (faqEntities.length >= 3) {
       const faqSchema = [

@@ -22,6 +22,14 @@ export interface RunbiosSlot {
 
 export const RUNBIOS_SLOTS: RunbiosSlot[] = [
   {
+    id: 'runbios-glm-53',
+    apiModel: 'glm-5.3',
+    label: 'GLM 5.3 · Run BiOS',
+    studioModelId: 'glm-5.3',
+    role: 'primary',
+    hint: 'Brief / review default — full GLM 5.3 (no thinking flags)',
+  },
+  {
     id: 'runbios-glm-53-flash',
     apiModel: 'glm-5.3-flash',
     label: 'GLM 5.3 Flash · Run BiOS',

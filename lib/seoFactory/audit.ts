@@ -11,6 +11,7 @@ import {
 } from './contentDepth'
 import { evaluateContentQuality, DISCLAIMER_RE } from './contentQualityGate'
 import { countEstateLinks } from './linkAudit'
+import { metaDescriptionLength } from './ahrefsIssues'
 import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
 
 export interface AuditFinding {
@@ -184,10 +185,11 @@ export function auditContent(opts: {
 
   // Meta description
   const desc = fm.description || fm.metaDescription || ''
-  add(desc.length >= 70 && desc.length <= 160, {
+  const descLen = metaDescriptionLength(desc)
+  add(descLen >= 70 && descLen <= 160, {
     code: 'meta_description',
     severity: 'warning',
-    message: desc ? `Meta description length ${desc.length}` : 'Missing meta description in front matter',
+    message: desc ? `Meta description length ${descLen}` : 'Missing meta description in front matter',
     fix: 'Add description: 70–160 characters (Ahrefs band) with a concrete benefit',
   }, AUDIT_POINT_WEIGHTS.metaDescription)
 

@@ -256,7 +256,8 @@ export function evaluateAhrefsDraft(
   if (opts.indexable === false) return []
   const { fm, body } = parseFm(content)
   const title = (fm.title || (body.match(/^#\s+(.+)$/m) || [])[1] || '').trim()
-  const desc = (fm.description || fm.metaDescription || '').trim()
+  const desc = fm.description || fm.metaDescription || ''
+  const descLen = metaDescriptionLength(desc)
   const h1s = body.match(/^#\s+.+$/gm) || []
   const robots = String(fm.robots || '').toLowerCase()
   const canonical = (fm.canonicalUrl || fm.canonical || opts.targetUrl || '').trim()
@@ -282,22 +283,22 @@ export function evaluateAhrefsDraft(
     })
   }
 
-  if (!desc) {
+  if (!descLen) {
     findings.push({
       code: 'ahrefs_meta_missing', issueId: 'description_missing', severity: 'blocker',
       message: 'Missing meta description — Ahrefs flags this on every crawl.',
       fix: `Add description: ${AHREFS_META_MIN}–${AHREFS_META_MAX} characters.`,
     })
-  } else if (desc.length < AHREFS_META_MIN) {
+  } else if (descLen < AHREFS_META_MIN) {
     findings.push({
       code: 'ahrefs_meta_too_short', issueId: 'description_too_short', severity: 'blocker',
-      message: `Meta description is ${desc.length} chars (Ahrefs minimum ${AHREFS_META_MIN}).`,
+      message: `Meta description is ${descLen} chars (Ahrefs minimum ${AHREFS_META_MIN}).`,
       fix: `Expand the description to ${AHREFS_META_MIN}–${AHREFS_META_MAX} characters.`,
     })
-  } else if (desc.length > AHREFS_META_MAX) {
+  } else if (descLen > AHREFS_META_MAX) {
     findings.push({
       code: 'ahrefs_meta_too_long', issueId: 'description_too_long', severity: 'blocker',
-      message: `Meta description is ${desc.length} chars (Ahrefs maximum ${AHREFS_META_MAX}).`,
+      message: `Meta description is ${descLen} chars (Ahrefs maximum ${AHREFS_META_MAX}).`,
       fix: `Trim the description to ≤${AHREFS_META_MAX} characters.`,
     })
   }
@@ -384,14 +385,28 @@ export function clampTitleToAhrefs(title: string, primaryKeyword = ''): string {
   return t
 }
 
+/**
+ * Single source of truth for meta description length — the gate and the
+ * clamp MUST agree, otherwise a 161-char description clears the clamp and
+ * still trips ahrefs_meta_too_long on the next audit.
+ */
+export function metaDescriptionLength(s: string): number {
+  return String(s || '').trim().length
+}
+
 export function clampMetaToAhrefs(desc: string, title: string, primaryKeyword: string): string {
   let d = String(desc || '').replace(/\s+/g, ' ').trim()
-  if (d.length > AHREFS_META_MAX) {
+  // Loop until the SAME measure the gate uses says ≤160. A word-trim that
+  // leaves 161 (whitespace / wide chars) falls through to a hard slice.
+  let guard = 0
+  while (metaDescriptionLength(d) > AHREFS_META_MAX && guard++ < 10) {
     d = d.slice(0, AHREFS_META_MAX).replace(/\s+\S*$/, '').trim()
+    if (metaDescriptionLength(d) > AHREFS_META_MAX) d = d.slice(0, AHREFS_META_MAX).trim()
   }
-  if (d.length < AHREFS_META_MIN) {
+  if (metaDescriptionLength(d) < AHREFS_META_MIN) {
     const extra = ` Practical steps for ${primaryKeyword || title}. Verify official rules before you apply.`
     d = (d + extra).replace(/\s+/g, ' ').trim().slice(0, AHREFS_META_MAX)
+    if (metaDescriptionLength(d) > AHREFS_META_MAX) d = clampMetaToAhrefs(d, title, primaryKeyword)
   }
   return d
 }

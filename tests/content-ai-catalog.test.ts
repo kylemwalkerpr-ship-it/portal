@@ -56,13 +56,13 @@ describe('content AI catalog — model × host', () => {
 
   it('puts GLM 5.3 Flash first on Generate Full Brief', () => {
     const brief = modelsForLane('brief').map((m) => m.id)
-    expect(brief.slice(0, 2)).toEqual(['glm-5.3-flash', 'deepseek-v4-pro'])
+    expect(brief.slice(0, 2)).toEqual(['glm-5.3', 'glm-5.3-flash'])
     expect(brief).toContain('deepseek-v4-flash')
   })
 
   it('puts Pro then Flash first on Reviewer/Editor and labels them with the exact API ids', () => {
     const review = modelsForLane('review')
-    expect(review.map((m) => m.id).slice(0, 2)).toEqual(['glm-5.3-flash', 'deepseek-v4-pro'])
+    expect(review.map((m) => m.id).slice(0, 2)).toEqual(['glm-5.3', 'glm-5.3-flash'])
     const pro = review.find((m) => m.id === 'deepseek-v4-pro')!
     const flash = review.find((m) => m.id === 'deepseek-v4-flash')!
     expect(modelPickerLabel(pro, 'review')).toBe(DEEPSEEK_V4_PRO_ID)
@@ -89,20 +89,20 @@ describe('content AI catalog — model × host', () => {
     expect(pinFor('bios-adaptive', 'runbios')).toBe('runbios-adaptive')
   })
 
-  it('defaults draft to MiniMax M3 on Run BiOS; brief and reviewer stay GLM 5.3 Flash', () => {
+  it('defaults draft to MiniMax M3 on Run BiOS; brief and reviewer stay GLM 5.3', () => {
     expect(DEFAULT_DRAFT_PIN).toBe('runbios-minimax')
-    expect(DEFAULT_BRIEF_PIN).toBe('runbios-glm-53-flash')
-    expect(DEFAULT_REVIEW_PIN).toBe('runbios-glm-53-flash')
+    expect(DEFAULT_BRIEF_PIN).toBe('runbios-glm-53')
+    expect(DEFAULT_REVIEW_PIN).toBe('runbios-glm-53')
     expect(parseStudioPin(DEFAULT_DRAFT_PIN)).toMatchObject({
       model: { id: 'minimax-m3' },
       host: { id: 'runbios' },
     })
     expect(parseStudioPin(DEFAULT_BRIEF_PIN)).toMatchObject({
-      model: { id: 'glm-5.3-flash' },
+      model: { id: 'glm-5.3' },
       host: { id: 'runbios' },
     })
     expect(parseStudioPin(DEFAULT_REVIEW_PIN)).toMatchObject({
-      model: { id: 'glm-5.3-flash' },
+      model: { id: 'glm-5.3' },
       host: { id: 'runbios' },
     })
   })

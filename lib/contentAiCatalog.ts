@@ -20,6 +20,7 @@ export type StudioModelId =
   | 'deepseek-v4-flash'
   | 'deepseek-v4-pro'
   | 'glm-5.2'
+  | 'glm-5.3'
   | 'glm-5.3-flash'
   | 'glm-5.2-fast'
   | 'kimi-k2.7-code'
@@ -72,10 +73,10 @@ export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 
 /** Draft lead: MiniMax M3 via Run BiOS — fastest complete long-form on this host. */
 export const DEFAULT_DRAFT_PIN = 'runbios-minimax'
-/** Research / Generate Full Brief lead: same Run BiOS GLM 5.3 Flash. */
-export const DEFAULT_BRIEF_PIN = 'runbios-glm-53-flash'
-/** Reviewer / Editor lead: same Run BiOS GLM 5.3 Flash. */
-export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
+/** Research / Generate Full Brief lead: Run BiOS GLM 5.3. */
+export const DEFAULT_BRIEF_PIN = 'runbios-glm-53'
+/** Reviewer / Editor lead: Run BiOS GLM 5.3. */
+export const DEFAULT_REVIEW_PIN = 'runbios-glm-53'
 
 /** Host picker order — skip a host when that model is not served there. */
 export const STUDIO_HOST_ORDER: StudioHostId[] = [
@@ -113,6 +114,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'openrouter',
   ],
   brief: [
+    'glm-5.3',
     'glm-5.3-flash',
     'deepseek-v4-pro',
     'glm-5.2',
@@ -128,6 +130,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'claude-opus-5',
   ],
   review: [
+    'glm-5.3',
     'glm-5.3-flash',
     'deepseek-v4-pro',
     'deepseek-v4-flash',
@@ -212,6 +215,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     label: 'Grok 4.6',
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [{ id: 'xai', label: 'SuperGrok / xAI', pin: 'grok' }],
+  },
+  {
+    id: 'glm-5.3',
+    label: 'GLM 5.3',
+    apiModel: 'glm-5.3',
+    lanes: ['brief', 'review', 'command'],
+    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-53' }],
   },
   {
     id: 'glm-5.3-flash',
@@ -363,6 +373,7 @@ const PIN_ALIASES: Record<string, string> = {
   'kimi-k2.7-code': 'runbios-kimi',
   'qwen3.5-397b-a17b': 'runbios-qwen',
   'baseten-glm-53-flash': 'baseten-glm-53-flash',
+  'glm-5.3': 'runbios-glm-53',
   'glm-5.3-flash': 'runbios-glm-53-flash',
   'zai-org/glm-5.3-flash': 'baseten-glm-53-flash',
   'baseten-glm': 'baseten-glm-fast',
