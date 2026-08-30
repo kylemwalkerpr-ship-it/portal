@@ -22,12 +22,16 @@
  *     the War Room can group failures.
  *
  * Auth: `Authorization: Bearer <CRON_SECRET>`.
- * Schedule: every 15 minutes.
+ * Schedule: every 30 minutes (GitHub workflow `content-studio-retry.yml`,
+ * cron "30-min interval" — the workflow's `timeout-minutes: 15` is the hard
+ * outer wall; this route enforces its own earlier deadline so it ALWAYS
+ * responds before GitHub cancels the runner).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { runSeoFactoryPipeline, type PipelineResult } from '@/lib/seoFactory/pipeline'
+import { parseRetryDeadlineMs } from '@/lib/seoFactory/retryDeadline'
 
-const BATCH_SIZE = 3
+const BATCH_SIZE = 1
 const COOLDOWN_MINUTES = 15
 const MAX_ATTEMPTS = 6
 
@@ -250,6 +254,11 @@ export async function POST(req: Request) {
       .eq('id', job.id)
 
     // ── 4. Re-run the pipeline with the previous draft as resume content ──
+    // Deadline: abort the pipeline before the GitHub Actions 15-min wall so
+    // this route always returns; an abort requeues via the normal backoff.
+    const deadlineMs = parseRetryDeadlineMs(process.env.CONTENT_STUDIO_RETRY_DEADLINE_MS)
+    const abort = new AbortController()
+    const deadlineTimer = setTimeout(() => abort.abort(), deadlineMs)
     try {
       const primaryKeyword = String(job.primary_keyword || job.topic || '')
       const contentType =
@@ -265,10 +274,12 @@ export async function POST(req: Request) {
         resumeContent: job.content ? String(job.content) : undefined,
         shipMode: (job.ship_mode || 'pr') as PipelineResult['shipMode'],
         minAuditScore: 55,
-        // More refine attempts on retry to push through quality gates.
-        maxRefine: 12,
+        // Pipeline clamps maxRefine to 3 — the maximum allowed. Bounded on
+        // purpose: the retry path must be predictable, not exhaustive.
+        maxRefine: 3,
         userId: job.user_id || 'system:cron',
         existingJobId: job.id,
+        signal: abort.signal,
       })
 
       if (result.ok) {
@@ -338,7 +349,7 @@ export async function POST(req: Request) {
         })
       }
     } catch (e) {
-      // Pipeline crashed (rate limit, timeout, schema mismatch, …).
+      // Pipeline crashed (rate limit, timeout, deadline abort, schema mismatch, …).
       const msg = e instanceof Error ? e.message : 'Pipeline crash during retry'
       const failureKind = classifyTextFailure(msg)
       const wait = backoffMinutes(attemptNumber)
@@ -371,6 +382,8 @@ export async function POST(req: Request) {
         failureKind,
         error: msg,
       })
+    } finally {
+      clearTimeout(deadlineTimer)
     }
   }
 

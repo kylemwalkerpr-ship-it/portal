@@ -827,43 +827,101 @@ export async function PATCH(request: NextRequest) {
       // snapshot from the immutable job metadata once, then use that same
       // snapshot for every round. This keeps old jobs fixable without letting
       // any model invent a new brief mid-loop.
+      // Recovered metadata from the last-chance block below — the fix loop
+      // must evaluate against the RECOVERED keyword/target, not the empty
+      // row values that triggered recovery.
+      let loopKeyword = primaryKeyword
+      let loopTargetUrl = targetUrl
       if (!contentSpec) {
-        const derived = resolveContentSpecForJob({
-          jobId: jobId || 'legacy-editor-draft',
-          contentType: contentType || 'legal_guide',
-          region,
-          indexable: indexable !== false,
-          canonicalUrl: targetUrl || '',
-          primaryKeyword: primaryKeyword || 'guide',
-          requiredShortKeywords,
-          requiredLongTailKeywords,
-          outline: (content.match(/^##\s+(.+)$/gm) || []).map((h) => h.replace(/^##\s+/, '')),
-          topic: primaryKeyword || 'guide',
-        })
-        contentSpec = derived.spec
-      }
-      if (!contentSpec) {
-        return NextResponse.json(
-          {
-            error: 'Audit & Fix could not recover this job\'s primary topic. Add a primary keyword to the job; target URL and content type are recovered automatically.',
-            heldForReview: true,
-          },
-          { status: 409 },
-        )
+        // Last-chance topic recovery before holding the job:
+        //   1. primary keyword ← job row (already tried) ← the draft's own H1.
+        //   2. target URL ← job row canonical_url (already tried) ← owner
+        //      plan resolved from the recovered keyword.
+        // The old code coerced primaryKeyword to 'guide' while sending
+        // canonicalUrl: '' — the spec then ALWAYS failed validation with a
+        // misleading "add a primary keyword" message when the real gap was
+        // the missing target URL.
+        const h1 = ((content.match(/^#\s+(.+)$/m) || [])[1] || '').trim()
+        const recoveredKeyword = (primaryKeyword || h1).slice(0, 120).trim()
+        let recoveredTargetUrl = targetUrl
+        if (!recoveredTargetUrl && recoveredKeyword) {
+          try {
+            const { resolveOwner } = await import('@/lib/seoFactory/ownership')
+            const owner = await resolveOwner({
+              primaryKeyword: recoveredKeyword,
+              contentType: contentType || 'legal_guide',
+              region,
+              indexable: indexable !== false,
+            })
+            recoveredTargetUrl = owner.canonicalUrl || undefined
+          } catch {
+            recoveredTargetUrl = undefined
+          }
+        }
+        let derivedReason = 'missing canonicalUrl, contentType, or primaryKeyword'
+        if (recoveredKeyword && recoveredTargetUrl) {
+          const derived = resolveContentSpecForJob({
+            jobId: jobId || 'legacy-editor-draft',
+            contentType: contentType || 'legal_guide',
+            region,
+            indexable: indexable !== false,
+            canonicalUrl: recoveredTargetUrl,
+            primaryKeyword: recoveredKeyword,
+            requiredShortKeywords,
+            requiredLongTailKeywords,
+            outline: (content.match(/^##\s+(.+)$/gm) || []).map((h) => h.replace(/^##\s+/, '')),
+            topic: recoveredKeyword,
+          })
+          contentSpec = derived.spec
+          if (!derived.spec) {
+            derivedReason = [derived.reason, ...(derived.issues || [])]
+              .filter(Boolean)
+              .join('; ')
+          }
+        }
+        // Persist the recovery so the next Fix call hydrates directly from
+        // the job row instead of re-deriving it.
+        if (contentSpec && jobId) {
+          try {
+            const { createSupabaseAdminClient } = await import('@/lib/supabase')
+            const backfill: Record<string, unknown> = {}
+            if (!primaryKeyword && recoveredKeyword) backfill.primary_keyword = recoveredKeyword
+            if (!targetUrl && recoveredTargetUrl) backfill.canonical_url = recoveredTargetUrl
+            if (Object.keys(backfill).length) {
+              await createSupabaseAdminClient()
+                .from('content_jobs')
+                .update(backfill)
+                .eq('id', jobId)
+            }
+          } catch { /* recovery persists best-effort */ }
+        }
+        if (!contentSpec) {
+          return NextResponse.json(
+            {
+              error: recoveredKeyword
+                ? `Audit & Fix could not resolve this job's target URL (spec not built: ${derivedReason}). Set the job's target URL, or re-run Discover for this topic.`
+                : 'Audit & Fix could not recover this job\'s primary topic. Add a primary keyword to the job; target URL and content type are recovered automatically.',
+              heldForReview: true,
+            },
+            { status: 409 },
+          )
+        }
+        loopKeyword = recoveredKeyword
+        loopTargetUrl = recoveredTargetUrl || targetUrl
       }
       let verifiedEstateUrls: string[] = []
       try {
         verifiedEstateUrls = Array.from(await fetchLiveEstateUrls())
       } catch { /* live verification remains best-effort */ }
       const loopCtx = {
-        primaryKeyword: primaryKeyword || 'guide',
+        primaryKeyword: loopKeyword || 'guide',
         region,
         indexable,
         contentType,
         requiredShortKeywords,
         requiredLongTailKeywords,
         competingUrls: competingPages,
-        targetUrl,
+        targetUrl: loopTargetUrl,
         linkAllowlist: verifiedEstateUrls,
       }
       const evaluate = (c: string): LoopFinding[] => {

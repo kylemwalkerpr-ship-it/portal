@@ -17,6 +17,9 @@ on:
 jobs:
   retry-drafting:
     runs-on: ubuntu-latest
+    # The route self-bounds at CONTENT_STUDIO_RETRY_DEADLINE_MS (default 12
+    # min) and always responds. curl --max-time 13.5 min is the belt-and-
+    # braces bound; the 15-min job timeout is the last-resort wall.
     timeout-minutes: 15
 
     steps:
@@ -24,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           
-          RESPONSE=$(curl -s -w '\n%{http_code}' \
+          RESPONSE=$(curl -s --max-time 810 -w '\n%{http_code}' \
             -X POST \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \

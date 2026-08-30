@@ -54,6 +54,19 @@ function tokensForType(contentType: string, phase: 'draft' | 'expand' | 'append'
  * (timeout, rate-limit, gateway 500s). Returns the first successful result
  * or throws after exhausting retries.
  */
+/**
+ * Throw a classified 'timeout' error when the caller's deadline (AbortSignal)
+ * has fired. Checked between pipeline passes so a bounded caller (retry cron)
+ * can never run past its wall-clock budget. The thrown message matches the
+ * route's /timeout|abort|deadline/ classifier, so an aborted run requeues
+ * through the normal backoff ladder instead of hanging the HTTP request.
+ */
+export function throwIfAborted(signal: AbortSignal | undefined, stage: string): void {
+  if (signal?.aborted) {
+    throw new Error(`Pipeline aborted at ${stage}: retry deadline exceeded`)
+  }
+}
+
 async function generateWithRetry(
   fn: typeof generateContentText,
   opts: Parameters<typeof generateContentText>[0],
@@ -219,6 +232,9 @@ function resolveShipMode(
 }
 
 export async function runSeoFactoryPipeline(input: PipelineInput): Promise<PipelineResult> {
+  // Fail fast: a caller whose deadline already expired must not pay for
+  // planning (ownership resolve, GSC brief, strategy block) at all.
+  throwIfAborted(input.signal, 'start')
   const topic = (input.topic || '').trim()
   let primaryKeyword = (input.primaryKeyword || topic).trim()
   // Safety: if primaryKeyword shares no significant words with the topic,
@@ -413,6 +429,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
   // ── PASS 1: Main refine loop (depth + quality) ─────────────────────────
   for (let i = 0; i <= maxRefine; i++) {
+    throwIfAborted(input.signal, `refine pass ${i + 1}`)
     attempts = i + 1
     const underDepth = Boolean(content) && countBodyWords(content) < minWords
 
@@ -457,6 +474,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       maxTokens: tokensForType(contentType, underDepth ? 'expand' : 'draft'),
       temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
       aiProvider: input.aiProvider,
+      signal: input.signal,
     })
     // Never accept a shorter body when we were expanding for depth
     if (underDepth && countBodyWords(ai.text) < prevWords) {
@@ -527,6 +545,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   // ── PASS 2: Depth rescue (expand/append until floor met) ───────────────
   const maxExpand = contentType === 'marketplace_gig' ? 1 : 5
   while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
+    throwIfAborted(input.signal, `depth expand pass ${expandPasses + 1}`)
     expandPasses++
     attempts++
     const currentWords = countBodyWords(content)
@@ -550,6 +569,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'expand'),
           temperature: 0.42,
           aiProvider: input.aiProvider,
+          signal: input.signal,
         })
         if (countBodyWords(ai.text) > currentWords) {
           content = ai.text
@@ -572,6 +592,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'append'),
           temperature: 0.45,
           aiProvider: input.aiProvider,
+          signal: input.signal,
         })
         const merged = mergeAppendedSections(content, ai.text)
         if (countBodyWords(merged) > currentWords) {
@@ -583,6 +604,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         }
       }
     } catch (e) {
+      if (input.signal?.aborted) throw e
       console.warn(
         '[seoFactory/pipeline] depth expand pass failed',
         e instanceof Error ? e.message : e,
@@ -609,6 +631,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   if (!meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
     stalledCount = 0
     for (let j = 0; j <= Math.min(1, maxRefine); j++) {
+      throwIfAborted(input.signal, `post-depth refine pass ${j + 1}`)
       attempts++
       const prevBlockers = audit.blockers.length
       const prevScore = audit.score
@@ -649,6 +672,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'draft'),
           temperature: 0.35,
           aiProvider: input.aiProvider,
+          signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
           content = ai.text
@@ -656,6 +680,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           model = ai.model
         }
       } catch (e) {
+        if (input.signal?.aborted) throw e
         console.warn('[seoFactory/pipeline] post-depth quality refine failed', e)
         break
       }
@@ -727,6 +752,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   })
 
   if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 8) {
+    throwIfAborted(input.signal, 'post-scaffold refine')
     const q = evaluateContentQuality({
       content,
       contentType,
@@ -766,6 +792,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'draft'),
           temperature: 0.3,
           aiProvider: input.aiProvider,
+          signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
           content = ai.text
@@ -773,6 +800,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           model = ai.model
         }
       } catch (e) {
+        if (input.signal?.aborted) throw e
         console.warn('[seoFactory/pipeline] post-scaffold refine failed', e)
       }
       // Re-scaffold the refined content
@@ -962,6 +990,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   }
 
   if (shipMode !== 'none' && !shipError) {
+    // Never start a multi-minute Git write when the caller's deadline is gone.
+    throwIfAborted(input.signal, 'ship')
     try {
       // shipContent enforces shipGate (host · path · format) before any Git write
     shipResult = await shipContent({
