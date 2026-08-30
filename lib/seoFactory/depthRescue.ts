@@ -14,7 +14,6 @@
 import { auditContent, meetsDepthFloor, meetsShipQuality, type SeoFactoryAudit } from './audit'
 import {
   buildDepthAppendPrompt,
-  buildDepthExpandPrompt,
   extractH2Titles,
   mergeAppendedSections,
 } from './prompts'
@@ -225,7 +224,7 @@ export async function* runDepthRescue(
   let provider = 'unknown'
   let model = 'unknown'
 
-  const maxExpand = contentType === 'marketplace_gig' ? 1 : 10
+  const maxExpand = contentType === 'marketplace_gig' ? 1 : 4
   const maxStallPasses = 3
   let stallPasses = 0
   let lastWords = countBodyWords(content)
@@ -233,7 +232,6 @@ export async function* runDepthRescue(
   let expandPasses = 0
   let attempts = 0
   let appendAttempts = 0
-  let expandSucceeded = false
 
   // ── Critically-thin guard: skip rescue for drafts too small to expand ──
   // A 36-word draft cannot be expanded to a 2200-word article — the model
@@ -278,97 +276,40 @@ export async function* runDepthRescue(
       message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words (${Math.max(0, minWords - currentWords)} to add)…`,
     }
     try {
-      if (!expandSucceeded) {
-        const ai = await generateText({
-          system,
-          prompt: buildDepthExpandPrompt({
-            title,
-            topic,
-            primaryKeyword,
-            region,
-            contentType,
-            minWords,
-            targetWords,
-            maxWords,
-            currentWords,
-            draft: content,
-            h2Outline,
-          }),
-          // Full rewrite: the model must reproduce the existing article (~5
-          // tokens per word) AND add new substance. Never cap below 8000
-          // tokens — a 2000-word draft needs ~10k tokens just to reproduce.
-          // Cap at 24576 to keep the stream within Cloudflare Worker limits.
-          // Marketplace gigs stay concise — cap at 4000 tokens (their
-          // maxExpand is also 1, so they get one tight rewrite).
-          maxTokens: contentType === 'marketplace_gig'
-            ? 4000
-            : Math.min(24576, Math.max(8000, currentWords * 5 + (minWords - currentWords) * 6)),
-          temperature: 0.42,
-          aiProvider,
-        })
-        provider = ai.provider
-        model = ai.model
-        if (countBodyWords(ai.text) > currentWords) {
-          // Rhythm guard on the full rewrite: the expand prompt asks the model
-          // to vary openings, but a rewrite reproduces the WHOLE page, so any
-          // robotic opener in the original (bullets included) gets carried
-          // over and amplified. Deterministically smooth repeated 12-char
-          // openings — same repair the append pass and the ship gate run — so
-          // the rescue never ships a robotic-rhythm rewrite.
-          const rhythm = smoothSentenceRhythm(ai.text)
-          content = rhythm.replaced > 0 ? rhythm.content : ai.text
-          expandSucceeded = true
-          yield { type: 'delta', text: '\n\n<!-- depth expand applied -->\n\n', attempt: attempts }
-          yield { type: 'delta', text: content.slice(0, 500), attempt: attempts }
+      const focus = APPEND_FOCUSES[appendAttempts % APPEND_FOCUSES.length]
+      appendAttempts++
+      const ai = await generateText({
+        system:
+          'You append concrete practitioner sections to an existing immigration guide. Never reproduce its front matter, H1, introduction, existing sections, JSON-LD, or disclaimer. No AI clichés. No outcome guarantees.',
+        prompt: buildDepthAppendPrompt({
+          primaryKeyword,
+          region,
+          minWords,
+          maxWords,
+          currentWords,
+          existingH2s: extractH2Titles(content),
+          draftExcerpt: content,
+          h2Outline,
+          focus,
+        }),
+        // Append only the measured deficit; never pay to reproduce the article.
+        maxTokens: Math.min(6000, Math.max(1200, (minWords - currentWords + 180) * 5)),
+        temperature: 0.45,
+        aiProvider,
+      })
+      provider = ai.provider
+      model = ai.model
+      if (isParrot(content, ai.text)) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Depth rescue pass ${expandPasses} rejected: appended section repeats existing prose or headings`,
         }
       } else {
-        const focus = APPEND_FOCUSES[appendAttempts % APPEND_FOCUSES.length]
-        appendAttempts++
-        const ai = await generateText({
-          system:
-            'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
-          prompt: buildDepthAppendPrompt({
-            primaryKeyword,
-            region,
-            minWords,
-            currentWords,
-            existingH2s: extractH2Titles(content),
-            draftExcerpt: content,
-            h2Outline,
-            focus,
-          }),
-          // Append-only: the model writes NEW sections, not a full rewrite.
-          // The prompt asks for 700+ words (≈2,800 tokens). Floor at 3,000
-          // tokens so a 72-word deficit still gets a full section written.
-          // Scale up to 8,192 for larger gaps.
-          maxTokens: Math.min(8192, Math.max(3000, (minWords - currentWords) * 8 + 2000)),
-          temperature: 0.45,
-          aiProvider,
-        })
-        provider = ai.provider
-        model = ai.model
-        if (isParrot(content, ai.text)) {
-          yield {
-            type: 'progress',
-            stage: 'refine',
-            message: `Depth rescue pass ${expandPasses} rejected: appended section repeats existing prose or headings`,
-          }
-        } else {
-          let merged = mergeAppendedSections(content, ai.text)
-          // Rhythm guard on appended sections: the append prompt now asks the
-          // model to vary openings, but a model that already wrote "The UK
-          // dependent visa …" 5× in the original will repeat the opener in the
-          // NEW sections too. Deterministically smooth repeated 12-char
-          // openings (same repair applyDeterministicRepairs runs at ship) so
-          // the rescue never ships a robotic-rhythm draft.
-          const rhythm = smoothSentenceRhythm(merged)
-          if (rhythm.replaced > 0) {
-            merged = rhythm.content
-          }
-          if (countBodyWords(merged) > currentWords) {
-            content = merged
-          }
-        }
+        let merged = mergeAppendedSections(content, ai.text)
+        const rhythm = smoothSentenceRhythm(merged)
+        if (rhythm.replaced > 0) merged = rhythm.content
+        if (countBodyWords(merged) > currentWords) content = merged
       }
     } catch (e) {
       // Provider cascade already retried internally; keep the rescue alive.

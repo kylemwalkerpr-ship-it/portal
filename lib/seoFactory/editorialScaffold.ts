@@ -8,7 +8,7 @@
 
 import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
-import { countBodyWords, maxWordsForType, minWordsForType, unwrapWholeDocumentFence } from './contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
@@ -1892,105 +1892,18 @@ export function applyDeterministicRepairs(opts: {
   }
 
   // ── Trim to the hard max word window ────────────────────────────────
-  // 2026-08-13 live-run regression: GLM 5.2 Fast drafted 3234 words for a
-  // legal guide (max 2800) and the gates only WARNED — nothing cut it, so
-  // bloated 3000+ word pages kept shipping. Deterministically drop the
-  // lowest-value trailing H2 sections (never the required blocks: intro /
-  // In 60 seconds / FAQ / disclaimer / sources / schema) until the draft
-  // sits inside its window.
+  // Preserve the document skeleton exactly. Earlier code removed complete
+  // H2 sections and flattened sentence boundaries, which could delete brief
+  // obligations or corrupt numbered lists. The canonical trimmer only removes
+  // complete trailing sentences from ordinary prose paragraphs.
   const maxWords = opts.maxWords ?? maxWordsForType(String(opts.contentType || 'legal_guide'))
   const minWords = opts.minWords ?? minWordsForType(String(opts.contentType || 'legal_guide'))
   if (countBodyWords(b) > maxWords) {
-    const PROTECTED_HEADING = /^(?:in 60 seconds|table of contents|faq|disclaimer|official sources|related guides|references|sources|conclusion|summary|worked example)$/i
-    const cutNames: string[] = []
-    // Remove trailing non-protected H2 sections one at a time — last-to-first
-    // — until the draft lands inside the window. Positions are re-derived
-    // from the CURRENT body on every pass (indexes go stale after splicing).
-    // Protected blocks (In 60 seconds / FAQ / disclaimer / sources / schema)
-    // are never candidates, so the required structure survives the trim.
-    let guard = 0
-    while (countBodyWords(b) > maxWords && guard < 60) {
-      guard++
-      const lines = b.split('\n')
-      const starts: number[] = []
-      lines.forEach((line, i) => {
-        if (/^##\s+/.test(line)) starts.push(i)
-      })
-      if (starts.length <= 1) break // nothing structural left to drop
-      // Walk from the END backwards to the first non-protected section.
-      let victim = -1
-      let victimIdx = -1
-      for (let k = starts.length - 1; k >= 0; k--) {
-        const heading = lines[starts[k]].replace(/^##\s+/, '').trim()
-        if (PROTECTED_HEADING.test(heading)) continue
-        victim = starts[k]
-        victimIdx = k
-        break
-      }
-      if (victim === -1) break // only protected sections remain
-      // Cut ONLY the victim's section: slice ends at the NEXT section start
-      // (or end of body), so protected sections that trail it (Official
-      // sources, disclaimer, …) survive untouched.
-      const endLine = victimIdx + 1 < starts.length ? starts[victimIdx + 1] : lines.length
-      const removed = lines.slice(victim, endLine).join('\n')
-      // Never undercut the floor: a full-section cut that would drop below
-      // minWords is skipped — the sentence-tail fallback below handles it.
-      if (countBodyWords(lines.join('\n')) - countBodyWords(removed) < minWords) break
-      lines.splice(victim, endLine - victim)
-      const heading = removed.split('\n')[0].replace(/^##\s+/, '').trim()
-      cutNames.push(heading || 'section')
-      b = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    const trimmed = trimMarkdownProseToWordBudget(b, maxWords, minWords)
+    if (trimmed.removedWords > 0) {
+      b = trimmed.content.trim()
+      applied.push(`trim_to_max_words (${trimmed.removedWords} prose words removed; structure preserved)`)
     }
-    // Last resort: if still over after cutting whole sections (one gigantic
-    // section, or everything else is protected), shrink the LAST remaining
-    // non-protected section sentence-by-sentence from ITS end — never from the
-    // head, so In 60 seconds / FAQ / disclaimer / sources stay intact.
-    if (countBodyWords(b) > maxWords) {
-      const lines = b.split('\n')
-      const starts: number[] = []
-      lines.forEach((line, i) => {
-        if (/^##\s+/.test(line)) starts.push(i)
-      })
-      let victim = -1
-      let victimIdx = -1
-      for (let k = starts.length - 1; k >= 0; k--) {
-        const heading = lines[starts[k]].replace(/^##\s+/, '').trim()
-        if (PROTECTED_HEADING.test(heading)) continue
-        victim = starts[k]
-        victimIdx = k
-        break
-      }
-      if (victim > -1) {
-        // Only shrink the victim's own section — never the trailing protected
-        // blocks (FAQ / sources / disclaimer) that follow it.
-        const sectionEnd = victimIdx + 1 < starts.length ? starts[victimIdx + 1] : lines.length
-        const prefix = lines.slice(0, victim).join('\n')
-        const tail = lines.slice(sectionEnd).join('\n')
-        const secText = lines.slice(victim, sectionEnd).join('\n')
-        const sentences = secText.split(/(?<=[.!?])\s+/)
-        // Keep as many sentences as fit under max (counting the re-appended
-        // trailing blocks) WITHOUT dropping below the floor — the trim lands
-        // inside [min, max], never under the min.
-        let keep = ''
-        for (const s of sentences) {
-          const candidate = `${prefix}\n\n${keep.trim()} ${s}\n\n${tail}`.trim()
-          if (countBodyWords(candidate) > maxWords) break
-          keep = keep ? `${keep} ${s}` : s
-        }
-        if (keep && countBodyWords(`${prefix}\n\n${keep}\n\n${tail}`.trim()) < minWords) {
-          // The victim section is too big to fit — keep the whole prefix
-          // (which is already ≥ minWords after the section-cut guard) and
-          // leave the tail untouched rather than undercut the floor.
-          keep = ''
-        }
-        const next = keep ? `${prefix}\n\n${keep.trim()}\n\n${tail}`.trim() : b
-        if (countBodyWords(next) < countBodyWords(b)) {
-          b = next.replace(/\n{3,}/g, '\n\n').trim()
-          cutNames.push('runaway section tail')
-        }
-      }
-    }
-    if (cutNames.length) applied.push(`trim_to_max_words (cut: ${cutNames.join(', ')})`)
   }
 
   {

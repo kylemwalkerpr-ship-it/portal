@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
 import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
@@ -13,6 +14,7 @@ import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinks
 import { runAuditEditorLoop, CONTENT_LOOP_BUDGET, type LoopFinding } from '@/lib/seoFactory/auditEditorLoop'
 import { anchorHash, parseEditorPatch } from '@/lib/seoFactory/editorPatch'
 import { resolveContentSpecForJob, type ContentSpec } from '@/lib/seoFactory/contentSpec'
+import { normalizeStudioContentType } from '@/lib/seoFactory/ownership'
 
 export type { ReauditResponse }
 
@@ -130,29 +132,84 @@ const CONTENT_SPEC_MISMATCH_RESPONSE = {
   contentSpecMismatch: true,
 }
 
+type CanonicalJobMetadata = {
+  targetUrl?: string
+  contentType: string
+  primaryKeyword: string
+  region: string
+  indexable: boolean
+}
+
 /**
- * Resolve the canonical/target URL for a job so the Ahrefs canonical repair
- * can inject canonicalUrl into the front matter. The editor does not always
- * know the job's live estate URL, so when the request body omits targetUrl we
- * fall back to the job's stored canonical_url. Without this, ahrefs_canonical_missing
- * recurs on every re-audit because the repair never learns the URL.
+ * Hydrate the editor from the job row instead of trusting a stale/incomplete
+ * browser snapshot. Persisted values always win. Legacy rows that predate
+ * canonical_url are routed once from their stored topic/type/region and then
+ * backfilled, so Audit & Fix remains self-healing and never asks the operator
+ * to refresh a job merely to recover metadata already owned by the server.
  */
-async function resolveTargetUrl(jobId?: string, bodyTargetUrl?: string): Promise<string | undefined> {
-  if (bodyTargetUrl) return bodyTargetUrl
-  if (!jobId) return undefined
-  try {
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    const db = createSupabaseAdminClient()
-    const { data } = await db
-      .from('content_jobs')
-      .select('canonical_url')
-      .eq('id', jobId)
-      .maybeSingle()
-    const url = (data?.canonical_url || '').trim()
-    return url || undefined
-  } catch {
-    return undefined
+async function resolveCanonicalJobMetadata(
+  jobId: string | undefined,
+  fallback: Partial<CanonicalJobMetadata>,
+): Promise<CanonicalJobMetadata> {
+  let row: {
+    canonical_url?: string | null
+    content_type?: string | null
+    primary_keyword?: string | null
+    topic?: string | null
+    region?: string | null
+    indexable?: boolean | null
+  } | null = null
+  let db: SupabaseClient | null = null
+
+  if (jobId) {
+    try {
+      const { createSupabaseAdminClient } = await import('@/lib/supabase')
+      db = createSupabaseAdminClient()
+      const result = await db
+        .from('content_jobs')
+        .select('canonical_url,content_type,primary_keyword,topic,region,indexable')
+        .eq('id', jobId)
+        .maybeSingle()
+      row = result.data
+    } catch {
+      row = null
+    }
   }
+
+  const contentType = normalizeStudioContentType(row?.content_type || fallback.contentType || 'legal_guide')
+  const primaryKeyword = String(row?.primary_keyword || row?.topic || fallback.primaryKeyword || '').trim()
+  const region = String(row?.region || fallback.region || 'US').trim() || 'US'
+  const indexable = typeof row?.indexable === 'boolean'
+    ? row.indexable
+    : fallback.indexable !== false
+  let targetUrl = String(row?.canonical_url || fallback.targetUrl || '').trim() || undefined
+
+  // A legacy job can have every routing input but no stored canonical URL.
+  // Derive the same owner plan used by generation, then persist the recovery.
+  if (!targetUrl && primaryKeyword && contentType) {
+    try {
+      const { resolveOwner } = await import('@/lib/seoFactory/ownership')
+      const owner = await resolveOwner({ primaryKeyword, contentType, region, indexable })
+      targetUrl = owner.canonicalUrl || undefined
+    } catch {
+      targetUrl = undefined
+    }
+  }
+
+  if (jobId && row) {
+    const backfill: Record<string, unknown> = {}
+    if (!row.canonical_url && targetUrl) backfill.canonical_url = targetUrl
+    if (!row.primary_keyword && primaryKeyword) backfill.primary_keyword = primaryKeyword
+    if (Object.keys(backfill).length) {
+      try {
+        await db!.from('content_jobs').update(backfill).eq('id', jobId)
+      } catch {
+        // Recovery remains usable for this request even when backfill fails.
+      }
+    }
+  }
+
+  return { targetUrl, contentType, primaryKeyword, region, indexable }
 }
 
 // ---------- AI-powered fix endpoints ----------
@@ -548,7 +605,7 @@ export async function POST(request: NextRequest) {
        *  audit_json.contentSpec, never trusted over it (Milestone C). */
       contentSpec?: unknown
     }
-    const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, jobId, region } = body
+    const { content, requiredShortKeywords, requiredLongTailKeywords, jobId } = body
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
@@ -559,9 +616,13 @@ export async function POST(request: NextRequest) {
     if (canonicalSpec.mismatch) {
       return NextResponse.json(CONTENT_SPEC_MISMATCH_RESPONSE, { status: 409 })
     }
-    // Resolve the canonical URL from the job when the body omits it — the
-    // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
-    const targetUrl = await resolveTargetUrl(jobId, body.targetUrl)
+    const {
+      targetUrl,
+      contentType,
+      primaryKeyword,
+      region,
+      indexable,
+    } = await resolveCanonicalJobMetadata(jobId, body)
     const competingUrls = normalizeCompetingUrls(body.competingUrls)
     // Deterministic compliance repair first: a missing disclaimer or broken
     // reader TOC is a mechanical fix — apply it now so the audit reflects the
@@ -680,7 +741,7 @@ export async function PATCH(request: NextRequest) {
        *  canonical and a mismatching request snapshot is rejected (Milestone C). */
       contentSpec?: unknown
     }
-    const { action, content, annotations, annotation, warnings, blockers, contentType, primaryKeyword, indexable, region, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel, jobId } = body
+    const { action, content, annotations, annotation, warnings, blockers, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel, jobId } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -690,9 +751,13 @@ export async function PATCH(request: NextRequest) {
         needLoadDraft: true,
       }, { status: 409 })
     }
-    // Resolve the canonical URL from the job when the body omits it — the
-    // Ahrefs canonical repair needs it to inject canonicalUrl into front matter.
-    const targetUrl = await resolveTargetUrl(jobId, (body as { targetUrl?: string }).targetUrl)
+    const {
+      targetUrl,
+      contentType,
+      primaryKeyword,
+      region,
+      indexable,
+    } = await resolveCanonicalJobMetadata(jobId, body)
     const competingPages = normalizeCompetingUrls(competingUrls)
 
     // ── ContentSpec canonical snapshot + reviewer rules (brief §3.2/§5) ─────
@@ -761,7 +826,7 @@ export async function PATCH(request: NextRequest) {
       if (!contentSpec) {
         return NextResponse.json(
           {
-            error: 'Audit & Fix needs canonical job metadata (target URL, content type, and primary keyword). Refresh the job and try again.',
+            error: 'Audit & Fix could not recover this job\'s primary topic. Add a primary keyword to the job; target URL and content type are recovered automatically.',
             heldForReview: true,
           },
           { status: 409 },
@@ -884,7 +949,7 @@ Return ONLY the JSON EditorPatch.`
           const baseAudit = auditJson && typeof auditJson === 'object' ? auditJson : {}
           await db
             .from('content_jobs')
-            .update({ audit_json: { ...baseAudit, contentLoop } })
+            .update({ audit_json: { ...baseAudit, contentSpec, contentLoop } })
             .eq('id', jobId)
         } catch {
           /* transcript persistence is best-effort */

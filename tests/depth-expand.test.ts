@@ -81,8 +81,9 @@ describe('depth expand helpers', () => {
       h2Outline: ['Eligibility Requirements', 'Application Process'],
       focus: 'Document checklist deep dive',
     })
-    // Must demand the whole deficit plus headroom, never a token 100-word nudge
-    expect(p).toMatch(/at least 740 MORE words/)
+    // Must request the measured deficit plus bounded headroom, never an
+    // unbounded 700+ word append that pushes the full page over its maximum.
+    expect(p).toMatch(/Add 660–840 NEW body words/)
     expect(p).toMatch(/2200 total/)
     // The rotating focus and planned outline are threaded in
     expect(p).toMatch(/FOCUS THIS PASS ON: Document checklist deep dive/)

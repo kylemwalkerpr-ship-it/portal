@@ -59,18 +59,12 @@ import {
   type PipelineStreamEvent,
 } from '@/lib/seoFactory/pipelineStream'
 import type { RequestedShipMode } from '@/lib/seoFactory/pipeline'
-import type { PipelineResult } from '@/lib/seoFactory/pipeline'
 import { finalizeInterruptedJob, interruptedJobPatch, ingestStreamDraft } from '@/lib/seoFactory/streamJobFinalizer'
 
 export const runtime = 'nodejs'
-// Allow long generations on platforms that honor this
-export const maxDuration = 300
-
-// Cloudflare kills the isolate at maxDuration. The stream must emit `final`
-// and persist the job row BEFORE that wall — hard-stopping at 270s leaves a
-// 30s margin for the final Supabase writes.
-const STREAM_BUDGET_MS = 270_000
-// SSE heartbeat — an idle SSE is idle-killed by Cloudflare long before 300s.
+// Keep the response active while providers think. HTTP-triggered Cloudflare
+// Workers do not have a fixed wall-clock duration while the client remains
+// connected, so the route deliberately has no self-imposed stream deadline.
 const HEARTBEAT_MS = 15_000
 
 /**
@@ -205,7 +199,7 @@ export async function POST(request: Request) {
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       // Client disconnect / tab close: abort upstream generation immediately
       // instead of writing the full article into the Worker's memory. Routed
-      // through our own controller so the 270s budget wall can abort it too.
+      // through our own controller so cancellation reaches every provider.
       signal: undefined as unknown as AbortSignal,
       interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,
@@ -225,8 +219,7 @@ export async function POST(request: Request) {
 
     const encoder = new TextEncoder()
     let closed = false
-    // One abort controller drives both client disconnects and the hard budget
-    // wall — the pipeline polls `input.signal.aborted` between refine passes.
+    // The pipeline polls this signal between provider/refine passes.
     const streamAbort = new AbortController()
     input.signal = streamAbort.signal
     const onClientAbort = () => {
@@ -259,12 +252,6 @@ export async function POST(request: Request) {
         const MAX_CHECKPOINTS = 24
         let liveJobId = supersedesJobId || null
         let sawFinal = false
-        let timedOut = false
-        const streamStart = Date.now()
-        const budgetTimer = setTimeout(() => {
-          timedOut = true
-          onClientAbort()
-        }, STREAM_BUDGET_MS)
 
         const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -386,11 +373,6 @@ export async function POST(request: Request) {
             sleep(HEARTBEAT_MS).then(() => ({ kind: 'tick' as const })),
           ])
           if (winner.kind === 'tick') {
-            if (Date.now() - streamStart >= STREAM_BUDGET_MS) {
-              timedOut = true
-              onClientAbort()
-              break
-            }
             send({ type: 'progress', stage: 'generate', message: 'still drafting' })
             continue
           }
@@ -440,51 +422,7 @@ export async function POST(request: Request) {
             if (ev.type === 'error' || ev.type === 'final') break
         }
 
-        // ── Hard budget wall ──────────────────────────────────────────────
-        // Stop refine loops inside 270s, keep the last checkpointed draft and
-        // emit `final` with whatever exists — never hang past the isolate kill.
-        if (timedOut && !sawFinal) {
-          sawFinal = true
-          const shipError = 'stream budget exhausted — resume from checkpoint'
-          if (supabase && !liveJobId && lastCheckpointDraft.trim().length > 200) {
-            const inserted = await supabase.from('content_jobs').insert({
-              user_id: 'admin',
-              title: String(input.title || input.topic || 'Draft'),
-              topic: String(input.topic || ''),
-              status: 'drafting',
-              content: lastCheckpointDraft,
-              word_count: countBodyWords(lastCheckpointDraft),
-              error_message: shipError,
-              region: String(input.region || 'US'),
-              primary_keyword: String(input.primaryKeyword || ''),
-            }).select('id').single()
-            if (inserted.data?.id) liveJobId = inserted.data.id
-          }
-          if (supabase && liveJobId) {
-            await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft, {
-              interruptedMessage: shipError,
-            })
-          }
-          send({ type: 'progress', stage: 'ship', message: shipError })
-          send({ type: 'ship', ship: null, shipError, shipMode: 'none' })
-          send({
-            type: 'final',
-            result: {
-              ok: false,
-              content: lastCheckpointDraft,
-              plan: null,
-              audit: null,
-              ship: null,
-              shipError,
-              shipMode: 'none',
-              provider: 'unknown',
-              model: 'unknown',
-              attempts: 0,
-              jobId: liveJobId,
-              error: shipError,
-            } as unknown as PipelineResult,
-          })
-        } else if (!sawFinal && supabase && liveJobId && !closed) {
+        if (!sawFinal && supabase && liveJobId && !closed) {
           // Generator returned without a final event — never leave a stale row.
           await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft)
         }
@@ -513,7 +451,6 @@ export async function POST(request: Request) {
           }
           send({ type: 'error', error: message })
         } finally {
-          clearTimeout(budgetTimer)
           request.signal.removeEventListener('abort', onClientAbort)
           if (!closed) {
             try {

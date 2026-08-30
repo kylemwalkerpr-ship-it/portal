@@ -87,6 +87,10 @@ export interface Opportunity {
   trendScore: number
   difficultyScore: number
   opportunityScore: number
+  /** Portfolio-aware value score: expected gain after intent, revenue,
+   * existing-authority and content-mill risk are considered. */
+  valueScore: number
+  priorityTier: 'high' | 'medium' | 'low'
   trend: Trend
   play: Play
   intent: Intent
@@ -223,15 +227,28 @@ const AUDIENCE_BY_REGION: Record<string, string> = {
 
 function titleFor(term: string, intent: Intent, play: Play): string {
   const year = new Date().getFullYear()
-  const titleCase = term.replace(/\b\w/g, (c) => c.toUpperCase())
-  if (play === 'quick_win') return `${titleCase}: ${year} Ranking Playbook & Updates`
-  if (play === 'refresh') return `${titleCase} — ${year} Refresh: Everything New`
-  if (play === 'defend') return `${titleCase}: ${year} Authority Guide`
-  if (intent === 'commercial') return `Best ${titleCase} in ${year} — Compared`
-  if (intent === 'transactional') return `How to Apply for ${titleCase} — ${year} Step-by-Step`
-  if (intent === 'local') return `${titleCase} Near You — ${year} Locations & Info`
-  if (intent === 'navigational') return `${titleCase} — Official Portal & Status Guide ${year}`
-  return `Complete Guide: ${titleCase} ${year}`
+  const cleaned = term
+    .replace(/[_|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.:;!?])/g, '$1')
+    .trim()
+  const small = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'vs', 'with'])
+  const titleCase = cleaned.split(' ').map((word, index) => {
+    const lower = word.toLowerCase()
+    if (/^(uk|us|usa|uscis|ielts|pte|gsc|seo|aeo|faq|h-1b|f-1)$/i.test(word)) return word.toUpperCase()
+    if (index > 0 && small.has(lower)) return lower
+    return lower.charAt(0).toUpperCase() + lower.slice(1)
+  }).join(' ')
+  const alreadyQuestion = /^(how|what|when|where|why|who|can|does|is|are)\b/i.test(cleaned)
+  if (alreadyQuestion) return `${titleCase.replace(/[?.!]+$/, '')}? A ${year} Practical Guide`
+  if (play === 'quick_win') return `${titleCase}: What Changed and How to Act in ${year}`
+  if (play === 'refresh') return `${titleCase}: Updated Requirements and Guidance for ${year}`
+  if (play === 'defend') return `${titleCase}: The ${year} Reference Guide`
+  if (intent === 'commercial') return `${titleCase}: Options, Costs and Trade-Offs in ${year}`
+  if (intent === 'transactional') return `${titleCase}: How to Apply Step by Step in ${year}`
+  if (intent === 'local') return `${titleCase}: Local Requirements and Resources for ${year}`
+  if (intent === 'navigational') return `${titleCase}: Official Access and Status Guide for ${year}`
+  return `${titleCase}: Requirements, Process and Next Steps for ${year}`
 }
 
 function profitabilityFor(intent: Intent, impressions: number, revenue = 0): Opportunity['profitability'] {
@@ -372,6 +389,17 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       0,
       Math.min(100, Math.round(rawOpportunity * monetaryMultiplier * revenueMultiplier)),
     )
+    // Portfolio value favours proven demand, revenue and pages where existing
+    // authority can be compounded. Thin greenfield ideas are retained for
+    // visibility but deliberately demoted so the queue cannot become a
+    // content mill.
+    const profitBonus = revenue > 0 ? Math.min(18, Math.round(Math.log10(revenue + 1) * 6))
+      : intent === 'transactional' ? 12 : intent === 'commercial' ? 8 : 0
+    const authorityBonus = play === 'quick_win' ? 12 : play === 'refresh' ? 10 : play === 'defend' ? 6 : 0
+    const thinGapPenalty = play === 'content_gap' && impressions < 20 ? 22 : play === 'content_gap' && impressions < 50 ? 10 : 0
+    const cannibalPenalty = play === 'cannibalization' ? 35 : 0
+    const valueScore = Math.max(0, Math.min(100, opportunityScore + profitBonus + authorityBonus - thinGapPenalty - cannibalPenalty))
+    const priorityTier: Opportunity['priorityTier'] = valueScore >= 75 ? 'high' : valueScore >= 50 ? 'medium' : 'low'
     const trendLabel: Trend = trend === 1 ? 'rising' : trend === -1 ? 'declining' : 'flat'
 
     // ── Signals trail (transparency) ──
@@ -446,6 +474,8 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       trendScore,
       difficultyScore,
       opportunityScore,
+      valueScore,
+      priorityTier,
       trend: trendLabel,
       play,
       intent,
@@ -479,7 +509,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
 
   const profitRank = (p: Opportunity['profitability']) => (p === 'high' ? 2 : p === 'medium' ? 1 : 0)
   opportunities.sort(
-    (a, b) => profitRank(b.profitability) - profitRank(a.profitability) || b.opportunityScore - a.opportunityScore,
+    (a, b) => b.valueScore - a.valueScore || profitRank(b.profitability) - profitRank(a.profitability) || b.opportunityScore - a.opportunityScore,
   )
   const top = opportunities.slice(0, limit)
   const covered = top.filter((o) => o.coverage.matched).length

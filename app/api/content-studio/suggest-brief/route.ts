@@ -78,6 +78,9 @@ export async function POST(req: NextRequest) {
     const backlinkGaps = Array.isArray(body.backlinkGaps)
       ? body.backlinkGaps.map(String).slice(0, 5)
       : [] as string[]
+    const opportunity = body.opportunity && typeof body.opportunity === 'object'
+      ? body.opportunity as Record<string, unknown>
+      : null
     const researchCtx = await loadResearchDemandContext(topic, primaryKeyword, region)
     const pickedKw = pickResearchKeywords(researchCtx, topic)
     const researchBlock = formatResearchPromptBlock(researchCtx, pickedKw)
@@ -215,6 +218,9 @@ export async function POST(req: NextRequest) {
         ? `GSC LIVE DATA: ${gscImpressions.toLocaleString()} impressions · ${gscClicks.toLocaleString()} clicks · avg position #${Math.round(gscPosition)}`
         : 'GSC: not connected (treat as zero-demand baseline)',
       engineFeed.promptBlock || '',
+      opportunity
+        ? `SELECTED DISCOVER CONTRACT (canonical — preserve this strategy):\nPriority: ${String(opportunity.priorityTier || 'unranked')} · value ${Number(opportunity.valueScore) || 0}/100 · play ${String(opportunity.play || '')} · intent ${String(opportunity.intent || '')}\nHarmonized title: ${String(opportunity.title || '')}\nEvidence: ${Array.isArray(opportunity.signals) ? opportunity.signals.map(String).join(' | ') : ''}\nCluster: ${JSON.stringify(opportunity.cluster || null)}\nQUALITY-FIRST RULE: one canonical page must satisfy this whole cluster. Prefer expanding an existing owner when mode=expand. Do not split related queries into multiple pages and do not create a low-value page merely to increase output volume.`
+        : '',
       researchBlock,
       radarGaps.length > 0
         ? `RADAR GAP OPPORTUNITIES (underserved demand — fill these): ${radarGaps.join(' | ')}`
@@ -333,6 +339,66 @@ export async function POST(req: NextRequest) {
       primaryTerm: primaryKeyword,
     })
 
+    const normalizeHeading = (value: string) => String(value || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
+    const finalOutline = (outlineFilter.kept.length ? outlineFilter.kept : [
+      'In 60 seconds',
+      `What ${primaryKeyword} means for this reader`,
+      'Eligibility and requirements',
+      'Documents and evidence checklist',
+      'Application process step by step',
+      'Costs, timing and common risks',
+      'Worked Example',
+      'FAQ',
+      'Sources',
+    ]).map(normalizeHeading).filter(Boolean).filter((heading, index, all) => all.findIndex((h) => h.toLowerCase() === heading.toLowerCase()) === index).slice(0, 12)
+
+    // The keyword floor can add terms after the model response. Complete the
+    // placement map deterministically so the UI and drafting contract never
+    // show 9 required keywords beside an empty placement panel.
+    const completedKwH2Map: Record<string, string> = {}
+    const allKeywords = [...merged.short.slice(0, 8), ...merged.longTail.slice(0, 6)]
+    const headingTokens = (heading: string) => new Set(heading.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2))
+    for (const keyword of allKeywords) {
+      const modelHeading = normalizeHeading(coherentKwH2Map[keyword] || '')
+      const exact = finalOutline.find((h) => h.toLowerCase() === modelHeading.toLowerCase())
+      if (exact) {
+        completedKwH2Map[keyword] = exact
+        continue
+      }
+      const kwTokens = keyword.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2)
+      const ranked = finalOutline
+        .filter((h) => !/^(in 60 seconds|table of contents|faq|sources)$/i.test(h))
+        .map((heading) => ({ heading, overlap: kwTokens.filter((t) => headingTokens(heading).has(t)).length }))
+        .sort((a, b) => b.overlap - a.overlap)
+      completedKwH2Map[keyword] = ranked[0]?.heading || finalOutline[1] || finalOutline[0]
+    }
+
+    const substantiveOutline = finalOutline.filter((h) => !/^(table of contents|sources)$/i.test(h))
+    const sectionTarget = Math.max(120, Math.round(targetWords / Math.max(1, substantiveOutline.length)))
+    const sectionPlan = finalOutline.map((heading) => ({
+      heading,
+      intent: /in 60 seconds/i.test(heading) ? 'answer-first summary'
+        : /faq/i.test(heading) ? 'related-question satisfaction'
+          : /source/i.test(heading) ? 'evidence and citation record'
+            : /example/i.test(heading) ? 'experience and applied evidence'
+              : /cost|fee|tim/i.test(heading) ? 'decision support'
+                : /step|process|document|require|eligib/i.test(heading) ? 'procedural satisfaction'
+                  : 'topical depth',
+      format: /in 60 seconds/i.test(heading) ? '3–5 bullets'
+        : /faq/i.test(heading) ? '4–6 H3 questions with concise answers'
+          : /source/i.test(heading) ? 'verified citation list'
+            : /checklist|document/i.test(heading) ? 'checklist with short supporting paragraphs'
+              : /cost|fee|compar|vs/i.test(heading) ? 'comparison table plus analysis'
+                : '2–4 short paragraphs with a useful visual break',
+      targetWords: /^(in 60 seconds|table of contents|sources)$/i.test(heading) ? 80 : sectionTarget,
+      keywords: allKeywords.filter((keyword) => completedKwH2Map[keyword] === heading),
+    }))
+    const finalSources = await assembleDraftSourceAllowlist(
+      region,
+      Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],
+      citationCtx,
+    )
+
     return NextResponse.json({
       ok: true,
       // Which model actually produced the brief — 'runbios-claude-opus'
@@ -356,24 +422,30 @@ export async function POST(req: NextRequest) {
       blockedCanonicals: pickedKw.skippedCanonicals,
       competing: researchCtx.competing.competing.slice(0, 8),
       suggestedH1: String(parsed.suggestedH1 || ''),
-      h2Outline: outlineFilter.kept.slice(0, 12),
+      h2Outline: finalOutline,
       shortTail: merged.short.slice(0, 8),
       longTail: merged.longTail.slice(0, 6),
-      kwH2Map: coherentKwH2Map,
-      sources: await assembleDraftSourceAllowlist(
-        region,
-        Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],
-        citationCtx,
-      ),
+      kwH2Map: completedKwH2Map,
+      sectionPlan,
+      sources: finalSources,
       interlinkTargets: interlinkTargets.slice(0, 8),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),
       recommendedAudience: String(parsed.recommendedAudience || ''),
       minWords: finalMin,
+      targetWords,
       maxWords: finalMax,
       readabilityLevel: String(parsed.readabilityLevel || ''),
       reasoning: String(parsed.reasoning || ''),
+      briefCompleteness: {
+        identity: Boolean(parsed.suggestedH1 && parsed.targetSlug),
+        outline: finalOutline.length >= 6,
+        keywords: merged.short.length >= 5 && merged.longTail.length >= 4,
+        placements: allKeywords.every((keyword) => Boolean(completedKwH2Map[keyword])),
+        sources: finalSources.length >= 3,
+        interlinks: interlinkTargets.length >= 2,
+      },
     })
 
   } catch (err) {

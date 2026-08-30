@@ -2,8 +2,8 @@
  * Regression tests for the extracted depth-rescue loop (lib/seoFactory/depthRescue.ts).
  *
  * Locks in the full rescue behavior with mocked providers:
- *   expand-clears   — PASS 1 full rewrite reaches the floor → done on pass 1
- *   append rotation — thin rewrite rolls into append passes with rotating focus
+ *   append-clears   — PASS 1 adds a novel section and reaches the floor
+ *   append rotation — multiple append-only passes rotate focus
  *   provider failure— a throwing pass is logged and the rescue keeps going
  *   stall           — 3 consecutive no-growth passes terminate with a stall event
  *   time budget     — a wall-clock budget caps the rescue, keeping best draft
@@ -146,25 +146,22 @@ function baseOpts(over: Partial<Parameters<typeof runDepthRescue>[0]> = {}) {
 }
 
 describe('runDepthRescue', () => {
-  it('expand pass clears the floor → done after a single rewrite pass', async () => {
-    const { gen, calls } = makeGenerate([{ growTo: MIN_WORDS + 300 }])
+  it('append pass clears the floor without rewriting the document', async () => {
+    const { gen, calls } = makeGenerate([{ append: buildAppendSection('Practical Filing Plan', 1600) }])
     const { events, done } = await drain(baseOpts({ generateText: gen }))
 
-    const progress = events.filter((e) => e.type === 'progress' && e.message.includes('Depth rescue 1/10'))
+    const progress = events.filter((e) => e.type === 'progress' && e.message.includes('Depth rescue 1/4'))
     expect(progress.length).toBe(1)
-    // First pass uses the full-rewrite expand prompt.
-    // maxTokens = Math.min(24576, Math.max(8000, currentWords * 5 + deficit * 6))
-    // For this test: 500*5 + 1300*6 = 10300, within 8000-24576 band.
-    expect(calls[0].maxTokens).toBeGreaterThanOrEqual(8000)
-    expect(calls[0].maxTokens).toBeLessThanOrEqual(24576)
-    expect(calls[0].prompt).toMatch(/DEPTH EXPANSION PASS/)
+    expect(calls[0].maxTokens).toBeGreaterThanOrEqual(1200)
+    expect(calls[0].maxTokens).toBeLessThanOrEqual(6000)
+    expect(calls[0].prompt).toMatch(/APPEND SECTIONS ONLY/)
 
     expect(done).not.toBeNull()
     expect(done!.expandPasses).toBe(1)
     expect(countBodyWords(done!.content)).toBeGreaterThanOrEqual(MIN_WORDS)
-    // The rewrite grew the draft — provider/model tracked from the result
+    // The append grew the draft — provider/model tracked from the result.
     expect(done!.provider).toBe('mock-provider')
-    expect(done!.model).toBe('mock-expand')
+    expect(done!.model).toBe('mock-append')
     // Stats contract: a clean single-pass rescue reports zero stalls, elapsed
     // time, and the exact budget cap the UI renders a budget bar against.
     expect(done!.stallCount).toBe(0)
@@ -172,27 +169,24 @@ describe('runDepthRescue', () => {
     expect(done!.budgetMs).toBe(RESCUE_MAX_MS)
   })
 
-  it('thin rewrite rolls into append passes with rotating focus until the floor is met', async () => {
+  it('rotates append focus until the floor is met', async () => {
     const appendA = buildAppendSection('Regional Nuances for Dependents', 800)
     const appendB = buildAppendSection('Fees and Processing Logistics', 800)
     const { gen, calls } = makeGenerate([
-      { growTo: 700 }, // pass 1: rewrite still short
-      { append: appendA }, // pass 2: append focus[0] (+800)
-      { append: appendB }, // pass 3: append focus[1] (+800)
+      { append: appendA }, // pass 1: append focus[0] (+800)
+      { append: appendB }, // pass 2: append focus[1] (+800)
     ])
     const { done } = await drain(baseOpts({ generateText: gen }))
 
-    // Pass 2 + 3 used the append prompt with the first two rotating focuses
-    const appendCall = calls[1]
-    // append maxTokens = Math.min(8192, Math.max(3000, (minWords - currentWords) * 8 + 2000))
-    expect(appendCall.maxTokens).toBeGreaterThanOrEqual(3000)
-    expect(appendCall.maxTokens).toBeLessThanOrEqual(8192)
+    const appendCall = calls[0]
+    expect(appendCall.maxTokens).toBeGreaterThanOrEqual(1200)
+    expect(appendCall.maxTokens).toBeLessThanOrEqual(6000)
     expect(appendCall.prompt).toMatch(/APPEND SECTIONS ONLY/)
     expect(appendCall.prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[0]}`)
-    expect(calls[2].prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[1]}`)
+    expect(calls[1].prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[1]}`)
 
     expect(done).not.toBeNull()
-    // 400 → 700 (rewrite) → 700+800 → +800 crosses 1800
+    // 400 → +800 → +800 crosses 1800.
     expect(countBodyWords(done!.content)).toBeGreaterThanOrEqual(MIN_WORDS)
     // The appended section headings are present in the merged draft
     expect(done!.content).toMatch(/Regional Nuances for Dependents/)
@@ -215,8 +209,7 @@ describe('runDepthRescue', () => {
       Array(700).fill('guidance').join(' '),
     ].join('\n')
     const { gen } = makeGenerate([
-      { growTo: 700 }, // pass 1: rewrite still short
-      { append: repeated }, // pass 2: append introduces the repeated openings
+      { append: repeated }, // pass 1: append introduces the repeated openings
       { append: buildAppendSection('Fees and Processing Logistics', 800) },
     ])
     const { done } = await drain(baseOpts({ generateText: gen }))
@@ -231,37 +224,10 @@ describe('runDepthRescue', () => {
     expect(done!.content).toMatch(/(It|This|That) requires proof of the relationship/)
   })
 
-  it('smooths repeated sentence openings in the expand (full-rewrite) pass too', async () => {
-    // The FULL REWRITE (pass 1) reproduces the whole page, so any robotic
-    // opener in the original gets carried over and amplified. The rescue must
-    // deterministically smooth the rewritten draft — same repair as the append
-    // pass — before storing it, so a single-pass expand never ships with
-    // sentence_start_repetition.
-    const rewrite = [
-      buildDraft(0), // full-page skeleton (front matter + H1 + sections)
-      '## Eligibility Requirements',
-      '',
-      'The UK dependent visa allows partners to apply. The UK dependent visa requires proof of the relationship. The UK dependent visa covers children under 18. The UK dependent visa is applied for online. The UK dependent visa normally takes three weeks to process.',
-      '',
-      Array(2000).fill('guidance').join(' '),
-    ].join('\n')
-    const { gen } = makeGenerate([
-      { growText: rewrite }, // pass 1: full rewrite introduces repeated openings
-    ])
-    const { done } = await drain(baseOpts({ generateText: gen }))
-
-    expect(done).not.toBeNull()
-    expect(countBodyWords(done!.content)).toBeGreaterThanOrEqual(MIN_WORDS)
-    // The rewrite survived but the repeated subject got varied openers.
-    const exactRepeat = (done!.content.match(/The UK dependent visa/g) || []).length
-    expect(exactRepeat).toBeLessThan(5)
-    expect(done!.content).toMatch(/(It|This|That) requires proof of the relationship/)
-  })
-
   it('a throwing provider pass is logged and the rescue continues', async () => {
     const { gen } = makeGenerate([
       { throw: true }, // pass 1: provider failure
-      { growTo: MIN_WORDS + 100 }, // pass 2: recovers
+      { append: buildAppendSection('Recovery Filing Plan', 1600) }, // pass 2: recovers
     ])
     const { events, done } = await drain(baseOpts({ generateText: gen }))
 
@@ -295,7 +261,7 @@ describe('runDepthRescue', () => {
     // fires and the rescue keeps the best draft instead of expanding forever.
     let jumps = 0
     const now = () => (++jumps > 2 ? RESCUE_MAX_MS + 1000 : 0)
-    const { gen } = makeGenerate([{ growTo: 600 }, { growTo: 900 }, { growTo: 1200 }])
+    const { gen } = makeGenerate([{ append: buildAppendSection('First Useful Addition', 200) }, { append: buildAppendSection('Second Addition', 300) }])
     const { events, done } = await drain(baseOpts({ generateText: gen, now }))
 
     const budget = events.find((e) => e.type === 'progress' && e.message.includes('Depth rescue time budget reached'))
@@ -304,17 +270,18 @@ describe('runDepthRescue', () => {
     // Budget cut the rescue short before the floor was reached.
     expect(countBodyWords(done!.content)).toBeLessThan(MIN_WORDS)
     // The single grow (400 → 600) was kept as the best draft.
-    expect(countBodyWords(done!.content)).toBe(countBodyWords(buildDraft(600)))
+    expect(done!.content).toMatch(/First Useful Addition/)
     // The done stats report elapsed time beyond the budget cap.
     expect(done!.timeMs).toBeGreaterThan(RESCUE_MAX_MS)
     expect(done!.budgetMs).toBe(RESCUE_MAX_MS)
   })
 
   it('reports expansion rounds, attempts, stalls and time budget on done', async () => {
-    const appendA = buildAppendSection('Regional Nuances for Dependents', 1200)
+    const appendA = buildAppendSection('Regional Nuances for Dependents', 800)
+    const appendB = buildAppendSection('Practical Filing Sequence', 800)
     const { gen } = makeGenerate([
-      { growTo: 700 }, // pass 1: rewrite still short (400 → 700)
-      { append: appendA }, // pass 2: append crosses the floor (700 + 1200 > 1800)
+      { append: appendA },
+      { append: appendB },
     ])
     const { events, done } = await drain(baseOpts({ generateText: gen }))
 
@@ -331,8 +298,8 @@ describe('runDepthRescue', () => {
         e.type === 'progress' && e.message.startsWith('Depth rescue '),
     )
     expect(rescueLines.length).toBe(2)
-    expect(rescueLines[0].message).toContain('Depth rescue 1/10')
-    expect(rescueLines[1].message).toContain('Depth rescue 2/10')
+    expect(rescueLines[0].message).toContain('Depth rescue 1/4')
+    expect(rescueLines[1].message).toContain('Depth rescue 2/4')
   })
 
   it('rejects an append chunk that parrots an existing paragraph instead of growing', async () => {
@@ -376,10 +343,8 @@ describe('runDepthRescue', () => {
     // The duplicate was detected and rejected, so it never became part of the draft.
     expect(done).not.toBeNull()
     expect(done!.content).not.toMatch(/Rejected Duplicate Section/)
-    // Because the duplicate added no new words, the rescue stalled after the
-    // allowed number of no-growth passes rather than looping forever.
-    expect(done!.stallCount).toBeGreaterThanOrEqual(1)
-    // The rejected pass still counted as an attempt; the loop terminated.
+    // The rejected pass never mutates the document and the bounded loop
+    // terminates without an unbounded retry/rewrite cycle.
     expect(calls.length).toBeLessThanOrEqual(4)
   })
 

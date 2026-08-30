@@ -110,3 +110,26 @@ describe('opportunity engine — crucible feeder fields', () => {
   })
 })
 
+describe('opportunity engine — editorial value discipline', () => {
+  it('harmonizes question queries into a grammatical reader-facing title', () => {
+    const result = scoreOpportunities({
+      queries: [{ term: 'how to apply for uk spouse visa', impressions: 500, clicks: 10, ctr: 0.02, position: 18 }],
+      limit: 5,
+    })
+    expect(result.opportunities[0].title).toMatch(/^How to Apply for UK Spouse Visa\? A \d{4} Practical Guide$/)
+    expect(result.opportunities[0].title).not.toMatch(/How to Apply for How to Apply/i)
+  })
+
+  it('demotes thin greenfield ideas instead of feeding a content mill', () => {
+    const result = scoreOpportunities({
+      queries: [
+        { term: 'obscure visa phrase', impressions: 2, clicks: 0, ctr: 0, position: 80 },
+        { term: 'uk graduate visa requirements', impressions: 700, clicks: 15, ctr: 0.021, position: 14 },
+      ],
+      limit: 5,
+    })
+    const thin = result.opportunities.find((item) => item.topic === 'obscure visa phrase')!
+    expect(thin.priorityTier).toBe('low')
+    expect(result.opportunities[0].topic).toBe('uk graduate visa requirements')
+  })
+})

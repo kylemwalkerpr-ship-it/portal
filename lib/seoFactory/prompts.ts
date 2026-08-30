@@ -604,9 +604,12 @@ export function buildDepthAppendPrompt(opts: {
 }): string {
   const maxWords = opts.maxWords ?? 99999
   const deficit = Math.max(0, opts.minWords - opts.currentWords)
-  // Demand at least the full remaining deficit, plus headroom so a
-  // single successful append can clear the floor in one pass.
-  const need = Math.max(500, deficit + 200)
+  const available = Math.max(0, maxWords - opts.currentWords)
+  // Add only the measured deficit plus modest headroom. The old fixed 700+
+  // request was the direct cause of 5,000-word rescue drafts.
+  const need = Math.max(120, Math.min(available || deficit + 120, deficit + 120))
+  const appendCeiling = Math.max(need, Math.min(available || need, need + 180))
+  const sectionCount = Math.max(1, Math.min(3, Math.ceil(need / 300)))
   const focusLine = opts.focus
     ? `FOCUS THIS PASS ON: ${opts.focus}. Do not repeat sections you already wrote in a previous pass — pick a different angle.`
     : 'Write sections you have NOT already covered.'
@@ -622,7 +625,7 @@ export function buildDepthAppendPrompt(opts: {
     '## APPEND SECTIONS ONLY (depth rescue)',
     `Primary keyword: ${opts.primaryKeyword}`,
     `Region: ${opts.region}`,
-    `Current body words: ${opts.currentWords}. You MUST add at least ${need} MORE words this pass — the gate needs ${opts.minWords} total and the audit re-measures after every pass.`,
+    `Current body words: ${opts.currentWords}. Add ${need}–${appendCeiling} NEW body words this pass. The gate needs ${opts.minWords} total and the audit re-measures after every pass.`,
     maxWords < 99999 ? `HARD CEILING: the FULL page must stay at or under ${maxWords} body words — if current + new would exceed ${maxWords}, write the minimum needed to clear ${opts.minWords} and stop.` : '',
     'Return ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing sections).',
     'Existing H2 titles (do not repeat these headings):',
@@ -630,7 +633,7 @@ export function buildDepthAppendPrompt(opts: {
     '',
     focusLine,
     '',
-    'Write 3–6 NEW H2 sections, each 200–400 words (aim for ~700+ words total this pass), covering gaps such as:',
+    `Write exactly ${sectionCount} NEW H2 section${sectionCount === 1 ? '' : 's'} totalling ${need}–${appendCeiling} words. Stop at the ceiling. Choose the highest-value uncovered gap from:`,
     '- Document checklist deep dive',
     '- Step-by-step filing process',
     '- Timelines and what happens after filing',
@@ -751,6 +754,10 @@ export interface WriteSegment {
   sections: string[]
   /** Minimum body words for this part — sum of floors ≈ full-document minWords */
   wordFloor: number
+  /** Preferred body words for this part — sums to the document target. */
+  wordTarget: number
+  /** Hard ceiling for this part — sums to the document hard maximum. */
+  wordCeiling: number
   /** Section titles already written by earlier parts (empty for part 1) */
   priorSections: string[]
 }
@@ -762,11 +769,15 @@ export interface WriteSegment {
 export function planWriteSegments(opts: {
   h2Outline?: string[]
   minWords: number
+  targetWords?: number
+  maxWords?: number
   segmentCount?: number
 }): WriteSegment[] {
   const count = Math.max(1, Math.min(4, Math.floor(opts.segmentCount ?? 2)))
   const outline = (opts.h2Outline || []).map((h) => h.trim()).filter(Boolean)
   const floor = Math.max(200, opts.minWords)
+  const target = Math.max(floor, opts.targetWords ?? floor)
+  const ceiling = Math.max(target, opts.maxWords ?? target)
   // Never split an outline into more parts than it has sections — a one-section
   // brief stays a single part.
   const effective = outline.length ? Math.min(count, Math.max(1, outline.length)) : count
@@ -777,46 +788,39 @@ export function planWriteSegments(opts: {
         total: 1,
         sections: outline,
         wordFloor: floor,
+        wordTarget: target,
+        wordCeiling: ceiling,
         priorSections: [],
       },
     ]
   }
-  // If no outline, give part 1 the body halves and part 2 the back matter.
-  if (!outline.length) {
-    const half = Math.ceil(floor / 2)
-    const segments: WriteSegment[] = []
-    for (let i = 1; i <= effective; i++) {
-      const isLast = i === effective
-      segments.push({
-        index: i,
-        total: effective,
-        sections: [],
-        wordFloor: isLast ? floor - half * (effective - 1) : half,
-        priorSections: segments.map((s) => s.sections).flat(),
-      })
-    }
-    return segments
-  }
-  // Split the outline into effective contiguous chunks, as balanced as possible.
-  const per = Math.ceil(outline.length / effective)
-  const chunks: string[][] = []
-  for (let i = 0; i < effective; i++) {
-    chunks.push(outline.slice(i * per, (i + 1) * per))
-  }
+  // Split the outline into contiguous balanced chunks. Generic briefs use
+  // equal weights; the final segment owns FAQ/sources/back matter.
+  const chunks: string[][] = outline.length
+    ? Array.from({ length: effective }, (_, i) =>
+        outline.slice(
+          Math.floor((i * outline.length) / effective),
+          Math.floor(((i + 1) * outline.length) / effective),
+        ),
+      )
+    : Array.from({ length: effective }, () => [])
   const weights = chunks.map((c) => Math.max(1, c.length))
   const totalWeight = weights.reduce((a, b) => a + b, 0)
   const segments: WriteSegment[] = []
+  const allocate = (total: number, weight: number, used: number, isLast: boolean) =>
+    isLast ? Math.max(100, total - used) : Math.max(100, Math.floor(total * (weight / totalWeight)))
   chunks.forEach((sections, i) => {
     const isLast = i === effective - 1
-    const share = weights[i] / totalWeight
-    const wordFloor = isLast
-      ? Math.max(100, floor - Math.floor(segments.reduce((a, s) => a + s.wordFloor, 0)))
-      : Math.max(180, Math.floor(floor * share))
+    const wordFloor = allocate(floor, weights[i], segments.reduce((a, s) => a + s.wordFloor, 0), isLast)
+    const wordTarget = allocate(target, weights[i], segments.reduce((a, s) => a + s.wordTarget, 0), isLast)
+    const wordCeiling = allocate(ceiling, weights[i], segments.reduce((a, s) => a + s.wordCeiling, 0), isLast)
     segments.push({
       index: i + 1,
       total: effective,
       sections,
       wordFloor,
+      wordTarget: Math.max(wordFloor, wordTarget),
+      wordCeiling: Math.max(wordFloor, wordTarget, wordCeiling),
       priorSections: segments.map((s) => s.sections).flat(),
     })
   })
@@ -871,7 +875,7 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
     '',
     `This is PART ${segment.index} of ${segment.total} of one complete article. Each part is generated in a separate run. Your ONLY job: write this part's sections with substance. Do not write sections assigned to other parts — they will be written by their own run.`,
     '',
-    `WORD FLOOR FOR THIS PART: at least ${segment.wordFloor} body words of real prose (YAML front matter, JSON-LD, and code fences do NOT count). The full article floor is ${opts.minWords} words across all parts — under-writing this part starves the whole article and the audit will reject it. Write until you are comfortably above this part's floor.`,
+    `MEASURED WORD WINDOW FOR THIS PART: ${segment.wordFloor}–${segment.wordCeiling} body words; target ${segment.wordTarget}. YAML front matter, JSON-LD, and code fences do NOT count. The full article target is ${opts.targetWords} words. Stop at this part's ceiling—do not compensate by rewriting or adding sections assigned to another part.`,
     sectionBlock,
     priorBlock,
     isFirst
@@ -897,7 +901,7 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
     opts.writeHint ? `War-room / authority brief:\n${opts.writeHint}` : '',
     opts.opportunityAction ? `Tactic note: ${opts.opportunityAction}` : '',
     '',
-    `Write PART ${segment.index} now. Before you finish, mentally count this part's body words — if under ${segment.wordFloor}, keep writing concrete procedures, documents, and risks.`,
+    `Write PART ${segment.index} now. Keep it between ${segment.wordFloor} and ${segment.wordCeiling} body words. If short, add concrete substance; if long, tighten this part before returning it.`,
   ]
     .filter(Boolean)
     .join('\n')

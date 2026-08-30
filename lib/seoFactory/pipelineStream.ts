@@ -23,7 +23,7 @@ import {
   minWordsForType,
   planWriteSegments,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType, trimMarkdownProseToWordBudget } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { topicPathMismatch } from './topicPathGuard'
@@ -451,6 +451,8 @@ export async function* runSeoFactoryPipelineStream(
           ? planWriteSegments({
               h2Outline: input.h2Outline as string[] | undefined,
               minWords,
+              targetWords,
+              maxWords,
               segmentCount,
             })
           : null
@@ -482,7 +484,7 @@ export async function* runSeoFactoryPipelineStream(
           yield {
             type: 'progress',
             stage: 'generate',
-            message: `Writing part ${seg.index}/${seg.total}${seg.sections.length ? ` · ${seg.sections.length} section(s)` : ''} (≥${seg.wordFloor} words)…`,
+            message: `Writing part ${seg.index}/${seg.total}${seg.sections.length ? ` · ${seg.sections.length} section(s)` : ''} (${seg.wordFloor}–${seg.wordCeiling} words)…`,
           }
           let segText = ''
           try {
@@ -597,38 +599,22 @@ export async function* runSeoFactoryPipelineStream(
       }
 
       // ── Auto-trim: enforce hard maxWords ceiling ──────────────────────
-      // Models ignore the HARD MAX instruction when depth-rescue expands past
-      // the ceiling. Truncate to the last complete sentence within maxWords
-      // so we never ship a 6,000-word draft where 2,800 was expected.
+      // Models can overshoot the hard ceiling. Trim only ordinary prose
+      // paragraphs; never flatten headings/lists/tables into one line.
       const overMaxBy = countBodyWords(content) - maxWords
       if (overMaxBy > 0 && !underDepth) {
-        const sentences = content.split(/(?<=[.!?])\s+/)
-        let trimmed = ''
-        let wc = 0
-        for (const s of sentences) {
-          const sw = s.trim().split(/\s+/).filter(Boolean).length
-          if (wc + sw <= maxWords) {
-            trimmed += (trimmed ? ' ' : '') + s
-            wc += sw
-          } else if (wc < minWords && trimmed) {
-            // Still under the minimum — add this sentence anyway to meet the floor
-            trimmed += (trimmed ? ' ' : '') + s
-            wc += sw
-          } else {
-            break
-          }
-        }
-        if (trimmed && countBodyWords(trimmed) >= minWords) {
-          const trimmedWc = countBodyWords(trimmed)
+        const trimmed = trimMarkdownProseToWordBudget(content, maxWords, minWords)
+        if (trimmed.removedWords > 0) {
+          const trimmedWc = countBodyWords(trimmed.content)
           yield {
             type: 'attempt',
             attempt: attempts,
             score: 0,
             wordCount: trimmedWc,
             goodEnough: false,
-            draft: trimmed,
+            draft: trimmed.content,
           }
-          content = trimmed
+          content = trimmed.content
         }
       }
 

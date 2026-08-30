@@ -284,6 +284,8 @@ export async function POST(request: NextRequest) {
       upsideScore: o.upsideScore,
       difficultyScore: o.difficultyScore,
       opportunityScore: o.opportunityScore,
+      valueScore: o.valueScore,
+      priorityTier: o.priorityTier,
       trend: o.trend,
       play: o.play,
       intent: o.intent,

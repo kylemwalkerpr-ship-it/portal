@@ -193,13 +193,84 @@ export function countBodyWords(content: string): number {
   body = body.replace(/```[\s\S]*?```/g, ' ')
   // Inline schema-ish blobs
   body = body.replace(/\{\s*"@context"\s*:\s*"https?:\/\/schema\.org"[\s\S]*?\n\}/g, ' ')
+  // Markdown images are not visible prose; links retain their visible label.
+  body = body.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+  body = body.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  // Word treats a visible URL as one token, regardless of path punctuation.
+  body = body.replace(/https?:\/\/[^\s<>)\]}]+/gi, ' URLTOKEN ')
   // HTML tags → space
   body = body.replace(/<[^>]+>/g, ' ')
-  // Collapse
-  return body
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 0 && !/^[{}\[\]",:;]+$/.test(w)).length
+  // Markdown syntax is formatting, not a word in Word/Google Docs.
+  body = body
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}(?:[-+*]|\d+[.)])\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/[|*_~`]+/g, ' ')
+    .replace(/&(?:nbsp|amp|lt|gt|quot|#39);/gi, ' ')
+  // Unicode words, with apostrophes and hyphens kept inside one Word-style
+  // token. This is the canonical counter used by UI, persistence and gates.
+  return body.match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)?.length || 0
+}
+
+/**
+ * Reduce runaway prose without touching document structure. Only complete
+ * trailing sentences from ordinary paragraphs may be removed: headings,
+ * numbered/bulleted lists, tables, blockquotes, code, frontmatter and scripts
+ * remain byte-for-byte intact and in the same order.
+ */
+export function trimMarkdownProseToWordBudget(
+  content: string,
+  maxWords: number,
+  minWords = 0,
+): { content: string; removedWords: number } {
+  const original = String(content || '')
+  const originalWords = countBodyWords(original)
+  if (originalWords <= maxWords) return { content: original, removedWords: 0 }
+
+  const blocks = original.split(/(\r?\n\s*\r?\n)/)
+  const isSeparator = (value: string) => /^\r?\n\s*\r?\n$/.test(value)
+  const protectedBlock = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    if (/^(?:---|```|~~~|<script\b)/i.test(trimmed)) return true
+    return value.split(/\r?\n/).some((line) =>
+      /^\s*(?:#{1,6}\s|[-+*]\s|\d+[.)]\s|>|\|)/.test(line) ||
+      (/\|/.test(line) && /^\s*\|?\s*:?-{3,}/.test(line)),
+    )
+  }
+
+  let guard = 0
+  while (countBodyWords(blocks.join('')) > maxWords && guard++ < 500) {
+    const candidates = blocks
+      .map((value, index) => ({ value, index, words: countBodyWords(value) }))
+      .filter((b) => !isSeparator(b.value) && !protectedBlock(b.value) && b.words > 20)
+      .sort((a, b) => b.words - a.words || b.index - a.index)
+    const candidate = candidates[0]
+    if (!candidate) break
+    const sentences = candidate.value.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) || []
+    const beforeTotal = countBodyWords(blocks.join(''))
+    let nextParagraph = ''
+    if (sentences.length > 1) {
+      nextParagraph = sentences.slice(0, -1).join(' ').trim()
+    } else {
+      // Runaway single-sentence paragraphs have no safe sentence boundary.
+      // Keep their opening words (and add terminal punctuation) instead of
+      // deleting a heading/list/table or flattening the whole document.
+      const remove = Math.max(1, beforeTotal - maxWords)
+      const rawTokens = candidate.value.trim().split(/\s+/)
+      const keep = Math.max(0, rawTokens.length - remove)
+      nextParagraph = keep >= 8 ? `${rawTokens.slice(0, keep).join(' ').replace(/[,:;\-]+$/, '')}.` : ''
+    }
+    const afterTotal = beforeTotal - candidate.words + countBodyWords(nextParagraph)
+    if (afterTotal < minWords || afterTotal >= beforeTotal) break
+    blocks[candidate.index] = nextParagraph
+  }
+
+  const trimmed = blocks.join('').replace(/[ \t]+\r?\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+  const finalWords = countBodyWords(trimmed)
+  return finalWords < originalWords && finalWords >= minWords
+    ? { content: trimmed, removedWords: originalWords - finalWords }
+    : { content: original, removedWords: 0 }
 }
 
 export interface DepthCheckResult {

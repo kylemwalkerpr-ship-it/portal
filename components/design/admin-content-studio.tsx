@@ -176,6 +176,8 @@ interface AISuggestion {
   upsideScore?: number
   difficultyScore?: number
   opportunityScore: number
+  valueScore?: number
+  priorityTier?: 'high' | 'medium' | 'low'
   trend: 'rising' | 'flat' | 'declining'
   play: 'content_gap' | 'quick_win' | 'refresh' | 'defend' | 'cannibalization'
   intent: 'informational' | 'commercial' | 'transactional' | 'local' | 'navigational'
@@ -187,6 +189,10 @@ interface AISuggestion {
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
   coverage?: { matched: boolean; matches: string[] }
   sourcePage?: string
+  cluster?: {
+    clusterId: string; canonicalTerm: string; keywords: string[]; intent: string
+    totalImpressions: number; mode: 'expand' | 'new'; targetUrl: string | null; reason: string
+  } | null
   /** Lean ranking-model view (total · confidence · recommendedActions · forecast) — attached by the suggestions API. */
   ranking?: LeanRanking
   aeoRemediation?: {
@@ -2265,6 +2271,11 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // maximally prescriptive brief so the drafting AI has zero room to
   // hallucinate. "Generate Full Brief" is the single integrated action.
   const [briefGenerating, setBriefGenerating] = React.useState(false)
+  const [briefIntel, setBriefIntel] = React.useState<{
+    reasoning?: string; metaDescription?: string; sectionPlan?: Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }>
+    masterEngine?: { composite?: number | null; grade?: string | null; recommendationCount?: number }
+  } | null>(null)
+  const autoBriefKeyRef = React.useRef('')
   // Brief model — exactly three families: Claude Opus 5 (Run BiOS, default),
   // Grok (xAI), and DeepSeek V4 Flash (Run BiOS + Baseten). The brief
   // endpoint (lib/seoFactory/briefModel) coerces stale pins to the default.
@@ -2284,7 +2295,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         headers: { 'Content-Type': 'application/json' },
         signal: briefAbort.signal,
         body: JSON.stringify({
-          topic, region, contentType, primaryKeyword: title || topic, audience,
+          topic, region, contentType, primaryKeyword: selectedBrief?.primaryKeyword || topic, audience,
           // Brief model selected above (Claude Opus 5 / Grok / DeepSeek V4
           // Flash). We pass the explicit choice; the brief endpoint's policy
           // coerces unknown values to the Claude Opus 5 default.
@@ -2297,6 +2308,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           backlinkGaps: Array.isArray(r.backlinkGaps) ? r.backlinkGaps : [],
           completedWork: completedWorkSlugs || [],
           interlinks: briefInterlinks || [],
+          opportunity: selectedBrief ? {
+            title: selectedBrief.title,
+            primaryKeyword: selectedBrief.primaryKeyword,
+            valueScore: selectedBrief.valueScore ?? selectedBrief.opportunityScore,
+            priorityTier: selectedBrief.priorityTier,
+            play: selectedBrief.play,
+            intent: selectedBrief.intent,
+            signals: selectedBrief.signals,
+            cluster: selectedBrief.cluster,
+          } : null,
         }),
       })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
@@ -2327,6 +2348,12 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (typeof data.minWords === 'number' && data.minWords > 0) setMinWords(data.minWords)
       if (typeof data.maxWords === 'number' && data.maxWords > 0) setMaxWords(data.maxWords)
       if (data.kwH2Map && typeof data.kwH2Map === 'object') setKwH2Map(data.kwH2Map as Record<string, string>)
+      setBriefIntel({
+        reasoning: typeof data.reasoning === 'string' ? data.reasoning : '',
+        metaDescription: typeof data.metaDescription === 'string' ? data.metaDescription : '',
+        sectionPlan: Array.isArray(data.sectionPlan) ? data.sectionPlan as Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }> : [],
+        masterEngine: data.masterEngine && typeof data.masterEngine === 'object' ? data.masterEngine as { composite?: number | null; grade?: string | null; recommendationCount?: number } : undefined,
+      })
       // Merge the brief's interlinkTargets into briefInterlinks (deduped) so
       // the drafting call receives the brief's guaranteed ≥2 verified estate
       // links — not just whatever the registry happened to match earlier.
@@ -2360,6 +2387,19 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       setBriefGenerating(false)
     }
   }
+
+  // Selecting a Discover opportunity should arrive as a developed brief, not
+  // an empty form that requires the user to discover a second generation
+  // button. Run once per selected opportunity; manual regeneration remains
+  // available when the editor changes the topic.
+  React.useEffect(() => {
+    const key = String(selectedBrief?.topic || '').trim().toLowerCase()
+    if (!key || !topic.trim() || autoBriefKeyRef.current === key) return
+    autoBriefKeyRef.current = key
+    void handleGenerateBrief()
+    // handleGenerateBrief deliberately captures the current selected brief.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrief?.topic, topic])
 
   const addSource = () => {
     const raw = newSource.trim()
@@ -2457,6 +2497,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const inputBase: React.CSSProperties = { width: '100%', padding: '8px 10px', border: `1px solid ${E.hairline}`, borderRadius: 0, background: E.ivory, color: E.ink, fontSize: 12, fontFamily: C.serif, boxSizing: 'border-box' }
   const labelBase: React.CSSProperties = { display: 'block', marginBottom: 4, fontSize: 9, fontFamily: C.mono, letterSpacing: '0.14em', color: E.inkMuted, textTransform: 'uppercase', fontWeight: 700 }
   const chip = (ok: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 0, fontSize: 9, fontFamily: C.mono, fontWeight: 700, background: ok ? E.mossSoft : '#fff0f0', color: ok ? E.mossGreen : '#a32525' })
+  const mappedKeywordCount = kwList.filter((kw) => Boolean(kwH2Map[kw])).length
+  const briefChecks = [
+    { label: 'Identity', ok: Boolean(title.trim() && topic.trim() && targetSlug.trim()), detail: title.trim() ? 'H1, query and destination' : 'Needs a reader-ready H1' },
+    { label: 'Outline', ok: h2s.length >= 6, detail: `${h2s.length} planned sections` },
+    { label: 'Keywords', ok: shortOk && longOk, detail: `${shortKw.length} short · ${longKw.length} long-tail` },
+    { label: 'Placement', ok: kwList.length >= 9 && mappedKeywordCount === kwList.length, detail: `${mappedKeywordCount}/${kwList.length || 0} assigned to H2s` },
+    { label: 'Evidence', ok: sources.length >= 3, detail: `${sources.length} verified sources` },
+    { label: 'Interlinks', ok: (briefInterlinks?.length || 0) >= 2, detail: `${briefInterlinks?.length || 0} estate targets` },
+  ]
+  const briefReadiness = Math.round((briefChecks.filter((check) => check.ok).length / briefChecks.length) * 100)
 
   return (
     <div data-testid="studio-brief-assembly" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2468,6 +2518,30 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           Every field below becomes part of the AI\'s strict template. Nothing is guessed — tweak before you generate.
         </p>
       </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, .72fr) minmax(0, 3fr)', border: `1px solid ${E.hairline}`, background: E.paper }}>
+        <div style={{ padding: 16, background: briefReadiness === 100 ? E.inkBlack : E.cream, borderRight: `1px solid ${E.hairline}` }}>
+          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: briefReadiness === 100 ? 'rgba(255,255,255,.58)' : E.inkMuted }}>Brief readiness</div>
+          <div style={{ marginTop: 5, fontFamily: C.serif, fontSize: 34, fontWeight: 800, color: briefReadiness === 100 ? '#86EFAC' : E.goldDeep }}>{briefReadiness}%</div>
+          <div style={{ marginTop: 5, fontSize: 10, lineHeight: 1.4, color: briefReadiness === 100 ? 'rgba(255,255,255,.68)' : E.inkMuted }}>{briefGenerating ? `${briefModelName} is resolving the complete contract…` : briefReadiness === 100 ? 'Canonical handoff is complete.' : 'Generation remains locked until the handoff is complete.'}</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+          {briefChecks.map((check) => (
+            <div key={check.label} style={{ padding: '12px 14px', borderRight: `1px solid ${E.hairline}`, borderBottom: `1px solid ${E.hairline}` }}>
+              <div style={{ fontFamily: C.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: check.ok ? E.green : E.red }}>{check.ok ? '✓' : '!'} {check.label}</div>
+              <div style={{ marginTop: 4, fontFamily: C.serif, fontSize: 11, color: E.inkMuted }}>{check.detail}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {briefIntel?.reasoning && (
+        <div style={{ padding: '13px 16px', background: E.inkBlack, color: E.ivory, borderLeft: `4px solid ${E.gold}` }}>
+          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }}>Engine-to-brief strategy · {briefIntel.masterEngine?.grade || 'reviewed'} {briefIntel.masterEngine?.composite != null ? `· ${briefIntel.masterEngine.composite}/100` : ''}</div>
+          <div style={{ marginTop: 6, fontFamily: C.serif, fontSize: 12.5, lineHeight: 1.5, color: 'rgba(255,255,255,.78)' }}>{briefIntel.reasoning}</div>
+          {briefIntel.metaDescription && <div style={{ marginTop: 8, fontFamily: C.mono, fontSize: 9.5, color: 'rgba(255,255,255,.58)' }}>SERP copy: {briefIntel.metaDescription}</div>}
+        </div>
+      )}
 
       {selectedBrief?.aeoRemediation && (
         <div data-testid="aeo-brief-checklist" style={{ padding: 12, border: `1px solid ${E.gold}`, background: E.cream }}>
@@ -2567,33 +2641,30 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           <input value={newH2} onChange={e => setNewH2(e.target.value)} placeholder="Add section…" style={{ ...inputBase, flex: 1, maxWidth: 320 }} onKeyDown={e => e.key === 'Enter' && addH2()} />
           <button onClick={addH2} style={{ ...btnGhost, padding: '6px 12px' }}>+ Add H2</button>
         </div>
+        {briefIntel?.sectionPlan && briefIntel.sectionPlan.length > 0 && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${E.hairline}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 7 }}>
+            {briefIntel.sectionPlan.map((section, index) => (
+              <div key={`${section.heading}-${index}`} style={{ padding: '9px 10px', background: E.ivory, border: `1px solid ${E.hairlineSoft}` }}>
+                <div style={{ fontFamily: C.mono, fontSize: 8, color: E.goldDeep, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em' }}>{section.intent} · ~{section.targetWords} words</div>
+                <div style={{ marginTop: 4, fontFamily: C.serif, fontSize: 11.5, color: E.ink, fontWeight: 700 }}>{section.heading}</div>
+                <div style={{ marginTop: 4, fontSize: 10, color: E.inkMuted }}>{section.format}</div>
+                {section.keywords?.length > 0 && <div style={{ marginTop: 5, fontFamily: C.mono, fontSize: 8.5, color: E.inkDim }}>{section.keywords.join(' · ')}</div>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── KEYWORDS + DISTRIBUTION ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12 }}>
         {/* Keywords textarea */}
         <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
             <label style={labelBase}>Keywords (comma-separated)</label>
-            <span style={{ fontFamily: E.mono, fontSize: 9, color: E.inkMuted, whiteSpace: 'nowrap' }}>
-              Brief model — keywords come from Discover
-            </span>
-            <StudioModelHostSelect
-              lane="brief"
-              pin={briefModel}
-              onPinChange={setBriefModel}
-              disabled={briefGenerating}
-              modelAriaLabel="Brief AI model"
-              hostAriaLabel="Brief AI provider"
-              selectStyle={{
-                padding: '4px 6px', borderRadius: 6, border: `1px solid ${E.hairline}`,
-                background: E.paper, color: E.ink,
-                fontSize: 10, fontWeight: 700, fontFamily: E.mono,
-                cursor: briefGenerating ? 'not-allowed' : 'pointer',
-                opacity: briefGenerating ? 0.6 : 1,
-                whiteSpace: 'nowrap',
-              }}
-            />
+            <span style={{ fontFamily: E.mono, fontSize: 9, color: E.inkMuted }}>Clustered from Discover and assigned to one section each</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) auto', gap: 8, marginBottom: 8 }}>
+            <StudioModelHostSelect lane="brief" pin={briefModel} onPinChange={setBriefModel} disabled={briefGenerating} modelAriaLabel="Brief AI model" hostAriaLabel="Brief AI provider" selectStyle={{ padding: '7px 8px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, color: E.ink, fontSize: 10, fontWeight: 700, fontFamily: E.mono }} />
             <button
               type="button"
               onClick={handleGenerateBrief}
@@ -2610,7 +2681,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
               }}
               title={!topic.trim() ? 'Enter a topic first' : `${briefModelName} reads all Discover intel — radar, GSC, keyword research, LLM visibility, backlinks — and builds a complete prescriptive brief. It is the single integrated brief action.`}
             >
-              {briefGenerating ? `🧠 ${briefModelName} building brief (up to 3 min)…` : '🧠 Generate Full Brief'}
+              {briefGenerating ? `🧠 ${briefModelName} building contract…` : '🧠 Rebuild complete brief'}
             </button>
           </div>
           <textarea
@@ -2744,18 +2815,18 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0' }}>
         <div style={{ fontFamily: C.serif, fontSize: 12, color: E.inkMuted, fontStyle: 'italic' }}>
           {!title.trim() && !topic.trim() ? 'Enter a title or topic to begin.' :
-           !shortOk || !longOk ? `Add ${!shortOk ? 5 - shortKw.length : 0} more short-tail and ${!longOk ? 4 - longKw.length : 0} more long-tail keywords.` :
-           'Ready. Click Generate Draft to send this exact brief to the AI.'}
+           briefReadiness < 100 ? `Brief contract is ${briefReadiness}% complete. Resolve the red checks before drafting.` :
+           'Canonical brief is complete. Drafting will write in segments and preserve each completed section.'}
         </div>
         <button
           type="button"
           onClick={handleSubmitBrief}
-          disabled={generating || !(title.trim() || topic.trim()) || !shortOk || !longOk}
+          disabled={generating || briefGenerating || briefReadiness < 100}
           style={{
-            padding: '14px 32px', background: (title.trim() || topic.trim()) && shortOk && longOk ? E.gold : E.inkDim,
+            padding: '14px 32px', background: briefReadiness === 100 ? E.gold : E.inkDim,
             color: E.ivory, fontSize: 15, fontWeight: 700, fontFamily: C.serif,
-            border: 'none', borderRadius: 0, cursor: generating || !(title.trim() || topic.trim()) || !shortOk || !longOk ? 'not-allowed' : 'pointer',
-            opacity: generating || !(title.trim() || topic.trim()) || !shortOk || !longOk ? 0.6 : 1,
+            border: 'none', borderRadius: 0, cursor: generating || briefGenerating || briefReadiness < 100 ? 'not-allowed' : 'pointer',
+            opacity: generating || briefGenerating || briefReadiness < 100 ? 0.6 : 1,
             display: 'flex', alignItems: 'center', gap: 8,
           }}
         >
@@ -3554,7 +3625,6 @@ function JobDetail({
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
-  const regenAutoResumeRef = React.useRef(false)
   const [audit, setAudit] = React.useState<unknown>(null)
   const [editorShipReady, setEditorShipReady] = React.useState<boolean | null>(false)
   React.useEffect(() => { setEditorShipReady(false) }, [job.id])
@@ -3627,7 +3697,6 @@ function JobDetail({
 
   const runRegenerateStream = async (resume = false) => {
     if (busy) return
-    if (!resume) regenAutoResumeRef.current = false
     setBusy(true)
     setActiveAction('regenerate')
     setActionError(null)
@@ -3640,9 +3709,6 @@ function JobDetail({
     }])
     const controller = new AbortController()
     actionAbortRef.current = controller
-    // Cloudflare maxDuration is 300s; abort 10s before so we get a clean
-    // error instead of a 503 HTML page that breaks the JSON parser.
-    const timeout = setTimeout(() => controller.abort(), 290_000)
     const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
       setActionEvents(prev => [...prev, { id: `${Date.now()}-${prev.length}`, ts: Date.now(), stage, message, level }].slice(-60))
     }
@@ -3698,15 +3764,15 @@ function JobDetail({
       await loadDetail()
       await onRefresh()
     } catch (error) {
-      const timedOut = error instanceof DOMException && error.name === 'AbortError'
+      const cancelled = error instanceof DOMException && error.name === 'AbortError'
       const rawMessage = error instanceof Error ? error.message : 'Regeneration failed'
-      const resumable = timedOut || streamedChars > 0
+      const resumable = cancelled || streamedChars > 0
 
       // Surface the real error: the user needs to know WHAT stopped the stream,
       // not just that it stopped. A Cloudflare CPU timeout needs a different
       // action than an AI provider error.
-      const cause = timedOut
-        ? 'Request timed out after 5 minutes (Cloudflare Worker CPU budget or AI response time).'
+      const cause = cancelled
+        ? 'Generation was cancelled or the browser connection closed.'
         : rawMessage.includes('Generation stream ended')
           ? 'The pipeline completed without a final result — the checkpointed draft may be complete.'
           : rawMessage
@@ -3720,22 +3786,8 @@ function JobDetail({
       setActionError(message)
       setActionNotice(resumable ? 'Partial draft saved. Continue when ready.' : 'Regeneration did not complete.')
 
-      // Auto-resume once: a timeout with streamed content has a checkpoint.
-      // Never loop — a second timeout stays in the usable modal.
-      if (timedOut && streamedChars > 0 && !regenAutoResumeRef.current) {
-        regenAutoResumeRef.current = true
-        record('info', 'Auto-resuming from the saved checkpoint…', 'info')
-        clearTimeout(timeout)
-        actionAbortRef.current = null
-        setActiveAction(null)
-        setBusy(false)
-        await runRegenerateStream(true)
-        return
-      }
-
       if (resumable) await onRefresh()
     } finally {
-      clearTimeout(timeout)
       actionAbortRef.current = null
       setActiveAction(null)
       setBusy(false)
@@ -3990,6 +4042,9 @@ interface WorkPlanItem {
   topic: string
   source: string
   priority: number
+  priorityTier: 'high' | 'medium' | 'low'
+  clusterId?: string
+  clusterSize?: number
   signals: string[]
   keywords?: string[]
   audience?: string
@@ -4042,21 +4097,37 @@ function buildWorkPlan(
 ): WorkPlanItem[] {
   const items: WorkPlanItem[] = []
   const radarTopics = new Set(radar.map((s) => String(s.topic || '').toLowerCase()).filter(Boolean))
+  const seenClusters = new Set<string>()
   // Radar opportunities → gaps, quick wins, refreshes
   for (const s of radar) {
     if (s.play === 'cannibalization' && isJunkQuery(s.topic)) continue
+    const clusterId = s.cluster?.clusterId || `topic:${cannibalTermStem(s.topic)}`
+    if (seenClusters.has(clusterId)) continue
+    seenClusters.add(clusterId)
     const cat: WorkPlanCategory = s.play === 'refresh' || s.play === 'defend' ? 'refresh'
       : s.play === 'cannibalization' ? 'cannibal'
       : 'gap'
+    const engineValue = s.valueScore ?? s.opportunityScore ?? s.demandScore ?? 0
+    const rankingValue = Number(s.ranking?.total)
+    const priority = Number.isFinite(rankingValue)
+      ? Math.round(engineValue * 0.65 + rankingValue * 0.35)
+      : engineValue
     items.push({
       id: `radar-${s.topic}`,
       category: cat,
       title: s.title,
       topic: s.topic,
       source: 'Radar',
-      priority: s.opportunityScore ?? s.demandScore ?? 0,
-      signals: s.signals ?? [s.reason],
-      keywords: s.keywords,
+      priority,
+      priorityTier: s.priorityTier || (priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low'),
+      clusterId,
+      clusterSize: Math.max(1, s.cluster?.keywords?.length || s.keywords?.length || 1),
+      signals: [
+        ...(s.signals ?? [s.reason]),
+        ...(Number.isFinite(rankingValue) ? [`Contract score blends portfolio value ${engineValue}/100 with ranking-model confidence ${rankingValue}/100`] : []),
+        ...(s.cluster?.reason ? [`Cluster: ${s.cluster.reason}`] : []),
+      ],
+      keywords: s.cluster?.keywords?.length ? s.cluster.keywords : s.keywords,
       audience: s.audience,
       play: s.play,
       suggestion: s,
@@ -4067,13 +4138,15 @@ function buildWorkPlan(
     if (!topicKey || radarTopics.has(topicKey) || isJunkQuery(s.topic)) continue
     // play === 'refresh' means the server already matched this against shipped content
     const isShipped = s.play === 'refresh'
+    const priority = isShipped ? 10 : (s.valueScore ?? ((s.opportunityScore ?? s.demandScore ?? 0) + 8))
     items.push({
       id: `uber-${s.topic}`,
       category: 'ubersuggest',
       title: s.title || s.topic,
       topic: s.topic,
       source: 'Ubersuggest',
-      priority: isShipped ? 10 : ((s.opportunityScore ?? s.demandScore ?? 0) + 8),
+      priority,
+      priorityTier: priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low',
       signals: s.signals ?? [s.reason],
       keywords: s.keywords,
       audience: s.audience,
@@ -4106,6 +4179,7 @@ function buildWorkPlan(
       topic: c.term,
       source: 'Cannibal Watch',
       priority: 70,
+      priorityTier: 'medium',
       signals: [`${(c.pages || []).length} competing pages target this term`],
       competingPages: Array.isArray(c.pages) ? c.pages : [],
     })
@@ -4119,6 +4193,7 @@ function buildWorkPlan(
       topic: m.stem,
       source: 'Merge History',
       priority: m.status === 'merged' ? 90 : 50,
+      priorityTier: m.status === 'merged' ? 'high' : 'medium',
       signals: [`${m.terms.length} terms · ${m.redirectsCreated} redirects · ${m.status}`],
       mergeRecord: m,
     })
@@ -4132,7 +4207,7 @@ function WorkPlanTable({
   items: WorkPlanItem[]
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
-  onSelectAll: () => void
+  onSelectAll: (ids: string[]) => void
   onClearSelection: () => void
   onSendToResearch: (items: WorkPlanItem[]) => void
   onResolveCannibal: (item: WorkPlanItem) => void
@@ -4142,6 +4217,7 @@ function WorkPlanTable({
   resolvedIds?: Set<string>
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
+  const [priorityFilter, setPriorityFilter] = React.useState<'all' | 'high' | 'medium' | 'low'>('all')
   const [showShipped, setShowShipped] = React.useState(false)
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
   const shippedCount = items.filter((i) => i.shipped).length
@@ -4150,12 +4226,16 @@ function WorkPlanTable({
     if (i.shipped && !showShipped) return false
     return true
   })
-  const filtered = filterCat === 'all' ? activeItems : activeItems.filter((i) => i.category === filterCat)
-  const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id))
+  const categoryFiltered = filterCat === 'all' ? activeItems : activeItems.filter((i) => i.category === filterCat)
+  const filtered = priorityFilter === 'all' ? categoryFiltered : categoryFiltered.filter((i) => i.priorityTier === priorityFilter)
+  const smartCandidates = filtered.filter((i) => !i.shipped && i.category !== 'merge' && i.category !== 'cannibal' && i.priorityTier !== 'low').slice(0, 6)
+  const allSelected = smartCandidates.length > 0 && smartCandidates.every((i) => selectedIds.has(i.id))
   const selectedItems = activeItems.filter((i) => selectedIds.has(i.id) && !i.shipped)
   const cannibalItems = activeItems.filter((i) => i.category === 'cannibal')
   const actionableItems = activeItems.filter((i) => !i.shipped && i.category !== 'merge')
-  const highPriority = actionableItems.filter((i) => i.priority >= 70).length
+  const highPriority = actionableItems.filter((i) => i.priorityTier === 'high').length
+  const mediumPriority = actionableItems.filter((i) => i.priorityTier === 'medium').length
+  const lowPriority = actionableItems.filter((i) => i.priorityTier === 'low').length
   const sourceCount = new Set(activeItems.map((i) => i.source)).size
   const averagePriority = actionableItems.length
     ? Math.round(actionableItems.reduce((sum, item) => sum + item.priority, 0) / actionableItems.length)
@@ -4185,7 +4265,7 @@ function WorkPlanTable({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', border: `1px solid ${E.hairline}`, background: E.inkBlack }}>
         {[
           { label: 'Open opportunities', value: actionableItems.length, detail: `${sourceCount} signal sources`, color: '#F8E7B0' },
-          { label: 'High priority', value: highPriority, detail: 'score 70 or higher', color: '#86EFAC' },
+          { label: 'High priority', value: highPriority, detail: `${mediumPriority} medium · ${lowPriority} low`, color: '#86EFAC' },
           { label: 'Cannibal risks', value: cannibalItems.length, detail: cannibalItems.length ? 'needs consolidation' : 'estate is clear', color: cannibalItems.length ? '#FCA5A5' : '#86EFAC' },
           { label: 'Portfolio score', value: averagePriority || '—', detail: 'average opportunity', color: '#93C5FD' },
         ].map((metric, index) => (
@@ -4216,6 +4296,18 @@ function WorkPlanTable({
               fontSize: 9, fontWeight: 700, cursor: 'pointer', fontFamily: C.mono,
             }}
           >{c.label}</button>
+        ))}
+        <span style={{ width: 1, height: 22, background: E.hairline, margin: '0 3px' }} />
+        {(['all', 'high', 'medium', 'low'] as const).map((tier) => (
+          <button key={tier} type="button" onClick={() => setPriorityFilter(tier)}
+            style={{
+              padding: '6px 10px', borderRadius: 999,
+              border: priorityFilter === tier ? `1px solid ${tier === 'high' ? E.green : tier === 'medium' ? E.orange : E.inkMuted}` : `1px solid ${E.hairline}`,
+              background: priorityFilter === tier ? (tier === 'high' ? E.greenSoft : tier === 'medium' ? '#FFF7ED' : E.surface2) : E.paper,
+              color: tier === 'high' ? E.green : tier === 'medium' ? E.orange : E.inkMuted,
+              fontSize: 9, fontWeight: 800, cursor: 'pointer', fontFamily: C.mono, textTransform: 'uppercase',
+            }}
+          >{tier === 'all' ? 'All value tiers' : `${tier} value`}</button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
@@ -4251,8 +4343,8 @@ function WorkPlanTable({
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted, cursor: filtered.length ? 'pointer' : 'default' }}>
-          <input type="checkbox" checked={allSelected} onChange={allSelected ? onClearSelection : onSelectAll} disabled={!filtered.length} style={{ cursor: 'pointer', accentColor: E.gold }} />
-          {allSelected ? 'Clear visible selection' : 'Select every visible opportunity'}
+          <input type="checkbox" checked={allSelected} onChange={allSelected ? onClearSelection : () => onSelectAll(smartCandidates.map((i) => i.id))} disabled={!smartCandidates.length} style={{ cursor: 'pointer', accentColor: E.gold }} />
+          {allSelected ? 'Clear smart selection' : `Smart-select highest value${smartCandidates.length ? ` (${smartCandidates.length})` : ''}`}
         </label>
         {selectedItems.length > 0 && <span style={{ fontFamily: C.mono, fontSize: 9.5, color: E.goldDeep, fontWeight: 800 }}>{selectedItems.length} queued for Research</span>}
       </div>
@@ -4287,6 +4379,12 @@ function WorkPlanTable({
                     background: item.shipped ? '#DCFCE7' : cm.bg,
                     color: item.shipped ? '#166534' : cm.fg, whiteSpace: 'nowrap',
                   }}>{item.shipped ? '✓ SHIPPED' : `${cm.icon} ${cm.label}`}</span>
+                  <span style={{
+                    display: 'inline-block', padding: '3px 7px', borderRadius: 3,
+                    fontSize: 8, fontWeight: 800, fontFamily: C.mono, textTransform: 'uppercase',
+                    background: item.priorityTier === 'high' ? E.greenSoft : item.priorityTier === 'medium' ? '#FFF7ED' : E.surface2,
+                    color: item.priorityTier === 'high' ? E.green : item.priorityTier === 'medium' ? E.orange : E.inkMuted,
+                  }}>{item.priorityTier} value</span>
                   <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
                     <div style={{ fontFamily: C.serif, fontSize: 24, lineHeight: 0.9, fontWeight: 800, color: item.priority >= 70 ? E.green : item.priority >= 40 ? E.orange : E.inkMuted }}>{item.priority}</div>
                     <div style={{ marginTop: 4, fontFamily: C.mono, fontSize: 7.5, color: E.inkDim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>priority</div>
@@ -4297,7 +4395,7 @@ function WorkPlanTable({
                     {item.title}
                   </div>
                   <div style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono, marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {item.source} · {item.play || item.category}
+                    {item.source} · {item.play || item.category}{item.clusterSize ? ` · ${item.clusterSize} clustered queries` : ''}
                   </div>
                   <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.45, color: E.inkSoft }}>{item.signals[0] || 'Engine-ranked opportunity.'}</div>
                   {expanded && item.signals.slice(1).map((signal, signalIndex) => (
@@ -6843,7 +6941,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                   if (next.has(id)) next.delete(id); else next.add(id)
                   return next
                 })}
-                onSelectAll={() => setSelectedWorkPlanIds(new Set(workPlanItems.map((i) => i.id)))}
+                onSelectAll={(ids) => setSelectedWorkPlanIds(new Set(ids))}
                 onClearSelection={() => setSelectedWorkPlanIds(new Set())}
                 onSendToResearch={handleSendToResearch}
                 onResolveCannibal={handleResolveCannibal}

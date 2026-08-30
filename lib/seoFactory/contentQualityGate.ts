@@ -779,7 +779,7 @@ export function evaluateContentQuality(opts: {
         fix: 'Add a concise table of contents or “On this page” list linked to the major sections.',
       })
     }
-    if (words >= 800 && !/\b(?:for example|for instance|e\.g\.|example:)\b/i.test(body)) {
+    if (words >= 800 && !/(?:\bfor example\b|\bfor instance\b|\be\.g\.|\bworked example\b|\bscenario:)/i.test(body)) {
       add({
         code: 'missing_concrete_example',
         severity: 'warning',
