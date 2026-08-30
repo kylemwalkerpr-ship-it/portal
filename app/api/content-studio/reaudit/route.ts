@@ -15,6 +15,7 @@ import { runAuditEditorLoop, CONTENT_LOOP_BUDGET, type LoopFinding } from '@/lib
 import { anchorHash, parseEditorPatch } from '@/lib/seoFactory/editorPatch'
 import { resolveContentSpecForJob, type ContentSpec } from '@/lib/seoFactory/contentSpec'
 import { normalizeStudioContentType } from '@/lib/seoFactory/ownership'
+import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 
 export type { ReauditResponse }
 
@@ -138,6 +139,8 @@ type CanonicalJobMetadata = {
   primaryKeyword: string
   region: string
   indexable: boolean
+  requiredShortKeywords: string[]
+  requiredLongTailKeywords: string[]
 }
 
 /**
@@ -158,6 +161,8 @@ async function resolveCanonicalJobMetadata(
     topic?: string | null
     region?: string | null
     indexable?: boolean | null
+    required_short_keywords?: string[] | null
+    required_long_tail_keywords?: string[] | null
   } | null = null
   let db: SupabaseClient | null = null
 
@@ -167,7 +172,7 @@ async function resolveCanonicalJobMetadata(
       db = createSupabaseAdminClient()
       const result = await db
         .from('content_jobs')
-        .select('canonical_url,content_type,primary_keyword,topic,region,indexable')
+        .select('canonical_url,content_type,primary_keyword,topic,region,indexable,required_short_keywords,required_long_tail_keywords')
         .eq('id', jobId)
         .maybeSingle()
       row = result.data
@@ -183,6 +188,12 @@ async function resolveCanonicalJobMetadata(
     ? row.indexable
     : fallback.indexable !== false
   let targetUrl = String(row?.canonical_url || fallback.targetUrl || '').trim() || undefined
+  const keywordContract = resolveKeywordContract({
+    primaryKeyword,
+    topic: row?.topic,
+    requiredShortKeywords: row?.required_short_keywords ?? fallback.requiredShortKeywords,
+    requiredLongTailKeywords: row?.required_long_tail_keywords ?? fallback.requiredLongTailKeywords,
+  })
 
   // A legacy job can have every routing input but no stored canonical URL.
   // Derive the same owner plan used by generation, then persist the recovery.
@@ -200,6 +211,10 @@ async function resolveCanonicalJobMetadata(
     const backfill: Record<string, unknown> = {}
     if (!row.canonical_url && targetUrl) backfill.canonical_url = targetUrl
     if (!row.primary_keyword && primaryKeyword) backfill.primary_keyword = primaryKeyword
+    if (keywordContract.backfilled) {
+      backfill.required_short_keywords = keywordContract.requiredShortKeywords
+      backfill.required_long_tail_keywords = keywordContract.requiredLongTailKeywords
+    }
     if (Object.keys(backfill).length) {
       try {
         await db!.from('content_jobs').update(backfill).eq('id', jobId)
@@ -209,7 +224,7 @@ async function resolveCanonicalJobMetadata(
     }
   }
 
-  return { targetUrl, contentType, primaryKeyword, region, indexable }
+  return { targetUrl, contentType, primaryKeyword, region, indexable, ...keywordContract }
 }
 
 // ---------- AI-powered fix endpoints ----------
@@ -605,7 +620,7 @@ export async function POST(request: NextRequest) {
        *  audit_json.contentSpec, never trusted over it (Milestone C). */
       contentSpec?: unknown
     }
-    const { content, requiredShortKeywords, requiredLongTailKeywords, jobId } = body
+    const { content, jobId } = body
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
@@ -622,6 +637,8 @@ export async function POST(request: NextRequest) {
       primaryKeyword,
       region,
       indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     } = await resolveCanonicalJobMetadata(jobId, body)
     const competingUrls = normalizeCompetingUrls(body.competingUrls)
     // Deterministic compliance repair first: a missing disclaimer or broken
@@ -741,7 +758,7 @@ export async function PATCH(request: NextRequest) {
        *  canonical and a mismatching request snapshot is rejected (Milestone C). */
       contentSpec?: unknown
     }
-    const { action, content, annotations, annotation, warnings, blockers, requiredShortKeywords, requiredLongTailKeywords, competingSnippets, competingUrls, reviewModel, jobId } = body
+    const { action, content, annotations, annotation, warnings, blockers, competingSnippets, competingUrls, reviewModel, jobId } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -757,6 +774,8 @@ export async function PATCH(request: NextRequest) {
       primaryKeyword,
       region,
       indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     } = await resolveCanonicalJobMetadata(jobId, body)
     const competingPages = normalizeCompetingUrls(competingUrls)
 

@@ -8,6 +8,7 @@ import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
+import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
 import {
   clampBriefWordBudget,
   depthPromptClause,
@@ -94,10 +95,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Verified interlink allowlist (from the registry, live-filtered)
-    const interlinks = Array.isArray(body.interlinks)
-      ? body.interlinks.map((l: any) => ({ label: String(l.label || ''), url: String(l.url || '') })).filter((l) => l.url)
-      : [] as Array<{ label: string; url: string }>
+    // Canonical estate shortlist. Metadata tells the brief model why a page
+    // belongs, where it should be placed, and whether it was live-verified.
+    let interlinks = Array.isArray(body.interlinks)
+      ? body.interlinks.map((l: any) => ({
+          label: String(l.label || ''), url: String(l.url || ''),
+          reason: String(l.reason || ''), placement: String(l.placement || ''),
+          role: String(l.role || ''), liveStatus: String(l.liveStatus || ''),
+          score: Number(l.score) || 0, site: String(l.site || ''),
+        })).filter((l) => l.url)
+      : [] as Array<{ label: string; url: string; reason?: string; placement?: string; role?: string; liveStatus?: string; score?: number; site?: string }>
+    if (interlinks.length < 2) {
+      const estate = await suggestInventoryInterlinks(topic, [primaryKeyword], 6, { region }).catch(() => null)
+      if (estate?.suggestions.length) interlinks = estate.suggestions
+    }
 
     // Sitemap stats
     const sitemapCount = Number(body.sitemapCount) || 0
@@ -165,7 +176,7 @@ export async function POST(req: NextRequest) {
       '}',
       '',
       'RULES (NON-NEGOTIABLE):',
-      '1. NEVER suggest a URL not in the interlink allowlist — use ONLY verified internal links.',
+      '1. NEVER suggest a URL not in the interlink allowlist — use ONLY verified internal links. Select a cohesive reader journey, not merely the first URLs: topical authority → practical next step → service handoff only when the query has commercial intent.',
       '2. NEVER duplicate an H2, keyword placement, or slug from completed prior work.',
       '3. Target the word count range based on content type + Google SEO floor (2,200 min for legal guides).',
       '4. Every short-tail keyword must appear in kwH2Map mapped to exactly one H2 section.',
@@ -187,8 +198,6 @@ export async function POST(req: NextRequest) {
       '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline.',
       '14. SCHEMA FAQ JSON-LD: include exactly one "## FAQ" H2 in h2Outline — never list individual FAQ questions as sibling H2s. The drafting AI writes 4–6 questions as ### H3s under that FAQ section (eligibility, timeline, required documents, costs, DIY-vs-attorney, denial/reapply). The system wraps those H3 Q&A pairs in FAQPage JSON-LD.',
       '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
-      formatContractBriefBlock(),
-      formatContractBriefBlock(),
       '16. INTERNAL LINKS (HARD REQUIREMENT): ALWAYS return at least 2 interlinkTargets — never fewer than 2, prefer 3–4. Each URL must come from the allowlist VERBATIM (no invented, guessed, or modified paths). The draft-time audit blocks on fewer than 2 internal estate links, so a thin interlinkTargets list forces rewrites.',
       ...(contentType === 'blog_post'
         ? [
@@ -235,7 +244,7 @@ export async function POST(req: NextRequest) {
         ? `COMPLETED PRIOR WORK (never duplicate — differentiate from these):\n${completedWork.map((w) => `  - ${w.slug} («${w.topic}»)`).join('\n')}`
         : 'COMPLETED PRIOR WORK: none yet — this is a greenfield topic.',
       interlinks.length > 0
-        ? `VERIFIED INTERNAL LINK ALLOWLIST (only these URLs may be used):\n${interlinks.map((l) => `  - [${l.label}] ${l.url}`).join('\n')}`
+        ? `CANONICAL ESTATE INTERLINK SHORTLIST (only these live/indexable URLs may be used):\n${interlinks.map((l) => `  - [${l.label}] ${l.url}\n    role=${l.role || 'topical-guide'}; relevance=${l.score || 'ranked'}; recommended placement=${l.placement || 'contextual section'}; reason=${l.reason || 'estate relevance match'}`).join('\n')}\nChoose 2–4 links that form a cohesive reader journey. Preserve each URL verbatim and use the recommended placement unless a more exact H2 exists.`
         : 'VERIFIED INTERNAL LINK ALLOWLIST: none provided — rely exclusively on sitemap-verified estate URLs.',
       seedOfficialSources.length
         ? `VERIFIED SOURCE ALLOWLIST (live-checked authorities for this topic — copy URLs VERBATIM into "sources"; government/edu/intergov preferred, on-topic institutional pages allowed; no blogs/Wikipedia/social):\n${seedOfficialSources.map((s) => `  - ${s}`).join('\n')}`
@@ -295,6 +304,10 @@ export async function POST(req: NextRequest) {
       Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets : [],
       { region, min: 2, max: 6 },
     )
+    const enrichedInterlinkTargets = interlinkTargets.map((target) => {
+      const source = interlinks.find((link) => link.url.replace(/\/+$/, '').toLowerCase() === target.url.replace(/\/+$/, '').toLowerCase())
+      return { ...source, ...target, placement: target.placement || source?.placement || 'Contextually relevant section' }
+    })
 
     // The model may echo a sub-range INSIDE the canonical budget; anything
     // below the floor or above the hard max is clamped back to the spec so a
@@ -428,7 +441,7 @@ export async function POST(req: NextRequest) {
       kwH2Map: completedKwH2Map,
       sectionPlan,
       sources: finalSources,
-      interlinkTargets: interlinkTargets.slice(0, 8),
+      interlinkTargets: enrichedInterlinkTargets.slice(0, 8),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),

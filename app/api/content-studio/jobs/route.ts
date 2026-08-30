@@ -8,6 +8,7 @@ import { auditContent } from '@/lib/seoFactory/audit'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
@@ -18,7 +19,6 @@ import {
   JOB_MUTATE_COLUMNS,
   JOB_OPEN_COLUMNS,
   jobCompetingPages,
-  jobRequiredKeywords,
   slimJobForClient,
 } from '@/lib/seoFactory/jobColumns'
 
@@ -589,13 +589,17 @@ export async function POST(request: NextRequest) {
             // Feed the brief's gate inputs through the full ship path: the
             // keyword-coverage gate and cannibalization repair only fire when
             // these are present, and the studio approve route is the LAST
-            // place the brief requirements can reach shipContent (2026-08:
-            // they were silently dropped here, so the gates never fired on
-            // approve). Empty arrays are no-ops — legacy rows behave exactly
-            // as before.
-            const { requiredShortKeywords, requiredLongTailKeywords } = jobRequiredKeywords(
-              job as Record<string, unknown>,
-            )
+            // place the brief requirements can reach shipContent. Legacy rows
+            // with empty arrays are healed from their primary keyword and the
+            // completed contract is persisted before approval.
+            const { requiredShortKeywords, requiredLongTailKeywords, backfilled } = resolveKeywordContract({
+              primaryKeyword, topic: job.topic,
+              requiredShortKeywords: job.required_short_keywords,
+              requiredLongTailKeywords: job.required_long_tail_keywords,
+            })
+            if (backfilled) {
+              await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords }).eq('id', id)
+            }
             const competingUrls = jobCompetingPages(job as Record<string, unknown>)
             const ship = await shipContent({
               mode: 'autodeploy',
@@ -1510,9 +1514,16 @@ export async function PATCH(request: NextRequest) {
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
-      const { requiredShortKeywords, requiredLongTailKeywords } = jobRequiredKeywords(
-        job as Record<string, unknown>,
-      )
+      const { requiredShortKeywords, requiredLongTailKeywords, backfilled } = resolveKeywordContract({
+        primaryKeyword, topic: job.topic,
+        requiredShortKeywords: job.required_short_keywords,
+        requiredLongTailKeywords: job.required_long_tail_keywords,
+      })
+      if (backfilled) {
+        await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords }).eq('id', id)
+        job.required_short_keywords = requiredShortKeywords
+        job.required_long_tail_keywords = requiredLongTailKeywords
+      }
       const competingUrls = jobCompetingPages(job as Record<string, unknown>)
       // Deterministic compliance repair before ship — never let a missing
       // disclaimer or broken TOC block a human-approved delivery.

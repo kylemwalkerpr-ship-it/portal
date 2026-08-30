@@ -23,7 +23,7 @@ import { StudioLiveDesk, ENGINE_ACTION_LABEL, type DeskLiveState } from './studi
 import { AeoRemediationQueue } from './studio-aeo-remediation'
 import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/seoEngine/citationRemediation'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
-import { mergeInterlinkLists } from '@/lib/seoFactory/studioInterlinks'
+import { mergeInterlinkLists, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
@@ -64,7 +64,6 @@ import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
-import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioStageNav } from './studio-stage-nav'
 import { ChapterIntro } from './studio-chapter-intro'
 import { studioTokens as E } from './studio-tokens'
@@ -186,7 +185,7 @@ interface AISuggestion {
   profitability: 'high' | 'medium' | 'low'
   reason: string
   signals: string[]
-  interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
+  interlinks?: StudioInterlink[]
   coverage?: { matched: boolean; matches: string[] }
   sourcePage?: string
   cluster?: {
@@ -2190,8 +2189,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   keywords: string; setKeywords: (v: string) => void
   suggestions: any[]; gscStatus: any
   brief: AISuggestion | null; onClearBrief: () => void
-  briefInterlinks: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
-  onBriefInterlinksChange?: (links: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>) => void
+  briefInterlinks: StudioInterlink[]
+  onBriefInterlinksChange?: (links: StudioInterlink[]) => void
+  interlinkInventory?: { scanned: number; eligible: number; liveVerified: number } | null
   autoInterlinkBusy: boolean; onAutoInterlink: () => void
   interlinkStage: string; setInterlinkStage: (v: string) => void
   selectedBrief?: AISuggestion | null
@@ -2213,7 +2213,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     suggestions, gscStatus,
     brief, onClearBrief, briefInterlinks,
     onBriefInterlinksChange,
-    autoInterlinkBusy, onAutoInterlink,
+    autoInterlinkBusy, onAutoInterlink, interlinkInventory,
     interlinkStage, setInterlinkStage,
     selectedBrief,
     setActionNotice,
@@ -2359,16 +2359,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       // links — not just whatever the registry happened to match earlier.
       const briefTargets = (data as Record<string, unknown>).interlinkTargets
       if (Array.isArray(briefTargets) && briefTargets.length > 0) {
-        const prev = briefInterlinks || []
-        const seen = new Set(prev.map((l) => l.url))
-        const merged = [...prev]
-        for (const t of briefTargets as Array<{ label?: unknown; url?: unknown }>) {
-          if (t && typeof t.url === 'string' && t.url.trim() && !seen.has(t.url)) {
-            merged.push({ label: String(t.label || ''), url: t.url })
-            seen.add(t.url)
-          }
-        }
-        onBriefInterlinksChange?.(merged)
+        // Model-selected placements take precedence while the estate ranker's
+        // score/reason/live metadata survives for the UI and drafting prompt.
+        onBriefInterlinksChange?.(mergeInterlinkLists(briefTargets as Array<Record<string, unknown>>, briefInterlinks).slice(0, 8))
       }
       const engine = data.masterEngine as { ok?: boolean; composite?: number | null; grade?: string | null; recommendationCount?: number } | undefined
       const engineBit = engine?.ok
@@ -2753,37 +2746,67 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         </div>
       </div>
 
-      {/* ── INTERLINKS ── */}
-      <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <label style={{ ...labelBase, marginBottom: 0 }}>
-            Interlink Targets ({briefInterlinks?.length || 0} link{(briefInterlinks?.length || 0) === 1 ? '' : 's'})
-          </label>
-          <button
-            type="button"
-            onClick={onAutoInterlink}
-            disabled={autoInterlinkBusy || !topic.trim()}
-            style={{ ...btnGhost, padding: '4px 10px', fontSize: 10 }}
-          >
-            {autoInterlinkBusy ? '⏳ Finding…' : 'Find interlinks'}
-          </button>
+      {/* ── INTERNAL LINK ARCHITECTURE ── */}
+      <section data-testid="brief-interlink-architecture" style={{ background: E.paper, border: `1px solid ${E.inkBlack}` }}>
+        <div style={{ padding: '16px 18px', background: E.inkBlack, color: E.ivory, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E8C875' }}>Canonical estate intelligence</div>
+            <h4 style={{ margin: '4px 0 3px', fontFamily: C.serif, fontSize: 18, color: E.ivory }}>Internal Link Architecture</h4>
+            <div style={{ fontFamily: C.serif, fontSize: 11, color: 'rgba(255,255,255,.62)' }}>
+              Relevance-ranked from live, indexable pages — every destination has a job in the reader journey.
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: C.mono, fontSize: 9, fontWeight: 800, color: '#86EFAC' }}>{interlinkInventory?.scanned ? `${interlinkInventory.scanned} PAGES SCANNED` : 'LIVE ESTATE INDEX'}</div>
+              <div style={{ marginTop: 2, fontFamily: C.mono, fontSize: 8, color: 'rgba(255,255,255,.45)' }}>{interlinkInventory?.eligible ? `${interlinkInventory.eligible} indexable · ${interlinkInventory.liveVerified} verified shortlist` : 'Supabase + sitemap verification'}</div>
+            </div>
+            <button type="button" onClick={onAutoInterlink} disabled={autoInterlinkBusy || !topic.trim()} style={{ ...btnGhost, padding: '8px 12px', borderColor: '#E8C875', color: E.ivory, background: 'rgba(255,255,255,.04)', fontSize: 10 }}>
+              {autoInterlinkBusy ? '⏳ Scanning estate…' : briefInterlinks.length ? 'Refresh architecture' : 'Build architecture'}
+            </button>
+          </div>
         </div>
-        {briefInterlinks && briefInterlinks.length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {briefInterlinks.slice(0, 10).map((l, i) => (
-              <span key={i} title={l.url} style={{ padding: '3px 8px', background: E.ivory, border: `1px solid ${E.hairline}`, fontSize: 10, fontFamily: C.mono, color: E.ink }}>
-                {l.site ? `${l.site} → ` : ''}{l.label || l.url}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div style={{ fontSize: 10, color: E.inkDim, fontFamily: C.serif, fontStyle: 'italic' }}>
-            No estate links yet — click Find interlinks to pull live pages across legal, regional, and marketplace.
-          </div>
-        )}
-      </div>
+        <div style={{ padding: 16 }}>
+          {briefInterlinks.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+              {briefInterlinks.slice(0, 8).map((link, index) => {
+                let destination = link.url
+                try { const parsed = new URL(link.url); destination = `${parsed.hostname.replace(/^www\./, '')}${parsed.pathname}` } catch { /* keep URL */ }
+                const roleLabel = link.role === 'service-handoff' ? 'Service handoff' : link.role === 'next-step' ? 'Reader next step' : 'Topical authority'
+                return (
+                  <article key={link.url} style={{ minHeight: 172, padding: 14, border: `1px solid ${E.hairline}`, background: E.ivory, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        <span style={{ padding: '2px 6px', background: E.inkBlack, color: E.ivory, fontFamily: C.mono, fontSize: 8, letterSpacing: '.08em', textTransform: 'uppercase' }}>{roleLabel}</span>
+                        <span style={{ padding: '2px 6px', background: E.mossSoft, color: E.mossGreen, fontFamily: C.mono, fontSize: 8, fontWeight: 800 }}>● {link.liveStatus === 'live' ? 'LIVE' : 'VERIFIED'}</span>
+                      </div>
+                      <button type="button" aria-label={`Remove ${link.label}`} onClick={() => onBriefInterlinksChange?.(briefInterlinks.filter((_, itemIndex) => itemIndex !== index))} style={{ border: 0, background: 'transparent', color: E.inkDim, cursor: 'pointer', fontSize: 15 }}>×</button>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: C.serif, fontSize: 14, lineHeight: 1.25, color: E.ink, fontWeight: 700 }}>{link.label}</div>
+                      <div title={link.url} style={{ marginTop: 4, fontFamily: C.mono, fontSize: 8.5, color: E.goldDeep, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{destination}</div>
+                    </div>
+                    <div style={{ paddingTop: 7, borderTop: `1px solid ${E.hairline}`, display: 'grid', gap: 5 }}>
+                      <div style={{ fontSize: 10, color: E.inkMuted, lineHeight: 1.35 }}><strong style={{ color: E.ink }}>Place in:</strong> {link.placement || 'Most relevant explanatory section'}</div>
+                      <div style={{ fontSize: 10, color: E.inkMuted, lineHeight: 1.35 }}>{link.reason || `Supports the reader with a relevant page from ${link.site || 'the YouSafe estate'}.`}</div>
+                    </div>
+                    <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', fontFamily: C.mono, fontSize: 8, color: E.inkDim }}>
+                      <span>{link.site || 'YouSafe estate'}</span><span>{link.score != null ? `${link.score}% relevance` : 'AI selected'}</span>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '28px 18px', textAlign: 'center', background: E.cream, border: `1px dashed ${E.gold}` }}>
+              <div style={{ fontFamily: C.serif, fontSize: 15, fontWeight: 700, color: E.ink }}>No arbitrary links will be inserted.</div>
+              <div style={{ marginTop: 5, fontFamily: C.serif, fontSize: 11, color: E.inkMuted }}>Build the architecture to scan the estate, exclude dead/noindex pages, and select only contextually useful destinations.</div>
+            </div>
+          )}
+        </div>
+      </section>
 
-      {/* ── SYSTEM PROMPT PREVIEW (collapsible) ── */}
+      {/* ── MODEL CONTRACT + SINGLE HANDOFF ── */}
       <div style={{ background: '#0F172A', border: `1px solid ${E.hairline}` }}>
         <button
           type="button"
@@ -2794,9 +2817,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             color: '#F8FAFC', fontFamily: C.serif, fontSize: 13, fontWeight: 600,
           }}
         >
-          <span>{showPromptPreview ? '▾' : '▸'} AI System Prompt Preview</span>
+          <span>{showPromptPreview ? '▾' : '▸'} Inspect canonical model contract</span>
           <span style={{ fontSize: 9, fontFamily: C.mono, color: 'rgba(255,255,255,0.45)' }}>
-            This exact text goes to the model
+            Read-only · exact handoff
           </span>
         </button>
         {showPromptPreview && (
@@ -2811,21 +2834,22 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         )}
       </div>
 
-      {/* ── GENERATE DRAFT BUTTON ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0' }}>
-        <div style={{ fontFamily: C.serif, fontSize: 12, color: E.inkMuted, fontStyle: 'italic' }}>
-          {!title.trim() && !topic.trim() ? 'Enter a title or topic to begin.' :
-           briefReadiness < 100 ? `Brief contract is ${briefReadiness}% complete. Resolve the red checks before drafting.` :
-           'Canonical brief is complete. Drafting will write in segments and preserve each completed section.'}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'stretch', border: `1px solid ${briefReadiness === 100 ? E.gold : E.hairline}`, background: briefReadiness === 100 ? E.parchment : E.paper }}>
+        <div style={{ padding: '16px 18px' }}>
+          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.14em', textTransform: 'uppercase', color: briefReadiness === 100 ? E.mossGreen : E.red }}>{briefReadiness === 100 ? 'Ready for Stage III' : `${briefReadiness}% contract complete`}</div>
+          <div style={{ marginTop: 5, fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 700 }}>{title || topic || 'Complete the brief identity'}</div>
+          <div style={{ marginTop: 3, fontFamily: C.serif, fontSize: 11, color: E.inkMuted }}>
+            {!title.trim() && !topic.trim() ? 'Enter a title or topic to begin.' : briefReadiness < 100 ? 'Resolve the incomplete checks above before drafting.' : `${h2s.length} sections · ${minWords}–${maxWords} words · ${sources.length} sources · ${briefInterlinks.length} contextual links`}
+          </div>
         </div>
         <button
           type="button"
           onClick={handleSubmitBrief}
           disabled={generating || briefGenerating || briefReadiness < 100}
           style={{
-            padding: '14px 32px', background: briefReadiness === 100 ? E.gold : E.inkDim,
+            minWidth: 210, padding: '14px 28px', background: briefReadiness === 100 ? E.gold : E.inkDim,
             color: E.ivory, fontSize: 15, fontWeight: 700, fontFamily: C.serif,
-            border: 'none', borderRadius: 0, cursor: generating || briefGenerating || briefReadiness < 100 ? 'not-allowed' : 'pointer',
+            border: 'none', borderLeft: `1px solid ${E.hairline}`, borderRadius: 0, cursor: generating || briefGenerating || briefReadiness < 100 ? 'not-allowed' : 'pointer',
             opacity: generating || briefGenerating || briefReadiness < 100 ? 0.6 : 1,
             display: 'flex', alignItems: 'center', gap: 8,
           }}
@@ -2838,21 +2862,39 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 })
 
 
+const LiveDraftPage = React.memo(function LiveDraftPage({ source }: { source: string }) {
+  const lines = React.useMemo(() => source.split('\n').slice(-500), [source])
+  return (
+    <div data-testid="studio-stream-document-body" style={{ width: 'min(816px, calc(100% - 44px))', minHeight: 1056, margin: '22px auto 48px', padding: '72px clamp(36px, 7vw, 82px)', background: '#fff', boxShadow: '0 3px 18px rgba(15,23,42,.18)', boxSizing: 'border-box', color: '#172033', fontFamily: 'Georgia, Cambria, serif', fontSize: 15, lineHeight: 1.78 }}>
+      {lines.map((line, index) => {
+        const text = line.replace(/^#{1,6}\s+/, '')
+        if (/^#\s/.test(line)) return <h1 key={index} style={{ fontFamily: 'Aptos Display, Arial, sans-serif', fontSize: 31, lineHeight: 1.15, margin: '0 0 24px', color: '#111827' }}>{text}</h1>
+        if (/^##\s/.test(line)) return <h2 key={index} style={{ fontFamily: 'Aptos Display, Arial, sans-serif', fontSize: 22, lineHeight: 1.25, margin: '28px 0 10px', color: '#17365D' }}>{text}</h2>
+        if (/^###\s/.test(line)) return <h3 key={index} style={{ fontFamily: 'Aptos Display, Arial, sans-serif', fontSize: 17, margin: '20px 0 7px', color: '#1F4E79' }}>{text}</h3>
+        if (/^[-*]\s/.test(line)) return <div key={index} style={{ paddingLeft: 20, margin: '3px 0' }}>• {line.replace(/^[-*]\s+/, '')}</div>
+        if (/^\d+\.\s/.test(line)) return <div key={index} style={{ paddingLeft: 20, margin: '3px 0' }}>{line}</div>
+        if (!line.trim()) return <div key={index} style={{ height: 9 }} />
+        return <div key={index}>{line}</div>
+      })}
+      <span style={{ display: 'inline-block', width: 2, height: 18, background: '#2563EB', verticalAlign: 'text-bottom', animation: 'studioCursorBlink 1s ease-in-out infinite' }} />
+    </div>
+  )
+})
+
 // ── III · DRAFT WORKSPACE ──
 // Word-document style workspace where AI-generated content streams inline.
 // The admin sees every token as it arrives and can edit in real time.
 // Replaces the old dark LiveGenerationPanel with a proper document editor.
 function DraftWorkspace({
-  generating, generationEvents, generationStartedAt, generationChars, generationText,
+  generating, generationEvents, generationStartedAt, generationBuffer,
   rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob,
-  onContinueToReview, selectTab, error, setError,
+  onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, error, setError,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
   generationStartedAt: number | null
-  generationChars: number
-  generationText: string
+  generationBuffer: React.MutableRefObject<string>
   rescueStats: DepthRescueStats | null
   triedProviders: string[]
   completedJob: ContentJob | null
@@ -2860,14 +2902,38 @@ function DraftWorkspace({
   setSelectedJob: (j: ContentJob | null) => void
   onContinueToReview: () => void
   selectTab: (k: StudioTab) => void
+  queueOpen: boolean
+  onToggleQueue: () => void
+  queueCount: number
   error: string | null
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
+  const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
   const [reviewModel, setReviewModel] = React.useState(DEFAULT_REVIEW_PIN)
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
+
+  // Streaming text lives inside this isolated editor. Reading the mutable SSE
+  // buffer here prevents every token from re-rendering the 7k-line studio,
+  // queue, dashboards, and review panels. A 900ms paint cadence remains fluid
+  // while avoiding repeated whole-document parsing on the main thread.
+  React.useEffect(() => {
+    if (!generating) {
+      if (generationBuffer.current) {
+        setGenerationText(generationBuffer.current)
+        setDraftContent((current) => current || generationBuffer.current)
+      }
+      return
+    }
+    setGenerationText('')
+    const timer = window.setInterval(() => {
+      const next = generationBuffer.current
+      setGenerationText((current) => current === next ? current : next)
+    }, 900)
+    return () => window.clearInterval(timer)
+  }, [generating, generationBuffer])
 
   // Track streaming: accumulate deltas into draftContent
   React.useEffect(() => {
@@ -2901,6 +2967,7 @@ function DraftWorkspace({
     () => (generating ? countBodyWords(generationText) : 0),
     [generating, generationText],
   )
+  const generationChars = generationText.length
   const hasContent = draftContent.length > 0
   const latestEvent = generationEvents[generationEvents.length - 1]
   const isStreaming = generating
@@ -2998,52 +3065,26 @@ function DraftWorkspace({
       )}
 
       {/* ── Document editor area — the word-document workspace ── */}
-      <div style={{
-        background: E.paper, border: `1px solid ${E.hairline}`,
-        minHeight: 400, display: 'flex', flexDirection: 'column',
-      }}>
-        {/* Toolbar */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 0, padding: '0',
-          borderBottom: `1px solid ${E.hairline}`, background: '#FAFAFA',
-          overflow: 'hidden',
-        }}>
-          <span style={{
-            padding: '8px 14px', fontFamily: C.mono, fontSize: 9, color: E.inkMuted,
-            letterSpacing: '0.10em', textTransform: 'uppercase', borderRight: `1px solid ${E.hairline}`,
-          }}>
-            {generating ? 'STREAMING' : 'DRAFT'}
-          </span>
-          <span style={{
-            padding: '8px 14px', fontFamily: C.mono, fontSize: 9, color: E.inkMuted,
-            letterSpacing: '0.10em', textTransform: 'uppercase',
-          }}>
-            {draftTitle || '(untitled)'}
-          </span>
-          {generating && generationText.length > 0 && (
-            <div style={{ display: 'inline-flex', borderRight: `1px solid ${E.hairline}`, overflow: 'hidden' }}>
-              {(['document', 'source'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  data-testid={m === 'document' ? 'studio-stream-document' : 'studio-stream-source'}
-                  onClick={() => setStreamView(m)}
-                  aria-pressed={streamView === m}
-                  style={{
-                    padding: '8px 12px', fontFamily: C.mono, fontSize: 9, letterSpacing: '0.08em',
-                    textTransform: 'uppercase', border: 'none', cursor: 'pointer',
-                    fontWeight: streamView === m ? 700 : 500,
-                    background: streamView === m ? E.paper : 'transparent',
-                    color: streamView === m ? E.ink : E.inkMuted,
-                    borderLeft: `1px solid ${E.hairline}`,
-                  }}
-                >
-                  {m === 'document' ? '📄 Document' : '✏️ Source'}
-                </button>
-              ))}
-            </div>
-          )}
-          <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ background: '#D9DDE3', border: '1px solid #AAB2BF', minHeight: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 12px 34px rgba(15,23,42,.14)' }}>
+        <div style={{ minHeight: 38, padding: '0 14px', background: '#185ABD', color: '#fff', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 11 }}><strong style={{ fontSize: 17 }}>W</strong><span>AutoSave</span><span style={{ width: 26, height: 14, borderRadius: 8, background: 'rgba(255,255,255,.28)', display: 'inline-block' }} /></div>
+          <div style={{ fontFamily: 'Aptos, Arial, sans-serif', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{draftTitle || completedJob?.title || 'Untitled draft'} — YouSafe Writer</div>
+          <div style={{ textAlign: 'right', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 10, opacity: .85 }}>{generating ? 'Saving live draft…' : hasCompleted ? 'Saved to job history' : 'Ready'}</div>
+        </div>
+        <div role="menubar" aria-label="Draft editor menu" style={{ minHeight: 34, padding: '0 10px', background: '#fff', display: 'flex', alignItems: 'end', gap: 2, borderBottom: '1px solid #D7DBE0' }}>
+          {['File', 'Home', 'Insert', 'Layout', 'References', 'Review', 'View'].map((item) => <button key={item} type="button" style={{ height: 33, padding: '0 11px', border: 0, borderBottom: item === 'Home' ? '2px solid #185ABD' : '2px solid transparent', background: 'transparent', color: item === 'Home' ? '#185ABD' : '#30343B', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 11, cursor: 'default' }}>{item}</button>)}
+        </div>
+        <div role="toolbar" aria-label="Draft editor commands" style={{ minHeight: 66, padding: '7px 12px', background: '#F8F9FB', borderBottom: '1px solid #C9CED6', display: 'flex', alignItems: 'stretch', gap: 10, overflowX: 'auto' }}>
+          <div style={{ display: 'flex', gap: 5, paddingRight: 10, borderRight: '1px solid #D7DBE0', alignItems: 'center' }}>
+            <button type="button" onClick={() => selectTab('research')} style={{ padding: '7px 10px', border: '1px solid #C9CED6', background: '#fff', color: '#263445', fontSize: 10, cursor: 'pointer' }}>← Brief</button>
+            <button type="button" disabled={generating || !hasCompleted} onClick={onContinueToReview} style={{ padding: '7px 10px', border: '1px solid #185ABD', background: generating || !hasCompleted ? '#E5E7EB' : '#185ABD', color: generating || !hasCompleted ? '#7B8491' : '#fff', fontSize: 10, cursor: generating || !hasCompleted ? 'not-allowed' : 'pointer' }}>Audit &amp; Fix</button>
+            <button type="button" disabled={generating} onClick={onToggleQueue} aria-pressed={queueOpen} style={{ padding: '7px 10px', border: `1px solid ${queueOpen ? '#185ABD' : '#C9CED6'}`, background: queueOpen ? '#EAF2FF' : '#fff', color: queueOpen ? '#185ABD' : '#263445', fontSize: 10, cursor: generating ? 'not-allowed' : 'pointer' }}>Jobs ({queueCount})</button>
+          </div>
+          <div style={{ display: 'flex', gap: 4, paddingRight: 10, borderRight: '1px solid #D7DBE0', alignItems: 'center' }}>
+            {(['document', 'source'] as const).map((mode) => <button key={mode} type="button" data-testid={mode === 'document' ? 'studio-stream-document' : 'studio-stream-source'} onClick={() => setStreamView(mode)} aria-pressed={streamView === mode} style={{ padding: '7px 10px', border: `1px solid ${streamView === mode ? '#185ABD' : '#C9CED6'}`, background: streamView === mode ? '#EAF2FF' : '#fff', color: streamView === mode ? '#185ABD' : '#475569', fontSize: 10, cursor: 'pointer' }}>{mode === 'document' ? '▤ Print layout' : '¶ Markdown'}</button>)}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '0 10px 0 2px', borderRight: '1px solid #D7DBE0', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 9.5, lineHeight: 1.3, color: '#64748B' }}>Structured headings, lists, tables and numbering<br />are preserved while AI writes.</div>
+          <span style={{ marginLeft: 'auto', padding: '0 8px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
             {(() => {
               const wc = generating
                 ? generationWordCount
@@ -3076,27 +3117,26 @@ function DraftWorkspace({
                 </>
               )
             })()}
-            <span style={{ color: E.inkDim, fontSize: 8 }}>
-              {generating ? `${generationText.length.toLocaleString()}c` : `${draftContent.length.toLocaleString()}c`}
-            </span>
+            <span style={{ color: E.inkDim, fontSize: 8 }}>{generating ? `${generationText.length.toLocaleString()}c` : `${draftContent.length.toLocaleString()}c`}</span>
           </span>
         </div>
+        <div aria-hidden="true" style={{ height: 18, background: '#F3F4F6', borderBottom: '1px solid #BCC3CD', position: 'relative' }}><div style={{ position: 'absolute', left: 'calc(50% - 408px)', width: 'min(816px, calc(100% - 44px))', height: '100%', backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 39px, #9CA3AF 40px, transparent 41px)', opacity: .65 }} /></div>
 
         {/* Editor body */}
         {generating && generationText.length > 0 ? (
           /* Live preview — document view matches the live site; source is the raw stream. */
           <div ref={livePreviewRef} data-testid="studio-stream-preview" style={{
-            marginTop: 0, background: streamView === 'document' ? '#EFEDE8' : E.paper,
+            marginTop: 0, background: streamView === 'document' ? '#D9DDE3' : '#172033',
             border: 'none', borderRadius: 0,
-            maxHeight: 640, overflowY: 'auto',
+            height: 'min(72vh, 820px)', minHeight: 560, overflowY: 'auto',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              margin: '0 18px', padding: '12px 0 8px',
-              borderBottom: '1px solid ' + E.hairline,
+              position: 'sticky', top: 0, zIndex: 2, padding: '8px 14px',
+              background: 'rgba(248,249,251,.96)', borderBottom: '1px solid #C9CED6',
             }}>
-              <span style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-                ✍️ AI WRITING LIVE
+              <span style={{ fontSize: 9, color: '#185ABD', fontFamily: C.mono, letterSpacing: '0.12em', fontWeight: 800 }}>
+                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 9, background: '#22C55E', marginRight: 6 }} />AI WRITING LIVE · DOCUMENT IS CHECKPOINTED
               </span>
               <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>
                 {generationText.length.toLocaleString()} chars · {generationWordCount.toLocaleString()} body words
@@ -3104,23 +3144,13 @@ function DraftWorkspace({
               </span>
             </div>
             {streamView === 'document' ? (
-              <div data-testid="studio-stream-document-body" style={{ padding: '8px 12px 28px' }}>
-                <MarkdownDocument source={generationText} />
-                <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 52px' }}>
-                  <span style={{
-                    display: 'inline-block', width: 8, height: 16,
-                    background: E.gold,
-                    verticalAlign: 'text-bottom',
-                    animation: 'studioCursorBlink 1s ease-in-out infinite',
-                  }} />
-                </div>
-              </div>
+              <LiveDraftPage source={generationText} />
             ) : (
               <div
                 data-testid="studio-stream-source-body"
                 style={{
                   padding: '16px 18px 24px',
-                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: E.ink,
+                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: '#D7E1F2',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}
               >
@@ -4759,12 +4789,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
   const [aeoRemediations, setAeoRemediations] = React.useState<CitationRemediation[]>([])
   const [aeoOpenedQuery, setAeoOpenedQuery] = React.useState<string | null>(null)
-  // Imperative handle for the Brief Assembly panel — lets the pinned-topic CTA
-  // below the panel trigger the exact same full-brief submit the in-panel
-  // button uses (title, topic, keywords, H2 outline, sources, min/max words,
-  // keyword→H2 map, interlinks) so generation always receives the full template.
   const briefPanelRef = React.useRef<{ submit: () => void }>(null)
-  const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
+  const [briefInterlinks, setBriefInterlinks] = React.useState<StudioInterlink[]>([])
+  const [interlinkInventory, setInterlinkInventory] = React.useState<{ scanned: number; eligible: number; liveVerified: number } | null>(null)
   const [regenerationPlays, setRegenerationPlays] = React.useState<string[]>(['content_gap', 'quick_win', 'refresh'])
   const [regenerationMinScore, setRegenerationMinScore] = React.useState(45)
   const [regenerationMaxDifficulty, setRegenerationMaxDifficulty] = React.useState(80)
@@ -4832,28 +4859,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Generation stream events
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
-  const [generationChars, setGenerationChars] = React.useState(0)
-  const [generationText, setGenerationText] = React.useState('')
   const [triedProviders, setTriedProviders] = React.useState<string[]>([])
-  // ── STREAM BUFFER (performance) ────────────────────────────────────────
-  // SSE delta chunks arrive dozens of times per second. Setting state per
-  // chunk re-rendered this 7.5k-line component AND re-parsed the entire
-  // MarkdownDocument preview per chunk — O(n²) total work that made the
-  // page sluggish and scrolling stutter during drafting. Chunks accumulate
-  // in a ref and flush to state at most every 400ms (~2.5 renders/sec).
+  // SSE text is kept outside parent state. DraftWorkspace samples this ref on
+  // its own cadence, so the full studio/queue tree never re-renders per token.
   const generationBufRef = React.useRef('')
-  const generationFlushTimerRef = React.useRef<number | null>(null)
-  const flushGenerationBuffer = React.useCallback(() => {
-    setGenerationText(generationBufRef.current)
-    setGenerationChars(generationBufRef.current.length)
-  }, [])
-  const stopGenerationFlush = React.useCallback(() => {
-    if (generationFlushTimerRef.current != null) {
-      window.clearInterval(generationFlushTimerRef.current)
-      generationFlushTimerRef.current = null
-    }
-  }, [])
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
+  const [draftOperationsOpen, setDraftOperationsOpen] = React.useState(false)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
   // Depth-rescue (PASS 2) stats — expansion rounds, stalls, time budget, set
   // from the structured `rescue` SSE event and surfaced in the Draft queue.
@@ -4867,9 +4878,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Clear stale generation state when the selected job changes so the modal
   // does not hold onto large generationText / events / triedProviders in memory.
   React.useEffect(() => {
-    setGenerationText('')
     setGenerationEvents([])
-    setGenerationChars(0)
     setTriedProviders([])
     setRescueStats(null)
   }, [selectedJob?.id])
@@ -5979,24 +5988,25 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             sourceSlug: slug,
             stage: interlinkStage,
             country,
-            contentType: contentType === 'regional_page' ? 'regional_page' : 'blog_post',
+            contentType,
             relatedTerms: kwArr.slice(0, 8),
           }),
         }),
         fetch('/api/content-studio/interlinks', {
           method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: topic.trim(), keywords: kwArr, maxResults: 10 }),
+          body: JSON.stringify({ topic: topic.trim(), keywords: kwArr, region: country, maxResults: 8 }),
         }),
       ])
       const engine = await engineRes.json().catch(() => ({})) as { ok?: boolean; error?: string; edges?: Array<Record<string, unknown>> }
-      const estate = await estateRes.json().catch(() => ({})) as { suggestions?: Array<Record<string, unknown>>; error?: string }
+      const estate = await estateRes.json().catch(() => ({})) as { suggestions?: Array<Record<string, unknown>>; inventory?: { scanned: number; eligible: number; liveVerified: number }; error?: string }
       if (!engineRes.ok && !estateRes.ok) {
         throw new Error(engine.error || estate.error || 'interlink failed')
       }
       const merged = mergeInterlinkLists(estate.suggestions, engine.edges).slice(0, 10)
       if (!merged.length) throw new Error('No live estate links found for this topic — try a clearer keyword or stage.')
       setBriefInterlinks(merged)
-      setActionNotice(`🔗 ${merged.length} interlink${merged.length === 1 ? '' : 's'} ready for the draft`)
+      setInterlinkInventory(estate.inventory || null)
+      setActionNotice(`🔗 ${merged.length} cohesive interlink${merged.length === 1 ? '' : 's'} ready${estate.inventory?.scanned ? ` from ${estate.inventory.scanned} estate pages` : ''}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto-interlink failed')
     } finally {
@@ -6030,31 +6040,31 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Poll active jobs — pause while a detail modal is open so the queue
   // refresh cannot freeze the dialog on a fat JSON parse.
   React.useEffect(() => {
-    if (selectedJob) return
+    if (selectedJob || generating) return
     const hasActive = jobs.some(j => ['pending', 'drafting', 'publishing'].includes(j.status))
     if (!hasActive) return
     const interval = setInterval(fetchJobs, 6_000)
     return () => clearInterval(interval)
-  }, [jobs, fetchJobs, selectedJob])
+  }, [jobs, fetchJobs, selectedJob, generating])
 
   // Background jobs poll — 10s so the desk never sits on a 30s-old queue.
   React.useEffect(() => {
-    if (selectedJob) return
+    if (selectedJob || generating) return
     const id = setInterval(fetchJobs, 10_000)
     return () => clearInterval(id)
-  }, [fetchJobs, selectedJob])
+  }, [fetchJobs, selectedJob, generating])
 
   // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE refreshes the queue
   // instantly — a draft finishing or a PR landing shows up without a poll.
   React.useEffect(() => {
     const off = subscribeToTable('content_jobs', 'public', () => {
-      if (selectedJob) return
+      if (selectedJob || generating) return
       fetchJobs()
     }, (status) => {
       if (status === 'SUBSCRIBED') setDeskLive('live')
     })
     return off
-  }, [fetchJobs, selectedJob])
+  }, [fetchJobs, selectedJob, generating])
 
   // Coming back to the tab must pull a fresh desk, not the last hidden snapshot.
   // Skip while a job modal is open — a queue refresh must never contend with
@@ -6062,31 +6072,32 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   React.useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return
-      if (selectedJob) return
+      if (selectedJob || generating) return
       void fetchJobs()
       void fetchEngineStatus()
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
-  }, [fetchJobs, fetchEngineStatus, selectedJob])
+  }, [fetchJobs, fetchEngineStatus, selectedJob, generating])
 
   const handleGenerate = async (formData: any) => {
     setGenerating(true)
+    setDraftOperationsOpen(false)
     selectTab('draft') // Auto-navigate to Draft stage to watch the live stream
     setGenerationReviewJob(null)
     setError(null)
     setGenerationStartedAt(Date.now())
-    setGenerationChars(0)
     generationBufRef.current = ''
-    setGenerationText('')
-    stopGenerationFlush()
-    generationFlushTimerRef.current = window.setInterval(flushGenerationBuffer, 400)
     setRescueStats(null)
     setTriedProviders([])
     setGenerationEvents([{ id: `start-${Date.now()}`, ts: Date.now(), stage: 'connect', message: 'Connecting to the SEO generation pipeline…', level: 'info' }])
 
     const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
-      setGenerationEvents(prev => [...prev, { id: `${Date.now()}-${prev.length}`, ts: Date.now(), stage, message, level }].slice(-80))
+      setGenerationEvents((prev) => {
+        const last = prev[prev.length - 1]
+        if (last?.stage === stage && last.message === message && last.level === level) return prev
+        return [...prev, { id: `${Date.now()}-${prev.length}`, ts: Date.now(), stage, message, level }].slice(-32)
+      })
     }
 
     try {
@@ -6218,8 +6229,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setActionNotice(`Content generation failed — ${message}`)
       fetchJobs().catch(() => {})
     } finally {
-      stopGenerationFlush()
-      flushGenerationBuffer()
       setGenerating(false)
     }
   }
@@ -6421,7 +6430,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {/* ══════════ IV · DRAFT ══════════ */}
       {/* Stage IV — generate content: the live stream, editor surface,
           jobs clock, and queue stats. Downstream of Discover → Research → Plan. */}
-      {tab === 'draft' && (
+      {tab === 'draft' && !generating && (
         <ChapterIntro
           numeral="III"
           title="Draft & Review"
@@ -6443,44 +6452,24 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               generating={generating}
               generationEvents={generationEvents}
               generationStartedAt={generationStartedAt}
-              generationChars={generationChars}
-              generationText={generationText}
+              generationBuffer={generationBufRef}
               rescueStats={rescueStats}
               triedProviders={triedProviders}
               completedJob={generationReviewJob}
             selectedJob={selectedJob}
             setSelectedJob={setSelectedJob}
-            onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('approve') } }}
+            onContinueToReview={() => {
+              if (generationReviewJob) setSelectedJob(generationReviewJob)
+              setDraftOperationsOpen(true)
+              window.setTimeout(() => document.getElementById('studio-panel-draft-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+            }}
             selectTab={selectTab}
+            queueOpen={draftOperationsOpen}
+            onToggleQueue={() => setDraftOperationsOpen((open) => !open)}
+            queueCount={jobTotal || jobs.length}
             error={error}
             setError={setError}
           />
-          <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE III · GENERATE</div>
-                <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Generate against the plan</h3>
-                <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
-                  Generation is deliberately downstream of Discover, Research, and Plan. The workspace above is where the AI writes live; the queue below is where every job is tracked end-to-end.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => selectTab('research')} style={actionGhostStyle()}>← Research</button>
-                <button type="button" onClick={() => selectTab('research')} style={actionBtnStyle(E.gold)}>Review brief →</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
-              {[
-                ['Method locked', Boolean(topic.trim() && title.trim())],
-                ['Jobs tracked', jobs.length > 0 || jobTotal > 0],
-                ['Live events', generationEvents.length > 0],
-              ].map(([label, ready]) => (
-                <span key={String(label)} style={{ padding: '5px 9px', background: ready ? E.mossSoft : E.parchment, color: ready ? '#24552A' : E.inkMuted, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>
-                  {ready ? '✓' : '○'} {label}
-                </span>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -6551,9 +6540,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               suggestions={suggestions}
               gscStatus={gscStatus}
               brief={selectedBrief}
-              onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+              onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]); setInterlinkInventory(null) }}
               briefInterlinks={briefInterlinks}
               onBriefInterlinksChange={setBriefInterlinks}
+              interlinkInventory={interlinkInventory}
               interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
               onAutoInterlink={runAutoInterlink}
               autoInterlinkBusy={autoInterlinkBusy}
@@ -6562,33 +6552,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               radarMeta={radarMeta}
             />
 
-          {/* Next-stage CTA: visible when on Research tab with a topic pinned */}
-          {tab === 'research' && topic.trim() && (
-            <div style={{ marginTop: 14, padding: '14px 18px', background: E.parchment, border: `1px solid ${E.gold}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>Topic pinned: <span style={{ color: E.gold }}>{topic}</span></div>
-                <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Your brief is ready. Advance to build the plan.</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  // Advance the full brief into the Draft stage: submit() triggers
-                  // the same generation flow as the in-panel button (which
-                  // auto-navigates to Draft to watch the live stream). The panel
-                  // always renders in this tab before the CTA, so the ref is set.
-                  briefPanelRef.current?.submit()
-                }}
-                disabled={generating}
-                style={{ padding: '10px 20px', background: generating ? E.inkDim : E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: generating ? 'not-allowed' : 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700, opacity: generating ? 0.6 : 1 }}
-              >
-                {generating ? '⏳ Generating…' : 'Generate Draft →'}
-              </button>
-            </div>
-          )}
         </div>
       )}
 
-      {tab === 'draft' && (
+      {tab === 'draft' && !generating && draftOperationsOpen && (
         <div id="studio-panel-draft-queue" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
 
@@ -6802,7 +6769,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           />}
         </div>
       )}
-      {tab === 'draft' && (
+      {tab === 'draft' && !generating && draftOperationsOpen && (
         <div id="studio-panel-draft-review" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px 0', borderTop: `1px solid ${E.hairline}` }}>
             <span style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>REVIEW &amp; GATES</span>
