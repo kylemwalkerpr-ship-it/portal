@@ -126,12 +126,43 @@ export const KEYWORD_REQUIREMENTS = {
 } as const
 
 /**
+ * Keyword provenance (`demand` vs `synthesized`) lives in
+ * `lib/seoEngine/keywordTerms` so the quality gate can import it without
+ * pulling Supabase / engineAi into the Worker bundle. Re-exported here for
+ * existing callers that import provenance from the planner.
+ */
+import {
+  keywordSourceMap,
+  keywordTermList,
+  resolveTermSources,
+  type KeywordSource,
+  type KeywordTerm,
+} from './keywordTerms'
+
+export {
+  keywordSourceMap,
+  keywordTermList,
+  resolveTermSources,
+  type KeywordSource,
+  type KeywordTerm,
+}
+
+/**
  * Partition a freeform list of seed queries into short (≤3 words) and long-tail (≥4 words).
  * Deterministic: same input → same output. Returns up to `SHORT_MIN + 7` short + `LONG_TAIL_MIN + 6`
  * long-tail terms. Counts hyphenated atoms (e.g. "f-1", "co-op") as ONE word so a
  * head term like "f-1 visa" still classifies as short (2 words) and not long-tail.
+ *
+ * `shortTerms` / `longTailTerms` carry per-term provenance so the quality gate
+ * can enforce real demand strictly and treat count-floor filler as advisory.
+ * `short` / `longTail` remain plain strings for existing callers.
  */
-export function partitionKeywords(terms: string[], primaryTerm?: string): { short: string[]; longTail: string[] } {
+export function partitionKeywords(terms: string[], primaryTerm?: string): {
+  short: string[]
+  longTail: string[]
+  shortTerms: KeywordTerm[]
+  longTailTerms: KeywordTerm[]
+} {
   const norm = String
   const seen = new Set<string>()
   const out: string[] = []
@@ -149,16 +180,14 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): { shor
   }
   const wordCount = (s: string): number => {
     // Treat hyphenated form codes / multi-char atoms (e.g. "f-1", "co-op", "i-765")
-    // as ONE word so they don't blow the long-tail count out of proportion.
+    // as ONE word so they don't blow the long-tail count out of proportion:
+    // a hyphenated token counts as a single word regardless of atom count.
     const tokens = s
       .toLowerCase()
       .replace(/[^a-z0-9\s-]+/g, ' ')
       .split(/\s+/)
       .filter(Boolean)
-    return tokens.reduce((n, token) => {
-      const atoms = token.split('-').filter(Boolean)
-      return n + Math.max(1, atoms.length === token.length ? 1 : 1)
-    }, 0) || tokens.length
+    return tokens.length
   }
 
   const pt = norm(primaryTerm || '').toLowerCase().trim()
@@ -167,26 +196,36 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): { shor
   // Track short and long-tail arrays as we synthesize, so the second-stage
   // gate can use the count of the *target* array, not the global count of
   // mixed terms.
+  const shortTerms: KeywordTerm[] = []
+  const longTailTerms: KeywordTerm[] = []
   const short: string[] = []
   const longTail: string[] = []
   // classifyAndAdd will both push a unique term AND place it in the correct
-  // bucket if the term passes the dedupe gate.
-  const classifyAndAdd = (candidate: string) => {
+  // bucket if the term passes the dedupe gate. `source` records whether the
+  // candidate is real demand or count-floor filler.
+  const classifyAndAdd = (candidate: string, source: KeywordSource = 'synthesized') => {
     const beforeLen = out.length
     pushUniq(candidate)
     if (out.length === beforeLen) return
     const last = out[out.length - 1]
     const wc = wordCount(last)
     if (wc <= 3) {
-      if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 7) short.push(last)
+      if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 7) {
+        short.push(last)
+        shortTerms.push({ term: last, source })
+      }
     } else if (wc >= 4) {
-      if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 6) longTail.push(last)
+      if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 6) {
+        longTail.push(last)
+        longTailTerms.push({ term: last, source })
+      }
     }
   }
 
-  // Collect input terms + primary first.
-  for (const t of terms || []) classifyAndAdd(t)
-  if (ptWords.length >= 2) classifyAndAdd(pt)
+  // Collect input terms + primary first. These are real demand: caller-supplied
+  // queries (GSC / Ubersuggest / operator) and the primary keyword itself.
+  for (const t of terms || []) classifyAndAdd(t, 'demand')
+  if (ptWords.length >= 2) classifyAndAdd(pt, 'demand')
 
   // First synthesize SHORT (≤3 words) head terms so the floor is met.
   //
@@ -220,8 +259,9 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): { shor
       const headWords = head.split(/\s+/).filter(Boolean)
       if (head !== stripped && (STOP.test(headWords[0] || '') || STOP.test(headWords[headWords.length - 1] || ''))) continue
       // The head itself may already be a valid short keyword ("statement of
-      // purpose" = 3 words).
-      classifyAndAdd(head)
+      // purpose" = 3 words). The unmodified primary is real demand; a trimmed
+      // window of it is only an approximation, so it stays synthesized.
+      classifyAndAdd(head, head === stripped ? 'demand' : 'synthesized')
       for (const prefix of ST_PREFIXES) {
         const candidate = `${head} ${prefix}`
         if (wordCount(candidate) <= 3) classifyAndAdd(candidate)
@@ -239,7 +279,7 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): { shor
     for (const suffix of LT_SUFFIXES) classifyAndAdd(`${pt} ${suffix}`)
   }
 
-  return { short, longTail }
+  return { short, longTail, shortTerms, longTailTerms }
 }
 
 /**
@@ -255,7 +295,7 @@ export function mergeBriefKeywords(opts: {
   primaryTerm?: string
   maxShort?: number
   maxLong?: number
-}): { short: string[]; longTail: string[] } {
+}): { short: string[]; longTail: string[]; shortTerms: KeywordTerm[]; longTailTerms: KeywordTerm[] } {
   const modelShort = (opts.modelShort || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
   const modelLong = (opts.modelLong || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
   const primaryL = (opts.primaryTerm || '').trim().toLowerCase()
@@ -263,25 +303,33 @@ export function mergeBriefKeywords(opts: {
   const maxLong = Math.max(4, opts.maxLong ?? 6)
 
   const partitioned = partitionKeywords([...modelShort, ...modelLong], opts.primaryTerm || '')
-  const short: string[] = []
-  const longTail: string[] = []
-  const pushUnique = (arr: string[], t: string) => {
+  const partitionSource = keywordSourceMap([...partitioned.shortTerms, ...partitioned.longTailTerms])
+  const shortTerms: KeywordTerm[] = []
+  const longTailTerms: KeywordTerm[] = []
+  const pushUnique = (arr: KeywordTerm[], t: string, source: KeywordSource) => {
     const norm = t.toLowerCase()
     if (!norm || norm === primaryL) return
-    if (arr.some((x) => x.toLowerCase() === norm)) return
-    arr.push(t)
+    if (arr.some((x) => x.term.toLowerCase() === norm)) return
+    arr.push({ term: t, source })
   }
-  for (const t of modelShort) pushUnique(short, t)
-  for (const t of modelLong) pushUnique(longTail, t)
+  // Model/brief terms are real demand signals.
+  for (const t of modelShort) pushUnique(shortTerms, t, 'demand')
+  for (const t of modelLong) pushUnique(longTailTerms, t, 'demand')
+  // Partitioner fill carries whatever provenance the partitioner assigned.
   for (const t of partitioned.short) {
-    if (short.length >= maxShort) break
-    pushUnique(short, t)
+    if (shortTerms.length >= maxShort) break
+    pushUnique(shortTerms, t, partitionSource.get(t.toLowerCase()) ?? 'synthesized')
   }
   for (const t of partitioned.longTail) {
-    if (longTail.length >= maxLong) break
-    pushUnique(longTail, t)
+    if (longTailTerms.length >= maxLong) break
+    pushUnique(longTailTerms, t, partitionSource.get(t.toLowerCase()) ?? 'synthesized')
   }
-  return { short, longTail }
+  return {
+    short: shortTerms.map((entry) => entry.term),
+    longTail: longTailTerms.map((entry) => entry.term),
+    shortTerms,
+    longTailTerms,
+  }
 }
 
 function slugify(s: string): string {

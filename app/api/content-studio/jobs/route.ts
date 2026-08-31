@@ -592,10 +592,15 @@ export async function POST(request: NextRequest) {
             // place the brief requirements can reach shipContent. Legacy rows
             // with empty arrays are healed from their primary keyword and the
             // completed contract is persisted before approval.
-            const { requiredShortKeywords, requiredLongTailKeywords, backfilled } = resolveKeywordContract({
+            const {
+              requiredShortKeywords, requiredLongTailKeywords, backfilled,
+              shortKeywordTerms, longTailKeywordTerms,
+            } = resolveKeywordContract({
               primaryKeyword, topic: job.topic,
               requiredShortKeywords: job.required_short_keywords,
               requiredLongTailKeywords: job.required_long_tail_keywords,
+              shortKeywordTerms: (job as Record<string, unknown>).short_keyword_terms,
+              longTailKeywordTerms: (job as Record<string, unknown>).long_tail_keyword_terms,
             })
             if (backfilled) {
               await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords }).eq('id', id)
@@ -615,6 +620,9 @@ export async function POST(request: NextRequest) {
               humanApproved: true,
               requiredShortKeywords,
               requiredLongTailKeywords,
+              // Synthesized backfill must not refuse a human-approved ship.
+              shortKeywordTerms,
+              longTailKeywordTerms,
               competingUrls,
             })
             const now = new Date().toISOString()
@@ -1514,10 +1522,15 @@ export async function PATCH(request: NextRequest) {
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
-      const { requiredShortKeywords, requiredLongTailKeywords, backfilled } = resolveKeywordContract({
+      const {
+        requiredShortKeywords, requiredLongTailKeywords, backfilled,
+        shortKeywordTerms, longTailKeywordTerms,
+      } = resolveKeywordContract({
         primaryKeyword, topic: job.topic,
         requiredShortKeywords: job.required_short_keywords,
         requiredLongTailKeywords: job.required_long_tail_keywords,
+        shortKeywordTerms: (job as Record<string, unknown>).short_keyword_terms,
+        longTailKeywordTerms: (job as Record<string, unknown>).long_tail_keyword_terms,
       })
       if (backfilled) {
         await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords }).eq('id', id)
@@ -1555,6 +1568,8 @@ export async function PATCH(request: NextRequest) {
         ownershipBlockers: plan.blockers,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
       })
 
       // Approve always targets main (direct commit). Reship respects shipMode.
@@ -1660,6 +1675,9 @@ export async function PATCH(request: NextRequest) {
           humanApproved,
           requiredShortKeywords,
           requiredLongTailKeywords,
+          // Synthesized backfill must not refuse a human-approved ship.
+          shortKeywordTerms,
+          longTailKeywordTerms,
           competingUrls,
         })
         const now = new Date().toISOString()

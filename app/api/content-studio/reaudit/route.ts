@@ -16,6 +16,7 @@ import { anchorHash, parseEditorPatch } from '@/lib/seoFactory/editorPatch'
 import { resolveContentSpecForJob, type ContentSpec } from '@/lib/seoFactory/contentSpec'
 import { normalizeStudioContentType } from '@/lib/seoFactory/ownership'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 export type { ReauditResponse }
 
@@ -28,6 +29,8 @@ type RepairCtx = {
   contentType?: string
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   competingUrls?: Array<{ url: string; title: string; primaryKeyword?: string | null }>
   targetUrl?: string
   maxWords?: number
@@ -52,6 +55,8 @@ function closeShipGate(raw: string, ctx: RepairCtx): string {
       indexable: ctx.indexable,
       requiredShortKeywords: ctx.requiredShortKeywords,
       requiredLongTailKeywords: ctx.requiredLongTailKeywords,
+      shortKeywordTerms: ctx.shortKeywordTerms,
+      longTailKeywordTerms: ctx.longTailKeywordTerms,
       region: ctx.region,
       targetUrl: ctx.targetUrl,
       competingUrls: ctx.competingUrls,
@@ -141,6 +146,9 @@ type CanonicalJobMetadata = {
   indexable: boolean
   requiredShortKeywords: string[]
   requiredLongTailKeywords: string[]
+  /** Per-term provenance so the editor agrees with the ship gate. */
+  shortKeywordTerms: KeywordTerm[]
+  longTailKeywordTerms: KeywordTerm[]
 }
 
 /**
@@ -163,6 +171,9 @@ async function resolveCanonicalJobMetadata(
     indexable?: boolean | null
     required_short_keywords?: string[] | null
     required_long_tail_keywords?: string[] | null
+    /** Persisted per-term provenance, when the column exists on the row. */
+    short_keyword_terms?: unknown
+    long_tail_keyword_terms?: unknown
   } | null = null
   let db: SupabaseClient | null = null
 
@@ -639,6 +650,8 @@ export async function POST(request: NextRequest) {
       indexable,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
     } = await resolveCanonicalJobMetadata(jobId, body)
     const competingUrls = normalizeCompetingUrls(body.competingUrls)
     // Deterministic compliance repair first: a missing disclaimer or broken
@@ -667,6 +680,8 @@ export async function POST(request: NextRequest) {
         indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
         region,
         targetUrl,
         competingUrls,
@@ -776,6 +791,8 @@ export async function PATCH(request: NextRequest) {
       indexable,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
     } = await resolveCanonicalJobMetadata(jobId, body)
     const competingPages = normalizeCompetingUrls(competingUrls)
 
@@ -923,6 +940,8 @@ export async function PATCH(request: NextRequest) {
         contentType,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
         competingUrls: competingPages,
         targetUrl: loopTargetUrl,
         // Links were already checked live by sanitizeDraftLinksLive. A sitemap

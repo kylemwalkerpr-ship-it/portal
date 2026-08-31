@@ -256,6 +256,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   )
   const requiredShortKeywords = briefPartition.short
   const requiredLongTailKeywords = briefPartition.longTail
+  // Per-term provenance: terms the partitioner synthesized to hit the count
+  // floors carry no search-demand evidence, so the quality gate warns (instead
+  // of hard-blocking) when the draft does not cover them.
+  const shortKeywordTerms = briefPartition.shortTerms
+  const longTailKeywordTerms = briefPartition.longTailTerms
   const title = collapseDuplicatedTitle((input.title || topic || primaryKeyword).trim())
   const region = (input.region || 'US').toUpperCase()
   let contentType = input.contentType || 'legal_guide'
@@ -495,6 +500,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       ownershipBlockers: plan.blockers,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
     })
 
     // Depth + voice/tone/compliance — unattended publish must clear all gates
@@ -527,6 +534,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       indexable: plan.indexable,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
       region,
       linkAllowlist: (input.interlinks ?? []).map((l) => l.url).filter(Boolean) as string[],
     })
@@ -619,6 +628,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       ownershipBlockers: plan.blockers,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
     })
     if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) {
       break
@@ -693,6 +704,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         ownershipBlockers: plan.blockers,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
       })
 
       if (meetsShipQuality(audit) && audit.score >= minAudit) break
@@ -749,6 +762,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     ownershipBlockers: plan.blockers,
     requiredShortKeywords,
     requiredLongTailKeywords,
+    shortKeywordTerms,
+    longTailKeywordTerms,
   })
 
   if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 8) {
@@ -760,6 +775,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       indexable: plan.indexable,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
       region,
       linkAllowlist: (input.interlinks ?? []).map((l) => l.url).filter(Boolean) as string[],
     })
@@ -818,6 +835,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         ownershipBlockers: plan.blockers,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
       })
     }
   }
@@ -866,6 +885,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         ownershipBlockers: plan.blockers,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
       })
     }
   }
@@ -929,6 +950,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         ownershipBlockers: plan.blockers,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
       })
     }
   }
@@ -1006,6 +1029,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       dryRun: Boolean(input.dryRun),
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
       maxWords,
     })
     } catch (e) {

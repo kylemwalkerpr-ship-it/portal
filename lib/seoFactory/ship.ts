@@ -16,6 +16,7 @@ import { assertShipAllowed } from './shipGate'
 import { assertNoRouteSubtypeConflict } from './routeSubtypeGuard'
 import { assertContentDepth } from './contentDepth'
 import { assertQualityGate, assertRhythmWithinRepairRange } from './contentQualityGate'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { auditLinksLive, sanitizeDraftLinksLive } from './linkAudit'
 import {
@@ -434,6 +435,15 @@ export async function shipContent(opts: {
   requiredShortKeywords?: string[]
   /** Required long-tail keywords (≥4 words each). The master gate fails ship if any are missing. */
   requiredLongTailKeywords?: string[]
+  /**
+   * Per-term keyword provenance from the partitioner / `resolveKeywordContract`.
+   * Terms marked `synthesized` were fabricated to satisfy the count floors and
+   * carry no search-demand evidence, so the quality gate downgrades an uncovered
+   * synthesized term to a warning instead of refusing the ship. Omit and every
+   * term is enforced as real demand (strict, pre-provenance behavior).
+   */
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   /** Competing estate pages for cannibalization detection (from the coverage map
    *  / radar). Passed through to the quality gate and deterministic repair. */
   competingUrls?: Array<{url: string; title: string; primaryKeyword?: string | null}>
@@ -564,6 +574,8 @@ export async function shipContent(opts: {
     indexable: opts.plan.indexable,
     requiredShortKeywords: opts.requiredShortKeywords,
     requiredLongTailKeywords: opts.requiredLongTailKeywords,
+    shortKeywordTerms: opts.shortKeywordTerms,
+    longTailKeywordTerms: opts.longTailKeywordTerms,
   })
   // 3) Host · path · format + build-safe payload (CTAPanel, balanced JSX, FM)
   assertShipAllowed({

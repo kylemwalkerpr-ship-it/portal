@@ -87,6 +87,9 @@ export async function* runSeoFactoryPipelineStream(
     )
     const requiredShortKeywords = briefPartition.short
     const requiredLongTailKeywords = briefPartition.longTail
+    // Per-term provenance: synthesized filler terms warn instead of blocking.
+    const shortKeywordTerms = briefPartition.shortTerms
+    const longTailKeywordTerms = briefPartition.longTailTerms
     const title = collapseDuplicatedTitle((input.title || topic || primaryKeyword).trim())
     const region = (input.region || 'US').toUpperCase()
     let contentType = input.contentType || 'legal_guide'
@@ -666,6 +669,8 @@ export async function* runSeoFactoryPipelineStream(
         indexable: plan.indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
         region,
       })
       refineNotes = [
@@ -823,6 +828,8 @@ export async function* runSeoFactoryPipelineStream(
             // keyword coverage must count toward the blocker comparison too.
             requiredShortKeywords,
             requiredLongTailKeywords,
+            shortKeywordTerms,
+            longTailKeywordTerms,
           })
           const blockerReduced = fixedBlockers.blockers.length < prevBlockers
           const stillUnderFloor = aiWords < minWords
@@ -963,6 +970,8 @@ export async function* runSeoFactoryPipelineStream(
         indexable: plan.indexable,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
         region,
       })
       refineNotes = [
@@ -1012,6 +1021,8 @@ export async function* runSeoFactoryPipelineStream(
             ownershipBlockers: plan.blockers,
             requiredShortKeywords,
             requiredLongTailKeywords,
+            shortKeywordTerms,
+            longTailKeywordTerms,
           })
           const blockerReduced = fixedBlockers.blockers.length < audit.blockers.length
           const stillUnderFloor = aiWords < minWords
@@ -1259,6 +1270,8 @@ export async function* runSeoFactoryPipelineStream(
           dryRun: Boolean(input.dryRun),
           requiredShortKeywords,
           requiredLongTailKeywords,
+          shortKeywordTerms,
+          longTailKeywordTerms,
         })
       } catch (e) {
         shipError = e instanceof Error ? e.message : 'Ship failed'

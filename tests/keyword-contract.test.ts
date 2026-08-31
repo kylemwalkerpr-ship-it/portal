@@ -20,7 +20,25 @@ describe('canonical job keyword contract', () => {
     expect(resolveKeywordContract({ primaryKeyword: 'student visa', requiredShortKeywords: short, requiredLongTailKeywords: longTail })).toEqual({
       requiredShortKeywords: short,
       requiredLongTailKeywords: longTail,
+      // Caller-supplied terms have no persisted provenance, so they default to
+      // real demand and stay enforceable as ship blockers.
+      shortKeywordTerms: short.map((term) => ({ term, source: 'demand' })),
+      longTailKeywordTerms: longTail.map((term) => ({ term, source: 'demand' })),
       backfilled: false,
     })
+  })
+
+  it('marks partitioner backfill as synthesized so the gate does not hard-block it', () => {
+    const contract = resolveKeywordContract({
+      primaryKeyword: 'Australia student visa fee increase',
+      requiredShortKeywords: ['visa fee'],
+      requiredLongTailKeywords: [],
+    })
+    expect(contract.backfilled).toBe(true)
+    const all = [...contract.shortKeywordTerms, ...contract.longTailKeywordTerms]
+    // The one term the caller supplied stays demand...
+    expect(all.find((t) => t.term === 'visa fee')?.source).toBe('demand')
+    // ...and the floors were filled with synthesized terms.
+    expect(all.some((t) => t.source === 'synthesized')).toBe(true)
   })
 })
