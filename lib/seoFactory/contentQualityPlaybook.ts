@@ -733,6 +733,24 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/contentQualityPlaybook.test.ts#link fixtures',
   }),
   def({
+    code: 'unlinked_related_guide', title: 'Related guide named without a hyperlink',
+    severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
+    requirement: 'Every guide named in a Related guides / Further reading section is a clickable link, so a reader can actually reach it.',
+    promptInstruction: 'Turn each related-guide entry into a markdown link to the real guide: `- [Guide title](https://legal.yousafeconsultancy.com/<region>/<slug>)`. Use only verified estate URLs. If no live guide exists for an entry, delete that entry — never leave a guide title as bare text.',
+    evidence: 'contentQualityGate.auditReferenceReachability related-section scan',
+    shipEffect: 'block', evaluator: 'contentQualityGate.auditReferenceReachability',
+    testFixture: 'tests/reference-reachability.test.ts',
+  }),
+  def({
+    code: 'bare_url_not_hyperlinked', title: 'URL printed as plain text instead of a link',
+    severity: 'blocker', owner: 'deterministic', repairClass: 'deterministic', appliesTo: INDEXABLE_FORM,
+    requirement: 'Every URL — including citations under ## Sources — is wrapped in a descriptive anchor, because bare URLs are not clickable in MDX or the caseworks JSX renderer.',
+    promptInstruction: 'Wrap every raw URL in a descriptive markdown link, e.g. `[GOV.UK family visa guidance](https://www.gov.uk/family-visa)`. The citation label becomes the anchor text.',
+    evidence: 'contentQualityGate.auditReferenceReachability bare-URL scan',
+    shipEffect: 'block', evaluator: 'contentQualityGate.auditReferenceReachability',
+    testFixture: 'tests/reference-reachability.test.ts',
+  }),
+  def({
     code: 'dead_internal_link', title: 'Internal link does not resolve',
     severity: 'blocker', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
     requirement: 'Internal links resolve (HTTP 2xx/3xx).',
@@ -1035,6 +1053,30 @@ export function ownerFor(code: string): GateOwner {
 
 export function repairClassFor(code: string): RepairClass {
   return gate(code).repairClass
+}
+
+export function shipEffectFor(code: string): GateDefinition['shipEffect'] {
+  return gate(code).shipEffect
+}
+
+/**
+ * Can this finding legitimately be *cleared* by the remediation loop, or is it
+ * an advisory note that will still be reported after a correct fix attempt?
+ *
+ * `allow_with_flag` / `advisory` findings must NOT keep the audit→edit loop
+ * spinning: e.g. `missing_synthesized_short_keyword` names a term the keyword
+ * partitioner invented to satisfy a count floor. It has no search-demand
+ * evidence, so there is no honest way for an editor model to "cover" it — the
+ * loop burned its whole AI budget re-requesting a fix that could never land,
+ * then reported the same warning. Treat these as terminal-but-shippable.
+ */
+export function blocksShip(code: string): boolean {
+  try {
+    return shipEffectFor(code) === 'block'
+  } catch {
+    // Unregistered codes stay conservative — they block until registered.
+    return true
+  }
 }
 
 /**

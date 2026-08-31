@@ -350,6 +350,109 @@ export function normalizeReaderStructure(body: string): string {
  *  - Never rewrites when the leading word is just a determiner ("The… The
  *    dog…" would become "It dog…").
  */
+/** Human label for a URL when the line gives no usable anchor text. */
+function labelForUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+    const seg = u.pathname.split('/').filter(Boolean).pop() || ''
+    const words = seg
+      .replace(/\.(html?|php|aspx?|pdf)$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\d{4,}/g, '')
+      .trim()
+    const pretty = words
+      ? words.replace(/\b[a-z]/g, (c) => c.toUpperCase())
+      : ''
+    const KNOWN: Record<string, string> = {
+      'gov.uk': 'GOV.UK', 'uscis.gov': 'USCIS', 'travel.state.gov': 'US Department of State',
+      'canada.ca': 'Government of Canada', 'immi.homeaffairs.gov.au': 'Australian Home Affairs',
+      'homeaffairs.gov.au': 'Australian Home Affairs', 'ircc.canada.ca': 'IRCC',
+    }
+    const brand = KNOWN[host] || host
+    if (u.pathname === '/' || !pretty) return `${brand} official guidance`
+    return `${brand} — ${pretty}`
+  } catch {
+    return 'Official source'
+  }
+}
+
+/**
+ * Wrap bare (unlinked) absolute URLs in descriptive markdown anchors so every
+ * reference is actually reachable. Prefers label text already on the line
+ * ("GOV.UK family visa guidance: https://…" → "[GOV.UK family visa
+ * guidance](https://…)"), otherwise derives one from the URL.
+ *
+ * Never touches URLs already inside `](…)`, an `href="…"`, a code fence, inline
+ * code, front matter, or a JSON-LD script block.
+ */
+export function hyperlinkBareUrls(body: string): { content: string; changed: number } {
+  const src = String(body || '')
+  if (!src) return { content: src, changed: 0 }
+
+  // Mask regions we must not rewrite, preserving offsets.
+  const mask: Array<[number, number]> = []
+  const addMask = (re: RegExp) => {
+    const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)
+    let m: RegExpExecArray | null
+    while ((m = r.exec(src)) !== null) mask.push([m.index, m.index + m[0].length])
+  }
+  addMask(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/)
+  addMask(/```[\s\S]*?```/)
+  addMask(/`[^`\n]*`/)
+  addMask(/<script\b[^>]*>[\s\S]*?<\/script>/gi)
+  addMask(/\]\([^)]*\)/)
+  addMask(/<a\b[^>]*>[\s\S]*?<\/a>/gi)
+  addMask(/href\s*=\s*["'][^"']*["']/gi)
+  // Any HTML/JSX attribute value (src, image, logo, poster…) is machine
+  // metadata, not reader-facing prose — matches the gate's masking exactly.
+  addMask(/<[a-zA-Z][^>]*>/g)
+  addMask(/!\[[^\]]*\]\([^)]*\)/)
+  const masked = (start: number, end: number) =>
+    mask.some(([a, z]) => start < z && end > a)
+
+  let changed = 0
+  const bare = /https?:\/\/[^\s)<>\]"'`]+/g
+  let out = ''
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = bare.exec(src)) !== null) {
+    const start = m.index
+    const end = start + m[0].length
+    if (masked(start, end)) continue
+    // Trailing sentence punctuation is not part of the URL.
+    let url = m[0]
+    const trail = url.match(/[.,;:!?)\]]+$/)
+    let tail = ''
+    if (trail) {
+      url = url.slice(0, url.length - trail[0].length)
+      tail = trail[0]
+    }
+    if (!url || !/^https?:\/\/\S+\.\S/.test(url)) continue
+
+    // Look back on this line for an existing label ("Label: <url>" / "- Label <url>").
+    const lineStart = src.lastIndexOf('\n', start) + 1
+    const before = src.slice(lineStart, start)
+    const labelMatch = before.match(/^\s*(?:[-*+]|\d+[.)])?\s*\**([^*:]{3,90}?)\**\s*[:—–-]?\s*$/)
+    let label = labelMatch ? labelMatch[1].trim() : ''
+    // Guard against swallowing prose ("Read more about the rules at ").
+    if (label && /\b(?:see|read|visit|check|at|from|via|here|more|available)\s*$/i.test(label)) label = ''
+    if (!label || label.length < 3) label = labelForUrl(url)
+
+    const replacement = labelMatch && labelMatch[1].trim() === label
+      // Label consumed as anchor text — drop the duplicated prefix.
+      ? `${src.slice(lineStart, lineStart + (before.length - before.trimStart().length))}${before.trimStart().match(/^(?:[-*+]|\d+[.)])\s*/)?.[0] || ''}[${label}](${url})${tail}`
+      : `${before}[${label}](${url})${tail}`
+
+    out += src.slice(last, lineStart) + replacement
+    last = end
+    changed++
+  }
+  if (!changed) return { content: src, changed: 0 }
+  out += src.slice(last)
+  return { content: out, changed }
+}
+
 export function smoothSentenceRhythm(body: string): { content: string; replaced: number } {
   const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'our', 'your', 'their', 'its', 'my', 'his', 'her', 'no', 'any', 'some', 'each', 'every'])
   const SINGULAR_OPENERS = ['It', 'This', 'That']
@@ -358,7 +461,29 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
   // repeated noun phrases on the next deterministic pass caused prefix piles
   // such as "In this case, As a result, On review, …" and made the repair
   // non-idempotent.
-  const GENERATED_OPENING_RE = /^(?:it|this|that|they|these|those)\b|^(?:in practice|for applicants|in this case|as a result|on review|typically|meanwhile|on the ground),/i
+  // Adverbial prefixes THIS function produces are terminal: re-counting them as
+  // fresh noun phrases piled prefixes ("In this case, As a result, On review,
+  // …") and made the repair non-idempotent. Excluded from counting entirely.
+  const ADVERBIAL_PREFIXED_RE = /^(?:in practice|for applicants|in this case|as a result|on review|typically|meanwhile|on the ground),/i
+  // Pronoun openings are DIFFERENT: the model authors them too ("This process
+  // requires…" ×9). The old single regex excluded them from counting, but the
+  // GATE has no such exclusion — so the gate fired a permanent
+  // sentence_start_repetition blocker while the repair reported replaced=0 on
+  // every pass. That is the unconvergeable loop: no amount of "Audit & Fix"
+  // could ever clear it. Count them (matching the gate) and repair them via the
+  // adverbial path, which preserves the sentence's own subject.
+  const PRONOUN_OPENING_RE = /^(?:it|this|that|they|these|those)\b/i
+  const GENERATED_OPENING_RE = ADVERBIAL_PREFIXED_RE
+  // Safe to lowercase when an adverbial prefix pushes them mid-sentence.
+  // Deliberately closed-class only — never a proper noun, brand, or acronym,
+  // so "Australia"/"USCIS"/"Home Office" are never damaged.
+  const DOWNCASE_AFTER_ADVERBIAL = new Set([
+    'the', 'a', 'an', 'this', 'that', 'these', 'those', 'it', 'they', 'you', 'your',
+    'we', 'our', 'his', 'her', 'their', 'its', 'applicants', 'applicant', 'most',
+    'many', 'some', 'each', 'every', 'both', 'all', 'if', 'when', 'after', 'before',
+    'because', 'although', 'while', 'once', 'processing', 'fees', 'rules', 'officers',
+    'attorneys', 'policy', 'law', 'backlogs', 'eligibility', 'documents', 'evidence',
+  ])
   // Conservative tail allowlist: after the repeated noun phrase, the rest must
   // begin with a recognized verb / auxiliary / adverb. Anything else (a noun
   // like "fees" in "The visa fees are…") is SKIPPED — a mangled rewrite is
@@ -604,7 +729,17 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
           const leadingWs = afterList.length - afterList.trimStart().length
           const leadPrefix = text.slice(0, markerLen + listLen + leadingWs)
           const rest = text.slice(markerLen + listLen + leadingWs)
-          out.push(`${leadPrefix}${adverb} ${rest.trimStart()}`)
+          // "In this case, This process…" — the original subject now sits
+          // mid-sentence after a comma, so its capital is wrong. Lowercase a
+          // plain capitalized first word; leave acronyms ("US", "USCIS") and
+          // proper nouns that stay capitalized mid-sentence untouched.
+          let tail = rest.trimStart()
+          const firstWord = (tail.match(/^[A-Za-z][A-Za-z'’-]*/) || [''])[0]
+          const isAcronym = firstWord.length > 1 && firstWord === firstWord.toUpperCase()
+          if (firstWord && !isAcronym && DOWNCASE_AFTER_ADVERBIAL.has(firstWord.toLowerCase())) {
+            tail = firstWord.charAt(0).toLowerCase() + tail.slice(1)
+          }
+          out.push(`${leadPrefix}${adverb} ${tail}`)
           spanIdx++
           continue
         }
@@ -1167,24 +1302,43 @@ export function applyDeterministicRepairs(opts: {
     // paragraph, and natural collocations ("checked against the", "the
     // department of home affairs") cross that threshold in ordinary prose —
     // a live run collapsed a 1328-word draft to 214 words this way.
+    // Dedupe runs PER LINE, never across the whole block. `(?<=[.!?])\s+`
+    // matches newlines, so splitting a paragraph-shaped block and rejoining
+    // with a space flattened every markdown list into one prose run — a
+    // 6-item checklist came out as "- a. - b. - c." on one line (live run).
+    // Structural lines (bullets, numbered items, headings, tables, HTML) keep
+    // their own line and are deduped within that line only.
+    const seenSentenceGlobal = new Map<string, number>() // exact normalized sentence → count
+    const dedupeWithin = (chunk: string): string => {
+      const sentences = chunk.split(/(?<=[.!?])\s+/)
+      return sentences
+        .map((sent) => {
+          const key = sent.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+          const wordCount = key.split(' ').filter(Boolean).length
+          // Short fragments ("Yes.", "No.", headers) repeat legitimately
+          if (wordCount < 8) return sent
+          const count = (seenSentenceGlobal.get(key) || 0) + 1
+          seenSentenceGlobal.set(key, count)
+          // Only the 3rd+ EXACT copy of a full sentence is padding
+          if (count >= 3) return ''
+          return sent
+        })
+        .filter(Boolean)
+        .join(' ')
+    }
+    // Anything whose meaning depends on starting its own line.
+    const isStructuralLine = (l: string) =>
+      /^\s*(?:[-*+]\s|\d+[.)]\s|#{1,6}\s|>|\||<)/.test(l) || /^\s*$/.test(l)
     const dedupedSentences = dedupedParas.map((para) => {
       if (para.length < 150) return para // too short for sentence-level dedup
-      const sentences = para.split(/(?<=[.!?])\s+/)
-      if (sentences.length < 5) return para
-      const seenSentence = new Map<string, number>() // exact normalized sentence → count
-      return sentences.map((sent) => {
-        const key = sent.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
-        const wordCount = key.split(' ').filter(Boolean).length
-        // Short fragments ("Yes.", "No.", headers) repeat legitimately
-        if (wordCount < 8) return sent
-        const count = (seenSentence.get(key) || 0) + 1
-        seenSentence.set(key, count)
-        // Only the 3rd+ EXACT copy of a full sentence is padding
-        if (count >= 3) {
-          return '' // remove the sentence
-        }
-        return sent
-      }).filter(Boolean).join(' ')
+      const lines = para.split('\n')
+      // A block with any structural line must be processed line-by-line so
+      // list structure survives; pure prose can be handled as one chunk.
+      if (lines.length > 1 && lines.some(isStructuralLine)) {
+        return lines.map((line) => (isStructuralLine(line) ? dedupeWithin(line) || line : dedupeWithin(line))).join('\n')
+      }
+      if (para.split(/(?<=[.!?])\s+/).length < 5) return para
+      return dedupeWithin(para)
     })
     if (removedPara > 0 || dedupedSentences.some((p, i) => p !== dedupedParas[i])) {
       b = dedupedSentences.join('\n\n').replace(/\n{3,}/g, '\n\n')
@@ -1660,6 +1814,18 @@ export function applyDeterministicRepairs(opts: {
         b = b.trimEnd() + '\n' + links
       }
       applied.push('internal_links')
+    }
+  }
+
+  {
+    // Bare URLs are not clickable in MDX and never become <a> in the caseworks
+    // JSX renderer, so a reader cannot reach the source. Wrapping a URL in a
+    // descriptive anchor is fully deterministic — do it here rather than
+    // spending AI budget on `bare_url_not_hyperlinked`.
+    const wrapped = hyperlinkBareUrls(b)
+    if (wrapped.changed > 0) {
+      b = wrapped.content
+      applied.push('bare_urls_hyperlinked')
     }
   }
 

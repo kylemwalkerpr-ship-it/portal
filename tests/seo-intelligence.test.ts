@@ -159,7 +159,7 @@ robots: index,follow
 You need a clear plan before you file. ${bodyExtra}
 
 ## Eligibility steps
-You confirm the STEM-designated degree, then you collect evidence that matches the rules on https://www.uscis.gov/ .
+You confirm the STEM-designated degree, then you collect evidence that matches the rules on [the USCIS official site](https://www.uscis.gov/) .
 
 ## Documents checklist
 Passport, I-20 with STEM OPT recommendation, and degree transcripts usually sit on the list. Verify live requirements.
@@ -181,7 +181,7 @@ Yes, but the new employer must be E-Verify enrolled.
 Check the official USCIS page for your category.
 
 ## Sources
-- https://www.uscis.gov/
+- [USCIS official site](https://www.uscis.gov/)
 
 This guide is educational only, not legal advice. Consult an attorney for your situation.
 

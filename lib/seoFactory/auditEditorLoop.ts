@@ -14,7 +14,7 @@
  *    authoritative; two consecutive rejections hold for review.
  */
 
-import { repairClassFor } from './contentQualityPlaybook'
+import { blocksShip, repairClassFor } from './contentQualityPlaybook'
 import type { ContentSpec } from './contentSpec'
 import { validateContentSpec } from './contentSpec'
 import { PLAYBOOK_VERSION } from './contentQualityPlaybook'
@@ -61,6 +61,12 @@ export type AuditEditorLoopResult = {
   status: 'cleared' | 'held_for_review' | 'provider_failed'
   rounds: AuditEditorRound[]
   leftoverCodes: string[]
+  /**
+   * Registered non-blocking findings still present on the returned content
+   * (shipEffect 'allow_with_flag' | 'advisory'). Reported for the desk; these
+   * never block ship and never trigger another AI pass.
+   */
+  advisoryCodes: string[]
   specVersion: string
   playbookVersion: string
   stopReason:
@@ -89,8 +95,39 @@ export type AuditEditorLoopDeps = {
 
 const OPEN_SEVERITIES: ReadonlySet<LoopSeverity> = new Set(['format_blocker', 'blocker', 'warning'])
 
+/**
+ * Findings the loop must act on. Registry `shipEffect` is authoritative:
+ * `allow_with_flag` / `advisory` codes are reported but never keep the loop
+ * open, because no edit can honestly clear them (a synthesized keyword has no
+ * demand evidence to write toward). Previously shipEffect existed only in the
+ * registry and no runtime code read it, so these advisory warnings consumed
+ * every AI pass and the loop always ended 'stalled' with the same codes.
+ */
+function isHumanOnly(code: string): boolean {
+  try {
+    return repairClassFor(code) === 'human_only'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Non-blocking AND machine-owned: no edit can honestly clear it, and it does
+ * not need a human either. `human_only` non-blocking findings (e.g.
+ * `unverified_internal_link`) are NOT advisory in this sense — a person must
+ * still verify them, so they stay in the open set and hold for review.
+ */
+function isUnclearableAdvisory(code: string): boolean {
+  return !blocksShip(code) && !isHumanOnly(code)
+}
+
 function openFindings(findings: LoopFinding[]): LoopFinding[] {
-  return (findings || []).filter((f) => OPEN_SEVERITIES.has(f.severity))
+  return (findings || []).filter((f) => OPEN_SEVERITIES.has(f.severity) && !isUnclearableAdvisory(f.code))
+}
+
+/** Advisory findings that remain after the loop — surfaced, never retried. */
+function advisoryFindings(findings: LoopFinding[]): LoopFinding[] {
+  return (findings || []).filter((f) => OPEN_SEVERITIES.has(f.severity) && isUnclearableAdvisory(f.code))
 }
 
 /** Findings only a human can resolve — never sent to a model. */
@@ -121,6 +158,7 @@ export async function runAuditEditorLoop(
       status: 'held_for_review',
       rounds: [],
       leftoverCodes: ['content_spec_invalid'],
+      advisoryCodes: [],
       specVersion: String((input.spec as { version?: string })?.version ?? 'unknown'),
       playbookVersion,
       stopReason: 'spec_invalid',
@@ -303,6 +341,7 @@ export async function runAuditEditorLoop(
     status,
     rounds,
     leftoverCodes: [...new Set(leftoverCodes)],
+    advisoryCodes: [...new Set(advisoryFindings(deps.evaluate(content)).map((f) => f.code))],
     specVersion: input.spec.version,
     playbookVersion,
     stopReason,

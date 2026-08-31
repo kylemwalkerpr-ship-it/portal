@@ -54,7 +54,7 @@ ogImage: /og-image.png
 - FAQ
 
 ## Eligibility and steps
-You confirm which route applies, then you collect evidence that matches the rules on https://www.uscis.gov/. For example, an F-1 student files the I-20 alongside the visa application.
+You confirm which route applies, then you collect evidence that matches the rules on [the USCIS official site](https://www.uscis.gov/). For example, an F-1 student files the I-20 alongside the visa application.
 
 ## Documents checklist
 Passport, financial proof, and school letters usually sit on the list. Verify live requirements before you pay any fee.
@@ -76,7 +76,7 @@ You pause filing until the evidence set is complete rather than guessing.
 Dependents follow separate rules, so read the official page for your route.
 
 ## Sources
-- https://www.uscis.gov/
+- [USCIS official site](https://www.uscis.gov/)
 - [Student visa hub](https://legal.yousafeconsultancy.com/us/student-visas/)
 - [F-1 OPT guide](https://legal.yousafeconsultancy.com/us/f1-opt/)
 

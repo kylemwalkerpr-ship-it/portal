@@ -31,7 +31,7 @@ robots: index,follow
 You need a clear document set before you file. ${bodyExtra}
 
 ## Eligibility steps
-You confirm which route applies, then you collect evidence that matches the rules on https://www.uscis.gov/ .
+You confirm which route applies, then you collect evidence that matches the rules on [the USCIS official site](https://www.uscis.gov/) .
 
 ## Documents checklist
 Passport, financial proof, and school letters usually sit on the list. Verify live requirements.
@@ -53,7 +53,7 @@ You pause filing until the evidence set is complete rather than guessing.
 Dependents follow separate rules; read the official page for your route.
 
 ## Sources
-- https://www.uscis.gov/
+- [USCIS official site](https://www.uscis.gov/)
 
 This guide is educational only, not legal advice. Consult an attorney for your situation.
 
@@ -199,13 +199,15 @@ describe('evaluateContentQuality', () => {
       title: 'UK graduate visa guide 2026',
       keyword: 'uk graduate visa',
     }).replace(
-      /## Sources\n- https:\/\/www\.uscis\.gov\//,
+      /## Sources\n- \[USCIS official site\]\(https:\/\/www\.uscis\.gov\/\)/,
+      // Anchor text differs per line; the shared "https://www." prefix lives in
+      // the URL, which the rhythm scan must ignore.
       '## Sources\n' +
-        '- https://www.gov.uk/graduate-visa\n' +
-        '- https://www.gov.uk/guidance/immigration-rules/immigration-rules-appendix-graduate\n' +
-        '- https://www.gov.uk/skilled-worker-visa\n' +
-        '- https://www.gov.uk/student-visa\n' +
-        '- https://www.gov.uk/check-uk-visa',
+        '- [Graduate visa](https://www.gov.uk/graduate-visa)\n' +
+        '- [Immigration Rules Appendix Graduate](https://www.gov.uk/guidance/immigration-rules/immigration-rules-appendix-graduate)\n' +
+        '- [Skilled Worker visa](https://www.gov.uk/skilled-worker-visa)\n' +
+        '- [Student visa](https://www.gov.uk/student-visa)\n' +
+        '- [Check a UK visa](https://www.gov.uk/check-uk-visa)',
     )
     const r = evaluateContentQuality({
       content: draft,

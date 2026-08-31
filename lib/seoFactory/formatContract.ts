@@ -25,7 +25,7 @@ export const FORMAT_SKELETON = [
   '6. Content H2 sections in the brief\'s order — each opens with a 1–3 sentence answer, then scannable bodies: bullets for sets, `1.` numbered steps for sequences, at most one pipe table where tabular.',
   '7. `## FAQ` — 4–6 `### Question?` headings, each answer self-contained (2–5 sentences).',
   '8. `## Sources` — deduplicated official citations, one `- [Name](URL)` per line.',
-  '9. `## Related guides` — 2–3 verified estate links.',
+  '9. `## Related guides` — 2–3 verified estate links, EVERY entry a clickable `- [Guide title](URL)`. A guide named as bare text is unreachable and is rejected.',
   '10. Short educational disclaimer.',
 ].join('\n')
 
@@ -41,6 +41,7 @@ export function editorResponseContract(): string {
     '- Keep every list item on its own line. Never merge list items into a paragraph, and never split a paragraph into fake list items.',
     '- Do not reorder, rename, merge, or split sections.',
     '- Keep all facts, citations, and interlinks that are not flagged.',
+    '- Every URL must stay wrapped in a descriptive markdown link — `[Label](https://…)`. Never emit a raw URL as plain text, and never name a related guide without linking it.',
   ].join('\n')
 }
 
@@ -150,15 +151,52 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     s = s.replace(inlineFm, '\n')
     fixed.push('editor_inline_frontmatter_dropped')
   }
+  // 3c. Unterminated <script> blocks. An editor that truncates mid-schema
+  // leaves `<script …>` with no `</script>`. The complete-block passes below
+  // all require a closing tag, and the quality gate's stripForScan likewise
+  // only masks complete blocks — so the JSON body stays VISIBLE and
+  // `renderable_metadata_leak` fires with no repair able to clear it.
+  // Drop the unterminated fragment; the scaffold re-emits valid JSON-LD.
+  {
+    const lines = s.split('\n')
+    let openAt = -1
+    let depth = 0
+    for (let i = 0; i < lines.length; i++) {
+      if (/<script\b/i.test(lines[i])) {
+        depth++
+        if (depth === 1) openAt = i
+      }
+      if (/<\/script>/i.test(lines[i])) {
+        depth = Math.max(0, depth - 1)
+        if (depth === 0) openAt = -1
+      }
+    }
+    if (openAt >= 0) {
+      // Consume the tag plus its trailing JSON-ish run only — never body prose.
+      let end = openAt + 1
+      while (end < lines.length) {
+        const t = lines[end].trim()
+        if (t === '' || /^#{1,6}\s/.test(t) || /^[-*]\s/.test(t) || /^\d+\.\s/.test(t)) break
+        if (!/^[{}\[\]",]|^["']?[A-Za-z@][A-Za-z0-9_@.-]*["']?\s*:/.test(t)) break
+        end++
+      }
+      s = [...lines.slice(0, openAt), ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n')
+      fixed.push('editor_unterminated_schema_dropped')
+    }
+  }
+
   const inlineSchemaLines = s.split('\n')
   let inlineSchemaRemoved = 0
-  let inScript = false
+  let scriptDepth = 0
   for (let i = 0; i < inlineSchemaLines.length; i++) {
     const line = inlineSchemaLines[i]
     const trimmed = line.trim()
-    if (/<script\b/i.test(line)) inScript = true
-    if (inScript) {
-      if (/<\/script>/i.test(line)) inScript = false
+    // Track nesting instead of latching a boolean: a single unclosed tag used
+    // to pin `inScript` true for the rest of the document, so every later
+    // leaked fragment was skipped and never repaired.
+    if (/<script\b/i.test(line)) scriptDepth++
+    if (scriptDepth > 0) {
+      if (/<\/script>/i.test(line)) scriptDepth = Math.max(0, scriptDepth - 1)
       continue
     }
     // Only remove a single-line JSON object clearly identified as schema.

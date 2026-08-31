@@ -319,7 +319,19 @@ describe('applyDeterministicRepairs — broken script tag / body swallowing regr
     })
     // The whole body must survive the repair chain.
     expect(countBodyWords(content)).toBeGreaterThan(800)
-    expect(applied.some((item) => item === 'broken_script_tag_removed' || item === 'editor_inline_schema_dropped (2)')).toBe(true)
+    // The truncated `<script type="application/` tag must be reported as
+    // removed. `editor_unterminated_schema_dropped` is the earliest pass that
+    // now catches it (it also makes `renderable_metadata_leak` clearable).
+    expect(
+      applied.some(
+        (item) =>
+          item === 'broken_script_tag_removed' ||
+          item === 'editor_unterminated_schema_dropped' ||
+          item === 'editor_inline_schema_dropped (2)',
+      ),
+    ).toBe(true)
+    // Only the broken tag is consumed — the following valid block survives.
+    expect(content).not.toContain('<script type="application/\n')
     // A valid Article block is still present and the body headings intact.
     expect(content).toMatch(/"@type"\s*:\s*"Article"/)
     expect(content).toContain('## Work limits while studying')
@@ -825,11 +837,17 @@ One practical step here.
     ].join('\n')
 
     const { content } = smoothSentenceRhythm(body)
-    expect(content).toContain('The UK dependent visa fees are paid when you submit.')
+    // The noun phrase and its tail survive verbatim — no "It fees are paid".
+    // The sentence may receive an adverbial prefix ("Meanwhile, …"), which
+    // pushes the determiner mid-sentence, so its capital is legitimately
+    // lowercased. Assert the wording, not the leading letter case.
+    expect(content).toMatch(/[Tt]he UK dependent visa fees are paid when you submit\./)
     // The four safe verb-led sentences ARE rewritten (rotating It/This/That);
     // the noun-led one is not.
     expect(content).toMatch(/(It|This|That) requires proof of the relationship/)
     expect(content).not.toMatch(/It fees are paid/)
+    // An adverbial prefix must never leave a stray capital mid-sentence.
+    expect(content).not.toMatch(/,\s+The UK dependent visa fees/)
   })
 
   it('uses plural pronouns for repeated plural subjects ("Applicants must…")', () => {

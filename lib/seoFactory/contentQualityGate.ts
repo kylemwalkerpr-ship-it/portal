@@ -14,7 +14,7 @@
 
 import { BANNED_AI_TELLS, VOICE_PLAYBOOK } from '@/lib/seoVoice'
 import { resolveTermSources, type KeywordTerm } from '@/lib/seoEngine/keywordTerms'
-import { auditLinksSync } from './linkAudit'
+import { auditLinksSync, extractLinks, isSkippableHref } from './linkAudit'
 import { evaluateAhrefsDraft } from './ahrefsIssues'
 
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
@@ -240,6 +240,108 @@ function stripForScan(content: string): string {
     .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+}
+
+/** Section bodies for an H2, code fences and front matter already removed. */
+function sectionBodies(raw: string, names: string[]): Array<{ name: string; body: string }> {
+  const scrubbed = String(raw || '')
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+  const out: Array<{ name: string; body: string }> = []
+  const re = /^##\s+(.+?)\s*$/gm
+  let m: RegExpExecArray | null
+  const heads: Array<{ name: string; start: number }> = []
+  while ((m = re.exec(scrubbed)) !== null) {
+    heads.push({ name: m[1].trim().toLowerCase(), start: m.index + m[0].length })
+  }
+  for (let i = 0; i < heads.length; i++) {
+    const end = i + 1 < heads.length ? scrubbed.lastIndexOf('\n##', heads[i + 1].start) : scrubbed.length
+    if (names.includes(heads[i].name)) {
+      out.push({ name: heads[i].name, body: scrubbed.slice(heads[i].start, end < heads[i].start ? scrubbed.length : end) })
+    }
+  }
+  return out
+}
+
+/** A list item that already carries a markdown or HTML link. */
+const LINKED_ITEM_RE = /\[[^\]]+\]\([^)]+\)|<a\b[^>]*href\s*=/i
+/** A bare, unlinked absolute URL (not inside `](...)` or an href). */
+const BARE_URL_IN_TEXT_RE = /(^|[\s(<>"'’,;:])(https?:\/\/[^\s)<>\]"'`]+)/i
+
+/**
+ * Related guides and sources must be REACHABLE, not merely named.
+ *
+ * Requirement (product): "related guides in an article must always have a
+ * hyperlink to that guide so that users can reach said guides. Hyperlinks must
+ * always have a link to them as well, not just leaving them in the sources
+ * part."
+ *
+ * So: a guide title listed as plain text is a blocker, and a URL printed as
+ * bare text (rather than an anchor) is a blocker — bare URLs do not become
+ * clickable anchors in MDX or in the caseworks JSX renderer.
+ */
+export function auditReferenceReachability(raw: string): QualityFinding[] {
+  const findings: QualityFinding[] = []
+  const listItem = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/
+
+  // 1. Related-guide style sections: each entry must be a link.
+  const relatedNames = ['related guides', 'related guide', 'related reading', 'related resources', 'further reading', 'see also']
+  for (const section of sectionBodies(raw, relatedNames)) {
+    const unlinked: string[] = []
+    for (const line of section.body.split('\n')) {
+      const item = line.match(listItem)
+      if (!item) continue
+      const text = item[1].trim()
+      if (!text || LINKED_ITEM_RE.test(text)) continue
+      // A bare URL here is still reachable-ish but must be wrapped; it is
+      // reported by check 2 below, so do not double-report it here.
+      if (BARE_URL_IN_TEXT_RE.test(text)) continue
+      unlinked.push(text.replace(/\*\*/g, '').slice(0, 80))
+    }
+    if (unlinked.length > 0) {
+      findings.push({
+        code: 'unlinked_related_guide',
+        severity: 'blocker',
+        message: `## ${section.name} lists ${unlinked.length} guide(s) as plain text with no hyperlink: ${unlinked.slice(0, 3).join(' · ')}`,
+        fix: 'Every related guide must be a markdown link a reader can click: `- [Guide title](https://legal.yousafeconsultancy.com/<region>/<slug>)`. Use a verified estate URL, or remove the entry if no live guide exists. Never list a guide title as bare text.',
+      })
+    }
+  }
+
+  // 2. Any bare URL anywhere in the article (Sources included) must be an anchor.
+  const bare: string[] = []
+  const scrubbed = String(raw || '')
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    // JSON-LD / script payloads and HTML attributes carry machine URLs
+    // (@context, image, logo, src). They are metadata, never reader-facing
+    // links, so a bare URL there is correct and must not be flagged.
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[a-zA-Z][^>]*>/g, ' ')
+  for (const link of extractLinks(scrubbed)) {
+    if (!/^https?:\/\//i.test(link.url)) continue
+    if (isSkippableHref(link.url)) continue
+    // extractLinks records markdown/HTML hrefs with their span occupied, so a
+    // URL that still matches BARE_URL_IN_TEXT_RE outside any href is bare.
+    const linkedMd = new RegExp(`\\]\\(\\s*${escapeRegExp(link.url)}`, 'i').test(scrubbed)
+    const linkedHtml = new RegExp(`href\\s*=\\s*["']?${escapeRegExp(link.url)}`, 'i').test(scrubbed)
+    if (linkedMd || linkedHtml) continue
+    bare.push(link.url)
+  }
+  if (bare.length > 0) {
+    findings.push({
+      code: 'bare_url_not_hyperlinked',
+      severity: 'blocker',
+      message: `${bare.length} URL(s) appear as plain text instead of clickable links: ${[...new Set(bare)].slice(0, 3).join(' · ')}`,
+      fix: 'Wrap every URL in a descriptive markdown link — `[GOV.UK family visa guidance](https://www.gov.uk/family-visa)` — never leave a raw URL as text. This applies inside ## Sources too: the citation label is the anchor text.',
+    })
+  }
+  return findings
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function findPhrase(haystack: string, phrase: string): boolean {
@@ -515,6 +617,14 @@ export function evaluateContentQuality(opts: {
         })
       }
     }
+
+    // ── Reachability: every named guide/source must be a real hyperlink ────
+    // A reader cannot reach a guide that is only *mentioned*. Two failures
+    // were shipping silently:
+    //   1. `## Related guides` bullets listing guide titles as bare text.
+    //   2. Sources entries where the URL sits as a bare string, so it is not
+    //      clickable in rendered MD/MDX (and never becomes an <a> in JSX).
+    for (const finding of auditReferenceReachability(raw)) add(finding)
   }
 
   // ── 1. Outcome promises (always blocker) ─────────────────────────────────
