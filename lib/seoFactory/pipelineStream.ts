@@ -35,6 +35,7 @@ import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
+import { normalizeJobContentType } from './jobContentType'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -212,7 +213,7 @@ export async function* runSeoFactoryPipelineStream(
         regeneration_mode: input.regenerationMode || null,
         title,
         topic,
-        content_type: contentType === 'legal_guide' ? 'article' : contentType,
+        content_type: normalizeJobContentType(contentType),
         tone,
         region,
         target_repo: plan.repo,
@@ -254,7 +255,11 @@ export async function* runSeoFactoryPipelineStream(
         if (retry.data?.id) {
           earlyJobId = retry.data.id
           yield { type: 'job', jobId: earlyJobId }
+        } else if (retry.error) {
+          console.warn('[seoFactory/pipelineStream] early job row insert failed:', retry.error.message)
         }
+      } else if (early.error) {
+        console.warn('[seoFactory/pipelineStream] early job row insert failed:', early.error.message)
       }
       }
     } catch (e) {
@@ -1332,7 +1337,7 @@ export async function* runSeoFactoryPipelineStream(
         regeneration_mode: input.regenerationMode || null,
         title,
         topic,
-        content_type: contentType === 'legal_guide' ? 'article' : contentType,
+        content_type: normalizeJobContentType(contentType),
         tone,
         region,
         target_repo: plan.repo,

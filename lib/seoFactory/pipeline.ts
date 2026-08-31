@@ -32,6 +32,7 @@ import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { isJunkTopic } from './queryNoise'
 import { topicPathMismatch } from './topicPathGuard'
 import { collapseDuplicatedTitle } from './formatContract'
+import { normalizeJobContentType } from './jobContentType'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -1075,7 +1076,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       regeneration_mode: input.regenerationMode || null,
       title,
       topic,
-      content_type: contentType === 'legal_guide' ? 'article' : contentType,
+      content_type: normalizeJobContentType(contentType),
       tone,
       region,
       target_repo: plan.repo,
