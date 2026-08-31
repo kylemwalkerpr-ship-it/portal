@@ -427,6 +427,21 @@ export function applyAhrefsDraftRepairs(
   // swallow body text (a live run lost 2675 → 601 body words this way).
   body = body.replace(/^<script\b[^>\n]*$/gim, '')
   body = body.replace(/\n{3,}/g, '\n\n')
+  // Remove every unparseable JSON-LD block before repairing Article schema.
+  // Previously an invalid FAQPage block survived beside a valid Article
+  // block, so ensureValidArticleJsonLd correctly left Article alone while
+  // Ahrefs continued to report "JSON-LD does not parse" forever.
+  const jsonLdBlock = /<script\b[^>\n]*type=["']application\/ld\+json["'][^>\n]*>[\s\S]*?<\/script>/gi
+  body = body.replace(jsonLdBlock, (block) => {
+    const raw = (block.match(/>([\s\S]*?)<\/script>/i) || [])[1] || ''
+    try {
+      JSON.parse(raw.trim())
+      return block
+    } catch {
+      applied.push('ahrefs_invalid_schema_removed')
+      return ''
+    }
+  }).replace(/\n{3,}/g, '\n\n')
   const rawTitle = fm.title || (body.match(/^#\s+(.+)$/m) || [])[1] || pk || 'Immigration guide'
   const title = clampTitleToAhrefs(rawTitle, pk)
   if (title !== rawTitle) applied.push('ahrefs_title')
@@ -486,6 +501,11 @@ export function applyAhrefsDraftRepairs(
     body = schemaFix.body
     applied.push('ahrefs_schema')
   }
+  const faqSchemaFix = ensureValidFaqJsonLd(body)
+  if (faqSchemaFix.changed) {
+    body = faqSchemaFix.body
+    applied.push('ahrefs_faq_schema')
+  }
 
   const raw = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   let fmBlock = raw ? raw[1] : ''
@@ -503,6 +523,35 @@ export function applyAhrefsDraftRepairs(
     content: `---\n${fmBlock.trim()}\n---\n\n${body.trim()}\n`,
     applied,
   }
+}
+
+/** Rebuild FAQPage JSON-LD from the visible FAQ instead of preserving a
+ * malformed model block. This keeps structured data derived from reader-visible
+ * content and guarantees that every emitted script parses. */
+function ensureValidFaqJsonLd(body: string): { body: string; changed: boolean } {
+  if (/"@type"\s*:\s*"FAQPage"/i.test(body) && articleJsonLdErrors(body).length === 0) {
+    return { body, changed: false }
+  }
+  const faq = body.match(/(?:^|\n)##\s+(?:FAQ|Frequently asked[^\n]*)\s*\n([\s\S]*?)(?=\n##\s|$)/i)
+  if (!faq) return { body, changed: false }
+  const qas = Array.from(faq[1].matchAll(/(?:^|\n)###\s+(.+?\?)\s*\n+([\s\S]*?)(?=\n###\s|$)/g))
+    .map((match) => ({
+      question: match[1].trim(),
+      answer: match[2].replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim().slice(0, 500),
+    }))
+    .filter((item) => item.question && item.answer)
+  if (qas.length < 3) return { body, changed: false }
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: qas.slice(0, 6).map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: { '@type': 'Answer', text: item.answer },
+    })),
+  }
+  const script = `<script type="application/ld+json">\n${JSON.stringify(data, null, 2)}\n</script>`
+  return { body: `${script}\n\n${body.trim()}\n`, changed: true }
 }
 
 function ensureValidArticleJsonLd(

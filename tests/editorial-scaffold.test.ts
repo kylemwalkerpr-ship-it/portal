@@ -1032,3 +1032,22 @@ describe('In 60 seconds — paragraph / numbered TL;DR rewrite (P1 leftover)', (
     expect(section.match(/^[-*+]\s+\S/gm) || []).toHaveLength(3)
   })
 })
+
+describe('final gate normalization regressions', () => {
+  it('does not stack generated rhythm openers on repeated passes', () => {
+    const body = Array.from({ length: 8 }, () => 'Applicants must verify the current rule before filing.').join('\n\n')
+    const first = smoothSentenceRhythm(body).content
+    const second = smoothSentenceRhythm(first).content
+    expect(second).toBe(first)
+    expect(second).not.toMatch(/(?:In this case|As a result|On review),\s+(?:In this case|As a result|On review),/)
+  })
+
+  it('drops malformed JSON-LD and returns only parseable schema', () => {
+    const draft = `# Australia student visa fee guide\n\n<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage",}</script>\n\n## In 60 seconds\nOne answer. Two checks. Three actions.\n\n## Eligibility\nApplicants should check the current requirements.\n\n## Documents\nKeep identity and enrolment evidence ready.\n\n## Costs\nVerify fees before payment.\n\n## FAQ\n### What fee applies?\nCheck the current Home Affairs fee table.\n\n### When should I pay?\nPay only when the application is ready.\n\n### Can fees change?\nYes, official charges can change.`
+    const repaired = applyDeterministicRepairs({ content: draft, primaryKeyword: 'australia student visa fee', contentType: 'article', region: 'AU' })
+    const scripts = [...repaired.content.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)]
+    expect(scripts.length).toBeGreaterThanOrEqual(1)
+    expect(() => scripts.forEach((match) => JSON.parse(match[1]))).not.toThrow()
+    expect(auditContent({ content: repaired.content, contentType: 'article', primaryKeyword: 'australia student visa fee', indexable: true }).warnings.some((w) => w.code === 'ahrefs_schema_invalid')).toBe(false)
+  })
+})

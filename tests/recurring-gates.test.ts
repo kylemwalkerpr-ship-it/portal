@@ -215,4 +215,13 @@ describe('MALFORMED_LINK — run-on URLs with embedded comma-space are permanent
       'https://immi.homeaffairs.gov.au/au/visas/working-in-australia/skill-occupation-list',
     )
   })
+
+  it('unwraps an arbitrary prose destination that cannot be repaired', () => {
+    const draft = `# Australia student visa fees\n\n## In 60 seconds\n- Check the current fee.\n- Budget for related costs.\n- Verify the amount before payment.\n\n## Sources\n- [Home Affairs](Home Affairs — Student visa — current fees)`
+    const out = adr({ content: draft, title: 'Australia student visa fees', primaryKeyword: 'australia student visa fees', region: 'AU' })
+    expect(out.content).toContain('Home Affairs')
+    expect(out.content).not.toContain('](Home Affairs — Student visa — current fees)')
+    const { auditLinksSync } = require('../lib/seoFactory/linkAudit')
+    expect(auditLinksSync(out.content).some((f: { code: string }) => f.code === 'malformed_link')).toBe(false)
+  })
 })

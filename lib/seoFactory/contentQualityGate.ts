@@ -247,6 +247,39 @@ function findPhrase(haystack: string, phrase: string): boolean {
   return h.includes(p)
 }
 
+/**
+ * Search queries are intent contracts, not exact-match copy instructions.
+ * Requiring a generated query such as "how to apply for …" verbatim made
+ * otherwise complete guides fail and encouraged visibly stuffed prose. Exact
+ * matches still pass immediately; otherwise require every meaningful query
+ * token to occur inside one bounded passage (roughly two short paragraphs).
+ */
+function coversKeywordIntent(haystack: string, phrase: string): boolean {
+  if (findPhrase(haystack, phrase)) return true
+  const stop = new Set([
+    'a', 'an', 'the', 'and', 'or', 'to', 'for', 'of', 'in', 'on', 'at', 'by',
+    'with', 'from', 'how', 'what', 'is', 'it', 'do', 'does', 'you', 'your',
+    'need', 'possible', 'apply',
+  ])
+  const tokens = phrase.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) || []
+  const meaningful = [...new Set(tokens.filter((token) => token.length > 1 && !stop.has(token)))]
+  if (!meaningful.length) return false
+  const words = haystack.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) || []
+  const positions: number[][] = meaningful.map((token) => {
+    const hits: number[] = []
+    words.forEach((word, index) => {
+      if (word === token) hits.push(index)
+    })
+    return hits
+  })
+  if (positions.some((hits) => hits.length === 0)) return false
+  // All concepts must coexist locally; document-wide token scattering does
+  // not count as satisfying a query's intent.
+  return positions[0].some((start) =>
+    positions.every((hits) => hits.some((position) => Math.abs(position - start) <= 120)),
+  )
+}
+
 function countOccurrences(haystack: string, phrase: string): number {
   const h = haystack.toLowerCase()
   const p = phrase.toLowerCase()
@@ -890,8 +923,8 @@ export function evaluateContentQuality(opts: {
       }
 
       const blank = (s: string) => !s.replace(/[^a-z0-9]/gi, '').trim()
-      const missingShort = shortArr.filter((t) => blank(t) || body.toLowerCase().indexOf(t.toLowerCase()) === -1)
-      const missingLongTail = longArr.filter((t) => blank(t) || body.toLowerCase().indexOf(t.toLowerCase()) === -1)
+      const missingShort = shortArr.filter((t) => blank(t) || !coversKeywordIntent(body, t))
+      const missingLongTail = longArr.filter((t) => blank(t) || !coversKeywordIntent(body, t))
     if (missingShort.length) {
       add({
         code: 'missing_short_keyword',

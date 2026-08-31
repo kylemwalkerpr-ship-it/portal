@@ -341,7 +341,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (data.ok) { parts.push('PASSED') } else { parts.push('BLOCKED') }
       if (data.contentLoop?.rounds?.length) parts.push(`${data.contentLoop.rounds.length} audit/fix round(s)`)
       if (engine.length) { parts.push(`${engine.length} engine gap${engine.length === 1 ? '' : 's'} targeted`) }
-      setNotice(`Audit & Fix complete — ${parts.join(' · ')}`)
+      const outcome = data.shipReady ? 'complete' : data.heldForReview ? 'paused for review' : 'stopped with blockers'
+      setNotice(`Audit & Fix ${outcome} — ${parts.join(' · ')}`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Audit & Fix failed')

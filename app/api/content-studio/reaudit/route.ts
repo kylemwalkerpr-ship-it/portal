@@ -922,7 +922,10 @@ export async function PATCH(request: NextRequest) {
         requiredLongTailKeywords,
         competingUrls: competingPages,
         targetUrl: loopTargetUrl,
-        linkAllowlist: verifiedEstateUrls,
+        // An empty crawl is no evidence that every estate link is invalid.
+        // Omit the allowlist on crawl failure instead of manufacturing an
+        // UNVERIFIED_INTERNAL_LINK warning for every valid relative URL.
+        linkAllowlist: verifiedEstateUrls.length ? verifiedEstateUrls : undefined,
       }
       const evaluate = (c: string): LoopFinding[] => {
         const gate = evaluateReauditContract({ content: c, ...loopCtx })
@@ -999,12 +1002,28 @@ Return ONLY the JSON EditorPatch.`
         { content: loopStartContent, spec: contentSpec, playbookVersion: PLAYBOOK_VERSION },
         { evaluate, deterministicRepair, requestEditorPatch },
       )
-      const finalContract = evaluateReauditContract({ content: loopResult.content, ...loopCtx })
+      // The AI loop can stop on a stalled targeted patch while a final
+      // mechanical normalization is still able to clear TLDR/schema/URL
+      // findings. Converge at the response boundary and evaluate ONLY that
+      // final body; never return a stale pre-normalization gate result.
+      let finalContent = loopResult.content
+      const boundaryRepairs: string[] = []
+      const boundary = applyDeterministicRepairs({ content: finalContent, ...loopCtx })
+      boundaryRepairs.push(...boundary.applied)
+      finalContent = boundary.content
+      const finalContract = evaluateReauditContract({ content: finalContent, ...loopCtx })
+      const finalShipReady = finalContract.blockers === 0 && finalContract.shipReady
+      const allFindingsCleared = finalShipReady && finalContract.warnings === 0
+      const finalLeftoverCodes = [
+        ...(finalContract.blockersData || []).map((finding) => finding.code),
+        ...(finalContract.warningsData || []).map((finding) => finding.code),
+      ]
       const contentLoop = {
         action: 'fix_until_gates',
-        status: loopResult.status,
-        stopReason: loopResult.stopReason,
-        leftoverCodes: loopResult.leftoverCodes,
+        status: allFindingsCleared ? 'cleared' : loopResult.status,
+        stopReason: allFindingsCleared ? 'no_open_findings' : loopResult.stopReason,
+        leftoverCodes: [...new Set(finalLeftoverCodes)],
+        boundaryRepairs: [...new Set(boundaryRepairs)],
         specVersion: loopResult.specVersion,
         playbookVersion: loopResult.playbookVersion,
         budget: CONTENT_LOOP_BUDGET,
@@ -1028,22 +1047,34 @@ Return ONLY the JSON EditorPatch.`
             .from('content_jobs')
             .update({ audit_json: { ...baseAudit, contentSpec, contentLoop } })
             .eq('id', jobId)
+          const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
+          await persistReviewSnapshot({
+            jobId,
+            content: finalContent,
+            source: 'fix',
+            qualityOk: finalContract.ok,
+            shipReady: finalShipReady,
+            blockers: finalContract.blockersData || [],
+            warnings: finalContract.warningsData || [],
+            appliedRepairs: [...new Set(boundaryRepairs)],
+          })
         } catch {
           /* transcript persistence is best-effort */
         }
       }
       const deterministicRepairsApplied = [
         ...new Set(loopResult.rounds.flatMap((r) => r.deterministicRepairs || [])),
+        ...new Set(boundaryRepairs),
       ]
       return NextResponse.json({
         ...finalContract,
-        fixedContent: loopResult.content,
+        fixedContent: finalContent,
         ...(deterministicRepairsApplied.length ? { appliedRepairs: deterministicRepairsApplied } : {}),
-        // A held loop NEVER presents as ship-ready — human_only findings,
-        // exhausted budgets, stalls, and preservation rejections go to a human.
-        shipReady: loopResult.status === 'cleared' ? finalContract.shipReady : false,
+        // Warnings can still permit shipping, but the loop is only labelled
+        // complete when every blocker and warning has actually disappeared.
+        shipReady: finalShipReady,
         contentLoop,
-        heldForReview: loopResult.status !== 'cleared',
+        heldForReview: !allFindingsCleared,
       })
     }
 

@@ -9,7 +9,7 @@
 import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
-import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
+import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
@@ -354,6 +354,11 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
   const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'our', 'your', 'their', 'its', 'my', 'his', 'her', 'no', 'any', 'some', 'each', 'every'])
   const SINGULAR_OPENERS = ['It', 'This', 'That']
   const PLURAL_OPENERS = ['They', 'These', 'Those']
+  // Openers produced by this function are terminal. Treating them as fresh
+  // repeated noun phrases on the next deterministic pass caused prefix piles
+  // such as "In this case, As a result, On review, …" and made the repair
+  // non-idempotent.
+  const GENERATED_OPENING_RE = /^(?:it|this|that|they|these|those)\b|^(?:in practice|for applicants|in this case|as a result|on review|typically|meanwhile|on the ground),/i
   // Conservative tail allowlist: after the repeated noun phrase, the rest must
   // begin with a recognized verb / auxiliary / adverb. Anything else (a noun
   // like "fees" in "The visa fees are…") is SKIPPED — a mangled rewrite is
@@ -433,11 +438,12 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
       if (text.trim()) {
         // List items ARE prose rhythm — TL;DR bullets and FAQ answers repeat
         // openers just like sentences do. Headings stay excluded (structure).
-        const keep = text.trim().length > 20 && !isHeading(text)
+        const candidate = stripListMarker(stripMarkdown(text))
+        const keep = text.trim().length > 20 && !isHeading(text) && !GENERATED_OPENING_RE.test(candidate)
         // Marker-stripped clean: a bullet "- The UK dependent visa …" and a
         // prose sentence "The UK dependent visa …" aggregate under ONE key so
         // a draft that mixes both is caught together.
-        const clean = keep ? stripListMarker(stripMarkdown(text)) : ''
+        const clean = keep ? candidate : ''
         const key = clean ? clean.slice(0, 12).toLowerCase() : ''
         allSpans.push({ partIdx: i, spanIdx, text, clean, key, keep })
         if (keep) freq.set(key, (freq.get(key) || 0) + 1)
@@ -1922,7 +1928,29 @@ export function applyDeterministicRepairs(opts: {
     targetUrl: opts.targetUrl,
   })
   const post = smoothSentenceRhythm(ahrefs.content)
-  const preSanitize = post.replaced > 0 ? post.content : ahrefs.content
+  let preSanitize = post.replaced > 0 ? post.content : ahrefs.content
+
+  // Final href safety net. URL-specific cleanup above repairs known model
+  // corruptions, but arbitrary prose placed in a Markdown destination must
+  // never survive as MALFORMED_LINK. Keep the reader-facing label and unwrap
+  // an unrepairable href; prefix a conventional www.* destination.
+  const beforeHrefSafety = preSanitize
+  preSanitize = preSanitize.replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, (whole, label: string, rawHref: string) => {
+    let href = rawHref.trim()
+    if (/^www\./i.test(href)) href = `https://${href}`
+    if (needsUrlSpanRepair(href)) href = repairMalformedUrlSpan(href)
+    if (isMalformedUrl(href)) return label
+    return `[${label}](${href})`
+  })
+  if (preSanitize !== beforeHrefSafety) applied.push('malformed_markdown_links_unwrapped')
+
+  // Nothing after this point may reshape the required answer block. Running
+  // the exact same normalizer at the final boundary prevents later schema,
+  // URL, rhythm, or word-budget work from reintroducing TLDR_FORMAT_INVALID.
+  const beforeFinalTldr = preSanitize
+  preSanitize = ensureTldrBullets(preSanitize, opts.primaryKeyword || opts.title || 'guide')
+  if (preSanitize !== beforeFinalTldr) applied.push('tldr_finalized')
+
   const sanitized = sanitizeFrontmatter(preSanitize)
   if (sanitized !== preSanitize) applied.push('frontmatter_sanitized')
   return {
