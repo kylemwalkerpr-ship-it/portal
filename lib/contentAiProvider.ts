@@ -112,6 +112,52 @@ const RUNBIOS_GLM_MODEL = 'glm-5.3-flash'
 const RUNBIOS_MAX_TOKENS = 16384
 
 /**
+ * Org tokens-per-minute ceiling. Providers that meter each request as
+ * prompt + max_tokens against a shared org TPM allowance (Run BiOS: 200k)
+ * hard-reject any single request above it — "retrying will not help".
+ * Keep every outgoing request safely under the limit:
+ *   1. clamp max_tokens so estimate + max_tokens fits the budget;
+ *   2. fail fast with a clear error if the prompt alone cannot fit.
+ * Default leaves a safety margin under the 200k org limit for estimate
+ * error; CONTENT_AI_REQUEST_TOKEN_LIMIT overrides for other org tiers.
+ */
+export function requestTokenBudget(): number {
+  const raw = Number.parseInt(process.env.CONTENT_AI_REQUEST_TOKEN_LIMIT || '', 10)
+  return raw > 0 ? raw : 195_000
+}
+
+/** Rough token estimate (chars/4) for a system+user prompt pair. */
+export function estimatePromptTokens(system: string | undefined, prompt: string): number {
+  return Math.ceil(((system || '').length + (prompt || '').length) / 4)
+}
+
+/**
+ * Clamp max_tokens so the estimated request stays under the org TPM budget.
+ * Throws when the prompt alone leaves no room for a minimal completion —
+ * that request can never succeed and must fail fast (not retry).
+ */
+export function clampMaxTokensToBudget(
+  maxTokens: number,
+  system: string | undefined,
+  prompt: string,
+  label?: string,
+): number {
+  const budget = requestTokenBudget()
+  const est = estimatePromptTokens(system, prompt)
+  if (est + maxTokens <= budget) return maxTokens
+  const clamped = budget - est
+  if (clamped < 512) {
+    throw new Error(
+      `${label || 'content AI'} prompt exceeds org token limit (estimated ~${est.toLocaleString()} tokens, budget ${budget.toLocaleString()}) — reduce the prompt size`,
+    )
+  }
+  console.warn(
+    `[contentAi] ${label || 'provider'} max_tokens clamped ${maxTokens} → ${clamped} to stay under the ${budget.toLocaleString()} token request limit (prompt est. ~${est.toLocaleString()})`,
+  )
+  return clamped
+}
+
+/**
  * Pin DeepSeek V4 to the dated checkpoints. Hosts that accept a bare
  * `DeepSeek-V4-Flash` / `deepseek-v4-pro` alias will silently serve the
  * April preview (base) instead of Flash-0731 / Pro-0813.
@@ -625,7 +671,9 @@ async function openAiCompatFetch(
     headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
     headers['X-Title'] = 'YouSafe Content Studio'
   }
-  const maxTokens = resolveMaxTokens(p, opts)
+  // Org TPM guard: prompt + max_tokens must stay under the org token budget
+  // (Run BiOS rejects any single request above its 200k TPM allowance).
+  const maxTokens = clampMaxTokensToBudget(resolveMaxTokens(p, opts), opts.system, userContent, p.label)
   // NVIDIA's MiniMax and Nemotron lanes follow NVIDIA's OpenAI-compatible
   // examples: max_tokens, temperature, top_p, and an explicit stream mode.
   // OpenAI/o-series providers use max_completion_tokens instead.
@@ -1858,7 +1906,9 @@ async function* openAiCompatibleStream(
     headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
     headers['X-Title'] = 'YouSafe Content Studio'
   }
-  const maxTokens = resolveMaxTokens(p, opts)
+  // Org TPM guard: prompt + max_tokens must stay under the org token budget
+  // (Run BiOS rejects any single request above its 200k TPM allowance).
+  const maxTokens = clampMaxTokensToBudget(resolveMaxTokens(p, opts), opts.system, opts.prompt, `${p.label} stream`)
   const isNvidiaNemotron = p.label === 'nvidia-nemotron'
   const isNvidiaMinimax = p.label === 'nvidia-minimax'
   // A real request-level model id wins over the provider default (see
