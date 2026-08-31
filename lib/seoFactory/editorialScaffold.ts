@@ -564,7 +564,18 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
         // List items ARE prose rhythm — TL;DR bullets and FAQ answers repeat
         // openers just like sentences do. Headings stay excluded (structure).
         const candidate = stripListMarker(stripMarkdown(text))
-        const keep = text.trim().length > 20 && !isHeading(text) && !GENERATED_OPENING_RE.test(candidate)
+        // A link-only list item is a REFERENCE, not prose. Prefixing an
+        // adverbial ("In this case, [Guide](url)") corrupts the citation label
+        // and, once delinked, reads as an unreachable guide title.
+        // NB: the sentence splitter breaks on the dots inside a URL, so this
+        // span is often truncated mid-link ("- [Label](https://legal."). Match
+        // on the link OPENING only — requiring a complete `](…)` never fired.
+        const isLinkOnlyItem = /^\s*(?:[-*+]|\d+[.)])\s*(?:\*\*)?\s*(?:\[|<a\b)/i.test(text)
+        const keep =
+          text.trim().length > 20 &&
+          !isHeading(text) &&
+          !isLinkOnlyItem &&
+          !GENERATED_OPENING_RE.test(candidate)
         // Marker-stripped clean: a bullet "- The UK dependent visa …" and a
         // prose sentence "The UK dependent visa …" aggregate under ONE key so
         // a draft that mixes both is caught together.
@@ -1019,7 +1030,20 @@ export function applyDeterministicRepairs(opts: {
   }
 
   const dashCount = (b.match(/[—–]/g) || []).length
+  const stripBeforeDashes = b
   if (dashCount > 0) {
+    // Anchor text is a LABEL, not prose. "[UK Immigration Hub — CaseWorks
+    // Guides](url)" is a proper name; rewriting the dash to a comma corrupted
+    // the verified estate labels and made them look like two separate guides
+    // in the reachability report ("UK Immigration Hub, CaseWorks Guides").
+    // Protect `[...]` spans (and URLs) while the AI-slop cleanup runs.
+    const dashHold: string[] = []
+    const DASH_TOKEN = (i: number) => `\u0000DASH${i}\u0000`
+    b = b.replace(/\[[^\]]*\]\([^)]*\)|<a\b[^>]*>[\s\S]*?<\/a>|https?:\/\/\S+/gi, (span) => {
+      if (!/[—–]/.test(span)) return span
+      dashHold.push(span)
+      return DASH_TOKEN(dashHold.length - 1)
+    })
     b = b
       // Ranges keep their dash: digits, currency and unit ranges
       // ("250-400", "$250-$400", "12-18 months"). The old blanket
@@ -1031,7 +1055,8 @@ export function applyDeterministicRepairs(opts: {
       // Remaining UNSPACED en-dashes are preserved ranges/compounds.
       .replace(/\s+[—–]\s+/g, ', ')
       .replace(/[—]/g, ', ')
-    applied.push('dashes')
+    b = b.replace(/\u0000DASH(\d+)\u0000/g, (_, i) => dashHold[Number(i)] ?? '')
+    if (b !== stripBeforeDashes) applied.push('dashes')
   }
 
   // ── Asterisk normalization ──────────────────────────────────────────
@@ -1764,6 +1789,18 @@ export function applyDeterministicRepairs(opts: {
   // relative markdown link before the audit runs, then inject only the
   // verified gov sources from REGION_SOURCES below.
   const stripBefore = b
+  // VERIFIED-LIVE estate anchors are NOT hallucinations. Stripping them here
+  // is what made `unlinked_related_guide` unclearable: this pass delinked the
+  // very anchors the injector below re-adds, so each Fix All run left two more
+  // plain-text guide titles behind and the blocker grew 2 → 4 → 6 → 8 forever.
+  // Every URL in ESTATE_ANCHOR_LINKS is confirmed HTTP 200, so keep it linked.
+  const verifiedEstateUrls = new Set<string>(
+    Object.values(ESTATE_ANCHOR_LINKS)
+      .flat()
+      .map((anchor) => anchor.url.replace(/\/+$/, '').toLowerCase()),
+  )
+  const isVerifiedEstateUrl = (url: string) =>
+    verifiedEstateUrls.has(String(url || '').trim().replace(/[)\s]+$/, '').replace(/\/+$/, '').toLowerCase())
   // Relative estate links: [label](/us/..., /uk/..., /ca/..., /au/..., etc.)
   b = b.replace(
     /\[([^\]]*)\]\(\/(?:us|uk|ca|au|compare|blog|legal|regional|universities|faq|resources|services|contact|about|terms|privacy)\/[^)]*\)/gi,
@@ -1771,11 +1808,82 @@ export function applyDeterministicRepairs(opts: {
   )
   // Absolute yousafeconsultancy.com links: [label](https://yousafeconsultancy.com/..., https://legal.yousafeconsultancy.com/...)
   b = b.replace(
-    /\[([^\]]*)\]\(https?:\/\/(?:legal\.)?yousafeconsultancy\.com\/[^)]*\)/gi,
-    (_, label) => String(label),
+    /\[([^\]]*)\]\((https?:\/\/(?:legal\.)?yousafeconsultancy\.com\/[^)]*)\)/gi,
+    (whole, label, url) => (isVerifiedEstateUrl(String(url)) ? String(whole) : String(label)),
   )
   if (b !== stripBefore) {
     applied.push('hallucinated_links_stripped')
+  }
+
+  // ── Re-link orphaned verified estate labels ─────────────────────────
+  // Self-heal drafts already corrupted by the two bugs above (delinked and/or
+  // comma-mangled anchor labels sitting as plain-text bullets). Without this,
+  // every article currently in the queue stays permanently blocked, because
+  // the injector below only ever ADDS bullets and never repairs broken ones.
+  {
+    const allAnchors = Object.values(ESTATE_ANCHOR_LINKS).flat()
+    let relinked = 0
+    b = b
+      .split('\n')
+      .map((line) => {
+        const item = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/)
+        if (!item) return line
+        const text = item[2].trim()
+        if (!text || /\[[^\]]+\]\([^)]+\)|<a\b[^>]*href/i.test(text)) return line
+        // Compare on letters only, so "Hub — CaseWorks" and "Hub, CaseWorks"
+        // both match the canonical verified label.
+        const norm = (s: string) => s.replace(/\*\*/g, '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+        // The sentence-rhythm pass may also have prefixed an adverbial onto the
+        // bullet ("In this case, YouSafe Consultancy, Immigration Services").
+        // Strip a leading adverbial so the label still matches its anchor.
+        const bare = text.replace(
+          /^(?:In practice|For applicants|In this case|As a result|On review|Typically|Meanwhile|On the ground)\s*,\s*/i,
+          '',
+        )
+        const key = norm(bare)
+        if (!key) return line
+        const hit = allAnchors.find((anchor) => norm(anchor.label) === key)
+        if (!hit) return line
+        relinked++
+        return `${item[1]}[${hit.label}](${hit.url})`
+      })
+      .join('\n')
+    if (relinked > 0) applied.push(`estate_labels_relinked (${relinked})`)
+  }
+
+  // ── Dedupe repeated bullets inside reference sections ───────────────
+  // The duplicate-H2 pass above only removes whole repeated sections. A single
+  // `## Related guides` that accumulated the SAME link eight times (the old
+  // injector had no label dedupe) still ships a padded, low-quality citation
+  // list. Keep the first occurrence of each identical entry per section.
+  {
+    const REF_SECTION_RE =
+      /^##\s+(related guides?|related reading|related resources|further reading|see also|sources|official sources)\s*$/i
+    let inRef = false
+    let seenItems = new Set<string>()
+    let dropped = 0
+    b = b
+      .split('\n')
+      .filter((line) => {
+        if (/^##\s+/.test(line)) {
+          inRef = REF_SECTION_RE.test(line.trim())
+          seenItems = new Set<string>()
+          return true
+        }
+        if (!inRef) return true
+        const item = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)
+        if (!item || !item[1].trim()) return true
+        const key = item[1].replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+        if (!key) return true
+        if (seenItems.has(key)) {
+          dropped++
+          return false
+        }
+        seenItems.add(key)
+        return true
+      })
+      .join('\n')
+    if (dropped > 0) applied.push(`duplicate_reference_items_removed (${dropped})`)
   }
 
   // ── Internal link injection from verified estate URLs ───────────────
@@ -1789,8 +1897,15 @@ export function applyDeterministicRepairs(opts: {
   if (internalLinkCount < 2) {
     const region = (opts.region || 'US').toUpperCase().slice(0, 2)
     const anchors = ESTATE_ANCHOR_LINKS[region] || ESTATE_ANCHOR_LINKS.US
+    // Dedupe on URL *and* label: a delinked or comma-mangled copy of the label
+    // already in the document must suppress re-injection, otherwise repeated
+    // Fix All runs pile up duplicate bullets (2 → 4 → 6 → 8 orphans).
+    const labelPresent = (label: string) => {
+      const norm = (s: string) => s.replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+      return norm(b).includes(norm(label))
+    }
     const missingLinks = anchors
-      .filter((anchor) => !b.includes(`](${anchor.url})`))
+      .filter((anchor) => !b.includes(`](${anchor.url})`) && !labelPresent(anchor.label))
       .slice(0, 3)
       .map((anchor) => `- [${anchor.label}](${anchor.url})`)
     const relatedHeading = /^##\s+related guides?\s*$/im.exec(b)
