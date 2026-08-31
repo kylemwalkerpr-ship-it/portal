@@ -71,6 +71,30 @@ describe('resolveContentSpecForJob — one spec per job', () => {
     expect(missing.spec).toBeNull()
   })
 
+  it('canonicalizes duplicate legacy outline sections before validation', () => {
+    const result = resolveContentSpecForJob({
+      ...ARGS,
+      outline: ['In 60 seconds', 'Related guides', ' related   guides ', 'FAQ', 'FAQ'],
+    })
+    expect(result.spec).toBeTruthy()
+    expect(result.spec?.requiredSections).toEqual(['In 60 seconds', 'Related guides', 'FAQ'])
+    expect(result.spec?.outline.map((entry) => entry.heading)).toEqual(['In 60 seconds', 'Related guides', 'FAQ'])
+    expect(validateContentSpec(result.spec)).toEqual([])
+  })
+
+  it('deduplicates keyword phrases crossing legacy short and long-tail arrays', () => {
+    const result = resolveContentSpecForJob({
+      ...ARGS,
+      requiredShortKeywords: ['Skilled worker visa', ' skilled   worker visa '],
+      requiredLongTailKeywords: ['SKILLED WORKER VISA', 'how to apply for a skilled worker visa'],
+    })
+    expect(result.spec?.requiredKeywords.map((keyword) => keyword.phrase)).toEqual([
+      'Skilled worker visa',
+      'how to apply for a skilled worker visa',
+    ])
+    expect(validateContentSpec(result.spec)).toEqual([])
+  })
+
   it('keeps spec snapshot identity: serialize → parse → revive round-trips byte-for-byte', () => {
     const { spec } = resolveContentSpecForJob(ARGS)
     if (!spec) throw new Error('spec must resolve')

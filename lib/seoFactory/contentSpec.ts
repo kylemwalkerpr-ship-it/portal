@@ -568,10 +568,30 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
   } catch {
     return { spec: null, reason: `canonicalUrl is not a URL: "${args.canonicalUrl}"` }
   }
+  const seenKeywords = new Set<string>()
   const requiredKeywords: ContentSpecKeyword[] = [
     ...(args.requiredShortKeywords || []).map((phrase) => ({ phrase, kind: 'short' as const })),
     ...(args.requiredLongTailKeywords || []).map((phrase) => ({ phrase, kind: 'long_tail' as const })),
-  ]
+  ].map((keyword) => ({ ...keyword, phrase: String(keyword.phrase || '').trim().replace(/\s+/g, ' ') }))
+    .filter((keyword) => {
+      const key = keyword.phrase.toLowerCase()
+      if (!key || seenKeywords.has(key)) return false
+      seenKeywords.add(key)
+      return true
+    })
+  // Planner/model output and legacy drafts may repeat an H2. The ContentSpec
+  // describes the intended structure, so preserve the first occurrence and
+  // let the deterministic editor merge/remove later duplicate sections. A
+  // damaged draft must never deadlock before that repair can run.
+  const seenSections = new Set<string>()
+  const canonicalOutline = (args.outline || [])
+    .map((heading) => String(heading || '').trim().replace(/\s+/g, ' '))
+    .filter((heading) => {
+      const key = heading.toLowerCase()
+      if (!key || seenSections.has(key)) return false
+      seenSections.add(key)
+      return true
+    })
   const now = new Date().toISOString()
   const approvedSources: ContentSpecApprovedSource[] = (args.verifiedSourceUrls || []).map((url) => ({
     url,
@@ -610,8 +630,8 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
             },
           }
         : {}),
-      outline: (args.outline || []).map((heading) => ({ heading, level: 2 as const, purpose: 'planner outline' })),
-      requiredSections: args.outline || [],
+      outline: canonicalOutline.map((heading) => ({ heading, level: 2 as const, purpose: 'planner outline' })),
+      requiredSections: canonicalOutline,
       // Estate links only ever enter a spec with explicit link-audit
       // verification evidence; planning-time radar interlinks carry none, so
       // the spec starts empty here (Milestone B limitation).

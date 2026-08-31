@@ -896,10 +896,13 @@ export async function PATCH(request: NextRequest) {
           } catch { /* recovery persists best-effort */ }
         }
         if (!contentSpec) {
+          const metadataError = !recoveredTargetUrl
+            ? `Audit & Fix could not resolve this job's target URL. Set the job's target URL, or re-run Discover for this topic.`
+            : `Audit & Fix could not build this job's canonical content specification (${derivedReason}). The draft was not changed.`
           return NextResponse.json(
             {
               error: recoveredKeyword
-                ? `Audit & Fix could not resolve this job's target URL (spec not built: ${derivedReason}). Set the job's target URL, or re-run Discover for this topic.`
+                ? metadataError
                 : 'Audit & Fix could not recover this job\'s primary topic. Add a primary keyword to the job; target URL and content type are recovered automatically.',
               heldForReview: true,
             },
