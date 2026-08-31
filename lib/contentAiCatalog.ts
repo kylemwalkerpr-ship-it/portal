@@ -49,6 +49,7 @@ export type StudioHostId =
   | 'parasail'
   | 'nvidia'
   | 'deepseek'
+  | 'entrim'
   | 'zai'
   | 'aihubmix'
   | 'xai'
@@ -75,6 +76,10 @@ export interface StudioModelOption {
 
 export const DEEPSEEK_V4_FLASH_ID = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+/** Entrim-hosted DeepSeek V4 Flash — the catalog model id is the EXACT
+ *  upstream id Entrim serves (no -0731 suffix); never canonicalize it. */
+export const ENTRIM_DEEPSEEK_FLASH_PIN = 'entrim-deepseek'
+export const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 
 /** Draft lead: MiniMax M3 via NVIDIA Integrate — drafting default pin. */
 export const DEFAULT_DRAFT_PIN = 'nvidia-minimax'
@@ -90,10 +95,10 @@ export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
  * full host set. `auto` stays a command-only host.
  */
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
-  draft: ['runbios', 'nvidia'],
+  draft: ['runbios', 'nvidia', 'entrim'],
   brief: ['runbios', 'baseten', 'xai'],
   review: ['runbios', 'xai'],
-  command: ['runbios', 'parasail', 'baseten', 'nvidia', 'deepseek', 'zai', 'aihubmix', 'xai', 'openai', 'cloudflare', 'groq', 'google', 'openrouter', 'auto'],
+  command: ['runbios', 'parasail', 'baseten', 'nvidia', 'deepseek', 'entrim', 'zai', 'aihubmix', 'xai', 'openai', 'cloudflare', 'groq', 'google', 'openrouter', 'auto'],
 }
 
 /** Host picker order — skip a host when that model is not served there. */
@@ -103,6 +108,7 @@ export const STUDIO_HOST_ORDER: StudioHostId[] = [
   'baseten',
   'nvidia',
   'deepseek',
+  'entrim',
   'zai',
   'aihubmix',
   'xai',
@@ -206,6 +212,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
       { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek' },
       { id: 'baseten', label: 'Baseten', pin: 'baseten-deepseek' },
       { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-deepseek' },
+      { id: 'entrim', label: 'Entrim', pin: ENTRIM_DEEPSEEK_FLASH_PIN },
       { id: 'deepseek', label: 'DeepSeek', pin: 'deepseek-flash' },
     ],
   },
@@ -346,6 +353,11 @@ const PIN_ALIASES: Record<string, string> = {
   'parasail-glm-52': 'parasail-glm',
   'parasail-glm-5.2': 'parasail-glm',
   'nvidia/glm-5.2-nvfp4': 'parasail-glm',
+  entrim: ENTRIM_DEEPSEEK_FLASH_PIN,
+  [ENTRIM_DEEPSEEK_FLASH_PIN]: ENTRIM_DEEPSEEK_FLASH_PIN,
+  'entrim-deepseek-v4-flash': ENTRIM_DEEPSEEK_FLASH_PIN,
+  'entrim-deepseek-v4-flash-0731': ENTRIM_DEEPSEEK_FLASH_PIN,
+  'entrim-deepseek-v4-pro': 'entrim-deepseek',
   'zai-glm': 'zai-glm',
   'zai': 'zai-glm',
   grok: 'grok',

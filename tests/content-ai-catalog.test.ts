@@ -12,20 +12,22 @@ import {
 } from '@/lib/contentAiCatalog'
 
 describe('content AI catalog — model × host', () => {
-  it('lists Flash hosts in Run BiOS → Parasail → Baseten → NVIDIA → DeepSeek order (no lane filter)', () => {
+  it('lists Flash hosts in Run BiOS → Parasail → Baseten → NVIDIA → DeepSeek → Entrim order (no lane filter)', () => {
     expect(hostsForModel('deepseek-v4-flash').map((h) => h.id)).toEqual([
       'runbios',
       'parasail',
       'baseten',
       'nvidia',
       'deepseek',
+      'entrim',
     ])
   })
 
-  it('draft lane only exposes Run BiOS + NVIDIA hosts', () => {
+  it('draft lane exposes Run BiOS + NVIDIA + Entrim hosts (DeepSeek V4 Flash)', () => {
     expect(hostsForModel('deepseek-v4-flash', 'draft').map((h) => h.id)).toEqual([
       'runbios',
       'nvidia',
+      'entrim',
     ])
     expect(hostsForModel('glm-5.3-flash', 'draft').map((h) => h.id)).toEqual(['runbios'])
   })
@@ -89,6 +91,11 @@ describe('content AI catalog — model × host', () => {
     expect(pinFor('deepseek-v4-flash', 'parasail')).toBe('parasail-deepseek')
     expect(pinFor('deepseek-v4-flash', 'baseten')).toBe('baseten-deepseek')
     expect(pinFor('deepseek-v4-flash', 'deepseek')).toBe('deepseek-flash')
+    expect(pinFor('deepseek-v4-flash', 'entrim')).toBe('entrim-deepseek')
+    expect(parseStudioPin('entrim-deepseek')).toMatchObject({
+      model: { id: 'deepseek-v4-flash' },
+      host: { id: 'entrim' },
+    })
     expect(pinFor('glm-5.2', 'parasail')).toBe('parasail-glm')
     expect(pinFor('glm-5.2', 'zai')).toBe('zai-glm')
     expect(pinFor('glm-5.2-fast', 'aihubmix')).toBe('aihubmix-glm-fast')

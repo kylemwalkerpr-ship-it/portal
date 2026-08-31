@@ -98,6 +98,9 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
     'deepseek-ai/DeepSeek-V4-Pro-0813',
     'deepseek-ai/DeepSeek-V4-Pro',
   ],
+  entrim: [
+    'deepseek-ai/DeepSeek-V4-Flash',
+  ],
   'zai-glm': [
     'glm-5.2',
     'glm-5.2-fast',
@@ -390,6 +393,18 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'Official DeepSeek.com — Flash-0731 / Pro-0813 via the DeepSeek host on each model',
     modelOptions: HOST_MODEL_OPTIONS.deepseek,
   },
+  {
+    id: 'entrim-deepseek',
+    label: 'DeepSeek V4 Flash · Entrim (api.entrim.ai/v1)',
+    keyEnv: 'ENTRIM_API_KEY',
+    baseUrlEnv: 'ENTRIM_BASE_URL',
+    modelEnv: 'ENTRIM_MODEL',
+    fixedBaseUrl: 'https://api.entrim.ai/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash',
+    role: 'fallback',
+    hint: 'Entrim-hosted DeepSeek V4 Flash — selectable in Draft and Command Center. Paste ENTRIM_API_KEY; base URL fixed to api.entrim.ai/v1',
+    modelOptions: HOST_MODEL_OPTIONS.entrim,
+  },
 ]
 
 export const providerDef = (id: string): AiProviderDef | undefined =>
@@ -402,6 +417,7 @@ export const DEFAULT_PROVIDER_ORDER = [
   'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
+  'entrim-deepseek',
 ] as const
 
 export interface VaultKeyRow {

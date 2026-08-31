@@ -62,6 +62,7 @@ import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
+import { resolveShipRefusalBanner, shipActionsEnabled, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
 import { StudioStageNav } from './studio-stage-nav'
@@ -140,6 +141,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'nvidia-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'deepseek-flash': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
+  'entrim-deepseek': 'deepseek-ai/DeepSeek-V4-Flash',
   'zai-glm': 'glm-5.2',
   'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   groq: 'llama-3.3-70b-versatile',
@@ -3656,8 +3658,18 @@ function JobDetail({
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
-  const [editorShipReady, setEditorShipReady] = React.useState<boolean | null>(false)
-  React.useEffect(() => { setEditorShipReady(false) }, [job.id])
+  // Canonical ship-gate snapshot from the LATEST audit/fix response. `null`
+  // means UNKNOWN — the current content version has not been audited (or was
+  // edited after the last audit), so the banner must never claim a pass and
+  // Approve must stay disabled. The green stale-refusal banner is driven by
+  // this state now, never by `audit.score` (score is not ship readiness).
+  const [editorShipGate, setEditorShipGate] = React.useState<ShipGate>(null)
+  React.useEffect(() => {
+    // Reset stale audit/ship state when the selected job changes so one job's
+    // result can never bleed into another job's banner or buttons.
+    setEditorShipGate(null)
+    setAudit(null)
+  }, [job.id])
 
   const loadDetail = React.useCallback(async (opts: { body?: boolean } = {}) => {
     const gen = ++loadGenRef.current
@@ -3896,9 +3908,14 @@ function JobDetail({
     : detail.ai_provider || '—'
   const gateScore = gateFor?.score
   const gatePassed = gateFor?.passed
+  // One canonical source of truth for the ship-refusal banner, blocker panel,
+  // and Approve/Ship-PR enablement — the latest audit's shipGate snapshot.
+  const shipRefused = Boolean(detail.error_message) && /ship refused/i.test(detail.error_message)
+  const shipRefusalBanner = resolveShipRefusalBanner({ refused: shipRefused, gate: editorShipGate })
+  const shipReady = shipActionsEnabled(editorShipGate)
 
-  const actionBtn = (label: string, opts: { bg?: string; fg?: string; border?: string; disabled?: boolean; onClick: () => void; title?: string }) => (
-    <button type="button" disabled={opts.disabled} onClick={opts.onClick} title={opts.title} style={{
+  const actionBtn = (label: string, opts: { bg?: string; fg?: string; border?: string; disabled?: boolean; onClick: () => void; title?: string; testId?: string }) => (
+    <button type="button" disabled={opts.disabled} onClick={opts.onClick} title={opts.title} data-testid={opts.testId} style={{
       padding: '8px 12px', borderRadius: C.radiusXs, cursor: opts.disabled ? 'not-allowed' : 'pointer',
       fontSize: 11, fontWeight: 700, fontFamily: 'inherit', opacity: opts.disabled ? 0.5 : 1,
       background: opts.bg || C.surface, color: opts.fg || C.text,
@@ -3968,9 +3985,21 @@ function JobDetail({
 
         </div>
 
-        {detail.error_message && /ship refused/i.test(detail.error_message) && Number((audit as { score?: number } | null)?.score) === 100 ? (
-          <div style={{ background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: '#166534', marginBottom: 10 }}>
-            Previous ship refusal is stale — the current draft passes the quality gate. Click <strong>Approve → main</strong> to ship this version.
+        {shipRefusalBanner === 'cleared' ? (
+          <div data-testid="studio-stale-refusal-clear" style={{ background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: '#166534', marginBottom: 10 }}>
+            Previous ship refusal is stale — this version passed the full audit with zero blockers. Click <strong>Approve → main</strong> to ship it.
+          </div>
+        ) : shipRefusalBanner === 'active' ? (
+          <div data-testid="studio-refusal-active" style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Ship refusal is active — this draft still has blockers. Approve stays disabled.</div>
+            <div style={{ fontFamily: C.mono, whiteSpace: 'pre-wrap', opacity: 0.9 }}>{detail.error_message}</div>
+            <div style={{ marginTop: 4 }}>Resolve the blockers in Content editor (Audit &amp; Fix), then Approve becomes available.</div>
+          </div>
+        ) : shipRefusalBanner === 'unknown' ? (
+          <div data-testid="studio-refusal-unknown" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: '#92400E', marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Ship gate status unknown — run <strong>Audit &amp; Fix</strong> (Re-audit) to verify this draft before approving.</div>
+            <div style={{ fontFamily: C.mono, whiteSpace: 'pre-wrap', opacity: 0.9 }}>{detail.error_message}</div>
+            <div style={{ marginTop: 4 }}>Approve stays disabled until an audit confirms the current content version passes with zero blockers.</div>
           </div>
         ) : detail.error_message ? (
           <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>
@@ -4018,7 +4047,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipReady} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
@@ -4040,8 +4069,8 @@ function JobDetail({
         </div>
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>🚀 Delivering to the sites</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 6 }}>
-          {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal || editorShipReady !== true, onClick: () => void runAction('reship'), title: editorShipReady !== true ? 'Re-audit until the ship gate is ready, then ship a PR' : 'Open / update the pull request without merging' })}
-          {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal || editorShipReady !== true, onClick: () => void runAction('approve'), title: editorShipReady !== true ? 'Re-audit and clear blockers before Approve → main' : 'Approve content and trigger deployment to main' })}
+          {actionBtn('📦 Ship PR only', { testId: 'studio-ship-pr', bg: C.cyan, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal || !shipReady, onClick: () => void runAction('reship'), title: !shipReady ? 'Re-audit until the ship gate is ready, then ship a PR' : 'Open / update the pull request without merging' })}
+          {actionBtn('✅ Approve → main', { testId: 'studio-approve-main', bg: C.green, fg: '#FFF', disabled: busy || !editorContent.trim() || terminal || !shipReady, onClick: () => void runAction('approve'), title: !shipReady ? 'Re-audit and clear blockers before Approve → main' : 'Approve content and trigger deployment to main' })}
           {detail.pr_number && !terminal && actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { border: C.green, fg: C.green, bg: '#F0FDF4', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}
           {actionBtn('🩺 Monitor deploy', { disabled: busy, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
           {actionBtn('⧉ Duplicate', { disabled: busy, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}

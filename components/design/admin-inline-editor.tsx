@@ -3,6 +3,9 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { shipGateFromResponse, type ShipGate, type ShipGateSnapshot } from '@/lib/seoFactory/currentGate'
+
+export type { ShipGateSnapshot }
 
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -56,6 +59,12 @@ export type DraftVersion = {
   createdAt: string; wordCount: number; diffSummary?: string
 }
 
+/** Canonical ship-gate snapshot reported upward to the job modal.
+ *  `null` = unknown (no audit has confirmed THIS content version yet).
+ *  `shipReady` is derived from the latest audit response's own
+ *  `shipReady === true` AND `blockers === 0` — never from the score alone.
+ *  (Type re-exported from lib/seoFactory/currentGate.) */
+
 type Props = {
   content: string; jobId: string; onChange: (v: string) => void
   disabled?: boolean; onScoreChange?: (s: number | null) => void
@@ -85,7 +94,10 @@ type Props = {
   competingUrls?: Array<{ url?: string; title?: string; primaryKeyword?: string | null } | string>
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
-  onShipReadyChange?: (ready: boolean | null) => void
+  /** Canonical ship-gate snapshot from the latest audit/fix response. `null`
+   *  (the initial state and any state after an unchecked content change) means
+   *  "unknown" — the owning modal must NOT claim the draft passes. */
+  onShipReadyChange?: (gate: ShipGateSnapshot) => void
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -117,8 +129,25 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [fixElapsed, setFixElapsed] = useState(0)
   const [fixingWarnings, setFixingWarnings] = useState(false)
   const [expandingDepth, setExpandingDepth] = useState(false)
-  const [shipReady, setShipReady] = useState<boolean | null>(null)
-  useEffect(() => { onShipReadyChange?.(shipReady) }, [shipReady, onShipReadyChange])
+  const [shipGate, setShipGate] = React.useState<ShipGate>(null)
+  useEffect(() => { onShipReadyChange?.(shipGate) }, [shipGate, onShipReadyChange])
+  // Content version the latest audit/fix response actually evaluated. When the
+  // editor content diverges from it the gate is stale and must be reset to
+  // "unknown" so one audited version's pass can never bleed onto an edited one
+  // or onto a different job.
+  const auditedContentRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (content !== auditedContentRef.current) {
+      setShipGate(null)
+      setAuditResult(null)
+      setAnnotations([])
+      setBlockerItems([])
+      setWarningItems([])
+      setDepthGate(null)
+      setDepthMediation(null)
+      setEnginePlan(null)
+    }
+  }, [content])
   const [depthGate, setDepthGate] = useState<{ ok: boolean; message: string } | null>(null)
   // Depth-mediation plan — how far below the goal (floor OR word-count target)
   // the draft is, so the ship-gate strip can show "1813/2200 words" or
@@ -247,6 +276,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
   const editorHasNoBody = countBodyWords(content) < 40
 
+  // Record the canonical ship-gate snapshot from an audit/fix response and
+  // mark the exact content version it evaluated. `shipReady` is ONLY true when
+  // the response itself reported shipReady AND zero blockers — the human score
+  // alone never implies readiness.
+  const applyShipGate = useCallback((data: { shipReady?: unknown; blockers?: number }, auditedContent: string) => {
+    auditedContentRef.current = auditedContent
+    setShipGate(shipGateFromResponse(data))
+  }, [])
+
   // Fetch the latest draft from Supabase — always audit the most recent
   // version, not a stale in-pane buffer.
   const fetchLatestDraft = useCallback(async (): Promise<string> => {
@@ -301,7 +339,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setShowAnnotations(true)
-      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      applyShipGate(data, data.fixedContent || latestContent)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       setEnginePlan(null) // a fresh audit supersedes the last fix plan
@@ -365,7 +403,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAnnotations(data.annotations || [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
-      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      applyShipGate(data, data.fixedContent || contentToFix)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
@@ -471,7 +509,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
-      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      applyShipGate(data, data.fixedContent || content)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
@@ -532,7 +570,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
-      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      applyShipGate(data, data.fixedContent || content)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       // The warnings sweep also receives the engine's top gaps — surface the
@@ -592,7 +630,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
-      setShipReady(typeof data.shipReady === 'boolean' ? data.shipReady : null)
+      applyShipGate(data, data.fixedContent || content)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       setShowAnnotations(true)
@@ -658,6 +696,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   }, [onChange])
 
   const sc = auditResult ? scoreColor(auditResult.score) : C.textMuted
+  // Ship-readiness boolean for the strip / buttons — derived from the gate
+  // snapshot; `null` (unknown) renders as blocked with an "audit first" state.
+  const shipReady = shipGate?.shipReady ?? null
   // Merged warning list from the server (quality + audit); fall back to the
   // annotation-derived list for older responses.
   const warningsData = React.useMemo(() => {

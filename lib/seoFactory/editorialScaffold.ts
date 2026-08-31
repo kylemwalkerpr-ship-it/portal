@@ -10,6 +10,7 @@ import { DISCLAIMER_RE } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
+import { relinkPlainTextRelatedGuides, resolveVerifiedEstateAnchors, type VerifiedRelatedGuideAnchor } from './relatedGuideLinks'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
@@ -831,6 +832,15 @@ export function applyDeterministicRepairs(opts: {
    *  this — an over-long draft must land INSIDE [min, max], not undercut
    *  the floor while chasing the ceiling. */
   minWords?: number
+  /** Verified live estate anchors (label + URL) captured by the re-audit flow.
+   *  Used by the related-guide relink so plain-text labels are only re-linked
+   *  to a URL the flow already verified. When absent the documented
+   *  ESTATE_ANCHOR_LINKS set (every entry confirmed HTTP 200) is used. */
+  verifiedEstateAnchors?: VerifiedRelatedGuideAnchor[]
+  /** Live estate URL set captured by the re-audit flow — anchors whose URL is
+   *  not in this set are dropped from the relink so labels never point at an
+   *  unverified destination. */
+  verifiedEstateUrls?: Set<string> | string[]
 }): { content: string; applied: string[] } {
   const applied: string[] = []
   // Normalize editor/AI mangling FIRST (fences, chatter, embedded frontmatter,
@@ -1816,39 +1826,26 @@ export function applyDeterministicRepairs(opts: {
   }
 
   // ── Re-link orphaned verified estate labels ─────────────────────────
-  // Self-heal drafts already corrupted by the two bugs above (delinked and/or
+  // Self-heal drafts already corrupted by the bugs above (delinked and/or
   // comma-mangled anchor labels sitting as plain-text bullets). Without this,
   // every article currently in the queue stays permanently blocked, because
   // the injector below only ever ADDS bullets and never repairs broken ones.
   {
-    const allAnchors = Object.values(ESTATE_ANCHOR_LINKS).flat()
-    let relinked = 0
-    b = b
-      .split('\n')
-      .map((line) => {
-        const item = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/)
-        if (!item) return line
-        const text = item[2].trim()
-        if (!text || /\[[^\]]+\]\([^)]+\)|<a\b[^>]*href/i.test(text)) return line
-        // Compare on letters only, so "Hub — CaseWorks" and "Hub, CaseWorks"
-        // both match the canonical verified label.
-        const norm = (s: string) => s.replace(/\*\*/g, '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
-        // The sentence-rhythm pass may also have prefixed an adverbial onto the
-        // bullet ("In this case, YouSafe Consultancy, Immigration Services").
-        // Strip a leading adverbial so the label still matches its anchor.
-        const bare = text.replace(
-          /^(?:In practice|For applicants|In this case|As a result|On review|Typically|Meanwhile|On the ground)\s*,\s*/i,
-          '',
-        )
-        const key = norm(bare)
-        if (!key) return line
-        const hit = allAnchors.find((anchor) => norm(anchor.label) === key)
-        if (!hit) return line
-        relinked++
-        return `${item[1]}[${hit.label}](${hit.url})`
-      })
-      .join('\n')
-    if (relinked > 0) applied.push(`estate_labels_relinked (${relinked})`)
+    // Reuse the verified live estate set the re-audit flow already fetched.
+    // When the flow did not supply one, resolveVerifiedEstateAnchors falls
+    // back to the documented static anchors (every entry confirmed HTTP 200).
+    const verifiedAnchors =
+      opts.verifiedEstateAnchors && opts.verifiedEstateAnchors.length > 0
+        ? opts.verifiedEstateAnchors
+        : resolveVerifiedEstateAnchors(opts.verifiedEstateUrls)
+    const relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors)
+    if (relinked.relinked > 0) {
+      b = relinked.content
+      applied.push(`estate_labels_relinked (${relinked.relinked})`)
+    }
+    // Ambiguous / unmatched plain-text labels stay blockers — never invent a
+    // destination. (unmatched/ambiguous counts are intentionally unreported
+    // per-run: a bounded guide list legitimately names non-estate sources.)
   }
 
   // ── Dedupe repeated bullets inside reference sections ───────────────

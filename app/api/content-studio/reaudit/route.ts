@@ -35,6 +35,10 @@ type RepairCtx = {
   targetUrl?: string
   maxWords?: number
   minWords?: number
+  /** Verified live estate anchors (label + URL) derived from the live sitemap
+   *  set — the deterministic related-guide relink only ever re-links a
+   *  plain-text label to a URL in this set. */
+  verifiedEstateAnchors?: Array<{ label: string; url: string }>
 }
 
 /**
@@ -937,6 +941,12 @@ export async function PATCH(request: NextRequest) {
       try {
         verifiedEstateUrls = Array.from(await fetchLiveEstateUrls())
       } catch { /* live verification remains best-effort */ }
+      // Verified anchors for the deterministic related-guide relink: filter
+      // the documented anchors down to URLs the live sitemap set proves.
+      // resolveVerifiedEstateAnchors falls back to the documented-verified
+      // static set when the live fetch yielded nothing usable.
+      const { resolveVerifiedEstateAnchors } = await import('@/lib/seoFactory/relatedGuideLinks')
+      const verifiedEstateAnchors = resolveVerifiedEstateAnchors(verifiedEstateUrls.length ? verifiedEstateUrls : undefined)
       const loopCtx = {
         primaryKeyword: loopKeyword || 'guide',
         region,
@@ -948,6 +958,7 @@ export async function PATCH(request: NextRequest) {
         longTailKeywordTerms,
         competingUrls: competingPages,
         targetUrl: loopTargetUrl,
+        verifiedEstateAnchors,
         // Links were already checked live by sanitizeDraftLinksLive. A sitemap
         // is an incomplete discovery aid, not proof that a working estate URL
         // is invalid, so do not reclassify live links through an allowlist.

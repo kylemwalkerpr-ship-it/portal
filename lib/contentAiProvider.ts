@@ -107,6 +107,14 @@ const AIHUBMIX_MAX_TOKENS = 16384
 const PARASAIL_BASE_URL = 'https://api.parasail.io/v1'
 const PARASAIL_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
 const PARASAIL_DEEPSEEK_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+/** Entrim OpenAI-compatible endpoint (api.entrim.ai/v1). Serves FIRST-PARTY
+ *  DeepSeek V4 Flash as `deepseek-ai/DeepSeek-V4-Flash` — the EXACT upstream
+ *  id, no -0731 suffix. That string must be sent verbatim; never canonicalize
+ *  it down to the Baseten/Parasail checkpoint forms. */
+export const ENTRIM_DEEPSEEK_LABEL = 'entrim-deepseek'
+const ENTRIM_BASE_URL = 'https://api.entrim.ai/v1'
+const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
+const ENTRIM_MAX_TOKENS = 16384
 const RUNBIOS_BASE_URL = RUNBIOS_CATALOG_BASE
 const RUNBIOS_GLM_MODEL = 'glm-5.3-flash'
 const RUNBIOS_MAX_TOKENS = 16384
@@ -1509,6 +1517,29 @@ export function getDeepseekOfficialProProvider(): OpenAiCompat | null {
   )
 }
 
+/** Entrim DeepSeek V4 Flash — first-party flash served at api.entrim.ai/v1.
+ *  The model id `deepseek-ai/DeepSeek-V4-Flash` is sent VERBATIM: Entrim does
+ *  not use the -0731 checkpoint suffix, and canonicalizing it would 404. */
+export function resolveEntrimApiKey(): string {
+  return env('ENTRIM_API_KEY')
+}
+
+export function isEntrimConfigured(): boolean {
+  return Boolean(resolveEntrimApiKey())
+}
+
+export function getEntrimProvider(): OpenAiCompat | null {
+  const apiKey = resolveEntrimApiKey()
+  if (!apiKey) return null
+  return {
+    label: ENTRIM_DEEPSEEK_LABEL,
+    baseURL: validBaseUrl(env('ENTRIM_BASE_URL'), ENTRIM_BASE_URL),
+    apiKey,
+    model: env('ENTRIM_MODEL') || ENTRIM_DEEPSEEK_MODEL,
+    maxTokensCap: ENTRIM_MAX_TOKENS,
+  }
+}
+
 export function resolveZaiApiKey(): string {
   return env('ZAI_API_KEY') || env('ZHIPU_API_KEY') || env('Z_AI_API_KEY')
 }
@@ -2328,6 +2359,13 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
       model: canonicalizeDeepseekModelId(env('DEEPSEEK_MODEL') || DEEPSEEK_OFFICIAL_FLASH_MODEL, 'flash'),
     })
   }
+  // Entrim — first-party DeepSeek V4 Flash. Only pushed when ENTRIM_API_KEY is
+  // present, so an explicit `entrim-deepseek` pin with no key fails closed at
+  // the early-fail gate instead of silently executing another host.
+  if (isEntrimConfigured()) {
+    const entrim = getEntrimProvider()
+    if (entrim) out.push(entrim)
+  }
 
   return out
 }
@@ -2435,6 +2473,12 @@ export function listConfiguredContentProviders(): Array<{
       id: 'zai-glm',
       label: 'GLM 5.2 via Zai',
       configured: isZaiConfigured(),
+      role: 'fallback',
+    },
+    {
+      id: ENTRIM_DEEPSEEK_LABEL,
+      label: 'DeepSeek V4 Flash · Entrim (api.entrim.ai/v1)',
+      configured: isEntrimConfigured(),
       role: 'fallback',
     },
     {
@@ -2592,6 +2636,7 @@ function preferProvider(): string {
     'aihubmix', 'aihubmix-glm', 'aihubmix-glm-fast', // AIHubmix GLM 5.2 Fast
     'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm',
     'deepseek-flash', 'deepseek-pro', 'zai-glm',
+    'entrim', 'entrim-deepseek',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
@@ -2666,6 +2711,8 @@ function configuredProviderOrder(): string[] {
     'deepseek-v4-pro': 'parasail-deepseek-pro',
     'baseten-deepseek-pro': 'baseten-deepseek-pro',
     'deepseek-pro': 'deepseek-pro', 'deepseek-flash': 'deepseek-flash',
+    entrim: 'entrim-deepseek', 'entrim-deepseek': 'entrim-deepseek',
+    'entrim-deepseek-v4-flash': 'entrim-deepseek', 'entrim-deepseek-v4-flash-0731': 'entrim-deepseek',
     'parasail-glm-52': 'parasail-glm', 'parasail-glm-5.2': 'parasail-glm',
     'nvidia/glm-5.2-nvfp4': 'parasail-glm',
     zai: 'zai-glm', zhipu: 'zai-glm',
@@ -2678,7 +2725,7 @@ function configuredProviderOrder(): string[] {
     'nvidia-minimax', 'nvidia-nemotron',    'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
     'baseten-glm-fast', 'baseten-glm-53-flash', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
     'parasail-glm', 'nvidia-deepseek', 'deepseek-flash', 'deepseek-pro', 'zai-glm',
-    'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+    'entrim-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   ])
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
@@ -2782,6 +2829,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushZaiGlm = () => {
     if (isZaiConfigured()) {
       items.push({ label: 'zai-glm', run: () => zaiGlmComplete(opts) })
+    }
+  }
+  const pushEntrim = () => {
+    if (isEntrimConfigured()) {
+      items.push({ label: ENTRIM_DEEPSEEK_LABEL, run: () => openAiCompatibleComplete(getEntrimProvider()!, opts) })
     }
   }
   const pushNvidia = () => {
@@ -2904,6 +2956,13 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (prefer === ENTRIM_DEEPSEEK_LABEL) {
+    // Entrim is an explicit pin: lead with it. With no ENTRIM_API_KEY the
+    // early-fail gate throws before this branch is ever reached, so an
+    // explicit Entrim selection never silently executes another host.
+    pushEntrim()
+    pushNvidia()
+    pushCf()
   } else if (prefer === 'nvidia-minimax') {
     pushMinimax()
     pushNemotron()
@@ -2959,6 +3018,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   pushDeepseekFlash()
   pushDeepseekPro()
   pushZaiGlm()
+  pushEntrim()
   pushGrok()
   pushOpenAi()
   pushNvidia()
@@ -3139,6 +3199,10 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     'baseten-deepseek-pro': 'baseten-deepseek-pro',
     'deepseek-pro': 'deepseek-pro',
     'deepseek-flash': 'deepseek-flash',
+    entrim: ENTRIM_DEEPSEEK_LABEL,
+    [ENTRIM_DEEPSEEK_LABEL]: ENTRIM_DEEPSEEK_LABEL,
+    'entrim-deepseek-v4-flash': ENTRIM_DEEPSEEK_LABEL,
+    'entrim-deepseek-v4-flash-0731': ENTRIM_DEEPSEEK_LABEL,
     zai: 'zai-glm',
     'zai-glm': 'zai-glm',
     zhipu: 'zai-glm',
@@ -3466,6 +3530,22 @@ export async function* generateContentTextStream(
     })
   }
 
+  // Entrim DeepSeek V4 Flash — first-class streaming provider (OpenAI-compat
+  // SSE), same role as the zai-glm lane. Only present when ENTRIM_API_KEY is
+  // configured, so an explicit pin without a key fails closed upstream.
+  const entrim = getEntrimProvider()
+  if (entrim) {
+    candidates.push({
+      label: ENTRIM_DEEPSEEK_LABEL,
+      stream: () =>
+        openAiCompatibleStream(entrim, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
+        }),
+      complete: () => openAiCompatibleComplete(entrim, opts),
+    })
+  }
+
   // Baseten DeepSeek V4 Flash is a first-class streaming provider.
   const baseten = getBasetenProvider()
   if (baseten) {
@@ -3628,7 +3708,8 @@ export async function* generateContentTextStream(
     prefer === 'parasail-glm' ||
     prefer === 'deepseek-flash' ||
     prefer === 'deepseek-pro' ||
-    prefer === 'zai-glm'
+    prefer === 'zai-glm' ||
+    prefer === ENTRIM_DEEPSEEK_LABEL
   ) {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
