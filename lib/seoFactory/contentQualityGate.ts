@@ -261,10 +261,14 @@ function coversKeywordIntent(haystack: string, phrase: string): boolean {
     'with', 'from', 'how', 'what', 'is', 'it', 'do', 'does', 'you', 'your',
     'need', 'possible', 'apply',
   ])
-  const tokens = phrase.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) || []
+  const tokens: string[] = Array.from(
+    phrase.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? [],
+  )
   const meaningful = [...new Set(tokens.filter((token) => token.length > 1 && !stop.has(token)))]
   if (!meaningful.length) return false
-  const words = haystack.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) || []
+  const words: string[] = Array.from(
+    haystack.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? [],
+  )
   const positions: number[][] = meaningful.map((token) => {
     const hits: number[] = []
     words.forEach((word, index) => {
