@@ -20,6 +20,41 @@ describe('normalizeEditorDocument — editor formatting contract', () => {
 })
 
 describe('ensureEditorialScaffold', () => {
+  it('merges verified links into the surviving Related guides section without recreating a duplicate H2', () => {
+    const draft = [
+      '# DIY Green Card Application vs Attorney',
+      '',
+      '## Related guides',
+      '',
+      'An existing editorial introduction.',
+      '',
+      '## Eligibility',
+      '',
+      'Eligibility depends on the selected immigration category.',
+      '',
+      '## Related guides',
+      '',
+      'A duplicated section created by an earlier editor pass.',
+    ].join('\n')
+    const repaired = applyDeterministicRepairs({
+      content: draft,
+      primaryKeyword: 'diy green card application vs attorney',
+      region: 'US',
+      indexable: false,
+      contentType: 'article',
+    })
+    expect(repaired.content.match(/^##\s+related guides?\s*$/gim)).toHaveLength(1)
+    expect(repaired.applied).toContain('duplicate_h2_sections_removed (1)')
+    expect(repaired.applied).toContain('internal_links_merged')
+    const audit = auditContent({
+      content: repaired.content,
+      contentType: 'article',
+      primaryKeyword: 'diy green card application vs attorney',
+      indexable: false,
+    })
+    expect(audit.warnings.find((warning) => warning.code === 'duplicate_h2')).toBeUndefined()
+  })
+
   it('adds FM, disclaimer, and AU official sources so audit can pass depth+quality', () => {
     const body = [
       '# 485 English requirements',

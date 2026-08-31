@@ -8,6 +8,7 @@ import {
   assertNoRouteSubtypeConflict,
   extractExistingPageSubject,
   geoScopeConflict,
+  pathGeoScopeConflict,
   pathSlugConflict,
   routeSubtypeConflict,
   slugSubjectFromFilePath,
@@ -249,6 +250,24 @@ describe('geoScopeConflict', () => {
   })
 })
 
+describe('pathGeoScopeConflict (subject vs target slug, including new files)', () => {
+  it('refuses the exact approval incident: generic housing letter on the University of Missouri slug', () => {
+    const conflict = pathGeoScopeConflict(
+      'international student housing deposit dispute letter template',
+      'app/guide/university-of-missouri-student-housing/page.tsx',
+    )
+    expect(conflict.conflict).toBe(true)
+    expect(conflict.existing).toContain('missouri')
+  })
+
+  it('allows a Missouri-specific subject on the Missouri slug', () => {
+    expect(pathGeoScopeConflict(
+      'University of Missouri student housing guide',
+      'app/guide/university-of-missouri-student-housing/page.tsx',
+    ).conflict).toBe(false)
+  })
+})
+
 describe('extractExistingPageSubject', () => {
   it('reads primaryKeyword from a caseworks page.tsx', () => {
     expect(
@@ -369,5 +388,18 @@ describe('assertNoRouteSubtypeConflict', () => {
         primaryKeyword: 'texas student visas',
       }),
     ).rejects.toThrow(/geo-scope conflict/i)
+  })
+
+  it('checks the reader-facing title as well as the primary keyword before writing main', async () => {
+    mockedGet.mockResolvedValue(undefined)
+    await expect(
+      assertNoRouteSubtypeConflict({
+        owner: 'kylemwalkerpr-ship-it',
+        repo: 'caseworks',
+        filePath: 'app/guide/university-of-missouri-student-housing/page.tsx',
+        primaryKeyword: 'university of missouri student housing',
+        title: 'International Student Housing Deposit Dispute Letter Template',
+      }),
+    ).rejects.toThrow(/path geo-scope conflict/i)
   })
 })

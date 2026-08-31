@@ -1635,20 +1635,32 @@ export function applyDeterministicRepairs(opts: {
   if (internalLinkCount < 2) {
     const region = (opts.region || 'US').toUpperCase().slice(0, 2)
     const anchors = ESTATE_ANCHOR_LINKS[region] || ESTATE_ANCHOR_LINKS.US
-    const links = [
-      '',
-      '## Related guides',
-      '',
-      ...anchors.slice(0, 3).map((s) => `- [${s.label}](${s.url})`),
-      '',
-    ].join('\n')
-    const disIdx = b.lastIndexOf('---\n\n**Disclaimer')
-    if (disIdx > -1) {
-      b = b.slice(0, disIdx) + links + '\n' + b.slice(disIdx)
-    } else {
-      b = b.trimEnd() + '\n' + links
+    const missingLinks = anchors
+      .filter((anchor) => !b.includes(`](${anchor.url})`))
+      .slice(0, 3)
+      .map((anchor) => `- [${anchor.label}](${anchor.url})`)
+    const relatedHeading = /^##\s+related guides?\s*$/im.exec(b)
+    if (relatedHeading) {
+      // The earlier H2 deduper deliberately keeps the first section. Add the
+      // verified links to that canonical section instead of appending another
+      // `## Related guides` later in this same repair pass.
+      if (missingLinks.length) {
+        const sectionBodyStart = relatedHeading.index + relatedHeading[0].length
+        const nextH2Offset = b.slice(sectionBodyStart).search(/\n##\s+/)
+        const insertAt = nextH2Offset >= 0 ? sectionBodyStart + nextH2Offset : b.length
+        b = `${b.slice(0, insertAt).trimEnd()}\n\n${missingLinks.join('\n')}\n\n${b.slice(insertAt).trimStart()}`.trim()
+        applied.push('internal_links_merged')
+      }
+    } else if (missingLinks.length) {
+      const links = ['', '## Related guides', '', ...missingLinks, ''].join('\n')
+      const disIdx = b.lastIndexOf('---\n\n**Disclaimer')
+      if (disIdx > -1) {
+        b = b.slice(0, disIdx) + links + '\n' + b.slice(disIdx)
+      } else {
+        b = b.trimEnd() + '\n' + links
+      }
+      applied.push('internal_links')
     }
-    applied.push('internal_links')
   }
 
   {

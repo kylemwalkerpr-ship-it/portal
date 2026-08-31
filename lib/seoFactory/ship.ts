@@ -609,6 +609,7 @@ export async function shipContent(opts: {
     repo,
     filePath,
     primaryKeyword: opts.primaryKeyword,
+    title: opts.title,
     branch: branchMain,
   })
 

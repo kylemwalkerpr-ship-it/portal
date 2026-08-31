@@ -83,6 +83,30 @@ export function pathSlugConflict(
 }
 
 /**
+ * Subject vs TARGET PATH geo scope. Unlike geoScopeConflict this also runs for
+ * a brand-new file, so a generic draft cannot be committed to a university or
+ * city slug before there is existing page content to compare against.
+ */
+export function pathGeoScopeConflict(
+  articleSubject: string,
+  filePath: string,
+): GeoScopeConflict {
+  const specific = (subject: string) =>
+    extractGeoModifiers(subject).filter((token) => token !== 'university')
+  const article = specific(articleSubject)
+  const slug = specific(slugSubjectFromFilePath(filePath))
+  // A generic slug may intentionally host a geo-specific page whose existing
+  // metadata is checked below. The dangerous new-file case is the reverse: a
+  // slug explicitly names a place while the incoming subject is generic.
+  if (!slug.length) return { conflict: false }
+  if (!article.length) return { conflict: true, article, existing: slug }
+  if (!article.some((token) => slug.includes(token))) {
+    return { conflict: true, article, existing: slug }
+  }
+  return { conflict: false }
+}
+
+/**
  * Pull the "subject" (primary keyword / title) out of an existing shipped file
  * so we can compare its route subtype against the incoming article.
  */
@@ -147,17 +171,31 @@ export async function assertNoRouteSubtypeConflict(opts: {
   repo: string
   filePath: string
   primaryKeyword: string
+  /** Reader-facing title must independently agree with the route. */
+  title?: string
   branch?: string
 }): Promise<void> {
   const branch = opts.branch ?? 'main'
-  const slug = pathSlugConflict(opts.primaryKeyword, opts.filePath)
-  if (slug.conflict) {
-    throw new Error(
-      `Ship refused — path/slug conflict: "${opts.primaryKeyword}" resolves to ${opts.filePath}, ` +
-        `but that slug names route [${(slug.existing || []).join(', ')}] which the keyword never mentions` +
-        (slug.article?.length ? ` (keyword routes: [${slug.article.join(', ')}])` : '') +
-        `. This would create a subject-mismatch page. Re-plan the keyword/slug before shipping.`,
-    )
+  const subjects = [...new Set([opts.primaryKeyword, opts.title].map((value) => String(value || '').trim()).filter(Boolean))]
+  for (const subject of subjects) {
+    const slug = pathSlugConflict(subject, opts.filePath)
+    if (slug.conflict) {
+      throw new Error(
+        `Ship refused — path/slug conflict: "${subject}" resolves to ${opts.filePath}, ` +
+          `but that slug names route [${(slug.existing || []).join(', ')}] which the subject never mentions` +
+          (slug.article?.length ? ` (subject routes: [${slug.article.join(', ')}])` : '') +
+          `. This would create a subject-mismatch page. Re-plan the keyword/slug before shipping.`,
+      )
+    }
+    const pathGeo = pathGeoScopeConflict(subject, opts.filePath)
+    if (pathGeo.conflict) {
+      throw new Error(
+        `Ship refused — path geo-scope conflict: "${subject}" resolves to ${opts.filePath}, ` +
+          `but subject scope [${(pathGeo.article || []).join(', ') || 'generic'}] does not match ` +
+          `slug scope [${(pathGeo.existing || []).join(', ') || 'generic'}]. ` +
+          `This is the same mismatch the target repository build rejects. Re-plan before shipping.`,
+      )
+    }
   }
 
   const existing = await getRepoFileContent(opts.owner, opts.repo, opts.filePath, branch)
@@ -166,18 +204,19 @@ export async function assertNoRouteSubtypeConflict(opts: {
   const subject = extractExistingPageSubject(existing, opts.filePath)
   if (!subject) return // can't determine existing subject — do not block
 
-  const c = routeSubtypeConflict(opts.primaryKeyword, subject)
-  if (c.conflict) {
+  for (const incomingSubject of subjects) {
+    const c = routeSubtypeConflict(incomingSubject, subject)
+    if (c.conflict) {
     throw new Error(
-      `Ship refused — route-subtype conflict: "${opts.primaryKeyword}" resolves to ${opts.filePath}, ` +
+      `Ship refused — route-subtype conflict: "${incomingSubject}" resolves to ${opts.filePath}, ` +
         `but that path already hosts "${subject}" (route subtypes [${(c.article || []).join(', ')}] vs ` +
         `[${(c.existing || []).join(', ')}]). This would overwrite unrelated content. ` +
         `Re-plan the keyword/slug or merge the two pages intentionally before shipping.`,
     )
-  }
+    }
 
-  const g = geoScopeConflict(opts.primaryKeyword, subject)
-  if (g.conflict) {
+    const g = geoScopeConflict(incomingSubject, subject)
+    if (g.conflict) {
     const a = (g.article || []).join(', ')
     const b = (g.existing || []).join(', ')
     const why = a && b
@@ -186,9 +225,10 @@ export async function assertNoRouteSubtypeConflict(opts: {
         ? `the article is ${a}-specific but the existing page is a generic route/hub page`
         : `the existing page is ${b}-specific but the article is generic`
     throw new Error(
-      `Ship refused — geo-scope conflict: "${opts.primaryKeyword}" resolves to ${opts.filePath}, ` +
+      `Ship refused — geo-scope conflict: "${incomingSubject}" resolves to ${opts.filePath}, ` +
         `but that path already hosts "${subject}" (${why}). A city/university-specific article must ` +
         `never overwrite a generic hub and vice versa. Re-plan the keyword/slug or merge intentionally.`,
     )
+    }
   }
 }
