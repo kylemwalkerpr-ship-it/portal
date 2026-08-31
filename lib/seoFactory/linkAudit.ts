@@ -1272,6 +1272,13 @@ export function repairUnverifiedInternalLinks(
   content: string,
   liveUrls: Set<string>,
 ): { content: string; rewritten: number; unwrapped: number } {
+  // Empty live set means the sitemap fetch failed (fetchEstateSitemap swallows
+  // the error and returns an empty set). Unwrapping against an empty set would
+  // strip EVERY estate link — leaving plain-text guide titles that the ship
+  // gate then rejects (unlinked_related_guide). Leave links untouched instead.
+  if (!liveUrls || liveUrls.size === 0) {
+    return { content, rewritten: 0, unwrapped: 0 }
+  }
   let next = content
   let rewritten = 0
   let unwrapped = 0
