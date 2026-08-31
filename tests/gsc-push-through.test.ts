@@ -138,7 +138,10 @@ describe('loadFactoryOpportunities — injected live GSC rows (no network)', () 
 
     const { source, opportunities } = await loadFactoryOpportunities(10)
 
-    expect(source).toBe('live')
+    // 1 eligible live row is below SNAPSHOT_MERGE_MIN_VIABLE (5), so the
+    // committed snapshot supplements the pool and source flips to 'snapshot'.
+    // The junk row is still dropped and the live Bristol row still wins dedupe.
+    expect(source).toBe('snapshot')
     const terms = opportunities.map((o) => o.term)
     expect(terms).not.toContain(PDF_JUNK.toLowerCase())
     const bristol = opportunities.find((o) => o.term.includes('bristol'))

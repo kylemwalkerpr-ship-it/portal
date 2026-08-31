@@ -520,3 +520,37 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     coverageStats: { total: coverage.length, covered, gaps: top.length - covered },
   }
 }
+
+/**
+ * Snapshot-merge threshold: when live GSC yields fewer viable (post-junk)
+ * queries than this, the committed snapshot supplements the pool. Live rows
+ * always win; snapshot rows only fill the gap, deduped by normalized term.
+ *
+ * Why: the estate's live GSC is dominated by accidental university-PDF junk
+ * (0–2 rows survive isJunkQuery on a typical day). The old fallback only ran
+ * when live produced EXACTLY zero rows — so 1–2 junk-adjacent survivors
+ * suppressed the clean snapshot entirely and Discover returned 0 plays.
+ */
+export const SNAPSHOT_MERGE_MIN_VIABLE = 5
+
+/**
+ * Merge snapshot rows into a thin live query set (deduped by term). When live
+ * already carries `minViable`+ queries the snapshot is skipped — stale data
+ * must never displace fresh signal. Terms are normalized (trim + lowercase)
+ * before comparison; live entries are kept as-is.
+ */
+export function mergeSnapshotIntoQueries(
+  live: OpportunityQuery[],
+  snapshot: OpportunityQuery[],
+  minViable: number = SNAPSHOT_MERGE_MIN_VIABLE,
+): OpportunityQuery[] {
+  if (live.length >= minViable) return live
+  const liveTerms = new Set(
+    live.map((q) => (q.term || '').trim().toLowerCase()).filter(Boolean),
+  )
+  const additions = snapshot.filter((q) => {
+    const t = (q.term || '').trim().toLowerCase()
+    return t.length >= 3 && !liveTerms.has(t)
+  })
+  return [...live, ...additions]
+}

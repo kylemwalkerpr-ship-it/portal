@@ -16,6 +16,8 @@ import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { createClient } from '@supabase/supabase-js'
 import {
   scoreOpportunities,
+  mergeSnapshotIntoQueries,
+  SNAPSHOT_MERGE_MIN_VIABLE,
   type OpportunityQuery,
   type CoverageItem,
   type InterlinkOption,
@@ -276,9 +278,11 @@ export async function buildSeoWarRoom(opts?: {
     }
   }
   let snapshotMeta: { generatedAt?: string; source?: string } | null = null
-  if (queries.length === 0) {
+  // Live GSC on this estate is junk-dominated (0–2 rows survive isNoiseQuery
+  // on a typical day). Merging the snapshot when live is thin keeps Discover
+  // fed — the old `=== 0` gate let 1–2 junk-adjacent survivors starve it.
+  if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
     const snap = await loadGscSnapshot()
-    snapshotMeta = { generatedAt: snap.generatedAt, source: snap.source }
     const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
       term: q.term || q.url || '',
       impressions: q.impressions,
@@ -286,11 +290,17 @@ export async function buildSeoWarRoom(opts?: {
       ctr: q.ctr,
       position: q.position,
     })
-    queries.push(
-      ...(snap.topQueries ?? []).map(shape),
-      ...((snap.opportunities?.highImpressionLowCtr as Array<any> | undefined) ?? []).map(shape),
-      ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []).map(shape),
-    )
+    const snapshotRows = [
+      ...(snap.topQueries ?? []),
+      ...((snap.opportunities?.highImpressionLowCtr as Array<any> | undefined) ?? []),
+      ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []),
+    ].map(shape)
+    const merged = mergeSnapshotIntoQueries(queries, snapshotRows)
+    if (merged.length > queries.length) {
+      snapshotMeta = { generatedAt: snap.generatedAt, source: snap.source }
+      queries.length = 0
+      queries.push(...merged)
+    }
   }
   // Deduplicate + filter
   const seen = new Set<string>()

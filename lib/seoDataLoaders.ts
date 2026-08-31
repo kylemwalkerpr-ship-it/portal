@@ -192,8 +192,17 @@ export async function loadGscSnapshot(): Promise<GscSnapshot> {
   if (!snapshotInflight) {
     snapshotInflight = (async () => {
       const data = await fetchJson<GscSnapshot>('/seo-data/snapshot.json')
-      snapshotCache = data ?? EMPTY_SNAPSHOT
-      return snapshotCache
+      // A missing read must not poison the isolate forever: cache empties
+      // briefly (bounded by TTL) so a later request can still load the file.
+      if (data) {
+        snapshotCache = data
+      } else {
+        setTimeout(() => {
+          snapshotCache = null
+          snapshotInflight = null
+        }, 60_000).unref?.()
+      }
+      return snapshotCache ?? EMPTY_SNAPSHOT
     })()
   }
   return snapshotInflight

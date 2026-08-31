@@ -4,7 +4,7 @@
 
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
-import { scoreOpportunities, type OpportunityQuery } from '@/lib/seoFactory/opportunityEngine'
+import { scoreOpportunities, mergeSnapshotIntoQueries, SNAPSHOT_MERGE_MIN_VIABLE, type OpportunityQuery } from '@/lib/seoFactory/opportunityEngine'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { scoreCrucible } from '@/lib/seoEngine/crucible'
 import { bestCellForTerm } from '@/lib/seoEngine/planner'
@@ -118,7 +118,10 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
     } catch { /* fall through to snapshot */ }
   }
 
-  if (queries.length === 0) {
+  // Merge committed snapshot rows when live is thin. Live GSC on this estate
+  // is junk-dominated (0–2 rows survive isJunkQuery on a typical day), so an
+  // `=== 0` gate starved Discover whenever 1–2 junk-adjacent rows survived.
+  if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
     const snap = await loadGscSnapshot()
     const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
       term: q.term || q.url || '',
@@ -127,11 +130,17 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
       ctr: q.ctr,
       position: q.position,
     })
-    queries.push(
-      ...(snap.topQueries ?? []).map(shape),
-      ...((snap.opportunities?.highImpressionLowCtr as Array<any> | undefined) ?? []).map(shape),
-      ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []).map(shape),
-    )
+    const snapshotRows = [
+      ...(snap.topQueries ?? []),
+      ...((snap.opportunities?.highImpressionLowCtr as Array<any> | undefined) ?? []),
+      ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []),
+    ].map(shape)
+    const merged = mergeSnapshotIntoQueries(queries, snapshotRows)
+    if (merged.length > queries.length) {
+      if (merged.length >= SNAPSHOT_MERGE_MIN_VIABLE) source = 'snapshot'
+      queries.length = 0
+      queries.push(...merged)
+    }
   }
 
   // Deduplicate — single noise filter (queryNoise.isJunkQuery). A weaker local
