@@ -226,6 +226,71 @@ describe('content quality gate — keyword coverage', () => {
     expect(r.blockers.find((b) => b.code === 'missing_short_keyword')).toBeFalsy()
   })
 
+  it('warns instead of blocking when synthesized backfill terms are uncovered', () => {
+    const body = makeCompliantBody(
+      ['diy green card', 'green card cost', 'attorney fees', 'filing options', 'application risk'],
+      [
+        'diy green card application vs attorney',
+        'green card application cost comparison',
+        'when to hire immigration attorney',
+        'green card filing risk comparison',
+      ],
+    )
+    const requiredShort = [
+      'diy green requirements', 'green card guide', 'immigration attorney guide',
+      'application risk checklist', 'filing options guide',
+    ]
+    const requiredLong = [
+      'requirements for a diy green card application vs attorney',
+      'diy green card application vs attorney for international students',
+      'diy green card application vs attorney in 2026 explained',
+      'diy green card application vs attorney checklist and timeline',
+    ]
+    // These terms are template backfill from the partitioner, not real GSC
+    // demand, so an uncovered term must not refuse the ship.
+    const result = evaluateContentQuality({
+      content: body,
+      primaryKeyword: 'diy green card application vs attorney',
+      indexable: true,
+      requiredShortKeywords: requiredShort,
+      requiredLongTailKeywords: requiredLong,
+      shortKeywordTerms: requiredShort.map((term) => ({ term, source: 'synthesized' as const })),
+      longTailKeywordTerms: requiredLong.map((term) => ({ term, source: 'synthesized' as const })),
+    })
+    expect(result.blockers.find((b) => b.code === 'missing_short_keyword')).toBeFalsy()
+    expect(result.blockers.find((b) => b.code === 'missing_long_tail_keyword')).toBeFalsy()
+    // Still surfaced, just as advisory warnings.
+    expect(result.warnings.find((b) => b.code === 'missing_synthesized_short_keyword')).toBeTruthy()
+    expect(result.warnings.find((b) => b.code === 'missing_synthesized_long_tail_keyword')).toBeTruthy()
+  })
+
+  it('still blocks when a real demand keyword is uncovered', () => {
+    const body = makeCompliantBody(
+      ['diy green card', 'green card cost', 'attorney fees', 'filing options', 'application risk'],
+      [
+        'diy green card application vs attorney',
+        'green card application cost comparison',
+        'when to hire immigration attorney',
+        'green card filing risk comparison',
+      ],
+    )
+    const result = evaluateContentQuality({
+      content: body,
+      primaryKeyword: 'diy green card application vs attorney',
+      indexable: true,
+      requiredShortKeywords: ['diy green card', 'h1b transfer denial'],
+      requiredLongTailKeywords: ['diy green card application vs attorney'],
+      // Real GSC demand — omitting it means the draft is off-topic.
+      shortKeywordTerms: [
+        { term: 'diy green card', source: 'demand' as const },
+        { term: 'h1b transfer denial', source: 'demand' as const },
+      ],
+    })
+    const blocker = result.blockers.find((b) => b.code === 'missing_short_keyword')
+    expect(blocker).toBeTruthy()
+    expect(blocker?.evidence).toContain('h1b transfer denial')
+  })
+
   // 2026-08-12 regression: the primary keyword used to land in the required
   // long-tail array (≥4 words → long-tail bucket) with a 2-hit cap. Natural
   // title + H1 + intro usage blew the cap and blocked every valid article

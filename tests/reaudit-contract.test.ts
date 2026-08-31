@@ -16,7 +16,7 @@
 import { evaluateReauditContract, checkDepthGate, capAnnotations, depthMediationPlan, leftoverAnnotationCodes } from '@/lib/seoFactory/reauditContract'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import type { InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
-import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, targetThresholdForType } from '@/lib/seoFactory/contentDepth'
 
 function ann(code: string, n = 1): InlineAnnotation[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -509,14 +509,23 @@ describe('depthMediationPlan (the mechanism that clears the depth floor)', () =>
     const plan = depthMediationPlan(cropped, 'legal_guide', 'us visa renewal', 'US')
     expect(plan.floorMet).toBe(true)      // floor clears
     expect(plan.ok).toBe(false)           // …but the plan says there is depth to add
-    expect(plan.goalWords).toBe(2500)     // goal is the target, not the floor
+    expect(plan.goalWords).toBe(targetThresholdForType('legal_guide'))
     expect(plan.deficit).toBeGreaterThan(0)
     expect(plan.deficit).toBeLessThan(2500 - 2200)
     expect(plan.prompt).toBeTruthy()
     // Prompt demands enough words to clear the TARGET, and lists it.
-    expect(plan.prompt).toContain('2500')
+    expect(plan.prompt).toContain(String(targetThresholdForType('legal_guide')))
     expect(plan.message).toContain('under target')
     expect(plan.message).toContain('Append-only expansion')
+  })
+
+  it('does not manufacture filler work for a four-word counter difference', () => {
+    const nearTarget = Array.from({ length: 2496 }, () => 'word').join(' ')
+    const plan = depthMediationPlan(nearTarget, 'legal_guide', 'us visa renewal')
+    expect(countBodyWords(nearTarget)).toBe(2496)
+    expect(plan.ok).toBe(true)
+    expect(plan.deficit).toBe(0)
+    expect(plan.prompt).toBeUndefined()
   })
 
   it('returns ok=true with no prompt when the draft already meets the floor', () => {

@@ -107,6 +107,17 @@ export function targetWordsForType(contentType: string): number {
   return depthSpecForType(contentType).targetWords
 }
 
+/**
+ * Operational target threshold. A word processor's count can differ by a few
+ * words from markdown tokenisation, so do not create filler work for the final
+ * one percent. The canonical target remains unchanged for prompts and UI.
+ */
+export function targetThresholdForType(contentType: string): number {
+  const spec = depthSpecForType(contentType)
+  const tolerance = Math.max(20, Math.round(spec.targetWords * 0.01))
+  return Math.max(spec.minWords, spec.targetWords - tolerance)
+}
+
 /** Hard maximum body words. Content exceeding this triggers a warning and may be trimmed. */
 export function maxWordsForType(contentType: string): number {
   return depthSpecForType(contentType).maxWords
@@ -311,7 +322,7 @@ export function checkContentDepth(opts: {
     errors.push(
       `Below Google-depth floor: ${wordCount} body words (min ${spec.minWords}, target ${spec.targetWords} for ${spec.label}). Unattended factory ships must fully satisfy search intent.`,
     )
-  } else if (wordCount < spec.targetWords) {
+  } else if (wordCount < targetThresholdForType(opts.contentType)) {
     warnings.push(
       `Acceptable but short of target: ${wordCount} words (target ${spec.targetWords} for ${spec.label}).`,
     )

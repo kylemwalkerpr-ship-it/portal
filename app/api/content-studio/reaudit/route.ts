@@ -925,10 +925,9 @@ export async function PATCH(request: NextRequest) {
         requiredLongTailKeywords,
         competingUrls: competingPages,
         targetUrl: loopTargetUrl,
-        // An empty crawl is no evidence that every estate link is invalid.
-        // Omit the allowlist on crawl failure instead of manufacturing an
-        // UNVERIFIED_INTERNAL_LINK warning for every valid relative URL.
-        linkAllowlist: verifiedEstateUrls.length ? verifiedEstateUrls : undefined,
+        // Links were already checked live by sanitizeDraftLinksLive. A sitemap
+        // is an incomplete discovery aid, not proof that a working estate URL
+        // is invalid, so do not reclassify live links through an allowlist.
       }
       const evaluate = (c: string): LoopFinding[] => {
         const gate = evaluateReauditContract({ content: c, ...loopCtx })

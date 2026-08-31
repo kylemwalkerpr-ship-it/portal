@@ -142,11 +142,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const pendingJumpRef = useRef<InlineAnnotation | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autosaveAbortRef = useRef<AbortController | null>(null)
   const fixAbortRef = useRef<AbortController | null>(null)
   const fixSeqRef = useRef(0)
 
   // Abort any in-flight AI fix when the editor unmounts.
-  useEffect(() => () => { fixAbortRef.current?.abort() }, [])
+  useEffect(() => () => {
+    fixAbortRef.current?.abort()
+    autosaveAbortRef.current?.abort()
+  }, [])
 
   // Restore the latest persisted review body so a re-audit never rewinds to
   // the first generated draft after a Worker restart.
@@ -178,17 +182,25 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     if (!dirty) return
     if (!content || countBodyWords(content) < 10) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    autosaveAbortRef.current?.abort()
     saveTimerRef.current = setTimeout(async () => {
+      saveTimerRef.current = null
+      const controller = new AbortController()
+      autosaveAbortRef.current = controller
       try {
         const res = await fetch('/api/content-studio/drafts', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({ jobId, content, source: 'autosave' }),
         })
         if (!res.ok) return
         setLastSaved(new Date().toLocaleTimeString())
         setDirty(false)
       } catch { /* silent */ }
+      finally {
+        if (autosaveAbortRef.current === controller) autosaveAbortRef.current = null
+      }
     }, 2000)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [content, dirty, jobId])
@@ -216,6 +228,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // re-audit/refresh reading the pre-fix draft and make a real repair appear
   // to have done nothing (the editor then shows "Unsaved changes").
   const persistFixedContent = useCallback(async (fixedContent: string) => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    autosaveAbortRef.current?.abort()
+    autosaveAbortRef.current = null
+    setDirty(false)
     const res = await fetch('/api/content-studio/drafts', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -247,6 +266,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const handleReaudit = useCallback(async () => {
     setBusy(true); setError(null); setNotice(null)
     try {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      autosaveAbortRef.current?.abort()
+      autosaveAbortRef.current = null
       // Always audit the most recent draft from the database
       const latestContent = await fetchLatestDraft()
       if (countBodyWords(latestContent) < 40) {
@@ -309,6 +334,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     const startedAt = Date.now()
     const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
     try {
+      // A queued autosave contains the pre-repair snapshot. Cancel it before
+      // reading/fixing so it cannot arrive later and overwrite the repair.
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      autosaveAbortRef.current?.abort()
+      autosaveAbortRef.current = null
+      setDirty(false)
       // Always fix the latest draft from Supabase
       const latestContent = await fetchLatestDraft()
       const contentToFix = countBodyWords(latestContent) >= 40 ? latestContent : content

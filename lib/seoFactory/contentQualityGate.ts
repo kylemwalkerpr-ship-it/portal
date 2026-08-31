@@ -13,6 +13,7 @@
  */
 
 import { BANNED_AI_TELLS, VOICE_PLAYBOOK } from '@/lib/seoVoice'
+import { resolveTermSources, type KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { auditLinksSync } from './linkAudit'
 import { evaluateAhrefsDraft } from './ahrefsIssues'
 
@@ -401,6 +402,15 @@ export function evaluateContentQuality(opts: {
   requiredShortKeywords?: string[]
   /** Required long-tail keywords (≥4 words). The brief supplies at least 4. */
   requiredLongTailKeywords?: string[]
+  /**
+   * Per-term provenance from `resolveKeywordContract`. Terms marked
+   * `synthesized` were fabricated by the partitioner's template backfill to
+   * satisfy the count floors — they carry no search-demand evidence, so an
+   * uncovered synthesized term is a WARNING, never a ship blocker. Omit these
+   * and every term is treated as real demand (strict, pre-provenance behavior).
+   */
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   minShortKeywords?: number
   minLongTailKeywords?: number
   /** Verified internal URLs from the brief — internal links outside this set are flagged. */
@@ -927,24 +937,59 @@ export function evaluateContentQuality(opts: {
       }
 
       const blank = (s: string) => !s.replace(/[^a-z0-9]/gi, '').trim()
-      const missingShort = shortArr.filter((t) => blank(t) || !coversKeywordIntent(body, t))
-      const missingLongTail = longArr.filter((t) => blank(t) || !coversKeywordIntent(body, t))
-    if (missingShort.length) {
+      // Split uncovered terms by provenance: a real demand query the draft never
+      // answers means the draft is off-topic (blocker). A synthesized term only
+      // existed to satisfy the count floor, so omitting it is advisory (warning).
+      const uncovered = (arr: string[], provenance?: KeywordTerm[]) => {
+        const missing = resolveTermSources(
+          arr.filter((t) => blank(t) || !coversKeywordIntent(body, t)),
+          provenance,
+        )
+        return {
+          demand: missing.filter((m) => m.source === 'demand').map((m) => m.term),
+          synthesized: missing.filter((m) => m.source === 'synthesized').map((m) => m.term),
+        }
+      }
+      const missingShort = uncovered(shortArr, opts.shortKeywordTerms)
+      const missingLongTail = uncovered(longArr, opts.longTailKeywordTerms)
+      const SHORT_FIX = 'Use each short keyword at least once in context, naturally — title, first H2, In 60 seconds, or as a checklist item.'
+      const LONG_FIX = 'Use each long-tail keyword at least once, naturally — in FAQ, a heading, an answer block, or a step description. Do not force-fit; if no clean slot exists, mark it for review.'
+      const preview = (terms: string[]) => terms.slice(0, 6).map((t) => `"${t}"`).join(', ')
+
+    if (missingShort.demand.length) {
       add({
         code: 'missing_short_keyword',
         severity: 'blocker',
-        message: `Required short keyword(s) absent: ${missingShort.slice(0, 6).map((t) => `"${t}"`).join(', ')}`,
-        fix: 'Use each short keyword at least once in context, naturally — title, first H2, In 60 seconds, or as a checklist item.',
-        evidence: missingShort.slice(0, 8).join(' | '),
+        message: `Required short keyword(s) absent: ${preview(missingShort.demand)}`,
+        fix: SHORT_FIX,
+        evidence: missingShort.demand.slice(0, 8).join(' | '),
       })
     }
-    if (missingLongTail.length) {
+    if (missingShort.synthesized.length) {
+      add({
+        code: 'missing_synthesized_short_keyword',
+        severity: 'warning',
+        message: `Synthesized short keyword(s) absent (no search-demand evidence, not a ship blocker): ${preview(missingShort.synthesized)}`,
+        fix: SHORT_FIX,
+        evidence: missingShort.synthesized.slice(0, 8).join(' | '),
+      })
+    }
+    if (missingLongTail.demand.length) {
       add({
         code: 'missing_long_tail_keyword',
         severity: 'blocker',
-        message: `Required long-tail keyword(s) absent: ${missingLongTail.slice(0, 6).map((t) => `"${t}"`).join(', ')}`,
-        fix: 'Use each long-tail keyword at least once, naturally — in FAQ, a heading, an answer block, or a step description. Do not force-fit; if no clean slot exists, mark it for review.',
-        evidence: missingLongTail.slice(0, 8).join(' | '),
+        message: `Required long-tail keyword(s) absent: ${preview(missingLongTail.demand)}`,
+        fix: LONG_FIX,
+        evidence: missingLongTail.demand.slice(0, 8).join(' | '),
+      })
+    }
+    if (missingLongTail.synthesized.length) {
+      add({
+        code: 'missing_synthesized_long_tail_keyword',
+        severity: 'warning',
+        message: `Synthesized long-tail keyword(s) absent (no search-demand evidence, not a ship blocker): ${preview(missingLongTail.synthesized)}`,
+        fix: LONG_FIX,
+        evidence: missingLongTail.synthesized.slice(0, 8).join(' | '),
       })
     }
 
@@ -1136,6 +1181,9 @@ export function assertQualityGate(opts: {
   indexable?: boolean
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  /** Per-term provenance — uncovered `synthesized` terms warn instead of blocking. */
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   minShortKeywords?: number
   minLongTailKeywords?: number
   linkAllowlist?: string[]

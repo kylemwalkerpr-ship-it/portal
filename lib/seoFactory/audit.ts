@@ -7,9 +7,11 @@ import {
   checkContentDepth,
   countBodyWords,
   minWordsForType,
+  targetThresholdForType,
   targetWordsForType,
 } from './contentDepth'
 import { evaluateContentQuality, DISCLAIMER_RE } from './contentQualityGate'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { countEstateLinks } from './linkAudit'
 import { metaDescriptionLength } from './ahrefsIssues'
 import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
@@ -101,6 +103,9 @@ export function auditContent(opts: {
   ownershipBlockers?: string[]
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  /** Per-term provenance — uncovered `synthesized` terms warn instead of blocking. */
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
 }): SeoFactoryAudit {
   const content = opts.content || ''
   const fm = extractFrontMatter(content)
@@ -145,6 +150,7 @@ export function auditContent(opts: {
   // Word count — HARD blocker under Google depth floor (unattended ships)
   const minWords = minWordsForType(opts.contentType)
   const targetWords = targetWordsForType(opts.contentType)
+  const targetThreshold = targetThresholdForType(opts.contentType)
   const depth = checkContentDepth({
     content,
     contentType: opts.contentType,
@@ -157,7 +163,7 @@ export function auditContent(opts: {
       message: depth.errors[0] || `Word count ${words} < min ${minWords}`,
       fix: `Expand body prose to ≥${minWords} words (target ~${targetWords}): procedures, document checklists, eligibility, risks, timelines, 4–6 FAQs with full answers. No fluff padding.`,
     })
-  } else if (words < targetWords) {
+  } else if (words < targetThreshold) {
     warnings.push({
       code: 'word_count_target',
       severity: 'warning',
@@ -351,6 +357,8 @@ export function auditContent(opts: {
     indexable: wantIndexable,
     requiredShortKeywords: opts.requiredShortKeywords,
     requiredLongTailKeywords: opts.requiredLongTailKeywords,
+    shortKeywordTerms: opts.shortKeywordTerms,
+    longTailKeywordTerms: opts.longTailKeywordTerms,
     region: fm.region,
   })
   for (const b of quality.blockers) {

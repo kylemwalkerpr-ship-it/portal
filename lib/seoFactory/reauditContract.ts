@@ -19,8 +19,9 @@
 import { evaluateContentQuality } from './contentQualityGate'
 import { auditContent } from './audit'
 import { findingToAnnotations, mergeWarnings, type InlineAnnotation } from './inlineAnnotations'
-import { assertContentDepth, countBodyWords, depthSpecForType } from './contentDepth'
+import { assertContentDepth, countBodyWords, depthSpecForType, targetThresholdForType } from './contentDepth'
 import { buildDepthAppendPrompt, extractH2Titles } from './prompts'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 export type ReauditResponse = {
   ok: boolean; score: number; summary: string
@@ -88,7 +89,10 @@ export function depthMediationPlan(
   const spec = depthSpecForType(contentType || 'legal_guide')
   const currentWords = countBodyWords(content)
   const floorMet = currentWords >= spec.minWords
-  const goalWords = floorMet ? spec.targetWords : spec.minWords
+  const targetThreshold = targetThresholdForType(contentType || 'legal_guide')
+  const goalWords = floorMet
+    ? (currentWords >= spec.targetWords ? spec.targetWords : targetThreshold)
+    : spec.minWords
   const deficit = Math.max(0, goalWords - currentWords)
   if (deficit === 0) {
     return {
@@ -158,6 +162,10 @@ export type ReauditContractInput = {
   indexable?: boolean
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  /** Per-term provenance so the editor panel agrees with the ship gate:
+   *  uncovered synthesized backfill is a warning, not a blocker. */
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   region?: string
   /** Canonical URL — so the Ahrefs meta-description check and link audit
    *  can validate against the real target. The ship gate always has this;
@@ -203,7 +211,7 @@ export type ReauditContractOutput = {
  *  6. shipReady      → quality.ok && depthGate.ok — warnings never block
  */
 export function evaluateReauditContract(input: ReauditContractInput): ReauditContractOutput {
-  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, region, targetUrl, linkAllowlist, competingUrls } = input
+  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, region, targetUrl, linkAllowlist, competingUrls } = input
 
   const result = evaluateContentQuality({
     content,
@@ -212,6 +220,8 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     indexable,
     requiredShortKeywords,
     requiredLongTailKeywords,
+    shortKeywordTerms,
+    longTailKeywordTerms,
     region,
     targetUrl,
     linkAllowlist,
@@ -234,6 +244,8 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     indexable,
     requiredShortKeywords,
     requiredLongTailKeywords,
+    shortKeywordTerms,
+    longTailKeywordTerms,
   })
   // Audit-only warnings (indexability family) must ALSO get inline annotations
   // so the issues panel renders a per-warning AI Fix button for them — not
