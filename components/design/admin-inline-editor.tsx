@@ -810,7 +810,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               {warningsData.length} quality warning{warningsData.length === 1 ? '' : 's'}
             </span>
             <span style={{ fontSize: 10, color: '#92400E', fontFamily: C.mono }}>
-              Use Audit &amp; Fix above to resolve warnings
+              Clear mechanical warnings with Audit &amp; Fix above — synthesized-keyword gaps are advisory
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -822,7 +822,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             ))}
           </div>
           <div style={{ fontSize: 10, color: C.textDim }}>
-            Warnings do not block shipping, but clearing them improves engagement and AI-overview eligibility. Click <strong>Audit &amp; Fix</strong> above to run the closed remediation loop.
+            Warnings never block shipping. <strong>Audit &amp; Fix</strong> clears mechanical defects; <span style={{ fontFamily: C.mono }}>missing_synthesized_*</span> warnings mark terms with no search-demand evidence — a writer places one naturally (a long-tail keyword fits best as an FAQ question) or leaves it, and they may persist after Fix All by design.
           </div>
         </div>
       )}

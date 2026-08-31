@@ -124,7 +124,7 @@ export function editorialBriefPromptBlock(): string {
     '- EVIDENCE / SOURCES: official authorities, facts to verify, and freshness risks.',
     '- ENGAGEMENT DEVICES: only the useful checklist, steps, table, example, callout, FAQ, and internal-link opportunities for this query.',
     '- COMPLIANCE NOTES: YMYL boundaries, disclaimer, uncertainty, and claims to avoid.',
-    '- KEYWORD COVERAGE: the planner supplied ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words). The brief MUST echo them so the writer can decide where each term fits. Note any keyword that has no clean context — the writer should mark it as optional rather than force-fit.',
+    '- KEYWORD COVERAGE: the planner supplied ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words). The brief MUST echo them so the writer can decide where each term fits. Long-tail keywords are real demand queries and belong in the FAQ — word each as a natural question (e.g. "how much is australia student visa" → "How much does an Australia student visa cost?") so the draft answers the query instead of force-fitting the phrase into prose. Note any keyword that has no clean context — the writer should mark it as optional rather than force-fit.',
     'Use short labeled bullets rather than a wall of prose. Do not invent search data, fees, timelines, sources, or credentials.',
   ].join('\n')
 }

@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       '  "suggestedH1": "SEO-optimized H1 title (include primary keyword, keep ≤70 chars)",',
       '  "h2Outline": ["H2: Section title", ...]  // 6–10 descriptive H2 section headings',
       '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
-      '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each)',
+      '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each). Word each AS a natural FAQ question (e.g. "how much is australia student visa" → "How much does an Australia student visa cost?") so the drafting AI can drop it straight into the FAQ.',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
       '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — never invent a path; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
       '2. NEVER duplicate an H2, keyword placement, or slug from completed prior work.',
       '3. Target the word count range based on content type + Google SEO floor (2,200 min for legal guides).',
       '4. Every short-tail keyword must appear in kwH2Map mapped to exactly one H2 section.',
-      '5. Every long-tail keyword must also appear in kwH2Map.',
+      '5. Every long-tail keyword must also appear in kwH2Map. Word each long-tail keyword AS a natural FAQ question ("how much is australia student visa" → FAQ "How much does an Australia student visa cost?") and map it to the FAQ H2 so the drafting AI answers the real demand query instead of stuffing the term into prose.',
       '6. Sources must be real, live, and on-topic. PREFER the VERIFIED SOURCE ALLOWLIST verbatim (government departments, official school pages, intergovernmental bodies, issuing bodies). You may also cite institutional pages (.org / .edu / official exam boards) when they directly support a claim in THIS article. Never Wikipedia, social media, URL shorteners, content-mill blogs, or low-authority sites. Every URL is live-checked; dead or off-topic citations are stripped before ship.',
       '7. targetSlug must be kebab-case, descriptive, and not collide with any completedWork slug.',
       '8. The h2Outline order must follow search intent flow: answer-first → evidence → process → FAQ.',
@@ -371,6 +371,8 @@ export async function POST(req: NextRequest) {
     const completedKwH2Map: Record<string, string> = {}
     const allKeywords = [...merged.short.slice(0, 8), ...merged.longTail.slice(0, 6)]
     const headingTokens = (heading: string) => new Set(heading.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2))
+    const longTailSet = new Set(merged.longTail.slice(0, 6).map((k) => k.toLowerCase()))
+    const faqHeading = finalOutline.find((h) => /^faq$/i.test(h.trim())) || finalOutline.find((h) => h.toLowerCase().includes('faq'))
     for (const keyword of allKeywords) {
       const modelHeading = normalizeHeading(coherentKwH2Map[keyword] || '')
       const exact = finalOutline.find((h) => h.toLowerCase() === modelHeading.toLowerCase())
@@ -378,12 +380,19 @@ export async function POST(req: NextRequest) {
         completedKwH2Map[keyword] = exact
         continue
       }
+      // Long-tail keywords belong in the FAQ question slot because that is
+      // where the drafting AI answers the demand query naturally. Prefer the
+      // FAQ H2 over any prose heading; only fall back when no FAQ exists.
+      if (longTailSet.has(keyword.toLowerCase())) {
+        completedKwH2Map[keyword] = faqHeading || finalOutline[1] || finalOutline[0]
+        continue
+      }
       const kwTokens = keyword.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2)
       const ranked = finalOutline
         .filter((h) => !/^(in 60 seconds|table of contents|faq|sources)$/i.test(h))
         .map((heading) => ({ heading, overlap: kwTokens.filter((t) => headingTokens(heading).has(t)).length }))
         .sort((a, b) => b.overlap - a.overlap)
-      completedKwH2Map[keyword] = ranked[0]?.heading || finalOutline[1] || finalOutline[0]
+      completedKwH2Map[keyword] = ranked[0]?.heading || faqHeading || finalOutline[1] || finalOutline[0]
     }
 
     const substantiveOutline = finalOutline.filter((h) => !/^(table of contents|sources)$/i.test(h))
