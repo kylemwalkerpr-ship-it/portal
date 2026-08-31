@@ -190,10 +190,12 @@ test.describe('Content Studio job modal · canonical ship gate (stale-refusal fi
 
       // ── Open the REAL job modal. ──────────────────────────────────────────
       await page.goto(`${BASE}/dashboard/admin/content?tab=draft`, { waitUntil: 'domcontentloaded' })
-      // The queue row is clickable by its title.
-      const row = page.locator('tbody tr', { hasText: 'UK visa refusal administrative review template 2026' }).first()
-      await row.waitFor({ state: 'visible', timeout: 60_000 })
-      await row.click()
+      // The live Draft queue is a card list (not a semantic table). Open the
+      // throwaway job through its unique visible title so this test follows
+      // the same interaction an operator uses.
+      const jobTitle = page.getByText('UK visa refusal administrative review template 2026', { exact: true }).first()
+      await jobTitle.waitFor({ state: 'visible', timeout: 60_000 })
+      await jobTitle.click()
 
       const approve = page.getByTestId('studio-approve-main')
       const stalePassBanner = page.getByTestId('studio-stale-refusal-clear')
