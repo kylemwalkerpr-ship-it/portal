@@ -29,6 +29,11 @@ export const JOB_LIST_COLUMNS = [
   'primary_keyword',
   'required_short_keywords',
   'required_long_tail_keywords',
+  // Per-term provenance (demand vs synthesized backfill). Without these the
+  // approve path re-reads the terms as pure demand and the quality gate
+  // resurrects blockers for filler it invented itself.
+  'short_keyword_terms',
+  'long_tail_keyword_terms',
   'competing_urls',
   'owner_host',
   'canonical_url',

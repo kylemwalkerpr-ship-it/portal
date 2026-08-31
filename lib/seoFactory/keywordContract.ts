@@ -36,9 +36,10 @@ export function resolveKeywordContract(input: {
   // partitioner templates from the primary term so those old synthetic terms
   // do not become permanent hard blockers merely because metadata predates
   // the provenance fields.
+  const legacyTemplates = partitionKeywords([], primary)
   const legacySynthetic = keywordSourceMap([
-    ...partitionKeywords([], primary).shortTerms,
-    ...partitionKeywords([], primary).longTailTerms,
+    ...legacyTemplates.shortTerms,
+    ...legacyTemplates.longTailTerms,
   ].filter((entry) => entry.source === 'synthesized'))
   const asTerms = (raw: unknown, persisted: unknown): KeywordTerm[] => {
     const list = Array.isArray(raw) ? raw.map(String).map((t) => t.trim()).filter(Boolean) : []

@@ -28,6 +28,37 @@ describe('canonical job keyword contract', () => {
     })
   })
 
+  it('round-trips persisted provenance so a re-read never re-promotes filler to demand', () => {
+    // First pass: legacy row with no provenance → partitioner backfills.
+    const first = resolveKeywordContract({
+      primaryKeyword: 'Australia student visa fee increase',
+      requiredShortKeywords: ['visa fee'],
+      requiredLongTailKeywords: [],
+    })
+    const synthesized = [...first.shortKeywordTerms, ...first.longTailKeywordTerms]
+      .filter((t) => t.source === 'synthesized')
+      .map((t) => t.term)
+    expect(synthesized.length).toBeGreaterThan(0)
+
+    // Second pass: the row now stores both the terms and their provenance,
+    // exactly as content_jobs.short_keyword_terms persists them.
+    const second = resolveKeywordContract({
+      primaryKeyword: 'Australia student visa fee increase',
+      requiredShortKeywords: first.requiredShortKeywords,
+      requiredLongTailKeywords: first.requiredLongTailKeywords,
+      shortKeywordTerms: first.shortKeywordTerms,
+      longTailKeywordTerms: first.longTailKeywordTerms,
+    })
+    expect(second.backfilled).toBe(false)
+    expect(second.shortKeywordTerms).toEqual(first.shortKeywordTerms)
+    expect(second.longTailKeywordTerms).toEqual(first.longTailKeywordTerms)
+    // Every synthesized term is still synthesized — no silent hard-block revival.
+    const stillSynthesized = [...second.shortKeywordTerms, ...second.longTailKeywordTerms]
+      .filter((t) => t.source === 'synthesized')
+      .map((t) => t.term)
+    expect(stillSynthesized.sort()).toEqual(synthesized.sort())
+  })
+
   it('marks partitioner backfill as synthesized so the gate does not hard-block it', () => {
     const contract = resolveKeywordContract({
       primaryKeyword: 'Australia student visa fee increase',

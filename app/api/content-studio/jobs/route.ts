@@ -603,7 +603,7 @@ export async function POST(request: NextRequest) {
               longTailKeywordTerms: (job as Record<string, unknown>).long_tail_keyword_terms,
             })
             if (backfilled) {
-              await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords }).eq('id', id)
+              await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords, short_keyword_terms: shortKeywordTerms, long_tail_keyword_terms: longTailKeywordTerms }).eq('id', id)
             }
             const competingUrls = jobCompetingPages(job as Record<string, unknown>)
             const ship = await shipContent({
@@ -1533,7 +1533,7 @@ export async function PATCH(request: NextRequest) {
         longTailKeywordTerms: (job as Record<string, unknown>).long_tail_keyword_terms,
       })
       if (backfilled) {
-        await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords }).eq('id', id)
+        await supabase.from('content_jobs').update({ required_short_keywords: requiredShortKeywords, required_long_tail_keywords: requiredLongTailKeywords, short_keyword_terms: shortKeywordTerms, long_tail_keyword_terms: longTailKeywordTerms }).eq('id', id)
         job.required_short_keywords = requiredShortKeywords
         job.required_long_tail_keywords = requiredLongTailKeywords
       }

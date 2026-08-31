@@ -1387,6 +1387,10 @@ export async function* runSeoFactoryPipelineStream(
         },
         required_short_keywords: requiredShortKeywords,
         required_long_tail_keywords: requiredLongTailKeywords,
+        // Persist provenance so a later re-audit / approve does not downgrade
+        // synthesized backfill into enforceable demand blockers.
+        short_keyword_terms: shortKeywordTerms,
+        long_tail_keyword_terms: longTailKeywordTerms,
         keyword_partition_source: 'word_count_v1',
         deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
         deployed_at:

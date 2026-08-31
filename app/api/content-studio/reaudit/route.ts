@@ -183,7 +183,7 @@ async function resolveCanonicalJobMetadata(
       db = createSupabaseAdminClient()
       const result = await db
         .from('content_jobs')
-        .select('canonical_url,content_type,primary_keyword,topic,region,indexable,required_short_keywords,required_long_tail_keywords')
+        .select('canonical_url,content_type,primary_keyword,topic,region,indexable,required_short_keywords,required_long_tail_keywords,short_keyword_terms,long_tail_keyword_terms')
         .eq('id', jobId)
         .maybeSingle()
       row = result.data
@@ -225,6 +225,10 @@ async function resolveCanonicalJobMetadata(
     if (keywordContract.backfilled) {
       backfill.required_short_keywords = keywordContract.requiredShortKeywords
       backfill.required_long_tail_keywords = keywordContract.requiredLongTailKeywords
+      // Persist provenance alongside the terms, or the next read re-promotes
+      // synthesized filler to enforceable demand and the blockers return.
+      backfill.short_keyword_terms = keywordContract.shortKeywordTerms
+      backfill.long_tail_keyword_terms = keywordContract.longTailKeywordTerms
     }
     if (Object.keys(backfill).length) {
       try {
