@@ -561,9 +561,10 @@ export function suggestHeadingRewrite(heading: string, primaryKeyword?: string |
     work = work
       .split(/\s+/)
       .filter((token) => !primaryTokens.has(token.toLowerCase()))
+      .filter((token) => !/^[a-z]$/i.test(token)) // drop lone articles/determiners
       .join(' ')
   }
-  work = work.replace(/[,;:](?=\s*$)|\.$/g, '').trim()
+  work = work.replace(/^(?:a|an|the)\s+/i, '').replace(/[,;:](?=\s*$)|\.$/g, '').trim()
   if (!work) work = 'How this applies to your case'
   if (work.split(/\s+/).length < 2) work = `What ${work.toLowerCase()} means for your case`
   return `${work[0].toUpperCase()}${work.slice(1)}`.replace(/\?+$/g, '')

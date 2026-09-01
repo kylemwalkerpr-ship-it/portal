@@ -14,7 +14,7 @@
 
 import * as React from 'react'
 import { computeEditorMetrics, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
-import { runHarperGrammar, type HarperLintSummary } from '@/lib/harperBrowser'
+import { runHarperGrammar, fixHarperIssues, type HarperLintSummary } from '@/lib/harperBrowser'
 
 type Props = {
   content: string
@@ -80,6 +80,8 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   const [metrics, setMetrics] = React.useState<EditorMetrics | null>(null)
   const [harper, setHarper] = React.useState<HarperLintSummary | null>(null)
   const [harperBusy, setHarperBusy] = React.useState(false)
+  const [fixingHarper, setFixingHarper] = React.useState(false)
+  const [harperFixNote, setHarperFixNote] = React.useState<string | null>(null)
   const [expanded, setExpanded] = React.useState<'grammar' | 'readability' | 'seo' | 'style' | null>(null)
   const [styleItems, setStyleItems] = React.useState<Array<{ category: string; quote: string; issue: string; suggestion: string }>>([])
   const [styleBusy, setStyleBusy] = React.useState(false)
@@ -155,6 +157,25 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     metrics.readability.score >= 50 ? 'acceptable for a consumer audience' :
     'dense — shorten sentences and words'
 
+  const runHarperAutofix = React.useCallback(async () => {
+    setFixingHarper(true)
+    setHarperFixNote(null)
+    try {
+      const result = await fixHarperIssues(textRef.current)
+      if (result.applied > 0 && result.content && onApplied) {
+        onApplied(result.content)
+        setHarperFixNote(`Harper applied ${result.applied} fix${result.applied === 1 ? '' : 'es'}.`)
+        setHarper(null)
+      } else {
+        setHarperFixNote('Nothing to autofix — remaining findings are suggestions or vocabulary.')
+      }
+    } catch (err) {
+      setHarperFixNote(err instanceof Error ? err.message : 'Harper autofix failed')
+    } finally {
+      setFixingHarper(false)
+    }
+  }, [onApplied])
+
   const panel = (() => {
     if (!expanded) return null
     if (expanded === 'grammar') {
@@ -165,13 +186,33 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
           {!harperBusy && items.length === 0 && (
             <span style={{ color: C.green }}>No grammar issues detected{harper ? '' : ' — engine not available in this browser'}.</span>
           )}
+          {harperFixNote && <div style={{ color: C.green, marginBottom: 6 }}>{harperFixNote}</div>}
           {items.map((it, i) => (
             <div key={i} style={{ marginBottom: 5, color: C.text }}>
               <span style={{ color: pillColor(80), fontWeight: 600, fontFamily: C.mono }}>[{it.kind}]</span>{' '}
               <span style={{ background: '#FEF2F2', padding: '0 4px', borderRadius: 3 }}>“{it.problem}”</span>{' '}
               <span style={{ color: C.muted }}>{it.message}</span>
+              {it.fix ? <span style={{ color: C.green }}> → {it.fix}</span> : null}
             </div>
           ))}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+            <button
+              type="button"
+              disabled={harperBusy || fixingHarper || !harper || harper.errors + harper.suggestions === 0}
+              onClick={runHarperAutofix}
+              style={{
+                padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.12)',
+                background: '#17365D', fontSize: 11, fontWeight: 600, color: '#fff',
+                cursor: fixingHarper ? 'wait' : harper ? 'pointer' : 'not-allowed',
+                opacity: harper && !harperBusy ? 1 : 0.5,
+              }}
+            >
+              {fixingHarper ? 'Fixing…' : `Auto-fix ${harper ? harper.errors + harper.suggestions : 0} issue${harper && harper.errors + harper.suggestions === 1 ? '' : 's'}`}
+            </button>
+            <span style={{ fontSize: 10, color: C.muted }}>
+              Spelling · grammar · punctuation — applies only secure, non-case suggestions on-device
+            </span>
+          </div>
         </div>
       )
     }
@@ -193,6 +234,9 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       const fail = metrics?.seo.fail || []
       return (
         <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.6 }}>
+          <div style={{ color: C.muted, marginBottom: 4 }}>
+            Local gate-aligned checks (not Harper) — the shipping gate re-verifies every one.
+          </div>
           {fail.map((f, i) => (
             <div key={`f${i}`} style={{ color: pillColor(50) }}>✕ {f}</div>
           ))}
@@ -200,6 +244,11 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
           {pass.map((p, i) => (
             <div key={`p${i}`} style={{ color: C.muted }}>✓ {p}</div>
           ))}
+          {metrics?.seo.fail.some((f) => /meta/i.test(f)) && (
+            <div style={{ color: C.text, marginTop: 4 }}>
+              Meta description lives in the frontmatter — edit it in Source view or let Audit &amp; Fix rebuild it.
+            </div>
+          )}
         </div>
       )
     }

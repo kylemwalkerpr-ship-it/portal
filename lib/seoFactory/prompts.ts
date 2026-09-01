@@ -231,6 +231,7 @@ export function buildFactorySystemPrompt(opts: {
       '- Every section exists to satisfy ITS purpose from the outline. Before writing a section, ask: "what does the reader need from THIS section?" — then write from that need.',
       '- Keywords and long-tails are COVERAGE terms, never literal text. Never output a keyword string verbatim as a heading, a question, or a filler sentence.',
       '- FAQ questions are real reader questions in natural English with subject + verb + object ("Do I need a consultant to apply for an F-1 visa?", "How much does an Australia student visa cost?"). NEVER write "is it possible to [keyword]…", "do you need a [keyword]…", "requirements for a [keyword]…".',
+      '- When the brief assigns a long-tail keyword to the FAQ section, the term appears in the ANSWER where it reads naturally — never as the question text. The question names the reader\'s situation ("What if I already hold a visa?") and the answer carries the keyword (e.g. "If you already hold a visa, a student visa fee increase plan may still apply to your renewal…").',
       '- Long-tail coverage belongs INSIDE paragraphs and FAQ answers, where it reads naturally. If a term has no clean slot, omit it — a natural article without the term beats a stuffed one.',
       '- Scannability is substance: a table or checklist must add structure a reader uses; never pad a section to hit depth.',
       '',

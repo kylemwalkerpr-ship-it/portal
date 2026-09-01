@@ -217,9 +217,16 @@ export function rewritePastedHeading(
     const idx = hLower.indexOf(key)
     if (idx < 0) continue
     // Only strip when the keyword is a contiguous phrase in the heading.
-    const before = h.slice(0, idx).trim()
+    // Extend the cut to swallow the article directly before the phrase
+    // ("an Australia student visa fee increase plan" → the whole noun-group
+    // goes, so the remnant is "Do you need if you already hold a visa?"
+    // and the conjunction repair below can rebuild it as a natural question).
+    const before = h.slice(0, idx) // NOT trimmed — the article match needs the trailing space
+    const articleMatch = before.match(/(\b(?:a|an|the)\s+)$/i)
+    const cutStart = articleMatch ? idx - articleMatch[1].length : idx
+    const beforeClean = h.slice(0, cutStart).trim()
     const after = h.slice(idx + k.length).trim()
-    stripped = `${before} ${after}`.replace(/\s{2,}/g, ' ').trim()
+    stripped = `${beforeClean} ${after}`.replace(/\s{2,}/g, ' ').trim()
     break
   }
   if (isQuestion) {
@@ -243,6 +250,16 @@ export function rewritePastedHeading(
       q = `${conjunctionTail[1]} a ${headNoun} ${conjunctionTail[2]}${q.slice(conjunctionTail[0].length)}`
     }
     if (q !== stripped) stripped = q
+    // "How do I apply for if I already hold a visa?"-style fragments: the
+    // keyword was the verb's object. Re-frame into a natural reader question
+    // ("What if I apply after rejection?") rather than emit broken grammar.
+    const applyVerb = q.match(/^(?:how do i|how can i|what about|what if)\s+(apply for|apply|get|obtain|file|submit|make an application)\s+(after|before|when|while|without)\b/i)
+    if (applyVerb) {
+      const verb = applyVerb[1].replace(/\s+for$/, '')
+      const tail = `${applyVerb[2]}${q.slice(applyVerb[0].length)}`.trim()
+      q = `What if I ${verb} ${tail}?`.replace(/\s{2,}/g, ' ').replace(/\?\?+$/, '?')
+      stripped = q
+    }
     if (!/^[a-z]/i.test(stripped) || stripped.split(/\s+/).length < 3) {
       const fallback = suggestHeadingRewrite(h, primaryKeyword)
       return `${fallback}?` === h ? null : `${fallback}?`

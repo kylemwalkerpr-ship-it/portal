@@ -1231,10 +1231,26 @@ describe('keyword-pasted heading deterministic rewrite (real fix, never hide)', 
   it('rewritePastedHeading turns a pasted-keyword FAQ question into a natural question', () => {
     const heading = 'Do you need an Australia student visa fee increase plan if you already hold a visa?'
     const out = rewritePastedHeading(heading, 'australia student visa fee increase plan', 'australia student visa fee increase')
-    expect(out).toBeTruthy()
+    expect(out).toBe('Do you need a plan if you already hold a visa?')
     expect(out!.endsWith('?')).toBe(true)
     expect(out!.toLowerCase()).not.toContain('student visa fee increase plan')
     expect(out!.split(/\s+/).length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('re-frames apply-verb fragments into natural questions', () => {
+    const out = rewritePastedHeading(
+      'How do I apply for an Australia student visa fee increase plan after rejection?',
+      'australia student visa fee increase plan',
+      'australia student visa fee increase',
+    )
+    expect(out).toBe('What if I apply after rejection?')
+  })
+
+  it('falls back to a reader-facing name when the keyword is the whole heading', () => {
+    const out = rewritePastedHeading('Requirements for a study abroad consultant cost', 'study abroad consultant cost', 'study abroad consultant cost')
+    expect(out).toBeTruthy()
+    expect(out!.toLowerCase()).not.toContain('study abroad consultant cost')
+    expect(/consultant/i.test(out!)).toBe(false)
   })
 
   it('applyDeterministicRepairs rewrites the heading and tags the repair', () => {
