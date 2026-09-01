@@ -122,6 +122,11 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          # Entrim (api.entrim.ai/v1) — graduated default model host. Pushed to
+          # the Worker as a first-class secret so Draft/Brief/Reviewer/Discover
+          # keep running even while the vault overlay is unreachable.
+          ENTRIM_API_KEY: ${{ secrets.ENTRIM_API_KEY }}
+          ENTRIM_BASE_URL: ${{ secrets.ENTRIM_BASE_URL }}
           # GitHub PAT for Content Studio PR creation (repo scope)
           CONTENT_STUDIO_GITHUB_TOKEN: ${{ secrets.CONTENT_STUDIO_GITHUB_TOKEN }}
           GITHUB_TOKEN_CONTENT: ${{ secrets.GITHUB_TOKEN_CONTENT }}
@@ -259,6 +264,13 @@ jobs:
           put_secret GSC_OAUTH_CLIENT_SECRET   "${GSC_OAUTH_CLIENT_SECRET:-${GOOGLE_CLIENT_SECRET:-$GOOGLE_OAUTH_CLIENT_SECRET}}"
           # Prefer dedicated Content Studio GitHub token; fall back to GITHUB_TOKEN_CONTENT
           put_secret GITHUB_TOKEN              "${CONTENT_STUDIO_GITHUB_TOKEN:-$GITHUB_TOKEN_CONTENT}"
+          # Entrim (api.entrim.ai/v1) — graduated default model host for
+          # Draft / Brief / Reviewer / Discover. Kept as a FIRST-CLASS
+          # Worker secret so generation works even while the vault overlay
+          # is unreachable (supabase-js v2 rejects sb_secret_ service keys,
+          # and ai_provider_keys denies the anon fallback).
+          put_secret ENTRIM_API_KEY            "$ENTRIM_API_KEY"
+          put_secret ENTRIM_BASE_URL           "$ENTRIM_BASE_URL"
           # Weekly payout cron auth — POST /api/cron/weekly-payouts checks this.
           put_secret CRON_SECRET               "$CRON_SECRET"
           # Core auth/database secrets (see env block above). Keeping these

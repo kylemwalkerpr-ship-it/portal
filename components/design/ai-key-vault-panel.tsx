@@ -178,6 +178,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   const [probe, setProbe] = React.useState<Record<string, string>>({})
   const [grokOAuth, setGrokOAuth] = React.useState<GrokOAuthStatus | null>(null)
   const [chatgptOAuth, setChatgptOAuth] = React.useState<ChatgptOAuthStatus | null>(null)
+  const [vaultOverlayOk, setVaultOverlayOk] = React.useState<boolean>(true)
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -195,6 +196,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       setMaxProviders(s.max_providers || '3')
       setGrokOAuth((d.grokOAuth || null) as GrokOAuthStatus | null)
       setChatgptOAuth((d.chatgptOAuth || null) as ChatgptOAuthStatus | null)
+      setVaultOverlayOk(d.overlayOk !== false)
       setNote(null)
     } catch (e) {
       setNote({ ok: false, text: e instanceof Error ? e.message : 'Failed to load AI keys' })
@@ -630,6 +632,18 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       </div>
 
       {/* Source precedence legend */}
+      {!vaultOverlayOk && (
+        <div style={{
+          padding: '8px 12px', borderRadius: C.radiusXs, marginBottom: 8,
+          background: '#FFF7ED', border: '1px solid #FDBA74', fontSize: 11, color: '#9A3412', lineHeight: 1.5,
+        }}>
+          <strong>Vault keys stored but NOT reaching the runtime.</strong> The generation Worker cannot read
+          this vault — supabase-js v2 rejects <code style={{ fontFamily: C.mono }}>sb_secret_…</code> service keys and
+          <code style={{ fontFamily: C.mono }}> ai_provider_keys</code> denies the anon fallback. Pasted keys will NOT be
+          used for generation until either a legacy <code style={{ fontFamily: C.mono }}>eyJ…</code> service key is set on the
+          Worker, or the matching env secret (<code style={{ fontFamily: C.mono }}>ENTRIM_API_KEY</code>, etc.) exists as a repo secret.
+        </div>
+      )}
       <div style={{
         display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
         padding: '6px 10px', borderRadius: C.radiusXs, marginBottom: 8,
