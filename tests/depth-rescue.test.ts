@@ -401,3 +401,34 @@ describe('runDepthRescue', () => {
     expect(generateText).not.toHaveBeenCalled()
   })
 })
+
+describe('terminal depth messages + overshoot cap', () => {
+  it('no expansion needed when the draft already clears the floor — terminal message says satisfied', async () => {
+    const satisfied = buildDraft(2000) // ≥ MIN_WORDS(1800)
+    const { events, done } = await drain(baseOpts({
+      content: satisfied,
+      audit: auditContent({
+        content: satisfied,
+        contentType: CONTENT_TYPE,
+        primaryKeyword: PRIMARY,
+        indexable: true,
+        ownershipBlockers: OWNERSHIP_BLOCKERS,
+      }),
+    }))
+    const progress = events.filter((e): e is Extract<DepthRescueEvent, { type: 'progress' }> => e.type === 'progress').map((e) => e.message)
+    expect(done!.expandPasses).toBe(0)
+    expect(progress.some((m) => /Depth satisfied:\s*\d+\/1800 words \(no expansion needed\)/.test(m))).toBe(true)
+    expect(progress.some((m) => /\bexpanding\b/i.test(m))).toBe(false)
+  })
+
+  it('capped append: a generous appended section is trimmed back into the max window', async () => {
+    const near = buildDraft(1500) // below the 1800 floor, so rescue runs
+    // A 1500-word append would push to ~3000 — over MAX_WORDS(2800).
+    const { gen } = makeGenerate([{ append: buildAppendSection('Extra Depth Section', 1500) }])
+    const { events, done } = await drain(baseOpts({ content: near, generateText: gen }))
+    const finalWords = countBodyWords(done!.content)
+    expect(finalWords).toBeLessThanOrEqual(MAX_WORDS)
+    const progress = events.filter((e): e is Extract<DepthRescueEvent, { type: 'progress' }> => e.type === 'progress').map((e) => e.message)
+    expect(progress.some((m) => /trimmed \d+ appended words to stay inside the 2800-word window/.test(m))).toBe(true)
+  })
+})

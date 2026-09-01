@@ -17,7 +17,7 @@ import {
   extractH2Titles,
   mergeAppendedSections,
 } from './prompts'
-import { countBodyWords } from './contentDepth'
+import { countBodyWords, trimMarkdownProseToWordBudget } from './contentDepth'
 import { smoothSentenceRhythm } from './editorialScaffold'
 import type { ContentAiResult } from '@/lib/contentAiProvider'
 
@@ -309,7 +309,24 @@ export async function* runDepthRescue(
         let merged = mergeAppendedSections(content, ai.text)
         const rhythm = smoothSentenceRhythm(merged)
         if (rhythm.replaced > 0) merged = rhythm.content
-        if (countBodyWords(merged) > currentWords) content = merged
+        if (countBodyWords(merged) > currentWords) {
+          // Append can overshoot the hard ceiling when the draft is already
+          // deep and the model adds generously — never let depth rescue
+          // push a page over maxWords (bloat regresses the audit WHOLE).
+          const over = countBodyWords(merged) - maxWords
+          if (over > 0) {
+            const trimmed = trimMarkdownProseToWordBudget(merged, maxWords, Math.min(minWords, maxWords))
+            if (trimmed.removedWords > 0) {
+              merged = trimmed.content
+              yield {
+                type: 'progress',
+                stage: 'refine',
+                message: `Depth rescue pass ${expandPasses}: trimmed ${trimmed.removedWords} appended words to stay inside the ${maxWords}-word window`,
+              }
+            }
+          }
+          content = merged
+        }
       }
     } catch (e) {
       // Provider cascade already retried internally; keep the rescue alive.
@@ -346,6 +363,22 @@ export async function* runDepthRescue(
         message: `Depth rescue stalled at ${lastWords}/${minWords} after ${expandPasses} passes — moving on`,
       }
       break
+    }
+  }
+
+  // Terminal state — never let the queue row keep a stale "expanding…" label.
+  {
+    const finalWords = countBodyWords(content)
+    const floorMet = finalWords >= minWords
+    yield {
+      type: 'progress',
+      stage: 'refine',
+      message:
+        expandPasses === 0
+          ? `Depth satisfied: ${finalWords}/${minWords} words (no expansion needed)`
+          : floorMet
+            ? `Depth expanded to ${finalWords}/${minWords} words (${expandPasses} pass${expandPasses === 1 ? '' : 'es'})`
+            : `Depth rescue stopped at ${finalWords}/${minWords} words (${expandPasses} pass${expandPasses === 1 ? '' : 'es'}) — keeping best draft`,
     }
   }
 

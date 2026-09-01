@@ -659,7 +659,25 @@ export async function* runSeoFactoryPipelineStream(
         draft: content,
       }
 
-      if (goodEnough) break
+      if (goodEnough) {
+        // The queue row must never be left pinned to the last "expanding…"
+        // progress event — emit the terminal depth/quality state so the
+        // reviewer panel shows the truth (words vs floor) instead of a stale
+        // mid-loop message.
+        const specFloor = minWordsForType(contentType)
+        const specTarget = targetWordsForType(contentType)
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message:
+            audit.wordCount >= specTarget
+              ? `Depth satisfied: ${audit.wordCount} words (floor ${specFloor}, target ${specTarget}) · gates ready`
+              : audit.wordCount >= specFloor
+                ? `Depth floor met (${audit.wordCount}/${specFloor} words) · target ~${specTarget} · gates ready`
+                : `Gates ready · depth ${audit.wordCount}/${specFloor} words`,
+        }
+        break
+      }
 
       // Progress check: compare current post-gen state against pre-gen state
       const improved = audit.score > prevScore || audit.blockers.length < prevBlockers
@@ -695,14 +713,24 @@ export async function* runSeoFactoryPipelineStream(
       ]
         .filter(Boolean)
         .join('\n\n')
+      // The floor shown is the CANONICAL type floor (depthSpecForType), never
+      // a caller-supplied minWords override — showing an override floor made
+      // legal guides report "Depth 1621/500 words — expanding…" when the
+      // real floor of the content type was 2200.
+      const specFloor = minWordsForType(contentType)
+      const specTarget = targetWordsForType(contentType)
       yield {
         type: 'progress',
         stage: 'refine',
         message: !meetsDepthFloor(audit)
-          ? `Depth ${audit.wordCount}/${minWords} words — expanding…`
-          : !meetsShipQuality(audit)
-            ? `Quality gate · human ${audit.humanScore ?? q.humanScore}/100 — rewriting voice…`
-            : `Audit ${audit.score} < ${minAudit} — refining…`,
+          ? audit.wordCount > maxWords
+            ? `Depth ${audit.wordCount} > max ${maxWords} words — trimming to the depth window…`
+            : `Depth ${audit.wordCount}/${specFloor} words — expanding…`
+          : audit.wordCount >= specTarget
+            ? `Depth satisfied: ${audit.wordCount} words (floor ${specFloor}, target ${specTarget})`
+            : !meetsShipQuality(audit)
+              ? `Quality gate · human ${audit.humanScore ?? q.humanScore}/100 — rewriting voice…`
+              : `Audit ${audit.score} < ${minAudit} — refining…`,
       }
     }
 
