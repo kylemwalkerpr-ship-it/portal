@@ -153,7 +153,9 @@ describe('runDepthRescue', () => {
     const progress = events.filter((e) => e.type === 'progress' && e.message.includes('Depth rescue 1/4'))
     expect(progress.length).toBe(1)
     expect(calls[0].maxTokens).toBeGreaterThanOrEqual(1200)
-    expect(calls[0].maxTokens).toBeLessThanOrEqual(6000)
+    // One-pass contract: the single response must carry the WHOLE deficit —
+    // budget enough tokens for the full gap, never a token that forces a stub.
+    expect(calls[0].maxTokens).toBeLessThanOrEqual(12000)
     expect(calls[0].prompt).toMatch(/APPEND SECTIONS ONLY/)
 
     expect(done).not.toBeNull()
@@ -180,7 +182,7 @@ describe('runDepthRescue', () => {
 
     const appendCall = calls[0]
     expect(appendCall.maxTokens).toBeGreaterThanOrEqual(1200)
-    expect(appendCall.maxTokens).toBeLessThanOrEqual(6000)
+    expect(appendCall.maxTokens).toBeLessThanOrEqual(12000)
     expect(appendCall.prompt).toMatch(/APPEND SECTIONS ONLY/)
     expect(appendCall.prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[0]}`)
     expect(calls[1].prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[1]}`)

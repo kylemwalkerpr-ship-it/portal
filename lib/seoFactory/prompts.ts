@@ -641,12 +641,16 @@ export function buildDepthAppendPrompt(opts: {
 }): string {
   const maxWords = opts.maxWords ?? 99999
   const deficit = Math.max(0, opts.minWords - opts.currentWords)
+  // Add the full measured deficit in ONE pass — this draft is thin, so the
+  // model must bridge the whole gap now (single-pass writer contract), not
+  // nibble a third of it and force another rescue round. The ceiling only
+  // tightens when the page is already close to the hard max.
+  const need = Math.max(120, deficit + 120)
   const available = Math.max(0, maxWords - opts.currentWords)
-  // Add only the measured deficit plus modest headroom. The old fixed 700+
-  // request was the direct cause of 5,000-word rescue drafts.
-  const need = Math.max(120, Math.min(available || deficit + 120, deficit + 120))
-  const appendCeiling = Math.max(need, Math.min(available || need, need + 180))
-  const sectionCount = Math.max(1, Math.min(3, Math.ceil(need / 300)))
+  const appendCeiling = available > 0 ? Math.max(need, Math.min(available, need + 300)) : need + 300
+  // More sections = each stays focused + it's easier for the model to fill a
+  // large deficit with several distinct H2s than one giant one.
+  const sectionCount = Math.max(1, Math.min(5, Math.ceil(need / 250)))
   const focusLine = opts.focus
     ? `FOCUS THIS PASS ON: ${opts.focus}. Do not repeat sections you already wrote in a previous pass — pick a different angle.`
     : 'Write sections you have NOT already covered.'
@@ -670,7 +674,8 @@ export function buildDepthAppendPrompt(opts: {
     '',
     focusLine,
     '',
-    `Write exactly ${sectionCount} NEW H2 section${sectionCount === 1 ? '' : 's'} totalling ${need}–${appendCeiling} words. Stop at the ceiling. Choose the highest-value uncovered gap from:`,
+    'ONE-PASS CONTRACT: this is the only expansion call — write EVERYTHING needed to clear the word gate in this single response. Budget your prose across the sections below so the total lands inside `${need}–${appendCeiling}` WORDS; do not emit a short section and expect a follow-up call. If the response window tightens, deepen each section progressively rather than stopping early.',
+    `Write ${sectionCount} NEW H2 section${sectionCount === 1 ? '' : 's'} totalling ${need}–${appendCeiling} words in this one response. Stop at the ceiling. Choose the highest-value uncovered gaps from:`,
     '- Document checklist deep dive',
     '- Step-by-step filing process',
     '- Timelines and what happens after filing',

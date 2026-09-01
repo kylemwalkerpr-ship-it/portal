@@ -292,8 +292,10 @@ export async function* runDepthRescue(
           h2Outline,
           focus,
         }),
-        // Append only the measured deficit; never pay to reproduce the article.
-        maxTokens: Math.min(6000, Math.max(1200, (minWords - currentWords + 180) * 5)),
+        // One-pass contract: the response must carry the FULL deficit (the
+        // prompt demands it), so budget tokens for the whole gap — not a
+        // token that forces a stub and a second rescue round.
+        maxTokens: Math.min(12000, Math.max(1200, (minWords - currentWords + 240) * 6)),
         temperature: 0.45,
         aiProvider,
       })
