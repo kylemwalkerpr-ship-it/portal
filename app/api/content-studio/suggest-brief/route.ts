@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       '  "suggestedH1": "SEO-optimized H1 title (include primary keyword, keep ≤70 chars)",',
       '  "h2Outline": ["H2: Section title", ...]  // 6–10 descriptive H2 section headings',
       '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
-      '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each). Word each AS a natural FAQ question (e.g. "how much is australia student visa" → "How much does an Australia student visa cost?") so the drafting AI can drop it straight into the FAQ.',
+      '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each). These are COVERAGE terms, never literal text: the drafter must use them naturally in prose/FAQ answers and must NEVER write the keyword string itself as an FAQ question — questions are in natural reader English ("How much does an Australia student visa cost?", never "is it possible to australia student visa…").',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
       '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — never invent a path; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',

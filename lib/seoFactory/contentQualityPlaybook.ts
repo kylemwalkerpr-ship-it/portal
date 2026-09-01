@@ -412,6 +412,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/keyword-coverage.test.ts#warns instead of blocking when synthesized backfill terms are uncovered',
   }),
   def({
+    code: 'faq_forced_keyword', title: 'FAQ question pasted from a keyword template',
+    severity: 'warning', owner: 'writer', repairClass: 'deterministic', appliesTo: INDEXABLE_FORM,
+    requirement: 'FAQ questions are genuine reader questions in natural English, not keyword strings verbatim ("Is it possible to estimated tax payment help after the deadline?").',
+    promptInstruction: 'Rewrite the question naturally (subject + verb + object), e.g. "Can I make estimated tax payments after the deadline?" — never paste the keyword phrase as the question.',
+    evidence: 'contentQualityGate.evaluateContentQuality FAQ template-marker scan',
+    shipEffect: 'allow_with_flag', evaluator: 'contentQualityGate.evaluateContentQuality',
+    testFixture: 'tests/content-quality.test.ts#faq_forced_keyword',
+  }),
+  def({
     code: 'short_keyword_density_violation', title: 'Short keyword over the 4-hit cap',
     severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
     requirement: 'Short keywords stay at ≤4 hits (outside primary spans).',
@@ -1152,6 +1161,8 @@ interface SpecLike {
   primaryKeyword: string
   requiredKeywords: Array<{ phrase: string; kind: 'short' | 'long_tail'; optional?: boolean }>
   wordBudget: { min: number; target: number; max: number }
+  outline?: Array<{ heading: string; level?: number; purpose?: string }>
+  requiredSections?: string[]
   verifiedEstateLinks: Array<{ url: string; anchor: string; role: string }>
   approvedSources: Array<{ url: string; publisher: string; purpose: string }>
   ymyl: { disclaimerRequired: boolean }
@@ -1172,11 +1183,13 @@ function keywordLines(spec: SpecLike): string[] {
 
 /** The versioned core requirements every stage receives identically. */
 function coreRequirements(spec: SpecLike): string[] {
+  const outline = (spec.outline || []).map((o) => `«${'#'.repeat(o.level)} ${o.heading}»${o.purpose ? ` — ${o.purpose}` : ''}`)
   return [
     `CONTENT QUALITY PLAYBOOK ${spec.version} · job ${spec.jobId}`,
     `- Content type: ${spec.contentType} · region: ${spec.region} · indexable: ${spec.indexable ? 'yes' : 'no'}`,
     `- Word budget: min ${spec.wordBudget.min} · target ${spec.wordBudget.target} · max ${spec.wordBudget.max} body words (YAML, JSON-LD, and code fences never count).`,
     ...keywordLines(spec),
+    `- Canonical outline (single source of truth — do NOT restructure or add sections; every H2/H3 and its purpose comes from the brief): ${outline.join(' ')}`,
     `- Verified estate links (use ONLY these URLs for internal links): ${spec.verifiedEstateLinks.map((l) => l.url).join(', ') || '(none — do not create internal links)'}`,
     `- Approved sources: ${spec.approvedSources.map((s) => s.url).join(', ') || '(none — prefer agency names as plain text)'}`,
     spec.ymyl.disclaimerRequired ? '- YMYL: educational disclaimer required; no outcome promises; official jurisdiction-appropriate sources.' : '',

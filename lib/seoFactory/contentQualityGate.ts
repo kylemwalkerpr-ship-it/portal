@@ -413,6 +413,50 @@ export function coversKeywordIntent(haystack: string, phrase: string): boolean {
   )
 }
 
+export const FAQ_FORCED_WORDING_MARKERS = [
+  'is it possible to ',
+  'do you need a ',
+  'requirements for a ',
+  'in 2026 explained',
+  'checklist and timeline',
+] as const
+
+/** Marker phrases tolerate start-of-question position ("Do you need a …"). */
+const FORCED_WORDING_RE_: RegExp = /(?:^|\s)(?:is it possible to |do you need a |requirements for a |in 2026 explained|checklist and timeline)/
+
+/**
+ * Detects FAQ questions written by pasting a keyword template verbatim —
+ * the estate's own synthesized filler turned into nonsense questions
+ * ("Is it possible to estimated tax payment help after the deadline?").
+ * A question is machine-worded when it carries a template marker AND the
+ * primary keyword's meaningful tokens inside the question text (the primary
+ * used as a noun in a slot that needs a verb reads as stuffing).
+ */
+export function detectForcedFaqWordings(body: string, primaryKeyword: string): Array<{ question: string }> {
+  const primaryTokens = new Set(
+    Array.from(String(primaryKeyword || '').toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? [])
+      .filter((t) => t.length > 2),
+  )
+  if (!primaryTokens.size) return []
+  const faq = body.match(/(?:^|\n)##\s+(?:FAQ|Frequently asked[^\n]*)[^\n]*\n([\s\S]*?)(?=\n## |\n*$)/i)
+  if (!faq) return []
+  const out: Array<{ question: string }> = []
+  for (const entry of faq[1].split(/(?=^###\s)/m)) {
+    const qm = entry.match(/^###\s+([^\n]+)\?*\s*$/im)
+    if (!qm) continue
+    const q = qm[1].trim()
+    const lower = q.toLowerCase()
+    if (!FORCED_WORDING_RE_.test(lower)) continue
+    const qTokens = new Set(Array.from(lower.match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? []))
+    let overlap = 0
+    for (const t of primaryTokens) if (qTokens.has(t)) overlap++
+    if (overlap >= Math.max(2, Math.floor(primaryTokens.size / 2))) {
+      out.push({ question: q })
+    }
+  }
+  return out
+}
+
 function countOccurrences(haystack: string, phrase: string): number {
   const h = haystack.toLowerCase()
   const p = phrase.toLowerCase()
@@ -1129,6 +1173,10 @@ export function evaluateContentQuality(opts: {
       })
     }
 
+    // FAQ questions written from keyword templates read as stuffing
+    // ("Is it possible to estimated tax payment help after the deadline?").
+    // Google deranks this; the deterministic repair removes/repairs them.
+    // Runs for EVERY draft (not gated on keyword arrays being supplied).
     // Per-keyword density caps: ≤4 hits per short keyword, ≤2 hits per long-tail keyword.
     // The PRIMARY keyword is exempt from these per-keyword caps — it has its own
     // dedicated keyword_stuffing check (≥12 hits = blocker, ≥8 = warning) above,
@@ -1237,6 +1285,20 @@ export function evaluateContentQuality(opts: {
       })
     }
   }
+
+  // FAQ questions written from keyword templates read as stuffing
+    // ("Is it possible to estimated tax payment help after the deadline?").
+    // Google deranks this; the deterministic repair removes/repairs them —
+    // flagged for EVERY draft, independent of keyword arrays/structural pass.
+    for (const junk of detectForcedFaqWordings(body, (opts.primaryKeyword || '').trim())) {
+      add({
+        code: 'faq_forced_keyword',
+        severity: 'warning',
+        message: `FAQ question is machine-worded from a keyword template: "${junk.question}". Rewrite in natural reader language or remove the Q&A.`,
+        fix: 'Rephrase the question naturally (e.g. "Can I make estimated tax payments after the deadline?"). If the question cannot be phrased naturally, remove the Q&A pair — never paste the keyword string as a question.',
+        evidence: junk.question,
+      })
+    }
 
   // ── 8. Cannibalization risk (warning — not a shipping blocker) ─────────
   // When the planner/radar detects existing estate pages targeting the same

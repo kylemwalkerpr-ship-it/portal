@@ -10,7 +10,7 @@
  */
 import { applyDeterministicRepairs, stripDuplicateArticleCopy } from '../lib/seoFactory/editorialScaffold'
 import { normalizeEditorDocument } from '../lib/seoFactory/formatContract'
-import { auditReferenceReachability } from '../lib/seoFactory/contentQualityGate'
+import { auditReferenceReachability, detectForcedFaqWordings, evaluateContentQuality } from '../lib/seoFactory/contentQualityGate'
 
 describe('run-in heading split (formatContract.normalizeEditorDocument)', () => {
   it('splits a ### glued onto the end of a paragraph onto its own line', () => {
@@ -105,6 +105,109 @@ describe('plain-text source labels link to curated official URLs', () => {
     expect(repaired.content).toContain('[Study in the States (DHS)](https://studyinthestates.dhs.gov/)')
     expect(repaired.content).toContain('[Travel.State.Gov, Student Visa](https://travel.state.gov/content/travel/en/us-visas/study.html)')
     expect(repaired.applied.some((a) => a.startsWith('official_source_labels_linked'))).toBe(true)
+  })
+})
+
+describe('FAQ questions pasted from keyword templates (stuffing)', () => {
+  const FAQ = (qs: string) => `# Estimated Tax Payment Help for Visa Holders
+
+## In 60 seconds
+
+- One bullet.
+
+## FAQ
+
+${qs}
+
+## Sources
+
+- [IRS](https://www.irs.gov/)
+`
+
+  const USER_EXAMPLES = `### Do you need a estimated tax payment help if you only have a W-2 job?
+
+Usually no. A W-2 employer withholds.
+
+### Is it possible to estimated tax payment help after the deadline?
+
+Yes, you can make a late payment.
+
+### How to pay quarterly estimated taxes on OPT without overpaying?
+
+Estimate conservatively.
+`
+
+  it('detects the machine-worded questions from the reported article', () => {
+    const found = detectForcedFaqWordings(FAQ(USER_EXAMPLES), 'estimated tax payment help')
+    const questions = found.map((f) => f.question)
+    expect(questions).toContain('Do you need a estimated tax payment help if you only have a W-2 job?')
+    expect(questions).toContain('Is it possible to estimated tax payment help after the deadline?')
+    // Natural questions never trip the detector.
+    expect(questions).not.toContain('How to pay quarterly estimated taxes on OPT without overpaying?')
+  })
+
+  it('the quality gate surfaces faq_forced_keyword and the deterministic repair removes the junk Q&A', () => {
+    // Structurally-compliant draft so the gate reaches the FAQ wording scan.
+    const compliant = `# Estimated Tax Payment Help for Visa Holders
+
+## In 60 seconds
+
+- Estimated tax payment help covers quarterly payments for visa holders.
+- You file on Form 1040-ES before each quarterly deadline.
+- Penalties apply when a quarter is underpaid.
+
+## How estimated tax payments work
+
+You estimate your tax and pay it in four installments.
+
+## FAQ
+
+${USER_EXAMPLES}
+
+## Sources
+
+- [IRS](https://www.irs.gov/)
+
+**Disclaimer:** This page is educational only and is not legal advice.
+`
+    const gated = evaluateContentQuality({
+      content: compliant,
+      primaryKeyword: 'estimated tax payment help',
+      indexable: true,
+    })
+    expect(gated.findings.some((f) => f.code === 'faq_forced_keyword')).toBe(true)
+
+    const repaired = applyDeterministicRepairs({
+      content: compliant,
+      title: 'Estimated Tax Payment Help for Visa Holders',
+      primaryKeyword: 'estimated tax payment help',
+      region: 'US',
+      indexable: true,
+      contentType: 'article',
+    })
+    expect(repaired.content).not.toContain('Do you need a estimated tax payment help')
+    expect(repaired.content).not.toContain('Is it possible to estimated tax payment help after the deadline?')
+    expect(repaired.content).toContain('How to pay quarterly estimated taxes on OPT without overpaying?')
+    expect(repaired.applied.some((a) => a.startsWith('faq_forced_keyword_removed'))).toBe(true)
+  })
+
+  it('the article-glitch fix normalizes "a estimated" inside kept questions', () => {
+    const withGlitch = `### How do I get a estimated tax payment help estimate?
+
+Ask the firm for a written quote.
+`
+    const repaired = applyDeterministicRepairs({
+      content: FAQ(withGlitch),
+      title: 'Estimated Tax Payment Help for Visa Holders',
+      primaryKeyword: 'estimated tax payment help',
+      region: 'US',
+      indexable: true,
+      contentType: 'article',
+    })
+    // The glitch inside the FAQ question is fixed; other scaffolding never
+    // introduces the broken form.
+    expect(repaired.content).toContain('### How do I get an estimated tax payment help estimate?')
+    expect(repaired.content).not.toMatch(/a estimated tax payment help/i)
   })
 })
 

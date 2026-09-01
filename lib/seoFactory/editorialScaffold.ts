@@ -6,7 +6,7 @@
  * We never invent legal facts — only structure required for estate compliance.
  */
 
-import { DISCLAIMER_RE } from './contentQualityGate'
+import { DISCLAIMER_RE, detectForcedFaqWordings } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
@@ -1265,6 +1265,47 @@ export function applyDeterministicRepairs(opts: {
         }
         if (removed === 0) return whole
         applied.push(`faq_empty_answers_removed (${removed})`)
+        return `${header}${kept.join('')}`
+      },
+    )
+    if (b !== prev) b = b.replace(/\n{3,}/g, '\n\n')
+  }
+
+  // ── FAQ questions pasted from keyword templates repaired ─────────────
+  // The estate's own filler templates ("is it possible to <primary>…",
+  // "do you need a <primary>…") were written verbatim as FAQ questions —
+  // reader-hostile stuffing Google deranks. Two deterministic steps:
+  //   1. fix the broken article ("a estimated" → "an estimated");
+  //   2. remove Q&A pairs whose question still reads machine-worded
+  //      (template marker + primary tokens) — the answer text is typically
+  //      served by the surrounding sections, so dropping the pair loses
+  //      nothing a reader would rely on.
+  {
+    const prev = b
+    b = b.replace(
+      /(## (?:FAQ|Frequently asked)[^\n]*\n)([\s\S]*?)(?=\n## |\n*$)/i,
+      (whole, header: string, body: string) => {
+        let section = body.replace(/\ba(?=\s+[aeiou][a-z]{2,}\b)/gi, 'an')
+        const questions = section.split(/(?=^###\s)/m)
+        const junk = detectForcedFaqWordings(`## FAQ\n\n${section}`, (opts.primaryKeyword || '').trim())
+        const junkKeys = new Set(junk.map((j) => j.question.toLowerCase()))
+        const kept: string[] = []
+        let removed = 0
+        for (const entry of questions) {
+          const qm = entry.match(/^###\s+([^\n]+)\s*$/m)
+          if (!qm || !/^###\s/m.test(entry)) {
+            kept.push(entry)
+            continue
+          }
+          if (junkKeys.has(qm[1].trim().toLowerCase())) {
+            removed++
+          } else {
+            kept.push(entry)
+          }
+        }
+        if (removed === 0 && section === body) return whole
+        if (removed > 0) applied.push(`faq_forced_keyword_removed (${removed})`)
+        if (section !== body) applied.push('faq_question_article_fixed')
         return `${header}${kept.join('')}`
       },
     )
