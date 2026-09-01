@@ -1479,6 +1479,19 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
     (out.g_featured_snippet ?? 0) * 0.45 + (out.g_paa ?? 0) * 0.35 + (out.g_ai_overview_citation ?? 0) * 0.2,
   )
 
+  // ══ no-draft honesty gate (final sweep) ══
+  // At brief/plan time there IS no page: every c_* signal computed from an
+  // empty body is UNKNOWN (a mix of hard 0s and accidental perfect 1s such
+  // as "0 filler words = perfect" dragged the composite toward 0/100 and
+  // displayed as "F · 19/100" for a strategy that was never scored on
+  // content). Content-bundle signals are null until a body exists; the
+  // composite then reflects only the market/estate side with real data.
+  if (!words) {
+    for (const key of Object.keys(out)) {
+      if (key.startsWith('c_')) out[key] = null
+    }
+  }
+
   return out
 }
 

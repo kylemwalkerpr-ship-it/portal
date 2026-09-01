@@ -39,6 +39,14 @@ export interface MasterEngineFeed {
   grade: string | null
   recommendationCount: number
   promptBlock: string
+  /** Plan-phase honesty: only the market/estate signals are computable
+   *  before a draft exists, so the brief's composite never covers on-page
+   *  quality — surface the coverage so "F · 19/100" reads as a partial
+   *  snapshot, not a verdict on the strategy or the coming article. */
+  coveragePct?: number | null
+  computedSignals?: number | null
+  totalSignals?: number | null
+  phase?: 'plan' | 'page'
   /** Eligible vs junk vs deep-tail GSC mix — the studio cannot hide behind a
    *  0.3% CTR when the eligible position is deep and junk share is high. */
   gscMix: GscMix
@@ -320,6 +328,15 @@ export async function assembleMasterEngineFeed(
       recommendationCount: (report.recommendations || []).filter((r) => r.open !== false).length,
       promptBlock,
       gscMix: report.gscMix,
+      // Plan-phase honesty: at brief time there is no page yet, so the
+      // composite covers only the market/estate signals that had data.
+      // Surface how much of the engine was actually computed so the number
+      // is never read as a full page-quality verdict ("F · 19/100" was a
+      // no-draft artifact, not a strategy verdict).
+      coveragePct: report.coverage?.pct ?? null,
+      computedSignals: report.coverage?.computed ?? null,
+      totalSignals: report.coverage?.total ?? null,
+      phase: 'plan',
       lineage: {
         modelVersion: 'seo-master-engine-feed-v1',
         intent: report.intent,

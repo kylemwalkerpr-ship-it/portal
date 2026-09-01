@@ -2275,7 +2275,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const [briefGenerating, setBriefGenerating] = React.useState(false)
   const [briefIntel, setBriefIntel] = React.useState<{
     reasoning?: string; metaDescription?: string; sectionPlan?: Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }>
-    masterEngine?: { composite?: number | null; grade?: string | null; recommendationCount?: number }
+    masterEngine?: { composite?: number | null; grade?: string | null; recommendationCount?: number; coveragePct?: number | null; computedSignals?: number | null; totalSignals?: number | null; phase?: string | null }
   } | null>(null)
   const autoBriefKeyRef = React.useRef('')
   // Brief model — exactly three families: Claude Opus 5 (Run BiOS, default),
@@ -2354,7 +2354,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         reasoning: typeof data.reasoning === 'string' ? data.reasoning : '',
         metaDescription: typeof data.metaDescription === 'string' ? data.metaDescription : '',
         sectionPlan: Array.isArray(data.sectionPlan) ? data.sectionPlan as Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }> : [],
-        masterEngine: data.masterEngine && typeof data.masterEngine === 'object' ? data.masterEngine as { composite?: number | null; grade?: string | null; recommendationCount?: number } : undefined,
+        masterEngine: data.masterEngine && typeof data.masterEngine === 'object' ? data.masterEngine as { composite?: number | null; grade?: string | null; recommendationCount?: number; coveragePct?: number | null; computedSignals?: number | null; totalSignals?: number | null; phase?: string | null } : undefined,
       })
       // Merge the brief's interlinkTargets into briefInterlinks (deduped) so
       // the drafting call receives the brief's guaranteed ≥2 verified estate
@@ -2532,9 +2532,21 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
       {briefIntel?.reasoning && (
         <div style={{ padding: '13px 16px', background: E.inkBlack, color: E.ivory, borderLeft: `4px solid ${E.gold}` }}>
-          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }}>Engine-to-brief strategy · {briefIntel.masterEngine?.grade || 'reviewed'} {briefIntel.masterEngine?.composite != null ? `· ${briefIntel.masterEngine.composite}/100` : ''}</div>
+          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }}>
+            Engine-to-brief strategy · {briefIntel.masterEngine?.grade || 'reviewed'} {briefIntel.masterEngine?.composite != null ? `· ${briefIntel.masterEngine.composite}/100` : ''}
+            {briefIntel.masterEngine?.phase === 'plan' && briefIntel.masterEngine.composite != null && (
+              <span style={{ color: 'rgba(248,231,176,.55)' }}>
+                {' '}· plan snapshot {briefIntel.masterEngine.computedSignals != null && briefIntel.masterEngine.totalSignals != null
+                  ? `(${briefIntel.masterEngine.computedSignals}/${briefIntel.masterEngine.totalSignals} signals — page not yet scored)`
+                  : '(page not yet scored)'}
+              </span>
+            )}
+          </div>
           <div style={{ marginTop: 6, fontFamily: C.serif, fontSize: 12.5, lineHeight: 1.5, color: 'rgba(255,255,255,.78)' }}>{briefIntel.reasoning}</div>
-          {briefIntel.metaDescription && <div style={{ marginTop: 8, fontFamily: C.mono, fontSize: 9.5, color: 'rgba(255,255,255,.58)' }}>SERP copy: {briefIntel.metaDescription}</div>}
+          <div style={{ marginTop: 6, fontFamily: C.mono, fontSize: 9, color: 'rgba(255,255,255,.45)' }}>
+            This score reads the market/estate snapshot only (demand, coverage, competition, trust). On-page quality joins the composite once a draft exists — 100/100 requires both a demand-rich query and a ship-ready article, so the brief itself cannot force 100.
+          </div>
+          {briefIntel.metaDescription && <div style={{ marginTop: 6, fontFamily: C.mono, fontSize: 9.5, color: 'rgba(255,255,255,.58)' }}>SERP copy: {briefIntel.metaDescription}</div>}
         </div>
       )}
 

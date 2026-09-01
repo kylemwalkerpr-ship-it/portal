@@ -222,6 +222,20 @@ describe('Master SEO Engine — signal computation', () => {
     expect(v.f_year_marker).toBe(1)
   })
 
+  it('treats the content bundle as UNKNOWN at plan time (no draft)', () => {
+    // Plan-phase honesty gate: a brief with no page must not score the
+    // content bundle at all — empty bodies previously read as a mix of hard
+    // 0s (word depth, H2s, meta) and accidental perfect 1s (passive voice,
+    // filler ratio), which dragged the brief's composite toward 0/100 and
+    // displayed as "F · 19/100" for a not-yet-written strategy.
+    const v = computeSignals(healthyInput({ content: undefined }))
+    for (const key of Object.keys(v)) {
+      if (key.startsWith('c_')) expect(v[key]).toBeNull()
+    }
+    // Market-side signals that have real data stay computed.
+    expect(v.serp_ctr_pos || v.demand_top_10 || v.i_question_ratio).not.toBeNull()
+  })
+
   it('scores clean voice as GOODNESS (1) so satisfied gaps never read as unmet', () => {
     const v = computeSignals(healthyInput())
     // No banned AI tells, no filler, no passive voice in the fixture
