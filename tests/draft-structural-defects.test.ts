@@ -8,7 +8,7 @@
  *  3. FAQ questions with empty answers shipped.
  *  4. Plain-text source labels with no URL slipped through the bare-URL audit.
  */
-import { applyDeterministicRepairs } from '../lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, stripDuplicateArticleCopy } from '../lib/seoFactory/editorialScaffold'
 import { normalizeEditorDocument } from '../lib/seoFactory/formatContract'
 import { auditReferenceReachability } from '../lib/seoFactory/contentQualityGate'
 
@@ -117,5 +117,60 @@ describe('gate surfaces unnamed-source defect (no silent ship)', () => {
     expect(plain).toBeDefined()
     expect(plain!.severity).toBe('warning')
     expect(plain!.message).toContain('Study in the States (DHS)')
+  })
+})
+
+describe('mangled markdown tables (single glued line)', () => {
+  it('rebuilds a glued table into one row per line', () => {
+    const glued =
+      '| Fee model | Typical range | What you get | | --- | --- | --- | | Hourly consultation | $50 to $300 per hour | Advice on a specific question | | Fixed package | $500 to $5,000 | A defined set of services |'
+    const out = normalizeEditorDocument(`# Guide\n\n${glued}\n\nMore text.\n`)
+    const rows = out.content.split('\n').filter((l) => l.trim().startsWith('|'))
+    expect(rows.length).toBe(4)
+    expect(rows[0]).toBe('| Fee model | Typical range | What you get |')
+    expect(rows[1]).toBe('| --- | --- | --- |')
+    expect(rows[2]).toContain('| Hourly consultation | $50 to $300 per hour | Advice on a specific question |')
+    expect(rows[3]).toContain('| Fixed package | $500 to $5,000 | A defined set of services |')
+    expect(out.fixed).toContain('mangled_tables_split')
+  })
+
+  it('leaves already-multiline tables untouched', () => {
+    const table = '| A | B |\n| --- | --- |\n| 1 | 2 |\n'
+    const out = normalizeEditorDocument(table)
+    expect(out.fixed).not.toContain('mangled_tables_split')
+    expect(out.content).toBe(table.trim())
+  })
+})
+
+describe('echo-on-frontmatter-restart strip', () => {
+  it('cuts everything from a second mid-document frontmatter block (copy #1 fragments + copy #2)', () => {
+    const doc = `# First attempt intro
+
+Leftover section text after the echo was truncated.
+
+---
+
+title: "Study Abroad Consultant Cost: What You Pay and When in 2026"
+primaryKeyword: "study abroad consultant cost"
+---
+
+Study Abroad Consultant Cost: What You Pay and When in 2026
+
+In 60 seconds
+
+- The full revised article.
+
+## Table of contents
+
+- Something
+`
+    const { content, removed, copies } = stripDuplicateArticleCopy(doc)
+    expect(removed).toBe(true)
+    expect(copies).toBe(2)
+    expect(content).not.toContain('title:')
+    expect(content).not.toContain('The full revised article')
+    // The orphaned first-attempt fragments survive (the revision was dropped
+    // with its echoed frontmatter, keeping the earliest real content).
+    expect(content).toContain('Leftover section text')
   })
 })

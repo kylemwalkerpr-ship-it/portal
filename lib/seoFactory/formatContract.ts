@@ -232,8 +232,8 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
   // marker onto a fresh line with blank-line separation. Fenced blocks are
   // skipped so ```json content is never misparsed.
   {
-    const splitRunInHeadings = (input: string): string => {
-      const fenceRe = /^```/m
+const splitRunInHeadings = (input: string): string => {
+  const fenceRe = /^```/m
       const lines = input.split('\n')
       const out: string[] = []
       let inFence = false
@@ -269,6 +269,93 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     if (split !== s) {
       s = split.replace(/\n{3,}/g, '\n\n')
       fixed.push('run_in_headings_split')
+    }
+  }
+
+  // 4d. Mangled markdown tables — the model glues whole tables onto ONE line
+  // ("| Fee model | Typical range | What you get | | --- | --- | --- | | …").
+  // Nothing rendered them: MDX preprocessors and the published renderer show
+  // the literal pipe soup. Rebuild rows deterministically: a pipe-run that
+  // contains the separator row (`|---|`) is a table; split its cells by the
+  // header's column count so every row lands on its own line.
+  {
+    const splitRunInTables = (input: string): string => {
+      const lines = input.split('\n')
+      const out: string[] = []
+      let inFence = false
+      let changed = false
+      for (const line of lines) {
+        if (/^```/.test(line.trimStart()) && !inFence) {
+          inFence = true
+          out.push(line)
+          continue
+        }
+        if (inFence && /^```/.test(line.trimStart())) {
+          inFence = false
+          out.push(line)
+          continue
+        }
+        if (inFence) {
+          out.push(line)
+          continue
+        }
+        const trimmed = line.trim()
+        // Single-row or already-multiline tables pass through untouched.
+        const cells = trimmed.split('|').map((c) => c.trim())
+        const isTableLine = trimmed.startsWith('|') && trimmed.endsWith('|') && cells.length >= 5
+        if (!isTableLine || cells.length <= 4) {
+          out.push(line)
+          continue
+        }
+        // The glued stream has EMPTY seam cells between rows ("…What you get |
+        // | --- | --- |"). Drop the seams, find the `---` separator block, and
+        // re-group the flat stream by the header's column count. If the shape
+        // is not a clean header+separator+body, leave the line untouched.
+        const contentCells = cells.slice(1, -1).filter(Boolean)
+        const dashIdx = contentCells.findIndex((c) => /^-{2,}$/.test(c))
+        if (dashIdx <= 0) {
+          out.push(line)
+          continue
+        }
+        const headerCells = contentCells.slice(0, dashIdx)
+        const colCount = headerCells.length
+        if (colCount < 2) {
+          out.push(line)
+          continue
+        }
+        const sepBlock = contentCells.slice(dashIdx, dashIdx + colCount)
+        if (sepBlock.length !== colCount || !sepBlock.every((c) => /^-{2,}$/.test(c))) {
+          out.push(line)
+          continue
+        }
+        const bodyCells = contentCells.slice(dashIdx + colCount)
+        if (!bodyCells.length) {
+          out.push(line)
+          continue
+        }
+        const rows: string[][] = [headerCells]
+        for (let i = 0; i < bodyCells.length; i += colCount) {
+          rows.push(bodyCells.slice(i, i + colCount))
+        }
+        if (rows.some((r) => r.length !== colCount)) {
+          out.push(line)
+          continue
+        }
+        for (let r = 0; r < rows.length; r++) {
+          if (r === 1) {
+            out.push(`| ${rows[0].map(() => '---').join(' | ')} |`)
+          }
+          out.push(`| ${rows[r].join(' | ')} |`)
+        }
+        out.push('')
+        changed = true
+      }
+      return changed ? out.join('\n') : input
+    }
+    const splitTables = splitRunInTables(s)
+    if (splitTables !== s) {
+      s = splitTables.replace(/\n{3,}/g, '\n\n')
+      fixed.push('mangled_tables_split')
     }
   }
 

@@ -3017,6 +3017,40 @@ const StudioDocPage = React.memo(function StudioDocPage({ source, showCursor }: 
         i++
         continue
       }
+      // Markdown table — consecutive `| … |` lines render as a real table.
+      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+        const rows: string[][] = []
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          const cells = lines[i].trim().split('|').slice(1, -1).map((c) => c.trim())
+          // Skip the |---|---| separator row.
+          if (!cells.every((c) => /^-{1,}$/.test(c))) rows.push(cells)
+          i++
+        }
+        if (rows.length) {
+          const header = rows[0]
+          out.push(
+            <table key={k++} style={{ width: '100%', borderCollapse: 'collapse', margin: '16px 0', fontSize: 14 }}>
+              <thead>
+                <tr>
+                  {header.map((cell, ci) => (
+                    <th key={ci} style={{ borderBottom: `2px solid ${E.hairline}`, padding: '8px 10px', textAlign: 'left', fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontWeight: 700, color: '#17365D', background: '#F8FAFC' }}>{studioInlineFormat(cell, k)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(1).map((row, ri) => (
+                  <tr key={ri} style={{ borderBottom: `1px solid ${E.hairline}` }}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} style={{ padding: '8px 10px', verticalAlign: 'top', color: '#1F2937' }}>{studioInlineFormat(cell, k + ri)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>,
+          )
+          continue
+        }
+      }
       // Paragraph — group consecutive prose lines.
       const para: string[] = [line]
       i++
@@ -3069,7 +3103,7 @@ function DraftWorkspace({
   generating, generationEvents, generationStartedAt, generationBuffer,
   rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob,
-  onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, error, setError,
+  onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, onCancelGeneration, error, setError,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
@@ -3085,6 +3119,7 @@ function DraftWorkspace({
   queueOpen: boolean
   onToggleQueue: () => void
   queueCount: number
+  onCancelGeneration?: () => void
   error: string | null
   setError: (e: string | null) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
@@ -3319,6 +3354,21 @@ function DraftWorkspace({
                 )
               })()}
             </span>
+
+            {generating && onCancelGeneration && (
+              <button
+                type="button"
+                onClick={onCancelGeneration}
+                title="Stop the AI immediately — any checkpointed draft stays in the queue and can be resumed"
+                style={{
+                  padding: '6px 12px', border: '1px solid #FECACA', borderRadius: 6,
+                  background: '#FEF2F2', color: '#B91C1C',
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                ■ Cancel draft
+              </button>
+            )}
 
             <button
               type="button"
@@ -5028,6 +5078,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [jobSummary, setJobSummary] = React.useState<QueueSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [generating, setGenerating] = React.useState(false)
+  // Live-generation cancel: the admin can abort an in-flight draft instead of
+  // watching the model overshoot the word budget. The server's try/finally
+  // finalizes the job row (checkpointed → 'drafting' resumable, empty → failed)
+  // when the client disconnect lands.
+  const genAbortRef = React.useRef<AbortController | null>(null)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -6392,9 +6447,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         record('seo', 'SEO enrichment unavailable — proceeding with user-provided keywords', 'warn')
       }
 
+const controller = new AbortController()
+      genAbortRef.current = controller
       const res = await fetch('/api/seo-factory/generate-stream', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        signal: controller.signal,
         body: JSON.stringify({
           topic: formData.topic, title: formData.title || formData.topic,
           primaryKeyword: formData.topic || (formData.keywords && formData.keywords[0]),
@@ -6484,15 +6542,26 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       }
       await fetchGateRuns()
     } catch (err) {
-      const message = describeGenerationFailure(err)
+      const cancelled = err instanceof DOMException && err.name === 'AbortError'
+      const message = cancelled ? 'Generation cancelled — the checkpointed draft (if any) is safe to continue.' : describeGenerationFailure(err)
       record('error', message, 'error')
-      setError(message)
-      setActionNotice(`Content generation failed — ${message}`)
+      if (!cancelled) {
+        setError(message)
+        setActionNotice(`Content generation failed — ${message}`)
+      } else {
+        setActionNotice('Generation cancelled. The AI stopped immediately; any checkpointed draft stays in the queue.')
+      }
       fetchJobs().catch(() => {})
     } finally {
+      genAbortRef.current = null
       setGenerating(false)
     }
   }
+
+  /** Cancel the in-flight generation stream (server finalizes the job row). */
+  const cancelGeneration = React.useCallback(() => {
+    genAbortRef.current?.abort()
+  }, [])
 
   const runEngineAction = async (kind: 'plan' | 'llm' | 'ingest') => {
     setEngineBusy(true)
@@ -6728,6 +6797,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             queueOpen={draftOperationsOpen}
             onToggleQueue={() => setDraftOperationsOpen((open) => !open)}
             queueCount={jobTotal || jobs.length}
+            onCancelGeneration={cancelGeneration}
             error={error}
             setError={setError}
           />

@@ -180,7 +180,34 @@ export function stripDuplicateArticleCopy(body: string): {
   removed: boolean
   copies: number
 } {
-  const lines = String(body || '').split('\n')
+  const source = String(body || '')
+  // Echo-restart signature: the model glued a full second FRONTMATTER block
+  // mid-body (a `---` line followed by `title: …`) as the RESTART of the
+  // revised article — everything from that restart onward is the echo copy,
+  // and everything before it is the orphaned first attempt. Cut at the
+  // restart so at least the revision survives cleanly. This catches the
+  // "copy #1 fragments + copy #2 full article" shape that outline-overlap
+  // cannot see (the two halves often have disjoint H2s after truncation).
+  {
+    const restartRe = /^(---)\s*$/gm
+    const matches = Array.from(source.matchAll(restartRe))
+    // m=0 only qualifies when the body has NO real frontmatter (its first
+    // line is not `---`); otherwise m=0 is the genuine top block.
+    for (let m = 0; m < matches.length; m++) {
+      const at = matches[m].index
+      if (at === 0 && source.trimStart().startsWith('---')) continue
+      const tail = source.slice(at + 4, at + 120)
+      if (/^\s*title:/im.test(tail)) {
+        return {
+          content: source.slice(0, at).replace(/\n{3,}/g, '\n\n').trimEnd(),
+          removed: true,
+          copies: 2,
+        }
+      }
+    }
+  }
+
+  const lines = source.split('\n')
   const h1 = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => /^#\s+.+/.test(line))
