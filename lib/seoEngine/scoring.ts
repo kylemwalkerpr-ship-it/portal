@@ -99,6 +99,33 @@ export function hasPurchasableService(stage: string): boolean {
   return getStage(s) !== undefined
 }
 
+export type DeadFunnelInput = {
+  stage: string
+  hasLiveSupply: boolean
+  impressions: number
+  clicks: number
+  knowledgeBias: number
+  corroborated: boolean
+}
+
+/**
+ * Dead-mission kill-switch (v4 hardening): a plan only pays for itself when
+ * it can funnel demand toward a purchasable service or build authority. A
+ * demand blip in a service-less cell with no corroborating proof is exactly
+ * the "refresh — medium value" housekeeping junk. Conservative — never kills
+ * funnel stages, never kills anything with meaningful demand of its own.
+ */
+export function isDeadFunnelMission(input: DeadFunnelInput): boolean {
+  const s = String(input.stage || '')
+  if (isFunnelStage(s)) return false // visa/citizenship/family always pass
+  if (hasPurchasableService(s) && input.hasLiveSupply) return false
+  const knownDemand = (Number(input.impressions) || 0) >= 200
+  const realClicks = (Number(input.clicks) || 0) > 0
+  const intelBacking = (Number(input.knowledgeBias) || 0) > 0
+  if (knownDemand || realClicks || intelBacking || input.corroborated) return false
+  return !hasPurchasableService(s)
+}
+
 const MONEY_INTENT_RE = /transactional|commercial/i
 
 function isMoneyIntent(intent: string): boolean {

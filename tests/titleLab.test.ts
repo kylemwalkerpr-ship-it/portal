@@ -1,9 +1,13 @@
 import {
   generateTitleCandidates,
   isFillerTitle,
+  isGenericCurrentInfoHeading,
   pickBestTitle,
+  recalibrateTitleScorer,
   rejectFillerTitle,
   scoreTitle,
+  TITLE_SCORER_WEIGHTS,
+  topicSpecificCurrentInfoHeading,
 } from '@/lib/seoEngine/titleLab'
 
 describe('isFillerTitle — catches exactly the template junk', () => {
@@ -148,5 +152,56 @@ describe('rejectFillerTitle', () => {
       expect(res.replacement.toLowerCase()).toContain('us visa fees')
       expect(res.replacement).not.toBe('Options, Costs and Trade-Offs in 2026')
     }
+  })
+})
+describe('generic current-information headings (Google-validated)', () => {
+  it('flags the exact observed boilerplate headings', () => {
+    expect(isGenericCurrentInfoHeading('Updated Requirements and Guidance for 2026')).toBe(true)
+    expect(isGenericCurrentInfoHeading('Options, Costs and Trade-Offs in 2026')).toBe(true)
+    expect(isGenericCurrentInfoHeading('Requirements and Guidance for 2025')).toBe(true)
+    expect(isGenericCurrentInfoHeading('Requirements may change in 2026.')).toBe(true)
+  })
+
+  it('never flags topic-specific headings', () => {
+    expect(isGenericCurrentInfoHeading('2026 Canada Study Permit Requirements')).toBe(false)
+    expect(isGenericCurrentInfoHeading('Express Entry Requirements for 2026')).toBe(false)
+    expect(isGenericCurrentInfoHeading('Latest IRCC Guidance for Visitors in 2026')).toBe(false)
+  })
+
+  it('builds a topic-specific replacement carrying the primary keyword + year', () => {
+    expect(topicSpecificCurrentInfoHeading('canada study permit')).toBe('2026 Canada Study Permit: Requirements and Recent Changes')
+    expect(topicSpecificCurrentInfoHeading('uk spouse visa', 2026)).toContain('Uk Spouse Visa')
+    expect(topicSpecificCurrentInfoHeading('uk spouse visa', 2026)).toContain('2026')
+  })
+})
+
+describe('title scorer CTR calibration loop', () => {
+  const base = { ctr_vocab: 30, differentiation: 18, keyword_presence: 15, length: 15, human_style: 20 }
+
+  it('recalibrates only when >=3 measured rows exist', () => {
+    const none = recalibrateTitleScorer([{ score: 80, breakdown: base, ctrAfterShip: 0.04, chosen: true }])
+    expect(none.applied).toBe(0)
+    const rows = [
+      { score: 88, breakdown: base, ctrAfterShip: 0.06, chosen: true },
+      { score: 74, breakdown: { ...base, ctr_vocab: 20 }, ctrAfterShip: 0.02, chosen: true },
+      { score: 81, breakdown: base, ctrAfterShip: 0.05, chosen: true },
+      { score: 70, breakdown: { ...base, ctr_vocab: 18 }, ctrAfterShip: 0.01, chosen: true },
+    ]
+    const out = recalibrateTitleScorer(rows, { ...TITLE_SCORER_WEIGHTS })
+    expect(out.applied).toBeGreaterThanOrEqual(3)
+    const sum = Object.values(out.weights || {}).reduce((a, b) => a + b, 0)
+    expect(sum).toBeGreaterThan(99.5)
+    expect(sum).toBeLessThan(100.5)
+  })
+
+  it('scoreTitle honors calibrated weights', () => {
+    const ctx = { primaryKeyword: 'canada study permit' }
+    const defaultScore = scoreTitle('Canada Study Permit: Checklist & Fees', ctx)
+    const boosted = scoreTitle('Canada Study Permit: Checklist & Fees', ctx, {
+      ...TITLE_SCORER_WEIGHTS,
+      ctr_vocab: 40,
+      length: 5,
+    })
+    expect(boosted.score).toBeGreaterThanOrEqual(defaultScore.score)
   })
 })

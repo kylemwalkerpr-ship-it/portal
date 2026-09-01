@@ -20,11 +20,18 @@ CREATE TABLE IF NOT EXISTS public.seo_title_history (
   breakdown JSONB,
   chosen BOOLEAN NOT NULL DEFAULT false,
   source TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  impressions_at_ship BIGINT,
+  clicks_at_ship BIGINT,
+  ctr_after_ship NUMERIC,
+  calibrated BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE INDEX IF NOT EXISTS idx_seo_title_history_mission
   ON public.seo_title_history (mission_id, created_at DESC);
 
 COMMENT ON TABLE public.seo_title_history IS
-  'Scored CTR title candidates produced by lib/seoEngine/titleLab.ts (advisory, deterministic).';
+  'Scored CTR title candidates produced by lib/seoEngine/titleLab.ts (advisory, deterministic). ctr_after_ship feeds recalibrateTitleScorer.';
+
+COMMENT ON COLUMN public.seo_title_history.ctr_after_ship IS
+  'Measured CTR after the page shipped (GSC-match backfill); the daily cron recalibrates the TitleLab bucket weights from rows carrying this value.';

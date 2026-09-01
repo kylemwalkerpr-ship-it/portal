@@ -1348,3 +1348,36 @@ describe('title_keyword_only_fixed — TitleLab replacement', () => {
     expect(h1).not.toBe('# admissions consultant credentials')
   })
 })
+
+describe('generic current-info heading rewrite (deterministic fix)', () => {
+  it('renames the boilerplate ending to a topic-specific heading', () => {
+    const draft = `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## Eligibility
+
+Prose.
+
+## Updated Requirements and Guidance for 2026
+
+Requirements may change.
+
+## Sources
+
+Gov.`
+    const fixed = applyDeterministicRepairs({
+      content: draft,
+      indexable: true,
+      contentType: 'legal_guide',
+      primaryKeyword: 'canada study permit',
+      requiredShortKeywords: ['canada study permit', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    expect(fixed.applied).toContain('generic_current_info_headings_rewritten (1)')
+    expect(fixed.content).toContain('## 2026 Canada Study Permit: Requirements and Recent Changes')
+    expect(fixed.content).not.toContain('## Updated Requirements and Guidance for 2026')
+  })
+})

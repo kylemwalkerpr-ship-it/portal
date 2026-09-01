@@ -47,6 +47,7 @@ import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 import { buildShippedStems, shippedOverlap } from './shippedCoverage'
 import {
+  isDeadFunnelMission,
   opportunityScore as consolidatedOpportunityScore,
   revenueLiftFactor,
   SCORING_CONSTANTS,
@@ -631,6 +632,8 @@ function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, n
 export interface PlannerRun {
   plans: ClusterPlan[]
   pair: EnginePairRollup
+  /** Missions rejected at plan time by the dead-funnel kill-switch. */
+  skippedDead: number
 }
 
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
@@ -817,6 +820,33 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     })
     candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score, rankedScore })
   }
+  // Dead-mission kill-switch (v4 hardening): a plan only pays for itself when
+  // it can funnel a reader toward a purchasable service or build authority.
+  // A demand blip in a service-less cell with no corroboration is exactly the
+  // "refresh — medium value" junk the desk kept being handed; reject it at
+  // plan time, never at ship time.
+  let skipDead = 0
+  const candidatesAfterKill: typeof candidates = []
+  for (const c of candidates) {
+    const supply = marketSupply.get(cellKey(c.stage, c.country))
+    if (
+      isDeadFunnelMission({
+        stage: c.stage,
+        hasLiveSupply: supply?.hasLiveSupply ?? false,
+        impressions: c.sig.impressions,
+        clicks: c.sig.clicks,
+        knowledgeBias: bias.get(cellId(c.stage, c.country)) || 0,
+        corroborated: gscCorroboratedCells.has(cellId(c.stage, c.country)),
+      })
+    ) {
+      skipDead++
+      req.onProgress?.('plan', `Killed dead funnel mission: "${c.sig.term}" (${c.stage}|${c.country}) — no purchasable service, no demand proof`)
+      continue
+    }
+    candidatesAfterKill.push(c)
+  }
+  candidates.length = 0
+  candidates.push(...candidatesAfterKill)
   const ownedSite = (sig: GscSignalInput) =>
     (Number(sig.clicks) || 0) > 0 || (Number(sig.position) || 100) < 70
   const preferred = candidates
@@ -1017,7 +1047,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     // interlink graph is additive — plans still stand without it
   }
 
-  return { plans, pair }
+  return { plans, pair, skippedDead: skipDead }
 }
 
 function cellBiasFor(bias: Map<string, number>, stage: string, country: Country): number {

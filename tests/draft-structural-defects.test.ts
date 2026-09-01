@@ -466,3 +466,58 @@ Official source.`
     expect(gated.findings.some((f) => f.code === 'missing_outline_section')).toBe(false)
   })
 })
+
+describe('generic current-information concluding section', () => {
+  it('gate flags the boilerplate ending and proposes a topic-specific heading', () => {
+    const gated = evaluateContentQuality({
+      content: `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## Eligibility
+
+Prose.
+
+## Updated Requirements and Guidance for 2026
+
+Requirements may change.
+
+## Sources
+
+Gov.`,
+      primaryKeyword: 'canada study permit',
+      indexable: true,
+      requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    const f = gated.findings.find((x) => x.code === 'generic_current_info_heading')
+    expect(f).toBeDefined()
+    expect(f!.severity).toBe('warning')
+    expect(f!.fix).toContain('2026 Canada Study Permit')
+  })
+
+  it('does not flag topic-specific current-information headings', () => {
+    const gated = evaluateContentQuality({
+      content: `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## 2026 Canada Study Permit Requirements
+
+Prose.
+
+## Sources
+
+Gov.`,
+      primaryKeyword: 'canada study permit',
+      indexable: true,
+      requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    expect(gated.findings.some((x) => x.code === 'generic_current_info_heading')).toBe(false)
+  })
+})

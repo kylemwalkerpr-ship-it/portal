@@ -18,6 +18,7 @@ import {
   conversionScore,
   revenueLiftFactor,
   isFunnelStage,
+  isDeadFunnelMission,
 } from '@/lib/seoEngine/scoring'
 import {
   STAGE_VALUE_DEFAULTS,
@@ -249,5 +250,22 @@ describe('marketplaceValue — staged defaults and live fallback', () => {
     resetMarketplaceValueCache()
     const c = await marketplaceValue('visa', 'US')
     expect(c).toEqual(a)
+  })
+})
+describe('dead-funnel kill-switch', () => {
+  it('never kills funnel stages or service-supplied cells', () => {
+    expect(isDeadFunnelMission({ stage: 'visa', hasLiveSupply: false, impressions: 0, clicks: 0, knowledgeBias: 0, corroborated: false })).toBe(false)
+    expect(isDeadFunnelMission({ stage: 'schools', hasLiveSupply: true, impressions: 0, clicks: 0, knowledgeBias: 0, corroborated: false })).toBe(false)
+  })
+
+  it('kills a service-less demand blip with no proof', () => {
+    expect(isDeadFunnelMission({ stage: 'intent', hasLiveSupply: false, impressions: 40, clicks: 0, knowledgeBias: 0, corroborated: false })).toBe(true)
+  })
+
+  it('spares anything with demand, clicks, intel, or GSC corroboration', () => {
+    expect(isDeadFunnelMission({ stage: 'intent', hasLiveSupply: false, impressions: 500, clicks: 0, knowledgeBias: 0, corroborated: false })).toBe(false)
+    expect(isDeadFunnelMission({ stage: 'schools', hasLiveSupply: false, impressions: 10, clicks: 3, knowledgeBias: 0, corroborated: false })).toBe(false)
+    expect(isDeadFunnelMission({ stage: 'housing', hasLiveSupply: false, impressions: 10, clicks: 0, knowledgeBias: 4, corroborated: false })).toBe(false)
+    expect(isDeadFunnelMission({ stage: 'work', hasLiveSupply: false, impressions: 10, clicks: 0, knowledgeBias: 0, corroborated: true })).toBe(false)
   })
 })

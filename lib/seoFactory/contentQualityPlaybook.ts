@@ -439,6 +439,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/content-quality.test.ts#forward_reference_orphan',
   }),
   def({
+    code: 'generic_current_info_heading', title: 'Generic boilerplate concluding section',
+    severity: 'warning', owner: 'writer', repairClass: 'deterministic', appliesTo: INDEXABLE_FORM,
+    requirement: 'Concluding current-information sections carry topic-specific headings ("2026 Canada Study Permit Requirements") — never the generic "Updated Requirements and Guidance for 2026". A standardized ending across every article reads as templated content (Google people-first guidance), and the section only exists when the topic has real time-sensitive facts.',
+    promptInstruction: 'Rename the section to a topic-specific heading carrying the primary topic + year; if the topic has no real time-sensitive facts, remove the section entirely.',
+    evidence: 'titleLab.isGenericCurrentInfoHeading on H2s',
+    shipEffect: 'allow_with_flag', evaluator: 'contentQualityGate.evaluateContentQuality',
+    testFixture: 'tests/draft-structural-defects.test.ts#generic_current_info_heading',
+  }),
+  def({
     code: 'keyword_pasted_heading', title: 'Heading is a keyword string pasted verbatim',
     severity: 'warning', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
     requirement: 'Headings name the section for a reader; they are never the brief\'s keyword strings verbatim ("### Requirements for a study abroad consultant cost").',

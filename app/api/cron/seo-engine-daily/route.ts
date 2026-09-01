@@ -157,6 +157,33 @@ export async function POST(req: NextRequest) {
           await persistAhrefsSnapshot(fallbackLegalAhrefsSnapshot())
         }
       } catch { /* Ahrefs is additive — never fail the daily run */ }
+      // TitleLab CTR feedback loop: recalibrate the title-scorer bucket
+      // weights from rows that carry measured ctr_after_ship (GSC-matched).
+      // Best-effort — a missing history table or config row never fails the
+      // run; the weights only drift toward CTR-proven titles.
+      try {
+        const { loadTitleHistory, recalibrateTitleScorer, TITLE_SCORER_WEIGHTS } = await import('@/lib/seoEngine/titleLab')
+        const { saveEngineConfig } = await import('@/lib/seoEngine/engineConfig')
+        const history = await loadTitleHistory()
+        const rows = (history || [])
+          .map((r) => ({
+            score: Number(r.score) || 0,
+            breakdown: r.breakdown && typeof r.breakdown === 'object' ? (r.breakdown as Record<string, number>) : null,
+            ctrAfterShip: r.ctr_after_ship != null ? Number(r.ctr_after_ship) : null,
+            chosen: r.chosen != null ? Boolean(r.chosen) : null,
+          }))
+          .filter((r) => typeof r.ctrAfterShip === 'number' && Number.isFinite(r.ctrAfterShip))
+        if (rows.length >= 3) {
+          const calibrated = recalibrateTitleScorer(rows, TITLE_SCORER_WEIGHTS)
+          if (calibrated.applied > 0) {
+            await saveEngineConfig('title_scorer', {
+              title_weights: calibrated.weights,
+              calibrated_at: new Date().toISOString(),
+              measured_titles: rows.length,
+            })
+          }
+        }
+      } catch { /* title calibration is additive — never fail the daily run */ }
     }
     const status = classifyEngineRunStatus({
       phase,

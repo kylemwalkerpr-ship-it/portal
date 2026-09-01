@@ -7,6 +7,7 @@
  */
 
 import { DISCLAIMER_RE, detectForcedFaqWordings, detectDanglingForwardReferences, detectKeywordPastedHeadings, suggestHeadingRewrite } from './contentQualityGate'
+import { isGenericCurrentInfoHeading, topicSpecificCurrentInfoHeading } from '@/lib/seoEngine/titleLab'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
@@ -1227,6 +1228,30 @@ export function applyDeterministicRepairs(opts: {
       }
       if (changed > 0) {
         applied.push(`keyword_pasted_headings_rewritten (${changed})`)
+        b = rewritten
+      }
+    }
+    // Generic boilerplate concluding sections ("Updated Requirements and
+    // Guidance for 2026") — rename to a topic-specific heading (or the
+    // writer sweep drops content-less ones). Same deterministic spirit:
+    // the heading is CHANGED, never hidden.
+    const genericHeadings = Array.from(b.matchAll(/^##\s+(.+)$/gm))
+      .map((m) => m[1].trim())
+      .filter((h) => isGenericCurrentInfoHeading(h))
+    if (genericHeadings.length) {
+      let rewritten = b
+      let changed = 0
+      for (const heading of genericHeadings) {
+        const replacement = topicSpecificCurrentInfoHeading(opts.primaryKeyword || '', 2026)
+        if (replacement === heading) continue
+        rewritten = rewritten.replace(
+          new RegExp(`^##\\s+${escapeRegExpText(heading)}\\s*$`, 'm'),
+          `## ${replacement}`,
+        )
+        changed++
+      }
+      if (changed > 0) {
+        applied.push(`generic_current_info_headings_rewritten (${changed})`)
         b = rewritten
       }
     }

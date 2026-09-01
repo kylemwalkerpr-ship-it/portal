@@ -84,6 +84,99 @@ function isBareKeywordTitle(title: string): boolean {
   return true
 }
 
+// ── Generic "current information" concluding section — the exact heading
+// ChatGPT validated against. When dozens of articles end with the SAME
+// boilerplate section ("Updated Requirements and Guidance for 2026"), pages
+// start looking templated to readers AND Google. The section is only
+// worthwhile with a topic-specific heading and real time-sensitive facts. */
+const GENERIC_CURRENT_INFO_RE =
+  /^(?:updated requirements and guidance|options, costs and trade-offs|requirements and guidance|key updates|what's new|whats new|recent changes)(?:\s+(?:and|for|in|of|on))?\s*(?:19|20)\d{2}\s*[!.?]?$/i
+const GENERIC_BOILERPLATE_RE =
+  /^requirements may change in\s*(?:19|20)\d{2}\.?$/i
+
+/** True when an H2/H3 is the generic boilerplate concluding section that the
+ *  estate must stop shipping (observed on live drafts + validated by Google
+ *  guidance: repetitive standardized endings look templated). */
+export function isGenericCurrentInfoHeading(heading: string): boolean {
+  const h = String(heading ?? '').trim()
+  if (!h) return false
+  return GENERIC_CURRENT_INFO_RE.test(h) || GENERIC_BOILERPLATE_RE.test(h)
+}
+
+/** Topic-specific replacement heading for the concluding current-information
+ *  section — mirrors Google's own examples ("2026 Canada Study Permit
+ *  Requirements", "Express Entry Requirements for 2026"). Deterministic,
+ *  always carries the primary topic + year. */
+export function topicSpecificCurrentInfoHeading(
+  primaryKeyword: string,
+  year: number = DEFAULT_YEAR,
+): string {
+  const kw = String(primaryKeyword ?? '').trim()
+  if (!kw) return `${year} Requirements and Recent Changes`
+  const titleCased = kw
+    .split(/\s+/)
+    .map((w) => (w.length > 2 || /^(?:usa|uk|ca|au)$/i.test(w) ? w[0].toUpperCase() + w.slice(1) : w.toLowerCase()))
+    .join(' ')
+  const base = `${year} ${titleCased}: Requirements and Recent Changes`
+  return base.length <= 88 ? base : `${year} ${titleCased}`.slice(0, 85) + '…'
+}
+
+// ── Title-scorer calibration (CTR feedback loop) ────────────────────────
+// Like the ranking-model weight recalibration: title buckets drift toward
+// what actually earns CTR after ship. Only rows with a measured
+// ctr_after_ship participate; the adjustment is band-clamped and the total
+// stays 100.
+export interface TitleCalibrationRow {
+  score: number
+  breakdown?: Record<string, number> | null
+  ctrAfterShip?: number | null
+  chosen?: boolean | null
+}
+export const TITLE_SCORER_WEIGHTS: Record<string, number> = {
+  ctr_vocab: 30,
+  differentiation: 20,
+  keyword_presence: 15,
+  length: 15,
+  human_style: 20,
+}
+const TITLE_CALIBRATION_LR = 0.02
+const TITLE_BAND = { min: 10, max: 40 }
+
+/** Nudge the title-scorer bucket weights toward CTR-proven titles. Returns
+ *  the new weights (sum stays 100) plus whether any adjustment applied. */
+export function recalibrateTitleScorer(
+  rows: TitleCalibrationRow[],
+  weights: Record<string, number> = { ...TITLE_SCORER_WEIGHTS },
+): { weights: Record<string, number>; applied: number } {
+  const measured = (rows || []).filter((r) => typeof r.ctrAfterShip === 'number' && r.chosen !== false)
+  if (measured.length < 3) return { weights, applied: 0 }
+  const median = [...measured.map((r) => r.ctrAfterShip as number)].sort((a, b) => a - b)[Math.floor(measured.length / 2)]
+  const winners = measured.filter((r) => (r.ctrAfterShip as number) > median)
+  if (winners.length === 0) return { weights, applied: 0 }
+  const buckets = Object.keys(weights)
+  let applied = 0
+  for (const row of winners) {
+    for (const bucket of buckets) {
+      const contributed = row.breakdown?.[bucket] ?? 0
+      if (contributed > 0 && weights[bucket] < TITLE_BAND.max) {
+        weights[bucket] = Math.min(TITLE_BAND.max, weights[bucket] + TITLE_CALIBRATION_LR * (contributed / Math.max(1, row.score)))
+        applied++
+      }
+    }
+  }
+  // Renormalize to a 100 sum (relative proportions preserved).
+  const total = Object.values(weights).reduce((a, b) => a + b, 0)
+  if (total > 0 && total !== 100) {
+    for (const bucket of buckets) weights[bucket] = Math.round((weights[bucket] / total) * 100 * 100) / 100
+    const remainder = 100 - Object.values(weights).reduce((a, b) => a + b, 0)
+    weights[buckets[0]] = Math.round((weights[buckets[0]] + remainder) * 100) / 100
+  }
+  for (const bucket of buckets) {
+    weights[bucket] = Math.max(TITLE_BAND.min, Math.min(TITLE_BAND.max, Math.round(weights[bucket] * 100) / 100))
+  }
+  return { weights, applied: applied > 0 ? measured.length : 0 }
+}
+
 export function isFillerTitle(title: string): boolean {
   const t = String(title ?? '').trim()
   if (!t) return true
@@ -215,6 +308,7 @@ function containsPhrase(title: string, phrase: string): boolean {
 export function scoreTitle(
   title: string,
   ctx: TitleScoreContext,
+  weights: Record<string, number> = { ...TITLE_SCORER_WEIGHTS },
 ): { score: number; breakdown: Record<string, number> } {
   const breakdown: Record<string, number> = {
     ctr_vocab: 0,
@@ -223,6 +317,7 @@ export function scoreTitle(
     length: 0,
     human_style: 0,
   }
+  const w = { ...TITLE_SCORER_WEIGHTS, ...(weights || {}) }
   const t = String(title ?? '').trim()
   const kw = (ctx.primaryKeyword || '').trim()
   if (!kw || !t || !containsPhrase(t, kw)) return { score: 0, breakdown }
@@ -244,8 +339,29 @@ export function scoreTitle(
   breakdown.human_style = humanStyleScore(t)
 
   return {
-    score: breakdown.ctr_vocab + breakdown.differentiation + breakdown.keyword_presence + breakdown.length + breakdown.human_style,
+    score: Math.round(
+      (breakdown.ctr_vocab / 30) * w.ctr_vocab +
+        (breakdown.differentiation / 20) * w.differentiation +
+        (breakdown.keyword_presence / 15) * w.keyword_presence +
+        (breakdown.length / 15) * w.length +
+        (breakdown.human_style / 20) * w.human_style,
+    ),
     breakdown,
+  }
+}
+
+/** Best-effort loader of the CTR-calibrated TitleLab weights (persisted by
+ *  the daily cron via recalibrateTitleScorer). Falls back to the static
+ *  defaults on any failure. Async because it reads seo_engine_config. */
+export async function loadCalibratedTitleWeights(): Promise<Record<string, number>> {
+  try {
+    const { loadEngineConfig } = await import('@/lib/seoEngine/engineConfig')
+    const cfg = await loadEngineConfig<{ title_weights: Record<string, number> }>('title_scorer')
+    return cfg?.title_weights && typeof cfg.title_weights === 'object'
+      ? { ...TITLE_SCORER_WEIGHTS, ...cfg.title_weights }
+      : { ...TITLE_SCORER_WEIGHTS }
+  } catch {
+    return { ...TITLE_SCORER_WEIGHTS }
   }
 }
 

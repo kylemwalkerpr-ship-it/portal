@@ -13,6 +13,7 @@
  */
 
 import { BANNED_AI_TELLS, VOICE_PLAYBOOK } from '@/lib/seoVoice'
+import { isGenericCurrentInfoHeading, topicSpecificCurrentInfoHeading } from '@/lib/seoEngine/titleLab'
 import { resolveTermSources, type KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { auditLinksSync, extractLinks, isSkippableHref } from './linkAudit'
 import { evaluateAhrefsDraft } from './ahrefsIssues'
@@ -1464,6 +1465,17 @@ export function evaluateContentQuality(opts: {
         message: `Heading is the keyword string pasted verbatim: "${pasted.heading}". Name the section for a reader instead of repeating brief keywords.`,
         fix: `Rewrite the heading in natural reader language that names the section's purpose. Prescription for this heading: "${suggestHeadingRewrite(pasted.heading, opts.primaryKeyword)}". The keyword belongs in the body copy, not as the heading.`,
         evidence: pasted.heading,
+      })
+    }
+    for (const h of body.matchAll(/^##\s+(.+)$/gm)) {
+      const heading = h[1].trim()
+      if (!isGenericCurrentInfoHeading(heading)) continue
+      add({
+        code: 'generic_current_info_heading',
+        severity: 'warning',
+        message: `Generic boilerplate concluding section: "${heading}". When every article ends with the same standardized heading the pages read as template output (Google's people-first guidance warns against lightly differentiated content).`,
+        fix: `Give the section a topic-specific heading — e.g. "${topicSpecificCurrentInfoHeading(opts.primaryKeyword || '', 2026)}". Keep the section ONLY when the topic has real time-sensitive facts (fees, deadlines, eligibility that actually change); otherwise remove it entirely.`,
+        evidence: heading,
       })
     }
 
