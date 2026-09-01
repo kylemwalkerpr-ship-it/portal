@@ -984,8 +984,8 @@ export async function PATCH(request: NextRequest) {
       const evaluate = (c: string): LoopFinding[] => {
         const gate = evaluateReauditContract({ content: c, ...loopCtx })
         return [
-          ...(gate.blockersData || []).map((b) => ({ code: b.code, severity: 'blocker' as const, message: b.message })),
-          ...(gate.warningsData || []).map((w) => ({ code: w.code, severity: 'warning' as const, message: w.message })),
+          ...(gate.blockersData || []).map((b) => ({ code: b.code, severity: 'blocker' as const, message: b.message, fix: b.fix })),
+          ...(gate.warningsData || []).map((w) => ({ code: w.code, severity: 'warning' as const, message: w.message, fix: w.fix })),
         ]
       }
       const deterministicRepair = (c: string) => {
@@ -1000,7 +1000,7 @@ export async function PATCH(request: NextRequest) {
         // findings, rendered from the canonical snapshot.
         const roundRules = renderReviewerRules(req.findings, contentSpec)
         const findingList = req.findings
-          .map((f, i) => `${i + 1}. [${f.code}] ${f.message || 'quality finding'}`)
+          .map((f, i) => `${i + 1}. [${f.code}] ${f.message || 'quality finding'}${f.fix ? `\n   FIX PRESCRIPTION: ${f.fix.slice(0, 600)}` : ''}`)
           .join('\n')
         const sys = `You are a surgical SEO content editor. Respond with ONLY a JSON object matching the EditorPatch v1 contract:
 {"version":1,"operations":[{"kind":"replace","findingCode":"<registered code>","anchor":"<an exact full line from the document>","expectedHash":"<ignored; recomputed server-side>","replacement":"<replacement text>"}]}

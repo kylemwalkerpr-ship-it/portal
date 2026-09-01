@@ -533,28 +533,72 @@ export function detectDanglingForwardReferences(content: string): Array<{ senten
 }
 
 /**
- * Heading-level keyword pasting: a section heading whose text IS a required
- * keyword string (or a ≥4-word long-tail verbatim). Two variants:
- *  - exact: normalized heading equals a required keyword;
- *  - full long-tail embedded 1:1 in the heading ("How to apply for estimated
- *    tax payment help | overview" — the template string as a title).
- * Headings should NAME the section for a reader, not repeat brief keywords;
- * this is reader-visible stuffing engines derank.
+ * Deterministic rewrite suggestion for a keyword-pasted heading. The
+ * prescription removes template scaffolding ("requirements for", "do you
+ * need", "is it possible to", "what is the") and the primary phrase, then
+ * rewords the residue into a reader-facing section name. Fallbacks guarantee
+ * a usable suggestion even for headings that are the keyword alone.
+ */
+export function suggestHeadingRewrite(heading: string, primaryKeyword?: string | null): string {
+  let h = String(heading || '').trim()
+  const primaryNorm = String(primaryKeyword || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+  const strip = (s: string, prefix: RegExp, word?: string) => {
+    const out = s.replace(new RegExp(`^${prefix.source}`, word || 'i'), '')
+    return out.trim()
+  }
+  // Remove template scaffolding prefixes and the primary phrase wherever the
+  // keyword got glued into the heading.
+  let work = h
+    .replace(/^(?:requirements?\s+for\s+|do you need\s+|is it possible to\s+|what is the\s+|how to apply for\s+|everything about\s+)/i, '')
+    .replace(/\b(?:requirements?|application|process|guide|checklist)\s+(?:for|about|to)\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  const primaryTokens = new Set(primaryNorm.split(' ').filter((t) => t.length > 2))
+  if (primaryTokens.size >= 2) {
+    work = work
+      .split(/\s+/)
+      .filter((token) => !primaryTokens.has(token.toLowerCase()))
+      .join(' ')
+  }
+  work = work.replace(/[,;:](?=\s*$)|\.$/g, '').trim()
+  if (!work) work = 'How this applies to your case'
+  if (work.split(/\s+/).length < 2) work = `What ${work.toLowerCase()} means for your case`
+  return `${work[0].toUpperCase()}${work.slice(1)}`.replace(/\?+$/g, '')
+}
+
+/**
+ * Heading-level keyword pasting: an H2/H3 whose text IS a required keyword
+ * string (or a ≥4-word long-tail verbatim). Headings should NAME the section
+ * for a reader, not repeat brief keywords.
+ *
+ * Deliberate exemptions (estate contract, not stuffing):
+ *  - H1 — the article title legitimately carries the primary keyword;
+ *  - any heading that normalizes EQUAL to the primary keyword (title/H1
+ *    mirroring is the documented convention and the title-keyword gate
+ *    REQUIRES it).
  */
 export function detectKeywordPastedHeadings(
   content: string,
   shortKeywords: string[],
   longTailKeywords: string[],
+  primaryKeyword?: string | null,
 ): Array<{ heading: string; keyword: string }> {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
-  const sho = [...new Set((shortKeywords || []).map((k) => norm(k)).filter(Boolean))]
+  const primaryNorm = norm(primaryKeyword || '')
+  const sho = new Set((shortKeywords || []).map((k) => norm(k)).filter(Boolean))
   const longs = [...new Set((longTailKeywords || []).map((k) => norm(k)).filter((k) => k.split(' ').length >= 3))]
   const out: Array<{ heading: string; keyword: string }> = []
   for (const kick of String(content || '').matchAll(/^(#{1,3})\s+(.+)$/gm)) {
+    const level = kick[1].length
     const heading = kick[2].trim()
     const normH = norm(heading)
-    if (!normH) continue
-    if (sho.includes(normH)) {
+    if (!normH || level === 1) continue
+    // Primary mirroring is never stuffing on any level.
+    if (primaryNorm && (normH === primaryNorm || normH.startsWith(`${primaryNorm} `))) continue
+    if (sho.has(normH)) {
       out.push({ heading, keyword: heading })
       continue
     }
@@ -1412,12 +1456,12 @@ export function evaluateContentQuality(opts: {
         evidence: junk.question,
       })
     }
-    for (const pasted of detectKeywordPastedHeadings(body, opts.requiredShortKeywords || [], opts.requiredLongTailKeywords || [])) {
+    for (const pasted of detectKeywordPastedHeadings(body, opts.requiredShortKeywords || [], opts.requiredLongTailKeywords || [], opts.primaryKeyword)) {
       add({
         code: 'keyword_pasted_heading',
         severity: 'warning',
         message: `Heading is the keyword string pasted verbatim: "${pasted.heading}". Name the section for a reader instead of repeating brief keywords.`,
-        fix: 'Rewrite the heading in natural reader language that names the section\'s purpose (e.g. "What each fee model includes" instead of "requirements for a study abroad consultant cost"). The keyword still belongs in the body copy, not as the heading.',
+        fix: `Rewrite the heading in natural reader language that names the section's purpose. Prescription for this heading: "${suggestHeadingRewrite(pasted.heading, opts.primaryKeyword)}". The keyword belongs in the body copy, not as the heading.`,
         evidence: pasted.heading,
       })
     }

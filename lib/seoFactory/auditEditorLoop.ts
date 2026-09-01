@@ -27,6 +27,8 @@ export type LoopFinding = {
   code: string
   severity: LoopSeverity
   message?: string
+  /** Operator-facing fix guidance (may carry a deterministic prescription). */
+  fix?: string
 }
 
 export type LoopBudget = { maxAiPasses: number; maxDeterministicRepasses: number; stallRounds: number }

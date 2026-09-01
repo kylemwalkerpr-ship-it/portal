@@ -10,7 +10,7 @@
  */
 import { applyDeterministicRepairs, stripDuplicateArticleCopy } from '../lib/seoFactory/editorialScaffold'
 import { normalizeEditorDocument } from '../lib/seoFactory/formatContract'
-import { auditReferenceReachability, detectForcedFaqWordings, detectKeywordPastedHeadings, evaluateContentQuality } from '../lib/seoFactory/contentQualityGate'
+import { auditReferenceReachability, detectForcedFaqWordings, detectKeywordPastedHeadings, evaluateContentQuality, suggestHeadingRewrite } from '../lib/seoFactory/contentQualityGate'
 
 describe('run-in heading split (formatContract.normalizeEditorDocument)', () => {
   it('splits a ### glued onto the end of a paragraph onto its own line', () => {
@@ -212,7 +212,7 @@ Ask the firm for a written quote.
 })
 
 describe('headings pasted from keyword strings', () => {
-  it('flags headings that are a required keyword or a long-tail verbatim', () => {
+  it('flags H2/H3 headings that are a required keyword or a long-tail verbatim', () => {
     const body = `# Guide
 
 ## How to apply for estimated tax payment help
@@ -231,6 +231,7 @@ Natural heading stays untouched.
       body,
       ['estimated tax eligibility'],
       ['how to apply for estimated tax payment help'],
+      'estimated tax payment help',
     )
     const headings = found.map((f) => f.heading)
     expect(headings).toContain('How to apply for estimated tax payment help')
@@ -238,7 +239,36 @@ Natural heading stays untouched.
     expect(headings).not.toContain('What each fee model includes')
   })
 
-  it('the gate surfaces keyword_pasted_heading', () => {
+  it('never flags the H1 / primary-mirroring headings (title contract)', () => {
+    const body = `# Diy green card application vs attorney
+
+## Diy green card application vs attorney
+
+Prose.
+
+## What each option costs
+
+Prose.
+`
+    const found = detectKeywordPastedHeadings(
+      body,
+      ['diy green card application', 'green card cost', 'attorney fees', 'filing options', 'application risk'],
+      ['diy green card application vs attorney / 2026 comparison'],
+      'diy green card application vs attorney',
+    )
+    // H1 (level 1) and the primary-mirroring H2 are the estate contract.
+    expect(found).toEqual([])
+  })
+
+  it('suggests a reader-facing rewrite for a long-tail heading', () => {
+    const h = 'Requirements for a study abroad consultant cost'
+    const suggestion = suggestHeadingRewrite(h, 'study abroad consultant cost')
+    expect(suggestion).not.toMatch(/requirements for|study abroad consultant cost/i)
+    expect(suggestion.length).toBeGreaterThan(3)
+    expect(suggestion[0]).toBe(suggestion[0].toUpperCase())
+  })
+
+  it('the gate surfaces keyword_pasted_heading with a fix prescription', () => {
     const gated = evaluateContentQuality({
       content: `# Guide\n\n## How to apply for estimated tax payment help\n\nProse.\n\n## Natural section\n\nProse.\n`,
       primaryKeyword: 'estimated tax payment help',
@@ -246,7 +276,9 @@ Natural heading stays untouched.
       requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
       requiredLongTailKeywords: ['how to apply for estimated tax payment help', 'x y z q p', 'x y z q r', 'x y z q s'],
     })
-    expect(gated.findings.some((f) => f.code === 'keyword_pasted_heading')).toBe(true)
+    const finding = gated.findings.find((f) => f.code === 'keyword_pasted_heading')
+    expect(finding).toBeDefined()
+    expect(finding!.fix).toContain('Prescription for this heading')
   })
 })
 
