@@ -126,6 +126,8 @@ export interface WarRoomResult {
   historyAvailable: boolean
   range: { startDate: string; endDate: string; days: number } | null
   snapshot: { generatedAt?: string; source?: string } | null
+  /** Temporary pipeline diagnostics — only present when opts.debug is set. */
+  debug?: Record<string, unknown>
 }
 
 function expectedCtrAtPosition(pos: number): number {
@@ -168,11 +170,13 @@ export async function buildSeoWarRoom(opts?: {
   limit?: number
   minImpressions?: number
   regionFilter?: string
+  debug?: boolean
 }): Promise<WarRoomResult> {
   const days = opts?.days ?? 90
   const limit = opts?.limit ?? 40
   const minImpressions = opts?.minImpressions ?? 2
   const regionFilter = opts?.regionFilter
+  const dbg: Record<string, unknown> = opts?.debug ? {} : undefined as unknown as Record<string, unknown>
   const now = new Date().toISOString()
 
   const warnings: string[] = []
@@ -296,6 +300,12 @@ export async function buildSeoWarRoom(opts?: {
       ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []),
     ].map(shape)
     const merged = mergeSnapshotIntoQueries(queries, snapshotRows)
+    if (dbg) {
+      dbg.snapshotRows = snapshotRows.length
+      dbg.merged = merged.length
+      dbg.queriesAfterMerge = queries.length
+      dbg.mergedSample = merged.slice(0, 12).map((q) => ({ t: q.term, imp: q.impressions, noise: isNoiseQuery((q.term || '').trim().toLowerCase()) }))
+    }
     if (merged.length > queries.length) {
       snapshotMeta = { generatedAt: snap.generatedAt, source: snap.source }
       queries.length = 0
@@ -314,10 +324,20 @@ export async function buildSeoWarRoom(opts?: {
     deduped.push({ ...q, term: t, history: historyByTerm.get(t) || undefined })
   }
   deduped.sort((a, b) => b.impressions - a.impressions)
+  if (dbg) {
+    dbg.queriesIntoDedupe = queries.length
+    dbg.dedupedAfterLoop = deduped.length
+    dbg.dedupedSample = deduped.slice(0, 12).map((q) => ({ t: q.term, imp: q.impressions }))
+    dbg.minImpressions = minImpressions
+  }
 
   try {
     const { pullGa4Signals, attachGa4Revenue } = await import('@/lib/seoEngine/ga4')
     const ga4 = await pullGa4Signals()
+    if (dbg) {
+      dbg.ga4Count = ga4.length
+      dbg.dedupedAfterGa4 = deduped.length
+    }
     if (ga4.length) {
       const withMoney = attachGa4Revenue(deduped, ga4)
       deduped.length = 0
@@ -330,6 +350,10 @@ export async function buildSeoWarRoom(opts?: {
   try {
     const { attachKeywordResearch, loadKeywordResearchIndex } = await import('@/lib/seoEngine/keywordDemand')
     const research = await loadKeywordResearchIndex()
+    if (dbg) {
+      dbg.kdCount = research.length
+      dbg.dedupedAfterKdAttach = deduped.length
+    }
     if (research.length) {
       const withKd = attachKeywordResearch(deduped, research)
       deduped.length = 0

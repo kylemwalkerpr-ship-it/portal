@@ -13,7 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply all supabase/migrations/*.sql (ordered)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify migration order covers every file
+        run: node scripts/migration-order.mjs --check
+
+      - name: Apply supabase/migrations in dependency order
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -23,56 +30,4 @@ jobs:
             echo "::error::Missing SUPABASE_ACCESS_TOKEN repository secret"
             exit 1
           fi
-          REF="${SUPABASE_PROJECT_REF:-krggzrxxnqfsbbklatxl}"
-          SQL="$(cat \
-            supabase/migrations/content_jobs.sql \
-            supabase/migrations/gsc_tokens.sql \
-            supabase/migrations/seo_factory_columns.sql \
-            supabase/migrations/content_jobs_event_log.sql \
-            supabase/migrations/live_verify_columns.sql \
-            supabase/migrations/20260806_hardening.sql \
-            supabase/migrations/mission_log.sql \
-            supabase/migrations/war_room_daily_runs.sql \
-            supabase/migrations/20260808_cannibal_merges.sql \
-            supabase/migrations/20260809_seo_master_engine.sql \
-            supabase/migrations/20260809_cannibal_rechecks.sql \
-            supabase/migrations/20260810_seo_engine_v2.sql \
-            supabase/migrations/ai_provider_keys.sql \
-            supabase/migrations/20260811_table_guarantees.sql \
-            supabase/migrations/20260812_content_jobs_hardening.sql \
-            supabase/migrations/20260813_backlink_engine.sql \
-            supabase/migrations/20260813_rhythm_alerts.sql \
-            supabase/migrations/20260815_competing_snippets.sql \
-            supabase/migrations/20260815_keyword_partition.sql \
-            supabase/migrations/20260816_site_health_pages.sql \
-            supabase/migrations/20260816_gsc_index_coverage.sql \
-            supabase/migrations/20260816_seo_llm_visibility_v3.sql \
-            supabase/migrations/20260817_seo_content_semantic_v1.sql \
-            supabase/migrations/20260817_seo_eeat_v1.sql \
-            supabase/migrations/20260817_seo_competitive_v1.sql \
-            supabase/migrations/20260817_seo_local_v1.sql \
-            supabase/migrations/20260817_site_health_rls.sql \
-            supabase/migrations/20260831_keyword_provenance.sql \
-            supabase/migrations/pg_trgm_indexes.sql \
-            supabase/migrations/additional_fts_indexes.sql \
-            supabase/migrations/application_fts_indexes.sql \
-            supabase/migrations/content_jobs_fts_index.sql)"
-
-          # Management API: run SQL
-          RESP=$(curl -sS -w "\n%{http_code}" -X POST \
-            "https://api.supabase.com/v1/projects/${REF}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "$(jq -n --arg q "$SQL" '{query:$q}')")
-
-          BODY=$(echo "$RESP" | sed '$d')
-          CODE=$(echo "$RESP" | tail -n1)
-          echo "HTTP $CODE"
-          echo "$BODY" | head -c 2000
-          echo
-
-          if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
-            echo "::error::Migration failed (HTTP $CODE). Check SUPABASE_ACCESS_TOKEN scopes / validity."
-            exit 1
-          fi
-          echo "Migrations applied successfully."
+          node scripts/apply-migrations.mjs
