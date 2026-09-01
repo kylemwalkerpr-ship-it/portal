@@ -33,15 +33,20 @@ import {
 } from '@/lib/seoEngine/enginePairBreaker'
 
 export const ENGINE_FALLBACK_PROVIDER = 'grok' as const
-export const ENGINE_LEAD_PROVIDER = 'runbios-claude-opus' as const
-export const ENGINE_LEAD_MODEL = 'claude-opus-5' as const
-export const ENGINE_COMPLEMENT_PROVIDER = 'grok' as const
+/** Graduated Discover-stage pair: Entrim lead (Qwen3.8 27B) + Entrim
+ *  complement (DeepSeek V4 Flash) — both served by api.entrim.ai/v1 with the
+ *  single ENTRIM vault key. When Entrim is unconfigured the pair falls back
+ *  to the legacy Run BiOS Claude Opus 5 lead / Grok complement so existing
+ *  vaults keep working untouched. */
+export const ENGINE_LEAD_PROVIDER = 'entrim-qwen-27b' as const
+export const ENGINE_LEAD_MODEL = 'Qwen/Qwen3.8-27B' as const
+export const ENGINE_COMPLEMENT_PROVIDER = 'entrim-deepseek' as const
 export const ENGINE_PAIR = 'engine-pair' as const
 
 const PAIR_MAX_TOKENS = 4096
 const HARMONY_MAX_TOKENS = 3072
-/** Claude Opus 5 harmonization can take minutes on long Discover payloads —
- *  never cut the Run BiOS lead mid-thought; floor at the Run BiOS deadline. */
+/** Long Discover payloads can take minutes — never cut the lead mid-thought;
+ *  floor at the pair's lead deadline (10 min). */
 const PAIR_LEAD_MIN_TIMEOUT_MS = 600_000
 
 export interface EnginePairExtras {
@@ -92,7 +97,9 @@ export function resolveEngineAiProvider(preferred?: string): string {
 }
 
 export function enginePairReady(): boolean {
-  return isRunbiosConfigured() || isGrokConfigured()
+  // Graduated pair readiness: Entrim serves both legs with one key; Run BiOS
+  // + Grok remain a valid legacy pair when Entrim is unconfigured.
+  return isEntrimConfigured() || isRunbiosConfigured() || isGrokConfigured()
 }
 
 export function extractEngineJsonObject(text: string): Record<string, unknown> | null {
@@ -177,11 +184,16 @@ export function accumulatePairRollup(rollup: EnginePairRollup, meta?: EnginePair
 
 export function formatEnginePairTape(rollup: EnginePairRollup | null | undefined): string {
   if (!rollup || rollup.calls <= 0) return ''
-  const bits = ['Claude Opus 5 + Grok complement']
+  // Label the actual legs that ran: the graduated Entrim pair is the default,
+  // but a legacy vault (no ENTRIM key) legitimately ran Run BiOS + Grok —
+  // the tape must report what actually executed.
+  const lead = rollup.lead || 'Qwen/Qwen3.8-27B'
+  const complement = rollup.complement || 'deepseek-ai/DeepSeek-V4-Flash'
+  const bits = [`${lead} + ${complement} complement`]
   if (rollup.disagreed) bits.push('disagreed')
   if (rollup.merged) bits.push('merged')
   if (rollup.leadOnly) bits.push(`lead-only:${rollup.leadOnly}`)
-  if (rollup.complementOnly) bits.push(`grok-only:${rollup.complementOnly}`)
+  if (rollup.complementOnly) bits.push(`${complement}-only:${rollup.complementOnly}`)
   if (rollup.extrasKept) bits.push(`extras:${rollup.extrasKept}`)
   return bits.join(', ')
 }
@@ -220,17 +232,21 @@ export async function generateEnginePairText(
     skipQualityContract: opts.skipQualityContract !== false,
     exclusive: true as const,
   }
-  // The Run BiOS Opus lead gets the 10-minute floor; omitting timeoutMs lets
-  // deadlineForProvider apply the same floor. Grok keeps its own provider
-  // deadline floor (180s) when no explicit timeout is passed.
+  // Graduated pair: the Entrim lead gets the 10-minute floor; the complement
+  // (second Entrim family) keeps the same floor. Legacy vaults without an
+  // ENTRIM key fall back to the old Run BiOS Opus lead / Grok complement —
+  // see leadProvider/complementProvider below.
   const leadTimeoutMs =
     opts.timeoutMs != null ? Math.max(opts.timeoutMs, PAIR_LEAD_MIN_TIMEOUT_MS) : undefined
 
-  // Skip a dead complement: when Grok is not configured, do not fire a leg
-  // that can only fail (and trip its circuit breaker). Same for a lead with
-  // no Run BiOS key — complement-only proceeds.
-  const leadReady = isRunbiosConfigured()
-  const complementReady = isGrokConfigured()
+  // Leg readiness: Entrim serves both legs with one key. Without Entrim the
+  // pair degrades to the legacy lead/complement providers so operators with
+  // only Run BiOS + Grok keys keep the exact behavior they had.
+  const entrimReady = isEntrimConfigured()
+  const leadReady = entrimReady || isRunbiosConfigured()
+  const complementReady = entrimReady || isGrokConfigured()
+  const leadProvider = entrimReady ? ENGINE_LEAD_PROVIDER : ('runbios-claude-opus' as const)
+  const complementProvider = entrimReady ? ENGINE_COMPLEMENT_PROVIDER : ('grok' as const)
   const notConfigured = (label: string) =>
     ({ status: 'rejected', reason: new Error(`${label}: not configured`) }) as PromiseSettledResult<ContentAiResult>
 
@@ -239,18 +255,18 @@ export async function generateEnginePairText(
       ? runPairLeg('runbios-opus', () => generateContentText({
           ...shared,
           ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
-          aiProvider: ENGINE_LEAD_PROVIDER,
-          model: ENGINE_LEAD_MODEL,
+          aiProvider: leadProvider,
+          model: entrimReady ? ENGINE_LEAD_MODEL : 'claude-opus-5',
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
-      : Promise.resolve(notConfigured('Claude Opus 5 (Run BiOS)')),
+      : Promise.resolve(notConfigured('Entrim Qwen3.8 27B')),
     complementReady
       ? runPairLeg('grok', () => generateContentText({
           ...shared,
-          aiProvider: ENGINE_COMPLEMENT_PROVIDER,
+          aiProvider: complementProvider,
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
-      : Promise.resolve(notConfigured('Grok (xAI)')),
+      : Promise.resolve(notConfigured('Entrim DeepSeek V4 Flash')),
   ])
 
   // Discover resilience: with Entrim configured and NO Run BiOS/Grok keys,
@@ -323,8 +339,8 @@ export async function generateEnginePairText(
   }
   if (!lead && !complement) {
     throw new Error(
-      `Engine pair failed. Lead (Claude Opus 5 via Run BiOS): ${leadErr.slice(0, 280) || 'empty'}. ` +
-        `Complement (Grok via xAI): ${complementErr.slice(0, 280) || 'empty'}.`,
+      `Engine pair failed. Lead (Entrim Qwen3.8 27B): ${leadErr.slice(0, 280) || 'empty'}. ` +
+        `Complement (Entrim DeepSeek V4 Flash): ${complementErr.slice(0, 280) || 'empty'}.`,
     )
   }
 

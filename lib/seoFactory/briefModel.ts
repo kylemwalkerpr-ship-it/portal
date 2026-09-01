@@ -1,13 +1,13 @@
 /**
- * Brief-stage model policy — exactly four model families:
- *   1. Claude Opus 5 via Run BiOS (`runbios-claude-opus`) — the DEFAULT.
- *      It consumes all Discover intelligence, including keywords.
- *   2. Grok (xAI / SuperGrok) — complementary choice and the fallback leg.
- *   3. DeepSeek V4 Flash, served by two hosts: Run BiOS
+ * Brief-stage model policy — five model families:
+ *   1. Entrim Qwen3.8 27B (`entrim-qwen-27b`) — the DEFAULT (api.entrim.ai/v1,
+ *      shares the ENTRIM vault row). It consumes all Discover intelligence.
+ *   2. Claude Opus 5 via Run BiOS (`runbios-claude-opus`) — explicit choice.
+ *   3. Grok (xAI / SuperGrok) — complementary choice and the fallback leg.
+ *   4. DeepSeek V4 Flash, served by two hosts: Run BiOS
  *      (`runbios-deepseek-flash`) and Baseten (`baseten-deepseek`).
- *   4. Entrim Qwen3.8 27B (`entrim-qwen-27b`) — api.entrim.ai/v1, shares the
- *      ENTRIM vault row. Selectable in the Brief lane like Grok/Claude.
- * 'auto', empty, stale, or unrecognized pins coerce to the Claude Opus 5
+ *   5. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — second Entrim family.
+ * 'auto', empty, stale, or unrecognized pins coerce to the Entrim Qwen
  * default. No other Brief choice exists.
  *
  * FALLBACK: when the primary is unconfigured or fails, the route falls back
@@ -20,8 +20,11 @@ import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
 /** Provider id for the brief fallback (xAI Grok / SuperGrok). */
 export const BRIEF_FALLBACK_PROVIDER = 'grok' as const
 
-/** Brief lead pin — Claude Opus 5 billed through Run BiOS. */
-export const BRIEF_DEFAULT_PROVIDER = 'runbios-claude-opus' as const
+/** Brief lead pin — Entrim Qwen3.8 27B (graduated default). */
+export const BRIEF_DEFAULT_PROVIDER = 'entrim-qwen-27b' as const
+
+/** Claude Opus 5 via Run BiOS — explicit alternative choice. */
+export const BRIEF_CLAUDE_PROVIDER = 'runbios-claude-opus' as const
 
 /** Entrim Qwen3.8 27B — fourth brief family (api.entrim.ai/v1). */
 export const BRIEF_ENTRIM_QWEN_PROVIDER = 'entrim-qwen-27b' as const
@@ -29,9 +32,10 @@ export const BRIEF_ENTRIM_QWEN_PROVIDER = 'entrim-qwen-27b' as const
 export type BriefProviderChoice =
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
   | { aiProvider: typeof BRIEF_DEFAULT_PROVIDER; model?: undefined }
+  | { aiProvider: typeof BRIEF_CLAUDE_PROVIDER; model?: undefined }
   | { aiProvider: 'runbios-deepseek-flash'; model?: undefined }
   | { aiProvider: 'baseten-deepseek'; model?: undefined }
-  | { aiProvider: typeof BRIEF_ENTRIM_QWEN_PROVIDER; model?: undefined }
+  | { aiProvider: 'entrim-deepseek'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -44,14 +48,14 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   ) {
     return { aiProvider: BRIEF_FALLBACK_PROVIDER }
   }
-  // Claude Opus 5 via Run BiOS — the brief lead.
-  if (isRunbiosPin(pin) && canonicalizeRunbiosPin(pin) === BRIEF_DEFAULT_PROVIDER) {
-    return { aiProvider: BRIEF_DEFAULT_PROVIDER }
+  // Claude Opus 5 via Run BiOS — explicit alternative to the Entrim default.
+  if (isRunbiosPin(pin) && canonicalizeRunbiosPin(pin) === BRIEF_CLAUDE_PROVIDER) {
+    return { aiProvider: BRIEF_CLAUDE_PROVIDER }
   }
   if (pin === 'claude-opus-5') {
-    return { aiProvider: BRIEF_DEFAULT_PROVIDER }
+    return { aiProvider: BRIEF_CLAUDE_PROVIDER }
   }
-  // DeepSeek V4 Flash — the third brief family, on its two hosts.
+  // DeepSeek V4 Flash — a brief family, on its two hosts.
   if (pin === 'runbios-deepseek-flash' || pin === 'deepseek-ai/deepseek-v4-flash') {
     return { aiProvider: 'runbios-deepseek-flash' }
   }
@@ -62,12 +66,16 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   ) {
     return { aiProvider: 'baseten-deepseek' }
   }
-  // Entrim Qwen3.8 27B — the fourth brief family (api.entrim.ai/v1).
+  // Entrim Qwen3.8 27B — the graduated brief default (api.entrim.ai/v1).
   if (pin === BRIEF_ENTRIM_QWEN_PROVIDER || pin === 'qwen3.8-27b' || pin === 'qwen') {
     return { aiProvider: BRIEF_ENTRIM_QWEN_PROVIDER }
   }
+  // DeepSeek V4 Flash on Entrim — second Entrim brief family.
+  if (pin === 'entrim-deepseek') {
+    return { aiProvider: 'entrim-deepseek' }
+  }
   // 'auto', empty, stale drafting pins, and every removed choice coerce to
-  // the Claude Opus 5 default.
+  // the Entrim Qwen default.
   return { aiProvider: BRIEF_DEFAULT_PROVIDER }
 }
 
@@ -203,14 +211,18 @@ export async function generateBriefText(opts: {
   const primaryLabel = primaryIsFallback
     ? 'Grok'
     : primaryPin === BRIEF_DEFAULT_PROVIDER
-      ? 'Claude Opus 5 (Run BiOS)'
-      : primaryPin === 'runbios-deepseek-flash'
-        ? 'DeepSeek V4 Flash (Run BiOS)'
-        : primaryPin === 'baseten-deepseek'
-          ? 'DeepSeek V4 Flash (Baseten)'
-          : primaryPin === BRIEF_ENTRIM_QWEN_PROVIDER
-            ? 'Qwen3.8 27B (Entrim)'
-            : 'Claude Opus 5 (Run BiOS)'
+      ? 'Qwen3.8 27B (Entrim)'
+      : primaryPin === BRIEF_CLAUDE_PROVIDER
+        ? 'Claude Opus 5 (Run BiOS)'
+        : primaryPin === 'runbios-deepseek-flash'
+          ? 'DeepSeek V4 Flash (Run BiOS)'
+          : primaryPin === 'baseten-deepseek'
+            ? 'DeepSeek V4 Flash (Baseten)'
+            : primaryPin === 'entrim-deepseek'
+              ? 'DeepSeek V4 Flash (Entrim)'
+              : primaryPin === BRIEF_ENTRIM_QWEN_PROVIDER
+                ? 'Qwen3.8 27B (Entrim)'
+                : 'Qwen3.8 27B (Entrim)'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,

@@ -149,21 +149,21 @@ it('draft lane: Run BiOS + NVIDIA + Entrim models only, sorted alphabetically by
     expect(pinFor('grok-4.6', 'xai')).toBe('grok')
   })
 
-  it('defaults: draft = MiniMax M3 via NVIDIA; brief = Claude Opus 5 via Run BiOS; review = GLM 5.3 Flash via Run BiOS', () => {
-    expect(DEFAULT_DRAFT_PIN).toBe('nvidia-minimax')
-    expect(DEFAULT_BRIEF_PIN).toBe('runbios-claude-opus')
-    expect(DEFAULT_REVIEW_PIN).toBe('runbios-glm-53-flash')
+  it('defaults: draft = brief = review = Entrim Qwen3.8 27B (graduated)', () => {
+    expect(DEFAULT_DRAFT_PIN).toBe('entrim-qwen-27b')
+    expect(DEFAULT_BRIEF_PIN).toBe('entrim-qwen-27b')
+    expect(DEFAULT_REVIEW_PIN).toBe('entrim-qwen-27b')
     expect(parseStudioPin(DEFAULT_DRAFT_PIN)).toMatchObject({
-      model: { id: 'minimax-m3' },
-      host: { id: 'nvidia' },
+      model: { id: 'qwen3.8-27b' },
+      host: { id: 'entrim' },
     })
     expect(parseStudioPin(DEFAULT_BRIEF_PIN)).toMatchObject({
-      model: { id: 'claude-opus-5' },
-      host: { id: 'runbios' },
+      model: { id: 'qwen3.8-27b' },
+      host: { id: 'entrim' },
     })
     expect(parseStudioPin(DEFAULT_REVIEW_PIN)).toMatchObject({
-      model: { id: 'glm-5.3-flash' },
-      host: { id: 'runbios' },
+      model: { id: 'qwen3.8-27b' },
+      host: { id: 'entrim' },
     })
     // DeepSeek V4 Flash has exactly two brief hosts (three families / four
     // pins across the Brief lane: opus, grok, deepseek×2).

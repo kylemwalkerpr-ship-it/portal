@@ -2696,9 +2696,9 @@ function preferProvider(): string {
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
-      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using nvidia-minimax (the Draft default)`,
+      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using entrim-qwen-27b (the graduated default)`,
     )
-    return 'nvidia-minimax'
+    return 'entrim-qwen-27b'
   }
   return explicit
 }

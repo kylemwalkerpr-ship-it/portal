@@ -191,8 +191,6 @@ describe('Phase D · MISSION ECONOMICS + TITLE CONTRACT drafter blocks', () => {
     expect(prompt).toContain('TITLE CONTRACT')
   })
 })
-import { buildFactoryUserPrompt } from '@/lib/seoFactory/prompts'
-
 describe('funnel economics threading into the drafter prompt', () => {
   const base = {
     title: 'Cost Guide',

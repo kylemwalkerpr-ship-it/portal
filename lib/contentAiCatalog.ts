@@ -89,12 +89,13 @@ export const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 export const ENTRIM_QWEN_PIN = 'entrim-qwen-27b'
 export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.8-27B'
 
-/** Draft lead: MiniMax M3 via NVIDIA Integrate — drafting default pin. */
-export const DEFAULT_DRAFT_PIN = 'nvidia-minimax'
-/** Research / Generate Full Brief lead: Claude Opus 5 via Run BiOS. */
-export const DEFAULT_BRIEF_PIN = 'runbios-claude-opus'
-/** Reviewer / Editor lead: Run BiOS GLM 5.3 Flash. */
-export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
+/** Draft lead: Entrim Qwen3.8 27B — graduated to the drafting default
+ *  (api.entrim.ai/v1, ENTRIM_API_KEY). Falls back through the auto cascade. */
+export const DEFAULT_DRAFT_PIN = ENTRIM_QWEN_PIN
+/** Research / Generate Full Brief lead: Entrim Qwen3.8 27B. */
+export const DEFAULT_BRIEF_PIN = ENTRIM_QWEN_PIN
+/** Reviewer / Editor lead: Entrim Qwen3.8 27B. */
+export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
 
 /**
  * Lane host allowlists — a lane can only select or execute a pin whose host

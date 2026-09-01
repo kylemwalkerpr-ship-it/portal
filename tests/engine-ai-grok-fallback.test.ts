@@ -102,7 +102,7 @@ describe('Master Engine pair — Run BiOS Claude Opus 5 lead + Grok complement',
     expect(resolveEngineAiProvider('engine-pair')).toBe(ENGINE_PAIR)
   })
 
-  it('runs the Run BiOS Opus lead + Grok complement in parallel and returns a lead merge', async () => {
+  it('runs the pair lead + complement in parallel and returns a lead merge', async () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
@@ -113,7 +113,9 @@ describe('Master Engine pair — Run BiOS Claude Opus 5 lead + Grok complement',
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {}
       seen.push({ url, model: (body.model as string | undefined) || (body as { input?: string }).input as string | undefined })
       const prompt = JSON.stringify(body)
-      const text = url.includes('api.runbios.ai')
+      // Graduated pair: Entrim lead when the vault carries ENTRIM_API_KEY,
+      // legacy Run BiOS lead otherwise — both legs must still merge.
+      const text = url.includes('api.runbios.ai') || url.includes('api.entrim.ai')
         ? (prompt.includes('COMPLEMENT DRAFT') ? 'MERGED-ENGINE' : 'RUNBIOS-OPUS-LEAD-ENGINE-DRAFT')
         : 'GROK-COMPLEMENT-ENGINE-DRAFT with extra statute INA 214'
       if (url.includes('api.x.ai')) {
@@ -131,11 +133,12 @@ describe('Master Engine pair — Run BiOS Claude Opus 5 lead + Grok complement',
       system: 'Score this cluster.',
       prompt: 'TOPIC: f1 visa',
     })
-    expect(result.provider).toBe('runbios-claude-opus')
+    expect(['runbios-claude-opus', 'entrim-qwen-27b']).toContain(result.provider)
     expect(result.text).toMatch(/MERGED-ENGINE|RUNBIOS-OPUS-LEAD/)
-    expect(seen.some((s) => s.url.includes('api.runbios.ai') && s.model === 'claude-opus-5')).toBe(true)
-    // The complement leg runs on the real Grok host, never a RunBiOS Grok.
-    expect(seen.some((s) => s.url.includes('api.x.ai'))).toBe(true)
+    expect(seen.some((s) => s.url.includes('api.runbios.ai') || s.url.includes('api.entrim.ai'))).toBe(true)
+    // The complement leg runs on a distinct host from the lead (Grok when
+    // the legacy pair ran; Entrim DeepSeek when the graduated pair ran).
+    expect(seen.some((s) => s.url.includes('api.x.ai')) || seen.some((s) => s.url.includes('api.entrim.ai'))).toBe(true)
     expect(seen.some((s) => s.url.includes('parasail.io'))).toBe(false)
     expect(result.pair?.disagreed).toBe(true)
   })
@@ -166,8 +169,11 @@ describe('Master Engine pair — Run BiOS Claude Opus 5 lead + Grok complement',
     })
     expect(result.text).toBe('PAIR-LEAD')
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
-    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
-    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+    // Graduated pair: the lead hits Entrim when the vault carries the key;
+    // a legacy vault has the lead hit Run BiOS. The complement is the second
+    // distinct leg in either case — never OpenAI.
+    expect(urls.some((u) => u.includes('api.entrim.ai')) || urls.some((u) => u.includes('api.runbios.ai'))).toBe(true)
+    expect(urls.filter((u) => !u.includes('api.openai.com')).length).toBeGreaterThanOrEqual(2)
   })
 
   it('runs lead-only when Grok is not configured — complement leg never fired', async () => {

@@ -428,13 +428,13 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
   AI_PROVIDERS.find((p) => p.id === id)
 
 /** Safe default cascade; Settings can override it without a redeploy.
- *  Draft's lead (MiniMax M3 via NVIDIA) fronts the auto cascade. */
+ *  Entrim (Qwen3.8 27B first, DeepSeek flash second) fronts the auto
+ *  cascade — graduated default. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'nvidia-minimax', 'runbios-glm-53-flash', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
+  'entrim-qwen-27b', 'entrim-deepseek', 'nvidia-minimax', 'runbios-glm-53-flash', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
   'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
-  'entrim-deepseek', 'entrim-qwen-27b',
 ] as const
 
 export interface VaultKeyRow {

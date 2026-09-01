@@ -141,12 +141,13 @@ describe('content AI · auto provider pin', () => {
     expect(model).toBe('gpt-5.6-luna')
   })
 
-  it("keeps the drafting default 'nvidia-minimax' on MiniMax M3 — never GPT", () => {
+  it("resolves the graduated Entrim Qwen default — never GPT", () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
-    const { explicit, prefer, model } = resolveAiProviderPin('nvidia-minimax')
-    expect(explicit).toBe('nvidia-minimax')
-    expect(prefer).toBe('nvidia-minimax')
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    const { explicit, prefer, model } = resolveAiProviderPin('entrim-qwen-27b')
+    expect(explicit).toBe('entrim-qwen-27b')
+    expect(prefer).toBe('entrim-qwen-27b')
+    expect(model).toBe('Qwen/Qwen3.8-27B')
     expect(model || '').not.toMatch(/^gpt-/)
   })
 

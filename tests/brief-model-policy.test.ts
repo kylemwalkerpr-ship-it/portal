@@ -27,18 +27,18 @@ import {
 } from '@/lib/seoFactory/briefModel'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('resolveBriefAiProvider — brief model policy (Claude Opus 5 + Grok + DeepSeek V4 Flash)', () => {
-  it('empty / auto / default / stale pins coerce to Claude Opus 5 via Run BiOS', () => {
-    expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'runbios-claude-opus' })
+describe('resolveBriefAiProvider — brief model policy (Entrim Qwen default + Claude/Grok/DeepSeek choices)', () => {
+  it('empty / auto / default / stale pins coerce to Entrim Qwen3.8 27B', () => {
+    expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     for (const raw of ['auto', 'default', 'primary', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6', 'gpt-5.6-luna', 'openai', 'nvidia-minimax', 'minimax', 'nvidia-glm', 'zai-glm', 'baseten-glm-fast', 'glm-5.2-fast', 'aihubmix-glm-fast', 'glm-fast-aihubmix', 'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm', 'nvidia-deepseek', 'deepseek-pro', 'deepseek-flash', 'baseten-deepseek-pro', 'baseten-glm-53-flash', 'runbios-glm-53-flash', 'glm-5.3-flash', 'glm-5.3', 'claude-sonnet-5', 'runbios-claude-sonnet', 'runbios-glm-52', 'nvidia-nemotron', 'cloudflare-ai', 'bios-adaptive', 'runbios-kimi', 'runbios-qwen']) {
       expect({ raw, resolved: resolveBriefAiProvider(raw) }).toEqual({
         raw,
-        resolved: { aiProvider: 'runbios-claude-opus' },
+        resolved: { aiProvider: 'entrim-qwen-27b' },
       })
     }
   })
 
-  it('runbios-claude-opus is the explicit Claude Opus 5 pin', () => {
+  it('runbios-claude-opus / claude-opus-5 stay explicit Claude choices', () => {
     expect(resolveBriefAiProvider('runbios-claude-opus')).toEqual({ aiProvider: 'runbios-claude-opus' })
     expect(resolveBriefAiProvider('claude-opus-5')).toEqual({ aiProvider: 'runbios-claude-opus' })
     // Case-insensitive
@@ -191,7 +191,7 @@ describe('generateBriefText fallback — Grok (SuperGrok) when the primary fails
         system: 'You are the brief architect.',
         prompt: 'TOPIC: dependent visa uk',
       }),
-    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Claude Opus 5 \(Run BiOS\)\)[\s\S]*Fallback \(Grok\)/)
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Qwen3.8 27B \(Entrim\)\)[\s\S]*Fallback \(Grok\)/)
   })
 
   it('Run BiOS Claude Opus primary success returns fallbackUsed=false', async () => {

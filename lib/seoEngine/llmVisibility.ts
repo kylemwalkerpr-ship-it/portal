@@ -343,6 +343,9 @@ interface AuditEngineCandidate {
  *  the matrix measures DISTINCT engines, not the same model twice. */
 function auditEngineCandidates(): AuditEngineCandidate[] {
   return [
+    // Graduated default: Entrim serves both families with one key.
+    { pin: 'entrim-qwen-27b', label: 'entrim-qwen', configured: () => Boolean(contentAiEnv('ENTRIM_API_KEY')) },
+    { pin: 'entrim-deepseek', label: 'entrim-deepseek', configured: () => Boolean(contentAiEnv('ENTRIM_API_KEY')) },
     { pin: 'baseten-glm-fast', label: 'glm-fast', configured: () => isBasetenConfigured() },
     { pin: 'baseten-deepseek', label: 'deepseek', configured: () => isBasetenConfigured() },
     { pin: 'nvidia-glm', label: 'glm', configured: () => isNvidiaGlmConfigured() },
@@ -352,7 +355,6 @@ function auditEngineCandidates(): AuditEngineCandidate[] {
     { pin: 'parasail-deepseek-pro', label: 'deepseek', configured: () => isParasailConfigured() },
     { pin: 'parasail-glm', label: 'glm', configured: () => isParasailConfigured() },
     { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(contentAiEnv('GROK_API_KEY')) },
-    { pin: 'entrim-qwen-27b', label: 'entrim-qwen', configured: () => Boolean(contentAiEnv('ENTRIM_API_KEY')) },
     { pin: 'gemini', label: 'gemini', configured: () => Boolean(contentAiEnv('GEMINI_API_KEY') || contentAiEnv('GOOGLE_GEMINI_API_KEY')) },
     { pin: 'groq', label: 'groq', configured: () => Boolean(contentAiEnv('GROQ_API_KEY')) },
     { pin: 'openai', label: 'openai', configured: () => isOpenaiConfigured() },
