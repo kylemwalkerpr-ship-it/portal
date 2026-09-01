@@ -125,9 +125,9 @@ describe('ranking model · forecast', () => {
       clicks: 30,
       modelTotal: 78,
       plannedActions: [
-        { action: 'refresh', strength: 2 },
-        { action: 'schema', strength: 2 },
-        { action: 'interlink', strength: 1 },
+        { action: 'funnel_climb', strength: 2 },
+        { action: 'authority_anchor', strength: 2 },
+        { action: 'funnel_new', strength: 1 },
       ],
     })
     expect(forecast.points).toHaveLength(3)
@@ -152,8 +152,8 @@ describe('ranking model · forecast', () => {
   })
 
   it('a stronger model score yields a better position projection', () => {
-    const weak = buildForecast({ position: 18, impressions: 1000, modelTotal: 40, plannedActions: [{ action: 'refresh', strength: 2 }] })
-    const strong = buildForecast({ position: 18, impressions: 1000, modelTotal: 85, plannedActions: [{ action: 'refresh', strength: 2 }] })
+    const weak = buildForecast({ position: 18, impressions: 1000, modelTotal: 40, plannedActions: [{ action: 'funnel_climb', strength: 2 }] })
+    const strong = buildForecast({ position: 18, impressions: 1000, modelTotal: 85, plannedActions: [{ action: 'funnel_climb', strength: 2 }] })
     expect(strong.points[2].projectedPosition).toBeLessThanOrEqual(weak.points[2].projectedPosition)
   })
 })
@@ -187,7 +187,7 @@ describe('ranking model · reward loop', () => {
     const events = [1, 2, 3].map((i) =>
       creditOutcome({
         pageUrl: `https://example.com/p${i}`,
-        action: i === 1 ? 'refresh' : i === 2 ? 'schema' : 'backlink',
+        action: i === 1 ? 'funnel_new' : i === 2 ? 'authority_anchor' : 'kill_or_merge',
         deltaImpressions: 500 * i,
         deltaClicks: 20 * i,
         deltaPosition: -3 * i,

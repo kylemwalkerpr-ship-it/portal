@@ -1,4 +1,5 @@
 import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { isFillerTitle } from '@/lib/seoEngine/titleLab'
 import { detectDanglingForwardReferences } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
@@ -1309,5 +1310,41 @@ Gov.`
     })
     expect(fixed.applied.filter((a) => a.startsWith('keyword_pasted_headings'))).toEqual([])
     expect(fixed.content).toContain('# Australia Student Visa Fee Increase')
+  })
+})
+
+describe('title_keyword_only_fixed — TitleLab replacement', () => {
+  it('replaces a keyword-only title with a TitleLab CTR title (keyword-bearing, not filler)', () => {
+    const draft = [
+      '---',
+      'title: admissions consultant credentials',
+      'content_type: legal_guide',
+      'region: US',
+      '---',
+      '',
+      '# admissions consultant credentials',
+      '',
+      '## In 60 seconds',
+      '- Compare at least three consultants in writing.',
+      '- Confirm services, fees, and ethical boundaries before paying.',
+      '',
+      '## Eligibility',
+      'Review the consultant\'s training, memberships, and references before signing an agreement.',
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'admissions consultant credentials',
+      primaryKeyword: 'admissions consultant credentials',
+      region: 'US',
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    expect(applied).toContain('title_keyword_only_fixed')
+    const fmTitle = (content.match(/^title:\s*(.+?)\s*$/m) || [])[1]?.trim() || ''
+    expect(fmTitle.toLowerCase()).toContain('admissions consultant credentials')
+    expect(isFillerTitle(fmTitle.replace(/^["']|["']$/g, ''))).toBe(false)
+    const h1 = (content.match(/^#\s+(.+)$/m) || [])[1]?.trim() || ''
+    expect(h1.toLowerCase()).toContain('admissions consultant credentials')
+    expect(h1).not.toBe('# admissions consultant credentials')
   })
 })

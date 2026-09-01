@@ -29,6 +29,7 @@
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { getStage, primaryServiceFor, type YmylLevel } from '@/lib/seoEngine/ontology'
 import { classifyIntent } from '@/lib/seoEngine/rankingModel'
+import { STAGE_VALUE_DEFAULTS } from '@/lib/seoEngine/marketplaceValue'
 
 export const CRUCIBLE_VERSION = 'seo-crucible-v2-powerhouse'
 
@@ -44,6 +45,22 @@ export const POWERHOUSE_WEIGHTS = {
 
 /** Estate default until GA4 AOV exists. Consultative marketplace, not ecom SKU. */
 export const DEFAULT_CONSULT_VALUE_USD = 400
+
+/**
+ * Stage/country-coded consult value (USD) — conversion economy (Phase 2a).
+ * Backed by marketplaceValue's STAGE_VALUE_DEFAULTS (stage × country consult
+ * price ranges; see lib/seoEngine/marketplaceValue.ts for the derivation).
+ * Synchronous by design: uses the defaults table directly — live-supply
+ * wiring for the crucible is intentionally optional (the defaults ARE the
+ * staged values) and would add an await to every score. Unknown stage/country
+ * falls back to DEFAULT_CONSULT_VALUE_USD=400.
+ */
+export function consultValueUSD(stage: string, country: string): number {
+  const c = String(country || '').toUpperCase()
+  const range = STAGE_VALUE_DEFAULTS[c]?.[String(stage || '')]
+  if (!range) return DEFAULT_CONSULT_VALUE_USD
+  return Math.round((range.min + range.max) / 2)
+}
 
 export type CrucibleIntent = 'informational' | 'commercial' | 'transactional' | 'local' | 'navigational'
 export type CruciblePlay = 'content_gap' | 'quick_win' | 'refresh' | 'defend' | 'cannibalization' | string
@@ -257,7 +274,7 @@ function moneyLayer(input: CrucibleInput, intent: CrucibleIntent, volume: number
   const revenue = Math.max(0, Number(input.revenue) || 0)
   const purchases = Math.max(0, Number(input.purchases) || 0)
   const clicks = extraClicks(volume, position)
-  const aov = purchases > 0 && revenue > 0 ? revenue / purchases : DEFAULT_CONSULT_VALUE_USD
+  const aov = purchases > 0 && revenue > 0 ? revenue / purchases : consultValueUSD(input.stage || '', input.country || '')
   const projected = clicks * intentCvr(intent) * aov
   const observed = revenue
   const dollars = Math.max(projected, observed)

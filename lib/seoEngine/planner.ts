@@ -46,6 +46,12 @@ import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 import { buildShippedStems, shippedOverlap } from './shippedCoverage'
+import {
+  opportunityScore as consolidatedOpportunityScore,
+  revenueLiftFactor,
+  SCORING_CONSTANTS,
+} from './scoring'
+import { marketplaceValue } from './marketplaceValue'
 
 export type DemandSourceId = 'gsc' | 'ga4' | 'ubersuggest' | 'ads'
 
@@ -390,23 +396,42 @@ export function plannerClusterId(country: string, stage: string, term: string): 
   return `seo-${slugify(`${country}-${stage}-${stemTerm(term)}`)}`
 }
 
-// Deterministic opportunity score: demand × gap × lifecycle priority × freshness
-function opportunityScore(sig: GscSignalInput, stagePriority: number, knowledgeBias: number): number {
-  const impressions = Math.max(0, Number(sig.impressions) || 0)
-  const position = Number(sig.position) || 100
-  const clicks = Math.max(0, Number(sig.clicks) || 0)
-  // Gap factor: high impressions but poor position = big ranking headroom
-  const gap = Math.min(2, 50 / Math.max(5, position))
-  const demand = Math.log10(impressions + 10) * 12
-  const clickBonus = clicks > 0 ? Math.min(15, clicks / 10) : 0
-  const term = String(sig.term || '').toLowerCase()
-  const money =
-    /\b(hire|lawyer|attorney|consult|agency|service|gig|book|retain|quote)\b/.test(term) ? 1.4 :
-    /\b(fee|cost|price|apply|application)\b/.test(term) ? 1.15 : 1
-  const revenue = Math.max(0, Number(sig.revenue) || 0)
-  // Real GA4 purchase revenue outranks keyword heuristics: $0 → 1×, ~$1k → ~1.4×, capped.
-  const revenueLift = revenue > 0 ? Math.min(1.8, 1 + Math.log10(revenue + 10) / 6) : 1
-  return Math.round((demand + clickBonus) * gap * (stagePriority / 5) * (1 + knowledgeBias) * money * revenueLift)
+/**
+ * Legacy opportunity score — kept as an exported wrapper that delegates to
+ * the CONSOLIDATED formula in scoring.ts (single source of truth) so any
+ * existing callers/tests keep working. runPlanner passes the full
+ * OpportunityScoreInput with live marketplace supply + GSC corroboration.
+ *
+ * Consolidated formula (all weights named in scoring.ts `SCORING_CONSTANTS`):
+ *
+ *   (log10(imp+10)*12 + min(30, clicks/6))   demand + click bonus
+ *   × min(2, 50/max(5,pos))                  ranking-gap headroom
+ *   × (stagePriority/5)                      lifecycle priority
+ *   × (1 + bias/8)                           fresh-intel bias
+ *   × monetizeFactor                         live marketplace supply (≤1.35)
+ *   × revenueLift                            GA4 evidence (≤1.8)
+ *   × predictiveAdjustment                   bounded predictive confidence (0.9–1.0)
+ *   × shippedPenalty                         0.15 for partially shipped topics
+ *   × (corroboratedGsc ? uberBoost : 1.0)    ubersuggest edge only w/ GSC proof
+ *   × conversionScore                        funnel × supply conversion economy (1.0–1.6)
+ */
+export function opportunityScore(sig: GscSignalInput, stagePriority: number, knowledgeBias: number): number {
+  return consolidatedOpportunityScore({
+    impressions: Math.max(0, Number(sig.impressions) || 0),
+    position: Number(sig.position) || 100,
+    clicks: Math.max(0, Number(sig.clicks) || 0),
+    stage: '',
+    country: 'US',
+    stagePriority,
+    knowledgeBias: Math.max(0, Number(knowledgeBias) || 0),
+    revenueLift: revenueLiftFactor(Number(sig.revenue) || 0),
+    predictiveAdjustment: 0.9,
+    shippedPenalty: 1,
+    uberBoost: 1,
+    hasLiveSupply: false,
+    intent: 'informational',
+    isCorroboratedByGsc: false,
+  })
 }
 
 /**
@@ -690,6 +715,45 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const stageFilter = req.stage && getStage(req.stage) ? req.stage : null
   const countryFilter = req.country && isCountry(req.country) ? (req.country as Country) : null
 
+  // ── CONVERSION ECONOMY (Phase 2a) ─────────────────────────────────────────
+  // 1. Live marketplace supply per (stage × country) cell — how much a
+  //    visitor could actually PAY for the service attached to this mission.
+  //    Fetched ONCE per cell before the ranking loop (best-effort: a DB
+  //    hiccup falls back to staged defaults and never fails the planner).
+  // 2. GSC corroboration: a Ubersuggest volume head only earns its 1.25×
+  //    UBER_BOOST when SOME GSC signal proved real impressions in that cell
+  //    this month. Volume without GSC proof ranks at 1.0.
+  const cellKey = (s: string, c: Country) => `${s}|${c}`
+  const marketSupply = new Map<string, { hasLiveSupply: boolean }>()
+  {
+    const neededCells = new Set<string>()
+    for (const sig of signals) {
+      if (!sig.term || sig.impressions < 10 || isJunkQuery(sig.term)) continue
+      const m = bestCellForTerm(sig.term)
+      if (m.score < MIN_CELL_MATCH_SCORE || !m.stage) continue
+      const st = stageFilter && stageFilter !== m.stage ? stageFilter : m.stage
+      neededCells.add(cellKey(st, countryFilter || m.country))
+    }
+    if (stageFilter && countryFilter) neededCells.add(cellKey(stageFilter, countryFilter))
+    await Promise.all(
+      [...neededCells].map(async (key) => {
+        const [st, co] = key.split('|')
+        try {
+          const mv = await marketplaceValue(st, co)
+          marketSupply.set(key, { hasLiveSupply: mv.hasLiveSupply })
+        } catch {
+          marketSupply.set(key, { hasLiveSupply: false })
+        }
+      }),
+    )
+  }
+  const gscCorroboratedCells = new Set<string>()
+  for (const sig of signals) {
+    if (sig.source !== 'gsc' || (Number(sig.impressions) || 0) <= 0) continue
+    const m = bestCellForTerm(sig.term)
+    if (m.score >= MIN_CELL_MATCH_SCORE && m.stage) gscCorroboratedCells.add(cellId(m.stage, m.country))
+  }
+
   const candidates: Array<{
     sig: GscSignalInput
     stage: string
@@ -728,13 +792,29 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       }
       penalizedShipped++
     }
-    const shippedPenalty = overlap ? 0.15 : 1
-    // Ubersuggest carries real market search volume — the strongest
-    // available proxy for demand we do not yet own. Give it a deliberate
-    // edge over equal GSC-only signals so the plan leads with market-sized
-    // opportunities rather than long-tail impressions we happen to rank for.
-    const uberBoost = sig.source === 'ubersuggest' ? 1.25 : 1
-    const rankedScore = opportunityScore(sig, pri, cellBias / 8) * predictiveAdjustment * shippedPenalty * uberBoost
+    const shippedPenalty = overlap ? SCORING_CONSTANTS.SHIPPED_PENALTY : 1
+    // Ubersuggest carries real market search volume — the strongest available
+    // proxy for demand we do not yet own. It keeps a deliberate edge over
+    // equal GSC-only signals, but ONLY when the cell is corroborated by real
+    // GSC impressions that month (proved demand); unproven volume ranks 1.0.
+    const uberBoost = sig.source === 'ubersuggest' ? SCORING_CONSTANTS.UBER_BOOST : 1
+    const intent = stageDef.intentMix.informational > stageDef.intentMix.transactional ? 'informational' : 'transactional'
+    const rankedScore = consolidatedOpportunityScore({
+      impressions: sig.impressions,
+      position: sig.position,
+      clicks: sig.clicks,
+      stage,
+      country,
+      stagePriority: pri,
+      knowledgeBias: cellBias,
+      revenueLift: revenueLiftFactor(Number(sig.revenue) || 0),
+      predictiveAdjustment,
+      shippedPenalty,
+      uberBoost,
+      hasLiveSupply: marketSupply.get(cellKey(stage, country))?.hasLiveSupply ?? false,
+      intent,
+      isCorroboratedByGsc: gscCorroboratedCells.has(cellId(stage, country)),
+    })
     candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score, rankedScore })
   }
   const ownedSite = (sig: GscSignalInput) =>

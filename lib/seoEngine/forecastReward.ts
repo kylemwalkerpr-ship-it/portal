@@ -36,6 +36,13 @@
  *                       position/CTR outcomes that did not materialize)
  *   on_track / mixed → credited to `demand` (the primary projection family)
  *
+ * Funnel actions (Phase 2b — taxonomy in rankingModel.ts): when an event
+ * carries a funnel action (`funnel_new` / `funnel_revenue` / `funnel_climb` /
+ * `authority_anchor` / `kill_or_merge`), attribution ALWAYS maps to `demand` —
+ * those bets are priced in expected USD/month (expectedMonthlyRevenue), so any
+ * observed movement on them is demand signal first, regardless of verdict.
+ * Non-funnel events keep the verdict-driven default above.
+ *
  * A pass whose events are all one family cannot move weights (uniform
  * evidence carries no differential information) — the ledger still records
  * every outcome; recalibration only fires when the week contains both.
@@ -65,7 +72,9 @@ export const VERDICT_REWARD: Record<TrackerVerdict, number> = {
   mixed: 0.1,
   over_predicted: 0.02,
   no_data: 0,
-}
+} // Funnel actions (see buildForecastRewardEvent) always attribute to `demand` —
+  // they are USD-priced bets (expectedMonthlyRevenue), so any movement on them
+  // is demand signal first, regardless of verdict. Constants above are frozen.
 
 /** Deterministic, parseable note — the dedupe identity lives here. */
 export function forecastNote(runDate: string, horizonDays: number): string {
@@ -82,15 +91,32 @@ export function shouldRecalibrate(evaluatedCount: number): boolean {
 }
 
 /**
+ * Attribution family for a funnel action. Phase 2b: ANY event whose action
+ * starts with `funnel_` (funnel_new / funnel_revenue / funnel_climb / ...)
+ * maps to `demand` — those bets are priced in expected USD/month, so observed
+ * movement on them is demand signal first. Everything else → null (caller
+ * keeps the verdict-driven default).
+ */
+export function funnelAttributionFamily(action: string): SignalFamily | null {
+  if (String(action || '').startsWith('funnel_')) return 'demand'
+  return null
+}
+
+/**
  * Build one deterministic reward event for an evaluated forecast row.
  * Attribution is verdict-driven and differential: under-prediction credits
  * `demand` (real visibility demand beat the model), over-prediction credits
  * `behavioral` (projected position/CTR outcomes did not materialize).
  * on_track / mixed stay on `demand`, the primary projection family.
+ *
+ * `actionOverride` lets the caller tag the event with the responsible funnel
+ * action (e.g. a mission the ranked plan ran); funnel actions always map to
+ * `demand` (funnelAttributionFamily), overriding the verdict routing.
  */
-export function buildForecastRewardEvent(row: ForecastEvalRow, nowIso: string): RewardEvent {
+export function buildForecastRewardEvent(row: ForecastEvalRow, nowIso: string, actionOverride?: string): RewardEvent {
   const reward = VERDICT_REWARD[row.overall] ?? 0
-  const family: SignalFamily = row.overall === 'over_predicted' ? 'behavioral' : 'demand'
+  const funnelFamily = funnelAttributionFamily(actionOverride || '')
+  const family: SignalFamily = funnelFamily ?? (row.overall === 'over_predicted' ? 'behavioral' : 'demand')
   const note = forecastNote(row.runDate, row.horizonDays)
   const key = forecastEventKey(row.topic, note)
   return {
@@ -98,7 +124,7 @@ export function buildForecastRewardEvent(row: ForecastEvalRow, nowIso: string): 
     modelVersion: RANKING_MODEL_VERSION,
     pageUrl: `forecast:${normalizeTerm(row.topic).slice(0, 200) || 'unknown'}`,
     topic: String(row.topic),
-    action: FORECAST_REWARD_ACTION,
+    action: actionOverride || FORECAST_REWARD_ACTION,
     deltaImpressions: row.deltas.impressions ?? undefined,
     deltaClicks: row.deltas.clicks ?? undefined,
     deltaPosition: row.deltas.position ?? undefined,

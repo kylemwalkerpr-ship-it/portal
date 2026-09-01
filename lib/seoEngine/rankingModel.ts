@@ -405,14 +405,14 @@ function scoreBehavioral(input: RankingModelInput): FamilyScore {
     const first = history[0].position as number
     const last = history[history.length - 1].position as number
     if (last < first) { score += 26; reasons.push(`Position improving #${Math.round(first)} → #${Math.round(last)}`) }
-    else if (last > first) { score -= 12; reasons.push(`Position decaying #${Math.round(first)} → #${Math.round(last)} — refresh`) }
+    else if (last > first) { score -= 12; reasons.push(`Position decaying #${Math.round(first)} → #${Math.round(last)} — funnel climb needed`) }
     else reasons.push(`Stable at #${Math.round(last)}`)
   } else if (position < 100) {
     reasons.push(`Current rank #${Math.round(position)} (no history yet)`)
   }
   const ctrVs = ctr - expectedCtr(position)
   if (ctrVs > 0.01) { score += 14; reasons.push('CTR above expected — title matches intent') }
-  else if (ctrVs < -0.02 && position < 100) { score -= 10; reasons.push('CTR below expected — rewrite title/intro') }
+  else if (ctrVs < -0.02 && position < 100) { score -= 10; reasons.push('CTR below expected — funnel climb: rewrite title/intro') }
   return { score: clamp100(score), weight: FAMILY_WEIGHTS.behavioral, reasons }
 }
 
@@ -431,10 +431,47 @@ function scoreIndexability(input: RankingModelInput): FamilyScore {
 }
 
 // ── Forecast ─────────────────────────────────────────────────────────────────
+/**
+ * Funnel action taxonomy (Phase 2b — "mission verbs that mean money").
+ * Every planned action is ONE of these five funnel kinds; each renders a human
+ * bet label (FUNNEL_ACTION_LABELS) and an honest expected-USD/month estimate
+ * (expectedMonthlyRevenue) so operators pick bets by economics, not verbs.
+ *
+ * Old actionFamily / ACTION_UPLIFT taxonomy → new kind:
+ *   refresh, ctr_rewrite  → funnel_climb      (title/CTR/answer win)
+ *   new_page, depth       → funnel_new        (build/expand a service-enabled guide)
+ *   schema, geo_fix       → authority_anchor  (FAQ/statutory-neighbor pillar)
+ *   interlink, backlink   → authority_anchor  (internal + external authority wiring)
+ *   (no old 1:1)          → funnel_revenue    (add pricing + consult CTA)
+ *   (cannibal overlap)    → kill_or_merge     (consolidate losers → canonical)
+ */
+export type FunnelActionKind =
+  | 'funnel_new'
+  | 'funnel_revenue'
+  | 'funnel_climb'
+  | 'authority_anchor'
+  | 'kill_or_merge'
+
+/** Operator-facing label per funnel kind (UI renders these later). */
+export const FUNNEL_ACTION_LABELS: Record<FunnelActionKind, string> = {
+  funnel_new: 'Funnel new · service-enabled guide',
+  funnel_revenue: 'Funnel revenue · add pricing + consult CTA',
+  funnel_climb: 'Funnel climb · win CTR/title/answer',
+  authority_anchor: 'Authority anchor · statutory-neighbor pillar',
+  kill_or_merge: 'Kill / merge · cannibal overlap ≥0.5',
+}
+
+/** One-line rationale per funnel kind (UI hint surface later). */
+export const FUNNEL_ACTION_HINT: Record<FunnelActionKind, string> = {
+  funnel_new: 'Build or expand the guide that routes this demand into the marketplace funnel.',
+  funnel_revenue: 'Add the price/fee table and a consult CTA so an already-served visitor converts.',
+  funnel_climb: 'Win the title/H1/intro + answer-capsule battle to lift CTR at the current rank.',
+  authority_anchor: 'Anchor the statutory/government-neighbor page with FAQ, schema, citations.',
+  kill_or_merge: 'Consolidate the cannibal overlap (evidence ≥0.5) into one canonical winner.',
+}
+
 export interface PlannedAction {
-  action:
-    | 'refresh' | 'depth' | 'schema' | 'interlink' | 'new_page'
-    | 'backlink' | 'geo_fix' | 'ctr_rewrite'
+  action: FunnelActionKind
   strength?: 1 | 2 | 3
 }
 export interface ForecastPoint {
@@ -451,16 +488,23 @@ export interface ForecastResult {
   assumptions: string[]
 }
 
-/** Bounded action-uplift table (each action contributes toward an asymptotic floor). */
-const ACTION_UPLIFT: Record<PlannedAction['action'], { pos: number; imp: number; click: number }> = {
-  refresh: { pos: 0.18, imp: 0.22, click: 0.3 },
-  depth: { pos: 0.1, imp: 0.12, click: 0.14 },
-  schema: { pos: 0.08, imp: 0.16, click: 0.12 },
-  interlink: { pos: 0.1, imp: 0.1, click: 0.1 },
-  new_page: { pos: 0.05, imp: 0.4, click: 0.2 },
-  backlink: { pos: 0.14, imp: 0.16, click: 0.16 },
-  geo_fix: { pos: 0.07, imp: 0.09, click: 0.08 },
-  ctr_rewrite: { pos: 0.05, imp: 0.08, click: 0.28 },
+/**
+ * Bounded action-uplift table (each action contributes toward an asymptotic
+ * floor). Magnitudes preserve the old ACTION_UPLIFT values where an old family
+ * maps 1:1 — new kinds pick values from the same table:
+ *   refresh  (0.18/0.22/0.30) → funnel_climb        (absorbs ctr_rewrite)
+ *   new_page (0.05/0.40/0.20) → funnel_new          (absorbs depth)
+ *   schema   (0.08/0.16/0.12) → authority_anchor    (absorbs geo_fix, interlink)
+ *   backlink (0.14/0.16/0.16) → kill_or_merge       (301 merge transfers equity
+ *                                                    like a backlink)
+ *   depth    (0.10/0.12/0.14) → funnel_revenue      (pricing/CTA = click-weighted)
+ */
+const FUNNEL_UPLIFT: Record<FunnelActionKind, { pos: number; imp: number; click: number }> = {
+  funnel_new: { pos: 0.05, imp: 0.4, click: 0.2 },
+  funnel_revenue: { pos: 0.1, imp: 0.12, click: 0.14 },
+  funnel_climb: { pos: 0.18, imp: 0.22, click: 0.3 },
+  authority_anchor: { pos: 0.08, imp: 0.16, click: 0.12 },
+  kill_or_merge: { pos: 0.14, imp: 0.16, click: 0.16 },
 }
 
 export function buildForecast(input: {
@@ -477,13 +521,13 @@ export function buildForecast(input: {
   const ctr = Number(input.ctr) || (impressions ? clicks / impressions : 0)
   const total = clamp100(Number(input.modelTotal) || 50)
   const actions = (input.plannedActions || []).slice(0, 6)
-  const posLift = actions.reduce((s, a) => s + (ACTION_UPLIFT[a.action]?.pos || 0) * (a.strength || 1), 0)
-  const impLift = actions.reduce((s, a) => s + (ACTION_UPLIFT[a.action]?.imp || 0) * (a.strength || 1), 0)
-  const clickLift = actions.reduce((s, a) => s + (ACTION_UPLIFT[a.action]?.click || 0) * (a.strength || 1), 0)
+  const posLift = actions.reduce((s, a) => s + (FUNNEL_UPLIFT[a.action]?.pos || 0) * (a.strength || 1), 0)
+  const impLift = actions.reduce((s, a) => s + (FUNNEL_UPLIFT[a.action]?.imp || 0) * (a.strength || 1), 0)
+  const clickLift = actions.reduce((s, a) => s + (FUNNEL_UPLIFT[a.action]?.click || 0) * (a.strength || 1), 0)
   const difficulty = clamp01((100 - total) / 100) // stronger model → faster gains
   const assumptions = [
     `Model total ${Math.round(total)}/100 (${difficulty > 0.5 ? 'high difficulty — gains slower' : 'moderate authority — gains realistic'})`,
-    ...(actions.length ? [`Planned actions: ${actions.map((a) => `${a.action}×${a.strength || 1}`).join(', ')}`] : ['No planned actions — forecast reflects organic baseline']),
+    ...(actions.length ? [`Planned actions: ${actions.map((a) => `${FUNNEL_ACTION_LABELS[a.action] || a.action}×${a.strength || 1}`).join(', ')}`] : ['No planned actions — forecast reflects organic baseline']),
     'Forecast is a projection of our own model, not a Google guarantee.',
   ]
 
@@ -507,6 +551,71 @@ export function buildForecast(input: {
   }
 }
 
+// ── Expected-revenue math (Phase 2b — funnel bets priced in USD) ─────────────
+/** Flat assumed service price when the price range is unknown (documented fallback). */
+export const FUNNEL_FALLBACK_PRICE_USD = 400
+
+/**
+ * Local replica of crucible.intentCvr. crucible.ts imports THIS module
+ * (classifyIntent), so importing back here would create a cycle. Exact values
+ * mirror lib/seoEngine/crucible.ts: transactional 0.08 · commercial 0.045 ·
+ * local 0.03 · navigational 0.004 · informational/else 0.008.
+ */
+function intentCvr(intent: string): number {
+  const i = (intent || '').toLowerCase()
+  if (i === 'transactional' || i === 'transaccional') return 0.08
+  if (i === 'commercial') return 0.045
+  if (i === 'local') return 0.03
+  if (i === 'navigational') return 0.004
+  return 0.008 // informational / unclassified — the most conservative bucket
+}
+
+function intentTag(intent: string): 'transactional' | 'commercial' | 'local' | 'navigational' | 'informational' {
+  const i = (intent || '').toLowerCase()
+  if (i === 'transactional' || i === 'transaccional') return 'transactional'
+  if (i === 'commercial') return 'commercial'
+  if (i === 'local') return 'local'
+  if (i === 'navigational') return 'navigational'
+  return 'informational'
+}
+
+/**
+ * Expected USD/month from winning an organic position battle:
+ *
+ *   usdPerMonth = impressions × (expectedCtr(target) − expectedCtr(current))
+ *                 × intentCvr(intent) × ((priceMin + priceMax) / 2)
+ *
+ * expectedCtr is the ranking-model CTR curve (#1 0.28 · #3 0.15 · #5 0.10 ·
+ * #10 0.05 · #20 0.025 · else 0.01). When the service price range is unknown
+ * (missing/≤0), FUNNEL_FALLBACK_PRICE_USD ($400) is used — a documented flat
+ * consult price. Impressions are NEVER fabricated: they are caller-supplied
+ * GSC observations, and callers must omit the call entirely when they have no
+ * impression data (honesty rule — see buildCitationActions).
+ */
+export function expectedMonthlyRevenue(opts: {
+  impressions: number
+  currentPosition: number
+  targetPosition: number
+  intent: string
+  action: FunnelActionKind
+  priceMin: number
+  priceMax: number
+}): { usdPerMonth: number; note: string } {
+  const impressions = Math.max(0, Number(opts.impressions) || 0)
+  const current = Math.max(1, Number(opts.currentPosition) || 100)
+  const target = Math.max(1, Number(opts.targetPosition) || 1)
+  const intent = String(opts.intent || '')
+  const deltaCtr = Math.max(0, expectedCtr(target) - expectedCtr(current))
+  const priceMin = Number(opts.priceMin)
+  const priceMax = Number(opts.priceMax)
+  const hasPrice = Number.isFinite(priceMin) && Number.isFinite(priceMax) && priceMin > 0 && priceMax > 0
+  const avgPrice = hasPrice ? (priceMin + priceMax) / 2 : FUNNEL_FALLBACK_PRICE_USD
+  const usdPerMonth = Math.round(impressions * deltaCtr * intentCvr(intent) * avgPrice)
+  const priceNote = hasPrice ? `$${Math.round(priceMin)}-${Math.round(priceMax)} service` : `flat $${FUNNEL_FALLBACK_PRICE_USD} price fallback`
+  const note = `💷 ~$${usdPerMonth.toLocaleString('en-US')}/mo · ${impressions.toLocaleString('en-US')} impressions at #${Math.round(current)} → #${Math.round(target)} · ${intentTag(intent)} intent · ${priceNote}`
+  return { usdPerMonth, note }
+}
+
 // ── Reward / credit-assignment loop ──────────────────────────────────────────
 export interface RewardEventInput {
   pageUrl: string
@@ -526,9 +635,18 @@ export interface RewardEvent extends RewardEventInput {
   observedAt: string
 }
 
-/** Which family an action most directly improves. */
+/**
+ * Which family an action most directly improves. Funnel taxonomy (Phase 2b)
+ * routes explicitly first; the legacy regexes below stay as a fallback so
+ * stored legacy action strings keep their historical families.
+ */
 export function actionFamily(action: string): SignalFamily {
   const a = String(action || '').toLowerCase()
+  if (a.startsWith('funnel_new')) return 'topicalAuthority'
+  if (a.startsWith('funnel_revenue')) return 'demand'
+  if (a.startsWith('funnel_climb')) return 'behavioral'
+  if (a.startsWith('authority_anchor')) return 'aeoGeo'
+  if (a.startsWith('kill_or_merge')) return 'indexability'
   if (/backlink|link|outreach|guest/i.test(a)) return 'linkEquity'
   if (/interlink|internal/i.test(a)) return 'linkEquity'
   if (/schema|canonical|crawl|llms|index/i.test(a)) return 'indexability'
@@ -648,21 +766,21 @@ export function computeRankingScore(input: RankingModelInput): RankingScore {
   const rawTotal = SIGNAL_FAMILIES.reduce((s, fam) => s + families[fam].score * families[fam].weight, 0)
   const total = clamp100(rawTotal * (0.7 + confidence * 0.3) * monetaryBias(intent, input.stage, input.revenue))
 
-  // Recommended actions from weak families
+  // Recommended actions from weak families — funnel-phrased bets (Phase 2b).
   const recommendedActions: string[] = []
   if (intent.primary === 'transactional' || intent.primary === 'commercial') {
-    recommendedActions.push('End every section with a marketplace CTA to the matching consult/visa/housing gig')
+    recommendedActions.push('Funnel revenue · end every section with a marketplace CTA to the matching consult/visa/housing gig')
   }
   if ((Number(input.revenue) || 0) > 0) {
-    recommendedActions.push(`Protect the purchase path — this landing already made $${Math.round(Number(input.revenue))} in GA4`)
+    recommendedActions.push(`Funnel revenue · protect the purchase path — this landing already made $${Math.round(Number(input.revenue))} in GA4`)
   }
-  if (families.aeoGeo.score < 55) recommendedActions.push('Add answer capsule + FAQ block + stats panel (AEO/GEO)')
-  if (families.indexability.score < 60) recommendedActions.push('Fix canonical/schema/crawlability; add llms.txt coverage')
-  if (families.eeat.score < 55) recommendedActions.push('Add named author credentials, gov citations, YMYL disclaimer')
-  if (families.linkEquity.score < 45) recommendedActions.push('Run interlink plan + backlink outreach lane')
-  if (families.behavioral.score < 50 && (Number(g.position) || 100) <= 20) recommendedActions.push('Refresh title/H1/intro for CTR + decay')
-  if (families.demand.score >= 60 && (Number(g.position) || 100) > 20) recommendedActions.push('Own this demand: build/expand the canonical now')
-  if (input.audit?.wordCount && input.audit.wordCount < 1400) recommendedActions.push('Depth pass — target 1,800–3,500 words with fan-out sub-sections')
+  if (families.aeoGeo.score < 55) recommendedActions.push('Authority anchor · add answer capsule + FAQ block + stats panel (AEO/GEO)')
+  if (families.indexability.score < 60) recommendedActions.push('Authority anchor · fix canonical/schema/crawlability; add llms.txt coverage')
+  if (families.eeat.score < 55) recommendedActions.push('Authority anchor · add named author credentials, gov citations, YMYL disclaimer')
+  if (families.linkEquity.score < 45) recommendedActions.push('Authority anchor · run interlink plan + backlink outreach lane')
+  if (families.behavioral.score < 50 && (Number(g.position) || 100) <= 20) recommendedActions.push('Funnel climb · win the title/H1/intro CTR battle (decay fix)')
+  if (families.demand.score >= 60 && (Number(g.position) || 100) > 20) recommendedActions.push('Funnel new · own this demand: build/expand the service-enabled canonical')
+  if (input.audit?.wordCount && input.audit.wordCount < 1400) recommendedActions.push('Funnel new · depth pass — target 1,800–3,500 words with fan-out sub-sections')
 
   const forecast = buildForecast({
     position: Number(g.position) || undefined,
@@ -671,7 +789,7 @@ export function computeRankingScore(input: RankingModelInput): RankingScore {
     ctr: Number(g.ctr) || undefined,
     modelTotal: total,
     plannedActions: recommendedActions.slice(0, 4).map((a) => ({
-      action: (a.includes('answer capsule') ? 'geo_fix' : a.includes('Refresh') ? 'refresh' : a.includes('interlink') || a.includes('backlink') ? 'backlink' : a.includes('canonical') ? 'schema' : 'depth') as PlannedAction['action'],
+      action: (a.startsWith('Funnel revenue') ? 'funnel_revenue' : a.startsWith('Funnel climb') ? 'funnel_climb' : a.startsWith('Funnel new') ? 'funnel_new' : a.startsWith('Kill / merge') ? 'kill_or_merge' : 'authority_anchor') as FunnelActionKind,
       strength: 2 as const,
     })),
   })

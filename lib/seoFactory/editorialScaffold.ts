@@ -1157,7 +1157,36 @@ export function applyDeterministicRepairs(opts: {
     const currentTitle = collapseDuplicatedTitle(rawTitle)
     if (currentTitle !== rawTitle) applied.push('title_duplicate_collapsed')
     if (kw && currentTitle && isKeywordOnlyTitle(currentTitle, kw)) {
-      const synthesized = `${titleCaseWords(kw)}: ${new Date().getFullYear()} Step-by-Step Guide`
+      // TitleLab (lib/seoEngine/titleLab) builds a deterministic CTR title
+      // from the real keyword instead of the old filler-shaped synthesizer.
+      // Lazy require == dynamic import: this repair runs inside a SYNC
+      // function whose callers and tests consume it synchronously, so an
+      // `await import()` cannot be used here; the require defers loading
+      // titleLab (and its supabase import) until the repair actually fires.
+      // Any failure keeps the current synthesized form as the LAST RESORT so
+      // existing behavior never breaks.
+      let synthesized = `${titleCaseWords(kw)}: ${new Date().getFullYear()} Step-by-Step Guide`
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const titleLab = require('../seoEngine/titleLab') as {
+          pickBestTitle: (input: {
+            primaryKeyword: string
+            requiredShortKeywords?: string[]
+            requiredLongTailKeywords?: string[]
+            siblingTitles?: string[]
+          }) => { title: string } | null
+          isFillerTitle: (title: string) => boolean
+        }
+        const best = titleLab.pickBestTitle({
+          primaryKeyword: kw,
+          requiredShortKeywords: opts.requiredShortKeywords,
+          requiredLongTailKeywords: opts.requiredLongTailKeywords,
+          siblingTitles: [synthesized, currentTitle],
+        })
+        if (best && best.title && !titleLab.isFillerTitle(best.title)) synthesized = best.title
+      } catch {
+        // keep the last-resort synthesized form
+      }
       const fmTitleRe = /^title:\s*.*$/m
       if (fmTitleRe.test(unwrapped)) {
         unwrapped = unwrapped.replace(fmTitleRe, `title: ${JSON.stringify(synthesized)}`)

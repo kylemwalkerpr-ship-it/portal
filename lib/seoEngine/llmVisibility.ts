@@ -50,6 +50,10 @@ import {
 } from './auditQuerySelector'
 import { loadKnowledgeFeed } from './knowledge'
 import { loadPlansDashboard } from './planner'
+import {
+  expectedMonthlyRevenue,
+  type FunnelActionKind,
+} from './rankingModel'
 
 /** The estate's observable surface — everything we want LLMs to cite. */
 export const ESTATE_DOMAINS: string[] = [
@@ -180,6 +184,14 @@ export interface CitationAction {
   priority: number
   action: string
   evidence: string
+  /** Funnel taxonomy kind (Phase 2b) — UI renders FUNNEL_ACTION_LABELS. */
+  actionKind?: FunnelActionKind
+  /**
+   * Honest expected USD/month — present ONLY when real GSC impressions were
+   * observed AND a stage/country cell is resolvable. Never fabricated: audits
+   * without impression data omit this field entirely (see buildCitationActions).
+   */
+  expectedRevenue?: { usdPerMonth: number; note: string }
 }
 
 /** Aggregated per-query result across all engines in the matrix. */
@@ -474,35 +486,86 @@ export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]
     topCompetitorDomain: topCompetitor?.domain ?? null,
     competitorShare: topCompetitor?.share ?? null,
     cited,
+    stage,
+    country,
   })
   return result
 }
 
 /**
+ * Conservative expected-USD estimate for a citation fix. Honesty contract:
+ *  1. impressions MUST be a real positive GSC observation — a caller without
+ *     impression data never reaches this helper.
+ *  2. a stage and/or country cell must be resolvable — without a cell there is
+ *     no funnel bet to price.
+ *  3. inputs are the conservative end of the funnel: informational intent
+ *     (lowest CVR bucket), flat $400 price fallback, and modest rank jumps
+ *     (11→3 for climbs; 21→5 for a brand-new page that must first win
+ *     indexability + authority).
+ */
+function citationExpectedRevenue(opts: {
+  impressions: number
+  stage: string | null
+  country: string | null
+  actionKind: FunnelActionKind
+}): { usdPerMonth: number; note: string } | undefined {
+  const imp = Number(opts.impressions)
+  if (!Number.isFinite(imp) || imp <= 0) return undefined
+  if (!opts.stage && !opts.country) return undefined
+  const isNew = opts.actionKind === 'funnel_new'
+  return expectedMonthlyRevenue({
+    impressions: imp,
+    currentPosition: isNew ? 21 : 11,
+    targetPosition: isNew ? 5 : 3,
+    intent: 'informational',
+    action: opts.actionKind,
+    priceMin: 0,
+    priceMax: 0,
+  })
+}
+
+/**
  * Deterministic, prioritized fixes for a low share-of-voice query. Pure — no
- * AI — so the action list is stable and reviewable.
+ * AI — so the action list is stable and reviewable. Every action carries a
+ * funnel kind (Phase 2b) so the UI can render a mission verb + expected value.
  */
 export function buildCitationActions(evidence: {
   shareOfVoice: number
   topCompetitorDomain: string | null
   competitorShare: number | null
   cited: boolean
+  /** Lifecycle stage when resolvable from the query tags — enables expectedRevenue. */
+  stage?: string | null
+  /** Country when resolvable from the query tags — enables expectedRevenue. */
+  country?: string | null
+  /** Real observed impressions (GSC). NEVER fabricated: absent ⇒ no expectedRevenue. */
+  impressions?: number | null
 }): CitationAction[] {
   const out: CitationAction[] = []
   const pct = Math.round((evidence.shareOfVoice || 0) * 100)
+  // Expected-revenue estimate — same base for every action so the fix list is
+  // internally consistent; each action's kind keeps its own conservative jump.
+  const revEstimate = (kind: FunnelActionKind): { usdPerMonth: number; note: string } | undefined =>
+    citationExpectedRevenue({
+      impressions: Number(evidence.impressions) || 0,
+      stage: evidence.stage ?? null,
+      country: evidence.country ?? null,
+      actionKind: kind,
+    })
   if (!evidence.cited || evidence.shareOfVoice === 0) {
-    out.push({ priority: 4, action: 'Add a direct-answer "In 60 seconds" capsule above the fold', evidence: `0/${100} engines cited the estate (share-of-voice ${pct}%) — the page lacks a quotable direct answer` })
-    out.push({ priority: 3, action: 'Add FAQPage JSON-LD (4–6 Q&As) matching the exact sub-queries engines ask', evidence: 'No structured answer surface — answer engines default to a bare paragraph' })
-    out.push({ priority: 2, action: 'Add 2–3 original statistics / named entities to raise quotability', evidence: 'Answer engines cite concrete, citable facts — this query returned none for the estate' })
-    out.push({ priority: 1, action: 'Confirm the page is in llms.txt + sitemap so crawlers can discover it', evidence: 'Undiscovered content cannot be cited' })
+    out.push({ priority: 4, action: 'Add a direct-answer "In 60 seconds" capsule above the fold', evidence: `0/${100} engines cited the estate (share-of-voice ${pct}%) — the page lacks a quotable direct answer`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
+    out.push({ priority: 3, action: 'Add FAQPage JSON-LD (4–6 Q&As) matching the exact sub-queries engines ask', evidence: 'No structured answer surface — answer engines default to a bare paragraph', actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
+    out.push({ priority: 2, action: 'Add 2–3 original statistics / named entities to raise quotability', evidence: 'Answer engines cite concrete, citable facts — this query returned none for the estate', actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
+    out.push({ priority: 1, action: 'Confirm the page is in llms.txt + sitemap so crawlers can discover it', evidence: 'Undiscovered content cannot be cited', actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
+    out.push({ priority: 1, action: 'Build or expand a dedicated service-enabled page if the estate has no canonical for this query', evidence: 'No estate page surfaced for this query — a new funnel entry point may be required', actionKind: 'funnel_new', expectedRevenue: revEstimate('funnel_new') })
   } else if (evidence.shareOfVoice < 1) {
     const top = evidence.topCompetitorDomain
     if (top) {
-      out.push({ priority: 3, action: `Outrank ${top} in answer engines for this query`, evidence: `Top competitor ${top} cited by ${Math.round((evidence.competitorShare || 0) * 100)}% of engines vs the estate at ${pct}%` })
+      out.push({ priority: 3, action: `Outrank ${top} in answer engines for this query`, evidence: `Top competitor ${top} cited by ${Math.round((evidence.competitorShare || 0) * 100)}% of engines vs the estate at ${pct}%`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
     }
-    out.push({ priority: 2, action: 'Add the unanswered fan-out sub-queries as H2/H3 + FAQ entries', evidence: `Share-of-voice ${pct}% — some engines still answer this cluster without the estate` })
+    out.push({ priority: 2, action: 'Add the unanswered fan-out sub-queries as H2/H3 + FAQ entries', evidence: `Share-of-voice ${pct}% — some engines still answer this cluster without the estate`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
   } else {
-    out.push({ priority: 1, action: 'Sustain: re-audit weekly and watch for competitor drift', evidence: `Share-of-voice ${pct}% — the estate owns this query for now` })
+    out.push({ priority: 1, action: 'Sustain: re-audit weekly and watch for competitor drift', evidence: `Share-of-voice ${pct}% — the estate owns this query for now`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
   }
   return out.sort((a, b) => b.priority - a.priority)
 }
@@ -676,6 +739,8 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
         topCompetitorDomain: r.top_competitor ? String(r.top_competitor) : null,
         competitorShare: Number(r.competitor_share),
         cited: Boolean(r.cited),
+        stage: r.stage ? String(r.stage) : null,
+        country: r.country ? String(r.country) : null,
       })
     }
     let remediations: import('./citationRemediation').CitationRemediation[] = []
