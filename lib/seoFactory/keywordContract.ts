@@ -1,5 +1,6 @@
 /** One canonical keyword contract for audit, editor, approval, and shipping. */
-import { KEYWORD_REQUIREMENTS, partitionKeywords } from '@/lib/seoEngine/planner'
+import { KEYWORD_REQUIREMENTS, partitionKeywords, isFabricatedSyntheticTerm } from '@/lib/seoEngine/planner'
+import { coversKeywordIntent } from '@/lib/seoFactory/contentQualityGate'
 import {
   keywordSourceMap,
   keywordTermList,
@@ -20,6 +21,117 @@ export interface KeywordContract {
   longTailKeywordTerms: KeywordTerm[]
   /** True when the partitioner had to backfill either floor. */
   backfilled: boolean
+}
+
+/**
+ * Evict uncovered SYNTHESIZED filler terms at the final gate.
+ *
+ * Synthesized terms exist only to satisfy the count floor — they carry no
+ * demand evidence ("estimated tax payment help in 2026 explained" was never a
+ * real search). Before this, an unplaced synthesized term warned forever:
+ * the AI attempt could not force it in without stuffing, and no deterministic
+ * pass may weave keywords. The honest closure is to DROP the filler from the
+ * contract at the boundary (down to the floor), so the missing_synthesized_*
+ * warning disappears with integrity instead of persisting "by design".
+ *
+ * Rules:
+ *  - ONLY synthesized terms are evictable; demand terms never are.
+ *  - Coverage uses the same strict low-passage intent match the gate uses
+ *    (`coversKeywordIntent`), so document-wide scattering never counts.
+ *  - Fabrication-marker filler ("requirements for a …", "…in 2026 explained",
+ *    "…checklist and timeline") is evicted FIRST — it is unplaceable by
+ *    construction.
+ *  - The arrays never drop below the count floors (removing the floor would
+ *    re-introduce insufficient_* blockers).
+ */
+export function pruneUnplaceableSynthesizedKeywords(input: {
+  content: string
+  primaryKeyword?: string | null
+  requiredShortKeywords?: unknown
+  requiredLongTailKeywords?: unknown
+  shortKeywordTerms?: unknown
+  longTailKeywordTerms?: unknown
+}): {
+  requiredShortKeywords: string[]
+  requiredLongTailKeywords: string[]
+  shortKeywordTerms: KeywordTerm[]
+  longTailKeywordTerms: KeywordTerm[]
+  pruned: number
+  prunedTerms: string[]
+} {
+  const body = String(input.content || '').toLowerCase()
+  const covered = (term: string) => coversKeywordIntent(body, term)
+  // Fresh NATURAL filler from the current (tightened) templates — used to
+  // replace legacy fabrication-marker terms 1:1 while holding the floor.
+  const freshTemplates = (() => {
+    const primary = String(input.primaryKeyword || '').trim()
+    if (!primary) return new Map<string, KeywordTerm>()
+    const partitioned = partitionKeywords([], primary)
+    const map = new Map<string, KeywordTerm>()
+    for (const t of [...partitioned.shortTerms, ...partitioned.longTailTerms]) {
+      if (t.source === 'synthesized' && !isFabricatedSyntheticTerm(t.term) && !map.has(t.term.toLowerCase())) {
+        map.set(t.term.toLowerCase(), t)
+      }
+    }
+    return map
+  })()
+  const terms = (raw: unknown, provenance: unknown, min: number, kind: 'short' | 'long'): {
+    list: KeywordTerm[]; pruned: number; prunedTerms: string[]
+  } => {
+    const arr = Array.isArray(raw) ? raw.map(String).map((t) => t.trim()).filter(Boolean) : []
+    const known = keywordSourceMap(
+      keywordTermList(Array.isArray(provenance) ? (provenance as Array<string | KeywordTerm>) : []),
+    )
+    const withSource = arr.map((term) => {
+      const source = known.get(term.toLowerCase())
+      if (source) return { term, source }
+      return { term, source: (isFabricatedSyntheticTerm(term) ? 'synthesized' : 'demand') as KeywordSource }
+    })
+    const evictable = withSource.filter((entry) => entry.source === 'synthesized' && !covered(entry.term))
+    let list = withSource
+    let pruned = 0
+    let prunedTerms: string[] = []
+    if (evictable.length) {
+      // Fabrication markers first, then the rest.
+      const ordered = [...evictable].sort((a, b) => Number(isFabricatedSyntheticTerm(b.term)) - Number(isFabricatedSyntheticTerm(a.term)))
+      for (const entry of ordered) {
+        const room = list.length - min
+        if (room <= 0) break
+        list = list.filter((k) => k.term !== entry.term)
+        pruned++
+        prunedTerms.push(entry.term)
+      }
+    }
+    // Final closure: legacy fabrication-MARKER terms still resident (because
+    // the floor left no room to evict them) are swapped 1:1 with fresh,
+    // grammatical template terms — same count, no junk left in the contract.
+    const candidates = [...freshTemplates.values()]
+    let cursor = 0
+    list = list.map((entry) => {
+      if (entry.source !== 'synthesized' || !isFabricatedSyntheticTerm(entry.term)) return entry
+      while (cursor < candidates.length) {
+        const candidate = candidates[cursor++]
+        if (list.some((k) => k.term.toLowerCase() === candidate.term.toLowerCase())) continue
+        if (kind === 'short' && candidate.term.split(/\s+/).length > 3) continue
+        if (kind === 'long' && candidate.term.split(/\s+/).length < 4) continue
+        prunedTerms.push(entry.term)
+        return { term: candidate.term, source: 'synthesized' as KeywordSource }
+      }
+      return entry
+    })
+    return { list, pruned, prunedTerms }
+  }
+
+  const short = terms(input.requiredShortKeywords, input.shortKeywordTerms, KEYWORD_REQUIREMENTS.SHORT_MIN, 'short')
+  const longTail = terms(input.requiredLongTailKeywords, input.longTailKeywordTerms, KEYWORD_REQUIREMENTS.LONG_TAIL_MIN, 'long')
+  return {
+    requiredShortKeywords: short.list.map((e) => e.term),
+    requiredLongTailKeywords: longTail.list.map((e) => e.term),
+    shortKeywordTerms: short.list,
+    longTailKeywordTerms: longTail.list,
+    pruned: short.pruned + longTail.pruned,
+    prunedTerms: [...short.prunedTerms, ...longTail.prunedTerms],
+  }
 }
 
 export function resolveKeywordContract(input: {
@@ -47,10 +159,20 @@ export function resolveKeywordContract(input: {
     const known = keywordSourceMap(
       keywordTermList(Array.isArray(persisted) ? (persisted as Array<string | KeywordTerm>) : []),
     )
-    return list.map((term) => ({
-      term,
-      source: (known.get(term.toLowerCase()) ?? legacySynthetic.get(term.toLowerCase()) ?? 'demand') as KeywordSource,
-    }))
+    return list.map((term) => {
+      const lower = term.toLowerCase()
+      const persistedSource = known.get(lower)
+      if (persistedSource) return { term, source: persistedSource }
+      const legacySyntheticSource = legacySynthetic.get(lower)
+      if (legacySyntheticSource) return { term, source: legacySyntheticSource }
+      // Legacy jobs persisted flat keyword arrays BEFORE provenance existed.
+      // Terms that match the partitioner's FABRICATED template markers were
+      // machine backfill, never real demand — typing them 'demand' would turn
+      // every old queue draft into a permanent missing_*_keyword blocker after
+      // a template change (the fabrications no longer round-trip).
+      if (isFabricatedSyntheticTerm(term)) return { term, source: 'synthesized' as KeywordSource }
+      return { term, source: 'demand' as KeywordSource }
+    })
   }
 
   const short = asTerms(input.requiredShortKeywords, input.shortKeywordTerms)
@@ -70,11 +192,16 @@ export function resolveKeywordContract(input: {
     primary,
   )
   // Terms the caller already supplied stay `demand` even if the partitioner
-  // re-emits them; only genuinely new filler is marked `synthesized`.
+  // re-emits them; only genuinely new filler is marked `synthesized`. Terms
+  // carrying a legacy fabrication marker stay synthesized even when
+  // caller-supplied — the old templates are gone, so there is no demand
+  // evidence that could ever re-classify them.
   const supplied = keywordSourceMap([...short, ...longTail])
   const withProvenance = (terms: KeywordTerm[]): KeywordTerm[] => terms.map(({ term, source }) => ({
     term,
-    source: supplied.get(term.toLowerCase()) ?? source,
+    source: isFabricatedSyntheticTerm(term)
+      ? ('synthesized' as KeywordSource)
+      : (supplied.get(term.toLowerCase()) ?? source),
   }))
   const shortTerms = withProvenance(partition.shortTerms)
   const longTailTerms = withProvenance(partition.longTailTerms)

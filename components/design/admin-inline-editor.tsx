@@ -867,7 +867,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               {warningsData.length} quality warning{warningsData.length === 1 ? '' : 's'}
             </span>
             <span style={{ fontSize: 10, color: '#92400E', fontFamily: C.mono }}>
-              Audit &amp; Fix attempts synthesized-keyword gaps once (FAQ is the natural home); no natural slot → advisory
+              Audit &amp; Fix places natural terms, then evicts unplaceable filler from the brief contract at the gate
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -879,7 +879,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             ))}
           </div>
           <div style={{ fontSize: 10, color: C.textDim }}>
-            Warnings never block shipping. <strong>Audit &amp; Fix</strong> clears mechanical defects and runs one writer pass to place <span style={{ fontFamily: C.mono }}>missing_synthesized_*</span> terms naturally (a long-tail keyword fits best as an FAQ question); terms with no natural slot persist as advisory.
+            Warnings never block shipping. Audit &amp; Fix first attempts to place <span style={{ fontFamily: C.mono }}>missing_synthesized_*</span> terms naturally; filler terms with no demand evidence that cannot be placed are then dropped from the brief's keyword contract at the final gate (down to the count floors), so these warnings resolve instead of persisting by design.
           </div>
         </div>
       )}

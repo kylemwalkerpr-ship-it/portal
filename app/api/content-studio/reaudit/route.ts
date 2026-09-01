@@ -949,6 +949,22 @@ export async function PATCH(request: NextRequest) {
       const { resolveVerifiedEstateAnchors } = await import('@/lib/seoFactory/relatedGuideLinks')
       const verifiedEstateAnchors = resolveVerifiedEstateAnchors(verifiedEstateUrls.length ? verifiedEstateUrls : undefined)
       let lastAiFixError: string | null = null
+      // Once a fix run has evicted unplaceable synthesized filler, the job is
+      // flagged so LATER audits suppress the residual warnings instead of
+      // restating terms the contract already closed.
+      let suppressSynthesizedWarnings = false
+      if (jobId) {
+        try {
+          const supabaseAdmin = (await import('@/lib/supabase')).createSupabaseAdminClient()
+          const { data: priorRow } = await supabaseAdmin
+            .from('content_jobs')
+            .select('audit_json')
+            .eq('id', jobId)
+            .maybeSingle()
+          const prior = (priorRow as { audit_json?: Record<string, unknown> } | null)?.audit_json
+          suppressSynthesizedWarnings = Boolean(prior && typeof prior === 'object' && prior.synthesized_evicted === true)
+        } catch { /* flag read is best-effort */ }
+      }
       const loopCtx = {
         primaryKeyword: loopKeyword || 'guide',
         region,
@@ -1054,7 +1070,44 @@ Return ONLY the JSON EditorPatch.`
       const boundary = applyDeterministicRepairs({ content: finalContent, ...loopCtx })
       boundaryRepairs.push(...boundary.applied)
       finalContent = boundary.content
-      const finalContract = evaluateReauditContract({ content: finalContent, ...loopCtx })
+      // Synthesized filler closure (2026-09-01): uncovered synthesized terms
+      // have no demand evidence and can never be honestly forced into prose.
+      // After the AI sweep, EVICT them from the contract at the boundary
+      // (down to the count floors) so missing_synthesized_* warnings dissolve
+      // with integrity instead of persisting on every re-audit. Demand terms
+      // are never touched — absence there still means the draft is off-topic.
+      // An evicted contract is persisted below; once flagged, later audits
+      // suppress the residual synthesized warnings instead of restating them.
+      const { pruneUnplaceableSynthesizedKeywords } = await import('@/lib/seoFactory/keywordContract')
+      let synthesizedEvicted = suppressSynthesizedWarnings
+      const pruned = pruneUnplaceableSynthesizedKeywords({
+        content: finalContent,
+        requiredShortKeywords: loopCtx.requiredShortKeywords,
+        requiredLongTailKeywords: loopCtx.requiredLongTailKeywords,
+        shortKeywordTerms: loopCtx.shortKeywordTerms,
+        longTailKeywordTerms: loopCtx.longTailKeywordTerms,
+      })
+      if (pruned.pruned > 0) {
+        synthesizedEvicted = true
+        boundaryRepairs.push(`synthesized_filler_evicted (${pruned.pruned})`)
+      }
+      const gateCtx = pruned.pruned > 0
+        ? { ...loopCtx, ...pruned }
+        : loopCtx
+      let finalContract = evaluateReauditContract({ content: finalContent, ...gateCtx })
+      // The eviction is authoritative for this boundary: synthesized filler
+      // terms that could not be placed are CLOSED here, so their warnings are
+      // dropped from the response (the count floors are preserved by the
+      // prune, and the pruned contract + flag are persisted below).
+      if (synthesizedEvicted) {
+        const keptWarnings = (finalContract.warningsData || []).filter(
+          (w) => w.code !== 'missing_synthesized_short_keyword' && w.code !== 'missing_synthesized_long_tail_keyword',
+        )
+        const dropped = (finalContract.warningsData || []).length - keptWarnings.length
+        if (dropped > 0) {
+          finalContract = { ...finalContract, warningsData: keptWarnings, warnings: keptWarnings.length }
+        }
+      }
       const finalShipReady = finalContract.blockers === 0 && finalContract.shipReady
       const allFindingsCleared = finalShipReady && finalContract.warnings === 0
       const finalLeftoverCodes = [
@@ -1086,9 +1139,21 @@ Return ONLY the JSON EditorPatch.`
             .maybeSingle()
           const auditJson = (row as { audit_json?: Record<string, unknown> } | null)?.audit_json
           const baseAudit = auditJson && typeof auditJson === 'object' ? auditJson : {}
+          // Persist the pruned keyword contract so future re-audits evaluate
+          // the SAME evicted lists instead of re-warning forever.
+          const contractPersist: Record<string, unknown> = {}
+          if (pruned.pruned > 0) {
+            contractPersist.required_short_keywords = pruned.requiredShortKeywords
+            contractPersist.required_long_tail_keywords = pruned.requiredLongTailKeywords
+            contractPersist.short_keyword_terms = pruned.shortKeywordTerms
+            contractPersist.long_tail_keyword_terms = pruned.longTailKeywordTerms
+          }
+          if (Object.keys(contractPersist).length) {
+            await db.from('content_jobs').update(contractPersist).eq('id', jobId)
+          }
           await db
             .from('content_jobs')
-            .update({ audit_json: { ...baseAudit, contentSpec, contentLoop } })
+            .update({ audit_json: { ...baseAudit, contentSpec, contentLoop, ...(synthesizedEvicted ? { synthesized_evicted: true } : {}) } })
             .eq('id', jobId)
           const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
           await persistReviewSnapshot({

@@ -383,7 +383,7 @@ function findPhrase(haystack: string, phrase: string): boolean {
  * matches still pass immediately; otherwise require every meaningful query
  * token to occur inside one bounded passage (roughly two short paragraphs).
  */
-function coversKeywordIntent(haystack: string, phrase: string): boolean {
+export function coversKeywordIntent(haystack: string, phrase: string): boolean {
   if (findPhrase(haystack, phrase)) return true
   const stop = new Set([
     'a', 'an', 'the', 'and', 'or', 'to', 'for', 'of', 'in', 'on', 'at', 'by',
