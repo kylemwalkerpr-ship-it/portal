@@ -241,10 +241,10 @@ describe('content quality gate — keyword coverage', () => {
       'application risk checklist', 'filing options guide',
     ]
     const requiredLong = [
-      'requirements for a diy green card application vs attorney',
+      'requirements for diy green card application vs attorney',
       'diy green card application vs attorney for international students',
-      'diy green card application vs attorney in 2026 explained',
-      'diy green card application vs attorney checklist and timeline',
+      'diy green card application vs attorney in 2026: complete guide',
+      'diy green card application vs attorney eligibility and costs',
     ]
     // These terms are template backfill from the partitioner, not real GSC
     // demand, so an uncovered term must not refuse the ship.

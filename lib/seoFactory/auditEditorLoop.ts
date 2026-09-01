@@ -130,6 +130,20 @@ function advisoryFindings(findings: LoopFinding[]): LoopFinding[] {
   return (findings || []).filter((f) => OPEN_SEVERITIES.has(f.severity) && isUnclearableAdvisory(f.code))
 }
 
+/** Advisory codes the REGISTRY says a writer CAN fix (repairClass targeted_ai).
+ *  These never block ship, but they owe the operator one honest AI attempt —
+ *  without this, missing_synthesized_* / untrusted_external_link style timers
+ *  are permanently unfixable even though the playbook labels them writable. */
+function advisoryTargetedFindings(findings: LoopFinding[]): LoopFinding[] {
+  return advisoryFindings(findings).filter((f) => {
+    try {
+      return repairClassFor(f.code) === 'targeted_ai'
+    } catch {
+      return false
+    }
+  })
+}
+
 /** Findings only a human can resolve — never sent to a model. */
 function humanOnlyCodes(findings: LoopFinding[]): string[] {
   return findings
@@ -182,10 +196,56 @@ export async function runAuditEditorLoop(
     let findings = openFindings(deps.evaluate(content))
 
     if (findings.length === 0) {
-      rounds.push({
+      // Advisory sweep (2026-09-01): non-blocking codes whose registry
+      // repairClass is targeted_ai (synthesized keyword gaps, untrusted
+      // external links, …) are excluded from the open set — a leftover stays
+      // advisory and a leftover must never force partial blockers to repeat —
+      // but the loop still owes them ONE honest AI pass when the budget is
+      // untouched, so "Fix All" can genuinely clear them (the writer AI
+      // places a long-tail query as an FAQ question) instead of them being
+      // permanently unfixable by construction.
+      const roundRecord: AuditEditorRound = {
         round, beforeHash, openFindings: [], deterministicRepairs: [],
-        afterHash: beforeHash, progress: { blockersReduced: false, fingerprintPreserved: true },
-      })
+        aiRequest: undefined, afterHash: beforeHash,
+        progress: { blockersReduced: false, fingerprintPreserved: true },
+      }
+      const advisoryTargeted = advisoryTargetedFindings(deps.evaluate(content))
+      if (deps.requestEditorPatch && aiPasses < budget.maxAiPasses && advisoryTargeted.length > 0) {
+        aiPasses++
+        roundRecord.aiRequest = { findingCodes: advisoryTargeted.map((f) => f.code), permittedAnchors: [] }
+        let patch: EditorPatch | null = null
+        try {
+          patch = await deps.requestEditorPatch({ content, findings: advisoryTargeted, permittedAnchors: [], spec: input.spec })
+        } catch {
+          patch = null
+        }
+        if (patch) {
+          const applied = applyEditorPatch(content, patch, {
+            outstanding: advisoryTargeted.map((f) => ({ code: f.code })),
+          })
+          if (applied.ok) {
+            const after = advisoryTargetedFindings(deps.evaluate(applied.content))
+            if (after.length === 0) {
+              content = applied.content
+              roundRecord.aiResult = 'applied'
+              roundRecord.afterHash = computeDocumentFingerprint(content).hash
+              findings = openFindings(deps.evaluate(content))
+              if (findings.length === 0) {
+                rounds.push(roundRecord)
+                status = 'cleared'
+                stopReason = 'no_open_findings'
+                leftoverCodes = []
+                break
+              }
+            }
+          } else {
+            roundRecord.aiResult = 'rejected_preservation'
+          }
+        } else {
+          roundRecord.aiResult = 'provider_failure'
+        }
+      }
+      rounds.push(roundRecord)
       status = 'cleared'
       stopReason = 'no_open_findings'
       leftoverCodes = []

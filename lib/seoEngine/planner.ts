@@ -272,14 +272,39 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   }
 
   // Then synthesize LONG-TAIL (≥4) query phrases.
-  const LT_PREFIXES = ['how to apply for', 'what is the', 'is it possible to', 'do you need a', 'requirements for a']
-  const LT_SUFFIXES = ['for international students', 'step by step', 'in 2026 explained', 'checklist and timeline', 'requirements explained by an expert']
+  // 2026-09-01: templates tightened so every synthesized phrase is a phrase a
+  // human writer would actually type. The old templates produced unplaceable
+  // filler ("requirements for a estimated tax payment help" — broken article;
+  // "...checklist and timeline" / "...in 2026 explained" — machine-only
+  // suffixes) that could never appear in natural prose, so the advisory
+  // missing_synthesized_* warnings were permanent by construction.
+  const LT_PREFIXES = ['how to apply for', 'what is the', 'is it possible to', 'do you need', 'requirements for', 'cost of applying for']
+  const LT_SUFFIXES = ['for international students', 'step by step', 'in 2026: complete guide', 'requirements checklist', 'eligibility and costs']
   if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2 && ptWords.length >= 1) {
     for (const prefix of LT_PREFIXES) classifyAndAdd(`${prefix} ${pt}`)
     for (const suffix of LT_SUFFIXES) classifyAndAdd(`${pt} ${suffix}`)
   }
 
   return { short, longTail, shortTerms, longTailTerms }
+}
+
+/**
+ * Strings that only ever existed in the partitioner's FABRICATED templates.
+ * Any persisted term containing one of these markers is a legacy synthetic
+ * backfill, never a real demand query — used to keep legacy jobs from
+ * turning into hard blockers after the templates were tightened.
+ */
+export const FABRICATION_MARKERS = [
+  'requirements for a ',
+  'do you need a ',
+  ' in 2026 explained',
+  'checklist and timeline',
+  'requirements explained by an expert',
+] as const
+
+export function isFabricatedSyntheticTerm(term: string): boolean {
+  const lower = String(term || '').toLowerCase()
+  return FABRICATION_MARKERS.some((marker) => lower.includes(marker))
 }
 
 /**

@@ -15,6 +15,7 @@ import { evaluateContentQuality } from '../lib/seoFactory/contentQualityGate'
 import { runAuditEditorLoop } from '../lib/seoFactory/auditEditorLoop'
 import { blocksShip, shipEffectFor } from '../lib/seoFactory/contentQualityPlaybook'
 import { createContentSpec, type ContentSpec } from '../lib/seoFactory/contentSpec'
+import { anchorHash } from '../lib/seoFactory/editorPatch'
 
 describe('1. deterministic repairs preserve list structure', () => {
   it('never collapses a long markdown checklist into a paragraph', () => {
@@ -113,7 +114,7 @@ describe('2. advisory findings never trap the loop', () => {
     expect(blocksShip('some_code_that_does_not_exist')).toBe(true)
   })
 
-  it('clears instead of holding, and reports the advisory code, with no AI spend', async () => {
+  it('clears instead of holding, reports the advisory code, and attempts ONE advisory sweep', async () => {
     let aiCalls = 0
     const result = await runAuditEditorLoop(
       { content: DOC, spec: SPEC },
@@ -127,7 +128,44 @@ describe('2. advisory findings never trap the loop', () => {
     )
     expect(result.status).toBe('cleared')
     expect(result.advisoryCodes).toContain('missing_synthesized_short_keyword')
-    expect(aiCalls).toBe(0)
+    // 2026-09-01 sweep: advisory targeted_ai codes get ONE honest AI attempt
+    // (the writer can place a synthesized long-tail as an FAQ question); a
+    // leftover stays advisory and never blocks ship.
+    expect(aiCalls).toBe(1)
+    expect(result.rounds.some((r) => r.aiRequest?.findingCodes.includes('missing_synthesized_short_keyword'))).toBe(true)
+    expect(result.rounds.some((r) => r.aiResult === 'provider_failure')).toBe(true)
+  })
+
+  it('advisory sweep clears synthesized gaps when the writer AI places the term', async () => {
+    let aiCalls = 0
+    const result = await runAuditEditorLoop(
+      { content: DOC, spec: SPEC },
+      {
+        evaluate: (c) =>
+          c.includes('estimated tax payment help')
+            ? []
+            : [{ code: 'missing_synthesized_long_tail_keyword', severity: 'warning' }],
+        requestEditorPatch: async ({ content }) => {
+          aiCalls++
+          return {
+            version: 1 as const,
+            operations: [
+              {
+                kind: 'replace' as const,
+                findingCode: 'missing_synthesized_long_tail_keyword',
+                anchor: 'Some sufficiently long body text for the loop to operate on.',
+                expectedHash: anchorHash(content, 'Some sufficiently long body text for the loop to operate on.') || '',
+                replacement: 'Some sufficiently long body text explaining estimated tax payment help requirements.',
+              },
+            ],
+          }
+        },
+      },
+    )
+    expect(result.status).toBe('cleared')
+    expect(aiCalls).toBe(1)
+    expect(result.advisoryCodes).not.toContain('missing_synthesized_long_tail_keyword')
+    expect(result.rounds.some((r) => r.aiResult === 'applied')).toBe(true)
   })
 
   it('human_only findings still hold for review (not treated as advisory)', async () => {
