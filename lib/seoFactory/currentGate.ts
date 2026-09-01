@@ -26,6 +26,28 @@ export type ShipGateSnapshot = {
 
 export type ShipGate = ShipGateSnapshot | null
 
+/** Small deterministic content identity used to ensure a persisted review gate
+ * is only restored for the exact body it audited. This is not a security hash. */
+export function contentFingerprint(content: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `${content.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+export function shipGateFromPersistedReview(
+  review: { contentFingerprint?: unknown; shipReady?: unknown; blockers?: unknown } | null | undefined,
+  currentContent: string,
+): ShipGate {
+  if (!review || review.contentFingerprint !== contentFingerprint(currentContent)) return null
+  return shipGateFromResponse({
+    shipReady: review.shipReady,
+    blockers: typeof review.blockers === 'number' ? review.blockers : undefined,
+  })
+}
+
 /** Build the canonical snapshot from a raw re-audit/fix response.
  *  `shipReady` is ONLY true when the response said `shipReady === true`
  *  AND `blockers === 0` — the human score alone never implies readiness.

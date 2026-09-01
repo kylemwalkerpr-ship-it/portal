@@ -6,6 +6,7 @@
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { countBodyWords } from './contentDepth'
+import { contentFingerprint } from './currentGate'
 
 export type ReviewSource = 'autosave' | 'reaudit' | 'fix' | 'manual' | 'restore'
 
@@ -17,6 +18,9 @@ export interface ReviewSnapshot {
   wordCount: number
   qualityOk?: boolean | null
   shipReady?: boolean | null
+  blockers?: number
+  warnings?: number
+  contentFingerprint: string
   appliedRepairs?: string[]
   source: ReviewSource
 }
@@ -41,6 +45,9 @@ export async function persistReviewSnapshot(opts: {
     wordCount: words,
     qualityOk: opts.qualityOk ?? null,
     shipReady: opts.shipReady ?? null,
+    blockers: Array.isArray(opts.blockers) ? opts.blockers.length : Number(opts.blockers) || 0,
+    warnings: Array.isArray(opts.warnings) ? opts.warnings.length : Number(opts.warnings) || 0,
+    contentFingerprint: contentFingerprint(opts.content),
     appliedRepairs: opts.appliedRepairs || [],
     source: opts.source,
   }
@@ -90,7 +97,7 @@ export async function listReviewSnapshots(jobId: string, limit = 20): Promise<Re
     const db = createSupabaseAdminClient()
     const { data, error } = await db
       .from('content_job_reviews')
-      .select('id, job_id, content, word_count, quality_ok, ship_ready, applied_repairs, source, created_at')
+      .select('id, job_id, content, word_count, quality_ok, ship_ready, blockers, warnings, applied_repairs, source, created_at')
       .eq('job_id', jobId)
       .order('created_at', { ascending: true })
       .limit(Math.min(50, Math.max(1, limit)))
@@ -106,6 +113,9 @@ export async function listReviewSnapshots(jobId: string, limit = 20): Promise<Re
       wordCount: Number(row.word_count) || 0,
       qualityOk: (row.quality_ok as boolean | null) ?? null,
       shipReady: (row.ship_ready as boolean | null) ?? null,
+      blockers: Array.isArray(row.blockers) ? row.blockers.length : Number(row.blockers) || 0,
+      warnings: Array.isArray(row.warnings) ? row.warnings.length : Number(row.warnings) || 0,
+      contentFingerprint: contentFingerprint(String(row.content || '')),
       appliedRepairs: Array.isArray(row.applied_repairs) ? (row.applied_repairs as string[]) : [],
       source: (row.source as ReviewSource) || 'autosave',
     }))
@@ -119,7 +129,7 @@ export async function latestReviewSnapshot(jobId: string): Promise<ReviewSnapsho
     const db = createSupabaseAdminClient()
     const { data, error } = await db
       .from('content_job_reviews')
-      .select('id, job_id, content, word_count, quality_ok, ship_ready, applied_repairs, source, created_at')
+      .select('id, job_id, content, word_count, quality_ok, ship_ready, blockers, warnings, applied_repairs, source, created_at')
       .eq('job_id', jobId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -134,10 +144,20 @@ export async function latestReviewSnapshot(jobId: string): Promise<ReviewSnapsho
       wordCount: Number(row.word_count) || 0,
       qualityOk: (row.quality_ok as boolean | null) ?? null,
       shipReady: (row.ship_ready as boolean | null) ?? null,
+      blockers: Array.isArray(row.blockers) ? row.blockers.length : Number(row.blockers) || 0,
+      warnings: Array.isArray(row.warnings) ? row.warnings.length : Number(row.warnings) || 0,
+      contentFingerprint: contentFingerprint(String(row.content || '')),
       appliedRepairs: Array.isArray(row.applied_repairs) ? (row.applied_repairs as string[]) : [],
       source: (row.source as ReviewSource) || 'autosave',
     }
   } catch {
     return null
   }
+}
+
+/** Latest audited gate snapshot, excluding later autosaves that intentionally
+ * carry no gate result. Callers still fingerprint-match it to the loaded body. */
+export async function latestGateReviewSnapshot(jobId: string): Promise<ReviewSnapshot | null> {
+  const snapshots = await listReviewSnapshots(jobId, 50)
+  return [...snapshots].reverse().find((snapshot) => typeof snapshot.shipReady === 'boolean') ?? null
 }

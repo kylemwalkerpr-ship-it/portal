@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { latestReviewSnapshot, listReviewSnapshots, persistReviewSnapshot } from '@/lib/seoFactory/reviewSnapshots'
+import { latestGateReviewSnapshot, latestReviewSnapshot, listReviewSnapshots, persistReviewSnapshot } from '@/lib/seoFactory/reviewSnapshots'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser()
@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
   if (!jobId) return NextResponse.json({ error: 'jobId required' }, { status: 400 })
   const latestOnly = new URL(request.url).searchParams.get('latest') === '1'
   if (latestOnly) {
-    const latest = await latestReviewSnapshot(jobId)
-    return NextResponse.json({ drafts: latest ? [latest] : [], latest: latest || null })
+    const [latest, gate] = await Promise.all([latestReviewSnapshot(jobId), latestGateReviewSnapshot(jobId)])
+    return NextResponse.json({ drafts: latest ? [latest] : [], latest: latest || null, gate })
   }
   const rows = await listReviewSnapshots(jobId, 20)
   const drafts = rows.map((d, i) => {
@@ -46,7 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    const { jobId, content, source } = await request.json() as { jobId: string; content: string; source?: string }
+    const { jobId, content, source, qualityOk, shipReady, blockers, warnings, appliedRepairs } = await request.json() as {
+      jobId: string; content: string; source?: string; qualityOk?: boolean | null; shipReady?: boolean | null
+      blockers?: unknown; warnings?: unknown; appliedRepairs?: string[]
+    }
     if (!jobId || !content) {
       return NextResponse.json({ error: 'jobId and content required' }, { status: 400 })
     }
@@ -58,6 +61,11 @@ export async function POST(request: NextRequest) {
       jobId,
       content,
       source: origin,
+      qualityOk,
+      shipReady,
+      blockers,
+      warnings,
+      appliedRepairs,
     })
     if (!persisted) {
       return NextResponse.json(

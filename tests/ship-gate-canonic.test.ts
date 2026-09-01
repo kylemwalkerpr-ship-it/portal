@@ -7,8 +7,10 @@
  */
 import {
   resolveShipRefusalBanner,
+  contentFingerprint,
   shipActionsEnabled,
   shipGateFromResponse,
+  shipGateFromPersistedReview,
   shipGateReady,
   type ShipGate,
 } from '../lib/seoFactory/currentGate'
@@ -62,6 +64,23 @@ describe('ship gate · canonical current-gate state', () => {
     const gate = shipGateFromResponse({ shipReady: true })
     expect(gate).toEqual({ shipReady: true, blockers: 0 })
     expect(shipActionsEnabled(gate)).toBe(true)
+  })
+
+  it('hydrates a persisted pass only for the exact audited content', () => {
+    const content = '# Title\n\nAudited body.'
+    const review = { contentFingerprint: contentFingerprint(content), shipReady: true, blockers: 0 }
+    expect(shipGateFromPersistedReview(review, content)).toEqual({ shipReady: true, blockers: 0 })
+    expect(shipGateFromPersistedReview(review, `${content}\nEdited`)).toBeNull()
+  })
+
+  it('hydrates a persisted blocker without enabling Approve', () => {
+    const content = '# Title\n\nBlocked body.'
+    const gate = shipGateFromPersistedReview(
+      { contentFingerprint: contentFingerprint(content), shipReady: false, blockers: 1 },
+      content,
+    )
+    expect(gate).toEqual({ shipReady: false, blockers: 1 })
+    expect(shipActionsEnabled(gate)).toBe(false)
   })
 })
 

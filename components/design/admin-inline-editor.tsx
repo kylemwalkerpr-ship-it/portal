@@ -5,8 +5,6 @@ import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
 
-export type { ShipGateSnapshot }
-
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
   border: 'rgba(0,0,0,0.08)', red: '#DC2626', green: '#166534',
