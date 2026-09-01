@@ -368,3 +368,76 @@ describe('exclusive pin — the brief never cascades to open-source backends', (
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(true)
   })
 })
+
+describe('generateBriefText — Entrim resilience chain (Qwen 524 + dead Grok does not kill the brief)', () => {
+  it('falls back to DeepSeek Flash on Entrim before Grok, and names all legs on total failure', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.entrim.ai')) {
+        return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
+          status: 524, headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.includes('api.x.ai')) {
+        return new Response(JSON.stringify({ error: 'permission-denied', code: 'permission-denied' }), {
+          status: 403, headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'SHOULD-NOT-HAPPEN', finish_reason: 'stop' } }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+
+    await expect(
+      generateBriefText({
+        aiProvider: 'entrim-qwen-27b',
+        system: 'You are the brief architect.',
+        prompt: 'TOPIC: canada study permit',
+      }),
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Qwen3.8 27B \(Entrim\)\)[\s\S]*Fallback \(DeepSeek V4 Flash \(Entrim\)\)[\s\S]*Fallback \(Grok\)/)
+    // Both the Entrim upstream (Qwen primary attempt) and xAI (Grok leg) were hit.
+    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+  })
+
+  it('rescues the brief on the Entrim DeepSeek leg when Qwen 524s', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    global.fetch = jest.fn(async (input, init) => {
+      const url = String(input)
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
+      if (url.includes('api.entrim.ai') && body.model === 'Qwen/Qwen3.8-27B') {
+        return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
+          status: 524, headers: { 'content-type': 'application/json' },
+        })
+      }
+      const model = body.model || ''
+      if (url.includes('api.entrim.ai') && model.includes('DeepSeek')) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'DEEPSEEK-ENTRIM-BRIEF', finish_reason: 'stop' } }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        })
+      }
+      // Any other backend would "succeed" through the capacity cascade —
+      // reaching it with a non-DeepSeek model is the bug.
+      return new Response(JSON.stringify({ error: 'backend unavailable' }), {
+        status: 503, headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'entrim-qwen-27b',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: canada study permit',
+    })
+    expect(result.fallbackUsed).toBe(true)
+    expect(result.ai.text).toBe('DEEPSEEK-ENTRIM-BRIEF')
+  })
+})

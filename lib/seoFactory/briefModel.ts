@@ -14,7 +14,7 @@
  * to Grok (existing resolveBriefFallback).
  */
 
-import { generateContentText, type ContentAiResult } from '@/lib/contentAiProvider'
+import { generateContentText, isEntrimConfigured, type ContentAiResult } from '@/lib/contentAiProvider'
 import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
 
 /** Provider id for the brief fallback (xAI Grok / SuperGrok). */
@@ -231,13 +231,18 @@ export async function generateBriefText(opts: {
       prompt: opts.prompt,
       maxTokens: opts.maxTokens,
       temperature: opts.temperature,
-      // Run BiOS pins reason for minutes — never let an unset short
-      // deadline cut the brief; 180s is the floor (deadlineForProvider lifts
-      // Run BiOS to its 10-minute floor). cascadeOnCapacity lets a first
-      // timeout/overload fall through instead of exclusive-failing the brief;
-      // Grok remains the named fallback when the whole primary fails.
-      timeoutMs: primaryIsRunbios ? Math.max(opts.timeoutMs ?? 0, 180_000) : opts.timeoutMs,
-      ...(primaryIsRunbios ? { cascadeOnCapacity: true } : {}),
+      // Reasoning-model lanes need minutes — never let an unset short
+      // deadline cut the brief. Run BiOS lifts to its 10-minute floor;
+      // Entrim (Qwen3.8 27B / DeepSeek) leaves the brief routinely at
+      // 180s+. cascadeOnCapacity lets a first timeout/overload (e.g. an
+      // Entrim 524 upstream gateway timeout) fall through to the next
+      // configured provider instead of failing the brief outright — the
+      // named fallback chain below catches the rest.
+      timeoutMs:
+        primaryIsRunbios || primaryPin.startsWith('entrim-')
+          ? Math.max(opts.timeoutMs ?? 0, primaryIsRunbios ? 600_000 : 180_000)
+          : opts.timeoutMs,
+      ...(primaryIsRunbios || primaryPin.startsWith('entrim-') ? { cascadeOnCapacity: true } : {}),
       exclusive: true,
       skipQualityContract: opts.skipQualityContract,
     })
@@ -256,24 +261,42 @@ export async function generateBriefText(opts: {
         `Brief generation failed (Grok): ${primaryMsg.slice(0, 300)}.`,
       )
     }
-    try {
-      const ai = await generateContentText({
-        aiProvider: fallback.aiProvider,
-        system: opts.system,
-        prompt: opts.prompt,
-        maxTokens: opts.maxTokens,
-        temperature: opts.temperature,
-        timeoutMs: opts.timeoutMs,
-        exclusive: true,
-        skipQualityContract: opts.skipQualityContract,
-      })
-      return { ai, fallbackUsed: true }
-    } catch (fallbackErr) {
-      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
-      throw new Error(
-        `Brief generation failed. Primary (${primaryLabel}): ${primaryMsg.slice(0, 300)}. ` +
-        `Fallback (Grok): ${fallbackMsg.slice(0, 300)}.`,
-      )
+    // Fallback chain: the DeepSeek V4 Flash family on Entrim first (same
+    // vault key the primary uses — the resilient upstream that has proven
+    // itself for briefs), then Grok. Each leg runs exclusively; failures
+    // accumulate into one combined error so the operator sees exactly which
+    // backends died and why (e.g. "524 gateway timeout" vs "403 credits").
+    const legs: Array<{ aiProvider: string; label: string }> = []
+    if (isEntrimConfigured() && primaryPin !== 'entrim-deepseek') {
+      legs.push({ aiProvider: 'entrim-deepseek', label: 'DeepSeek V4 Flash (Entrim)' })
     }
+    const grokAlreadyPrimary = primaryIsFallback
+    if (!grokAlreadyPrimary && !legs.some((l) => l.aiProvider === fallback.aiProvider)) {
+      legs.push({ aiProvider: fallback.aiProvider, label: 'Grok' })
+    }
+    const msgs: string[] = []
+    for (const leg of legs) {
+      try {
+        const ai = await generateContentText({
+          aiProvider: leg.aiProvider,
+          system: opts.system,
+          prompt: opts.prompt,
+          maxTokens: opts.maxTokens,
+          temperature: opts.temperature,
+          timeoutMs: leg.aiProvider.startsWith('entrim-')
+            ? Math.max(opts.timeoutMs ?? 0, 180_000)
+            : opts.timeoutMs,
+          exclusive: true,
+          skipQualityContract: opts.skipQualityContract,
+        })
+        return { ai, fallbackUsed: true }
+      } catch (legErr) {
+        const legMsg = legErr instanceof Error ? legErr.message : String(legErr)
+        msgs.push(`Fallback (${leg.label}): ${legMsg.slice(0, 300)}.`)
+      }
+    }
+    throw new Error(
+      `Brief generation failed. Primary (${primaryLabel}): ${primaryMsg.slice(0, 300)}. ${msgs.join(' ')}`,
+    )
   }
 }
