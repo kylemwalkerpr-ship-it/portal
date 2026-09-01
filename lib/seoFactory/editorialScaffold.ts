@@ -157,6 +157,97 @@ export function dedupeFaqQuestions(body: string): string {
   return body.slice(0, start) + prefix + unique.join('') + body.slice(end)
 }
 
+/**
+ * Strip a full second article copy from a body that carries two complete
+ * drafts (live defect 2026-09-01: a resume/regenerate run echoed the saved
+ * draft and then wrote the revised piece, so `content` ended up as copy #1 +
+ * copy #2 — two H1s, doubled H2s, ~2× word count, duplicated JSON-LD).
+ *
+ * A copy is only removed when the evidence is strong:
+ *  - the body has 2+ top-level `# ` H1s;
+ *  - the second copy's H2 outline overlaps the first's by ≥ 50%
+ *    (normalized headings);
+ *  - the kept copy is the one whose H1 best matches the frontmatter `title:`
+ *    (falling back to the FIRST copy when there is no frontmatter title).
+ *
+ * Everything before the second H1 (frontmatter, first copy, its JSON-LD) is
+ * preserved verbatim; the duplicate copy with its own scripts is dropped.
+ * Idempotent: after one pass only a single H1 remains.
+ */
+export function stripDuplicateArticleCopy(body: string): {
+  content: string
+  removed: boolean
+  copies: number
+} {
+  const lines = String(body || '').split('\n')
+  const h1 = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^#\s+.+/.test(line))
+  if (h1.length < 2) return { content: body, removed: false, copies: Math.max(0, h1.length) }
+
+  const normH1 = (txt: string) => txt.replace(/^#\s+/, '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+  const normH2 = (txt: string) => txt.replace(/^##\s+/, '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
+
+  const outlineOf = (startIdx: number, endIdx: number): Set<string> => {
+    const outline = new Set<string>()
+    for (let i = startIdx; i < endIdx; i++) {
+      const m = lines[i].match(/^##\s+.+/)
+      if (m) {
+        const key = normH2(m[0])
+        if (key) outline.add(key)
+      }
+    }
+    return outline
+  }
+
+  // Copy boundaries: copy k spans [h1[k].index, h1[k+1].index) (last to end).
+  const sections: Array<{ h1: string; norm: string; start: number; end: number }> = h1.map((hit, k) => ({
+    h1: lines[hit.index].trim(),
+    norm: normH1(lines[hit.index]),
+    start: hit.index,
+    end: k + 1 < h1.length ? h1[k + 1].index : lines.length,
+  }))
+
+  // Pick the copy whose H1 matches the frontmatter title most closely.
+  const fmTitle = (body.match(/^title:\s*["']?(.+?)["']?\s*$/m) || [])[1]?.trim() || ''
+  const titleNorm = fmTitle ? normH1(`# ${fmTitle}`) : ''
+  let keep = 0
+  if (titleNorm) {
+    let bestScore = -1
+    sections.forEach((s, k) => {
+      // Token overlap between H1 and frontmatter title.
+      const a = new Set(s.norm.split(' ').filter(Boolean))
+      const b = new Set(titleNorm.split(' ').filter(Boolean))
+      let overlap = 0
+      for (const t of a) if (b.has(t) && t.length > 2) overlap++
+      const score = overlap / Math.max(1, Math.min(a.size, b.size))
+      if (score > bestScore) {
+        bestScore = score
+        keep = k
+      }
+    })
+  }
+
+  // Any other copy whose H2 outline largely repeats the kept copy is a
+  // duplicate echo — drop everything except the preamble + the kept copy.
+  const keptOutline = outlineOf(sections[keep].start, sections[keep].end)
+  let removeAny = false
+  for (let k = 0; k < sections.length; k++) {
+    if (k === keep) continue
+    const currentOutline = outlineOf(sections[k].start, sections[k].end)
+    if (!keptOutline.size || !currentOutline.size) continue
+    let overlap = 0
+    for (const h of currentOutline) if (keptOutline.has(h)) overlap++
+    if (overlap / Math.max(1, currentOutline.size) >= 0.5) removeAny = true
+  }
+  if (!removeAny) return { content: body, removed: false, copies: sections.length }
+
+  const preamble = lines.slice(0, h1[0].index).join('\n').trim()
+  const keptSection = lines.slice(sections[keep].start, sections[keep].end).join('\n').trim()
+  const content = [preamble, keptSection].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd()
+  return { content, removed: true, copies: sections.length }
+}
+
 /** 3–5 takeaway bullets taken from the draft's own H2 lead sentences. */
 function derivedTldrBullets(body: string, primaryKeyword: string, need = 3): string[] {
   const qas = buildFaqQas(body, primaryKeyword) || []
@@ -891,13 +982,23 @@ export function applyDeterministicRepairs(opts: {
   // Normalize editor/AI mangling FIRST (fences, chatter, embedded frontmatter,
   // invalid schema, collapsed TLDR bullets, duplicate source entries) so every
   // later repair sees a clean document.
-  const normalizedEditor = normalizeEditorDocument(opts.content || '')
+  // ── Duplicate full-article copy strip ─────────────────────────────────
+  // Resume/regenerate runs can end with the saved draft PLUS the revised
+  // article concatenated (model echoes the SAVED DRAFT block and then writes
+  // the full revision). Everything downstream — word counter, audit, word
+  // floors, ship gate — then sees ~2× the words and two conflicting H1s.
+  // Strip the second copy FIRST, on the RAW content, so normalize + every
+  // later repair work on exactly one article.
+  const rawDeduped = stripDuplicateArticleCopy(opts.content || '')
+  const rawForRepair = rawDeduped.removed ? rawDeduped.content : (opts.content || '')
+  const normalizedEditor = normalizeEditorDocument(rawForRepair)
   if (normalizedEditor.fixed.length) applied.push(...normalizedEditor.fixed)
   if (normalizedEditor.fixed.some((f) => f.startsWith('editor_invalid_schema_dropped'))) {
     applied.push('broken_jsonld_removed')
   }
   let unwrapped = unwrapWholeDocumentFence(normalizedEditor.content)
   if (unwrapped !== normalizedEditor.content) applied.push('unwrapped_document_fence')
+  if (rawDeduped.removed) applied.push(`duplicate_article_copy_removed (${rawDeduped.copies} → 1)`)
 
   // ── Keyword-only title repair ────────────────────────────────────────
   // A keyword pasted as the title ("admissions consultant credentials")

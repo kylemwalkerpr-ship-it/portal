@@ -38,9 +38,13 @@ async function checkpointJob(
 ) {
   const content = String(draft || '').trim()
   if (!content) return
+  // Checkpoints store EXACTLY what the model emitted — a resume/regenerate
+  // echo can double the article (saved draft + revision). Strip duplicates so
+  // the queue, Resume, and the editor never see two H1s / ~2× the words.
+  const deduped = stripDuplicateArticleCopy(content)
   const patch: Record<string, unknown> = {
-    content,
-    word_count: countBodyWords(content),
+    content: deduped.removed ? deduped.content : content,
+    word_count: countBodyWords(deduped.removed ? deduped.content : content),
     status: 'drafting',
     error_message: null,
   }
@@ -60,6 +64,7 @@ import {
 } from '@/lib/seoFactory/pipelineStream'
 import type { RequestedShipMode } from '@/lib/seoFactory/pipeline'
 import { finalizeInterruptedJob, interruptedJobPatch, ingestStreamDraft } from '@/lib/seoFactory/streamJobFinalizer'
+import { stripDuplicateArticleCopy } from '@/lib/seoFactory/editorialScaffold'
 
 export const runtime = 'nodejs'
 // Keep the response active while providers think. HTTP-triggered Cloudflare

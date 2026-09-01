@@ -9,6 +9,7 @@
  */
 
 import { countBodyWords } from './contentDepth'
+import { stripDuplicateArticleCopy } from './editorialScaffold'
 
 export interface StreamFinalizerClient {
   from(table: string): {
@@ -25,7 +26,10 @@ export function interruptedJobPatch(
   content: string,
   opts?: { interruptedMessage?: string; failedMessage?: string },
 ): Record<string, unknown> {
-  const body = String(content || '')
+  // A resume/regenerate echo can persist TWO article copies into an
+  // interrupted checkpoint — never leave doubled content for the next Resume.
+  const deduped = stripDuplicateArticleCopy(content)
+  const body = String(deduped.removed ? deduped.content : content || '')
   if (body.trim().length > RESUMABLE_MIN_CHARS) {
     return {
       status: 'drafting',

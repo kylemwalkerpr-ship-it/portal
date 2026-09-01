@@ -5,6 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
+import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { auditContent, canAutodeploy, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipMode, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
@@ -359,6 +360,9 @@ export async function* runSeoFactoryPipelineStream(
     })
 
     let content = input.resumeContent?.trim() || ''
+    // Safety net: a previously-echoed generation can already contain two full
+    // article copies (saved draft + revised). Feed the model ONE copy.
+    content = stripDuplicateArticleCopy(content).content
     const resumeMode = Boolean(content)
     let lastDraftSent = 0
     let provider = 'unknown'
@@ -443,7 +447,7 @@ export async function* runSeoFactoryPipelineStream(
 
       const generationPrompt =
         resumeMode && i === 0 && !underDepth
-          ? `${prompt}\n\nCONTINUE FROM THIS SAVED PARTIAL DRAFT. Preserve useful sections, improve the remaining quality issues, and output the complete revised piece.\n\nSAVED DRAFT:\n${content.slice(0, 60000)}`
+          ? `${prompt}\n\nCONTINUE FROM THIS SAVED PARTIAL DRAFT. Do NOT echo, quote, or repeat the saved draft back — write the COMPLETE REVISED article only (one H1, the full outline below it). Every token you emit is appended to it.\n\nSAVED DRAFT (read-only reference):\n${content.slice(0, 60000)}`
           : prompt
       const prevWords = content ? countBodyWords(content) : 0
       let attemptText = ''
