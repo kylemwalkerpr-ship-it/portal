@@ -10,7 +10,7 @@
  */
 import { applyDeterministicRepairs, stripDuplicateArticleCopy } from '../lib/seoFactory/editorialScaffold'
 import { normalizeEditorDocument } from '../lib/seoFactory/formatContract'
-import { auditReferenceReachability, detectForcedFaqWordings, evaluateContentQuality } from '../lib/seoFactory/contentQualityGate'
+import { auditReferenceReachability, detectForcedFaqWordings, detectKeywordPastedHeadings, evaluateContentQuality } from '../lib/seoFactory/contentQualityGate'
 
 describe('run-in heading split (formatContract.normalizeEditorDocument)', () => {
   it('splits a ### glued onto the end of a paragraph onto its own line', () => {
@@ -208,6 +208,45 @@ Ask the firm for a written quote.
     // introduces the broken form.
     expect(repaired.content).toContain('### How do I get an estimated tax payment help estimate?')
     expect(repaired.content).not.toMatch(/a estimated tax payment help/i)
+  })
+})
+
+describe('headings pasted from keyword strings', () => {
+  it('flags headings that are a required keyword or a long-tail verbatim', () => {
+    const body = `# Guide
+
+## How to apply for estimated tax payment help
+
+Some prose.
+
+### Estimated tax eligibility
+
+More prose.
+
+## What each fee model includes
+
+Natural heading stays untouched.
+`
+    const found = detectKeywordPastedHeadings(
+      body,
+      ['estimated tax eligibility'],
+      ['how to apply for estimated tax payment help'],
+    )
+    const headings = found.map((f) => f.heading)
+    expect(headings).toContain('How to apply for estimated tax payment help')
+    expect(headings).toContain('Estimated tax eligibility')
+    expect(headings).not.toContain('What each fee model includes')
+  })
+
+  it('the gate surfaces keyword_pasted_heading', () => {
+    const gated = evaluateContentQuality({
+      content: `# Guide\n\n## How to apply for estimated tax payment help\n\nProse.\n\n## Natural section\n\nProse.\n`,
+      primaryKeyword: 'estimated tax payment help',
+      indexable: true,
+      requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['how to apply for estimated tax payment help', 'x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    expect(gated.findings.some((f) => f.code === 'keyword_pasted_heading')).toBe(true)
   })
 })
 

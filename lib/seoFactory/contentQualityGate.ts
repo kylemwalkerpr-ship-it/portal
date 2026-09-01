@@ -457,6 +457,117 @@ export function detectForcedFaqWordings(body: string, primaryKeyword: string): A
   return out
 }
 
+/** Structural H2 sections the audit treats as scaffolding, never content. */
+const STRUCTURAL_H2 =
+  /^(?:in 60 seconds?|table of contents|faq|sources|official sources|related guides?|related reading|further reading|see also|disclaimer|references?|toc)$/i
+
+/**
+ * Outline-completeness check: the canonical brief lists every section the
+ * article must contain; anything absent is a structural defect — a truncated
+ * draft that "cleared the gates" because nothing verified the templated
+ * skeleton was actually written (live defect: a guide ending "the next
+ * section walks through a worked example" with no worked example anywhere).
+ */
+export function missingOutlineSections(
+  content: string,
+  outline?: Array<{ heading: string; level?: number; purpose?: string }> | null,
+): string[] {
+  if (!outline || !outline.length) return []
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const present = new Set(
+    Array.from(String(content || '').matchAll(/^##\s+(.+)$/gm)).map((m) => norm(m[1])),
+  )
+  const missing: string[] = []
+  for (const entry of outline) {
+    const heading = String(entry.heading || '').trim()
+    if (!heading || STRUCTURAL_H2.test(heading)) continue
+    const key = norm(heading)
+    if (!key || present.has(key)) continue
+    // Partial-word matches ("Top 7 alternatives" vs "Top 7 Rapidvisa
+    // alternatives") are covered when 60%+ of tokens appear in ANY heading.
+    const tokens = key.split(' ').filter((t) => t.length > 2)
+    if (!tokens.length) continue
+    let found = false
+    for (const h of present) {
+      let overlap = 0
+      for (const t of tokens) if (h.includes(t)) overlap++
+      if (overlap / tokens.length >= 0.6) {
+        found = true
+        break
+      }
+    }
+    if (!found) missing.push(heading)
+  }
+  return missing
+}
+
+/**
+ * Forward references ("the next section walks through…", "as shown below")
+ * whose target never materializes. Writers emit them mid-template even when
+ * the outline was cut short — orphaned promises read as truncated drafting
+ * to readers AND engines. The deterministic repair strips the orphaned
+ * connector sentence.
+ */
+export function detectDanglingForwardReferences(content: string): Array<{ sentence: string }> {
+  const refRe =
+    /\b(?:the (?:following|next)|next (?:section|step)|as (?:we'?ll|I'?ll) (?:see|cover|discuss) (?:in|later|below)|the (?:section|guide) (?:below|that follows|coming up)|in the sections? (?:that follow|below)|we'?ll (?:cover|walk through)|see below)\b/gi
+  const normText = String(content || '').replace(/\n+/g, ' ')
+  const sentences = normText.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 10)
+  const out: Array<{ sentence: string }> = []
+  for (const s of sentences) {
+    if (!refRe.test(s)) continue
+    const start = normText.indexOf(s)
+    const remainder = normText.slice(start + s.length).toLowerCase()
+    // Honest when the remainder actually contains a follow-up section or
+    // the promise's own noun ("…worked example…" → a later occurrence).
+    const named = (s.match(/\S{2,}?(?:worked example|example|breakdown|cost comparison|checklist|section|table)\b/i) || [])[0]
+    const targetStems = named
+      ? named.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((t) => t.length > 3)
+      : []
+    const fulfilled =
+      remainder.includes('## ') ||
+      (targetStems.length > 0 && targetStems.some((t) => remainder.includes(t)))
+    if (!fulfilled) out.push({ sentence: s.trim() })
+  }
+  return out
+}
+
+/**
+ * Heading-level keyword pasting: a section heading whose text IS a required
+ * keyword string (or a ≥4-word long-tail verbatim). Two variants:
+ *  - exact: normalized heading equals a required keyword;
+ *  - full long-tail embedded 1:1 in the heading ("How to apply for estimated
+ *    tax payment help | overview" — the template string as a title).
+ * Headings should NAME the section for a reader, not repeat brief keywords;
+ * this is reader-visible stuffing engines derank.
+ */
+export function detectKeywordPastedHeadings(
+  content: string,
+  shortKeywords: string[],
+  longTailKeywords: string[],
+): Array<{ heading: string; keyword: string }> {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  const sho = [...new Set((shortKeywords || []).map((k) => norm(k)).filter(Boolean))]
+  const longs = [...new Set((longTailKeywords || []).map((k) => norm(k)).filter((k) => k.split(' ').length >= 3))]
+  const out: Array<{ heading: string; keyword: string }> = []
+  for (const kick of String(content || '').matchAll(/^(#{1,3})\s+(.+)$/gm)) {
+    const heading = kick[2].trim()
+    const normH = norm(heading)
+    if (!normH) continue
+    if (sho.includes(normH)) {
+      out.push({ heading, keyword: heading })
+      continue
+    }
+    for (const long of longs) {
+      if (normH === long || normH.includes(`${long} `) || normH.startsWith(long)) {
+        out.push({ heading, keyword: long })
+        break
+      }
+    }
+  }
+  return out
+}
+
 function countOccurrences(haystack: string, phrase: string): number {
   const h = haystack.toLowerCase()
   const p = phrase.toLowerCase()
@@ -570,6 +681,9 @@ export function evaluateContentQuality(opts: {
   primaryKeyword?: string
   /** Indexable long-form gets stricter structure. */
   indexable?: boolean
+  /** Canonical brief outline — every section must exist in the body or the
+   *  draft is structurally truncated (clears the floor yet misses the tail). */
+  outline?: Array<{ heading: string; level?: number; purpose?: string }> | null
   /** Required short keywords (≤3 words). The brief supplies at least 5. */
   requiredShortKeywords?: string[]
   /** Required long-tail keywords (≥4 words). The brief supplies at least 4. */
@@ -1051,8 +1165,7 @@ export function evaluateContentQuality(opts: {
     if (!articleHasOfficialCitation(opts.content || '', buildCitationContext({
       region: opts.region,
       topic: opts.primaryKeyword,
-      primaryKeyword: opts.primaryKeyword,
-      keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+      primaryKeyword: opts.primaryKeyword,      keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
       body: String(opts.content || '').slice(0, 4000),
     }))) {
       add({
@@ -1297,6 +1410,15 @@ export function evaluateContentQuality(opts: {
         message: `FAQ question is machine-worded from a keyword template: "${junk.question}". Rewrite in natural reader language or remove the Q&A.`,
         fix: 'Rephrase the question naturally (e.g. "Can I make estimated tax payments after the deadline?"). If the question cannot be phrased naturally, remove the Q&A pair — never paste the keyword string as a question.',
         evidence: junk.question,
+      })
+    }
+    for (const pasted of detectKeywordPastedHeadings(body, opts.requiredShortKeywords || [], opts.requiredLongTailKeywords || [])) {
+      add({
+        code: 'keyword_pasted_heading',
+        severity: 'warning',
+        message: `Heading is the keyword string pasted verbatim: "${pasted.heading}". Name the section for a reader instead of repeating brief keywords.`,
+        fix: 'Rewrite the heading in natural reader language that names the section\'s purpose (e.g. "What each fee model includes" instead of "requirements for a study abroad consultant cost"). The keyword still belongs in the body copy, not as the heading.',
+        evidence: pasted.heading,
       })
     }
 
