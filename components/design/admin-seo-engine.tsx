@@ -17,6 +17,7 @@
 import React from 'react'
 import AdminRankingModel from './admin-ranking-model'
 import { StudioModelHostSelect } from './studio-model-host-select'
+import { FUNNEL_ACTION_LABELS } from '@/lib/seoEngine/rankingModel'
 
 const C = {
   bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -508,6 +509,27 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
               const st = String(p.status || 'planned')
               const stMeta = STATUS_META[st] || STATUS_META.planned
               const open = expandedPlan === String(p.cluster_id)
+              // Phase D — plan→composer handoff: honor a TitleLab candidate as
+              // the card title, and surface mission economics (est. $/mo +
+              // funnel action) as mono badges next to it. The ⚡ Brief payload
+              // keeps p.titleCandidates / p.expectedRevenue / p.actionType so
+              // the composer threads them into the drafter contract.
+              const rawCands = p.titleCandidates as unknown
+              let firstCandidate = ''
+              if (Array.isArray(rawCands) && rawCands.length) {
+                const head = rawCands[0]
+                firstCandidate = typeof head === 'string' ? String(head) : String((head as Record<string, unknown>)?.title || '')
+              } else if (typeof rawCands === 'string') {
+                firstCandidate = String(rawCands)
+              }
+              const cardTitle = String(
+                firstCandidate || (p.plan as Record<string, unknown>)?.pillar || p.pillar || p.title || p.primary_term,
+              )
+              const expRev = p.expectedRevenue as { usdPerMonth?: number } | number | undefined
+              const revUsd = expRev == null ? 0 : Math.round(typeof expRev === 'number' ? expRev : Number(expRev?.usdPerMonth) || 0)
+              const actLabel = p.actionType
+                ? (FUNNEL_ACTION_LABELS[p.actionType as keyof typeof FUNNEL_ACTION_LABELS] || String(p.actionType))
+                : ''
               return (
                 <div key={String(p.cluster_id)} style={{ borderBottom: `1px solid ${C.border2}` }}>
                   <div style={{ padding: '10px 18px', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => setExpandedPlan(open ? null : String(p.cluster_id))}>
@@ -518,7 +540,19 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                         {badge(STAGE_LABELS[String(p.stage)] || String(p.stage), C.cyanSoft, C.cyan2)}
                         {String(p.ymyl) === 'critical' && badge('YMYL', C.goldSoft, C.gold)}
                       </div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{String(p.primary_term)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{cardTitle}</div>
+                        {revUsd > 0 && (
+                          <span title="Expected USD/month from winning this position battle (ranking-model estimate)" style={{ padding: '2px 7px', borderRadius: 999, background: C.greenSoft, border: `1px solid ${C.greenBorder}`, color: C.green, fontFamily: C.mono, fontSize: 9, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            💷 ~${fmtN(revUsd)}/mo
+                          </span>
+                        )}
+                        {actLabel && (
+                          <span title="Funnel action assigned by the planner" style={{ padding: '2px 7px', borderRadius: 999, background: C.violetSoft, border: `1px solid #DDD6FE`, color: C.violet, fontFamily: C.mono, fontSize: 9, fontWeight: 700 }}>
+                            {actLabel}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
                         ★ {fmtN(Number(p.opportunity_score))} · {fmtN(Number(p.est_monthly_impressions))} imp/mo · {fmtN(Number(p.est_monthly_clicks))} clicks · pos #{Math.round(Number(p.position) || 0)}
                       </div>
@@ -533,7 +567,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                       </div>
                       <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                         {onBrief && (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); onBrief(p) }} style={{ ...btnSolid(C.navy), padding: '4px 10px' }} title="Pre-fill the brief composer with this mission">
+                          <button type="button" onClick={(e) => { e.stopPropagation(); onBrief(p) }} style={{ ...btnSolid(C.navy), padding: '4px 10px' }} title={`Pre-fill the brief composer with this mission${revUsd > 0 ? ` · 💷 ~$${fmtN(revUsd)}/mo` : ''}${actLabel ? ` · ${actLabel}` : ''}`}>
                             ⚡ Brief
                           </button>
                         )}

@@ -444,6 +444,8 @@ export async function* runSeoFactoryPipelineStream(
             modelGuidance: input.modelGuidance || undefined,
             masterEngineBlock: input.masterEngineBlock || undefined,
             refineNotes,
+            marketplaceCta: input.marketplaceCta,
+            titleCandidate: input.titleCandidate,
             // REVISE THE EXISTING DRAFT, don't regenerate from scratch — fixes
             // must accumulate across iterations or the same blockers (AI slop,
             // repetitive sentence starts, missing disclaimer) reappear every pass.
@@ -818,6 +820,8 @@ export async function* runSeoFactoryPipelineStream(
               modelGuidance: input.modelGuidance || undefined,
               masterEngineBlock: input.masterEngineBlock || undefined,
               refineNotes,
+              marketplaceCta: input.marketplaceCta,
+              titleCandidate: input.titleCandidate,
               // Revise the existing draft — fixes must accumulate, not restart.
               draft: content || undefined,
             }),

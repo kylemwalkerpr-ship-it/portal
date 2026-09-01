@@ -31,6 +31,9 @@ type Candidate = FactoryOpportunity & {
   play?: string
   estimatedGainClicks?: number
   modelTotal?: number | null
+  /** Mission economics + TitleLab candidate threaded from the engine. */
+  marketplaceCta?: { service?: string; slug?: string; priceBand?: string } | null
+  titleCandidate?: string | null
 }
 
 function cruciblePick(o: WarOpportunity): number {
@@ -399,6 +402,8 @@ export async function POST(request: NextRequest) {
             : String(opp.action),
           writeHint: cand.writeHint,
           aiProvider,
+          marketplaceCta: typeof opp.marketplaceCta === 'object' ? opp.marketplaceCta : undefined,
+          titleCandidate: typeof opp.titleCandidate === 'string' && opp.titleCandidate ? opp.titleCandidate : undefined,
           userId,
         })
 

@@ -125,6 +125,11 @@ export interface PipelineInput {
   resumeContent?: string
   /** Admin-chosen AI provider pin ('grok' | 'openai' | 'nvidia-deepseek' | 'auto'). */
   aiProvider?: string
+  /** Mission economics from the SEO Master Engine handoff — the drafter names
+   *  the marketplace service + honest price band in the body and FAQ. */
+  marketplaceCta?: { service?: string; slug?: string; priceBand?: string }
+  /** TitleLab-approved reader-facing title candidate — H1 must carry it. */
+  titleCandidate?: string
   /**
    * Opportunity Radar brief (play, intent, signals) — consumed by the streaming
    * pipeline's autopilot transparency block. Complement to `modelGuidance`
@@ -467,6 +472,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           modelGuidance: input.modelGuidance || undefined,
           masterEngineBlock: input.masterEngineBlock || undefined,
           refineNotes,
+          marketplaceCta: input.marketplaceCta,
+          titleCandidate: input.titleCandidate,
           // Keep human/model fixes when resuming a saved draft (retry cron).
           draft: content || undefined,
         })

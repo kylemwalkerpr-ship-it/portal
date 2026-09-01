@@ -21,6 +21,7 @@ import { auditContent } from './audit'
 import { findingToAnnotations, mergeWarnings, type InlineAnnotation } from './inlineAnnotations'
 import { assertContentDepth, countBodyWords, depthSpecForType, targetThresholdForType } from './contentDepth'
 import { buildDepthAppendPrompt, extractH2Titles } from './prompts'
+import { isFillerTitle } from '@/lib/seoEngine/titleLab'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 export type ReauditResponse = {
@@ -38,7 +39,7 @@ export type ReauditResponse = {
   /** Merged quality + audit warnings (audit covers indexability: schema,
    *  meta description, internal links, AI-answer block…). Every entry is
    *  AI-fixable via the fix_warnings action. */
-  warningsData?: Array<{ code: string; message: string; fix?: string }>
+  warningsData?: Array<{ code: string; message: string; fix?: string; severity?: 'blocker' | 'warning' }>
   /** Every quality + link blocker with a remediation. The editor must list
    *  these even when they have no inline evidence, so nothing blocks ship
    *  without a Fix path. */
@@ -193,7 +194,7 @@ export type ReauditContractOutput = {
   warnings: number
   shipReady: boolean
   depthGate: { ok: boolean; message: string }
-  warningsData: Array<{ code: string; message: string; fix?: string }>
+  warningsData: Array<{ code: string; message: string; fix?: string; severity?: 'blocker' | 'warning' }>
   blockersData: Array<{ code: string; message: string; fix?: string }>
   /** Depth-mediation plan — floor numbers + deficit so the editor can show
    *  "1813/2200 words" and offer the append-only Expand-to-floor action. */
@@ -262,7 +263,23 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     if (qualityCodes.has(w.code)) continue
     annotations.push(...findingToAnnotations(content, { ...w, severity: 'warning' as const }))
   }
-  const warningsData = mergeWarnings(result.warnings, audit.warnings)
+  const warningsData: ReauditContractOutput['warningsData'] = mergeWarnings(result.warnings, audit.warnings)
+  // Title advisory (WARNING only — never a block): a filler H1 or frontmatter
+  // title ("Updated Requirements and Guidance for 2026") erodes CTR. Ship
+  // gates stay the authority; this only surfaces TitleLab-grade guidance so
+  // the editor can fix it before the draft ships. Deduped against every code
+  // already in warningsData (quality + audit) so it never appears twice.
+  const h1Title = (content.match(/^#\s+(.+)$/m) || [])[1]?.trim() || ''
+  const fmTitle = (content.match(/^---\r?\n[\s\S]*?^title:\s*(.+?)\s*$/m) || [])[1]?.trim().replace(/^["']|["']$/g, '') || ''
+  const fillerTitle = [h1Title, fmTitle].find((t) => Boolean(t) && isFillerTitle(t))
+  if (fillerTitle && !warningsData.some((w) => w.code === 'title_filler')) {
+    warningsData.push({
+      code: 'title_filler',
+      severity: 'warning' as const,
+      message: 'The title reads as generic filler ("Updated Requirements and Guidance for 2026"). CTR erodes without audience + procedure + specific.',
+      fix: 'Use a TitleLab-style reader-facing title: procedure + audience + specific (e.g. "UK Spouse Visa Application Checklist for Families: Cost & Timeline").',
+    })
+  }
   const blockersData = result.blockers.map((b) => ({
     code: b.code,
     message: b.message,

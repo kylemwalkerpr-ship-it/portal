@@ -81,6 +81,55 @@ const INTENT_LABELS: Record<string, string> = {
   transactional: '🛒 Transactional', local: '📍 Local', navigational: '🧭 Navigational',
 }
 
+// ── Plan→composer handoff (Phase D) ────────────────────────────────────────
+// The ⚡ Brief path carries mission economics + CTR-engineered titles into the
+// draft brief: compliance score, marketplace CTA (service/slug/priceBand),
+// distribution, TitleLab candidates, funnel action + expected revenue. These
+// helpers are pure and deterministic — the async priceBand lookup happens
+// fire-and-forget inside applyBrief and must never block applying the plan.
+const STAGE_SERVICE_LABELS: Record<string, string> = {
+  intent: '',
+  schools: 'study permit & enrolment consultancy',
+  work: 'work permit & career consultancy',
+  housing: 'housing & settlement support',
+  visa: 'immigration & visa consultancy',
+  settlement: 'settlement & integration support',
+  citizenship: 'PR & citizenship filing support',
+  family: 'family sponsorship support',
+  relatives: 'relative visa & family support',
+}
+
+function termServiceHint(term: string): string {
+  const t = String(term || '').toLowerCase()
+  if (/\b(green card|citizenship|naturalization)\b/.test(t)) return STAGE_SERVICE_LABELS.citizenship
+  if (/\b(spouse|marriage|partner|family|child(?:ren)?)\b/.test(t)) return STAGE_SERVICE_LABELS.family
+  if (/\b(study|school|university|college|enrol(?:l)?ment|admission)\b/.test(t)) return STAGE_SERVICE_LABELS.schools
+  if (/\b(h-?1b|work permit|job|employer|career|labor)\b/.test(t)) return STAGE_SERVICE_LABELS.work
+  if (/\b(visa|immigration|permit|entry|pr)\b/.test(t)) return STAGE_SERVICE_LABELS.visa
+  return ''
+}
+
+function slugify(value: string): string {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+}
+
+function planCellStage(p: Record<string, unknown>): string {
+  if (p.stage) return String(p.stage)
+  if (typeof p.cell === 'string') return String(p.cell).split('|')[0] || ''
+  return ''
+}
+
+/** Derive the marketplace CTA from a seo_cluster_plans row — stage/cell/term
+ *  heuristics ONLY (no new APIs). Returns undefined when nothing resolvable. */
+export function deriveMarketplaceCta(p: Record<string, unknown>): { service?: string; slug?: string } | undefined {
+  const stage = planCellStage(p)
+  const service = (STAGE_SERVICE_LABELS[stage] || termServiceHint(String(p.primaryTerm || p.primary_term || '')) || '').trim()
+  const pillar = String((p.plan && typeof p.plan === 'object' && !Array.isArray(p.plan) ? (p.plan as Record<string, unknown>).pillar : '') || p.pillar || '')
+  const slug = (String(p.slug || '') || (pillar ? slugify(pillar) : '')).trim()
+  if (!service && !slug) return undefined
+  return { ...(service ? { service } : {}), ...(slug ? { slug } : {}) }
+}
+
 const TREND_META: Record<string, { icon: string; color: string; label: string }> = {
   rising: { icon: '↗', color: '#059669', label: 'Rising' },
   flat: { icon: '→', color: '#9CA3AF', label: 'Flat' },
@@ -858,6 +907,12 @@ export default function AdminCommandCenter({
     const kw = clusterKw.length
       ? clusterKw.slice(0, 8)
       : [o.term, ...((o.signals || []).map((s: string) => s.split(' ').slice(0, 3).join(' ')).filter((s: string) => s.length > 4))].slice(0, 6)
+    // Phase D — plan→composer handoff: a seo_cluster_plans row (⚡ Brief)
+    // carries mission economics + TitleLab candidates into the brief topic
+    // payload. Every mapping is a pass-through or a deterministic heuristic;
+    // the async priceBand lookup below is fire-and-forget and never blocks.
+    const planRow = o && typeof o === 'object' && !Array.isArray(o) ? (o as Record<string, unknown>) : {}
+    const planCta = deriveMarketplaceCta(planRow)
     setBrief({
       topic: o.term,
       title: o.writeHint && String(o.writeHint).startsWith('PLAY') ? o.term.replace(/\b\w/g, (c: string) => c.toUpperCase()) : o.term,
@@ -876,11 +931,40 @@ export default function AdminCommandCenter({
       ranking: o.ranking || null,
       modelTotal: o.ranking?.total ?? null,
       cluster: o.cluster || null,
+      complianceScore: o.compliance_score != null ? o.compliance_score : o.complianceScore,
+      marketplaceCta: o.marketplaceCta || planCta || undefined,
+      distribution: o.distribution || undefined,
+      titleCandidates: o.titleCandidates || undefined,
+      actionType: o.actionType || undefined,
+      expectedRevenue: o.expectedRevenue || undefined,
     })
     setLaunchFeed([])
     setWorkspaceOpen(false)
     setTab('launch')
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    // Fire-and-forget (best-effort, never blocks applyBrief): resolve the
+    // stage/country marketplace price band so the drafter contract can name
+    // an HONEST range. Any failure → priceBand stays undefined and the prompt
+    // omits the band line entirely.
+    const ctaStage = planCellStage(planRow)
+    const ctaCountry = String(o.country || (typeof o.cell === 'string' ? String(o.cell).split('|')[1]?.toUpperCase() : '') || '')
+    if (typeof window !== 'undefined' && ctaStage && ctaCountry && STAGE_SERVICE_LABELS[ctaStage]) {
+      window.setTimeout(() => {
+        void (async () => {
+          try {
+            const { marketplaceValue } = await import('@/lib/seoEngine/marketplaceValue')
+            const v = await marketplaceValue(ctaStage, ctaCountry)
+            if (!(Number(v.priceMin) > 0 && Number(v.priceMax) > 0)) return
+            const band = `$${Math.round(Number(v.priceMin))}–$${Math.round(Number(v.priceMax))}`
+            setBrief((prev) => prev && prev.marketplaceCta
+              ? { ...prev, marketplaceCta: { ...prev.marketplaceCta, priceBand: prev.marketplaceCta.priceBand || band } }
+              : prev)
+          } catch {
+            // best-effort — the brief still applies without a price band
+          }
+        })()
+      }, 0)
+    }
     // Fire-and-forget: rebuild the link plan for the detected stage so the Launch
     // tab lands with stage-aware edges instead of plain registry hits.
     if (typeof window !== 'undefined') {
@@ -2966,6 +3050,16 @@ function RecheckDuePanel() {
           cluster: null,
           stage: p.stage,
           country: p.country,
+          // Phase D — plan→composer handoff: mission economics + TitleLab
+          // candidates ride the ⚡ Brief payload so applyBrief can thread them
+          // into the brief topic payload (complianceScore / marketplaceCta /
+          // distribution / titleCandidates / actionType / expectedRevenue).
+          compliance_score: p.compliance_score,
+          distribution: p.distribution,
+          titleCandidates: p.titleCandidates,
+          actionType: p.actionType,
+          expectedRevenue: p.expectedRevenue,
+          marketplaceCta: p.marketplaceCta,
         })}
         onIngest={(r: any) => notify(`Knowledge ingested: ${r.stored} stored / ${r.fetched} fetched (${r.aiSummarized} AI-summarized)`, 'success')}
       />

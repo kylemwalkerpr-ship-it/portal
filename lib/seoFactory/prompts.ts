@@ -458,6 +458,15 @@ export function buildFactoryUserPrompt(opts: {
   modelGuidance?: ModelGuidanceInput | null
   /** Master SEO Engine pack (scoreMaster + fix plan + knowledge/cluster). */
   masterEngineBlock?: string | null
+  /**
+   * Mission economics — plan→composer handoff (Phase D). When a plan row
+   * carries a marketplace CTA, the draft must name the service and its honest
+   * price band once in the body and once in a FAQ answer, educational-first.
+   */
+  marketplaceCta?: { service?: string; slug?: string; priceBand?: string }
+  /** CTR-engineered reader-facing title (TitleLab/planner candidate) the H1
+   *  must carry — derived naturally, core noun phrase kept. */
+  titleCandidate?: string
 }): string {
   // The word-count window is dictated by the canonical depth spec for THIS
   // content type — never a hardcoded floor. The brief, the audit, and the
@@ -484,6 +493,20 @@ export function buildFactoryUserPrompt(opts: {
     playbookDirective(opts.opportunityAction),
     '',
     `LENGTH (${spec.label}): ${spec.minWords}–${spec.maxWords} body words, target ~${spec.targetWords}. BOTH under ${spec.minWords} (thin) and over ${spec.maxWords} (bloated) are rejected by the audit — this is a measured gate, not a suggestion. YAML front matter, JSON-LD, and code fences do NOT count. Write complete but tight: concrete procedures, documents, risks, and FAQs earn length; padding and repetition do not. If you exceed ${spec.maxWords}, stop and trim to the last complete sentence inside the window.`,
+    ...(opts.marketplaceCta && String(opts.marketplaceCta.service || '').trim() ? [
+      'MISSION ECONOMICS — the marketplace CTA:',
+      `- Service: ${String(opts.marketplaceCta.service).trim()}${opts.marketplaceCta.slug ? ` (marketplace landing: ${opts.marketplaceCta.slug})` : ''}.`,
+      opts.marketplaceCta.priceBand
+        ? `- Honest price band from the brief: ${opts.marketplaceCta.priceBand}. State it plainly, exactly twice — one natural placement in the body and one inside a FAQ answer. Never invent prices, tiers, or features; if a reader's case sits outside the band, say prices depend on the specifics.`
+        : '- No price band in the brief — never invent one. Where a price belongs, write that prices depend on the case.',
+      '- The CTA is educational-first ("book a consult for your specific case" style), never "buy now" and never an outcome promise. One natural placement in the body where the reader decides the next step, plus the same service named once in a FAQ answer.',
+      '- The service gains no invented features or outcomes: name it, price it honestly, and route the reader to a licensed review of their specifics.',
+      '',
+    ] : []),
+    ...(opts.titleCandidate && String(opts.titleCandidate).trim() ? [
+      `TITLE CONTRACT: the H1 must carry this reader-facing title (candidate): ${String(opts.titleCandidate).trim()} — derive it naturally but keep the core noun phrase.`,
+      '',
+    ] : []),
     'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
     '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
     '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',

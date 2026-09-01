@@ -67,6 +67,14 @@ export async function POST(request: NextRequest) {
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
+      marketplaceCta: body.marketplaceCta && typeof body.marketplaceCta === 'object'
+        ? {
+            service: String(body.marketplaceCta.service || '').trim() || undefined,
+            slug: String(body.marketplaceCta.slug || '').trim() || undefined,
+            priceBand: String(body.marketplaceCta.priceBand || '').trim() || undefined,
+          }
+        : undefined,
+      titleCandidate: body.titleCandidate ? String(body.titleCandidate).trim() : undefined,
       masterEngineBlock: engineFeed?.promptBlock || null,
       intelligenceLineage: engineFeed?.lineage ? { masterEngine: engineFeed.lineage } : null,
       userId,

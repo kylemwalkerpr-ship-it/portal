@@ -202,6 +202,16 @@ export async function POST(request: Request) {
             .slice(0, 10)
         : undefined,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
+      // SEO Master Engine mission economics + TitleLab candidate — the
+      // drafter names the service + price band and carries the title.
+      marketplaceCta: body.marketplaceCta && typeof body.marketplaceCta === 'object'
+        ? {
+            service: String(body.marketplaceCta.service || '').trim() || undefined,
+            slug: String(body.marketplaceCta.slug || '').trim() || undefined,
+            priceBand: String(body.marketplaceCta.priceBand || '').trim() || undefined,
+          }
+        : undefined,
+      titleCandidate: body.titleCandidate ? String(body.titleCandidate).trim() : undefined,
       // Client disconnect / tab close: abort upstream generation immediately
       // instead of writing the full article into the Worker's memory. Routed
       // through our own controller so cancellation reaches every provider.
