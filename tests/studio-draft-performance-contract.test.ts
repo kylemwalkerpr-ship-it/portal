@@ -17,9 +17,13 @@ describe('Draft workspace performance and handoff contract', () => {
     expect(source).toContain('setDraftOperationsOpen(false)')
   })
 
-  it('uses a lightweight Word-like streaming page instead of reparsing markdown per paint', () => {
-    expect(source).toContain('const LiveDraftPage = React.memo')
-    expect(source).toContain('YouSafe Writer')
+  it('uses a lightweight memoized published-page renderer instead of reparsing markdown per paint', () => {
+    expect(source).toContain('const StudioDocPage = React.memo')
+    // The published-format page hides pipeline metadata (YAML + JSON-LD).
+    expect(source).toContain('<script\\b[^>]*>[\\s\\S]*?<\\/script>')
+    // Word-like chrome is gone; docs-style header replaced it.
+    expect(source).not.toContain('YouSafe Writer')
+    expect(source).not.toContain('Draft editor menu')
     expect(source).not.toContain('<MarkdownDocument source={generationText}')
   })
 

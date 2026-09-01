@@ -398,8 +398,8 @@ test.describe('Stage III · Draft — Live AI Writing Preview', () => {
     await expect(page.getByText('✍️ AI WRITING LIVE')).toBeVisible({ timeout: 15000 })
 
     // The live preview stats show the FULL streamed char count while streaming
-    // (still mid-stream during the pause before attempt/final). The toolbar
-    // format is `{words} words · {chars} chars`, so match the tail. The
+    // (still mid-stream during the pause before attempt/final). The live strip
+    // format is `{chars} chars · {words} body words`, so match its head. The
     // browser renders toLocaleString() with its own locale (en-US → "2,304",
     // de-DE → "2.304"), so build the regex from raw digits with a flexible
     // separator to stay locale-robust.
@@ -407,7 +407,7 @@ test.describe('Stage III · Draft — Live AI Writing Preview', () => {
       .split('')
       .join('[.,\s]?')
     await expect(
-      page.getByText(new RegExp(`· ${counterDigits} chars`)),
+      page.getByText(new RegExp(`${counterDigits} chars`)),
     ).toBeVisible({ timeout: 8000 })
 
     // Document view shows the live page (full prose, not a 2000-char tail).

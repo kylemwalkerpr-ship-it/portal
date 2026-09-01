@@ -2864,21 +2864,187 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 })
 
 
-const LiveDraftPage = React.memo(function LiveDraftPage({ source }: { source: string }) {
-  const lines = React.useMemo(() => source.split('\n').slice(-500), [source])
+/**
+ * Published-format stream page — renders the streaming markdown the way the
+ * article will LOOK once published (Google Docs-style white page):
+ *  - YAML frontmatter and <script> JSON-LD blocks are hidden (metadata, not
+ *    reader-facing content);
+ *  - markdown links become real anchors, bold/italic/code render inline,
+ *    headings/lists/blockquotes/dividers get final typography;
+ *  - a blinking cursor follows the newest streamed word.
+ */
+const STUDIO_PAGE_WIDTH = 'min(816px, 100%)'
+
+const studioInlineFormat = (text: string, keyBase: number): React.ReactNode[] => {
+  const re =
+    /(`[^`]+`)|(\*\*[^*]+\*\*)|(__[^_]+__)|(\*[^*]+\*)|(_[^_]+_)|(\[[^\]]+\]\([^)]+\))/g
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  let k = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    const tok = m[0]
+    if (tok.startsWith('`')) {
+      parts.push(
+        <code key={`${keyBase}-${k++}`} style={{ background: '#F3F4F6', padding: '1px 5px', borderRadius: 4, fontSize: '0.88em', fontFamily: C.mono, color: '#B91C1C' }}>
+          {tok.slice(1, -1)}
+        </code>,
+      )
+    } else if (tok.startsWith('**') || tok.startsWith('__')) {
+      parts.push(<strong key={`${keyBase}-${k++}`} style={{ fontWeight: 700, color: '#111827' }}>{tok.slice(2, -2)}</strong>)
+    } else if (tok.startsWith('*') || tok.startsWith('_')) {
+      parts.push(<em key={`${keyBase}-${k++}`} style={{ fontStyle: 'italic' }}>{tok.slice(1, -1)}</em>)
+    } else if (tok.startsWith('[')) {
+      const lm = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+      if (lm) {
+        parts.push(
+          <a key={`${keyBase}-${k++}`} href={lm[2]} target="_blank" rel="noreferrer"
+            style={{ color: '#1D4ED8', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+            {lm[1]}
+          </a>,
+        )
+      } else {
+        parts.push(tok)
+      }
+    }
+    last = m.index + tok.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts.length ? parts : [text]
+}
+
+const H1_BODY: React.CSSProperties = { fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontWeight: 700, fontSize: 30, lineHeight: 1.15, margin: '6px 0 22px', color: '#111827' }
+const H2_BODY: React.CSSProperties = { fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontWeight: 700, fontSize: 22, lineHeight: 1.25, margin: '30px 0 12px', color: '#17365D' }
+const H3_BODY: React.CSSProperties = { fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontWeight: 700, fontSize: 17, lineHeight: 1.3, margin: '22px 0 8px', color: '#1F4E79' }
+const P_BODY: React.CSSProperties = { margin: '0 0 14px', fontSize: 15, lineHeight: 1.78, color: '#1F2937' }
+
+const StudioDocPage = React.memo(function StudioDocPage({ source, showCursor }: { source: string; showCursor: boolean }) {
+  const blocks = React.useMemo(() => {
+    // Hide frontmatter + JSON-LD scripts: they are pipeline metadata, never
+    // reader-facing content, and raw <script> in the page is what made the old
+    // Word view look like "two copies" (formatted prose + raw markdown dump).
+    let md = String(source || '')
+    if (md.startsWith('---')) {
+      const end = md.indexOf('\n---', 3)
+      if (end !== -1) md = md.slice(end + 4).replace(/^\n+/, '')
+    }
+    md = md.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    // Keep only the most recent 500 lines so long rescue passes stay fluid.
+    const lines = md.split('\n').slice(-500)
+    const out: React.ReactNode[] = []
+    let i = 0
+    let k = 0
+    while (i < lines.length) {
+      const line = lines[i]
+      if (line.trimStart().startsWith('```')) {
+        // Raw fenced code is never part of the published page — skip to the fence end.
+        i++
+        while (i < lines.length && !lines[i].trimStart().startsWith('```')) i++
+        i++
+        continue
+      }
+      if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line.trim())) {
+        out.push(<hr key={k++} style={{ border: 'none', borderTop: `1px solid ${E.hairline}`, margin: '22px 0' }} />)
+        i++
+        continue
+      }
+      const hm = line.match(/^(#{1,6})\s+(.+)$/)
+      if (hm) {
+        const level = hm[1].length
+        if (level === 1) out.push(<h1 key={k++} style={H1_BODY}>{studioInlineFormat(hm[2], k)}</h1>)
+        else if (level === 2) out.push(<h2 key={k++} style={H2_BODY}>{studioInlineFormat(hm[2], k)}</h2>)
+        else out.push(<h3 key={k++} style={H3_BODY}>{studioInlineFormat(hm[2], k)}</h3>)
+        i++
+        continue
+      }
+      if (line.startsWith('> ')) {
+        const q: string[] = []
+        while (i < lines.length && lines[i].startsWith('>')) {
+          q.push(lines[i].replace(/^>\s?/, ''))
+          i++
+        }
+        out.push(
+          <blockquote key={k++} style={{ margin: '14px 0', padding: '10px 16px', borderLeft: `3px solid ${E.gold}`, background: '#FCF8EF', color: '#57534E', fontStyle: 'italic' }}>
+            {q.map((ql, qi) => <div key={qi} style={{ marginBottom: 4 }}>{studioInlineFormat(ql, k + qi)}</div>)}
+          </blockquote>,
+        )
+        continue
+      }
+      if (/^[-*+]\s+/.test(line)) {
+        const items: string[] = []
+        while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^[-*+]\s+/, ''))
+          i++
+        }
+        out.push(
+          <ul key={k++} style={{ margin: '8px 0 16px', paddingLeft: 26, color: '#1F2937' }}>
+            {items.map((it, ii) => (
+              <li key={ii} style={{ marginBottom: 5, lineHeight: 1.6, fontSize: 15 }}>{studioInlineFormat(it, k + ii)}</li>
+            ))}
+          </ul>,
+        )
+        continue
+      }
+      if (/^\d+\.\s+/.test(line)) {
+        const items: string[] = []
+        while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\d+\.\s+/, ''))
+          i++
+        }
+        out.push(
+          <ol key={k++} style={{ margin: '8px 0 16px', paddingLeft: 26, color: '#1F2937' }}>
+            {items.map((it, ii) => (
+              <li key={ii} style={{ marginBottom: 5, lineHeight: 1.6, fontSize: 15 }}>{studioInlineFormat(it, k + ii)}</li>
+            ))}
+          </ol>,
+        )
+        continue
+      }
+      if (!line.trim()) {
+        i++
+        continue
+      }
+      // Paragraph — group consecutive prose lines.
+      const para: string[] = [line]
+      i++
+      while (i < lines.length && lines[i].trim() && !/^(#{1,6})\s+/.test(lines[i]) && !/^[-*+]\s+/.test(lines[i]) && !/^\d+\.\s+/.test(lines[i]) && !lines[i].startsWith('> ') && !/^<script/i.test(lines[i])) {
+        para.push(lines[i])
+        i++
+      }
+      out.push(<p key={k++} style={P_BODY}>{studioInlineFormat(para.join(' '), k)}</p>)
+    }
+    return out
+  }, [source])
+
   return (
-    <div data-testid="studio-stream-document-body" style={{ width: 'min(816px, calc(100% - 44px))', minHeight: 1056, margin: '22px auto 48px', padding: '72px clamp(36px, 7vw, 82px)', background: '#fff', boxShadow: '0 3px 18px rgba(15,23,42,.18)', boxSizing: 'border-box', color: '#172033', fontFamily: 'Georgia, Cambria, serif', fontSize: 15, lineHeight: 1.78 }}>
-      {lines.map((line, index) => {
-        const text = line.replace(/^#{1,6}\s+/, '')
-        if (/^#\s/.test(line)) return <h1 key={index} style={{ fontFamily: 'Aptos Display, Arial, sans-serif', fontSize: 31, lineHeight: 1.15, margin: '0 0 24px', color: '#111827' }}>{text}</h1>
-        if (/^##\s/.test(line)) return <h2 key={index} style={{ fontFamily: 'Aptos Display, Arial, sans-serif', fontSize: 22, lineHeight: 1.25, margin: '28px 0 10px', color: '#17365D' }}>{text}</h2>
-        if (/^###\s/.test(line)) return <h3 key={index} style={{ fontFamily: 'Aptos Display, Arial, sans-serif', fontSize: 17, margin: '20px 0 7px', color: '#1F4E79' }}>{text}</h3>
-        if (/^[-*]\s/.test(line)) return <div key={index} style={{ paddingLeft: 20, margin: '3px 0' }}>• {line.replace(/^[-*]\s+/, '')}</div>
-        if (/^\d+\.\s/.test(line)) return <div key={index} style={{ paddingLeft: 20, margin: '3px 0' }}>{line}</div>
-        if (!line.trim()) return <div key={index} style={{ height: 9 }} />
-        return <div key={index}>{line}</div>
-      })}
-      <span style={{ display: 'inline-block', width: 2, height: 18, background: '#2563EB', verticalAlign: 'text-bottom', animation: 'studioCursorBlink 1s ease-in-out infinite' }} />
+    <div
+      data-testid="studio-stream-document-body"
+      style={{
+        width: STUDIO_PAGE_WIDTH, minHeight: 1056, margin: '0 auto',
+        padding: '64px clamp(36px, 7vw, 82px) 96px',
+        background: '#fff', borderRadius: 4,
+        boxShadow: '0 1px 3px rgba(15,23,42,.12), 0 8px 28px rgba(15,23,42,.1)',
+        boxSizing: 'border-box', color: '#1F2937',
+        fontFamily: 'Georgia, Cambria, "Times New Roman", serif', fontSize: 15, lineHeight: 1.78,
+      }}
+    >
+      {blocks.length === 0 ? (
+        <div style={{ color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center', paddingTop: 120 }}>
+          The AI is composing this page…
+        </div>
+      ) : (
+        <>
+          {blocks}
+          {showCursor && (
+            <span style={{
+              display: 'inline-block', width: 2, height: 19, background: '#2563EB',
+              verticalAlign: 'text-bottom', marginLeft: 1,
+              animation: 'studioCursorBlink 1s ease-in-out infinite',
+            }} />
+          )}
+        </>
+      )}
     </div>
   )
 })
@@ -3066,93 +3232,147 @@ function DraftWorkspace({
         </div>
       )}
 
-      {/* ── Document editor area — the word-document workspace ── */}
-      <div style={{ background: '#D9DDE3', border: '1px solid #AAB2BF', minHeight: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 12px 34px rgba(15,23,42,.14)' }}>
-        <div style={{ minHeight: 38, padding: '0 14px', background: '#185ABD', color: '#fff', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 11 }}><strong style={{ fontSize: 17 }}>W</strong><span>AutoSave</span><span style={{ width: 26, height: 14, borderRadius: 8, background: 'rgba(255,255,255,.28)', display: 'inline-block' }} /></div>
-          <div style={{ fontFamily: 'Aptos, Arial, sans-serif', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{draftTitle || completedJob?.title || 'Untitled draft'} — YouSafe Writer</div>
-          <div style={{ textAlign: 'right', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 10, opacity: .85 }}>{generating ? 'Saving live draft…' : hasCompleted ? 'Saved to job history' : 'Ready'}</div>
-        </div>
-        <div role="menubar" aria-label="Draft editor menu" style={{ minHeight: 34, padding: '0 10px', background: '#fff', display: 'flex', alignItems: 'end', gap: 2, borderBottom: '1px solid #D7DBE0' }}>
-          {['File', 'Home', 'Insert', 'Layout', 'References', 'Review', 'View'].map((item) => <button key={item} type="button" style={{ height: 33, padding: '0 11px', border: 0, borderBottom: item === 'Home' ? '2px solid #185ABD' : '2px solid transparent', background: 'transparent', color: item === 'Home' ? '#185ABD' : '#30343B', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 11, cursor: 'default' }}>{item}</button>)}
-        </div>
-        <div role="toolbar" aria-label="Draft editor commands" style={{ minHeight: 66, padding: '7px 12px', background: '#F8F9FB', borderBottom: '1px solid #C9CED6', display: 'flex', alignItems: 'stretch', gap: 10, overflowX: 'auto' }}>
-          <div style={{ display: 'flex', gap: 5, paddingRight: 10, borderRight: '1px solid #D7DBE0', alignItems: 'center' }}>
-            <button type="button" onClick={() => selectTab('research')} style={{ padding: '7px 10px', border: '1px solid #C9CED6', background: '#fff', color: '#263445', fontSize: 10, cursor: 'pointer' }}>← Brief</button>
-            <button type="button" disabled={generating || !hasCompleted} onClick={onContinueToReview} style={{ padding: '7px 10px', border: '1px solid #185ABD', background: generating || !hasCompleted ? '#E5E7EB' : '#185ABD', color: generating || !hasCompleted ? '#7B8491' : '#fff', fontSize: 10, cursor: generating || !hasCompleted ? 'not-allowed' : 'pointer' }}>Audit &amp; Fix</button>
-            <button type="button" disabled={generating} onClick={onToggleQueue} aria-pressed={queueOpen} style={{ padding: '7px 10px', border: `1px solid ${queueOpen ? '#185ABD' : '#C9CED6'}`, background: queueOpen ? '#EAF2FF' : '#fff', color: queueOpen ? '#185ABD' : '#263445', fontSize: 10, cursor: generating ? 'not-allowed' : 'pointer' }}>Jobs ({queueCount})</button>
+      {/* ── Document workspace — clean Google Docs-style canvas ── */}
+      <div style={{ background: '#EEF0F2', border: `1px solid ${E.hairline}`, minHeight: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 12px 34px rgba(15,23,42,.10)' }}>
+        {/* Docs-style header: title · status · view toggle · actions */}
+        <div style={{
+          minHeight: 56, padding: '0 16px', background: '#fff',
+          borderBottom: `1px solid ${E.hairline}`,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        }}>
+          <button
+            type="button"
+            onClick={() => selectTab('research')}
+            title="Back to the brief"
+            style={{ padding: '6px 10px', border: 'none', background: 'transparent', color: '#5B6472', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            ← Brief
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#fff" stroke="#185ABD" strokeWidth="1.5" />
+              <path d="M14 2v6h6" fill="none" stroke="#185ABD" strokeWidth="1.5" />
+              <path d="M8 13h8M8 17h8" stroke="#185ABD" strokeWidth="1.5" />
+            </svg>
+            <div style={{
+              fontFamily: 'Georgia, Cambria, serif', fontSize: 14, fontWeight: 700,
+              color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340,
+            }} title={draftTitle || completedJob?.title || 'Untitled draft'}>
+              {draftTitle || completedJob?.title || 'Untitled draft'}
+            </div>
+            <span style={{
+              fontSize: 10, fontFamily: C.mono, color: generating ? '#B45309' : hasCompleted ? '#166534' : '#9CA3AF',
+              whiteSpace: 'nowrap',
+            }}>
+              {generating ? '● AI writing…' : hasCompleted ? '✓ Saved to job history' : 'Ready'}
+            </span>
           </div>
-          <div style={{ display: 'flex', gap: 4, paddingRight: 10, borderRight: '1px solid #D7DBE0', alignItems: 'center' }}>
-            {(['document', 'source'] as const).map((mode) => <button key={mode} type="button" data-testid={mode === 'document' ? 'studio-stream-document' : 'studio-stream-source'} onClick={() => setStreamView(mode)} aria-pressed={streamView === mode} style={{ padding: '7px 10px', border: `1px solid ${streamView === mode ? '#185ABD' : '#C9CED6'}`, background: streamView === mode ? '#EAF2FF' : '#fff', color: streamView === mode ? '#185ABD' : '#475569', fontSize: 10, cursor: 'pointer' }}>{mode === 'document' ? '▤ Print layout' : '¶ Markdown'}</button>)}
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* View toggle — published page vs raw markdown */}
+            <div style={{ display: 'inline-flex', border: `1px solid ${E.hairline}`, borderRadius: 999, overflow: 'hidden', background: '#F8F9FA' }}>
+              {(['document', 'source'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  data-testid={mode === 'document' ? 'studio-stream-document' : 'studio-stream-source'}
+                  onClick={() => setStreamView(mode)}
+                  aria-pressed={streamView === mode}
+                  style={{
+                    padding: '5px 12px', border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
+                    fontFamily: C.mono, letterSpacing: '0.04em',
+                    background: streamView === mode ? '#185ABD' : 'transparent',
+                    color: streamView === mode ? '#fff' : '#5B6472',
+                  }}
+                >
+                  {mode === 'document' ? 'Document' : 'Markdown'}
+                </button>
+              ))}
+            </div>
+
+            {/* Word count chip */}
+            <span style={{ fontFamily: C.mono, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', padding: '4px 10px', border: `1px solid ${E.hairline}`, borderRadius: 999, background: '#F8F9FA' }}>
+              {(() => {
+                const wc = generating ? generationWordCount : wordCount
+                const minW = completedJob?.content_type === 'blog_post' ? 800 : completedJob?.content_type === 'regional_page' ? 1200 : 2200
+                const maxW = completedJob?.content_type === 'blog_post' ? 1500 : completedJob?.content_type === 'regional_page' ? 2000 : 2800
+                const overMax = wc > maxW
+                const underMin = wc < minW
+                const wcColor = overMax ? C.red : underMin ? C.orange : '#0F7A3A'
+                return (
+                  <>
+                    <span style={{ color: wcColor, fontWeight: 700, minWidth: 48, textAlign: 'right' }}>{wc.toLocaleString()} w</span>
+                    <span style={{ color: E.inkDim }}>/ {minW.toLocaleString()}–{maxW.toLocaleString()}</span>
+                  </>
+                )
+              })()}
+            </span>
+
+            <button
+              type="button"
+              disabled={generating || !hasCompleted}
+              onClick={onContinueToReview}
+              style={{
+                padding: '6px 14px', border: 'none', borderRadius: 6,
+                background: generating || !hasCompleted ? '#E5E7EB' : '#185ABD',
+                color: generating || !hasCompleted ? '#9CA3AF' : '#fff',
+                fontSize: 11, fontWeight: 700, cursor: generating || !hasCompleted ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Audit & Fix
+            </button>
+            <button
+              type="button"
+              disabled={generating}
+              onClick={onToggleQueue}
+              aria-pressed={queueOpen}
+              style={{
+                padding: '6px 12px', border: `1px solid ${E.hairline}`, borderRadius: 6,
+                background: queueOpen ? '#EAF2FF' : '#fff', color: queueOpen ? '#185ABD' : '#5B6472',
+                fontSize: 11, fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Jobs ({queueCount})
+            </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', padding: '0 10px 0 2px', borderRight: '1px solid #D7DBE0', fontFamily: 'Aptos, Arial, sans-serif', fontSize: 9.5, lineHeight: 1.3, color: '#64748B' }}>Structured headings, lists, tables and numbering<br />are preserved while AI writes.</div>
-          <span style={{ marginLeft: 'auto', padding: '0 8px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-            {(() => {
-              const wc = generating
-                ? generationWordCount
-                : wordCount
-              const minW = completedJob?.content_type === 'blog_post' ? 800 : completedJob?.content_type === 'regional_page' ? 1200 : 2200
-              const maxW = completedJob?.content_type === 'blog_post' ? 1500 : completedJob?.content_type === 'regional_page' ? 2000 : 2800
-              const pct = Math.min(100, Math.round((wc / maxW) * 100))
-              const overMax = wc > maxW
-              const underMin = wc < minW
-              const wcColor = overMax ? C.red : underMin ? C.orange : pct >= 80 ? C.mossGreen : C.textDim
-              const barColor = overMax ? C.red : underMin ? C.orange : C.gold
-              return (
-                <>
-                  <span style={{ color: wcColor, fontWeight: 700, minWidth: 48, textAlign: 'right' }}>
-                    {wc.toLocaleString()} w
-                  </span>
-                  <span style={{ color: E.inkDim, fontSize: 8 }}>/ {minW.toLocaleString()}–{maxW.toLocaleString()}</span>
-                  <span style={{
-                    display: 'inline-block', width: 48, height: 3,
-                    background: E.hairline, borderRadius: 2, overflow: 'hidden',
-                  }}>
-                    <span style={{
-                      display: 'block', height: '100%',
-                      width: `${overMax ? 100 : Math.max(2, pct)}%`,
-                      background: barColor,
-                      borderRadius: 2,
-                      transition: 'width 0.3s ease',
-                    }} />
-                  </span>
-                </>
-              )
-            })()}
-            <span style={{ color: E.inkDim, fontSize: 8 }}>{generating ? `${generationText.length.toLocaleString()}c` : `${draftContent.length.toLocaleString()}c`}</span>
-          </span>
         </div>
-        <div aria-hidden="true" style={{ height: 18, background: '#F3F4F6', borderBottom: '1px solid #BCC3CD', position: 'relative' }}><div style={{ position: 'absolute', left: 'calc(50% - 408px)', width: 'min(816px, calc(100% - 44px))', height: '100%', backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 39px, #9CA3AF 40px, transparent 41px)', opacity: .65 }} /></div>
 
         {/* Editor body */}
         {generating && generationText.length > 0 ? (
-          /* Live preview — document view matches the live site; source is the raw stream. */
+          /* Live preview — document view renders the published page; source is the raw stream. */
           <div ref={livePreviewRef} data-testid="studio-stream-preview" style={{
-            marginTop: 0, background: streamView === 'document' ? '#D9DDE3' : '#172033',
+            marginTop: 0, background: '#EEF0F2',
             border: 'none', borderRadius: 0,
-            height: 'min(72vh, 820px)', minHeight: 560, overflowY: 'auto',
+            height: 'min(72vh, 860px)', minHeight: 560, overflowY: 'auto', padding: '20px 12px',
           }}>
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              position: 'sticky', top: 0, zIndex: 2, padding: '8px 14px',
-              background: 'rgba(248,249,251,.96)', borderBottom: '1px solid #C9CED6',
+              display: 'flex', alignItems: 'center', gap: 10,
+              position: 'sticky', top: 0, zIndex: 2, margin: '0 auto 12px',
+              width: 'min(816px, 100%)', padding: '6px 14px',
+              background: 'rgba(255,255,255,.88)', backdropFilter: 'blur(4px)',
+              border: `1px solid ${E.hairline}`, borderRadius: 6,
+              fontFamily: C.mono, fontSize: 9.5, color: '#5B6472',
             }}>
-              <span style={{ fontSize: 9, color: '#185ABD', fontFamily: C.mono, letterSpacing: '0.12em', fontWeight: 800 }}>
-                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 9, background: '#22C55E', marginRight: 6 }} />AI WRITING LIVE · DOCUMENT IS CHECKPOINTED
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#185ABD', fontWeight: 800, letterSpacing: '0.08em' }}>
+                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 9, background: '#22C55E' }} />
+                ✍️ AI WRITING LIVE
               </span>
-              <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>
+              <span style={{ marginLeft: 'auto' }}>
                 {generationText.length.toLocaleString()} chars · {generationWordCount.toLocaleString()} body words
-                {streamView === 'document' ? ' · live page preview' : ' · raw markdown'}
               </span>
             </div>
             {streamView === 'document' ? (
-              <LiveDraftPage source={generationText} />
+              <StudioDocPage source={generationText} showCursor />
             ) : (
               <div
                 data-testid="studio-stream-source-body"
                 style={{
-                  padding: '16px 18px 24px',
-                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: '#D7E1F2',
+                  width: 'min(816px, 100%)', margin: '0 auto', minHeight: 'min(68vh, 840px)',
+                  padding: '24px 28px', background: '#fff', borderRadius: 4,
+                  boxShadow: '0 1px 3px rgba(15,23,42,.12)',
+                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: '#334155',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}
               >
