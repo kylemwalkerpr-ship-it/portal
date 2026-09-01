@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import { MarkdownDocument } from '@/lib/markdownDocument'
+import StudioDocEditor from './studio-doc-editor'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
@@ -867,7 +867,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               {warningsData.length} quality warning{warningsData.length === 1 ? '' : 's'}
             </span>
             <span style={{ fontSize: 10, color: '#92400E', fontFamily: C.mono }}>
-              Clear mechanical warnings with Audit &amp; Fix above — synthesized-keyword gaps are advisory
+              Audit &amp; Fix attempts synthesized-keyword gaps once (FAQ is the natural home); no natural slot → advisory
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -879,7 +879,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             ))}
           </div>
           <div style={{ fontSize: 10, color: C.textDim }}>
-            Warnings never block shipping. <strong>Audit &amp; Fix</strong> clears mechanical defects; <span style={{ fontFamily: C.mono }}>missing_synthesized_*</span> warnings mark terms with no search-demand evidence — a writer places one naturally (a long-tail keyword fits best as an FAQ question) or leaves it, and they may persist after Fix All by design.
+            Warnings never block shipping. <strong>Audit &amp; Fix</strong> clears mechanical defects and runs one writer pass to place <span style={{ fontFamily: C.mono }}>missing_synthesized_*</span> terms naturally (a long-tail keyword fits best as an FAQ question); terms with no natural slot persist as advisory.
           </div>
         </div>
       )}
@@ -967,7 +967,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 color: viewMode === m ? C.text : C.textMuted,
               }}
             >
-              {m === 'document' ? '📄 Document' : '✏️ Markdown'}
+              {m === 'document' ? '📄 Edit' : '✏️ Markdown'}
             </button>
           ))}
         </div>
@@ -1064,7 +1064,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {viewMode === 'document' ? (
             <div style={{
               border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8',
-              minHeight: 320, maxHeight: 760, overflow: 'auto',
+              minHeight: 320, paddingTop: 14,
             }}>
               {content.length > 50_000 ? (
                 <div style={{ padding: 20, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
@@ -1073,7 +1073,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Audit &amp; Fix</strong> to reduce the content size.</div>
                 </div>
               ) : (
-                <MarkdownDocument source={content} />
+                <StudioDocEditor
+                  content={content}
+                  onChange={(md) => { onChange(md); setDirty(true) }}
+                  disabled={disabled || allBusy}
+                  minHeight={640}
+                />
               )}
             </div>
           ) : (
