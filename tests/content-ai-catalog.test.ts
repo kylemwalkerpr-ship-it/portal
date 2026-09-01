@@ -4,6 +4,7 @@ import {
   DEFAULT_BRIEF_PIN,
   DEFAULT_DRAFT_PIN,
   DEFAULT_REVIEW_PIN,
+  LANE_HOSTS,
   hostsForModel,
   modelPickerLabel,
   modelsForLane,
@@ -72,19 +73,43 @@ describe('content AI catalog — model × host', () => {
     expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)))
   })
 
-  it('brief lane: exactly three families — Claude Opus 5 (default), Grok, DeepSeek V4 Flash', () => {
+  it('brief lane: Claude Opus 5 (default), Grok, DeepSeek V4 Flash, and the GPT-5.6 family (OpenAI)', () => {
     const brief = modelsForLane('brief').map((m) => m.id)
-    expect(brief).toEqual(['claude-opus-5', 'grok-4.6', 'deepseek-v4-flash'])
+    expect(brief).toEqual(['claude-opus-5', 'grok-4.6', 'deepseek-v4-flash', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(hostsForModel('claude-opus-5', 'brief').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('grok-4.6', 'brief').map((h) => h.id)).toEqual(['xai'])
+    expect(hostsForModel('gpt-5.6-sol', 'brief').map((h) => h.id)).toEqual(['openai'])
   })
 
-  it('review lane: exactly four — Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash (default)', () => {
+  it('review lane: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash (default), and the GPT-5.6 family (OpenAI)', () => {
     const review = modelsForLane('review').map((m) => m.id)
-    expect(review).toEqual(['grok-4.6', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.3-flash'])
+    expect(review).toEqual(['grok-4.6', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.3-flash', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(hostsForModel('glm-5.3-flash', 'review').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('claude-sonnet-5', 'review').map((h) => h.id)).toEqual(['runbios'])
+    expect(hostsForModel('gpt-5.6-sol', 'review').map((h) => h.id)).toEqual(['openai'])
     expect(modelPickerLabel(modelsForLane('review')[3], 'review')).toBe('glm-5.3-flash')
+  })
+
+  it('GPT-5.6 family is selectable end-to-end: command (Discover), brief, and review lanes — OpenAI host only, draft excluded', () => {
+    for (const model of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+      expect(modelsForLane('command').some((m) => m.id === model)).toBe(true)
+      expect(modelsForLane('brief').some((m) => m.id === model)).toBe(true)
+      expect(modelsForLane('review').some((m) => m.id === model)).toBe(true)
+      expect(modelsForLane('draft').some((m) => m.id === model)).toBe(false)
+      expect(hostsForModel(model as never, 'command').map((h) => h.id)).toEqual(['openai'])
+    }
+    expect(LANE_HOSTS.brief).toContain('openai')
+    expect(LANE_HOSTS.review).toContain('openai')
+    expect(pinFor('gpt-5.6-sol', 'openai')).toBe('gpt-5.6-sol')
+    expect(parseStudioPin('gpt-5.6-luna')).toMatchObject({
+      model: { id: 'gpt-5.6-luna' },
+      host: { id: 'openai' },
+    })
+    // ChatGPT / OpenAI quick aliases canonicalize to the flagship GPT-5.6 Sol.
+    expect(canonicalizePin('chatgpt')).toBe('gpt-5.6-sol')
+    expect(canonicalizePin('chatgpt-plus')).toBe('gpt-5.6-sol')
+    expect(canonicalizePin('openai')).toBe('gpt-5.6-sol')
+    expect(canonicalizePin('gpt-5.6')).toBe('gpt-5.6-sol')
   })
 
   it('composes pins from model + host', () => {

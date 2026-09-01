@@ -403,6 +403,8 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'deepseek-ai/DeepSeek-V4-Flash',
     role: 'fallback',
     hint: 'Entrim-hosted DeepSeek V4 Flash — selectable in Draft and Command Center. Paste ENTRIM_API_KEY; base URL fixed to api.entrim.ai/v1',
+    vaultGroup: 'entrim',
+    vaultGroupLabel: 'Entrim · api.entrim.ai',
     modelOptions: HOST_MODEL_OPTIONS.entrim,
   },
 ]
@@ -466,6 +468,11 @@ export interface AiSettings {
   xai_oauth_expires_at?: string | null
   xai_oauth_token_type?: string | null
   xai_oauth_pending?: string | null
+  chatgpt_oauth_access_token?: string | null
+  chatgpt_oauth_refresh_token?: string | null
+  chatgpt_oauth_expires_at?: string | null
+  chatgpt_oauth_token_type?: string | null
+  chatgpt_oauth_pending?: string | null
 }
 
 function sb() {
@@ -772,6 +779,9 @@ export async function listVaultStatus(): Promise<VaultStatusRow[]> {
   const grokOauth = Boolean(
     settings.xai_oauth_access_token?.trim() || settings.xai_oauth_refresh_token?.trim(),
   )
+  const chatgptOauth = Boolean(
+    settings.chatgpt_oauth_access_token?.trim() || settings.chatgpt_oauth_refresh_token?.trim(),
+  )
   const byProvider = new Map(rows.map((r) => [r.provider, r]))
   return AI_PROVIDERS.map((def) => {
     const row = byProvider.get(def.id)
@@ -780,9 +790,11 @@ export async function listVaultStatus(): Promise<VaultStatusRow[]> {
     const model = row?.model || process.env[def.modelEnv || ''] || def.defaultModel
     const fromVault = Boolean(row?.api_key)
     const fromEnv = Boolean(envKey)
-    const fromOauth = def.id === 'grok' && grokOauth
+    const fromOauth = (def.id === 'grok' && grokOauth) || (def.id === 'openai' && chatgptOauth)
     const maskedKey = fromOauth
-      ? 'SuperGrok · connected'
+      ? def.id === 'grok'
+        ? 'SuperGrok · connected'
+        : 'ChatGPT Plus · connected'
       : fromVault
         ? maskKey(row!.api_key!)
         : fromEnv

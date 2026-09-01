@@ -9,10 +9,10 @@
  * Lane policy (single source of truth for UI pickers AND server defaults):
  *   Draft  — Run BiOS + NVIDIA hosts only; families sorted alphabetically;
  *            default MiniMax M3 via NVIDIA (`nvidia-minimax`).
- *   Brief  — exactly three families: Claude Opus 5 (Run BiOS, default),
- *            Grok (xAI), DeepSeek V4 Flash (Run BiOS + Baseten).
- *   Review — exactly four: Grok, Claude Opus 5, Claude Sonnet 5 (Run BiOS),
- *            GLM 5.3 Flash (Run BiOS, default).
+ *   Brief  — Claude Opus 5 (Run BiOS, default), Grok (xAI),
+ *            DeepSeek V4 Flash (Run BiOS + Baseten), GPT-5.6 family (OpenAI).
+ *   Review — Grok, Claude Opus 5, Claude Sonnet 5 (Run BiOS),
+ *            GLM 5.3 Flash (Run BiOS, default), GPT-5.6 family (OpenAI).
  * Host dropdown order (when the host actually serves that model):
  *   Run BiOS → Parasail → Baseten → NVIDIA → DeepSeek.com → Zai
  */
@@ -36,6 +36,7 @@ export type StudioModelId =
   | 'grok-4.6'
   | 'gpt-5.6-terra'
   | 'gpt-5.6-sol'
+  | 'gpt-5.6-luna'
   | 'nemotron-3-ultra'
   | 'cloudflare-llama'
   | 'groq-llama'
@@ -91,13 +92,14 @@ export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
 /**
  * Lane host allowlists — a lane can only select or execute a pin whose host
  * serves that lane. Draft is Run BiOS + NVIDIA only; Brief is Run BiOS,
- * Baseten, and xAI (Grok); Review is Run BiOS + xAI. Command Center keeps the
- * full host set. `auto` stays a command-only host.
+ * Baseten, xAI (Grok), and OpenAI (ChatGPT Plus / API key); Review is
+ * Run BiOS + xAI + OpenAI. Command Center keeps the full host set. `auto`
+ * stays a command-only host.
  */
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
   draft: ['runbios', 'nvidia', 'entrim'],
-  brief: ['runbios', 'baseten', 'xai'],
-  review: ['runbios', 'xai'],
+  brief: ['runbios', 'baseten', 'xai', 'openai'],
+  review: ['runbios', 'xai', 'openai'],
   command: ['runbios', 'parasail', 'baseten', 'nvidia', 'deepseek', 'entrim', 'zai', 'aihubmix', 'xai', 'openai', 'cloudflare', 'groq', 'google', 'openrouter', 'auto'],
 }
 
@@ -133,20 +135,26 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'bios-adaptive',
     'deepseek-v4-flash',
   ],
-  // Brief: exactly three families — Claude Opus 5 (default), Grok,
-  // DeepSeek V4 Flash (Run BiOS + Baseten hosts only).
+  // Brief: Claude Opus 5 (default), Grok, DeepSeek V4 Flash (Run BiOS +
+  // Baseten hosts only), GPT-5.6 family (OpenAI — ChatGPT Plus or API key).
   brief: [
     'claude-opus-5',
     'grok-4.6',
     'deepseek-v4-flash',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
   ],
-  // Review/Editor: exactly four — Grok, Claude Opus 5, Claude Sonnet 5,
-  // GLM 5.3 Flash (default).
+  // Review/Editor: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash
+  // (default), GPT-5.6 family (OpenAI).
   review: [
     'grok-4.6',
     'claude-opus-5',
     'claude-sonnet-5',
     'glm-5.3-flash',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
   ],
   command: [
     'auto',
@@ -286,14 +294,20 @@ export const STUDIO_MODELS: StudioModelOption[] = [
   {
     id: 'gpt-5.6-terra',
     label: 'GPT-5.6 Terra',
-    lanes: ['command'],
+    lanes: ['command', 'brief', 'review'],
     hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-terra' }],
   },
   {
     id: 'gpt-5.6-sol',
     label: 'GPT-5.6 Sol',
-    lanes: ['command'],
+    lanes: ['command', 'brief', 'review'],
     hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-sol' }],
+  },
+  {
+    id: 'gpt-5.6-luna',
+    label: 'GPT-5.6 Luna',
+    lanes: ['command', 'brief', 'review'],
+    hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-luna' }],
   },
   {
     id: 'minimax-m3',
@@ -396,6 +410,10 @@ const PIN_ALIASES: Record<string, string> = {
   'glm-5.2-fast': 'baseten-glm-fast',
   nvidia: 'nvidia-deepseek',
   nim: 'nvidia-deepseek',
+  'gpt-5.6': 'gpt-5.6-sol',
+  openai: 'gpt-5.6-sol',
+  chatgpt: 'gpt-5.6-sol',
+  'chatgpt-plus': 'gpt-5.6-sol',
 }
 
 export function modelsForLane(lane: StudioLane): StudioModelOption[] {

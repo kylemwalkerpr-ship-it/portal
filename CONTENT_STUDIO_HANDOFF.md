@@ -82,6 +82,19 @@ Uses lightweight `fetch` (no Vercel AI SDK) so the Worker stays under Cloudflare
 - Env: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (or `GSC_OAUTH_CLIENT_*`).
 - Middleware: only **callback** is public; auth/status/data require admin session.
 
+### ChatGPT Plus OAuth (OpenAI — no API key)
+
+Connect a ChatGPT Plus / Pro account from **Configure → AI keys → OpenAI row** (device-code flow against `auth.openai.com`, same pattern as SuperGrok). Tokens live in `ai_settings` (`chatgpt_oauth_*`), refresh before generation, and are injected into the OpenAI provider slot (`OPENAI_API_KEY` + `OPENAI_AUTH_MODE=chatgpt-plus`).
+
+- Unlocks the full Plus lineup — **GPT-5.6 Sol · Terra · Luna** — end to end: Discover (command lane), Brief, Reviewer/Editor, Command Center.
+- Vault `OPENAI_API_KEY` row still wins over the OAuth token (same precedence as SuperGrok).
+- Optional env overrides: `CHATGPT_OAUTH_CLIENT_ID` (default `pdlvIXc9bUqhsESQhZ1zQHPDQ79mH2Py`), `CHATGPT_OAUTH_ISSUER` (default `https://auth.openai.com`), `CHATGPT_OAUTH_TOKEN_URL`, `CHATGPT_OAUTH_SCOPE`.
+- Route: `POST /api/seo-factory/ai-keys/chatgpt-oauth` (`start` | `poll` | `disconnect`); status in `GET /api/seo-factory/ai-keys` as `chatgptOAuth`.
+
+### Entrim in the configurator
+
+Entrim (`entrim-deepseek`, `api.entrim.ai/v1`) renders as its own vault group card in the configurator (like Baseten / Run BiOS) and is selectable in the Draft + Command Center lanes. If a deployed Worker is older than this, redeploy to pick it up.
+
 ## Activation checklist
 
 ### 1. Supabase migrations (required)

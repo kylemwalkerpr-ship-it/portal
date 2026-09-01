@@ -70,6 +70,18 @@ interface GrokOAuthStatus {
   error?: string
 }
 
+interface ChatgptOAuthStatus {
+  connected?: boolean
+  pending?: boolean
+  userCode?: string | null
+  verificationUri?: string | null
+  verificationUriComplete?: string | null
+  expiresAt?: number | null
+  interval?: number | null
+  models?: string[]
+  error?: string
+}
+
 interface Draft {
   key: string
   baseUrl: string
@@ -121,10 +133,10 @@ const btn = (bg?: string, strong?: boolean): React.CSSProperties => ({
   fontWeight: strong ? 700 : 500, fontFamily: 'inherit', whiteSpace: 'nowrap',
 })
 
-function SourceBadge({ source }: { source: VaultStatusRow['source'] }) {
+function SourceBadge({ source, label }: { source: VaultStatusRow['source']; label?: string }) {
   const base: React.CSSProperties = { padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, cursor: 'help' }
   if (source === 'oauth') {
-    return <span title="SuperGrok OAuth token — stored via device login" style={{ ...base, background: C.violetSoft, color: C.violet, border: '1px solid #DDD6FE' }}>SUPERGROK</span>
+    return <span title="OAuth subscription token — stored via device login (SuperGrok or ChatGPT Plus)" style={{ ...base, background: C.violetSoft, color: C.violet, border: '1px solid #DDD6FE' }}>{label || 'OAUTH'}</span>
   }
   if (source === 'vault') {
     return <span title="Vault key (Supabase) — WINS over the Worker env secret" style={{ ...base, background: C.greenSoft, color: C.green, border: `1px solid ${C.greenBorder}` }}>VAULT · WINS</span>
@@ -165,6 +177,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   const [loading, setLoading] = React.useState(true)
   const [probe, setProbe] = React.useState<Record<string, string>>({})
   const [grokOAuth, setGrokOAuth] = React.useState<GrokOAuthStatus | null>(null)
+  const [chatgptOAuth, setChatgptOAuth] = React.useState<ChatgptOAuthStatus | null>(null)
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -181,6 +194,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       setDefaultModel(s.default_model || ((d.grokOAuth as GrokOAuthStatus | null)?.connected ? 'grok-4.6' : ''))
       setMaxProviders(s.max_providers || '3')
       setGrokOAuth((d.grokOAuth || null) as GrokOAuthStatus | null)
+      setChatgptOAuth((d.chatgptOAuth || null) as ChatgptOAuthStatus | null)
       setNote(null)
     } catch (e) {
       setNote({ ok: false, text: e instanceof Error ? e.message : 'Failed to load AI keys' })
@@ -376,6 +390,52 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     }, wait)
     return () => window.clearInterval(timer)
   }, [grokOAuth?.pending, grokOAuth?.connected, grokOAuth?.interval])
+
+  const chatgptOAuthAction = async (action: 'start' | 'poll' | 'disconnect') => {
+    setBusy(`chatgpt-oauth-${action}`)
+    try {
+      const res = await fetch('/api/seo-factory/ai-keys/chatgpt-oauth', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setChatgptOAuth(j as ChatgptOAuthStatus)
+      if (action === 'start') {
+        setNote({ ok: true, text: `Open ${j.verificationUri || 'chatgpt.com/login'} and enter ${j.userCode || 'the code'} to connect ChatGPT Plus.` })
+        if (j.verificationUriComplete || j.verificationUri) {
+          window.open(String(j.verificationUriComplete || j.verificationUri), '_blank', 'noopener,noreferrer')
+        }
+      } else if (action === 'disconnect') {
+        setNote({ ok: true, text: 'ChatGPT Plus disconnected. OpenAI will need a new login or an API key.' })
+        await load()
+        onChanged?.()
+      } else if (j.connected) {
+        setNote({ ok: true, text: 'ChatGPT Plus connected. OpenAI is now available in Discover, Brief, Reviewer/Editor, and Command Center.' })
+        await load()
+        onChanged?.()
+      } else if (j.error) {
+        setNote({ ok: false, text: String(j.error) })
+      }
+      return j as ChatgptOAuthStatus
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message : 'ChatGPT login failed' })
+      return null
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  React.useEffect(() => {
+    if (!chatgptOAuth?.pending || chatgptOAuth.connected) return
+    const wait = Math.max(2, Number(chatgptOAuth.interval || 5)) * 1000
+    const timer = window.setInterval(() => {
+      void chatgptOAuthAction('poll')
+    }, wait)
+    return () => window.clearInterval(timer)
+  }, [chatgptOAuth?.pending, chatgptOAuth?.connected, chatgptOAuth?.interval])
 
   const saveSettings = async () => {
     setBusy('settings')
@@ -725,7 +785,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                   <strong style={{ fontSize: 11, color: C.text }}>{r.label}</strong>
-                  <SourceBadge source={r.source} />
+                  <SourceBadge source={r.source} label={r.id === 'grok' ? 'SUPERGROK' : r.id === 'openai' ? 'CHATGPT' : 'OAUTH'} />
                   <ShadowedEnv row={r} />
                   {r.role === 'primary' && (
                     <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: C.goldSoft, color: C.gold }}>PRIMARY</span>
@@ -776,6 +836,52 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                     )}
                     {grokOAuth?.connected && (
                       <button type="button" onClick={() => void grokOAuthAction('disconnect')} disabled={busy === 'grok-oauth-disconnect'} style={btn(C.redSoft)}>
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {r.id === 'openai' && (
+                <div style={{
+                  marginBottom: 8, padding: 8, borderRadius: C.radiusXs,
+                  background: C.violetSoft, border: '1px solid #DDD6FE',
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.violet, marginBottom: 4 }}>
+                    ChatGPT Plus subscription — no API key
+                  </div>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 6, lineHeight: 1.45 }}>
+                    Sign in with the ChatGPT Plus (or Pro) account you already pay for.
+                    Content Studio stores a refresh token and unlocks the full Plus
+                    model lineup — {Array.isArray(chatgptOAuth?.models) && chatgptOAuth!.models.length ? chatgptOAuth!.models.join(' · ') : 'GPT-5.6 Sol · Terra · Luna'} —
+                    end to end: Discover, Brief, Reviewer/Editor, and the Command Center.
+                  </div>
+                  {chatgptOAuth?.pending && chatgptOAuth.userCode && (
+                    <div style={{ fontSize: 10, fontFamily: C.mono, color: C.text, marginBottom: 6 }}>
+                      Enter code <strong>{chatgptOAuth.userCode}</strong> at{' '}
+                      <a href={chatgptOAuth.verificationUriComplete || chatgptOAuth.verificationUri || 'https://chatgpt.com/login'} target="_blank" rel="noreferrer">
+                        {chatgptOAuth.verificationUri || 'chatgpt.com/login'}
+                      </a>
+                      {' '}— waiting for approval…
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => void chatgptOAuthAction('start')}
+                      disabled={busy === 'chatgpt-oauth-start' || busy === 'chatgpt-oauth-poll'}
+                      style={btn(C.violet, true)}
+                    >
+                      {chatgptOAuth?.pending ? 'Restart ChatGPT login' : chatgptOAuth?.connected ? 'Reconnect ChatGPT' : 'Connect ChatGPT Plus'}
+                    </button>
+                    {chatgptOAuth?.pending && (
+                      <button type="button" onClick={() => void chatgptOAuthAction('poll')} disabled={busy === 'chatgpt-oauth-poll'} style={btn()}>
+                        Check now
+                      </button>
+                    )}
+                    {chatgptOAuth?.connected && (
+                      <button type="button" onClick={() => void chatgptOAuthAction('disconnect')} disabled={busy === 'chatgpt-oauth-disconnect'} style={btn(C.redSoft)}>
                         Disconnect
                       </button>
                     )}

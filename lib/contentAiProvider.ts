@@ -374,6 +374,27 @@ export async function refreshAiVault(): Promise<string[]> {
         oauthErr instanceof Error ? oauthErr.message : oauthErr,
       )
     }
+    try {
+      if (typeof vault.getAiSettings === 'function') {
+        const { ensureChatgptAccessToken, CHATGPT_DEFAULT_MODEL } = await import('@/lib/chatgptOAuth')
+        // Same precedence as SuperGrok: a vault OPENAI row (admin-pasted key)
+        // wins over the ChatGPT Plus OAuth token. The token only fills the gap
+        // when no explicit OpenAI credential is configured.
+        if (!overlay.OPENAI_API_KEY) {
+          const oauth = await ensureChatgptAccessToken()
+          if (oauth?.accessToken) {
+            overlay.OPENAI_API_KEY = oauth.accessToken
+            overlay.OPENAI_AUTH_MODE = 'chatgpt-plus'
+            if (!overlay.OPENAI_MODEL) overlay.OPENAI_MODEL = CHATGPT_DEFAULT_MODEL
+          }
+        }
+      }
+    } catch (oauthErr) {
+      console.warn(
+        '[contentAi] ChatGPT OAuth overlay skipped',
+        oauthErr instanceof Error ? oauthErr.message : oauthErr,
+      )
+    }
     vaultOverlay = overlay
     return Object.keys(overlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
   } catch (e) {
@@ -930,9 +951,12 @@ export function isGrokConfigured(): boolean {
   return Boolean(env('XAI_API_KEY'))
 }
 
-/** True when OpenAI can run: an OPENAI_API_KEY that isn't a Parasail psk- key. */
+/** True when OpenAI can run: an OPENAI_API_KEY that isn't a Parasail psk- key,
+ *  or a connected ChatGPT Plus OAuth token (OPENAI_AUTH_MODE=chatgpt-plus). */
 export function isOpenaiConfigured(): boolean {
-  return Boolean(env('OPENAI_API_KEY') && !looksLikeParasailKey(env('OPENAI_API_KEY')))
+  const key = env('OPENAI_API_KEY')
+  if (key) return !looksLikeParasailKey(key)
+  return env('OPENAI_AUTH_MODE') === 'chatgpt-plus'
 }
 
 /** UI / pin aliases that are not xAI model ids. "grok" must never be sent. */
@@ -2498,7 +2522,7 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY') && !looksLikeParasailKey(env('CUSTOM_AI_API_KEY'))), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok (SuperGrok fallback)', configured: isGrokConfigured(), role: 'fallback' },
-    { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna)', configured: Boolean(env('OPENAI_API_KEY') && !looksLikeParasailKey(env('OPENAI_API_KEY'))), role: 'fallback' },
+    { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna or ChatGPT Plus)', configured: isOpenaiConfigured(), role: 'fallback' },
     { id: 'deepseek', label: 'DeepSeek.com API', configured: isDeepseekOfficialConfigured(), role: 'fallback' },
   ]
 }
@@ -3155,8 +3179,9 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
   // GPT-5.6 family aliases → OpenAI provider + model override.
   // gpt-5.6 bare → gpt-5.6-sol (GPT-5.6 flagship alias), same as the
   // request-level mapping in openAiCompatibleComplete.
-  if (GPT_ALIAS_RE.test(pin)) {
-    return { explicit: 'openai', prefer: 'openai', model: gptAliasModel(pin) }
+  if (GPT_ALIAS_RE.test(pin) || pin === 'chatgpt' || pin === 'chatgpt-plus') {
+    const model = pin === 'chatgpt' || pin === 'chatgpt-plus' ? 'gpt-5.6-sol' : gptAliasModel(pin)
+    return { explicit: 'openai', prefer: 'openai', model }
   }
   if (isRunbiosPin(pin)) {
     const id = canonicalizeRunbiosPin(pin)
@@ -3277,9 +3302,11 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     throw new Error(
       prefer === 'grok'
         ? `Grok is not configured. Connect SuperGrok in Content Studio → Configure (no API key needed), then retry. Currently available providers: ${configured}.`
-        : `Selected AI provider "${display}" is not configured. ` +
-          `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
-          `Currently available providers: ${configured}.`,
+        : prefer === 'openai'
+          ? `OpenAI is not configured. Connect ChatGPT Plus in Content Studio → Configure (no API key needed) or add OPENAI_API_KEY, then retry. Currently available providers: ${configured}.`
+          : `Selected AI provider "${display}" is not configured. ` +
+            `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
+            `Currently available providers: ${configured}.`,
     )
   }
 
