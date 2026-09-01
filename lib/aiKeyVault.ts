@@ -100,7 +100,7 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
   ],
   entrim: [
     'deepseek-ai/DeepSeek-V4-Flash',
-    'Qwen/Qwen3.8-27B',
+    'Qwen/Qwen3.6-27B',
   ],
   'zai-glm': [
     'glm-5.2',
@@ -410,17 +410,17 @@ export const AI_PROVIDERS: AiProviderDef[] = [
   },
   {
     id: 'entrim-qwen-27b',
-    label: 'Qwen3.8 27B · Entrim (api.entrim.ai/v1)',
+    label: 'Qwen3.6 27B · Entrim (api.entrim.ai/v1)',
     keyEnv: 'ENTRIM_API_KEY',
     baseUrlEnv: 'ENTRIM_BASE_URL',
     modelEnv: 'ENTRIM_MODEL',
     fixedBaseUrl: 'https://api.entrim.ai/v1',
-    defaultModel: 'Qwen/Qwen3.8-27B',
+    defaultModel: 'Qwen/Qwen3.6-27B',
     role: 'fallback',
-    hint: 'Entrim-hosted Qwen3.8 27B — selectable in Discover, Brief, and Reviewer lanes (shares the ENTRIM_API_KEY row).',
+    hint: 'Entrim-hosted Qwen3.6 27B — selectable in Discover, Brief, and Reviewer lanes (shares the ENTRIM_API_KEY row).',
     vaultGroup: 'entrim',
     vaultGroupLabel: 'Entrim · api.entrim.ai',
-    modelOptions: ['Qwen/Qwen3.8-27B'],
+    modelOptions: ['Qwen/Qwen3.6-27B'],
   },
 ]
 
@@ -428,7 +428,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
   AI_PROVIDERS.find((p) => p.id === id)
 
 /** Safe default cascade; Settings can override it without a redeploy.
- *  Entrim (Qwen3.8 27B first, DeepSeek flash second) fronts the auto
+ *  Entrim (Qwen3.6 27B first, DeepSeek flash second) fronts the auto
  *  cascade — graduated default. */
 export const DEFAULT_PROVIDER_ORDER = [
   'entrim-qwen-27b', 'entrim-deepseek', 'nvidia-minimax', 'runbios-glm-53-flash', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',

@@ -42,7 +42,7 @@ export type StudioModelId =
   | 'groq-llama'
   | 'gemini'
   | 'openrouter'
-  | 'qwen3.8-27b'
+  | 'qwen3.6-27b'
 
 export type StudioHostId =
   | 'auto'
@@ -83,18 +83,18 @@ export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 export const ENTRIM_DEEPSEEK_FLASH_PIN = 'entrim-deepseek'
 export const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 
-/** Entrim-hosted Qwen3.8 27B — served verbatim as `Qwen/Qwen3.8-27B` on
+/** Entrim-hosted Qwen3.6 27B — served verbatim as `Qwen/Qwen3.6-27B` on
  *  api.entrim.ai/v1 (same rule as the flash: upstream ids, never
  *  canonicalize). Usable in the Discover, Brief, and Reviewer lanes. */
 export const ENTRIM_QWEN_PIN = 'entrim-qwen-27b'
-export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.8-27B'
+export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.6-27B'
 
-/** Draft lead: Entrim Qwen3.8 27B — graduated to the drafting default
+/** Draft lead: Entrim Qwen3.6 27B — graduated to the drafting default
  *  (api.entrim.ai/v1, ENTRIM_API_KEY). Falls back through the auto cascade. */
 export const DEFAULT_DRAFT_PIN = ENTRIM_QWEN_PIN
-/** Research / Generate Full Brief lead: Entrim Qwen3.8 27B. */
+/** Research / Generate Full Brief lead: Entrim Qwen3.6 27B. */
 export const DEFAULT_BRIEF_PIN = ENTRIM_QWEN_PIN
-/** Reviewer / Editor lead: Entrim Qwen3.8 27B. */
+/** Reviewer / Editor lead: Entrim Qwen3.6 27B. */
 export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
 
 /**
@@ -140,7 +140,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'minimax-m3',
     'nemotron-3-ultra',
     'qwen3.5',
-    'qwen3.8-27b',
+    'qwen3.6-27b',
     'bios-adaptive',
     'deepseek-v4-flash',
   ],
@@ -150,19 +150,19 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'claude-opus-5',
     'grok-4.6',
     'deepseek-v4-flash',
-    'qwen3.8-27b',
+    'qwen3.6-27b',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
   ],
   // Review/Editor: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash
-  // (default), GPT-5.6 family (OpenAI), Qwen3.8 27B (Entrim).
+  // (default), GPT-5.6 family (OpenAI), Qwen3.6 27B (Entrim).
   review: [
     'grok-4.6',
     'claude-opus-5',
     'claude-sonnet-5',
     'glm-5.3-flash',
-    'qwen3.8-27b',
+    'qwen3.6-27b',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
@@ -236,8 +236,8 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     ],
   },
   {
-    id: 'qwen3.8-27b',
-    label: 'Qwen3.8 27B',
+    id: 'qwen3.6-27b',
+    label: 'Qwen3.6 27B',
     apiModel: ENTRIM_QWEN_MODEL,
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_QWEN_PIN }],
@@ -390,7 +390,7 @@ const PIN_ALIASES: Record<string, string> = {
   'entrim-deepseek-v4-flash': ENTRIM_DEEPSEEK_FLASH_PIN,
   'entrim-deepseek-v4-flash-0731': ENTRIM_DEEPSEEK_FLASH_PIN,
   [ENTRIM_QWEN_PIN]: ENTRIM_QWEN_PIN,
-  'qwen3.8-27b': ENTRIM_QWEN_PIN,
+  'qwen3.6-27b': ENTRIM_QWEN_PIN,
   qwen: ENTRIM_QWEN_PIN,
   'entrim-deepseek-v4-pro': 'entrim-deepseek',
   'zai-glm': 'zai-glm',

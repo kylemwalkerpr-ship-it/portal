@@ -112,11 +112,11 @@ const PARASAIL_DEEPSEEK_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
  *  id, no -0731 suffix. That string must be sent verbatim; never canonicalize
  *  it down to the Baseten/Parasail checkpoint forms. */
 export const ENTRIM_DEEPSEEK_LABEL = 'entrim-deepseek'
-/** Entrim-hosted Qwen3.8 27B — the second first-party Entrim model. The id
- *  `Qwen/Qwen3.8-27B` is sent VERBATIM to api.entrim.ai/v1 (same rule as the
+/** Entrim-hosted Qwen3.6 27B — the second first-party Entrim model. The id
+ *  `Qwen/Qwen3.6-27B` is sent VERBATIM to api.entrim.ai/v1 (same rule as the
  *  DeepSeek flash: Entrim serves upstream ids as-is, never canonicalize). */
 export const ENTRIM_QWEN_LABEL = 'entrim-qwen-27b'
-export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.8-27B'
+export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.6-27B'
 const ENTRIM_BASE_URL = 'https://api.entrim.ai/v1'
 const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 const ENTRIM_MAX_TOKENS = 16384
@@ -1569,7 +1569,7 @@ export function getEntrimProvider(modelOverride?: string): OpenAiCompat | null {
   }
 }
 
-/** Entrim Qwen3.8 27B — api.entrim.ai/v1, same vault key as the DeepSeek
+/** Entrim Qwen3.6 27B — api.entrim.ai/v1, same vault key as the DeepSeek
  *  flash row. Used by Discover-stage engines, the Generate-Brief lane and
  *  the Reviewer lane (all three accept explicit `entrim-qwen-27b` pins). */
 export function getEntrimQwenProvider(): OpenAiCompat | null {
@@ -1578,7 +1578,7 @@ export function getEntrimQwenProvider(): OpenAiCompat | null {
   return { ...provider, label: ENTRIM_QWEN_LABEL }
 }
 
-/** Entrim Qwen3.8 27B single-provider completion (OpenAI-compatible). */
+/** Entrim Qwen3.6 27B single-provider completion (OpenAI-compatible). */
 export async function entrimQwenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
   const p = getEntrimQwenProvider()
   if (!p) throw new Error('Entrim not configured (ENTRIM_API_KEY)')
@@ -2531,7 +2531,7 @@ export function listConfiguredContentProviders(): Array<{
     },
     {
       id: ENTRIM_QWEN_LABEL,
-      label: 'Qwen3.8 27B · Entrim (api.entrim.ai/v1)',
+      label: 'Qwen3.6 27B · Entrim (api.entrim.ai/v1)',
       configured: isEntrimConfigured(),
       role: 'fallback',
     },
@@ -2692,7 +2692,7 @@ function preferProvider(): string {
     'deepseek-flash', 'deepseek-pro', 'zai-glm',
     'entrim', 'entrim-deepseek',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
-    'entrim-qwen-27b', // Entrim Qwen3.8 27B — Discover / Brief / Reviewer lanes
+    'entrim-qwen-27b', // Entrim Qwen3.6 27B — Discover / Brief / Reviewer lanes
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
@@ -2768,7 +2768,7 @@ function configuredProviderOrder(): string[] {
     'deepseek-pro': 'deepseek-pro', 'deepseek-flash': 'deepseek-flash',
     entrim: 'entrim-deepseek', 'entrim-deepseek': 'entrim-deepseek',
     'entrim-deepseek-v4-flash': 'entrim-deepseek', 'entrim-deepseek-v4-flash-0731': 'entrim-deepseek',
-    'entrim-qwen-27b': 'entrim-qwen-27b', 'qwen3.8-27b': 'entrim-qwen-27b', qwen: 'entrim-qwen-27b',
+    'entrim-qwen-27b': 'entrim-qwen-27b', 'qwen3.6-27b': 'entrim-qwen-27b', qwen: 'entrim-qwen-27b',
     'parasail-glm-52': 'parasail-glm', 'parasail-glm-5.2': 'parasail-glm',
     'nvidia/glm-5.2-nvfp4': 'parasail-glm',
     zai: 'zai-glm', zhipu: 'zai-glm',
@@ -3220,10 +3220,10 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     const id = canonicalizeRunbiosPin(pin)
     return { explicit: id, prefer: id }
   }
-  // Entrim Qwen3.8 27B — explicit lane pin → entrim provider with the exact
-  // upstream model id (Qwen/Qwen3.8-27B), used in the Discover, Brief, and
+  // Entrim Qwen3.6 27B — explicit lane pin → entrim provider with the exact
+  // upstream model id (Qwen/Qwen3.6-27B), used in the Discover, Brief, and
   // Reviewer lanes (mirrors how 'grok' / 'claude-opus-5' are wired).
-  if (pin === ENTRIM_QWEN_LABEL || pin === 'qwen3.8-27b' || pin === 'qwen') {
+  if (pin === ENTRIM_QWEN_LABEL || pin === 'qwen3.6-27b' || pin === 'qwen') {
     return { explicit: ENTRIM_QWEN_LABEL, prefer: ENTRIM_QWEN_LABEL, model: ENTRIM_QWEN_MODEL }
   }
   const isAutoMode = !pin || pin === 'auto' || pin === 'default' || pin === 'primary'
@@ -3264,7 +3264,7 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     'deepseek-pro': 'deepseek-pro',
     'deepseek-flash': 'deepseek-flash',
     entrim: 'entrim-deepseek', 'entrim-deepseek': 'entrim-deepseek',
-    'entrim-qwen-27b': 'entrim-qwen-27b', 'qwen3.8-27b': 'entrim-qwen-27b',
+    'entrim-qwen-27b': 'entrim-qwen-27b', 'qwen3.6-27b': 'entrim-qwen-27b',
     'entrim-deepseek-v4-flash': 'entrim-deepseek', 'entrim-deepseek-v4-flash-0731': 'entrim-deepseek',
     'entrim-deepseek-v4-pro': 'entrim-deepseek',
     zai: 'zai-glm',

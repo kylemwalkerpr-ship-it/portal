@@ -71,35 +71,35 @@ it('draft lane: Run BiOS + NVIDIA + Entrim models only, sorted alphabetically by
     expect(ids).toContain('qwen3.5')
     expect(ids).toContain('bios-adaptive')
     expect(ids).toContain('nemotron-3-ultra')
-    expect(ids).toContain('qwen3.8-27b')
+    expect(ids).toContain('qwen3.6-27b')
     const labels = draft.map((m) => m.label)
     expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)))
   })
 
-  it('Qwen3.8 27B executes in all four lanes through the Entrim host', () => {
+  it('Qwen3.6 27B executes in all four lanes through the Entrim host', () => {
     for (const lane of ['draft', 'brief', 'review', 'command'] as const) {
-      expect(modelsForLane(lane).some((m) => m.id === 'qwen3.8-27b')).toBe(true)
-      expect(hostsForModel('qwen3.8-27b', lane).map((h) => h.id)).toEqual(['entrim'])
+      expect(modelsForLane(lane).some((m) => m.id === 'qwen3.6-27b')).toBe(true)
+      expect(hostsForModel('qwen3.6-27b', lane).map((h) => h.id)).toEqual(['entrim'])
     }
   })
 
-  it('brief lane: Claude Opus 5 (default), Grok, DeepSeek V4 Flash, Qwen3.8 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {
+  it('brief lane: Claude Opus 5 (default), Grok, DeepSeek V4 Flash, Qwen3.6 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {
     const brief = modelsForLane('brief').map((m) => m.id)
-    expect(brief).toEqual(['claude-opus-5', 'grok-4.6', 'deepseek-v4-flash', 'qwen3.8-27b', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+    expect(brief).toEqual(['claude-opus-5', 'grok-4.6', 'deepseek-v4-flash', 'qwen3.6-27b', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(hostsForModel('claude-opus-5', 'brief').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('grok-4.6', 'brief').map((h) => h.id)).toEqual(['xai'])
     expect(hostsForModel('gpt-5.6-sol', 'brief').map((h) => h.id)).toEqual(['openai'])
-    expect(hostsForModel('qwen3.8-27b', 'brief').map((h) => h.id)).toEqual(['entrim'])
+    expect(hostsForModel('qwen3.6-27b', 'brief').map((h) => h.id)).toEqual(['entrim'])
   })
 
-  it('review lane: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash (default), Qwen3.8 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {
+  it('review lane: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash (default), Qwen3.6 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {
     const review = modelsForLane('review').map((m) => m.id)
-    expect(review).toEqual(['grok-4.6', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.3-flash', 'qwen3.8-27b', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+    expect(review).toEqual(['grok-4.6', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.3-flash', 'qwen3.6-27b', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(hostsForModel('glm-5.3-flash', 'review').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('claude-sonnet-5', 'review').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('gpt-5.6-sol', 'review').map((h) => h.id)).toEqual(['openai'])
-    expect(hostsForModel('qwen3.8-27b', 'review').map((h) => h.id)).toEqual(['entrim'])
-    expect(modelPickerLabel(modelsForLane('review')[4], 'review')).toBe('Qwen/Qwen3.8-27B')
+    expect(hostsForModel('qwen3.6-27b', 'review').map((h) => h.id)).toEqual(['entrim'])
+    expect(modelPickerLabel(modelsForLane('review')[4], 'review')).toBe('Qwen/Qwen3.6-27B')
   })
 
   it('GPT-5.6 family is selectable end-to-end: command (Discover), brief, and review lanes — OpenAI host only, draft excluded', () => {
@@ -149,20 +149,20 @@ it('draft lane: Run BiOS + NVIDIA + Entrim models only, sorted alphabetically by
     expect(pinFor('grok-4.6', 'xai')).toBe('grok')
   })
 
-  it('defaults: draft = brief = review = Entrim Qwen3.8 27B (graduated)', () => {
+  it('defaults: draft = brief = review = Entrim Qwen3.6 27B (graduated)', () => {
     expect(DEFAULT_DRAFT_PIN).toBe('entrim-qwen-27b')
     expect(DEFAULT_BRIEF_PIN).toBe('entrim-qwen-27b')
     expect(DEFAULT_REVIEW_PIN).toBe('entrim-qwen-27b')
     expect(parseStudioPin(DEFAULT_DRAFT_PIN)).toMatchObject({
-      model: { id: 'qwen3.8-27b' },
+      model: { id: 'qwen3.6-27b' },
       host: { id: 'entrim' },
     })
     expect(parseStudioPin(DEFAULT_BRIEF_PIN)).toMatchObject({
-      model: { id: 'qwen3.8-27b' },
+      model: { id: 'qwen3.6-27b' },
       host: { id: 'entrim' },
     })
     expect(parseStudioPin(DEFAULT_REVIEW_PIN)).toMatchObject({
-      model: { id: 'qwen3.8-27b' },
+      model: { id: 'qwen3.6-27b' },
       host: { id: 'entrim' },
     })
     // DeepSeek V4 Flash has exactly two brief hosts (three families / four

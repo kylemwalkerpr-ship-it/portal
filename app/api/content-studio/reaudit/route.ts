@@ -321,7 +321,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
           : ''
   const effectiveModel = requestedModel === 'grok' || /^grok(?:-|$)/.test(requestedModel)
     ? 'grok'
-    : requestedModel === 'entrim-qwen-27b' || requestedModel === 'qwen3.8-27b' || /^qwen3\.8/.test(requestedModel)
+    : requestedModel === 'entrim-qwen-27b' || requestedModel === 'qwen3.6-27b' || requestedModel === 'qwen3.8-27b' || /^qwen3\.[68]/.test(requestedModel)
       ? 'entrim-qwen-27b'
       : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
         ? runbiosAlias

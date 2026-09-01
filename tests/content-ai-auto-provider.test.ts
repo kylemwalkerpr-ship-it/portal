@@ -147,7 +147,7 @@ describe('content AI · auto provider pin', () => {
     const { explicit, prefer, model } = resolveAiProviderPin('entrim-qwen-27b')
     expect(explicit).toBe('entrim-qwen-27b')
     expect(prefer).toBe('entrim-qwen-27b')
-    expect(model).toBe('Qwen/Qwen3.8-27B')
+    expect(model).toBe('Qwen/Qwen3.6-27B')
     expect(model || '').not.toMatch(/^gpt-/)
   })
 

@@ -130,7 +130,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const [stageFilter, setStageFilter] = React.useState<string>('all')
   const [countryFilter, setCountryFilter] = React.useState<string>('all')
   // Discover-stage engine pin for the planner narrative briefs — the engine
-  // pair (Claude Opus 5 lead + Grok complement) is the default; Qwen3.8 27B
+  // pair (Claude Opus 5 lead + Grok complement) is the default; Qwen3.6 27B
   // via Entrim and other command-host pins are selectable.
   const [engineModelPin, setEngineModelPin] = React.useState<string>('')
   const [ilStage, setIlStage] = React.useState<string>('visa')

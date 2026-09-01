@@ -1,6 +1,6 @@
 /**
  * Brief-stage model policy — five model families:
- *   1. Entrim Qwen3.8 27B (`entrim-qwen-27b`) — the DEFAULT (api.entrim.ai/v1,
+ *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — the DEFAULT (api.entrim.ai/v1,
  *      shares the ENTRIM vault row). It consumes all Discover intelligence.
  *   2. Claude Opus 5 via Run BiOS (`runbios-claude-opus`) — explicit choice.
  *   3. Grok (xAI / SuperGrok) — complementary choice and the fallback leg.
@@ -20,13 +20,13 @@ import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
 /** Provider id for the brief fallback (xAI Grok / SuperGrok). */
 export const BRIEF_FALLBACK_PROVIDER = 'grok' as const
 
-/** Brief lead pin — Entrim Qwen3.8 27B (graduated default). */
+/** Brief lead pin — Entrim Qwen3.6 27B (graduated default). */
 export const BRIEF_DEFAULT_PROVIDER = 'entrim-qwen-27b' as const
 
 /** Claude Opus 5 via Run BiOS — explicit alternative choice. */
 export const BRIEF_CLAUDE_PROVIDER = 'runbios-claude-opus' as const
 
-/** Entrim Qwen3.8 27B — fourth brief family (api.entrim.ai/v1). */
+/** Entrim Qwen3.6 27B — fourth brief family (api.entrim.ai/v1). */
 export const BRIEF_ENTRIM_QWEN_PROVIDER = 'entrim-qwen-27b' as const
 
 export type BriefProviderChoice =
@@ -66,8 +66,8 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   ) {
     return { aiProvider: 'baseten-deepseek' }
   }
-  // Entrim Qwen3.8 27B — the graduated brief default (api.entrim.ai/v1).
-  if (pin === BRIEF_ENTRIM_QWEN_PROVIDER || pin === 'qwen3.8-27b' || pin === 'qwen') {
+  // Entrim Qwen3.6 27B — the graduated brief default (api.entrim.ai/v1).
+  if (pin === BRIEF_ENTRIM_QWEN_PROVIDER || pin === 'qwen3.6-27b' || pin === 'qwen') {
     return { aiProvider: BRIEF_ENTRIM_QWEN_PROVIDER }
   }
   // DeepSeek V4 Flash on Entrim — second Entrim brief family.
@@ -211,7 +211,7 @@ export async function generateBriefText(opts: {
   const primaryLabel = primaryIsFallback
     ? 'Grok'
     : primaryPin === BRIEF_DEFAULT_PROVIDER
-      ? 'Qwen3.8 27B (Entrim)'
+      ? 'Qwen3.6 27B (Entrim)'
       : primaryPin === BRIEF_CLAUDE_PROVIDER
         ? 'Claude Opus 5 (Run BiOS)'
         : primaryPin === 'runbios-deepseek-flash'
@@ -221,8 +221,8 @@ export async function generateBriefText(opts: {
             : primaryPin === 'entrim-deepseek'
               ? 'DeepSeek V4 Flash (Entrim)'
               : primaryPin === BRIEF_ENTRIM_QWEN_PROVIDER
-                ? 'Qwen3.8 27B (Entrim)'
-                : 'Qwen3.8 27B (Entrim)'
+                ? 'Qwen3.6 27B (Entrim)'
+                : 'Qwen3.6 27B (Entrim)'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,
@@ -233,7 +233,7 @@ export async function generateBriefText(opts: {
       temperature: opts.temperature,
       // Reasoning-model lanes need minutes — never let an unset short
       // deadline cut the brief. Run BiOS lifts to its 10-minute floor;
-      // Entrim (Qwen3.8 27B / DeepSeek) leaves the brief routinely at
+      // Entrim (Qwen3.6 27B / DeepSeek) leaves the brief routinely at
       // 180s+. cascadeOnCapacity lets a first timeout/overload (e.g. an
       // Entrim 524 upstream gateway timeout) fall through to the next
       // configured provider instead of failing the brief outright — the

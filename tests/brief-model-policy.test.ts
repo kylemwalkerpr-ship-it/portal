@@ -28,7 +28,7 @@ import {
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
 describe('resolveBriefAiProvider — brief model policy (Entrim Qwen default + Claude/Grok/DeepSeek choices)', () => {
-  it('empty / auto / default / stale pins coerce to Entrim Qwen3.8 27B', () => {
+  it('empty / auto / default / stale pins coerce to Entrim Qwen3.6 27B', () => {
     expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     for (const raw of ['auto', 'default', 'primary', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6', 'gpt-5.6-luna', 'openai', 'nvidia-minimax', 'minimax', 'nvidia-glm', 'zai-glm', 'baseten-glm-fast', 'glm-5.2-fast', 'aihubmix-glm-fast', 'glm-fast-aihubmix', 'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm', 'nvidia-deepseek', 'deepseek-pro', 'deepseek-flash', 'baseten-deepseek-pro', 'baseten-glm-53-flash', 'runbios-glm-53-flash', 'glm-5.3-flash', 'glm-5.3', 'claude-sonnet-5', 'runbios-claude-sonnet', 'runbios-glm-52', 'nvidia-nemotron', 'cloudflare-ai', 'bios-adaptive', 'runbios-kimi', 'runbios-qwen']) {
       expect({ raw, resolved: resolveBriefAiProvider(raw) }).toEqual({
@@ -61,9 +61,9 @@ describe('resolveBriefAiProvider — brief model policy (Entrim Qwen default + C
     expect(resolveBriefAiProvider('BASETEN-DEEPSEEK')).toEqual({ aiProvider: 'baseten-deepseek' })
   })
 
-  it('Entrim Qwen3.8 27B is a first-class Brief family (never coerced)', () => {
+  it('Entrim Qwen3.6 27B is a first-class Brief family (never coerced)', () => {
     expect(resolveBriefAiProvider('entrim-qwen-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
-    expect(resolveBriefAiProvider('qwen3.8-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+    expect(resolveBriefAiProvider('qwen3.6-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('qwen')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('ENTRIM-QWEN-27B')).toEqual({ aiProvider: 'entrim-qwen-27b' })
   })
@@ -191,7 +191,7 @@ describe('generateBriefText fallback — Grok (SuperGrok) when the primary fails
         system: 'You are the brief architect.',
         prompt: 'TOPIC: dependent visa uk',
       }),
-    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Qwen3.8 27B \(Entrim\)\)[\s\S]*Fallback \(Grok\)/)
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Qwen3.6 27B \(Entrim\)\)[\s\S]*Fallback \(Grok\)/)
   })
 
   it('Run BiOS Claude Opus primary success returns fallbackUsed=false', async () => {
@@ -400,7 +400,7 @@ describe('generateBriefText — Entrim resilience chain (Qwen 524 + dead Grok do
         system: 'You are the brief architect.',
         prompt: 'TOPIC: canada study permit',
       }),
-    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Qwen3.8 27B \(Entrim\)\)[\s\S]*Fallback \(DeepSeek V4 Flash \(Entrim\)\)[\s\S]*Fallback \(Grok\)/)
+    ).rejects.toThrow(/Brief generation failed[\s\S]*Primary \(Qwen3.6 27B \(Entrim\)\)[\s\S]*Fallback \(DeepSeek V4 Flash \(Entrim\)\)[\s\S]*Fallback \(Grok\)/)
     // Both the Entrim upstream (Qwen primary attempt) and xAI (Grok leg) were hit.
     expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
     expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
@@ -414,7 +414,7 @@ describe('generateBriefText — Entrim resilience chain (Qwen 524 + dead Grok do
     global.fetch = jest.fn(async (input, init) => {
       const url = String(input)
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
-      if (url.includes('api.entrim.ai') && body.model === 'Qwen/Qwen3.8-27B') {
+      if (url.includes('api.entrim.ai') && body.model === 'Qwen/Qwen3.6-27B') {
         return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
           status: 524, headers: { 'content-type': 'application/json' },
         })

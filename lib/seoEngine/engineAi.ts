@@ -33,13 +33,13 @@ import {
 } from '@/lib/seoEngine/enginePairBreaker'
 
 export const ENGINE_FALLBACK_PROVIDER = 'grok' as const
-/** Graduated Discover-stage pair: Entrim lead (Qwen3.8 27B) + Entrim
+/** Graduated Discover-stage pair: Entrim lead (Qwen3.6 27B) + Entrim
  *  complement (DeepSeek V4 Flash) — both served by api.entrim.ai/v1 with the
  *  single ENTRIM vault key. When Entrim is unconfigured the pair falls back
  *  to the legacy Run BiOS Claude Opus 5 lead / Grok complement so existing
  *  vaults keep working untouched. */
 export const ENGINE_LEAD_PROVIDER = 'entrim-qwen-27b' as const
-export const ENGINE_LEAD_MODEL = 'Qwen/Qwen3.8-27B' as const
+export const ENGINE_LEAD_MODEL = 'Qwen/Qwen3.6-27B' as const
 export const ENGINE_COMPLEMENT_PROVIDER = 'entrim-deepseek' as const
 export const ENGINE_PAIR = 'engine-pair' as const
 
@@ -85,9 +85,9 @@ export function resolveEngineAiProvider(preferred?: string): string {
     return ENGINE_PAIR
   }
   if (want === ENGINE_FALLBACK_PROVIDER) return ENGINE_FALLBACK_PROVIDER
-  // Entrim Qwen3.8 27B — explicit Discover-stage pin (alias 'qwen' / bare
-  // 'qwen3.8-27b' canonicalize to the provider pin the cascade understands).
-  if (want === 'entrim-qwen-27b' || want === 'qwen3.8-27b' || want === 'qwen') {
+  // Entrim Qwen3.6 27B — explicit Discover-stage pin (alias 'qwen' / bare
+  // 'qwen3.6-27b' canonicalize to the provider pin the cascade understands).
+  if (want === 'entrim-qwen-27b' || want === 'qwen3.6-27b' || want === 'qwen') {
     return 'entrim-qwen-27b'
   }
   if (want === 'openai' && !isOpenaiConfigured()) {
@@ -187,7 +187,7 @@ export function formatEnginePairTape(rollup: EnginePairRollup | null | undefined
   // Label the actual legs that ran: the graduated Entrim pair is the default,
   // but a legacy vault (no ENTRIM key) legitimately ran Run BiOS + Grok —
   // the tape must report what actually executed.
-  const lead = rollup.lead || 'Qwen/Qwen3.8-27B'
+  const lead = rollup.lead || 'Qwen/Qwen3.6-27B'
   const complement = rollup.complement || 'deepseek-ai/DeepSeek-V4-Flash'
   const bits = [`${lead} + ${complement} complement`]
   if (rollup.disagreed) bits.push('disagreed')
@@ -259,7 +259,7 @@ export async function generateEnginePairText(
           model: entrimReady ? ENGINE_LEAD_MODEL : 'claude-opus-5',
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
-      : Promise.resolve(notConfigured('Entrim Qwen3.8 27B')),
+      : Promise.resolve(notConfigured('Entrim Qwen3.6 27B')),
     complementReady
       ? runPairLeg('grok', () => generateContentText({
           ...shared,
@@ -270,7 +270,7 @@ export async function generateEnginePairText(
   ])
 
   // Discover resilience: with Entrim configured and NO Run BiOS/Grok keys,
-  // the pair would dead-leg twice. Fire Qwen3.8 27B as the pair's lead so
+  // the pair would dead-leg twice. Fire Qwen3.6 27B as the pair's lead so
   // Discover-stage brains (planner narrative, knowledge summaries, LLM
   // visibility probes) still run on the Entrim vault row alone.
   if (!leadReady && !complementReady && isEntrimConfigured()) {
@@ -339,7 +339,7 @@ export async function generateEnginePairText(
   }
   if (!lead && !complement) {
     throw new Error(
-      `Engine pair failed. Lead (Entrim Qwen3.8 27B): ${leadErr.slice(0, 280) || 'empty'}. ` +
+      `Engine pair failed. Lead (Entrim Qwen3.6 27B): ${leadErr.slice(0, 280) || 'empty'}. ` +
         `Complement (Entrim DeepSeek V4 Flash): ${complementErr.slice(0, 280) || 'empty'}.`,
     )
   }
