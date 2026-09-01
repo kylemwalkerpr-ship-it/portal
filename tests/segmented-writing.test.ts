@@ -6,6 +6,21 @@ import {
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 describe('segmented writing helpers', () => {
+  it('single-pass is the default: no split unless segmentCount > 1 is explicit', () => {
+    // The pipeline now defaults every draft to ONE part — segmented writing
+    // is an opt-in only (writeSegments > 1). A default '2' was the source of
+    // the echo/second-copy defect (part 2 re-emitting front matter/H1).
+    const single = planWriteSegments({
+      h2Outline: ['Eligibility', 'Process', 'Documents', 'Costs', 'FAQ', 'Sources'],
+      minWords: 2200,
+      segmentCount: 1,
+    })
+    expect(single).toHaveLength(1)
+    expect(single[0].sections).toEqual(['Eligibility', 'Process', 'Documents', 'Costs', 'FAQ', 'Sources'])
+    expect(single[0].wordFloor).toBe(2200)
+    expect(single[0].priorSections).toEqual([])
+  })
+
   it('planWriteSegments splits the outline into 2 contiguous chunks', () => {
     const segments = planWriteSegments({
       h2Outline: ['Eligibility', 'Process', 'Documents', 'Costs', 'FAQ', 'Sources'],

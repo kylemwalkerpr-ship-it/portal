@@ -484,6 +484,11 @@ export function buildFactoryUserPrompt(opts: {
     playbookDirective(opts.opportunityAction),
     '',
     `LENGTH (${spec.label}): ${spec.minWords}–${spec.maxWords} body words, target ~${spec.targetWords}. BOTH under ${spec.minWords} (thin) and over ${spec.maxWords} (bloated) are rejected by the audit — this is a measured gate, not a suggestion. YAML front matter, JSON-LD, and code fences do NOT count. Write complete but tight: concrete procedures, documents, risks, and FAQs earn length; padding and repetition do not. If you exceed ${spec.maxWords}, stop and trim to the last complete sentence inside the window.`,
+    'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
+    '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
+    '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
+    '- If the response budget tightens, compress proportionally across the middle sections and ALWAYS finish with FAQ + Sources + JSON-LD + disclaimer. A complete back matter beats a long body that stops mid-document.',
+    '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
     'Write the full page now. Front matter first, then body. Raw markdown only. Follow the DOCUMENT FORMAT CONTRACT exactly.',
   ]
   if (opts.refineNotes) {

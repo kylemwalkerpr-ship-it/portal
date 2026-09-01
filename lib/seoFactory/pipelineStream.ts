@@ -164,15 +164,20 @@ export async function* runSeoFactoryPipelineStream(
     const minWords = input.minWords ?? minWordsForType(contentType)
     const targetWords = targetWordsForType(contentType)
     const maxWords = input.maxWords ?? maxWordsForType(contentType)
-    // Segmented writing — long-form drafts split into sequential bounded parts so
-    // thinking mode + content always fit the token budget. Admin can force a
-    // count via writeSegments; default 2 for long-form (≥1600w), 1 otherwise.
+    // SINGLE-PASS WRITING — the drafter receives ONE brief and writes the
+    // whole article in ONE response (front matter → outline → FAQ → Sources →
+    // JSON-LD → disclaimer). Two-part runs were what produced echo copies
+    // (part 2 re-emitting front matter/H1, or the "saved draft + revision"
+    // concatenation that stripDuplicateArticleCopy has to unduplicate), so
+    // segmenting is now an EXPLICIT admin opt-in (writeSegments > 1) for
+    // constrained models only — never the default. The single-pass prompt
+    // carries its own one-go contract (buildFactoryUserPrompt) and cut-off
+    // drafts are recovered by the append-only depth rescue, not by a
+    // second brief with a copy of the first part.
     const segmentCount =
-      input.writeSegments != null && Number(input.writeSegments) > 0
+      input.writeSegments != null && Number(input.writeSegments) > 1
         ? Math.min(4, Math.floor(Number(input.writeSegments)))
-        : minWords >= 1600
-          ? 2
-          : 1
+        : 1
 
     yield {
       type: 'progress',
