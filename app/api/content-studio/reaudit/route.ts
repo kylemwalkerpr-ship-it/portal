@@ -17,6 +17,7 @@ import { resolveContentSpecForJob, type ContentSpec } from '@/lib/seoFactory/con
 import { normalizeStudioContentType } from '@/lib/seoFactory/ownership'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+import { computeDocumentFingerprint, shadowPreservationCheck } from '@/lib/seoFactory/documentFingerprint'
 
 export type { ReauditResponse }
 
@@ -947,6 +948,7 @@ export async function PATCH(request: NextRequest) {
       // static set when the live fetch yielded nothing usable.
       const { resolveVerifiedEstateAnchors } = await import('@/lib/seoFactory/relatedGuideLinks')
       const verifiedEstateAnchors = resolveVerifiedEstateAnchors(verifiedEstateUrls.length ? verifiedEstateUrls : undefined)
+      let lastAiFixError: string | null = null
       const loopCtx = {
         primaryKeyword: loopKeyword || 'guide',
         region,
@@ -1016,7 +1018,12 @@ Return ONLY the JSON EditorPatch.`
               expectedHash: anchorHash(req.content, op.anchor) || op.expectedHash,
             })),
           }
-        } catch {
+        } catch (err) {
+          // Remember WHY the reviewer could not patch: a quota/credit outage on
+          // every configured provider is invisible today (the loop just reports
+          // "provider_failed"), so the operator sees a generic "still blocked"
+          // and cannot tell the queue is waiting on money, not on the draft.
+          lastAiFixError = err instanceof Error ? err.message : String(err)
           return null // provider failure — the loop holds, content untouched
         }
       }
@@ -1102,6 +1109,17 @@ Return ONLY the JSON EditorPatch.`
         ...new Set(loopResult.rounds.flatMap((r) => r.deterministicRepairs || [])),
         ...new Set(boundaryRepairs),
       ]
+      // The loop can stop because the review AI simply could not run (quota /
+      // credits / billing on every matched provider) while the deterministic
+      // repairs have done everything they can. Surface the REAL reason in the
+      // response instead of the generic "still blocked" summary, so the
+      // operator sees whether the queue is waiting on money, not on the draft.
+      const loopFailure =
+        loopResult.status === 'provider_failed'
+          ? 'The review AI could not run (quota, credits, or billing on the configured providers). Deterministic repairs are complete. Add credits or switch the Review model, then run Audit & Fix again.'
+          : loopResult.status !== 'cleared'
+            ? `The fix loop stopped (${loopResult.stopReason}) with blockers that need the review AI or a human pass.`
+            : null
       return NextResponse.json({
         ...finalContract,
         fixedContent: finalContent,
@@ -1111,6 +1129,8 @@ Return ONLY the JSON EditorPatch.`
         shipReady: finalShipReady,
         contentLoop,
         heldForReview: !allFindingsCleared,
+        ...(loopFailure ? { error_message: loopFailure } : {}),
+        ...(lastAiFixError ? { providerError: lastAiFixError.slice(0, 800) } : {}),
       })
     }
 
@@ -1891,6 +1911,39 @@ ${enginePlan.promptBlock}` + editorResponseContract()
       response.appliedRepairs = [...(response.appliedRepairs || []), ...converged.applied]
     }
 
+    // Hard preservation boundary. A repair may add required scaffold, but it
+    // may never remove/change an existing H1 or reduce list cardinality. If an
+    // AI candidate does, discard it and run deterministic repairs against the
+    // authoritative saved draft instead.
+    {
+      const beforeFingerprint = computeDocumentFingerprint(content)
+      const afterFingerprint = computeDocumentFingerprint(fixedContent)
+      const h1Damaged = Boolean(
+        beforeFingerprint.h1 &&
+        beforeFingerprint.h1.trim().toLowerCase() !== (afterFingerprint.h1 || '').trim().toLowerCase(),
+      )
+      const listDamaged = afterFingerprint.listItems < beforeFingerprint.listItems
+      if (h1Damaged || listDamaged) {
+        const restored = applyDeterministicRepairs({
+          content,
+          primaryKeyword: primaryKeyword || 'guide',
+          region,
+          indexable,
+          contentType,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          competingUrls: competingPages,
+          targetUrl,
+        })
+        fixedContent = restored.content
+        response.appliedRepairs = [
+          ...(response.appliedRepairs || []),
+          'destructive_ai_fix_rejected',
+          ...restored.applied,
+        ]
+      }
+    }
+
     // Rebuild the complete contract from the final normalized content. The
     // link pass may change hrefs after the first evaluation; returning that
     // earlier evaluation caused the editor to show a stale MALFORMED_LINK
@@ -1911,7 +1964,6 @@ ${enginePlan.promptBlock}` + editorResponseContract()
     // accepted draft — evidence only, bounded to 20 violations.
     let shadow: Record<string, unknown> | undefined
     try {
-      const { shadowPreservationCheck } = await import('@/lib/seoFactory/documentFingerprint')
       const check = shadowPreservationCheck(content, fixedContent)
       if (check.wouldReject) {
         console.warn('[reaudit] shadow preservation would-reject', { action, violations: check.violations.length })

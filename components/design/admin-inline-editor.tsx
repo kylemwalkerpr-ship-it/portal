@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { MarkdownDocument } from '@/lib/markdownDocument'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
-import { shipGateFromResponse, type ShipGate, type ShipGateSnapshot } from '@/lib/seoFactory/currentGate'
+import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
 
 export type { ShipGateSnapshot }
 
@@ -97,7 +97,7 @@ type Props = {
   /** Canonical ship-gate snapshot from the latest audit/fix response. `null`
    *  (the initial state and any state after an unchecked content change) means
    *  "unknown" — the owning modal must NOT claim the draft passes. */
-  onShipReadyChange?: (gate: ShipGateSnapshot) => void
+  onShipReadyChange?: (gate: ShipGate) => void
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -188,7 +188,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ;(async () => {
       try {
         const res = await fetch(`/api/content-studio/drafts?jobId=${encodeURIComponent(jobId)}&latest=1`, { credentials: 'same-origin' })
-        const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
+        const data = await res.json().catch(() => ({})) as {
+          latest?: { content?: string; wordCount?: number }
+          gate?: { contentFingerprint?: string; shipReady?: boolean | null; blockers?: number } | null
+        }
         const latest = data.latest?.content || ''
         if (cancelled || !latest) return
         // Guard: skip content that could freeze the editor (Safari caps at ~80k)
@@ -198,6 +201,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         }
         const incoming = countBodyWords(content)
         const stored = Number(data.latest?.wordCount) || countBodyWords(latest)
+        const hydratedGate = shipGateFromPersistedReview(data.gate, latest)
+        if (hydratedGate) {
+          auditedContentRef.current = latest
+          setShipGate(hydratedGate)
+        }
         if (stored >= 40 && (incoming < 40 || stored > incoming + 40)) {
           onChange(latest)
         }
@@ -390,7 +398,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 300_000,
-        body: JSON.stringify({ action: 'fix_until_gates', content: contentToFix, annotations, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_until_gates', content: contentToFix, jobId, annotations, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -414,7 +422,17 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (data.contentLoop?.rounds?.length) parts.push(`${data.contentLoop.rounds.length} audit/fix round(s)`)
       if (engine.length) { parts.push(`${engine.length} engine gap${engine.length === 1 ? '' : 's'} targeted`) }
       const outcome = data.shipReady ? 'complete' : data.heldForReview ? 'paused for review' : 'stopped with blockers'
-      setNotice(`Audit & Fix ${outcome} — ${parts.join(' · ')}`)
+      let message = `Audit & Fix ${outcome} — ${parts.join(' · ')}`
+      // A quota / billing wall on the review AI is the difference between a
+      // draft that needs a human and a queue that needs money. The loop now
+      // names the real reason when the provider failed outright.
+      if (data.error_message) {
+        message += ` · ${data.error_message}`
+        if (data.providerError && data.providerError.length) {
+          message += ` (${data.providerError.slice(0, 200)})`
+        }
+      }
+      setNotice(message)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Audit & Fix failed')
@@ -446,7 +464,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 140_000,
-        body: JSON.stringify({ action: 'fix_one', content, annotation, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_one', content, jobId, annotation, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -496,7 +514,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 260_000,
-        body: JSON.stringify({ action: 'fix_depth', content, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_depth', content, jobId, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -557,7 +575,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 260_000,
-        body: JSON.stringify({ action: 'fix_warnings', content, warnings: warnList, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_warnings', content, jobId, warnings: warnList, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -617,7 +635,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 260_000,
-        body: JSON.stringify({ action: 'fix_blockers', content, blockers: list, annotations, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_blockers', content, jobId, blockers: list, annotations, ...briefMeta }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)

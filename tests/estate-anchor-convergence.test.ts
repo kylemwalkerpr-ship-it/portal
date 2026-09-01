@@ -215,4 +215,40 @@ describe('estate anchor convergence — unlinked_related_guide is clearable', ()
       for (const anchor of anchors) expect(content).toContain(`](${anchor.url})`)
     }
   })
+
+  it('live-defect regression: unmatched plain-text orphans clear WITHOUT the review AI (quota outage)', () => {
+    // 2026-08-31 live queue: an AU guide scored human 100/100 yet stayed
+    // blocked because two plain-text guide titles matched no verified anchor
+    // and the ONLY remaining fixer (the targeted_ai reviewer) was quota-dead.
+    // The playbook rule for a guide with no live URL is "delete that entry",
+    // so the deterministic chain removes the entry — no AI, no invented URL.
+    const draft = [
+      FM, BODY,
+      '## Related guides', '',
+      '- [Australia Immigration Hub — CaseWorks Guides](https://legal.yousafeconsultancy.com/au/)',
+      '- Something the estate never published and cannot verify',
+      '- Student Fees Explained (no live page anywhere)',
+      DISCLAIMER,
+    ].join('\n')
+    expect(orphanCount(draft)).toBe(2)
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft, title: 'Australia Student Visa Fee Increase 2026',
+      primaryKeyword: 'australia student visa fee increase',
+      region: 'AU', indexable: true, contentType: 'article',
+    })
+    expect(orphanCount(content)).toBe(0)
+    expect(content).not.toContain('Something the estate never published')
+    expect(content).not.toContain('Student Fees Explained')
+    // The verified link and the Sources citation survive untouched.
+    expect(content).toContain('](https://legal.yousafeconsultancy.com/au/)')
+    expect(content).toContain('](https://immi.homeaffairs.gov.au/visas/getting-a-visa/fees-and-charges)')
+    expect(applied.some((a) => a.startsWith('unlinked_guide_entries_removed'))).toBe(true)
+    // Idempotent — a second run does not re-add or re-flag anything.
+    const second = applyDeterministicRepairs({
+      content, title: 'Australia Student Visa Fee Increase 2026',
+      primaryKeyword: 'australia student visa fee increase',
+      region: 'AU', indexable: true, contentType: 'article',
+    })
+    expect(orphanCount(second.content)).toBe(0)
+  })
 })

@@ -99,7 +99,8 @@ function buildFaqQas(body: string, primaryKeyword: string): Array<{ q: string; a
   const SKIP =
     /^(in 60 seconds|table of contents|faq|sources?|official sources|related guides|references|disclaimer|conclusion|summary|worked example)$/i
   const candidates = sections.filter((s) => s.title && !SKIP.test(s.title) && s.text)
-  const qas = candidates.slice(0, 6).map((s) => {
+  const seenQuestions = new Set<string>()
+  const qas = candidates.map((s) => {
     const first = plainSentence(s.text.split(/\n\n+/)[0] || '')
     const sentence = first.match(/^.{0,180}?[.!?](\s|$)/)?.[0]?.trim() || first.slice(0, 180)
     return {
@@ -108,8 +109,52 @@ function buildFaqQas(body: string, primaryKeyword: string): Array<{ q: string; a
         sentence ||
         `Details for "${s.title}" are covered in the section above — confirm every requirement against official government sources before you apply.`,
     }
-  })
+  }).filter((qa) => {
+    const key = qa.q.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!key || seenQuestions.has(key)) return false
+    seenQuestions.add(key)
+    return true
+  }).slice(0, 6)
   return qas.length >= 3 ? qas : null
+}
+
+/** Restore lists that an editor flattened into one markdown item.
+ * Conservative by design: only a line that already starts with a list marker
+ * and contains at least one additional spaced marker is eligible. Ordinary
+ * prose, hyphenated words, ranges and em-dash punctuation are untouched. */
+export function restoreCollapsedBodyLists(body: string): string {
+  return body.split('\n').flatMap((line) => {
+    const match = line.match(/^(\s*)([-*+] |\d+[.)] )(\S[\s\S]*)$/)
+    if (!match) return [line]
+    const [, indent, marker, text] = match
+    const parts = text.split(/\s+[-*+]\s+(?=(?:\*\*)?[A-Z0-9])/).map((part) => part.trim()).filter(Boolean)
+    if (parts.length < 2) return [line]
+    const bullet = /^\d/.test(marker) ? '- ' : marker
+    return parts.map((part) => `${indent}${bullet}${part}`)
+  }).join('\n')
+}
+
+/** Keep each visible FAQ question exactly once, together with its answer. */
+export function dedupeFaqQuestions(body: string): string {
+  const start = body.search(/^##\s+(?:FAQ|Frequently asked[^\n]*)\s*$/im)
+  if (start < 0) return body
+  const nextH2 = body.slice(start + 1).search(/^##\s+/m)
+  const end = nextH2 < 0 ? body.length : start + 1 + nextH2
+  const block = body.slice(start, end)
+  const firstQuestion = block.search(/^###\s+.+/m)
+  if (firstQuestion < 0) return body
+  const prefix = block.slice(0, firstQuestion)
+  const entries = block.slice(firstQuestion).split(/(?=^###\s+)/m).filter(Boolean)
+  const seen = new Set<string>()
+  const unique = entries.filter((entry) => {
+    const question = (entry.match(/^###\s+(.+)$/m) || [])[1] || ''
+    const key = question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  if (unique.length === entries.length) return body
+  return body.slice(0, start) + prefix + unique.join('') + body.slice(end)
 }
 
 /** 3–5 takeaway bullets taken from the draft's own H2 lead sentences. */
@@ -880,6 +925,21 @@ export function applyDeterministicRepairs(opts: {
   }
   let { fm, body } = stripFm(unwrapped)
   let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
+  // A full-document editor response can retain frontmatter while dropping the
+  // visible title. Restore it deterministically before any section mutation.
+  if (!/^#\s+[^#\n].*$/m.test(b)) {
+    const fmTitle = (fm.match(/^title:\s*["']?(.+?)["']?\s*$/m) || [])[1]?.trim()
+    const canonicalTitle = collapseDuplicatedTitle(fmTitle || opts.title || opts.primaryKeyword || 'Guide')
+    b = `# ${canonicalTitle}\n\n${b}`
+    applied.push('missing_h1_restored')
+  }
+  {
+    const restored = restoreCollapsedBodyLists(b)
+    if (restored !== b) {
+      b = restored
+      applied.push('collapsed_body_lists_restored')
+    }
+  }
   // Duplicate H1 collapse ("opt application — opt application") — both the
   // reader-facing H1 and frontmatter title must carry one phrase only.
   {
@@ -1036,6 +1096,14 @@ export function applyDeterministicRepairs(opts: {
           : b.slice(0, faqStart) + fixed
         applied.push('faq_bold_to_heading')
       }
+    }
+  }
+
+  {
+    const dedupedFaq = dedupeFaqQuestions(b)
+    if (dedupedFaq !== b) {
+      b = dedupedFaq
+      applied.push('duplicate_faq_questions_removed')
     }
   }
 
@@ -1838,14 +1906,21 @@ export function applyDeterministicRepairs(opts: {
       opts.verifiedEstateAnchors && opts.verifiedEstateAnchors.length > 0
         ? opts.verifiedEstateAnchors
         : resolveVerifiedEstateAnchors(opts.verifiedEstateUrls)
-    const relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors)
+    const relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors, true)
     if (relinked.relinked > 0) {
       b = relinked.content
       applied.push(`estate_labels_relinked (${relinked.relinked})`)
     }
-    // Ambiguous / unmatched plain-text labels stay blockers — never invent a
-    // destination. (unmatched/ambiguous counts are intentionally unreported
-    // per-run: a bounded guide list legitimately names non-estate sources.)
+    // Ambiguous / unmatched plain-text labels used to stay blockers waiting on
+    // the review AI (targeted_ai) — the exact code that wedged the live queue
+    // when the reviewer hit a quota/credit wall. The playbook rule is "if no
+    // live guide exists for that entry, delete that entry", so removing the
+    // entry IS the honest deterministic clear: it never invents a destination,
+    // and the gate only ever demands reachability, not presence.
+    if (relinked.removed > 0) {
+      b = relinked.content
+      applied.push(`unlinked_guide_entries_removed (${relinked.removed})`)
+    }
   }
 
   // ── Dedupe repeated bullets inside reference sections ───────────────

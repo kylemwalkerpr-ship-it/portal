@@ -67,13 +67,27 @@ function isPlainTextEntry(text: string): boolean {
  * Re-link plain-text Related-guides entries to the single verified URL whose
  * normalized label uniquely matches them.
  *
+ * When `removeUnmatched` is true, plain-text entries that match NO verified
+ * URL (or map to more than one) are REMOVED instead of left as blockers. This
+ * is the deterministic form of the playbook rule: "if no live guide exists
+ * for that entry, delete that entry — never leave a guide title as bare
+ * text." Removing an unreachable promise loses no reader value and it is the
+ * only honest machine path when the review AI is unavailable (quota/credit
+ * outage), so a stuck queue cannot wedge forever on an AI-only fix.
+ *
+ * Never touched: already-linked items, bare URLs (their own blocker is
+ * `bare_url_not_hyperlinked`), prose, headings, numbering, citations, and
+ * non-reference sections.
+ *
  * Returns the repaired document plus counts so callers can report the repair
- * (`estate_labels_relinked (n)`) and a diagnostic of what stayed blocked.
+ * (`estate_labels_relinked (n)`, `unlinked_guide_entries_removed (n)`) and a
+ * diagnostic of what stayed blocked.
  */
 export function relinkPlainTextRelatedGuides(
   content: string,
   anchors: readonly VerifiedRelatedGuideAnchor[],
-): { content: string; relinked: number; ambiguous: number; unmatched: number } {
+  removeUnmatched = false,
+): { content: string; relinked: number; ambiguous: number; unmatched: number; removed: number } {
   // Normalized label → distinct verified URLs. `byKey` uses a Set of URLs so
   // the SAME label+URL repeated across regions is still a single destination.
   const byKey = new Map<string, Set<string>>()
@@ -95,6 +109,7 @@ export function relinkPlainTextRelatedGuides(
   let relinked = 0
   let ambiguous = 0
   let unmatched = 0
+  let removed = 0
   let inRefSection = false
   const lines = content.split('\n').map((line) => {
     if (/^##\s+/.test(line)) {
@@ -112,10 +127,18 @@ export function relinkPlainTextRelatedGuides(
     const urls = byKey.get(key)
     if (!urls || urls.size === 0) {
       unmatched++
+      if (removeUnmatched) {
+        removed++
+        return ``
+      }
       return line
     }
     if (urls.size > 1) {
       ambiguous++
+      if (removeUnmatched) {
+        removed++
+        return ``
+      }
       return line
     }
     const [url] = urls
@@ -124,7 +147,13 @@ export function relinkPlainTextRelatedGuides(
     relinked++
     return `${item[1]}[${label}](${url})`
   })
-  return { content: lines.join('\n'), relinked, ambiguous, unmatched }
+  // Removing entries hollows out the section; collapse the empty line pairs
+  // left behind so consecutive removals cannot leave a stack of blank lines.
+  const collapsed = lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n\s*\n\s*(?=##\s)/g, '\n\n')
+  return { content: collapsed, relinked, ambiguous, unmatched, removed }
 }
 
 function normalizeUrl(url: string): string {

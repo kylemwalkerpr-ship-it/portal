@@ -122,10 +122,52 @@ See the UK guide for details.
     const out = relinkPlainTextRelatedGuides(withBullet('- Administrative Review Letter Template UK'), ANCHORS)
     expect(out.relinked).toBe(0)
     expect(out.unmatched).toBe(1)
+    expect(out.removed).toBe(0)
     expect(out.content).toContain('- Administrative Review Letter Template UK')
     expect(relatedGuidesSection(out.content).match(/^- Administrative Review Letter Template UK$/m)).not.toBeNull()
     expect(relatedGuidesSection(out.content).match(/^- \[[^\]]+\]\([^)]+\)$/m)).toBeNull()
     expect(orphanCount(out.content)).toBe(1)
+  })
+
+  it('removeUnmatched deletes no-match entries deterministically (playbook: delete entry when no live guide exists)', () => {
+    const out = relinkPlainTextRelatedGuides(
+      withBullet('- Administrative Review Letter Template UK'),
+      ANCHORS,
+      true,
+    )
+    expect(out.relinked).toBe(0)
+    expect(out.unmatched).toBe(1)
+    expect(out.removed).toBe(1)
+    expect(out.content).not.toContain('- Administrative Review Letter Template UK')
+    expect(orphanCount(out.content)).toBe(0)
+    // Sources and non-reference sections survive untouched.
+    expect(out.content).toContain('- [GOV.UK guidance](https://www.gov.uk/uk-family-visas)')
+  })
+
+  it('removeUnmatched deletes ambiguous entries and never invents a destination', () => {
+    const ambiguous: VerifiedRelatedGuideAnchor[] = [
+      { label: 'Immigration Services', url: 'https://legal.yousafeconsultancy.com/us/' },
+      { label: 'Immigration Services', url: 'https://yousafeconsultancy.com/' },
+    ]
+    const out = relinkPlainTextRelatedGuides(withBullet('- Immigration Services'), ambiguous, true)
+    expect(out.ambiguous).toBe(1)
+    expect(out.removed).toBe(1)
+    expect(out.content).not.toContain('- Immigration Services')
+    expect(orphanCount(out.content)).toBe(0)
+  })
+
+  it('removeUnmatched honors already-linked and bare-URL entries', () => {
+    const doc = `## Related guides
+
+- [UK Immigration Hub — CaseWorks Guides](https://legal.yousafeconsultancy.com/uk/)
+- https://www.gov.uk/uk-family-visas
+- A no-match orphan
+`
+    const out = relinkPlainTextRelatedGuides(doc, ANCHORS, true)
+    expect(out.removed).toBe(1)
+    expect(out.content).toContain('](https://legal.yousafeconsultancy.com/uk/)')
+    expect(out.content).toContain('https://www.gov.uk/uk-family-visas')
+    expect(out.content).not.toContain('A no-match orphan')
   })
 
   it('already-linked and bare-URL entries are never touched', () => {
