@@ -42,6 +42,7 @@ export type StudioModelId =
   | 'groq-llama'
   | 'gemini'
   | 'openrouter'
+  | 'qwen3.8-27b'
 
 export type StudioHostId =
   | 'auto'
@@ -82,6 +83,12 @@ export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
 export const ENTRIM_DEEPSEEK_FLASH_PIN = 'entrim-deepseek'
 export const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 
+/** Entrim-hosted Qwen3.8 27B — served verbatim as `Qwen/Qwen3.8-27B` on
+ *  api.entrim.ai/v1 (same rule as the flash: upstream ids, never
+ *  canonicalize). Usable in the Discover, Brief, and Reviewer lanes. */
+export const ENTRIM_QWEN_PIN = 'entrim-qwen-27b'
+export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.8-27B'
+
 /** Draft lead: MiniMax M3 via NVIDIA Integrate — drafting default pin. */
 export const DEFAULT_DRAFT_PIN = 'nvidia-minimax'
 /** Research / Generate Full Brief lead: Claude Opus 5 via Run BiOS. */
@@ -98,8 +105,8 @@ export const DEFAULT_REVIEW_PIN = 'runbios-glm-53-flash'
  */
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
   draft: ['runbios', 'nvidia', 'entrim'],
-  brief: ['runbios', 'baseten', 'xai', 'openai'],
-  review: ['runbios', 'xai', 'openai'],
+  brief: ['runbios', 'baseten', 'xai', 'openai', 'entrim'],
+  review: ['runbios', 'xai', 'openai', 'entrim'],
   command: ['runbios', 'parasail', 'baseten', 'nvidia', 'deepseek', 'entrim', 'zai', 'aihubmix', 'xai', 'openai', 'cloudflare', 'groq', 'google', 'openrouter', 'auto'],
 }
 
@@ -141,17 +148,19 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'claude-opus-5',
     'grok-4.6',
     'deepseek-v4-flash',
+    'qwen3.8-27b',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
   ],
   // Review/Editor: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash
-  // (default), GPT-5.6 family (OpenAI).
+  // (default), GPT-5.6 family (OpenAI), Qwen3.8 27B (Entrim).
   review: [
     'grok-4.6',
     'claude-opus-5',
     'claude-sonnet-5',
     'glm-5.3-flash',
+    'qwen3.8-27b',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
@@ -223,6 +232,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
       { id: 'entrim', label: 'Entrim', pin: ENTRIM_DEEPSEEK_FLASH_PIN },
       { id: 'deepseek', label: 'DeepSeek', pin: 'deepseek-flash' },
     ],
+  },
+  {
+    id: 'qwen3.8-27b',
+    label: 'Qwen3.8 27B',
+    apiModel: ENTRIM_QWEN_MODEL,
+    lanes: ['brief', 'review', 'command'],
+    hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_QWEN_PIN }],
   },
   {
     id: 'grok-4.6',
@@ -371,6 +387,9 @@ const PIN_ALIASES: Record<string, string> = {
   [ENTRIM_DEEPSEEK_FLASH_PIN]: ENTRIM_DEEPSEEK_FLASH_PIN,
   'entrim-deepseek-v4-flash': ENTRIM_DEEPSEEK_FLASH_PIN,
   'entrim-deepseek-v4-flash-0731': ENTRIM_DEEPSEEK_FLASH_PIN,
+  [ENTRIM_QWEN_PIN]: ENTRIM_QWEN_PIN,
+  'qwen3.8-27b': ENTRIM_QWEN_PIN,
+  qwen: ENTRIM_QWEN_PIN,
   'entrim-deepseek-v4-pro': 'entrim-deepseek',
   'zai-glm': 'zai-glm',
   'zai': 'zai-glm',

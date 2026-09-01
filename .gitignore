@@ -69,3 +69,11 @@ temp/
 # Python leftovers
 __pycache__/
 *.py[cod]
+
+# Agent workspace scratch (not part of the product)
+.DS_Store
+_TASK_*.md
+_watch/
+opencode*.jsonc*
+opencode*.jsonc
+glm*

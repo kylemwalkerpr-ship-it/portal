@@ -6,7 +6,7 @@
  * We never invent legal facts — only structure required for estate compliance.
  */
 
-import { DISCLAIMER_RE, detectForcedFaqWordings, detectDanglingForwardReferences } from './contentQualityGate'
+import { DISCLAIMER_RE, detectForcedFaqWordings, detectDanglingForwardReferences, detectKeywordPastedHeadings, suggestHeadingRewrite } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
@@ -177,6 +177,80 @@ export function dedupeFaqQuestions(body: string): string {
  */
 function escapeRegExpText(s: string): string {
   return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Rewrite a keyword-pasted heading into a reader-facing name, deterministically.
+ *
+ * 1. FAQ-question headings (H3, ends with '?'): strip the longest pasted
+ *    keyword substring, then clean the remnant so the question reads
+ *    naturally ("Do you need an Australia student visa fee increase plan if
+ *    you already hold a visa?" → "Do you need a plan if you already hold a
+ *    visa?"). Grammatically-valid remnants are kept as questions.
+ * 2. Everything else falls back to suggestHeadingRewrite (template
+ *    scaffolding + primary phrase removed, reader-facing section name).
+ * Never returns the input unchanged when a rewrite is achievable; returns
+ * null when the heading is already fine (defensive).
+ */
+export function rewritePastedHeading(
+  heading: string,
+  pastedKeyword: string,
+  primaryKeyword?: string | null,
+): string | null {
+  const h = String(heading || '').trim()
+  if (!h) return null
+  const isQuestion = h.endsWith('?')
+  // Longest pasted keyword substring first (long-tail > short > primary).
+  const candidates = [
+    String(pastedKeyword || ''),
+    String(primaryKeyword || ''),
+  ]
+    .map((k) => k.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  const hLower = norm(h)
+  let stripped = h
+  for (const k of candidates) {
+    const key = norm(k)
+    if (!key || key.length < 4) continue
+    const idx = hLower.indexOf(key)
+    if (idx < 0) continue
+    // Only strip when the keyword is a contiguous phrase in the heading.
+    const before = h.slice(0, idx).trim()
+    const after = h.slice(idx + k.length).trim()
+    stripped = `${before} ${after}`.replace(/\s{2,}/g, ' ').trim()
+    break
+  }
+  if (isQuestion) {
+    // Article/preposition cleanup for question frames.
+    let q = stripped
+      .replace(/^(is it possible to|do you need|would you need|can you|are you|does one need|should you)\s+(a an|an|a|the)\s+/i, '$1 ')
+      .replace(/\b(?:a|an)\s+(a|an|the)\b/gi, '$1')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+    // A conjunction directly after the verb means the keyword noun was the
+    // sentence's object ("Do you need if you already hold a visa?"). Salvage
+    // the head noun deterministically from the pasted keyword ("plan" from
+    // “…fee increase PLAN”), or "one" as the anaphor when it cannot be
+    // recovered, so the question still reads for a reader.
+    const conjunctionTail = q.match(/^(is it possible to|do you need|would you need|can you|are you|does one need|should you)\s+(if|when|for|because|that|whether)\b/i)
+    if (conjunctionTail) {
+      const headNoun = String(pastedKeyword || '')
+        .split(/\s+/)
+        .filter((w) => /^[a-z]{3,}$/i.test(w) && !/^(the|a|an|and|or|for|of|to)$/i.test(w))
+        .pop() || 'one'
+      q = `${conjunctionTail[1]} a ${headNoun} ${conjunctionTail[2]}${q.slice(conjunctionTail[0].length)}`
+    }
+    if (q !== stripped) stripped = q
+    if (!/^[a-z]/i.test(stripped) || stripped.split(/\s+/).length < 3) {
+      const fallback = suggestHeadingRewrite(h, primaryKeyword)
+      return `${fallback}?` === h ? null : `${fallback}?`
+    }
+    return stripped === h ? suggestHeadingRewrite(h, primaryKeyword) : stripped
+  }
+  const rewritten = suggestHeadingRewrite(h, primaryKeyword)
+  return rewritten === h ? null : rewritten
 }
 
 export function stripDuplicateArticleCopy(body: string): {
@@ -1080,6 +1154,37 @@ export function applyDeterministicRepairs(opts: {
   }
   let { fm, body } = stripFm(unwrapped)
   let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
+
+  // ── Keyword-pasted heading rewrite (REAL fix, never a suppress) ───────
+  // A heading that IS the keyword string ("Do you need an Australia student
+  // visa fee increase plan if you already hold a visa?") reads as machine
+  // stuffing to readers and engines. The gate flags it (keyword_pasted_heading);
+  // this pass rewrites such headings deterministically into reader-facing
+  // names — no hiding, no eviction: the heading is CHANGED.
+  //  - H3 FAQ questions: strip the pasted keyword phrase, keep the question
+  //    frame, clean remnant articles/prepositions.
+  //  - Other H2/H3: reader-facing rewrite via suggestHeadingRewrite.
+  //  - H1 and primary-mirroring headings are exempt (title contract).
+  {
+    const pasted = detectKeywordPastedHeadings(b, opts.requiredShortKeywords || [], opts.requiredLongTailKeywords || [], opts.primaryKeyword)
+    if (pasted.length) {
+      let rewritten = b
+      let changed = 0
+      for (const { heading, keyword } of pasted) {
+        const replacement = rewritePastedHeading(heading, keyword, opts.primaryKeyword)
+        if (!replacement || replacement === heading) continue
+        rewritten = rewritten.replace(
+          new RegExp(`^(#{2,3})\\s+${escapeRegExpText(heading)}\\s*$`, 'm'),
+          `$1 ${replacement}`,
+        )
+        changed++
+      }
+      if (changed > 0) {
+        applied.push(`keyword_pasted_headings_rewritten (${changed})`)
+        b = rewritten
+      }
+    }
+  }
   // A full-document editor response can retain frontmatter while dropping the
   // visible title. Restore it deterministically before any section mutation.
   if (!/^#\s+[^#\n].*$/m.test(b)) {

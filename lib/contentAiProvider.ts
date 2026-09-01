@@ -112,6 +112,11 @@ const PARASAIL_DEEPSEEK_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
  *  id, no -0731 suffix. That string must be sent verbatim; never canonicalize
  *  it down to the Baseten/Parasail checkpoint forms. */
 export const ENTRIM_DEEPSEEK_LABEL = 'entrim-deepseek'
+/** Entrim-hosted Qwen3.8 27B — the second first-party Entrim model. The id
+ *  `Qwen/Qwen3.8-27B` is sent VERBATIM to api.entrim.ai/v1 (same rule as the
+ *  DeepSeek flash: Entrim serves upstream ids as-is, never canonicalize). */
+export const ENTRIM_QWEN_LABEL = 'entrim-qwen-27b'
+export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.8-27B'
 const ENTRIM_BASE_URL = 'https://api.entrim.ai/v1'
 const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 const ENTRIM_MAX_TOKENS = 16384
@@ -1552,16 +1557,35 @@ export function isEntrimConfigured(): boolean {
   return Boolean(resolveEntrimApiKey())
 }
 
-export function getEntrimProvider(): OpenAiCompat | null {
+export function getEntrimProvider(modelOverride?: string): OpenAiCompat | null {
   const apiKey = resolveEntrimApiKey()
   if (!apiKey) return null
   return {
     label: ENTRIM_DEEPSEEK_LABEL,
     baseURL: validBaseUrl(env('ENTRIM_BASE_URL'), ENTRIM_BASE_URL),
     apiKey,
-    model: env('ENTRIM_MODEL') || ENTRIM_DEEPSEEK_MODEL,
+    model: modelOverride || env('ENTRIM_MODEL') || ENTRIM_DEEPSEEK_MODEL,
     maxTokensCap: ENTRIM_MAX_TOKENS,
   }
+}
+
+/** Entrim Qwen3.8 27B — api.entrim.ai/v1, same vault key as the DeepSeek
+ *  flash row. Used by Discover-stage engines, the Generate-Brief lane and
+ *  the Reviewer lane (all three accept explicit `entrim-qwen-27b` pins). */
+export function getEntrimQwenProvider(): OpenAiCompat | null {
+  const provider = getEntrimProvider(ENTRIM_QWEN_MODEL)
+  if (!provider) return null
+  return { ...provider, label: ENTRIM_QWEN_LABEL }
+}
+
+/** Entrim Qwen3.8 27B single-provider completion (OpenAI-compatible). */
+export async function entrimQwenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getEntrimQwenProvider()
+  if (!p) throw new Error('Entrim not configured (ENTRIM_API_KEY)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
+  })
 }
 
 export function resolveZaiApiKey(): string {
@@ -2506,6 +2530,12 @@ export function listConfiguredContentProviders(): Array<{
       role: 'fallback',
     },
     {
+      id: ENTRIM_QWEN_LABEL,
+      label: 'Qwen3.8 27B · Entrim (api.entrim.ai/v1)',
+      configured: isEntrimConfigured(),
+      role: 'fallback',
+    },
+    {
       id: 'nvidia-deepseek',
       label: 'DeepSeek V4 Flash via NVIDIA (fallback)',
       configured: isNvidiaDeepseekConfigured(),
@@ -2662,6 +2692,7 @@ function preferProvider(): string {
     'deepseek-flash', 'deepseek-pro', 'zai-glm',
     'entrim', 'entrim-deepseek',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
+    'entrim-qwen-27b', // Entrim Qwen3.8 27B — Discover / Brief / Reviewer lanes
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
@@ -2737,6 +2768,7 @@ function configuredProviderOrder(): string[] {
     'deepseek-pro': 'deepseek-pro', 'deepseek-flash': 'deepseek-flash',
     entrim: 'entrim-deepseek', 'entrim-deepseek': 'entrim-deepseek',
     'entrim-deepseek-v4-flash': 'entrim-deepseek', 'entrim-deepseek-v4-flash-0731': 'entrim-deepseek',
+    'entrim-qwen-27b': 'entrim-qwen-27b', 'qwen3.8-27b': 'entrim-qwen-27b', qwen: 'entrim-qwen-27b',
     'parasail-glm-52': 'parasail-glm', 'parasail-glm-5.2': 'parasail-glm',
     'nvidia/glm-5.2-nvfp4': 'parasail-glm',
     zai: 'zai-glm', zhipu: 'zai-glm',
@@ -2749,7 +2781,7 @@ function configuredProviderOrder(): string[] {
     'nvidia-minimax', 'nvidia-nemotron',    'nvidia-glm', 'baseten-deepseek', 'baseten-deepseek-pro',
     'baseten-glm-fast', 'baseten-glm-53-flash', 'aihubmix-glm-fast', 'parasail-deepseek', 'parasail-deepseek-pro',
     'parasail-glm', 'nvidia-deepseek', 'deepseek-flash', 'deepseek-pro', 'zai-glm',
-    'entrim-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+    'entrim-deepseek', 'entrim-qwen-27b', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   ])
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
@@ -2858,6 +2890,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushEntrim = () => {
     if (isEntrimConfigured()) {
       items.push({ label: ENTRIM_DEEPSEEK_LABEL, run: () => openAiCompatibleComplete(getEntrimProvider()!, opts) })
+      items.push({ label: ENTRIM_QWEN_LABEL, run: () => entrimQwenComplete(opts) })
     }
   }
   const pushNvidia = () => {
@@ -3187,6 +3220,12 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     const id = canonicalizeRunbiosPin(pin)
     return { explicit: id, prefer: id }
   }
+  // Entrim Qwen3.8 27B — explicit lane pin → entrim provider with the exact
+  // upstream model id (Qwen/Qwen3.8-27B), used in the Discover, Brief, and
+  // Reviewer lanes (mirrors how 'grok' / 'claude-opus-5' are wired).
+  if (pin === ENTRIM_QWEN_LABEL || pin === 'qwen3.8-27b' || pin === 'qwen') {
+    return { explicit: ENTRIM_QWEN_LABEL, prefer: ENTRIM_QWEN_LABEL, model: ENTRIM_QWEN_MODEL }
+  }
   const isAutoMode = !pin || pin === 'auto' || pin === 'default' || pin === 'primary'
   // Normalize non-GPT aliases so an explicit quick-select ('glm-fast',
   // 'baseten-glm', 'nvidia', 'nim', 'cloudflare'…) resolves to the canonical
@@ -3224,10 +3263,10 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
     'baseten-deepseek-pro': 'baseten-deepseek-pro',
     'deepseek-pro': 'deepseek-pro',
     'deepseek-flash': 'deepseek-flash',
-    entrim: ENTRIM_DEEPSEEK_LABEL,
-    [ENTRIM_DEEPSEEK_LABEL]: ENTRIM_DEEPSEEK_LABEL,
-    'entrim-deepseek-v4-flash': ENTRIM_DEEPSEEK_LABEL,
-    'entrim-deepseek-v4-flash-0731': ENTRIM_DEEPSEEK_LABEL,
+    entrim: 'entrim-deepseek', 'entrim-deepseek': 'entrim-deepseek',
+    'entrim-qwen-27b': 'entrim-qwen-27b', 'qwen3.8-27b': 'entrim-qwen-27b',
+    'entrim-deepseek-v4-flash': 'entrim-deepseek', 'entrim-deepseek-v4-flash-0731': 'entrim-deepseek',
+    'entrim-deepseek-v4-pro': 'entrim-deepseek',
     zai: 'zai-glm',
     'zai-glm': 'zai-glm',
     zhipu: 'zai-glm',
@@ -3570,6 +3609,18 @@ export async function* generateContentTextStream(
           maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
         }),
       complete: () => openAiCompatibleComplete(entrim, opts),
+    })
+  }
+  const entrimQwen = getEntrimQwenProvider()
+  if (entrimQwen) {
+    candidates.push({
+      label: ENTRIM_QWEN_LABEL,
+      stream: () =>
+        openAiCompatibleStream(entrimQwen, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
+        }),
+      complete: () => entrimQwenComplete(opts),
     })
   }
 

@@ -16,6 +16,7 @@
 
 import {
   generateContentText,
+  isEntrimConfigured,
   isGrokConfigured,
   isOpenaiConfigured,
   isRunbiosConfigured,
@@ -79,6 +80,11 @@ export function resolveEngineAiProvider(preferred?: string): string {
     return ENGINE_PAIR
   }
   if (want === ENGINE_FALLBACK_PROVIDER) return ENGINE_FALLBACK_PROVIDER
+  // Entrim Qwen3.8 27B — explicit Discover-stage pin (alias 'qwen' / bare
+  // 'qwen3.8-27b' canonicalize to the provider pin the cascade understands).
+  if (want === 'entrim-qwen-27b' || want === 'qwen3.8-27b' || want === 'qwen') {
+    return 'entrim-qwen-27b'
+  }
   if (want === 'openai' && !isOpenaiConfigured()) {
     if (isGrokConfigured()) return ENGINE_FALLBACK_PROVIDER
   }
@@ -246,6 +252,34 @@ export async function generateEnginePairText(
         }))
       : Promise.resolve(notConfigured('Grok (xAI)')),
   ])
+
+  // Discover resilience: with Entrim configured and NO Run BiOS/Grok keys,
+  // the pair would dead-leg twice. Fire Qwen3.8 27B as the pair's lead so
+  // Discover-stage brains (planner narrative, knowledge summaries, LLM
+  // visibility probes) still run on the Entrim vault row alone.
+  if (!leadReady && !complementReady && isEntrimConfigured()) {
+    const qwenLeg = await runPairLeg('runbios-opus', () =>
+      generateContentText({
+        ...shared,
+        aiProvider: 'entrim-qwen-27b',
+        maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
+      }))
+    const qwenText = settledText(qwenLeg)
+    if (qwenText) {
+      return {
+        ...qwenText,
+        model: `${qwenText.model} · pair (Entrim Qwen fallback)`,
+        pair: {
+          leadModel: qwenText.model,
+          complementModel: null,
+          merged: false,
+          leadOnly: true,
+          complementOnly: false,
+          disagreed: false,
+        },
+      }
+    }
+  }
 
   const lead = settledText(leadSettled)
   const complement = settledText(complementSettled)

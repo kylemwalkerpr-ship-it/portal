@@ -33,10 +33,11 @@ describe('content AI catalog — model × host', () => {
     expect(hostsForModel('glm-5.3-flash', 'draft').map((h) => h.id)).toEqual(['runbios'])
   })
 
-  it('brief lane exposes only Run BiOS + Baseten for DeepSeek V4 Flash', () => {
+  it('brief lane exposes Run BiOS + Baseten + Entrim for DeepSeek V4 Flash', () => {
     expect(hostsForModel('deepseek-v4-flash', 'brief').map((h) => h.id)).toEqual([
       'runbios',
       'baseten',
+      'entrim',
     ])
   })
 
@@ -73,21 +74,23 @@ describe('content AI catalog — model × host', () => {
     expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)))
   })
 
-  it('brief lane: Claude Opus 5 (default), Grok, DeepSeek V4 Flash, and the GPT-5.6 family (OpenAI)', () => {
+  it('brief lane: Claude Opus 5 (default), Grok, DeepSeek V4 Flash, Qwen3.8 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {
     const brief = modelsForLane('brief').map((m) => m.id)
-    expect(brief).toEqual(['claude-opus-5', 'grok-4.6', 'deepseek-v4-flash', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+    expect(brief).toEqual(['claude-opus-5', 'grok-4.6', 'deepseek-v4-flash', 'qwen3.8-27b', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(hostsForModel('claude-opus-5', 'brief').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('grok-4.6', 'brief').map((h) => h.id)).toEqual(['xai'])
     expect(hostsForModel('gpt-5.6-sol', 'brief').map((h) => h.id)).toEqual(['openai'])
+    expect(hostsForModel('qwen3.8-27b', 'brief').map((h) => h.id)).toEqual(['entrim'])
   })
 
-  it('review lane: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash (default), and the GPT-5.6 family (OpenAI)', () => {
+  it('review lane: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash (default), Qwen3.8 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {
     const review = modelsForLane('review').map((m) => m.id)
-    expect(review).toEqual(['grok-4.6', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.3-flash', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+    expect(review).toEqual(['grok-4.6', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.3-flash', 'qwen3.8-27b', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(hostsForModel('glm-5.3-flash', 'review').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('claude-sonnet-5', 'review').map((h) => h.id)).toEqual(['runbios'])
     expect(hostsForModel('gpt-5.6-sol', 'review').map((h) => h.id)).toEqual(['openai'])
-    expect(modelPickerLabel(modelsForLane('review')[3], 'review')).toBe('glm-5.3-flash')
+    expect(hostsForModel('qwen3.8-27b', 'review').map((h) => h.id)).toEqual(['entrim'])
+    expect(modelPickerLabel(modelsForLane('review')[4], 'review')).toBe('Qwen/Qwen3.8-27B')
   })
 
   it('GPT-5.6 family is selectable end-to-end: command (Discover), brief, and review lanes — OpenAI host only, draft excluded', () => {

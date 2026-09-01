@@ -142,6 +142,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'deepseek-flash': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
   'entrim-deepseek': 'deepseek-ai/DeepSeek-V4-Flash',
+  'entrim-qwen-27b': 'Qwen/Qwen3.8-27B',
   'zai-glm': 'glm-5.2',
   'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   groq: 'llama-3.3-70b-versatile',

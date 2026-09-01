@@ -321,9 +321,11 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
           : ''
   const effectiveModel = requestedModel === 'grok' || /^grok(?:-|$)/.test(requestedModel)
     ? 'grok'
-    : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
-      ? runbiosAlias
-      : DEFAULT_REVIEW_PIN
+    : requestedModel === 'entrim-qwen-27b' || requestedModel === 'qwen3.8-27b' || /^qwen3\.8/.test(requestedModel)
+      ? 'entrim-qwen-27b'
+      : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
+        ? runbiosAlias
+        : DEFAULT_REVIEW_PIN
   // Run BiOS pins (including the bare 'glm-5.3-flash' alias) execute through
   // the Run BiOS provider with the exact selected slot.
   if (isRunbiosPin(effectiveModel)) {
@@ -338,6 +340,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   }
   /* Legacy reviewer pins deliberately coerce to the lane default above. */
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
+  const isEntrimQwen = effectiveModel === 'entrim-qwen-27b'
   const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
   const isGlmFast =
     effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
@@ -376,8 +379,10 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   const isZaiGlm = effectiveModel === 'zai-glm' || effectiveModel === 'zai'
   const aiProvider = isGpt
     ? 'openai'
-    : isGrok
-      ? 'grok'
+    : isEntrimQwen
+      ? 'entrim-qwen-27b'
+      : isGrok
+        ? 'grok'
       : isGlmFast
         ? 'baseten-glm-fast'
         : isAihubmixGlmFast

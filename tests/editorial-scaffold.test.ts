@@ -1,4 +1,4 @@
-import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
 import { detectDanglingForwardReferences } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
@@ -1224,5 +1224,74 @@ Another good closing sentence for the reader.`
     expect(fixed.applied).toContain('forward_reference_orphans_removed (1)')
     expect(fixed.content).not.toContain('next section walks through')
     expect(fixed.content).toContain('Another good closing sentence')
+  })
+})
+
+describe('keyword-pasted heading deterministic rewrite (real fix, never hide)', () => {
+  it('rewritePastedHeading turns a pasted-keyword FAQ question into a natural question', () => {
+    const heading = 'Do you need an Australia student visa fee increase plan if you already hold a visa?'
+    const out = rewritePastedHeading(heading, 'australia student visa fee increase plan', 'australia student visa fee increase')
+    expect(out).toBeTruthy()
+    expect(out!.endsWith('?')).toBe(true)
+    expect(out!.toLowerCase()).not.toContain('student visa fee increase plan')
+    expect(out!.split(/\s+/).length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('applyDeterministicRepairs rewrites the heading and tags the repair', () => {
+    const draft = `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## Do you need an Australia student visa fee increase plan if you already hold a visa?
+
+Prose body.
+
+## FAQ
+
+Q&A.
+
+## Sources
+
+Gov.`
+    const fixed = applyDeterministicRepairs({
+      content: draft,
+      indexable: true,
+      contentType: 'legal_guide',
+      primaryKeyword: 'australia student visa fee increase',
+      requiredShortKeywords: ['australia student visa fee increase', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['australia student visa fee increase plan', 'x y z q r', 'x y z q s'],
+    })
+    expect(fixed.applied).toContain('keyword_pasted_headings_rewritten (1)')
+    expect(fixed.content).toContain('## Do you need a plan if you already hold a visa?')
+    // The keyword phrase is no longer the heading — it reads for a reader.
+    expect(fixed.content).not.toMatch(/^## Do you need an Australia student visa fee increase plan/im)
+  })
+
+  it('never rewrites the H1 or a primary-mirroring heading', () => {
+    const draft = `# Australia Student Visa Fee Increase
+
+## Australia student visa fee increase
+
+Prose.
+
+## In 60 seconds
+
+Prose.
+
+## Sources
+
+Gov.`
+    const fixed = applyDeterministicRepairs({
+      content: draft,
+      indexable: true,
+      contentType: 'legal_guide',
+      primaryKeyword: 'australia student visa fee increase',
+      requiredShortKeywords: ['australia student visa fee increase'],
+      requiredLongTailKeywords: [],
+    })
+    expect(fixed.applied.filter((a) => a.startsWith('keyword_pasted_headings'))).toEqual([])
+    expect(fixed.content).toContain('# Australia Student Visa Fee Increase')
   })
 })

@@ -340,6 +340,7 @@ function auditEngineCandidates(): AuditEngineCandidate[] {
     { pin: 'parasail-deepseek-pro', label: 'deepseek', configured: () => isParasailConfigured() },
     { pin: 'parasail-glm', label: 'glm', configured: () => isParasailConfigured() },
     { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(contentAiEnv('GROK_API_KEY')) },
+    { pin: 'entrim-qwen-27b', label: 'entrim-qwen', configured: () => Boolean(contentAiEnv('ENTRIM_API_KEY')) },
     { pin: 'gemini', label: 'gemini', configured: () => Boolean(contentAiEnv('GEMINI_API_KEY') || contentAiEnv('GOOGLE_GEMINI_API_KEY')) },
     { pin: 'groq', label: 'groq', configured: () => Boolean(contentAiEnv('GROQ_API_KEY')) },
     { pin: 'openai', label: 'openai', configured: () => isOpenaiConfigured() },

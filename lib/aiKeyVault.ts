@@ -100,6 +100,7 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
   ],
   entrim: [
     'deepseek-ai/DeepSeek-V4-Flash',
+    'Qwen/Qwen3.8-27B',
   ],
   'zai-glm': [
     'glm-5.2',
@@ -407,6 +408,20 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     vaultGroupLabel: 'Entrim · api.entrim.ai',
     modelOptions: HOST_MODEL_OPTIONS.entrim,
   },
+  {
+    id: 'entrim-qwen-27b',
+    label: 'Qwen3.8 27B · Entrim (api.entrim.ai/v1)',
+    keyEnv: 'ENTRIM_API_KEY',
+    baseUrlEnv: 'ENTRIM_BASE_URL',
+    modelEnv: 'ENTRIM_MODEL',
+    fixedBaseUrl: 'https://api.entrim.ai/v1',
+    defaultModel: 'Qwen/Qwen3.8-27B',
+    role: 'fallback',
+    hint: 'Entrim-hosted Qwen3.8 27B — selectable in Discover, Brief, and Reviewer lanes (shares the ENTRIM_API_KEY row).',
+    vaultGroup: 'entrim',
+    vaultGroupLabel: 'Entrim · api.entrim.ai',
+    modelOptions: ['Qwen/Qwen3.8-27B'],
+  },
 ]
 
 export const providerDef = (id: string): AiProviderDef | undefined =>
@@ -419,7 +434,7 @@ export const DEFAULT_PROVIDER_ORDER = [
   'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
   'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
   'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
-  'entrim-deepseek',
+  'entrim-deepseek', 'entrim-qwen-27b',
 ] as const
 
 export interface VaultKeyRow {
