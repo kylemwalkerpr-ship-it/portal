@@ -16,6 +16,7 @@
  */
 import React from 'react'
 import AdminRankingModel from './admin-ranking-model'
+import { StudioModelHostSelect } from './studio-model-host-select'
 
 const C = {
   bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -127,6 +128,10 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const [expandedPlan, setExpandedPlan] = React.useState<string | null>(null)
   const [stageFilter, setStageFilter] = React.useState<string>('all')
   const [countryFilter, setCountryFilter] = React.useState<string>('all')
+  // Discover-stage engine pin for the planner narrative briefs — the engine
+  // pair (Claude Opus 5 lead + Grok complement) is the default; Qwen3.8 27B
+  // via Entrim and other command-host pins are selectable.
+  const [engineModelPin, setEngineModelPin] = React.useState<string>('')
   const [ilStage, setIlStage] = React.useState<string>('visa')
   const [ilCountry, setIlCountry] = React.useState<string>('CA')
   const [gateDraft, setGateDraft] = React.useState<string>('')
@@ -182,7 +187,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const runPlan = async () => {
     setBusy(true); setError(null)
     try {
-      const res = await fetch('/api/seo-engine/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: stageFilter === 'all' ? undefined : stageFilter, country: countryFilter === 'all' ? undefined : countryFilter, limit: 20 }) })
+      const res = await fetch('/api/seo-engine/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: stageFilter === 'all' ? undefined : stageFilter, country: countryFilter === 'all' ? undefined : countryFilter, limit: 20, aiProvider: engineModelPin }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'planning failed')
       flash(`Planner produced ${data.count} ranked cluster missions`)
@@ -479,6 +484,14 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                 <option value="all">All countries</option>
                 {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              <StudioModelHostSelect
+                lane="command"
+                pin={engineModelPin || 'runbios-claude-opus'}
+                onPinChange={setEngineModelPin}
+                modelAriaLabel="Discover planner AI model"
+                hostAriaLabel="Discover planner AI provider"
+                selectStyle={{ padding: '5px 8px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: C.mono, background: C.surface, color: C.text }}
+              />
               <button type="button" onClick={runPlan} disabled={busy} style={{ ...btnSolid(C.gold) }}>
                 {busy ? '⏳ Planning…' : '🧭 Run planner'}
               </button>

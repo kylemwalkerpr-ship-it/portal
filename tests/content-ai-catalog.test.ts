@@ -50,14 +50,15 @@ describe('content AI catalog — model × host', () => {
     ])
   })
 
-  it('draft lane: Run BiOS + NVIDIA models only, sorted alphabetically by label, no Auto', () => {
+it('draft lane: Run BiOS + NVIDIA + Entrim models only, sorted alphabetically by label, no Auto', () => {
     const draft = modelsForLane('draft')
     const ids = draft.map((m) => m.id)
     expect(ids).not.toContain('auto')
     expect(ids).not.toContain('grok-4.6')
     expect(ids).not.toContain('gpt-5.6-sol')
     expect(ids).not.toContain('gpt-5.6-terra')
-    expect(ids).not.toContain('deepseek-v4-pro')
+    expect(ids).not.toContain('claude-opus-5')
+    expect(ids).not.toContain('claude-sonnet-5')
     expect(ids).not.toContain('cloudflare-llama')
     expect(ids).not.toContain('gemini')
     expect(ids).not.toContain('openrouter')
@@ -70,8 +71,16 @@ describe('content AI catalog — model × host', () => {
     expect(ids).toContain('qwen3.5')
     expect(ids).toContain('bios-adaptive')
     expect(ids).toContain('nemotron-3-ultra')
+    expect(ids).toContain('qwen3.8-27b')
     const labels = draft.map((m) => m.label)
     expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)))
+  })
+
+  it('Qwen3.8 27B executes in all four lanes through the Entrim host', () => {
+    for (const lane of ['draft', 'brief', 'review', 'command'] as const) {
+      expect(modelsForLane(lane).some((m) => m.id === 'qwen3.8-27b')).toBe(true)
+      expect(hostsForModel('qwen3.8-27b', lane).map((h) => h.id)).toEqual(['entrim'])
+    }
   })
 
   it('brief lane: Claude Opus 5 (default), Grok, DeepSeek V4 Flash, Qwen3.8 27B (Entrim), and the GPT-5.6 family (OpenAI)', () => {

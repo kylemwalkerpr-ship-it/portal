@@ -139,6 +139,7 @@ const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
     'minimax-m3',
     'nemotron-3-ultra',
     'qwen3.5',
+    'qwen3.8-27b',
     'bios-adaptive',
     'deepseek-v4-flash',
   ],
@@ -237,7 +238,7 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     id: 'qwen3.8-27b',
     label: 'Qwen3.8 27B',
     apiModel: ENTRIM_QWEN_MODEL,
-    lanes: ['brief', 'review', 'command'],
+    lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_QWEN_PIN }],
   },
   {

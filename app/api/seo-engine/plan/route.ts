@@ -33,12 +33,14 @@ export async function POST(req: NextRequest) {
       country?: string
       draftBriefs?: boolean
       limit?: number
+      aiProvider?: string
     }
     const { plans, pair } = await runPlanner({
       stage: body.stage,
       country: body.country,
       draftBriefs: body.draftBriefs !== false,
       limit: body.limit,
+      aiProvider: body.aiProvider ? String(body.aiProvider) : undefined,
     })
     await recordEngineRun('plan', plans.length ? 'success' : 'partial', {
       plans: plans.length,

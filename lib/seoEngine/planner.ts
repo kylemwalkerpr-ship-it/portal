@@ -78,6 +78,9 @@ export interface PlanRequest {
   /** Draft AI narrative briefs (best-effort; false = faster, deterministic). */
   draftBriefs?: boolean
   limit?: number
+  /** Explicit engine pin for the narrative briefs (e.g. 'entrim-qwen-27b').
+   *  Omitted → the engine pair (Claude Opus 5 lead + Grok complement). */
+  aiProvider?: string
   /** Live progress callback for streaming surfaces (phase, message, detail). */
   onProgress?: (phase: string, message: string, detail?: string) => void
 }
@@ -822,6 +825,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     if (draft) {
       try {
         const ai = await generateEngineText({
+          aiProvider: req.aiProvider,
           system: [
             editorialBriefPromptBlock(),
             `You are the chief SEO strategist for an immigration marketplace. Ground every claim in the supplied data — never invent numbers, fees or processing times. Flag required YMYL elements (statutes, disclaimers, author credentials).`,

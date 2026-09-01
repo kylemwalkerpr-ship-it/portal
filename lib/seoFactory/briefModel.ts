@@ -1,10 +1,12 @@
 /**
- * Brief-stage model policy — exactly three model families:
+ * Brief-stage model policy — exactly four model families:
  *   1. Claude Opus 5 via Run BiOS (`runbios-claude-opus`) — the DEFAULT.
  *      It consumes all Discover intelligence, including keywords.
  *   2. Grok (xAI / SuperGrok) — complementary choice and the fallback leg.
  *   3. DeepSeek V4 Flash, served by two hosts: Run BiOS
  *      (`runbios-deepseek-flash`) and Baseten (`baseten-deepseek`).
+ *   4. Entrim Qwen3.8 27B (`entrim-qwen-27b`) — api.entrim.ai/v1, shares the
+ *      ENTRIM vault row. Selectable in the Brief lane like Grok/Claude.
  * 'auto', empty, stale, or unrecognized pins coerce to the Claude Opus 5
  * default. No other Brief choice exists.
  *
@@ -21,11 +23,15 @@ export const BRIEF_FALLBACK_PROVIDER = 'grok' as const
 /** Brief lead pin — Claude Opus 5 billed through Run BiOS. */
 export const BRIEF_DEFAULT_PROVIDER = 'runbios-claude-opus' as const
 
+/** Entrim Qwen3.8 27B — fourth brief family (api.entrim.ai/v1). */
+export const BRIEF_ENTRIM_QWEN_PROVIDER = 'entrim-qwen-27b' as const
+
 export type BriefProviderChoice =
   | { aiProvider: typeof BRIEF_FALLBACK_PROVIDER; model?: undefined }
   | { aiProvider: typeof BRIEF_DEFAULT_PROVIDER; model?: undefined }
   | { aiProvider: 'runbios-deepseek-flash'; model?: undefined }
   | { aiProvider: 'baseten-deepseek'; model?: undefined }
+  | { aiProvider: typeof BRIEF_ENTRIM_QWEN_PROVIDER; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -55,6 +61,10 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
     pin === 'deepseek-ai/deepseek-v4-flash-0731'
   ) {
     return { aiProvider: 'baseten-deepseek' }
+  }
+  // Entrim Qwen3.8 27B — the fourth brief family (api.entrim.ai/v1).
+  if (pin === BRIEF_ENTRIM_QWEN_PROVIDER || pin === 'qwen3.8-27b' || pin === 'qwen') {
+    return { aiProvider: BRIEF_ENTRIM_QWEN_PROVIDER }
   }
   // 'auto', empty, stale drafting pins, and every removed choice coerce to
   // the Claude Opus 5 default.
@@ -198,7 +208,9 @@ export async function generateBriefText(opts: {
         ? 'DeepSeek V4 Flash (Run BiOS)'
         : primaryPin === 'baseten-deepseek'
           ? 'DeepSeek V4 Flash (Baseten)'
-          : 'Claude Opus 5 (Run BiOS)'
+          : primaryPin === BRIEF_ENTRIM_QWEN_PROVIDER
+            ? 'Qwen3.8 27B (Entrim)'
+            : 'Claude Opus 5 (Run BiOS)'
   try {
     const ai = await generateContentText({
       aiProvider: opts.aiProvider,

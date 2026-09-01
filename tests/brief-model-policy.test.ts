@@ -60,6 +60,13 @@ describe('resolveBriefAiProvider — brief model policy (Claude Opus 5 + Grok + 
     expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash-0731')).toEqual({ aiProvider: 'baseten-deepseek' })
     expect(resolveBriefAiProvider('BASETEN-DEEPSEEK')).toEqual({ aiProvider: 'baseten-deepseek' })
   })
+
+  it('Entrim Qwen3.8 27B is a first-class Brief family (never coerced)', () => {
+    expect(resolveBriefAiProvider('entrim-qwen-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+    expect(resolveBriefAiProvider('qwen3.8-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+    expect(resolveBriefAiProvider('qwen')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+    expect(resolveBriefAiProvider('ENTRIM-QWEN-27B')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+  })
 })
 
 describe('generateBriefText fallback — Grok (SuperGrok) when the primary fails', () => {

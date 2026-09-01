@@ -113,6 +113,9 @@ export async function POST(request: Request) {
             country: body.country ? String(body.country) : undefined,
             draftBriefs: body.draftBriefs !== false,
             limit: body.limit != null ? Number(body.limit) : 10,
+            // Explicit Discover-stage engine pin (e.g. 'entrim-qwen-27b') —
+            // omitted → the engine pair (Claude Opus 5 lead + Grok).
+            aiProvider: body.aiProvider ? String(body.aiProvider) : undefined,
             onProgress,
           })
           await recordEngineRun('plan', plans.length ? 'success' : 'partial', {
