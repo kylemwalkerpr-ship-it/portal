@@ -225,6 +225,53 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     fixed.push(`editor_invalid_schema_dropped (${removedScripts})`)
   }
 
+  // 4c. Run-in headings — "#" markers that the model glued onto the end of a
+  // prose line ("…apply. ### H-1B workers"). Markdown needs the heading on its
+  // OWN line, otherwise renderers print the literal "### …" inside the
+  // paragraph (the "###1" mangling seen on live pages). Split each run-in
+  // marker onto a fresh line with blank-line separation. Fenced blocks are
+  // skipped so ```json content is never misparsed.
+  {
+    const splitRunInHeadings = (input: string): string => {
+      const fenceRe = /^```/m
+      const lines = input.split('\n')
+      const out: string[] = []
+      let inFence = false
+      let changed = false
+      for (const line of lines) {
+        if (fenceRe.test(line.trimStart()) && !inFence) {
+          inFence = true
+          out.push(line)
+          continue
+        }
+        if (inFence && fenceRe.test(line.trimStart())) {
+          inFence = false
+          out.push(line)
+          continue
+        }
+        if (inFence) {
+          out.push(line)
+          continue
+        }
+        // A run-in heading: heading marker preceded by at least one
+        // non-whitespace character on the same line (not line-start).
+        const m = line.match(/^(.{1,400}?)(\s)(#{2,4})\s+(.+)$/)
+        if (m && m[1] && /[^\s]/.test(m[1])) {
+          out.push(m[1].replace(/\s+$/, ''), '', `${m[3]} ${m[4].trim()}`)
+          changed = true
+        } else {
+          out.push(line)
+        }
+      }
+      return changed ? out.join('\n') : input
+    }
+    const split = splitRunInHeadings(s)
+    if (split !== s) {
+      s = split.replace(/\n{3,}/g, '\n\n')
+      fixed.push('run_in_headings_split')
+    }
+  }
+
   // 5. "In 60 seconds" bullets collapsed onto one line ("a. - b. - c.").
   const tldrRe = /(## In 60 seconds\s*\n)([\s\S]*?)(?=\n## |\n$|$)/i
   const tldrMatch = s.match(tldrRe)

@@ -751,6 +751,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/reference-reachability.test.ts',
   }),
   def({
+    code: 'source_name_not_hyperlinked', title: 'Source listed as plain text with no link',
+    severity: 'warning', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
+    requirement: 'Every entry under ## Sources / ## Official sources is a clickable link to the named agency (deterministic repair links curated official labels; unknown labels need the writer).',
+    promptInstruction: 'Wrap the source label in a markdown link to the official agency URL, e.g. `- [Study in the States (DHS)](https://studyinthestates.dhs.gov/)`. If no official URL can be verified, remove the entry — never ship an unlinkable source.',
+    evidence: 'contentQualityGate.auditReferenceReachability sources plain-label scan',
+    shipEffect: 'allow_with_flag', evaluator: 'contentQualityGate.auditReferenceReachability',
+    testFixture: 'tests/reference-reachability.test.ts',
+  }),
+  def({
     code: 'dead_internal_link', title: 'Internal link does not resolve',
     severity: 'blocker', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
     requirement: 'Internal links resolve (HTTP 2xx/3xx).',

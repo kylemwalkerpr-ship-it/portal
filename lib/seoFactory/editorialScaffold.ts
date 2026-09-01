@@ -12,6 +12,7 @@ import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWo
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { relinkPlainTextRelatedGuides, resolveVerifiedEstateAnchors, type VerifiedRelatedGuideAnchor } from './relatedGuideLinks'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
+import { sourcesForRegion } from './officialSources'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
 
@@ -1208,6 +1209,41 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // ── Empty FAQ answers removed ─────────────────────────────────────
+  // A `### Question?` heading with no answer body below it ships a broken
+  // Q&A: the FAQPage JSON-LD harvest filters it, so the visible question has
+  // no answer and no schema entry (the live "Estimated Tax Payment Help for
+  // Visa Holders" draft had exactly this: one question, zero answer text).
+  // Remove empty-answer questions — an unanswered question is worth nothing
+  // to a reader, and its removal cannot lose information.
+  {
+    const prev = b
+    b = b.replace(
+      /(## (?:FAQ|Frequently asked)[^\n]*\n)([\s\S]*?)(?=\n## |\n*$)/i,
+      (whole, header: string, body: string) => {
+        const questions = body.split(/(?=^###\s)/m)
+        const kept: string[] = []
+        let removed = 0
+        for (const entry of questions) {
+          if (!/^###\s/m.test(entry)) {
+            kept.push(entry)
+            continue
+          }
+          const answer = entry.replace(/^###\s+[^\n]*\n/, '').replace(/^\n+/, '')
+          if (answer.trim()) {
+            kept.push(entry)
+          } else {
+            removed++
+          }
+        }
+        if (removed === 0) return whole
+        applied.push(`faq_empty_answers_removed (${removed})`)
+        return `${header}${kept.join('')}`
+      },
+    )
+    if (b !== prev) b = b.replace(/\n{3,}/g, '\n\n')
+  }
+
   const dashCount = (b.match(/[—–]/g) || []).length
   const stripBeforeDashes = b
   if (dashCount > 0) {
@@ -1405,40 +1441,41 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
-  // ── Duplicate H2 section removal ────────────────────────────────────
-  // AI models regularly duplicate entire H2 sections (e.g. multiple
-  // "## Related guides" blocks with identical bullets). Each duplicate is
-  // identical prose, so the quality gate flags sentence_start_repetition
-  // on the repeated "US Immigration Hub…" opener — and the deterministic
-  // rhythm repair cannot clear it because the sentences are citation
-  // lines (not prose). Deduplicate: keep the FIRST occurrence of each H2
-  // heading (case-insensitive) and drop later duplicates.
+  // ── Duplicate H2/H3 section removal ─────────────────────────────────
+  // AI models regularly duplicate entire sections (multiple "## Related
+  // guides" blocks with identical bullets, or the same "### F-1 students on
+  // OPT" sub-sections echoed in a second article copy). Each duplicate is
+  // identical prose, so the quality gate flags sentence_start_repetition on
+  // the repeated opener — and the deterministic rhythm repair cannot clear
+  // it because the sentences are citation/fragment lines (not prose).
+  // Deduplicate: keep the FIRST occurrence of each H2/H3 heading
+  // (case-insensitive) and drop later duplicates.
   {
     const before = b
-    const h2Sections = b.split(/(?=^## )/gm)
-    const seenH2 = new Map<string, number>() // key → first index
+    const hSections = b.split(/(?=^## |^### )/gm)
+    const seenH = new Map<string, number>() // key → first index
     const deduped: string[] = []
     let removed = 0
-    for (const section of h2Sections) {
-      const headingMatch = section.match(/^## (.+)$/m)
+    for (const section of hSections) {
+      const headingMatch = section.match(/^## (.+)$/m) || section.match(/^### (.+)$/m)
       if (!headingMatch) {
         deduped.push(section)
         continue
       }
-      const headingKey = headingMatch[1].trim().toLowerCase()
-      const prevIdx = seenH2.get(headingKey)
+      const headingKey = `h${headingMatch[0][2]}:${headingMatch[1].trim().toLowerCase()}`
+      const prevIdx = seenH.get(headingKey)
       if (prevIdx != null) {
-        // Duplicate H2 — skip this section entirely
+        // Duplicate H2 or H3 — skip this section entirely
         removed++
         continue
       }
-      seenH2.set(headingKey, deduped.length)
+      seenH.set(headingKey, deduped.length)
       deduped.push(section)
     }
     if (removed > 0) {
       b = deduped.join('')
       b = b.replace(/\n{3,}/g, '\n\n')
-      applied.push(`duplicate_h2_sections_removed (${removed})`)
+      applied.push(`duplicate_heading_sections_removed (${removed})`)
     }
   }
 
@@ -2135,6 +2172,59 @@ export function applyDeterministicRepairs(opts: {
       b = cited.content
       applied.push('official_sources')
     }
+  }
+
+  // ── Plain-text source labels → official hyperlinks ──────────────────
+  // The model sometimes drops the URL and ships `- Study in the States (DHS)`
+  // / `- Travel.State.Gov, Student Visa` as bare labels under ## Sources.
+  // The bare-URL audit cannot see them (no URL present), so they shipped
+  // silently. When the plain label uniquely matches a curated official source
+  // (DHS, State Department, IRS, USCIS …), wrap it with the canonical URL —
+  // fully deterministic, no invented destinations.
+  {
+    const prev = b
+    const sourcesRe = /(## (?:Official )?[Ss]ources\s*\n)([\s\S]*?)(?=\n## |\n*$)/
+    const sourcesMatch = b.match(sourcesRe)
+    if (sourcesMatch) {
+      const curated = sourcesForRegion(opts.region)
+      const wrap = (line: string): string => {
+        const item = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/)
+        if (!item) return line
+        const label = item[2].trim()
+        if (!label || /\[[^\]]+\]\(/i.test(label) || /https?:\/\//i.test(label)) return line
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+        const labelNorm = norm(label)
+        const labelTokens = new Set(labelNorm.split(/\s+/).filter((t) => t.length > 2))
+        if (!labelTokens.size) return line
+        let best: { url: string; title: string; score: number } | null = null
+        for (const source of curated) {
+          const titleNorm = norm(source.title)
+          const titleTokens = new Set(titleNorm.split(/\s+/).filter((t) => t.length > 2))
+          let overlap = 0
+          for (const t of labelTokens) if (titleTokens.has(t)) overlap++
+          if (overlap === 0) continue
+          const score = overlap / Math.max(1, Math.min(labelTokens.size, titleTokens.size))
+          if (score >= 0.6 && (!best || score > best.score)) {
+            best = { url: source.url, title: source.title, score }
+          }
+        }
+        if (!best) return line
+        // Unique match only — two curated sources scoring equal stay plain.
+        const ties = curated.filter((s) => {
+          const t = new Set(norm(s.title).split(/\s+/).filter((x) => x.length > 2))
+          const o = [...labelTokens].filter((x) => t.has(x)).length
+          return t.size && o / Math.max(1, Math.min(labelTokens.size, t.size)) === best!.score
+        })
+        if (ties.length > 1) return line
+        return `${item[1]}[${label}](${best.url})`
+      }
+      const newEntries = sourcesMatch[2].split('\n').map(wrap)
+      if (newEntries.join('\n') !== sourcesMatch[2]) {
+        b = b.replace(sourcesMatch[0], `${sourcesMatch[1]}${newEntries.join('\n')}\n`)
+        applied.push(`official_source_labels_linked`)
+      }
+    }
+    if (b !== prev) b = b.replace(/\n{3,}/g, '\n\n')
   }
 
   // Keyword coverage is a quality-gate blocker, not a mechanical weave.

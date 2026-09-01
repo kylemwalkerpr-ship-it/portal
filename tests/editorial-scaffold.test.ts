@@ -97,7 +97,7 @@ describe('ensureEditorialScaffold', () => {
       contentType: 'article',
     })
     expect(repaired.content.match(/^##\s+related guides?\s*$/gim)).toHaveLength(1)
-    expect(repaired.applied).toContain('duplicate_h2_sections_removed (1)')
+    expect(repaired.applied).toContain('duplicate_heading_sections_removed (1)')
     expect(repaired.applied).toContain('internal_links_merged')
     const audit = auditContent({
       content: repaired.content,

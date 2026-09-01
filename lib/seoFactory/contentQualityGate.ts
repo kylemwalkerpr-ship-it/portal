@@ -308,6 +308,32 @@ export function auditReferenceReachability(raw: string): QualityFinding[] {
     }
   }
 
+  // 1.5 Sources entries must be hyperlinks too — a plain label with NO URL
+  // ("- Study in the States (DHS)") is unreachable and previously slipped
+  // past every audit (the bare-URL check needs a URL to see). The
+  // deterministic repair links curated official labels; anything still plain
+  // surfaces here for the writer AI (warning — the estate ships an official
+  // citations policy, but a missing link must never silently pass).
+  const sourceNames = ['sources', 'official sources']
+  for (const section of sectionBodies(raw, sourceNames)) {
+    const plain: string[] = []
+    for (const line of section.body.split('\n')) {
+      const item = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)
+      if (!item) continue
+      const text = item[1].trim()
+      if (!text || LINKED_ITEM_RE.test(text) || BARE_URL_IN_TEXT_RE.test(text)) continue
+      plain.push(text.replace(/\*\*/g, '').slice(0, 80))
+    }
+    if (plain.length > 0) {
+      findings.push({
+        code: 'source_name_not_hyperlinked',
+        severity: 'warning',
+        message: `## ${section.name} lists ${plain.length} source(s) as plain text with no link: ${plain.slice(0, 3).join(' · ')}`,
+        fix: 'Every source entry must be a clickable markdown link: `- [Study in the States (DHS)](https://studyinthestates.dhs.gov/)`. Use the official URL for the named agency, or remove the entry.',
+      })
+    }
+  }
+
   // 2. Any bare URL anywhere in the article (Sources included) must be an anchor.
   const bare: string[] = []
   const scrubbed = String(raw || '')
