@@ -1523,6 +1523,30 @@ export function evaluateContentQuality(opts: {
     }
   }
 
+  // ── 9. Outline completeness + dangling forward references ─────────────
+  // The brief outlines the article's contract: every non-structural section
+  // must exist in the body. A draft that ends "the next section walks
+  // through…" with no such section is truncated — it must never ship.
+  const missing = missingOutlineSections(opts.content || '', opts.outline)
+  if (missing.length) {
+    add({
+      code: 'missing_outline_section',
+      severity: 'blocker',
+      message: `Template sections from the brief outline are missing from the body: ${missing.join('; ')}. The draft ends mid-promise (truncated expansion).`,
+      fix: `Write the missing section(s) for: ${missing.join('; ')}. Each must satisfy its outline purpose and read naturally — never pasted keyword strings.`,
+      evidence: missing.join('; '),
+    })
+  }
+  for (const orphan of detectDanglingForwardReferences(opts.content || '')) {
+    add({
+      code: 'forward_reference_orphan',
+      severity: 'warning',
+      message: `Text promises a section that does not exist: "${orphan.sentence.slice(0, 140)}". Reads as truncated drafting.`,
+      fix: 'Remove the dangling connector sentence, or write the promised section within this article (a new heading is an editor-level change, not a patch).',
+      evidence: orphan.sentence.slice(0, 140),
+    })
+  }
+
   const blockers = findings.filter((f) => f.severity === 'blocker')
   const warnings = findings.filter((f) => f.severity === 'warning')
   const ok = blockers.length === 0

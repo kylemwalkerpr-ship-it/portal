@@ -1,0 +1,56 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "runbios/glm-5.3",
+  "small_model": "runbios/glm-5.3-flash",
+  "default_agent": "build",
+  "enabled_providers": ["runbios"],
+  "provider": {
+    "runbios": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Run BiOS",
+      "env": ["RUNBIOS_API_KEY"],
+      "options": {
+        "baseURL": "https://api.runbios.ai/v1",
+        "timeout": 600000,
+        "chunkTimeout": 60000
+      },
+      "models": {
+        "glm-5.3": {
+          "name": "GLM 5.3",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1048576, "output": 65536 },
+          "variants": { "low": {}, "high": {}, "max": {} }
+        },
+        "glm-5.3-flash": {
+          "name": "GLM 5.3 Flash",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1048576, "output": 65536 },
+          "variants": { "low": {}, "high": {}, "max": {} }
+        },
+        "kimi-k2.7-code": {
+          "name": "Kimi K2.7 Code",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 },
+          "variants": { "low": {}, "high": {}, "max": {} }
+        }
+      }
+    }
+  },
+  "agent": {
+    "build": {
+      "model": "runbios/glm-5.3",
+      "variant": "high"
+    }
+  },
+  "permission": {
+    "edit": "ask",
+    "bash": "ask",
+    "webfetch": "ask",
+    "websearch": "ask",
+    "external_directory": "allow"
+  },
+  "instructions": []
+}

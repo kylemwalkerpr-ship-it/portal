@@ -176,6 +176,10 @@ export type ReauditContractInput = {
   linkAllowlist?: string[]
   /** Existing estate pages targeting the same intent (cannibalization). */
   competingUrls?: Array<{ url: string; title: string; primaryKeyword?: string | null }>
+  /** Canonical brief outline (from the persisted contentSpec). When present,
+   *  every non-structural section must exist in the body — else the draft is
+   *  truncated and ships blocked (missing_outline_section). */
+  outline?: Array<{ heading: string; level?: number; purpose?: string }> | null
 }
 
 /** The contract fields that POST + PATCH both return (route adds
@@ -211,13 +215,14 @@ export type ReauditContractOutput = {
  *  6. shipReady      → quality.ok && depthGate.ok — warnings never block
  */
 export function evaluateReauditContract(input: ReauditContractInput): ReauditContractOutput {
-  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, region, targetUrl, linkAllowlist, competingUrls } = input
+  const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, region, targetUrl, linkAllowlist, competingUrls, outline } = input
 
   const result = evaluateContentQuality({
     content,
     contentType,
     primaryKeyword,
     indexable,
+    outline,
     requiredShortKeywords,
     requiredLongTailKeywords,
     shortKeywordTerms,

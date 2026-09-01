@@ -348,3 +348,121 @@ In 60 seconds
     expect(content).toContain('Leftover section text')
   })
 })
+describe('outline completeness + dangling forward references', () => {
+  const outline = [
+    { heading: 'In 60 seconds', level: 2 },
+    { heading: 'What this guide covers', level: 2 },
+    { heading: 'Eligibility and requirements', level: 2 },
+    { heading: 'Application process step by step', level: 2 },
+    { heading: 'Worked Example', level: 2 },
+    { heading: 'Costs, timing and risks', level: 2 },
+    { heading: 'FAQ', level: 2 },
+    { heading: 'Sources', level: 2 },
+  ]
+
+  it('blocks when a canonical outline section is missing from the body', () => {
+    const truncated = `# Guide
+
+## In 60 seconds
+
+Quick answer.
+
+## Eligibility and requirements
+
+Prose.
+
+## Application process step by step
+
+Prose.
+
+## Costs, timing and risks
+
+Prose.
+
+## FAQ
+
+### Do I need a professional?
+
+Yes.
+
+## Sources
+
+Official source.
+
+The next section walks through a worked example.`
+    const gated = evaluateContentQuality({
+      content: truncated,
+      primaryKeyword: 'work permit',
+      indexable: true,
+      outline,
+      requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    const miss = gated.findings.find((f) => f.code === 'missing_outline_section')
+    expect(miss).toBeDefined()
+    expect(miss!.severity).toBe('blocker')
+    expect(miss!.message).toContain('Worked Example')
+    const orphan = gated.findings.find((f) => f.code === 'forward_reference_orphan')
+    expect(orphan).toBeDefined()
+    expect(orphan!.severity).toBe('warning')
+  })
+
+  it('passes clean when the outline is fully present', () => {
+    const complete = `# Guide
+
+## In 60 seconds
+
+Quick answer.
+
+## What this guide covers
+
+Prose.
+
+## Eligibility and requirements
+
+Prose A. Prose B. Prose C.
+
+## Application process step by step
+
+Prose D. Prose E. Prose F.
+
+## Worked Example
+
+Prose G. Prose H. Prose I.
+
+## Costs, timing and risks
+
+Prose J. Prose K. Prose L.
+
+## FAQ
+
+### Do I need a professional?
+
+Yes.
+
+## Sources
+
+Official source.`
+    const gated = evaluateContentQuality({
+      content: complete,
+      primaryKeyword: 'work permit',
+      indexable: true,
+      outline,
+      requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    expect(gated.findings.some((f) => f.code === 'missing_outline_section')).toBe(false)
+    expect(gated.findings.find((f) => f.code === 'missing_outline_section')).toBeUndefined()
+  })
+
+  it('legacy drafts without an outline never get the blocker', () => {
+    const gated = evaluateContentQuality({
+      content: '# Guide\n\nSome prose.\n',
+      primaryKeyword: 'work permit',
+      indexable: true,
+      requiredShortKeywords: ['a', 'b', 'c', 'd', 'e'],
+      requiredLongTailKeywords: ['x y z q p', 'x y z q r', 'x y z q s'],
+    })
+    expect(gated.findings.some((f) => f.code === 'missing_outline_section')).toBe(false)
+  })
+})

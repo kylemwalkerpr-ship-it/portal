@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import StudioDocEditor from './studio-doc-editor'
+import EditorMetricsStrip from './editor-metrics-strip'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
@@ -1061,59 +1062,72 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       <div style={{ display: 'flex', gap: 12, minHeight: 320 }}>
         {/* Editor */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          {viewMode === 'document' ? (
+          {content.length > 50_000 ? (
             <div style={{
               border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8',
               minHeight: 320, paddingTop: 14,
             }}>
-              {content.length > 50_000 ? (
-                <div style={{ padding: 20, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: C.text }}>Document view unavailable for large drafts</div>
-                  <div>This draft is {(content.length / 1000).toFixed(0)}k characters. The document renderer cannot safely render content this large without freezing the browser.</div>
-                  <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Audit &amp; Fix</strong> to reduce the content size.</div>
-                </div>
-              ) : (
+              <div style={{ padding: 20, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: C.text }}>Document view unavailable for large drafts</div>
+                <div>This draft is {(content.length / 1000).toFixed(0)}k characters. The document renderer cannot safely render content this size in a browser.</div>
+                <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Audit &amp; Fix</strong> to reduce the content size.</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8', minHeight: 320, paddingTop: 14 }}>
+              <EditorMetricsStrip
+                content={content}
+                hint={{
+                  primaryKeyword,
+                  requiredShortKeywords,
+                  requiredLongTailKeywords,
+                }}
+                reviewModel={reviewModel}
+                busy={allBusy}
+                onApplied={(md) => { onChange(md); setDirty(true) }}
+              />
+              {viewMode === 'document' ? (
                 <StudioDocEditor
                   content={content}
                   onChange={(md) => { onChange(md); setDirty(true) }}
                   disabled={disabled || allBusy}
                   minHeight={640}
                 />
+              ) : (
+                <>
+                  <textarea
+                    ref={textareaRef} value={content}
+                    onChange={(e) => { onChange(e.target.value); setDirty(true) }}
+                    disabled={disabled || allBusy}
+                    placeholder="The generated draft will appear here. Edit freely or use Re-audit to check quality..."
+                    spellCheck
+                    style={{
+                      width: '100%', height: '100%', minHeight: 320, resize: 'vertical',
+                      boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 8,
+                      padding: 14, fontFamily: C.mono, fontSize: 12, lineHeight: 1.75,
+                      color: C.text, background: '#FFFEFC', outline: 'none',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = C.blue }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = C.border }}
+                  />
+                  {/* Gutter markers */}
+                  {annotations.length > 0 && (
+                    <div style={{ position: 'absolute', top: 0, left: 4, width: 6, height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
+                      {annotations.map((a) => (
+                        <div key={a.id} title={a.message} style={{
+                          position: 'absolute', top: `${Math.max(0, (a.line - 1) * 21)}px`,
+                          width: 6, height: 5, borderRadius: 3,
+                          background: a.severity === 'blocker' ? C.red : C.orange,
+                          opacity: 0.6,
+                          transition: 'opacity 0.15s',
+                        }} />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          ) : (
-            <>
-              <textarea
-                ref={textareaRef} value={content}
-                onChange={(e) => { onChange(e.target.value); setDirty(true) }}
-                disabled={disabled || allBusy}
-                placeholder="The generated draft will appear here. Edit freely or use Re-audit to check quality..."
-                spellCheck
-                style={{
-                  width: '100%', height: '100%', minHeight: 320, resize: 'vertical',
-                  boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 8,
-                  padding: 14, fontFamily: C.mono, fontSize: 12, lineHeight: 1.75,
-                  color: C.text, background: '#FFFEFC', outline: 'none',
-                  transition: 'border-color 0.2s',
-                }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = C.blue }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = C.border }}
-              />
-              {/* Gutter markers */}
-              {annotations.length > 0 && (
-                <div style={{ position: 'absolute', top: 0, left: 4, width: 6, height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
-                  {annotations.map((a) => (
-                    <div key={a.id} title={a.message} style={{
-                      position: 'absolute', top: `${Math.max(0, (a.line - 1) * 21)}px`,
-                      width: 6, height: 5, borderRadius: 3,
-                      background: a.severity === 'blocker' ? C.red : C.orange,
-                      opacity: 0.6,
-                      transition: 'opacity 0.15s',
-                    }} />
-                  ))}
-                </div>
-              )}
-            </>
           )}
         </div>
 

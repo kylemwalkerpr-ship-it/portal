@@ -125,6 +125,32 @@ export function filterOutlineByRegion(headings: string[], regionCode: string): {
   return { kept, dropped }
 }
 
+/**
+ * Minimum-outline guarantee for long-form briefs. A truncated skeleton
+ * invites truncated expansion — and the review gate now BLOCKS on
+ * missing_outline_section when the canonical brief outline is absent from
+ * the body. This deterministically completes the skeleton:
+ *  - "In 60 seconds" at the front (answer-first contract),
+ *  - a Worked Example (GEO/AEO substance),
+ *  - FAQ (seed for FAQPage JSON-LD),
+ *  - Sources (citation contract).
+ * Returns ≥ the input, capped at 12; idempotent — never duplicates.
+ */
+export function ensureMinimumOutline(headings: string[]): string[] {
+  const list = [...(headings || [])]
+    .map((h) => String(h || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim())
+    .filter(Boolean)
+    .filter((heading, index, all) => all.findIndex((h) => h.toLowerCase() === heading.toLowerCase()) === index)
+  const has = (re: RegExp) => list.some((h) => re.test(h))
+  if (!has(/worked example|example\b/i)) list.push('Worked Example')
+  if (!has(/^faq$/i) && !has(/faq/i)) list.push('FAQ')
+  if (!has(/sources|official sources/i)) list.push('Sources')
+  // Answer-first: the promise must open the document. Guarded by the same
+  // containment check as the structural sections, so an existing TOC leads.
+  if (!has(/^in 60 seconds$/i) && !has(/^table of contents$/i)) list.unshift('In 60 seconds')
+  return list.slice(0, 12)
+}
+
 export async function loadResearchDemandContext(topic: string, primaryKeyword?: string, region?: string): Promise<ResearchDemandContext> {
   const pk = (primaryKeyword || topic || '').trim()
   const regionCode = String(region || 'US').toUpperCase().slice(0, 2)

@@ -5,7 +5,7 @@ import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
-import { detectRegionFromText, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
+import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
 import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
@@ -353,7 +353,7 @@ export async function POST(req: NextRequest) {
     })
 
     const normalizeHeading = (value: string) => String(value || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
-    const finalOutline = (outlineFilter.kept.length ? outlineFilter.kept : [
+    const finalOutlineUncapped = ensureMinimumOutline(outlineFilter.kept.length ? outlineFilter.kept : [
       'In 60 seconds',
       `What ${primaryKeyword} means for this reader`,
       'Eligibility and requirements',
@@ -363,7 +363,13 @@ export async function POST(req: NextRequest) {
       'Worked Example',
       'FAQ',
       'Sources',
-    ]).map(normalizeHeading).filter(Boolean).filter((heading, index, all) => all.findIndex((h) => h.toLowerCase() === heading.toLowerCase()) === index).slice(0, 12)
+    ])
+    // Minimum-outline guarantee: legal/immigration guides need a real
+    // skeleton — a 5-section brief invites truncated expansion, and the
+    // review gate now BLOCKS when canonical outline sections are absent
+    // from the body. Deterministically complete the skeleton (content
+    // sections first, then structural) so sparse skeletons never ship again.
+    const finalOutline = finalOutlineUncapped.slice(0, 12)
 
     // The keyword floor can add terms after the model response. Complete the
     // placement map deterministically so the UI and drafting contract never

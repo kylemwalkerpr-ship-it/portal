@@ -1,4 +1,5 @@
 import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { detectDanglingForwardReferences } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
@@ -1155,5 +1156,73 @@ describe('final gate normalization regressions', () => {
     expect(scripts.length).toBeGreaterThanOrEqual(1)
     expect(() => scripts.forEach((match) => JSON.parse(match[1]))).not.toThrow()
     expect(auditContent({ content: repaired.content, contentType: 'article', primaryKeyword: 'australia student visa fee', indexable: true }).warnings.some((w) => w.code === 'ahrefs_schema_invalid')).toBe(false)
+  })
+})
+
+describe('dangling forward references', () => {
+  it('detects an orphaned "next section" promise at the end of the document', () => {
+    const body = `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## FAQ
+
+### Q?
+
+A.
+
+## Sources
+
+Gov.
+
+The next section walks through a worked example.`
+    const orphans = detectDanglingForwardReferences(body)
+    expect(orphans.length).toBe(1)
+    expect(orphans[0].sentence).toContain('next section')
+  })
+
+  it('is silent when the promised section actually exists later', () => {
+    const body = `# Guide
+
+Intro. The next section walks through a worked example.
+
+## Worked Example
+
+Prose.
+
+## FAQ
+
+Q&A.`
+    const orphans = detectDanglingForwardReferences(body)
+    expect(orphans).toEqual([])
+  })
+
+  it('applyDeterministicRepairs strips the orphaned sentence and tags it', () => {
+    const draft = `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## Eligibility
+
+Prose.
+
+## FAQ
+
+Q&A.
+
+## Sources
+
+Gov.
+
+The next section walks through a worked example.
+Another good closing sentence for the reader.`
+    const fixed = applyDeterministicRepairs({ content: draft, indexable: true, contentType: 'legal_guide' })
+    expect(fixed.applied).toContain('forward_reference_orphans_removed (1)')
+    expect(fixed.content).not.toContain('next section walks through')
+    expect(fixed.content).toContain('Another good closing sentence')
   })
 })

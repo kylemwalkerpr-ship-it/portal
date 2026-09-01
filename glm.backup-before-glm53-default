@@ -1,0 +1,33 @@
+#!/bin/zsh
+set -eu
+
+ROOT="${0:A:h}"
+GITHUB_ROOT="${ROOT:h}"
+
+if [[ -z "${RUNBIOS_API_KEY:-}" && -f "$ROOT/.opencode/runbios.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/.opencode/runbios.env"
+fi
+
+if [[ -z "${RUNBIOS_API_KEY:-}" ]]; then
+  print -u2 "glm: RUNBIOS_API_KEY is not set."
+  print -u2 "Load it in this shell, then retry:"
+  print -u2 "  export RUNBIOS_API_KEY='…your Run BiOS key…'"
+  exit 1
+fi
+
+# Session/state stay in this repo's .opencode/; the workspace is the full
+# GitHub folder so sibling repos are visible.
+export XDG_DATA_HOME="$ROOT/.opencode/data"
+export XDG_STATE_HOME="$ROOT/.opencode/state"
+export XDG_CACHE_HOME="$ROOT/.opencode/cache"
+export OPENCODE_CONFIG="$ROOT/opencode.jsonc"
+
+mkdir -p "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
+
+if [[ "${1:-}" == "run" ]]; then
+  shift
+  exec opencode run --dir "$GITHUB_ROOT" "$@"
+fi
+
+exec opencode "$GITHUB_ROOT" "$@"

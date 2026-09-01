@@ -406,6 +406,59 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   return callAiFixWithProvider(sys, prompt, maxTokens, aiProvider, effectiveModel, isGrok)
 }
 
+/**
+ * Generate a single missing outline section in natural reader language.
+ * Purpose-driven: the model is told WHAT the section must do for the reader
+ * (from the brief contract), given the article's existing context so it
+ * writes the continuation — never a keyword string appended for the gate.
+ */
+async function generateOutlineSection(
+  article: string,
+  heading: string,
+  purpose: string | undefined,
+  keyword: string | undefined,
+  region: string | undefined,
+): Promise<string | null> {
+  const sys = `You are a legal-content editor completing ONE section of an immigration article. Write natural, practitioner-grade prose for the reader — never a keyword string, never a stub. Respond with ONLY the section body (no heading line).`
+  const prompt = `## Article (first 6000 chars for voice/context)
+
+${article.slice(0, 6000)}
+
+## Section to write
+
+## ${heading}
+${purpose ? `\nPurpose (from the brief contract): ${purpose}` : ''}
+${keyword ? `\nPrimary topic: ${keyword}` : ''}
+${region ? `Region: ${region}` : ''}
+
+Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Use the article's existing headings/voice. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
+  try {
+    const raw = await callAiFix(sys, prompt, 4096, DEFAULT_REVIEW_PIN)
+    const clean = raw
+      .replace(/^```[\s\S]*?```\s*$/, '')
+      .replace(/^(#+)\s+.*$/m, '') // never echo a heading — caller prefixes it
+      .trim()
+    return clean.length >= 120 ? clean : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Insert a rendered section before ## FAQ / ## Sources (or append to the
+ * body) so the completed content lands in reading order without disturbing
+ * the scaffold. Deterministic — never a patch, never a heading edit by AI.
+ */
+function insertSectionBeforeFaqOrSources(body: string, section: string): string {
+  const sectionBlock = `${section}\n\n`
+  const match = body.match(/^##\s+(?:faq|sources|official sources)\b/im)
+  if (match) {
+    const at = match.index ?? body.length
+    return `${body.slice(0, at).trimEnd()}\n\n${sectionBlock}${body.slice(at).trimStart()}`
+  }
+  return `${body.trimEnd()}\n\n${sectionBlock}${''}`.trimEnd()
+}
+
 async function callAiFixWithProvider(
   sys: string,
   prompt: string,
@@ -970,6 +1023,12 @@ export async function PATCH(request: NextRequest) {
         region,
         indexable,
         contentType,
+        // Canonical brief outline — the re-audit gate must verify the body's
+        // template sections actually exist (truncated drafts otherwise pass).
+        outline:
+          contentSpec && contentSpec.outline && contentSpec.outline.length
+            ? contentSpec.outline.map((o) => ({ heading: o.heading, level: o.level, purpose: o.purpose }))
+            : null,
         requiredShortKeywords,
         requiredLongTailKeywords,
         shortKeywordTerms,
@@ -1056,6 +1115,39 @@ Return ONLY the JSON EditorPatch.`
         })
         loopStartContent = sanitized.content
       } catch { /* keep the current body if live audit is unavailable */ }
+
+      // ── Outline completion pre-pass ──────────────────────────────────
+      // The truncated-draft defect: an article whose quick-response floors
+      // all pass but whose canonical brief outline is unfinished ("the next
+      // section walks through…" with no such section). The gate BLOCKS on
+      // missing_outline_section; this pass generates the absent sections in
+      // natural reader language BEFORE the fix loop, so the loop never has
+      // to cheat (EditorPatch cannot add headings).
+      if (loopCtx.outline && loopCtx.outline.length) {
+        try {
+          const { missingOutlineSections } = await import('@/lib/seoFactory/contentQualityGate')
+          let missing = missingOutlineSections(loopStartContent, loopCtx.outline)
+          let completionPasses = 0
+          const maxSectionsPerPass = 3
+          while (missing.length && completionPasses < 2) {
+            const batch = missing.slice(0, maxSectionsPerPass)
+            let inserted = 0
+            for (const heading of batch) {
+              const entry = loopCtx.outline.find((o) => o.heading === heading)
+              const section = await generateOutlineSection(loopStartContent, heading, entry?.purpose, loopKeyword, region)
+              if (!section) continue
+              loopStartContent = insertSectionBeforeFaqOrSources(loopStartContent, `## ${heading}\n\n${section}`)
+              inserted++
+            }
+            completionPasses++
+            missing = missingOutlineSections(loopStartContent, loopCtx.outline)
+            if (!inserted) break // generation failed — leave the honest blocker
+          }
+          if (completionPasses > 0) console.info(`[reaudit] outline completion: ${completionPasses} pass(es), remaining missing: ${missing.join(', ') || 'none'}`)
+        } catch (err) {
+          console.warn('[reaudit] outline completion skipped:', String((err as Error)?.message || err).slice(0, 120))
+        }
+      }
 
       const loopResult = await runAuditEditorLoop(
         { content: loopStartContent, spec: contentSpec, playbookVersion: PLAYBOOK_VERSION },

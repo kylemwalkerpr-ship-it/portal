@@ -6,7 +6,7 @@
  * We never invent legal facts — only structure required for estate compliance.
  */
 
-import { DISCLAIMER_RE, detectForcedFaqWordings } from './contentQualityGate'
+import { DISCLAIMER_RE, detectForcedFaqWordings, detectDanglingForwardReferences } from './contentQualityGate'
 import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
@@ -175,6 +175,10 @@ export function dedupeFaqQuestions(body: string): string {
  * preserved verbatim; the duplicate copy with its own scripts is dropped.
  * Idempotent: after one pass only a single H1 remains.
  */
+function escapeRegExpText(s: string): string {
+  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 export function stripDuplicateArticleCopy(body: string): {
   content: string
   removed: boolean
@@ -1018,7 +1022,29 @@ export function applyDeterministicRepairs(opts: {
   // Strip the second copy FIRST, on the RAW content, so normalize + every
   // later repair work on exactly one article.
   const rawDeduped = stripDuplicateArticleCopy(opts.content || '')
-  const rawForRepair = rawDeduped.removed ? rawDeduped.content : (opts.content || '')
+
+  // ── Dangling forward references (FIRST — on the raw body) ────────────
+  // "the next section walks through a worked example" with no such section:
+  // an orphaned promise that reads as truncated drafting. Strip the
+  // connector sentence deterministically — the article is self-contained
+  // after removal, and the AI loop adds content sections if the outline
+  // demands them. Runs first so no later stage can re-glue the text around
+  // it or normalize it into a different phrasing.
+  let orphanStripped: string | null = null
+  {
+    const orphans = detectDanglingForwardReferences(rawDeduped.content)
+    if (orphans.length) {
+      let stripped = rawDeduped.content
+      for (const o of orphans) {
+        stripped = stripped.replace(new RegExp(escapeRegExpText(o.sentence), 'g'), '').replace(/\n{3,}/g, '\n\n')
+      }
+      if (stripped !== rawDeduped.content) {
+        applied.push(`forward_reference_orphans_removed (${orphans.length})`)
+        orphanStripped = stripped
+      }
+    }
+  }
+  const rawForRepair = orphanStripped ?? (rawDeduped.removed ? rawDeduped.content : (opts.content || ''))
   const normalizedEditor = normalizeEditorDocument(rawForRepair)
   if (normalizedEditor.fixed.length) applied.push(...normalizedEditor.fixed)
   if (normalizedEditor.fixed.some((f) => f.startsWith('editor_invalid_schema_dropped'))) {
@@ -2581,6 +2607,26 @@ export function applyDeterministicRepairs(opts: {
   const beforeFinalTldr = preSanitize
   preSanitize = ensureTldrBullets(preSanitize, opts.primaryKeyword || opts.title || 'guide')
   if (preSanitize !== beforeFinalTldr) applied.push('tldr_finalized')
+
+  // ── Dangling forward references ──────────────────────────────────────
+  // "the next section walks through a worked example" with no such section:
+  // an orphaned promise that reads as truncated drafting. Strip the
+  // connector sentence deterministically — the article is self-contained
+  // after removal, and the AI loop adds content sections if the outline
+  // demands them.
+  {
+    const orphans = detectDanglingForwardReferences(preSanitize)
+    if (orphans.length) {
+      let stripped = preSanitize
+      for (const o of orphans) {
+        stripped = stripped.replace(new RegExp(escapeRegExpText(o.sentence), 'g'), '').replace(/\n{3,}/g, '\n\n')
+      }
+      if (stripped !== preSanitize) {
+        applied.push(`forward_reference_orphans_removed (${orphans.length})`)
+        preSanitize = stripped
+      }
+    }
+  }
 
   const sanitized = sanitizeFrontmatter(preSanitize)
   if (sanitized !== preSanitize) applied.push('frontmatter_sanitized')
