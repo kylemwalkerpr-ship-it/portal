@@ -1632,7 +1632,14 @@ export function applyDeterministicRepairs(opts: {
       '}',
       '</script>',
     ].join('\n')
-    b = `${articleSchema}\n\n${b}`
+    // Insert AFTER the closing YAML and the H1 so the reader-visible title
+    // keeps the lead position (frontmatter → H1 → schema). Prepending the
+    // script wedged the schema between the frontmatter and the H1, which
+    // broke the restored-H1 invariant and hurt rich-result parsing order.
+    const h1Line = b.match(/^#\s+[^\n]*$/m)
+    b = h1Line
+      ? b.replace(h1Line[0], `${h1Line[0]}\n\n${articleSchema}`)
+      : `${articleSchema}\n\n${b}`
     applied.push('schema_article')
   }
 

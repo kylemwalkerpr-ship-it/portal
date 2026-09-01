@@ -1,4 +1,4 @@
-import { applyDeterministicRepairs, ensureEditorialScaffold, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
@@ -16,6 +16,59 @@ describe('normalizeEditorDocument — editor formatting contract', () => {
     expect(result.content).not.toContain('--- title: admissions consultant credentials')
     expect(result.content).not.toContain('"@context":""')
     expect(result.fixed).toEqual(expect.arrayContaining(['tldr_bullets_restored']))
+  })
+})
+
+describe('structural repair invariants', () => {
+  it('restores collapsed body bullets outside TLDR and is idempotent', () => {
+    const draft = [
+      '# Guide',
+      '',
+      '## Documents',
+      '',
+      '- **Birth certificate** with translation. - **Passport** valid for travel. - **Police certificate** where required.',
+      '',
+      'A normal sentence uses a well-known state-of-the-art process - and stays prose.',
+    ].join('\n')
+    const once = restoreCollapsedBodyLists(draft)
+    expect((once.match(/^- /gm) || [])).toHaveLength(3)
+    expect(once).toContain('state-of-the-art process - and stays prose')
+    expect(restoreCollapsedBodyLists(once)).toBe(once)
+  })
+
+  it('deduplicates FAQ Q&A atoms and is idempotent', () => {
+    const draft = [
+      '# Guide', '', '## FAQ', '',
+      '### How do I apply for filing?', '', 'First answer.', '',
+      '### How do I apply for filing?', '', 'Duplicate answer.', '',
+      '### What documents are required?', '', 'Documents answer.', '',
+      '## Sources', '- [Official](https://example.gov)',
+    ].join('\n')
+    const once = dedupeFaqQuestions(draft)
+    expect((once.match(/^### How do I apply for filing\?$/gm) || [])).toHaveLength(1)
+    expect(once).toContain('First answer.')
+    expect(once).not.toContain('Duplicate answer.')
+    expect(dedupeFaqQuestions(once)).toBe(once)
+  })
+
+  it('restores a missing H1 from canonical frontmatter and remains idempotent', () => {
+    const draft = [
+      '---',
+      'title: DIY Green Card Application vs Attorney',
+      'content_type: article',
+      '---',
+      '',
+      'Opening answer.',
+      '',
+      '## Eligibility',
+      'Eligibility depends on the category.',
+    ].join('\n')
+    const once = applyDeterministicRepairs({ content: draft, indexable: false, contentType: 'article' })
+    expect(once.content).toMatch(/^---[\s\S]*?---\n\n# DIY Green Card Application vs Attorney\n/m)
+    expect(once.applied).toContain('missing_h1_restored')
+    const twice = applyDeterministicRepairs({ content: once.content, indexable: false, contentType: 'article' })
+    expect(twice.content).toBe(once.content)
+    expect((twice.content.match(/^# /gm) || [])).toHaveLength(1)
   })
 })
 
