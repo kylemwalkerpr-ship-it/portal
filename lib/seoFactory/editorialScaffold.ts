@@ -2807,6 +2807,21 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // ── FINAL echo strip (last line of defense before ship) ───────────────
+  // The repairs above move frontmatter, reorder sections, and rewrite
+  // headings — any of which can re-expose a second copy. The shipped NCLEX
+  // artifact (2026-09-02) proved an echo can survive the whole repair
+  // pipeline: word count reads inside the window, H2s read plentiful, and
+  // every numeric gate PASSES on a doubled document. Cut any remaining copy
+  // here — after this point the document goes to the ship gate.
+  {
+    const final = stripDuplicateArticleCopy(preSanitize)
+    if (final.removed) {
+      preSanitize = final.content
+      applied.push(`duplicate_article_copy_removed_final (${final.copies} → 1)`)
+    }
+  }
+
   const sanitized = sanitizeFrontmatter(preSanitize)
   if (sanitized !== preSanitize) applied.push('frontmatter_sanitized')
   return {

@@ -214,6 +214,25 @@ export function auditContent(opts: {
     fix: 'Add clear H2 sections covering procedure, documents, risks, FAQ',
   }, AUDIT_POINT_WEIGHTS.h2Structure)
 
+  // Duplicate-article echo — a second H1 (even REWORDED, e.g. the model
+  // restarted with "…2026 Guide" → "…2026") means two article copies in one
+  // document. The echo INFLATES every count (words read inside the window,
+  // H2s read plentiful) so every other check passes on a doubled document —
+  // the shipped NCLEX artifact proved the numeric gates cannot see it.
+  // Blocking here makes the echo unshippable regardless of what dedupe,
+  // trim, or repair ran before the audit.
+  {
+    const h1Matches = body.match(/^#\s+.+$/gm) || []
+    if (h1Matches.length > 1) {
+      add(false, {
+        code: 'duplicate_article_copy',
+        severity: 'blocker',
+        message: `${h1Matches.length} H1 headings — duplicate article copies detected (restart/echo)`,
+        fix: 'Strip the appended second copy; the document must contain exactly one H1',
+      }, 0)
+    }
+  }
+
   // TOC duplicate entries — repeated items in the Table of Contents signal
   // AI word-count padding and hurt SEO (Google sees duplicate internal anchors).
   {

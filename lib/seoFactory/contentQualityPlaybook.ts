@@ -578,6 +578,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/contentQualityPlaybook.test.ts#audit fixtures',
   }),
   def({
+    code: 'duplicate_article_copy', title: 'Duplicate article copies (echo/restart)',
+    severity: 'blocker', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
+    requirement: 'Exactly one article copy per document — a second H1 (even reworded) is an echo restart.',
+    promptInstruction: 'Write the article EXACTLY ONCE. Never append a second copy of the article, never restart the draft, never re-emit front matter or the H1 mid-document.',
+    evidence: 'audit.auditContent multi-H1 blocker; stripDuplicateArticleCopy cuts the echo at draft time and again at the end of repairFullDocument',
+    shipEffect: 'block', evaluator: 'audit.auditContent',
+    testFixture: 'tests/nclex-echo-regression.test.ts',
+  }),
+  def({
     code: 'keyword', title: 'Primary keyword weak/missing in title',
     severity: 'warning', owner: 'writer', repairClass: 'targeted_ai', appliesTo: 'all',
     requirement: 'Primary keyword appears naturally in title and first H2.',
