@@ -191,7 +191,14 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const res = await fetch('/api/seo-engine/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: stageFilter === 'all' ? undefined : stageFilter, country: countryFilter === 'all' ? undefined : countryFilter, limit: 20, aiProvider: engineModelPin }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'planning failed')
-      flash(`Planner produced ${data.count} ranked cluster missions`)
+      const persisted = Number(data.persisted ?? data.count)
+      const persistErrors = Array.isArray(data.persistErrors) ? data.persistErrors : []
+      if (persistErrors.length) {
+        setError(`⚠ ${persistErrors.length}/${data.count ?? 0} plan(s) FAILED to persist (${String(persistErrors[0]).slice(0, 180)}). The queue below is the DB's view — rerun or check Supabase.`)
+      } else {
+        setError(null)
+      }
+      flash(`Planner produced ${data.count} ranked missions · ${persisted} persisted`)
       await loadAll()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'planning failed')
@@ -331,6 +338,15 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       )}
       {error && (
         <div style={{ padding: '9px 14px', borderRadius: C.radiusSm, background: C.redSoft, border: `1px solid ${C.redBorder}`, color: C.red, fontSize: 11, fontFamily: C.mono, marginBottom: 12 }}>⚠ {error}</div>
+      )}
+
+      {/* ── Auth-mode banner: anon fallback is a security/truth degradation ── */}
+      {status?.authMode === 'degraded-anon' && (
+        <div style={{ padding: '9px 14px', borderRadius: C.radiusSm, background: C.goldSoft, border: `1px solid ${C.goldBorder}`, color: '#8a5a00', fontSize: 11, fontFamily: C.mono, marginBottom: 12 }}>
+          ⚠ ENGINE DATABASE ACCESS IS DEGRADED — the Worker is running as the <b>public anon key</b>{' '}
+          (new-format SUPABASE_SERVICE_ROLE_KEY is rejected by supabase-js v2). Set{' '}
+          <b>SUPABASE_SERVICE_ROLE_JWT</b> (legacy service-role JWT) — deploy.yml re-syncs it — and redeploy.
+        </div>
       )}
 
       {/* ── KPI strip (six brains) ── */}
@@ -553,9 +569,24 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
-                        ★ {fmtN(Number(p.opportunity_score))} · {fmtN(Number(p.est_monthly_impressions))} imp/mo · {fmtN(Number(p.est_monthly_clicks))} clicks · pos #{Math.round(Number(p.position) || 0)}
-                      </div>
+<div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
+  ★ {fmtN(Number(p.opportunity_score))} · {fmtN(Number(p.est_monthly_impressions))} imp/mo · {fmtN(Number(p.est_monthly_clicks))} clicks · pos #{Math.round(Number(p.position) || 0)}
+  {(() => {
+    const dsrc = (p.plan as Record<string, unknown> | undefined)?.demandSource
+    const snapAge = (p.plan as Record<string, unknown> | undefined)?.snapshotAgeDays
+    if (dsrc === 'snapshot') {
+      const days = snapAge == null ? '?' : String(snapAge)
+      return <span title="Demand from the static GSC snapshot — not live Search Console" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: C.goldSoft, border: `1px solid ${C.goldBorder}`, color: '#8a5a00', fontWeight: 700, fontSize: 9 }}>SNAPSHOT {days}d</span>
+    }
+    if (dsrc === 'gsc-90d') {
+      return <span title="Live Search Console last-90-days window, converted to a monthly estimate (/3)" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: C.cyanSoft, border: `1px solid #67E8F9`, color: C.cyan2, fontWeight: 700, fontSize: 9 }}>GSC 90D ≈/MO</span>
+    }
+    if (dsrc === 'research') {
+      return <span title="Market-research volume (Ubersuggest/Ads), not owned-site impressions" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: C.surface2, border: `1px solid ${C.border}`, color: C.textMuted, fontWeight: 700, fontSize: 9 }}>RESEARCH VOL</span>
+    }
+    return null
+  })()}
+</div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

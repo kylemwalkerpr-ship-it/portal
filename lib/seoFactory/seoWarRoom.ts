@@ -125,7 +125,7 @@ export interface WarRoomResult {
   }
   historyAvailable: boolean
   range: { startDate: string; endDate: string; days: number } | null
-  snapshot: { generatedAt?: string; source?: string } | null
+  snapshot: { generatedAt?: string; source?: string; ageDays?: number } | null
   /** Temporary pipeline diagnostics — only present when opts.debug is set. */
   debug?: Record<string, unknown>
 }
@@ -281,35 +281,48 @@ export async function buildSeoWarRoom(opts?: {
       warnings.push('GSC live query failed — falling back to snapshot')
     }
   }
-  let snapshotMeta: { generatedAt?: string; source?: string } | null = null
+  let snapshotMeta: { generatedAt?: string; source?: string; ageDays?: number } | null = null
   // Live GSC on this estate is junk-dominated (0–2 rows survive isNoiseQuery
   // on a typical day). Merging the snapshot when live is thin keeps Discover
   // fed — the old `=== 0` gate let 1–2 junk-adjacent survivors starve it.
   if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
-    const snap = await loadGscSnapshot()
-    const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
-      term: q.term || q.url || '',
-      impressions: q.impressions,
-      clicks: q.clicks,
-      ctr: q.ctr,
-      position: q.position,
-    })
-    const snapshotRows = [
-      ...(snap.topQueries ?? []),
-      ...((snap.opportunities?.highImpressionLowCtr as Array<any> | undefined) ?? []),
-      ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []),
-    ].map(shape)
-    const merged = mergeSnapshotIntoQueries(queries, snapshotRows)
-    if (dbg) {
-      dbg.snapshotRows = snapshotRows.length
-      dbg.merged = merged.length
-      dbg.queriesAfterMerge = queries.length
-      dbg.mergedSample = merged.slice(0, 12).map((q) => ({ t: q.term, imp: q.impressions, noise: isNoiseQuery((q.term || '').trim().toLowerCase()) }))
-    }
-    if (merged.length > queries.length) {
-      snapshotMeta = { generatedAt: snap.generatedAt, source: snap.source }
-      queries.length = 0
-      queries.push(...merged)
+    // Truthfulness: never salvage a run with a >14-day-old snapshot — the
+    // queue would advertise stale demand as today's. Refuse cleanly + warn.
+    const preMergeLiveCount = queries.length
+    const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
+    const snapshotAgeDays = (await import('@/lib/seoDataLoaders')).snapshotAgeDays(snap)
+    if (snap.topQueries?.length && snapshotAgeDays >= 0) {
+      const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
+        term: q.term || q.url || '',
+        impressions: q.impressions,
+        clicks: q.clicks,
+        ctr: q.ctr,
+        position: q.position,
+      })
+      const snapshotRows = [
+        ...(snap.topQueries ?? []),
+        ...((snap.opportunities?.highImpressionLowCtr as Array<any> | undefined) ?? []),
+        ...((snap.opportunities?.highImpressionDeepRank as Array<any> | undefined) ?? []),
+      ].map(shape)
+      const merged = mergeSnapshotIntoQueries(queries, snapshotRows)
+      if (dbg) {
+        dbg.snapshotRows = snapshotRows.length
+        dbg.merged = merged.length
+        dbg.queriesAfterMerge = queries.length
+        dbg.mergedSample = merged.slice(0, 12).map((q) => ({ t: q.term, imp: q.impressions, noise: isNoiseQuery((q.term || '').trim().toLowerCase()) }))
+      }
+      if (merged.length > queries.length) {
+        snapshotMeta = { generatedAt: snap.generatedAt, source: snap.source, ageDays: snapshotAgeDays }
+        queries.length = 0
+        queries.push(...merged)
+        // Honesty: this run is now snapshot-fed (the trigger fired at
+        // <5 live rows), so it must NOT wear the LIVE badge (audit: the
+        // merge path previously kept source='live' and claimed live GSC).
+        source = 'snapshot'
+        warnings.push(`Live GSC had only ${preMergeLiveCount} certified row(s) — queue top-upped from the snapshot (${snapshotAgeDays}d old); plays are snapshot-derived.`)
+      }
+    } else if (snap.topQueries?.length) {
+      warnings.push('GSC snapshot is stale (>14 days) — refusing to merge it; queue is live-only (thin).')
     }
   }
   // Deduplicate + filter

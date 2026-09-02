@@ -991,6 +991,11 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       contentType,
       services: stageDef.services,
       proofPoints: stageDef.proofPoints,
+      // Demand provenance — surfaced on plan cards so "imp/month" is honest:
+      // 'gsc-90d' (live GSC window ÷ 3) vs 'snapshot' (static export, dated)
+      // vs 'research' (Ubersuggest/Ads volumes).
+      demandSource: sig.source === 'gsc' ? (sig.snapshot ? 'snapshot' : 'gsc-90d') : 'research',
+      snapshotAgeDays: sig.snapshotAgeDays ?? null,
     }
 
     // Compliance score is computed from REAL plan fields — never hardcoded

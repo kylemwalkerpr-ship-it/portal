@@ -97,7 +97,7 @@ async function loadMatchingCluster(term: string, region?: string): Promise<strin
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_cluster_plans')
-      .select('primary_term,stage,country,intent,opportunity_score,rationale,compliance_score')
+      .select('primary_term,stage,country,intent,opportunity_score,rationale,compliance_score,plan')
       .order('opportunity_score', { ascending: false })
       .limit(40)
     const rows = (data as Array<Record<string, unknown>>) || []
@@ -110,6 +110,19 @@ async function loadMatchingCluster(term: string, region?: string): Promise<strin
       return regionOk && (primary.includes(needle) || needle.includes(primary))
     })
     if (!hit) return null
+    // Demand provenance so the writer prompt never implies live GSC numbers
+    // when the mission was planned on a dated snapshot or research volumes.
+    const planJson = (hit.plan && typeof hit.plan === 'object' ? hit.plan : {}) as Record<string, unknown>
+    const dsrc = String(planJson.demandSource || '')
+    const snapAge = planJson.snapshotAgeDays != null ? String(planJson.snapshotAgeDays) : ''
+    const provenance =
+      dsrc === 'snapshot'
+        ? `demand source: static GSC snapshot (${snapAge || '?'} days old)`
+        : dsrc === 'gsc-90d'
+          ? 'demand source: live GSC last-90-days (monthly estimate)'
+          : dsrc
+            ? 'demand source: market-research volume (not owned-site impressions)'
+            : ''
     const bits = [
       String(hit.primary_term || ''),
       hit.stage ? `stage ${hit.stage}` : '',
@@ -117,6 +130,7 @@ async function loadMatchingCluster(term: string, region?: string): Promise<strin
       hit.intent ? `intent ${hit.intent}` : '',
       hit.opportunity_score != null ? `opp ${Math.round(Number(hit.opportunity_score))}` : '',
       hit.compliance_score != null ? `compliance ${Math.round(Number(hit.compliance_score))}` : '',
+      provenance,
     ].filter(Boolean)
     const rationale = String(hit.rationale || '').replace(/\s+/g, ' ').slice(0, 180)
     return rationale ? `${bits.join(' · ')} — ${rationale}` : bits.join(' · ')
