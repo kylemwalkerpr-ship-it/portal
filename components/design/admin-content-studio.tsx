@@ -2299,9 +2299,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         signal: briefAbort.signal,
         body: JSON.stringify({
           topic, region, contentType, primaryKeyword: selectedBrief?.primaryKeyword || topic, audience,
-          // Brief model selected above (Claude Opus 5 / Grok / DeepSeek V4
-          // Flash). We pass the explicit choice; the brief endpoint's policy
-          // coerces unknown values to the Claude Opus 5 default.
+          // Brief model selected above (Entrim Qwen / Claude Opus 5 / Grok /
+          // DeepSeek V4 Flash …). We pass the explicit choice; the brief
+          // endpoint's policy coerces unknown values to the Entrim Qwen
+          // default. The same pin is carried into the Draft stage below.
           aiProvider: briefModel,
           gscImpressions: gscData.impressions || 0,
           gscPosition: gscData.position || 0,
@@ -2325,6 +2326,11 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
       if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
+      // The model chosen in the Brief stage is the drafting model:
+      // carry it into the Draft stage so the same selected backend writes
+      // the article (previously the brief choice was dropped after the
+      // brief and drafting ran on the separate drafting selector's pin).
+      setAiProvider(briefModel)
       // Region auto-select: when the topic named a different country than the
       // picker (e.g. "Australia student visa fee" while picker said US), the
       // server re-keyed the whole brief to the detected region. Sync the UI
