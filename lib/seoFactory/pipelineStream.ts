@@ -459,7 +459,7 @@ export async function* runSeoFactoryPipelineStream(
 
       const generationPrompt =
         resumeMode && i === 0 && !underDepth
-          ? `${prompt}\n\nCONTINUE FROM THIS SAVED PARTIAL DRAFT. Do NOT echo, quote, or repeat the saved draft back — write the COMPLETE REVISED article only (one H1, the full outline below it). Every token you emit is appended to it.\n\nSAVED DRAFT (read-only reference):\n${content.slice(0, 60000)}`
+          ? `${prompt}\n\nCONTINUE AND COMPLETE THE SAVED PARTIAL DRAFT BELOW. Keep every section, fact, heading, and interlink that is already in the saved draft — fill the gaps, expand thin sections, and emit the FULL REVISED ARTICLE once. Do NOT echo, quote, or repeat the saved draft back. Do NOT write a fresh article from scratch — build on the saved draft. Every token you emit is part of the revised article.\n\nSAVED DRAFT (read-only reference — build on this, never replace it):\n${content.slice(0, 60000)}`
           : prompt
       const prevWords = content ? countBodyWords(content) : 0
       let attemptText = ''

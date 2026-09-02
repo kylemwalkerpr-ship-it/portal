@@ -530,6 +530,7 @@ export function buildFactoryUserPrompt(opts: {
       '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
       '- If the response budget tightens, compress proportionally across the middle sections and ALWAYS finish with FAQ + Sources + JSON-LD + disclaimer. A complete back matter beats a long body that stops mid-document.',
       '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
+      '- IMPORTANT: do NOT start a new article. If you have a reference draft below, expand and revise IT — do not write a fresh article from scratch. A fresh article that ignores the reference is a hard failure.',
     ]),
     'Write the full page now. Front matter first, then body. Raw markdown only. Follow the DOCUMENT FORMAT CONTRACT exactly.',
   ]
@@ -686,8 +687,9 @@ export function buildDepthExpandPrompt(opts: {
     `You must ADD at least ${deficit + 250} more words of substance than the current draft. Do not stop writing until the total body prose clears ${opts.minWords} words.`,
     '',
     'RULES:',
-    '1) Return the COMPLETE page (YAML front matter + full body + FAQ + Sources + JSON-LD + disclaimer).',
+    '1) EXPAND THE DRAFT INTO A COMPLETE PAGE — keep every existing section, fact, heading, and interlink from the draft below. Add substance to thin sections; never drop or replace what is already there.',
     '2) KEEP accurate facts from the draft; EXPAND every thin section — do not shrink.',
+    '3) Do NOT write a fresh article from scratch. The draft below is your base — build on it. A full rewrite that ignores the draft is a hard failure.',
     '3) Each H2 body (not the heading) should be ~180–350 words with concrete steps, documents, risks, or examples. Stub sections are rejected.',
     '4) Required sections if missing or thin:',
     '   - ## In 60 seconds (3–5 direct bullets)',
@@ -716,7 +718,7 @@ export function buildDepthExpandPrompt(opts: {
     '## PREVIOUS DRAFT (expand this — do not replace with a shorter page)',
     draftSlice,
     '',
-    'Write the FULL expanded page now. Front matter first. Write until the body prose is comfortably above the hard minimum.',
+    'Write the FULL expanded page now. Front matter first. Build on the draft below — do NOT start a fresh article. Write until the body prose is comfortably above the hard minimum.',
   ].join('\n')
 }
 
