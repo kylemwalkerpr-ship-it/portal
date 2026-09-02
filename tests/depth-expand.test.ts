@@ -121,3 +121,55 @@ describe('depth expand helpers', () => {
     expect(extractH2Titles(md)).toEqual(['One', 'Two'])
   })
 })
+
+describe('mergeAppendedSections — echo-guard (draft-time bleed)', () => {
+  const draft = `---
+title: Guide
+---
+
+# Guide
+
+## Section A
+
+${Array(40).fill('word').join(' ')}
+
+## Section B
+
+${Array(40).fill('word').join(' ')}`
+
+  it('refuses an append that opens with its own H1 (near-full rewrite)', () => {
+    const echo = `# Guide
+
+## Section A
+
+${Array(40).fill('word').join(' ')}
+
+## Section B
+
+${Array(40).fill('word').join(' ')}`
+    const merged = mergeAppendedSections(draft, echo)
+    expect(merged).toBe(draft)
+  })
+
+  it('refuses an append that opens with a frontmatter block', () => {
+    const echo = `---
+title: Guide
+---
+
+# Guide
+
+## Section A
+
+${Array(40).fill('word').join(' ')}`
+    expect(mergeAppendedSections(draft, echo)).toBe(draft)
+  })
+
+  it('still accepts genuine section fragments (## headings)', () => {
+    const sections = `## Costs and fees
+
+${Array(20).fill('word').join(' ')}`
+    const merged = mergeAppendedSections(draft, sections)
+    expect(merged).not.toBe(draft)
+    expect(merged).toContain('## Costs and fees')
+  })
+})

@@ -616,6 +616,14 @@ export async function* runSeoFactoryPipelineStream(
       if (!(underDepth && countBodyWords(attemptText) < prevWords)) {
         content = attemptText
       }
+      // Echo guard (draft-time bleed): when the model echoes the saved draft
+      // block and appends its revision, the body counts ~2× — inflating the
+      // word count, trim decisions, and stall detection for the rest of the
+      // run. Dedupe every attempt immediately so the loop measures ONE copy.
+      {
+        const deduped = stripDuplicateArticleCopy(content)
+        if (deduped.removed) content = deduped.content
+      }
 
       // ── Auto-trim: enforce hard maxWords ceiling ──────────────────────
       // Models can overshoot the hard ceiling. Trim only ordinary prose

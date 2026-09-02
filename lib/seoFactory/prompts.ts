@@ -6,6 +6,7 @@
 
 import type { OwnerPlan } from './ownership'
 import {
+  countBodyWords,
   depthPromptClause,
   depthSpecForType,
   minWordsForType as depthMinWords,
@@ -756,6 +757,17 @@ export function mergeAppendedSections(draft: string, appendMarkdown: string): st
     .replace(/```\s*$/i, '')
     .trim()
   if (!append) return draft
+
+  // Echo guard (draft-time bleed): an "appended" response that opens with
+  // its own H1 or a frontmatter block is the model echoing a near-full
+  // rewrite, not new sections. Appending it would double the word count
+  // (the observed "meets window then appends near-equivalent draft"
+  // signature). Refuse the whole append — the revision path handles full
+  // rewrites; the append path only ever accepts section fragments.
+  if (/^#{1}\s+/m.test(append) || /^---\s*$/m.test(append)) return draft
+  // A near-full-size response (≥85% of the draft) with its own H1 anywhere
+  // is still a rewrite, just one that quoted a draft block first.
+  if (/^#{1}\s+/m.test(append) && countBodyWords(append) >= countBodyWords(draft) * 0.85) return draft
 
   // Insert before JSON-LD / script blocks if present
   const schemaIdx = draft.search(/<script\b|```json|"@type"\s*:\s*"Article"/i)

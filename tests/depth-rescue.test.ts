@@ -57,8 +57,12 @@ function buildDraft(bodyWords: number): string {
   // `word` tokens so the finished draft measures EXACTLY `bodyWords`.
   const fixed = countBodyWords(skeleton)
   const pad = Math.max(0, bodyWords - fixed)
+  // Filler lives INSIDE the eligibility section — the draft is a realistic
+  // article (frontmatter + H1 first). A filler-first document would be
+  // structurally identical to the mid-body echo-restart signature that
+  // stripDuplicateArticleCopy is designed to cut.
   const filler = pad > 0 ? `## Eligibility Requirements\n\n${Array(pad).fill('word').join(' ')}\n\n` : ''
-  return filler + skeleton
+  return `${skeleton.trim()}\n\n${filler}`.trim()
 }
 
 /** A single H2 append section whose body carries exactly `words` body words.
@@ -434,3 +438,27 @@ describe('terminal depth messages + overshoot cap', () => {
     expect(progress.some((m) => /trimmed \d+ appended words to stay inside the 2800-word window/.test(m))).toBe(true)
   })
 })
+
+describe('depth rescue echo guard — a near-full rewrite append never doubles the draft', () => {
+  it('a full-copy append (H1 + overlapping outline) is deduped to one article', async () => {
+    const start = buildDraft(600)
+    // The model echoes the draft itself as its "append" (H1 + same outline).
+    const echo = fullCopyOf(start)
+    const { gen } = makeGenerate([{ append: echo }])
+    const { done } = await drain(baseOpts({ content: start, generateText: gen }))
+    const finalWc = countBodyWords(done!.content)
+    // One copy only — never the ~2× echo.
+    expect(finalWc).toBeLessThanOrEqual(1400)
+    expect((done!.content.match(/^#\s+/gm) || []).length).toBeLessThanOrEqual(1)
+  })
+})
+
+/** Rebuild a near-identical article from a draft (same H1 + same outline). */
+function fullCopyOf(draft: string): string {
+  const h1 = (draft.match(/^#\s+.+$/m) || ['# Guide'])[0]
+  const fm = draft.startsWith('---') ? draft.slice(0, draft.indexOf('\n#') + 1) : ''
+  const headings = Array.from(draft.matchAll(/^##\s+.+$/gm)).map((m) => m[0]).slice(0, 3)
+  const body = Array(300).fill('word').join(' ')
+  const section = headings.length ? headings.map((h) => `${h}\n\n${body}`).join('\n\n') : `## Process\n\n${body}`
+  return `${fm}\n${h1}\n\n## In 60 seconds\n\n${body}\n\n${section}\n\n## Sources\n\nOfficial.`.trim()
+}

@@ -18,7 +18,7 @@ import {
   mergeAppendedSections,
 } from './prompts'
 import { countBodyWords, trimMarkdownProseToWordBudget } from './contentDepth'
-import { smoothSentenceRhythm } from './editorialScaffold'
+import { smoothSentenceRhythm, stripDuplicateArticleCopy } from './editorialScaffold'
 import type { ContentAiResult } from '@/lib/contentAiProvider'
 
 /** Depth-rescue attempt stats — how many expansion rounds a draft needed, how
@@ -309,6 +309,11 @@ export async function* runDepthRescue(
         }
       } else {
         let merged = mergeAppendedSections(content, ai.text)
+        // Echo guard: an append that carries its own H1/frontmatter is a
+        // near-full rewrite, not new sections — dedupe before counting so
+        // the growth/stall checks measure ONE copy.
+        const deduped = stripDuplicateArticleCopy(merged)
+        if (deduped.removed) merged = deduped.content
         const rhythm = smoothSentenceRhythm(merged)
         if (rhythm.replaced > 0) merged = rhythm.content
         if (countBodyWords(merged) > currentWords) {
