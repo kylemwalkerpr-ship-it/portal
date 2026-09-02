@@ -242,6 +242,11 @@ export async function buildOutcomeHistoryFromLiveGsc(opts?: {
             dimensions: ['page'],
             rowLimit: 500,
           }),
+          // Hard deadline — this fetch previously had NO abort, so a hanging
+          // GSC request froze the Master Engine stream for minutes right at
+          // the "Building outcome history from live GSC …" checkpoint, then
+          // the serverless budget killed the whole run mid-stream.
+          signal: AbortSignal.timeout(30_000),
         },
       )
       if (!res.ok) {

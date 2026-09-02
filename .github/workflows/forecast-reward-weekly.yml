@@ -11,6 +11,9 @@ on:
 jobs:
   forecast-reward:
     runs-on: ubuntu-latest
+    concurrency:
+      group: forecast-reward-weekly-production
+      cancel-in-progress: false
     steps:
       - name: Trigger weekly forecast-reward pass
         run: |
@@ -23,6 +26,12 @@ jobs:
             -d '{"limit":400}')
           echo "HTTP $code"; cat /tmp/resp.json || true
           test "$code" = "200"
+          # The route returns 200 even when its internal pass failed — a body
+          # with ok:false must red-flag the run instead of greening the week.
+          if grep -q '"ok":false' /tmp/resp.json; then
+            echo "::error::Forecast reward weekly pass reported ok:false in body"
+            exit 1
+          fi
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           PORTAL_URL: ${{ vars.PORTAL_URL }}

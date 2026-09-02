@@ -41,6 +41,34 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!authorize(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // ── Run-in-flight guard ──────────────────────────────────────────────────
+  // GitHub's `schedule` + a manual `workflow_dispatch` (or a GH retry) can
+  // overlap; two concurrent `all` passes would double LLM audit rows, double
+  // reward credits and race the planner's persistence. Refuse to start when
+  // a daily run is still marked 'running' from the last 90 minutes.
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    const { data: lastRun } = await createSupabaseAdminClient()
+      .from('seo_engine_runs')
+      .select('id,status,started_at')
+      .eq('kind', 'daily')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const row = lastRun as { status?: string; started_at?: string } | null
+    if (row?.status === 'running' && row.started_at) {
+      const ageMin = (Date.now() - new Date(row.started_at).getTime()) / 60_000
+      if (ageMin < 90) {
+        return NextResponse.json({
+          ok: false,
+          error: `Another daily engine run is still in flight (started ${row.started_at}, ${Math.round(ageMin)}m ago) — refusing to overlap. If it is genuinely dead, wait ${Math.round(90 - ageMin)} more minutes.`,
+        }, { status: 409 })
+      }
+    }
+  } catch {
+    /* guard is best-effort — a DB blip must not block the cron */
+  }
+
   const body = (await req.json().catch(() => ({}))) as { phase?: string; limitPerSource?: number; limit?: number; draftBriefs?: boolean; llmAudits?: boolean }
   const phase = String(body.phase || 'all').toLowerCase()
 
@@ -134,14 +162,18 @@ export async function POST(req: NextRequest) {
     let llmFailed = 0
     let interlinksStored = 0
     const topScores: string[] = []
+    const allPhaseErrors: string[] = []
     if (phase === 'all') {
       const planned = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit || 15 })
       plans = planned.plans.length
+      if (planned.persistErrors?.length) {
+        allPhaseErrors.push(`planner-persist: ${planned.persistErrors.slice(0, 2).join('; ')}${planned.persistErrors.length > 2 ? ` (+${planned.persistErrors.length - 2})` : ''}`)
+      }
       try {
         const { persistPlannerInterlinks } = await import('@/lib/seoEngine/interlink')
         interlinksStored = await persistPlannerInterlinks(planned.plans)
-      } catch {
-        interlinksStored = 0
+      } catch (ilErr) {
+        allPhaseErrors.push(`interlinks: ${ilErr instanceof Error ? ilErr.message : 'failed'}`)
       }
       const { runRankingPassForPlans, attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
       const rank = await runRankingPassForPlans(body.limit || 15)
@@ -163,14 +195,18 @@ export async function POST(req: NextRequest) {
         llmFailed = vis.failed
       }
       try {
-        const { fetchAhrefsSiteAudit, persistAhrefsSnapshot, fallbackLegalAhrefsSnapshot } = await import('@/lib/seoEngine/ahrefsAudit')
+        const { fetchAhrefsSiteAudit, persistAhrefsSnapshot } = await import('@/lib/seoEngine/ahrefsAudit')
         if (process.env.AHREFS_API_KEY) {
           const snap = await fetchAhrefsSiteAudit()
-          await persistAhrefsSnapshot(snap)
+          const r = await persistAhrefsSnapshot(snap)
+          if (!r.ok) throw new Error(`ahrefs persist: ${r.error}`)
         } else {
-          await persistAhrefsSnapshot(fallbackLegalAhrefsSnapshot())
+          // No key — nothing to do. NEVER persist the hardcoded fallback crawl:
+          // it would bury the last real snapshot as if it were fresh.
         }
-      } catch { /* Ahrefs is additive — never fail the daily run */ }
+      } catch (ahrefsErr) {
+        allPhaseErrors.push(`ahrefs: ${ahrefsErr instanceof Error ? ahrefsErr.message : 'failed'}`)
+      }
       // TitleLab CTR feedback loop: recalibrate the title-scorer bucket
       // weights from rows that carry measured ctr_after_ship (GSC-matched).
       // Best-effort — a missing history table or config row never fails the
@@ -191,14 +227,16 @@ export async function POST(req: NextRequest) {
         }
       } catch { /* title calibration is additive — never fail the daily run */ }
     }
-    const status = classifyEngineRunStatus({
-      phase,
-      itemsStored: ingest.itemsStored,
-      sourcesRun: ingest.sourcesRun,
-      sourceErrors: ingest.errors.length,
-      plans,
-      rankComputed,
-    })
+    const status = allPhaseErrors.length
+      ? 'partial'
+      : classifyEngineRunStatus({
+          phase,
+          itemsStored: ingest.itemsStored,
+          sourcesRun: ingest.sourcesRun,
+          sourceErrors: ingest.errors.length,
+          plans,
+          rankComputed,
+        })
     // Economics rollup for the 'all' phase — est. monthly funnel value.
     let economics = { revenueUsdMonthly: 0, estimatedPlans: 0, byAction: {} as Record<string, number> }
     if (rankComputed > 0) {
@@ -232,7 +270,7 @@ export async function POST(req: NextRequest) {
       llmCited: cited,
       llmFailed,
       interlinksStored,
-    }, [...ingest.errors, ...ingest.aiErrors].slice(0, 20), 'cron')
+    }, [...ingest.errors, ...ingest.aiErrors, ...allPhaseErrors].slice(0, 20), 'cron')
 
     return NextResponse.json({
       ok: true,
@@ -257,6 +295,7 @@ export async function POST(req: NextRequest) {
       llmCited: cited,
       llmFailed,
       interlinksStored,
+      phaseErrors: allPhaseErrors.slice(0, 5),
     })
   } catch (e) {
     await recordEngineRun('daily', 'failed', { phase }, [e instanceof Error ? e.message : 'unknown'], 'cron')

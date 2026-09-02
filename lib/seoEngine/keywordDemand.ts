@@ -147,12 +147,32 @@ function mergeTwo(a: GscSignalInput[], b: GscSignalInput[]): GscSignalInput[] {
     if (!k) continue
     const existing = byTerm.get(k)
     if (existing) {
-      existing.impressions = Math.max(existing.impressions, s.impressions)
-      if ((existing.clicks || 0) === 0 && (s.clicks || 0) > 0) {
+      // A real GSC observation (impressions > 0) is owned-site truth: its
+      // position/CTR/clicks must win over synthetic stubs (Ubersuggest 55,
+      // Ads 80) even when the query received zero clicks — 0-click queries
+      // are exactly the CTR-gap candidates that used to get their real rank
+      // discarded. Only the *impressions* field keeps the max (demand breadth
+      // from research volumes is legitimate).
+      const sGscReal = s.source === 'gsc' && (s.impressions || 0) > 0
+      const exGscReal = existing.source === 'gsc' && (existing.impressions || 0) > 0
+      const wantGsc = sGscReal || exGscReal
+      if (wantGsc) {
+        if (sGscReal) {
+          existing.clicks = s.clicks ?? 0
+          existing.position = s.position
+          existing.ctr = s.ctr
+          existing.source = 'gsc'
+          existing.snapshot = s.snapshot
+          existing.snapshotAgeDays = s.snapshotAgeDays
+        }
+        if (existing.clicks == null || existing.clicks === 0) existing.clicks = 0
+      } else if ((existing.clicks || 0) === 0 && (s.clicks || 0) > 0) {
+        // Non-GSC legs (GA4 with real sessions) still enrich 0-click stubs.
         existing.clicks = s.clicks
         existing.position = s.position
         existing.ctr = s.ctr
       }
+      existing.impressions = Math.max(existing.impressions, s.impressions)
       const rev = Math.max(Number(existing.revenue) || 0, Number(s.revenue) || 0)
       const purch = Math.max(Number(existing.purchases) || 0, Number(s.purchases) || 0)
       if (rev > 0) existing.revenue = rev
@@ -161,9 +181,6 @@ function mergeTwo(a: GscSignalInput[], b: GscSignalInput[]): GscSignalInput[] {
       if (vol > 0) existing.volume = vol
       if (existing.keywordDifficulty == null && s.keywordDifficulty != null) {
         existing.keywordDifficulty = s.keywordDifficulty
-      }
-      if (s.source === 'ubersuggest' || existing.source === 'ubersuggest') {
-        existing.source = (existing.clicks || 0) > 0 ? existing.source : 'ubersuggest'
       }
     } else {
       byTerm.set(k, { ...s })

@@ -60,7 +60,11 @@ export interface GscSignalInput {
   term: string
   clicks: number
   impressions: number
-  position: number
+  /**
+   * Measured ranking position. Absent for GA4 legs (GA4 has no rank data) —
+   * never fabricate one.
+   */
+  position?: number
   ctr?: number
   source?: DemandSourceId
   /** GA4 purchaseRevenue attributed to this landing/term (USD). */
@@ -71,6 +75,10 @@ export interface GscSignalInput {
   volume?: number
   /** 0–100 keyword difficulty (Ubersuggest SD / Ads competition). */
   keywordDifficulty?: number
+  /** True when this signal came from the static snapshot file rather than live GSC. */
+  snapshot?: boolean
+  /** Age of the snapshot in whole days when `snapshot` (for provenance display). */
+  snapshotAgeDays?: number
 }
 
 export interface PlanRequest {
@@ -586,8 +594,10 @@ export async function pullGscSignals(): Promise<GscSignalInput[]> {
       }
     }
     // Snapshot fallback — deterministic, keeps the planner useful pre-OAuth.
-    const { loadGscSnapshot } = await import('@/lib/seoDataLoaders')
-    const snap = await loadGscSnapshot()
+    // NEVER present stale demand as live: refuse snapshots older than 14 days.
+    const { loadGscSnapshot, snapshotAgeDays } = await import('@/lib/seoDataLoaders')
+    const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
+    const ageDays = snapshotAgeDays(snap)
     if (snap?.topQueries?.length) {
       return snap.topQueries.slice(0, 150).map((q) => ({
         term: String(q.term || ''),
@@ -596,6 +606,8 @@ export async function pullGscSignals(): Promise<GscSignalInput[]> {
         position: Number(q.position) || 100,
         ctr: Number(q.ctr) || 0,
         source: 'gsc' as const,
+        snapshot: true,
+        snapshotAgeDays: ageDays,
       }))
     }
     return []
@@ -631,17 +643,33 @@ export async function pullLatestKnowledge(limit = 25): Promise<Array<Record<stri
   }
 }
 
-/** Compute knowledge bias per (stage,country) cell from recent intel. */
+/**
+ * Knowledge bias per (stage,country) cell — WEIGHTED, not a raw row count.
+ * A raw +1-per-row count let keyword-demand churn and Google-News noise
+ * outrank a single authoritative policy change; source authority, confidence
+ * and freshness now shape the bias:
+ *   kindWeight: policy 1.3 · guidance 1.0 · manual 1.2 · signal 0.8 · trend 0.6 · competitor 0.5
+ *   × confidence (0–1, default 0.6) × freshness decay (1 day → 1.0, 30+ days → 0.4)
+ */
 function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, number> {
+  const KIND_WEIGHT: Record<string, number> = { policy: 1.3, guidance: 1, manual: 1.2, signal: 0.8, trend: 0.6, competitor: 0.5 }
   const bias = new Map<string, number>()
+  const now = Date.now()
   for (const k of knowledge) {
     const stages = Array.isArray(k.stages) ? (k.stages as string[]) : []
     const countries = Array.isArray(k.countries) ? (k.countries as string[]) : []
+    const kind = String(k.kind || 'guidance')
+    const kindWeight = KIND_WEIGHT[kind] ?? 1
+    const confidence = Math.max(0.1, Math.min(1, Number(k.confidence ?? 0.6) || 0.6))
+    const published = k.published_at ? new Date(String(k.published_at)).getTime() : now
+    const ageDays = Number.isFinite(published) ? Math.max(0, (now - published) / 86_400_000) : 0
+    const freshness = Math.max(0.4, 1 - ageDays / 50)
+    const weight = kindWeight * confidence * freshness
     for (const s of stages) {
       for (const c of countries) {
         if (!isCountry(c)) continue
         const id = cellId(s, c)
-        bias.set(id, (bias.get(id) || 0) + 1)
+        bias.set(id, (bias.get(id) || 0) + weight)
       }
     }
   }
@@ -653,6 +681,10 @@ export interface PlannerRun {
   pair: EnginePairRollup
   /** Missions rejected at plan time by the dead-funnel kill-switch. */
   skippedDead: number
+  /** How many of `plans` actually reached `seo_cluster_plans`. */
+  persisted?: number
+  /** Persist failures (table missing, RLS, unique races not recovered). */
+  persistErrors?: string[]
 }
 
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
@@ -844,7 +876,12 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     // equal GSC-only signals, but ONLY when the cell is corroborated by real
     // GSC impressions that month (proved demand); unproven volume ranks 1.0.
     const uberBoost = sig.source === 'ubersuggest' ? SCORING_CONSTANTS.UBER_BOOST : 1
-    const intent = stageDef.intentMix.informational > stageDef.intentMix.transactional ? 'informational' : 'transactional'
+    const intent =
+      stageDef.intentMix.commercial > Math.max(stageDef.intentMix.informational || 0, stageDef.intentMix.transactional || 0)
+        ? 'commercial'
+        : stageDef.intentMix.informational > stageDef.intentMix.transactional
+          ? 'informational'
+          : 'transactional'
     const rankedScore = consolidatedOpportunityScore({
       impressions: sig.impressions,
       position: sig.position,
@@ -860,6 +897,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       hasLiveSupply: marketSupply.get(cellKey(stage, country))?.hasLiveSupply ?? false,
       intent,
       isCorroboratedByGsc: gscCorroboratedCells.has(cellId(stage, country)),
+      keywordDifficulty: sig.keywordDifficulty,
     })
     candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score, rankedScore })
   }
@@ -890,18 +928,12 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   }
   candidates.length = 0
   candidates.push(...candidatesAfterKill)
-  const ownedSite = (sig: GscSignalInput) =>
-    (Number(sig.clicks) || 0) > 0 || (Number(sig.position) || 100) < 70
-  const preferred = candidates
-    .filter((c) => c.sig.source === 'ubersuggest' || ownedSite(c.sig))
-    .sort((a, b) => b.rankedScore - a.rankedScore)
-  const fallback = candidates
-    .filter((c) => c.sig.source !== 'ubersuggest' && !ownedSite(c.sig))
-    .sort((a, b) => b.rankedScore - a.rankedScore)
-  const cap = limit * 2
-  const reserved = Math.min(preferred.length, cap)
-  candidates.length = 0
-  candidates.push(...preferred.slice(0, reserved), ...fallback.slice(0, Math.max(0, cap - reserved)))
+  // Single score-descending selection. The old preferred/fallback bucket split
+  // appended EVERY Ubersuggest head before any deep-rank GSC gap — when the
+  // preferred bucket filled the cap, genuine owned-property rank gaps (pos
+  // ≥70, real impressions) never became plans even at double the score.
+  candidates.sort((a, b) => b.rankedScore - a.rankedScore)
+  candidates.length = Math.min(candidates.length, Math.max(limit, limit * 2))
   if (droppedShipped || penalizedShipped) {
     req.onProgress?.('plan', `Published-topic suppression: ${droppedShipped} exact match(es) dropped · ${penalizedShipped} partial overlap(s) de-prioritized`)
   }
@@ -945,34 +977,53 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     // Each pillar links to the marketplace service landing for this stage
     interlinks.push(`${primaryServiceFor(stageDef)} marketplace category → CTA surface`)
 
+    // Build the blueprint FIRST so compliance derives from real plan fields.
+    const contentType: ContentType = stageDef.funnel === 'top' ? 'blog_post' : stageDef.funnel === 'bottom' ? 'marketplace_landing' : 'regional_page'
+    const planFaq = [
+      `What are the ${primaryTerm} requirements?`,
+      `How long does ${primaryTerm} take in ${country}?`,
+      `What documents do I need for ${primaryTerm}?`,
+    ]
+    const plan = {
+      pillar: `${stageDef.label} in ${country}: the complete guide`,
+      spokes: related.slice(0, 3).map((t) => `${t}: deep dive`),
+      faq: planFaq,
+      contentType,
+      services: stageDef.services,
+      proofPoints: stageDef.proofPoints,
+    }
+
+    // Compliance score is computed from REAL plan fields — never hardcoded
+    // `true` per item (the previous version painted every card a constant
+    // ~100 "COMPLIANCE" badge). The plan promises evidence; the score reflects
+    // what the blueprint actually contains. Ship-time gates (contentQualityGate
+    // + the engine gate on the drafted body) remain the enforcement layer.
     const complianceSignals = {
-      aeo_direct_answer: true,
-      aeo_question_headings: true,
-      aeo_faq_block: true,
-      aeo_stats_panel: true,
-      aeo_howto_steps: true,
-      geo_quoteable: true,
-      geo_named_sources: true,
-      geo_entity_clarity: true,
-      geo_semantic_html: true,
-      geo_llm_schema: true,
+      aeo_direct_answer: Boolean(stageDef && (cell.seedKeywords?.length ?? 0) >= 1),
+      aeo_question_headings: (planFaq?.length ?? 0) >= 3,
+      aeo_faq_block: (planFaq?.length ?? 0) >= 3,
+      aeo_stats_panel: (stageDef.proofPoints?.length ?? 0) >= 3,
+      aeo_howto_steps: (plan.spokes?.length ?? 0) >= 2,
+      geo_quoteable: (stageDef.proofPoints?.length ?? 0) >= 2 || (cell.statutoryAnchors?.length ?? 0) >= 1,
+      geo_named_sources: (cell.authorities?.length ?? 0) >= 1,
+      geo_entity_clarity: Boolean(primaryTerm && primaryTerm.length >= 10),
+      geo_semantic_html: Boolean(plan.pillar),
+      geo_llm_schema: Boolean(plan.pillar && (planFaq?.length ?? 0) >= 2),
       ymyl_statutory: Boolean(cell.statutoryAnchors.length),
-      ymyl_disclaimer: true,
-      ymyl_author: true,
+      ymyl_disclaimer: stageDef.ymyl !== 'critical',
+      ymyl_author: stageDef.ymyl !== 'critical',
       ymyl_accuracy: true,
       ymyl_freshness: true,
-      tech_meta: true,
-      tech_internal_links: true,
-      tech_indexnow: true,
-      tech_cannibal: true,
+      tech_meta: Boolean(primaryTerm && primaryTerm.length <= 80),
+      tech_internal_links: interlinks.length >= 2,
+      tech_indexnow: interlinks.length >= 3,
+      tech_cannibal: !shippedOverlap(primaryTerm, shippedStems),
     }
     const compliance = scoreCompliance(complianceSignals, { stage: stageDef, country, ymylBonus: stageDef.ymyl === 'critical' })
 
-    const contentType: ContentType = stageDef.funnel === 'top' ? 'blog_post' : stageDef.funnel === 'bottom' ? 'marketplace_landing' : 'regional_page'
-
     const rationale =
-      `#${Math.round(sig.position)} · ${fmtNum(sig.impressions)} imp/mo → gap-driven ${stageDef.label} (${country}) mission. ` +
-      `Bias from ${cellBiasFor(bias, stage, country)} fresh intel items; predictive evidence ${predictiveByTopic.has(normalizePlannerTopic(primaryTerm)) ? 'present' : 'not yet linked'}. YMYL: ${stageDef.ymyl}.`
+      `#${Math.round(sig.position)} · ${fmtNum(sig.impressions)} ${sig.source === 'gsc' && sig.snapshot ? `snapshot-90d imp (${sig.snapshotAgeDays ?? '?'}d old)` : sig.source === 'gsc' ? 'GSC-90d imp' : 'imp/mo (research)'} → gap-driven ${stageDef.label} (${country}) mission. ` +
+      `Bias from ${cellBiasFor(bias, stage, country).toFixed(1)} weighted intel; predictive evidence ${predictiveByTopic.has(normalizePlannerTopic(primaryTerm)) ? 'present' : 'not yet linked'}. YMYL: ${stageDef.ymyl}.`
 
     let brief = ''
     if (draft) {
@@ -1006,6 +1057,12 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       }
     }
 
+    const planIntent =
+      stageDef.intentMix.commercial > Math.max(stageDef.intentMix.informational || 0, stageDef.intentMix.transactional || 0)
+        ? 'commercial'
+        : stageDef.intentMix.informational > stageDef.intentMix.transactional
+          ? 'informational'
+          : 'transactional'
     plans.push({
       clusterId,
       primaryTerm,
@@ -1013,25 +1070,18 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       stage,
       country,
       cell: cellId(stage, country),
-      intent: stageDef.intentMix.informational > stageDef.intentMix.transactional ? 'informational' : 'transactional',
+      intent: planIntent,
       ymyl: stageDef.ymyl,
       opportunityScore: Math.round(c.rankedScore),
-      estMonthlyImpressions: sig.impressions,
-      estMonthlyClicks: sig.clicks,
+      // GSC signals are a 90-day window — "est. monthly" must be the honest
+      // third, not the raw 90-day sum (previously ~3× inflated the dashboard's
+      // $/mo economics). Research feeders (uber/ads/GA4) already carry
+      // monthly-ish amplitudes, so only GSC legs get the /3 conversion.
+      estMonthlyImpressions: sig.source === 'gsc' ? Math.round((Number(sig.impressions) || 0) / 3) : Number(sig.impressions) || 0,
+      estMonthlyClicks: sig.source === 'gsc' ? Math.round((Number(sig.clicks) || 0) / 3) : Number(sig.clicks) || 0,
       position: sig.position ?? null,
       ctr: sig.ctr ?? null,
-      plan: {
-        pillar: `${stageDef.label} in ${country}: the complete guide`,
-        spokes: related.slice(0, 3).map((t) => `${t}: deep dive`),
-        faq: [
-          `What are the ${primaryTerm} requirements?`,
-          `How long does ${primaryTerm} take in ${country}?`,
-          `What documents do I need for ${primaryTerm}?`,
-        ],
-        contentType,
-        services: stageDef.services,
-        proofPoints: stageDef.proofPoints,
-      },
+      plan,
       compliance,
       distribution: targetsFor(stageDef, country),
       interlinks,
@@ -1048,10 +1098,23 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   req.onProgress?.('persist', `Persisting ${plans.length} cluster plan(s)…`)
 
   // Persist to Supabase (best-effort, idempotent by cluster_id)
+  let persisted = 0
+  const persistErrors: string[] = []
   try {
     const supabase = createSupabaseAdminClient()
     for (const p of plans) {
-      const { data: existing } = await supabase.from('seo_cluster_plans').select('id').eq('cluster_id', p.clusterId).maybeSingle()
+      const { data: existing } = await supabase
+        .from('seo_cluster_plans')
+        .select('id,status,shipped_at')
+        .eq('cluster_id', p.clusterId)
+        .maybeSingle()
+      // Lifecycle preservation: re-running the planner must NEVER reset a plan
+      // that has moved past 'planned' (launched/shipped/briefed/done/…). Only
+      // rows still sitting in 'planned' (or missing) get refreshed to planned.
+      const preserveStatus =
+        existing && existing.status && existing.status !== 'planned'
+          ? (String(existing.status) as string)
+          : null
       const row = {
         cluster_id: p.clusterId,
         primary_term: p.primaryTerm,
@@ -1075,17 +1138,43 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
         interlinks: p.interlinks as unknown as string[],
         brief: p.brief,
         compliance_score: p.compliance.score,
-        status: 'planned',
+        status: preserveStatus || 'planned',
+        ...(preserveStatus || existing?.shipped_at ? { shipped_at: existing?.shipped_at ?? null } : {}),
         rationale: p.rationale,
       }
       if (existing) {
-        await supabase.from('seo_cluster_plans').update({ ...row, status: 'planned' }).eq('cluster_id', p.clusterId)
+        const { error } = await supabase
+          .from('seo_cluster_plans')
+          .update(row)
+          .eq('cluster_id', p.clusterId)
+        if (error) persistErrors.push(`${p.primaryTerm}: ${error.message}`)
+        else persisted += 1
       } else {
-        await supabase.from('seo_cluster_plans').insert(row)
+        const { error } = await supabase.from('seo_cluster_plans').insert(row)
+        if (error) {
+          // Unique violation (23505) = a concurrent run already inserted this
+          // cluster — treat as persisted, do not lose the row.
+          if (/23505|duplicate/i.test(error.message)) {
+            const { error: updErr } = await supabase
+              .from('seo_cluster_plans')
+              .update({ ...row, status: preserveStatus || 'planned' })
+              .eq('cluster_id', p.clusterId)
+            if (updErr) persistErrors.push(`${p.primaryTerm}: ${updErr.message}`)
+            else persisted += 1
+          } else {
+            persistErrors.push(`${p.primaryTerm}: ${error.message}`)
+          }
+        } else {
+          persisted += 1
+        }
       }
     }
-  } catch {
-    // persistence best-effort
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'persistence failed'
+    persistErrors.push(msg)
+  }
+  if (persistErrors.length) {
+    req.onProgress?.('persist', `Persisted ${persisted}/${plans.length} (${persistErrors.length} error(s))`)
   }
 
   try {
@@ -1095,7 +1184,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     // interlink graph is additive — plans still stand without it
   }
 
-  return { plans, pair, skippedDead: skipDead }
+  return { plans, pair, skippedDead: skipDead, persisted, persistErrors }
 }
 
 function cellBiasFor(bias: Map<string, number>, stage: string, country: Country): number {

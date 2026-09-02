@@ -35,18 +35,35 @@ export async function POST(req: NextRequest) {
       limit?: number
       aiProvider?: string
     }
-    const { plans, pair } = await runPlanner({
+    const { plans, pair, persisted, persistErrors } = await runPlanner({
       stage: body.stage,
       country: body.country,
       draftBriefs: body.draftBriefs !== false,
       limit: body.limit,
       aiProvider: body.aiProvider ? String(body.aiProvider) : undefined,
     })
-    await recordEngineRun('plan', plans.length ? 'success' : 'partial', {
-      plans: plans.length,
-      pair: formatEnginePairTape(pair),
-    }, [], 'admin')
-    return NextResponse.json({ ok: true, plans, count: plans.length, pair })
+    const persistIssue = (persistErrors?.length ?? 0) > 0
+    await recordEngineRun(
+      'plan',
+      persistIssue || !plans.length ? 'partial' : 'success',
+      {
+        plans: plans.length,
+        persisted: persisted ?? plans.length,
+        persistErrors: persistErrors?.length ?? 0,
+        pair: formatEnginePairTape(pair),
+      },
+      persistErrors || [],
+      'admin',
+    )
+    // The desk must never believe 20 plans reached the DB when 0 did.
+    return NextResponse.json({
+      ok: true,
+      plans,
+      count: plans.length,
+      persisted: persisted ?? plans.length,
+      persistErrors: persistErrors || [],
+      pair,
+    })
   } catch (e) {
     await recordEngineRun('plan', 'failed', {}, [e instanceof Error ? e.message : 'unknown'], 'admin')
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'planning failed' }, { status: 500 })

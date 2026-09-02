@@ -33,6 +33,7 @@ import {
   type Country,
 } from './ontology'
 import { ESTATE_REPOS, type ContentType } from './ontology'
+import { getAllSubcategories, getCategoryById } from '@/lib/categories'
 
 export type InterlinkReason =
   | 'ontology_neighbor'
@@ -72,6 +73,21 @@ export interface InterlinkPlanInput {
   contentType: ContentType
   relatedTerms?: string[]
   serviceCategory?: string
+}
+
+/**
+ * Resolve a stage service key (e.g. 'visa', 'study-permits') to a REAL
+ * marketplace URL. The marketplace routes are /marketplace/categories/<id>
+ * (top-level category or subcategory) — the previous `/marketplace/category/…`
+ * target with raw service keys produced 404s on live pages.
+ */
+export function marketplaceCategoryHref(service: string): string {
+  const id = String(service || '').trim()
+  const isValid =
+    Boolean(getCategoryById(id)) ||
+    getAllSubcategories().some((s) => s.id === id)
+  const resolved = isValid ? id : 'immigration'
+  return `${ESTATE_BASE.market}/marketplace/categories/${resolved}`
 }
 
 function hostForContentType(ct: ContentType): string {
@@ -164,9 +180,8 @@ export function generateInterlinkPlan(input: InterlinkPlanInput): InterlinkEdge[
 
   // 3. Marketplace CTA — the page that monetises this stage
   const service = input.serviceCategory || primaryServiceFor(stageDef)
-  const marketHost = ESTATE_BASE.market
   push({
-    targetUrl: `${marketHost}/marketplace/category/${service}`,
+    targetUrl: marketplaceCategoryHref(service),
     targetHost: 'market',
     anchorText: `Find ${service.replace(/-/g, ' ')} help on the marketplace`,
     contextH2: 'Get professional help',
@@ -200,6 +215,38 @@ export function interlinkPromptBlock(edges: InterlinkEdge[]): string {
   )
 }
 
+/**
+ * Load the engine's PERSISTED interlink edges for a lifecycle cell —
+ * `seo-<country>-<stage>-%` source slugs (planner missions). Shaped like the
+ * Opportunity Radar's interlink options so the pipeline's interlinkAllowlist
+ * contract accepts them: the writer is told to embed them as internal links
+ * and the ship-time link audit treats them as allowlisted targets.
+ */
+export async function loadEngineInterlinksForCell(
+  stage: string,
+  country: Country,
+  limit = 5,
+): Promise<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>> {
+  try {
+    const supabase = createSupabaseAdminClient()
+    const { data } = await supabase
+      .from('seo_interlinks')
+      .select('target_url,target_host,anchor_text,reason')
+      .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
+      .order('score', { ascending: false })
+      .limit(limit)
+    const rows = (data as Array<Record<string, unknown>>) || []
+    return rows.map((r) => ({
+      label: String(r.anchor_text || r.target_url || ''),
+      url: String(r.target_url || ''),
+      site: String(r.target_host || ''),
+      matchedOn: [String(r.reason || 'engine_interlink')],
+    }))
+  } catch {
+    return []
+  }
+}
+
 /** Persist ontology interlink edges for planner missions (idempotent upsert). */
 export async function persistPlannerInterlinks(
   plans: Array<{
@@ -226,7 +273,7 @@ export async function persistPlannerInterlinks(
   return stored
 }
 
-export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number }> {
+export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number; error?: string }> {
   if (!edges.length) return { stored: 0 }
   try {
     const supabase = createSupabaseAdminClient()
@@ -243,12 +290,13 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
     }))
     const { error } = await supabase.from('seo_interlinks').upsert(rows, { onConflict: 'source_slug,target_url' })
     if (error) {
-      if (/42P01|relation .* does not exist/i.test(error.message)) return { stored: 0 }
-      return { stored: 0 }
+      // A missing table (migration not applied) is just as real a failure as
+      // any other — never mask it as "nothing to store".
+      return { stored: 0, error: error.message.slice(0, 300) }
     }
     return { stored: rows.length }
-  } catch {
-    return { stored: 0 }
+  } catch (e) {
+    return { stored: 0, error: e instanceof Error ? e.message.slice(0, 300) : 'persist failed' }
   }
 }
 
@@ -344,9 +392,11 @@ export async function loadPersistedCell(opts: {
     if (opts.sourceSlug) {
       q = q.eq('source_slug', opts.sourceSlug)
     } else {
-      // Match by country prefix embedded in the slug: `<ct>-<stage>-<country>-<topic-slug>`
+      // Planner slugs are `seo-<country>-<stage>-<topic-stem>` (plannerClusterId
+      // builds `seo-${country}-${stage}-${stem}`). The old `%-<stage>-<country>-%`
+      // order never matched, so this inspector always reported an empty cell.
       const countrySlug = opts.country.toLowerCase()
-      q = q.ilike('source_slug', `%-${opts.stage}-${countrySlug}-%`)
+      q = q.ilike('source_slug', `seo-${countrySlug}-${opts.stage}-%`)
     }
     const { data } = await q.order('score', { ascending: false }).limit(200)
     const rows = (data as Array<Record<string, unknown>>) || []
@@ -365,8 +415,13 @@ export async function loadPersistedCell(opts: {
       const srcSlug = String(r.source_slug || '')
       byReason[reason] = (byReason[reason] || 0) + 1
       byStatus[status] = (byStatus[status] || 0) + 1
-      const m = srcSlug.match(/^([a-z0-9-]+)-([a-z]+)-([a-z]{2})-(.+)$/)
-      if (m) byStageMap[m[2]] = (byStageMap[m[2]] || 0) + 1
+      // Planner slug layout: `seo-<country>-<stage>-<stem>`
+      const countrySlug = opts.country.toLowerCase()
+      const stem = srcSlug.startsWith(`seo-${countrySlug}-`)
+        ? srcSlug.slice(`seo-${countrySlug}-`.length)
+        : srcSlug
+      const stageKey = stem.split('-')[0]
+      if (stem !== srcSlug && stageKey) byStageMap[stageKey] = (byStageMap[stageKey] || 0) + 1
       if (status === 'applied') applied += 1
       else planned += 1
       const u = String(r.updated_at || r.created_at || '')

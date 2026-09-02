@@ -70,6 +70,14 @@ export async function POST(request: Request) {
         }
       }
 
+      // Heartbeat: during the long "Building outcome history from live GSC …"
+      // checkpoint (or any multi-second AI/DB work) the client's proxy may
+      // time the connection out with zero events. A 15s `heartbeat` event
+      // keeps intermediaries from killing the stream mid-run.
+      const heartbeat = setInterval(() => {
+        send({ type: 'heartbeat', at: Date.now() })
+      }, 15_000)
+
       // Monotonic step ordering across both the setup checkpoints and the
       // detailed buildEngineTrace steps (whose internal seq restarts at 0).
       let seq = 0
@@ -201,6 +209,7 @@ export async function POST(request: Request) {
         const message = err instanceof Error ? err.message : 'Unknown error'
         send({ type: 'error', error: `Master engine failed: ${message}` })
       } finally {
+        clearInterval(heartbeat)
         if (!closed) {
           try {
             controller.enqueue(encoder.encode('data: [DONE]\n\n'))

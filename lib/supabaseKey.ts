@@ -40,27 +40,72 @@ export function isSecretKey(key: string | null | undefined): boolean {
 /**
  * Pick the best key a supabase-js v2 client can actually use.
  *
- * Prefers the legacy `eyJ…` service-role JWT (full access, no RLS). When the
- * service-role key is the new `sb_secret_…` format (rejected by supabase-js
- * v2), falls back to the anon key — a legacy JWT that reads/writes open-RLS
- * tables (e.g. `content_jobs` is `USING true / WITH CHECK true`). This mirrors
- * the long-standing pattern in the scripts/*.mts one-shots.
+ * Prefers, in order:
+ *   1. `SUPABASE_SERVICE_ROLE_JWT` — an explicitly-provided legacy `eyJ…`
+ *      service-role JWT. Set this alongside a new-format
+ *      `SUPABASE_SERVICE_ROLE_KEY` to keep full service-role access (no RLS
+ *      bypass via the anon key).
+ *   2. a legacy `eyJ…` `SUPABASE_SERVICE_ROLE_KEY`
+ *   3. the anon key — **only** as a last resort, and only when the caller
+ *      opts in via `allowAnonFallback`. Anonymous fallback means every
+ *      "admin" DB call runs as the PUBLIC anon role against open-RLS tables,
+ *      which is a security and data-integrity risk — never do it silently.
+ *      The long-standing default in this repo used to fall back to anon
+ *      automatically; keep that behavior by passing `{ allowAnonFallback:
+ *      true }` in call sites that are knowingly read-only/best-effort.
  *
  * Pass explicit `serviceRoleKey` / `anonKey` to override the env reads (used
  * by tests). Returns null when nothing usable is present so callers can raise
  * their own "missing env" error.
  */
+export type SupabaseAuthMode = 'service-role' | 'degraded-anon' | 'missing'
+
 export function resolveSupabaseKey(opts?: {
   serviceRoleKey?: string | null
   anonKey?: string | null
+  allowAnonFallback?: boolean
 }): string | null {
-  const sr = opts?.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  const sr =
+    opts?.serviceRoleKey ??
+    process.env.SUPABASE_SERVICE_ROLE_JWT ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    ''
   const anon = opts?.anonKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
   if (isLegacyJwtKey(sr)) return sr
-  if (isLegacyJwtKey(anon)) return anon
+
+  if (isLegacyJwtKey(anon)) {
+    if (opts?.allowAnonFallback === false) return null
+    if (sr) {
+      // Service-role key present but unusable (new `sb_secret_…` format).
+      console.warn(
+        '[supabaseKey] SUPABASE_SERVICE_ROLE_KEY is in the new sb_secret_ format which supabase-js v2 rejects — falling back to the ANON key. Set SUPABASE_SERVICE_ROLE_JWT (legacy service-role JWT) to restore service-role access; anonymous fallback exposes open-RLS tables.',
+      )
+    }
+    return anon
+  }
 
   // Last resort: return whatever we have (even a secret-format key) so the
   // caller surfaces the real supabase-js error instead of a bare undefined.
   return sr || anon || null
+}
+
+/**
+ * Which auth role is `resolveSupabaseKey()` going to hand out? Lets callers
+ * surface degraded auth in status endpoints instead of silently serving
+ * anonymous-scope data.
+ */
+export function supabaseAuthMode(opts?: {
+  serviceRoleKey?: string | null
+  anonKey?: string | null
+}): SupabaseAuthMode {
+  const sr =
+    opts?.serviceRoleKey ??
+    process.env.SUPABASE_SERVICE_ROLE_JWT ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    ''
+  const anon = opts?.anonKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+  if (isLegacyJwtKey(sr)) return 'service-role'
+  if (isLegacyJwtKey(anon)) return 'degraded-anon'
+  return sr || anon ? 'degraded-anon' : 'missing'
 }

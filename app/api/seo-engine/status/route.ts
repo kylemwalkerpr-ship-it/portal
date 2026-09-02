@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { createSupabaseAdminClient } from '@/lib/supabase'
+import { createSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
 import { reportSpecCoverage } from '@/lib/seoEngine/specCoverage'
@@ -95,6 +95,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       fetchedAt: new Date().toISOString(),
+      authMode: isServiceRoleAchieved() ? 'service-role' : 'degraded-anon',
       lifecycle: { seededCells: cells },
       knowledge: {
         total: knowledge,

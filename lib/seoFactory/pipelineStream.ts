@@ -290,7 +290,32 @@ export async function* runSeoFactoryPipelineStream(
 
     // ── Opportunity Radar autopilot brief (transparency into the draft) ──
     const opp = input.opportunity
-    const radarInterlinks = Array.isArray(input.interlinks) ? input.interlinks : []
+    const radarInterlinks = Array.isArray(input.interlinks) ? [...input.interlinks] : []
+    // ── Master Engine interlink graph (seo_interlinks) ──────────────────────
+    // The planner's persisted journey edges for this term's lifecycle cell are
+    // a first-class internal-link allowlist (same contract as radar links), so
+    // drafts embed the engine's REAL planned journey prev/next + marketplace
+    // CTA links instead of whatever hubs the model invented on its own.
+    if (!radarInterlinks.length) {
+      try {
+        const { bestCellForTerm, MIN_CELL_MATCH_SCORE } = await import('@/lib/seoEngine/planner')
+        const { loadEngineInterlinksForCell } = await import('@/lib/seoEngine/interlink')
+        const cell = bestCellForTerm(primaryKeyword || topic)
+        if (cell && cell.score >= MIN_CELL_MATCH_SCORE) {
+          const engineLinks = await loadEngineInterlinksForCell(cell.stage, cell.country, 5)
+          if (engineLinks.length) {
+            radarInterlinks.push(...engineLinks)
+            yield {
+              type: 'progress',
+              stage: 'gsc',
+              message: `Injected ${engineLinks.length} Master Engine interlink target(s) (journey ${cell.stage}/${cell.country})`,
+            }
+          }
+        }
+      } catch {
+        /* engine interlinks are additive — never fail the run */
+      }
+    }
     const autopilotBlock = [
       radarInterlinks.length
         ? `### Internal linking strategy (from Opportunity Radar)\nLink naturally to these high-value targets with descriptive anchors where relevant:\n${radarInterlinks

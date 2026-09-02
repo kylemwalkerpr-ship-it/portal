@@ -131,6 +131,11 @@ export function buildForecastRewardEvent(row: ForecastEvalRow, nowIso: string, a
     reward,
     attribution: { [family]: Math.round(reward * 0.8 * 100) / 100 },
     note,
+    // DB-level idempotency backstop: without subject_key in the note the old
+    // 1000-row in-memory dedupe window could re-credit stale keys once the
+    // ledger grows. The key now includes the tracked subject's identity so
+    // distinct topics can never collide and re-runs always collide.
+    dedupeKey: `forecast:${key}${row.subjectKey ? `:${row.subjectKey}` : ''}`,
     observedAt: nowIso,
   }
 }

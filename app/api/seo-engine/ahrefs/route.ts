@@ -36,28 +36,29 @@ export async function POST(req: NextRequest) {
   }
   try {
     if (Array.isArray(body.issues) && body.issues.length) {
-      const { snapshotFromOverview, persistAhrefsSnapshot: persist } = await import('@/lib/seoEngine/ahrefsAudit')
+      const { snapshotFromOverview } = await import('@/lib/seoEngine/ahrefsAudit')
       const snap = snapshotFromOverview(body.issues, {
         projectId: String(body.projectId || '9902912'),
         date: body.date || new Date().toISOString(),
         dateCompared: body.dateCompared || null,
         source: 'manual',
       })
-      await persist(snap)
+      const r = await persistAhrefsSnapshot(snap)
+      if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 500 })
       return NextResponse.json({ ok: true, snapshot: snap, source: 'manual' })
     }
     const snap = await fetchAhrefsSiteAudit(body)
-    await persistAhrefsSnapshot(snap)
+    const r = await persistAhrefsSnapshot(snap)
+    if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 500 })
     return NextResponse.json({ ok: true, snapshot: snap })
   } catch (e) {
-    const { fallbackLegalAhrefsSnapshot, persistAhrefsSnapshot: persist } = await import('@/lib/seoEngine/ahrefsAudit')
-    const snap = fallbackLegalAhrefsSnapshot()
-    await persist(snap).catch(() => {})
+    // Never persist the hardcoded fallback crawl as if it were fresh — a stale
+    // snapshot in the DB would bury the last real measurement. Fail loudly.
+    const { fallbackLegalAhrefsSnapshot } = await import('@/lib/seoEngine/ahrefsAudit')
     return NextResponse.json({
-      ok: true,
-      snapshot: snap,
-      source: 'fallback',
-      warning: e instanceof Error ? e.message : 'Ahrefs fetch failed — using 2026-08-17 crawl',
-    })
+      ok: false,
+      error: e instanceof Error ? e.message : 'Ahrefs fetch failed',
+      lastKnown: fallbackLegalAhrefsSnapshot(),
+    }, { status: 502 })
   }
 }

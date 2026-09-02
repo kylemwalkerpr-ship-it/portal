@@ -272,10 +272,18 @@ export function scoreCompliance(
     c.score = c.total ? Math.round((c.met / c.total) * 100) : 0
     // YMYL-critical content cannot pass with missing statutory anchors or disclaimer.
     if (ymylRequired && cat === 'ymyl' && !signals.ymyl_statutory) c.score = Math.min(c.score, 30)
+    if (ymylRequired && cat === 'ymyl' && !signals.ymyl_disclaimer) c.score = Math.min(c.score, 30)
   }
 
   const score = weightTotal ? Math.round((weightMet / weightTotal) * 100) : 0
-  const passed = ymylRequired ? score >= 85 : score >= 70
+  // YMYL-critical content can NEVER pass without the statutory anchor AND the
+  // disclaimer — the score may still read high when every OTHER item is met,
+  // so `passed` must follow the same rule the enforcement gate uses (G8-era
+  // contradiction: compliance.passed=true while enforceGate said BLOCK).
+  const statutoryOk = !ymylRequired || Boolean(signals.ymyl_statutory)
+  const disclaimerOk = !ymylRequired || Boolean(signals.ymyl_disclaimer)
+  const hardGates = statutoryOk && disclaimerOk
+  const passed = hardGates && (ymylRequired ? score >= 85 : score >= 70)
 
   return { score, passed, checks, byCategory }
 }

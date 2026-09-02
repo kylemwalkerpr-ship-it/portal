@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { resolveSupabaseKey } from './supabaseKey'
+import { resolveSupabaseKey, supabaseAuthMode } from './supabaseKey'
 
 export function createSupabaseAdminClient() {
   return createClient(
@@ -7,4 +7,13 @@ export function createSupabaseAdminClient() {
     resolveSupabaseKey()!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
+}
+
+/**
+ * True when the deployed service-role key is usable by supabase-js v2
+ * (legacy JWT). When false, every "admin" client actually runs as the anon
+ * key against open-RLS tables — surface this in status endpoints.
+ */
+export function isServiceRoleAchieved(): boolean {
+  return supabaseAuthMode() === 'service-role'
 }

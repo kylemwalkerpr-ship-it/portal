@@ -289,7 +289,15 @@ export function isSeoRelevant(title: string, description = ''): boolean {
 function applySourceFloor(tagged: TaggedItem, source?: KnowledgeSource): TaggedItem {
   if (tagged.score > 0 || !source) return tagged
   if (source.kind === 'policy') {
-    return { ...tagged, score: 2, countries: tagged.countries.length ? tagged.countries : [...source.countries], stages: tagged.stages.length ? tagged.stages : ['visa'] }
+    // A policy item that matched NOTHING in the ontology must not be pinned to
+    // the visa cell by default — that silently inflated the busiest cell's
+    // knowledge bias with passports notices and deportation tooling stories.
+    return {
+      ...tagged,
+      score: 2,
+      countries: tagged.countries.length ? tagged.countries : [...source.countries],
+      stages: tagged.stages.length ? tagged.stages : [],
+    }
   }
   if (source.kind === 'guidance' && isSeoRelevant(tagged.title, tagged.description)) {
     return { ...tagged, score: 3, countries: tagged.countries.length ? tagged.countries : [...source.countries], stages: tagged.stages.length ? tagged.stages : ['intent'] }
@@ -503,6 +511,17 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
             if (result.aiErrors.length < 6) result.aiErrors.push(`${source.id}: ${msg.slice(0, 160)}`)
           }
         }
+        // Safe date parse: a malformed feed pubDate ("Published 2 days ago")
+        // used to throw inside the per-source try and discard EVERY item that
+        // source fetched that run. Bad dates are skipped per-item now, and
+        // future-dated stamps are clamped to now.
+        let publishedIso: string | null = null
+        try {
+          const t = tagged.published ? new Date(tagged.published).getTime() : NaN
+          if (Number.isFinite(t)) publishedIso = new Date(Math.min(t, Date.now())).toISOString()
+        } catch {
+          publishedIso = null
+        }
         const { error } = await supabase.from('seo_knowledge').upsert({
           source: source.id, source_label: source.label, kind: source.kind, url: dedupeKey,
           title: tagged.title.slice(0, 500), summary: (tagged.description || '').slice(0, 2000) || null,
@@ -512,7 +531,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
             ...extraTags,
           ],
           countries: tagged.countries, stages: tagged.stages, confidence: Math.min(0.99, authorityFor(source)),
-          published_at: tagged.published ? new Date(tagged.published).toISOString() : null, dedupe_key: dedupeKey,
+          published_at: publishedIso, dedupe_key: dedupeKey,
         }, { onConflict: 'dedupe_key' })
         if (error) {
           if (!/42P01|relation .* does not exist/i.test(error.message)) result.errors.push(`${source.id}: ${error.message.slice(0, 160)}`)

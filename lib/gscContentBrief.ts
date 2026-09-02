@@ -9,6 +9,7 @@
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 
 export interface GscQuerySignal {
   term: string
@@ -195,9 +196,18 @@ export async function buildGscContentBrief(opts: {
   }
 
   if (source === 'snapshot') {
-    const snap = await loadGscSnapshot()
+    // Never present stale demand as live. Older than 14 days → refuse the
+    // snapshot entirely so downstream decision paths fail honestly instead of
+    // planning on dead data.
+    const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
     queries = snap.topQueries ?? []
     pages = snap.topPages ?? []
+    if (queries.length === 0) {
+      warnings.push(
+        'GSC snapshot is stale or unavailable (older than 14 days or missing). ' +
+          'Refusing snapshot demand — regenerate the snapshot (re-export from Search Console) or fix live GSC credentials.',
+      )
+    }
     // Prefer opportunity lists when topic matching is weak
     if (snap.opportunities?.highImpressionLowCtr?.length) {
       // merge into pool with dedupe
@@ -216,15 +226,24 @@ export async function buildGscContentBrief(opts: {
     .sort((a, b) => b.rel - a.rel || b.q.impressions - a.q.impressions)
 
   const relevant = ranked.filter((r) => r.rel > 0).map((r) => r.q)
-  const primaryKeywords = (relevant.length > 0 ? relevant : queries).slice(0, Math.min(6, limit))
-  const relatedKeywords = (relevant.length > 0 ? relevant : queries)
-    .slice(primaryKeywords.length, primaryKeywords.length + 8)
+  // Never promote brand/noise queries (site's own name, file-like terms) to
+  // "primary keywords" — previously the top-6 unrelated rows were used as-is.
+  const cleanPool = queries.filter((q) => !isJunkQuery(String(q.term || '')))
+  const pool = relevant.length > 0 ? relevant : cleanPool
+  const primaryKeywords = pool.slice(0, Math.min(6, limit))
+  const relatedKeywords = pool.slice(primaryKeywords.length, primaryKeywords.length + 8)
 
-  const opportunityKeywords = queries
-    .filter((q) => q.impressions >= 15 && q.position > 20 && q.ctr < 0.02)
-    .filter((q) => scoreRelevance(q.term, opts.topic, keywords) > 0 || relevant.length === 0)
-    .sort((a, b) => b.impressions - a.impressions)
-    .slice(0, 8)
+  // A clicks=0 export (or clicks missing) cannot evidence CTR gaps — every
+  // query would "qualify" as low-CTR. Only compute opportunity keywords when
+  // the pool carries real click data.
+  const hasClickData = queries.some((q) => Number(q.clicks) > 0)
+  const opportunityKeywords = hasClickData
+    ? queries
+        .filter((q) => q.impressions >= 15 && q.position > 20 && q.ctr < 0.02)
+        .filter((q) => scoreRelevance(q.term, opts.topic, keywords) > 0 || relevant.length === 0)
+        .sort((a, b) => b.impressions - a.impressions)
+        .slice(0, 8)
+    : []
 
   const relatedPages = pages
     .map((p) => ({

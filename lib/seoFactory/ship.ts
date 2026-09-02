@@ -587,6 +587,48 @@ export async function shipContent(opts: {
     fileContent,
   })
 
+  // ── Master Engine compliance gate on the REAL draft ──────────────────────
+  // Previously `enforceGate` was only callable from its own API route — the
+  // ship door never consulted it, so "compliance" was telemetry. Now every
+  // ship runs the deterministic AEO/GEO/YMYL evidence scan (recorded to
+  // seo_gate_runs). YMYL-critical maps (visa/citizenship/family) on legal
+  // content hard-block when BOTH the statutory anchor AND the professional
+  // disclaimer are missing; everything else is advisory (documented in the
+  // gate run, never silently skipped).
+  try {
+    const { enforceGate } = await import('@/lib/seoEngine/gate')
+    const { bestCellForTerm, MIN_CELL_MATCH_SCORE } = await import('@/lib/seoEngine/planner')
+    const cell = bestCellForTerm(opts.primaryKeyword || opts.title)
+    const stage = cell && cell.score >= MIN_CELL_MATCH_SCORE ? cell.stage : ''
+    const isLegalContent =
+      opts.plan.host === 'legal' ||
+      opts.plan.repo === 'caseworks' ||
+      /legal_guide|article/i.test(opts.contentType)
+    if (stage) {
+      const verdict = await enforceGate(
+        { subjectType: 'job', subjectId: opts.jobId || null, stage, country: cell?.country },
+        shipContent_,
+        { stage, country: cell?.country, title: opts.title, contentType: opts.contentType },
+      )
+      if (isLegalContent && ['visa', 'citizenship', 'family'].includes(stage) && !verdict.passed) {
+        const missingMandatory = verdict.blockers.filter((b) => b.includes('(YMYL-critical)'))
+        if (missingMandatory.length >= 2) {
+          throw new Error(
+            `Refusing ship: engine compliance gate BLOCKED on YMYL-critical stage "${stage}" — missing statutory anchor AND professional disclaimer (${missingMandatory.join('; ')}). Await human review or add both to the draft.`,
+          )
+        }
+      }
+      if (!verdict.recorded) {
+        console.warn('[ship] compliance gate run not recorded (seo_gate_runs) — verdict still enforced in-memory')
+      }
+    }
+  } catch (e) {
+    // Only YMYL hard-blocks throw; everything else must never fail a ship.
+    const msg = e instanceof Error ? e.message : ''
+    if (msg.includes('compliance gate BLOCKED')) throw e
+    console.warn('[ship] compliance gate advisory run failed (non-blocking):', msg || e)
+  }
+
   if (opts.dryRun) {
     return {
       mode: opts.mode,
@@ -658,6 +700,8 @@ export async function shipContent(opts: {
     }
 
     if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
+    // Close the interlink loop: mark engine-planned edges that are now LIVE.
+    await recordAppliedEngineInterlinks({ primaryKeyword: opts.primaryKeyword, body: shipContent_ })
     return {
       mode: 'autodeploy',
       owner,
@@ -797,6 +841,8 @@ export async function shipContent(opts: {
           submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
         }
         if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
+        // Closed loop: mark the engine's planned edges that are now live on main.
+        await recordAppliedEngineInterlinks({ primaryKeyword: opts.primaryKeyword, body: shipContent_ })
         return {
           mode: 'merge',
           owner,
@@ -874,4 +920,44 @@ export function parseRepoSlug(targetRepo: string): { owner: string; repo: string
     process.env.GITHUB_CONTENT_OWNER ?? process.env.GITHUB_REPO_OWNER ?? 'kylemwalkerpr-ship-it',
     targetRepo,
   )
+}
+
+/**
+ * Close the interlink loop: once content is LIVE (merged/deployed), flip the
+ * engine's planned edges for this mission to `applied` — but ONLY the edges
+ * whose target URL actually made it into the shipped body. Edges the draft
+ * never embedded stay `planned`, so the "applied" metric is honest.
+ */
+async function recordAppliedEngineInterlinks(opts: {
+  primaryKeyword: string
+  body: string
+}): Promise<number> {
+  try {
+    const { bestCellForTerm, MIN_CELL_MATCH_SCORE, plannerClusterId } = await import('@/lib/seoEngine/planner')
+    const cell = bestCellForTerm(opts.primaryKeyword)
+    if (!cell || cell.score < MIN_CELL_MATCH_SCORE) return 0
+    const slug = plannerClusterId(cell.country, cell.stage, opts.primaryKeyword)
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    const supabase = createSupabaseAdminClient()
+    const { data } = await supabase
+      .from('seo_interlinks')
+      .select('target_url')
+      .eq('source_slug', slug)
+      .eq('status', 'planned')
+    const rows = (data as Array<{ target_url?: string }> | null) || []
+    let applied = 0
+    for (const r of rows) {
+      const url = String(r.target_url || '')
+      if (!url || !opts.body.includes(url)) continue
+      const { error } = await supabase
+        .from('seo_interlinks')
+        .update({ status: 'applied', applied_at: new Date().toISOString() })
+        .eq('source_slug', slug)
+        .eq('target_url', url)
+      if (!error) applied += 1
+    }
+    return applied
+  } catch {
+    return 0
+  }
 }

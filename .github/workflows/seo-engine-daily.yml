@@ -22,6 +22,11 @@ jobs:
   seo-engine-daily:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Never overlap: schedule + manual dispatch must not run two `all` passes
+    # concurrently (double LLM audit rows, double reward credits, planner race).
+    concurrency:
+      group: seo-engine-daily-production
+      cancel-in-progress: false
     steps:
       - name: Run SEO Master Engine daily (knowledge → plan)
         env:
@@ -48,6 +53,13 @@ jobs:
           echo
           if [ "$CODE" != "200" ]; then
             echo "::error::SEO Master Engine daily run failed (HTTP $CODE)"
+            exit 1
+          fi
+          # A 200 body can still carry ok:false (e.g. run-in-flight 409 ->
+          # 409 is non-200, but phase-level failures and anon-fallback
+          # degradation return 200) — never green-light an errored run.
+          if echo "$BODY" | grep -q '"ok":false'; then
+            echo "::error::SEO Master Engine daily run reported ok:false in body"
             exit 1
           fi
           echo "SEO Master Engine daily run complete."

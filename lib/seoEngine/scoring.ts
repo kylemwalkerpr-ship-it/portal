@@ -50,6 +50,8 @@ export const SCORING_CONSTANTS = {
   GAP_CAP: 2,
   GAP_TARGET_POSITION: 50,
   GAP_POSITION_FLOOR: 5,
+  /** Keyword-difficulty derate: kd 0→1.0, kd 50→0.9, kd 100→0.8 (cap derate 20%). */
+  KD_DERATE_MAX: 0.2,
   /** priority factor = stagePriority / STAGE_PRIORITY_NORMALIZER (ontology priority is 1–10) */
   STAGE_PRIORITY_NORMALIZER: 5,
   /** knowledgeBias input is the COUNT of fresh intel items for the cell, divided by this before use. */
@@ -172,6 +174,36 @@ export function revenueLiftFactor(revenue: number): number {
   return Math.min(SCORING_CONSTANTS.REVENUE_LIFT_CAP, 1 + Math.log10(r + 10) / 6)
 }
 
+/**
+ * Improvement-oriented ranking-gap headroom. The old formula
+ * `min(2, 50/max(5,pos))` returned the maximum factor for EVERY position
+ * ≤25 — a term already at #1 (zero upside) got the same headroom as a #25
+ * gap, and positions 30+ were over-rewarded as "gaps" when they are mostly
+ * hard-to-move. This curve peaks in the owned-but-under-ranked band (#5–#25,
+ * the realistic climb window), is near-zero at #1 (nothing to gain), and
+ * decays for deep ranks where movement requires authority the estate does
+ * not yet have.
+ */
+export function gapForPosition(position: number): number {
+  const pos = Math.max(1, Math.round(Number(position) || 100))
+  if (pos <= 1) return 0.5
+  if (pos < 15) return 1.2 + ((pos - 2) / 13) * 0.8 // #2 ≈ 1.2 → #14 ≈ 2.0
+  if (pos <= 55) return Math.max(0.6, 2 - (pos - 15) / 40) // #15 = 2.0 → #55 ≈ 1.0
+  return 0.8 // deep rank: attainable only with real authority
+}
+
+/**
+ * Keyword-difficulty derate (0–100). KD is collected from Ubersuggest/Ads but
+ * was NEVER consumed at plan time — a KD-95 head term scored identically to a
+ * KD-5 long tail. High-difficulty demand is still demand, so the derate is
+ * bounded at 20%.
+ */
+export function difficultyFactor(keywordDifficulty: number | null | undefined): number {
+  const kd = Number(keywordDifficulty)
+  if (!Number.isFinite(kd) || kd <= 0) return 1
+  return 1 - Math.min(SCORING_CONSTANTS.KD_DERATE_MAX, Math.max(0, kd / 500))
+}
+
 export interface OpportunityScoreInput {
   impressions: number
   position: number
@@ -201,6 +233,8 @@ export interface OpportunityScoreInput {
   intent: string
   /** True when the cell has real GSC impressions that month (proves demand). */
   isCorroboratedByGsc: boolean
+  /** 0–100 keyword difficulty from Ubersuggest/Ads; derates demand up to 20%. */
+  keywordDifficulty?: number
 }
 
 /**
@@ -220,7 +254,7 @@ export function opportunityScore(input: OpportunityScoreInput): number {
   const gap =
     input.gap !== undefined && Number.isFinite(Number(input.gap))
       ? Math.max(0, Math.min(c.GAP_CAP, Number(input.gap)))
-      : Math.min(c.GAP_CAP, c.GAP_TARGET_POSITION / Math.max(c.GAP_POSITION_FLOOR, position))
+      : gapForPosition(position)
 
   const priority = Math.max(0, Number(input.stagePriority) || 0) / c.STAGE_PRIORITY_NORMALIZER
   // knowledgeBias arrives as the RAW intel-item count for the cell; the /8
@@ -233,6 +267,8 @@ export function opportunityScore(input: OpportunityScoreInput): number {
   // Ubersuggest's volume edge applies ONLY when the cell is corroborated by
   // GSC impressions that month; unproven volume ranks at 1.0.
   const boost = input.isCorroboratedByGsc && Number(input.uberBoost) > 1 ? Math.min(1.5, Math.max(1, Number(input.uberBoost) || 1)) : 1
+  // Keyword difficulty derate — only when a 0–100 KD was actually measured.
+  const kdDerate = difficultyFactor(input.keywordDifficulty)
 
   const score =
     (demand + clickBonus) *
@@ -244,6 +280,7 @@ export function opportunityScore(input: OpportunityScoreInput): number {
     predictiveAdjustment *
     shippedPenalty *
     boost *
+    kdDerate *
     conversionScore(input.stage, input.intent, input.hasLiveSupply)
 
   return Math.round(score)

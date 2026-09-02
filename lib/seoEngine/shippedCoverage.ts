@@ -19,17 +19,20 @@ export interface ShippedPage {
 export async function loadShippedCoverage(limit = 300): Promise<ShippedPage[]> {
   try {
     const db = createSupabaseAdminClient()
+    // Only MERGED/DEPLOYED work counts as "shipped coverage". A job sitting
+    // in pr_created (PR open, never merged) is a 404 — treating it as shipped
+    // starved the planner of the exact topics still missing online (audit S1).
     const [activeResult, archiveResult] = await Promise.all([
       db
         .from('content_jobs')
         .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-        .in('status', ['merged', 'pr_created', 'publishing'])
+        .in('status', ['merged', 'deployed'])
         .order('updated_at', { ascending: false })
         .limit(limit),
       db
         .from('content_jobs_archive')
         .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-        .in('status', ['merged', 'pr_created', 'publishing', 'closed'])
+        .in('status', ['merged', 'deployed'])
         .order('archived_at', { ascending: false })
         .limit(limit),
     ])
@@ -40,7 +43,8 @@ export async function loadShippedCoverage(limit = 300): Promise<ShippedPage[]> {
     const seen = new Set<string>()
     const out: ShippedPage[] = []
     for (const row of rows) {
-      const url = String(row.canonical_url || row.content_path || row.pr_url || '').trim()
+      // A PR URL is not a live page — never let its slug pollute the stems.
+      const url = String(row.canonical_url || row.content_path || '').trim()
       const title = String(row.title || row.topic || '')
       const pk = row.primary_keyword ? String(row.primary_keyword) : (row.topic ? String(row.topic) : null)
       const key = `${title.toLowerCase()}|${(pk || '').toLowerCase()}`

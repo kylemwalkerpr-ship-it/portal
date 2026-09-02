@@ -47,9 +47,26 @@ function step(name: string, ok: boolean, wrote: number, detail: string, error?: 
 }
 
 export async function backfillAhrefs(): Promise<EngineBackfillStep> {
-  const snap = fallbackLegalAhrefsSnapshot()
-  const wrote = await persistAhrefsSnapshot({ ...snap, fetchedAt: new Date().toISOString(), source: 'fallback' })
-  return step('seo_ahrefs_snapshots', wrote.ok, wrote.ok ? 1 : 0, wrote.ok ? `persisted ${snap.issues.length} issues · health ${snap.healthScore}` : 'persist failed', wrote.error)
+  // Never persist the hardcoded fallback crawl: a stale snapshot stamped
+  // fetched_at=now would bury the last real measurement. Only a live API pull
+  // (or an explicit manual snapshot from the route) may write rows.
+  if (!process.env.AHREFS_API_KEY) {
+    return step('seo_ahrefs_snapshots', false, 0, 'AHREFS_API_KEY not configured — no snapshot persisted (fallback is display-only)')
+  }
+  try {
+    const { fetchAhrefsSiteAudit } = await import('./ahrefsAudit')
+    const snap = await fetchAhrefsSiteAudit()
+    const wrote = await persistAhrefsSnapshot(snap)
+    return step(
+      'seo_ahrefs_snapshots',
+      wrote.ok,
+      wrote.ok ? 1 : 0,
+      wrote.ok ? `persisted live crawl ${snap.date} · ${snap.issues.length} issues · health ${snap.healthScore}` : 'persist failed',
+      wrote.error,
+    )
+  } catch (e) {
+    return step('seo_ahrefs_snapshots', false, 0, 'live crawl failed — nothing persisted', e instanceof Error ? e.message : 'failed')
+  }
 }
 
 export async function backfillIntelligenceFromKnowledge(limit = 80): Promise<EngineBackfillStep> {
@@ -150,7 +167,31 @@ export async function backfillGscSnapshot(): Promise<EngineBackfillStep> {
   }
 }
 
-export async function backfillMaturedForecasts(today = new Date().toISOString().slice(0, 10)): Promise<EngineBackfillStep> {
+/**
+ * Backfill "matured" forecast rows so the reward pass has evaluable history.
+ *
+ * The previous implementation FABRICATED history: it cloned each latest
+ * projection into new rows with `run_date = today − horizon` and measured
+ * fabricated projections against whatever snapshot existed near a fictional
+ * maturity date — the calibration "evidence" was invented by its own backfill.
+ *
+ * Real forecast-vs-actual evaluation comes only from rows that were actually
+ * tracked: persistForecast writes one row per (topic, subject, horizon, day)
+ * via a unique index, and the tracker evaluates them at maturity naturally.
+ * This function now refuses to fabricate unless explicitly opted in.
+ */
+export async function backfillMaturedForecasts(
+  today = new Date().toISOString().slice(0, 10),
+  opts: { allowSynthetic?: boolean } = {},
+): Promise<EngineBackfillStep> {
+  if (!opts.allowSynthetic) {
+    return step(
+      'matured_forecasts',
+      true,
+      0,
+      'refused to fabricate matured forecast rows — real 30/60/90d history accrues from live tracking',
+    )
+  }
   const db = createSupabaseAdminClient()
   const { data, error } = await db
     .from('seo_forecast_runs')

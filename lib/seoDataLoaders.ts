@@ -101,6 +101,7 @@ const EMPTY_SNAPSHOT: GscSnapshot = {
 }
 
 let snapshotCache: GscSnapshot | null = null
+let snapshotCachedAt = 0
 let registryCache: OwnershipRegistryFile | null = null
 let strategiesIndexCache: StrategiesIndex | null = null
 let promptPackCache: StrategyPromptPack | null = null
@@ -110,6 +111,26 @@ let registryInflight: Promise<OwnershipRegistryFile> | null = null
 let strategiesInflight: Promise<StrategiesIndex> | null = null
 let promptPackInflight: Promise<StrategyPromptPack> | null = null
 let keywordDemandInflight: Promise<KeywordDemandFile> | null = null
+
+/** How long a loaded snapshot stays cached before re-reading the file. */
+const SNAPSHOT_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+
+/**
+ * Age of a GSC snapshot in whole days. `-1` when the snapshot carries no
+ * `generatedAt` (ancient/unknown provenance).
+ */
+export function snapshotAgeDays(snap: Pick<GscSnapshot, 'generatedAt'> | null | undefined): number {
+  if (!snap?.generatedAt) return -1
+  const t = new Date(snap.generatedAt).getTime()
+  if (!Number.isFinite(t)) return -1
+  return Math.floor((Date.now() - t) / 86_400_000)
+}
+
+/** Is the snapshot too old to be trusted as live demand? */
+export function isSnapshotStale(snap: GscSnapshot | null | undefined, maxAgeDays = 14): boolean {
+  const age = snapshotAgeDays(snap)
+  return age < 0 || age > maxAgeDays
+}
 
 function siteOrigin(): string {
   return (
@@ -187,25 +208,43 @@ async function fetchText(path: string): Promise<string | null> {
   return null
 }
 
-export async function loadGscSnapshot(): Promise<GscSnapshot> {
-  if (snapshotCache) return snapshotCache
+/**
+ * Load the GSC snapshot. `maxAgeDays` defaults to Infinity (compatibility:
+ * existing callers keep serving it), but decision-making callers (planner,
+ * auto-run, brief factory) are expected to pass a guard so stale demand is
+ * never silently presented as live.
+ */
+export async function loadGscSnapshot(opts?: {
+  maxAgeDays?: number
+  allowStale?: boolean
+}): Promise<GscSnapshot> {
+  const allowStale = opts?.allowStale !== false
+  const maxAgeDays = opts?.maxAgeDays ?? Infinity
+  const freshEnough = (s: GscSnapshot | null): s is GscSnapshot =>
+    !!s && (allowStale || !isSnapshotStale(s, maxAgeDays))
+  if (snapshotCache && Date.now() - snapshotCachedAt < SNAPSHOT_CACHE_TTL_MS) {
+    return freshEnough(snapshotCache) ? snapshotCache : EMPTY_SNAPSHOT
+  }
   if (!snapshotInflight) {
     snapshotInflight = (async () => {
       const data = await fetchJson<GscSnapshot>('/seo-data/snapshot.json')
-      // A missing read must not poison the isolate forever: cache empties
-      // briefly (bounded by TTL) so a later request can still load the file.
       if (data) {
         snapshotCache = data
+        snapshotCachedAt = Date.now()
       } else {
+        // A missing read must not poison the isolate forever: cache empties
+        // briefly (bounded by TTL) so a later request can still load the file.
         setTimeout(() => {
           snapshotCache = null
+          snapshotCachedAt = 0
           snapshotInflight = null
         }, 60_000).unref?.()
       }
       return snapshotCache ?? EMPTY_SNAPSHOT
     })()
   }
-  return snapshotInflight
+  const snap = await snapshotInflight
+  return freshEnough(snap) ? snap : EMPTY_SNAPSHOT
 }
 
 const EMPTY_KEYWORD_DEMAND: KeywordDemandFile = { rows: [] }

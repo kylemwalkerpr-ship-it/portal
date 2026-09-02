@@ -23,11 +23,14 @@ export async function getGscConfig(): Promise<GscConfig> {
   let row: any = null
   // The newer `sb_secret_…` service-role key isn't accepted by supabase-js v2
   // ("Unregistered API key"), so skip the server-only gsc_connection read and
-  // fall straight through to the GSC_* env vars. Only the legacy `eyJ…` JWT
-  // can read that row (see isLegacyJwtKey). This keeps an env-configured
-  // deployment (or local machine with the new key format) working via
-  // GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL without a doomed DB round-trip.
-  const canReadGscRow = isLegacyJwtKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
+  // fall straight through to the GSC_* env vars. Only a legacy `eyJ…` JWT
+  // (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_JWT) can read that row
+  // (see isLegacyJwtKey). This keeps an env-configured deployment (or local
+  // machine with the new key format) working via GSC_SERVICE_ACCOUNT_JSON +
+  // GSC_SITE_URL without a doomed DB round-trip.
+  const canReadGscRow =
+    isLegacyJwtKey(process.env.SUPABASE_SERVICE_ROLE_JWT) ||
+    isLegacyJwtKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
   if (canReadGscRow) {
     try {
       const db = createSupabaseAdminClient()
@@ -67,10 +70,17 @@ export async function saveGscConnection(fields: {
   connected_email?: string
   service_account_key?: string
 }): Promise<void> {
+  // Never lie: if the upsert fails (e.g. only an anon key is usable and the
+  // table has no anon policies), the connect UI must see the failure.
   const db = createSupabaseAdminClient()
-  await db.from('gsc_connection').upsert({
+  const { error } = await db.from('gsc_connection').upsert({
     id: 1,
     ...fields,
     connected_at: new Date().toISOString(),
   })
+  if (error) {
+    throw new Error(
+      `saveGscConnection failed (${error.message}). If SUPABASE_SERVICE_ROLE_KEY is the new sb_secret_ format, set SUPABASE_SERVICE_ROLE_JWT (legacy service-role JWT) so in-app GSC connections can persist.`,
+    )
+  }
 }

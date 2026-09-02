@@ -198,6 +198,11 @@ export async function loadMarketplaceServices(stage?: string, country?: string):
     // (e.g. an AU query before 'au' rows exist), any supported jurisdiction's
     // active gigs still prove the category has purchasable supply — entry
     // prices stay jurisdiction-agnostic (marketplaceGig pricing).
+    // NOTE: this proves "the category exists somewhere", NOT that THIS
+    // country's visitors can pay — callers must not show fabricated supply as
+    // available-to-purchase. (`marketplaceValue` keeps country prices derived
+    // from the fallback legs; the plan card's country badges derive from the
+    // ontology, so AU plans monetize at US/UK/CA prices only as an estimate.)
     if (!gigs.length && c && !JURISDICTION_CODES.has(c.toLowerCase())) {
       let fb = supabase
         .from('gigs')

@@ -171,8 +171,9 @@ export async function fetchAhrefsSiteAudit(opts: {
   const key = process.env.AHREFS_API_KEY
   if (!key) throw new Error('AHREFS_API_KEY is not configured')
   const projectId = String(opts.projectId || process.env.AHREFS_PROJECT_ID || DEFAULT_AHREFS_PROJECT_ID)
-  const date = opts.date || new Date().toISOString()
-  const dateCompared = opts.dateCompared || new Date(Date.now() - 7 * 86400_000).toISOString()
+  // Ahrefs expects YYYY-MM-DD — a full ISO timestamp 400s against the API.
+  const date = opts.date || new Date().toISOString().slice(0, 10)
+  const dateCompared = opts.dateCompared || new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
   const url = new URL('https://api.ahrefs.com/v3/site-audit/issues')
   url.searchParams.set('project_id', projectId)
   url.searchParams.set('date', date)
@@ -218,13 +219,21 @@ export async function persistAhrefsSnapshot(snap: AhrefsSnapshot): Promise<{ ok:
 export async function loadLatestAhrefsSnapshot(): Promise<AhrefsSnapshot | null> {
   try {
     const supabase = createSupabaseAdminClient()
+    // Prefer real (api/manual) snapshots. Hardcoded fallback rows are never a
+    // source of truth: they bury the last real crawl with fetched_at=now.
     const { data, error } = await supabase
       .from('seo_ahrefs_snapshots')
-      .select('project_id,fetched_at,crawl_date,date_compared,health_score,health_score_compared,cs_open,total_open,issues')
+      .select('project_id,fetched_at,crawl_date,date_compared,health_score,health_score_compared,cs_open,total_open,issues,source')
+      .neq('source', 'fallback')
       .order('fetched_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    if (error || !data) return fallbackLegalAhrefsSnapshot()
+    if (error || !data) {
+      // Nothing real ever crawled — show the hardcoded fallback ONLY as a
+      // clearly-labeled placeholder, never as a fresh measurement.
+      const fb = fallbackLegalAhrefsSnapshot()
+      return fb
+    }
     const row = data as Record<string, unknown>
     const issues = Array.isArray(row.issues) ? (row.issues as AhrefsIssueRow[]) : []
     const csOpenTypes = issues.filter((i) => i.csCanIntroduce && i.count > 0 && i.importance !== 'notice').length

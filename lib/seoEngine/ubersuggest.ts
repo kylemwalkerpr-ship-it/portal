@@ -154,12 +154,16 @@ function parseMcpBody(text: string): JsonRpc {
 }
 
 export function isTransientMcpStatus(status: number): boolean {
-  return status === 502 || status === 503 || status === 504
+  // 429 = rate-limited, NOT out of credits — the single most common transient
+  // signal. Previously it tripped the 6-hour "credits exhausted" pause, so
+  // one momentary rate limit silently disabled live market demand for half a
+  // day while the planner scored from a stale cache.
+  return status === 429 || status === 502 || status === 503 || status === 504
 }
 
 export function isTransientMcpFailure(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
-  return /\b502\b|\b503\b|\b504\b|temporarily unavailable/.test(m)
+  return /\b429\b|\b502\b|\b503\b|\b504\b|temporarily unavailable|rate.?limit/.test(m)
 }
 
 /** One-line MCP errors — never dump HTML into the planner livestream. */
@@ -320,7 +324,11 @@ export async function probeUbersuggest(accessToken: string, mcpUrl?: string): Pr
 
 export function isCreditOrAuthFailure(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
-  return /401|403|429|quota|credit|limit exceeded|exhaust|payment required|upgrade|not connected|unauthorized|forbidden|insufficient/.test(m)
+  // 429 is deliberately NOT here — rate limits are transient (see
+  // isTransientMcpStatus), only true credit/auth failures pause the
+  // integration. A revoked refresh token or genuine quota exhaustion still
+  // trips the 6h pause; one momentary rate limit no longer does.
+  return /401|403|quota|credit|limit exceeded|exhaust|payment required|upgrade|not connected|unauthorized|forbidden|insufficient/.test(m)
 }
 
 const KEYWORD_ARRAY_KEYS = [

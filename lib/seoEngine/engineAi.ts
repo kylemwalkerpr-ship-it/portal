@@ -47,8 +47,12 @@ export const ENGINE_PAIR = 'engine-pair' as const
 
 const PAIR_MAX_TOKENS = 4096
 const HARMONY_MAX_TOKENS = 3072
-/** Long Discover payloads can take minutes — never cut the lead mid-thought;
- *  floor at the pair's lead deadline (10 min). */
+/** Default lead deadline (10 min) applies ONLY when the caller set no
+ *  explicit timeout. Caller-specified timeouts (e.g. knowledge ingest 25 s
+ *  per item, planner briefs, outreach drafts) are HONORED — the old
+ *  `Math.max(opts.timeoutMs, 600_000)` froze a whole 8-item ingest at ~1.4 h
+ *  when one Entrim leg hung, blowing the daily cron's 20-min budget so later
+ *  phases silently never ran. */
 const PAIR_LEAD_MIN_TIMEOUT_MS = 600_000
 
 export interface EnginePairExtras {
@@ -237,10 +241,9 @@ export async function generateEnginePairText(
     skipQualityContract: opts.skipQualityContract !== false,
     exclusive: true as const,
   }
-  // Graduated pair: the Entrim lead gets the 10-minute floor; the complement
-  // (second Entrim family) keeps the same floor.
-  const leadTimeoutMs =
-    opts.timeoutMs != null ? Math.max(opts.timeoutMs, PAIR_LEAD_MIN_TIMEOUT_MS) : undefined
+  // The lead leg gets the pair's default deadline when the caller didn't
+  // specify one; explicit caller timeouts always win.
+  const leadTimeoutMs = opts.timeoutMs ?? PAIR_LEAD_MIN_TIMEOUT_MS
 
   // Leg readiness: Entrim serves both legs with one key. Under the live
   // policy there is no Grok degradation — without ENTRIM_API_KEY both legs

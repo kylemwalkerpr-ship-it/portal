@@ -302,6 +302,60 @@ export async function POST(request: NextRequest) {
       candidates = pool.slice(0, limit)
     }
 
+    // ── Master Planner top-up ────────────────────────────────────────────────
+    // The SEO Master Engine's ranked missions (seo_cluster_plans) are a
+    // first-class candidate source: they carry opportunity_score, compliance
+    // plans, interlink graphs and distribution targets the War Room lacks.
+    // Whenever the primary source picked too few candidates, fill from the
+    // planner's OPEN missions (status 'planned' only — launched/shipped/
+    // briefed plans are already-executed missions).
+    if (candidates.length < limit) {
+      try {
+        const { loadPlansDashboard } = await import('@/lib/seoEngine/planner')
+        const { isJunkQuery } = await import('@/lib/seoFactory/queryNoise')
+        const { plans } = await loadPlansDashboard(Math.max(limit * 6, 30))
+        const have = new Set(candidates.map((c) => c.term.toLowerCase()))
+        for (const p of plans) {
+          if (candidates.length >= limit) break
+          const term = String(p.primary_term || '')
+          if (!term || isJunkQuery(term)) continue
+          if (String(p.status || '') !== 'planned') continue
+          if (have.has(term.toLowerCase())) continue
+          if (skipRecent && recent.has(term.toLowerCase())) continue
+          if (regionFilter && String(p.country || '') !== regionFilter) continue
+          const distribution = Array.isArray(p.distribution) ? (p.distribution as Array<Record<string, unknown>>) : []
+          const planJson = (p.plan && typeof p.plan === 'object' ? p.plan : {}) as Record<string, unknown>
+          const contentType = String(distribution[0]?.contentType || planJson.contentType || 'legal_guide')
+          const region = String(p.country || 'US')
+          have.add(term.toLowerCase())
+          candidates.push({
+            term,
+            impressions: Number(p.est_monthly_impressions) || 0,
+            clicks: Number(p.est_monthly_clicks) || 0,
+            ctr: Number(p.ctr) || 0,
+            position: Number(p.position) || 50,
+            score: Number(p.opportunity_score) || 0,
+            action: 'expand_or_build',
+            suggestedContentType: contentType,
+            region,
+            ownerHint: await resolveOwner({ primaryKeyword: term, contentType, region }),
+            writeHint: `Engine mission · opportunity ${Math.round(Number(p.opportunity_score) || 0)} · ${String(p.rationale || '').slice(0, 120)}`,
+            play: 'master_planner',
+            modelTotal: null,
+          } as Candidate)
+        }
+        if (candidates.length) {
+          planMeta = {
+            ...(planMeta || {}),
+            plannerFill: candidates.length,
+            mode: `${(planMeta?.mode as string) || 'classic'}+planner`,
+          }
+        }
+      } catch {
+        /* planner top-up is additive — never fail the run */
+      }
+    }
+
     // ── Fallback: if skipRecent wiped the queue, re-fill without the filter ──
     // Prefer fresh terms, but never leave Auto-Pilot empty when GSC has demand.
     if (!candidates.length && skipRecent) {

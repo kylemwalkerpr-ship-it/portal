@@ -91,12 +91,14 @@ export function ga4RowsToSignals(
     // Keep low-session pages that already convert — money beats vanity traffic.
     if (sessions < 5 && revenue <= 0) continue
     const engaged = Math.max(0, Number(row.engaged) || 0)
-    const bounce = Math.min(1, Math.max(0, Number(row.bounceRate) || 0))
     const signal: GscSignalInput = {
       term,
       impressions: Math.max(sessions, revenue > 0 ? 5 : 0),
       clicks: engaged,
-      position: Math.max(5, Math.round(bounce * 80) || 40),
+      // GA4 has NO ranking data — the previous `Math.round(bounce * 80)`
+      // fabricated a position that then flowed into gap/owned-site scoring as
+      // if measured. Absent a rank, leave the field unset (scoring falls back
+      // to a flat, neutral gap); bounce stays on the row for display only.
       ctr: sessions ? engaged / sessions : 0,
       source: 'ga4',
     }

@@ -108,22 +108,34 @@ export async function POST(request: Request) {
           emitStep('done', `Ingested ${result.itemsStored} item(s) from ${result.sourcesRun} source(s)`, result.errors.slice(0, 2).join('; ') || undefined)
           send({ type: 'done', kind, summary: `Ingested ${result.itemsStored} items from ${result.sourcesRun} sources`, result })
         } else if (kind === 'plan') {
-          const { plans, pair } = await runPlanner({
+          const { plans, pair, persisted, persistErrors } = await runPlanner({
             stage: body.stage ? String(body.stage) : undefined,
             country: body.country ? String(body.country) : undefined,
             draftBriefs: body.draftBriefs !== false,
             limit: body.limit != null ? Number(body.limit) : 10,
             // Explicit Discover-stage engine pin (e.g. 'entrim-qwen-27b') —
-            // omitted → the engine pair (Claude Opus 5 lead + Grok).
+            // omitted → the engine pair.
             aiProvider: body.aiProvider ? String(body.aiProvider) : undefined,
             onProgress,
           })
-          await recordEngineRun('plan', plans.length ? 'success' : 'partial', {
+          const persistIssue = (persistErrors?.length ?? 0) > 0
+          await recordEngineRun('plan', persistIssue || !plans.length ? 'partial' : 'success', {
             plans: plans.length,
+            persisted: persisted ?? plans.length,
+            persistErrors: persistErrors?.length ?? 0,
             pair: formatEnginePairTape(pair),
-          }, [], 'admin')
-          emitStep('done', `Planner produced ${plans.length} ranked cluster mission(s)`)
-          send({ type: 'done', kind, summary: `Planner produced ${plans.length} ranked cluster missions`, result: { plans, count: plans.length, pair } })
+          }, persistErrors || [], 'admin')
+          emitStep(
+            'done',
+            `Planner produced ${plans.length} ranked cluster mission(s) · ${persisted ?? '—'} persisted`,
+            persistIssue ? `persist errors: ${persistErrors!.slice(0, 2).join('; ')}` : undefined,
+          )
+          send({
+            type: 'done',
+            kind,
+            summary: `Planner produced ${plans.length} ranked cluster missions (${persisted ?? 0} persisted)`,
+            result: { plans, count: plans.length, persisted: persisted ?? plans.length, persistErrors: persistErrors || [], pair },
+          })
         } else {
           const result = await runVisibilityAudits({
             queries: Array.isArray(body.queries) ? (body.queries as string[]) : undefined,

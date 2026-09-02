@@ -626,6 +626,12 @@ export interface RewardEventInput {
   /** Negative = position improved (rank 8 → 4 is deltaPosition −4). */
   deltaPosition?: number
   note?: string
+  /**
+   * Idempotency key — the reward pass must never double-credit the same
+   * observed outcome. Persisted to `seo_reward_events.dedupe_key` (partial
+   * unique index) so concurrent/weekly/daily runs collide harmlessly.
+   */
+  dedupeKey?: string
 }
 export interface RewardEvent extends RewardEventInput {
   id: string
@@ -665,8 +671,12 @@ export function computeReward(delta: { deltaImpressions?: number; deltaClicks?: 
   const dp = Number(delta.deltaPosition) || 0
   const clickGain = dc > 0 ? clamp01(dc / 60) : 0
   const impGain = di > 0 ? clamp01(di / 800) : 0
+  // Decay must COST reward: the old `0.3 * Math.max(0, posGain)` zeroed the
+  // negative branch, so a page decaying 8→30 earned the same (zero) reward as
+  // one holding steady — the model could never learn "this got worse". The
+  // negative term now subtracts from the total before clamping.
   const posGain = dp < 0 ? clamp01(-dp / 12) : dp > 0 ? -0.3 * clamp01(dp / 12) : 0
-  return Math.round(clamp01(0.5 * clickGain + 0.2 * impGain + 0.3 * Math.max(0, posGain)) * 100) / 100
+  return Math.round(clamp01(0.5 * clickGain + 0.2 * impGain + 0.3 * posGain) * 100) / 100
 }
 
 /** Build an immutable, attributed reward event. */
@@ -1117,7 +1127,7 @@ export async function persistRewardEvent(event: RewardEvent): Promise<{ ok: bool
   try {
     const client = await db()
     if (!client) return { ok: false, error: 'no db' }
-    const { error } = await client.from('seo_reward_events').insert({
+    const row = {
       model_version: event.modelVersion,
       page_url: event.pageUrl,
       topic: event.topic || null,
@@ -1128,7 +1138,22 @@ export async function persistRewardEvent(event: RewardEvent): Promise<{ ok: bool
       reward: event.reward,
       attribution: event.attribution as unknown as Record<string, unknown>,
       note: event.note || null,
-    })
+      ...(event.dedupeKey ? { dedupe_key: event.dedupeKey } : {}),
+    }
+    if (event.dedupeKey) {
+      // Idempotent: same key can never double-credit (unique index, migrate
+      // applies it). On a pre-migration DB the column is missing — fall back
+      // to a plain insert so the ledger keeps working.
+      const { error } = await client
+        .from('seo_reward_events')
+        .upsert(row, { onConflict: 'dedupe_key', ignoreDuplicates: true })
+      if (error && !/dedupe_key/.test(error.message) && !/42P01/.test(error.message)) {
+        console.warn('[seoEngine] persistRewardEvent', error.message)
+        return { ok: false, error: error.message }
+      }
+      return { ok: true }
+    }
+    const { error } = await client.from('seo_reward_events').insert(row)
     if (error) {
       console.warn('[seoEngine] persistRewardEvent', error.message)
       return { ok: false, error: error.message }
@@ -1313,8 +1338,8 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
  * position/impression deltas — never fabricating gains. Richer deltas come
  * from operator-recorded outcomes via /api/seo-engine/rewards.
  */
-export async function attributizeOutcomes(): Promise<{ events: number; jobsConsidered: number; jobsMatched: number }> {
-  const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0 }
+export async function attributizeOutcomes(): Promise<{ events: number; jobsConsidered: number; jobsMatched: number; duplicatesSkipped: number }> {
+  const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0, duplicatesSkipped: 0 }
   try {
     const client = await db()
     if (!client) return empty
@@ -1330,10 +1355,24 @@ export async function attributizeOutcomes(): Promise<{ events: number; jobsConsi
     const signals = await pullGscSignals()
     let events = 0
     let jobsMatched = 0
+    let duplicatesSkipped = 0
+    const today = new Date().toISOString().slice(0, 10)
     for (const job of jobs) {
       const hay = `${String(job.title || '')} ${String(job.topic || '')} ${String(job.primary_keyword || '')}`.toLowerCase()
       const matched = signals.find((s) => hay.includes(s.term.toLowerCase().slice(0, 24)))
       if (!matched || matched.clicks <= 0) continue
+      // Idempotency: the same job's GSC window must never be re-credited on
+      // later daily runs — one credit per (job, term, UTC day).
+      const dedupeKey = `cron-attr:${String(job.id)}:${matched.term.toLowerCase().slice(0, 24)}:${today}`
+      const already = await client
+        .from('seo_reward_events')
+        .select('id')
+        .eq('dedupe_key', dedupeKey)
+        .maybeSingle()
+      if (already.data) {
+        duplicatesSkipped += 1
+        continue
+      }
       jobsMatched += 1
       const event = creditOutcome({
         pageUrl: String(job.content_path || `job:${String(job.id)}`),
@@ -1342,11 +1381,12 @@ export async function attributizeOutcomes(): Promise<{ events: number; jobsConsi
         // Only real clicks are credited; no baseline → no fabricated position/impression deltas.
         deltaClicks: matched.clicks,
         note: 'cron attribution from GSC (clicks-only — no history baseline)',
+        dedupeKey,
       })
       await persistRewardEvent(event)
       events += 1
     }
-    return { events, jobsConsidered: jobs.length, jobsMatched }
+    return { events, jobsConsidered: jobs.length, jobsMatched, duplicatesSkipped }
   } catch {
     return empty
   }

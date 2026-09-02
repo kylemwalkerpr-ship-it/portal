@@ -46,20 +46,28 @@ export interface DraftMeta {
   country?: string
   contentType?: string
   title?: string
+  /** True when a real cannibalization check ran against the estate ledger. */
+  cannibalization?: boolean
 }
 
-const STAT_RE = /\d+(?:[.,]\d+)?\s*(?:%|percent|k|m|billion|million|thousand|USD|GBP|CAD|AUD|£|\$|years|months|days|weeks)|\$\s?\d+(?:[.,]\d+)?|£\s?\d+/gi
+const STAT_RE = /\d+(?:[.,]\d+)?\s*(?:%|percent|k|m|billion|million|thousand|USD|GBP|CAD|AUD|£|\$)|\$\s?\d+(?:[.,]\d+)?|£\s?\d+/gi
 const DATE_RE = /\b(?:19|20)\d{2}\b/g
 const LINK_RE = /\[[^\]]*\]\(https?:\/\/[^)]+\)|<a\s+href=/gi
 const QUESTION_HEADING_RE = /^#{2,3}\s+.*\?.*$/gim
 const FAQ_RE = /faq|frequently asked|people also ask/i
 const DISCLAIMER_RE = /not legal advice|informational purposes only|for general information|consult (?:a|an) (?:licensed |qualified )?(?:attorney|lawyer|immigration (?:attorney|lawyer|consultant|advisor)|professional)|this (?:article|guide|content) (?:is|does) not (?:constitute|provide)/i
 const AUTHOR_RE = /(?:^|\n)\s*(?:by|written by|author:)\s+[A-Z][a-zA-Z' -]{2,50}/i
+const ACCURACY_PHRASE_RE = /(?:last verified|updated|as of|effective)/i
+// Real named institutions only — "government" alone is not a named source.
+const NAMED_SOURCE_RE = /\b(?:USCIS|IRCC|Home Office|Department of Home Affairs|UKVI|CBP|DHS|gov\.uk|canada\.ca|homeaffairs\.gov\.au)\b/i
+// Static-lexicon check: REAL statutes/laws only, cited by name. Programs,
+// categories or one-letter abbreviations ("Express Entry", "Super Visa",
+// "ILR", "Naturalization") are not statutes and never satisfy this item.
 const STATUTORY_TERMS: Record<string, string[]> = {
-  US: ['INA', 'Immigration and Nationality Act', '8 CFR', 'USCIS Policy Manual', 'Fair Housing Act', 'Citizenship Act', 'Naturalization'],
-  UK: ['Immigration Rules', 'Immigration Act', 'British Nationality Act', 'Right to Rent', 'Housing Act', 'Appendix FM', 'ILR'],
-  CA: ['IRPA', 'IRPR', 'Citizenship Act', 'Express Entry', 'Super Visa', 'Provincial Nominee'],
-  AU: ['Migration Act', 'Migration Regulations', 'Citizenship Act', 'subclass 500', 'subclass 189', 'subclass 190', 'partner visa'],
+  US: ['INA', 'Immigration and Nationality Act', '8 CFR', 'USCIS Policy Manual', 'Fair Housing Act', 'Citizenship Act'],
+  UK: ['Immigration Rules', 'Immigration Act', 'British Nationality Act', 'Right to Rent', 'Housing Act', 'Appendix FM'],
+  CA: ['IRPA', 'IRPR', 'Citizenship Act'],
+  AU: ['Migration Act', 'Migration Regulations', 'Citizenship Act', 'subclass 500', 'subclass 189', 'subclass 190'],
 }
 
 /**
@@ -72,15 +80,24 @@ export function extractComplianceSignals(draft: string, meta: DraftMeta = {}): R
   const lower = text.toLowerCase()
   const country = meta.country && isCountry(meta.country) ? meta.country : undefined
   const statutoryTerms = country ? STATUTORY_TERMS[country] || [] : Object.values(STATUTORY_TERMS).flat()
+  // Statutory check sanity: the lexicon ONLY contains statute names (programs
+  // and categories were removed upstream), so a plain substring hit suffices.
+  const statutoryHits = statutoryTerms.filter((t) => lower.includes(t.toLowerCase()))
 
   const questions = text.match(QUESTION_HEADING_RE) || []
   const stats = text.match(STAT_RE) || []
   const links = text.match(LINK_RE) || []
   const years = text.match(DATE_RE) || []
-  const statutoryHits = statutoryTerms.filter((t) => lower.includes(t.toLowerCase()))
+  // Freshness: a year from any era passing "fresh" is word-noise — only a
+  // year within the last 24 months counts as fresh evidence.
+  const nowYear = new Date().getUTCFullYear()
+  const recentYears = years.filter((y) => Number(y) >= nowYear - 2)
   const hasDisclaimer = DISCLAIMER_RE.test(text)
-  const hasAuthor = AUTHOR_RE.test(draft || '') || /https?:\/\/[^\s]+\/author\//i.test(text) || lower.includes('meet our')
-  const firstPara = text.split(/(?:\n\n|\.\s)/)[0] || text
+  // "Meet Our Consultants" (a footer) is NOT a named author with credentials.
+  const hasAuthor = AUTHOR_RE.test(draft || '') || /https?:\/\/[^\s]+\/author\//i.test(text)
+  // First paragraph: split the RAW draft on blank lines (the whitespace-
+  // collapsed `text` can no longer be paragraph-split — the old code dead-ended).
+  const firstPara = (draft || '').split(/\n\s*\n/)[0]?.replace(/\s+/g, ' ').trim() || text
 
   // Question-like content: FAQ section or question headings
   const faqSection = FAQ_RE.test(lower)
@@ -95,7 +112,7 @@ export function extractComplianceSignals(draft: string, meta: DraftMeta = {}): R
     aeo_howto_steps: /^\s*(?:1[.)]|step 1|first,|first\b)/im.test(draft || '') || /\b(?:step[- ]by[- ]step|steps? to)\b/i.test(text),
     // GEO
     geo_quoteable: stats.length >= 2 || /\d{2,3}%/.test(text),
-    geo_named_sources: statutoryHits.length >= 1 || /\b(?:USCIS|IRCC|Home Office|Department of Home Affairs|government|gov\.uk|canada\.ca)\b/i.test(text),
+    geo_named_sources: statutoryHits.length >= 1 || NAMED_SOURCE_RE.test(text),
     geo_entity_clarity: Boolean(title) && title.length >= 10,
     geo_semantic_html: /<h1[\s>]|<h2[\s>]|<article[\s>]|<section[\s>]/i.test(draft || '') || /^#\s+/.test(draft || ''),
     geo_llm_schema: /application\/ld\+json|"@type"\s*:\s*"(?:Article|FAQPage|Service)"/i.test(draft || ''),
@@ -103,13 +120,13 @@ export function extractComplianceSignals(draft: string, meta: DraftMeta = {}): R
     ymyl_statutory: statutoryHits.length > 0,
     ymyl_disclaimer: hasDisclaimer,
     ymyl_author: hasAuthor,
-    ymyl_accuracy: years.length > 0 && /(?:last verified|updated|as of|effective)/i.test(text),
-    ymyl_freshness: years.length > 0,
+    ymyl_accuracy: recentYears.length > 0 && ACCURACY_PHRASE_RE.test(text),
+    ymyl_freshness: recentYears.length > 0,
     // Tech
     tech_meta: Boolean(title) && title.length <= 80,
     tech_internal_links: links.length >= 2,
     tech_indexnow: /indexnow/i.test(text) || links.length >= 3,
-    tech_cannibal: Boolean(meta.stage && meta.country),
+    tech_cannibal: Boolean(meta.cannibalization),
   }
 }
 
