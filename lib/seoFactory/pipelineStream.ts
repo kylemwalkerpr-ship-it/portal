@@ -227,6 +227,7 @@ export async function* runSeoFactoryPipelineStream(
         slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
         content_path: plan.filePath,
         ai_provider: input.aiProvider || null,
+        section_budgets: input.sectionBudgets ? JSON.stringify(input.sectionBudgets) : null,
         ship_mode: input.shipMode === 'autodeploy' || input.shipMode === 'merge' ? 'autodeploy' : 'pr',
         indexable: plan.indexable,
         canonical_url: plan.canonicalUrl,
@@ -445,6 +446,7 @@ export async function* runSeoFactoryPipelineStream(
             masterEngineBlock: input.masterEngineBlock || undefined,
             refineNotes,
             marketplaceCta: input.marketplaceCta,
+            sectionBudgets: (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
             titleCandidate: input.titleCandidate,
             // REVISE THE EXISTING DRAFT, don't regenerate from scratch — fixes
             // must accumulate across iterations or the same blockers (AI slop,
@@ -860,6 +862,7 @@ export async function* runSeoFactoryPipelineStream(
               masterEngineBlock: input.masterEngineBlock || undefined,
               refineNotes,
               marketplaceCta: input.marketplaceCta,
+            sectionBudgets: (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
               titleCandidate: input.titleCandidate,
               // Revise the existing draft — fixes must accumulate, not restart.
               draft: content || undefined,

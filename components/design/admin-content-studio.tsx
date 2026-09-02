@@ -2279,6 +2279,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     reasoning?: string; metaDescription?: string; sectionPlan?: Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }>
     masterEngine?: { composite?: number | null; grade?: string | null; recommendationCount?: number; coveragePct?: number | null; computedSignals?: number | null; totalSignals?: number | null; phase?: string | null }
   } | null>(null)
+  // Strict per-section word budgets from the brief — carried into drafting so
+  // the one-run contract is hardlined (never a three-copy echo).
+  const [sectionBudgets, setSectionBudgets] = React.useState<Array<{ heading: string; minWords: number; maxWords: number }> | null>(null)
   const autoBriefKeyRef = React.useRef('')
   // Brief model — exactly three families: Claude Opus 5 (Run BiOS, default),
   // Grok (xAI), and DeepSeek V4 Flash (Run BiOS + Baseten). The brief
@@ -2358,6 +2361,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (typeof data.minWords === 'number' && data.minWords > 0) setMinWords(data.minWords)
       if (typeof data.maxWords === 'number' && data.maxWords > 0) setMaxWords(data.maxWords)
       if (data.kwH2Map && typeof data.kwH2Map === 'object') setKwH2Map(data.kwH2Map as Record<string, string>)
+      if (Array.isArray(data.sectionBudgets) && data.sectionBudgets.length) setSectionBudgets(data.sectionBudgets as Array<{ heading: string; minWords: number; maxWords: number }>)
       setBriefIntel({
         reasoning: typeof data.reasoning === 'string' ? data.reasoning : '',
         metaDescription: typeof data.metaDescription === 'string' ? data.metaDescription : '',
@@ -2482,6 +2486,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       title: title || topic, topic, audience,
       keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       interlinks: briefInterlinks,
+      sectionBudgets: sectionBudgets ?? undefined,
       h2Outline: h2s,
       sources,
       minWords, maxWords,
@@ -4070,6 +4075,9 @@ function JobDetail({
           intelligenceLineage: detail.lineage || null,
           resume,
           aiProvider: aiProvider !== 'auto' ? aiProvider : (detail as { ai_provider?: string | null }).ai_provider || undefined,
+          sectionBudgets: ((detail as { section_budgets?: string | Array<{ heading: string; minWords: number; maxWords: number }> | null }).section_budgets
+            ? JSON.parse(String((detail as { section_budgets?: string | Array<Record<string, unknown>> | null }).section_budgets))
+            : undefined),
         }),
       })
       const result = await consumeSseResponse(response, (event) => {
@@ -6487,6 +6495,7 @@ const controller = new AbortController()
           minWords: formData.minWords || undefined,
           maxWords: formData.maxWords || undefined,
           targetSlug: formData.targetSlug || undefined,
+          sectionBudgets: formData.sectionBudgets || undefined,
         kwH2Map: formData.kwH2Map || undefined,
         competingUrls: competingUrls.length ? competingUrls : undefined,
       }),

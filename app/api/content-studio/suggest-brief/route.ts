@@ -8,6 +8,7 @@ import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
+import { buildSectionBudgets } from '@/lib/seoFactory/prompts'
 import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
 import {
   clampBriefWordBudget,
@@ -421,6 +422,18 @@ export async function POST(req: NextRequest) {
       targetWords: /^(in 60 seconds|table of contents|sources)$/i.test(heading) ? 80 : sectionTarget,
       keywords: allKeywords.filter((keyword) => completedKwH2Map[keyword] === heading),
     }))
+    // Strict per-section word budgets — the hardlined single-run contract the
+    // drafter receives (page window distributed across the outline; TLDR/FAQ/
+    // Sources reserved). The studio carries these into generate-stream so the
+    // drafting prompt demands ONE article inside the window, never echoes.
+    const sectionBudgets = buildSectionBudgets({
+      sections: finalOutline.map((h) => ({
+        heading: h,
+        targetWords: /^(in 60 seconds|table of contents|sources)$/i.test(h) ? 80 : sectionTarget,
+      })),
+      pageMin: finalMin,
+      pageMax: finalMax,
+    })
     const finalSources = await assembleDraftSourceAllowlist(
       region,
       Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],
@@ -455,6 +468,7 @@ export async function POST(req: NextRequest) {
       competing: researchCtx.competing.competing.slice(0, 8),
       suggestedH1: String(parsed.suggestedH1 || ''),
       h2Outline: finalOutline,
+      sectionBudgets,
       shortTail: merged.short.slice(0, 8),
       longTail: merged.longTail.slice(0, 6),
       kwH2Map: completedKwH2Map,

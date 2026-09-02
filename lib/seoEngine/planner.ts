@@ -291,8 +291,27 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   const LT_PREFIXES = ['how to apply for', 'what is the', 'is it possible to', 'do you need', 'requirements for', 'cost of applying for']
   const LT_SUFFIXES = ['for international students', 'step by step', 'in 2026: complete guide', 'requirements checklist', 'eligibility and costs']
   if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2 && ptWords.length >= 1) {
-    for (const prefix of LT_PREFIXES) classifyAndAdd(`${prefix} ${pt}`)
-    for (const suffix of LT_SUFFIXES) classifyAndAdd(`${pt} ${suffix}`)
+    // Duplicate-phrase guard: when the primary ALREADY carries the template
+    // cadence (e.g. "how to apply for a green card"), prepending the same
+    // prefix would synthesize "how to apply for how to apply for a green
+    // card" — the exact garbage that shipped as FAQ questions. When the
+    // primary starts with a prefix, append a suffix form instead so the
+    // phrase stays grammatical and non-duplicating.
+    const ptStartsWithTemplate = LT_PREFIXES.some((p) => pt.startsWith(p))
+    for (const prefix of LT_PREFIXES) {
+      if (ptStartsWithTemplate) {
+        if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2) classifyAndAdd(`${pt} requirements and timeline`)
+        continue
+      }
+      classifyAndAdd(`${prefix} ${pt}`)
+    }
+    for (const suffix of LT_SUFFIXES) {
+      if (ptStartsWithTemplate) {
+        if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2) classifyAndAdd(`${pt}: requirements, fees and timeline`)
+        continue
+      }
+      classifyAndAdd(`${pt} ${suffix}`)
+    }
   }
 
   return { short, longTail, shortTerms, longTailTerms }

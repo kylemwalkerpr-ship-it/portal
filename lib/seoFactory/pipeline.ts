@@ -128,6 +128,8 @@ export interface PipelineInput {
   /** Mission economics from the SEO Master Engine handoff — the drafter names
    *  the marketplace service + honest price band in the body and FAQ. */
   marketplaceCta?: { service?: string; slug?: string; priceBand?: string }
+  /** Strict per-section word budgets from the brief (single-run contract). */
+  sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }>
   /** TitleLab-approved reader-facing title candidate — H1 must carry it. */
   titleCandidate?: string
   /**
@@ -473,6 +475,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           masterEngineBlock: input.masterEngineBlock || undefined,
           refineNotes,
           marketplaceCta: input.marketplaceCta,
+            sectionBudgets: (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
           titleCandidate: input.titleCandidate,
           // Keep human/model fixes when resuming a saved draft (retry cron).
           draft: content || undefined,

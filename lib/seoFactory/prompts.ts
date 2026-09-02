@@ -466,6 +466,9 @@ export function buildFactoryUserPrompt(opts: {
    * price band once in the body and once in a FAQ answer, educational-first.
    */
   marketplaceCta?: { service?: string; slug?: string; priceBand?: string }
+  /** Strict per-section word budgets (from the brief) — hardlined single-run
+   *  word control so the drafter lands inside the window in ONE response. */
+  sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }>
   /** CTR-engineered reader-facing title (TitleLab/planner candidate) the H1
    *  must carry — derived naturally, core noun phrase kept. */
   titleCandidate?: string
@@ -509,6 +512,13 @@ export function buildFactoryUserPrompt(opts: {
       `TITLE CONTRACT: the H1 must carry this reader-facing title (candidate): ${String(opts.titleCandidate).trim()} — derive it naturally but keep the core noun phrase.`,
       '',
     ] : []),
+    ...((opts.sectionBudgets && opts.sectionBudgets.length) ? [
+      'STRICT SECTION BUDGETS — the hard word window for THIS article, section by section. These are not suggestions:',
+      ...opts.sectionBudgets.map((s) => `- ## ${s.heading}: ${s.minWords}–${s.maxWords} body words`),
+      '- The section budgets SUM to the page window: honouring each section lands the total inside the LENGTH gate in ONE run.',
+      '- Write exactly ONE article — the sections above, in this order. Never echo the brief, never paste a previous draft, never append a second copy. If a section starts to exceed its cap, tighten that section; do not trim by dropping a later section.',
+      '',
+    ] : []),
     'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
     '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
     '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
@@ -545,6 +555,79 @@ export function buildFactoryUserPrompt(opts: {
 /** Re-export depth floors so pipeline/audit share one Google-aligned table. */
 export function minWordsForType(contentType: string): number {
   return depthMinWords(contentType)
+}
+
+/**
+ * Strict per-section word budgets for the single-run drafter contract.
+ * Allocates the page window across the brief's outline sections — TLDR, FAQ
+ * and Sources get fixed reserves; the remaining budget is distributed
+ * proportionally to each section's target (equal share when no target is
+ * given) and clamped with a floor of 120 words per content section. The
+ * returned ranges SUM to the page window, so a drafter that honours them
+ * lands inside (pageMin, pageMax) in one run — no rescue, no echo.
+ */
+export function buildSectionBudgets(opts: {
+  sections: Array<{ heading: string; targetWords?: number | null }>
+  pageMin: number
+  pageMax: number
+  reserveFaq?: number
+  reserveTldr?: number
+  reserveSources?: number
+}): Array<{ heading: string; minWords: number; maxWords: number }> {
+  const sections = (opts.sections || []).map((s) => String(s.heading || '').trim()).filter(Boolean)
+  if (!sections.length) return []
+  const reserveFaq = Math.min(opts.pageMax * 0.25, Math.max(0, opts.reserveFaq ?? 450))
+  const reserveTldr = Math.max(0, opts.reserveTldr ?? 80)
+  const reserveSources = Math.max(0, opts.reserveSources ?? 40)
+  const structural = (h: string) => {
+    const lower = h.toLowerCase()
+    return lower === 'in 60 seconds' || lower === 'table of contents' || lower.includes('source') || lower === 'related guides' || lower.includes('faq')
+  }
+  const hasFaq = sections.some((h) => h.toLowerCase().includes('faq'))
+  const hasToc = sections.some((h) => h.toLowerCase() === 'table of contents')
+  const structuralReserve =
+    (sections.some((h) => h.toLowerCase() === 'in 60 seconds') ? reserveTldr : 0) +
+    (hasToc ? 30 : 0) +
+    (sections.some((h) => h.toLowerCase().includes('source')) ? reserveSources : 0) +
+    (hasFaq ? reserveFaq : 0)
+  const contentSections = sections.filter((h) => !structural(h))
+  if (!contentSections.length) {
+    return sections.map((h) => {
+      const lower = h.toLowerCase()
+      if (lower.includes('faq')) return { heading: h, minWords: Math.min(reserveFaq, 320), maxWords: reserveFaq }
+      if (lower.includes('source')) return { heading: h, minWords: 10, maxWords: reserveSources }
+      return { heading: h, minWords: 0, maxWords: 80 }
+    })
+  }
+  const contentPool = Math.max(
+    contentSections.length * 120,
+    opts.pageMin - structuralReserve,
+  )
+  const contentBudget = Math.min(opts.pageMax - structuralReserve, contentPool)
+  const weights = contentSections.map((h) => {
+    const entry = opts.sections.find((s) => String(s.heading || '').trim() === h)
+    const target = Number(entry?.targetWords) || 0
+    return target > 0 ? Math.max(1, target) : 1
+  })
+  const totalWeight = weights.reduce((a, b) => a + b, 0)
+  const allocs = weights.map((w) => Math.round((contentBudget * w) / totalWeight))
+  const correction = contentBudget - allocs.reduce((a, b) => a + b, 0)
+  if (correction !== 0 && allocs.length) allocs[allocs.length - 1] += correction
+  const byHeading = new Map<string, { heading: string; minWords: number; maxWords: number }>()
+  contentSections.forEach((h, i) => {
+    const alloc = Math.max(120, allocs[i] ?? 120)
+    byHeading.set(h, { heading: h, minWords: Math.min(alloc, Math.round(alloc * 0.75)), maxWords: alloc })
+  })
+  sections.forEach((h) => {
+    const lower = h.toLowerCase()
+    if (byHeading.has(h)) return
+    if (lower === 'in 60 seconds') byHeading.set(h, { heading: h, minWords: 60, maxWords: reserveTldr })
+    else if (lower === 'table of contents') byHeading.set(h, { heading: h, minWords: 0, maxWords: 30 })
+    else if (lower.includes('faq')) byHeading.set(h, { heading: h, minWords: Math.min(reserveFaq, 320), maxWords: reserveFaq })
+    else if (lower.includes('source') || lower === 'related guides') byHeading.set(h, { heading: h, minWords: 10, maxWords: reserveSources })
+    else byHeading.set(h, { heading: h, minWords: 0, maxWords: 120 })
+  })
+  return sections.map((h) => byHeading.get(h)!)
 }
 
 /**
