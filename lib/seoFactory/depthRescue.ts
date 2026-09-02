@@ -17,7 +17,7 @@ import {
   extractH2Titles,
   mergeAppendedSections,
 } from './prompts'
-import { countBodyWords, trimMarkdownProseToWordBudget } from './contentDepth'
+import { countBodyWords, openingFrontmatterClosed, trimMarkdownProseToWordBudget } from './contentDepth'
 import { smoothSentenceRhythm, stripDuplicateArticleCopy } from './editorialScaffold'
 import type { ContentAiResult } from '@/lib/contentAiProvider'
 
@@ -232,6 +232,33 @@ export async function* runDepthRescue(
   let expandPasses = 0
   let attempts = 0
   let appendAttempts = 0
+
+  // ── Frontmatter-only guard: an unclosed frontmatter block is ZERO prose ──
+  // A stream that truncated mid-frontmatter leaves `---\ntitle: …` with no
+  // closing fence. Expanding that would graft article body onto scaffolding
+  // — the screenshot bug of 2026-09-02 (46-word "draft" that was all YAML
+  // keys, fed to depth rescue as if it were prose). Refuse explicitly and
+  // route the pipeline to regeneration.
+  if (!openingFrontmatterClosed(content)) {
+    yield {
+      type: 'progress',
+      stage: 'refine',
+      message: `Depth rescue refused: draft is frontmatter-only (opening YAML block never closed — the stream truncated before any body prose). ${countBodyWords(content)} scaffolding words are not content. Regenerate the draft.`,
+    }
+    yield {
+      type: 'done',
+      content,
+      audit,
+      provider,
+      model,
+      expandPasses: 0,
+      attempts: 0,
+      stallCount: 0,
+      timeMs: 0,
+      budgetMs: RESCUE_MAX_MS,
+    }
+    return
+  }
 
   // ── Critically-thin guard: skip rescue for drafts too small to expand ──
   // A 36-word draft cannot be expanded to a 2200-word article — the model

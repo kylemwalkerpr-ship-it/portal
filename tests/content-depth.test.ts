@@ -8,10 +8,32 @@ import {
   formatBodyWordDisplay,
   maxWordsForType,
   minWordsForType,
+  openingFrontmatterClosed,
   targetWordsForType,
   unwrapWholeDocumentFence,
 } from '@/lib/seoFactory/contentDepth'
 import { auditContent } from '@/lib/seoFactory/audit'
+
+describe('countBodyWords — truncated frontmatter counts as ZERO prose (2026-09-02 live regression)', () => {
+  it('an unclosed opening frontmatter block has zero prose words — YAML keys are not content', () => {
+    // What a stream truncated mid-frontmatter leaves behind: the 46-word
+    // "draft" that depth rescue once tried to expand.
+    const truncated = '---\ntitle: Employment-Based Green Card Strategy: H-1B & Student Guide (2026)\ndescription: Map your employment-based green card strategy with official USCIS steps.\nprimaryKeyword: employment-based green card strategy\nrobots: index,follow\ndate: 2026-08-01\nregion: us\ncontentType: legal_guide\nownerHost: legal'
+    expect(countBodyWords(truncated)).toBe(0)
+  })
+
+  it('a CLOSED frontmatter block is stripped as always — body prose counts normally', () => {
+    const closed = '---\ntitle: T\nprimaryKeyword: k\ncontentType: legal_guide\n---\n# T\n\nReal body prose with several words here.'
+    expect(countBodyWords(closed)).toBeGreaterThan(0)
+  })
+
+  it('openingFrontmatterClosed distinguishes closed blocks, unclosed blocks, and plain bodies', () => {
+    expect(openingFrontmatterClosed('---\ntitle: T\n---\n# T\nBody.')).toBe(true)
+    expect(openingFrontmatterClosed('---\ntitle: T\nprimaryKeyword: k')).toBe(false)
+    expect(openingFrontmatterClosed('# Just a body\n\nProse.')).toBe(true)
+    expect(openingFrontmatterClosed('')).toBe(true)
+  })
+})
 
 describe('clampBriefWordBudget (Research-stage word-count by content type)', () => {
   it('returns the canonical budget when the model omits min/max words', () => {

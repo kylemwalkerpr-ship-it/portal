@@ -195,8 +195,17 @@ export function formatBodyWordDisplay(live: number, stored?: number | null): str
  */
 export function countBodyWords(content: string): number {
   let body = unwrapWholeDocumentFence(content)
-  // Front matter
-  body = body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+  // Front matter. A document that OPENS with `---` but never closes the block
+  // (stream truncated mid-frontmatter) contains zero prose — its YAML keys
+  // are scaffolding and must not gross up the count (a truncated run once
+  // displayed "46 words" that were all frontmatter keys). Closed blocks are
+  // stripped as always; unclosed ones count as 0.
+  const fm = body.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+  if (fm) {
+    body = body.slice(fm[0].length)
+  } else if (body.trimStart().startsWith('---')) {
+    return 0
+  }
   // Scripts / JSON-LD
   body = body.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
   // Fenced code (including ```json schema dumps models sometimes emit)
@@ -220,6 +229,22 @@ export function countBodyWords(content: string): number {
   // Unicode words, with apostrophes and hyphens kept inside one Word-style
   // token. This is the canonical counter used by UI, persistence and gates.
   return body.match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)?.length || 0
+}
+
+/**
+ * True when the document does NOT open with an unclosed YAML frontmatter
+ * block. A truncated stream can cut off mid-frontmatter — the opening `---`
+ * never gets its closing fence — and what was streamed is all scaffolding:
+ * zero prose. Depth rescue uses this to refuse expansion (and the pipeline
+ * to regenerate) instead of "expanding" a frontmatter-only draft.
+ * (A body that legitimately STARTS with a thematic break is not a shape the
+ * pipeline produces; treating it as malformed only affects expansion
+ * eligibility, never shipping.)
+ */
+export function openingFrontmatterClosed(content: string): boolean {
+  const t = String(content || '').trimStart()
+  if (!t.startsWith('---')) return true
+  return /^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)/.test(t)
 }
 
 /**

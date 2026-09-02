@@ -354,6 +354,60 @@ describe('runDepthRescue', () => {
     expect(calls.length).toBeLessThanOrEqual(4)
   })
 
+  it('refuses to expand a frontmatter-only draft — unclosed YAML block is not content (2026-09-02 live regression)', async () => {
+    // Exact production signature: the stream truncated mid-frontmatter, so
+    // the draft is `---` + YAML keys with NO closing fence and no body prose.
+    const FM_ONLY = '---\ntitle: Employment-Based Green Card Strategy: H-1B & Student Guide (2026)\ndescription: Map your employment-based green card strategy with official USCIS steps, document checklists, and timeline expectations for 2026 applicants.\nprimaryKeyword: employment-based green card strategy\nrobots: index,follow\ndate: 2026-08-01\nregion: us\ncontentType: legal_guide\nownerHost: legal'
+    const audit = auditContent({
+      content: FM_ONLY,
+      contentType: CONTENT_TYPE,
+      primaryKeyword: PRIMARY,
+      indexable: true,
+      ownershipBlockers: OWNERSHIP_BLOCKERS,
+    })
+
+    const events: DepthRescueEvent[] = []
+    let done: (DepthRescueEvent & { type: 'done' }) | null = null
+    const generateText = jest.fn<Promise<ContentAiResult>, any[]>().mockRejectedValue(new Error('should not be called'))
+
+    for await (const ev of runDepthRescue({
+      content: FM_ONLY,
+      audit,
+      title: 'Test',
+      topic: 'Test',
+      primaryKeyword: 'test',
+      region: 'US',
+      contentType: 'article',
+      minWords: 2200,
+      targetWords: 2500,
+      maxWords: 6000,
+      minAudit: 60,
+      indexable: true,
+      ownershipBlockers: [],
+      generateText,
+    })) {
+      events.push(ev)
+      if (ev.type === 'done') done = ev
+    }
+
+    // Explicit refusal naming frontmatter-only — not the generic thin guard.
+    const refusal = events.find(
+      (e): e is Extract<DepthRescueEvent, { type: 'progress' }> =>
+        e.type === 'progress' && e.message.includes('frontmatter-only'),
+    )
+    expect(refusal).toBeDefined()
+
+    // Immediate done, zero passes, content untouched.
+    expect(done).not.toBeNull()
+    expect(done!.expandPasses).toBe(0)
+    expect(done!.attempts).toBe(0)
+    expect(done!.content).toBe(FM_ONLY)
+    expect(done!.timeMs).toBe(0)
+
+    // The rescue must NEVER call the model to "expand" scaffolding.
+    expect(generateText).not.toHaveBeenCalled()
+  })
+
   it('skips rescue for critically-thin drafts (below 200 words) and yields done immediately', async () => {
     const THIN = '# Barely there'
     const audit = auditContent({
