@@ -6,6 +6,7 @@
 import {
   checkContentDepth,
   countBodyWords,
+  maxWordsForType,
   minWordsForType,
   targetThresholdForType,
   targetWordsForType,
@@ -150,18 +151,23 @@ export function auditContent(opts: {
   // Word count — HARD blocker under Google depth floor (unattended ships)
   const minWords = minWordsForType(opts.contentType)
   const targetWords = targetWordsForType(opts.contentType)
+  const maxWords = maxWordsForType(opts.contentType)
   const targetThreshold = targetThresholdForType(opts.contentType)
   const depth = checkContentDepth({
     content,
     contentType: opts.contentType,
     indexable: wantIndexable,
   })
-  if (depth.thin || depth.belowMin) {
+  if (depth.thin || depth.belowMin || depth.overMax) {
     blockers.push({
-      code: depth.thin ? 'thin_content' : 'word_count',
+      code: depth.overMax ? 'word_count_over_max' : depth.thin ? 'thin_content' : 'word_count',
       severity: 'blocker',
-      message: depth.errors[0] || `Word count ${words} < min ${minWords}`,
-      fix: `Expand body prose to ≥${minWords} words (target ~${targetWords}): procedures, document checklists, eligibility, risks, timelines, 4–6 FAQs with full answers. No fluff padding.`,
+      message: depth.errors[0] || (depth.overMax
+        ? `Word count ${words} exceeds the hard max ${maxWords}`
+        : `Word count ${words} < min ${minWords}`),
+      fix: depth.overMax
+        ? `Trim the page back inside ${maxWords} words (target ~${targetWords}): cut redundant sections, tighten FAQs, drop filler paragraphs. Over-budget pages are rejected.`
+        : `Expand body prose to ≥${minWords} words (target ~${targetWords}): procedures, document checklists, eligibility, risks, timelines, 4–6 FAQs with full answers. No fluff padding.`,
     })
   } else if (words < targetThreshold) {
     warnings.push({

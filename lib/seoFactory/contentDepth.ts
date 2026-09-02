@@ -295,6 +295,8 @@ export interface DepthCheckResult {
   thin: boolean
   /** True when below type minWords. */
   belowMin: boolean
+  /** True when above the hard maxWords (bloat — ship-blocking). */
+  overMax: boolean
   errors: string[]
   warnings: string[]
 }
@@ -335,11 +337,14 @@ export function checkContentDepth(opts: {
     )
   }
 
-  // Cap check: warn when content exceeds the max word count
+  // Cap check: content over the hard max is REJECTED — bloat is as much a
+  // depth failure as thin content. The pipeline trims every attempt to the
+  // window, but a draft that still lands over (manual paste, reviewer
+  // rewrite, model overshoot) must never read as "depth satisfied".
   const overMax = wordCount > spec.maxWords
   if (overMax) {
-    warnings.push(
-      `Exceeds max word count: ${wordCount} words (max ${spec.maxWords} for ${spec.label}). Consider splitting into sub-topics or trimming redundant sections.`,
+    errors.push(
+      `Exceeds max word count: ${wordCount} words (max ${spec.maxWords} for ${spec.label}). Over-budget pages are rejected — trim redundant sections or split into sub-topics.`,
     )
   }
 
@@ -352,6 +357,7 @@ export function checkContentDepth(opts: {
     tier: spec.tier,
     thin,
     belowMin,
+    overMax,
     errors,
     warnings,
   }

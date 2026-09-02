@@ -620,8 +620,11 @@ export async function* runSeoFactoryPipelineStream(
       // ── Auto-trim: enforce hard maxWords ceiling ──────────────────────
       // Models can overshoot the hard ceiling. Trim only ordinary prose
       // paragraphs; never flatten headings/lists/tables into one line.
+      // Runs on EVERY attempt — the old `!underDepth` gate let a thin→huge
+      // first attempt escape (underDepth was computed BEFORE the attempt)
+      // and a bloated 3×-window draft sailed through as "gated".
       const overMaxBy = countBodyWords(content) - maxWords
-      if (overMaxBy > 0 && !underDepth) {
+      if (overMaxBy > 0) {
         const trimmed = trimMarkdownProseToWordBudget(content, maxWords, minWords)
         if (trimmed.removedWords > 0) {
           const trimmedWc = countBodyWords(trimmed.content)
