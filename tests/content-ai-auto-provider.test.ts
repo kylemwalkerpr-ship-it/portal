@@ -53,7 +53,7 @@ describe('content AI · auto provider pin', () => {
     expect(prefer).toBe('openai')
   })
 
-  it("resolves 'auto' to NVIDIA MiniMax M3 (the Draft default) even when a stale saved order leads with Baseten", () => {
+  it("resolves 'auto' to Entrim Qwen (the graduated default) even when a stale saved order leads with Baseten", () => {
     process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
       'baseten-deepseek',
       'nvidia-nemotron',
@@ -62,10 +62,10 @@ describe('content AI · auto provider pin', () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     const { explicit, prefer } = resolveAiProviderPin('auto')
     expect(explicit).toBe('')
-    expect(prefer).toBe('nvidia-minimax')
+    expect(prefer).toBe('entrim-qwen-27b')
   })
 
-  it("resolves 'auto' to NVIDIA MiniMax M3 even when the saved order omits it", () => {
+  it("resolves 'auto' to Entrim Qwen even when the saved order omits it", () => {
     process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
       'runbios-glm-53-flash',
       'grok',
@@ -73,7 +73,7 @@ describe('content AI · auto provider pin', () => {
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     const { prefer } = resolveAiProviderPin('auto')
-    expect(prefer).toBe('nvidia-minimax')
+    expect(prefer).toBe('entrim-qwen-27b')
   })
 
   it("routes a raw DeepSeek V4 Flash model id to NVIDIA (never 'not configured')", () => {

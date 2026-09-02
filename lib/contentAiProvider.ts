@@ -2726,22 +2726,21 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
-function promoteMinimaxAsLead(order: string[]): string[] {
-  const pin = 'nvidia-minimax'
-  const at = order.indexOf(pin)
-  if (at < 0) order.unshift(pin)
-  else if (at > 0) {
-    order.splice(at, 1)
-    order.unshift(pin)
-  }
-  return order
+/** Graduate the Entrim families to the lead of the auto cascade — the same
+ *  order DEFAULT_PROVIDER_ORDER declares (Entrim Qwen, Entrim DeepSeek,
+ *  then the legacy hosts), so the worker WITHOUT a vault overlay – the anon/
+ *  RLS condition that broke pasted keys – resolves AUTO to Entrim first. */
+function promoteEntrimAsLead(order: string[]): string[] {
+  const lead = ['entrim-qwen-27b', 'entrim-deepseek']
+  const without = order.filter((id) => !lead.includes(id))
+  return [...lead, ...without]
 }
 
 /** Parse the admin-saved order defensively (JSON or CSV). */
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
   if (!raw) {
-    return promoteMinimaxAsLead([
+    return promoteEntrimAsLead([
       'nvidia-minimax', 'runbios-glm-53-flash', 'grok', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
       'parasail-deepseek', 'deepseek-flash', 'parasail-glm',    'baseten-glm-fast', 'baseten-glm-53-flash',
     'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
@@ -2786,7 +2785,7 @@ function configuredProviderOrder(): string[] {
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
-  return promoteMinimaxAsLead(merged)
+  return promoteEntrimAsLead(merged)
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
