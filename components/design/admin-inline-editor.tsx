@@ -223,6 +223,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       saveTimerRef.current = null
       const controller = new AbortController()
       autosaveAbortRef.current = controller
+      if (!String(jobId || '').trim()) return // no job row yet — skip silently
       try {
         const res = await fetch('/api/content-studio/drafts', {
           method: 'POST', credentials: 'same-origin',
@@ -245,6 +246,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const handleSave = useCallback(async () => {
     setSaving(true); setError(null)
     try {
+      if (!String(jobId || '').trim()) {
+        throw new Error('Draft has no job yet — generate a draft first')
+      }
       const res = await fetch('/api/content-studio/drafts', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -271,6 +275,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     autosaveAbortRef.current?.abort()
     autosaveAbortRef.current = null
     setDirty(false)
+    // The workspace mounts this editor BEFORE the job row exists
+    // (completedJob lags the pipeline's lazy row creation) — the server
+    // rejects an empty jobId (400). Skip the POST; the next autosave picks
+    // the draft up the moment a jobId is available.
+    if (!String(jobId || '').trim()) {
+      console.info('[drafts] persist skipped — no job id yet (row created lazily)')
+      return
+    }
     const res = await fetch('/api/content-studio/drafts', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },

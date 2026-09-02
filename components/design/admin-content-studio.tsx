@@ -3489,7 +3489,7 @@ function DraftWorkspace({
           <div style={{ flex: 1, padding: 0 }}>
             <AdminInlineEditor
               content={draftContent}
-              jobId={completedJob?.id || ''}
+              jobId={completedJob?.id || selectedJob?.id || ''}
               onChange={(text) => setDraftContent(text)}
               disabled={generating}
               contentType={completedJob?.content_type}
