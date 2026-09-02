@@ -279,6 +279,10 @@ export async function generateBriefText(opts: {
       try {
         const ai = await generateContentText({
           aiProvider: leg.aiProvider,
+          // NEVER forward a model that a fallback leg does not own — a stale
+          // primary model pin leaked into the Entrim leg on the deployed
+          // worker (model=grok-4.6 → 400). Legs run on their provider
+          // defaults only.
           system: opts.system,
           prompt: opts.prompt,
           maxTokens: opts.maxTokens,

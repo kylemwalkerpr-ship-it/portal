@@ -265,7 +265,12 @@ export async function POST(req: NextRequest) {
     // session). Floor at 5 minutes.
     const { ai, fallbackUsed } = await generateBriefText({
       aiProvider,
-      model: modelOverride,
+      // Only forward a model override that the selected family OWNS — a
+      // stale non-family pin leaking in made the Entrim leg send
+      // model=grok-4.6 (400) on the deployed worker.
+      model: modelOverride && String(modelOverride).toLowerCase().includes(String(aiProvider).split('-')[0].toLowerCase())
+        ? modelOverride
+        : undefined,
       system,
       prompt,
       maxTokens: 8000,
