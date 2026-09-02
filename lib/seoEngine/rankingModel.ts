@@ -1219,6 +1219,28 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
     } catch {
       llmByCluster = {}
     }
+    // Marketplace prices (live gig tiers or stage defaults) — cached module.
+    let priceCache = new Map<string, { priceMin: number; priceMax: number }>()
+    try {
+      const { marketplaceValue } = await import('./marketplaceValue')
+      const { plans: allPlans } = await loadPlansDashboard(200)
+      const cells = new Set(allPlans.map((p) => `${String(p.country || 'US')}:${String(p.stage || '')}`))
+      await Promise.all(
+        Array.from(cells).map(async (cell) => {
+          const [country, stage] = cell.split(':')
+          try {
+            const v = await marketplaceValue(stage, country)
+            priceCache.set(cell, { priceMin: v.priceMin, priceMax: v.priceMax })
+          } catch {
+            /* best-effort — fall back to the $400 default */
+          }
+        }),
+      )
+    } catch {
+      priceCache = new Map()
+    }
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    const supabase = createSupabaseAdminClient()
     for (const p of plans) {
       const term = String(p.primary_term || '')
       if (!term) continue
@@ -1244,6 +1266,35 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
       })
       await persistRankingScore(score)
       await persistForecast(term, score.forecast, String(p.cluster_id || ''))
+      // Close the planner-card gap: persist TitleLab candidates + the funnel
+      // action + honest $/mo onto the plan row so the Discover/Planner cards
+      // and ⚡ Brief handoff read real economics, not aspirational fields.
+      try {
+        const { buildPlanEconomics } = await import('./planEconomics')
+        const price = priceCache.get(`${country}:${stage}`)
+        const economics = buildPlanEconomics({
+          primaryTerm: term,
+          stage: stage || null,
+          country: country || null,
+          relatedTerms: Array.isArray(p.related_terms) ? (p.related_terms as string[]) : undefined,
+          impressions: Number(p.est_monthly_impressions) || 0,
+          position: Number(p.position) || 20,
+          intent: String(p.intent || 'informational'),
+          priceMin: price?.priceMin ?? null,
+          priceMax: price?.priceMax ?? null,
+          recommendedActions: score.recommendedActions,
+        })
+        await supabase
+          .from('seo_cluster_plans')
+          .update({
+            title_candidates: economics.titleCandidates,
+            action_type: economics.actionType,
+            expected_revenue: economics.expectedRevenue,
+          })
+          .eq('cluster_id', String(p.cluster_id || ''))
+      } catch {
+        // plan economics are additive — a DB blip must not fail the pass
+      }
       topScores.push({ topic: term, total: score.total })
     }
     topScores.sort((a, b) => b.total - a.total)

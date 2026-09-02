@@ -1070,7 +1070,7 @@ export async function loadPlansDashboard(limit = 30): Promise<{
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_cluster_plans')
-      .select('cluster_id,primary_term,related_terms,stage,country,intent,opportunity_score,est_monthly_impressions,est_monthly_clicks,position,ctr,plan,compliance_score,status,rationale,generated_at')
+      .select('cluster_id,primary_term,related_terms,stage,country,intent,opportunity_score,est_monthly_impressions,est_monthly_clicks,position,ctr,plan,compliance_score,status,rationale,generated_at,title_candidates,action_type,expected_revenue')
       .order('opportunity_score', { ascending: false })
       .limit(limit)
     // The desk GET must never display junk rows. Old seo_cluster_plans rows
