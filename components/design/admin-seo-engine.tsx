@@ -559,6 +559,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {p.status === 'shipped' && (
+                          <span style={{ fontSize: 9, fontWeight: 700, fontFamily: C.mono, color: C.green, padding: '2px 6px', borderRadius: 999, background: C.greenSoft, border: `1px solid ${C.greenBorder}` }}>✓ shipped</span>
+                        )}
                         <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>COMPLIANCE</span>
                         <span style={{ fontSize: 13, fontWeight: 800, fontFamily: C.mono, color: score >= 85 ? C.green : score >= 70 ? C.orange : C.red }}>{score}</span>
                       </div>
@@ -566,10 +569,13 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                         <div style={{ width: `${Math.min(100, score)}%`, height: '100%', borderRadius: 999, background: score >= 85 ? C.green : score >= 70 ? C.orange : C.red }} />
                       </div>
                       <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                        {onBrief && (
+                        {onBrief && p.status !== 'shipped' && (
                           <button type="button" onClick={(e) => { e.stopPropagation(); onBrief(p) }} style={{ ...btnSolid(C.navy), padding: '4px 10px' }} title={`Pre-fill the brief composer with this mission${revUsd > 0 ? ` · 💷 ~$${fmtN(revUsd)}/mo` : ''}${actLabel ? ` · ${actLabel}` : ''}`}>
                             ⚡ Brief
                           </button>
+                        )}
+                        {p.status === 'shipped' && (
+                          <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, padding: '4px 6px' }}>published — refresh plays live on the page</span>
                         )}
                         <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPlan(open ? null : String(p.cluster_id)) }} style={{ ...btnGhost, padding: '4px 10px' }}>
                           {open ? '▲ Hide' : '▼ Details'}

@@ -579,7 +579,7 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
       // 529 = NVIDIA "Service temporarily overloaded" (verified live). It is
       // recoverable — a short pause often drains the worker — so it retries
       // with backoff like 503/429 before the cascade moves to the next host.
-      const retryable = /\b(503|429|524|529)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(msg)
+      const retryable = /\b(502|503|504|524|529)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(msg)
       if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
       // Exponential backoff: 1.5s → 3s → 6s (with ±20% jitter)
       const baseMs = 1500 * 2 ** (attempt - 1)

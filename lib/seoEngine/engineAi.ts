@@ -19,7 +19,6 @@ import {
   isEntrimConfigured,
   isGrokConfigured,
   isOpenaiConfigured,
-  isRunbiosConfigured,
   refreshAiVault,
   type ContentAiOptions,
   type ContentAiResult,
@@ -97,9 +96,10 @@ export function resolveEngineAiProvider(preferred?: string): string {
 }
 
 export function enginePairReady(): boolean {
-  // Graduated pair readiness: Entrim serves both legs with one key; Run BiOS
-  // + Grok remain a valid legacy pair when Entrim is unconfigured.
-  return isEntrimConfigured() || isRunbiosConfigured() || isGrokConfigured()
+  // Graduated pair readiness: Entrim serves both legs with one key; without
+  // Entrim the pair degrades to a single Grok lead (Claude Opus is out of
+  // commission). Qwen + Grok carry the Discover-stage brains.
+  return isEntrimConfigured() || isGrokConfigured()
 }
 
 export function extractEngineJsonObject(text: string): Record<string, unknown> | null {
@@ -233,20 +233,19 @@ export async function generateEnginePairText(
     exclusive: true as const,
   }
   // Graduated pair: the Entrim lead gets the 10-minute floor; the complement
-  // (second Entrim family) keeps the same floor. Legacy vaults without an
-  // ENTRIM key fall back to the old Run BiOS Opus lead / Grok complement —
-  // see leadProvider/complementProvider below.
+  // (second Entrim family) keeps the same floor. Claude Opus is OUT OF
+  // COMMISSION — a vault without an ENTRIM key falls back to a Grok single
+  // lead, never Run BiOS Claude (see leadProvider below).
   const leadTimeoutMs =
     opts.timeoutMs != null ? Math.max(opts.timeoutMs, PAIR_LEAD_MIN_TIMEOUT_MS) : undefined
 
   // Leg readiness: Entrim serves both legs with one key. Without Entrim the
-  // pair degrades to the legacy lead/complement providers so operators with
-  // only Run BiOS + Grok keys keep the exact behavior they had.
+  // pair degrades to a single Grok lead — Qwen + Grok carry the engine.
   const entrimReady = isEntrimConfigured()
-  const leadReady = entrimReady || isRunbiosConfigured()
-  const complementReady = entrimReady || isGrokConfigured()
-  const leadProvider = entrimReady ? ENGINE_LEAD_PROVIDER : ('runbios-claude-opus' as const)
-  const complementProvider = entrimReady ? ENGINE_COMPLEMENT_PROVIDER : ('grok' as const)
+  const leadReady = entrimReady || isGrokConfigured()
+  const complementReady = entrimReady
+  const leadProvider = entrimReady ? ENGINE_LEAD_PROVIDER : ('grok' as const)
+  const complementProvider = ENGINE_COMPLEMENT_PROVIDER
   const notConfigured = (label: string) =>
     ({ status: 'rejected', reason: new Error(`${label}: not configured`) }) as PromiseSettledResult<ContentAiResult>
 
@@ -256,7 +255,7 @@ export async function generateEnginePairText(
           ...shared,
           ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
           aiProvider: leadProvider,
-          model: entrimReady ? ENGINE_LEAD_MODEL : 'claude-opus-5',
+          model: entrimReady ? ENGINE_LEAD_MODEL : undefined,
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
       : Promise.resolve(notConfigured('Entrim Qwen3.6 27B')),
@@ -266,36 +265,8 @@ export async function generateEnginePairText(
           aiProvider: complementProvider,
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
-      : Promise.resolve(notConfigured('Entrim DeepSeek V4 Flash')),
+      : Promise.resolve(notConfigured('Entrim DeepSeek V4 Flash (no ENTRIM key)')),
   ])
-
-  // Discover resilience: with Entrim configured and NO Run BiOS/Grok keys,
-  // the pair would dead-leg twice. Fire Qwen3.6 27B as the pair's lead so
-  // Discover-stage brains (planner narrative, knowledge summaries, LLM
-  // visibility probes) still run on the Entrim vault row alone.
-  if (!leadReady && !complementReady && isEntrimConfigured()) {
-    const qwenLeg = await runPairLeg('runbios-opus', () =>
-      generateContentText({
-        ...shared,
-        aiProvider: 'entrim-qwen-27b',
-        maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
-      }))
-    const qwenText = settledText(qwenLeg)
-    if (qwenText) {
-      return {
-        ...qwenText,
-        model: `${qwenText.model} · pair (Entrim Qwen fallback)`,
-        pair: {
-          leadModel: qwenText.model,
-          complementModel: null,
-          merged: false,
-          leadOnly: true,
-          complementOnly: false,
-          disagreed: false,
-        },
-      }
-    }
-  }
 
   const lead = settledText(leadSettled)
   const complement = settledText(complementSettled)

@@ -692,6 +692,30 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const { loadShippedCoverage } = await import('./shippedCoverage')
   const shippedPages = await loadShippedCoverage().catch(() => [])
   const shippedStems = buildShippedStems(shippedPages)
+  // Plan lifecycle: mark existing PLANNED rows as shipped when their topic
+  // has since gone live (≥70% stem overlap). Status flips are the audit
+  // trail — the same mission never re-ranks on the desk after shipping.
+  if (shippedStems.size) {
+    try {
+      const lifecycleSb = createSupabaseAdminClient()
+      const { data: plannedRows } = await lifecycleSb
+        .from('seo_cluster_plans')
+        .select('cluster_id,primary_term')
+        .eq('status', 'planned')
+        .limit(500)
+      const shippedIds = ((plannedRows as Array<{ cluster_id?: string; primary_term?: string | null }> | null) || [])
+        .filter((r) => shippedOverlap(String(r.primary_term || ''), shippedStems) !== null)
+        .map((r) => r.cluster_id)
+        .filter((id): id is string => Boolean(id))
+      if (shippedIds.length) {
+        await lifecycleSb
+          .from('seo_cluster_plans')
+          .update({ status: 'shipped', shipped_at: new Date().toISOString() })
+          .in('cluster_id', shippedIds)
+        req.onProgress?.('plan', `Marked ${shippedIds.length} plan(s) shipped — cluster already published`)
+      }
+    } catch { /* lifecycle sweep is best-effort */ }
+  }
   let droppedShipped = 0
   let penalizedShipped = 0
   const bias = knowledgeBias(knowledge)
@@ -1020,12 +1044,17 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
         stage: p.stage,
         country: p.country,
         intent: p.intent,
+        ymyl: p.ymyl,
         opportunity_score: p.opportunityScore,
         est_monthly_impressions: p.estMonthlyImpressions,
         est_monthly_clicks: p.estMonthlyClicks,
         position: p.position,
         ctr: p.ctr,
         plan: p.plan as unknown as Record<string, unknown>,
+        compliance: p.compliance as unknown as Record<string, unknown>,
+        distribution: p.distribution as unknown as Array<Record<string, unknown>>,
+        interlinks: p.interlinks as unknown as string[],
+        brief: p.brief,
         compliance_score: p.compliance.score,
         status: 'planned',
         rationale: p.rationale,
@@ -1070,7 +1099,7 @@ export async function loadPlansDashboard(limit = 30): Promise<{
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_cluster_plans')
-      .select('cluster_id,primary_term,related_terms,stage,country,intent,opportunity_score,est_monthly_impressions,est_monthly_clicks,position,ctr,plan,compliance_score,status,rationale,generated_at,title_candidates,action_type,expected_revenue')
+      .select('cluster_id,primary_term,related_terms,stage,country,intent,ymyl,opportunity_score,est_monthly_impressions,est_monthly_clicks,position,ctr,plan,compliance_score,status,rationale,generated_at,title_candidates,action_type,expected_revenue,distribution,interlinks,compliance,shipped_at')
       .order('opportunity_score', { ascending: false })
       .limit(limit)
     // The desk GET must never display junk rows. Old seo_cluster_plans rows
