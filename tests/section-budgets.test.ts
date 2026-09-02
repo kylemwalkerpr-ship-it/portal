@@ -31,6 +31,40 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
     expect(maxSum).toBeGreaterThanOrEqual(2200)
   })
 
+  it('Σ section MINIMUMS reach the page floor — meeting every section min lands at 2200 (single-run invariant)', () => {
+    // The restart loophole: if Σ(mins) < pageMin, a drafter that honours
+    // every section minimum is still "under par" and may append a second
+    // copy in pursuit of the global count. The contract must close that gap.
+    for (const [type, pageMin, pageMax] of [
+      ['article', 2200, 2800],
+      ['blog_post', 800, 1500],
+      ['regional_page', 1200, 2000],
+    ] as const) {
+      const budgets = buildSectionBudgets({ sections, pageMin, pageMax })
+      const minSum = budgets.reduce((a, b) => a + b.minWords, 0)
+      expect(minSum).toBeGreaterThanOrEqual(pageMin)
+      const maxSum = budgets.reduce((a, b) => a + b.maxWords, 0)
+      expect(maxSum).toBeLessThanOrEqual(pageMax)
+      // Sanity: every section's range is coherent.
+      for (const b of budgets) {
+        expect(b.maxWords).toBeGreaterThanOrEqual(b.minWords)
+        expect(b.minWords).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+
+  it('blog_post window (800–1500) also satisfies the sum invariants with a longer outline', () => {
+    const blogSections = sections.concat([
+      { heading: 'Best banks for international students', targetWords: 300 },
+      { heading: 'Common mistakes to avoid', targetWords: 250 },
+    ])
+    const budgets = buildSectionBudgets({ sections: blogSections, pageMin: 800, pageMax: 1500 })
+    const minSum = budgets.reduce((a, b) => a + b.minWords, 0)
+    const maxSum = budgets.reduce((a, b) => a + b.maxWords, 0)
+    expect(minSum).toBeGreaterThanOrEqual(800)
+    expect(maxSum).toBeLessThanOrEqual(1500)
+  })
+
   it('renders the STRICT SECTION BUDGETS block in the drafter prompt when provided', () => {
     const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2800 })
     const prompt = buildFactoryUserPrompt({

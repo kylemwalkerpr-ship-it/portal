@@ -15,6 +15,7 @@ import {
   buildDepthExpandPrompt,
   buildFactorySystemPrompt,
   buildFactoryUserPrompt,
+  ensureSectionBudgets,
   extractH2Titles,
   mergeAppendedSections,
   minWordsForType,
@@ -345,6 +346,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     const minWords = minWordsForType(contentType)
   const targetWords = targetWordsForType(contentType)
   const maxWords = maxWordsForType(contentType)
+  // CANONICAL SECTION BUDGETS — always present in the drafting contract
+  // (derived from the outline when the brief omits them; sum invariants
+  // Σ(mins) ≥ pageMin, Σ(maxs) ≤ pageMax enforced).
+  const sectionBudgets = ensureSectionBudgets(
+    (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
+    { h2Outline: input.h2Outline as string[] | undefined, pageMin: minWords, pageMax: maxWords, pageTarget: targetWords },
+  )
 
   const gscBrief = await buildGscContentBrief({
     topic,
@@ -479,7 +487,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           masterEngineBlock: input.masterEngineBlock || undefined,
           refineNotes,
           marketplaceCta: input.marketplaceCta,
-            sectionBudgets: (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
+            sectionBudgets,
           titleCandidate: input.titleCandidate,
           // Keep human/model fixes when resuming a saved draft (retry cron).
           draft: content || undefined,

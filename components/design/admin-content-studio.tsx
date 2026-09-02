@@ -30,6 +30,7 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
 import { isCitableSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
+import { buildSectionBudgets } from '@/lib/seoFactory/prompts'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
   asQueueUiFilter,
@@ -2474,11 +2475,30 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     else lines.push('- (empty — drafting will use only live-verified official authorities for this topic; no invented URLs)')
     lines.push('')
     lines.push(`### WORD COUNT: ${minWords}–${maxWords} words`)
+    // CANONICAL SECTION BUDGETS — the same allocator the pipeline enforces
+    // (Σ section minimums ≥ page floor, Σ maximums ≤ page ceiling). Rendering
+    // them in the contract closes the loophole where the drafter saw a global
+    // window but per-section guesswork, inviting under-runs and restarts.
+    const canonicalBudgets = sectionBudgets?.length
+      ? sectionBudgets
+      : buildSectionBudgets({
+          sections: h2s.map((h) => ({ heading: h })),
+          pageMin: minWords,
+          pageMax: maxWords,
+        })
+    if (canonicalBudgets.length) {
+      lines.push('')
+      lines.push('### SECTION WORD BUDGETS (hard ranges — the sums close the global window)')
+      canonicalBudgets.forEach((b) => lines.push(`- ## ${b.heading}: ${b.minWords}–${b.maxWords} body words`))
+      const minSum = canonicalBudgets.reduce((a, b) => a + b.minWords, 0)
+      const maxSum = canonicalBudgets.reduce((a, b) => a + b.maxWords, 0)
+      lines.push(`- Contract invariant: meeting every section minimum reaches ${minSum} words (≥ ${minWords} floor); section maxima sum to ${maxSum} (≤ ${maxWords} cap). Honour the ranges and the article lands inside the window in ONE sweep — never append a second copy.`)
+    }
     lines.push('')
     lines.push('### AI PROVIDER')
     lines.push(`- Selected: ${aiProvider || 'auto (cascade)'}`)
     return lines.join('\n')
-  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider])
+  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider, sectionBudgets])
 
   const handleSubmitBrief = () => {
     onGenerate({

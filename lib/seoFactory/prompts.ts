@@ -616,9 +616,25 @@ export function buildSectionBudgets(opts: {
       return { heading: h, minWords: 0, maxWords: 80 }
     })
   }
-  const contentFloor = Math.max(contentSections.length * 120, opts.pageMin - structuralReserve)
-  const contentCeiling = opts.pageMax - structuralReserve
-  const contentBudget = Math.max(contentFloor, Math.min(contentCeiling, target - structuralReserve))
+  // ── SUM INVARIANTS (single-run contract, committee-mandated) ──────────
+  // The brief contract must leave NO room for a restart: honouring every
+  // section MINIMUM must reach the page floor, and honouring every section
+  // MAXIMUM must not exceed the page ceiling. Previously mins were 75% of
+  // allocations, so Σmins ≈ 1650 against a 2200 floor — a drafter that met
+  // every section minimum was still 550 words "under par", inviting the
+  // append-a-second-copy failure mode.
+  // Structural MINS (not maxs) are fixed small reserves; the content sections
+  // split whatever remains of the page floor, so Σ(all mins) == pageMin.
+  const structuralMinSum =
+    (sections.some((h) => h.toLowerCase() === 'in 60 seconds') ? Math.min(60, reserveTldr) : 0) +
+    (hasToc ? 0 : 0) +
+    (sections.some((h) => h.toLowerCase().includes('source')) ? Math.min(10, reserveSources) : 0) +
+    (hasFaq ? Math.min(reserveFaq, 360) : 0)
+  const contentMinTotal = Math.max(contentSections.length * 120, opts.pageMin - structuralMinSum)
+  const contentBudget = Math.max(
+    contentMinTotal,
+    Math.min(opts.pageMax - structuralReserve, target - structuralReserve),
+  )
   const weights = contentSections.map((h) => {
     const entry = opts.sections.find((s) => String(s.heading || '').trim() === h)
     const w = Number(entry?.targetWords) || 0
@@ -628,21 +644,94 @@ export function buildSectionBudgets(opts: {
   const allocs = weights.map((w) => Math.round((contentBudget * w) / totalWeight))
   const correction = contentBudget - allocs.reduce((a, b) => a + b, 0)
   if (correction !== 0 && allocs.length) allocs[allocs.length - 1] += correction
+  // Section minimums: an even share of the PAGE FLOOR remaining after the
+  // structural reserves — so Σ(mins) == pageMin exactly (>= when the 120-word
+  // per-section floor kicks in on section-heavy outlines). A drafter that
+  // meets every section minimum lands AT the floor in one sweep.
+  const perSectionFloor = Math.floor(contentMinTotal / contentSections.length)
+  const floorRemainder = contentMinTotal - perSectionFloor * contentSections.length
   const byHeading = new Map<string, { heading: string; minWords: number; maxWords: number }>()
   contentSections.forEach((h, i) => {
-    const alloc = Math.max(120, allocs[i] ?? 120)
-    byHeading.set(h, { heading: h, minWords: Math.min(alloc, Math.round(alloc * 0.75)), maxWords: alloc })
+    const minW = Math.max(120, perSectionFloor + (i < floorRemainder ? 1 : 0))
+    const alloc = Math.max(minW, allocs[i] ?? minW)
+    byHeading.set(h, { heading: h, minWords: minW, maxWords: alloc })
   })
+  // Structural sections carry fixed small minimums (Σ with the content mins
+  // equals the page floor) and their reserve maxes.
   sections.forEach((h) => {
     const lower = h.toLowerCase()
     if (byHeading.has(h)) return
-    if (lower === 'in 60 seconds') byHeading.set(h, { heading: h, minWords: 60, maxWords: reserveTldr })
+    if (lower === 'in 60 seconds') byHeading.set(h, { heading: h, minWords: Math.min(60, reserveTldr), maxWords: reserveTldr })
     else if (lower === 'table of contents') byHeading.set(h, { heading: h, minWords: 0, maxWords: 30 })
     else if (lower.includes('faq')) byHeading.set(h, { heading: h, minWords: Math.min(reserveFaq, 360), maxWords: reserveFaq })
-    else if (lower.includes('source') || lower === 'related guides') byHeading.set(h, { heading: h, minWords: 10, maxWords: reserveSources })
+    else if (lower.includes('source') || lower === 'related guides') byHeading.set(h, { heading: h, minWords: Math.min(10, reserveSources), maxWords: reserveSources })
     else byHeading.set(h, { heading: h, minWords: 0, maxWords: 120 })
   })
-  return sections.map((h) => byHeading.get(h)!)
+  const budgets = sections.map((h) => byHeading.get(h)!)
+  // Σ(maxs) may exceed pageMax when max(120, alloc) floors individual
+  // sections on very short pages — rescale the maxes down proportionally so
+  // the ceiling holds without ever pushing a max below its min.
+  const maxSum = budgets.reduce((a, b) => a + b.maxWords, 0)
+  if (maxSum > opts.pageMax) {
+    const overflow = maxSum - opts.pageMax
+    let remaining = overflow
+    const flexible = budgets.filter((b) => b.maxWords > b.minWords)
+    const flexTotal = flexible.reduce((a, b) => a + (b.maxWords - b.minWords), 0)
+    if (flexTotal > 0) {
+      for (const b of flexible) {
+        const cut = Math.min(b.maxWords - b.minWords, Math.floor((overflow * (b.maxWords - b.minWords)) / flexTotal))
+        b.maxWords -= cut
+        remaining -= cut
+      }
+    }
+    // Any residual overflow (rounding) comes off the largest flexible max.
+    while (remaining > 0) {
+      const target2 = flexible.slice().sort((a, b) => b.maxWords - a.maxWords)[0]
+      if (!target2 || target2.maxWords <= target2.minWords) break
+      target2.maxWords -= 1
+      remaining -= 1
+    }
+  }
+  return budgets
+}
+
+/**
+ * Deterministic per-section budgets for a canonical window — used by the
+ * pipelines when a brief arrives WITHOUT sectionBudgets (older briefs, cron
+ * drafts, manual composer runs). Guarantees the committee invariants:
+ * Σ(mins) ≥ pageMin and Σ(maxs) ≤ pageMax, so a drafter honouring the
+ * contract cannot land outside the window in a single sweep.
+ */
+export function ensureSectionBudgets(
+  existing: Array<{ heading: string; minWords: number; maxWords: number }> | undefined | null,
+  opts: { h2Outline?: string[]; pageMin: number; pageMax: number; pageTarget?: number },
+): Array<{ heading: string; minWords: number; maxWords: number }> {
+  const provided = Array.isArray(existing) ? existing.filter((s) => s && String(s.heading || '').trim()) : []
+  if (provided.length) {
+    const minSum = provided.reduce((a, b) => a + Math.max(0, Number(b.minWords) || 0), 0)
+    const maxSum = provided.reduce((a, b) => a + Math.max(0, Number(b.maxWords) || 0), 0)
+    if (minSum >= opts.pageMin && maxSum <= opts.pageMax) return provided
+    // Repair a non-conforming pack: rescale maxes into the ceiling, then
+    // lift mins to the floor via a deterministic rebuild keyed on the same
+    // headings (keeps the brief's section order and any custom headings).
+    return buildSectionBudgets({
+      sections: provided.map((s) => ({
+        heading: String(s.heading),
+        targetWords: Math.max(0, Number(s.maxWords) || 0) || undefined,
+      })),
+      pageMin: opts.pageMin,
+      pageMax: opts.pageMax,
+      pageTarget: opts.pageTarget,
+    })
+  }
+  const sections = (opts.h2Outline || []).map((h) => String(h || '').trim()).filter(Boolean)
+  if (!sections.length) return []
+  return buildSectionBudgets({
+    sections: sections.map((h) => ({ heading: h.replace(/^#+\s*/, '') })),
+    pageMin: opts.pageMin,
+    pageMax: opts.pageMax,
+    pageTarget: opts.pageTarget,
+  })
 }
 
 /**

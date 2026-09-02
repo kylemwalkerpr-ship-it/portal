@@ -18,6 +18,7 @@ import {
   buildFactorySystemPrompt,
   buildFactoryUserPrompt,
   buildSegmentWritePrompt,
+  ensureSectionBudgets,
   extractH2Titles,
   mergeAppendedSections,
   mergeSegmentParts,
@@ -167,6 +168,15 @@ export async function* runSeoFactoryPipelineStream(
     const minWords = minWordsForType(contentType)
     const targetWords = targetWordsForType(contentType)
     const maxWords = maxWordsForType(contentType)
+    // CANONICAL SECTION BUDGETS — the brief contract the drafter reads always
+    // carries per-section word windows. When the brief omits them (older
+    // briefs, cron runs, manual composer) they are derived deterministically
+    // from the outline and the canonical window, with the sum invariants
+    // Σ(mins) ≥ pageMin and Σ(maxs) ≤ pageMax enforced — no room to restart.
+    const sectionBudgets = ensureSectionBudgets(
+      (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
+      { h2Outline: input.h2Outline as string[] | undefined, pageMin: minWords, pageMax: maxWords, pageTarget: targetWords },
+    )
     // SINGLE-PASS WRITING — the drafter receives ONE brief and writes the
     // whole article in ONE response (front matter → outline → FAQ → Sources →
     // JSON-LD → disclaimer). Two-part runs were what produced echo copies
@@ -474,7 +484,7 @@ export async function* runSeoFactoryPipelineStream(
             masterEngineBlock: input.masterEngineBlock || undefined,
             refineNotes,
             marketplaceCta: input.marketplaceCta,
-            sectionBudgets: (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
+            sectionBudgets,
             titleCandidate: input.titleCandidate,
             // REVISE THE EXISTING DRAFT, don't regenerate from scratch — fixes
             // must accumulate across iterations or the same blockers (AI slop,
@@ -898,7 +908,7 @@ export async function* runSeoFactoryPipelineStream(
               masterEngineBlock: input.masterEngineBlock || undefined,
               refineNotes,
               marketplaceCta: input.marketplaceCta,
-            sectionBudgets: (input as { sectionBudgets?: Array<{ heading: string; minWords: number; maxWords: number }> }).sectionBudgets,
+            sectionBudgets,
               titleCandidate: input.titleCandidate,
               // Revise the existing draft — fixes must accumulate, not restart.
               draft: content || undefined,
