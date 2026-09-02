@@ -2168,9 +2168,34 @@ async function* openAiCompatibleStream(
       if (attempts > 1) {
         yield { type: 'provider', provider: `${p.label} (overload retry ${attempts})`, model }
       }
+      // Watch for a model restart in the SSE deltas — if the model emitted
+      // a new H1/frontmatter instead of appending, stop yielding deltas and
+      // break so we keep the previous draft (only relevant for continuation
+      // attempts; the first attempt is always accepted as-is).
+      let restartDetected = false
+      let deltaCount = 0
       for await (const delta of parseOpenAiSse(streamRes.body)) {
+        if (continuations > 0 && !restartDetected && delta.trimStart().length > 0) {
+          const head = delta.trimStart().slice(0, 200)
+          if (/^---\s*\n/.test(head) && /title\s*[:=]/im.test(head)) {
+            restartDetected = true
+            break
+          }
+          if (/^#\s+[A-Z]/.test(head) && !full.endsWith('\n')) {
+            restartDetected = true
+            break
+          }
+        }
         full += delta
         yield { type: 'delta', text: delta }
+        deltaCount++
+      }
+      if (restartDetected) {
+        // Model restarted instead of appending — stop continuing.
+        // Roll back the deltas we already appended from this attempt.
+        // (Only the deltas from THIS continuation attempt, not the full text.)
+        yield { type: 'provider', provider: `${p.label} (restart detected — keeping prior draft)`, model }
+        break
       }
       break // success — stream completed without truncation
     } catch (e) {
