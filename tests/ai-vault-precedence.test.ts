@@ -165,3 +165,19 @@ describe('vault status — masking does not regress', () => {
     expect(maskKey('sk-1234567890abcdef')).not.toBe('sk-1234567890abcdef')
   })
 })
+
+describe('auto-cascade default — graduated Entrim fallback, never stale MiniMax', () => {
+  it('empty/stale default_provider resolves CONTENT_AI_PROVIDER to entrim-qwen-27b', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    // Empty settings (no default_provider) → the overlay must NOT fall back
+    // to the pre-graduation hardcoded nvidia-minimax (whose 429 killed drafts).
+    const overlay = await buildVaultEnvOverrides(true)
+    expect(overlay.CONTENT_AI_PROVIDER).toBe('entrim-qwen-27b')
+  })
+
+  it('a persisted nvidia-minimax default is treated as stale → entrim qwen', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    const overlay = await buildVaultEnvOverrides(true)
+    expect(overlay.CONTENT_AI_PROVIDER).not.toBe('nvidia-minimax')
+  })
+})

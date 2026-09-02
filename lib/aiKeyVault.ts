@@ -577,7 +577,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   // the admin's default model is applied to the selected primary provider.
   const defaultProvider = String(settings.default_provider || '').trim()
   out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider)
-    ? 'nvidia-minimax'
+    ? 'entrim-qwen-27b'
     : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
@@ -660,6 +660,7 @@ export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number
 const STALE_DEFAULT_PROVIDERS = new Set([
   '',
   'auto',
+  'nvidia-minimax',
   'runbios-glm-53-flash',
   'nvidia-nemotron',
   'baseten-deepseek',
