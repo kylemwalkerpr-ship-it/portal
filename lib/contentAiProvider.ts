@@ -2249,44 +2249,67 @@ async function* openAiCompatibleStream(
       let restartDetected = false
       let deltaCount = 0
       let sawProse = full.length > 0
+      // Opening-frontmatter state machine: a fresh draft starts with a `---`
+      // fence and a YAML block whose keys may be kebab-case OR camelCase (the
+      // pipeline schema emits `primaryKeyword:` / `contentType:` /
+      // `ownerHost:`). Everything until the closing fence is scaffolding:
+      // no restart checks, no prose flagging. Without this, the camelCase
+      // keys flipped `sawProse` true and the closing fence read as a
+      // frontmatter restart — truncating live drafts to their frontmatter
+      // (46-word runs, 2026-09-02 production regression).
+      let inOpeningFrontmatter = false
+      let openingFenceSeen = false
       for await (const delta of parseOpenAiSse(streamRes.body)) {
         const trimmed = delta.trimStart()
         if (!restartDetected && trimmed.length > 0) {
           const head = trimmed.slice(0, 200)
-          // A standalone `---` delta AFTER we have already seen prose is a
-          // frontmatter restart — the first attempt's frontmatter is at
-          // position 0; a later `---` means a new article was started.
-          if (head.trim() === '---' && sawProse) {
-            restartDetected = true
-            break
-          }
-          // A `---` + title: in the same delta is a restart ONLY after prose
-          // has been seen. The draft's OWN opening frontmatter arrives as the
-          // first delta(s) of a fresh stream — flagging it made every Entrim
-          // stream die with "returned empty content" on delta #1
-          // (2026-09-02 production regression).
-          if (sawProse && /^---\s*\n[\s\S]*title\s*[:=]/im.test(head)) {
-            restartDetected = true
-            break
-          }
-          // New title-level H1 after prose — fresh article. NOTE: this must
-          // fire even when `full` ends with the '\n\n' continuation
-          // separator the catch block appended — a paragraph boundary is
-          // exactly where a restart begins, so `!full.endsWith('\n')` was
-          // the wrong guard and let H1 restarts through (2026-09-02 regression).
-          if (/^#\s+[A-Z]/.test(head) && sawProse) {
-            restartDetected = true
-            break
+          if (!openingFenceSeen && !sawProse && /^---/.test(trimmed)) {
+            // First `---` of the stream opens the draft's own frontmatter.
+            // The closing fence may arrive in the SAME chunk (one SSE delta
+            // can carry the whole block), so check for it immediately.
+            openingFenceSeen = true
+            inOpeningFrontmatter = true
+            if (/(^|\n)\s*---\s*(\n|$)/.test(trimmed.slice(3))) inOpeningFrontmatter = false
+          } else if (inOpeningFrontmatter) {
+            // Closing fence of the opening block (may share the delta with
+            // key text, e.g. `ownerHost: legal\n---`). Scan the FULL delta —
+            // a single SSE chunk can carry the whole frontmatter block.
+            if (/(^|\n)\s*---\s*(\n|$)/.test(trimmed)) inOpeningFrontmatter = false
+            // A model that skips the closing fence and jumps straight to the
+            // H1 implicitly ends the block — re-arm the restart checks.
+            else if (/^#\s/.test(trimmed)) inOpeningFrontmatter = false
+          } else if (sawProse) {
+            // A standalone `---` AFTER body prose is a frontmatter restart.
+            if (head.trim() === '---') {
+              restartDetected = true
+              break
+            }
+            // A `---` + title: in the same delta after prose is a restart.
+            // (The draft's OWN opening frontmatter is handled above — flagging
+            // it made every Entrim stream die with "returned empty content"
+            // on delta #1, 2026-09-02 production regression.)
+            if (/^---\s*\n[\s\S]*title\s*[:=]/im.test(head)) {
+              restartDetected = true
+              break
+            }
+            // New title-level H1 after prose — fresh article. NOTE: this must
+            // fire even when `full` ends with the '\n\n' continuation
+            // separator the catch block appended — a paragraph boundary is
+            // exactly where a restart begins, so `!full.endsWith('\n')` was
+            // the wrong guard and let H1 restarts through (2026-09-02 regression).
+            if (/^#\s+[A-Z]/.test(head)) {
+              restartDetected = true
+              break
+            }
           }
         }
         // Prose = word text, not the frontmatter/heading scaffolding that
-        // legitimately opens a draft. `#`/`-` starts, YAML key lines
-        // (`title: …`, `slug: …`) and the closing `---` fence stay non-prose
-        // so `sawProse` only arms the restart checks once real body text
-        // flows. Without the YAML exclusion, frontmatter keys flipped
-        // `sawProse` true and the closing `---` read as a restart.
-        if (!sawProse && trimmed && full.length < 4000) {
-          const isScaffold = /^[#\-]/.test(trimmed) || /^[a-z][a-z0-9_-]*\s*:\s/i.test(trimmed)
+        // legitimately opens a draft. `#`/`-` starts and YAML key lines —
+        // kebab (`primary-keyword:`) or camel (`primaryKeyword:`) — stay
+        // non-prose so `sawProse` only arms the restart checks once real
+        // body text flows.
+        if (!sawProse && trimmed && full.length < 4000 && !inOpeningFrontmatter) {
+          const isScaffold = /^[#\-]/.test(trimmed) || /^[a-zA-Z][a-zA-Z0-9_-]*\s*[:=]\s/.test(trimmed)
           if (!isScaffold) sawProse = true
         }
         full += delta

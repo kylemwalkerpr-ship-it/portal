@@ -533,6 +533,94 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
     expect(doneText).toContain('---title: Split Frontmatter Draft')
   })
 
+  it('streams through camelCase split-delta frontmatter — closing fence is NOT a restart (2026-09-02 live regression)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    // Production signature from the live studio run: the pipeline schema
+    // emits camelCase YAML keys (primaryKeyword:, contentType:, ownerHost:).
+    // The old lowercase-only scaffold pattern flagged those as prose, so the
+    // closing `---` fired the restart check and the draft was truncated to
+    // its 46-word frontmatter.
+    global.fetch = jest.fn(async () => {
+      call++
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '---\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'title: Employment-Based Green Card Strategy: H-1B & Student Guide (2026)\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'description: Map your employment-based green card strategy with official USCIS steps.\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'primaryKeyword: employment-based green card strategy\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'robots: index,follow\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'date: 2026-08-01\nregion: us\ncontentType: legal_guide\nownerHost: legal\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '---\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '# Employment-Based Green Card Strategy\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'Employment-based green cards follow a multi-step process that begins with a labor certification.\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(chunks, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(1)
+    expect(events.some((e) =>
+      e.type === 'provider' && String((e as { provider?: string }).provider || '').includes('restart detected')
+    )).toBe(false)
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneEvent).toMatchObject({ type: 'done' })
+    // The FULL draft streamed — frontmatter AND body prose, nothing dropped.
+    expect(doneText).toContain('primaryKeyword: employment-based green card strategy')
+    expect(doneText).toContain('ownerHost: legal')
+    expect(doneText).toContain('Employment-based green cards follow a multi-step process')
+  })
+
+  it('streams through a whole frontmatter block delivered in ONE chunk (open + close fence together)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    global.fetch = jest.fn(async () => {
+      call++
+      const chunks = [
+        // One SSE delta carries the entire frontmatter incl. both fences.
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '---\ntitle: One Chunk Draft\nprimaryKeyword: one chunk\ncontentType: blog_post\nownerHost: legal\n---\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '# One Chunk Draft\n\nBody prose arrives after the single-chunk frontmatter.\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(chunks, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(1)
+    expect(events.some((e) =>
+      e.type === 'provider' && String((e as { provider?: string }).provider || '').includes('restart detected')
+    )).toBe(false)
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneText).toContain('contentType: blog_post')
+    expect(doneText).toContain('Body prose arrives after the single-chunk frontmatter')
+  })
+
   it('still rejects a frontmatter restart after real prose has streamed (guard remains armed)', async () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     delete process.env.NVIDIA_NEMOTRON_MODEL
