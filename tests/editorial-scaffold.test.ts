@@ -1,4 +1,4 @@
-import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm } from '@/lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm, stripDuplicateArticleCopy } from '@/lib/seoFactory/editorialScaffold'
 import { isFillerTitle } from '@/lib/seoEngine/titleLab'
 import { detectDanglingForwardReferences } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -6,6 +6,87 @@ import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { meetsShipQuality } from '@/lib/seoFactory/audit'
+
+describe('stripDuplicateArticleCopy — echo-restart detection', () => {
+  it('keeps the longer copy when two H1s match the frontmatter title', () => {
+    // Model writes a 1700-word draft, hits token cap, restarts from scratch.
+    // Both copies have the same H1; the first is longer (more budget spent).
+    const firstCopy = [
+      '# Canada Study Permit Guide',
+      '',
+      '## In 60 seconds',
+      '- A study permit is required for most foreign students in Canada.',
+      '- Apply online through IRCC before you travel.',
+      '',
+      '## Eligibility',
+      'You must be accepted by a Designated Learning Institution. You must prove you can support yourself financially. You must pass a medical exam if required. You must have a clean criminal record. You must convince the officer you will leave Canada at the end of your stay.',
+      '',
+      '## Documents',
+      'Letter of acceptance, proof of funds, passport, digital photo, and IMM 1294 form. Biometrics may be required depending on your country. A medical exam is required for certain programs or countries of residence.',
+      '',
+      '## Process',
+      'Create an online account. Complete the application form. Upload all documents. Pay the fees. Submit the application. Wait for processing. Receive the port of entry letter of introduction.',
+    ].join('\n')
+    const secondCopy = [
+      '# Canada Study Permit Guide',
+      '',
+      '## In 60 seconds',
+      '- A study permit is required.',
+      '',
+      '## Eligibility',
+      'You need a DLI acceptance letter.',
+    ].join('\n')
+    const combined = firstCopy + '\n\n---\n\ntitle: Canada Study Permit Guide\ncontent_type: article\n---\n\n' + secondCopy
+    const result = stripDuplicateArticleCopy(combined)
+    expect(result.removed).toBe(true)
+    expect(result.copies).toBeGreaterThanOrEqual(2)
+    // The longer first copy should survive — it has more substance
+    expect(result.content).toContain('## Documents')
+    expect(result.content).toContain('Biometrics may be required')
+    expect(result.content).not.toMatch(/^---\s*\n\s*title:/m)
+  })
+
+  it('detects a restart signaled by frontmatter mid-body and cuts there', () => {
+    const firstAttempt = [
+      '# UK Visa Guide',
+      '',
+      '## In 60 seconds',
+      '- Visa rules change frequently.',
+    ].join('\n')
+    const restart = [
+      '---',
+      'title: UK Visa Guide',
+      'content_type: article',
+      '---',
+      '',
+      '# UK Visa Guide',
+      '',
+      '## In 60 seconds',
+      '- New content from restart.',
+    ].join('\n')
+    const combined = firstAttempt + '\n\n' + restart
+    const result = stripDuplicateArticleCopy(combined)
+    expect(result.removed).toBe(true)
+    // The frontmatter restart is cut — only the first attempt survives
+    expect(result.content).toContain('Visa rules change frequently')
+    expect(result.content).not.toContain('New content from restart')
+  })
+
+  it('returns no removal when there is only one H1 (no duplicate)', () => {
+    const single = [
+      '# Canada Study Permit Guide',
+      '',
+      '## In 60 seconds',
+      '- A study permit is required.',
+      '',
+      '## Eligibility',
+      'You must be accepted by a DLI.',
+    ].join('\n')
+    const result = stripDuplicateArticleCopy(single)
+    expect(result.removed).toBe(false)
+    expect(result.copies).toBe(1)
+  })
+})
 
 describe('normalizeEditorDocument — editor formatting contract', () => {
   it('removes embedded metadata and restores collapsed TLDR bullets without changing prose', () => {

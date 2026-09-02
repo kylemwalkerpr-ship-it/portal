@@ -614,15 +614,43 @@ function extractMessageText(content: unknown): string {
   return ''
 }
 
+/**
+ * Detect a model restart in a continuation response.
+ *
+ * A genuine continuation starts mid-prose (no H1, no frontmatter block).
+ * A restart emits a new `---` frontmatter block or a new `# H1` heading
+ * near the start of the response — signs the model ignored the CONTINUE
+ * instruction and wrote a fresh article instead of appending.
+ */
+function looksLikeFullRestart(previousText: string, continuationText: string): boolean {
+  const head = continuationText.trimStart().slice(0, 300)
+  // New frontmatter block — the strongest restart signal
+  if (/^---\s*\n/.test(head) && /title\s*[:=]/im.test(head)) return true
+  // New H1 heading without preceding prose
+  if (/^#\s+[A-Z]/.test(head) && !/\S/.test(previousText.slice(-50))) return true
+  // The continuation opens with a heading-like line (## or ###) that
+  // introduces a new section structure instead of continuing prose
+  if (/^##\s+/.test(head) && !previousText.endsWith('\n')) return true
+  return false
+}
+
 /** Build a continuation prompt that resumes a draft cut off at the token cap. */
 function buildContinuationPrompt(partial: string): string {
-  const tail = partial.trim().slice(-2200)
+  const trimmed = partial.trim()
+  // Send the LAST ~400 words (not a fixed char count) so the model sees the
+  // actual ending of the draft — the place it must continue from. A fixed
+  // 2200-char window lands in the MIDDLE of a long article and invites a
+  // full restart because the model cannot see where the text stops.
+  const words = trimmed.split(/\s+/)
+  const tailWords = words.slice(-400).join(' ')
+  const tail = tailWords || trimmed.slice(-2200)
   return (
     'CONTINUE WRITING THE DRAFT BELOW. The previous response was cut off at the token limit. ' +
     'Continue from exactly where it stopped and COMPLETE the remaining sections of the original outline. ' +
     'Do NOT repeat any text already present. Return ONLY the continuation — no new title, no front matter, ' +
-    'and no closing summary of the whole piece unless the outline asked for one.\n\n' +
-    'DRAFT SO FAR (last 2200 chars):\n' +
+    'no new H1, no re-introduction, and no closing summary of the whole piece unless the outline asked for one. ' +
+    'You MUST continue from the last sentence below — do NOT start a new article.\n\n' +
+    'END OF DRAFT SO FAR (last ~400 words — continue from here):\n' +
     (tail || '(no draft text was produced — restart the full write but keep it within the token budget)')
   )
 }
@@ -915,6 +943,16 @@ async function openAiCompatibleComplete(
       // model's per-response token cap.
       for (let c = 0; c < 3 && finishReason === 'length'; c++) {
         const cont = await openAiCompatFetch(patched, opts, buildContinuationPrompt(text))
+        // Restart guard: if the continuation produced a full new article
+        // (new H1 + frontmatter), the model ignored the CONTINUE instruction.
+        // Reject the restart outright — keep the previous text and stop
+        // continuing, because further restarts will not recover the deficit.
+        if (looksLikeFullRestart(text, cont.text)) {
+          // Stop the continuation loop — the draft is as complete as this
+          // provider can make it within the token budget. The pipeline's
+          // depth-rescue / refine passes will top up the deficit instead.
+          break
+        }
         text = (text + '\n\n' + cont.text).trim()
         // Continuation joins are an echo vector: a model that restarts the
         // article mid-response produces draft + copy concatenated. Dedupe
@@ -1201,6 +1239,9 @@ async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
       for (let c = 0; c < 2 && (finishReason === 'length' || finishReason === 'max_output_tokens'); c++) {
         try {
           const cont = await grokResponsesFetch(opts, buildContinuationPrompt(text))
+          // Same restart guard as the OpenAI-compatible path: if Grok
+          // restarted the article instead of appending, stop continuing.
+          if (looksLikeFullRestart(text, cont.text)) break
           text = `${text}\n\n${cont.text}`.trim()
           try {
             const { stripDuplicateArticleCopy } = await import('@/lib/seoFactory/editorialScaffold')

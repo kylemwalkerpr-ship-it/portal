@@ -333,6 +333,9 @@ export function stripDuplicateArticleCopy(body: string): {
   }))
 
   // Pick the copy whose H1 matches the frontmatter title most closely.
+  // When a model restarts mid-response, the FIRST copy is usually the more
+  // complete one (the model spent most of its token budget before hitting
+  // the cap). Prefer the longer copy when H1 overlap is tied.
   const fmTitle = (body.match(/^title:\s*["']?(.+?)["']?\s*$/m) || [])[1]?.trim() || ''
   const titleNorm = fmTitle ? normH1(`# ${fmTitle}`) : ''
   let keep = 0
@@ -345,7 +348,7 @@ export function stripDuplicateArticleCopy(body: string): {
       let overlap = 0
       for (const t of a) if (b.has(t) && t.length > 2) overlap++
       const score = overlap / Math.max(1, Math.min(a.size, b.size))
-      if (score > bestScore) {
+      if (score > bestScore || (score === bestScore && s.norm.length > sections[keep].norm.length)) {
         bestScore = score
         keep = k
       }
