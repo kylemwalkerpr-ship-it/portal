@@ -138,6 +138,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const [gateDraft, setGateDraft] = React.useState<string>('')
   const [gateVerdict, setGateVerdict] = React.useState<Record<string, unknown> | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
+  const [actionResult, setActionResult] = React.useState<{ ok: boolean; title: string; detail: string; at: number } | null>(null)
+
+  /** Persistent inline action feedback — outlives the 5s toast so every
+   *  command's outcome stays visible until the next command. */
+  const recordResult = (ok: boolean, title: string, detail: string) =>
+    setActionResult({ ok, title, detail, at: Date.now() })
 
   const loadAll = React.useCallback(async () => {
     setError(null)
@@ -177,9 +183,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       if (!data.ok) throw new Error(data.error || 'ingestion failed')
       onIngest?.({ stored: data.itemsStored || 0, fetched: data.itemsFetched || 0, aiSummarized: data.aiSummarized || 0 })
       flash(`Ingested ${data.itemsStored} items from ${data.sourcesRun} sources`)
+      recordResult(true, 'Knowledge ingest', `${data.itemsStored} items stored · ${data.sourcesRun} sources · ${data.aiSummarized ?? 0} AI-summarized`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'ingestion failed')
+      const msg = e instanceof Error ? e.message : 'ingestion failed'
+      setError(msg)
+      recordResult(false, 'Knowledge ingest', msg)
     } finally {
       setBusy(false)
     }
@@ -195,13 +204,17 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const persistErrors = Array.isArray(data.persistErrors) ? data.persistErrors : []
       if (persistErrors.length) {
         setError(`⚠ ${persistErrors.length}/${data.count ?? 0} plan(s) FAILED to persist (${String(persistErrors[0]).slice(0, 180)}). The queue below is the DB's view — rerun or check Supabase.`)
+        recordResult(false, 'Planner run', `${data.count ?? 0} missions ranked · only ${persisted} persisted — ${persistErrors.length} failed (${String(persistErrors[0]).slice(0, 120)})`)
       } else {
         setError(null)
+        recordResult(true, 'Planner run', `${data.count ?? 0} missions ranked · ${persisted} persisted (${data.count ?? 0} planned)`)
       }
       flash(`Planner produced ${data.count} ranked missions · ${persisted} persisted`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'planning failed')
+      const msg = e instanceof Error ? e.message : 'planning failed'
+      setError(msg)
+      recordResult(false, 'Planner run', msg)
     } finally {
       setBusy(false)
     }
@@ -214,9 +227,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'seed failed')
       flash(`Ontology seeded: ${data.total} life-cycle cells`)
+      recordResult(true, 'Ontology seed', `${data.total} (stage × country) cells upserted`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'seed failed')
+      const msg = e instanceof Error ? e.message : 'seed failed'
+      setError(msg)
+      recordResult(false, 'Ontology seed', msg)
     } finally {
       setBusy(false)
     }
@@ -233,9 +249,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'interlink failed')
       flash(`Generated ${data.edges?.length || 0} interlink edges for ${STAGE_LABELS[ilStage]} · ${ilCountry}`)
+      recordResult(true, 'Interlink plan', `${(data.edges?.length || 0)} edge(s) for ${STAGE_LABELS[ilStage]} · ${ilCountry}${data.stored != null ? ` · ${data.stored} persisted` : ''}`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'interlink generation failed')
+      const msg = e instanceof Error ? e.message : 'interlink generation failed'
+      setError(msg)
+      recordResult(false, 'Interlink plan', msg)
     } finally {
       setBusy(false)
     }
@@ -248,9 +267,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'audit failed')
       flash(`LLM audit: ${data.cited}/${data.total} queries cited the estate (${data.shareOfVoice}% share of voice)`)
+      recordResult(true, 'LLM audit', `${data.cited}/${data.total} queries measured responded the estate cited it · ${data.shareOfVoice}% share of voice${data.failed ? ` · ${data.failed} failed (excluded)` : ''}`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'LLM audit failed')
+      const msg = e instanceof Error ? e.message : 'LLM audit failed'
+      setError(msg)
+      recordResult(false, 'LLM audit', msg)
     } finally {
       setBusy(false)
     }
@@ -263,9 +285,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'fan-out audit failed')
       flash(`Fan-out audit: ${data.cited}/${data.total} sub-queries across ${data.clusters} clusters cited the estate (${data.shareOfVoice}%)`)
+      recordResult(true, 'Fan-out audit', `${data.cited}/${data.total} sub-queries across ${data.clusters ?? 0} clusters cited the estate · ${data.shareOfVoice}%`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'fan-out audit failed')
+      const msg = e instanceof Error ? e.message : 'fan-out audit failed'
+      setError(msg)
+      recordResult(false, 'Fan-out audit', msg)
     } finally {
       setBusy(false)
     }
@@ -284,9 +309,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'gate failed')
       setGateVerdict(data)
+      recordResult(Boolean(data.passed), 'Compliance gate', `score ${data.score}/${data.threshold} · ${data.passed ? 'PASS' : `BLOCKED — ${(data.blockers || []).slice(0, 3).join('; ')}`}`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'gate enforcement failed')
+      const msg = e instanceof Error ? e.message : 'gate enforcement failed'
+      setError(msg)
+      recordResult(false, 'Compliance gate', msg)
     } finally {
       setBusy(false)
     }
@@ -295,6 +323,18 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const coverageMap = new Map<string, number>()
   for (const c of plans?.coverage || []) coverageMap.set(String(c.cell || ''), Number(c.topScore) || 0)
   const seededCount = lifecycle?.length || 0
+
+  // Live counts on the tab bar — navigation tells you where the data is.
+  const sn = status as Record<string, unknown> | null
+  const tabCounts: Partial<Record<TabKey, string>> = {
+    lifecycle: seededCount ? String(seededCount) : '',
+    knowledge: sn ? fmtN((sn.knowledge as { total?: number } | undefined)?.total ?? 0) : '',
+    planner: sn ? String((sn.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0) : '',
+    interlink: sn ? String(((sn.interlinks as { planned?: number } | undefined)?.planned ?? 0) + ((sn.interlinks as { applied?: number } | undefined)?.applied ?? 0)) : '',
+    llm: sn ? `${(sn.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%` : '',
+    rank: sn ? String((sn.rankingModel as { computed?: number } | undefined)?.computed ?? 0) : '',
+    gate: sn ? String((sn.gate as { runs?: number } | undefined)?.runs ?? 0) : '',
+  }
 
   const badge = (label: string, bg: string, fg: string) => (
     <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: bg, color: fg, whiteSpace: 'nowrap' }}>{label}</span>
@@ -310,27 +350,19 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
 
   return (
     <div>
-      {/* ── Engine identity + command strip ── */}
+      {/* ── Engine identity ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, fontFamily: C.serif, display: 'flex', alignItems: 'center', gap: 8 }}>
             🧠 SEO Master Engine <span style={{ fontSize: 9, fontFamily: C.mono, fontWeight: 600, color: C.gold, background: C.goldSoft, padding: '2px 8px', borderRadius: 999 }}>v2 · seven brains</span>
           </div>
           <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>
-            Life-cycle ontology · daily intel · auto-interlink · LLM share-of-voice · ranking model · compliance enforcement
+            Plan the immigrant journey · measure every outcome · ship through one door
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" onClick={seedLifecycle} disabled={busy} style={btnGhost} title="Upsert the 36 life-cycle cells into Supabase">
-            🗺 Seed ontology
-          </button>
-          <button type="button" onClick={runIngest} disabled={busy} style={{ ...btnSolid(C.navy) }} title="Scrape all intelligence sources now">
-            {busy ? '⏳ Working…' : '🌐 Ingest knowledge'}
-          </button>
-          <button type="button" onClick={runPlan} disabled={busy} style={{ ...btnSolid(C.gold) }} title="Rank GSC demand into cluster missions">
-            {busy ? '⏳ Working…' : '🧭 Run planner'}
-          </button>
-        </div>
+        <button type="button" onClick={seedLifecycle} disabled={busy} style={btnGhost} title="Upsert the 36 life-cycle cells into Supabase">
+          🗺 Seed ontology
+        </button>
       </div>
 
       {notice && (
@@ -349,9 +381,71 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         </div>
       )}
 
-      {/* ── Engine state chips (always visible — healthy state must be as
-             visible as a degraded one, so the operator sees WHAT the engine
-             is running on at a glance) ── */}
+      {/* ── Command console: the four one-click commands, each with inline
+             last outcome — command-first, direct feedback ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 10 }}>
+        {([
+          {
+            key: 'ingest', icon: '🌐', title: 'Ingest knowledge', sub: 'Pull policy, guidance & trend intel', color: C.navy,
+            run: runIngest, busyLabel: 'Ingesting…', done: actionResult?.title === 'Knowledge ingest' ? actionResult : null,
+          },
+          {
+            key: 'plan', icon: '🧭', title: 'Run planner', sub: 'Rank GSC demand into missions', color: C.gold,
+            run: runPlan, busyLabel: 'Planning…', done: actionResult?.title === 'Planner run' ? actionResult : null,
+          },
+          {
+            key: 'llm', icon: '🤖', title: 'LLM audit', sub: 'Measure estate share of voice', color: C.violet,
+            run: runLlmAudit, busyLabel: 'Auditing…', done: actionResult?.title === 'LLM audit' ? actionResult : null,
+          },
+          {
+            key: 'links', icon: '🔗', title: 'Generate interlinks', sub: 'Journey + CTA link graph for a cell', color: C.cyan2,
+            run: generateInterlinks, busyLabel: 'Generating…', done: actionResult?.title === 'Interlink plan' ? actionResult : null,
+            slot: (
+              <>
+                <select value={ilStage} onChange={(e) => setIlStage(e.target.value)} style={{ padding: '4px 6px', borderRadius: 4, border: `1px solid ${C.border}`, fontSize: 10, fontFamily: 'inherit', background: C.surface, color: C.text }}>
+                  {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+                </select>
+                <select value={ilCountry} onChange={(e) => setIlCountry(e.target.value)} style={{ padding: '4px 6px', borderRadius: 4, border: `1px solid ${C.border}`, fontSize: 10, fontFamily: 'inherit', background: C.surface, color: C.text }}>
+                  {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </>
+            ),
+          },
+        ]).map((cell) => (
+          <div key={cell.key} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: '12px 14px', boxShadow: C.shadowCard, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 15 }}>{cell.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: C.text }}>{cell.title}</div>
+                <div style={{ fontSize: 9, color: C.textDim }}>{cell.sub}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              {cell.slot}
+              <button type="button" onClick={cell.run} disabled={busy} style={{ ...btnSolid(cell.color), padding: '6px 12px', fontSize: 10.5, flex: 1, justifyContent: 'center' }}>
+                {busy ? `⏳ ${cell.busyLabel}` : `▶ ${cell.title}`}
+              </button>
+            </div>
+            {cell.done && (
+              <div style={{ fontSize: 9, fontFamily: C.mono, lineHeight: 1.4, color: cell.done.ok ? C.green : C.red, overflow: 'hidden', textOverflow: 'ellipsis' }} title={cell.done.detail}>
+                {cell.done.ok ? '✓' : '✕'} {cell.done.detail}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Persistent result strip (outlives the toast — last command outcome) ── */}
+      {actionResult && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderRadius: C.radiusSm, background: actionResult.ok ? C.greenSoft : C.redSoft, border: `1px solid ${actionResult.ok ? C.greenBorder : C.redBorder}`, color: actionResult.ok ? C.green : C.red, fontSize: 11, fontFamily: C.mono, marginBottom: 10 }}>
+          <span style={{ fontWeight: 800 }}>{actionResult.ok ? '✓' : '✕'} {actionResult.title}</span>
+          <span style={{ flex: 1, opacity: 0.9 }}>{actionResult.detail}</span>
+          <span style={{ opacity: 0.6, whiteSpace: 'nowrap' }}>{(Math.round((Date.now() - actionResult.at) / 1000))}s ago</span>
+          <button type="button" onClick={() => setActionResult(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }} title="Dismiss">✕</button>
+        </div>
+      )}
+
+      {/* ── Engine health chips ── */}
       {status && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
           {status.authMode === 'service-role' ? (
@@ -403,33 +497,33 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         </div>
       )}
 
-      {/* ── KPI strip (six brains) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 14 }}>
-        <Kpi label="Lifecycle" value={String(seededCount || '—')} sub="cells seeded (36 max)" color={C.cyan2} />
-        <Kpi label="Knowledge" value={fmtN((status?.knowledge as { total?: number } | undefined)?.total ?? (knowledge?.items?.length ?? 0))} sub="intel items stored" color={C.violet} />
-        <Kpi label="Plans" value={String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0)} sub="cluster missions" color={C.green} />
-        <Kpi label="Interlinks" value={String((status?.interlinks as { planned?: number } | undefined)?.planned ?? 0)} sub={`${(status?.interlinks as { applied?: number } | undefined)?.applied ?? 0} applied`} color={C.blue} />
-        <Kpi label="LLM voice" value={`${(status?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%`} sub="share of voice" color={C.violet} />
-        <Kpi label="Model" value={`${(status?.rankingModel as { latestTotal?: number } | undefined)?.latestTotal ?? '—'}`} sub={`${(status?.rankingModel as { computed?: number } | undefined)?.computed ?? 0} scored`} color={C.gold} />
-        <Kpi label="Gate" value={`${(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%`} sub={`avg ${(status?.gate as { avgScore?: number } | undefined)?.avgScore ?? 0}/100`} color={C.orange} />
+      {/* ── Quick counts (what exists) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 12 }}>
+        <Kpi label="Missions" value={String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0)} sub="cluster missions ranked" color={C.green} />
+        <Kpi label="Intel" value={fmtN((status?.knowledge as { total?: number } | undefined)?.total ?? (knowledge?.items?.length ?? 0))} sub="policy/trend items" color={C.violet} />
+        <Kpi label="Gate" value={`${(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%`} sub={`${(status?.gate as { runs?: number } | undefined)?.runs ?? 0} runs · avg ${(status?.gate as { avgScore?: number } | undefined)?.avgScore ?? 0}/100`} color={C.orange} />
+        <Kpi label="LLM voice" value={`${(status?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%`} sub={`${(status?.llmVisibility as { cited?: number } | undefined)?.cited ?? 0}/${(status?.llmVisibility as { total?: number } | undefined)?.total ?? 0} cited`} color={C.violet} />
       </div>
 
-      {/* ── Tab navigation (dedicated surfaces) ── */}
+      {/* ── Tab navigation (dedicated surfaces with live counts) ── */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
-              background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#fff' : C.textMuted,
-              border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
-            }}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const count = tabCounts[t.key]
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#fff' : C.textMuted,
+                border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
+              }}
+            >
+              {t.icon} {t.label}{count != null && count !== '' ? <span style={{ marginLeft: 5, opacity: 0.8, fontFamily: C.mono, fontSize: 10 }}>{count}</span> : null}
+            </button>
+          )
+        })}
       </div>
 
       {/* ══════════════ 1 · LIFECYCLE ══════════════ */}
