@@ -116,6 +116,41 @@ export async function POST(req: Request) {
     }
   }
 
+  // 3b) Service-role auth mode check — a new-format SUPABASE_SERVICE_ROLE_KEY
+  // (sb_secret_…) is REJECTED by supabase-js v2, so every "admin" DB call
+  // silently falls back to the ANON key against open-RLS tables. That is a
+  // security and data-integrity degradation, not "healthy". Healthy requires
+  // SUPABASE_SERVICE_ROLE_JWT (legacy eyJ…) to be set on the Worker (synced
+  // by deploy.yml on every deploy).
+  {
+    const { supabaseAuthMode } = await import('@/lib/supabaseKey')
+    const mode = supabaseAuthMode()
+    if (mode === 'service-role') {
+      checks.push({
+        id: 'supabase_auth_mode',
+        label: 'Supabase auth mode',
+        ok: true,
+        detail: 'service-role (legacy JWT)',
+      })
+    } else if (mode === 'degraded-anon') {
+      checks.push({
+        id: 'supabase_auth_mode',
+        label: 'Supabase auth mode',
+        ok: false,
+        detail: 'DEGRADED — running as the ANON key (new-format sb_secret_ key is rejected by supabase-js v2). Set SUPABASE_SERVICE_ROLE_JWT (legacy service-role JWT) on the Worker.',
+      })
+      failures.push('Supabase auth degraded to anon (set SUPABASE_SERVICE_ROLE_JWT)')
+    } else {
+      checks.push({
+        id: 'supabase_auth_mode',
+        label: 'Supabase auth mode',
+        ok: false,
+        detail: 'No usable Supabase key configured',
+      })
+      failures.push('No usable Supabase key configured')
+    }
+  }
+
   const ok = failures.length === 0
 
   // 4) Alert ops when unhealthy

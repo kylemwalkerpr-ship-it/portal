@@ -644,10 +644,16 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
 
   for (const q of queries) {
     const why = selected.find((s) => s.query === q)
-    opts.onProgress?.('audit', `Auditing “${q}”…`, why ? why.reasons.join(' · ') : undefined)
+    opts.onProgress?.('audit', `Auditing “${q}”…`, why ? why.reasons.join(' · ') || undefined : undefined)
     const result = await auditQuery(q, engine, null, maxEngines)
     audits.push(result)
     opts.onProgress?.('result', `“${q}” ${result.cited ? 'cited the estate' : 'not cited'}`, result.cited ? result.citedUrls.slice(0, 3).join(' · ') || undefined : undefined)
+    // A failed audit (all engines timed out / quota / model down) is NOT a
+    // genuine "estate not cited" outcome — the row is flagged audit_failed so
+    // every read-side SoV excludes it (previously these rows were stored as
+    // uncited losses and quietly degraded share-of-voice on engine outages).
+    const allFailed = result.engines.length > 0 && !result.engines.some((e) => e.ok)
+    const flags = [...new Set([...result.engines.flatMap((e) => e.flags), ...(allFailed ? ['audit_failed'] : [])])]
     try {
       const supabase = createSupabaseAdminClient()
       await supabase.from('seo_llm_visibility').insert({
@@ -664,7 +670,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
         competitor_domains: result.competitorDomains,
         answer_format: result.engines.map((e) => e.answerFormat).filter(Boolean)[0] ?? null,
         confidence: result.engines.length ? result.engines.reduce((a, e) => a + e.confidence, 0) / result.engines.length : null,
-        flags: [...new Set(result.engines.flatMap((e) => e.flags))],
+        flags,
         share_of_voice: result.shareOfVoice,
         top_competitor: result.topCompetitor?.domain ?? null,
         competitor_share: result.topCompetitor?.share ?? null,
@@ -678,6 +684,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   const cited = audits.filter((a) => a.cited).length
   const total = audits.length
   const failed = audits.filter((a) => !a.engines.some((e) => e.ok)).length
+  const measured = Math.max(0, total - failed)
   let remediations: import('./citationRemediation').CitationRemediation[] = []
   try {
     const { remediateVisibilityAudits } = await import('./citationRemediation')
@@ -699,7 +706,9 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     cited,
     total,
     failed,
-    shareOfVoice: total ? Math.round((cited / total) * 100) : 0,
+    // Share-of-voice over MEASURED audits only — engine failures are not
+    // "estate not cited" outcomes and must never drag the trend down.
+    shareOfVoice: measured ? Math.round((cited / measured) * 100) : 0,
     engine,
     selected,
     remediations,
@@ -727,9 +736,11 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
       .order('created_at', { ascending: false })
       .limit(limit)
     const rows = (data as Array<Record<string, unknown>>) || []
-    const cited = rows.filter((r) => r.cited).length
+    // Exclude audit_failed rows from read-side SoV (engine outage ≠ non-citation).
+    const measuredRows = rows.filter((r) => !Array.isArray(r.flags) || !r.flags.includes('audit_failed'))
+    const cited = measuredRows.filter((r) => r.cited).length
     const byStage: Record<string, number> = {}
-    for (const r of rows) {
+    for (const r of measuredRows) {
       const s = String(r.stage || 'untagged')
       byStage[s] = (byStage[s] || 0) + 1
       // Deterministic, prioritized fixes derived from the stored evidence —
@@ -769,9 +780,9 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
     }
     return {
       audits: rows,
-      shareOfVoice: rows.length ? Math.round((cited / rows.length) * 100) : 0,
+      shareOfVoice: measuredRows.length ? Math.round((cited / measuredRows.length) * 100) : 0,
       cited,
-      total: rows.length,
+      total: measuredRows.length,
       byStage,
       remediations,
     }

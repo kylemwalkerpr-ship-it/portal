@@ -634,7 +634,7 @@ export async function pullLatestKnowledge(limit = 25): Promise<Array<Record<stri
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_knowledge')
-      .select('title,stages,countries,source,ai_summary,url')
+      .select('title,stages,countries,source,ai_summary,url,kind,confidence,published_at')
       .order('fetched_at', { ascending: false })
       .limit(limit)
     return (data as Array<Record<string, unknown>>) || []

@@ -72,10 +72,12 @@ export async function GET() {
       countExact(supabase, 'seo_interlinks', (q) => q.eq('status', 'planned')),
       countExact(supabase, 'seo_interlinks', (q) => q.eq('status', 'applied')),
       countExact(supabase, 'seo_ranking_scores'),
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false)),
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).eq('cited', true)),
+      // Engine-outage audits (flagged audit_failed) are NOT "not cited"
+      // outcomes — exclude them from the headline share-of-voice.
+      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).not('flags', 'ov', `{audit_failed}`)),
+      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).eq('cited', true).not('flags', 'ov', `{audit_failed}`)),
       countExact(supabase, 'seo_llm_visibility'),
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('cited', true)),
+      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('cited', true).not('flags', 'ov', `{audit_failed}`)),
       countExact(supabase, 'seo_gate_runs'),
       countExact(supabase, 'seo_gate_runs', (q) => q.eq('passed', true)),
       supabase.from('seo_gate_runs').select('score,passed').order('created_at', { ascending: false }).limit(20),

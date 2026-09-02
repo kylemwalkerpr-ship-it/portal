@@ -142,6 +142,11 @@ jobs:
           # unset so the deploy stays green until they are configured.
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Legacy-eyJ service-role JWT — the ONLY supabase-js v2-usable key
+          # format. Without it, a new-format SUPABASE_SERVICE_ROLE_KEY
+          # (sb_secret_…) makes every "admin" DB call fall back to the ANON
+          # key against open-RLS engine tables.
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NMI_SECURITY_KEY: ${{ secrets.NMI_SECURITY_KEY }}
         run: |
@@ -278,6 +283,7 @@ jobs:
           # failure mode caused by missing Worker secrets.
           put_secret CLERK_SECRET_KEY          "$CLERK_SECRET_KEY"
           put_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+          put_secret SUPABASE_SERVICE_ROLE_JWT "$SUPABASE_SERVICE_ROLE_JWT"
           put_secret RESEND_API_KEY            "$RESEND_API_KEY"
           put_secret NMI_SECURITY_KEY          "$NMI_SECURITY_KEY"
 
