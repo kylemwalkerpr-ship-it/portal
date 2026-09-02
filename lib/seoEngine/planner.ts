@@ -1221,6 +1221,15 @@ export async function loadPlansDashboard(limit = 30): Promise<{
     const rows = ((data as Array<Record<string, unknown>>) || []).filter(
       (r) => !isJunkQuery(String(r.primary_term || '')),
     )
+    // Rows persisted before demand-provenance existed have no demandSource —
+    // stamp 'legacy' so the UI labels them honestly (re-run planner to get
+    // real provenance) instead of implying today's numbers.
+    for (const r of rows) {
+      const plan = (r.plan && typeof r.plan === 'object' ? r.plan : {}) as Record<string, unknown>
+      if (!plan.demandSource) plan.demandSource = 'legacy'
+      if (plan.demandSource !== 'legacy' && plan.snapshotAgeDays == null) plan.snapshotAgeDays = null
+      r.plan = plan
+    }
 
     const coverageMap = new Map<string, { cell: string; stage: string; country: Country; plans: number; topScore: number }>()
     for (const r of rows) {

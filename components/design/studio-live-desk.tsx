@@ -45,6 +45,8 @@ type EngineStatus = {
   rankingModel?: { computed?: number; latestTotal?: number | null; latestTopic?: string | null; latestAt?: string | null }
   gate?: { runs?: number; passed?: number; passRate?: number; avgScore?: number; latestAt?: string | null }
   runs?: Array<Record<string, unknown>>
+  authMode?: 'service-role' | 'degraded-anon'
+  demandSnapshot?: { ageDays?: number; stale?: boolean; generatedAt?: string | null }
 }
 
 type TraceStep = { seq: number; phase: string; message: string; detail?: string; tone: string }
@@ -303,6 +305,55 @@ export function StudioLiveDesk({
             )}
           </div>
         </header>
+
+        {/* ── Engine health chips (always visible — healthy ≠ invisible) ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '7px 16px', borderBottom: `1px solid ${E.hairline}`, background: E.ivory,
+          fontFamily: E.mono, fontSize: 9, letterSpacing: '0.04em',
+        }}>
+          {live.authMode === 'degraded-anon' ? (
+            <span style={{ padding: '3px 9px', borderRadius: 999, background: E.goldSoft, color: '#7a5200', fontWeight: 800 }}>
+              ⚠ ANON MODE — DB running as public anon key
+            </span>
+          ) : live.authMode === 'service-role' ? (
+            <span style={{ padding: '3px 9px', borderRadius: 999, background: '#E7F0EA', color: E.mossGreen, fontWeight: 800 }}>
+              🔐 service-role
+            </span>
+          ) : null}
+          {(() => {
+            const snap = (engine && typeof engine === 'object' ? (engine as Record<string, unknown>).demandSnapshot : undefined) as
+              | { ageDays?: number; stale?: boolean; generatedAt?: string | null }
+              | undefined
+            if (!snap) return null
+            if (!snap.ageDays || snap.ageDays < 0) {
+              return <span style={{ padding: '3px 9px', borderRadius: 999, background: E.hairline, color: E.inkMuted }}>🗃 no snapshot</span>
+            }
+            const stale = snap.stale === true
+            return (
+              <span title={`Snapshot generated ${snap.generatedAt || '?'} — ${stale ? 'too old, refused by planner' : 'available as demand fallback'}`}
+                style={{ padding: '3px 9px', borderRadius: 999, background: stale ? E.goldSoft : E.hairline, color: stale ? '#7a5200' : E.inkMuted, fontWeight: 800 }}>
+                🗃 snapshot {snap.ageDays}d{stale ? ' · STALE' : ''}
+              </span>
+            )
+          })()}
+          {(() => {
+            const planRun = (runs || []).find((r) => String(r.kind || '') === 'plan' && r.summary && typeof r.summary === 'object' && (r.summary as Record<string, unknown>).plans != null)
+            if (!planRun) return null
+            const s = planRun.summary as { plans?: number; persisted?: number; persistErrors?: number }
+            const plansN = Number(s.plans) || 0
+            const failed = Number(s.persistErrors) || 0
+            const ok = failed === 0
+            return (
+              <span title="Latest planner run persistence audit" style={{ padding: '3px 9px', borderRadius: 999, background: ok ? '#E7F0EA' : '#F8E5E5', color: ok ? E.mossGreen : E.red, fontWeight: 800 }}>
+                🧭 {plansN} planned{failed ? ` · ⚠ ${failed} unpersisted` : ' · persisted'}
+              </span>
+            )
+          })()}
+          <span style={{ padding: '3px 9px', borderRadius: 999, background: E.hairline, color: E.inkMuted }}>
+            🛡 gate {gate?.runs ?? 0} runs · {gate?.passRate ?? 0}%
+          </span>
+        </div>
 
         <div style={{
           display: 'grid',

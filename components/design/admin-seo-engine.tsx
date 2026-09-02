@@ -349,6 +349,60 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         </div>
       )}
 
+      {/* ── Engine state chips (always visible — healthy state must be as
+             visible as a degraded one, so the operator sees WHAT the engine
+             is running on at a glance) ── */}
+      {status && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {status.authMode === 'service-role' ? (
+            <span title="Engine DB access uses the legacy service-role JWT (not the public anon key)" style={{ padding: '4px 10px', borderRadius: 999, background: C.greenSoft, border: `1px solid ${C.greenBorder}`, color: C.green, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🔐 service-role</span>
+          ) : status.authMode === 'degraded-anon' ? (
+            <span title="Running as the PUBLIC anon key — set SUPABASE_SERVICE_ROLE_JWT" style={{ padding: '4px 10px', borderRadius: 999, background: C.goldSoft, border: `1px solid ${C.goldBorder}`, color: '#8a5a00', fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>⚠ ANON MODE</span>
+          ) : null}
+          {(() => {
+            const snap = status.demandSnapshot as { ageDays?: number; stale?: boolean; generatedAt?: string | null } | undefined
+            if (!snap) return null
+            if ((snap.stale && (snap.generatedAt == null || snap.ageDays == null)) || snap.ageDays == null || snap.ageDays < 0) {
+              return <span title="No GSC snapshot available — the engine only plans on live demand" style={{ padding: '4px 10px', borderRadius: 999, background: C.surface2, border: `1px solid ${C.border2}`, color: C.textMuted, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🗃 no snapshot</span>
+            }
+            const stale = snap.stale === true
+            return (
+              <span title={`Snapshot generated ${snap.generatedAt || '?'} — ${stale ? 'TOO OLD, planner refuses it' : 'fine as a fallback feed (plan cards show SNAPSHOT badges when used)'}`} style={{ padding: '4px 10px', borderRadius: 999, background: stale ? C.goldSoft : C.surface2, border: `1px solid ${stale ? C.goldBorder : C.border2}`, color: stale ? '#8a5a00' : C.textMuted, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>
+                🗃 snapshot {snap.ageDays}d{stale ? ' · STALE (refused)' : ''}
+              </span>
+            )
+          })()}
+          {(() => {
+            const runs = (status.runs as Array<Record<string, unknown>> | undefined) || []
+            const planRun = runs.find((r) => String(r.kind || '') === 'plan' && r.summary && typeof r.summary === 'object' && (r.summary as Record<string, unknown>).plans != null)
+            if (!planRun) return null
+            const s = planRun.summary as { plans?: number; persisted?: number; persistErrors?: number }
+            const plansN = Number(s.plans) || 0
+            const persistedN = typeof s.persisted === 'number' ? s.persisted : plansN
+            const failed = Number(s.persistErrors) || 0
+            const ok = failed === 0 && persistedN >= plansN
+            return (
+              <span title={`Latest planner run: ${plansN} missions · ${persistedN} persisted${failed ? ` · ${failed} failed to persist` : ''}`} style={{ padding: '4px 10px', borderRadius: 999, background: ok ? C.greenSoft : C.redSoft, border: `1px solid ${ok ? C.greenBorder : C.redBorder}`, color: ok ? C.green : C.red, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>
+                🧭 {plansN} planned · {persistedN} persisted{failed ? ` · ⚠ ${failed}` : ''}
+              </span>
+            )
+          })()}
+          {(() => {
+            const gt = status.gate as { runs?: number; passRate?: number } | undefined
+            if (!gt || gt.runs == null) return null
+            const enforced = (status.runs as Array<Record<string, unknown>> | undefined)?.some((r) => {
+              const s = r.summary as Record<string, unknown> | undefined
+              return s && Array.isArray(s.jobs) && String(r.kind || '') === 'daily'
+            })
+            return (
+              <span title={`Deterministic AEO/GEO/YMYL gate runs (every ship call + manual runs). ${enforced ? 'Ship-side enforcement active.' : ''}`} style={{ padding: '4px 10px', borderRadius: 999, background: C.cyanSoft, border: `1px solid #A5F3FC`, color: C.cyan2, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>
+                🛡 gate {gt.runs} runs · {gt.passRate ?? 0}% pass
+              </span>
+            )
+          })()}
+        </div>
+      )}
+
       {/* ── KPI strip (six brains) ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 14 }}>
         <Kpi label="Lifecycle" value={String(seededCount || '—')} sub="cells seeded (36 max)" color={C.cyan2} />
@@ -583,6 +637,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
     }
     if (dsrc === 'research') {
       return <span title="Market-research volume (Ubersuggest/Ads), not owned-site impressions" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: C.surface2, border: `1px solid ${C.border}`, color: C.textMuted, fontWeight: 700, fontSize: 9 }}>RESEARCH VOL</span>
+    }
+    if (dsrc === 'legacy') {
+      return <span title="Planned before demand provenance existed — re-run the planner to refresh with honest numbers" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: C.surface2, border: `1px dashed ${C.border}`, color: C.textDim, fontWeight: 700, fontSize: 9 }}>LEGACY — RE-RUN</span>
     }
     return null
   })()}
