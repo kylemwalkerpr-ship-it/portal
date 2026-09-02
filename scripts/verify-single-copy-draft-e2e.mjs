@@ -64,9 +64,10 @@ async function bootstrapClerkSession(email, secret) {
   const userId = users?.[0]?.id
   if (!userId) throw new Error(`no Clerk user for ${email}`)
   out.clerkUserId = userId
-  // Preferred: create a session directly and mint a JWT for it.
+  // Preferred: create a session directly (POST /v1/sessions) and mint a JWT.
   try {
-    const session = await call(`/users/${userId}/sessions`, { method: 'POST', body: 'expires_in_seconds=3600' })
+    const session = await call('/sessions', { method: 'POST', body: `user_id=${userId}&expires_in_seconds=7200` })
+    out.clerkSessionId = session?.id || null
     let jwt = session?.last_active_token?.jwt || null
     if (!jwt) {
       const tok = await call(`/sessions/${session.id}/tokens`, { method: 'POST' })
@@ -81,13 +82,41 @@ async function bootstrapClerkSession(email, secret) {
     out.clerkSessionCreateNote = String(e instanceof Error ? e.message : e).slice(0, 300)
   }
   // Fallback: one-time sign-in token (bypasses all factors incl. 2FA — it is a
-  // trusted flow). The app's SignIn component consumes `?token=` and completes
-  // the session handshake on the app's own domain.
+  // trusted flow). Consume it IN-PAGE through Clerk's own JS client:
+  // client.signIn.create({ strategy: 'sign_in_token', token }) + setActive,
+  // which writes the session cookies on the app's own origin.
   const sit = await call('/sign_in_tokens', { method: 'POST', body: `user_id=${userId}&expires_in_seconds=3600` })
   if (!sit?.token) throw new Error('clerk sign-in token unavailable')
   out.clerkSignInTokenId = sit.id || null
-  await page.goto(`${BASE}/sign-in/student?token=${encodeURIComponent(sit.token)}`, { waitUntil: 'networkidle', timeout: 90_000 })
-  await page.waitForURL('**/dashboard/**', { timeout: 45_000 }).catch(() => {})
+  await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded', timeout: 90_000 })
+  const clerkResult = await page.evaluate(async (token) => {
+    // clerk-js hydrates asynchronously: wait for the instance to expose
+    // client + setActive, not merely for the global to appear.
+    for (let i = 0; i < 60; i++) {
+      const c = window.Clerk
+      if (c && (c.client || (c.Clerk && c.Clerk.client)) && c.setActive) break
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    const clerk = window.Clerk
+    if (!clerk) return { error: 'window.Clerk never mounted' }
+    if (!clerk.setActive) return { error: 'window.Clerk has no setActive (unexpected build)' }
+    try {
+      let client = clerk.client
+      if (client && typeof client.then === 'function') client = await client
+      if (!client || !client.signIn) return { error: 'clerk client not available after hydration' }
+      const attempt = await client.signIn.create({ strategy: 'sign_in_token', token })
+      if (attempt.createdSessionId) {
+        await clerk.setActive({ session: attempt.createdSessionId })
+        return { status: attempt.status, session: attempt.createdSessionId }
+      }
+      return { status: attempt.status, error: 'no session created' }
+    } catch (e) {
+      return { error: String(e && e.message ? e.message : e).slice(0, 300) }
+    }
+  }, sit.token)
+  out.clerkTokenSignIn = clerkResult
+  if (!clerkResult || clerkResult.error) throw new Error(`clerk token sign-in failed: ${clerkResult?.error || 'unknown'}`)
+  await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'networkidle', timeout: 90_000 })
   return userId
 }
 
@@ -120,7 +149,14 @@ if (!page.url().includes('dashboard') && /factor-two|factor_one/.test(page.url()
     out.clerkBootstrapError = String(e instanceof Error ? e.message : e).slice(0, 300)
   }
 }
-out.signedIn = page.url().includes('dashboard')
+out.signedIn = /^https?:\/\/[^/]+\/dashboard/.test(page.url())
+if (out.signedIn) {
+  const authed = await page.evaluate(async () => {
+    try { return (await fetch('/api/content-studio/jobs?limit=1', { credentials: 'same-origin' })).status } catch { return 0 }
+  })
+  out.authProbe = authed
+  out.signedIn = authed !== 401 && authed !== 0
+}
 step(`landed at ${page.url()}`)
 
 if (!out.signedIn) {
@@ -130,7 +166,24 @@ if (!out.signedIn) {
   await browser.close()
   process.exit(1)
 }
-await page.waitForTimeout(5_000)
+await page.waitForTimeout(3_000)
+// The token handshake may render the dashboard from the client cache before
+// the __session cookie is fully written — force one reload so the Clerk
+// middleware mints the server-side cookie, then probe an authed endpoint.
+await page.reload({ waitUntil: 'networkidle', timeout: 90_000 }).catch(() => {})
+for (let probe = 0; probe < 6; probe++) {
+  const authed = await page.evaluate(async () => {
+    try {
+      const res = await fetch('/api/content-studio/jobs?limit=1', { credentials: 'same-origin' })
+      return res.status
+    } catch { return 0 }
+  })
+  if (authed !== 401 && authed !== 0) { out.authProbe = authed; break }
+  out.authProbe = authed
+  await page.waitForTimeout(3_000)
+  await page.reload({ waitUntil: 'networkidle', timeout: 90_000 }).catch(() => {})
+}
+await page.waitForTimeout(2_000)
 
 // ── 2. Run the streaming draft and accumulate client-visible text ───────────
 step(`generate-stream: contentType=${CT} shipMode=pr (no min/max override → brief contract governs)`)

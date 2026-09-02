@@ -498,6 +498,14 @@ export async function* runSeoFactoryPipelineStream(
           : prompt
       const prevWords = content ? countBodyWords(content) : 0
       let attemptText = ''
+      // Attempt boundary: this pass rewrites from zero, so the per-attempt
+      // snapshot cadence restarts too. Without the reset, `lastDraftSent`
+      // carried the previous attempt's length and a refine pass stayed
+      // "not grown enough" until it exceeded the ENTIRE prior body — so no
+      // `draft` snapshots fired, and the route's delta accumulator appended
+      // this attempt's tokens onto the full previous draft (the NCLEX
+      // draft+revision glue that shipped two near-identical copies).
+      lastDraftSent = 0
 
       // ── Segmented first draft ────────────────────────────────────────────
       // Thinking mode stays ON (better reasoning) but long documents are written
@@ -632,11 +640,15 @@ export async function* runSeoFactoryPipelineStream(
               yield { type: 'provider', provider, model }
             } else if (ev.type === 'delta') {
               attemptText += ev.text
+              // Per-attempt snapshot cadence: once this attempt has streamed
+              // 2,000+ chars of its OWN text, hand the route a full snapshot
+              // so its accumulator REPLACES (never appends) the prior state.
+              // The old `attemptText.length >= content.length` condition kept
+              // snapshots suppressed until a rewrite outgrew the whole
+              // previous body — the glue window for draft+revision doubles.
               const grewEnough = attemptText.length - lastDraftSent >= 2000
               if (grewEnough) lastDraftSent = attemptText.length
-              const checkpointDraft =
-                grewEnough && attemptText.length >= content.length ? attemptText : undefined
-              yield { type: 'delta', text: ev.text, attempt: attempts, draft: checkpointDraft }
+              yield { type: 'delta', text: ev.text, attempt: attempts, draft: grewEnough ? attemptText : undefined }
             } else if (ev.type === 'done') {
               attemptText = ev.text
               provider = ev.provider

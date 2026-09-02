@@ -44,14 +44,43 @@ export function interruptedJobPatch(
   }
 }
 
-/** Keep the latest full draft from SSE events. Token deltas append; snapshot `draft` replaces. */
+/**
+ * Keep the latest full draft from SSE events. Token deltas append WITHIN one
+ * attempt; a change in `attempt` marks a new writing pass that restarts its
+ * text from zero, so its first delta REPLACES the buffer instead of appending
+ * onto the previous attempt's text. Snapshot `draft` events always replace.
+ *
+ * Live evidence (NCLEX contract, 2026-09-02): attempt 1 was accepted at
+ * ~2,277 words, the refine pass rewrote from zero, and without the boundary
+ * reset every refine delta APPENDED onto the full attempt-1 body — the
+ * checkpoint and the interruption finalizer then persisted two near-full
+ * article copies as one 2,323-word "draft" (the echo that shipped).
+ */
 export function ingestStreamDraft(
   current: string,
-  ev: { type?: string; draft?: string; text?: string },
+  ev: { type?: string; draft?: string; text?: string; attempt?: number },
+  state?: { lastAttempt?: number },
 ): string {
   const snapshot = typeof ev.draft === 'string' ? ev.draft : ''
-  if (snapshot.trim().length > 0) return snapshot
-  if (ev.type === 'delta' && typeof ev.text === 'string' && ev.text) return current + ev.text
+  if (snapshot.trim().length > 0) {
+    if (state && typeof ev.attempt === 'number') state.lastAttempt = ev.attempt
+    return snapshot
+  }
+  if (ev.type === 'delta' && typeof ev.text === 'string' && ev.text) {
+    if (
+      state &&
+      typeof ev.attempt === 'number' &&
+      state.lastAttempt !== undefined &&
+      ev.attempt !== state.lastAttempt
+    ) {
+      // Attempt boundary: this pass rewrites from zero — never glue it onto
+      // the previous attempt's accumulated text.
+      state.lastAttempt = ev.attempt
+      return ev.text
+    }
+    if (state && typeof ev.attempt === 'number') state.lastAttempt = ev.attempt
+    return current + ev.text
+  }
   return current
 }
 

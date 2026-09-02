@@ -6521,6 +6521,11 @@ const controller = new AbortController()
       }),
       })
       let streamChars = 0
+      // Attempt-boundary tracker: deltas of a NEW attempt must REPLACE the
+      // live buffer, not append onto the previous attempt's text. Without
+      // this, a refine pass that rewrites from zero glued draft+revision
+      // into the operator's live document (the NCLEX double-copy view).
+      let lastDeltaAttempt: number | undefined = undefined
       // Early 'drafting' job row created by the pipeline — lets the Draft queue
       // show '1 In Progress' in realtime while the AI writes, before the final row.
       let liveJobId = ''
@@ -6545,8 +6550,15 @@ const controller = new AbortController()
           record('refine', `Depth rescue complete · ${s.expandPasses} expand/append pass${s.expandPasses === 1 ? '' : 'es'}${s.stallCount > 0 ? ` · ${s.stallCount} stall${s.stallCount === 1 ? '' : 's'}` : ''} · ${fmtDur(s.timeMs)} used`, s.stallCount > 0 ? 'warn' : 'success')
         }
         else if (event.type === 'delta') {
-          // Buffer only — the 400ms flush interval owns the state updates.
-          generationBufRef.current += String(event.text || '')
+          const at = typeof event.attempt === 'number' ? event.attempt : undefined
+          if (at !== undefined && lastDeltaAttempt !== undefined && at !== lastDeltaAttempt) {
+            // New writing pass restarts from zero — replace, never glue.
+            generationBufRef.current = String(event.text || '')
+          } else {
+            // Buffer only — the 400ms flush interval owns the state updates.
+            generationBufRef.current += String(event.text || '')
+          }
+          if (at !== undefined) lastDeltaAttempt = at
           streamChars = generationBufRef.current.length
         } else if (event.type === 'ship') record('ship', event.ship?.prUrl ? `Pull request opened · audit passed` : event.shipError ? `Ship paused: ${event.shipError}` : 'Draft audited; preparing delivery', event.shipError ? 'warn' : 'info')
         else if (event.type === 'final') {

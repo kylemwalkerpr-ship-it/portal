@@ -55,3 +55,58 @@ describe('interruptedJobPatch', () => {
     expect(ingestStreamDraft('Hello world', { type: 'attempt', draft: '# Full article\n\nBody.' })).toBe('# Full article\n\nBody.')
   })
 })
+
+describe('ingestStreamDraft attempt boundaries (NCLEX draft+revision glue regression)', () => {
+  const A1 = 'Attempt one body prose. '
+  const A2 = 'Attempt two rewritten from zero.'
+
+  it('a delta from a NEW attempt REPLACES the buffer instead of appending', () => {
+    const state: { lastAttempt?: number } = {}
+    let acc = ''
+    // Attempt 1 streams its full text token by token.
+    acc = ingestStreamDraft(acc, { type: 'delta', text: A1, attempt: 1 }, state)
+    acc = ingestStreamDraft(acc, { type: 'delta', text: 'More of attempt one. ', attempt: 1 }, state)
+    expect(acc).toBe(A1 + 'More of attempt one. ')
+    // Attempt 2 (refine) restarts from zero — its first delta must REPLACE.
+    acc = ingestStreamDraft(acc, { type: 'delta', text: A2, attempt: 2 }, state)
+    expect(acc).toBe(A2)
+  })
+
+  it('deltas within the SAME attempt keep appending', () => {
+    const state: { lastAttempt?: number } = {}
+    let acc = ingestStreamDraft('', { type: 'delta', text: 'One ', attempt: 2 }, state)
+    acc = ingestStreamDraft(acc, { type: 'delta', text: 'Two', attempt: 2 }, state)
+    expect(acc).toBe('One Two')
+  })
+
+  it('a full snapshot replaces and re-arms the boundary tracker', () => {
+    const state: { lastAttempt?: number } = {}
+    let acc = ingestStreamDraft('', { type: 'delta', text: 'partial', attempt: 1 }, state)
+    acc = ingestStreamDraft(acc, { type: 'attempt', attempt: 1, draft: '# Full attempt-one article' }, state)
+    expect(acc).toBe('# Full attempt-one article')
+    // Same attempt continues appending on top of the snapshot.
+    acc = ingestStreamDraft(acc, { type: 'delta', text: ' tail', attempt: 1 }, state)
+    expect(acc).toBe('# Full attempt-one article tail')
+    // A later attempt still replaces.
+    acc = ingestStreamDraft(acc, { type: 'delta', text: 'fresh', attempt: 2 }, state)
+    expect(acc).toBe('fresh')
+  })
+
+  it('legacy two-arg calls keep the append-only behavior (back-compat)', () => {
+    let acc = ingestStreamDraft('', { type: 'delta', text: 'A', attempt: 1 })
+    acc = ingestStreamDraft(acc, { type: 'delta', text: 'B', attempt: 2 })
+    expect(acc).toBe('AB')
+  })
+
+  it('NCLEX sequence: accepted attempt 1 + refine deltas never glue into two copies', () => {
+    const state: { lastAttempt?: number } = {}
+    let acc = ''
+    // Attempt 1: the full 2,277-word draft streams through and is accepted.
+    acc = ingestStreamDraft(acc, { type: 'delta', text: 'NCLEX copy one body. ', attempt: 1 }, state)
+    acc = ingestStreamDraft(acc, { type: 'attempt', attempt: 1, draft: 'NCLEX copy one body.' }, state)
+    // Attempt 2: the refine pass rewrites from zero.
+    acc = ingestStreamDraft(acc, { type: 'delta', text: 'NCLEX copy two body.', attempt: 2 }, state)
+    expect(acc).not.toContain('copy one')
+    expect(acc).toBe('NCLEX copy two body.')
+  })
+})

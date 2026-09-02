@@ -266,6 +266,11 @@ export async function POST(request: Request) {
         send({ type: 'progress', stage: 'connect', message: 'Pipeline connected — preparing brief…' })
 
         let lastCheckpointDraft = ''
+        // Attempt-boundary tracker for the delta accumulator: deltas of a NEW
+        // attempt restart from zero, so ingesting them must REPLACE the
+        // buffer, not append onto the previous attempt's text (the NCLEX
+        // draft+revision glue defect).
+        const checkpointIngest = { lastAttempt: undefined as number | undefined }
         let lastCheckpointChars = 0
         let lastCheckpointAt = 0
         let checkpointCount = 0
@@ -400,7 +405,7 @@ export async function POST(request: Request) {
           if (winner.r.done) break
           if (ev.type === 'job') liveJobId = ev.jobId
           if (ev.type === 'final') sawFinal = true
-          lastCheckpointDraft = ingestStreamDraft(lastCheckpointDraft, ev)
+          lastCheckpointDraft = ingestStreamDraft(lastCheckpointDraft, ev, checkpointIngest)
           if (ev.type === 'final' && ev.result?.content) {
             lastCheckpointDraft = ingestStreamDraft(lastCheckpointDraft, { type: 'final', draft: String(ev.result.content) })
           }
