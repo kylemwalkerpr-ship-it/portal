@@ -32,6 +32,8 @@ describe('baseten DeepSeek V4 Flash · empty-content hardening', () => {
     'NVIDIA_BASE_URL',
     'CONTENT_AI_RETRY',
     'CONTENT_AI_FETCH_TIMEOUT_MS',
+    'CONTENT_AI_ALL_PROVIDERS',
+    'CONTENT_AI_MAX_PROVIDERS',
   ] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
@@ -40,12 +42,12 @@ describe('baseten DeepSeek V4 Flash · empty-content hardening', () => {
     for (const k of envKeys) saved[k] = process.env[k]
   })
 
-  afterEach(() => {
-    global.fetch = originalFetch
-    for (const k of envKeys) {
-      if (saved[k] == null) delete process.env[k]
-      else process.env[k] = saved[k]
-    }
+  beforeEach(() => {
+    // Break-glass: this suite validates the RETIRED Baseten transport's
+    // empty-content hardening. The live Entrim-only policy would redirect
+    // its pin, so restore the legacy full cascade for the whole suite.
+    // (Re-set per test: afterEach restores the saved env.)
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
   })
 
   const sse = (events: string[]) =>
@@ -185,6 +187,11 @@ describe('baseten DeepSeek V4 Flash · empty-content hardening', () => {
     process.env.BASETEN_API_KEY = 'test-baseten-key'
     process.env.CONTENT_AI_RETRY = '1'
     process.env.CONTENT_AI_FETCH_TIMEOUT_MS = '700'
+    // A developer's .env.local can raise the provider cap and inject ambient
+    // keys — with the break-glass cascade restored, every candidate would
+    // hang its own 700ms deadline and blow the test budget. One candidate
+    // keeps the deadline math honest: ~700ms total.
+    process.env.CONTENT_AI_MAX_PROVIDERS = '1'
     // Never settles unless aborted — upstream is hung. The per-fetch deadline
     // must win; the abort signal releases the pending handle so jest exits.
     global.fetch = jest.fn((_input, init) => {

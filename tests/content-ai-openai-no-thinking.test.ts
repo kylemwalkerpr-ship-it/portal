@@ -18,13 +18,22 @@ import { generateContentText } from '@/lib/contentAiProvider'
 describe('content AI · OpenAI request payload', () => {
   const originalKey = process.env.OPENAI_API_KEY
   const originalModel = process.env.OPENAI_MODEL
+  const originalAll = process.env.CONTENT_AI_ALL_PROVIDERS
   const originalFetch = global.fetch
+
+  beforeEach(() => {
+    // Break-glass: this validates the RETIRED OpenAI transport payload.
+    // The live Entrim-only policy would redirect the pin before OpenAI.
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
+  })
 
   afterEach(() => {
     if (originalKey == null) delete process.env.OPENAI_API_KEY
     else process.env.OPENAI_API_KEY = originalKey
     if (originalModel == null) delete process.env.OPENAI_MODEL
     else process.env.OPENAI_MODEL = originalModel
+    if (originalAll == null) delete process.env.CONTENT_AI_ALL_PROVIDERS
+    else process.env.CONTENT_AI_ALL_PROVIDERS = originalAll
     global.fetch = originalFetch
   })
 

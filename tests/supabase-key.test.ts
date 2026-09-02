@@ -54,6 +54,25 @@ describe('isLegacyJwtKey / isSecretKey', () => {
 })
 
 describe('resolveSupabaseKey', () => {
+  const savedEnv: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    // The resolver falls back to NEXT_PUBLIC_SUPABASE_ANON_KEY when no
+    // explicit keys are passed. A developer's .env.local carries a real anon
+    // key — quarantine it so the no-key tests stay hermetic.
+    for (const k of ['SUPABASE_SERVICE_ROLE_JWT', 'SUPABASE_SERVICE_ROLE_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'] as const) {
+      savedEnv[k] = process.env[k]
+      delete process.env[k]
+    }
+  })
+
+  afterEach(() => {
+    for (const k of Object.keys(savedEnv) as Array<keyof typeof savedEnv>) {
+      if (savedEnv[k] == null) delete process.env[k]
+      else process.env[k] = savedEnv[k]
+    }
+  })
+
   it('prefers the legacy service-role JWT when present', () => {
     expect(resolveSupabaseKey({ serviceRoleKey: LEGACY_SR, anonKey: LEGACY_ANON })).toBe(LEGACY_SR)
   })

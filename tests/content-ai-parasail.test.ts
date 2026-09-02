@@ -40,6 +40,10 @@ describe('content AI · Parasail (psk- keys)', () => {
       original[k] = process.env[k]
       delete process.env[k]
     }
+    // Break-glass: this suite validates the RETIRED Parasail transports.
+    // The live Entrim-only policy would redirect its pins, so restore the
+    // legacy full cascade for the whole suite.
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
   })
 
   afterEach(() => {
@@ -47,6 +51,8 @@ describe('content AI · Parasail (psk- keys)', () => {
       if (original[k] == null) delete process.env[k]
       else process.env[k] = original[k]
     }
+    if (original.CONTENT_AI_ALL_PROVIDERS == null) delete process.env.CONTENT_AI_ALL_PROVIDERS
+    else process.env.CONTENT_AI_ALL_PROVIDERS = original.CONTENT_AI_ALL_PROVIDERS
   })
 
   it('recognizes the psk- key prefix', () => {

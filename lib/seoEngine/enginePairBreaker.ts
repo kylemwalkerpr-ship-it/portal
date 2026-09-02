@@ -1,11 +1,14 @@
 /**
  * 15-minute circuit breaker for the Master Engine pair legs.
  *
- * Knowledge ingest calls the pair once per feed item. A dead Grok or Run BiOS
- * host must not be retried on every remaining item in the same run.
+ * Knowledge ingest calls the pair once per feed item. A dead host must not be
+ * retried on every remaining item in the same run. Live policy: the legs are
+ * the two Entrim families ('entrim-qwen' lead, 'entrim-deepseek' complement);
+ * the legacy Grok/Run BiOS/Parasail legs remain in the type for breaker-state
+ * compatibility but are never fired by the current pair.
  */
 
-export type EnginePairLeg = 'grok' | 'runbios-opus' | 'parasail-glm' | 'runbios-glm'
+export type EnginePairLeg = 'entrim-qwen' | 'entrim-deepseek' | 'grok' | 'runbios-opus' | 'parasail-glm' | 'runbios-glm'
 
 export const ENGINE_PAIR_BREAKER_MS = 15 * 60 * 1000
 export const ENGINE_PAIR_BREAKER_THRESHOLD = 2

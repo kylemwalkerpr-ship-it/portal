@@ -120,6 +120,61 @@ export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.6-27B'
 const ENTRIM_BASE_URL = 'https://api.entrim.ai/v1'
 const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 const ENTRIM_MAX_TOKENS = 16384
+
+/**
+ * LIVE PROVIDER POLICY (2026-09-02): Entrim Qwen3.6 27B (`entrim-qwen-27b`)
+ * and Entrim DeepSeek V4 Flash (`entrim-deepseek`) are the ONLY commissioned
+ * content backends for every pipeline stage — drafting, briefing, review,
+ * refine, depth rescue, and visibility pings. Every other host (NVIDIA,
+ * Baseten, Parasail, Run BiOS, Grok/xAI, OpenAI, Cloudflare, Groq, Zai,
+ * AIHubmix, OpenRouter, Gemini, chat bridges) is OUT OF COMMISSION and is
+ * filtered out of the cascade before any request leaves the Worker.
+ *
+ * Rationale: each decommissioned host failed in production in a distinct way
+ * (Entrim 524s are handled by retry, but NVIDIA minimax 429s, Grok 403
+ * credit exhaustion, and stale Run BiOS/GLM deployments turned the cascade
+ * into a latency and error-surface liability). A two-model cascade on one
+ * first-party endpoint keeps every stage deterministic and the error surface
+ * readable.
+ *
+ * Behavior:
+ *  - A request pinning a decommissioned provider is REDIRECTED to the Entrim
+ *    Qwen default (with a console.warn), and any model override is dropped —
+ *    a retired host's model id must never leak into an Entrim request (the
+ *    model=grok-4.6-into-Entrim 400 class of bug).
+ *  - If Entrim is not configured at all, generation fails fast with a clear
+ *    "set ENTRIM_API_KEY" error instead of silently drafting on a retired
+ *    host.
+ *  - CONTENT_AI_ALL_PROVIDERS=1 restores the legacy full cascade (break-glass
+ *    for local diagnostics only — never set in production).
+ */
+export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL]
+export const LIVE_DEFAULT_PROVIDER = ENTRIM_QWEN_LABEL
+
+/** True when the provider label may serve requests under the live policy. */
+export function isLiveProviderLabel(label: string): boolean {
+  if (String(env('CONTENT_AI_ALL_PROVIDERS') || '').trim() === '1') return true
+  return LIVE_PROVIDER_LABELS.includes(label)
+}
+
+/**
+ * Normalize a resolved pin to the live policy. Returns the (possibly
+ * redirected) prefer label and a cleaned opts with any model override
+ * stripped when the pin was redirected — a decommissioned provider's model
+ * id is meaningless (and harmful) on Entrim.
+ */
+function applyLiveProviderPolicy<T extends { model?: string }>(
+  prefer: string,
+  opts: T,
+): { prefer: string; opts: T; redirected: boolean } {
+  if (isLiveProviderLabel(prefer)) return { prefer, opts, redirected: false }
+  const cleaned = { ...opts }
+  delete cleaned.model
+  console.warn(
+    `[contentAi] provider "${prefer}" is out of commission — routing to ${LIVE_DEFAULT_PROVIDER} (Entrim-only policy)`,
+  )
+  return { prefer: LIVE_DEFAULT_PROVIDER, opts: cleaned, redirected: true }
+}
 const RUNBIOS_BASE_URL = RUNBIOS_CATALOG_BASE
 const RUNBIOS_GLM_MODEL = 'glm-5.3-flash'
 const RUNBIOS_MAX_TOKENS = 16384
@@ -624,13 +679,18 @@ function extractMessageText(content: unknown): string {
  */
 function looksLikeFullRestart(previousText: string, continuationText: string): boolean {
   const head = continuationText.trimStart().slice(0, 300)
-  // New frontmatter block — the strongest restart signal
-  if (/^---\s*\n/.test(head) && /title\s*[:=]/im.test(head)) return true
-  // New H1 heading without preceding prose
-  if (/^#\s+[A-Z]/.test(head) && !/\S/.test(previousText.slice(-50))) return true
-  // The continuation opens with a heading-like line (## or ###) that
-  // introduces a new section structure instead of continuing prose
-  if (/^##\s+/.test(head) && !previousText.endsWith('\n')) return true
+  // New frontmatter block — the strongest restart signal.
+  // Match a line that is exactly `---` (same pattern as
+  // stripDuplicateArticleCopy's restart detection) followed within 120
+  // chars by a `title:` field.
+  if (/^---\s*$/m.test(head) && /title\s*[:=]/im.test(head)) return true
+  // New H1 heading at the very start — the model began a fresh article.
+  // Only flag this when the previous text does NOT end mid-prose (which
+  // would be a genuine continuation that happens to start a new section).
+  if (/^#\s+[A-Z]/.test(head) && !previousText.endsWith('\n') && previousText.length > 0) return true
+  // The continuation opens with a ## heading right after a non-prose boundary
+  // (e.g. the previous text ended with a code fence or JSON-LD close).
+  if (/^##\s+/.test(head) && !previousText.endsWith('\n') && previousText.length > 0) return true
   return false
 }
 
@@ -937,6 +997,7 @@ async function openAiCompatibleComplete(
       text = plain.text
       finishReason = plain.finishReason
     }
+    let restartRejected = false
     if (finishReason === 'length' && text.trim()) {
       // 2026-08-11: raised from 1→3 continuation attempts — long legal
       // guides routinely need multiple continuations after hitting the
@@ -948,9 +1009,14 @@ async function openAiCompatibleComplete(
         // Reject the restart outright — keep the previous text and stop
         // continuing, because further restarts will not recover the deficit.
         if (looksLikeFullRestart(text, cont.text)) {
-          // Stop the continuation loop — the draft is as complete as this
-          // provider can make it within the token budget. The pipeline's
-          // depth-rescue / refine passes will top up the deficit instead.
+          // The draft is as complete as this provider can make it within the
+          // token budget. Treat it as FINAL: do NOT fall through to the
+          // truncated-throw below, which would cascade to the next provider
+          // or (worse) make withRetry re-run this same provider — whose
+          // fresh response is exactly the restart we just rejected, getting
+          // concatenated as a "clean" first attempt. The pipeline's
+          // depth-rescue / refine passes top up the deficit instead.
+          restartRejected = true
           break
         }
         text = (text + '\n\n' + cont.text).trim()
@@ -967,7 +1033,8 @@ async function openAiCompatibleComplete(
     }
       if (!text) throw new Error(`${p.label} returned empty content`)
       // Still cut off after the continuation — cascade to the next provider.
-      if (finishReason === 'length') {
+      // A restart-rejected draft is intentionally final; never cascade it.
+      if (finishReason === 'length' && !restartRejected) {
         throw new Error(`${p.label} output was truncated (token limit) — trying next provider`)
       }
       return { text, provider: p.label, model }
@@ -1235,13 +1302,19 @@ async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
           ` — high-reasoning drafts were eating the token budget; retry uses low effort + 8k cap`,
       )
     }
+    let restartRejected = false
     if ((finishReason === 'length' || finishReason === 'max_output_tokens') && words < 400) {
       for (let c = 0; c < 2 && (finishReason === 'length' || finishReason === 'max_output_tokens'); c++) {
         try {
           const cont = await grokResponsesFetch(opts, buildContinuationPrompt(text))
           // Same restart guard as the OpenAI-compatible path: if Grok
-          // restarted the article instead of appending, stop continuing.
-          if (looksLikeFullRestart(text, cont.text)) break
+          // restarted the article instead of appending, stop continuing and
+          // treat the prior draft as final (no cascade / withRetry re-run —
+          // a re-run would return exactly the restart we just rejected).
+          if (looksLikeFullRestart(text, cont.text)) {
+            restartRejected = true
+            break
+          }
           text = `${text}\n\n${cont.text}`.trim()
           try {
             const { stripDuplicateArticleCopy } = await import('@/lib/seoFactory/editorialScaffold')
@@ -1255,10 +1328,10 @@ async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
       }
     }
     // Keep a substantial incomplete draft instead of cascading away from Grok.
-    if (text.trim().split(/\s+/).filter(Boolean).length >= 400) {
+    if (text.trim().split(/\s+/).filter(Boolean).length >= 400 || restartRejected) {
       return { text, provider: 'grok', model: usedModel }
     }
-    if (finishReason === 'length' || finishReason === 'max_output_tokens') {
+    if ((finishReason === 'length' || finishReason === 'max_output_tokens') && !restartRejected) {
       throw new Error('grok output was truncated (token limit) — trying next provider')
     }
     return { text, provider: 'grok', model: usedModel }
@@ -1789,19 +1862,19 @@ async function nvidiaNemotronComplete(opts: ContentAiOptions): Promise<ContentAi
   const p = getNvidiaNemotronProvider()
   if (!p) throw new Error('NVIDIA Nemotron not configured (NVIDIA_API_KEY / NVAPI_KEY)')
   const maxTokens = Math.min(opts.maxTokens ?? NVIDIA_NEMOTRON_MAX_TOKENS, NVIDIA_NEMOTRON_MAX_TOKENS)
-  return withRetry('nvidia-nemotron', async () => {
-    const chunks: string[] = []
-    for await (const event of openAiCompatibleStream(p, {
-      ...opts,
-      maxTokens,
-      temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '1') || 1),
-    })) {
-      if (event.type === 'delta') chunks.push(event.text)
+  const chunks: string[] = []
+  for await (const event of openAiCompatibleStream(p, {
+    ...opts,
+    maxTokens,
+    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '1') || 1),
+  })) {
+    if (event.type === 'delta') {
+      chunks.push(event.text)
     }
-    const text = chunks.join('').trim()
-    if (!text) throw new Error('nvidia-nemotron stream returned empty content')
-    return { text, provider: p.label, model: p.model }
-  })
+  }
+  const text = chunks.join('').trim()
+  if (!text) throw new Error('nvidia-nemotron stream returned empty content')
+  return { text, provider: p.label, model: p.model }
 }
 
 async function nvidiaDeepseekComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
@@ -2170,22 +2243,42 @@ async function* openAiCompatibleStream(
       }
       // Watch for a model restart in the SSE deltas — if the model emitted
       // a new H1/frontmatter instead of appending, stop yielding deltas and
-      // break so we keep the previous draft (only relevant for continuation
-      // attempts; the first attempt is always accepted as-is).
+      // break so we keep the previous draft. Detection keys off "prose seen
+      // then a restart signature" so it works for both continuation attempts
+      // and the withRetry-style fresh re-invocations.
       let restartDetected = false
       let deltaCount = 0
+      let sawProse = full.length > 0
       for await (const delta of parseOpenAiSse(streamRes.body)) {
-        if (continuations > 0 && !restartDetected && delta.trimStart().length > 0) {
-          const head = delta.trimStart().slice(0, 200)
-          if (/^---\s*\n/.test(head) && /title\s*[:=]/im.test(head)) {
+        const trimmed = delta.trimStart()
+        if (!restartDetected && trimmed.length > 0) {
+          const head = trimmed.slice(0, 200)
+          // A standalone `---` delta AFTER we have already seen prose is a
+          // frontmatter restart — the first attempt's frontmatter is at
+          // position 0; a later `---` means a new article was started.
+          if (head.trim() === '---' && sawProse) {
             restartDetected = true
             break
           }
-          if (/^#\s+[A-Z]/.test(head) && !full.endsWith('\n')) {
+          // A `---` + title: in the same delta is a restart regardless.
+          if (/^---\s*\n[\s\S]*title\s*[:=]/im.test(head)) {
+            restartDetected = true
+            break
+          }
+          // New title-level H1 after prose — fresh article. NOTE: this must
+          // fire even when `full` ends with the '\n\n' continuation
+          // separator the catch block appended — a paragraph boundary is
+          // exactly where a restart begins, so `!full.endsWith('\n')` was
+          // the wrong guard and let H1 restarts through (2026-09-02 regression).
+          if (/^#\s+[A-Z]/.test(head) && sawProse) {
             restartDetected = true
             break
           }
         }
+        // Prose = word text, not the frontmatter/heading scaffolding that
+        // legitimately opens a draft. `#`/`-` starts stay non-prose so the
+        // H1 restart check above stays armed for the first real paragraph.
+        if (!sawProse && trimmed && !/^[#\-]/.test(trimmed)) sawProse = true
         full += delta
         yield { type: 'delta', text: delta }
         deltaCount++
@@ -3172,6 +3265,8 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   }
   const seen = new Set<string>()
   return orderedItems
+    // Live-provider policy: decommissioned hosts never occupy a cascade slot.
+    .filter((i) => isLiveProviderLabel(i.label))
     .filter((i) => {
       if (seen.has(i.label)) return false
       seen.add(i.label)
@@ -3386,8 +3481,19 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const { explicit, prefer, model } = resolveAiProviderPin(opts.aiProvider)
-  if (model && !opts.model) opts = { ...opts, model }
+  const { explicit: resolvedExplicit, prefer: resolvedPrefer, model } = resolveAiProviderPin(opts.aiProvider)
+  // Live-provider policy: only the two Entrim backends serve requests. A pin
+  // naming a decommissioned host is redirected to the Entrim default with any
+  // model override stripped (a retired model id must never reach Entrim).
+  const { prefer, opts: policyOpts, redirected: pinRedirected } = applyLiveProviderPolicy(resolvedPrefer, opts)
+  opts = policyOpts
+  // A redirected explicit pin now belongs to the live provider: early-fail,
+  // exclusive truncation, and error labels must all reference Entrim, not the
+  // decommissioned host the operator's stale picker still names.
+  const explicit = pinRedirected && resolvedExplicit ? prefer : resolvedExplicit
+  // A redirected pin drops the retired provider's model override — never
+  // re-attach it here (grok-4.6-in-Entrim class of 400s).
+  if (model && !opts.model && !pinRedirected) opts = { ...opts, model }
   const errors: string[] = []
   let candidates = orderedCompleters(opts, prefer)
 
@@ -3416,20 +3522,19 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     const display = model && GPT_ALIAS_RE.test((opts.aiProvider || '').trim().toLowerCase())
       ? `${opts.aiProvider!.trim()} (${prefer})`
       : prefer
+    // Live policy: the Entrim pair is the only commotion-free path, so the
+    // fix is always "set ENTRIM_API_KEY" — recommending a retired provider's
+    // key (OpenAI/ChatGPT Plus/SuperGrok) would send the operator in circles.
     throw new Error(
-      prefer === 'grok'
-        ? `Grok is not configured. Connect SuperGrok in Content Studio → Configure (no API key needed), then retry. Currently available providers: ${configured}.`
-        : prefer === 'openai'
-          ? `OpenAI is not configured. Connect ChatGPT Plus in Content Studio → Configure (no API key needed) or add OPENAI_API_KEY, then retry. Currently available providers: ${configured}.`
-          : `Selected AI provider "${display}" is not configured. ` +
-            `Add the required API key (e.g. OPENAI_API_KEY for OpenAI) to the environment. ` +
-            `Currently available providers: ${configured}.`,
+      `Selected AI provider "${display}" is not configured. ` +
+      `The live policy (Entrim-only) requires ENTRIM_API_KEY — set it in the environment or the AI Key Vault (Command Center → Configure). ` +
+      `Currently available providers: ${configured}.`,
     )
   }
 
   if (!candidates.length) {
     throw new Error(
-      'No content AI provider configured. Set NVIDIA_API_KEY (MiniMax drafting primary) and/or Cloudflare AI token as fallback.',
+      'No live content AI provider configured. The live policy (Entrim-only) requires ENTRIM_API_KEY — set it in the environment or the AI Key Vault (Command Center → Configure). All other backends are out of commission.',
     )
   }
 
@@ -3515,8 +3620,14 @@ export async function* generateContentTextStream(
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const { explicit, prefer, model } = resolveAiProviderPin(opts.aiProvider)
-  if (model && !opts.model) opts = { ...opts, model }
+  const { explicit: resolvedExplicit, prefer: resolvedPrefer, model } = resolveAiProviderPin(opts.aiProvider)
+  // Live-provider policy (see generateContentText): Entrim Qwen + Entrim
+  // DeepSeek only. Retired pins redirect to the Entrim default, model
+  // override dropped.
+  const { prefer, opts: policyOpts, redirected: pinRedirected } = applyLiveProviderPolicy(resolvedPrefer, opts)
+  opts = policyOpts
+  const explicit = pinRedirected && resolvedExplicit ? prefer : resolvedExplicit
+  if (model && !opts.model && !pinRedirected) opts = { ...opts, model }
   const errors: string[] = []
 
   type Candidate = {
@@ -3914,8 +4025,12 @@ export async function* generateContentTextStream(
   }
 
   // Dedupe preserving the MiniMax-first default order.
+  // Live-provider policy FIRST: drop decommissioned hosts before the
+  // candidate cap, so a stale admin order can never crowd both Entrim
+  // backends out of the bounded cascade.
   const seen = new Set<string>()
   let unique = candidates
+    .filter((c) => isLiveProviderLabel(c.label))
     .filter((c) => {
       if (seen.has(c.label)) return false
       seen.add(c.label)
@@ -4042,6 +4157,6 @@ export async function* generateContentTextStream(
   throw new Error(
     errors.length
       ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${quotaNote} Configure another provider or retry after the affected quota resets.`
-      : 'No content AI provider configured for streaming.',
+      : 'No live content AI provider configured for streaming — the Entrim-only policy requires ENTRIM_API_KEY.',
   )
 }

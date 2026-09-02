@@ -48,6 +48,10 @@ describe('content AI · NVIDIA MiniMax drafting', () => {
 
   it('routes the selected drafting pin through NVIDIA with the documented payload', async () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    // Break-glass: this test validates the RETIRED NVIDIA transport payload.
+    // The live Entrim-only policy would redirect the pin, so restore the
+    // legacy full cascade for the duration of the test.
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
     const originalFetch = global.fetch
     let requestBody: Record<string, unknown> | null = null
     global.fetch = jest.fn(async (_input, init) => {
@@ -81,6 +85,7 @@ describe('content AI · NVIDIA MiniMax drafting', () => {
       expect(requestBody).not.toHaveProperty('reasoning_budget')
     } finally {
       global.fetch = originalFetch
+      delete process.env.CONTENT_AI_ALL_PROVIDERS
     }
   })
 })
@@ -221,6 +226,9 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
       original[k] = process.env[k]
       delete process.env[k]
     }
+    // Break-glass: validates the RETIRED NVIDIA reviewer transport. The live
+    // Entrim-only policy would redirect this pin before it reached NVIDIA.
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
   })
 
   afterEach(() => {
@@ -228,6 +236,7 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
       if (original[k] == null) delete process.env[k]
       else process.env[k] = original[k]
     }
+    delete process.env.CONTENT_AI_ALL_PROVIDERS
   })
 
   it('reviewer pinned to nvidia-deepseek sends the Flash id even when the env secret is EOL Pro (410 regression)', async () => {
@@ -265,7 +274,7 @@ describe('content AI · reviewer regression — EOL Pro secret must not reach NV
 })
 
 describe('content AI · reviewer cascade on transient infra errors (cascadeOnCapacity)', () => {
-  const envKeys = ['BASETEN_API_KEY', 'PARASAIL_API_KEY', 'NVIDIA_API_KEY', 'NVIDIA_BASE_URL', 'NVIDIA_DEEPSEEK_MODEL', 'CONTENT_AI_RETRY'] as const
+  const envKeys = ['BASETEN_API_KEY', 'PARASAIL_API_KEY', 'NVIDIA_API_KEY', 'NVIDIA_BASE_URL', 'NVIDIA_DEEPSEEK_MODEL', 'CONTENT_AI_RETRY', 'CONTENT_AI_PROVIDER_ORDER', 'XAI_API_KEY'] as const
   const original: Record<string, string | undefined> = {}
 
   beforeEach(() => {
@@ -274,6 +283,13 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
       delete process.env[k]
     }
     process.env.CONTENT_AI_RETRY = '1' // one attempt per provider — keep the test fast
+    // Break-glass: these tests validate the RETIRED multi-host cascade
+    // (Baseten → Parasail → NVIDIA). Under the live Entrim-only policy every
+    // one of those hosts is filtered out, so restore the legacy cascade.
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
+    // Hermetic order: a developer's .env.local CONTENT_AI_PROVIDER_ORDER
+    // (e.g. groq first) must not change which fallback the cascade reaches.
+    process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify(['baseten-deepseek', 'parasail-deepseek', 'nvidia-deepseek', 'nvidia-nemotron'])
   })
 
   afterEach(() => {
@@ -281,6 +297,7 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
       if (original[k] == null) delete process.env[k]
       else process.env[k] = original[k]
     }
+    delete process.env.CONTENT_AI_ALL_PROVIDERS
   })
 
   const REVIEW_OPTS = {
@@ -295,6 +312,9 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
   it('an NVIDIA chat deployment 404 cascades to the next provider instead of hard-failing Fix All', async () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+    // NVIDIA lanes must precede Parasail so the cascade proves the NVIDIA
+    // fallback (nemotron SSE) rather than a generic JSON fallback host.
+    process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify(['nvidia-deepseek', 'nvidia-nemotron', 'parasail-deepseek'])
     const originalFetch = global.fetch
     global.fetch = jest.fn(async (input, init) => {
       const url = String(input)
@@ -471,5 +491,106 @@ describe('content AI · stream overload retry (NVIDIA 529)', () => {
       return Promise.reject(new Error('nvidia-deepseek stream 529: overloaded'))
     })).rejects.toThrow(/529/)
     expect(calls).toBe(1)
+  })
+})
+
+describe('content AI · continuation restart guard (regression)', () => {
+  const originalKey = process.env.NVIDIA_API_KEY
+  const originalEntrimKey = process.env.ENTRIM_API_KEY
+
+  afterEach(() => {
+    if (originalKey == null) delete process.env.NVIDIA_API_KEY
+    else process.env.NVIDIA_API_KEY = originalKey
+    if (originalEntrimKey == null) delete process.env.ENTRIM_API_KEY
+    else process.env.ENTRIM_API_KEY = originalEntrimKey
+    jest.restoreAllMocks()
+  })
+
+  it('openAiCompatibleComplete rejects a continuation that restarts with new frontmatter', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    const originalFetch = global.fetch
+    let call = 0
+
+    global.fetch = jest.fn(async (_input, init) => {
+      call++
+      const body = JSON.parse(String(init?.body || '{}')) as {
+        stream?: boolean
+        messages?: Array<{ role: string; content?: string }>
+      }
+      if (body.stream) {
+        // Streaming lane — send one tiny SSE body so a stray stream call
+        // terminates instead of hanging.
+        const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: 'x' } }] })}\n\ndata: [DONE]\n\n`
+        return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }
+      // Respond SEMANTICALLY on the continuation request's content, not by
+      // call order — a vault/OAuth fetch would otherwise shift the sequence.
+      const userMsg = body.messages?.find((m) => m.role === 'user')?.content || ''
+      const isContinuation = /CONTINUE WRITING THE DRAFT BELOW/.test(userMsg)
+      // OpenAI contract: finish_reason is at the CHOICE level, not inside message.
+      // Initial call: partial draft that truncates at the token cap.
+      // Continuation call: model restarts with new frontmatter + H1.
+      const payload = isContinuation
+        ? { choices: [{ message: { content: '---\ntitle: Fresh Rewrite\ncontent_type: article\n---\n\n# Fresh Rewrite\n\n## New Section' } }] }
+        : { choices: [{ message: { content: 'First draft part.' }, finish_reason: 'length' }] }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+
+    try {
+      const result = await generateContentText({
+        aiProvider: 'entrim-qwen-27b',
+        system: 'Write an article.',
+        prompt: 'Draft the article.',
+        maxTokens: 1200,
+        skipQualityContract: true,
+      })
+      // The restart must NOT be concatenated — the first draft is kept.
+      expect(result.text).toBe('First draft part.')
+      expect(result.text).not.toContain('Fresh Rewrite')
+      expect(result.text).not.toContain('New Section')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('generateContentText accepts a genuine continuation that appends prose', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    const originalFetch = global.fetch
+    let call = 0
+
+    global.fetch = jest.fn(async (_input, init) => {
+      call++
+      const body = JSON.parse(String(init?.body || '{}')) as { stream?: boolean }
+      if (body.stream) {
+        const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: 'x' } }] })}\n\ndata: [DONE]\n\n`
+        return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }
+      // Genuine continuation: mid-prose append, no restart signatures.
+      const payload =
+        call === 1
+          ? { choices: [{ message: { content: 'First half.' }, finish_reason: 'length' }] }
+          : { choices: [{ message: { content: 'Second half continues naturally.' } }] }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+
+    try {
+      const result = await generateContentText({
+        aiProvider: 'entrim-qwen-27b',
+        system: 'Write an article.',
+        prompt: 'Draft the article.',
+        maxTokens: 1200,
+        skipQualityContract: true,
+      })
+      expect(result.text).toBe('First half.\n\nSecond half continues naturally.')
+      expect(call).toBe(2)
+    } finally {
+      global.fetch = originalFetch
+    }
   })
 })

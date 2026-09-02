@@ -9,11 +9,19 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
   const originalModel = process.env.NVIDIA_NEMOTRON_MODEL
   const originalFetch = global.fetch
 
+  beforeEach(() => {
+    // Break-glass: this suite validates the RETIRED NVIDIA streaming
+    // transports. Under the live Entrim-only policy those pins redirect to
+    // Entrim, so restore the legacy full cascade for the suite.
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
+  })
+
   afterEach(() => {
     if (originalKey == null) delete process.env.NVIDIA_API_KEY
     else process.env.NVIDIA_API_KEY = originalKey
     if (originalModel == null) delete process.env.NVIDIA_NEMOTRON_MODEL
     else process.env.NVIDIA_NEMOTRON_MODEL = originalModel
+    delete process.env.CONTENT_AI_ALL_PROVIDERS
     global.fetch = originalFetch
   })
 
@@ -275,6 +283,168 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
     // reader.cancel() must propagate to the fetch body so the socket is
     // released immediately instead of buffering the rest of the generation.
     expect(cancelSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a model restart in a continuation response — keeps the prior draft', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    global.fetch = jest.fn(async (_input, init) => {
+      call++
+      const chunks =
+        call === 1
+          ? [
+              // First attempt: partial draft that hits the token cap.
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'Part one of the draft.' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+          : [
+              // Continuation response: model IGNORED the CONTINUE prompt and
+              // wrote a FRESH article with new frontmatter + H1. This must be
+              // rejected — the prior draft is kept, continuation stops.
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '---' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'title: Fresh Article Title' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'content_type: article' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '---' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '# Fresh Article Title' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '## New Section From Restart' } }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+      return new Response(chunks, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    // Two calls: initial attempt + one continuation attempt that was rejected.
+    expect(call).toBe(2)
+    // The first part must survive — the restart was NOT appended.
+    const texts = events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text)
+    expect(texts).toEqual(['Part one of the draft.', '\n\n'])
+    // A restart-rejection marker must appear.
+    expect(events.some((e) =>
+      e.type === 'provider' &&
+      String((e as { provider?: string }).provider || '').includes('restart detected')
+    )).toBe(true)
+    // Final text is ONLY the prior draft — no fresh article appended.
+    expect(events.at(-1)).toMatchObject({
+      type: 'done',
+      text: 'Part one of the draft.',
+      provider: 'nvidia-nemotron',
+    })
+    // The done text does NOT contain the restarted article's content.
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneText).not.toContain('Fresh Article Title')
+    expect(doneText).not.toContain('New Section From Restart')
+  })
+
+  it('rejects a model restart that opens with a new H1 (no frontmatter)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    global.fetch = jest.fn(async (_input, init) => {
+      call++
+      const chunks =
+        call === 1
+          ? [
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'Existing draft content.' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+          : [
+              // Continuation opens with a new H1 — classic restart signature.
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '# Completely New Article' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '## Replacement Section' } }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+      return new Response(chunks, {
+        status: 200,
+        headers: { 'content-type': 'text-event-stream' },
+      })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(2)
+    const texts = events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text)
+    expect(texts).toEqual(['Existing draft content.', '\n\n'])
+    expect(events.some((e) =>
+      e.type === 'provider' &&
+      String((e as { provider?: string }).provider || '').includes('restart detected')
+    )).toBe(true)
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneText).not.toContain('Completely New Article')
+  })
+
+  it('accepts a genuine continuation that appends prose (no restart)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    global.fetch = jest.fn(async (_input, init) => {
+      call++
+      const chunks =
+        call === 1
+          ? [
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'First half of the article.' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+          : [
+              // Genuine continuation: mid-prose, no frontmatter, no new H1.
+              `data: ${JSON.stringify({ choices: [{ delta: { content: 'Second half continues the article naturally.' } }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+      return new Response(chunks, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(2)
+    const texts = events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text)
+    expect(texts).toEqual(['First half of the article.', '\n\n', 'Second half continues the article naturally.'])
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneText).toBe('First half of the article.\n\nSecond half continues the article naturally.')
+    // No restart rejection — the continuation was accepted.
+    expect(events.every((e) =>
+      !(e.type === 'provider' && String((e as { provider?: string }).provider || '').includes('restart detected'))
+    )).toBe(true)
   })
 
   it('aborts the in-flight provider fetch when the caller signal fires', async () => {

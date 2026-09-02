@@ -2,22 +2,23 @@
  * Shared AI helper for the SEO Master Engine and Discover intel calls.
  *
  * The deterministic SEO engine remains the source of evidence/data. Its AI
- * harmonization is a bounded two-model pair:
- *   LEAD        — Claude Opus 5 via Run BiOS (`runbios-claude-opus`). It
- *                 consumes the complete engine result and reconciles titles,
- *                 keyword research/planning/clustering, sources, internal and
+ * harmonization is a bounded two-model pair (Entrim-only live policy):
+ *   LEAD        — Entrim Qwen3.6 27B (`entrim-qwen-27b`). It consumes the
+ *                 complete engine result and reconciles titles, keyword
+ *                 research/planning/clustering, sources, internal and
  *                 external links, H1/H2/H3, related questions, and search
  *                 intent without inventing or dropping verified evidence.
- *   COMPLEMENT  — Grok (xAI / SuperGrok). It runs in parallel on the same
- *                 payload; when the drafts disagree the lead merges, keeping
- *                 deterministic engine evidence authoritative.
+ *   COMPLEMENT  — Entrim DeepSeek V4 Flash (`entrim-deepseek`). It runs in
+ *                 parallel on the same payload; when the drafts disagree the
+ *                 lead merges, keeping deterministic engine evidence
+ *                 authoritative.
  * No other model silently joins the pair. Explicit pins stay single-model.
+ * Without ENTRIM_API_KEY the pair fails closed.
  */
 
 import {
   generateContentText,
   isEntrimConfigured,
-  isGrokConfigured,
   isOpenaiConfigured,
   refreshAiVault,
   type ContentAiOptions,
@@ -31,12 +32,14 @@ import {
   type EnginePairLeg,
 } from '@/lib/seoEngine/enginePairBreaker'
 
-export const ENGINE_FALLBACK_PROVIDER = 'grok' as const
+/** Live policy fallback: the second Entrim family (Grok is out of
+ *  commission). */
+export const ENGINE_FALLBACK_PROVIDER = 'entrim-deepseek' as const
 /** Graduated Discover-stage pair: Entrim lead (Qwen3.6 27B) + Entrim
  *  complement (DeepSeek V4 Flash) — both served by api.entrim.ai/v1 with the
- *  single ENTRIM vault key. When Entrim is unconfigured the pair falls back
- *  to the legacy Run BiOS Claude Opus 5 lead / Grok complement so existing
- *  vaults keep working untouched. */
+ *  single ENTRIM vault key. Under the Entrim-only live policy these are the
+ *  ONLY engine legs: without ENTRIM_API_KEY the pair fails closed (the
+ *  retired Run BiOS Claude / Grok degradation paths are removed). */
 export const ENGINE_LEAD_PROVIDER = 'entrim-qwen-27b' as const
 export const ENGINE_LEAD_MODEL = 'Qwen/Qwen3.6-27B' as const
 export const ENGINE_COMPLEMENT_PROVIDER = 'entrim-deepseek' as const
@@ -89,17 +92,20 @@ export function resolveEngineAiProvider(preferred?: string): string {
   if (want === 'entrim-qwen-27b' || want === 'qwen3.6-27b' || want === 'qwen') {
     return 'entrim-qwen-27b'
   }
+  // Live policy: an OpenAI pin without a key routes to the Entrim lead —
+  // Grok (the legacy redirect target) is out of commission.
   if (want === 'openai' && !isOpenaiConfigured()) {
-    if (isGrokConfigured()) return ENGINE_FALLBACK_PROVIDER
+    return ENGINE_LEAD_PROVIDER
   }
   return want
 }
 
 export function enginePairReady(): boolean {
-  // Graduated pair readiness: Entrim serves both legs with one key; without
-  // Entrim the pair degrades to a single Grok lead (Claude Opus is out of
-  // commission). Qwen + Grok carry the Discover-stage brains.
-  return isEntrimConfigured() || isGrokConfigured()
+  // Live policy: Entrim serves both legs with one key. Without ENTRIM_API_KEY
+  // the pair is NOT ready — the retired Grok single-lead degradation is gone
+  // (generateEngineText falls back to the Entrim Qwen primary, which fails
+  // closed with the live-policy error when the key is missing).
+  return isEntrimConfigured()
 }
 
 export function extractEngineJsonObject(text: string): Record<string, unknown> | null {
@@ -153,7 +159,7 @@ function uniqueNormalized(values: string[]): string[] {
   return out
 }
 
-/** Statutes / official URLs that Grok found and the Opus lead's winning text omitted. */
+/** Statutes / official URLs that the complement found and the lead's winning text omitted. */
 export function harvestComplementExtras(leadText: string, complementText: string): EnginePairExtras {
   const lead = String(leadText || '')
   const complement = String(complementText || '')
@@ -184,9 +190,8 @@ export function accumulatePairRollup(rollup: EnginePairRollup, meta?: EnginePair
 
 export function formatEnginePairTape(rollup: EnginePairRollup | null | undefined): string {
   if (!rollup || rollup.calls <= 0) return ''
-  // Label the actual legs that ran: the graduated Entrim pair is the default,
-  // but a legacy vault (no ENTRIM key) legitimately ran Run BiOS + Grok —
-  // the tape must report what actually executed.
+  // Label the actual legs that ran: the Entrim pair is the only combination
+  // the live policy allows — the tape reports exactly what executed.
   const lead = rollup.lead || 'Qwen/Qwen3.6-27B'
   const complement = rollup.complement || 'deepseek-ai/DeepSeek-V4-Flash'
   const bits = [`${lead} + ${complement} complement`]
@@ -233,34 +238,33 @@ export async function generateEnginePairText(
     exclusive: true as const,
   }
   // Graduated pair: the Entrim lead gets the 10-minute floor; the complement
-  // (second Entrim family) keeps the same floor. Claude Opus is OUT OF
-  // COMMISSION — a vault without an ENTRIM key falls back to a Grok single
-  // lead, never Run BiOS Claude (see leadProvider below).
+  // (second Entrim family) keeps the same floor.
   const leadTimeoutMs =
     opts.timeoutMs != null ? Math.max(opts.timeoutMs, PAIR_LEAD_MIN_TIMEOUT_MS) : undefined
 
-  // Leg readiness: Entrim serves both legs with one key. Without Entrim the
-  // pair degrades to a single Grok lead — Qwen + Grok carry the engine.
+  // Leg readiness: Entrim serves both legs with one key. Under the live
+  // policy there is no Grok degradation — without ENTRIM_API_KEY both legs
+  // are notConfigured and the pair fails closed with a readable reason.
   const entrimReady = isEntrimConfigured()
-  const leadReady = entrimReady || isGrokConfigured()
+  const leadReady = entrimReady
   const complementReady = entrimReady
-  const leadProvider = entrimReady ? ENGINE_LEAD_PROVIDER : ('grok' as const)
+  const leadProvider = ENGINE_LEAD_PROVIDER
   const complementProvider = ENGINE_COMPLEMENT_PROVIDER
   const notConfigured = (label: string) =>
     ({ status: 'rejected', reason: new Error(`${label}: not configured`) }) as PromiseSettledResult<ContentAiResult>
 
   const [leadSettled, complementSettled] = await Promise.all([
     leadReady
-      ? runPairLeg('runbios-opus', () => generateContentText({
+      ? runPairLeg('entrim-qwen', () => generateContentText({
           ...shared,
           ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
           aiProvider: leadProvider,
-          model: entrimReady ? ENGINE_LEAD_MODEL : undefined,
+          model: ENGINE_LEAD_MODEL,
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
         }))
       : Promise.resolve(notConfigured('Entrim Qwen3.6 27B')),
     complementReady
-      ? runPairLeg('grok', () => generateContentText({
+      ? runPairLeg('entrim-deepseek', () => generateContentText({
           ...shared,
           aiProvider: complementProvider,
           maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
@@ -280,7 +284,7 @@ export async function generateEnginePairText(
   if (lead && !complement) {
     return {
       ...lead,
-      model: `${lead.model} · pair (Grok unavailable)`,
+      model: `${lead.model} · pair (complement unavailable)`,
       pair: {
         leadModel: lead.model,
         complementModel: null,
@@ -295,7 +299,7 @@ export async function generateEnginePairText(
   if (!lead && complement) {
     return {
       ...complement,
-      model: `${complement.model} · pair (Run BiOS Opus unavailable)`,
+      model: `${complement.model} · pair (lead unavailable)`,
       pair: {
         leadModel: ENGINE_LEAD_PROVIDER,
         complementModel: complement.model,
@@ -344,8 +348,8 @@ export async function generateEnginePairText(
       model: ENGINE_LEAD_MODEL,
       maxTokens: Math.min(opts.maxTokens ?? HARMONY_MAX_TOKENS, HARMONY_MAX_TOKENS),
       system:
-        `${opts.system}\n\nYou are the lead Master Engine reasoner (Claude Opus 5). ` +
-        `A complement model (Grok) reviewed the same payload. Produce one final answer. ` +
+        `${opts.system}\n\nYou are the lead Master Engine reasoner (Qwen3.6 27B). ` +
+        `A complement model (DeepSeek V4 Flash) reviewed the same payload. Produce one final answer. ` +
         `Keep your structure, judgment, and priorities. Adopt complement facts, statutes, ` +
         `URLs, numbers, or blockers you missed when they match the payload. ` +
         `The deterministic engine evidence in the payload is authoritative — never ` +
@@ -420,7 +424,7 @@ export async function generateEngineText(
       const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
       throw new Error(
         `Engine AI failed. Primary (${primary}): ${primaryMsg.slice(0, 280)}. ` +
-          `Fallback (Grok): ${fallbackMsg.slice(0, 280)}.`,
+          `Fallback (Entrim DeepSeek): ${fallbackMsg.slice(0, 280)}.`,
       )
     }
   }

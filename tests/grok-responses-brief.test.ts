@@ -18,7 +18,6 @@ import {
   isPaymentOrQuotaFailure,
   isReasoningModelId,
 } from '@/lib/contentAiProvider'
-import { generateBriefText } from '@/lib/seoFactory/briefModel'
 
 describe('Grok 4.6 Responses transport', () => {
   const envKeys = ['XAI_API_KEY', 'XAI_MODEL', 'OPENAI_API_KEY', 'CONTENT_AI_RETRY'] as const
@@ -85,10 +84,14 @@ describe('Grok 4.6 Responses transport', () => {
     expect(isPaymentOrQuotaFailure(new Error('timeout'))).toBe(false)
   })
 
-  it('Generate Full Brief on grok calls /v1/responses with grok-4.6', async () => {
+  it('a grok pin calls /v1/responses with grok-4.6 (retired transport, break-glass)', async () => {
     process.env.XAI_API_KEY = 'supergrok-oauth-token'
     process.env.XAI_MODEL = 'grok-4.6'
     process.env.CONTENT_AI_RETRY = '1'
+    // Break-glass: Grok is retired under the live policy — validate the
+    // legacy transport only with the full cascade restored, directly against
+    // generateContentText (the brief layer now coerces grok to Entrim).
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
 
     const urls: string[] = []
     global.fetch = jest.fn(async (input) => {
@@ -99,24 +102,24 @@ describe('Grok 4.6 Responses transport', () => {
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
 
-    const result = await generateBriefText({
+    const result = await generateContentText({
       aiProvider: 'grok',
       system: 'Return JSON.',
       prompt: 'TOPIC: opt cap',
     })
 
-    expect(result.fallbackUsed).toBe(false)
-    expect(result.ai.provider).toBe('grok')
-    expect(result.ai.model).toBe('grok-4.6')
-    expect(result.ai.text).toContain('suggestedH1')
+    expect(result.provider).toBe('grok')
+    expect(result.model).toBe('grok-4.6')
+    expect(result.text).toContain('suggestedH1')
     expect(urls.some((u) => u.includes('/responses'))).toBe(true)
     expect(urls.some((u) => u.includes('/chat/completions'))).toBe(false)
   })
 
-  it('unpaid OpenAI exclusive pin falls through to SuperGrok', async () => {
+  it('unpaid OpenAI exclusive pin falls through to SuperGrok (retired path, break-glass)', async () => {
     process.env.OPENAI_API_KEY = 'unpaid-openai'
     process.env.XAI_API_KEY = 'supergrok-oauth-token'
     process.env.CONTENT_AI_RETRY = '1'
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
 
     global.fetch = jest.fn(async (input) => {
       const url = String(input)
