@@ -350,6 +350,29 @@ export function scoreTitle(
   }
 }
 
+/** Rows that actually carry measured CTR (ctr_after_ship not null), ordered
+ *  newest first, bounded — calibration only ever touches measured evidence,
+ *  never the whole (possibly large) history table. */
+export async function loadCalibrationHistory(limit = 500): Promise<TitleCalibrationRow[]> {
+  try {
+    const supabase = createSupabaseAdminClient()
+    const { data } = await supabase
+      .from('seo_title_history')
+      .select('score,breakdown,chosen,ctr_after_ship')
+      .not('ctr_after_ship', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    return ((data as Array<Record<string, unknown>> | null) || []).map((r) => ({
+      score: Number(r.score) || 0,
+      breakdown: r.breakdown && typeof r.breakdown === 'object' ? (r.breakdown as Record<string, number>) : null,
+      ctrAfterShip: r.ctr_after_ship != null ? Number(r.ctr_after_ship) : null,
+      chosen: r.chosen != null ? Boolean(r.chosen) : null,
+    }))
+  } catch {
+    return []
+  }
+}
+
 /** Best-effort loader of the CTR-calibrated TitleLab weights (persisted by
  *  the daily cron via recalibrateTitleScorer). Falls back to the static
  *  defaults on any failure. Async because it reads seo_engine_config. */

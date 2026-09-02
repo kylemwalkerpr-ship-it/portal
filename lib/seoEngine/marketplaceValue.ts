@@ -176,7 +176,10 @@ export async function loadMarketplaceServices(stage?: string, country?: string):
   try {
     const supabase = createSupabaseAdminClient()
     const c = country ? normalizeCountry(country) : null
-    if (c && !JURISDICTION_CODES.has(c.toLowerCase())) return [] // AU: no jurisdiction rows yet
+    // AU jurisdiction rows are not constrained by the DB yet, but we query
+    // the requested jurisdiction FIRST anyway (auto-discovers 'au' rows the
+    // moment the marketplace starts writing them) and fall back to the
+    // supported set when the country yields nothing. AU never hard-skips.
     let query = supabase
       .from('gigs')
       .select('id, title, category, jurisdiction')
@@ -185,12 +188,31 @@ export async function loadMarketplaceServices(stage?: string, country?: string):
     const categoryIds = stage ? serviceCategoryIdsFor(stage) : null
     if (categoryIds?.length) query = query.in('category', categoryIds)
     const { data } = await query.limit(500)
-    const gigs = ((data as Array<Record<string, unknown>> | null) || []).map((g) => ({
+    let gigs = ((data as Array<Record<string, unknown>> | null) || []).map((g) => ({
       id: String(g.id || ''),
       title: String(g.title || ''),
       category: g.category != null ? String(g.category) : null,
       jurisdiction: g.jurisdiction != null ? String(g.jurisdiction) : null,
     }))
+    // Cross-jurisdiction fallback: when the exact country has no supply
+    // (e.g. an AU query before 'au' rows exist), any supported jurisdiction's
+    // active gigs still prove the category has purchasable supply — entry
+    // prices stay jurisdiction-agnostic (marketplaceGig pricing).
+    if (!gigs.length && c && !JURISDICTION_CODES.has(c.toLowerCase())) {
+      let fb = supabase
+        .from('gigs')
+        .select('id, title, category, jurisdiction')
+        .eq('status', 'active')
+        .in('jurisdiction', Array.from(JURISDICTION_CODES))
+      if (categoryIds?.length) fb = fb.in('category', categoryIds)
+      const { data: fallback } = await fb.limit(500)
+      gigs = ((fallback as Array<Record<string, unknown>> | null) || []).map((g) => ({
+        id: String(g.id || ''),
+        title: String(g.title || ''),
+        category: g.category != null ? String(g.category) : null,
+        jurisdiction: g.jurisdiction != null ? String(g.jurisdiction) : null,
+      }))
+    }
     if (!gigs.length) return []
 
     const ids = gigs.map((g) => g.id)

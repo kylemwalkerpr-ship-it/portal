@@ -36,6 +36,9 @@ export type EconomicsInput = {
   intent?: string | null
   priceMin?: number | null
   priceMax?: number | null
+  /** Live marketplace supply for the cell — funnel_new/funnel_revenue
+   *  estimates are only honest when a purchasable gig actually exists. */
+  hasLiveSupply?: boolean
   /** Ranking-model recommended actions (already funnel-phrased). */
   recommendedActions?: string[]
   /** Measured visibility evidence — plans without any stay conservative. */
@@ -94,8 +97,13 @@ export function buildPlanEconomics(input: EconomicsInput): PlanEconomics {
   const priceMax = input.priceMax && input.priceMax > 0 ? input.priceMax : FUNNEL_FALLBACK_PRICE_USD
   const impressions = Number(input.impressions) || 0
   const position = Number(input.position) || 20
+  // Supply honesty: launching or revenue-driving a page is only worth
+  // estimating against a purchasable service. authority_anchor / funnel_climb
+  // on service-less stages still carry a climb value; new/revenue launches
+  // without supply get NO revenue figure (never a fabricated one).
+  const requiresSupply = actionType === 'funnel_new' || actionType === 'funnel_revenue'
   const expectedRevenue =
-    impressions > 0 && actionType !== 'kill_or_merge'
+    impressions > 0 && actionType !== 'kill_or_merge' && (!requiresSupply || input.hasLiveSupply === true)
       ? expectedMonthlyRevenue({
           impressions,
           currentPosition: position,
@@ -107,4 +115,31 @@ export function buildPlanEconomics(input: EconomicsInput): PlanEconomics {
         })
       : null
   return { titleCandidates: titles, actionType, expectedRevenue }
+}
+/**
+ * Desk rollup: the engine's monthly funnel-value posture from the ranked
+ * plan rows — total expected USD/month across plans with a persisted
+ * estimate, and the action-mix counts. Used by the daily cron to record
+ * economics KPIs in seo_engine_runs ("est. monthly funnel value").
+ */
+export function planEconomicsSummary(
+  rows: Array<Record<string, unknown>>,
+): {
+  revenueUsdMonthly: number
+  estimatedPlans: number
+  byAction: Record<string, number>
+} {
+  let revenueUsdMonthly = 0
+  let estimatedPlans = 0
+  const byAction: Record<string, number> = {}
+  for (const row of rows) {
+    const rev = row.expected_revenue as { usdPerMonth?: number } | null | undefined
+    if (rev && typeof rev.usdPerMonth === 'number' && Number.isFinite(rev.usdPerMonth)) {
+      revenueUsdMonthly += Math.max(0, rev.usdPerMonth)
+      estimatedPlans++
+    }
+    const action = String(row.action_type || '')
+    if (action) byAction[action] = (byAction[action] || 0) + 1
+  }
+  return { revenueUsdMonthly: Math.round(revenueUsdMonthly), estimatedPlans, byAction }
 }

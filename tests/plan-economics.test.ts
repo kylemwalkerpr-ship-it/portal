@@ -1,4 +1,4 @@
-import { buildPlanEconomics, resolvePlanActionType, targetPositionFor } from '../lib/seoEngine/planEconomics'
+import { buildPlanEconomics, planEconomicsSummary, resolvePlanActionType, targetPositionFor } from '../lib/seoEngine/planEconomics'
 
 describe('planEconomics — persisted mission card enrichment', () => {
   it('uses the ranking model recommendation when present', () => {
@@ -76,5 +76,71 @@ describe('planEconomics — persisted mission card enrichment', () => {
       expect(targetPositionFor('funnel_climb', pos)).toBeLessThanOrEqual(pos)
       expect(targetPositionFor('funnel_new', pos)).toBeGreaterThanOrEqual(1)
     }
+  })
+})
+describe('supply-aware revenue estimates (honesty refinements)', () => {
+  it('funnel_new without live supply produces NO revenue figure', () => {
+    const econ = buildPlanEconomics({
+      primaryTerm: 'australia study visa',
+      impressions: 900,
+      position: 12,
+      intent: 'transactional',
+      priceMin: 150,
+      priceMax: 350,
+      hasLiveSupply: false,
+      recommendedActions: ['Funnel new · launch'],
+    })
+    expect(econ.actionType).toBe('funnel_new')
+    expect(econ.expectedRevenue).toBeNull()
+  })
+
+  it('funnel_new WITH live supply estimates revenue', () => {
+    const econ = buildPlanEconomics({
+      primaryTerm: 'uk spouse visa',
+      impressions: 900,
+      position: 5,
+      intent: 'transactional',
+      priceMin: 150,
+      priceMax: 350,
+      hasLiveSupply: true,
+    })
+    expect(econ.actionType).toBe('funnel_new')
+    expect(econ.expectedRevenue).not.toBeNull()
+    expect(econ.expectedRevenue!.usdPerMonth).toBeGreaterThan(0)
+  })
+
+  it('funnel_climb still estimates on service-less stages (rank value, not launch)', () => {
+    const econ = buildPlanEconomics({
+      primaryTerm: 'canada study permit',
+      impressions: 1400,
+      position: 19,
+      intent: 'commercial',
+      recommendedActions: ['Funnel climb · win CTR/answer'],
+      hasLiveSupply: false,
+    })
+    expect(econ.expectedRevenue).not.toBeNull()
+  })
+})
+
+describe('planEconomicsSummary — desk rollup', () => {
+  it('sums expected revenue and counts the action mix', () => {
+    const summary = planEconomicsSummary([
+      { action_type: 'funnel_climb', expected_revenue: { usdPerMonth: 340.4 } },
+      { action_type: 'funnel_new', expected_revenue: { usdPerMonth: 120 } },
+      { action_type: 'funnel_new' },
+      { action_type: 'authority_anchor' },
+    ])
+    expect(summary.revenueUsdMonthly).toBe(460) // 340.4 + 120 rounded
+    expect(summary.estimatedPlans).toBe(2)
+    expect(summary.byAction).toEqual({ funnel_climb: 1, funnel_new: 2, authority_anchor: 1 })
+  })
+
+  it('ignores malformed or missing estimates', () => {
+    const summary = planEconomicsSummary([
+      { action_type: 'funnel_climb', expected_revenue: null },
+      { action_type: '', expected_revenue: { usdPerMonth: 'oops' } },
+    ])
+    expect(summary.revenueUsdMonthly).toBe(0)
+    expect(summary.estimatedPlans).toBe(0)
   })
 })

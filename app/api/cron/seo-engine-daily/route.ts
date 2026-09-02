@@ -74,8 +74,22 @@ export async function POST(req: NextRequest) {
     if (phase === 'rank') {
       const { runRankingPassForPlans } = await import('@/lib/seoEngine/rankingModel')
       const rank = await runRankingPassForPlans(body.limit || 15)
-      await recordEngineRun('daily', rank.computed ? 'success' : 'partial', { phase, computed: rank.computed, topScores: formatTopScores(rank.topScores) }, [], 'cron')
-      return NextResponse.json({ ok: true, phase, ...rank, topScores: formatTopScores(rank.topScores) })
+      // Economics rollup — the "est. monthly funnel value" KPI: persisted
+      // expected_revenue across ranked plans + the funnel action mix.
+      let economics = { revenueUsdMonthly: 0, estimatedPlans: 0, byAction: {} as Record<string, number> }
+      try {
+        const { loadPlansDashboard } = await import('@/lib/seoEngine/planner')
+        const { planEconomicsSummary } = await import('@/lib/seoEngine/planEconomics')
+        const { plans } = await loadPlansDashboard(100)
+        economics = planEconomicsSummary(plans)
+      } catch { /* rollup is additive */ }
+      await recordEngineRun('daily', rank.computed ? 'success' : 'partial', {
+        phase, computed: rank.computed, topScores: formatTopScores(rank.topScores),
+        revenueUsdMonthly: economics.revenueUsdMonthly,
+        estimatedPlans: economics.estimatedPlans,
+        byAction: economics.byAction,
+      }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, ...rank, topScores: formatTopScores(rank.topScores), revenueUsdMonthly: economics.revenueUsdMonthly, estimatedPlans: economics.estimatedPlans, byAction: economics.byAction })
     }
     if (phase === 'rewards') {
       const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
@@ -162,17 +176,9 @@ export async function POST(req: NextRequest) {
       // Best-effort — a missing history table or config row never fails the
       // run; the weights only drift toward CTR-proven titles.
       try {
-        const { loadTitleHistory, recalibrateTitleScorer, TITLE_SCORER_WEIGHTS } = await import('@/lib/seoEngine/titleLab')
+        const { loadCalibrationHistory, recalibrateTitleScorer, TITLE_SCORER_WEIGHTS } = await import('@/lib/seoEngine/titleLab')
         const { saveEngineConfig } = await import('@/lib/seoEngine/engineConfig')
-        const history = await loadTitleHistory()
-        const rows = (history || [])
-          .map((r) => ({
-            score: Number(r.score) || 0,
-            breakdown: r.breakdown && typeof r.breakdown === 'object' ? (r.breakdown as Record<string, number>) : null,
-            ctrAfterShip: r.ctr_after_ship != null ? Number(r.ctr_after_ship) : null,
-            chosen: r.chosen != null ? Boolean(r.chosen) : null,
-          }))
-          .filter((r) => typeof r.ctrAfterShip === 'number' && Number.isFinite(r.ctrAfterShip))
+        const rows = await loadCalibrationHistory(500)
         if (rows.length >= 3) {
           const calibrated = recalibrateTitleScorer(rows, TITLE_SCORER_WEIGHTS)
           if (calibrated.applied > 0) {
@@ -193,6 +199,16 @@ export async function POST(req: NextRequest) {
       plans,
       rankComputed,
     })
+    // Economics rollup for the 'all' phase — est. monthly funnel value.
+    let economics = { revenueUsdMonthly: 0, estimatedPlans: 0, byAction: {} as Record<string, number> }
+    if (rankComputed > 0) {
+      try {
+        const { loadPlansDashboard } = await import('@/lib/seoEngine/planner')
+        const { planEconomicsSummary } = await import('@/lib/seoEngine/planEconomics')
+        const { plans: dashboardPlans } = await loadPlansDashboard(100)
+        economics = planEconomicsSummary(dashboardPlans)
+      } catch { /* rollup is additive */ }
+    }
     await recordEngineRun('daily', status, {
       phase,
       ingested: ingest.itemsStored,
@@ -202,6 +218,9 @@ export async function POST(req: NextRequest) {
       pair: formatEnginePairTape(ingest.pair),
       plans,
       rankComputed,
+      revenueUsdMonthly: economics.revenueUsdMonthly,
+      estimatedPlans: economics.estimatedPlans,
+      byAction: economics.byAction,
       rewardEvents,
       rewardJobs,
       rewardMatched,

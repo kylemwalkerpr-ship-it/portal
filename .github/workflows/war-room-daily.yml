@@ -4,7 +4,7 @@ name: SEO War Room Daily (midday Kenya)
 # Top 5 War Room ranking-gain plays → generate → quality gates → ship → email report + URLs.
 on:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '30 8 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
