@@ -20,7 +20,8 @@ import {
   minWordsForType,
   type ModelGuidanceInput,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType, trimMarkdownProseToWordBudget } from './contentDepth'
+import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
@@ -338,9 +339,12 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     contentType = 'regional_page'
   }
   assertPlanRepoConsistency(plan)
-  const minWords = input.minWords ?? minWordsForType(contentType)
+  // CANONICAL WINDOW: the spec for the FINAL content type is the single
+    // source of truth — brief/input overrides are ignored so the prompt,
+    // budgets, audit and ship gate all agree on one window.
+    const minWords = minWordsForType(contentType)
   const targetWords = targetWordsForType(contentType)
-  const maxWords = input.maxWords ?? maxWordsForType(contentType)
+  const maxWords = maxWordsForType(contentType)
 
   const gscBrief = await buildGscContentBrief({
     topic,
@@ -497,10 +501,26 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       // keep previous content; will try append rescue after loop
       provider = ai.provider
       model = ai.model
+    } else if (i > 0 && !underDepth && countBodyWords(ai.text) > prevWords && countBodyWords(ai.text) > targetWords) {
+      // GROW-GUARD (JSON path): depth-met drafts are never replaced by a
+      // longer body — refine attempts are fixes, not expansions.
     } else {
       content = ai.text
       provider = ai.provider
       model = ai.model
+    }
+    // ── Echo + bloat enforcement (previously stream-only): the JSON path
+    // must dedupe a quoted-draft response and trim over-window bodies before
+    // any word count / audit decision, or a doubled response inflates every
+    // downstream metric and can even read as "gated".
+    {
+      const deduped = stripDuplicateArticleCopy(content)
+      if (deduped.removed) content = deduped.content
+      const overMaxBy = countBodyWords(content) - maxWords
+      if (overMaxBy > 0) {
+        const trimmed = trimMarkdownProseToWordBudget(content, maxWords, minWords)
+        if (trimmed.removedWords > 0) content = trimmed.content
+      }
     }
 
     audit = auditContent({

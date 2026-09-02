@@ -519,11 +519,18 @@ export function buildFactoryUserPrompt(opts: {
       '- Write exactly ONE article — the sections above, in this order. Never echo the brief, never paste a previous draft, never append a second copy. If a section starts to exceed its cap, tighten that section; do not trim by dropping a later section.',
       '',
     ] : []),
-    'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
-    '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
-    '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
-    '- If the response budget tightens, compress proportionally across the middle sections and ALWAYS finish with FAQ + Sources + JSON-LD + disclaimer. A complete back matter beats a long body that stops mid-document.',
-    '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
+    ...(opts.refineNotes ? [
+      'TARGETED REVISION — apply ONLY the listed fixes to the REFERENCE DRAFT below.',
+      '- The REFERENCE DRAFT is read-only context. Your response is the COMPLETE revised article — emitted EXACTLY ONCE, in full, never preceded by a quote of the reference.',
+      '- Make the smallest edits that clear every listed issue; keep everything else byte-for-byte. Do NOT add new sections beyond the fixes; do NOT restructure.',
+      '- Total body words must stay inside the LENGTH gate above. If the reference is over the gate, that is a listed fix: trim it — never append more.',
+    ] : [
+      'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
+      '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
+      '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
+      '- If the response budget tightens, compress proportionally across the middle sections and ALWAYS finish with FAQ + Sources + JSON-LD + disclaimer. A complete back matter beats a long body that stops mid-document.',
+      '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
+    ]),
     'Write the full page now. Front matter first, then body. Raw markdown only. Follow the DOCUMENT FORMAT CONTRACT exactly.',
   ]
   if (opts.refineNotes) {
@@ -540,9 +547,9 @@ export function buildFactoryUserPrompt(opts: {
   if (opts.draft) {
     parts.push(
       '',
-      '## EXISTING DRAFT — REVISE, DO NOT REWRITE FROM SCRATCH',
-      'A saved draft exists for this page. Keep its good sections, facts, headings, and interlinks. ' +
-        'Apply the requested fixes and improvements to it; do not discard it or shorten it.',
+      '## REFERENCE DRAFT — READ-ONLY CONTEXT (never quote it back)',
+      'Your response is the revised article in full, emitted exactly once. Do not begin with the reference text, do not append a second copy, do not wrap in a code fence. ' +
+        'Keep the reference\'s good sections, facts, headings, and interlinks; apply the fixes above.',
       '',
       '```markdown',
       opts.draft.length > 45000 ? opts.draft.slice(0, 45000) + '\n\n[…truncated…]' : opts.draft,
@@ -570,13 +577,22 @@ export function buildSectionBudgets(opts: {
   sections: Array<{ heading: string; targetWords?: number | null }>
   pageMin: number
   pageMax: number
+  /** Anchor for the pack — the page TARGET (models anchor on it and
+   *  overshoot, so the pack must land at the target, not the min). */
+  pageTarget?: number
   reserveFaq?: number
   reserveTldr?: number
   reserveSources?: number
 }): Array<{ heading: string; minWords: number; maxWords: number }> {
   const sections = (opts.sections || []).map((s) => String(s.heading || '').trim()).filter(Boolean)
   if (!sections.length) return []
-  const reserveFaq = Math.min(opts.pageMax * 0.25, Math.max(0, opts.reserveFaq ?? 450))
+  const target = opts.pageTarget && opts.pageTarget >= opts.pageMin && opts.pageTarget <= opts.pageMax
+    ? opts.pageTarget
+    : Math.round((opts.pageMin + opts.pageMax) / 2)
+  // FAQ contract is 4–6 questions × 40–80 word answers + placement prose:
+  // reserve UP TO 35% of the window (never under 450) so the FAQ never
+  // overruns its own reserve.
+  const reserveFaq = Math.min(opts.pageMax * 0.35, Math.max(450, opts.reserveFaq ?? 600))
   const reserveTldr = Math.max(0, opts.reserveTldr ?? 80)
   const reserveSources = Math.max(0, opts.reserveSources ?? 40)
   const structural = (h: string) => {
@@ -594,20 +610,18 @@ export function buildSectionBudgets(opts: {
   if (!contentSections.length) {
     return sections.map((h) => {
       const lower = h.toLowerCase()
-      if (lower.includes('faq')) return { heading: h, minWords: Math.min(reserveFaq, 320), maxWords: reserveFaq }
+      if (lower.includes('faq')) return { heading: h, minWords: Math.min(reserveFaq, 360), maxWords: reserveFaq }
       if (lower.includes('source')) return { heading: h, minWords: 10, maxWords: reserveSources }
       return { heading: h, minWords: 0, maxWords: 80 }
     })
   }
-  const contentPool = Math.max(
-    contentSections.length * 120,
-    opts.pageMin - structuralReserve,
-  )
-  const contentBudget = Math.min(opts.pageMax - structuralReserve, contentPool)
+  const contentFloor = Math.max(contentSections.length * 120, opts.pageMin - structuralReserve)
+  const contentCeiling = opts.pageMax - structuralReserve
+  const contentBudget = Math.max(contentFloor, Math.min(contentCeiling, target - structuralReserve))
   const weights = contentSections.map((h) => {
     const entry = opts.sections.find((s) => String(s.heading || '').trim() === h)
-    const target = Number(entry?.targetWords) || 0
-    return target > 0 ? Math.max(1, target) : 1
+    const w = Number(entry?.targetWords) || 0
+    return w > 0 ? Math.max(1, w) : 1
   })
   const totalWeight = weights.reduce((a, b) => a + b, 0)
   const allocs = weights.map((w) => Math.round((contentBudget * w) / totalWeight))
@@ -623,7 +637,7 @@ export function buildSectionBudgets(opts: {
     if (byHeading.has(h)) return
     if (lower === 'in 60 seconds') byHeading.set(h, { heading: h, minWords: 60, maxWords: reserveTldr })
     else if (lower === 'table of contents') byHeading.set(h, { heading: h, minWords: 0, maxWords: 30 })
-    else if (lower.includes('faq')) byHeading.set(h, { heading: h, minWords: Math.min(reserveFaq, 320), maxWords: reserveFaq })
+    else if (lower.includes('faq')) byHeading.set(h, { heading: h, minWords: Math.min(reserveFaq, 360), maxWords: reserveFaq })
     else if (lower.includes('source') || lower === 'related guides') byHeading.set(h, { heading: h, minWords: 10, maxWords: reserveSources })
     else byHeading.set(h, { heading: h, minWords: 0, maxWords: 120 })
   })

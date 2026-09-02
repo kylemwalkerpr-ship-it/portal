@@ -161,9 +161,12 @@ export async function* runSeoFactoryPipelineStream(
       contentType = 'regional_page'
     }
     assertPlanRepoConsistency(plan)
-    const minWords = input.minWords ?? minWordsForType(contentType)
+    // CANONICAL WINDOW: the spec for the FINAL content type is the single
+    // source of truth — brief/input overrides are ignored so the prompt,
+    // budgets, audit and ship gate all agree on one window.
+    const minWords = minWordsForType(contentType)
     const targetWords = targetWordsForType(contentType)
-    const maxWords = input.maxWords ?? maxWordsForType(contentType)
+    const maxWords = maxWordsForType(contentType)
     // SINGLE-PASS WRITING — the drafter receives ONE brief and writes the
     // whole article in ONE response (front matter → outline → FAQ → Sources →
     // JSON-LD → disclaimer). Two-part runs were what produced echo copies
@@ -616,7 +619,15 @@ export async function* runSeoFactoryPipelineStream(
       }
 
       if (!(underDepth && countBodyWords(attemptText) < prevWords)) {
-        content = attemptText
+        // GROW-GUARD: a depth-met draft must never be replaced by a LONGER
+        // body — refine attempts are fixes, not expansions. A longer response
+        // above target means the model re-wrote wholesale (echo/growth loop);
+        // keep the previous body and let the audit judge the unchanged draft.
+        if (i > 0 && !underDepth && countBodyWords(attemptText) > prevWords && countBodyWords(attemptText) > targetWords) {
+          // keep previous content; provider/model tracking stays as-is
+        } else {
+          content = attemptText
+        }
       }
       // Echo guard (draft-time bleed): when the model echoes the saved draft
       // block and appends its revision, the body counts ~2× — inflating the

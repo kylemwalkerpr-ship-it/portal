@@ -916,6 +916,14 @@ async function openAiCompatibleComplete(
       for (let c = 0; c < 3 && finishReason === 'length'; c++) {
         const cont = await openAiCompatFetch(patched, opts, buildContinuationPrompt(text))
         text = (text + '\n\n' + cont.text).trim()
+        // Continuation joins are an echo vector: a model that restarts the
+        // article mid-response produces draft + copy concatenated. Dedupe
+        // deterministically after every join (lazy import — no cycle).
+        try {
+          const { stripDuplicateArticleCopy } = await import('@/lib/seoFactory/editorialScaffold')
+          const deduped = stripDuplicateArticleCopy(text)
+          if (deduped.removed) text = deduped.content
+        } catch { /* best-effort */ }
         finishReason = cont.finishReason
       }
     }
@@ -1194,6 +1202,11 @@ async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
         try {
           const cont = await grokResponsesFetch(opts, buildContinuationPrompt(text))
           text = `${text}\n\n${cont.text}`.trim()
+          try {
+            const { stripDuplicateArticleCopy } = await import('@/lib/seoFactory/editorialScaffold')
+            const deduped = stripDuplicateArticleCopy(text)
+            if (deduped.removed) text = deduped.content
+          } catch { /* best-effort */ }
           finishReason = cont.finishReason
         } catch {
           break

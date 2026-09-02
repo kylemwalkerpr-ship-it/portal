@@ -433,6 +433,7 @@ export async function POST(req: NextRequest) {
       })),
       pageMin: finalMin,
       pageMax: finalMax,
+      pageTarget: targetWords,
     })
     const finalSources = await assembleDraftSourceAllowlist(
       region,

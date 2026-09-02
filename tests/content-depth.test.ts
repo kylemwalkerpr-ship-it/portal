@@ -21,20 +21,11 @@ describe('clampBriefWordBudget (Research-stage word-count by content type)', () 
     expect(clampBriefWordBudget('marketplace_gig')).toEqual({ minWords: 500, maxWords: 1200 })
   })
 
-  it('keeps a model sub-range fully inside the budget', () => {
-    expect(clampBriefWordBudget('article', 2400, 2600)).toEqual({ minWords: 2400, maxWords: 2600 })
-  })
-
-  it('clamps values below the floor back up to the canonical minimum', () => {
-    // A model under-specifying a blog (600 words) must not reach drafting
-    expect(clampBriefWordBudget('blog_post', 600, 900)).toEqual({ minWords: 800, maxWords: 900 })
-    expect(clampBriefWordBudget('article', 1800, 2200)).toEqual({ minWords: 2200, maxWords: 2200 })
-  })
-
-  it('clamps values above the hard max back down', () => {
-    // The 6,175-word blowout must be impossible from a brief
+  it('returns the canonical window verbatim — model sub-ranges no longer survive (single source of truth)', () => {
+    expect(clampBriefWordBudget('article', 2400, 2600)).toEqual({ minWords: 2200, maxWords: 2800 })
+    expect(clampBriefWordBudget('blog_post', 600, 900)).toEqual({ minWords: 800, maxWords: 1500 })
+    expect(clampBriefWordBudget('article', 1800, 2200)).toEqual({ minWords: 2200, maxWords: 2800 })
     expect(clampBriefWordBudget('article', 2200, 9000)).toEqual({ minWords: 2200, maxWords: 2800 })
-    expect(clampBriefWordBudget('blog_post', 800, 6000)).toEqual({ minWords: 800, maxWords: 1500 })
   })
 
   it('every supported content type has a coherent min ≤ target ≤ max budget', () => {

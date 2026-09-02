@@ -98,7 +98,11 @@ describe('buildFactoryUserPrompt · model guidance threading', () => {
       draft,
     })
     expect(prompt).toMatch(/REVISION REQUIRED/)
-    expect(prompt).toMatch(/EXISTING DRAFT — REVISE, DO NOT REWRITE FROM SCRATCH/)
+    // Refine contract: reference draft is READ-ONLY context, the response is
+    // the revised article emitted exactly once — no whole-document re-write
+    // invitation, no echo pressure.
+    expect(prompt).toMatch(/REFERENCE DRAFT — READ-ONLY CONTEXT/)
+    expect(prompt).toMatch(/TARGETED REVISION/)
     // The draft body is included so the model edits the real text instead of
     // regenerating from scratch and re-introducing the same blockers.
     expect(prompt).toContain(draft)
