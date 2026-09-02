@@ -22,6 +22,7 @@ import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
 import { StudioLiveDesk, ENGINE_ACTION_LABEL, type DeskLiveState } from './studio-live-desk'
 import { AeoRemediationQueue } from './studio-aeo-remediation'
 import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/seoEngine/citationRemediation'
+import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { mergeInterlinkLists, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
@@ -5329,7 +5330,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const extraKw = selected.slice(1).map((item) => item.topic).filter(Boolean)
       const keywords = [...new Set([...(first.suggestion.keywords || []), ...extraKw])].filter(Boolean)
       setTitle(first.suggestion.title)
-      if (keywords.length) setKeywords(keywords.join(', '))
+      if (keywords.length) setKeywords(ensureKeywordFloors(keywords, first.topic).join(', '))
       if (first.suggestion.audience) setAudience(first.suggestion.audience)
       if (first.suggestion.contentType && !contentTypeTouched) setContentType(first.suggestion.contentType as ContentType)
       setSelectedBrief({ ...first.suggestion, keywords: keywords.length ? keywords : first.suggestion.keywords })
@@ -5807,7 +5808,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
     setTopic(s.topic)
-    setKeywords((s.keywords && s.keywords.length ? s.keywords : [s.primaryKeyword || s.topic]).join(', '))
+    setKeywords(ensureKeywordFloors(s.keywords && s.keywords.length ? s.keywords : [s.primaryKeyword || s.topic], s.primaryKeyword || s.topic).join(', '))
     if (s.title) setTitle(s.title)
     if (s.audience) setAudience(s.audience)
     if (s.contentType && !contentTypeTouched) setContentType(s.contentType as ContentType)

@@ -28,6 +28,7 @@ import AiKeyVaultPanel from './ai-key-vault-panel'
 import SeoMasterEngine from './admin-seo-engine'
 import { RankingModelBlock } from './admin-ranking-model-block'
 import { StudioModelHostSelect } from './studio-model-host-select'
+import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { DEFAULT_DRAFT_PIN } from '@/lib/contentAiCatalog'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { JobSummary } from '@/lib/seoFactory/jobSummary'
@@ -917,7 +918,7 @@ export default function AdminCommandCenter({
       topic: o.term,
       title: o.writeHint && String(o.writeHint).startsWith('PLAY') ? o.term.replace(/\b\w/g, (c: string) => c.toUpperCase()) : o.term,
       primaryKeyword: o.term,
-      keywords: kw,
+      keywords: ensureKeywordFloors(kw, o.term),
       audience: 'international students, H-1B professionals, green card applicants',
       contentType: o.contentType || (play === 'cannibalization' || play === 'cannibal_merge' ? 'article' : 'blog_post'),
       tone: o.intent === 'commercial' ? 'persuasive' : o.intent === 'transactional' ? 'professional' : 'educational',
