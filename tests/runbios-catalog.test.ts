@@ -23,12 +23,14 @@ describe('Run BiOS configurator catalog', () => {
     expect(providerDef('runbios-kimi')?.defaultModel).toBe('kimi-k2.7-code')
   })
 
-  it('maps studio model × Run BiOS host to the factory pin', () => {
-    expect(pinFor('glm-5.3-flash', 'runbios')).toBe('runbios-glm-53-flash')
-    expect(pinFor('deepseek-v4-pro', 'runbios')).toBe('runbios-deepseek-pro')
+  it('retired Run BiOS studio hosts expose no selectable pin (live policy)', () => {
+    // Run BiOS slots remain in the vault catalog for credential storage, but
+    // the studio pickers no longer offer Run BiOS model × host mappings.
+    expect(pinFor('glm-5.3-flash', 'runbios')).toBe('auto')
+    expect(pinFor('deepseek-v4-pro', 'runbios')).toBe('auto')
     expect(parseStudioPin('runbios-adaptive')).toMatchObject({
-      model: { id: 'bios-adaptive' },
-      host: { id: 'runbios' },
+      model: { id: 'auto' },
+      host: { id: 'auto' },
     })
     expect(canonicalizeRunbiosPin('runbios')).toBe('runbios-glm-53-flash')
     expect(isRunbiosPin('runbios-qwen')).toBe(true)

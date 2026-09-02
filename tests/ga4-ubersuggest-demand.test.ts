@@ -32,7 +32,9 @@ describe('GA4 landing pages → planner signals', () => {
     const grad = signals.find((s) => s.term === 'uk graduate visa')!
     expect(grad.impressions).toBe(420)
     expect(grad.clicks).toBe(210)
-    expect(grad.position).toBeLessThan(70)
+    // GA4 has NO ranking data — position must remain unset so scoring uses
+    // the neutral gap instead of a bounce-derived fabricated rank.
+    expect(grad.position).toBeUndefined()
   })
 
   it('keeps converting landings even when sessions are tiny and stamps revenue', () => {

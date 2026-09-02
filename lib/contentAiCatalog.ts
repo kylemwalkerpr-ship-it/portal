@@ -1,20 +1,20 @@
 /**
  * Studio model × host catalog.
  *
- * The factory still wires a single pin (`baseten-deepseek`, `parasail-glm`…).
+ * The factory still wires a single pin (`entrim-qwen-27b`, `entrim-deepseek`…).
  * The UI splits that into two choices: which model family, then which host
  * serves it. One catalog keeps drafting, brief, review, and Command Center
  * in agreement.
  *
- * Lane policy (single source of truth for UI pickers AND server defaults):
- *   Draft  — Run BiOS + NVIDIA hosts only; families sorted alphabetically;
- *            default MiniMax M3 via NVIDIA (`nvidia-minimax`).
- *   Brief  — Claude Opus 5 (Run BiOS, default), Grok (xAI),
- *            DeepSeek V4 Flash (Run BiOS + Baseten), GPT-5.6 family (OpenAI).
- *   Review — Grok, Claude Opus 5, Claude Sonnet 5 (Run BiOS),
- *            GLM 5.3 Flash (Run BiOS, default), GPT-5.6 family (OpenAI).
- * Host dropdown order (when the host actually serves that model):
- *   Run BiOS → Parasail → Baseten → NVIDIA → DeepSeek.com → Zai
+ * Lane policy (single source of truth for UI pickers AND server defaults),
+ * mirroring the Entrim-only live provider policy in contentAiProvider.ts:
+ *   Draft  — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash.
+ *   Brief  — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash.
+ *   Review — Entrim Qwen3.6 27B (default).
+ *   Command — Auto (resolves to the Entrim default) + the two Entrim families.
+ * Retired families (Grok, Claude, GLM, MiniMax, Nemotron, GPT-5.6, …) are no
+ * longer selectable — a saved legacy pin renders as Auto and the server gate
+ * routes it to the Entrim default.
  */
 
 export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
@@ -105,10 +105,12 @@ export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
  * stays a command-only host.
  */
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
-  draft: ['runbios', 'nvidia', 'entrim'],
-  brief: ['runbios', 'baseten', 'xai', 'openai', 'entrim'],
-  review: ['runbios', 'xai', 'openai', 'entrim'],
-  command: ['runbios', 'parasail', 'baseten', 'nvidia', 'deepseek', 'entrim', 'zai', 'aihubmix', 'xai', 'openai', 'cloudflare', 'groq', 'google', 'openrouter', 'auto'],
+  // Live policy: Entrim is the only commissioned host. `auto` remains a
+  // command-only choice (it resolves to the Entrim default at runtime).
+  draft: ['entrim'],
+  brief: ['entrim'],
+  review: ['entrim'],
+  command: ['entrim', 'auto'],
 }
 
 /** Host picker order — skip a host when that model is not served there. */
@@ -131,63 +133,23 @@ export const STUDIO_HOST_ORDER: StudioHostId[] = [
 ]
 
 const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
-  // Draft lane is sorted alphabetically by display label in modelsForLane —
-  // this list is the fallback tiebreaker only.
+  // Live policy: the two Entrim families are the only selectable models.
+  // The lead is Qwen3.6 27B; DeepSeek V4 Flash is the complement family.
   draft: [
-    'glm-5.2',
-    'glm-5.3-flash',
-    'kimi-k2.7-code',
-    'minimax-m3',
-    'nemotron-3-ultra',
-    'qwen3.5',
     'qwen3.6-27b',
-    'bios-adaptive',
     'deepseek-v4-flash',
   ],
-  // Brief: Claude Opus 5 (default), Grok, DeepSeek V4 Flash (Run BiOS +
-  // Baseten hosts only), GPT-5.6 family (OpenAI — ChatGPT Plus or API key).
   brief: [
-    'claude-opus-5',
-    'grok-4.6',
+    'qwen3.6-27b',
     'deepseek-v4-flash',
-    'qwen3.6-27b',
-    'gpt-5.6-sol',
-    'gpt-5.6-terra',
-    'gpt-5.6-luna',
   ],
-  // Review/Editor: Grok, Claude Opus 5, Claude Sonnet 5, GLM 5.3 Flash
-  // (default), GPT-5.6 family (OpenAI), Qwen3.6 27B (Entrim).
   review: [
-    'grok-4.6',
-    'claude-opus-5',
-    'claude-sonnet-5',
-    'glm-5.3-flash',
     'qwen3.6-27b',
-    'gpt-5.6-sol',
-    'gpt-5.6-terra',
-    'gpt-5.6-luna',
   ],
   command: [
     'auto',
-    'minimax-m3',
-    'glm-5.3-flash',
-    'deepseek-v4-pro',
-    'glm-5.2',
+    'qwen3.6-27b',
     'deepseek-v4-flash',
-    'bios-adaptive',
-    'kimi-k2.7-code',
-    'qwen3.5',
-    'claude-sonnet-5',
-    'grok-4.6',
-    'glm-5.2-fast',
-    'gpt-5.6-terra',
-    'gpt-5.6-sol',
-    'claude-opus-5',
-    'nemotron-3-ultra',
-    'cloudflare-llama',
-    'groq-llama',
-    'gemini',
-    'openrouter',
   ],
 }
 
@@ -199,41 +161,13 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     hosts: [{ id: 'auto', label: 'Auto', pin: 'auto' }],
   },
   {
-    id: 'deepseek-v4-pro',
-    label: 'deepseek-ai/DeepSeek-V4-Pro-0813',
-    apiModel: DEEPSEEK_V4_PRO_ID,
-    lanes: ['command'],
-    hosts: [
-      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-deepseek-pro' },
-      { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek-pro' },
-      { id: 'baseten', label: 'Baseten', pin: 'baseten-deepseek-pro' },
-      { id: 'deepseek', label: 'DeepSeek', pin: 'deepseek-pro' },
-    ],
-  },
-  {
-    id: 'glm-5.2',
-    label: 'GLM 5.2',
-    lanes: ['draft', 'command'],
-    hosts: [
-      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-52' },
-      { id: 'parasail', label: 'Parasail', pin: 'parasail-glm' },
-      { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-glm' },
-      { id: 'zai', label: 'Zai', pin: 'zai-glm' },
-    ],
-  },
-  {
     id: 'deepseek-v4-flash',
-    label: 'deepseek-ai/DeepSeek-V4-Flash-0731',
-    apiModel: DEEPSEEK_V4_FLASH_ID,
+    // Live-policy host: Entrim serves the EXACT upstream id (no -0731
+    // suffix) — the label names it so the wire payload is unambiguous.
+    label: ENTRIM_DEEPSEEK_MODEL,
+    apiModel: ENTRIM_DEEPSEEK_MODEL,
     lanes: ['draft', 'brief', 'command'],
-    hosts: [
-      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-deepseek-flash' },
-      { id: 'parasail', label: 'Parasail', pin: 'parasail-deepseek' },
-      { id: 'baseten', label: 'Baseten', pin: 'baseten-deepseek' },
-      { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-deepseek' },
-      { id: 'entrim', label: 'Entrim', pin: ENTRIM_DEEPSEEK_FLASH_PIN },
-      { id: 'deepseek', label: 'DeepSeek', pin: 'deepseek-flash' },
-    ],
+    hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_DEEPSEEK_FLASH_PIN }],
   },
   {
     id: 'qwen3.6-27b',
@@ -241,131 +175,6 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     apiModel: ENTRIM_QWEN_MODEL,
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_QWEN_PIN }],
-  },
-  {
-    id: 'grok-4.6',
-    label: 'Grok 4.6',
-    lanes: ['brief', 'review', 'command'],
-    hosts: [{ id: 'xai', label: 'SuperGrok / xAI', pin: 'grok' }],
-  },
-  {
-    id: 'glm-5.3',
-    label: 'GLM 5.3',
-    apiModel: 'glm-5.3',
-    lanes: ['command'],
-    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-53' }],
-  },
-  {
-    id: 'glm-5.3-flash',
-    label: 'GLM 5.3 Flash',
-    apiModel: 'glm-5.3-flash',
-    lanes: ['draft', 'review', 'command'],
-    hosts: [
-      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-glm-53-flash' },
-      { id: 'baseten', label: 'Baseten', pin: 'baseten-glm-53-flash' },
-    ],
-  },
-  {
-    id: 'kimi-k2.7-code',
-    label: 'Kimi K2.7 Code',
-    apiModel: 'kimi-k2.7-code',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-kimi' }],
-  },
-  {
-    id: 'qwen3.5',
-    label: 'Qwen3.5 397B',
-    apiModel: 'qwen3.5-397b-a17b',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-qwen' }],
-  },
-  {
-    id: 'bios-adaptive',
-    label: 'Run BiOS Adaptive',
-    apiModel: 'bios-adaptive',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-adaptive' }],
-  },
-  {
-    id: 'claude-sonnet-5',
-    label: 'Claude Sonnet 5',
-    apiModel: 'claude-sonnet-5',
-    lanes: ['review', 'command'],
-    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-claude-sonnet' }],
-  },
-  {
-    id: 'claude-opus-5',
-    label: 'Claude Opus 5',
-    apiModel: 'claude-opus-5',
-    lanes: ['brief', 'review', 'command'],
-    hosts: [{ id: 'runbios', label: 'Run BiOS', pin: 'runbios-claude-opus' }],
-  },
-  {
-    id: 'glm-5.2-fast',
-    label: 'GLM 5.2 Fast',
-    lanes: ['command'],
-    hosts: [
-      { id: 'baseten', label: 'Baseten', pin: 'baseten-glm-fast' },
-      { id: 'aihubmix', label: 'AIHubmix', pin: 'aihubmix-glm-fast' },
-    ],
-  },
-  {
-    id: 'gpt-5.6-terra',
-    label: 'GPT-5.6 Terra',
-    lanes: ['command', 'brief', 'review'],
-    hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-terra' }],
-  },
-  {
-    id: 'gpt-5.6-sol',
-    label: 'GPT-5.6 Sol',
-    lanes: ['command', 'brief', 'review'],
-    hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-sol' }],
-  },
-  {
-    id: 'gpt-5.6-luna',
-    label: 'GPT-5.6 Luna',
-    lanes: ['command', 'brief', 'review'],
-    hosts: [{ id: 'openai', label: 'OpenAI', pin: 'gpt-5.6-luna' }],
-  },
-  {
-    id: 'minimax-m3',
-    label: 'MiniMax M3',
-    apiModel: 'minimax-m3',
-    lanes: ['draft', 'command'],
-    hosts: [
-      { id: 'runbios', label: 'Run BiOS', pin: 'runbios-minimax' },
-      { id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-minimax' },
-    ],
-  },
-  {
-    id: 'nemotron-3-ultra',
-    label: 'Nemotron 3 Ultra',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'nvidia', label: 'NVIDIA', pin: 'nvidia-nemotron' }],
-  },
-  {
-    id: 'cloudflare-llama',
-    label: 'Llama 3.3 70B',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'cloudflare', label: 'Cloudflare Workers AI', pin: 'cloudflare-ai' }],
-  },
-  {
-    id: 'groq-llama',
-    label: 'Llama 3.3 70B',
-    lanes: ['command'],
-    hosts: [{ id: 'groq', label: 'Groq', pin: 'groq' }],
-  },
-  {
-    id: 'gemini',
-    label: 'Gemini',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'google', label: 'Google', pin: 'gemini' }],
-  },
-  {
-    id: 'openrouter',
-    label: 'OpenRouter free models',
-    lanes: ['draft', 'command'],
-    hosts: [{ id: 'openrouter', label: 'OpenRouter', pin: 'openrouter' }],
   },
 ]
 
