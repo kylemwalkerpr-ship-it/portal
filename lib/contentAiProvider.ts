@@ -2260,8 +2260,12 @@ async function* openAiCompatibleStream(
             restartDetected = true
             break
           }
-          // A `---` + title: in the same delta is a restart regardless.
-          if (/^---\s*\n[\s\S]*title\s*[:=]/im.test(head)) {
+          // A `---` + title: in the same delta is a restart ONLY after prose
+          // has been seen. The draft's OWN opening frontmatter arrives as the
+          // first delta(s) of a fresh stream — flagging it made every Entrim
+          // stream die with "returned empty content" on delta #1
+          // (2026-09-02 production regression).
+          if (sawProse && /^---\s*\n[\s\S]*title\s*[:=]/im.test(head)) {
             restartDetected = true
             break
           }
@@ -2276,9 +2280,15 @@ async function* openAiCompatibleStream(
           }
         }
         // Prose = word text, not the frontmatter/heading scaffolding that
-        // legitimately opens a draft. `#`/`-` starts stay non-prose so the
-        // H1 restart check above stays armed for the first real paragraph.
-        if (!sawProse && trimmed && !/^[#\-]/.test(trimmed)) sawProse = true
+        // legitimately opens a draft. `#`/`-` starts, YAML key lines
+        // (`title: …`, `slug: …`) and the closing `---` fence stay non-prose
+        // so `sawProse` only arms the restart checks once real body text
+        // flows. Without the YAML exclusion, frontmatter keys flipped
+        // `sawProse` true and the closing `---` read as a restart.
+        if (!sawProse && trimmed && full.length < 4000) {
+          const isScaffold = /^[#\-]/.test(trimmed) || /^[a-z][a-z0-9_-]*\s*:\s/i.test(trimmed)
+          if (!isScaffold) sawProse = true
+        }
         full += delta
         yield { type: 'delta', text: delta }
         deltaCount++

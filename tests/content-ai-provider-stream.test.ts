@@ -447,6 +447,135 @@ describe('content AI · NVIDIA Nemotron streaming', () => {
     )).toBe(true)
   })
 
+  it('streams a draft that OPENS with frontmatter — the opening fence must not be flagged as a restart (2026-09-02 production regression)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    // Production signature: the model's FIRST SSE chunk carries the opening
+    // frontmatter (--- + title: …) in one big block. The old ungated
+    // ---+title check flagged the draft's own opening as a restart, dropped
+    // every delta, and failed the stream with "returned empty content".
+    global.fetch = jest.fn(async () => {
+      call++
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '---\ntitle: Student Living Costs in the UK: Monthly Budget Guide for 2026\ncontent_type: blog_post\nprimary_keyword: student living costs uk\n---\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '# Student Living Costs in the UK: Monthly Budget Guide for 2026\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'Moving to the UK as a student means budgeting for rent, food, transport, and study materials from day one.\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '## In 60 seconds\n\nRent dominates the monthly budget for most students.\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(chunks, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(1)
+    expect(events.some((e) =>
+      e.type === 'provider' && String((e as { provider?: string }).provider || '').includes('restart detected')
+    )).toBe(false)
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneEvent).toMatchObject({ type: 'done', provider: 'nvidia-nemotron' })
+    expect(doneText).toContain('title: Student Living Costs in the UK')
+    expect(doneText).toContain('Rent dominates the monthly budget')
+  })
+
+  it('keeps the restart guard armed when frontmatter arrives in split deltas — closing fence is not a restart', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    // Split-chunk signature: --- / title: … / --- arrive as separate deltas.
+    // YAML key lines must not flip sawProse (they are scaffolding), or the
+    // CLOSING fence reads as a frontmatter restart.
+    global.fetch = jest.fn(async () => {
+      call++
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '---' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'title: Split Frontmatter Draft' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'content_type: blog_post' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '---' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '# Split Frontmatter Draft\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'Body prose begins here and continues past the scaffolding.\n\n' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(chunks, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(1)
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneEvent).toMatchObject({ type: 'done' })
+    expect(doneText).toContain('Body prose begins here')
+    // All deltas survived — nothing was dropped by a misfired restart flag.
+    // (Mock deltas carry no newlines, so the fences/keys join without separators.)
+    expect(doneText).toContain('---title: Split Frontmatter Draft')
+  })
+
+  it('still rejects a frontmatter restart after real prose has streamed (guard remains armed)', async () => {
+    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    delete process.env.NVIDIA_NEMOTRON_MODEL
+    let call = 0
+
+    global.fetch = jest.fn(async () => {
+      call++
+      const chunks =
+        call === 1
+          ? [
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '---\ntitle: Original Draft\n---\n\n# Original Draft\n\nReal opening prose that establishes the article body.\n\n' } }] })}\n\n`,
+              `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+          : [
+              // Continuation attempt that instead restarts the article —
+              // with prose already streamed, this MUST still be flagged.
+              `data: ${JSON.stringify({ choices: [{ delta: { content: '---\ntitle: Restarted Article\n---\n\n# Restarted Article\n\nFresh restart prose.\n\n' } }] })}\n\n`,
+              'data: [DONE]\n\n',
+            ].join('')
+      return new Response(chunks, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+
+    const events = []
+    for await (const event of generateContentTextStream({
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      aiProvider: 'nvidia-nemotron',
+      maxTokens: 1200,
+    })) {
+      events.push(event)
+    }
+
+    expect(call).toBe(2)
+    expect(events.some((e) =>
+      e.type === 'provider' && String((e as { provider?: string }).provider || '').includes('restart detected')
+    )).toBe(true)
+    const doneEvent = events.at(-1)
+    const doneText = doneEvent && 'text' in doneEvent ? String((doneEvent as { text?: string }).text || '') : ''
+    expect(doneText).toContain('Original Draft')
+    expect(doneText).not.toContain('Restarted Article')
+  })
+
   it('aborts the in-flight provider fetch when the caller signal fires', async () => {
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
     delete process.env.NVIDIA_NEMOTRON_MODEL
