@@ -71,6 +71,7 @@ describe('opportunity play table — locked snapshot rows', () => {
     expect(result.opportunities).toHaveLength(1)
     expect(result.opportunities[0].play).toBe('quick_win')
     expect(result.opportunities[0].position).toBe(10)
+    expect(result.opportunities[0].title.toLowerCase()).not.toMatch(/updated requirements and guidance/)
   })
 
   it('lease-break row (clicks-proven) plays quick_win, not content_gap', () => {

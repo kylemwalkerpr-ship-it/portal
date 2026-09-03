@@ -5,6 +5,7 @@
  */
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { normalizePlannerTopic } from './planner'
+import { discoverCardTitle, isFillerTitle } from './titleLab'
 
 export interface UbersuggestSignalRow {
   term: string
@@ -109,9 +110,11 @@ export function ubersuggestSignalsToDiscover(
     seen.add(key)
     const covered = isCovered(row.term, shippedStems, shippedTokensList)
     const score = ubersuggestOpportunityScore(row.impressions)
+    const title = discoverCardTitle(row.term, { siblingTitles: out.map((o) => o.title) })
+    if (isFillerTitle(title)) continue
     out.push({
       topic: row.term,
-      title: titleizeKeyword(row.term),
+      title,
       primaryKeyword: row.term,
       keywords: [row.term],
       audience: 'international applicants researching this route',

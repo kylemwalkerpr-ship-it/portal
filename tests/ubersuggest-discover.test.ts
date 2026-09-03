@@ -30,6 +30,7 @@ describe('Ubersuggest → Discover briefs', () => {
     expect(briefs[0].signals.some((s) => /Ubersuggest/i.test(s))).toBe(true)
     expect(briefs[0].reason).toMatch(/refresh the canonical/i)
     expect(briefs[1].reason).toMatch(/independent of Master Engine/i)
+    expect(briefs.every((b) => !/updated requirements and guidance/i.test(b.title))).toBe(true)
   })
 
   it('honors excludeTopics and the Discover cap', () => {

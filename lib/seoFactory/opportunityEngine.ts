@@ -23,6 +23,7 @@
 
 import { isJunkQuery, classifyGscQuery } from './queryNoise'
 import { matchStrikeSeed } from './strikeSeeds'
+import { discoverCardTitle, isFillerTitle } from '@/lib/seoEngine/titleLab'
 
 /**
  * Seed strike-distance targets from the locked 2026-08-18 GSC snapshot.
@@ -228,30 +229,9 @@ const AUDIENCE_BY_REGION: Record<string, string> = {
   COMPARE: 'international students comparing immigration pathways, professionals weighing options',
 }
 
-function titleFor(term: string, intent: Intent, play: Play): string {
-  const year = new Date().getFullYear()
-  const cleaned = term
-    .replace(/[_|]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\s+([,.:;!?])/g, '$1')
-    .trim()
-  const small = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'vs', 'with'])
-  const titleCase = cleaned.split(' ').map((word, index) => {
-    const lower = word.toLowerCase()
-    if (/^(uk|us|usa|uscis|ielts|pte|gsc|seo|aeo|faq|h-1b|f-1)$/i.test(word)) return word.toUpperCase()
-    if (index > 0 && small.has(lower)) return lower
-    return lower.charAt(0).toUpperCase() + lower.slice(1)
-  }).join(' ')
-  const alreadyQuestion = /^(how|what|when|where|why|who|can|does|is|are)\b/i.test(cleaned)
-  if (alreadyQuestion) return `${titleCase.replace(/[?.!]+$/, '')}? A ${year} Practical Guide`
-  if (play === 'quick_win') return `${titleCase}: What Changed and How to Act in ${year}`
-  if (play === 'refresh') return `${titleCase}: Updated Requirements and Guidance for ${year}`
-  if (play === 'defend') return `${titleCase}: The ${year} Reference Guide`
-  if (intent === 'commercial') return `${titleCase}: Options, Costs and Trade-Offs in ${year}`
-  if (intent === 'transactional') return `${titleCase}: How to Apply Step by Step in ${year}`
-  if (intent === 'local') return `${titleCase}: Local Requirements and Resources for ${year}`
-  if (intent === 'navigational') return `${titleCase}: Official Access and Status Guide for ${year}`
-  return `${titleCase}: Requirements, Process and Next Steps for ${year}`
+function titleFor(term: string, siblingTitles: string[]): string {
+  const title = discoverCardTitle(term, { siblingTitles })
+  return title
 }
 
 function profitabilityFor(intent: Intent, impressions: number, revenue = 0): Opportunity['profitability'] {
@@ -466,10 +446,12 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     }
 
     const audience = AUDIENCE_BY_REGION[region] || AUDIENCE_BY_REGION.US
+    const title = titleFor(term, opportunities.map((o) => o.title))
+    if (isFillerTitle(title)) continue
 
     opportunities.push({
       topic: term,
-      title: titleFor(term, intent, play),
+      title,
       primaryKeyword: term,
       keywords: keywords.length ? [term, ...keywords] : [term],
       audience,

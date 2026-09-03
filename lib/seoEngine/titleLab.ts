@@ -447,9 +447,35 @@ export function generateTitleCandidates(input: TitleLabInput): TitleCandidate[] 
 }
 
 /**
- * Score every candidate and return the max-scoring one (tie → first, so the
- * pick is deterministic). Null only when the keyword is unusable.
+ * Discover / radar card title. Never emits TITLE_FILLER templates
+ * ("Updated Requirements and Guidance for 2026"). Used before opportunities
+ * leave the engine.
  */
+export function discoverCardTitle(
+  primaryKeyword: string,
+  opts?: { audienceNoun?: string; siblingTitles?: string[] },
+): string {
+  const kw = String(primaryKeyword || '').trim()
+  const picked = pickBestTitle({
+    primaryKeyword: kw,
+    audienceNoun: opts?.audienceNoun,
+    year: DEFAULT_YEAR,
+    siblingTitles: opts?.siblingTitles,
+  })
+  let title = picked?.title || ''
+  const rejected = rejectFillerTitle(title || kw, {
+    primaryKeyword: kw,
+    siblingTitles: opts?.siblingTitles,
+  })
+  if (!rejected.ok) title = rejected.replacement
+  if (!title || isFillerTitle(title)) {
+    const cased = titleCaseWords(kw) || 'Immigration Guide'
+    title = `${cased}: Checklist Before You Apply`
+  }
+  return title
+}
+
+/** Score every candidate and return the max-scoring one (tie → first). */
 export function pickBestTitle(input: TitleLabInput): TitleCandidate | null {
   let best: TitleCandidate | null = null
   for (const candidate of generateTitleCandidates(input)) {

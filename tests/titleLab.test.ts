@@ -1,4 +1,5 @@
 import {
+  discoverCardTitle,
   generateTitleCandidates,
   isFillerTitle,
   isGenericCurrentInfoHeading,
@@ -9,6 +10,15 @@ import {
   TITLE_SCORER_WEIGHTS,
   topicSpecificCurrentInfoHeading,
 } from '@/lib/seoEngine/titleLab'
+
+describe('discoverCardTitle — Discover never emits TITLE_FILLER', () => {
+  it('never returns Updated Requirements and Guidance for 2026', () => {
+    const title = discoverCardTitle('f-1 opt employment authorization')
+    expect(isFillerTitle(title)).toBe(false)
+    expect(title.toLowerCase()).not.toMatch(/updated requirements and guidance/)
+    expect(title.toLowerCase()).toMatch(/opt|employment|f-?1/)
+  })
+})
 
 describe('isFillerTitle — catches exactly the template junk', () => {
   it('flags the two user-observed template-filler titles', () => {

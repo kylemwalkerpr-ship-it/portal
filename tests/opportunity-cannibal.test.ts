@@ -116,7 +116,8 @@ describe('opportunity engine — editorial value discipline', () => {
       queries: [{ term: 'how to apply for uk spouse visa', impressions: 500, clicks: 10, ctr: 0.02, position: 18 }],
       limit: 5,
     })
-    expect(result.opportunities[0].title).toMatch(/^How to Apply for UK Spouse Visa\? A \d{4} Practical Guide$/)
+    expect(result.opportunities[0].title.toLowerCase()).toMatch(/uk spouse visa/)
+    expect(result.opportunities[0].title).not.toMatch(/updated requirements and guidance/i)
     expect(result.opportunities[0].title).not.toMatch(/How to Apply for How to Apply/i)
   })
 
