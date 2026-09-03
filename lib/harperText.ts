@@ -208,6 +208,39 @@ export function applyProseCorrection(src: string, before: string, after: string)
   return src
 }
 
+/** Apply Harper span replacements from the end of the string so earlier indices stay valid. */
+export function applyNonOverlappingSpanFixes(
+  text: string,
+  fixes: Array<{ start: number; end: number; replacement: string }>,
+): { text: string; applied: number } {
+  const sorted = [...fixes]
+    .filter((f) => Number.isFinite(f.start) && Number.isFinite(f.end) && f.start >= 0 && f.end >= f.start && f.end <= text.length)
+    .sort((a, b) => b.start - a.start)
+  let out = text
+  let lastStart = Infinity
+  let applied = 0
+  for (const f of sorted) {
+    if (f.end > lastStart) continue
+    out = out.slice(0, f.start) + f.replacement + out.slice(f.end)
+    lastStart = f.start
+    applied++
+  }
+  return { text: out, applied }
+}
+
+export function splitMarkdownFrontmatter(md: string): { fm: string; body: string } {
+  const raw = String(md || '')
+  const m = raw.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n?)/)
+  if (!m) return { fm: '', body: raw }
+  return { fm: m[1], body: raw.slice(m[1].length) }
+}
+
+export function dialectForRegion(region?: string | null): 'american' | 'british' {
+  const r = String(region || '').toUpperCase()
+  if (r === 'AU' || r === 'UK' || r === 'GB' || r === 'CA' || r === 'NZ') return 'british'
+  return 'american'
+}
+
 /** Rebuild markdown from Harper's corrected plaintext lines. Length mismatch is a no-op. */
 export function mapCorrectedProseToMarkdown(
   md: string,

@@ -23,6 +23,8 @@ type Props = {
   reviewModel?: string
   busy?: boolean
   onApplied?: (content: string) => void
+  /** After the ship gate is green, Harper auto-applies remaining grammar fixes. */
+  shipReady?: boolean
 }
 
 const C = {
@@ -77,7 +79,7 @@ function ScorePill({ label, score, sub, busy, onClick }: {
   )
 }
 
-export default function EditorMetricsStrip({ content, hint, reviewModel, busy, onApplied }: Props) {
+export default function EditorMetricsStrip({ content, hint, reviewModel, busy, onApplied, shipReady }: Props) {
   const [metrics, setMetrics] = React.useState<EditorMetrics | null>(null)
   const [harper, setHarper] = React.useState<HarperLintSummary | null>(null)
   const [harperBusy, setHarperBusy] = React.useState(false)
@@ -90,6 +92,9 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   const [styleError, setStyleError] = React.useState<string | null>(null)
   const textRef = React.useRef('')
   textRef.current = content
+  const hintRef = React.useRef(hint)
+  hintRef.current = hint
+  const autoFixKeyRef = React.useRef('')
 
   // Local metrics (readability + SEO) — cheap, recompute on debounce.
   React.useEffect(() => {
@@ -104,15 +109,12 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     if (String(content).trim().length < 120) return
     const timer = setTimeout(async () => {
       setHarperBusy(true)
-      const summary = await runHarperGrammar(content)
+      const summary = await runHarperGrammar(content, undefined, hintRef.current?.region)
       setHarperBusy(false)
       if (summary) setHarper(summary)
     }, 1100)
     return () => clearTimeout(timer)
   }, [content])
-
-  const hintRef = React.useRef(hint)
-  hintRef.current = hint
 
   const runStyleReview = React.useCallback(async (apply: boolean) => {
     const h = hintRef.current
@@ -162,7 +164,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     setFixingHarper(true)
     setHarperFixNote(null)
     try {
-      const result = await fixHarperIssues(textRef.current)
+      const result = await fixHarperIssues(textRef.current, undefined, hintRef.current?.region)
       if (result.applied > 0 && result.content && onApplied) {
         onApplied(result.content)
         setHarperFixNote(`Harper applied ${result.applied} fix${result.applied === 1 ? '' : 'es'}.`)
@@ -176,6 +178,15 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       setFixingHarper(false)
     }
   }, [onApplied])
+
+  React.useEffect(() => {
+    if (!shipReady || !onApplied || harperBusy || fixingHarper) return
+    if (!harper || harper.errors + harper.suggestions === 0) return
+    const key = `${content.length}:${harper.errors}:${harper.suggestions}`
+    if (autoFixKeyRef.current === key) return
+    autoFixKeyRef.current = key
+    void runHarperAutofix()
+  }, [shipReady, harper, harperBusy, fixingHarper, onApplied, content.length, runHarperAutofix])
 
   const panel = (() => {
     if (!expanded) return null
@@ -200,7 +211,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                 onClick={async () => {
                   setFixingHarper(true)
                   try {
-                    const result = await applyHarperProblem(textRef.current, it.problem)
+                    const result = await applyHarperProblem(textRef.current, it.problem, hintRef.current?.region)
                     if (result.applied > 0 && result.content && onApplied) {
                       onApplied(result.content)
                       setHarperFixNote(`Applied ${it.kind}: “${it.problem}”.`)
@@ -235,7 +246,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               {fixingHarper ? 'Fixing…' : `Auto-fix ${harper ? harper.errors + harper.suggestions : 0} issue${harper && harper.errors + harper.suggestions === 1 ? '' : 's'}`}
             </button>
             <span style={{ fontSize: 10, color: C.muted }}>
-              Spelling · grammar · punctuation — applies only secure, non-case suggestions on-device
+              Harper applies grammar/typo/punctuation on the markdown body (spans from the end). Vocabulary and acronyms stay.
             </span>
           </div>
         </div>

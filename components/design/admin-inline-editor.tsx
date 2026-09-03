@@ -1136,6 +1136,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 }}
                 reviewModel={reviewModel}
                 busy={allBusy}
+                shipReady={Boolean(shipReady)}
                 onApplied={(md) => { onChange(md); setDirty(true) }}
               />
               {viewMode === 'document' ? (

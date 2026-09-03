@@ -1,4 +1,4 @@
-import { applyProseCorrection, harperSafeLines, HARPER_ESTATE_WORDS, isHarperNoiseFinding, isNonClientFacingLine, mapCorrectedProseToMarkdown, spliceWords } from '../lib/harperText'
+import { applyNonOverlappingSpanFixes, applyProseCorrection, dialectForRegion, harperSafeLines, HARPER_ESTATE_WORDS, isHarperNoiseFinding, isNonClientFacingLine, mapCorrectedProseToMarkdown, spliceWords, splitMarkdownFrontmatter } from '../lib/harperText'
 import { applyQuotedStyleFixes } from '../lib/seoFactory/styleApply'
 
 describe('harper leak-free transform', () => {
@@ -132,6 +132,21 @@ Official source.`
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'uncertified', fix: 'unfortified' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'english', fix: 'English' })).toBe(false)
     expect(HARPER_ESTATE_WORDS).toContain('SEVIS')
+  })
+
+  it('applies Harper spans from the end without shifting earlier fixes', () => {
+    const text = 'aaa bbb ccc'
+    const out = applyNonOverlappingSpanFixes(text, [
+      { start: 0, end: 3, replacement: 'AAA' },
+      { start: 8, end: 11, replacement: 'CCC' },
+    ])
+    expect(out.applied).toBe(2)
+    expect(out.text).toBe('AAA bbb CCC')
+    expect(dialectForRegion('AU')).toBe('british')
+    expect(dialectForRegion('US')).toBe('american')
+    const split = splitMarkdownFrontmatter('---\ntitle: X\n---\n\n# Hello\n')
+    expect(split.fm).toContain('title: X')
+    expect(split.body).toContain('# Hello')
   })
 
   it('is 1:1 line-preserving (word splice safety)', () => {
