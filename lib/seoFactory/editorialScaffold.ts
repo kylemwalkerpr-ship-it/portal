@@ -2402,17 +2402,17 @@ export function applyDeterministicRepairs(opts: {
       opts.verifiedEstateAnchors && opts.verifiedEstateAnchors.length > 0
         ? opts.verifiedEstateAnchors
         : resolveVerifiedEstateAnchors(opts.verifiedEstateUrls)
-    const relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors, true)
+    const relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors, false)
     if (relinked.relinked > 0) {
       b = relinked.content
       applied.push(`estate_labels_relinked (${relinked.relinked})`)
     }
-    // Ambiguous / unmatched plain-text labels used to stay blockers waiting on
-    // the review AI (targeted_ai) — the exact code that wedged the live queue
-    // when the reviewer hit a quota/credit wall. The playbook rule is "if no
-    // live guide exists for that entry, delete that entry", so removing the
-    // entry IS the honest deterministic clear: it never invents a destination,
-    // and the gate only ever demands reachability, not presence.
+    // Ambiguous / unmatched plain-text labels are HELD: they stay plain text
+    // and `unlinked_related_guide` keeps blocking so the evidence is visible
+    // to an editor. The deterministic pass only re-links a label to the ONE
+    // verified URL it matches — it never invents a destination and never
+    // deletes entries (removeUnmatched=false), so the reviewer decides what
+    // an unmatched guide title means instead of a machine dropping it.
     if (relinked.removed > 0) {
       b = relinked.content
       applied.push(`unlinked_guide_entries_removed (${relinked.removed})`)

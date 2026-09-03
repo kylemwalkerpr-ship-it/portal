@@ -20,7 +20,7 @@ See **`docs/SEO_OPTIMAL_STACK.md`**.
 |-------|--------|
 | Agent GSC | Free MCP `mcp-search-console` (Grok `mcp_servers.gsc`) |
 | Studio planner | `POST /api/seo-factory/optimal-plan` + Auto-Pilot **① Optimal GSC plan** |
-| AI | CF primary → Groq → Gemini → OpenRouter (gig chain) |
+| AI | Entrim Qwen3.6 27B → Entrim DeepSeek V4 Flash (Entrim-only, one key) |
 | Ship | shipGate + Approve → main |
 
 ```bash
@@ -56,22 +56,20 @@ grok mcp doctor gsc
 
 ### AI provider priority (content generation)
 
-**Primary writer:** DeepSeek V4 Flash via NVIDIA Integrate  
-(`deepseek-ai/deepseek-v4-flash-0731`, provider id `nvidia-deepseek`) — `lib/contentAiProvider.ts`.  
-*Note: `deepseek-ai/deepseek-v4-pro` is EOL on NVIDIA (410 Gone since 2026-08-07); Pro-0813 runs on Parasail / Baseten / DeepSeek.com only.*
+**Primary writer:** Entrim Qwen3.6 27B (`entrim-qwen-27b`) on `api.entrim.ai/v1` — `lib/contentAiProvider.ts`.  
+Fallback: **Entrim DeepSeek V4 Flash** (`entrim-deepseek`), same key/base URL.  
+All live AI runs on `api.entrim.ai/v1` under one `ENTRIM_API_KEY`; the NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs are out of commission in the live policy (architecture invariant I5).
 
 **Chain (hard order):**
-1. **DeepSeek V4 Flash (NVIDIA)** — `NVIDIA_API_KEY` / `NVAPI_KEY`
-2. **Cloudflare Workers AI** — first fallback (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)
-3. Groq → Gemini → OpenRouter → custom → xAI → OpenAI → DeepSeek.com
+1. **Entrim Qwen3.6 27B** (`entrim-qwen-27b`) — `ENTRIM_API_KEY`
+2. **Entrim DeepSeek V4 Flash** (`entrim-deepseek`) — `ENTRIM_API_KEY`
 
 **Auth:**
-- NVIDIA: `NVIDIA_API_KEY` (or `NVAPI_KEY` / `NVIDIA_NIM_API_KEY`)
-- CF (account `48f2c5185be44e14fea1df7d0591932a`): `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_AI_TOKEN`
-- Worker always pins `CONTENT_AI_PROVIDER=nvidia-deepseek` on deploy
+- Entrim: `ENTRIM_API_KEY` — fixed base `https://api.entrim.ai/v1` (Qwen + DeepSeek on the same key)
+- Worker always pins `CONTENT_AI_PROVIDER=entrim-qwen-27b` on deploy
 
-Override only if you must pin a different lead: `CONTENT_AI_PROVIDER=cloudflare` (etc.).  
-Unknown values fall back to DeepSeek V4 Flash.
+Override only if you must pin a different lead: `CONTENT_AI_PROVIDER=entrim-deepseek` (etc.).  
+Unknown values fall back to Entrim Qwen3.6 27B.
 
 **Ship / deploy:** Markdown from any provider is re-rendered through `renderTargetFile` +
 `assertShipAllowed` (CTAPanel contract, balanced JSX, FM) before any GitHub write so

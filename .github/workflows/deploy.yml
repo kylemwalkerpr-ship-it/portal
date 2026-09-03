@@ -239,7 +239,10 @@ jobs:
           # retired host first after a code deploy. Values are fixed
           # (not from secrets) so put_secret always has a non-empty value.
           # NOTE: deepseek-v4-pro is EOL on NVIDIA (410 Gone since 2026-08-07).
-          put_secret CONTENT_AI_PROVIDER       "${CONTENT_AI_PROVIDER:-entrim-qwen-27b}"
+          # CONTENT_AI_PROVIDER is pinned LITERALLY — never interpolate the
+          # CONTENT_AI_PROVIDER GitHub secret here, a leftover/rotated value
+          # must not re-pin a retired host ahead of a code deploy.
+          put_secret CONTENT_AI_PROVIDER       "entrim-qwen-27b"
           put_secret NVIDIA_DEEPSEEK_MODEL     "${NVIDIA_DEEPSEEK_MODEL:-deepseek-ai/deepseek-v4-flash-0731}"
           # NVIDIA key aliases — any one unlocks the primary path
           put_secret NVIDIA_API_KEY            "${NVIDIA_API_KEY:-$NVAPI_KEY}"

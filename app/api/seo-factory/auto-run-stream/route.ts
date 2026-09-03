@@ -33,6 +33,7 @@ import {
   type WarOpportunity,
   type WarPlay,
 } from '@/lib/seoFactory/seoWarRoom'
+import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import {
   enrichQueueWithRanking,
   modelTotalForOpportunity,
@@ -291,6 +292,13 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
       (auth as { profileId?: string }).profileId ||
       'admin'
 
+    // Master SEO Engine feed guard — reuse a caller-supplied block and skip
+    // per-candidate assembly (GSC + DB + Ahrefs round per candidate).
+    const feedFromCaller =
+      typeof body.masterEngineBlock === 'string' && body.masterEngineBlock.trim()
+        ? (body.masterEngineBlock as string)
+        : null
+
     const results: Array<Record<string, unknown>> = []
     const total = candidates.length
 
@@ -313,6 +321,34 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
       try {
         const shipModeForRun = requestedMode === 'auto' ? 'merge' : requestedMode
         const cand = opp as Candidate
+
+        let masterEngineBlock: string | null = feedFromCaller
+        if (!masterEngineBlock) {
+          try {
+            const feed = await assembleMasterEngineFeed({
+              topic: opp.term,
+              primaryKeyword: opp.term,
+              region: opp.region || 'US',
+              contentType: opp.suggestedContentType || 'legal_guide',
+              title: opp.term,
+            })
+            masterEngineBlock = feed.promptBlock || null
+            if (feed.ok && feed.promptBlock) {
+              yield send({
+                type: 'progress',
+                stage: 'candidate',
+                message: `[${idx + 1}/${total}] Master Engine feed ready for ${opp.term}`,
+                term: opp.term,
+              })
+            }
+          } catch (e) {
+            console.warn(
+              '[seo-factory/auto-run-stream] master engine feed skipped — continuing without engine block',
+              e instanceof Error ? e.message : e,
+            )
+          }
+        }
+
         const result = await runSeoFactoryPipeline({
           topic: opp.term,
           title: opp.term,
@@ -327,6 +363,7 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
           opportunityAction: cand.play ? playToOpportunityAction(cand.play as WarPlay) : String(opp.action),
           writeHint: cand.writeHint,
           aiProvider,
+          masterEngineBlock,
           userId,
         })
 

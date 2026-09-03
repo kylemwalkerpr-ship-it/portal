@@ -12,7 +12,7 @@ import { createClient } from '@supabase/supabase-js'
 import { normalizeJobContentType } from './jobContentType'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import type { OwnerPlan } from './ownership'
-import type { SeoFactoryAudit } from './audit'
+import { meetsShipQuality, type SeoFactoryAudit } from './audit'
 import type { ShipResult } from './ship'
 import type { RequestedShipMode } from './resolveShipMode'
 import type { ContentSpec } from './contentSpec'
@@ -123,6 +123,10 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
   const status = mapPipelineJobStatus(input)
   const shipped =
     input.shipResult?.status === 'deployed' || input.shipResult?.status === 'merged'
+  // Canonical ship gate (jobShipGate.jobPassesShipGate demands this boolean):
+  // true only when the pipeline's own ship-quality definition passes AND
+  // ownership is not blocked — never implied by score alone.
+  const shipReady = input.plan.blockers.length === 0 && meetsShipQuality(input.audit)
   const baseRow: Record<string, unknown> = {
     user_id: input.userId || 'admin',
     source_job_id: input.sourceJobId || null,
@@ -157,6 +161,9 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     primary_keyword: input.primaryKeyword,
     audit_json: {
       ...input.audit,
+      shipReady,
+      blockers: input.audit.blockers,
+      blockersCount: input.audit.blockers.length,
       attempts: input.attempts,
       model: input.model,
       minAudit: input.minAudit,

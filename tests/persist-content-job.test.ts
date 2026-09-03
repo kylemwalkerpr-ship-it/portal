@@ -275,6 +275,34 @@ describe('mapPipelineJobRow — pure row builder', () => {
     expect((row.audit_json as Record<string, unknown>).rescue).toBeUndefined()
     expect((row.gsc_json as Record<string, unknown>).cluster).toBeUndefined()
   })
+
+  it('persists shipReady=true when the audit passes ship quality and ownership is clear', () => {
+    const aj = mapPipelineJobRow(baseInput()).audit_json as Record<string, unknown>
+    expect(aj.shipReady).toBe(true)
+    expect(aj.blockersCount).toBe(0)
+    expect(aj.blockers).toEqual([])
+  })
+
+  it('persists shipReady=false when the audit still carries a hard blocker', () => {
+    const aj = mapPipelineJobRow(
+      baseInput({
+        audit: audit({
+          blockers: [{ code: 'thin_content', severity: 'blocker', message: 'too thin', fix: 'expand' }],
+        }),
+      }),
+    ).audit_json as Record<string, unknown>
+    expect(aj.shipReady).toBe(false)
+    expect(aj.blockersCount).toBe(1)
+    expect(Array.isArray(aj.blockers)).toBe(true)
+  })
+
+  it('persists shipReady=false when ownership is blocked even on a clean audit', () => {
+    const aj = mapPipelineJobRow(
+      baseInput({ plan: { ...plan, blockers: ['blocked_on_supply: wait'] } }),
+    ).audit_json as Record<string, unknown>
+    expect(aj.shipReady).toBe(false)
+    expect(aj.blockersCount).toBe(0)
+  })
 })
 
 describe('persistPipelineJob — one write door, never throws', () => {

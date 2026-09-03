@@ -216,12 +216,12 @@ describe('estate anchor convergence — unlinked_related_guide is clearable', ()
     }
   })
 
-  it('live-defect regression: unmatched plain-text orphans clear WITHOUT the review AI (quota outage)', () => {
+  it('live-defect regression: unmatched plain-text orphans HOLD and stay blockers (no AI, no deletion)', () => {
     // 2026-08-31 live queue: an AU guide scored human 100/100 yet stayed
-    // blocked because two plain-text guide titles matched no verified anchor
-    // and the ONLY remaining fixer (the targeted_ai reviewer) was quota-dead.
-    // The playbook rule for a guide with no live URL is "delete that entry",
-    // so the deterministic chain removes the entry — no AI, no invented URL.
+    // blocked because two plain-text guide titles matched no verified anchor.
+    // The deterministic chain must NOT silently delete them either — removal is
+    // now held for the editor so `unlinked_related_guide` keeps blocking with
+    // the evidence intact. The pass only ever re-links unique matches.
     const draft = [
       FM, BODY,
       '## Related guides', '',
@@ -236,19 +236,24 @@ describe('estate anchor convergence — unlinked_related_guide is clearable', ()
       primaryKeyword: 'australia student visa fee increase',
       region: 'AU', indexable: true, contentType: 'article',
     })
-    expect(orphanCount(content)).toBe(0)
-    expect(content).not.toContain('Something the estate never published')
-    expect(content).not.toContain('Student Fees Explained')
+    // Unmatched evidence is preserved (not deleted) and still blocks.
+    expect(orphanCount(content)).toBe(2)
+    expect(content).toContain('Something the estate never published')
+    expect(content).toContain('Student Fees Explained')
+    expect(applied.some((a) => a.startsWith('unlinked_guide_entries_removed'))).toBe(false)
     // The verified link and the Sources citation survive untouched.
     expect(content).toContain('](https://legal.yousafeconsultancy.com/au/)')
     expect(content).toContain('](https://immi.homeaffairs.gov.au/visas/getting-a-visa/fees-and-charges)')
-    expect(applied.some((a) => a.startsWith('unlinked_guide_entries_removed'))).toBe(true)
-    // Idempotent — a second run does not re-add or re-flag anything.
+    // Idempotent — a second run re-links the match but does not re-add or
+    // drop entries; the unmatched evidence is still there and still blocks.
     const second = applyDeterministicRepairs({
       content, title: 'Australia Student Visa Fee Increase 2026',
       primaryKeyword: 'australia student visa fee increase',
       region: 'AU', indexable: true, contentType: 'article',
     })
-    expect(orphanCount(second.content)).toBe(0)
+    expect(orphanCount(second.content)).toBe(2)
+    expect(second.content).toContain('Something the estate never published')
+    expect(second.content).toContain('Student Fees Explained')
+    expect(second.content).toContain('](https://legal.yousafeconsultancy.com/au/)')
   })
 })

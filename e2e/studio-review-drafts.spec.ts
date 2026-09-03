@@ -128,8 +128,8 @@ function makeDraftedJob() {
     merged_at: null,
     closed_at: null,
     error_message: null,
-    ai_provider: 'nvidia-deepseek',
-    ai_model: 'deepseek-ai/deepseek-v4-flash-0731',
+    ai_provider: 'entrim-qwen-27b',
+    ai_model: 'Qwen/Qwen3.6-27B',
     word_count: 950,
     seo_score: 92,
     audit_json: {

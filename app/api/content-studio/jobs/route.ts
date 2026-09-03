@@ -12,6 +12,7 @@ import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
+import { jobPassesShipGate } from '@/lib/seoFactory/jobShipGate'
 import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
@@ -522,7 +523,10 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Legacy bulk_* actions (id-level, max 25) ──
-    const results: Array<{ id: string; ok: boolean; error?: string; detail?: unknown }> = []
+    const results: Array<{ id: string; ok: boolean; error?: string; detail?: unknown; skipped?: boolean }> = []
+    // bulk_approve ids that failed the ship gate — never shipped, surfaced to
+    // the operator (and returned as a 409 when EVERY requested id was skipped).
+    const skippedIds: string[] = []
 
     for (const id of ids) {
       try {
@@ -566,6 +570,15 @@ export async function POST(request: NextRequest) {
           }
           if (job.status === 'merged') {
             results.push({ id, ok: true, detail: { skipped: 'already merged' } })
+            continue
+          }
+          // shipContent with humanApproved=true skips the automated score gates
+          // but still renders + asserts the payload. For an ungated row there is
+          // no current-gate evidence at all, so we refuse to ship it — never
+          // force content past a gate the editor never cleared.
+          if (!jobPassesShipGate(job)) {
+            skippedIds.push(id)
+            results.push({ id, ok: false, error: 'Ship gate not cleared', skipped: true })
             continue
           }
           // Delegate to ship path by calling shipContent
@@ -689,12 +702,28 @@ export async function POST(request: NextRequest) {
     }
 
     const okCount = results.filter((r) => r.ok).length
+    const realFailures = results.filter((r) => !r.ok && !r.skipped).length
+    // bulk_approve that could not ship anything because every requested id
+    // failed the ship gate → 409 so the client shows the gate, not a "success".
+    if (action === 'bulk_approve' && skippedIds.length === ids.length && ids.length > 0) {
+      return NextResponse.json({
+        ok: false,
+        action,
+        error: 'Ship gate not cleared',
+        processed: ids.length,
+        succeeded: 0,
+        failed: realFailures,
+        skipped: skippedIds,
+        results,
+      }, { status: 409 })
+    }
     return NextResponse.json({
       ok: okCount === results.length,
       action,
       processed: results.length,
       succeeded: okCount,
-      failed: results.length - okCount,
+      failed: realFailures,
+      ...(skippedIds.length ? { skipped: skippedIds } : {}),
       results,
     })
   } catch (err) {
@@ -1329,10 +1358,18 @@ export async function PATCH(request: NextRequest) {
     if (action === 'merge_pr') {
       // NOTE: this path does NOT re-run shipContent gates — it merges the
       // existing reviewed PR head into main exactly as-is (content already
-      // passed the gate stack when the PR was opened).
+      // passed the gate stack when the PR was opened). That assumption only
+      // holds when the current-gate snapshot on the job actually reports a
+      // pass — otherwise the server would merge a PR the editor never cleared.
       const prNumber = job.pr_number
       if (!prNumber) {
         return NextResponse.json({ error: 'Job has no PR to merge' }, { status: 400 })
+      }
+      if (!jobPassesShipGate(job)) {
+        return NextResponse.json(
+          { error: 'Ship gate not cleared' },
+          { status: 409 },
+        )
       }
       const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
       try {
@@ -1614,6 +1651,14 @@ export async function PATCH(request: NextRequest) {
           body.forceNewShip !== true &&
           body.content == null
         ) {
+          // Merging an existing PR bypasses shipContent — the server must not
+          // merge unless the CURRENT audited version cleared the ship gate.
+          if (!jobPassesShipGate(job)) {
+            return NextResponse.json(
+              { error: 'Ship gate not cleared' },
+              { status: 409 },
+            )
+          }
           const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
           try {
             const merged = await mergePullRequest({

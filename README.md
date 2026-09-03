@@ -55,7 +55,7 @@ The strategic brain that plans the full immigrant journey (intent → schools �
 | **planner** | `lib/seoEngine/planner.ts` | Ranks GSC demand × knowledge bias × lifecycle priority → cluster plans (pillar/spokes/FAQ, compliance score, distribution targets, interlink plan, AI-drafted briefs). |
 | **API** | `app/api/seo-engine/{lifecycle,knowledge,plan,status}/route.ts` | Admin-auth surfaces: seed ontology, run ingestion, run planner, engine health. |
 | **cron** | `app/api/cron/seo-engine-daily/route.ts` + `.github/workflows/seo-engine-daily.yml` | Daily (midday Kenya): knowledge → plan, every run logged for accountability. |
-| **UI** | `components/design/admin-seo-engine.tsx` (wired into `admin-command-center.tsx` as **🧭 SEO Master Engine**) | Lifecycle map with coverage, Knowledge Radar feed, ranked plan queue with compliance scores, one-click ⚡ Brief into the composer, engine health + run audit trail. |
+| **UI** | `components/design/admin-content-studio.tsx` (live studio — **🧭 SEO Master Engine** masthead + engine panel) | Lifecycle map with coverage, Knowledge Radar feed, ranked plan queue with compliance scores, one-click ⚡ Brief into the composer, engine health + run audit trail. |
 | **docs** | `docs/SEO_MASTER_ENGINE.md` | Full blueprint: concept, feeds, AEO/GEO/YMYL playbook, planner flow, tables, automation. |
 
 ## Apply on `portal`

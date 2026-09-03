@@ -252,6 +252,12 @@ export async function POST(request: Request) {
     if (request.signal.aborted) onClientAbort()
     else request.signal.addEventListener('abort', onClientAbort, { once: true })
 
+    // Hoisted stream-scope state so the ReadableStream's cancel() can read and
+    // persist the latest checkpoint when the consumer stops reading the stream.
+    let liveJobId = supersedesJobId || null
+    let lastCheckpointDraft = ''
+    let sawFinal = false
+
     const stream = new ReadableStream({
       async start(controller) {
         const send = (ev: PipelineStreamEvent) => {
@@ -265,7 +271,6 @@ export async function POST(request: Request) {
 
         send({ type: 'progress', stage: 'connect', message: 'Pipeline connected — preparing brief…' })
 
-        let lastCheckpointDraft = ''
         // Attempt-boundary tracker for the delta accumulator: deltas of a NEW
         // attempt restart from zero, so ingesting them must REPLACE the
         // buffer, not append onto the previous attempt's text (the NCLEX
@@ -275,8 +280,6 @@ export async function POST(request: Request) {
         let lastCheckpointAt = 0
         let checkpointCount = 0
         const MAX_CHECKPOINTS = 24
-        let liveJobId = supersedesJobId || null
-        let sawFinal = false
 
         const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -488,8 +491,23 @@ export async function POST(request: Request) {
           closed = true
         }
       },
-      cancel() {
+      async cancel() {
         closed = true
+        // Abort upstream generation so the provider fetch actually stops.
+        try {
+          streamAbort.abort()
+        } catch {
+          /* already aborted */
+        }
+        // A cancelled stream must never leave a stuck 'drafting'-with-null-
+        // content row. Persist the latest checkpoint even though closed=true;
+        // skip only when the pipeline already reached its final event.
+        if (supabase && liveJobId && !sawFinal) {
+          await finalizeInterruptedJob(supabase, liveJobId, lastCheckpointDraft, {
+            interruptedMessage: 'Interrupted — stream cancelled',
+            failedMessage: 'No draft produced before the stream was cancelled',
+          })
+        }
       },
     })
 

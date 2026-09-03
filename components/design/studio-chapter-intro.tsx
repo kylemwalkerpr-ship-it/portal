@@ -7,7 +7,14 @@ import type { StudioStage } from '@/lib/seoFactory/studioPipeline'
 /** Local alias matching admin-content-studio.tsx (`type StudioTab = StudioStage`). */
 type StudioTab = StudioStage
 
-const ORDER: StudioTab[] = ['discover', 'research', 'draft', 'approve', 'configure', 'shop']
+/**
+ * Mini-pill ORDER mirrors the LIVE nav (admin-content-studio `TABS`):
+ * I Discover · II Research · III Draft & Review · IV Approve & Track ·
+ * V Configure. 'shop' is a valid StudioStage for deep links but is NOT a live
+ * tab until the product-blog pipeline ships through shipContent, so it is
+ * omitted from the pills (and from the prev/next jump ring).
+ */
+const ORDER: StudioTab[] = ['discover', 'research', 'draft', 'approve', 'configure']
 
 const NUMERALS: Record<StudioTab, string> = {
   discover: 'I',

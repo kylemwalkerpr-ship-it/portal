@@ -1,17 +1,22 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * DEFAULT CHAIN (hard order):
- *   1. Run BiOS GLM 5.3 Flash (draft / brief / review / engine primary)
- *   2. NVIDIA MiniMax M3, xAI Grok, NVIDIA GLM / DeepSeek → Baseten / Parasail → rest
- *   3. getChatProvider() bridge
+ * LIVE POLICY (2026-09-02, Entrim-only):
+ *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`, api.entrim.ai/v1) — primary
+ *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`, api.entrim.ai/v1) — fallback
  *
+ * Both families share one `ENTRIM_API_KEY` and are served by `api.entrim.ai/v1`.
+ * Every other host (NVIDIA / Cloudflare / Groq / Gemini / OpenRouter / xAI /
+ * OpenAI / DeepSeek.com / Baseten / Parasail / Run BiOS / Zai / AIHubmix /
+ * chatProvider bridge) is OUT OF COMMISSION and filtered out of the cascade at
+ * runtime even if its key is still configured.
+ *
+ * Legacy auth notes (kept for fallback providers that must never win):
  * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
  * CF auth: CLOUDFLARE_AI_TOKEN | CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
- * Run BiOS: RUNBIOS_API_KEY → https://api.runbios.ai/v1  model glm-5.3-flash
  *
- * Override with CONTENT_AI_PROVIDER / AI_PROVIDER only if you must pin a backend.
- * Default / auto / primary → Run BiOS GLM 5.3 Flash.
+ * Override only if you must pin a different lead: CONTENT_AI_PROVIDER /
+ * AI_PROVIDER. Default / auto / primary → Entrim Qwen3.6 27B.
  */
 
 import { qualityPromptBlock } from './seoFactory/contentQualityGate'

@@ -98,7 +98,6 @@ import {
 import { QueueStats, QueueTable } from './studio-queue'
 import { ReviewDraftsPanel } from './studio-review-panels'
 import { MasterEnginePanel } from './master-engine-panel'
-import AdminShopSeo from './admin-shop-seo'
 
 
 const C = E
@@ -1366,7 +1365,7 @@ function PublishLedger({
     <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
         <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-          STAGE VI · TRACK
+          STAGE IV · APPROVE & TRACK
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
           <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
@@ -1980,9 +1979,11 @@ function CreateWizard({
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 10.5, fontFamily: C.mono, color: gscStatus.connected ? C.red : '#92400E', flexWrap: 'wrap' }}>
               <span>
-                {gscStatus.connected
-                  ? `◐ TOKEN FAILURE — ${String(gscStatus.error || 'refresh failed')}${gscStatus.mode === 'oauth' ? ' (OAUTH)' : gscStatus.mode === 'service_account' ? ' (SERVICE_ACCOUNT)' : ''}`
-                  : '◐ GSC not connected — these scores are snapshot-based'}
+                {gscStatus.connected && gscStatus.error
+                  ? `◐ TOKEN FAILURE — ${String(gscStatus.error)}${gscStatus.mode === 'oauth' ? ' (OAUTH)' : gscStatus.mode === 'service_account' ? ' (SERVICE_ACCOUNT)' : ''}`
+                  : gscStatus.connected
+                    ? '◐ Connected but not live — these scores are snapshot-based'
+                    : '◐ GSC not connected — these scores are snapshot-based'}
               </span>
               <button type="button" onClick={onConnectGsc} style={{ padding: '2px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#F59E0B', color: '#fff', fontSize: 9.5, fontWeight: 800 }}>
                 {gscStatus.connected ? 'Re-connect →' : 'Connect GSC →'}
@@ -6835,7 +6836,7 @@ const controller = new AbortController()
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', minWidth: 200 }}>
           <span style={{ ...TYPE.microFig, color: E.goldDeep }}>VOL · I · NO · {String(Math.max(1, jobs.length + merges.length)).padStart(3, '0')}</span>
-          <span style={{ ...TYPE.microFig, color: engineBusy ? E.blue : E.inkDim }}>{engineBusy ? `ENGINE · ${(ENGINE_ACTION_LABEL[engineAction ?? 'ingest'] || 'running').toUpperCase()}` : Number.isFinite(engGatePass) && engGatePass > 0 ? `${engGatePass}% GATE PASS` : 'ENGINE · LIVE'}</span>
+          <span style={{ ...TYPE.microFig, color: engineBusy ? E.blue : E.inkDim }}>{engineBusy ? `ENGINE · ${(ENGINE_ACTION_LABEL[engineAction ?? 'ingest'] || 'running').toUpperCase()}` : Number.isFinite(engGatePass) && engGatePass > 0 ? `${engGatePass}% GATE PASS` : deskLive === 'live' ? 'ENGINE · LIVE' : 'ENGINE · IDLE'}</span>
           <button type="button" onClick={async () => {
             if (loading) return
             setError(null)
@@ -6978,9 +6979,19 @@ const controller = new AbortController()
                   {gscStatus.mode === 'oauth' ? 'OAUTH' : 'SERVICE_ACCOUNT'}
                 </span>
               )}
-              {gscStatus.connected ? (
+              {gscStatus.connected && gscStatus.error ? (
                 <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
                   <strong>GSC token is failing</strong> — {String(gscStatus.error || 'refresh failed')}. Autopilot stays on snapshot data until it's fixed.
+                </span>
+              ) : gscStatus.connected ? (
+                <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
+                  <strong>GSC is connected but not serving live data</strong> — suggestions are scored from the committed snapshot{(() => {
+                    const raw = (radarMeta?.snapshot as { generatedAt?: string } | null)?.generatedAt
+                    const d = raw ? new Date(raw) : null
+                    return radarMeta?.source === 'snapshot' && d && !Number.isNaN(d.getTime())
+                      ? ` (${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`
+                      : ''
+                  })()}.
                 </span>
               ) : (
                 <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
@@ -7437,8 +7448,8 @@ const controller = new AbortController()
               { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
               { chip: 'Decline',       text: 'Reject an open PR — closes it on GitHub and marks the job closed.' },
             ]}
-            prev="IV · Review"
-            next="VI · Track"
+            prev="III · Draft"
+            next="V · Configure"
             onJump={selectTab}
           />
           <ApprovePanel
@@ -7469,7 +7480,7 @@ const controller = new AbortController()
       {tab === 'configure' && (
         <>
           <ChapterIntro
-            numeral="VII"
+            numeral="V"
             title="Configure"
             subtitle="System configurator: manage AI provider keys, connect Google Search Console, audit site health, and maintain the deep interlink registry — all from one place."
             chapterKey="configure"
@@ -7480,7 +7491,7 @@ const controller = new AbortController()
               { chip: '◇ Ubersuggest', text: 'Authorize the official Ubersuggest MCP over OAuth from this tab — connect or disconnect at will.' },
               { chip: '🩺 Health', text: 'Site-wide audit, broken link detection, deep interlink registry, and system diagnostics.' },
             ]}
-            prev="VI · Track"
+            prev="IV · Approve & Track"
             onJump={selectTab}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -8079,13 +8090,18 @@ const controller = new AbortController()
         />
       )}
 
-      {/* ── VI · SHOP SEO ── */}
+      {/* ── VI · SHOP SEO (hidden until shop content ships via shipContent) ── */}
       {tab === 'shop' && (
-        <>
-          <div id="studio-panel-shop" role="tabpanel" aria-labelledby="studio-tab-shop" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <AdminShopSeo />
+        <div id="studio-panel-shop" role="tabpanel" aria-labelledby="studio-tab-shop" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '22px 24px', background: E.paper, border: `1px solid ${E.hairline}` }}>
+            <div style={{ fontFamily: C.serif, fontSize: 16, color: E.ink, fontWeight: 600 }}>
+              Shop SEO hidden until shipContent
+            </div>
+            <p style={{ margin: '6px 0 0', fontFamily: C.serif, fontSize: 13, color: E.inkMuted, fontStyle: 'italic' }}>
+              The product-blog pipeline has no shipContent door, so this console stays hidden until it can ship through the single Git write door.
+            </p>
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Sticky bottom navigation — appears when work plan items are selected ── */}

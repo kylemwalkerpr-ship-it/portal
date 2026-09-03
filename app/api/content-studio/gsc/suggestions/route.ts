@@ -159,6 +159,11 @@ export async function POST(request: NextRequest) {
         warnings.push('Opportunity scoring on CSV snapshot — connect live Search Console for fresher data')
       }
     }
+    // Radar honesty: when BOTH live GSC and a fresh ≤14d snapshot are absent,
+    // there is NO real demand to score. Strategy-corpus rows must never be
+    // injected into the scored pool with fabricated impressions:1 as if they
+    // were Search Console demand.
+    const snapshotRefused = queries.length === 0
 
     // ── 2. Existing content inventory (coverage + cannibalization) ─────────
     let coverage: OpportunityEngineInput['coverage'] = []
@@ -231,13 +236,20 @@ export async function POST(request: NextRequest) {
         knowledgeBase: true,
       }))
     const knownTerms = new Set(queries.map((query) => normalizedTopic(query.term)))
-    for (const signal of knowledgeSignals) {
-      if (!knownTerms.has(normalizedTopic(signal.term))) {
-        queries.push(signal)
-        knownTerms.add(normalizedTopic(signal.term))
+    if (!snapshotRefused) {
+      for (const signal of knowledgeSignals) {
+        if (!knownTerms.has(normalizedTopic(signal.term))) {
+          queries.push(signal)
+          knownTerms.add(normalizedTopic(signal.term))
+        }
       }
+      warnings.push(`Strategy knowledge corpus active · ${knowledgeSignals.length} supplemental authority signals`)
+    } else {
+      warnings.push(
+        'Strategy knowledge corpus withheld from scoring — no live/snapshot GSC demand to supplement. ' +
+          'Knowledge signals are returned separately (synthetic:true) and never fill the opportunity list as if they were GSC.',
+      )
     }
-    warnings.push(`Strategy knowledge corpus active · ${knowledgeSignals.length} supplemental authority signals`)
 
     // ── 4.5 Keyword clusters → canonical-page resolution (anti-cannibalization) ──
     // Cluster every query, resolve each cluster to ONE page, and feed the
@@ -266,6 +278,47 @@ export async function POST(request: NextRequest) {
       relatedByTerm: clusterResult.relatedByTerm,
       limit: 48,
     })
+
+    // ── 5.25 Withheld knowledge corpus (snapshot refused) ─────────────────
+    // When no real GSC demand exists the radar does not lead with fabricated
+    // impressions. The strategy corpus is still surfaced — separately, with
+    // zero demand and synthetic:true — so authority gaps stay undiscoverable
+    // only by explicit opt-in, never dressed up as Search Console rows.
+    const syntheticSignals = snapshotRefused && knowledgeSignals.length
+      ? knowledgeSignals.slice(0, Math.max(limit * 3, 9)).map((signal) => ({
+          topic: signal.term,
+          title: signal.term,
+          primaryKeyword: signal.term,
+          keywords: [signal.term],
+          audience: null,
+          impressions: 0,
+          clicks: 0,
+          ctr: 0,
+          position: 0,
+          knowledgeBase: true,
+          synthetic: true,
+          play: 'content_gap',
+          intent: null,
+          contentType: 'article',
+          region,
+          opportunityScore: null,
+          demandScore: null,
+          upsideScore: null,
+          difficultyScore: null,
+          reason: 'Strategy knowledge corpus — NOT Search Console demand (snapshot refused). No impressions to score.',
+          signals: ['Strategy knowledge-base authority signal · no scored demand'],
+          interlinks: null,
+          coverage: null,
+          ranking: leanRanking(rankingForOpportunity({
+            term: signal.term,
+            impressions: 0,
+            clicks: 0,
+            ctr: 0,
+            position: 100,
+            region,
+          })),
+        }))
+      : []
 
     const variedOpportunities = selectVariedOpportunities(
       result.opportunities as Array<Record<string, any>>,
@@ -339,6 +392,8 @@ export async function POST(request: NextRequest) {
       ),
       source,
       snapshot: snapshotMeta,
+      snapshotRefused,
+      syntheticSignals,
       coverageStats: result.coverageStats,
       cannibalization: result.cannibalization.slice(0, 8),
       strategyHints: brief.strategyHints ?? [],

@@ -820,31 +820,12 @@ export async function POST(request: NextRequest) {
       response.fixedContent = effective
       response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
     }
-    if (jobId) {
-      try {
-        const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
-        await persistReviewSnapshot({
-          jobId,
-          content: effective,
-          source: 'reaudit',
-          qualityOk: response.ok,
-          shipReady: response.shipReady ?? null,
-          blockers: response.blockersData || [],
-          warnings: response.warningsData || [],
-          appliedRepairs: response.appliedRepairs || [],
-        })
-        if (response.shipReady) {
-          const { createSupabaseAdminClient } = await import('@/lib/supabase')
-          const db = createSupabaseAdminClient()
-          const { data: row } = await db.from('content_jobs').select('status').eq('id', jobId).maybeSingle()
-          if (row?.status === 'failed') {
-            await db.from('content_jobs').update({ status: 'drafting', error_message: null }).eq('id', jobId)
-          }
-        }
-      } catch {
-        /* persist is best-effort — the editor already has the passing draft */
-      }
-    }
+    // POST is score/audit only. The repaired body returns as `fixedContent` for
+    // the editor to preview/apply — it is deliberately NOT persisted to
+    // content_jobs (or a review snapshot) here. Persisting repaired content is
+    // the PATCH fix_* contract (fix_all / fix_one / fix_warnings / fix_depth /
+    // fix_blockers / fix_until_gates) — a pure re-audit on tab-enter must never
+    // silently mutate the saved draft.
     return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Re-audit failed'

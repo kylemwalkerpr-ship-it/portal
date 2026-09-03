@@ -482,6 +482,15 @@ export const generateAndPublish = action({
     jobId: v.id("contentJobs"),
   },
   handler: async (ctx, args) => {
+    // Hard guard: the portal's shipContent (lib/seoFactory/ship.ts) is the ONLY
+    // Git write door for Content Studio content. This Convex bot pipeline must
+    // never open branches / PRs / commit files unless explicitly allowed.
+    if (process.env.ALLOW_CONTENT_BOT_SHIP !== '1') {
+      throw new Error(
+        'Ship refused: portal shipContent is the only Git door. Set ALLOW_CONTENT_BOT_SHIP=1 to enable this bot pipeline to write GitHub.',
+      )
+    }
+
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
 

@@ -14,12 +14,11 @@ import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
  *   shipMode?: 'pr' | 'autodeploy' | 'none' | 'auto'
  */
 export async function POST(request: NextRequest) {
-  // ── abort guard: client disconnect → fast 499 ──
+  // ── abort guard: client disconnect → fast 499 (the pipeline polls
+  //    request.signal via throwIfAborted between passes) ──
   if (request.signal.aborted) {
     return NextResponse.json({ error: 'Request cancelled by client' }, { status: 499 })
   }
-  const abortHandler = () => { /* no-op */ }
-  request.signal.addEventListener('abort', abortHandler)
 
   try {
     const auth = await requireAdminUser()
@@ -78,6 +77,7 @@ export async function POST(request: NextRequest) {
       masterEngineBlock: engineFeed?.promptBlock || null,
       intelligenceLineage: engineFeed?.lineage ? { masterEngine: engineFeed.lineage } : null,
       userId,
+      signal: request.signal,
     })
 
     if (result.shipError && !result.content) {
@@ -107,7 +107,5 @@ export async function POST(request: NextRequest) {
       { error: message },
       { status: isCpuTimeout ? 503 : 500 },
     )
-  } finally {
-    request.signal.removeEventListener('abort', abortHandler)
   }
 }

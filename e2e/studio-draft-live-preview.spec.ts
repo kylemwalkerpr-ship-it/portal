@@ -225,7 +225,7 @@ test.describe('Stage III · Draft — Live AI Writing Preview', () => {
     // Build a realistic SSE stream: connect → provider → delta chunks → final.
     const streamEvents = [
       { type: 'progress', stage: 'connect', message: 'Pipeline connected' },
-      { type: 'provider', provider: 'openai', model: 'gpt-5.6-luna' },
+      { type: 'provider', provider: 'entrim-qwen-27b', model: 'Qwen/Qwen3.6-27B' },
       { type: 'delta', text: '# UK Spouse Visa Financial Requirements\n\n' },
       { type: 'delta', text: 'The financial requirement is one of the most critical aspects ' },
       { type: 'delta', text: 'of the UK spouse visa application. Applicants must demonstrate ' },
@@ -435,7 +435,7 @@ test.describe('Stage III · Draft — Live AI Writing Preview', () => {
     // long enough to assert the streamed words before [DONE] unmounts it.
     await installSseFetchMock(page, [
       { delayMs: 300, event: { type: 'progress', stage: 'connect', message: 'Pipeline connected' } },
-      { delayMs: 300, event: { type: 'provider', provider: 'openai', model: 'gpt-5.6-luna' } },
+      { delayMs: 300, event: { type: 'provider', provider: 'entrim-qwen-27b', model: 'Qwen/Qwen3.6-27B' } },
       { delayMs: 0, event: { type: 'delta', text: 'First generation content here.' } },
       { delayMs: 900, event: { type: 'final', result: { jobId: 'mock-job-003', status: 'drafting' } } },
       { delayMs: 0, event: '[DONE]' },

@@ -130,8 +130,8 @@ function makeFailingJob(opts: {
     merged_at: null,
     closed_at: null,
     error_message: opts.errorMessage,
-    ai_provider: 'nvidia-deepseek',
-    ai_model: 'deepseek-ai/deepseek-v4-flash-0731',
+    ai_provider: 'entrim-qwen-27b',
+    ai_model: 'Qwen/Qwen3.6-27B',
     word_count: 1200,
     seo_score: opts.seoScore,
     audit_json: {

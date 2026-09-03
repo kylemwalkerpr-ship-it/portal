@@ -124,6 +124,16 @@ export function ReviewDraftsPanel({
       {drafts.map((j) => {
         const g = gateByJob.get(j.id)
         const score = g?.score ?? j.seo_score ?? null
+        const gate = resolveGate(j)
+        const cleared = shipGateIsCleared(gate)
+        // Badge honesty: green is earned ONLY by a canonical ship gate that is
+        // actually cleared (shipReady === true && blockers === 0). A high score
+        // with no gate evidence stays neutral; a known-blocked gate stays red.
+        const badgeColor = cleared
+          ? { bg: '#F0FDF4', fg: '#166534', bd: '#BBF7D0' }
+          : gate !== null
+            ? { bg: '#FEF2F2', fg: '#B91C1C', bd: '#FECACA' }
+            : { bg: E.parchment, fg: E.inkMuted, bd: E.hairline }
         const st = STATUS_LABEL[j.status] || { label: j.status, fg: E.inkMuted, bg: E.parchment }
         const active = selectedJobId === j.id
         const audit = j.audit_json as any
@@ -167,9 +177,9 @@ export function ReviewDraftsPanel({
                 <div style={{
                   width: 40, height: 40, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontFamily: C.mono, fontWeight: 800, fontSize: 13, flexShrink: 0,
-                  background: score >= 90 ? '#F0FDF4' : score >= 70 ? '#FFFBEB' : '#FEF2F2',
-                  color: score >= 90 ? '#166534' : score >= 70 ? '#B45309' : '#B91C1C',
-                  border: `1px solid ${score >= 90 ? '#BBF7D0' : score >= 70 ? '#FDE68A' : '#FECACA'}`,
+                  background: badgeColor.bg,
+                  color: badgeColor.fg,
+                  border: `1px solid ${badgeColor.bd}`,
                 }}>
                   {score}
                 </div>

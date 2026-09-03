@@ -1,6 +1,6 @@
 # Content Studio — Architecture (canonical)
 
-**Last updated:** 2026-07-27  
+**Last updated:** 2026-09-03  
 **Live UI:** https://portal.yousafeconsultancy.com/dashboard/admin/content
 
 This document is the source of truth for how Content Studio / SEO Factory is
@@ -24,7 +24,7 @@ deploys stay green.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Admin UI  /dashboard/admin/content                              │
-│  admin-command-center · content-studio-workspace                │
+│  admin-content-studio · content-studio-workspace                │
 └────────────────────────────┬────────────────────────────────────┘
                              │
      ┌───────────────────────┼───────────────────────┐

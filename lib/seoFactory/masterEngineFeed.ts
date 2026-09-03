@@ -12,6 +12,7 @@ import {
   masterEngineFixPlan,
   scoreMaster,
   type DerivedFeatures,
+  type LearnedWeightsInput,
   type MasterEngineInput,
   type MasterEngineReport,
 } from '@/lib/seoFactory/masterEngine'
@@ -20,6 +21,15 @@ import { loadLlmVisibilityEvidence } from '@/lib/seoEngine/llmVisibility'
 import { computeGscMix, type GscMix, type GscMixQueryRow } from '@/lib/seoFactory/gscMix'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
+import {
+  applyRewardNudges,
+  learnWeights,
+  type HistoricalOutcome,
+} from '@/lib/seoFactory/masterEngineLearn'
+import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
+
+/** Learned per-intent subsystem weights feed straight from applyRewardNudges. */
+type LearnReportWeights = NonNullable<LearnedWeightsInput['byIntent']>
 
 export interface MasterEngineFeedRequest {
   topic: string
@@ -303,12 +313,33 @@ export async function assembleMasterEngineFeed(
       gsc,
       competingUrls: req.competingUrls,
     }
-    const [withHealth, llmV, knowledge, cluster, ahrefs] = await Promise.all([
+    const [withHealth, llmV, knowledge, cluster, ahrefs, learned] = await Promise.all([
       attachSiteHealthFacts(input, req.canonicalUrl).catch(() => input),
       loadLlmVisibilityEvidence(primaryKeyword).catch(() => null),
       loadMatchingKnowledge(primaryKeyword, req.region),
       loadMatchingCluster(primaryKeyword, req.region),
       import('@/lib/seoEngine/ahrefsAudit').then((m) => m.loadLatestAhrefsSnapshot()).catch(() => null),
+      // Adaptive weights: train from real outcomes (merged jobs' stored engine
+      // reports × live GSC page positions) exactly the way /api/seo-engine/master
+      // does — in-process and cheap enough to co-run with the other feeds. Any
+      // failure degrades to the intent-conditioned prior, never to a failed feed.
+      (async (): Promise<{ byIntent: LearnReportWeights } | null> => {
+        try {
+          const built = await buildOutcomeHistoryFromLiveGsc()
+          const history: HistoricalOutcome[] = built.history
+          if (!history.length) return null
+          const report = learnWeights(history)
+          if (!report.models.length) return null
+          const nudged = applyRewardNudges(report, history)
+          return nudged.byIntent ? { byIntent: nudged.byIntent as LearnReportWeights } : null
+        } catch (e) {
+          console.warn(
+            '[masterEngineFeed] learned weights skipped — using intent-conditioned prior',
+            e instanceof Error ? e.message : e,
+          )
+          return null
+        }
+      })(),
     ])
     input = withHealth
     if (llmV) input.llmVisibility = llmV
@@ -327,7 +358,7 @@ export async function assembleMasterEngineFeed(
       }
     }
 
-    const report = scoreMaster(input)
+    const report = learned ? scoreMaster(input, learned) : scoreMaster(input)
     const fix = masterEngineFixPlan(input)
     const promptBlock = [
       renderMasterEnginePromptBlock(report, { knowledge, cluster }),

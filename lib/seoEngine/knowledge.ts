@@ -479,7 +479,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
               prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`,
               maxTokens: 250,
               timeoutMs: 25000,
-              aiProvider: 'runbios-glm-53-flash',
+              aiProvider: 'entrim-qwen-27b',
               skipQualityContract: true,
               temperature: 0.2,
             })

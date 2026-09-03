@@ -18,6 +18,7 @@ import {
 } from './pipeline'
 import { selectThinPagesForExpansion, expandThinPage } from './estateSweep'
 import { computeCrossDomainStats } from './crossDomainEnrich'
+import { assembleMasterEngineFeed } from './masterEngineFeed'
 
 export const DAILY_WAR_LIMIT = 5
 /** Midday Kenya = 12:00 EAT = 09:00 UTC */
@@ -171,6 +172,9 @@ export async function runOneDailyWin(opts: {
   maxRefine?: number
   userId?: string
   skipRecent?: boolean
+  /** Pre-composed Master Engine prompt block — skip duplicate assembly when an
+   *  upstream caller already built the feed for this term. */
+  masterEngineBlock?: string | null
 }): Promise<DailyWorkItem> {
   const {
     win,
@@ -222,6 +226,29 @@ export async function runOneDailyWin(opts: {
             ? 'regional_from'
             : win.contentType || 'legal_guide'
 
+    // Master SEO Engine feed — write the daily win against the same
+    // scoreMaster + gap plan the studio lanes use. Assembled per-win; skipped
+    // when the caller already supplied one (feed used upstream — no duplicate
+    // assembly just to save a stalled GSC/DB round).
+    let masterEngineBlock: string | null = opts.masterEngineBlock || null
+    if (!masterEngineBlock) {
+      try {
+        const feed = await assembleMasterEngineFeed({
+          topic: win.term,
+          primaryKeyword: win.term,
+          region: win.region || 'US',
+          contentType,
+          title: win.term,
+        })
+        masterEngineBlock = feed.promptBlock || null
+      } catch (e) {
+        console.warn(
+          '[dailyWarRoom] master engine feed skipped — continuing without engine block',
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     const result = await runSeoFactoryPipeline({
       topic: win.term,
       title: win.term,
@@ -235,6 +262,7 @@ export async function runOneDailyWin(opts: {
       maxRefine,
       opportunityAction: playToOpportunityAction(win.play as WarPlay),
       writeHint: win.writeHint,
+      masterEngineBlock,
       userId,
     })
 

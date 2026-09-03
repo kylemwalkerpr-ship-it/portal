@@ -5,6 +5,7 @@ import EditorMetricsStrip from './editor-metrics-strip'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
+import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -81,7 +82,8 @@ type Props = {
    *  canonicalUrl into the front matter — otherwise ahrefs_canonical_missing
    *  recurs on every re-audit because the repair never learns the URL. */
   targetUrl?: string
-  /** Review model override — defaults to Baseten DeepSeek V4 Flash 0731.
+  /** Review model override — defaults to Entrim Qwen3.6 27B
+   *  (DEFAULT_REVIEW_PIN — the live policy reviewer).
    *  The selected provider/model is sent to the reaudit API as reviewModel. */
   reviewModel?: string
   onReviewModelChange?: (m: string) => void
@@ -1020,13 +1022,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {saving ? 'Saving...' : 'Save'}
         </button>
 
-        {/* Review model selector — exactly four: Grok (SuperGrok/xAI),
-            Claude Opus 5, Claude Sonnet 5 (Run BiOS), and the default
-            GLM 5.3 Flash (Run BiOS). */}
+        {/* Review model selector — hosts/selectors come from the lane config;
+            the fallback is the live-policy review lead Entrim Qwen3.6 27B. */}
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
-            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || 'runbios-glm-53-flash')}
+            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || DEFAULT_REVIEW_PIN)}
             onPinChange={onReviewModelChange}
             disabled={allBusy}
             modelAriaLabel="Review AI model"

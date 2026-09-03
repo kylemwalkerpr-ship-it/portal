@@ -691,7 +691,9 @@ export function runbiosFirstProviderOrder(raw?: string | null): string {
   return JSON.stringify(order)
 }
 
-/** Move NVIDIA MiniMax to the front of a saved provider-order JSON/CSV. */
+/** Move NVIDIA MiniMax to the front of a saved provider-order JSON/CSV.
+ *  Retained for backward compatibility with older callers/tests; the persisted
+ *  default no longer uses it (Entrim Qwen is the live draft lead). */
 export function minimaxFirstProviderOrder(raw?: string | null): string {
   const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
   if (!raw || !String(raw).trim()) return fallback
@@ -700,6 +702,25 @@ export function minimaxFirstProviderOrder(raw?: string | null): string {
   if (!Array.isArray(values)) return fallback
   const order = values.map((v) => String(v).trim()).filter(Boolean)
   const pin = 'nvidia-minimax'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return JSON.stringify(order)
+}
+
+/** Move Entrim Qwen3.6 27B to the front of a saved provider-order JSON/CSV —
+ *  the live-entrim persist default (matches DEFAULT_PROVIDER_ORDER[0]). */
+export function entrimFirstProviderOrder(raw?: string | null): string {
+  const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
+  if (!raw || !String(raw).trim()) return fallback
+  let values: unknown
+  try { values = JSON.parse(raw) } catch { values = String(raw).split(',') }
+  if (!Array.isArray(values)) return fallback
+  const order = values.map((v) => String(v).trim()).filter(Boolean)
+  const pin = 'entrim-qwen-27b'
   const at = order.indexOf(pin)
   if (at < 0) order.unshift(pin)
   else if (at > 0) {
@@ -747,18 +768,19 @@ export function parasailFirstProviderOrder(raw?: string | null): string {
 
 let draftDefaultsEnsured = false
 
-/** Persist NVIDIA MiniMax M3 as the drafting default when the saved pin is
- *  missing or belongs to a previous Run BiOS GLM/Nemotron/Parasail/Baseten
- *  default. The UI Draft default is `nvidia-minimax`; the backend must match. */
+/** Persist Entrim Qwen3.6 27B as the drafting default when the saved pin is
+ *  missing or belongs to a previous Run BiOS GLM / NVIDIA MiniMax / Nemotron /
+ *  Parasail / Baseten default. The UI Draft default is `entrim-qwen-27b`; the
+ *  backend must match. */
 export async function ensureDraftDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
   if (draftDefaultsEnsured) return
   draftDefaultsEnsured = true
   const settings = await getAiSettings(true)
   const current = String(settings.default_provider || '').trim()
   if (STALE_DEFAULT_PROVIDERS.has(current)) {
-    await setAiSetting('default_provider', 'nvidia-minimax', updatedBy)
+    await setAiSetting('default_provider', 'entrim-qwen-27b', updatedBy)
   }
-  const nextOrder = minimaxFirstProviderOrder(settings.provider_order)
+  const nextOrder = entrimFirstProviderOrder(settings.provider_order)
   if (nextOrder !== settings.provider_order) {
     await setAiSetting('provider_order', nextOrder, updatedBy)
   }

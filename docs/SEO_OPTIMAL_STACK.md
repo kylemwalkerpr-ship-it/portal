@@ -20,7 +20,8 @@ End-state architecture for Content Studio + GSC + agent MCP.
 │  3. Auto-Pilot (useWarRoom:true) / Keywords / Manual stream      │
 │  4. Estate shipGate (host·path·format) before any Git write      │
 │  5. Approve → main + deploy monitor (Workers AI)                 │
-│  AI: DeepSeek V4 Pro (NVIDIA) → CF → Groq → Gemini → OpenRouter  │
+│  AI: Entrim Qwen3.6 27B → Entrim DeepSeek V4 Flash             │
+│      (ENTRIM_API_KEY — single-key cascade, no NVIDIA/CF legs)   │
 │  Ship door: shipContent only (PR → CI → merge; human may main)   │
 │  Prompts: play-specific SERP/AEO tactics (title CTR, strike…)    │
 └─────────────────────────────┬────────────────────────────────────┘
@@ -78,7 +79,7 @@ Priority = estimated gain clicks × authority × play weight. Brand/meal-plan/no
 | Agent GSC tools | **mcp-gsc** (uvx `mcp-search-console`) | Free MIT, 20 tools, inspect + analytics |
 | Ranking engine | **War Room** (CTR gap · strike · cannibal) | Ranks by *gain*, not vanity volume |
 | Planner feed | **optimal-plan** (war-room first + lanes) | Estate-aware; paid MCPs don’t know legal vs usa host |
-| Generation | **DeepSeek V4 Pro → CF → free tiers** + play prompts | Long-form primary; free cascade fallbacks |
+| Generation | **Entrim Qwen3.6 27B → Entrim DeepSeek V4 Flash** (`ENTRIM_API_KEY`) + play prompts | Long-form primary; one-key Entrim cascade |
 | Ship | **Single door `shipContent` + CI-gated merge** | Unattended never direct-pushes main |
 
 Paid SEO MCPs (Ahrefs, Semrush, DataForSEO) add **competitor** volume only. Layer them later if you buy API access — never replace GSC + estate gate.

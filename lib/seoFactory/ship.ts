@@ -636,6 +636,21 @@ export async function shipContent(opts: {
     console.warn('[ship] compliance gate advisory run failed (non-blocking):', msg || e)
   }
 
+  // ── Route-subtype overwrite guard (last line of defence) ─────────────────
+  // Refuse to overwrite an existing page whose route subtype differs from this
+  // article's (the 2026-08 spouse-visa overwrite root). New pages pass through.
+  // Runs BEFORE the dry-run return so a dry run reports the same guard a real
+  // ship would hit — a dry run must never claim green while this guard would
+  // refuse the actual write.
+  await assertNoRouteSubtypeConflict({
+    owner,
+    repo,
+    filePath,
+    primaryKeyword: opts.primaryKeyword,
+    title: opts.title,
+    branch: branchMain,
+  })
+
   if (opts.dryRun) {
     return {
       mode: opts.mode,
@@ -649,18 +664,6 @@ export async function shipContent(opts: {
       repairsApplied,
     }
   }
-
-  // ── Route-subtype overwrite guard (last line of defence) ─────────────────
-  // Refuse to overwrite an existing page whose route subtype differs from this
-  // article's (the 2026-08 spouse-visa overwrite root). New pages pass through.
-  await assertNoRouteSubtypeConflict({
-    owner,
-    repo,
-    filePath,
-    primaryKeyword: opts.primaryKeyword,
-    title: opts.title,
-    branch: branchMain,
-  })
 
   // ── Direct main ONLY for human-approved ships (architecture I4) ─────────
   // Unattended factory / War Room must never red-X main without a PR + CI gate.
