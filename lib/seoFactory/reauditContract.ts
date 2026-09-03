@@ -271,7 +271,7 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
   // read a blocker count with no remediation path. Same dedupe rule as warnings.
   for (const b of audit.blockers) {
     if (qualityCodes.has(b.code)) continue
-    annotations.push(...findingToAnnotations(content, b))
+    annotations.push(...findingToAnnotations(content, { ...b, severity: 'blocker' as const }))
   }
   const warningsData: ReauditContractOutput['warningsData'] = mergeWarnings(result.warnings, audit.warnings)
   // Title advisory (WARNING only — never a block): a filler H1 or frontmatter
