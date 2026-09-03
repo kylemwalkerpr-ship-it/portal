@@ -486,6 +486,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       aiProvider: input.aiProvider,
       signal: input.signal,
       exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+      cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
     })
     // Never accept a shorter body when we were expanding for depth
     if (underDepth && countBodyWords(ai.text) < prevWords) {
@@ -601,6 +602,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           temperature: 0.42,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         if (countBodyWords(ai.text) > currentWords) {
@@ -625,6 +627,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           temperature: 0.45,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         const merged = mergeAppendedSections(content, ai.text)
@@ -708,6 +711,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           temperature: 0.35,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
@@ -835,6 +839,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           temperature: 0.3,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {

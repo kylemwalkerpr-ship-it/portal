@@ -549,6 +549,7 @@ export async function* runSeoFactoryPipelineStream(
               aiProvider: input.aiProvider,
               signal: input.signal,
               exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+              cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
             })) {
               if (ev.type === 'provider') {
                 provider = ev.provider
@@ -621,6 +622,7 @@ export async function* runSeoFactoryPipelineStream(
             aiProvider: input.aiProvider,
             signal: input.signal,
             exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })) {
             if (ev.type === 'provider') {
               provider = ev.provider
@@ -825,6 +827,7 @@ export async function* runSeoFactoryPipelineStream(
           temperature: g.temperature,
           aiProvider: g.aiProvider,
           exclusive: Boolean(g.aiProvider) && g.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(g.aiProvider) && g.aiProvider !== 'auto',
         }),
     })) {
       if (ev.type === 'done') {
@@ -920,6 +923,7 @@ export async function* runSeoFactoryPipelineStream(
             temperature: 0.35,
             aiProvider: input.aiProvider,
             exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })
           const aiWords = countBodyWords(ai.text)
           // Accept when the revision clears the floor, OR when it materially
@@ -1017,6 +1021,7 @@ export async function* runSeoFactoryPipelineStream(
           temperature: 0.4,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
         })
         if (countBodyWords(expand.text) > before) {
           content = expand.text
@@ -1121,6 +1126,7 @@ export async function* runSeoFactoryPipelineStream(
             temperature: 0.3,
             aiProvider: input.aiProvider,
             exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })
           const aiWords = countBodyWords(ai.text)
           const fixedBlockers = auditContent({

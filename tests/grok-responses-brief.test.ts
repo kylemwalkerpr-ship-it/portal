@@ -82,6 +82,9 @@ describe('Grok 4.6 Responses transport', () => {
     expect(isPaymentOrQuotaFailure(new Error('openai 429 insufficient_quota'))).toBe(true)
     expect(isPaymentOrQuotaFailure(new Error('You exceeded your current quota'))).toBe(true)
     expect(isPaymentOrQuotaFailure(new Error('timeout'))).toBe(false)
+    expect(isPaymentOrQuotaFailure(new Error(
+      'grok 403: {"code":"permission-denied","error":"Your team 4f1b898f-d114-41b9-b8ef-136fbbf33005 has either used all available credits or reached its monthly spending limit. To continue making API requests, please purchase more credits or raise yo"}',
+    ))).toBe(true)
   })
 
   it('a grok pin calls /v1/responses with grok-4.6 (live transport)', async () => {

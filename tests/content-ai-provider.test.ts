@@ -281,6 +281,38 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
     }
   })
 
+  it('a grok 403 spending-limit on an exclusive grok draft pin cascades to Entrim', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      if (url.includes('api.x.ai')) {
+        return new Response(JSON.stringify({
+          code: 'permission-denied',
+          error: 'Your team 4f1b898f-d114-41b9-b8ef-136fbbf33005 has either used all available credits or reached its monthly spending limit.',
+        }), { status: 403, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Draft via Entrim after Grok API quota.' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({
+        system: 'Write.',
+        prompt: 'Draft a page',
+        maxTokens: 2048,
+        skipQualityContract: true,
+        aiProvider: 'grok',
+        exclusive: true,
+        cascadeOnCapacity: true,
+      })
+      expect(res.provider).toMatch(/entrim/)
+      expect(res.text).toContain('Entrim after Grok')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
   it('without cascadeOnCapacity an exclusive reviewer still hard-fails (owner stays owner)', async () => {
     process.env.XAI_API_KEY = 'test-xai-key'
     const originalFetch = global.fetch

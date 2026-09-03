@@ -735,7 +735,7 @@ export function isUnavailableDeploymentError(err: unknown): boolean {
 /** Unpaid / quota / billing failures — SuperGrok is the studio-wide second option. */
 export function isPaymentOrQuotaFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err || '')
-  return /insufficient_quota|unpaid|payment.?required|\b402\b|billing|past.?due|credit.?exhausted|requires.?payment|account.?not.?funded|quota.?exceeded|exceeded.?your.?current.?quota|You exceeded your current quota/i.test(msg)
+  return /insufficient_quota|unpaid|payment.?required|\b402\b|billing|past.?due|credit.?exhausted|requires.?payment|account.?not.?funded|quota.?exceeded|exceeded.?your.?current.?quota|You exceeded your current quota|permission-denied|spending.?limit|monthly.?spending|used all available credits|purchase more credits|raise yo/i.test(msg)
 }
 
 /** Pull final prose out of an xAI / OpenAI Responses payload. */
@@ -3292,9 +3292,12 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
             `Provider errors: ${errors.join(' | ')}`,
           )
         }
+        const grokQuotaHint =
+          prefer === 'grok' && isPaymentOrQuotaFailure(e)
+            ? ' A SuperGrok chat subscription is not xAI API team credits (api.x.ai). Raise the API spend limit or pin Entrim DeepSeek/Qwen. '
+            : ' Check the API key and model in repo secrets or the AI Key Vault (Command Center → Configure). '
         throw new Error(
-          `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}. ` +
-          `Check the API key and model in repo secrets or the AI Key Vault (Command Center → Configure). ` +
+          `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}.${grokQuotaHint}` +
           `Provider errors: ${errors.join(' | ')}`,
         )
       }
@@ -3490,7 +3493,11 @@ export async function* generateContentTextStream(
               console.warn(`[contentAi] explicit ${prefer} unavailable (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
               continue
             }
-            throw new Error(failure)
+            const grokQuotaHint =
+              prefer === 'grok' && isPaymentOrQuotaFailure(e)
+                ? ' A SuperGrok chat subscription is not xAI API team credits (api.x.ai). Raise the API spend limit or pin Entrim DeepSeek/Qwen.'
+                : ''
+            throw new Error(failure + grokQuotaHint)
           }
         }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
