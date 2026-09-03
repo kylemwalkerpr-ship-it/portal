@@ -23,6 +23,7 @@ import {
   startSuperGrokDeviceLogin,
   pollSuperGrokDeviceLogin,
   ensureSuperGrokAccessToken,
+  overlayGrokAuth,
   XAI_OAUTH_CLIENT_ID_DEFAULT,
 } from '@/lib/xaiSuperGrokOAuth'
 
@@ -134,5 +135,15 @@ describe('SuperGrok OAuth helpers', () => {
       new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400, headers: { 'content-type': 'application/json' } }),
     ) as typeof fetch
     await expect(ensureSuperGrokAccessToken()).resolves.toBeNull()
+  })
+
+  it('SuperGrok session overlays a console XAI_API_KEY the same way Grok CLI does', () => {
+    const next = overlayGrokAuth(
+      { XAI_API_KEY: 'xai-team-console-key', XAI_MODEL: 'grok-4.6' },
+      { accessToken: 'oauth-session-token', expiresAt: Date.now() + 60_000, authMode: 'supergrok' },
+    )
+    expect(next.XAI_API_KEY).toBe('oauth-session-token')
+    expect(next.XAI_AUTH_MODE).toBe('supergrok')
+    expect(overlayGrokAuth({ XAI_API_KEY: 'xai-team-console-key' }, null).XAI_API_KEY).toBe('xai-team-console-key')
   })
 })

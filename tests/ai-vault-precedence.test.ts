@@ -111,7 +111,7 @@ describe('vault precedence — configurator keys beat deployment env (Entrim + G
     expect(isGrokConfigured()).toBe(true)
   })
 
-  it('a console XAI_API_KEY is not shadowed by SuperGrok OAuth overlay', async () => {
+  it('without a SuperGrok session the console XAI_API_KEY remains the Grok fallback', async () => {
     process.env.XAI_API_KEY = 'xai-subscription-key'
     mockModule.__setVaultRows([])
     const overlay = await buildVaultEnvOverrides(true)

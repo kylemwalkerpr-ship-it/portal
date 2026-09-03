@@ -7,9 +7,9 @@
  * consent with an eligible SuperGrok or X Premium+ account.
  *
  * Tokens live in ai_settings (admin DB) and are refreshed before generation.
- * xAI decides which subscription tiers may call the OAuth API; a 403 after
- * a successful login means the account is gated and the metered console key
- * remains the fallback.
+ * Same precedence as Grok CLI (`~/.grok/auth.json`): a live SuperGrok session
+ * beats a console `XAI_API_KEY`. The metered team key is only used when
+ * SuperGrok is disconnected or the refresh token is dead.
  */
 
 import {
@@ -290,6 +290,22 @@ export async function refreshSuperGrokToken(refreshToken: string): Promise<Token
     throw new Error(`SuperGrok token refresh failed (${status}): ${message}`)
   }
   return tokensFromResponse({ ...json, refresh_token: asString(json.refresh_token) || refreshToken })
+}
+
+/**
+ * Grok CLI parity: interactive SuperGrok session wins over a console API key.
+ * `XAI_API_KEY` (Worker secret / vault `xai-…` key) is fallback only.
+ */
+export function overlayGrokAuth(
+  overlay: Record<string, string>,
+  oauth: SuperGrokAccess | null,
+): Record<string, string> {
+  if (!oauth?.accessToken) return overlay
+  const next = { ...overlay }
+  next.XAI_API_KEY = oauth.accessToken
+  next.XAI_AUTH_MODE = 'supergrok'
+  if (!next.XAI_MODEL) next.XAI_MODEL = XAI_DEFAULT_MODEL
+  return next
 }
 
 export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | null> {

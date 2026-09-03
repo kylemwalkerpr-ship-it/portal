@@ -428,29 +428,12 @@ export async function refreshAiVault(): Promise<string[]> {
     const overlay = await vault.buildVaultEnvOverrides(true)
     try {
       if (typeof vault.getAiSettings === 'function') {
-        const { ensureSuperGrokAccessToken, XAI_DEFAULT_MODEL } = await import('@/lib/xaiSuperGrokOAuth')
-        // Configurator precedence: a vault XAI row (admin-pasted key) wins
-        // over the SuperGrok OAuth token — the token only fills the gap when
-        // no explicit XAI credential is configured.
-        // SuperGrok OAuth must not shadow a configured console API key
-        // (Worker secret or vault `xai-…` key). A previous SuperGrok
-        // device-login stored in ai_settings used to win and 403 on
-        // exhausted team credits while the subscription key sat unused.
-        const envKey = String(process.env.XAI_API_KEY || '').trim()
-        const vaultKey = String(overlay.XAI_API_KEY || '').trim()
-        const vaultIsConsoleKey = /^xai-/i.test(vaultKey)
-        const envIsUsable = Boolean(envKey)
-        if (!vaultIsConsoleKey && envIsUsable) {
-          delete overlay.XAI_API_KEY
-          delete overlay.XAI_AUTH_MODE
-        } else if (!vaultKey && !envIsUsable) {
-          const oauth = await ensureSuperGrokAccessToken()
-          if (oauth?.accessToken) {
-            overlay.XAI_API_KEY = oauth.accessToken
-            overlay.XAI_AUTH_MODE = 'supergrok'
-            if (!overlay.XAI_MODEL) overlay.XAI_MODEL = XAI_DEFAULT_MODEL
-          }
-        }
+        const { ensureSuperGrokAccessToken, overlayGrokAuth } = await import('@/lib/xaiSuperGrokOAuth')
+        // Grok CLI parity: a live SuperGrok session (device login) beats a
+        // console XAI_API_KEY. Team API credits are a different product —
+        // they are fallback only when SuperGrok is not connected.
+        const oauth = await ensureSuperGrokAccessToken()
+        Object.assign(overlay, overlayGrokAuth(overlay, oauth))
       }
     } catch (oauthErr) {
       console.warn(
