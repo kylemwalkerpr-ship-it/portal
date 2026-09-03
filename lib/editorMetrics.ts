@@ -35,6 +35,7 @@ export type EditorSeoHint = {
   region?: string | null
   contentType?: string | null
   audience?: string | null
+  tone?: string | null
 }
 
 export type ReadabilityFix = { quote: string; suggestion: string; reason: string; words: number }
@@ -64,11 +65,22 @@ export function scoreHarperLints(lints: Array<{ kind: string }>): { score: numbe
  * collapses the rest into plain sentences. Deterministic — used by both the
  * readability and (indirectly) grammar scoring.
  */
-/** Brief-informed Flesch floor: blogs scan easier; legal guides may sit lower. */
-export function fleschTargetForBrief(hint?: EditorSeoHint): number {
-  const t = String(hint?.contentType || '').toLowerCase()
-  if (t === 'blog_post' || t === 'blog_summary') return 60
-  if (t === 'regional_page' || t === 'regional_from' || t === 'regional_university') return 55
+function yamlField(md: string | undefined, key: string): string {
+  if (!md) return ''
+  const m = String(md).match(new RegExp(`^${key}:\\s*["']?([^\\n"']+)`, 'im'))
+  return m ? m[1].trim().toLowerCase() : ''
+}
+
+/** Brief-informed Flesch floor: audience + tone + type, not a one-size legal 50. */
+export function fleschTargetForBrief(hint?: EditorSeoHint, md?: string): number {
+  const t = String(hint?.contentType || yamlField(md, 'content_type') || '').toLowerCase()
+  const aud = `${hint?.audience || ''} ${yamlField(md, 'audience')} ${hint?.primaryKeyword || ''}`.toLowerCase()
+  const tone = String(hint?.tone || yamlField(md, 'tone') || '').toLowerCase()
+  const consumer = /student|applicant|parent|graduate|consumer|reader|family|hire |you\b/.test(aud)
+  const plainTone = /educational|casual|friendly|plain/.test(tone)
+  if (t === 'blog_post' || t === 'blog_summary' || t === 'blog') return 60
+  if (t.startsWith('regional')) return 55
+  if (consumer || plainTone) return 55
   return 50
 }
 
@@ -102,11 +114,21 @@ export function extractProse(md: string): string {
  * <30 = postgraduate). Computed on extracted prose; clamps to a friendly band
  * for a consumer audience.
  */
+function countWordSyllables(word: string): number {
+  const w = word.toLowerCase().replace(/[^a-z]/g, '')
+  if (w.length <= 3) return 1
+  const core = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '')
+  const groups = core.match(/[aeiouy]{1,2}/g)
+  return Math.max(1, groups ? groups.length : 1)
+}
+
 export function fleschReadingEase(text: string): { score: number; words: number; sentences: number } {
-  const words = (String(text || '').match(/[a-zA-Z][a-zA-Z'-]*/g) || []).length
+  const tokens = String(text || '').match(/[a-zA-Z][a-zA-Z'-]*/g) || []
+  const words = tokens.length
   const sentences = Math.max(1, (String(text || '').match(/[.!?]+(\s|$)/g) || []).length)
-  if (words < 10) return { score: 70, words, sentences } // too little text — neutral
-  const syllables = (String(text || '').match(/[aeiouyAEIOUY]+/g) || []).length
+  if (words < 10) return { score: 70, words, sentences }
+  let syllables = 0
+  for (const w of tokens) syllables += countWordSyllables(w)
   const raw = 206.835 - 1.015 * (words / sentences) - 84.6 * (syllables / Math.max(1, words))
   return { score: Math.max(5, Math.min(100, Math.round(raw))), words, sentences }
 }
@@ -226,9 +248,9 @@ function escapeRegExp(s: string): string {
  * Full editor quality pack: readability + SEO locally, grammar from Harper
  * lints. Pure — the caller picks how it sources lints (browser Harper).
  */
-function splitLongSentence(sentence: string): string | null {
+function splitLongSentence(sentence: string, minWords = 22): string | null {
   const words = sentence.trim().split(/\s+/).filter(Boolean)
-  if (words.length < 28) return null
+  if (words.length < minWords) return null
   const raw = sentence.trim()
   const mid = Math.floor(raw.length / 2)
   const windows = ['; ', ': ', ', and ', ', but ', ', which ', ' — ', ' – ']
@@ -280,15 +302,17 @@ function isTocOrSourceDump(s: string): boolean {
 }
 
 export function suggestReadabilityFixes(md: string, hint?: EditorSeoHint): ReadabilityFix[] {
+  const target = fleschTargetForBrief(hint, md)
+  const minWords = target >= 58 ? 18 : 22
   const out: ReadabilityFix[] = []
   for (const para of collectReadableParagraphs(md)) {
     if (isTocOrSourceDump(para)) continue
     const sentences = para.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0)
     for (const s of sentences) {
       const words = s.trim().split(/\s+/).filter(Boolean).length
-      if (words < 28) continue
+      if (words < minWords) continue
       if (isTocOrSourceDump(s)) continue
-      const suggestion = splitLongSentence(s)
+      const suggestion = splitLongSentence(s, minWords)
       if (!suggestion || suggestion === s.trim()) continue
       if (!md.includes(s.trim()) && !para.includes(s.trim())) continue
       out.push({
@@ -329,7 +353,7 @@ export function applyReadabilityFixes(md: string, fixes: ReadabilityFix[]): { co
 export function computeEditorMetrics(md: string, lints: Array<{ kind: string }>, hint?: EditorSeoHint): EditorMetrics {
   const prose = extractProse(md)
   const ease = fleschReadingEase(prose)
-  const target = fleschTargetForBrief(hint)
+  const target = fleschTargetForBrief(hint, md)
   const grammar = scoreHarperLints(lints)
   const seo = computeSeoScore(md, hint)
   return {

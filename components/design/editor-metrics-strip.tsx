@@ -298,7 +298,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
             {r?.words.toLocaleString()} words · {r?.sentences} sentences · brief floor {r?.target ?? 50}
           </div>
           <div style={{ color: C.muted, marginTop: 3 }}>
-            Target flow from the brief: 15–22 word sentences, plain practitioner language, one idea per paragraph.
+            Brief: {hint?.contentType || 'article'} · {hint?.audience || hint?.tone || 'reader'} · {hint?.region || 'US'} · 15–22 word sentences, plain practitioner language.
           </div>
           {fixes.map((fx, i) => (
             <div key={i} style={{ marginTop: 8, color: C.text }}>
@@ -318,21 +318,29 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               </button>
             </div>
           ))}
-          {fixes.length > 0 && (
-            <button
-              type="button"
-              disabled={!onApplied}
-              onClick={() => {
-                const local = applyReadabilityFixes(textRef.current, fixes)
-                if (local.applied > 0 && onApplied) onApplied(local.content)
-              }}
-              style={{ marginTop: 8, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#17365D', fontSize: 11, fontWeight: 600, color: '#fff', cursor: 'pointer' }}
-            >
-              Apply {fixes.length} readability fix{fixes.length === 1 ? '' : 'es'}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={!onApplied || fixes.length === 0}
+            onClick={() => {
+              const local = applyReadabilityFixes(textRef.current, fixes)
+              if (local.applied > 0 && onApplied) onApplied(local.content)
+            }}
+            style={{
+              marginTop: 8, padding: '4px 10px', borderRadius: 6, border: 'none',
+              background: '#17365D', fontSize: 11, fontWeight: 600, color: '#fff',
+              cursor: fixes.length && onApplied ? 'pointer' : 'not-allowed',
+              opacity: fixes.length ? 1 : 0.55,
+            }}
+          >
+            {fixes.length ? `Auto-fix ${fixes.length} long sentence${fixes.length === 1 ? '' : 's'}` : 'Auto-fix readability'}
+          </button>
           {fixes.length === 0 && r?.pass && (
             <div style={{ color: C.green, marginTop: 6 }}>Readability is at the brief floor.</div>
+          )}
+          {fixes.length === 0 && r && !r.pass && (
+            <div style={{ color: C.muted, marginTop: 6 }}>
+              Score is below the brief floor, but body sentences are already short. Dense words (not length) are holding Flesch down — shorten jargon in AI Style or Audit &amp; Fix.
+            </div>
           )}
         </div>
       )

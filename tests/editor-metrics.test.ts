@@ -65,6 +65,7 @@ Plain sentence here. Another one.
   it('brief content type sets the Flesch floor and long sentences get split suggestions', () => {
     expect(fleschTargetForBrief({ contentType: 'blog_post' })).toBe(60)
     expect(fleschTargetForBrief({ contentType: 'legal_guide' })).toBe(50)
+    expect(fleschTargetForBrief({ contentType: 'article', audience: 'students hiring an admissions consultant', tone: 'educational' })).toBe(55)
     const long = 'Applicants who want a graduate visa after study in Australia must compare the post-study work stream with the graduate work stream and collect evidence of CRICOS study, English, and a skills assessment before they lodge because processing clocks do not pause for missing documents.'
     const fixes = suggestReadabilityFixes(`# T\n\n${long}\n`, { contentType: 'blog_post', audience: 'graduates' })
     expect(fixes.length).toBeGreaterThan(0)
