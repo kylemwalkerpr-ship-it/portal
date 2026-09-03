@@ -1,4 +1,4 @@
-import { finalizePipelineContentType, normalizeJobContentType, resolveEditorialContentType } from '../lib/seoFactory/jobContentType'
+import { defaultJobTargetRepo, finalizePipelineContentType, normalizeJobContentType, resolveEditorialContentType } from '../lib/seoFactory/jobContentType'
 
 describe('normalizeJobContentType (content_jobs CHECK constraint)', () => {
   it('passes through DB-allowed types unchanged', () => {
@@ -20,6 +20,15 @@ describe('normalizeJobContentType (content_jobs CHECK constraint)', () => {
     expect(normalizeJobContentType('')).toBe('article')
     expect(normalizeJobContentType(null)).toBe('article')
     expect(normalizeJobContentType(undefined)).toBe('article')
+  })
+})
+
+describe('defaultJobTargetRepo', () => {
+  it('never returns empty — content_jobs.target_repo is NOT NULL', () => {
+    expect(defaultJobTargetRepo('blog_post', 'US')).toBe('yousafe-consultancy')
+    expect(defaultJobTargetRepo('legal_guide', 'US')).toBe('caseworks')
+    expect(defaultJobTargetRepo('marketplace_gig')).toBe('portal')
+    expect(defaultJobTargetRepo(undefined)).toBeTruthy()
   })
 })
 

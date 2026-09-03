@@ -45,12 +45,19 @@ export { HARPER_ESTATE_WORDS, harperSafeLines, spliceWords } from '@/lib/harperT
 
 const linterByDialect = new Map<string, Promise<LocalLinter>>()
 
+function dialectEnum(key: 'american' | 'british'): Dialect {
+  try {
+    if (key === 'british' && Dialect.British != null) return Dialect.British
+  } catch { /* enum missing in this build */ }
+  return Dialect.American
+}
+
 function getLinter(region?: string | null): Promise<LocalLinter> {
   const key = dialectForRegion(region)
   let pending = linterByDialect.get(key)
   if (!pending) {
     pending = (async () => {
-      const dialect = key === 'british' ? Dialect.British : Dialect.American
+      const dialect = dialectEnum(key)
       const linter = new LocalLinter({ binary: binaryInlined, dialect })
       await linter.setup()
       try {
@@ -69,10 +76,21 @@ function getLinter(region?: string | null): Promise<LocalLinter> {
         } as Record<string, boolean>)
       } catch { /* rule keys vary by harper.js version */ }
       return linter
-    })()
+    })().catch((err) => {
+      linterByDialect.delete(key)
+      throw err
+    })
     linterByDialect.set(key, pending)
   }
   return pending
+}
+
+async function lintSource(linter: LocalLinter, source: string): Promise<Lint[]> {
+  try {
+    return await linter.lint(source, { language: 'markdown', dedup: true })
+  } catch {
+    return linter.lint(source, { language: 'plaintext', dedup: true })
+  }
 }
 
 function kindOf(l: Lint): string {
@@ -123,7 +141,7 @@ export async function runHarperGrammar(md: string, signal?: AbortSignal, region?
     if (source.trim().length < 80) {
       return { score: 100, errors: 0, suggestions: 0, items: [] }
     }
-    const lints: Lint[] = await linter.lint(source, { language: 'markdown', dedup: true })
+    const lints: Lint[] = await lintSource(linter, source)
     if (signal?.aborted) return null
     const kept = lints.filter(keepLint)
     const mapped = []
@@ -190,7 +208,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
     const seen = new Set<string>()
     for (let round = 0; round < 16; round++) {
       if (currentBody.trim().length < 40) break
-      const lints = (await linter.lint(currentBody, { language: 'markdown', dedup: true })).filter(keepLint)
+      const lints = (await lintSource(linter, currentBody)).filter(keepLint)
       const spanFixes: Array<{ start: number; end: number; replacement: string; kind: string; problem: string; message: string }> = []
       for (const l of lints) {
         const kind = l.lint_kind() || ''

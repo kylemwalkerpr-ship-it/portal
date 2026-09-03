@@ -24,6 +24,15 @@ const CONTENT_TYPE_ALIASES: Record<string, string> = {
   blog_summary: 'blog_post',
 }
 
+/** GitHub repo the job will ship to — required NOT NULL on content_jobs. */
+export function defaultJobTargetRepo(contentType?: string | null, region?: string | null): string {
+  const ct = normalizeJobContentType(contentType || 'blog_post')
+  if (ct === 'marketplace_gig') return 'portal'
+  if (ct === 'blog_post' || ct === 'regional_page') return 'yousafe-consultancy'
+  void region
+  return 'caseworks'
+}
+
 export function normalizeJobContentType(contentType: string | null | undefined): string {
   const raw = (contentType || '').trim()
   if (DB_ALLOWED_CONTENT_TYPES.has(raw)) return raw

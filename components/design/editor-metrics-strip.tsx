@@ -83,6 +83,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   const [metrics, setMetrics] = React.useState<EditorMetrics | null>(null)
   const [harper, setHarper] = React.useState<HarperLintSummary | null>(null)
   const [harperBusy, setHarperBusy] = React.useState(false)
+  const [harperEngineError, setHarperEngineError] = React.useState<string | null>(null)
   const [fixingHarper, setFixingHarper] = React.useState(false)
   const [harperFixNote, setHarperFixNote] = React.useState<string | null>(null)
   const [expanded, setExpanded] = React.useState<'grammar' | 'readability' | 'seo' | 'style' | null>(null)
@@ -109,9 +110,22 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     if (String(content).trim().length < 120) return
     const timer = setTimeout(async () => {
       setHarperBusy(true)
-      const summary = await runHarperGrammar(content, undefined, hintRef.current?.region)
-      setHarperBusy(false)
-      if (summary) setHarper(summary)
+      setHarperEngineError(null)
+      try {
+        const summary = await runHarperGrammar(content, undefined, hintRef.current?.region)
+        if (summary) {
+          setHarper(summary)
+          setHarperEngineError(null)
+        } else {
+          setHarper(null)
+          setHarperEngineError('Harper could not start in this browser — click Retry.')
+        }
+      } catch (err) {
+        setHarper(null)
+        setHarperEngineError(err instanceof Error ? err.message : 'Harper could not start in this browser')
+      } finally {
+        setHarperBusy(false)
+      }
     }, 1100)
     return () => clearTimeout(timer)
   }, [content, hint?.region])
@@ -195,8 +209,30 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       return (
         <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.5 }}>
           {harperBusy && <span style={{ color: C.muted }}>Harper.js loading (on-device grammar)...</span>}
-          {!harperBusy && items.length === 0 && (
-            <span style={{ color: C.green }}>No grammar issues detected{harper ? '' : ' — engine not available in this browser'}.</span>
+          {!harperBusy && harperEngineError && (
+            <div style={{ color: C.red, marginBottom: 6 }}>
+              {harperEngineError}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setHarperEngineError(null)
+                  setHarperBusy(true)
+                  void runHarperGrammar(textRef.current, undefined, hintRef.current?.region)
+                    .then((summary) => {
+                      if (summary) setHarper(summary)
+                      else setHarperEngineError('Harper could not start in this browser — click Retry.')
+                    })
+                    .catch((err) => setHarperEngineError(err instanceof Error ? err.message : 'Harper failed'))
+                    .finally(() => setHarperBusy(false))
+                }}
+                style={{ padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!harperBusy && !harperEngineError && items.length === 0 && (
+            <span style={{ color: C.green }}>No grammar issues detected.</span>
           )}
           {harperFixNote && <div style={{ color: C.green, marginBottom: 6 }}>{harperFixNote}</div>}
           {items.map((it, i) => (

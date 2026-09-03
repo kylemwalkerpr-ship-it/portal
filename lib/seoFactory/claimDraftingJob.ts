@@ -4,7 +4,7 @@
  * A browser refresh must reload this row — never lose the draft to React state.
  */
 import { createClient } from '@supabase/supabase-js'
-import { normalizeJobContentType } from './jobContentType'
+import { defaultJobTargetRepo, normalizeJobContentType } from './jobContentType'
 
 export type ClaimDraftingInput = {
   title?: string
@@ -32,6 +32,7 @@ export async function claimDraftingJob(input: ClaimDraftingInput): Promise<strin
     content: PLACEHOLDER,
     word_count: 12,
     region: String(input.region || 'US').slice(0, 8) || 'US',
+    target_repo: defaultJobTargetRepo(input.contentType, input.region),
     ship_mode: 'pr',
     indexable: true,
     primary_keyword: String(input.primaryKeyword || topic).slice(0, 200),

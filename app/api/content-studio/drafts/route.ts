@@ -58,19 +58,22 @@ export async function POST(request: NextRequest) {
     let jobId = String(body.jobId || '').trim()
     if (!jobId) {
       const { createSupabaseAdminClient } = await import('@/lib/supabase')
-      const { normalizeJobContentType } = await import('@/lib/seoFactory/jobContentType')
+      const { defaultJobTargetRepo, normalizeJobContentType } = await import('@/lib/seoFactory/jobContentType')
       const { countBodyWords } = await import('@/lib/seoFactory/contentDepth')
       const db = createSupabaseAdminClient()
       const title = String(body.title || body.topic || 'Untitled draft').slice(0, 200)
+      const contentType = normalizeJobContentType(body.contentType || 'blog_post')
+      const region = String(body.region || 'US').slice(0, 8) || 'US'
       const insert = await db.from('content_jobs').insert({
         user_id: 'admin',
         title,
         topic: String(body.topic || title).slice(0, 200),
-        content_type: normalizeJobContentType(body.contentType || 'blog_post'),
+        content_type: contentType,
         status: 'drafting',
         content,
         word_count: countBodyWords(content),
-        region: String(body.region || 'US').slice(0, 8) || 'US',
+        region,
+        target_repo: defaultJobTargetRepo(contentType, region),
         ship_mode: 'pr',
         indexable: true,
       }).select('id').single()
