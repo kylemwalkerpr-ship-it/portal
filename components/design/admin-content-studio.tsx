@@ -42,7 +42,8 @@ import {
   type QueueClearAction,
   type QueueUiFilter,
 } from '@/lib/seoFactory/jobsQueue'
-import { countBodyWords, formatBodyWordDisplay, targetWordsForType } from '@/lib/seoFactory/contentDepth'
+import { clampBriefWordBudget, countBodyWords, depthSpecForType, formatBodyWordDisplay, targetWordsForType } from '@/lib/seoFactory/contentDepth'
+import { resolveEditorialContentType } from '@/lib/seoFactory/jobContentType'
 import {
   extractMetricValues,
   directionForMetric,
@@ -2324,8 +2325,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       setSources((prev) => (prev.includes(aeo.url!) ? prev : [aeo.url!, ...prev].slice(0, 8)))
     }
   }, [selectedBrief])
-  const [minWords, setMinWords] = React.useState<number>(() => contentType === 'blog_post' ? 900 : contentType === 'regional_page' ? 1400 : 1800)
-  const [maxWords, setMaxWords] = React.useState<number>(() => contentType === 'blog_post' ? 1600 : contentType === 'regional_page' ? 2200 : 2800)
+  const [minWords, setMinWords] = React.useState<number>(() => clampBriefWordBudget(contentType).minWords)
+  const [maxWords, setMaxWords] = React.useState<number>(() => clampBriefWordBudget(contentType).maxWords)
+  React.useEffect(() => {
+    const w = clampBriefWordBudget(contentType)
+    setMinWords(w.minWords)
+    setMaxWords(w.maxWords)
+  }, [contentType])
   const [targetSlug, setTargetSlug] = React.useState('')
   const [showPromptPreview, setShowPromptPreview] = React.useState(false)
   const [newSource, setNewSource] = React.useState('')
@@ -2424,8 +2430,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (typeof data.targetSlug === 'string' && data.targetSlug.trim()) setTargetSlug(data.targetSlug)
       if (typeof data.recommendedTone === 'string') setTone(data.recommendedTone as Tone)
       if (typeof data.recommendedAudience === 'string') setAudience(data.recommendedAudience)
-      if (typeof data.minWords === 'number' && data.minWords > 0) setMinWords(data.minWords)
-      if (typeof data.maxWords === 'number' && data.maxWords > 0) setMaxWords(data.maxWords)
+      const clamped = clampBriefWordBudget(
+        contentType,
+        typeof data.minWords === 'number' ? data.minWords : undefined,
+        typeof data.maxWords === 'number' ? data.maxWords : undefined,
+      )
+      setMinWords(clamped.minWords)
+      setMaxWords(clamped.maxWords)
       if (data.kwH2Map && typeof data.kwH2Map === 'object') setKwH2Map(data.kwH2Map as Record<string, string>)
       if (Array.isArray(data.sectionBudgets) && data.sectionBudgets.length) setSectionBudgets(data.sectionBudgets as Array<{ heading: string; minWords: number; maxWords: number }>)
       setBriefIntel({
@@ -2898,7 +2909,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             <input type="number" value={maxWords} onChange={e => setMaxWords(Number(e.target.value) || 2000)} style={{ ...inputBase, width: 100 }} min={600} max={8000} />
           </div>
           <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, marginLeft: 8 }}>
-            Blog: 900–1600 &nbsp;|&nbsp; Article: 1800–2800 &nbsp;|&nbsp; Regional: 1400–2200
+            Blog: 800–1,200 &nbsp;|&nbsp; Legal: 2,200–2,500 &nbsp;|&nbsp; Regional: 1,200–2,000
           </span>
         </div>
       </div>
@@ -3247,7 +3258,7 @@ function DraftWorkspace({
   rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob, generationJobId,
   onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, onCancelGeneration, error, setError,
-  onApprove, onShipReadyChange, onJobAttached, approving, studioRegion,
+  onApprove, onShipReadyChange, onJobAttached, approving, studioRegion, studioContentType,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
@@ -3272,6 +3283,7 @@ function DraftWorkspace({
   onJobAttached?: (jobId: string) => void
   approving?: boolean
   studioRegion?: string
+  studioContentType?: string
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
@@ -3536,8 +3548,17 @@ function DraftWorkspace({
             <span style={{ fontFamily: C.mono, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', padding: '4px 10px', border: `1px solid ${E.hairline}`, borderRadius: 999, background: '#F8F9FA' }}>
               {(() => {
                 const wc = generating ? generationWordCount : wordCount
-                const minW = completedJob?.content_type === 'blog_post' ? 800 : completedJob?.content_type === 'regional_page' ? 1200 : 2200
-                const maxW = completedJob?.content_type === 'blog_post' ? 1500 : completedJob?.content_type === 'regional_page' ? 2000 : 2800
+                const editorial = resolveEditorialContentType({
+                  contentType: studioContentType || completedJob?.content_type || selectedJob?.content_type,
+                  canonicalUrl: completedJob?.canonical_url || selectedJob?.canonical_url,
+                  filePath: completedJob?.content_path || selectedJob?.content_path,
+                  content: draftContent || completedJob?.content || selectedJob?.content,
+                })
+                const spec = depthSpecForType(
+                  studioContentType === 'blog_post' || editorial === 'blog_post' ? 'blog_post' : editorial,
+                )
+                const minW = spec.minWords
+                const maxW = spec.maxWords
                 const overMax = wc > maxW
                 const underMin = wc < minW
                 const wcColor = overMax ? C.red : underMin ? C.orange : '#0F7A3A'
@@ -3682,7 +3703,7 @@ function DraftWorkspace({
               onJobAttached={onJobAttached}
               title={completedJob?.title || selectedJob?.title}
               topic={completedJob?.topic || selectedJob?.topic}
-              contentType={completedJob?.content_type}
+              contentType={studioContentType === 'blog_post' ? 'blog_post' : (completedJob?.content_type || studioContentType)}
               primaryKeyword={completedJob?.primary_keyword ?? undefined}
               indexable={completedJob?.indexable}
               region={completedJob?.region ?? selectedJob?.region ?? studioRegion}
@@ -7200,6 +7221,7 @@ const controller = new AbortController()
         <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" hidden={tab !== 'draft'} style={{ marginBottom: 14, display: tab === 'draft' ? 'flex' : 'none', flexDirection: 'column', gap: 14 }}>
           {/* ── Draft workspace — inline editor with live streaming ── */}            <DraftWorkspace
               studioRegion={region}
+              studioContentType={contentType}
               generating={generating}
               generationEvents={generationEvents}
               generationStartedAt={generationStartedAt}
