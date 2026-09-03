@@ -7,7 +7,7 @@ import {
   ubersuggestRpc,
   ubersuggestVolumeToImpressions,
 } from '@/lib/seoEngine/ubersuggest'
-import { UBERSUGGEST_TOOL_CATALOG, ubersuggestSpendPlan } from '@/lib/seoEngine/ubersuggestCatalog'
+import { UBERSUGGEST_TOOL_CATALOG, ubersuggestSpendPlan, ubersuggestFullSpendPlan } from '@/lib/seoEngine/ubersuggestCatalog'
 import {
   attachKeywordResearch,
   competitionIndexToKd,
@@ -104,6 +104,13 @@ describe('Ubersuggest MCP catalog → engine spend', () => {
     expect(plan.filter((s) => s.layer === 'keyword').length).toBeGreaterThanOrEqual(6)
     expect(plan.some((s) => s.layer === 'domain')).toBe(true)
     expect(plan.some((s) => s.layer === 'backlink')).toBe(true)
+    const full = ubersuggestFullSpendPlan()
+    expect(full.length).toBeGreaterThanOrEqual(28)
+    expect(full.some((s) => s.name === 'competitors')).toBe(true)
+    expect(full.some((s) => s.name === 'keyword_metrics')).toBe(true)
+    expect(full.some((s) => s.name === 'brand_visibility_overview')).toBe(true)
+    expect(full.some((s) => s.name === 'pagespeed_audit')).toBe(true)
+    expect(full.every((step) => UBERSUGGEST_TOOL_CATALOG.some((t) => t.name === step.name))).toBe(true)
   })
 })
 

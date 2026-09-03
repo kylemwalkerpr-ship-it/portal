@@ -18,12 +18,29 @@ async function opportunitiesFromCache(excludeTopics: string[] = []) {
     excludeTopics,
     limit: 32,
   })
+  const snap = cfg.lastSnapshot
   return {
     connected: cfg.enabled,
     lastGoodAt: cfg.lastGoodAt ?? null,
     lastError: cfg.lastError ?? null,
     source: (cfg.lastGoodSignals || []).length ? 'cache' : 'empty',
     opportunities,
+    snapshot: snap
+      ? {
+          pulledAt: snap.pulledAt,
+          toolsUsed: snap.toolsUsed,
+          layers: snap.layers,
+          keywordCount: snap.keywords?.length || 0,
+          pages: (snap.pages || []).slice(0, 12),
+          competitors: (snap.competitors || []).slice(0, 12),
+          contentIdeas: (snap.contentIdeas || []).slice(0, 16),
+          backlinkCount: (snap.backlinks || []).length,
+          serpCount: (snap.serp || []).length,
+          domain: snap.domain || {},
+          aisv: snap.aisv || {},
+          audit: snap.audit || {},
+        }
+      : null,
   }
 }
 
@@ -55,7 +72,7 @@ export async function POST(request: NextRequest) {
     if (body.refresh) {
       try {
         const { pullUbersuggestSignals } = await import('@/lib/seoEngine/ubersuggest')
-        await pullUbersuggestSignals()
+        await pullUbersuggestSignals({ full: true })
       } catch {
         /* skip-on-fail — last-good (if any) is still returned */
       }

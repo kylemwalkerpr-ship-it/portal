@@ -99,6 +99,54 @@ export interface UberSpendCall {
   layer: UberLayer
 }
 
+export const UBERSUGGEST_ESTATE_DOMAINS = [
+  UBERSUGGEST_OWNED_DOMAIN,
+  'legal.yousafeconsultancy.com',
+] as const
+
+/** Every engine-useful MCP tool (skips auth/write/utility). Used by full ingest. */
+export function ubersuggestFullSpendPlan(): UberSpendCall[] {
+  const uk = UBERSUGGEST_MARKETS[0]!
+  const us = UBERSUGGEST_MARKETS[1]!
+  const ca = UBERSUGGEST_MARKETS[2]!
+  const au = UBERSUGGEST_MARKETS[3]!
+  const owned = UBERSUGGEST_OWNED_DOMAIN
+  const legal = UBERSUGGEST_ESTATE_DOMAINS[1]!
+  const loc = (m: typeof uk) => ({ language: m.language, locId: m.locId, loc_id: m.locId })
+  return [
+    { name: 'keyword_suggestions', layer: 'keyword', args: { keywords: uk.seeds, ...loc(uk) } },
+    { name: 'keyword_suggestions', layer: 'keyword', args: { keywords: us.seeds, ...loc(us) } },
+    { name: 'keyword_suggestions', layer: 'keyword', args: { keywords: ca.seeds, ...loc(ca) } },
+    { name: 'keyword_suggestions', layer: 'keyword', args: { keywords: au.seeds, ...loc(au) } },
+    { name: 'match_keywords', layer: 'keyword', args: { keywords: uk.seeds, ...loc(uk), limit: 40 } },
+    { name: 'match_keywords', layer: 'keyword', args: { keywords: us.seeds, ...loc(us), limit: 40 } },
+    { name: 'google_suggestions', layer: 'keyword', args: { keywords: [uk.seeds[0], us.seeds[0], ca.seeds[0]], language: 'en', country: 'uk' } },
+    { name: 'keyword_overview', layer: 'keyword', args: { keyword: uk.seeds[0], ...loc(uk) } },
+    { name: 'keyword_overview', layer: 'keyword', args: { keyword: us.seeds[0], ...loc(us) } },
+    { name: 'keyword_metrics', layer: 'keyword', args: { keywords: [...uk.seeds, ...us.seeds].slice(0, 8), ...loc(us) } },
+    { name: 'content_ideas', layer: 'content', args: { keywords: [uk.seeds[0], us.seeds[1]], language: 'en', locId: uk.locId, loc_id: uk.locId } },
+    { name: 'domain_overview', layer: 'domain', args: { domain: owned, language: 'en', locId: us.locId, loc_id: us.locId } },
+    { name: 'domain_overview', layer: 'domain', args: { domain: legal, language: 'en', locId: us.locId, loc_id: us.locId } },
+    { name: 'domain_keywords', layer: 'domain', args: { domain: owned, language: 'en', locId: us.locId, loc_id: us.locId, limit: 50 } },
+    { name: 'domain_top_pages', layer: 'domain', args: { domain: owned, language: 'en', locId: us.locId, loc_id: us.locId, limit: 20 } },
+    { name: 'domain_top_countries', layer: 'domain', args: { domain: owned, language: 'en' } },
+    { name: 'competitors', layer: 'domain', args: { domain: owned, language: 'en', locId: us.locId, loc_id: us.locId } },
+    { name: 'traffic_value', layer: 'domain', args: { domain: owned } },
+    { name: 'serp_analysis', layer: 'serp', args: { keyword: uk.seeds[0], ...loc(uk), limit: 10 } },
+    { name: 'backlinks_overview', layer: 'backlink', args: { domain: owned } },
+    { name: 'backlinks', layer: 'backlink', args: { domain: owned, limit: 25 } },
+    { name: 'anchor_texts', layer: 'backlink', args: { domain: owned, limit: 20 } },
+    { name: 'linking_domains', layer: 'backlink', args: { domain: owned, limit: 20 } },
+    { name: 'backlink_opportunity', layer: 'backlink', args: { domain: owned } },
+    { name: 'site_audit_status', layer: 'audit', args: { domain: owned } },
+    { name: 'pagespeed_audit', layer: 'audit', args: { url: `https://${owned}/` } },
+    { name: 'list_projects', layer: 'project', args: {} },
+    { name: 'seo_opportunities', layer: 'project', args: {} },
+    { name: 'brand_visibility_overview', layer: 'aisv', args: { brand: 'YouSafe' } },
+    { name: 'brand_prompts', layer: 'aisv', args: { brand: 'YouSafe' } },
+  ]
+}
+
 /** Deterministic 16-call planner spend: keyword markets first, then owned domain. */
 export function ubersuggestSpendPlan(): UberSpendCall[] {
   const uk = UBERSUGGEST_MARKETS[0]!

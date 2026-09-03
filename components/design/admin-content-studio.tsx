@@ -5476,7 +5476,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [clearedCannibalTopics, setClearedCannibalTopics] = React.useState<Set<string>>(new Set())
   const [uberOpps, setUberOpps] = React.useState<AISuggestion[]>([])
   const [uberOppsLoading, setUberOppsLoading] = React.useState(false)
-  const [uberOppsMeta, setUberOppsMeta] = React.useState<{ connected?: boolean; source?: string; lastError?: string | null }>({})
+  const [uberOppsMeta, setUberOppsMeta] = React.useState<{
+    connected?: boolean
+    source?: string
+    lastError?: string | null
+    lastIntel?: { keywordCount?: number; toolsUsed?: string[]; layers?: string[]; pulledAt?: string }
+  }>({})
 
   const workPlanItems = React.useMemo(
     () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics, uberOpps),
@@ -5850,13 +5855,21 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         source?: string
         lastError?: string | null
         opportunities?: AISuggestion[]
+        snapshot?: { toolsUsed?: string[]; keywordCount?: number; layers?: string[] } | null
       }
       if (!res.ok) {
         setUberOppsMeta({ connected: false, source: 'error', lastError: data.lastError || 'Ubersuggest opportunities failed' })
         return
       }
       setUberOpps(Array.isArray(data.opportunities) ? data.opportunities : [])
-      setUberOppsMeta({ connected: Boolean(data.connected), source: data.source, lastError: data.lastError || null })
+      setUberOppsMeta({
+        connected: Boolean(data.connected),
+        source: data.source,
+        lastError: data.lastError || null,
+        lastIntel: data.snapshot
+          ? { keywordCount: data.snapshot.keywordCount, toolsUsed: data.snapshot.toolsUsed, layers: data.snapshot.layers as string[] | undefined, pulledAt: undefined }
+          : undefined,
+      })
       if (!refresh && data.connected && !(data.opportunities || []).length) {
         const live = await fetch('/api/content-studio/ubersuggest/opportunities', {
           method: 'POST',

@@ -10,7 +10,8 @@ import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { loadEngineConfig, saveEngineConfig } from './engineConfig'
 import type { GscSignalInput } from './planner'
 import { refreshUbersuggestToken, UBERSUGGEST_MCP_URL as DEFAULT_MCP_URL } from './ubersuggestOAuth'
-import { ubersuggestSpendPlan, type UberLayer } from './ubersuggestCatalog'
+import { ubersuggestSpendPlan, ubersuggestFullSpendPlan, type UberLayer } from './ubersuggestCatalog'
+import { emptyUbersuggestSnapshot, ingestToolResult, snapshotSummary, type UbersuggestEngineSnapshot } from './ubersuggestSnapshot'
 
 export const UBERSUGGEST_MCP_URL = DEFAULT_MCP_URL
 const MCP_PROTOCOL = '2025-03-26'
@@ -30,6 +31,7 @@ export interface UbersuggestConfig {
   lastGoodAt?: string | null
   lastGoodSignals?: Array<{ term: string; impressions: number }>
   lastIntel?: UbersuggestIntel | null
+  lastSnapshot?: import('./ubersuggestSnapshot').UbersuggestEngineSnapshot | null
 }
 
 export interface UbersuggestIntel {
@@ -42,6 +44,8 @@ export interface UbersuggestIntel {
 
 /** Budget of MCP tool calls per planner run — spend them, then stop. */
 export const UBERSUGGEST_CALL_BUDGET = 16
+/** Full-catalog ingest (Discover refresh / knowledge). */
+export const UBERSUGGEST_FULL_BUDGET = 36
 
 export interface UbersuggestPullMeta {
   usedCache: boolean
@@ -74,10 +78,11 @@ export async function loadUbersuggestConfig(): Promise<UbersuggestConfig> {
     lastGoodAt: stored?.lastGoodAt ?? null,
     lastGoodSignals: Array.isArray(stored?.lastGoodSignals) ? stored.lastGoodSignals : [],
     lastIntel: stored?.lastIntel && typeof stored.lastIntel === 'object' ? stored.lastIntel : null,
+    lastSnapshot: stored?.lastSnapshot && typeof stored.lastSnapshot === 'object' ? stored.lastSnapshot : null,
   }
 }
 
-export type RedactedUbersuggestConfig = Omit<UbersuggestConfig, 'accessToken' | 'refreshToken'> & {
+export type RedactedUbersuggestConfig = Omit<UbersuggestConfig, 'accessToken' | 'refreshToken' | 'lastSnapshot'> & {
   hasToken: boolean
   hasRefresh: boolean
   mode: 'oauth' | 'token' | null
@@ -117,6 +122,7 @@ export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>)
     mcpUrl: next.mcpUrl || current.mcpUrl || UBERSUGGEST_MCP_URL,
     lastGoodSignals: next.lastGoodSignals !== undefined ? next.lastGoodSignals : current.lastGoodSignals,
     lastIntel: next.lastIntel !== undefined ? next.lastIntel : current.lastIntel,
+    lastSnapshot: next.lastSnapshot !== undefined ? next.lastSnapshot : current.lastSnapshot,
   }
   await saveEngineConfig('ubersuggest', {
     enabled: merged.enabled,
@@ -133,6 +139,7 @@ export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>)
     lastGoodAt: merged.lastGoodAt ?? null,
     lastGoodSignals: (merged.lastGoodSignals || []).slice(0, 80),
     lastIntel: merged.lastIntel ?? null,
+    lastSnapshot: merged.lastSnapshot ?? null,
   })
   return merged
 }
@@ -354,6 +361,7 @@ export type ParsedUbersuggestKeyword = {
   volume: number
   position?: number
   keywordDifficulty?: number
+  cpc?: number
 }
 
 /** Pull 0–100 KD from the field names Ubersuggest actually ships. */
@@ -402,11 +410,13 @@ export function parseUbersuggestKeywords(
     }
     const position = Number(rec.position || rec.rank || rec.pos)
     const keywordDifficulty = parseUbersuggestDifficulty(rec)
+    const cpc = Number(rec.cpc || rec.cost_per_click || rec.costPerClick)
     out.push({
       term,
       volume,
       position: Number.isFinite(position) && position > 0 ? position : undefined,
       ...(keywordDifficulty != null ? { keywordDifficulty } : {}),
+      ...(Number.isFinite(cpc) && cpc > 0 ? { cpc } : {}),
     })
   }
   return out
@@ -451,7 +461,35 @@ async function listToolNames(cfg: UbersuggestConfig): Promise<string[]> {
   return (listed.tools || []).map((t) => String(t.name || '')).filter(Boolean)
 }
 
-export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
+async function persistUbersuggestKnowledge(snap: UbersuggestEngineSnapshot): Promise<void> {
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    const summary = snapshotSummary(snap)
+    await createSupabaseAdminClient().from('seo_knowledge').upsert({
+      source: 'ubersuggest',
+      source_label: 'Ubersuggest MCP',
+      kind: 'trend',
+      url: 'ubersuggest://mcp/snapshot',
+      title: `Ubersuggest engine snapshot · ${summary}`,
+      summary: summary.slice(0, 2000),
+      ai_summary: [
+        `Tools: ${snap.toolsUsed.join(', ') || 'none'}`,
+        snap.competitors.slice(0, 6).map((c) => c.domain).filter(Boolean).join(', '),
+        snap.contentIdeas.slice(0, 8).join('; '),
+      ].filter(Boolean).join(' · ').slice(0, 2000),
+      tags: ['ubersuggest', ...snap.layers],
+      countries: ['US', 'UK', 'CA', 'AU'],
+      stages: [],
+      confidence: 0.72,
+      published_at: snap.pulledAt,
+      dedupe_key: 'ubersuggest:mcp:snapshot',
+    }, { onConflict: 'dedupe_key' })
+  } catch (e) {
+    console.warn('[ubersuggest] knowledge persist skipped', e instanceof Error ? e.message : e)
+  }
+}
+
+export async function pullUbersuggestSignals(opts?: { full?: boolean }): Promise<GscSignalInput[]> {
   lastUbersuggestPull = { usedCache: false, calls: 0, exhausted: false }
   const loaded = await loadUbersuggestConfig()
   if (!loaded.enabled || (!loaded.accessToken && !loaded.refreshToken)) {
@@ -473,6 +511,9 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
     return cachedSignals(cfg)
   }
 
+  const full = opts?.full === true
+  const budget = full ? UBERSUGGEST_FULL_BUDGET : UBERSUGGEST_CALL_BUDGET
+  const snap = emptyUbersuggestSnapshot()
   const collected: ParsedUbersuggestKeyword[] = []
   let calls = 0
   let exhausted = false
@@ -482,12 +523,14 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
   const layers = new Set<UberLayer>()
 
   const runCall = async (name: string, args: Record<string, unknown>, layer: UberLayer, allowZero = false) => {
-    if (exhausted || transientDown || calls >= UBERSUGGEST_CALL_BUDGET) return
+    if (exhausted || transientDown || calls >= budget) return
     calls += 1
     const parse = (raw: unknown) => parseUbersuggestKeywords(unwrapToolPayload(raw), { allowZeroVolume: allowZero || layer === 'keyword' && name === 'google_suggestions' })
     try {
       const result = await ubersuggestRpc(cfg, 'tools/call', { name, arguments: args }, 10 + calls)
-      collected.push(...parse(result))
+      const payload = unwrapToolPayload(result)
+      collected.push(...parse(payload))
+      ingestToolResult(snap, name, layer, payload)
       toolsUsed.push(name)
       layers.add(layer)
     } catch (err) {
@@ -497,7 +540,9 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
           const fresh = await refreshUbersuggestAccessToken(cfg, true)
           cfg = { ...cfg, accessToken: fresh }
           const result = await ubersuggestRpc(cfg, 'tools/call', { name, arguments: args }, 10 + calls)
-          collected.push(...parse(result))
+          const payload = unwrapToolPayload(result)
+          collected.push(...parse(payload))
+          ingestToolResult(snap, name, layer, payload)
           toolsUsed.push(name)
           layers.add(layer)
           lastErr = ''
@@ -513,8 +558,9 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
 
   try {
     const names = new Set(await listToolNames(cfg))
-    for (const step of ubersuggestSpendPlan()) {
-      if (exhausted || transientDown || calls >= UBERSUGGEST_CALL_BUDGET) break
+    const plan = full ? ubersuggestFullSpendPlan() : ubersuggestSpendPlan()
+    for (const step of plan) {
+      if (exhausted || transientDown || calls >= budget) break
       if (names.size && !names.has(step.name)) continue
       await runCall(step.name, step.args, step.layer, step.name === 'google_suggestions' || step.name === 'content_ideas')
     }
@@ -550,10 +596,21 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       return signal
     })
 
+  snap.calls = calls
+  snap.toolsUsed = [...new Set(toolsUsed)]
+  snap.layers = [...layers]
+  snap.keywords = Array.from(best.values()).slice(0, 80).map((row) => ({
+    term: row.term,
+    volume: row.volume,
+    position: row.position,
+    keywordDifficulty: row.keywordDifficulty,
+    cpc: row.cpc,
+  }))
+
   const intel: UbersuggestIntel = {
-    pulledAt: new Date().toISOString(),
-    toolsUsed: [...new Set(toolsUsed)],
-    layers: [...layers],
+    pulledAt: snap.pulledAt,
+    toolsUsed: snap.toolsUsed,
+    layers: snap.layers,
     keywordCount: live.length,
     calls,
   }
@@ -566,7 +623,9 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       lastGoodSignals: live.length ? live.map((s) => ({ term: s.term, impressions: s.impressions })) : cfg.lastGoodSignals,
       lastGoodAt: live.length ? new Date().toISOString() : cfg.lastGoodAt,
       lastIntel: intel,
+      lastSnapshot: snap,
     }).catch(() => undefined)
+    if (live.length) void persistUbersuggestKnowledge(snap)
     lastUbersuggestPull = {
       usedCache: live.length === 0,
       calls,
@@ -583,7 +642,9 @@ export async function pullUbersuggestSignals(): Promise<GscSignalInput[]> {
       lastGoodSignals: live.map((s) => ({ term: s.term, impressions: s.impressions })),
       lastGoodAt: new Date().toISOString(),
       lastIntel: intel,
+      lastSnapshot: snap,
     }).catch(() => undefined)
+    void persistUbersuggestKnowledge(snap)
     lastUbersuggestPull = { usedCache: false, calls, exhausted: false }
     return live
   }
