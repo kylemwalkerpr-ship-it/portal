@@ -29,7 +29,7 @@ import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
-import { isCitableSource, sourcesForBrief } from '@/lib/seoFactory/officialSources'
+import { collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { buildSectionBudgets } from '@/lib/seoFactory/prompts'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
@@ -2259,6 +2259,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   /** Discover-stage intelligence fed into the full-brief generator. */
   radarMeta?: Record<string, unknown> | null
   completedWorkSlugs?: Array<{ slug: string; topic: string }>
+  competingUrls?: Array<{ url: string; title?: string; primaryKeyword?: string | null }>
 }>(function BriefAssemblyPanel(
   {
     generating, onGenerate,
@@ -2280,6 +2281,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     setActionNotice,
     radarMeta,
     completedWorkSlugs,
+    competingUrls = [],
   },
   ref,
 ) {
@@ -2299,14 +2301,19 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     }
     return ['Overview', 'Eligibility Requirements', 'Application Process', 'Required Documents', 'Timeline & Processing', 'Frequently Asked Questions']
   })
-  const [sources, setSources] = React.useState<string[]>(() => selectedBrief?.signals?.filter((s: string) => {
-    const url = String(s).match(/https?:\/\/[^\s)]+/)?.[0] || String(s)
-    return /^https?:\/\//i.test(url) && isCitableSource(url, {
-      region,
-      topic: topic || title,
-      keywords: String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
-    })
-  })?.slice(0, 4) ?? [])
+  const [sources, setSources] = React.useState<string[]>(() => collectDiscoverCitationUrls({
+    region,
+    topic: topic || title,
+    keywords: [
+      selectedBrief?.primaryKeyword,
+      ...String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
+    ].filter(Boolean) as string[],
+    signals: selectedBrief?.signals,
+    extraUrls: [
+      selectedBrief?.aeoRemediation?.url || '',
+      selectedBrief?.cluster?.targetUrl || '',
+    ].filter(Boolean),
+  }))
   React.useEffect(() => {
     const aeo = selectedBrief?.aeoRemediation
     if (!aeo?.actions?.length) return
@@ -2377,6 +2384,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             signals: selectedBrief.signals,
             cluster: selectedBrief.cluster,
           } : null,
+          discoverSources: sources,
+          competingUrls: competingUrls,
         }),
       })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
@@ -2407,7 +2416,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
         setKeywords(all.join(', '))
       }
-      if (Array.isArray(data.sources) && data.sources.length) setSources(data.sources.map(String))
+      if (Array.isArray(data.sources) && data.sources.length) {
+        setSources((prev) => mergeCitationUrlLists(prev, data.sources.map(String), 12))
+      }
       if (typeof data.targetSlug === 'string' && data.targetSlug.trim()) setTargetSlug(data.targetSlug)
       if (typeof data.recommendedTone === 'string') setTone(data.recommendedTone as Tone)
       if (typeof data.recommendedAudience === 'string') setAudience(data.recommendedAudience)
@@ -7120,6 +7131,7 @@ const controller = new AbortController()
               selectedBrief={selectedBrief}
               setActionNotice={setActionNotice}
               radarMeta={radarMeta}
+              competingUrls={competingUrls}
             />
 
         </div>

@@ -1,4 +1,5 @@
 import {
+  collectDiscoverCitationUrls,
   CURATED_OFFICIAL_SOURCES,
   isAuthorityHost,
   isCitationRelevant,
@@ -12,6 +13,23 @@ import {
   sourcesForBrief,
   sourcesForRegion,
 } from '@/lib/seoFactory/officialSources'
+
+describe('collectDiscoverCitationUrls', () => {
+  it('appends regional official bank and Discover signal URLs, skipping blogs', () => {
+    const urls = collectDiscoverCitationUrls({
+      region: 'US',
+      topic: 'F-1 OPT employment',
+      keywords: ['opt'],
+      signals: [
+        'Ubersuggest volume 1200',
+        'See https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training',
+        'https://www.boundless.com/f1-opt',
+      ],
+    })
+    expect(urls.some((u) => /uscis\.gov/i.test(u))).toBe(true)
+    expect(urls.some((u) => /boundless/i.test(u))).toBe(false)
+  })
+})
 
 describe('officialSources · crème-de-la-crème allowlist', () => {
   it('treats immigration and government departments as authorities', () => {

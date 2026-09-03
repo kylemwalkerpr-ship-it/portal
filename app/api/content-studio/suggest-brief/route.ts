@@ -5,6 +5,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
+import { collectDiscoverCitationUrls, mergeCitationUrlLists } from '@/lib/seoFactory/officialSources'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
@@ -227,7 +228,19 @@ export async function POST(req: NextRequest) {
     ].join('\n')
 
     const citationCtx = { region, topic, keywords: [primaryKeyword, topic, audience].filter(Boolean) }
-    const seedOfficialSources = await assembleDraftSourceAllowlist(region, [], citationCtx)
+    const discoverSources = collectDiscoverCitationUrls({
+      region,
+      topic,
+      keywords: [primaryKeyword, topic, audience].filter(Boolean),
+      signals: Array.isArray(opportunity?.signals) ? opportunity.signals.map(String) : [],
+      extraUrls: [
+        ...(Array.isArray(body.discoverSources) ? body.discoverSources.map(String) : []),
+        ...(Array.isArray(body.competingUrls)
+          ? body.competingUrls.map((c: unknown) => String((c as { url?: string })?.url || c || ''))
+          : []),
+      ],
+    })
+    const seedOfficialSources = await assembleDraftSourceAllowlist(region, discoverSources, citationCtx)
 
     const prompt = [
       `TOPIC: ${topic}`,
@@ -454,7 +467,11 @@ export async function POST(req: NextRequest) {
     })
     const finalSources = await assembleDraftSourceAllowlist(
       region,
-      Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map(String) : [],
+      mergeCitationUrlLists(
+        discoverSources,
+        Array.isArray(parsed.sources) ? parsed.sources.slice(0, 8).map(String) : [],
+        12,
+      ),
       citationCtx,
     )
 

@@ -1017,7 +1017,7 @@ export async function assembleDraftSourceAllowlist(
   }
   for (const url of verified) push(url, url)
   for (const s of official) push(`${s.title} — ${s.url}`, s.url)
-  return out.slice(0, 8)
+  return out.slice(0, 10)
 }
 
 export async function liveOfficialSources(

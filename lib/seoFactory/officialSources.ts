@@ -349,6 +349,54 @@ export function isCitationRelevant(url: string, ctx?: CitationContext | null, ti
   return scoreUrlRelevance(url, ctx, title) >= MIN_CITATION_RELEVANCE
 }
 
+/** Pull citable http(s) URLs out of Discover signals / extras, then append the regional official bank. */
+export function collectDiscoverCitationUrls(opts: {
+  region?: string | null
+  topic?: string | null
+  keywords?: string[]
+  signals?: string[]
+  extraUrls?: string[]
+  cap?: number
+}): string[] {
+  const ctx: CitationContext = {
+    region: opts.region,
+    topic: opts.topic,
+    keywords: opts.keywords,
+  }
+  const out: string[] = []
+  const seen = new Set<string>()
+  const push = (raw: string) => {
+    const m = String(raw || '').match(/https?:\/\/[^\s)\]"'<>]+/i)
+    if (!m) return
+    const url = m[0].replace(/[.,;]+$/, '')
+    if (!isCitableSource(url, ctx)) return
+    const key = url.replace(/\/+$/, '').toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(url)
+  }
+  for (const s of opts.signals || []) push(s)
+  for (const s of opts.extraUrls || []) push(s)
+  for (const s of sourcesForBrief(ctx)) push(s.url)
+  return out.slice(0, Math.max(4, Math.min(12, opts.cap ?? 10)))
+}
+
+export function mergeCitationUrlLists(preferred: string[], rest: string[], cap = 10): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of [...preferred, ...rest]) {
+    const m = String(raw || '').match(/https?:\/\/[^\s)\]"'<>]+/i)
+    const url = m ? m[0].replace(/[.,;]+$/, '') : String(raw || '').trim()
+    if (!url) continue
+    const key = url.replace(/\/+$/, '').toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(String(raw).includes('http') ? String(raw).trim() : url)
+    if (out.length >= cap) break
+  }
+  return out
+}
+
 export function sourcesForBrief(ctx?: CitationContext | null): OfficialSource[] {
   const extra = disciplineSourcesForBrief(ctx)
   const extraUrls = new Set(extra.map((s) => s.url))
