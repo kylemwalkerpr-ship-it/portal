@@ -30,7 +30,7 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
 import { collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
-import { buildSectionBudgets } from '@/lib/seoFactory/prompts'
+import { buildSectionBudgets, ensureSectionBudgets, syncSectionBudgetsToOutline } from '@/lib/seoFactory/prompts'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
   asQueueUiFilter,
@@ -41,7 +41,7 @@ import {
   type QueueClearAction,
   type QueueUiFilter,
 } from '@/lib/seoFactory/jobsQueue'
-import { countBodyWords, formatBodyWordDisplay } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, formatBodyWordDisplay, targetWordsForType } from '@/lib/seoFactory/contentDepth'
 import {
   extractMetricValues,
   directionForMetric,
@@ -2497,6 +2497,29 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const moveH2 = (i: number, dir: number) => {
     setH2s(p => { const n = [...p]; const t = i + dir; if (t < 0 || t >= n.length) return p; [n[i], n[t]] = [n[t], n[i]]; return n })
   }
+  const pageTarget = targetWordsForType(contentType)
+  const liveBudgets = React.useMemo(
+    () => syncSectionBudgetsToOutline(h2s, sectionBudgets, { pageMin: minWords, pageMax: maxWords, pageTarget }),
+    [h2s, sectionBudgets, minWords, maxWords, pageTarget],
+  )
+  React.useEffect(() => {
+    if (!h2s.length) return
+    const same =
+      sectionBudgets &&
+      sectionBudgets.length === liveBudgets.length &&
+      sectionBudgets.every((b, i) => b.heading === liveBudgets[i]?.heading && b.minWords === liveBudgets[i]?.minWords && b.maxWords === liveBudgets[i]?.maxWords)
+    if (!same) setSectionBudgets(liveBudgets)
+  }, [h2s, minWords, maxWords, pageTarget]) // eslint-disable-line react-hooks/exhaustive-deps
+  const setBudgetField = (index: number, field: 'minWords' | 'maxWords', raw: string) => {
+    const n = Math.max(0, Math.round(Number(raw) || 0))
+    const next = liveBudgets.map((b, i) => {
+      if (i !== index) return b
+      const lo = field === 'minWords' ? n : b.minWords
+      const hi = field === 'maxWords' ? n : b.maxWords
+      return { ...b, minWords: Math.min(lo, hi), maxWords: Math.max(lo, hi) }
+    })
+    setSectionBudgets(ensureSectionBudgets(next, { h2Outline: h2s, pageMin: minWords, pageMax: maxWords, pageTarget }))
+  }
 
   // Build the system prompt preview text
   const promptPreview = React.useMemo(() => {
@@ -2530,13 +2553,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     // (Σ section minimums ≥ page floor, Σ maximums ≤ page ceiling). Rendering
     // them in the contract closes the loophole where the drafter saw a global
     // window but per-section guesswork, inviting under-runs and restarts.
-    const canonicalBudgets = sectionBudgets?.length
-      ? sectionBudgets
-      : buildSectionBudgets({
-          sections: h2s.map((h) => ({ heading: h })),
-          pageMin: minWords,
-          pageMax: maxWords,
-        })
+    const canonicalBudgets = liveBudgets
     if (canonicalBudgets.length) {
       lines.push('')
       lines.push('### SECTION WORD BUDGETS (hard ranges — the sums close the global window)')
@@ -2549,7 +2566,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     lines.push('### AI PROVIDER')
     lines.push(`- Selected: ${aiProvider || 'auto (cascade)'}`)
     return lines.join('\n')
-  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider, sectionBudgets])
+  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider, liveBudgets])
 
   const handleSubmitBrief = () => {
     onGenerate({
@@ -2557,7 +2574,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       title: title || topic, topic, audience,
       keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       interlinks: briefInterlinks,
-      sectionBudgets: sectionBudgets ?? undefined,
+      sectionBudgets: liveBudgets,
       h2Outline: h2s,
       sources,
       minWords, maxWords,
@@ -2747,9 +2764,17 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
       {/* ── H2 OUTLINE — editable list ── */}
       <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-        <label style={{ ...labelBase, marginBottom: 8 }}>H2 Section Outline ({h2s.length} sections)</label>
+        <label style={{ ...labelBase, marginBottom: 8 }}>H2 Section Outline ({h2s.length} sections) · absolute word quotas</label>
+        <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkMuted, marginBottom: 8 }}>
+          Each section MUST land inside its min–max. Drafter treats these as hard gates, not targets.
+          {liveBudgets.length > 0 && (
+            <> · Σ min {liveBudgets.reduce((a, b) => a + b.minWords, 0)} (≥ {minWords}) · Σ max {liveBudgets.reduce((a, b) => a + b.maxWords, 0)} (≤ {maxWords})</>
+          )}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
-          {h2s.map((h, i) => (
+          {h2s.map((h, i) => {
+            const budget = liveBudgets[i]
+            return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted, minWidth: 20 }}>{i + 1}.</span>
               <input
@@ -2757,11 +2782,30 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
                 style={{ ...inputBase, flex: 1, background: E.ivory, fontSize: 13 }}
                 placeholder={`Section ${i + 1}`}
               />
+              <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, whiteSpace: 'nowrap' }}>words</span>
+              <input
+                type="number"
+                min={0}
+                value={budget?.minWords ?? ''}
+                onChange={(e) => setBudgetField(i, 'minWords', e.target.value)}
+                title="Section minimum (inclusive)"
+                style={{ ...inputBase, width: 72, padding: '6px 6px', fontFamily: C.mono, fontSize: 11, textAlign: 'right' }}
+              />
+              <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkMuted }}>–</span>
+              <input
+                type="number"
+                min={0}
+                value={budget?.maxWords ?? ''}
+                onChange={(e) => setBudgetField(i, 'maxWords', e.target.value)}
+                title="Section maximum (inclusive)"
+                style={{ ...inputBase, width: 72, padding: '6px 6px', fontFamily: C.mono, fontSize: 11, textAlign: 'right' }}
+              />
               <button onClick={() => moveH2(i, -1)} disabled={i === 0} style={{ ...btnGhost, padding: '3px 6px', fontSize: 10, opacity: i === 0 ? 0.3 : 1 }} title="Move up">↑</button>
               <button onClick={() => moveH2(i, 1)} disabled={i === h2s.length - 1} style={{ ...btnGhost, padding: '3px 6px', fontSize: 10, opacity: i === h2s.length - 1 ? 0.3 : 1 }} title="Move down">↓</button>
               <button onClick={() => removeH2(i)} style={{ ...btnGhost, padding: '3px 7px', fontSize: 10, color: '#a32525', borderColor: '#a32525' }} title="Remove">×</button>
             </div>
-          ))}
+            )
+          })}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <input value={newH2} onChange={e => setNewH2(e.target.value)} placeholder="Add section…" style={{ ...inputBase, flex: 1, maxWidth: 320 }} onKeyDown={e => e.key === 'Enter' && addH2()} />

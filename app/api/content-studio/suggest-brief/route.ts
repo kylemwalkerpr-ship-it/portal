@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
           : contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university'
             ? '6–8'
             : '8–10'
-      } H2s sized so STRICT SECTION BUDGETS sum to ${minWords}–${maxWords} words`,
+      } H2s sized so ABSOLUTE SECTION QUOTAS (min–max per H2) sum to ${minWords}–${maxWords} words`,
       '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
       '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each). These are COVERAGE terms, never literal text: the drafter must use them naturally in prose/FAQ answers and must NEVER write the keyword string itself as an FAQ question — questions are in natural reader English ("How much does an Australia student visa cost?", never "is it possible to australia student visa…").',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',

@@ -513,10 +513,10 @@ export function buildFactoryUserPrompt(opts: {
       '',
     ] : []),
     ...((opts.sectionBudgets && opts.sectionBudgets.length) ? [
-      'STRICT SECTION BUDGETS — the hard word window for THIS article, section by section. These are not suggestions:',
-      ...opts.sectionBudgets.map((s) => `- ## ${s.heading}: ${s.minWords}–${s.maxWords} body words`),
-      '- The section budgets SUM to the page window: honouring each section lands the total inside the LENGTH gate in ONE run.',
-      '- Write exactly ONE article — the sections above, in this order. Never echo the brief, never paste a previous draft, never append a second copy. If a section starts to exceed its cap, tighten that section; do not trim by dropping a later section.',
+      'ABSOLUTE SECTION QUOTAS — hard inclusive ranges. A section under its min or over its max is a ship failure, same as missing the page window:',
+      ...opts.sectionBudgets.map((s) => `- ## ${s.heading}: MUST be ${s.minWords}–${s.maxWords} body words (inclusive). Never fewer than ${s.minWords}. Never more than ${s.maxWords}.`),
+      '- Honour every range. Σ(section mins) meets the page floor; Σ(section maxes) stays under the page cap. Do not pad a short section by stealing from another, and do not dump overflow into FAQ/Sources.',
+      '- Write exactly ONE article — the sections above, in this order. Never echo the brief, never paste a previous draft, never append a second copy. If a section approaches its cap, stop that section and continue to the next.',
       '',
     ] : []),
     ...(opts.refineNotes ? [
@@ -731,6 +731,40 @@ export function ensureSectionBudgets(
   if (!sections.length) return []
   return buildSectionBudgets({
     sections: sections.map((h) => ({ heading: h.replace(/^#+\s*/, '') })),
+    pageMin: opts.pageMin,
+    pageMax: opts.pageMax,
+    pageTarget: opts.pageTarget,
+  })
+}
+
+/** Keep per-H2 min–max attached when the outline is edited; rebuild if a heading is new or sums break the page window. */
+export function syncSectionBudgetsToOutline(
+  outline: string[],
+  existing: Array<{ heading: string; minWords: number; maxWords: number }> | null | undefined,
+  opts: { pageMin: number; pageMax: number; pageTarget?: number },
+): Array<{ heading: string; minWords: number; maxWords: number }> {
+  const headings = (outline || []).map((h) => String(h || '').replace(/^#+\s*/, '').trim()).filter(Boolean)
+  if (!headings.length) return []
+  const prev = new Map(
+    (existing || []).map((s) => [String(s.heading || '').trim().toLowerCase(), s]),
+  )
+  const carried = headings.map((h) => {
+    const p = prev.get(h.toLowerCase())
+    if (p && Number(p.minWords) > 0 && Number(p.maxWords) >= Number(p.minWords)) {
+      return { heading: h, minWords: Math.round(Number(p.minWords)), maxWords: Math.round(Number(p.maxWords)) }
+    }
+    return null
+  })
+  if (carried.every(Boolean)) {
+    return ensureSectionBudgets(carried as Array<{ heading: string; minWords: number; maxWords: number }>, {
+      h2Outline: headings,
+      pageMin: opts.pageMin,
+      pageMax: opts.pageMax,
+      pageTarget: opts.pageTarget,
+    })
+  }
+  return buildSectionBudgets({
+    sections: headings.map((h) => ({ heading: h })),
     pageMin: opts.pageMin,
     pageMax: opts.pageMax,
     pageTarget: opts.pageTarget,

@@ -1,4 +1,4 @@
-import { buildSectionBudgets, buildFactoryUserPrompt } from '../lib/seoFactory/prompts'
+import { buildSectionBudgets, buildFactoryUserPrompt, syncSectionBudgetsToOutline } from '../lib/seoFactory/prompts'
 import { partitionKeywords } from '../lib/seoEngine/planner'
 
 describe('strict per-section budgets (single-run drafter contract)', () => {
@@ -72,7 +72,8 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
       region: 'US', contentType: 'legal_guide', tone: 'educational', gscBlock: '',
       sectionBudgets: budgets,
     })
-    expect(prompt).toContain('STRICT SECTION BUDGETS')
+    expect(prompt).toContain('ABSOLUTE SECTION QUOTAS')
+    expect(prompt).toMatch(/MUST be \d+–\d+ body words \(inclusive\)/)
     expect(prompt).toContain('## FAQ:')
     expect(prompt).toMatch(/never echo the brief, never paste a previous draft, never append a second copy/i)
   })
@@ -82,7 +83,27 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
       title: 'Green Card Guide', topic: 'green card', primaryKeyword: 'green card',
       region: 'US', contentType: 'legal_guide', tone: 'educational', gscBlock: '',
     })
-    expect(prompt).not.toContain('STRICT SECTION BUDGETS')
+    expect(prompt).not.toContain('ABSOLUTE SECTION QUOTAS')
+  })
+})
+
+describe('syncSectionBudgetsToOutline', () => {
+  it('keeps existing ranges when headings are reordered and rebuilds for a new H2', () => {
+    const existing = [
+      { heading: 'FAQ', minWords: 200, maxWords: 320 },
+      { heading: 'Eligibility', minWords: 400, maxWords: 600 },
+    ]
+    const synced = syncSectionBudgetsToOutline(
+      ['Eligibility', 'Documents', 'FAQ'],
+      existing,
+      { pageMin: 800, pageMax: 1200, pageTarget: 1000 },
+    )
+    expect(synced.map((s) => s.heading)).toEqual(['Eligibility', 'Documents', 'FAQ'])
+    expect(synced.every((s) => s.minWords > 0 && s.maxWords >= s.minWords)).toBe(true)
+    const minSum = synced.reduce((a, b) => a + b.minWords, 0)
+    const maxSum = synced.reduce((a, b) => a + b.maxWords, 0)
+    expect(minSum).toBeGreaterThanOrEqual(800)
+    expect(maxSum).toBeLessThanOrEqual(1200)
   })
 })
 
