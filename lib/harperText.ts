@@ -24,6 +24,9 @@ export const HARPER_ESTATE_WORDS: string[] = [
   'VisaCheckout', 'GTE', 'GS', 'Confirmation of Enrolment', 'letter of offer', 'accommodation',
   'SEVIS', 'Sevis', 'LCA', 'CRS', 'Paystubs', 'paystubs', 'paystub', 'Form', 'DSO', 'STEM OPT',
   'F-1', 'F1', 'H-1B', 'TN', 'O-1', 'L-1', 'E-2', 'B-1', 'B-2', 'J-1', 'J-2',
+  'CRICOS', 'TFN', 'ICT', 'ACS', 'NAATI', 'AFP', 'OVHC', 'OSHC', 'MD', 'VEVO', 'IMMI',
+  'CaseWorks', 'YouSafe', 'HomeAffairs', 'SkillSelect', 'PointsTest',
+  'rumour', 'rumours', 'colour', 'organise', 'organisation', 'enrolment', 'programmes',
 ]
 
 export type HarperSafeLine = { src: string; out: string; skip: boolean }
@@ -103,6 +106,7 @@ export function harperSafeLines(md: string): HarperSafeLine[] {
 export function isNonClientFacingLine(line: string): boolean {
   const t = String(line || '').trim()
   if (!t) return true
+  if (/table of contents/i.test(t) && t.length > 40) return true
   if (/^table of contents\b/i.test(t)) return true
   if (/^related (guides?|reading|resources)\b/i.test(t) && t.length < 80) return true
   if (/^sources\b/i.test(t) && t.length < 60) return true
@@ -115,21 +119,45 @@ export function isNonClientFacingLine(line: string): boolean {
 
 const ESTATE_WORD_SET = new Set(HARPER_ESTATE_WORDS.map((w) => w.toLowerCase()))
 
-/** Proper nouns, abbreviations, and 1–2 letter tokens are not grammar findings. */
+const COMMONWEALTH_SPELLING = new Set([
+  'rumour', 'rumours', 'colour', 'colours', 'organise', 'organised', 'organisation',
+  'enrolment', 'enrol', 'enrolled', 'programme', 'programmes', 'defence', 'licence',
+  'practise', 'travelling', 'cancelled', 'ageing', 'favour', 'honour',
+])
+
+function sharedPrefixLen(a: string, b: string): number {
+  const x = a.toLowerCase()
+  const y = b.toLowerCase()
+  let i = 0
+  while (i < x.length && i < y.length && x[i] === y[i]) i++
+  return i
+}
+
+function isAcronymToken(s: string): boolean {
+  return /^[A-Z]{2,12}s?$/.test(s) || /^[A-Z]{1,6}[-/][A-Z0-9]{1,8}$/.test(s)
+}
+
+/** Proper nouns, abbreviations, and dialect spelling are not grammar findings. */
 export function isHarperNoiseFinding(it: { kind?: string; problem?: string; message?: string; fix?: string }): boolean {
   const kind = String(it.kind || '')
   const problem = String(it.problem || '').trim()
   const fix = String(it.fix || '').trim()
   const message = String(it.message || '')
   if (!problem) return true
+  if (/readability/i.test(kind)) return true
   if (/^["'`“”‘’]+$/.test(problem)) return true
   if (problem.length <= 2 && /word choice|spelling|formatting/i.test(kind)) return true
   if (/^byte$/i.test(fix) && /^[A-Za-z]$/.test(problem)) return true
-  if (/^[A-Z]{2,8}$/.test(problem) && /spelling|word choice/i.test(kind)) return true
   if (ESTATE_WORD_SET.has(problem.toLowerCase())) return true
-  if (/[A-Za-z]+\d|\d[A-Za-z]/.test(problem) && /spelling/i.test(kind)) return true
-  if (/pabst|semis|\blac\b|\bces\b|did you mean to spell/i.test(`${fix} ${message}`) && /^[A-Z0-9][A-Za-z0-9.'-]{1,24}$/.test(problem)) {
-    return true
+  if (COMMONWEALTH_SPELLING.has(problem.toLowerCase())) return true
+  if (/yousafe|caseworks|cricos|naati|ovhc|home.?affairs/i.test(problem)) return true
+  if (/spelling|word choice/i.test(kind)) {
+    if (isAcronymToken(problem)) return true
+    if (/[a-z][A-Z]/.test(problem)) return true
+    if (/[A-Za-z]+\d|\d[A-Za-z]/.test(problem)) return true
+    if (/did you mean to spell/i.test(message) && /^[A-Z0-9]/.test(problem) && !/\s/.test(problem)) return true
+    if (fix && problem.length >= 5 && sharedPrefixLen(problem, fix) < 3) return true
+    if (/^[A-Z]/.test(problem) && !/\s/.test(problem) && problem.length <= 16 && /spelling/i.test(kind)) return true
   }
   if (/word choice/i.test(kind) && /did you mean ['`]?byte/i.test(message)) return true
   return false

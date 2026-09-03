@@ -242,15 +242,51 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       )
     }
     if (expanded === 'readability') {
+      const r = metrics?.readability
+      const fixes = r?.fixes || []
       return (
         <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.6 }}>
-          <div><strong>Flesch Reading Ease</strong> — {readabilityLabel}.</div>
+          <div><strong>Flesch Reading Ease</strong> — {r ? `${r.score}/100` : readabilityLabel} {r ? (r.pass ? '(meets brief)' : `(need ≥${r.target} for this brief)`) : ''}.</div>
           <div style={{ color: C.muted }}>
-            {metrics?.readability.words.toLocaleString()} words · {metrics?.readability.sentences} sentences
+            {r?.words.toLocaleString()} words · {r?.sentences} sentences · brief floor {r?.target ?? 50}
           </div>
           <div style={{ color: C.muted, marginTop: 3 }}>
-            Target flow: short sentences (15–20 words), plain practitioner language, one idea per paragraph.
+            Target flow from the brief: 15–22 word sentences, plain practitioner language, one idea per paragraph.
           </div>
+          {fixes.map((fx, i) => (
+            <div key={i} style={{ marginTop: 8, color: C.text }}>
+              <div style={{ color: C.muted }}>{fx.reason}</div>
+              <div style={{ background: '#FEF2F2', padding: '2px 4px', borderRadius: 3, marginTop: 2 }}>“{fx.quote.slice(0, 160)}”</div>
+              <div style={{ color: C.green, marginTop: 2 }}>→ {fx.suggestion.slice(0, 200)}</div>
+              <button
+                type="button"
+                disabled={!onApplied}
+                onClick={() => {
+                  const local = applyQuotedStyleFixes(textRef.current, [{ quote: fx.quote, suggestion: fx.suggestion }])
+                  if (local.applied > 0 && onApplied) onApplied(local.content)
+                }}
+                style={{ marginTop: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+              >
+                Apply split
+              </button>
+            </div>
+          ))}
+          {fixes.length > 0 && (
+            <button
+              type="button"
+              disabled={!onApplied}
+              onClick={() => {
+                const local = applyQuotedStyleFixes(textRef.current, fixes)
+                if (local.applied > 0 && onApplied) onApplied(local.content)
+              }}
+              style={{ marginTop: 8, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#17365D', fontSize: 11, fontWeight: 600, color: '#fff', cursor: 'pointer' }}
+            >
+              Apply {fixes.length} readability fix{fixes.length === 1 ? '' : 'es'}
+            </button>
+          )}
+          {fixes.length === 0 && r?.pass && (
+            <div style={{ color: C.green, marginTop: 6 }}>Readability is at the brief floor.</div>
+          )}
         </div>
       )
     }
@@ -292,6 +328,22 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
             <span style={{ background: '#FFF7ED', padding: '0 4px', borderRadius: 3 }}>“{it.quote}”</span>
             <div style={{ color: C.muted }}>{it.issue}</div>
             <div style={{ color: C.green }}>→ {it.suggestion}</div>
+            <button
+              type="button"
+              disabled={applying || !onApplied || !it.quote || !it.suggestion}
+              onClick={() => {
+                const local = applyQuotedStyleFixes(textRef.current, [it])
+                if (local.applied > 0 && onApplied) {
+                  onApplied(local.content)
+                  setStyleItems((prev) => prev.filter((_, j) => j !== i))
+                } else {
+                  setStyleError(`Could not find “${it.quote.slice(0, 80)}” in the document — edit that phrase by hand.`)
+                }
+              }}
+              style={{ marginTop: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+            >
+              Replace
+            </button>
           </div>
         ))}
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>

@@ -114,6 +114,18 @@ Critique the voice and readability. Return ONLY the JSON.`
       return NextResponse.json({ items: parsed.items, applied: false, provider: review.provider })
     }
 
+    const localFirst = applyQuotedStyleFixes(content, parsed.items)
+    if (localFirst.applied > 0) {
+      return NextResponse.json({
+        items: parsed.items,
+        applied: true,
+        content: localFirst.content,
+        provider: review.provider,
+        fallback: 'quote-replace',
+        appliedCount: localFirst.applied,
+      })
+    }
+
     // Apply pass: surgical EditorPatch, one op per finding, hash-verified.
     const applyResult = await generateContentText({
       system: 'You are a surgical editorial copy editor. Respond with ONLY the EditorPatch JSON.',

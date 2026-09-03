@@ -1,4 +1,4 @@
-import { extractProse, fleschReadingEase, scoreHarperLints, computeSeoScore, computeEditorMetrics } from '../lib/editorMetrics'
+import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes } from '../lib/editorMetrics'
 
 describe('editor metrics', () => {
   it('extracts prose from markdown including frontmatter/headings/lists', () => {
@@ -45,9 +45,19 @@ Plain sentence here. Another one.
     expect(b.score).toBeLessThan(40)
   })
 
+  it('brief content type sets the Flesch floor and long sentences get split suggestions', () => {
+    expect(fleschTargetForBrief({ contentType: 'blog_post' })).toBe(60)
+    expect(fleschTargetForBrief({ contentType: 'legal_guide' })).toBe(50)
+    const long = 'Applicants who want a graduate visa after study in Australia must compare the post-study work stream with the graduate work stream and collect evidence of CRICOS study, English, and a skills assessment before they lodge because processing clocks do not pause for missing documents.'
+    const fixes = suggestReadabilityFixes(`# T\n\n${long}\n`, { contentType: 'blog_post', audience: 'graduates' })
+    expect(fixes.length).toBeGreaterThan(0)
+    expect(fixes[0].suggestion).toMatch(/\.\s+[A-Z]/)
+  })
+
   it('computeEditorMetrics aggregates all three', () => {
     const m = computeEditorMetrics('# T\n\nHello there. This is a fine article.', [], { primaryKeyword: 'fine article' })
     expect(typeof m.grammar.score).toBe('number')
+    expect(typeof m.readability.target).toBe('number')
     expect(typeof m.readability.score).toBe('number')
     expect(typeof m.seo.score).toBe('number')
   })

@@ -1122,6 +1122,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   primaryKeyword,
                   requiredShortKeywords,
                   requiredLongTailKeywords,
+                  region,
+                  contentType,
                 }}
                 reviewModel={reviewModel}
                 busy={allBusy}

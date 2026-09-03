@@ -16,7 +16,7 @@
 
 export type EditorMetrics = {
   grammar: { score: number; errors: number; suggestions: number; sample: Array<{ kind: string; problem: string; message: string }> }
-  readability: { score: number; words: number; sentences: number }
+  readability: { score: number; words: number; sentences: number; target: number; pass: boolean; fixes: ReadabilityFix[] }
   seo: { score: number; pass: string[]; fail: string[] }
 }
 
@@ -25,7 +25,12 @@ export type EditorSeoHint = {
   targetWords?: number
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  region?: string | null
+  contentType?: string | null
+  audience?: string | null
 }
+
+export type ReadabilityFix = { quote: string; suggestion: string; reason: string; words: number }
 
 /** Harper lint severity buckets (order matters: more serious first). */
 const HARPER_ERROR_KINDS = new Set(['Spelling', 'Grammar', 'Repetition'])
@@ -52,6 +57,14 @@ export function scoreHarperLints(lints: Array<{ kind: string }>): { score: numbe
  * collapses the rest into plain sentences. Deterministic — used by both the
  * readability and (indirectly) grammar scoring.
  */
+/** Brief-informed Flesch floor: blogs scan easier; legal guides may sit lower. */
+export function fleschTargetForBrief(hint?: EditorSeoHint): number {
+  const t = String(hint?.contentType || '').toLowerCase()
+  if (t === 'blog_post' || t === 'blog_summary') return 60
+  if (t === 'regional_page' || t === 'regional_from' || t === 'regional_university') return 55
+  return 50
+}
+
 export function extractProse(md: string): string {
   let s = String(md || '')
     .replace(/\s*---[\s\S]*?\n---\s*/g, '\n')
@@ -59,6 +72,7 @@ export function extractProse(md: string): string {
     .replace(/<[^>]+>/g, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/^#{1,4}\s+.*$/gm, ' ')
+    .replace(/table of contents[\s\S]{0,400}?(?=\n##\s|\n#\s|$)/gi, ' ')
     .replace(/^\s*[|>-]\s?/gm, ' ')
     .replace(/^\s*[-*+]\s+/gm, ' ')
     .replace(/^\s*\d+[.)]\s+/gm, ' ')
@@ -156,14 +170,65 @@ function escapeRegExp(s: string): string {
  * Full editor quality pack: readability + SEO locally, grammar from Harper
  * lints. Pure — the caller picks how it sources lints (browser Harper).
  */
+function splitLongSentence(sentence: string): string | null {
+  const words = sentence.trim().split(/\s+/).filter(Boolean)
+  if (words.length < 28) return null
+  const raw = sentence.trim()
+  const mid = Math.floor(raw.length / 2)
+  const windows = ['; ', ': ', ', and ', ', but ', ', which ', ' — ', ' – ']
+  let at = -1
+  let sep = '. '
+  for (const w of windows) {
+    const left = raw.lastIndexOf(w, mid + 40)
+    const right = raw.indexOf(w, Math.max(0, mid - 40))
+    const hit = [left, right].filter((i) => i >= 12 && i < raw.length - 12).sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0]
+    if (hit != null) {
+      at = hit
+      sep = w
+      break
+    }
+  }
+  if (at < 0) return null
+  const a = raw.slice(0, at).trim().replace(/[,;:]$/, '')
+  const b = raw.slice(at + sep.length).trim().replace(/^[a-z]/, (ch) => ch.toUpperCase())
+  if (a.split(/\s+/).length < 6 || b.split(/\s+/).length < 6) return null
+  return `${a}. ${b}`
+}
+
+export function suggestReadabilityFixes(md: string, hint?: EditorSeoHint): ReadabilityFix[] {
+  const prose = extractProse(md)
+  const sentences = prose.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0)
+  const out: ReadabilityFix[] = []
+  for (const s of sentences) {
+    const words = s.trim().split(/\s+/).filter(Boolean).length
+    if (words < 28) continue
+    const suggestion = splitLongSentence(s)
+    if (!suggestion) continue
+    out.push({
+      quote: s.trim().slice(0, 280),
+      suggestion,
+      reason: `${words}-word sentence — brief target is 15–22 words for a ${hint?.audience || 'consumer'} reader`,
+      words,
+    })
+    if (out.length >= 8) break
+  }
+  return out
+}
+
 export function computeEditorMetrics(md: string, lints: Array<{ kind: string }>, hint?: EditorSeoHint): EditorMetrics {
   const prose = extractProse(md)
-  const readability = fleschReadingEase(prose)
+  const ease = fleschReadingEase(prose)
+  const target = fleschTargetForBrief(hint)
   const grammar = scoreHarperLints(lints)
   const seo = computeSeoScore(md, hint)
   return {
     grammar: { ...grammar, sample: [] },
-    readability,
+    readability: {
+      ...ease,
+      target,
+      pass: ease.score >= target,
+      fixes: suggestReadabilityFixes(md, hint),
+    },
     seo,
   }
 }

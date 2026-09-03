@@ -65,7 +65,8 @@ function kindOf(l: Lint): string {
  *  Harper's title-case Capitalization findings never surface. */
 function keepLint(l: Lint): boolean {
   try {
-    if ((l.lint_kind() || '') === 'Capitalization') return false
+    const k = l.lint_kind() || ''
+    if (k === 'Capitalization' || k === 'Readability' || k === 'Style') return false
     return true
   } catch {
     return true

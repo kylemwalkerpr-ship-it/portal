@@ -99,12 +99,27 @@ Official source.`
     expect(twice.content).toBe(once.content)
   })
 
+  it('find-and-replaces style quotes across whitespace and quotes', () => {
+    const doc = 'Cost of applying for application essay review is a vendor quote.'
+    const out = applyQuotedStyleFixes(doc, [{
+      quote: 'Cost of applying for application essay review is a vendor quote.',
+      suggestion: 'The cost for an application essay review is a vendor quote, not a government filing fee.',
+    }])
+    expect(out.applied).toBe(1)
+    expect(out.content).toContain('not a government filing fee')
+  })
+
   it('ignores TOC glue and treats acronyms as vocabulary not grammar', () => {
     expect(isNonClientFacingLine('Table of contents What application essay review covers for U.S. filings Who should use a reviewer versus self-edit Docum')).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'SEVIS', fix: 'Semis', message: "Did you mean to spell 'SEVIS' this way?" })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Word Choice', problem: 'B', fix: 'byte', message: "Did you mean 'byte'?" })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'CRS', fix: 'CES' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Grammar', problem: 'Should i hire', fix: 'Should I hire' })).toBe(false)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'YouSafe', fix: 'Yousafe', message: "Did you mean 'Yousafe'?" })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'CRICOS', fix: 'Cricks', message: "Did you mean to spell 'CRICOS' this way?" })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'rumour', fix: 'rumor' })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'uncertified', fix: 'unfortified' })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'english', fix: 'English' })).toBe(false)
     expect(HARPER_ESTATE_WORDS).toContain('SEVIS')
   })
 
