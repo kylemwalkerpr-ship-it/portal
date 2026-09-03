@@ -36,6 +36,7 @@ import {
   asQueueUiFilter,
   queueClearConfirmCopy,
   queueDeleteConfirmCopy,
+  queueFilterForJobStatus,
   queueJobsListPath,
   queueTabCount,
   type QueueClearAction,
@@ -6169,16 +6170,17 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const saved = generationJobId
     if (!saved) return
     setKeepDraftWorkspace(true)
-    setQueueStatusFilter('drafting')
     void (async () => {
       try {
         const res = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(saved)}`, { credentials: 'same-origin' })
         const data = await res.json().catch(() => ({})) as { job?: ContentJob }
-        if (!data.job) return
-        setJobs((prev) => (prev.some((j) => j.id === data.job!.id) ? prev : [data.job!, ...prev]))
-        if (data.job.status === 'drafting' || data.job.status === 'pending' || data.job.status === 'failed') {
-          setGenerationReviewJob(data.job)
+        if (!data.job) {
+          setQueueStatusFilter('drafting')
+          return
         }
+        setQueueStatusFilter(queueFilterForJobStatus(data.job.status))
+        setJobs((prev) => (prev.some((j) => j.id === data.job!.id) ? prev : [data.job!, ...prev]))
+        setGenerationReviewJob(data.job)
       } catch { /* queue restore is best-effort */ }
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -6932,6 +6934,15 @@ const controller = new AbortController()
           } catch { /* queue refresh remains the source of truth */ }
         }
         setGenerationReviewJob(reviewJob)
+        if (reviewJob) {
+          setJobs((prev) => {
+            const rest = prev.filter((j) => j.id !== reviewJob!.id)
+            return [reviewJob!, ...rest]
+          })
+          setQueueStatusFilter(queueFilterForJobStatus(reviewJob.status))
+        } else {
+          setQueueStatusFilter(data.ship?.prUrl ? 'pr_created' : 'drafting')
+        }
       }
       await fetchGateRuns()
     } catch (err) {

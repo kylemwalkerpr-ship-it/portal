@@ -3,6 +3,7 @@ import {
   queueClearConfirmCopy,
   queueClearSpec,
   queueDeleteConfirmCopy,
+  queueFilterForJobStatus,
   queueJobsListPath,
   queueListStatusParam,
   queueMatchedCount,
@@ -47,6 +48,16 @@ describe('asQueueUiFilter', () => {
     expect(asQueueUiFilter('stuck')).toBe('stuck')
     expect(asQueueUiFilter('closed')).toBe('all')
     expect(asQueueUiFilter('publishing')).toBe('all')
+  })
+})
+
+describe('queueFilterForJobStatus', () => {
+  it('opens PR Ready after a shipped draft so the job does not vanish from Drafting', () => {
+    expect(queueFilterForJobStatus('pr_created')).toBe('pr_created')
+    expect(queueFilterForJobStatus('publishing')).toBe('pr_created')
+    expect(queueFilterForJobStatus('drafting')).toBe('drafting')
+    expect(queueFilterForJobStatus('failed')).toBe('failed')
+    expect(queueFilterForJobStatus('merged')).toBe('merged')
   })
 })
 

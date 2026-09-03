@@ -46,6 +46,16 @@ export function asQueueUiFilter(value: string): QueueUiFilter {
   return (QUEUE_UI_FILTERS as readonly string[]).includes(value) ? (value as QueueUiFilter) : 'all'
 }
 
+/** After generate/restore, open the tab that actually contains this job. */
+export function queueFilterForJobStatus(status: string): QueueUiFilter {
+  const s = String(status || '').trim()
+  if (s === 'pr_created' || s === 'publishing') return 'pr_created'
+  if (s === 'merged') return 'merged'
+  if (s === 'failed') return 'failed'
+  if (s === 'drafting' || s === 'pending') return 'drafting'
+  return 'all'
+}
+
 /** Status query for GET /jobs so the failed tab loads failed rows, not the latest mixed 100. */
 export function queueListStatusParam(filter: QueueUiFilter): string | null {
   if (filter === 'all') return null
