@@ -162,6 +162,13 @@ export function unwrapWholeDocumentFence(content: string): string {
     const inner = take(exact[1])
     if (inner) return inner
   }
+  // Live stream: the opening ```markdown fence often arrives before the
+  // closer. Count the inner article, not 0, while the model is still writing.
+  const unclosed = trimmed.match(/^```(?:markdown|md|mdx)?[ \t]*\r?\n([\s\S]*)$/i)
+  if (unclosed && !unclosed[1].includes('```')) {
+    const inner = take(unclosed[1])
+    if (inner) return inner
+  }
   // Reviewer/reasoning models (DeepSeek V4 Pro especially) often prefix
   // "Here is the complete article:" and then fence the body — sometimes as
   // ```text / ```article, not ```markdown. Unwrap when the fence is clearly
@@ -193,19 +200,47 @@ export function formatBodyWordDisplay(live: number, stored?: number | null): str
  * ship all use this. YAML, JSON-LD, scripts, and fenced code are excluded
  * so schema inflation cannot fake Google-depth.
  */
-export function countBodyWords(content: string): number {
-  let body = unwrapWholeDocumentFence(content)
-  // Front matter. A document that OPENS with `---` but never closes the block
-  // (stream truncated mid-frontmatter) contains zero prose — its YAML keys
-  // are scaffolding and must not gross up the count (a truncated run once
-  // displayed "46 words" that were all frontmatter keys). Closed blocks are
-  // stripped as always; unclosed ones count as 0.
-  const fm = body.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
-  if (fm) {
-    body = body.slice(fm[0].length)
-  } else if (body.trimStart().startsWith('---')) {
-    return 0
+const YAML_LEAD_KEY =
+  /^(title|description|metaDescription|primaryKeyword|robots|date|region|content_?type|contentType|ownerHost|canonicalUrl|canonical|ogImage|slug|layout)\s*:/i
+
+/** Drop YAML scaffolding. Never discard H1/body just because the opening fence never closed. */
+function stripLeadingYaml(content: string): string {
+  const raw = String(content || '').replace(/^\uFEFF/, '')
+  const closed = raw.match(/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/)
+  if (closed) return raw.slice(closed.index! + closed[0].length)
+
+  let t = raw.trimStart()
+  const yamlish = /^(---|title\s*:|description\s*:|primaryKeyword\s*:)/i.test(t)
+  if (!yamlish) return raw
+
+  t = t.replace(/^---[ \t]*/, '')
+  t = t.replace(/^\r?\n/, '')
+
+  const heading = t.search(/(?:^|\n)#{1,6}\s+\S/)
+  if (heading !== -1) {
+    return t.slice(t[heading] === '\n' ? heading + 1 : heading)
   }
+
+  const lines = t.split(/\n/)
+  let i = 0
+  while (i < lines.length) {
+    const tr = lines[i].trim()
+    if (!tr || tr === '---') {
+      i++
+      continue
+    }
+    const keys = tr.match(/\b(?:title|description|primaryKeyword|robots|date|region|content_?type|ownerHost|canonicalUrl|ogImage)\s*:/gi) || []
+    if (YAML_LEAD_KEY.test(tr) || keys.length >= 2) {
+      i++
+      continue
+    }
+    break
+  }
+  return lines.slice(i).join('\n')
+}
+
+export function countBodyWords(content: string): number {
+  let body = stripLeadingYaml(unwrapWholeDocumentFence(content))
   // Scripts / JSON-LD
   body = body.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
   // Fenced code (including ```json schema dumps models sometimes emit)

@@ -5,7 +5,8 @@
  * frontmatter block was scraped into the YAML description field, which was
  * then re-injected into the body, creating an ever-nesting header.
  */
-import { sanitizeFrontmatter } from '@/lib/seoFactory/formatContract'
+import { sanitizeFrontmatter, peelCollapsedFrontmatter, splitCollapsedYamlLine } from '@/lib/seoFactory/formatContract'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 const POLLUTED_DESCRIPTION = `content_type: article region: US description: "content_type: article region: US description: \\"content_type: article region: US description: editorial guide for international students.\\""`
 
@@ -79,6 +80,35 @@ Body text here.
     expect(out).toContain('title: Clean Guide')
     expect(out).toContain('description: A clean description that sits inside the allowed band and contains no leaked tokens.')
     expect(out).toMatch(/^#\s+Clean Guide/m)
+  })
+
+  it('reflows a collapsed one-line YAML dump into a fenced block and hides it from the body', () => {
+    const live = `title: Immigration Lawyer Cost: 2026 Guide for Applicants description: Break down immigration lawyer cost by visa type, government charges, and billing models. Compare rates and find vetted counsel today. primaryKeyword: immigration lawyer cost robots: index,follow date: 2026-08-11 region: us contenttype: legalguide ownerHost: legal ---
+
+# Immigration Lawyer Cost: 2026 Guide for Applicants
+
+## In 60 seconds
+
+- You cover two separate expenses: official government charges and separate legal billing for representation.
+`
+    const fields = splitCollapsedYamlLine(live.split('\n')[0])
+    expect(fields?.title).toMatch(/Immigration Lawyer Cost/)
+    expect(fields?.description).toMatch(/Break down immigration lawyer cost/)
+    expect(fields?.primaryKeyword).toBe('immigration lawyer cost')
+    expect(fields?.content_type).toBe('legalguide')
+    expect(fields?.ownerHost).toBe('legal')
+
+    const peeled = peelCollapsedFrontmatter(live)
+    expect(peeled.startsWith('---\n')).toBe(true)
+    expect(peeled).toMatch(/\n---\n\n# Immigration Lawyer Cost/)
+
+    const out = sanitizeFrontmatter(live)
+    const body = out.replace(/^---\n[\s\S]*?\n---\n\n?/, '')
+    expect(body.trimStart()).toMatch(/^#\s+Immigration Lawyer Cost/)
+    expect(body).not.toMatch(/ownerHost:\s*legal/)
+    expect(body).not.toMatch(/primaryKeyword:\s*immigration lawyer cost/)
+    expect(countBodyWords(live)).toBeGreaterThan(10)
+    expect(countBodyWords(out)).toBe(countBodyWords(live))
   })
 
   it('creates a frontmatter block when the input has none', () => {

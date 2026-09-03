@@ -27,6 +27,30 @@ describe('countBodyWords — truncated frontmatter counts as ZERO prose (2026-09
     expect(countBodyWords(closed)).toBeGreaterThan(0)
   })
 
+  it('unclosed --- plus a real H1 still counts body words (live 25k-char / 0-word stream)', () => {
+    const live = `---
+title: Immigration Lawyer Cost: 2026 Guide for Applicants description: Break down immigration lawyer cost by visa type. primaryKeyword: immigration lawyer cost robots: index,follow date: 2026-08-11 region: us contenttype: legalguide ownerHost: legal
+
+# Immigration Lawyer Cost: 2026 Guide for Applicants
+
+## In 60 seconds
+
+- You cover two separate expenses: official government charges and separate legal billing for representation.
+- Charges vary by case type, form category, and attorney experience level.
+`
+    expect(countBodyWords(live)).toBeGreaterThan(20)
+  })
+
+  it('collapsed one-line YAML without an opening fence does not zero the H1 body', () => {
+    const live = `title: Immigration Lawyer Cost: 2026 Guide for Applicants description: Break down immigration lawyer cost. primaryKeyword: immigration lawyer cost robots: index,follow ownerHost: legal ---
+
+# Immigration Lawyer Cost: 2026 Guide for Applicants
+
+Applicants pay government filing fees and a separate attorney retainer.
+`
+    expect(countBodyWords(live)).toBeGreaterThan(8)
+  })
+
   it('openingFrontmatterClosed distinguishes closed blocks, unclosed blocks, and plain bodies', () => {
     expect(openingFrontmatterClosed('---\ntitle: T\n---\n# T\nBody.')).toBe(true)
     expect(openingFrontmatterClosed('---\ntitle: T\nprimaryKeyword: k')).toBe(false)

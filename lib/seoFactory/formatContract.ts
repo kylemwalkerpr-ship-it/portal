@@ -467,6 +467,8 @@ export function titleCaseWords(phrase: string): string {
 const KNOWN_FM_KEYS = new Set([
   'title',
   'content_type',
+  'contentType',
+  'contenttype',
   'primaryKeyword',
   'description',
   'metaDescription',
@@ -477,7 +479,73 @@ const KNOWN_FM_KEYS = new Set([
   'ogImage',
   'og:image',
   'image',
+  'date',
+  'ownerHost',
+  'ownerhost',
+  'slug',
+  'layout',
 ])
+
+const FM_KEY_SPLIT_RE = new RegExp(
+  `(?:^|\\s)(${[...KNOWN_FM_KEYS].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}):\\s*`,
+  'gi',
+)
+
+function canonicalizeFmKey(key: string): string {
+  const k = key.trim()
+  if (/^contenttype$/i.test(k)) return 'content_type'
+  if (/^ownerhost$/i.test(k)) return 'ownerHost'
+  if (k === 'metaDescription') return 'description'
+  if (k === 'og:image') return 'ogImage'
+  if (k === 'canonical') return 'canonicalUrl'
+  return k
+}
+
+/** Split `title: Foo description: Bar primaryKeyword: baz ---` into YAML fields. */
+export function splitCollapsedYamlLine(line: string): Record<string, string> | null {
+  const trimmed = String(line || '')
+    .trim()
+    .replace(/^---\s*/, '')
+    .replace(/\s*---\s*$/, '')
+  if (!trimmed) return null
+  FM_KEY_SPLIT_RE.lastIndex = 0
+  const hits: Array<{ key: string; valueStart: number; matchStart: number }> = []
+  let m: RegExpExecArray | null
+  while ((m = FM_KEY_SPLIT_RE.exec(trimmed)) !== null) {
+    hits.push({
+      key: canonicalizeFmKey(m[1]),
+      valueStart: m.index + m[0].length,
+      matchStart: m.index,
+    })
+  }
+  if (hits.length < 2) return null
+  const out: Record<string, string> = {}
+  for (let i = 0; i < hits.length; i++) {
+    const end = i + 1 < hits.length ? hits[i + 1].matchStart : trimmed.length
+    const val = trimmed.slice(hits[i].valueStart, end).trim()
+    if (val) out[hits[i].key] = val
+  }
+  return Object.keys(out).length >= 2 ? out : null
+}
+
+/**
+ * Models often dump the YAML header as one prose paragraph (no newlines,
+ * optional missing opening fence, closing `---` at the end of the same line).
+ * Document view then renders it as the first body paragraph. Reflow into a
+ * real `---\\n...\\n---` block so sanitizer + editor can hide it.
+ */
+export function peelCollapsedFrontmatter(content: string): string {
+  const raw = String(content || '')
+  const start = raw.match(/^\s*/)?.[0] ?? ''
+  const rest = raw.slice(start.length)
+  const nl = rest.search(/\r?\n/)
+  const firstLine = nl === -1 ? rest : rest.slice(0, nl)
+  const fields = splitCollapsedYamlLine(firstLine)
+  if (!fields) return raw
+  const body = nl === -1 ? '' : rest.slice(nl).replace(/^\r?\n+/, '')
+  const fm = Object.entries(fields).map(([k, v]) => stringifyFmValue(k, v)).join('\n')
+  return `---\n${fm}\n---\n\n${body}`
+}
 
 function parseSimpleFm(body: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -491,9 +559,7 @@ function parseSimpleFm(body: string): Record<string, string> {
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1)
     }
-    if (key === 'metaDescription') key = 'description'
-    if (key === 'og:image') key = 'ogImage'
-    if (key === 'canonical') key = 'canonicalUrl'
+    key = canonicalizeFmKey(key)
     out[key] = val
   }
   return out
@@ -570,7 +636,7 @@ function cleanLeakedYaml(body: string): string {
  * so the renderer never ships a mangled nested-YAML header.
  */
 export function sanitizeFrontmatter(content: string): string {
-  const raw = String(content || '').trim()
+  const raw = peelCollapsedFrontmatter(String(content || '')).trim()
   const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
   const fields: Record<string, string> = fmMatch ? parseSimpleFm(fmMatch[1]) : {}
   let body = fmMatch ? raw.slice(fmMatch.index + fmMatch[0].length) : raw

@@ -2339,10 +2339,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Strict per-section word budgets from the brief — carried into drafting so
   // the one-run contract is hardlined (never a three-copy echo).
   const [sectionBudgets, setSectionBudgets] = React.useState<Array<{ heading: string; minWords: number; maxWords: number }> | null>(null)
-  const autoBriefKeyRef = React.useRef('')
-  // Brief model — exactly three families: Claude Opus 5 (Run BiOS, default),
-  // Grok (xAI), and DeepSeek V4 Flash (Run BiOS + Baseten). The brief
-  // endpoint (lib/seoFactory/briefModel) coerces stale pins to the default.
+  // Brief engine is MANUAL: Entrim Qwen / Entrim DeepSeek / Grok. Nothing
+  // runs until Generate Full Brief is clicked with the selected pin.
   const [briefModel, setBriefModel] = React.useState(DEFAULT_BRIEF_PIN)
   const briefParsed = parseStudioPin(briefModel)
   const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
@@ -2449,19 +2447,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       setBriefGenerating(false)
     }
   }
-
-  // Selecting a Discover opportunity should arrive as a developed brief, not
-  // an empty form that requires the user to discover a second generation
-  // button. Run once per selected opportunity; manual regeneration remains
-  // available when the editor changes the topic.
-  React.useEffect(() => {
-    const key = String(selectedBrief?.topic || '').trim().toLowerCase()
-    if (!key || !topic.trim() || autoBriefKeyRef.current === key) return
-    autoBriefKeyRef.current = key
-    void handleGenerateBrief()
-    // handleGenerateBrief deliberately captures the current selected brief.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBrief?.topic, topic])
 
   const addSource = () => {
     const raw = newSource.trim()
@@ -2617,6 +2602,41 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         </div>
       </div>
 
+      <div data-testid="studio-brief-engine" style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.inkBlack}`, padding: 14 }}>
+        <label style={labelBase}>Brief engine (manual)</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <StudioModelHostSelect
+            lane="brief"
+            pin={briefModel}
+            onPinChange={setBriefModel}
+            disabled={briefGenerating}
+            modelAriaLabel="Brief AI model"
+            hostAriaLabel="Brief AI provider"
+            selectStyle={{ padding: '8px 10px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, color: E.ink, fontSize: 12, fontWeight: 700, fontFamily: E.mono, minWidth: 220 }}
+          />
+          <button
+            type="button"
+            onClick={handleGenerateBrief}
+            disabled={briefGenerating || !topic.trim() || generating}
+            style={{
+              padding: '8px 14px', borderRadius: 0, border: `1px solid ${E.inkBlack}`,
+              background: briefGenerating ? E.inkBlack : E.gold,
+              color: briefGenerating ? E.ivory : E.inkBlack,
+              cursor: briefGenerating || !topic.trim() ? 'not-allowed' : 'pointer',
+              fontSize: 11, fontWeight: 800, fontFamily: E.mono,
+              opacity: briefGenerating ? 0.85 : 1,
+              whiteSpace: 'nowrap',
+            }}
+            title={!topic.trim() ? 'Enter a topic first' : `Run ${briefModelName} only when you click. This pin owns the article through ship.`}
+          >
+            {briefGenerating ? `🧠 ${briefModelName} building contract…` : briefIntel ? '🧠 Rebuild complete brief' : '🧠 Generate Full Brief'}
+          </button>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 10, color: E.inkMuted, fontFamily: C.serif }}>
+          Choose Qwen, DeepSeek, or Grok, then click generate. Discover does not auto-run this engine.
+        </div>
+      </div>
+
       {briefIntel?.reasoning && (
         <div style={{ padding: '13px 16px', background: E.inkBlack, color: E.ivory, borderLeft: `4px solid ${E.gold}` }}>
           <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }}>
@@ -2756,27 +2776,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
             <label style={labelBase}>Keywords (comma-separated)</label>
             <span style={{ fontFamily: E.mono, fontSize: 9, color: E.inkMuted }}>Clustered from Discover and assigned to one section each</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) auto', gap: 8, marginBottom: 8 }}>
-            <StudioModelHostSelect lane="brief" pin={briefModel} onPinChange={setBriefModel} disabled={briefGenerating} modelAriaLabel="Brief AI model" hostAriaLabel="Brief AI provider" selectStyle={{ padding: '7px 8px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, color: E.ink, fontSize: 10, fontWeight: 700, fontFamily: E.mono }} />
-            <button
-              type="button"
-              onClick={handleGenerateBrief}
-              disabled={briefGenerating || !topic.trim() || generating}
-              style={{
-                padding: '4px 12px', borderRadius: 6, border: `1px solid ${E.inkBlack}`,
-                background: briefGenerating ? E.inkBlack : 'transparent',
-                color: briefGenerating ? E.ivory : E.inkBlack,
-                cursor: briefGenerating || !topic.trim() ? 'not-allowed' : 'pointer',
-                fontSize: 10, fontWeight: 700, fontFamily: E.mono,
-                opacity: briefGenerating ? 0.85 : 1,
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s ease',
-              }}
-              title={!topic.trim() ? 'Enter a topic first' : `${briefModelName} reads all Discover intel — radar, GSC, keyword research, LLM visibility, backlinks — and builds a complete prescriptive brief. It is the single integrated brief action.`}
-            >
-              {briefGenerating ? `🧠 ${briefModelName} building contract…` : '🧠 Rebuild complete brief'}
-            </button>
           </div>
           <textarea
             value={keywords} onChange={e => setKeywords(e.target.value)}

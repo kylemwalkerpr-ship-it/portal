@@ -239,7 +239,7 @@ export async function* runDepthRescue(
   // — the screenshot bug of 2026-09-02 (46-word "draft" that was all YAML
   // keys, fed to depth rescue as if it were prose). Refuse explicitly and
   // route the pipeline to regeneration.
-  if (!openingFrontmatterClosed(content)) {
+  if (!openingFrontmatterClosed(content) && countBodyWords(content) === 0) {
     yield {
       type: 'progress',
       stage: 'refine',
