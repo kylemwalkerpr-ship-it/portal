@@ -4597,7 +4597,7 @@ function buildWorkPlan(
       topic: s.topic,
       source: 'Radar',
       priority,
-      priorityTier: s.priorityTier || (priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low'),
+      priorityTier: priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low',
       clusterId,
       clusterSize: Math.max(1, s.cluster?.keywords?.length || s.keywords?.length || 1),
       signals: [
@@ -4711,13 +4711,13 @@ function WorkPlanTable({
   const selectedItems = activeItems.filter((i) => selectedIds.has(i.id) && !i.shipped)
   const cannibalItems = activeItems.filter((i) => i.category === 'cannibal')
   const actionableItems = activeItems.filter((i) => !i.shipped && i.category !== 'merge')
-  const highPriority = actionableItems.filter((i) => i.priorityTier === 'high').length
-  const mediumPriority = actionableItems.filter((i) => i.priorityTier === 'medium').length
-  const lowPriority = actionableItems.filter((i) => i.priorityTier === 'low').length
   const sourceCount = new Set(activeItems.map((i) => i.source)).size
   const averagePriority = actionableItems.length
-    ? Math.round(actionableItems.reduce((sum, item) => sum + item.priority, 0) / actionableItems.length)
+    ? Math.round(actionableItems.reduce((sum, item) => sum + Math.max(0, Math.min(100, Number(item.priority) || 0)), 0) / actionableItems.length)
     : 0
+  const highPriority = actionableItems.filter((i) => i.priority >= 75).length
+  const mediumPriority = actionableItems.filter((i) => i.priority >= 50 && i.priority < 75).length
+  const lowPriority = actionableItems.filter((i) => i.priority < 50).length
 
   const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
@@ -4745,7 +4745,7 @@ function WorkPlanTable({
           { label: 'Open opportunities', value: actionableItems.length, detail: `${sourceCount} signal sources`, color: '#F8E7B0' },
           { label: 'High priority', value: highPriority, detail: `${mediumPriority} medium · ${lowPriority} low`, color: '#86EFAC' },
           { label: 'Cannibal risks', value: cannibalItems.length, detail: cannibalItems.length ? 'needs consolidation' : 'estate is clear', color: cannibalItems.length ? '#FCA5A5' : '#86EFAC' },
-          { label: 'Portfolio score', value: averagePriority || '—', detail: 'average opportunity', color: '#93C5FD' },
+          { label: 'Portfolio score', value: actionableItems.length ? `${averagePriority}/100` : '—', detail: 'mean value score (not a count)', color: '#93C5FD' },
         ].map((metric, index) => (
           <div key={metric.label} style={{ padding: '16px 18px', borderRight: index < 3 ? '1px solid rgba(255,255,255,0.12)' : 'none' }}>
             <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.52)' }}>{metric.label}</div>
