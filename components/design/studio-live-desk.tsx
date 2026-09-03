@@ -43,7 +43,7 @@ type EngineStatus = {
   interlinks?: { planned?: number; applied?: number; latestAt?: string | null }
   llmVisibility?: { total?: number; cited?: number; shareOfVoice?: number; latestQuery?: string | null; latestAt?: string | null }
   rankingModel?: { computed?: number; latestTotal?: number | null; latestTopic?: string | null; latestAt?: string | null }
-  gate?: { runs?: number; passed?: number; passRate?: number; avgScore?: number; latestAt?: string | null }
+  gate?: { runs?: number; passed?: number; passRate?: number; avgScore?: number; latestAt?: string | null; source?: string }
   runs?: Array<Record<string, unknown>>
   authMode?: 'service-role' | 'degraded-anon'
   demandSnapshot?: { source?: string; mode?: string | null; siteUrl?: string | null; ageDays?: number; stale?: boolean; generatedAt?: string | null }
@@ -358,7 +358,14 @@ export function StudioLiveDesk({
               </span>
             )
           })()}
-          <span style={{ padding: '3px 9px', borderRadius: 999, background: E.hairline, color: E.inkMuted }}>
+          <span
+            title={
+              gate?.source === 'content_jobs'
+                ? 'Hydrated from content_jobs.seo_score because seo_gate_runs is empty — studio audits now record gate rows on persist/ship'
+                : 'seo_gate_runs: engine compliance + studio quality audits'
+            }
+            style={{ padding: '3px 9px', borderRadius: 999, background: (gate?.runs ?? 0) > 0 ? '#E7F0EA' : E.hairline, color: (gate?.runs ?? 0) > 0 ? E.mossGreen : E.inkMuted }}
+          >
             🛡 gate {gate?.runs ?? 0} runs · {gate?.passRate ?? 0}%
           </span>
         </div>

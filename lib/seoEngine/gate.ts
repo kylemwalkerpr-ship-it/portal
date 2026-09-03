@@ -170,12 +170,74 @@ export async function enforceGate(subject: GateSubject, draft?: string, meta: Dr
       blockers,
       signals: signals as unknown as Record<string, unknown>,
     })
+    if (error) console.warn('[seo_gate_runs] insert failed', error.message)
     recorded = !error
-  } catch {
+  } catch (e) {
+    console.warn('[seo_gate_runs] insert threw', e instanceof Error ? e.message : e)
     recorded = false
   }
 
   return { passed, score: compliance.score, threshold, compliance, blockers, signals, recorded }
+}
+
+/** Persist a Content Studio ship-quality audit so the desk chip is not stuck at 0. */
+export async function recordJobQualityGate(opts: {
+  jobId?: string | null
+  score: number
+  passed: boolean
+  blockers?: string[]
+  country?: string | null
+  stage?: string | null
+}): Promise<boolean> {
+  try {
+    const supabase = createSupabaseAdminClient()
+    const { error } = await supabase.from('seo_gate_runs').insert({
+      subject_type: 'job',
+      subject_id: opts.jobId || null,
+      cluster_id: null,
+      stage: opts.stage || 'studio_audit',
+      country: opts.country || null,
+      score: opts.score,
+      passed: opts.passed,
+      threshold: 65,
+      by_category: {},
+      blockers: opts.blockers || [],
+      signals: { source: 'content_studio_audit' },
+    })
+    if (error) {
+      console.warn('[seo_gate_runs] studio audit insert failed', error.message)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[seo_gate_runs] studio audit insert threw', e instanceof Error ? e.message : e)
+    return false
+  }
+}
+
+export function hydrateGateFromJobScores(input: {
+  gateRuns: number
+  gatePassed: number
+  jobScored: number
+  jobPassed: number
+}): { runs: number; passed: number; passRate: number; source: 'seo_gate_runs' | 'content_jobs' } {
+  if (input.gateRuns > 0) {
+    return {
+      runs: input.gateRuns,
+      passed: input.gatePassed,
+      passRate: Math.round((input.gatePassed / input.gateRuns) * 100),
+      source: 'seo_gate_runs',
+    }
+  }
+  if (input.jobScored > 0) {
+    return {
+      runs: input.jobScored,
+      passed: input.jobPassed,
+      passRate: Math.round((input.jobPassed / input.jobScored) * 100),
+      source: 'content_jobs',
+    }
+  }
+  return { runs: 0, passed: 0, passRate: 0, source: 'seo_gate_runs' }
 }
 
 export async function loadGateRuns(limit = 30): Promise<{

@@ -4,6 +4,7 @@ import { createSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
 import { reportSpecCoverage } from '@/lib/seoEngine/specCoverage'
+import { hydrateGateFromJobScores } from '@/lib/seoEngine/gate'
 
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' }
 
@@ -60,7 +61,7 @@ export async function GET() {
       cells, knowledge, plans, runs, config,
       linksPlanned, linksApplied, rankCount,
       llmPromptTotal, llmPromptCited, llmAllTotal, llmAllCited,
-      gateTotal, gatePassed, recentGates,
+      gateTotal, gatePassed, recentGates, jobsScored, jobsPassed,
       ranking,
       latestKnowledge, latestPlan, latestLink, latestLlm, latestGate,
     ] = await Promise.all([
@@ -81,6 +82,8 @@ export async function GET() {
       countExact(supabase, 'seo_gate_runs'),
       countExact(supabase, 'seo_gate_runs', (q) => q.eq('passed', true)),
       supabase.from('seo_gate_runs').select('score,passed').order('created_at', { ascending: false }).limit(20),
+      countExact(supabase, 'content_jobs', (q) => q.not('seo_score', 'is', null)),
+      countExact(supabase, 'content_jobs', (q) => q.gte('seo_score', 65)),
       loadRankingScores({ limit: 1 }),
       latestRow(supabase, 'seo_knowledge', 'id,title,kind,fetched_at', 'fetched_at'),
       latestRow(supabase, 'seo_cluster_plans', 'id,primary_term,status,created_at', 'created_at'),
@@ -127,13 +130,22 @@ export async function GET() {
         latestTopic: ranking[0] ? String(ranking[0].topic) : null,
         latestAt: ranking[0] ? String((ranking[0] as { created_at?: string }).created_at || '') : null,
       },
-      gate: {
-        runs: gateTotal,
-        passed: gatePassed,
-        passRate: gateTotal ? Math.round((gatePassed / gateTotal) * 100) : 0,
-        avgScore: gateScores.length ? Math.round(gateScores.reduce((a, b) => a + b, 0) / gateScores.length) : 0,
-        latestAt: latestGate ? String(latestGate.created_at || '') : null,
-      },
+      gate: (() => {
+        const h = hydrateGateFromJobScores({
+          gateRuns: gateTotal,
+          gatePassed,
+          jobScored: jobsScored,
+          jobPassed: jobsPassed,
+        })
+        return {
+          runs: h.runs,
+          passed: h.passed,
+          passRate: h.passRate,
+          source: h.source,
+          avgScore: gateScores.length ? Math.round(gateScores.reduce((a, b) => a + b, 0) / gateScores.length) : 0,
+          latestAt: latestGate ? String(latestGate.created_at || '') : null,
+        }
+      })(),
       // Demand-data health — snapshots are the planner's fallback feed; the
       // operator must always SEE when demand is snapshot-derived and how old.
       demandSnapshot: await (await import('@/lib/seoEngine/demandHealth')).resolveDemandHealth(),

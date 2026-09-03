@@ -611,11 +611,11 @@ export async function shipContent(opts: {
       opts.plan.host === 'legal' ||
       opts.plan.repo === 'caseworks' ||
       /legal_guide|article/i.test(opts.contentType)
-    if (stage) {
+    {
       const verdict = await enforceGate(
-        { subjectType: 'job', subjectId: opts.jobId || null, stage, country: cell?.country },
+        { subjectType: 'job', subjectId: opts.jobId || null, stage: stage || 'unmapped', country: cell?.country },
         shipContent_,
-        { stage, country: cell?.country, title: opts.title, contentType: opts.contentType },
+        { stage: stage || undefined, country: cell?.country, title: opts.title, contentType: opts.contentType },
       )
       if (isLegalContent && ['visa', 'citizenship', 'family'].includes(stage) && !verdict.passed) {
         const missingMandatory = verdict.blockers.filter((b) => b.includes('(YMYL-critical)'))

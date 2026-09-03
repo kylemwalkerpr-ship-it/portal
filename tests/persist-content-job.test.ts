@@ -313,7 +313,7 @@ describe('persistPipelineJob — one write door, never throws', () => {
     const update = ops.find((o) => o.op === 'update' && o.table === 'content_jobs')
     expect(update).toBeDefined()
     expect((update!.row as Record<string, unknown>).status).toBe('merged')
-    expect(ops.some((o) => o.op === 'insert')).toBe(false)
+    expect(ops.some((o) => o.op === 'insert' && o.table === 'content_jobs')).toBe(false)
   })
 
   it('inserts a new row when no existing id and returns the inserted id', async () => {

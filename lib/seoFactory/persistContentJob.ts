@@ -291,6 +291,19 @@ export async function persistPipelineJob(
         .in('status', ['drafting', 'pending', 'failed'])
         .neq('id', jobId)
     }
+    if (jobId) {
+      try {
+        const { recordJobQualityGate } = await import('@/lib/seoEngine/gate')
+        await recordJobQualityGate({
+          jobId,
+          score: input.audit.score,
+          passed: input.plan.blockers.length === 0 && meetsShipQuality(input.audit),
+          blockers: (input.audit.blockers || []).map((b) => String(b.code || b.message || '')).filter(Boolean),
+          country: input.region || null,
+          stage: 'studio_audit',
+        })
+      } catch { /* desk telemetry must never fail persist */ }
+    }
     return jobId
   } catch (e) {
     console.warn('[persistPipelineJob] job persist skipped', e)
