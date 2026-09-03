@@ -918,16 +918,20 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
         clicks: c.sig.clicks,
         knowledgeBias: bias.get(cellId(c.stage, c.country)) || 0,
         corroborated: gscCorroboratedCells.has(cellId(c.stage, c.country)),
+        volume: c.sig.volume,
+        source: c.sig.source,
       })
     ) {
       skipDead++
-      req.onProgress?.('plan', `Killed dead funnel mission: "${c.sig.term}" (${c.stage}|${c.country}) — no purchasable service, no demand proof`)
       continue
     }
     candidatesAfterKill.push(c)
   }
   candidates.length = 0
   candidates.push(...candidatesAfterKill)
+  if (skipDead) {
+    req.onProgress?.('plan', `Dropped ${skipDead} dead-funnel stub(s) (no supply and no market/GSC proof)`)
+  }
   // Single score-descending selection. The old preferred/fallback bucket split
   // appended EVERY Ubersuggest head before any deep-rank GSC gap — when the
   // preferred bucket filled the cap, genuine owned-property rank gaps (pos
@@ -1100,7 +1104,11 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
 
   plans.sort((a, b) => b.opportunityScore - a.opportunityScore)
 
-  req.onProgress?.('persist', `Persisting ${plans.length} cluster plan(s)…`)
+  req.onProgress?.(
+    'persist',
+    `Persisting ${plans.length} cluster plan(s)…`,
+    plans.slice(0, 5).map((p) => p.primaryTerm).join(' · ') || undefined,
+  )
 
   // Persist to Supabase (best-effort, idempotent by cluster_id)
   let persisted = 0

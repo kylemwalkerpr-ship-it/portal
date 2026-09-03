@@ -548,6 +548,23 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
     const skipNote = !per.error && per.fetched > 0 && per.stored === 0 ? 'none matched immigration / SEO ontology' : per.error
     opts.onProgress?.('store', `${source.label}: ${per.stored} stored · ${per.fetched} fetched`, skipNote)
   }
+  try {
+    const { loadUbersuggestConfig } = await import('./ubersuggest')
+    const { snapshotSummary } = await import('./ubersuggestSnapshot')
+    const cfg = await loadUbersuggestConfig()
+    if (cfg.lastSnapshot && (cfg.lastSnapshot.keywords?.length || cfg.lastSnapshot.contentIdeas?.length)) {
+      const summary = snapshotSummary(cfg.lastSnapshot)
+      opts.onProgress?.(
+        'store',
+        `Ubersuggest engine snapshot · ${summary}`,
+        cfg.lastSnapshot.pulledAt,
+      )
+    } else if (!cfg.enabled) {
+      opts.onProgress?.('store', 'Ubersuggest not connected — snapshot layers skipped')
+    }
+  } catch {
+    /* snapshot readout is additive */
+  }
   return result
 }
 

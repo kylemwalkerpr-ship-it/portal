@@ -262,6 +262,17 @@ describe('dead-funnel kill-switch', () => {
     expect(isDeadFunnelMission({ stage: 'intent', hasLiveSupply: false, impressions: 40, clicks: 0, knowledgeBias: 0, corroborated: false })).toBe(true)
   })
 
+  it('does not kill Ubersuggest/Ads market demand on intent-stage queries', () => {
+    expect(isDeadFunnelMission({
+      stage: 'intent', hasLiveSupply: false, impressions: 40, clicks: 0, knowledgeBias: 0, corroborated: false,
+      source: 'ubersuggest', volume: 2400,
+    })).toBe(false)
+    expect(isDeadFunnelMission({
+      stage: 'intent', hasLiveSupply: false, impressions: 40, clicks: 0, knowledgeBias: 0, corroborated: false,
+      source: 'ads', volume: 900,
+    })).toBe(false)
+  })
+
   it('spares anything with demand, clicks, intel, or GSC corroboration', () => {
     expect(isDeadFunnelMission({ stage: 'intent', hasLiveSupply: false, impressions: 500, clicks: 0, knowledgeBias: 0, corroborated: false })).toBe(false)
     expect(isDeadFunnelMission({ stage: 'schools', hasLiveSupply: false, impressions: 10, clicks: 3, knowledgeBias: 0, corroborated: false })).toBe(false)

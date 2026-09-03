@@ -195,6 +195,63 @@ export function ingestToolResult(snap: UbersuggestEngineSnapshot, name: string, 
   }
 }
 
+/** Flatten snapshot layers into planner/Discover demand rows. */
+export function signalsFromUbersuggestSnapshot(
+  snap: UbersuggestEngineSnapshot | null | undefined,
+): Array<{
+  term: string
+  impressions: number
+  clicks: number
+  position: number
+  ctr: number
+  source: 'ubersuggest'
+  volume?: number
+  keywordDifficulty?: number
+}> {
+  if (!snap) return []
+  const volImp = (v: number) => Math.max(40, Math.min(4000, Math.round(Math.max(0, Number(v) || 0) * 0.15)))
+  const seen = new Set<string>()
+  const out: Array<{
+    term: string
+    impressions: number
+    clicks: number
+    position: number
+    ctr: number
+    source: 'ubersuggest'
+    volume?: number
+    keywordDifficulty?: number
+  }> = []
+  const push = (term: string, impressions: number, extra?: { volume?: number; keywordDifficulty?: number; position?: number }) => {
+    const t = String(term || '').trim()
+    const key = t.toLowerCase()
+    if (!t || seen.has(key)) return
+    seen.add(key)
+    out.push({
+      term: t,
+      impressions,
+      clicks: 0,
+      position: extra?.position ?? 55,
+      ctr: 0,
+      source: 'ubersuggest',
+      ...(extra?.volume != null ? { volume: extra.volume } : {}),
+      ...(extra?.keywordDifficulty != null ? { keywordDifficulty: extra.keywordDifficulty } : {}),
+    })
+  }
+  for (const k of snap.keywords || []) {
+    if (!k.term) continue
+    push(k.term, volImp(k.volume), {
+      volume: k.volume,
+      keywordDifficulty: k.keywordDifficulty,
+      position: k.position && k.position < 70 ? k.position : 55,
+    })
+  }
+  for (const idea of snap.contentIdeas || []) push(String(idea), 72)
+  for (const row of snap.serp || []) {
+    if (row.keyword) push(row.keyword, 88, { position: row.position && row.position < 70 ? row.position : 50 })
+  }
+  return out
+}
+
 export function snapshotSummary(snap: UbersuggestEngineSnapshot): string {
   const bits = [
     `${snap.keywords.length} keywords`,

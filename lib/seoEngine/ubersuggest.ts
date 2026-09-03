@@ -11,7 +11,7 @@ import { loadEngineConfig, saveEngineConfig } from './engineConfig'
 import type { GscSignalInput } from './planner'
 import { refreshUbersuggestToken, UBERSUGGEST_MCP_URL as DEFAULT_MCP_URL } from './ubersuggestOAuth'
 import { ubersuggestSpendPlan, ubersuggestFullSpendPlan, type UberLayer } from './ubersuggestCatalog'
-import { emptyUbersuggestSnapshot, ingestToolResult, snapshotSummary, type UbersuggestEngineSnapshot } from './ubersuggestSnapshot'
+import { emptyUbersuggestSnapshot, ingestToolResult, snapshotSummary, signalsFromUbersuggestSnapshot, type UbersuggestEngineSnapshot } from './ubersuggestSnapshot'
 
 export const UBERSUGGEST_MCP_URL = DEFAULT_MCP_URL
 const MCP_PROTOCOL = '2025-03-26'
@@ -29,7 +29,7 @@ export interface UbersuggestConfig {
   toolCount?: number
   creditsExhaustedUntil?: string | null
   lastGoodAt?: string | null
-  lastGoodSignals?: Array<{ term: string; impressions: number }>
+  lastGoodSignals?: Array<{ term: string; impressions: number; volume?: number; keywordDifficulty?: number }>
   lastIntel?: UbersuggestIntel | null
   lastSnapshot?: import('./ubersuggestSnapshot').UbersuggestEngineSnapshot | null
 }
@@ -137,7 +137,7 @@ export async function persistUbersuggestConfig(next: Partial<UbersuggestConfig>)
     toolCount: merged.toolCount ?? 0,
     creditsExhaustedUntil: merged.creditsExhaustedUntil ?? null,
     lastGoodAt: merged.lastGoodAt ?? null,
-    lastGoodSignals: (merged.lastGoodSignals || []).slice(0, 80),
+    lastGoodSignals: (merged.lastGoodSignals || []).slice(0, 160),
     lastIntel: merged.lastIntel ?? null,
     lastSnapshot: merged.lastSnapshot ?? null,
   })
@@ -440,14 +440,28 @@ function unwrapToolPayload(result: unknown): unknown {
 }
 
 function cachedSignals(cfg: UbersuggestConfig): GscSignalInput[] {
-  return (cfg.lastGoodSignals || []).map((row) => ({
+  const fromCache: GscSignalInput[] = (cfg.lastGoodSignals || []).map((row) => ({
     term: row.term,
     impressions: row.impressions,
     clicks: 0,
     position: 55,
     ctr: 0,
     source: 'ubersuggest' as const,
+    ...(row.volume != null ? { volume: row.volume } : {}),
+    ...(row.keywordDifficulty != null ? { keywordDifficulty: row.keywordDifficulty } : {}),
   }))
+  if (fromCache.length >= 40) return fromCache
+  const extra = signalsFromUbersuggestSnapshot(cfg.lastSnapshot).map((s) => ({
+    ...s,
+    source: 'ubersuggest' as const,
+  }))
+  const seen = new Set(fromCache.map((s) => s.term.toLowerCase()))
+  for (const s of extra) {
+    if (seen.has(s.term.toLowerCase())) continue
+    fromCache.push(s)
+    seen.add(s.term.toLowerCase())
+  }
+  return fromCache
 }
 
 async function listToolNames(cfg: UbersuggestConfig): Promise<string[]> {
@@ -484,6 +498,40 @@ async function persistUbersuggestKnowledge(snap: UbersuggestEngineSnapshot): Pro
       published_at: snap.pulledAt,
       dedupe_key: 'ubersuggest:mcp:snapshot',
     }, { onConflict: 'dedupe_key' })
+    const layers: Array<{ key: string; title: string; body: string }> = [
+      {
+        key: 'ubersuggest:mcp:ideas',
+        title: `Ubersuggest content ideas · ${snap.contentIdeas.length}`,
+        body: snap.contentIdeas.slice(0, 24).join('\n'),
+      },
+      {
+        key: 'ubersuggest:mcp:competitors',
+        title: `Ubersuggest competitors · ${snap.competitors.length}`,
+        body: snap.competitors.slice(0, 16).map((c) => `${c.domain} traffic=${c.traffic ?? '?'}`).join('\n'),
+      },
+      {
+        key: 'ubersuggest:mcp:serp',
+        title: `Ubersuggest SERP · ${snap.serp.length}`,
+        body: snap.serp.slice(0, 20).map((r) => `${r.keyword} #${r.position ?? '?'} ${r.url || ''}`).join('\n'),
+      },
+    ]
+    for (const layer of layers) {
+      if (!layer.body.trim()) continue
+      await createSupabaseAdminClient().from('seo_knowledge').upsert({
+        source: 'ubersuggest',
+        source_label: 'Ubersuggest MCP',
+        kind: 'trend',
+        url: `ubersuggest://mcp/${layer.key.split(':').pop()}`,
+        title: layer.title.slice(0, 500),
+        summary: layer.body.slice(0, 2000),
+        tags: ['ubersuggest', ...snap.layers],
+        countries: ['US', 'UK', 'CA', 'AU'],
+        stages: [],
+        confidence: 0.7,
+        published_at: snap.pulledAt,
+        dedupe_key: layer.key,
+      }, { onConflict: 'dedupe_key' })
+    }
   } catch (e) {
     console.warn('[ubersuggest] knowledge persist skipped', e instanceof Error ? e.message : e)
   }
@@ -581,7 +629,7 @@ export async function pullUbersuggestSignals(opts?: { full?: boolean }): Promise
   }
   const live: GscSignalInput[] = Array.from(best.values())
     .sort((a, b) => b.volume - a.volume)
-    .slice(0, 80)
+    .slice(0, 160)
     .map((row) => {
       const signal: GscSignalInput = {
         term: row.term,
@@ -599,7 +647,7 @@ export async function pullUbersuggestSignals(opts?: { full?: boolean }): Promise
   snap.calls = calls
   snap.toolsUsed = [...new Set(toolsUsed)]
   snap.layers = [...layers]
-  snap.keywords = Array.from(best.values()).slice(0, 80).map((row) => ({
+  snap.keywords = Array.from(best.values()).slice(0, 160).map((row) => ({
     term: row.term,
     volume: row.volume,
     position: row.position,
@@ -620,7 +668,7 @@ export async function pullUbersuggestSignals(opts?: { full?: boolean }): Promise
     await persistUbersuggestConfig({
       lastError: lastErr || 'credits exhausted',
       creditsExhaustedUntil: pauseUntil,
-      lastGoodSignals: live.length ? live.map((s) => ({ term: s.term, impressions: s.impressions })) : cfg.lastGoodSignals,
+      lastGoodSignals: live.length ? live.map((s) => ({ term: s.term, impressions: s.impressions, volume: s.volume, keywordDifficulty: s.keywordDifficulty })) : cfg.lastGoodSignals,
       lastGoodAt: live.length ? new Date().toISOString() : cfg.lastGoodAt,
       lastIntel: intel,
       lastSnapshot: snap,
@@ -639,13 +687,20 @@ export async function pullUbersuggestSignals(opts?: { full?: boolean }): Promise
     await persistUbersuggestConfig({
       lastError: null,
       creditsExhaustedUntil: null,
-      lastGoodSignals: live.map((s) => ({ term: s.term, impressions: s.impressions })),
+      lastGoodSignals: live.map((s) => ({ term: s.term, impressions: s.impressions, volume: s.volume, keywordDifficulty: s.keywordDifficulty })),
       lastGoodAt: new Date().toISOString(),
       lastIntel: intel,
       lastSnapshot: snap,
     }).catch(() => undefined)
     void persistUbersuggestKnowledge(snap)
     lastUbersuggestPull = { usedCache: false, calls, exhausted: false }
+    const extras = signalsFromUbersuggestSnapshot(snap)
+    const seen = new Set(live.map((s) => s.term.toLowerCase()))
+    for (const s of extras) {
+      if (seen.has(s.term.toLowerCase())) continue
+      live.push({ ...s, source: 'ubersuggest' })
+      seen.add(s.term.toLowerCase())
+    }
     return live
   }
 

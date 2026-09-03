@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       const KIND_LABEL: Record<ActionKind, string> = { ingest: 'knowledge ingestion', plan: 'planner', llm: 'LLM visibility audit' }
       const HEARTBEAT: Record<ActionKind, string> = {
         ingest: 'Still running — hung feeds are skipped after 6–8s…',
-        plan: 'Still running — a down feeder is skipped and last-good cache is used…',
+        plan: 'Still scoring missions from live feeders…',
         llm: 'Still running — visibility audit in progress…',
       }
       const heartbeat = setInterval(() => {

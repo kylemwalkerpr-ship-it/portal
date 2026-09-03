@@ -108,6 +108,9 @@ export type DeadFunnelInput = {
   clicks: number
   knowledgeBias: number
   corroborated: boolean
+  /** Raw market volume (Ubersuggest / Ads) when impressions were log-scaled. */
+  volume?: number
+  source?: string
 }
 
 /**
@@ -121,7 +124,16 @@ export function isDeadFunnelMission(input: DeadFunnelInput): boolean {
   const s = String(input.stage || '')
   if (isFunnelStage(s)) return false // visa/citizenship/family always pass
   if (hasPurchasableService(s) && input.hasLiveSupply) return false
-  const knownDemand = (Number(input.impressions) || 0) >= 200
+  const impressions = Number(input.impressions) || 0
+  const volume = Number(input.volume) || 0
+  // Ubersuggest / Ads volume is market demand proof. Scaling it into a
+  // GSC-like impression stub used to fall under 200 and kill Express Entry
+  // / PR queries every planner run while the tape looked frozen.
+  const marketProof =
+    input.source === 'ubersuggest' ||
+    input.source === 'ads' ||
+    volume >= 200
+  const knownDemand = impressions >= 80 || marketProof
   const realClicks = (Number(input.clicks) || 0) > 0
   const intelBacking = (Number(input.knowledgeBias) || 0) > 0
   if (knownDemand || realClicks || intelBacking || input.corroborated) return false

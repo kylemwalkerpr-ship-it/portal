@@ -1,4 +1,4 @@
-import { emptyUbersuggestSnapshot, ingestToolResult, snapshotSummary } from '@/lib/seoEngine/ubersuggestSnapshot'
+import { emptyUbersuggestSnapshot, ingestToolResult, snapshotSummary, signalsFromUbersuggestSnapshot } from '@/lib/seoEngine/ubersuggestSnapshot'
 import { ubersuggestFullSpendPlan, UBERSUGGEST_TOOL_CATALOG } from '@/lib/seoEngine/ubersuggestCatalog'
 
 describe('ubersuggestFullSpendPlan', () => {
@@ -30,5 +30,7 @@ describe('ingestToolResult', () => {
     expect(snap.contentIdeas).toContain('UK graduate visa timeline 2026')
     expect(snap.backlinks[0]?.anchor).toBe('visa guide')
     expect(snapshotSummary(snap)).toMatch(/competitors/)
+    const signals = signalsFromUbersuggestSnapshot(snap)
+    expect(signals.some((s) => s.term === 'UK graduate visa timeline 2026')).toBe(true)
   })
 })

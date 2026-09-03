@@ -49,10 +49,15 @@ export async function pullAllDemand(onProgress?: (phase: string, message: string
   onProgress?.('signals', `GA4 ${ga4.skipped ? 'skipped' : `${ga4.signals.length} signals`}`, ga4.reason)
 
   const uberMod = await import('./ubersuggest')
-  const uber = await safePull('ubersuggest', () => uberMod.pullUbersuggestSignals())
+  const uber = await safePull('ubersuggest', () => uberMod.pullUbersuggestSignals({ full: true }))
   if (uberMod.lastUbersuggestPull?.usedCache) uber.usedCache = true
   if (uberMod.lastUbersuggestPull?.reason) uber.reason = uber.reason || uberMod.lastUbersuggestPull.reason
-  onProgress?.('signals', `Ubersuggest ${uber.skipped ? 'skipped' : `${uber.signals.length} signals`}${uber.usedCache ? ' (cache)' : ''}`, uber.reason)
+  const uberIntel = uberMod.lastUbersuggestPull
+  onProgress?.(
+    'signals',
+    `Ubersuggest ${uber.skipped ? 'skipped' : `${uber.signals.length} signals`}${uber.usedCache ? ' (last-good cache)' : uberIntel?.calls ? ` (live · ${uberIntel.calls} MCP calls)` : ' (live)'}`,
+    uber.reason,
+  )
 
   const ads = await safePull('ads', async () => {
     const { loadKeywordDemandSignals } = await import('./keywordDemand')

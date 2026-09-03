@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { loadUbersuggestConfig } from '@/lib/seoEngine/ubersuggest'
 import { ubersuggestSignalsToDiscover } from '@/lib/seoEngine/ubersuggestDiscover'
+import { signalsFromUbersuggestSnapshot } from '@/lib/seoEngine/ubersuggestSnapshot'
 import { loadShippedCoverage } from '@/lib/seoEngine/researchDemand'
 
 export const runtime = 'nodejs'
@@ -13,10 +14,12 @@ async function opportunitiesFromCache(excludeTopics: string[] = []) {
     loadUbersuggestConfig(),
     loadShippedCoverage(200).catch(() => []),
   ])
-  const opportunities = ubersuggestSignalsToDiscover(cfg.lastGoodSignals || [], {
+  const fromSnap = signalsFromUbersuggestSnapshot(cfg.lastSnapshot)
+  const merged = [...(cfg.lastGoodSignals || []), ...fromSnap]
+  const opportunities = ubersuggestSignalsToDiscover(merged, {
     shippedKeywords: shipped.map((s) => s.primaryKeyword || s.title).filter(Boolean),
     excludeTopics,
-    limit: 32,
+    limit: 40,
   })
   const snap = cfg.lastSnapshot
   return {
