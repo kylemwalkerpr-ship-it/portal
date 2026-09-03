@@ -10,7 +10,7 @@ import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
-import { buildJobSummary, JOB_SUMMARY_STATUSES } from '@/lib/seoFactory/jobSummary'
+import { buildJobSummary, emptyStatusTotals, statusTotalsFromRows } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
 import { jobPassesShipGate } from '@/lib/seoFactory/jobShipGate'
 import {
@@ -129,19 +129,23 @@ export async function GET(request: NextRequest) {
     // plus a status-only pass so the summary counters reflect the whole table,
     // not just the returned window.
     let total = 0
-    const statusTotals: Record<string, number> = {}
+    let statusTotals: Record<string, number> = emptyStatusTotals()
     try {
       const exactRes = await supabase.from('content_jobs').select('id', { count: 'exact', head: true })
       total = typeof exactRes.count === 'number' ? exactRes.count : 0
-      const perStatus = await Promise.all(
-        JOB_SUMMARY_STATUSES.map(async (status) => {
-          const r = await supabase.from('content_jobs').select('id', { count: 'exact', head: true }).eq('status', status)
-          return [status, typeof r.count === 'number' ? r.count : 0] as const
-        }),
-      )
-      for (const [status, n] of perStatus) statusTotals[status] = n
-    } catch {
-      total = 0
+      const statusRows: Array<{ status?: string | null }> = []
+      const page = 1000
+      for (let from = 0; from < Math.max(total, page); from += page) {
+        const r = await supabase.from('content_jobs').select('status').range(from, from + page - 1)
+        if (r.error) throw new Error(r.error.message)
+        const chunk = (r.data || []) as Array<{ status?: string | null }>
+        statusRows.push(...chunk)
+        if (chunk.length < page) break
+      }
+      statusTotals = statusTotalsFromRows(statusRows)
+      if (!total) total = statusRows.length
+    } catch (e) {
+      console.warn('[content-studio/jobs] status totals scan failed', e instanceof Error ? e.message : e)
     }
 
     // List without content/event_log/audit_json — those blow Worker CPU + payload size

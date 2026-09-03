@@ -5,7 +5,7 @@
  * (the API summary), never window-derived counts. This locks the pure builder
  * the jobs route and dashboard share.
  */
-import { buildJobSummary, type JobSummaryInput } from '@/lib/seoFactory/jobSummary'
+import { buildJobSummary, statusTotalsFromRows, type JobSummaryInput } from '@/lib/seoFactory/jobSummary'
 
 function input(overrides: Partial<JobSummaryInput> = {}): JobSummaryInput {
   return {
@@ -56,6 +56,20 @@ describe('buildJobSummary', () => {
     expect(s.publishing).toBe(1)
     expect(s.merged).toBe(0) // absent keys never become NaN/undefined
     expect(s.total).toBe(158) // exact count is authoritative, not statuses sum
+  })
+
+  it('counts every status from a single status-column scan', () => {
+    const totals = statusTotalsFromRows([
+      { status: 'merged' }, { status: 'merged' }, { status: 'pr_created' },
+      { status: 'failed' }, { status: 'drafting' }, { status: 'pending' },
+      { status: 'closed' },
+    ])
+    expect(totals.merged).toBe(2)
+    expect(totals.pr_created).toBe(1)
+    expect(totals.failed).toBe(1)
+    expect(totals.drafting).toBe(1)
+    expect(totals.pending).toBe(1)
+    expect(totals.publishing).toBe(0)
   })
 
   it('window is the number of returned rows, independent of totals', () => {

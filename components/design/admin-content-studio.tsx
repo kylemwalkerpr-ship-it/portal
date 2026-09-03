@@ -5603,7 +5603,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       let nextJobs = data.jobs ?? []
       try {
-        const hotRes = await fetch('/api/content-studio/jobs?limit=50&status=drafting,pending,publishing', { credentials: 'same-origin', cache: 'no-store' })
+        const hotRes = await fetch('/api/content-studio/jobs?limit=80&status=drafting,pending,publishing,pr_created,failed', { credentials: 'same-origin', cache: 'no-store' })
         const hot = await hotRes.json().catch(() => ({})) as { jobs?: ContentJob[] }
         if (hotRes.ok && Array.isArray(hot.jobs) && hot.jobs.length) {
           const seen = new Set(nextJobs.map((j) => j.id))

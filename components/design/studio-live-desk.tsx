@@ -161,11 +161,16 @@ export function StudioLiveDesk({
   }, [])
 
   const live = (engine || {}) as EngineStatus
-  const inFlight = (summary?.pending || 0) + (summary?.drafting || 0) + (summary?.publishing || 0)
-  const prReady = summary?.pr_created || 0
-  const merged = summary?.merged || 0
-  const failed = summary?.failed || 0
-  const total = summary?.total || 0
+  const countStatus = (status: string) => {
+    const fromSummary = Number(summary?.[status] || 0)
+    if (fromSummary > 0) return fromSummary
+    return jobs.filter((j) => j.status === status).length
+  }
+  const inFlight = countStatus('pending') + countStatus('drafting') + countStatus('publishing')
+  const prReady = countStatus('pr_created')
+  const merged = countStatus('merged')
+  const failed = countStatus('failed')
+  const total = summary?.total || jobs.length
   const slips = floorJobs(jobs)
 
   const cells = live.lifecycle?.seededCells ?? null

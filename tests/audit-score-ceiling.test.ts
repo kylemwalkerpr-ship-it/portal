@@ -22,7 +22,7 @@ const DESCRIPTION =
  * wall_of_text warning never fires.
  */
 function cleanLongForm(): string {
-  const sentences = Array.from({ length: 180 }, (_, i) => {
+  const sentences = Array.from({ length: 162 }, (_, i) => {
     // First 12 chars are unique per index → no sentence_start_repetition.
     return `Step${i} gives you one more practical point to check against the official source.`
   })

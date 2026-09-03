@@ -41,6 +41,17 @@ export function emptyStatusTotals(): Record<string, number> {
   return Object.fromEntries(KEY_STATUSES.map((k) => [k, 0]))
 }
 
+/** Count statuses from a status-only row scan (one round trip, not 7 head counts). */
+export function statusTotalsFromRows(rows: Array<{ status?: string | null }>): Record<string, number> {
+  const totals = emptyStatusTotals()
+  for (const row of rows) {
+    const s = String(row.status || '').trim()
+    if (!s) continue
+    totals[s] = (totals[s] || 0) + 1
+  }
+  return totals
+}
+
 export function buildJobSummary(input: JobSummaryInput): JobSummary {
   const { total, window, statusTotals, scored } = input
   const at = (k: (typeof KEY_STATUSES)[number]) => statusTotals[k] ?? 0

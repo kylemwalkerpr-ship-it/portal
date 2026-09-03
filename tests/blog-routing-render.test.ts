@@ -79,9 +79,9 @@ describe('blog_post ownership routing', () => {
     expect(forced.contentType).toBe('blog_summary')
   })
 
-  it('uses the blog depth budget (800-1500), never the 2200 article floor', () => {
+  it('uses the blog depth budget (800-1200), never the 2200 article floor', () => {
     expect(minWordsForType('blog_post')).toBe(800)
-    expect(maxWordsForType('blog_post')).toBe(1500)
+    expect(maxWordsForType('blog_post')).toBe(1200)
   })
 })
 
