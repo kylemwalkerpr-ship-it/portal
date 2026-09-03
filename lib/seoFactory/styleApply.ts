@@ -9,11 +9,20 @@ function escapeRegExp(s: string): string {
 }
 
 function normalizeQuote(s: string): string {
-  return String(s || '')
+  const words = String(s || '')
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
+    .replace(/\*+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+    .split(' ')
+    .filter(Boolean)
+  const out: string[] = []
+  for (const w of words) {
+    if (out.length && out[out.length - 1].toLowerCase() === w.toLowerCase()) continue
+    out.push(w)
+  }
+  return out.join(' ')
 }
 
 function quotePattern(quote: string): RegExp | null {
@@ -21,7 +30,7 @@ function quotePattern(quote: string): RegExp | null {
   if (!n) return null
   const words = n.split(' ').filter(Boolean)
   if (!words.length) return null
-  const body = words.map(escapeRegExp).join('\\s+')
+  const body = words.map((w) => `\\*{0,2}${escapeRegExp(w.replace(/^[*_]+|[*_]+$/g, ''))}\\*{0,2}`).join('\\s+')
   try {
     return new RegExp(body, 'gi')
   } catch {

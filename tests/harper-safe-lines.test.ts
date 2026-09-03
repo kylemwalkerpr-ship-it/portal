@@ -99,6 +99,17 @@ Official source.`
     expect(twice.content).toBe(once.content)
   })
 
+  it('replaces style quotes even when the model wrapped them in markdown stars', () => {
+    const doc = '**English:** the required score changes with each legislative instrument.'
+    const out = applyQuotedStyleFixes(doc, [{
+      quote: '**English:** **English:** the required score changes with each legislative instrument.',
+      suggestion: 'English scores change with each legislative instrument.',
+    }])
+    expect(out.applied).toBe(1)
+    expect(out.content).toContain('English scores change')
+    expect(out.content).not.toMatch(/\*\*English:\*\*\s+\*\*English:\*\*/)
+  })
+
   it('find-and-replaces style quotes across whitespace and quotes', () => {
     const doc = 'Cost of applying for application essay review is a vendor quote.'
     const out = applyQuotedStyleFixes(doc, [{

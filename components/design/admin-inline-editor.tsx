@@ -100,7 +100,7 @@ type Props = {
    *  "unknown" — the owning modal must NOT claim the draft passes. */
   onShipReadyChange?: (gate: ShipGate) => void
   /** Approve → ship when this editor's latest audit is ship-ready. */
-  onApprove?: () => void
+  onApprove?: (jobId?: string) => void
   approving?: boolean
   /** Fired when Save creates a content_jobs row because this editor had no id. */
   onJobAttached?: (jobId: string) => void
@@ -1043,7 +1043,16 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             type="button"
             data-testid="studio-editor-approve"
             disabled={approving || allBusy}
-            onClick={onApprove}
+            onClick={() => {
+              void (async () => {
+                try {
+                  const id = await persistDraft(content, 'manual')
+                  onApprove(id || boundJobId || undefined)
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Save before approve failed')
+                }
+              })()
+            }}
             style={btnStyle({ bg: '#166534', border: '#166534', color: '#fff', disabled: approving || allBusy })}
           >
             {approving ? 'Approving…' : 'Approve → ship'}

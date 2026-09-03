@@ -3247,7 +3247,7 @@ function DraftWorkspace({
   rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob, generationJobId,
   onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, onCancelGeneration, error, setError,
-  onApprove, onShipReadyChange, onJobAttached,
+  onApprove, onShipReadyChange, onJobAttached, approving,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
@@ -3267,9 +3267,10 @@ function DraftWorkspace({
   onCancelGeneration?: () => void
   error: string | null
   setError: (e: string | null) => void
-  onApprove?: () => void
+  onApprove?: (jobId?: string) => void
   onShipReadyChange?: (gate: ShipGate) => void
   onJobAttached?: (jobId: string) => void
+  approving?: boolean
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
@@ -3675,6 +3676,7 @@ function DraftWorkspace({
               onChange={(text) => setDraftContent(text)}
               disabled={generating}
               onApprove={onApprove}
+              approving={approving}
               onShipReadyChange={onShipReadyChange}
               onJobAttached={onJobAttached}
               title={completedJob?.title || selectedJob?.title}
@@ -6355,11 +6357,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // repair + shipContent) and finishes with monitorContentJob. After the
   // promise resolves we re-fetch jobs so VII · Approve surfaces the merged
   // status and VII · Track gets a fresh stamp.
+  const [approveBusy, setApproveBusy] = React.useState(false)
+
   const runApproveAndMerge = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string; rhythmDetail?: { key: string; count: number } | null }> => {
     // Client-side currentGate guard: never ship a draft that has not cleared
     // the ship gate (shipReady === true && blockers === 0). Unknown = not ready.
+    const liveId = generationReviewJob?.id || generationJobId
     const gate = shipGateBook.get(j.id)
-    if (!gate) {
+      ?? (liveId && j.id === liveId ? workspaceShipGate : null)
+      ?? shipGateFromAuditPayload(j.audit_json ?? null)
+    if (!shipGateIsCleared(gate) && !shipGateIsCleared(workspaceShipGate)) {
       const message = 'Ship gate not cleared — re-audit the draft in the editor before Approve → main.'
       setActionNotice?.(message)
       return { ok: false, message }
@@ -6396,7 +6403,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setActionNotice?.(message)
       return { ok: false, message }
     }
-  }, [fetchJobs, setActionNotice, shipGateBook])
+  }, [fetchJobs, setActionNotice, shipGateBook, generationReviewJob?.id, generationJobId, workspaceShipGate])
 
   // ── Merge an ALREADY-OPEN PR (pr_created) — no re-ship, no duplicate branch.
   // The Approve panel's PR rows use this; shipContent re-ships a fresh branch
@@ -7194,6 +7201,7 @@ const controller = new AbortController()
               completedJob={generationReviewJob}
             selectedJob={selectedJob}
             generationJobId={generationJobId}
+            approving={approveBusy}
             onJobAttached={(id) => {
               rememberLiveDraftJob(id)
               setQueueStatusFilter('drafting')
@@ -7201,9 +7209,35 @@ const controller = new AbortController()
             }}
             setSelectedJob={setSelectedJob}
             onShipReadyChange={setWorkspaceShipGate}
-            onApprove={() => {
-              const j = generationReviewJob || jobs.find((x) => x.id === generationJobId)
-              if (j) void runApproveAndMerge(j)
+            onApprove={(jobId) => {
+              void (async () => {
+                const id = String(jobId || generationJobId || generationReviewJob?.id || '').trim()
+                if (!id) {
+                  setActionNotice('Approve needs a saved job — wait for the queue row, then try again.')
+                  setError('Approve needs a saved job — wait for the queue row, then try again.')
+                  return
+                }
+                setApproveBusy(true)
+                try {
+                  let j = generationReviewJob?.id === id ? generationReviewJob : jobs.find((x) => x.id === id) || null
+                  if (!j) {
+                    const detailResponse = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' })
+                    const detailData = await detailResponse.json().catch(() => ({})) as { job?: ContentJob }
+                    j = detailResponse.ok ? detailData.job || null : null
+                  }
+                  if (!j) {
+                    setActionNotice(`Job ${id.slice(0, 8)}… is not in the queue yet — refresh Jobs, then Approve.`)
+                    return
+                  }
+                  if (j.status === 'pr_created' && j.pr_number) {
+                    await runMergePr(j)
+                    return
+                  }
+                  await runApproveAndMerge(j)
+                } finally {
+                  setApproveBusy(false)
+                }
+              })()
             }}
             onContinueToReview={() => {
               if (generationReviewJob) setSelectedJob(generationReviewJob)

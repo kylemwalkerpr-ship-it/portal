@@ -149,7 +149,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   }, [reviewModel, onApplied])
 
   React.useEffect(() => {
-    if (busy && expanded === 'style') setStyleBusy(true)
+    setStyleBusy(Boolean(busy && expanded === 'style'))
   }, [busy, expanded])
 
   const readabilityLabel =
