@@ -3,10 +3,16 @@
  * POST /api/content-studio/shop-seo/queue — reset queue or update status
  */
 import { NextResponse } from 'next/server'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { getQueue, getQueueStats, getAllShopProducts, updateQueueStatus, resetQueue } from '@/lib/shopSeo'
 
 export async function GET() {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const queue = getQueue()
     const stats = getQueueStats()
     const products = getAllShopProducts()
@@ -26,6 +32,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await req.json().catch(() => ({}))
     const { action, slug, status } = body as { action?: string; slug?: string; status?: string }
 

@@ -53,7 +53,11 @@ export interface ShipResult {
   canonicalUrl: string
   status: 'pr_created' | 'deployed' | 'merged' | 'dry_run'
   dryRun?: boolean
-  /** Human-approved ships skip automated audit gates (still refuse hard ownership blockers). */
+  /** Human-approval only chooses direct-main vs PR (when mode !== 'pr'). It
+   *  never skips gates — assertContentDepth, assertRhythmWithinRepairRange,
+   *  assertQualityGate, assertShipAllowed, the live-link leftover audit, and
+   *  the YMYL engine gate all still run on the rendered payload. Ownership
+   *  blockers always refuse the ship too. */
   humanApproved?: boolean
   /** CI state when merge waited for checks */
   ciState?: 'success' | 'failure' | 'pending' | 'none' | 'timeout'
@@ -415,8 +419,11 @@ async function ensureCanonicalOnSitemap(opts: {
 
 /**
  * Human-approved path: commit straight to main when possible.
- * Still runs the master gate stack (depth · rhythm · quality · shipGate).
- * `humanApproved` only chooses direct-main vs PR — it never skips gates.
+ * `humanApproved` only chooses direct-main vs PR (used when mode !== 'pr');
+ * it NEVER skips the automated audit gates — assertContentDepth,
+ * assertRhythmWithinRepairRange, assertQualityGate, assertShipAllowed, the
+ * live-link leftover audit, and the YMYL engine gate all still run on the
+ * rendered payload, and ownership blockers always refuse the ship.
  */
 export async function shipContent(opts: {
   mode: ShipMode

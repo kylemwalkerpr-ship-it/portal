@@ -19,10 +19,10 @@ import { createClient } from '@supabase/supabase-js'
 export async function GET(req: Request) {
   try {
     const admin = await requireAdminUser()
-    if (!admin) {
+    if ('error' in admin) {
       return NextResponse.json(
-        { ok: false, error: 'Admin authentication required' },
-        { status: 401 },
+        { ok: false, error: admin.error },
+        { status: admin.status },
       )
     }
 

@@ -178,4 +178,68 @@ describe('live provider policy — Entrim-only gate', () => {
     expect(urls.filter((u) => u.includes('api.entrim.ai')).length).toBeGreaterThanOrEqual(2)
     expect(urls.filter((u) => !u.includes('api.entrim.ai')).length).toBe(0)
   })
+
+  it('an Entrim payment/quota failure never calls the Grok sidecar under the live policy', async () => {
+    // Grok IS configured — but the payment/quota sidecar is break-glass only.
+    // An Entrim quota failure must fail loudly, not bounce to grokComplete.
+    process.env.XAI_API_KEY = 'test-xai-key'
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.entrim.ai')) {
+        return new Response(JSON.stringify({ error: 'you exceeded your current quota' }), {
+          status: 429, headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response(
+        JSON.stringify({ output_text: 'GROK-SIDECAR-REACHED', status: 'completed' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+
+    await expect(
+      generateContentText({
+        aiProvider: 'entrim-qwen-27b',
+        exclusive: true,
+        system: 'Write an article.',
+        prompt: 'Draft the article.',
+        skipQualityContract: true,
+      }),
+    ).rejects.toThrow(/Explicit AI provider "entrim-qwen-27b" failed/)
+
+    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
+  })
+
+  it('CONTENT_AI_ALL_PROVIDERS=1 restores the Grok payment/quota sidecar (break-glass)', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.entrim.ai')) {
+        return new Response(JSON.stringify({ error: 'you exceeded your current quota' }), {
+          status: 429, headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response(
+        JSON.stringify({ output_text: 'GROK-SIDECAR-REACHED', status: 'completed' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+
+    const result = await generateContentText({
+      aiProvider: 'entrim-qwen-27b',
+      exclusive: true,
+      system: 'Write an article.',
+      prompt: 'Draft the article.',
+      skipQualityContract: true,
+    })
+    expect(result.provider).toBe('grok')
+    expect(result.text).toBe('GROK-SIDECAR-REACHED')
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
+  })
 })

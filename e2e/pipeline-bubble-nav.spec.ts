@@ -154,13 +154,14 @@ test.describe('Pipeline bubble-pill navigation', () => {
     })
   }
 
-  test('verify all 7 pills are in the nav and in correct order', async () => {
-    // The nav contains all 7 pills as role="tab" buttons
+  test('verify all 5 pills are in the nav and in correct order', async () => {
+    // The nav contains all 5 live pills as role="tab" buttons (shop is hidden
+    // from the nav until it can shipContent).
     const tabs = page.locator('[role="tab"]')
     await expect(tabs.first()).toBeVisible()
 
     const count = await tabs.count()
-    expect(count).toBeGreaterThanOrEqual(7)
+    expect(count).toBeGreaterThanOrEqual(5)
 
     // Verify labels appear in the correct pipeline order
     const expectedLabels = STAGES.map((s) => s.label)

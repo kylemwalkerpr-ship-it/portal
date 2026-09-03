@@ -51,6 +51,9 @@ export interface OpportunityQuery {
   referringDomains?: number
   competitorReferringDomains?: number
   backlinkTargetsAvailable?: number
+  /** Strategy-knowledge-base row, NOT real Search Console demand. Its
+   *  impressions/clicks are synthetic and must be excluded from scoring. */
+  knowledgeBase?: boolean
 }
 
 export interface CoverageItem {
@@ -297,9 +300,10 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
 
   for (const q of pool) {
     const term = q.term.trim().toLowerCase()
-    const impressions = Math.max(0, q.impressions || 0)
-    const clicks = Math.max(0, q.clicks || 0)
-    const ctr = q.ctr > 1 ? q.ctr / 100 : q.ctr || 0
+    const synthetic = Boolean((q as OpportunityQuery).knowledgeBase)
+    const impressions = synthetic ? 0 : Math.max(0, q.impressions || 0)
+    const clicks = synthetic ? 0 : Math.max(0, q.clicks || 0)
+    const ctr = synthetic ? 0 : q.ctr > 1 ? q.ctr / 100 : q.ctr || 0
     const position = Math.max(1, Math.round(q.position || 51))
     const trend = q.trend ?? trendFromHistory(q.history)
 
@@ -404,15 +408,19 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
 
     // ── Signals trail (transparency) ──
     const signals: string[] = []
-    signals.push(
-      position <= 30
-        ? `Ranks #${position} · ${fmt(impressions)} impressions · ${fmt(clicks)} clicks (${(ctr * 100).toFixed(1)}% CTR)`
-        : `No first-page presence · ${fmt(impressions)} impressions on related terms`,
-    )
-    if (position <= 20) {
+    if (synthetic) {
+      signals.push('Synthetic knowledge-base signal — no GSC demand evidence (strategy corpus, not Search Console)')
+    } else {
+      signals.push(
+        position <= 30
+          ? `Ranks #${position} · ${fmt(impressions)} impressions · ${fmt(clicks)} clicks (${(ctr * 100).toFixed(1)}% CTR)`
+          : `No first-page presence · ${fmt(impressions)} impressions on related terms`,
+      )
+    }
+    if (!synthetic && position <= 20) {
       const recoverable = Math.max(0, Math.round((baseCtr - ctr) * impressions))
       signals.push(`CTR gap vs expected #${position} (~${(baseCtr * 100).toFixed(1)}%): ~${fmt(recoverable)} clicks/mo on the table`)
-    } else {
+    } else if (!synthetic) {
       signals.push(`Reaching page 1 (~${(baselineCtrFor(10) * 100).toFixed(1)}% CTR) could add ~${fmt(baselineCtrFor(10) * impressions)} clicks/mo`)
     }
     signals.push(`Demand ${demandScore}/100 · difficulty est. ${difficultyScore}/100`)

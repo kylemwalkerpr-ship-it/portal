@@ -11,10 +11,11 @@ here, not invent a second write path.
 
 ## 1. One sentence
 
-**One job engine** plans ownership, generates with DeepSeek V4 Pro (then
-Cloudflare → free tiers), scaffolds + audits, **renders build-safe files**,
-ships through **one door** (`shipContent` → `putRepoFile`), and prefers
-**PR → CI green → merge** so estate Cloudflare deploys stay green.
+**One job engine** plans ownership, generates with Entrim Qwen3.6 27B
+(Entrim DeepSeek V4 Flash fallback), scaffolds + audits, **renders
+build-safe files**, ships through **one door** (`shipContent` →
+`putRepoFile`), and prefers **PR → CI green → merge** so estate Cloudflare
+deploys stay green.
 
 ---
 
@@ -64,7 +65,7 @@ ships through **one door** (`shipContent` → `putRepoFile`), and prefers
 | I2 | **Host ↔ repo** from `HOST_REPO` only (`legal→caseworks`, regional→consultancy, `market→portal`). |
 | I3 | **Rendered payload** must pass `assertShipAllowed` before any commit (CTAPanel, FM, path patterns). |
 | I4 | **Unattended ships never direct-push `main`.** They open a PR, wait for CI when possible, then merge. Human **Approve → main** may direct-commit. |
-| I5 | **AI order:** DeepSeek V4 Pro (NVIDIA) → Cloudflare Workers AI → Groq → Gemini → OpenRouter → rest. |
+| I5 | **AI order:** Entrim Qwen3.6 27B (`entrim-qwen-27b`) → Entrim DeepSeek V4 Flash (`entrim-deepseek`) — both served by `api.entrim.ai/v1` under one `ENTRIM_API_KEY`. No NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs in the live policy. |
 | I6 | **Content type follows path/host** (`reconcileContentTypeWithPath`) — never `legal_guide` on `usa/content/universities/*`. |
 
 ---
@@ -148,12 +149,11 @@ Depth floors (Google-aligned): legal 2200w (target 2500, max 2800) · regional 1
 
 ```bash
 # Health (admin session)
-# Content Studio → Health tab → expect nvidia-deepseek primary
+# Content Studio → Health tab → expect entrim-qwen-27b primary
 
 # Worker secrets (pinned on every portal deploy)
-CONTENT_AI_PROVIDER=nvidia-deepseek
-NVIDIA_DEEPSEEK_MODEL=deepseek-ai/deepseek-v4-flash-0731
-NVIDIA_API_KEY=…
+CONTENT_AI_PROVIDER=entrim-qwen-27b
+ENTRIM_API_KEY=…              # REQUIRED — api.entrim.ai/v1 (Qwen + DeepSeek)
 GITHUB_TOKEN=…   # content ship PAT
 CRON_SECRET=…
 

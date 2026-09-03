@@ -230,7 +230,7 @@ async function hydrateGscQueryRows(
   }
 
   try {
-    const snap = await loadGscSnapshot()
+    const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
     return (snap.topQueries ?? []).map((q) => ({
       term: q.term,
       impressions: q.impressions,

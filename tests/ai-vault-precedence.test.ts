@@ -38,6 +38,8 @@ import {
 } from '@/lib/aiKeyVault'
 import {
   contentAiEnv,
+  getEntrimProvider,
+  getEntrimQwenProvider,
   getNvidiaMinimaxProvider,
   getRunbiosProvider,
   isRunbiosConfigured,
@@ -133,6 +135,28 @@ describe('vault precedence — configurator keys beat deployment env', () => {
     const overlay = await buildVaultEnvOverrides(true)
     setVaultOverlay(overlay)
     expect(contentAiEnv('RUNBIOS_API_KEY')).toBe('env-deployed-runbios-secret')
+  })
+
+  it('Entrim families keep model envs lane-isolated — the Qwen id never overwrites ENTRIM_MODEL', async () => {
+    // Both Entrim families share one ENTRIM_API_KEY row credential, but the
+    // DeepSeek lane reads ENTRIM_MODEL and the Qwen lane must land its model
+    // on ENTRIM_QWEN_MODEL. Without lane isolation, the later alphabetically
+    // sorted Qwen row would overwrite ENTRIM_MODEL with Qwen/Qwen3.6-27B and
+    // the DeepSeek pin would silently send the Qwen id.
+    mockModule.__setVaultRows([
+      row({ provider: 'entrim-deepseek', api_key: 'vault-entrim-key', base_url: 'https://api.entrim.ai/v1', model: 'deepseek-ai/DeepSeek-V4-Flash' }),
+      row({ provider: 'entrim-qwen-27b', api_key: 'vault-entrim-key', base_url: 'https://api.entrim.ai/v1', model: 'Qwen/Qwen3.6-27B' }),
+    ])
+    const overlay = await buildVaultEnvOverrides(true)
+    // One shared key; each model env resolves to its own family's id.
+    expect(overlay.ENTRIM_API_KEY).toBe('vault-entrim-key')
+    expect(overlay.ENTRIM_MODEL).toBe('deepseek-ai/DeepSeek-V4-Flash')
+    expect(overlay.ENTRIM_QWEN_MODEL).toBe('Qwen/Qwen3.6-27B')
+    setVaultOverlay(overlay)
+
+    expect(getEntrimProvider()!.model).toBe('deepseek-ai/DeepSeek-V4-Flash')
+    expect(getEntrimQwenProvider()!.model).toBe('Qwen/Qwen3.6-27B')
+    expect(contentAiEnv('ENTRIM_MODEL')).not.toBe('Qwen/Qwen3.6-27B')
   })
 })
 

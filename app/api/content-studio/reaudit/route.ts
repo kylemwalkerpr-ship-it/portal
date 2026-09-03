@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
 import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
@@ -700,6 +701,11 @@ async function mergeLinkAudit(
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await request.json() as {
       content: string; contentType?: string; primaryKeyword?: string; indexable?: boolean
       requiredShortKeywords?: string[]; requiredLongTailKeywords?: string[]
@@ -820,6 +826,11 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await request.json() as {
       action: 'fix_all' | 'fix_one' | 'fix_warnings' | 'fix_depth' | 'fix_blockers' | 'fix_until_gates'
       content: string

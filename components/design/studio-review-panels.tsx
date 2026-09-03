@@ -2,7 +2,10 @@
 
 import React from 'react'
 import { studioTokens as E } from './studio-tokens'
+import { shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
 import {
+  shipGateFromAuditPayload,
+  shipGateIsCleared,
   CardHeader,
   formatDate,
   gateBadge,
@@ -22,6 +25,7 @@ const C = E
 export function ReviewDraftsPanel({
   jobs, gateByJob, selectedJobId, onOpenJob,
   reviewAuditResult, setActionNotice,
+  shipGateByJob,
 }: {
   jobs: ContentJob[]
   gateByJob: Map<string, { score: number | null; passed: boolean | null }>
@@ -34,6 +38,8 @@ export function ReviewDraftsPanel({
     depthGate?: { ok: boolean; message: string } | null
   } | null
   setActionNotice?: (msg: string) => void
+  /** Canonical ship-gate snapshots keyed by job id (from the studio desk). */
+  shipGateByJob?: ReadonlyMap<string, ShipGate> | null
 }) {
   const drafts = jobs.filter((j) => ['pending', 'drafting', 'publishing', 'pr_created'].includes(j.status))
   const STATUS_LABEL: Record<string, { label: string; fg: string; bg: string }> = {
@@ -65,11 +71,25 @@ export function ReviewDraftsPanel({
     const audit = j.audit_json as any
     return sum + (audit?.warnings?.length || 0)
   }, 0)
-  const clearedCount = drafts.filter((j) => {
-    const g = gateByJob.get(j.id)
-    const score = g?.score ?? j.seo_score ?? 0
-    return score >= 90
-  }).length
+  // A document is "gate cleared" ONLY when the canonical ship-gate snapshot
+  // exists and passes (shipReady === true && blockers === 0). The score —
+  // no matter how high — and a mere finished draft are never a pass. The live
+  // re-audit of the selected job supersedes persisted evidence; unknown states
+  // fall through to "awaiting audit" (never counted as cleared).
+  const resolveGate = (j: ContentJob): ShipGate => {
+    if (selectedJobId === j.id && reviewAuditResult) {
+      if (reviewAuditResult.shipReady == null) return null
+      return shipGateFromResponse({
+        shipReady: reviewAuditResult.shipReady,
+        blockers: reviewAuditResult.blockers,
+      })
+    }
+    const fromBook = shipGateByJob?.get(j.id)
+    if (fromBook !== undefined) return fromBook
+    return shipGateFromAuditPayload(j.audit_json ?? null)
+  }
+  const clearedCount = drafts.filter((j) => shipGateIsCleared(resolveGate(j))).length
+  const awaitingAuditCount = drafts.filter((j) => resolveGate(j) === null).length
 
   return (
     <div data-testid="studio-review-drafts" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -86,6 +106,11 @@ export function ReviewDraftsPanel({
           <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted }}>
             {clearedCount} gate{clearedCount === 1 ? '' : 's'} cleared
           </span>
+          {awaitingAuditCount > 0 && (
+            <span style={{ fontSize: 10, fontFamily: C.mono, color: C.orange }}>
+              {awaitingAuditCount} awaiting audit
+            </span>
+          )}
           <span style={{ fontSize: 10, fontFamily: C.mono, color: totalWarnings > 0 ? C.orange : E.mossGreen }}>
             {totalWarnings} warning{totalWarnings === 1 ? '' : 's'}
           </span>

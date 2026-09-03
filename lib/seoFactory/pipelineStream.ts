@@ -6,8 +6,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
-import { auditContent, canAutodeploy, type SeoFactoryAudit } from './audit'
-import { shipContent, type ShipMode, type ShipResult } from './ship'
+import { auditContent, type SeoFactoryAudit } from './audit'
+import { shipContent, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 import { formatStrategyForPrompt } from '@/lib/seoDataLoaders'
@@ -31,6 +31,7 @@ import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { topicPathMismatch } from './topicPathGuard'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
+import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
 import { isJunkTopic } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
@@ -38,6 +39,7 @@ import { stripNoIndex } from './siteHealthFixes'
 import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
 import { normalizeJobContentType } from './jobContentType'
+import { persistPipelineJob } from './persistContentJob'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -49,23 +51,6 @@ export type PipelineStreamEvent =
   | { type: 'ship'; ship: ShipResult | null; shipError: string | null; shipMode: string }
   | { type: 'final'; result: PipelineResult }
   | { type: 'error'; error: string }
-
-function resolveShipMode(
-  requested: RequestedShipMode,
-  audit: SeoFactoryAudit,
-  plan: OwnerPlan,
-): ShipMode | 'none' {
-  if (requested === 'none') return 'none'
-  if (requested === 'pr') return 'pr'
-  if (requested === 'merge') {
-    return plan.blockers.length === 0 ? 'merge' : 'pr'
-  }
-  if (requested === 'autodeploy') {
-    return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'merge'
-  }
-  if (canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0) return 'merge'
-  return 'pr'
-}
 
 export async function* runSeoFactoryPipelineStream(
   input: PipelineInput,
@@ -1216,6 +1201,10 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeyword,
           indexable: plan.indexable,
           ownershipBlockers: plan.blockers,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          shortKeywordTerms,
+          longTailKeywordTerms,
         })
         yield { type: 'attempt', attempt: attempts + 1, score: audit.score, wordCount: audit.wordCount, goodEnough: meetsShipQuality(audit) && audit.score >= minAudit, draft: content }
       }
@@ -1239,7 +1228,10 @@ export async function* runSeoFactoryPipelineStream(
         contentType,
         requiredShortKeywords,
         requiredLongTailKeywords,
-        maxWords: undefined,
+        competingUrls: (input.competingUrls ?? []) as any,
+        targetUrl: plan.canonicalUrl || undefined,
+        maxWords,
+        minWords,
       })
       if (repairedFull.applied.length) {
         content = repairedFull.content
@@ -1249,6 +1241,10 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeyword,
           indexable: plan.indexable,
           ownershipBlockers: plan.blockers,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          shortKeywordTerms,
+          longTailKeywordTerms,
         })
         yield {
           type: 'progress',
@@ -1269,37 +1265,19 @@ export async function* runSeoFactoryPipelineStream(
     let effectiveRequested = requestedMode
     if (input.dryRun && effectiveRequested === 'none') effectiveRequested = 'merge'
 
+    // Shared quality withhold closer (JSON + stream use the same module).
     let shipMode = resolveShipMode(effectiveRequested, audit, plan)
     let gateHold: string | null = null
-    if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
-      gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
-      shipMode = 'none'
-    }
-    if (
-      input.skipShipIfBelowScore !== false &&
-      shipMode !== 'none' &&
-      (audit.score < minAudit || !meetsShipQuality(audit)) &&
-      effectiveRequested !== 'pr'
-    ) {
-      if (!meetsShipQuality(audit)) {
-        if (meetsDepthFloor(audit) && audit.score >= 40 && plan.blockers.length === 0) {
-          shipMode = 'pr'
-          gateHold = null
-        } else {
-          gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
-          shipMode = 'none'
-        }
-      } else if (
-        effectiveRequested === 'auto' ||
-        effectiveRequested === 'autodeploy' ||
-        effectiveRequested === 'merge'
-      ) {
-        shipMode = audit.score >= 50 ? 'pr' : 'none'
-        if (shipMode === 'none') {
-          gateHold = `Ship withheld (audit ${audit.score} < 50)`
-        }
-      }
-    }
+    const withhold = applyShipWithhold({
+      requested: effectiveRequested,
+      shipMode,
+      audit,
+      plan,
+      minAudit,
+      skipShipIfBelowScore: input.skipShipIfBelowScore,
+    })
+    shipMode = withhold.shipMode
+    gateHold = withhold.gateHold
 
     // Auto index: once every check has passed, strip any stale noindex so the
     // stored draft and shipped page are indexable by default.
@@ -1394,10 +1372,12 @@ export async function* runSeoFactoryPipelineStream(
       } catch (e) {
         shipError = e instanceof Error ? e.message : 'Ship failed'
       }
-    } else {
-      shipError =
-        gateHold ||
-        `Ship withheld · audit ${audit.score} · words ${audit.wordCount}`
+    }
+    // Single door for the withhold message: a specific ship-time error (topic
+    // mismatch / path mismatch / Ship refused) is never overwritten by the
+    // generic "Ship withheld · audit …" string.
+    shipError = finalizeShipError({ shipMode, shipError, gateHold, audit })
+    if (shipError) {
       yield {
         type: 'progress',
         stage: 'ship',
@@ -1407,24 +1387,42 @@ export async function* runSeoFactoryPipelineStream(
 
     yield { type: 'ship', ship: shipResult, shipError, shipMode }
 
-    let jobId: string | null = null
-    try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
-      // Jobs refused by quality gate stay 'drafting' so the editor can fix them.
-      // Only set 'failed' when there is no content (pipeline crashed before writing).
-      const status =
-        shipResult?.status === 'deployed' || shipResult?.status === 'merged'
-          ? 'merged'
-          : shipResult?.status === 'pr_created'
-            ? 'pr_created'
-            : shipError
-              ? (content && content.length > 100 ? 'drafting' : 'failed')
-              : 'drafting'
-
-      const seedLog = [
+    // Single persist door — status / ship_mode / competing_urls live in
+    // persistPipelineJob so JSON and stream cannot drift.
+    const jobId = await persistPipelineJob({
+      // Prefer the early-created realtime row; fall back to a fresh insert.
+      existingJobId: earlyJobId,
+      userId: input.userId,
+      sourceJobId: input.sourceJobId,
+      regenerationReason: input.regenerationReason,
+      regenerationMode: input.regenerationMode,
+      intelligenceLineage: input.intelligenceLineage,
+      title,
+      topic,
+      primaryKeyword,
+      region,
+      contentType,
+      tone,
+      plan,
+      content,
+      shipResult,
+      shipError,
+      gateHoldReason: gateHold,
+      shipMode,
+      provider,
+      model,
+      attempts,
+      minAudit,
+      audit,
+      contentSpec,
+      gscBrief,
+      opportunityAction: input.opportunityAction,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
+      competingUrls: input.competingUrls,
+      eventLog: [
         {
           id: `pipe-${Date.now()}`,
           ts: Date.now(),
@@ -1435,137 +1433,27 @@ export async function* runSeoFactoryPipelineStream(
             : `Generated · audit ${audit.score} · ${provider}`,
           detail: shipError || shipResult?.prUrl || undefined,
         },
-      ]
-
-      const baseRow: Record<string, unknown> = {
-        user_id: input.userId || 'admin',
-        source_job_id: input.sourceJobId || null,
-        lineage: {
-          modelVersion: 'seo-intelligence-v1',
-          sourceJobId: input.sourceJobId || null,
-          regenerationMode: input.regenerationMode || null,
-          evidence: input.intelligenceLineage || null,
-        },
-        regeneration_reason: input.regenerationReason || null,
-        regeneration_mode: input.regenerationMode || null,
-        title,
-        topic,
-        content_type: normalizeJobContentType(contentType),
-        tone,
-        region,
-        target_repo: plan.repo,
-        status,
-        slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
-        content,
-        branch_name: shipResult?.branch || null,
-        content_path: shipResult?.path || plan.filePath,
-        pr_url: shipResult?.prUrl || null,
-        pr_number: shipResult?.prNumber || null,
-        ai_provider: provider,
-        word_count: audit.wordCount,
-        seo_score: audit.score,
-        ship_mode:
-          shipMode === 'none' || shipMode === 'pr' ? 'pr' : 'autodeploy',
-        indexable: plan.indexable,
-        canonical_url: plan.canonicalUrl,
-        owner_host: plan.host,
-        primary_keyword: primaryKeyword,
-        audit_json: {
-          ...audit,
-          attempts,
-          model,
-          minAudit,
-          // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
-          // reviewer, re-audit, and ship all read this same JSON snapshot.
-          ...(contentSpec ? { contentSpec } : {}),
-          rescue: expandPasses > 0
-            ? {
-                expandPasses,
-                stallCount: rescueStallCount,
-                timeMs: rescueTimeMs,
-                budgetMs: rescueBudgetMs,
-              }
-            : undefined,
-        },
-        gsc_json: {
-          source: gscBrief.source,
-          mode: gscBrief.mode,
-          primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
-          opportunityAction: input.opportunityAction,
-          cluster: input.cluster
-            ? {
-                clusterId: input.cluster.clusterId || null,
-                canonicalTerm: input.cluster.canonicalTerm || null,
-                keywords: (input.cluster.keywords || []).slice(0, 24),
-                mode: input.cluster.mode || 'new',
-                targetUrl: input.cluster.targetUrl || null,
-                existingJobId: input.cluster.existingJobId || null,
-              }
-            : null,
-        },
-        required_short_keywords: requiredShortKeywords,
-        required_long_tail_keywords: requiredLongTailKeywords,
-        // Persist provenance so a later re-audit / approve does not downgrade
-        // synthesized backfill into enforceable demand blockers.
-        short_keyword_terms: shortKeywordTerms,
-        long_tail_keyword_terms: longTailKeywordTerms,
-        keyword_partition_source: 'word_count_v1',
-        deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
-        deployed_at:
-          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
-            ? new Date().toISOString()
-            : null,
-        merged_at:
-          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
-            ? new Date().toISOString()
-            : null,
-        llms_included: audit.llmsRecommended,
-        error_message: shipError,
-      }
-
-      // Prefer updating the early-created realtime row; fall back to a fresh insert.
-      let job: { id: string } | null = earlyJobId ? { id: earlyJobId } : null
-      if (job) {
-        const { error: updateErr } = await supabase.from('content_jobs').update({ ...baseRow, event_log: seedLog }).eq('id', job.id)
-        if (updateErr && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(updateErr.message || '')) {
-          const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyPatch } = baseRow
-          const legacyUpdate = await supabase.from('content_jobs').update(legacyPatch).eq('id', job.id)
-          if (legacyUpdate.error) console.warn('[seoFactory/pipelineStream] legacy job update', legacyUpdate.error.message)
-        }
-        jobId = job.id
-      } else {
-        const withLog = await supabase
-          .from('content_jobs')
-          .insert({ ...baseRow, event_log: seedLog })
-          .select('id')
-          .single()
-        if (withLog.data?.id) {
-          job = withLog.data
-        } else if (withLog.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(withLog.error.message || '')) {
-          const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
-          const without = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
-          job = without.data
-          if (without.error) console.warn('[seoFactory/pipelineStream] legacy job insert', without.error.message)
-        } else if (withLog.error) {
-          console.warn('[seoFactory/pipelineStream] job insert', withLog.error.message)
-        }
-        jobId = job?.id ?? null
-      }
-      if (jobId && plan.canonicalUrl) {
-        await supabase
-          .from('content_jobs')
-          .update({
-            status: 'closed',
-            closed_at: new Date().toISOString(),
-            error_message: `Superseded by in-place repair of ${jobId}`,
-          })
-          .eq('canonical_url', plan.canonicalUrl)
-          .in('status', ['drafting', 'pending', 'failed'])
-          .neq('id', jobId)
-      }
-    } catch (e) {
-      console.warn('[seoFactory/pipelineStream] job persist skipped', e)
-    }
+      ],
+      rescueStats:
+        expandPasses > 0
+          ? {
+              expandPasses,
+              stallCount: rescueStallCount,
+              timeMs: rescueTimeMs,
+              budgetMs: rescueBudgetMs,
+            }
+          : null,
+      cluster: input.cluster
+        ? {
+            clusterId: input.cluster.clusterId || null,
+            canonicalTerm: input.cluster.canonicalTerm || null,
+            keywords: input.cluster.keywords || [],
+            mode: input.cluster.mode || 'new',
+            targetUrl: input.cluster.targetUrl || null,
+            existingJobId: input.cluster.existingJobId || null,
+          }
+        : null,
+    })
 
     const result: PipelineResult = {
       ok: !shipError,

@@ -1,8 +1,10 @@
 /**
- * E2E: Review stage model selector — GPT Sol ↔ GPT Terra.
+ * E2E: Review stage model selector — Entrim Qwen3.6 27B (live review lead).
  *
- * Verifies that switching the model dropdown in the inline editor sends the
- * correct reviewModel in the PATCH /api/content-studio/reaudit request body.
+ * Verifies that the model dropdown in the inline editor sends the correct
+ * reviewModel in the PATCH /api/content-studio/reaudit request body. The
+ * review lane offers exactly one live family — Entrim Qwen3.6 27B
+ * (`entrim-qwen-27b`) — whose model picker value is `qwen3.6-27b`.
  */
 import { test, expect, type Browser, type Page } from '@playwright/test'
 
@@ -92,7 +94,7 @@ The application fee depends on the visa category and number of dependents.
 `
 
 test.describe('review model selector', () => {
-  test('switching to GPT Terra sends reviewModel in Fix all warnings API call', async ({ browser }) => {
+  test('switching to Entrim Qwen sends reviewModel in Fix all warnings API call', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'CLERK_SECRET_KEY + CLERK_TEST_EMAIL required')
 
     const page = await loginAsAdmin(browser)
@@ -197,14 +199,14 @@ test.describe('review model selector', () => {
       await page.waitForTimeout(2000)
     }
 
-    // ── Switch model dropdown to GPT Terra ─────────────────────────────
+    // ── Switch model dropdown to Entrim Qwen ────────────────────────────
     const modelSelect = page.locator('select[aria-label="Review AI model"]')
     await expect(modelSelect).toBeVisible({ timeout: 15000 })
-    await modelSelect.selectOption('gpt-5.6-terra')
+    await modelSelect.selectOption('qwen3.6-27b')
     await page.waitForTimeout(500)
 
     // Verify select value changed
-    expect(await modelSelect.inputValue()).toBe('gpt-5.6-terra')
+    expect(await modelSelect.inputValue()).toBe('qwen3.6-27b')
 
     // ── Click Fix all warnings ─────────────────────────────────────────
     const fixWarningsBtn = page.locator('button').filter({ hasText: /Fix all warnings/i }).first()
@@ -223,7 +225,7 @@ test.describe('review model selector', () => {
 
     // ── Assert reviewModel was sent ────────────────────────────────────
     const capturedReviewModel = await page.evaluate(() => (window as any).__capturedReviewModel)
-    expect(capturedReviewModel).toBe('gpt-5.6-terra')
+    expect(capturedReviewModel).toBe('entrim-qwen-27b')
 
     await page.close()
   })

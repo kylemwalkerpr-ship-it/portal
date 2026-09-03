@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { getGscAccessToken } from '@/lib/gsc-service-account'
 import { getGscConfig, saveGscConnection } from '@/lib/gscConfig'
 import { probeLiveGsc, __resetGscProbeCache } from '@/lib/gscConnectProbe'
@@ -16,6 +17,11 @@ import { probeLiveGsc, __resetGscProbeCache } from '@/lib/gscConnectProbe'
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await request.json()
     const siteUrl =
       typeof body.siteUrl === 'string' ? body.siteUrl.trim() : body.siteUrl
@@ -127,6 +133,11 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const cfg = await getGscConfig()
     const connected = Boolean(cfg.siteUrl)
     const { live, error: probeError } = await probeLiveGsc()

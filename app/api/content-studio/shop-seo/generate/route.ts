@@ -6,11 +6,17 @@
  * is returned for review; shipping is a separate step.
  */
 import { NextResponse } from 'next/server'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { getShopProduct, updateQueueStatus, productBlogSlug, formatPrice } from '@/lib/shopSeo'
 import { generateShopBlogPageTsx } from '@/lib/shopSeoGenerator'
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await req.json().catch(() => ({}))
     const { slug } = body as { slug?: string }
 

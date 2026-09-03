@@ -5,14 +5,15 @@
  * deployed route — not a network mock. Signs in as admin, then POSTs
  * `/api/content-studio/suggest-brief` with `aiProvider: 'auto'` (the exact
  * leak value that used to route the brief through the open-source cascade).
- * The policy must coerce it to OpenAI ChatGPT (gpt-5.6-terra), and the route
- * must return a valid, complete editorial brief JSON — never a code-fenced
- * blob, never a non-OpenAI provider, never a 500.
+ * The policy must coerce it to the live Entrim lead — Entrim Qwen3.6 27B
+ * (`entrim-qwen-27b`) — and the route must return a valid, complete editorial
+ * brief JSON — never a code-fenced blob, never a non-Entrim provider, never
+ * a 500.
  *
  * ── Prerequisites (env) ────────────────────────────────────────────────────
  *   CLERK_TEST_EMAIL / CLERK_TEST_PASSWORD / CLERK_SECRET_KEY — admin login
  *   PLAYWRIGHT_BASE_URL — must point at an environment whose Worker has
- *   OPENAI_API_KEY configured (the deployed portal). Locally the test skips.
+ *   ENTRIM_API_KEY configured (the deployed portal). Locally the test skips.
  *
  * Run against the deployed portal:
  *   PLAYWRIGHT_BASE_URL=https://portal.yousafeconsultancy.com npx playwright test \
@@ -85,7 +86,7 @@ async function loginAsAdmin(browser: Browser): Promise<Page | null> {
 }
 
 test.describe('Brief-model policy through the full deployed route (admin)', () => {
-  test('Generate Full Brief with aiProvider "auto" returns a complete brief from OpenAI ChatGPT', async ({ browser }) => {
+  test('Generate Full Brief with aiProvider "auto" returns a complete brief from Entrim Qwen3.6 27B', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -100,8 +101,9 @@ test.describe('Brief-model policy through the full deployed route (admin)', () =
           contentType: 'article',
           primaryKeyword: 'uk dependent visa',
           audience: 'immigration applicants',
-          // Deliberately NOT a GPT value — the 2026-08 leak path. The policy
-          // must coerce this to OpenAI ChatGPT (gpt-5.6-terra).
+          // Deliberately NOT an explicit value — the 2026-09 leak path. The
+          // policy must coerce this to the Entrim Qwen lead
+          // (entrim-qwen-27b / Qwen/Qwen3.6-27B).
           aiProvider: 'auto',
         },
         timeout: 120_000,
@@ -114,6 +116,12 @@ test.describe('Brief-model policy through the full deployed route (admin)', () =
       // Valid JSON brief — the `ok: true` marker only exists on the success
       // branch, so a code-fenced blob ("```json { …") would fail here.
       expect(body.ok).toBe(true)
+
+      // 'auto' resolved to the Entrim Qwen lead — the live policy never
+      // falls back to a decommissioned backend for the brief.
+      expect(body.provider).toBe('entrim-qwen-27b')
+      expect(body.model).toBe('Qwen/Qwen3.6-27B')
+      expect(body.fallbackUsed).toBe(false)
 
       // The brief is COMPLETE — every field the drafting stage needs.
       expect(String(body.suggestedH1 || '')).not.toBe('')

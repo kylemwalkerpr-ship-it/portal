@@ -21,7 +21,12 @@ import { StudioStageNav } from '@/components/design/studio-stage-nav'
 import { ChapterIntro } from '@/components/design/studio-chapter-intro'
 import { QueueStats, QueueTable } from '@/components/design/studio-queue'
 import { ReviewDraftsPanel } from '@/components/design/studio-review-panels'
-import { isOpenPr, isPublishedJob } from '@/components/design/studio-ui-shared'
+import {
+  isOpenPr,
+  isPublishedJob,
+  shipGateFromAuditPayload,
+  shipGateIsCleared,
+} from '@/components/design/studio-ui-shared'
 import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-shared'
 
 /* ── fixtures ─────────────────────────────────────────────────────────── */
@@ -333,6 +338,62 @@ describe('ReviewDraftsPanel — drafts document list', () => {
 })
 
 /* ── ReviewDraftsPanel — vault empty state ───────────────────────────── */
+
+describe('ship-gate UI helpers — score or a finished draft never clears a gate', () => {
+  it('shipReady true + zero blockers clears', () => {
+    expect(shipGateIsCleared(shipGateFromAuditPayload({ score: 88, shipReady: true, blockers: [] }))).toBe(true)
+  })
+
+  it('score >= 90 WITHOUT a shipReady boolean is UNKNOWN — never a pass', () => {
+    // The old banner trusted exactly this shape.
+    expect(shipGateFromAuditPayload({ score: 100, blockers: [] })).toBeNull()
+    expect(shipGateIsCleared(null)).toBe(false)
+  })
+
+  it('shipReady true + a real blocker does NOT clear', () => {
+    const gate = shipGateFromAuditPayload({
+      score: 100,
+      shipReady: true,
+      blockers: [{ code: 'unlinked_related_guide', message: 'Plain-text related guide' }],
+    })
+    expect(shipGateIsCleared(gate)).toBe(false)
+  })
+
+  it('a blocker count (number 1) defeats a shipReady true', () => {
+    expect(shipGateIsCleared(shipGateFromAuditPayload({ score: 100, shipReady: true, blockers: 1 }))).toBe(false)
+  })
+})
+
+describe('ReviewDraftsPanel — "gates cleared" count derives from the ship gate, never the score', () => {
+  const gatePassedJob = job({
+    id: 'gp1', title: 'Gate Confirmed', status: 'drafting',
+    audit_json: { score: 88, shipReady: true, blockers: [], warnings: [] } as never,
+  })
+  // The 2026-08 defect: a 96-score finished draft with content but no audit —
+  // was counted as "gates cleared" and surfaced for bulk_approve.
+  const highScoreNoAudit = job({
+    id: 'hn1', title: 'High Score, No Audit', status: 'drafting',
+    audit_json: { score: 96, blockers: [] } as never,
+  })
+
+  it('counts only ship-ready documents; a high-score un-audited draft is NOT cleared', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ReviewDraftsPanel, {
+        jobs: [gatePassedJob, highScoreNoAudit],
+        gateByJob: new Map([
+          [gatePassedJob.id, { score: 88, passed: false }],
+          [highScoreNoAudit.id, { score: 96, passed: false }],
+        ]),
+        selectedJobId: null,
+        onOpenJob: () => undefined,
+      }),
+    )
+    expect(html).toContain('1 gate cleared')
+    expect(html).toContain('1 awaiting audit')
+    // The high-score draft renders its score badge but never a cleared label.
+    expect(html).toContain('>96<')
+  })
+})
 
 describe('ReviewDraftsPanel — document vault', () => {
   it('renders the vault empty state when no drafts exist', () => {

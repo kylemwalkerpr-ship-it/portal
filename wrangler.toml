@@ -97,16 +97,21 @@ AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
 # ── Required Secrets (set with `npx wrangler secret put <NAME>`) ────────
 # These are NOT in wrangler.toml — set them individually:
 #
-#   PARASAIL_API_KEY — Parasail serverless (psk-…). DeepSeek V4 Flash + GLM 5.2
-#   NVIDIA_API_KEY   — DeepSeek V4 Pro via NVIDIA (default AI provider)
+#   ENTRIM_API_KEY   — REQUIRED content AI provider (api.entrim.ai/v1). Serves
+#                     deepseek-ai/DeepSeek-V4-Flash + Qwen/Qwen3.6-27B under
+#                     the live Entrim-only policy.
 #   GITHUB_TOKEN     — GitHub PAT for shipContent (PRs, merges, deploys)
 #   SUPABASE_SERVICE_ROLE_KEY — Server-side Supabase access (content_jobs, etc.)
-#   CLOUDFLARE_AI_TOKEN      — Fallback AI when NVIDIA key is exhausted
+#   PARASAIL_API_KEY — Parasail serverless (psk-…) — out of commission, kept
+#                     for break-glass diagnostics only
+#   NVIDIA_API_KEY   — NVIDIA NIM — out of commission, kept for break-glass
+#                     diagnostics only
+#   CLOUDFLARE_AI_TOKEN      — Fallback AI (out of commission under live policy)
 #   RESEND_API_KEY   — Transactional email (attorney decision notifications)
 #   AHREFS_API_KEY   — Site Audit ingest (project 9902912) for CS-introduced issues
 #   AHREFS_PROJECT_ID — optional override (defaults to 9902912)
 #
-# Without NVIDIA_API_KEY, the Auto-Pilot and Content Studio cannot generate
+# Without ENTRIM_API_KEY, the Auto-Pilot and Content Studio cannot generate
 # content — they fall through all providers because none are configured.
 # Without GITHUB_TOKEN, shipContent returns 503 on PR/merge operations.
 

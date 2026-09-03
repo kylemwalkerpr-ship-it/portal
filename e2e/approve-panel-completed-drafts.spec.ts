@@ -121,8 +121,25 @@ function makeJob(overrides: Record<string, unknown>) {
   }
 }
 
-/** Completed draft: status drafting WITH content (ready to approve). */
-const COMPLETED_DRAFT = makeJob({ id: 'job-completed', content: '---\ntitle: UK Dependent Visa Guide 2026\n---\n\n# UK Dependent Visa Guide 2026\n\n## In 60 seconds\n- Confirm the form list on the official site.\n\n## Eligibility\nYou confirm which route applies, then you collect evidence.\n', word_count: 2500 })
+/** Completed draft: status drafting WITH content AND an explicit ship-gate
+ *  pass (shipReady=true + zero blockers) — the ONLY way a row earns the
+ *  "APPROVE → SHIP" action. Score alone never suffices. */
+const COMPLETED_DRAFT = makeJob({
+  id: 'job-completed',
+  content: '---\ntitle: UK Dependent Visa Guide 2026\n---\n\n# UK Dependent Visa Guide 2026\n\n## In 60 seconds\n- Confirm the form list on the official site.\n\n## Eligibility\nYou confirm which route applies, then you collect evidence.\n',
+  word_count: 2500,
+  audit_json: { score: 88, shipReady: true, blockers: [], warnings: [] },
+})
+/** Completed but UN-audited: status drafting WITH content but NO ship gate on
+ *  record (the 2026-08 defect case). Must render ONLY an "awaiting audit" row
+ *  with honest copy — never an APPROVE → SHIP action. */
+const UNGATED_DRAFT = makeJob({
+  id: 'job-ungated',
+  title: 'Australia Work Visa Guide 2026',
+  content: '---\ntitle: Australia Work Visa Guide 2026\n---\n\n# Australia Work Visa Guide 2026\n\n## In 60 seconds\n- Check the occupation list on the official site.\n\n## Eligibility\nYou confirm which route applies, then you collect evidence.\n',
+  word_count: 1900,
+  audit_json: { score: 96, blockers: [] },
+})
 /** Still generating: status drafting with NO content (must NOT be approvable). */
 const GENERATING_JOB = makeJob({ id: 'job-generating', content: null, word_count: 0 })
 
@@ -146,8 +163,9 @@ test.describe('Approve & Track surfaces completed drafts (admin)', () => {
     test.skip(!page, 'Skipping: could not sign in')
     if (!page) return
 
-    // ── Mock the jobs list: one completed draft + one still-generating job ──
-    const queue = [COMPLETED_DRAFT, GENERATING_JOB]
+    // ── Mock the jobs list: one gate-cleared draft, one un-audited completed
+    //    draft, one still-generating job ────────────────────────────────────
+    const queue = [COMPLETED_DRAFT, UNGATED_DRAFT, GENERATING_JOB]
     await page.route('**/api/content-studio/jobs?limit=100*', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: emptyQueueBody(queue) })
     })
@@ -177,6 +195,16 @@ test.describe('Approve & Track surfaces completed drafts (admin)', () => {
 
     // The READY TO APPROVE section header counts exactly one completed draft.
     await expect(panel).toContainText('READY TO APPROVE · 1 COMPLETED DRAFT')
+
+    // A finished draft WITHOUT a confirmed ship gate (even at 96/100) is NOT
+    // approve-able: no READY TO APPROVE row, instead an honest awaiting-audit
+    // row that routes to the editor. The 2026-08 defect shipped these via
+    // bulk_approve on "has content" alone — that must never happen again.
+    await expect(page.getByTestId('studio-approve-draft-row-job-ungated')).toHaveCount(0)
+    const unGatedRow = page.getByTestId('studio-ungated-draft-row-job-ungated')
+    await expect(unGatedRow).toBeVisible({ timeout: 15000 })
+    await expect(unGatedRow).toContainText('AWAITING AUDIT')
+    await expect(unGatedRow).toContainText('Open in editor →')
 
     // The still-generating job (no content) must NOT render an approve row.
     await expect(page.getByTestId('studio-approve-draft-row-job-generating')).toHaveCount(0)

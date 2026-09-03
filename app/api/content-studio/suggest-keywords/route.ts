@@ -1,6 +1,7 @@
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { generateEngineText } from '@/lib/seoEngine/engineAi'
 import { detectRegionFromText, filterKeywordsByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 
@@ -13,6 +14,11 @@ import { detectRegionFromText, filterKeywordsByRegion, formatResearchPromptBlock
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
     let region = String(body.region || 'US')

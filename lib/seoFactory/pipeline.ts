@@ -4,7 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
-import { auditContent, canAutodeploy, type SeoFactoryAudit } from './audit'
+import { auditContent, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipMode, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
 import { generateContentText } from '@/lib/contentAiProvider'
@@ -24,6 +24,9 @@ import {
 import { countBodyWords, targetWordsForType, maxWordsForType, trimMarkdownProseToWordBudget } from './contentDepth'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
+import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
+export type { RequestedShipMode } from './resolveShipMode'
+import type { RequestedShipMode } from './resolveShipMode'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
@@ -34,7 +37,7 @@ import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { isJunkTopic } from './queryNoise'
 import { topicPathMismatch } from './topicPathGuard'
 import { collapseDuplicatedTitle } from './formatContract'
-import { normalizeJobContentType } from './jobContentType'
+import { persistPipelineJob } from './persistContentJob'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -90,8 +93,6 @@ async function generateWithRetry(
   }
   throw new Error('AI generation failed after retry')
 }
-
-export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
 export interface PipelineInput {
   topic: string
@@ -220,25 +221,6 @@ export interface PipelineResult {
   }
   jobId: string | null
   error?: string
-}
-
-function resolveShipMode(
-  requested: RequestedShipMode,
-  audit: SeoFactoryAudit,
-  plan: OwnerPlan,
-): ShipMode | 'none' {
-  if (requested === 'none') return 'none'
-  if (requested === 'pr') return 'pr'
-  if (requested === 'merge') {
-    // Prefer PR→merge to main (audit trail); fall back handled in shipContent
-    return plan.blockers.length === 0 ? 'merge' : 'pr'
-  }
-  if (requested === 'autodeploy') {
-    return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'merge'
-  }
-  // auto: high-quality non-blocked → merge to main; else PR for review
-  if (canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0) return 'merge'
-  return 'pr'
 }
 
 export async function runSeoFactoryPipeline(input: PipelineInput): Promise<PipelineResult> {
@@ -939,41 +921,17 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let shipMode = resolveShipMode(effectiveRequested, audit, plan)
   let gateHoldReason: string | null = null
 
-  // Never ship thin or low-quality voice to main — even if score looks OK
-  if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
-    gateHoldReason = formatGateHold(audit, minAudit, 'quality/depth blockers')
-    shipMode = 'none'
-  }
-  if (
-    input.skipShipIfBelowScore !== false &&
-    shipMode !== 'none' &&
-    (audit.score < minAudit || !meetsShipQuality(audit)) &&
-    effectiveRequested !== 'pr'
-  ) {
-    if (!meetsShipQuality(audit)) {
-      // Depth OK + no ownership blockers → open PR for review instead of silent hold.
-      // Score floor 30: AI-slop residual after sanitize should not kill the daily job.
-      if (meetsDepthFloor(audit) && audit.score >= 30 && plan.blockers.length === 0) {
-        shipMode = 'pr'
-        gateHoldReason = null
-      } else {
-        gateHoldReason = formatGateHold(audit, minAudit, 'quality/depth blockers')
-        shipMode = 'none'
-      }
-    } else if (
-      effectiveRequested === 'auto' ||
-      effectiveRequested === 'autodeploy' ||
-      effectiveRequested === 'merge'
-    ) {
-      if (audit.score >= 50) {
-        // Below minAudit but shipable → PR (human/CI path) instead of silent hold
-        shipMode = 'pr'
-      } else {
-        gateHoldReason = formatGateHold(audit, minAudit, `audit ${audit.score} < 50`)
-        shipMode = 'none'
-      }
-    }
-  }
+  // Shared quality withhold closer (JSON + stream use the same module).
+  const withhold = applyShipWithhold({
+    requested: effectiveRequested,
+    shipMode,
+    audit,
+    plan,
+    minAudit,
+    skipShipIfBelowScore: input.skipShipIfBelowScore,
+  })
+  shipMode = withhold.shipMode
+  gateHoldReason = withhold.gateHold
 
   // Auto index: once every check has passed, strip any stale noindex so the
   // stored draft and shipped page are indexable by default.
@@ -1075,127 +1033,47 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     } catch (e) {
       shipError = e instanceof Error ? e.message : 'Ship failed'
     }
-  } else {
-    // Always surface why unattended ship was withheld (was error:null)
-    shipError =
-      gateHoldReason ||
-      formatGateHold(audit, minAudit, effectiveRequested === 'none' ? 'shipMode=none' : 'held')
   }
+  // Single door for the withhold message: a specific ship-time error (topic
+  // mismatch / path mismatch / Ship refused) is never overwritten by the
+  // generic "Ship withheld · audit …" string.
+  shipError = finalizeShipError({ shipMode, shipError, gateHold: gateHoldReason, audit })
 
-  let jobId: string | null = null
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
-    // Jobs refused by quality gate stay 'drafting' so the editor can fix them.
-    // Only set 'failed' when there is no content (pipeline crashed before writing).
-    const status =
-      shipResult?.status === 'deployed' || shipResult?.status === 'merged'
-        ? 'merged'
-        : shipResult?.status === 'pr_created'
-          ? 'pr_created'
-          : shipError && !gateHoldReason
-            ? (content && content.length > 100 ? 'drafting' : 'failed')
-            : gateHoldReason
-              ? 'drafting'
-              : 'drafting'
-
-    const baseRow: Record<string, unknown> = {
-      user_id: input.userId || 'admin',
-      source_job_id: input.sourceJobId || null,
-      lineage: {
-        modelVersion: 'seo-intelligence-v1',
-        sourceJobId: input.sourceJobId || null,
-        regenerationMode: input.regenerationMode || null,
-        evidence: input.intelligenceLineage || null,
-      },
-      regeneration_reason: input.regenerationReason || null,
-      regeneration_mode: input.regenerationMode || null,
-      title,
-      topic,
-      content_type: normalizeJobContentType(contentType),
-      tone,
-      region,
-      target_repo: plan.repo,
-      status,
-      slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
-      content,
-      branch_name: shipResult?.branch || null,
-      content_path: shipResult?.path || plan.filePath,
-      pr_url: shipResult?.prUrl || null,
-      pr_number: shipResult?.prNumber || null,
-      ai_provider: provider,
-      word_count: audit.wordCount,
-      seo_score: audit.score,
-      ship_mode: shipMode === 'none' || shipMode === 'pr' ? 'pr' : 'autodeploy',
-      indexable: plan.indexable,
-      canonical_url: plan.canonicalUrl,
-      owner_host: plan.host,
-      primary_keyword: primaryKeyword,
-      audit_json: {
-        ...audit,
-        attempts,
-        model,
-        minAudit,
-        // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
-        // reviewer, re-audit, and ship all read this same JSON snapshot.
-        ...(contentSpec ? { contentSpec } : {}),
-      },
-      gsc_json: {
-        source: gscBrief.source,
-        mode: gscBrief.mode,
-        primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
-        opportunityAction: input.opportunityAction,
-      },
-      required_short_keywords: requiredShortKeywords,
-      required_long_tail_keywords: requiredLongTailKeywords,
-      // Persist provenance so a later re-audit / approve does not downgrade
-      // synthesized backfill into enforceable demand blockers.
-      short_keyword_terms: shortKeywordTerms,
-      long_tail_keyword_terms: longTailKeywordTerms,
-      keyword_partition_source: 'word_count_v1',
-      competing_urls: Array.isArray(input.competingUrls) && input.competingUrls!.length
-        ? JSON.stringify(input.competingUrls!.slice(0, 10))
-        : null,
-      deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
-      deployed_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
-      merged_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
-      llms_included: audit.llmsRecommended,
-      error_message: shipError,
-    }
-    const existingId = String(input.existingJobId || '').trim()
-    if (existingId) {
-      const { error: upErr } = await supabase.from('content_jobs').update(baseRow).eq('id', existingId)
-      if (upErr && /lineage|regeneration_reason|regeneration_mode|column/i.test(upErr.message || '')) {
-        const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
-        await supabase.from('content_jobs').update(legacyRow).eq('id', existingId)
-      }
-      jobId = existingId
-    } else {
-      let jobInsert = await supabase.from('content_jobs').insert(baseRow).select('id').single()
-      if (jobInsert.error && /lineage|regeneration_reason|regeneration_mode|column/i.test(jobInsert.error.message || '')) {
-        const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
-        jobInsert = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
-      }
-      if (jobInsert.error) console.warn('[seoFactory/pipeline] job insert skipped', jobInsert.error.message)
-      jobId = jobInsert.data?.id ?? null
-    }
-    if (jobId && plan.canonicalUrl) {
-      await supabase
-        .from('content_jobs')
-        .update({
-          status: 'closed',
-          closed_at: new Date().toISOString(),
-          error_message: `Superseded by in-place repair of ${jobId}`,
-        })
-        .eq('canonical_url', plan.canonicalUrl)
-        .in('status', ['drafting', 'pending', 'failed'])
-        .neq('id', jobId)
-    }
-  } catch (e) {
-    console.warn('[seoFactory/pipeline] job persist skipped', e)
-  }
+  // Single persist door — status / ship_mode / competing_urls live in
+  // persistPipelineJob so JSON and stream cannot drift.
+  const jobId = await persistPipelineJob({
+    existingJobId: input.existingJobId,
+    userId: input.userId,
+    sourceJobId: input.sourceJobId,
+    regenerationReason: input.regenerationReason,
+    regenerationMode: input.regenerationMode,
+    intelligenceLineage: input.intelligenceLineage,
+    title,
+    topic,
+    primaryKeyword,
+    region,
+    contentType,
+    tone,
+    plan,
+    content,
+    shipResult,
+    shipError,
+    gateHoldReason,
+    shipMode,
+    provider,
+    model,
+    attempts,
+    minAudit,
+    audit,
+    contentSpec,
+    gscBrief,
+    opportunityAction: input.opportunityAction,
+    requiredShortKeywords,
+    requiredLongTailKeywords,
+    shortKeywordTerms,
+    longTailKeywordTerms,
+    competingUrls: input.competingUrls,
+  })
 
   // ok when we either shipped, opened a PR, or dry-ran — not when gates held ship
   const shippedOk = Boolean(
@@ -1229,22 +1107,6 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     jobId,
     error: shipError || undefined,
   }
-}
-
-/** Human-readable reason for War Room / Auto-Pilot when merge is withheld. */
-function formatGateHold(audit: SeoFactoryAudit, minAudit: number, why: string): string {
-  const blockers = (audit.blockers || [])
-    .slice(0, 4)
-    .map((b) => b.message)
-    .join('; ')
-  const parts = [
-    `Ship withheld (${why})`,
-    `audit ${audit.score}/100 (min ${minAudit}) grade ${audit.grade}`,
-    `words ${audit.wordCount}`,
-    audit.humanScore != null ? `human ${audit.humanScore}` : null,
-    blockers ? `blockers: ${blockers}` : null,
-  ].filter(Boolean)
-  return parts.join(' · ')
 }
 
 /**

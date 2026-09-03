@@ -1,5 +1,10 @@
 # Content Studio — Activation Handoff
 
+> **Runtime is Entrim-only as of 2026-09-02:** all live AI runs on
+> `api.entrim.ai/v1` under one `ENTRIM_API_KEY` — lead **Entrim Qwen3.6 27B**
+> (`entrim-qwen-27b`), fallback **Entrim DeepSeek V4 Flash** (`entrim-deepseek`).
+> NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs are out of commission.
+
 **Status (2026-07-22):** Code deployed to production (`portal` / `market`).  
 GitHub Actions + Cloudflare Workers Builds green after Worker size fix.
 

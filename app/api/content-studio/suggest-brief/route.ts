@@ -1,6 +1,7 @@
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
@@ -35,6 +36,11 @@ export async function POST(req: NextRequest) {
   const controller = new AbortController()
   const globalTimer = setTimeout(() => controller.abort(), 660_000)
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const topic = String(body.topic || '').trim()
     if (!topic) return NextResponse.json({ error: 'topic is required' }, { status: 400 })

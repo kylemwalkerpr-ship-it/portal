@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
@@ -63,6 +64,11 @@ Also supported: "remove" (line only), "insert_after".`
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = (await request.json()) as StyleReviewBody
     const raw = String(body.content || '')
     if (countBodyWords(raw) < 40) {

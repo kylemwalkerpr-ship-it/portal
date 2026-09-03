@@ -64,7 +64,7 @@ import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
-import { resolveShipRefusalBanner, shipActionsEnabled, type ShipGate } from '@/lib/seoFactory/currentGate'
+import { resolveShipRefusalBanner, shipActionsEnabled, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
 import { StudioStageNav } from './studio-stage-nav'
@@ -92,6 +92,8 @@ import {
   type Tone,
   btnGhost,
   inputStyle,
+  shipGateFromAuditPayload,
+  shipGateIsCleared,
 } from './studio-ui-shared'
 import { QueueStats, QueueTable } from './studio-queue'
 import { ReviewDraftsPanel } from './studio-review-panels'
@@ -584,6 +586,7 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
 // PRs (merge or decline), and the latest merge/deploy activity.
 function ApprovePanel({
   selectedJob, jobs, merges, onOpenJob, setActionNotice, onApproveAndMerge, onMergePr, onDeclinePr, onMerged,
+  shipGateByJob,
 }: {
   selectedJob: ContentJob | null
   jobs: ContentJob[]
@@ -596,12 +599,20 @@ function ApprovePanel({
   /** Decline/close the job's open PR. */
   onDeclinePr?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
   onMerged?: () => void
+  /** Canonical ship-gate snapshots per job — approve is only offered the
+   *  moment one exists AND passes (shipReady && blockers === 0). */
+  shipGateByJob?: ReadonlyMap<string, ShipGate> | null
 }) {
   const prOpen = jobs.filter(isOpenPr)
-  // Completed drafts — generation finished and content present, but no PR yet.
-  // These were only shown as a passive footnote before (so Approve & Track
-  // never surfaced new completed jobs); they must be actionable approve rows.
-  const readyToApprove = jobs.filter((j) => j.status === 'drafting' && Boolean(j.content))
+  // Ready drafts = generation finished AND the ship gate has actually cleared.
+  // A finished draft (content present) WITHOUT a confirmed ship gate is listed
+  // separately below with honest "awaiting audit" copy — never bulk_approve.
+  const gateOf = (j: ContentJob): ShipGate => shipGateByJob?.get(j.id) ?? shipGateFromAuditPayload(j.audit_json ?? null)
+  const gateCleared = (j: ContentJob) => shipGateIsCleared(gateOf(j))
+  const gateBlocked = (j: ContentJob) => { const g = gateOf(j); return g !== null && !shipGateIsCleared(g) }
+  const readyDraftCandidates = jobs.filter((j) => j.status === 'drafting' && Boolean(j.content))
+  const readyToApprove = readyDraftCandidates.filter(gateCleared)
+  const unGatedDrafts = readyDraftCandidates.filter((j) => !gateCleared(j))
   // Still running: queued (pending) or drafting with nothing written yet.
   const inProgress = jobs.filter((j) => j.status === 'pending' || (j.status === 'drafting' && !j.content))
   const recentMerges = (merges || []).slice(0, 8)
@@ -770,7 +781,7 @@ function ApprovePanel({
         <h3 style={{ margin: '4px 0 12px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Push to main · {prOpen.length} open PR{prOpen.length === 1 ? '' : 's'}</h3>
         {prOpen.length === 0 && (
           <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic' }}>
-            No PRs awaiting merge. The drafts that graduate from VI · Defend with a green gate will appear here.
+            No PRs awaiting merge. Drafts that clear the review ship gate appear here as PRs to merge.
           </p>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1023,6 +1034,46 @@ function ApprovePanel({
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+      {unGatedDrafts.length > 0 && (
+        <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, color: '#B45309', fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+            AWAITING SHIP GATE · {unGatedDrafts.length} DRAFT{unGatedDrafts.length === 1 ? '' : 'S'}
+          </div>
+          <p style={{ margin: '0 0 10px', fontFamily: C.serif, fontSize: 12.5, color: E.inkMuted, fontStyle: 'italic' }}>
+            A draft is only approve-able after a re-audit confirms the ship gate (quality + depth + zero blockers). Open it in the editor to run the gate.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {unGatedDrafts.map((j) => (
+              <div key={j.id} data-testid={`studio-ungated-draft-row-${j.id}`} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 12px', background: E.ivory,
+                border: `1px solid ${E.hairline}`, borderRadius: 0,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: C.serif, fontSize: 14, color: E.ink, fontWeight: 600 }}>{j.title}</div>
+                  <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted }}>
+                    {j.region} · {(j.content_type || '').toUpperCase()} · {j.word_count ? `${j.word_count} words` : 'draft complete'}
+                  </div>
+                </div>
+                <span style={{
+                  padding: '3px 9px', fontFamily: C.mono, fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+                  background: gateBlocked(j) ? '#FEE2E2' : '#FEF3C7',
+                  color: gateBlocked(j) ? '#991B1B' : '#92400E',
+                }}>
+                  {gateBlocked(j) ? '✕ GATE BLOCKED' : '⏳ AWAITING AUDIT'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onOpenJob(j)}
+                  style={{ padding: '7px 14px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}
+                >
+                  Open in editor →
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -2296,7 +2347,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     const briefAbort = new AbortController()
     const briefTimer = window.setTimeout(() => briefAbort.abort(), 660_000)
     try {
-      const gscData = (gscStatus && typeof gscStatus === 'object') ? gscStatus as Record<string, unknown> : {}
       const r = (radarMeta && typeof radarMeta === 'object') ? radarMeta as Record<string, unknown> : {}
       const res = await fetch('/api/content-studio/suggest-brief', {
         method: 'POST', credentials: 'same-origin',
@@ -2309,9 +2359,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           // endpoint's policy coerces unknown values to the Entrim Qwen
           // default. The same pin is carried into the Draft stage below.
           aiProvider: briefModel,
-          gscImpressions: gscData.impressions || 0,
-          gscPosition: gscData.position || 0,
-          gscClicks: gscData.clicks || 0,
           radarGaps: Array.isArray(r.gapOpportunities) ? r.gapOpportunities : [],
           llmVisibility: r.llmVisibility || null,
           backlinkGaps: Array.isArray(r.backlinkGaps) ? r.backlinkGaps : [],
@@ -3220,7 +3267,22 @@ function DraftWorkspace({
   const latestEvent = generationEvents[generationEvents.length - 1]
   const isStreaming = generating
   const hasCompleted = Boolean(completedJob && !generating)
-  const gatePassed = completedJob?.audit_json && (completedJob.audit_json.score ?? 0) >= 90
+  // Ship gate is ONLY green when the audit payload explicitly confirms
+  // shipReady === true AND zero blockers (canonical currentGate). The score —
+  // even 100 — never implies readiness, and a fresh generation with no
+  // shipReady on record is UNKNOWN, not "passed". Submit for audit in Review.
+  const jobAuditJson = (completedJob?.audit_json ?? null) as unknown as {
+    shipReady?: unknown; blockers?: unknown
+  } | null
+  const draftGate = shipGateFromResponse({
+    shipReady: jobAuditJson?.shipReady,
+    blockers: (() => {
+      const b = jobAuditJson?.blockers
+      return Array.isArray(b) ? b.length : typeof b === 'number' ? b : 0
+    })(),
+  })
+  const gatePassed = shipGateReady(draftGate)
+  const auditScore = completedJob?.audit_json?.score ?? null
   const wordCount = countBodyWords(draftContent || completedJob?.content || '') || completedJob?.word_count || 0
   // Depth-rescue / audit activity — recorded from SSE progress (stage 'refine')
   // and attempt (stage 'audit') events. Shown as a persistent realtime feed so
@@ -3269,7 +3331,7 @@ function DraftWorkspace({
           ) : hasCompleted && gatePassed ? (
             <>
               <span style={{ fontFamily: C.serif, fontSize: 13, color: '#166534', fontWeight: 600 }}>
-                ✓ Generation complete · {wordCount} words · gate passed
+                ✓ Generation complete · {wordCount} words · ship gate passed
               </span>
               <button
                 type="button"
@@ -3286,7 +3348,7 @@ function DraftWorkspace({
           ) : hasCompleted ? (
             <>
               <span style={{ fontFamily: C.serif, fontSize: 13, color: '#92400E', fontWeight: 600 }}>
-                ⚠ Generation complete but gate not yet passed · {wordCount} words
+                Generation complete · {wordCount} words{auditScore != null ? ` · score ${auditScore}/100` : ''} · re-audit to confirm the ship gate
               </span>
               <button
                 type="button"
@@ -5244,6 +5306,26 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     depthGate?: { ok: boolean; message: string } | null
   } | null>(null)
 
+  // Canonical per-job ship-gate book for the approve surfaces (Ready-to-Approve
+  // rows, the Approve → merge handler, and queue bulk Approve). Only evidence
+  // is ever a pass: a live re-audit of the selected job supersedes persisted
+  // audit_json, and an unknown state is NOT a pass — the score never suffices.
+  const shipGateBook = React.useMemo<ReadonlyMap<string, ShipGate>>(() => {
+    const m = new Map<string, ShipGate>()
+    for (const j of jobs) {
+      const g = shipGateFromAuditPayload(j.audit_json ?? null)
+      if (g !== null) m.set(j.id, g)
+    }
+    if (selectedJob && reviewAuditResult) {
+      const g = shipGateFromResponse({
+        shipReady: reviewAuditResult.shipReady,
+        blockers: reviewAuditResult.blockers,
+      })
+      if (g !== null) m.set(selectedJob.id, g)
+    }
+    return m
+  }, [jobs, selectedJob, reviewAuditResult])
+
   // Ref to avoid stale closure in onScoreChange callbacks — always points to latest content.
   const latestJobContentRef = React.useRef(selectedJob?.content)
   latestJobContentRef.current = selectedJob?.content
@@ -5684,7 +5766,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         }
         setSuggestions(nextSuggestions)
         setRadar(nextRadar)
-        setRadarMeta({ source: data.source, coverage: data.coverageStats, cannibalization: data.cannibalization, region: data.region })
+        setRadarMeta({ source: data.source, coverage: data.coverageStats, cannibalization: data.cannibalization, region: data.region, snapshot: data.snapshot ?? null })
       } else {
         setSuggestionsError((data as { error?: string }).error ?? 'Failed to load suggestions')
       }
@@ -6080,6 +6162,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // promise resolves we re-fetch jobs so VII · Approve surfaces the merged
   // status and VII · Track gets a fresh stamp.
   const runApproveAndMerge = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string; rhythmDetail?: { key: string; count: number } | null }> => {
+    // Client-side currentGate guard: never ship a draft that has not cleared
+    // the ship gate (shipReady === true && blockers === 0). Unknown = not ready.
+    const gate = shipGateBook.get(j.id)
+    if (!gate) {
+      const message = 'Ship gate not cleared — re-audit the draft in the editor before Approve → main.'
+      setActionNotice?.(message)
+      return { ok: false, message }
+    }
     try {
       const response = await fetch('/api/content-studio/jobs', {
         method: 'POST',
@@ -6112,7 +6202,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setActionNotice?.(message)
       return { ok: false, message }
     }
-  }, [fetchJobs, setActionNotice])
+  }, [fetchJobs, setActionNotice, shipGateBook])
 
   // ── Merge an ALREADY-OPEN PR (pr_created) — no re-ship, no duplicate branch.
   // The Approve panel's PR rows use this; shipContent re-ships a fresh branch
@@ -6189,7 +6279,25 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const runBulkQueueAction = React.useCallback(async (kind: 'bulk_reaudit' | 'bulk_abandon' | 'bulk_approve' | 'bulk_monitor' | 'rerun_resume' | 'refresh_pr' | 'clear_drafts' | 'clear_stuck' | 'clear_failed' | 'bulk_delete') => {
     if (queueBulkBusy) return
     const isClearBucket = kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed'
-    const ids: string[] = isClearBucket ? [] : Array.from(selectedJobIds)
+    let ids: string[] = isClearBucket ? [] : Array.from(selectedJobIds)
+    // Bulk Approve never ships ungated drafts: only ids whose canonical ship
+    // gate is present AND passes survive the filter. Everything else is left
+    // for the editor's re-audit — no POST is even attempted when none pass.
+    if (kind === 'bulk_approve') {
+      const byId = new Map(jobs.map((j) => [j.id, j]))
+      const gated = ids.filter((id) => {
+        const j = byId.get(id)
+        return shipGateIsCleared(shipGateBook.get(id) ?? shipGateFromAuditPayload(j?.audit_json ?? null))
+      })
+      if (gated.length === 0) {
+        setActionNotice('None of the selected drafts have cleared the ship gate — re-audit them in the editor first.')
+        return
+      }
+      if (gated.length < ids.length) {
+        setActionNotice(`${gated.length} of ${ids.length} selected draft(s) cleared the ship gate. Skipping the rest — re-audit them in the editor first.`)
+      }
+      ids = gated
+    }
     if (!ids.length && !isClearBucket) {
       setActionNotice('Select at least one job first.')
       return
@@ -6299,7 +6407,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setQueueBulkAction(null)
       setTimeout(() => setQueueBulkProgress(null), 1500)
     }
-  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, jobSummary, fetchJobs, fetchQueueView, fetchGateRuns, setActionNotice, setError])
+  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, jobSummary, fetchJobs, fetchQueueView, fetchGateRuns, setActionNotice, setError, shipGateBook])
 
   const queueSelectionCounts = React.useMemo(() => {
     const counts = { pending: 0, drafting: 0, failed: 0, stuck: 0, total: 0 }
@@ -6314,6 +6422,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
     return counts
   }, [jobs])
+
+  // Selected ids whose canonical ship gate is actually cleared — queue bulk
+  // Approve only ever targets THIS set (see runBulkQueueAction's filter).
+  const gatedApprovableIds = React.useMemo(() => {
+    const byId = new Map(jobs.map((j) => [j.id, j]))
+    return new Set(Array.from(selectedJobIds).filter((id) => {
+      const j = byId.get(id)
+      return shipGateIsCleared(shipGateBook.get(id) ?? shipGateFromAuditPayload(j?.audit_json ?? null))
+    }))
+  }, [jobs, selectedJobIds, shipGateBook])
 
   const visibleQueueJobs = React.useMemo(() => {
     if (queueStatusFilter === 'all') return jobs
@@ -6460,29 +6578,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
       const regionArg = formData.region || 'US'
 
-      let seoEnrichment: any = {}
-      record('seo', 'Fetching GSC keyword portfolio to enrich generation…')
-      try {
-        const gscRes = await fetch('/api/content-studio/gsc/suggestions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ region: regionArg, topic: formData.topic, limit: 4 }),
-        })
-        if (gscRes.ok) {
-          const gscData = await gscRes.json()
-          seoEnrichment = {
-            suggestions: gscData.suggestions?.slice(0, 3) ?? [],
-            strategyHints: gscData.strategyHints ?? [],
-            portfolioSnapshot: gscData.portfolioSnapshot ?? {},
-            source: gscData.source ?? 'unknown',
-            opportunity: selectedBrief,
-            interlinks: briefInterlinks,
-          }
-          record('seo', `SEO canon loaded: ${gscData.portfolioSnapshot?.primaryCount ?? 0} primary, ${gscData.portfolioSnapshot?.secondaryCount ?? 0} secondary keywords from ${gscData.source}`)
-        }
-      } catch (seoErr) {
-        record('seo', 'SEO enrichment unavailable — proceeding with user-provided keywords', 'warn')
-      }
-
 const controller = new AbortController()
       genAbortRef.current = controller
       const res = await fetch('/api/seo-factory/generate-stream', {
@@ -6496,7 +6591,6 @@ const controller = new AbortController()
           tone: formData.tone || 'educational', audience: formData.audience,
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
           minAuditScore: 55, maxRefine: 3,
-          seoEnrichment,
           interlinks: briefInterlinks,
           opportunity: selectedBrief,
           aiProvider: formData.aiProvider || undefined,
@@ -6706,7 +6800,10 @@ const controller = new AbortController()
 
   const engGatePass = Number((engineStatus as { gate?: { passRate?: number } } | null)?.gate?.passRate)
 
-  // 7-stage pipeline taxonomy. Each tab routes to a distinct stage.
+  // Pipeline taxonomy. Each tab routes to a distinct stage.
+  // Shop SEO ('shop') stays a StudioStage so ?tab=shop deep links still
+  // resolve, but its tab is OMITTED from the live nav until it can ship
+  // content through the canal (product blog pipeline has no shipContent).
   // Back-compat aliases map legacy tab tokens to the stage they belong to.
   const TABS: Array<{ key: StudioTab; numeral: string; label: string; sub: string; hint: string }> = [
     { key: 'discover',  numeral: 'I',   label: 'Discover',  sub: 'Signal Intelligence',   hint: 'GSC · radar · gaps · opportunities' },
@@ -6714,7 +6811,6 @@ const controller = new AbortController()
     { key: 'draft',     numeral: 'III', label: 'Draft & Review',   sub: 'Generate · Gate · Fix',    hint: `${jobTotal || jobs.length} jobs · queue · review` },
     { key: 'approve',   numeral: 'IV',  label: 'Approve & Track',  sub: 'Merge · Deploy · Verify',  hint: 'PR · deploy · ledger · GSC' },
     { key: 'configure', numeral: 'V',   label: 'Configure',     sub: 'System Settings',        hint: 'AI models · API keys · GSC · health' },
-    { key: 'shop',      numeral: 'VI',  label: 'Shop SEO',   sub: 'Product Blog Pipeline',   hint: '20 products · queue · draft · ship' },
   ]
 
   return (
@@ -7004,11 +7100,15 @@ const controller = new AbortController()
               <button
                 type="button"
                 onClick={() => { void runBulkQueueAction('bulk_approve') }}
-                disabled={queueBulkBusy || !selectedJobIds.size}
+                disabled={queueBulkBusy || !selectedJobIds.size || gatedApprovableIds.size === 0}
                 style={queueBulkAction === 'bulk_approve' ? actionDisabledStyle(E.mossGreen) : actionBtnStyle(E.mossGreen)}
-                title="Approve selected jobs (push PRs to main)"
+                title={
+                  gatedApprovableIds.size < selectedJobIds.size
+                    ? `Approve only drafts that cleared the ship gate (${gatedApprovableIds.size} of ${selectedJobIds.size} selected) — re-audit the rest first`
+                    : 'Approve selected drafts that cleared the ship gate (push PRs to main)'
+                }
               >
-                {queueBulkAction === 'bulk_approve' ? '⏳ Approving…' : `✅ Approve (${selectedJobIds.size || 0})`}
+                {queueBulkAction === 'bulk_approve' ? '⏳ Approving…' : `✅ Approve (${gatedApprovableIds.size || 0})`}
               </button>
               <button
                 type="button"
@@ -7162,6 +7262,7 @@ const controller = new AbortController()
             onOpenJob={(j) => { setSelectedJob(j) }}
             reviewAuditResult={reviewAuditResult}
             setActionNotice={setActionNotice}
+            shipGateByJob={shipGateBook}
           />
           {/* AI-enabled inline editor — fix blockers interactively */}
           {selectedJob?.content && (
@@ -7350,6 +7451,7 @@ const controller = new AbortController()
             onMergePr={runMergePr}
             onDeclinePr={runDeclinePr}
             onMerged={() => { void fetchJobs(); selectTab('approve') }}
+            shipGateByJob={shipGateBook}
           />
           <PublishLedger
             merges={merges}

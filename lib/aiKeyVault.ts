@@ -413,7 +413,11 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     label: 'Qwen3.6 27B · Entrim (api.entrim.ai/v1)',
     keyEnv: 'ENTRIM_API_KEY',
     baseUrlEnv: 'ENTRIM_BASE_URL',
-    modelEnv: 'ENTRIM_MODEL',
+    // Lane-isolated env: the Qwen row must NEVER write its model id into
+    // ENTRIM_MODEL (the DeepSeek lane reads that) — otherwise the last
+    // alphabetically-sorted vault row overwrites the DeepSeek pin with
+    // Qwen/Qwen3.6-27B. Qwen stays on its own ENTRIM_QWEN_MODEL lane.
+    modelEnv: 'ENTRIM_QWEN_MODEL',
     fixedBaseUrl: 'https://api.entrim.ai/v1',
     defaultModel: 'Qwen/Qwen3.6-27B',
     role: 'fallback',

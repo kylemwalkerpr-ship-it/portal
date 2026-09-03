@@ -157,6 +157,14 @@ export function isLiveProviderLabel(label: string): boolean {
   return LIVE_PROVIDER_LABELS.includes(label)
 }
 
+/** Break-glass: CONTENT_AI_ALL_PROVIDERS=1 restores the legacy full cascade,
+ *  including the Grok payment/quota sidecar. Under the live Entrim-only
+ *  policy an Entrim failure must NEVER call grokComplete — Grok is out of
+ *  commission and its credit-exhaustion failures would only add latency. */
+function allProvidersBreakGlass(): boolean {
+  return String(env('CONTENT_AI_ALL_PROVIDERS') || '').trim() === '1'
+}
+
 /**
  * Normalize a resolved pin to the live policy. Returns the (possibly
  * redirected) prefer label and a cleaned opts with any model override
@@ -1687,22 +1695,40 @@ export function isEntrimConfigured(): boolean {
 export function getEntrimProvider(modelOverride?: string): OpenAiCompat | null {
   const apiKey = resolveEntrimApiKey()
   if (!apiKey) return null
+  const override = String(modelOverride || '').trim()
+  const envModel = String(env('ENTRIM_MODEL') || '').trim()
+  // The DeepSeek lane NEVER sends the Qwen id. A stale ENTRIM_MODEL value
+  // (carried over from the pre-lane-isolation grid) or an accidentally
+  // forwarded Qwen override falls back to the exact first-party DeepSeek
+  // flash id — Qwen/Qwen3.6-27B stays on its own lane.
+  const model =
+    override === ENTRIM_QWEN_MODEL || envModel === ENTRIM_QWEN_MODEL
+      ? ENTRIM_DEEPSEEK_MODEL
+      : override || envModel || ENTRIM_DEEPSEEK_MODEL
   return {
     label: ENTRIM_DEEPSEEK_LABEL,
     baseURL: validBaseUrl(env('ENTRIM_BASE_URL'), ENTRIM_BASE_URL),
     apiKey,
-    model: modelOverride || env('ENTRIM_MODEL') || ENTRIM_DEEPSEEK_MODEL,
+    model,
     maxTokensCap: ENTRIM_MAX_TOKENS,
   }
 }
 
 /** Entrim Qwen3.6 27B — api.entrim.ai/v1, same vault key as the DeepSeek
  *  flash row. Used by Discover-stage engines, the Generate-Brief lane and
- *  the Reviewer lane (all three accept explicit `entrim-qwen-27b` pins). */
+ *  the Reviewer lane (all three accept explicit `entrim-qwen-27b` pins).
+ *  Forces the exact Qwen id verbatim and never consults ENTRIM_MODEL — the
+ *  DeepSeek lane's env. */
 export function getEntrimQwenProvider(): OpenAiCompat | null {
-  const provider = getEntrimProvider(ENTRIM_QWEN_MODEL)
-  if (!provider) return null
-  return { ...provider, label: ENTRIM_QWEN_LABEL }
+  const apiKey = resolveEntrimApiKey()
+  if (!apiKey) return null
+  return {
+    label: ENTRIM_QWEN_LABEL,
+    baseURL: validBaseUrl(env('ENTRIM_BASE_URL'), ENTRIM_BASE_URL),
+    apiKey,
+    model: ENTRIM_QWEN_MODEL,
+    maxTokensCap: ENTRIM_MAX_TOKENS,
+  }
 }
 
 /** Entrim Qwen3.6 27B single-provider completion (OpenAI-compatible). */
@@ -3582,7 +3608,11 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       errors.push(`${c.label}: ${msg}`)
-      const paymentFail = isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
+      // Grok payment/quota sidecar: break-glass ONLY. Under the live
+      // Entrim-only policy a failed Entrim request must never bounce to
+      // grokComplete — Grok is out of commission.
+      const paymentFail =
+        allProvidersBreakGlass() && isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
       if (paymentFail) {
         try {
           return await withDeadline('grok', deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true), grokComplete(opts))
@@ -4110,7 +4140,8 @@ export async function* generateContentTextStream(
         // selection was ignored. Continue the cascade for resilience.
         if (explicit && c.label === prefer) {
           explicitProviderFailed = true
-          if (isPaymentOrQuotaFailure(e) && prefer !== 'grok' && isGrokConfigured()) {
+          // Grok payment/quota sidecar is break-glass only (see generateContentText).
+          if (allProvidersBreakGlass() && isPaymentOrQuotaFailure(e) && prefer !== 'grok' && isGrokConfigured()) {
             yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
             yield* completeAsStream(() => grokComplete(opts))
             return
@@ -4157,7 +4188,8 @@ export async function* generateContentTextStream(
       }
       if (explicit && c.label === prefer) {
         explicitProviderFailed = true
-        if (isPaymentOrQuotaFailure(e2) && prefer !== 'grok' && isGrokConfigured()) {
+        // Grok payment/quota sidecar is break-glass only (see generateContentText).
+        if (allProvidersBreakGlass() && isPaymentOrQuotaFailure(e2) && prefer !== 'grok' && isGrokConfigured()) {
           yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
           yield* completeAsStream(() => grokComplete(opts))
           return

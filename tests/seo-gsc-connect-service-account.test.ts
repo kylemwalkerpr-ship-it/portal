@@ -42,6 +42,15 @@ jest.mock('@/lib/gsc-service-account', () => ({
   getGscAccessToken: jest.fn(),
 }))
 
+jest.mock('@/lib/portalAuth', () => ({
+  requireAdminUser: jest.fn().mockResolvedValue({
+    db: {},
+    profile: { role: 'admin' },
+    profileId: 'test-admin',
+    role: 'admin',
+  }),
+}))
+
 const mockAccessToken = getGscAccessToken as jest.Mock
 const mockSave = saveGscConnection as jest.Mock
 

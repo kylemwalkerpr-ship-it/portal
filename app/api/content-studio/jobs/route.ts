@@ -1327,6 +1327,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'merge_pr') {
+      // NOTE: this path does NOT re-run shipContent gates — it merges the
+      // existing reviewed PR head into main exactly as-is (content already
+      // passed the gate stack when the PR was opened).
       const prNumber = job.pr_number
       if (!prNumber) {
         return NextResponse.json({ error: 'Job has no PR to merge' }, { status: 400 })

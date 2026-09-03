@@ -67,6 +67,9 @@ declare global {
     ENTRIM_API_KEY: string
     ENTRIM_BASE_URL: string
     ENTRIM_MODEL: string
+    // Entrim Qwen3.6 27B — lane-isolated model env; the Qwen vault row must
+    // never write its id into ENTRIM_MODEL (the DeepSeek lane reads that).
+    ENTRIM_QWEN_MODEL: string
 
     // Parasail OpenAI-compatible serverless (api.parasail.io) — psk- keys
     PARASAIL_API_KEY: string

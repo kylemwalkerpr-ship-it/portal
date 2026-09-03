@@ -1,15 +1,16 @@
 /**
  * brief-model-selector.spec.ts
  *
- * E2E for the Research-stage brief model dropdown (GPT Sol / GPT Terra).
- * Asserts that selecting **GPT Sol** in the Brief Assembly panel causes the
- * Generate Full Brief request to `/api/content-studio/suggest-brief` to carry
- * `aiProvider: 'gpt-5.6-sol'` — proving the UI no longer hard-codes Terra and
- * the selectable choice actually reaches the brief endpoint's policy
- * (lib/seoFactory/briefModel), which only honors explicit sol/terra values.
+ * E2E for the Research-stage brief model dropdown (Entrim Qwen3.6 27B /
+ * Entrim DeepSeek V4 Flash). Asserts that selecting **Qwen3.6 27B** in the
+ * Brief Assembly panel causes the Generate Full Brief request to
+ * `/api/content-studio/suggest-brief` to carry
+ * `aiProvider: 'entrim-qwen-27b'` — proving the selectable choice actually
+ * reaches the brief endpoint's policy (lib/seoFactory/briefModel), which only
+ * honors the two live Entrim pins (Qwen lead, DeepSeek complement).
  *
  * The suggest-brief route is mocked so the test asserts the REQUEST payload
- * without depending on OpenAI credits/billing state.
+ * without depending on Entrim credits/billing state.
  *
  * ── Auth setup ──────────────────────────────────────────────────────────────
  *     CLERK_TEST_EMAIL=admin@example.com
@@ -118,7 +119,7 @@ function makeBriefResponse() {
 }
 
 test.describe('Research-stage brief model selector (admin)', () => {
-  test('selecting GPT Sol sends aiProvider gpt-5.6-sol on Generate Full Brief', async ({ browser }) => {
+  test('selecting Qwen3.6 27B sends aiProvider entrim-qwen-27b on Generate Full Brief', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -168,23 +169,23 @@ test.describe('Research-stage brief model selector (admin)', () => {
     // not htmlFor-associated in this panel — match on the placeholder.)
     await page.getByPlaceholder('What users search for').fill('uk dependent visa')
 
-    // The brief model dropdown (Terra default) — select GPT Sol.
-    const modelSelect = page.locator('select:has(option[value="gpt-5.6-sol"])').first()
+    // The brief model dropdown (Qwen lead default) — select Qwen3.6 27B.
+    const modelSelect = page.locator('select:has(option[value="qwen3.6-27b"])').first()
     await modelSelect.waitFor({ state: 'visible', timeout: 10000 })
-    await modelSelect.selectOption('gpt-5.6-sol')
-    await expect(modelSelect).toHaveValue('gpt-5.6-sol')
+    await modelSelect.selectOption('qwen3.6-27b')
+    await expect(modelSelect).toHaveValue('qwen3.6-27b')
 
     // Click Generate Full Brief.
     await page.getByRole('button', { name: /Generate Full Brief/i }).click()
 
     // ── The request must carry the selected model ──────────────────────────
     await expect.poll(() => capturedBody, { timeout: 10000 }).not.toBeNull()
-    expect(capturedBody!.aiProvider).toBe('gpt-5.6-sol')
+    expect(capturedBody!.aiProvider).toBe('entrim-qwen-27b')
     // Sanity: the brief still flows into the form (title updated).
     await expect(page.getByPlaceholder('e.g. Complete Guide to the UK Spouse Visa 2026')).toHaveValue('UK Dependent Visa Guide 2026', { timeout: 10000 })
   })
 
-  test('GPT Terra remains the default when no selection is made', async ({ browser }) => {
+  test('selecting DeepSeek V4 Flash sends aiProvider entrim-deepseek', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -218,15 +219,15 @@ test.describe('Research-stage brief model selector (admin)', () => {
     const panel = page.getByTestId('studio-brief-assembly')
     await panel.waitFor({ state: 'visible', timeout: 30000 })
 
-    const modelSelect = page.locator('select:has(option[value="gpt-5.6-sol"])').first()
+    const modelSelect = page.locator('select:has(option[value="deepseek-v4-flash"])').first()
     await modelSelect.waitFor({ state: 'visible', timeout: 10000 })
-    // Default state — Terra selected without any interaction.
-    await expect(modelSelect).toHaveValue('gpt-5.6-terra')
+    await modelSelect.selectOption('deepseek-v4-flash')
+    await expect(modelSelect).toHaveValue('deepseek-v4-flash')
 
     await page.getByPlaceholder('What users search for').fill('uk dependent visa')
     await page.getByRole('button', { name: /Generate Full Brief/i }).click()
 
     await expect.poll(() => capturedBody, { timeout: 10000 }).not.toBeNull()
-    expect(capturedBody!.aiProvider).toBe('gpt-5.6-terra')
+    expect(capturedBody!.aiProvider).toBe('entrim-deepseek')
   })
 })

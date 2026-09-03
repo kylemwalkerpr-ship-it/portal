@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         warnings.push('GSC live · 90-day window')
       }
     } else {
-      const snap = await loadGscSnapshot()
+      const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
       snapshotMeta = { generatedAt: snap.generatedAt }
       const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
         term: q.term || q.url || '',
@@ -140,7 +140,24 @@ export async function POST(request: NextRequest) {
         ...((snap.opportunities?.highImpressionLowCtr as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
         ...((snap.opportunities?.highImpressionDeepRank as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
       ]
-      warnings.push('Opportunity scoring on CSV snapshot — connect live Search Console for fresher data')
+      if (queries.length === 0) {
+        // The 14-day stale guard refused the snapshot (older than 14 days or
+        // missing) — never score dated demand as live. Keep the raw snapshot
+        // date so the UI's stale banner can fire even though we refuse to
+        // score it.
+        warnings.push(
+          'GSC snapshot is stale or unavailable (older than 14 days or missing). ' +
+            'Refusing snapshot demand — regenerate the snapshot (re-export from Search Console) or fix live GSC credentials.',
+        )
+        try {
+          const raw = await loadGscSnapshot()
+          snapshotMeta = { generatedAt: raw.generatedAt }
+        } catch {
+          /* no snapshot date to show */
+        }
+      } else {
+        warnings.push('Opportunity scoring on CSV snapshot — connect live Search Console for fresher data')
+      }
     }
 
     // ── 2. Existing content inventory (coverage + cannibalization) ─────────
@@ -259,6 +276,10 @@ export async function POST(request: NextRequest) {
     )
     const knowledgeTerms = new Set(knowledgeSignals.map((signal) => normalizedTopic(signal.term)))
     const suggestions = variedOpportunities.map((o) => {
+      // Synthetic rows originate from the strategy knowledge corpus, not Search
+      // Console. They are scored with zero demand and flagged so the UI never
+      // reads their numbers as real GSC impressions/clicks.
+      const synthetic = knowledgeTerms.has(normalizedTopic(o.topic))
       // Deterministic ranking-model enrichment (lean view) — same brain as the
       // command-center radar so Quick Create briefs can show score + forecast.
       const ranking = leanRanking(rankingForOpportunity({
@@ -280,6 +301,8 @@ export async function POST(request: NextRequest) {
       clicks: o.clicks,
       ctr: o.ctr,
       position: o.position,
+      knowledgeBase: synthetic,
+      synthetic,
       demandScore: o.demandScore,
       upsideScore: o.upsideScore,
       difficultyScore: o.difficultyScore,
@@ -296,7 +319,7 @@ export async function POST(request: NextRequest) {
       cluster: clusterResult.byTerm[o.topic] || null,
       signals: [
         ...(o.signals || []),
-        ...(knowledgeTerms.has(normalizedTopic(o.topic)) ? ['Strategy knowledge-base authority signal'] : []),
+        ...(synthetic ? ['Strategy knowledge-base authority signal'] : []),
       ],
       interlinks: o.interlinks,
       coverage: o.coverage,

@@ -2,6 +2,7 @@
 
 import React from 'react'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
+import { shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { studioTokens as E } from './studio-tokens'
 
 const C = E
@@ -79,6 +80,33 @@ export function isPublishedJob(j: ContentJob): boolean {
  */
 export function isOpenPr(j: ContentJob): boolean {
   return j.status === 'pr_created'
+}
+
+/**
+ * Canonical ship-gate snapshot from a persisted audit payload (audit_json).
+ * Echoes currentGate.shipGateFromResponse — `shipReady` must be an explicit
+ * boolean, never derived from score. Unknown (no boolean) yields `null`.
+ * The audit's `blockers` array (or count) is normalized to a number.
+ */
+export function shipGateFromAuditPayload(aj: unknown): ShipGate {
+  if (!aj || typeof aj !== 'object') return null
+  const a = aj as { shipReady?: unknown; blockers?: unknown }
+  if (typeof a.shipReady !== 'boolean') return null
+  const blockers = Array.isArray(a.blockers)
+    ? a.blockers.length
+    : typeof a.blockers === 'number' && Number.isFinite(a.blockers)
+      ? a.blockers
+      : 0
+  return shipGateFromResponse({ shipReady: a.shipReady, blockers })
+}
+
+/**
+ * True only when the snapshot is present AND both conditions hold:
+ * `shipReady === true` AND `blockers === 0`. A 100/100 score or a finished
+ * draft WITHOUT this snapshot is never a ship-ready label.
+ */
+export function shipGateIsCleared(gate: ShipGate): boolean {
+  return gate !== null && gate.shipReady === true && gate.blockers === 0
 }
 
 export function formatDate(iso: string) {
