@@ -9,6 +9,7 @@ import {
   applyNonOverlappingSpanFixes,
   splitMarkdownFrontmatter,
   dialectForRegion,
+  maskHarperScaffold,
 } from '@/lib/harperText'
 
 /**
@@ -137,7 +138,7 @@ export async function runHarperGrammar(md: string, signal?: AbortSignal, region?
     const linter = await getLinter(region)
     if (signal?.aborted) return null
     const { body } = splitMarkdownFrontmatter(String(md || ''))
-    const source = body.trim().length >= 80 ? body : harperSafeLines(String(md || '')).filter((l) => !l.skip).map((l) => l.out).join('\n')
+    const source = body.trim().length >= 80 ? maskHarperScaffold(body) : harperSafeLines(String(md || '')).filter((l) => !l.skip).map((l) => l.out).join('\n')
     if (source.trim().length < 80) {
       return { score: 100, errors: 0, suggestions: 0, items: [] }
     }
@@ -200,7 +201,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
   const original = String(md || '')
   try {
     const linter = await getLinter(region)
-    const allowed = new Set(['Spelling', 'Grammar', 'Typo', 'Punctuation', 'Nonstandard', 'WordOrder', 'Repetition', 'Agreement', 'WordChoice'])
+    const allowed = new Set(['Spelling', 'Grammar', 'Punctuation', 'Nonstandard', 'WordOrder', 'Repetition', 'Agreement'])
     const { fm, body } = splitMarkdownFrontmatter(original)
     let currentBody = body
     let applied = 0
@@ -208,7 +209,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
     const seen = new Set<string>()
     for (let round = 0; round < 16; round++) {
       if (currentBody.trim().length < 40) break
-      const lints = (await lintSource(linter, currentBody)).filter(keepLint)
+      const lints = (await lintSource(linter, maskHarperScaffold(currentBody))).filter(keepLint)
       const spanFixes: Array<{ start: number; end: number; replacement: string; kind: string; problem: string; message: string }> = []
       for (const l of lints) {
         const kind = l.lint_kind() || ''

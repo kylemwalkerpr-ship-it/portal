@@ -1,4 +1,4 @@
-import { applyNonOverlappingSpanFixes, applyProseCorrection, dialectForRegion, harperSafeLines, HARPER_ESTATE_WORDS, isHarperNoiseFinding, isNonClientFacingLine, mapCorrectedProseToMarkdown, spliceWords, splitMarkdownFrontmatter } from '../lib/harperText'
+import { applyNonOverlappingSpanFixes, applyProseCorrection, dialectForRegion, harperSafeLines, HARPER_ESTATE_WORDS, isHarperNoiseFinding, isNonClientFacingLine, mapCorrectedProseToMarkdown, maskHarperScaffold, spliceWords, splitMarkdownFrontmatter } from '../lib/harperText'
 import { applyQuotedStyleFixes } from '../lib/seoFactory/styleApply'
 import { sanitizeLeakedMarkup } from '../lib/seoFactory/leakedMarkup'
 import { applyReadabilityFixes, suggestReadabilityFixes } from '../lib/editorMetrics'
@@ -133,6 +133,9 @@ Official source.`
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'rumour', fix: 'rumor' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'uncertified', fix: 'unfortified' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'english', fix: 'English' })).toBe(false)
+    expect(isHarperNoiseFinding({ kind: 'Typo', problem: 'datePublished', fix: 'date Published', message: '`datePublished` should probably be written as `date Published`.' })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'url', fix: 'urn', message: "Did you mean to spell 'url' this way?" })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Typo', problem: 'acceptedAnswer', fix: 'accepted Answer' })).toBe(true)
     expect(HARPER_ESTATE_WORDS).toContain('SEVIS')
   })
 
@@ -167,6 +170,11 @@ Official source.`
     const split = splitMarkdownFrontmatter('---\ntitle: X\n---\n\n# Hello\n')
     expect(split.fm).toContain('title: X')
     expect(split.body).toContain('# Hello')
+    const schema = 'Hello world.\n<script type="application/ld+json">{"datePublished":"2026-01-01","url":"https://x"}</script>\nBye.'
+    const masked = maskHarperScaffold(schema)
+    expect(masked.length).toBe(schema.length)
+    expect(masked).toContain('Hello world.')
+    expect(masked).not.toContain('datePublished')
   })
 
   it('is 1:1 line-preserving (word splice safety)', () => {

@@ -146,6 +146,11 @@ export function isHarperNoiseFinding(it: { kind?: string; problem?: string; mess
   if (!problem) return true
   if (/readability/i.test(kind)) return true
   if (/^["'`“”‘’]+$/.test(problem)) return true
+  if (/^[a-z]+[A-Z][A-Za-z0-9]*$/.test(problem)) return true
+  if (/^(url|urn|href|src|json|http|https|mainEntity|acceptedAnswer|datePublished|dateModified)$/i.test(problem)) return true
+  if (/typo/i.test(kind) && (/[a-z][A-Z]/.test(problem) || /written as `?.{0,20} /.test(message))) return true
+  if (/miscellaneous/i.test(kind) && /^should\s*$/i.test(problem)) return true
+  if (/spelling/i.test(kind) && /^url$/i.test(problem) && /^urn$/i.test(fix)) return true
   if (problem.length <= 2 && /word choice|spelling|formatting/i.test(kind)) return true
   if (/^byte$/i.test(fix) && /^[A-Za-z]$/.test(problem)) return true
   if (ESTATE_WORD_SET.has(problem.toLowerCase())) return true
@@ -226,6 +231,13 @@ export function applyNonOverlappingSpanFixes(
     applied++
   }
   return { text: out, applied }
+}
+
+/** Same length as `md`, but JSON-LD / fences / HTML script become spaces so Harper spans still map. */
+export function maskHarperScaffold(md: string): string {
+  return String(md || '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (m) => ' '.repeat(m.length))
+    .replace(/```[\s\S]*?```/g, (m) => ' '.repeat(m.length))
 }
 
 export function splitMarkdownFrontmatter(md: string): { fm: string; body: string } {
