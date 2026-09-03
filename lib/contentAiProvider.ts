@@ -573,6 +573,13 @@ function isTransientInfraError(value: unknown): boolean {
   return /\b(429|503|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error|Function id .* not found|Specified function in account .* is not found/i.test(message)
 }
 
+/** Exclusive draft pins should cascade when the pinned host produced no
+ *  usable article (reasoning-only burn, empty SSE, or still truncated). */
+function isUnusableGenerationFailure(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value || '')
+  return /empty content|stream returned empty|output was truncated \(token limit\)/i.test(message)
+}
+
 /** Keep provider diagnostics useful without surfacing auth/token fingerprints. */
 function formatProviderFailure(label: string, status: number, body: string): string {
   if (isDailyQuotaError(body)) {
@@ -681,6 +688,17 @@ function looksLikeFullRestart(previousText: string, continuationText: string): b
   // (e.g. the previous text ended with a code fence or JSON-LD close).
   if (/^##\s+/.test(head) && !previousText.endsWith('\n') && previousText.length > 0) return true
   return false
+}
+
+/** DeepSeek-family streams that burn the token budget on reasoning_content
+ *  finish with `length` and zero article text. Continuing that 5× keeps the
+ *  UI at 0 chars for minutes. Treat it as empty, not as a real truncation. */
+export function isReasoningOnlyTruncation(accumulated: string): boolean {
+  const body = String(accumulated || '')
+    .replace(/^---[\s\S]*?---/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return body.length < 80
 }
 
 /** Build a continuation prompt that resumes a draft cut off at the token cap. */
@@ -2063,9 +2081,6 @@ async function* parseOpenAiSse(
         // the per-chunk catch below (which skips malformed SSE) so the error
         // actually propagates to the cascade.
         const choiceRaw = parseChoiceFinishReason(payload)
-        if (choiceRaw?.finish_reason === 'length') {
-          throw new Error('output was truncated (token limit) — trying next provider')
-        }
         try {
           const json = JSON.parse(payload) as {
             choices?: Array<{
@@ -2089,8 +2104,14 @@ async function* parseOpenAiSse(
             choice?.text ||
             (typeof json.response === 'string' ? json.response : '')
           if (delta) yield delta
-        } catch {
+        } catch (chunkErr) {
+          if (chunkErr instanceof Error && /output was truncated/.test(chunkErr.message)) throw chunkErr
           /* skip malformed SSE chunks */
+        }
+        // Throw AFTER yielding this chunk's prose so a last content token is
+        // not discarded. Empty + length is a reasoning burn, not a draft.
+        if (choiceRaw?.finish_reason === 'length') {
+          throw new Error('output was truncated (token limit) — trying next provider')
         }
       }
     }
@@ -2194,10 +2215,17 @@ async function* openAiCompatibleStream(
                         : 'low',
                 }
               : {}),
-            ...(disableThinking && p.extraBody?.chat_template_kwargs
-              ? { chat_template_kwargs: { ...(p.extraBody.chat_template_kwargs as Record<string, unknown>), enable_thinking: false } }
+            ...(disableThinking
+              ? {
+                  chat_template_kwargs: {
+                    ...((p.extraBody?.chat_template_kwargs as Record<string, unknown> | undefined) || {}),
+                    thinking: false,
+                    enable_thinking: false,
+                  },
+                  reasoning_budget: undefined,
+                  reasoning_effort: 'low',
+                }
               : {}),
-            ...(disableThinking ? { reasoning_budget: undefined } : {}),
           }),
         } as RequestInit),
         ...(streamTimeoutMs
@@ -2337,6 +2365,14 @@ async function* openAiCompatibleStream(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       const truncated = /output was truncated \(token limit\)/.test(msg)
+      if (truncated && isReasoningOnlyTruncation(full)) {
+        yield {
+          type: 'provider',
+          provider: `${p.label} (reasoning burned token budget — retrying without thinking)`,
+          model,
+        }
+        break
+      }
       if (!truncated || continuations >= MAX_CONTINUATIONS) throw e
       continuations++
       yield { type: 'provider', provider: `${p.label} (cont ${continuations}/${MAX_CONTINUATIONS})`, model }
@@ -3260,7 +3296,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
         if (
           opts.cascadeOnCapacity &&
           cascadeChain.length &&
-          (isTransientInfraError(e) || isPaymentOrQuotaFailure(e))
+          (isTransientInfraError(e) || isPaymentOrQuotaFailure(e) || isUnusableGenerationFailure(e))
         ) {
           console.warn(
             `[contentAi] explicit ${prefer} unavailable (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`,
@@ -3469,7 +3505,7 @@ export async function* generateContentTextStream(
             if (
               opts.cascadeOnCapacity &&
               cascadeChain.length &&
-              (isTransientInfraError(e) || isPaymentOrQuotaFailure(e))
+              (isTransientInfraError(e) || isPaymentOrQuotaFailure(e) || isUnusableGenerationFailure(e))
             ) {
               unique = cascadeChain
               i = -1 // restart at the first fallback (cascadeChain excludes prefer)
@@ -3512,7 +3548,7 @@ export async function* generateContentTextStream(
           opts.exclusive &&
           opts.cascadeOnCapacity &&
           cascadeChain.length &&
-          (isTransientInfraError(e2) || isPaymentOrQuotaFailure(e2))
+          (isTransientInfraError(e2) || isPaymentOrQuotaFailure(e2) || isUnusableGenerationFailure(e2))
         ) {
           unique = cascadeChain
           i = -1

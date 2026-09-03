@@ -4,6 +4,7 @@ jest.mock('@/lib/aiKeyVault', () => ({
 }))
 
 import {
+  isReasoningOnlyTruncation,
   canonicalizeNvidiaModelId,
   fetchStreamWithRetry,
   generateContentText,
@@ -173,6 +174,14 @@ describe('content AI · request-level model override (reviewer path)', () => {
   it('canonicalizes GLM/Nemotron ids for their NVIDIA pins too', () => {
     const glm = { ...nvidiaProvider, label: 'nvidia-glm' } as Parameters<typeof resolveEffectiveModel>[0]
     expect(resolveEffectiveModel(glm, { model: 'z-ai/GLM-5.2' } as never)).toBe('z-ai/glm-5.2')
+  })
+})
+
+describe('content AI · empty DeepSeek continuation', () => {
+  it('treats YAML-only / empty streams as reasoning-only truncation, not a real draft to continue', () => {
+    expect(isReasoningOnlyTruncation('')).toBe(true)
+    expect(isReasoningOnlyTruncation('---\ntitle: Hi\n---\n')).toBe(true)
+    expect(isReasoningOnlyTruncation('# How to choose a college essay topic\n\n' + 'Students should '.repeat(40))).toBe(false)
   })
 })
 
