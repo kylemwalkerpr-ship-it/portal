@@ -188,19 +188,31 @@ describe('ownership resolver — explicit blog / regional destinations stay off 
     expect(p.canonicalUrl).toContain('legal.yousafeconsultancy.com')
   })
 
-  it('recomputes the repo and content type when a cluster overrides a regional blog to legal', async () => {
+  it('does not let a legal cluster hint steal an explicit blog_post onto caseworks', async () => {
     const p = await resolveOwner({
       primaryKeyword: 'study permit refusal reapply canada 2026',
       contentType: 'blog_post',
       region: 'CA',
       ownerUrlHint: 'https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply-2026/',
     })
-    expect(p.host).toBe('legal')
-    expect(p.repo).toBe('caseworks')
-    expect(p.filePath).toBe('app/ca/study-permit-refusal-reapply-2026/page.tsx')
-    expect(p.contentType).toBe('legal_guide')
-    expect(p.intentClass).toBe('procedural')
-    expect(p.canonicalUrl).toContain('legal.yousafeconsultancy.com')
+    expect(p.host).toBe('apex')
+    expect(p.repo).toBe('yousafe-consultancy')
+    expect(p.contentType).toBe('blog_post')
+    expect(p.canonicalUrl).toContain('yousafeconsultancy.com/blog/')
+    expect(p.canonicalUrl).not.toContain('legal.yousafeconsultancy.com')
+  })
+
+  it('does not let a legal cluster hint steal an explicit regional_page onto caseworks', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'uk spouse visa document checklist 2026',
+      contentType: 'regional_page',
+      region: 'UK',
+      ownerUrlHint: 'https://legal.yousafeconsultancy.com/uk/immigration/uk-spouse-visa-document-checklist-2026/',
+    })
+    expect(p.host).toBe('uk')
+    expect(p.repo).toBe('yousafe-consultancy')
+    expect(p.canonicalUrl).toContain('uk.yousafeconsultancy.com')
+    expect(p.canonicalUrl).not.toContain('legal.yousafeconsultancy.com')
   })
 
   it('does not send visa blog_summary to caseworks', () => {

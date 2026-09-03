@@ -6623,10 +6623,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
     try {
       const contentTypeMap: Record<string, string> = {
-        blog_post: 'blog_post', article: 'legal_guide',
-        regional_page: 'regional_page',
+        blog_post: 'blog_post', article: 'legal_guide', legal: 'legal_guide',
+        regional_page: 'regional_page', regional_from: 'regional_from',
+        regional_university: 'regional_university', blog_summary: 'blog_summary',
+        legal_guide: 'legal_guide',
       }
-      const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
+      const rawType = String(formData.contentType || formData.content_type || '').trim()
+      const ct = contentTypeMap[rawType] || rawType || 'legal_guide'
       const regionArg = formData.region || 'US'
 
 const controller = new AbortController()

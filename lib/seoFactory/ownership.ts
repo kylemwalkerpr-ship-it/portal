@@ -756,6 +756,29 @@ export function isExplicitDestinationType(t: string): boolean {
   return EXPLICIT_DESTINATION_TYPES.has(String(t || '').toLowerCase())
 }
 
+export function destinationFamily(contentType: string): 'legal' | 'regional' | 'market' {
+  const t = normalizeStudioContentType(contentType)
+  if (t === 'marketplace_gig') return 'market'
+  if (t === 'legal_guide' || t === 'article') return 'legal'
+  if (isExplicitDestinationType(t)) return 'regional'
+  return 'legal'
+}
+
+export function hostFamily(host: OwnerHost | string | null | undefined): 'legal' | 'regional' | 'market' {
+  if (host === 'market') return 'market'
+  if (host === 'legal') return 'legal'
+  return 'regional'
+}
+
+/** Cluster/legal pillar URLs must not steal an explicit blog or regional ship. */
+export function ownerHintAllowedForType(hintHost: OwnerHost | string | null, contentType: string): boolean {
+  if (!hintHost) return false
+  const dest = destinationFamily(contentType)
+  const fam = hostFamily(hintHost)
+  if (normalizeStudioContentType(contentType) === 'blog_post') return hintHost === 'apex'
+  return dest === fam
+}
+
 /** UI `article` is the caseworks legal guide; keep blog_post as blog_post. */
 export function normalizeStudioContentType(t: string): string {
   const x = String(t || '').toLowerCase().trim()
@@ -811,7 +834,13 @@ export async function resolveOwner(opts: {
   // ── Explicit blog_post ships to apex unless a cluster explicitly supplies a
   //    canonical owner URL. Registry matches alone must not redirect a studio
   //    blog_post to a regional or legal host.
-  if (opts.contentType === 'blog_post' && !opts.ownerUrlHint && isExplicitDestinationType(normalizeStudioContentType(opts.contentType || ''))) {
+  const explicitType = normalizeStudioContentType(opts.contentType || '')
+  const hintedEarly = opts.ownerUrlHint ? hostFromUrl(opts.ownerUrlHint) : null
+  if (
+    explicitType === 'blog_post' &&
+    isExplicitDestinationType(explicitType) &&
+    !ownerHintAllowedForType(hintedEarly, explicitType)
+  ) {
     const slug = opts.slug || slugify(keyword || 'blog')
     const fb = pathForHostFallback('apex', opts.region, slug, 'blog_post')
     return {
@@ -903,7 +932,7 @@ export async function resolveOwner(opts: {
   // so the caller's generic blog_post type cannot keep this plan on apex.
   const hintedHost = opts.ownerUrlHint ? hostFromUrl(opts.ownerUrlHint) : null
   let hintedOwnerPath: { filePath: string; urlPath: string } | null = null
-  if (hintedHost === 'legal' && opts.ownerUrlHint) {
+  if (hintedHost === 'legal' && opts.ownerUrlHint && ownerHintAllowedForType(hintedHost, contentType)) {
     hintedOwnerPath = filePathFromOwnerUrl(opts.ownerUrlHint, hintedHost)
     if (hintedOwnerPath) {
       host = hintedHost
@@ -924,8 +953,8 @@ export async function resolveOwner(opts: {
     Boolean(matched) &&
     callerExplicit &&
     registryHost === 'legal' &&
-    contentType !== 'legal_guide' &&
-    hintedHost !== 'legal'
+    destinationFamily(contentType) !== 'legal' &&
+    !ownerHintAllowedForType(hintedHost, contentType)
 
   if (hintedOwnerPath) {
     // Keep the explicit legal owner URL selected above; registry keyword matches
@@ -1084,7 +1113,11 @@ export async function resolveOwner(opts: {
   // ── Keyword-cluster override: ship onto an existing canonical page ───────
   if (opts.ownerUrlHint) {
     const hintHost = hostFromUrl(opts.ownerUrlHint)
-    if (hintHost && HOST_REPO[hintHost]) {
+    if (hintHost && HOST_REPO[hintHost] && !ownerHintAllowedForType(hintHost, contentType)) {
+      warnings.push(
+        `ownerUrlHint ${opts.ownerUrlHint} ignored — ${contentType} ships to its own estate, not ${hintHost}/caseworks`,
+      )
+    } else if (hintHost && HOST_REPO[hintHost]) {
       const mapped = filePathFromOwnerUrl(opts.ownerUrlHint, hintHost)
       if (mapped) {
         host = hintHost
