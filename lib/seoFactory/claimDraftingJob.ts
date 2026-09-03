@@ -32,16 +32,19 @@ export async function claimDraftingJob(input: ClaimDraftingInput): Promise<strin
     content: PLACEHOLDER,
     word_count: 12,
     region: String(input.region || 'US').slice(0, 8) || 'US',
-    target_repo: defaultJobTargetRepo(input.contentType, input.region),
+    target_repo: defaultJobTargetRepo(input.contentType, input.region) || 'caseworks',
     ship_mode: 'pr',
     indexable: true,
     primary_keyword: String(input.primaryKeyword || topic).slice(0, 200),
   }
   const db = createClient(url, key)
   let ins = await db.from('content_jobs').insert(row).select('id').single()
-  if (ins.error && /column|schema/i.test(ins.error.message || '')) {
+  if (ins.error && /column|schema/i.test(ins.error.message || '') && !/not-null|null value/i.test(ins.error.message || '')) {
     const { ship_mode: _s, indexable: _i, primary_keyword: _p, ...minimal } = row
-    ins = await db.from('content_jobs').insert(minimal).select('id').single()
+    ins = await db.from('content_jobs').insert({ ...minimal, target_repo: row.target_repo || 'caseworks' }).select('id').single()
+  }
+  if (ins.error && /target_repo/i.test(ins.error.message || '')) {
+    ins = await db.from('content_jobs').insert({ ...row, target_repo: 'caseworks' }).select('id').single()
   }
   if (ins.error || !ins.data?.id) {
     console.warn('[claimDraftingJob] insert failed', ins.error?.message)

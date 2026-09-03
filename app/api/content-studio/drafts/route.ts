@@ -73,14 +73,32 @@ export async function POST(request: NextRequest) {
         content,
         word_count: countBodyWords(content),
         region,
-        target_repo: defaultJobTargetRepo(contentType, region),
+        target_repo: defaultJobTargetRepo(contentType, region) || 'caseworks',
         ship_mode: 'pr',
         indexable: true,
       }).select('id').single()
-      if (insert.error || !insert.data?.id) {
+      if (insert.error && /target_repo/i.test(insert.error.message || '')) {
+        const retry = await db.from('content_jobs').insert({
+          user_id: 'admin',
+          title,
+          topic: String(body.topic || title).slice(0, 200),
+          content_type: contentType,
+          status: 'drafting',
+          content,
+          word_count: countBodyWords(content),
+          region,
+          target_repo: 'caseworks',
+        }).select('id').single()
+        if (retry.data?.id) {
+          jobId = String(retry.data.id)
+        } else {
+          return NextResponse.json({ error: retry.error?.message || insert.error.message }, { status: 503 })
+        }
+      } else if (insert.error || !insert.data?.id) {
         return NextResponse.json({ error: insert.error?.message || 'Could not create a draft job' }, { status: 503 })
+      } else {
+        jobId = String(insert.data.id)
       }
-      jobId = String(insert.data.id)
     }
     const { source, qualityOk, shipReady, blockers, warnings, appliedRepairs } = body
 

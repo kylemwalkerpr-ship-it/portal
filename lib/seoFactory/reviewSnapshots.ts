@@ -78,10 +78,29 @@ export async function persistReviewSnapshot(opts: {
     if (opts.updateJob !== false) {
       const patch: Record<string, unknown> = { content: opts.content, word_count: words }
       if (opts.qualityOk) patch.error_message = null
-      const { error: upErr } = await db.from('content_jobs').update(patch).eq('id', opts.jobId)
+      const { data: updated, error: upErr } = await db.from('content_jobs').update(patch).eq('id', opts.jobId).select('id').maybeSingle()
       if (upErr) {
         console.warn('[reviewSnapshots] job update', upErr.message)
         return { snapshot, persisted: false, error: upErr.message }
+      }
+      if (!updated?.id) {
+        const { defaultJobTargetRepo } = await import('./jobContentType')
+        const { error: insErr } = await db.from('content_jobs').insert({
+          id: opts.jobId,
+          user_id: 'admin',
+          title: 'Untitled draft',
+          topic: 'Untitled draft',
+          content_type: 'article',
+          status: 'drafting',
+          content: opts.content,
+          word_count: words,
+          region: 'US',
+          target_repo: defaultJobTargetRepo('article') || 'caseworks',
+        })
+        if (insErr && !/duplicate|already exists/i.test(insErr.message || '')) {
+          console.warn('[reviewSnapshots] job insert', insErr.message)
+          return { snapshot, persisted: false, error: insErr.message }
+        }
       }
     }
     return { snapshot, persisted: true }
