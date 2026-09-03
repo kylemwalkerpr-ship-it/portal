@@ -11,6 +11,7 @@
  */
 
 import { getGscConfig } from '@/lib/gscConfig'
+import { resolveGscSiteUrl } from '@/lib/gscSites'
 
 export type GscAuthMode = 'oauth' | 'service_account' | null
 
@@ -160,14 +161,19 @@ export async function detectGscAuthMode(): Promise<GscAuthMode> {
  * Mint a short-lived access token for Search Console API calls.
  * Prefer OAuth when fully configured (personal-Gmail properties); else SA.
  */
+async function withSite(accessToken: string, mode: Exclude<GscAuthMode, null>, configured: string | null): Promise<GscAccess> {
+  const siteUrl = await resolveGscSiteUrl(accessToken, configured)
+  return { accessToken, mode, siteUrl }
+}
+
 export async function getGscAccess(): Promise<GscAccess | null> {
   const cfg = await getGscConfig()
-  const siteUrl = cfg.siteUrl || process.env.GSC_SITE_URL || null
+  const configured = cfg.siteUrl || process.env.GSC_SITE_URL || null
 
   if (cfg.refreshToken && cfg.clientId && cfg.clientSecret) {
     try {
       const accessToken = await tokenFromRefresh(cfg.refreshToken, cfg.clientId, cfg.clientSecret)
-      return { accessToken, mode: 'oauth', siteUrl }
+      return withSite(accessToken, 'oauth', configured)
     } catch (err) {
       console.warn('[gscAuth] OAuth failed, trying service account', err instanceof Error ? err.message : err)
     }
@@ -183,7 +189,7 @@ export async function getGscAccess(): Promise<GscAccess | null> {
     try {
       const sa = parseServiceAccountJson(saJson)
       const accessToken = await mintServiceAccountToken(sa)
-      return { accessToken, mode: 'service_account', siteUrl }
+      return withSite(accessToken, 'service_account', configured)
     } catch (err) {
       console.warn('[gscAuth] Service account failed', err instanceof Error ? err.message : err)
       return null

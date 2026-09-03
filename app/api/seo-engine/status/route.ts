@@ -136,15 +136,7 @@ export async function GET() {
       },
       // Demand-data health — snapshots are the planner's fallback feed; the
       // operator must always SEE when demand is snapshot-derived and how old.
-      demandSnapshot: await (async () => {
-        try {
-          const { loadGscSnapshot, snapshotAgeDays, isSnapshotStale } = await import('@/lib/seoDataLoaders')
-          const snap = await loadGscSnapshot()
-          return { ageDays: snapshotAgeDays(snap), stale: isSnapshotStale(snap, 14), generatedAt: snap.generatedAt ?? null }
-        } catch {
-          return { ageDays: -1, stale: true, generatedAt: null }
-        }
-      })(),
+      demandSnapshot: await (await import('@/lib/seoEngine/demandHealth')).resolveDemandHealth(),
       runs: runs as Array<Record<string, unknown>>,
       specCoverage: reportSpecCoverage(),
       ahrefs: await import('@/lib/seoEngine/ahrefsAudit').then((m) => m.loadLatestAhrefsSnapshot()).catch(() => null),

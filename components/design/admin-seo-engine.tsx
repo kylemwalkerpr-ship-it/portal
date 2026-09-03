@@ -454,8 +454,11 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
             <span title="Running as the PUBLIC anon key — set SUPABASE_SERVICE_ROLE_JWT" style={{ padding: '4px 10px', borderRadius: 999, background: C.goldSoft, border: `1px solid ${C.goldBorder}`, color: '#8a5a00', fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>⚠ ANON MODE</span>
           ) : null}
           {(() => {
-            const snap = status.demandSnapshot as { ageDays?: number; stale?: boolean; generatedAt?: string | null } | undefined
+            const snap = status.demandSnapshot as { source?: string; mode?: string | null; siteUrl?: string | null; ageDays?: number; stale?: boolean; generatedAt?: string | null } | undefined
             if (!snap) return null
+            if (snap.source === 'live') {
+              return <span title={`Live Search Console (${snap.mode || 'gsc'}) ${snap.siteUrl || ''}`} style={{ padding: '4px 10px', borderRadius: 999, background: C.greenSoft, border: `1px solid ${C.greenBorder}`, color: C.green, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🗃 GSC live{snap.mode ? ` · ${snap.mode}` : ''}</span>
+            }
             if ((snap.stale && (snap.generatedAt == null || snap.ageDays == null)) || snap.ageDays == null || snap.ageDays < 0) {
               return <span title="No GSC snapshot available — the engine only plans on live demand" style={{ padding: '4px 10px', borderRadius: 999, background: C.surface2, border: `1px solid ${C.border2}`, color: C.textMuted, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🗃 no snapshot</span>
             }

@@ -46,7 +46,7 @@ type EngineStatus = {
   gate?: { runs?: number; passed?: number; passRate?: number; avgScore?: number; latestAt?: string | null }
   runs?: Array<Record<string, unknown>>
   authMode?: 'service-role' | 'degraded-anon'
-  demandSnapshot?: { ageDays?: number; stale?: boolean; generatedAt?: string | null }
+  demandSnapshot?: { source?: string; mode?: string | null; siteUrl?: string | null; ageDays?: number; stale?: boolean; generatedAt?: string | null }
 }
 
 type TraceStep = { seq: number; phase: string; message: string; detail?: string; tone: string }
@@ -323,9 +323,17 @@ export function StudioLiveDesk({
           ) : null}
           {(() => {
             const snap = (engine && typeof engine === 'object' ? (engine as Record<string, unknown>).demandSnapshot : undefined) as
-              | { ageDays?: number; stale?: boolean; generatedAt?: string | null }
+              | { source?: string; mode?: string | null; siteUrl?: string | null; ageDays?: number; stale?: boolean; generatedAt?: string | null }
               | undefined
             if (!snap) return null
+            if (snap.source === 'live') {
+              return (
+                <span title={`Live Search Console (${snap.mode || 'gsc'}) ${snap.siteUrl || ''}`}
+                  style={{ padding: '3px 9px', borderRadius: 999, background: '#E7F0EA', color: E.mossGreen, fontWeight: 800 }}>
+                  🗃 GSC live{snap.mode ? ` · ${snap.mode}` : ''}
+                </span>
+              )
+            }
             if (!snap.ageDays || snap.ageDays < 0) {
               return <span style={{ padding: '3px 9px', borderRadius: 999, background: E.hairline, color: E.inkMuted }}>🗃 no snapshot</span>
             }
