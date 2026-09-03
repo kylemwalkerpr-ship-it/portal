@@ -7,7 +7,7 @@
  * copies of that span instead of no-oping.
  */
 
-export type StyleFixItem = { quote?: string; suggestion?: string; category?: string }
+export type StyleFixItem = { quote?: string; suggestion?: string; category?: string; issue?: string }
 
 function escapeRegExp(s: string): string {
   return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -64,13 +64,13 @@ function replaceAll(haystack: string, re: RegExp, suggestion: string): string | 
   return next === haystack ? null : next
 }
 
-export function applyQuotedStyleFixes(
+export function applyQuotedStyleFixes<T extends StyleFixItem>(
   content: string,
-  items: StyleFixItem[],
-): { content: string; applied: number; missed: StyleFixItem[] } {
+  items: T[],
+): { content: string; applied: number; missed: T[] } {
   let next = String(content || '')
   let applied = 0
-  const missed: StyleFixItem[] = []
+  const missed: T[] = []
   for (const it of items || []) {
     const quoteRaw = String(it.quote || '')
     const quote = normalizeQuote(quoteRaw)

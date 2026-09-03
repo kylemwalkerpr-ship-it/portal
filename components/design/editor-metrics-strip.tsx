@@ -466,7 +466,13 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                       const data = await res.json()
                       if (data?.content && data.applied && onApplied) {
                         onApplied(data.content)
-                        setStyleItems(Array.isArray(data.items) ? data.items : [])
+                        setStyleItems(
+                          Array.isArray(data.items)
+                            ? data.items.filter((it: { quote?: string; suggestion?: string; issue?: string; category?: string }) =>
+                              Boolean(it?.quote && it?.suggestion && it?.issue),
+                            )
+                            : [],
+                        )
                       } else {
                         setStyleError(data?.reason || 'Could not replace those quotes in the document — edit by hand.')
                       }
