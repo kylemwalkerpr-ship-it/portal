@@ -1491,11 +1491,27 @@ export function applyDeterministicRepairs(opts: {
       /(## (?:FAQ|Frequently asked)[^\n]*\n)([\s\S]*?)(?=\n## |\n*$)/i,
       (whole, header: string, body: string) => {
         let section = body.replace(/\ba(?=\s+[aeiou][a-z]{2,}\b)/gi, 'an')
-        const questions = section.split(/(?=^###\s)/m)
         const junk = detectForcedFaqWordings(`## FAQ\n\n${section}`, (opts.primaryKeyword || '').trim())
-        const junkKeys = new Set(junk.map((j) => j.question.toLowerCase()))
-        const kept: string[] = []
+        const junkKeys = new Set(junk.map((j) => j.question.toLowerCase().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()))
         let removed = 0
+        // Collapsible pairs FIRST: a junk question inside <details><summary>
+        // is invisible to the ###-heading pass below — the pair survived
+        // every repair and the warning persisted forever. Drop the whole
+        // <details> block (question + answer) when its summary is machine-worded.
+        section = section.replace(
+          /<details>\s*\n?\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi,
+          (block, summary: string) => {
+            const q = String(summary).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            if (q && junkKeys.has(q.toLowerCase())) {
+              removed++
+              return ''
+            }
+            return block
+          },
+        )
+        // ### heading pairs: drop entries whose question is machine-worded.
+        const questions = section.split(/(?=^###\s)/m)
+        const kept: string[] = []
         for (const entry of questions) {
           const qm = entry.match(/^###\s+([^\n]+)\s*$/m)
           if (!qm || !/^###\s/m.test(entry)) {
@@ -2210,33 +2226,95 @@ export function applyDeterministicRepairs(opts: {
   // ── Wall-of-text paragraph splitting ────────────────────────────────
   // Split any prose block >180 chars that has no visual break (bullets,
   // headings, tables) into shorter paragraphs at sentence boundaries.
+  // The quality gate flags a block as a wall when it exceeds 520 chars OR
+  // carries ≥5 sentences — so a 2-sentence 700-char block (long legal
+  // sentences, no punctuation) is flagged but was previously UNSPLITTABLE
+  // here (sentences.length < 3 bailed), making wall_of_text permanent.
+  // Dense >520-char blocks now split at clause/sentence boundaries even
+  // with fewer than 3 sentences.
+  const splitProseBlock = (trimmed: string): string[] | null => {
+    const sentences = trimmed.split(/(?<=[.!?])\s+/)
+    if (sentences.length >= 3) {
+      const groups: string[] = []
+      let current = ''
+      for (const s of sentences) {
+        if (current && (current.length + s.length > 150)) {
+          groups.push(current.trim())
+          current = s
+        } else {
+          current = current ? `${current} ${s}` : s
+        }
+      }
+      if (current) groups.push(current.trim())
+      return groups.length > 1 ? groups : null
+    }
+    // 1–2 very long sentences: break into chunks guaranteed to land under
+    // the gate's 520-char wall threshold — at sentence/clause boundaries
+    // first, then at a word boundary for a single sentence that is itself
+    // longer than the window. A mid-paragraph break at a word boundary is
+    // far better typography than an unsplittable wall.
+    if (trimmed.length > 520) {
+      const chunks: string[] = []
+      let current = ''
+      for (const unit of trimmed.split(/(?<=[.!?;:])\s+/)) {
+        // Hard-split any unit still larger than the target window (~420).
+        const pieces: string[] = []
+        let rest = unit
+        while (rest.length > 420) {
+          const mid = Math.floor(rest.length / 2)
+          let cut = rest.lastIndexOf(' ', mid)
+          if (cut < 120) cut = rest.indexOf(' ', mid)
+          if (cut < 0) break // no space — single unsplittable token
+          pieces.push(rest.slice(0, cut))
+          rest = rest.slice(cut + 1)
+        }
+        pieces.push(rest)
+        for (const piece of pieces) {
+          if (current && current.length + piece.length > 420) {
+            chunks.push(current.trim())
+            current = piece
+          } else {
+            current = current ? `${current} ${piece}` : piece
+          }
+        }
+      }
+      if (current) chunks.push(current.trim())
+      return chunks.length > 1 ? chunks : null
+    }
+    return null
+  }
   const paragraphs = b.split(/\n\n+/)
   let splitCount = 0
   const splitParagraphs = paragraphs.map((p) => {
     const trimmed = p.trim()
-    // Skip code blocks, headings, lists, tables, schema, blockquotes
+    // Skip code blocks, lists, tables, schema, blockquotes, raw HTML
     if (
       !trimmed ||
-      /^(#|>|```|<script|<[a-z]|- |\* |\d+\. |\|)/.test(trimmed)
+      /^(>|```|<script|<[a-z]|- |\* |\d+\. |\|)/.test(trimmed)
     ) {
       return p
     }
-    if (trimmed.length <= 180) return p
-    // Split at sentence boundaries every ~150 chars
-    const sentences = trimmed.split(/(?<=[.!?])\s+/)
-    if (sentences.length < 3) return p
-    const groups: string[] = []
-    let current = ''
-    for (const s of sentences) {
-      if (current && (current.length + s.length > 150)) {
-        groups.push(current.trim())
-        current = s
-      } else {
-        current = current ? `${current} ${s}` : s
-      }
+    // Mixed heading+prose block ("## Heading\n<long paragraph>" — the model
+    // layout with no blank line after the heading): the gate strips the
+    // structural lines and measures the remaining prose, but this pass
+    // previously skipped the whole block — that mismatch made wall_of_text
+    // PERMANENT for the most common draft shape. Split the prose tail and
+    // reattach the heading lines to the first chunk.
+    if (/^#/.test(trimmed)) {
+      const lines = trimmed.split('\n')
+      const firstProse = lines.findIndex((l) => l.trim() && !/^#/.test(l.trim()))
+      if (firstProse < 0) return p
+      const head = lines.slice(0, firstProse).join('\n')
+      const prose = lines.slice(firstProse).join(' ').replace(/\s+/g, ' ').trim()
+      if (prose.length <= 180) return p
+      const groups = splitProseBlock(prose)
+      if (!groups) return p
+      splitCount += groups.length - 1
+      return [head, groups.join('\n\n')].join('\n\n')
     }
-    if (current) groups.push(current.trim())
-    if (groups.length <= 1) return p
+    if (trimmed.length <= 180) return p
+    const groups = splitProseBlock(trimmed)
+    if (!groups) return p
     splitCount += groups.length - 1
     return groups.join('\n\n')
   })
@@ -2491,8 +2569,36 @@ export function applyDeterministicRepairs(opts: {
         if (ties.length > 1) return line
         return `${item[1]}[${label}](${best.url})`
       }
-      const newEntries = sourcesMatch[2].split('\n').map(wrap)
-      if (newEntries.join('\n') !== sourcesMatch[2]) {
+      // Unmatched plain labels can never be linked deterministically (no
+      // verified URL), and the gate's own fix text sanctions removal: "Use the
+      // official URL for the named agency, or remove the entry — never ship an
+      // unlinkable source." A label no curated source claims (e.g. "FLSA Wage
+      // & Hour Guidance") previously warned on EVERY audit forever.
+      let removedUnlinkable = 0
+      const linkedEntries = sourcesMatch[2].split('\n').map((line) => {
+        const item = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/)
+        if (!item) return line
+        const label = item[2].trim()
+        if (!label || /\[[^\]]+\]\(/i.test(label) || /https?:\/\//i.test(label)) return line
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+        const labelTokens = new Set(norm(label).split(/\s+/).filter((t) => t.length > 2))
+        if (!labelTokens.size) return line
+        const claimable = curated.some((source) => {
+          const titleTokens = new Set(norm(source.title).split(/\s+/).filter((t) => t.length > 2))
+          let overlap = 0
+          for (const t of labelTokens) if (titleTokens.has(t)) overlap++
+          return overlap / Math.max(1, Math.min(labelTokens.size, titleTokens.size)) >= 0.6
+        })
+        // Curated label → the existing deterministic link wrap still applies.
+        if (claimable) return wrap(line)
+        removedUnlinkable++
+        return null
+      }).filter((l): l is string => l !== null)
+      const newEntries = linkedEntries
+      if (removedUnlinkable > 0 && newEntries.join('\n') !== sourcesMatch[2]) {
+        b = b.replace(sourcesMatch[0], `${sourcesMatch[1]}${newEntries.join('\n')}\n`)
+        applied.push(`official_source_labels_linked (${removedUnlinkable} unlinkable removed)`)
+      } else if (newEntries.join('\n') !== sourcesMatch[2]) {
         b = b.replace(sourcesMatch[0], `${sourcesMatch[1]}${newEntries.join('\n')}\n`)
         applied.push(`official_source_labels_linked`)
       }

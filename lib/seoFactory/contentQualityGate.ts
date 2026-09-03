@@ -441,11 +441,18 @@ export function detectForcedFaqWordings(body: string, primaryKeyword: string): A
   if (!primaryTokens.size) return []
   const faq = body.match(/(?:^|\n)##\s+(?:FAQ|Frequently asked[^\n]*)[^\n]*\n([\s\S]*?)(?=\n## |\n*$)/i)
   if (!faq) return []
+  // Questions appear in TWO layouts: `### Question?` headings and collapsible
+  // `<details><summary>Question?</summary>…</details>` pairs. Only the heading
+  // form was scanned, so machine-worded junk inside a collapsible pair warned
+  // forever with no deterministic repair able to see it.
+  const questions: string[] = []
+  for (const m of faq[1].matchAll(/^###\s+([^\n]+)\s*$/gm)) questions.push(m[1].trim())
+  for (const m of faq[1].matchAll(/<summary>\s*([\s\S]*?)\s*<\/summary>/gi)) {
+    questions.push(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+  }
   const out: Array<{ question: string }> = []
-  for (const entry of faq[1].split(/(?=^###\s)/m)) {
-    const qm = entry.match(/^###\s+([^\n]+)\?*\s*$/im)
-    if (!qm) continue
-    const q = qm[1].trim()
+  for (const q of questions) {
+    if (!q) continue
     const lower = q.toLowerCase()
     if (!FORCED_WORDING_RE_.test(lower)) continue
     const qTokens = new Set(Array.from(lower.match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? []))

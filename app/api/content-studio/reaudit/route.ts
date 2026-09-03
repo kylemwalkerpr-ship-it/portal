@@ -170,6 +170,16 @@ type CanonicalJobMetadata = {
   longTailKeywordTerms: KeywordTerm[]
 }
 
+/** Fallback metadata the caller already parsed from the request body — the
+ *  draft text rides along so the H1 can act as a last-chance topic signal when
+ *  the job row carries no keyword evidence (legacy rows predating the keyword
+ *  columns, workspace drafts created before the row exists). */
+type CanonicalJobMetadataFallback = Partial<Omit<CanonicalJobMetadata, 'primaryKeyword'>> & {
+  primaryKeyword?: string
+  topic?: unknown
+  content?: string
+}
+
 /**
  * Hydrate the editor from the job row instead of trusting a stale/incomplete
  * browser snapshot. Persisted values always win. Legacy rows that predate
@@ -179,7 +189,7 @@ type CanonicalJobMetadata = {
  */
 async function resolveCanonicalJobMetadata(
   jobId: string | undefined,
-  fallback: Partial<CanonicalJobMetadata>,
+  fallback: CanonicalJobMetadataFallback,
 ): Promise<CanonicalJobMetadata> {
   let row: {
     canonical_url?: string | null
@@ -212,17 +222,35 @@ async function resolveCanonicalJobMetadata(
   }
 
   const contentType = normalizeStudioContentType(row?.content_type || fallback.contentType || 'legal_guide')
-  const primaryKeyword = String(row?.primary_keyword || row?.topic || fallback.primaryKeyword || '').trim()
+  let primaryKeyword = String(row?.primary_keyword || row?.topic || fallback.primaryKeyword || '').trim()
   const region = String(row?.region || fallback.region || 'US').trim() || 'US'
   const indexable = typeof row?.indexable === 'boolean'
     ? row.indexable
     : fallback.indexable !== false
   let targetUrl = String(row?.canonical_url || fallback.targetUrl || '').trim() || undefined
+  // H1 last-chance keyword recovery (matches the fix_until_gates recovery):
+  // when the row carries NO keyword evidence at all, the draft's own H1 is the
+  // only truthful topic signal. Without it, resolveKeywordContract gets an
+  // empty primary, the partitioner synthesizes nothing, and the editor
+  // hard-blocks every re-audit with "Brief shipped only 0 short keyword(s)" —
+  // the exact INSUFFICIENT_* banner that never cleared.
+  let recoveredFromH1 = false
+  if (!primaryKeyword) {
+    const h1 = ((String(fallback.content || '').match(/^#\s+(.+)$/m) || [])[1] || '').trim()
+    if (h1) {
+      primaryKeyword = h1.slice(0, 120)
+      recoveredFromH1 = true
+    }
+  }
   const keywordContract = resolveKeywordContract({
     primaryKeyword,
     topic: row?.topic,
     requiredShortKeywords: row?.required_short_keywords ?? fallback.requiredShortKeywords,
     requiredLongTailKeywords: row?.required_long_tail_keywords ?? fallback.requiredLongTailKeywords,
+    // Persisted provenance must round-trip, or a re-audit re-promotes
+    // synthesized filler to enforceable demand and the missing_* blockers return.
+    shortKeywordTerms: row?.short_keyword_terms ?? fallback.shortKeywordTerms,
+    longTailKeywordTerms: row?.long_tail_keyword_terms ?? fallback.longTailKeywordTerms,
   })
 
   // A legacy job can have every routing input but no stored canonical URL.
@@ -241,6 +269,7 @@ async function resolveCanonicalJobMetadata(
     const backfill: Record<string, unknown> = {}
     if (!row.canonical_url && targetUrl) backfill.canonical_url = targetUrl
     if (!row.primary_keyword && primaryKeyword) backfill.primary_keyword = primaryKeyword
+    if (recoveredFromH1 && primaryKeyword && !row.topic) backfill.topic = primaryKeyword
     if (keywordContract.backfilled) {
       backfill.required_short_keywords = keywordContract.requiredShortKeywords
       backfill.required_long_tail_keywords = keywordContract.requiredLongTailKeywords
@@ -738,7 +767,7 @@ export async function POST(request: NextRequest) {
       requiredLongTailKeywords,
       shortKeywordTerms,
       longTailKeywordTerms,
-    } = await resolveCanonicalJobMetadata(jobId, body)
+    } = await resolveCanonicalJobMetadata(jobId, { ...body, content })
     const competingUrls = normalizeCompetingUrls(body.competingUrls)
     // Deterministic compliance repair first: a missing disclaimer or broken
     // reader TOC is a mechanical fix — apply it now so the audit reflects the
@@ -884,7 +913,7 @@ export async function PATCH(request: NextRequest) {
       requiredLongTailKeywords,
       shortKeywordTerms,
       longTailKeywordTerms,
-    } = await resolveCanonicalJobMetadata(jobId, body)
+    } = await resolveCanonicalJobMetadata(jobId, { ...body, content })
     const competingPages = normalizeCompetingUrls(competingUrls)
 
     // ── ContentSpec canonical snapshot + reviewer rules (brief §3.2/§5) ─────
