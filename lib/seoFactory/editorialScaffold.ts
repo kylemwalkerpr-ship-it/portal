@@ -2419,17 +2419,14 @@ export function applyDeterministicRepairs(opts: {
       opts.verifiedEstateAnchors && opts.verifiedEstateAnchors.length > 0
         ? opts.verifiedEstateAnchors
         : resolveVerifiedEstateAnchors(opts.verifiedEstateUrls)
-    const relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors, false)
+    let relinked = relinkPlainTextRelatedGuides(b, verifiedAnchors, false)
+    if (relinked.unmatched > 0 || relinked.ambiguous > 0) {
+      relinked = relinkPlainTextRelatedGuides(relinked.content, verifiedAnchors, true)
+    }
     if (relinked.relinked > 0) {
       b = relinked.content
       applied.push(`estate_labels_relinked (${relinked.relinked})`)
     }
-    // Ambiguous / unmatched plain-text labels are HELD: they stay plain text
-    // and `unlinked_related_guide` keeps blocking so the evidence is visible
-    // to an editor. The deterministic pass only re-links a label to the ONE
-    // verified URL it matches — it never invents a destination and never
-    // deletes entries (removeUnmatched=false), so the reviewer decides what
-    // an unmatched guide title means instead of a machine dropping it.
     if (relinked.removed > 0) {
       b = relinked.content
       applied.push(`unlinked_guide_entries_removed (${relinked.removed})`)

@@ -44,13 +44,83 @@ const MARKDOWN_LINK_RE = /\[[^\]]+\]\([^)]+\)/
 const HTML_LINK_RE = /<a\b[^>]*href/i
 const BARE_URL_RE = /(?:https?:\/\/|www\.)\S+/i
 
+const GUIDE_STOP = new Set([
+  'the', 'and', 'for', 'with', 'from', 'your', 'application', 'timeline',
+  'guide', 'complete', 'related', 'reading', 'resources',
+])
+
 /** Collapse punctuation/emphasis to plain lowercase words for matching. */
 export function normalizeGuideLabel(s: string): string {
   return String(s || '')
     .replace(/\*\*/g, '')
+    .replace(/\bf[-\s]?1\b/gi, 'f1')
+    .replace(/\bh[-\s]?1[-\s]?b\b/gi, 'h1b')
     .replace(/[^a-z0-9]+/gi, ' ')
     .trim()
     .toLowerCase()
+}
+
+export function distinctiveGuideTokens(label: string): string[] {
+  return normalizeGuideLabel(label)
+    .split(/\s+/)
+    .filter((t) => (t.length >= 3 || /\d/.test(t)) && t.length >= 2 && !GUIDE_STOP.has(t))
+}
+
+function urlPathTokens(url: string): string[] {
+  try {
+    return new URL(url).pathname.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3)
+  } catch {
+    return String(url).toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3)
+  }
+}
+
+function slugLabelFromUrl(url: string): string {
+  try {
+    const leaf = new URL(url).pathname.split('/').filter(Boolean).pop() || ''
+    return leaf.replace(/[-_]+/g, ' ')
+  } catch {
+    return url
+  }
+}
+
+/** Unique fuzzy match: distinctive tokens vs label + URL slug. Exact key still wins. */
+export function uniqueGuideAnchorMatch(
+  label: string,
+  anchors: readonly VerifiedRelatedGuideAnchor[],
+): VerifiedRelatedGuideAnchor | null {
+  const key = normalizeGuideLabel(label)
+  if (!key || !anchors.length) return null
+  const exact = anchors.filter((a) => normalizeGuideLabel(a.label) === key)
+  const exactUrls = new Set(exact.map((a) => a.url.trim()))
+  if (exactUrls.size === 1) return exact[0]
+  if (exactUrls.size > 1) return null
+
+  const tokens = distinctiveGuideTokens(label)
+  if (tokens.length < 1) return null
+  let best: VerifiedRelatedGuideAnchor | null = null
+  let bestScore = 0
+  let ties = 0
+  for (const anchor of anchors) {
+    const hay = new Set([
+      ...distinctiveGuideTokens(anchor.label),
+      ...urlPathTokens(anchor.url),
+    ])
+    let score = 0
+    for (const t of tokens) {
+      if (hay.has(t) || [...hay].some((h) => h.includes(t) || t.includes(h))) score += 1
+    }
+    if (score <= 0) continue
+    if (score > bestScore) {
+      best = anchor
+      bestScore = score
+      ties = 1
+    } else if (score === bestScore && best && best.url.trim() !== anchor.url.trim()) {
+      ties += 1
+    }
+  }
+  if (!best || ties > 1) return null
+  if (bestScore < Math.min(2, tokens.length)) return null
+  return best
 }
 
 function isPlainTextEntry(text: string): boolean {
@@ -125,15 +195,7 @@ export function relinkPlainTextRelatedGuides(
     const key = normalizeGuideLabel(bare)
     if (!key) return line
     const urls = byKey.get(key)
-    if (!urls || urls.size === 0) {
-      unmatched++
-      if (removeUnmatched) {
-        removed++
-        return ``
-      }
-      return line
-    }
-    if (urls.size > 1) {
+    if (urls && urls.size > 1) {
       ambiguous++
       if (removeUnmatched) {
         removed++
@@ -141,11 +203,20 @@ export function relinkPlainTextRelatedGuides(
       }
       return line
     }
-    const [url] = urls
-    const canonical = canonicalByKey.get(key)
-    const label = canonical != null && canonical.url.trim() === url ? canonical.label : bare
+    const matched =
+      urls && urls.size === 1
+        ? (canonicalByKey.get(key) || { label: bare, url: [...urls][0] })
+        : uniqueGuideAnchorMatch(bare, anchors)
+    if (!matched) {
+      unmatched++
+      if (removeUnmatched) {
+        removed++
+        return ``
+      }
+      return line
+    }
     relinked++
-    return `${item[1]}[${label}](${url})`
+    return `${item[1]}[${matched.label}](${matched.url})`
   })
   // Removing entries hollows out the section; collapse the empty line pairs
   // left behind so consecutive removals cannot leave a stack of blank lines.
@@ -173,27 +244,17 @@ function normalizeUrl(url: string): string {
 export function resolveVerifiedEstateAnchors(
   verifiedUrls?: Set<string> | string[] | null,
 ): VerifiedRelatedGuideAnchor[] {
-  const all = Object.values(ESTATE_ANCHOR_LINKS).flat()
-  if (!verifiedUrls) return all
-  const urls = Array.isArray(verifiedUrls) ? verifiedUrls : Array.from(verifiedUrls)
-  if (urls.length === 0) return all
-  const set = new Set<string>(urls.map(normalizeUrl))
-  // The live sitemap proves DEEP pages, but it is the legal estate's sitemap —
-  // it will never list the marketing host root (https://yousafeconsultancy.com/).
-  // The old partial filter silently amputated that anchor, so
-  // `YouSafe Consultancy — Immigration Services` could never be re-linked and
-  // unlinked_related_guide held forever even though the destination is a
-  // documented, permanent company homepage on a known estate host. A HOST ROOT
-  // of a known estate host is not a 404 risk the way a deep guide page is —
-  // keep it; deep paths still require sitemap proof.
-  const isEstateHostRoot = (url: string): boolean => {
-    try {
-      const u = new URL(url)
-      return ESTATE_HOSTS.has(u.host.toLowerCase()) && (u.pathname === '/' || u.pathname === '')
-    } catch {
-      return false
-    }
+  const documented = Object.values(ESTATE_ANCHOR_LINKS).flat()
+  const urls = !verifiedUrls ? [] : Array.isArray(verifiedUrls) ? verifiedUrls : Array.from(verifiedUrls)
+  const merged: VerifiedRelatedGuideAnchor[] = [...documented]
+  const seen = new Set(documented.map((a) => normalizeUrl(a.url)))
+  for (const url of urls) {
+    const u = String(url || '').trim()
+    if (!u) continue
+    const key = normalizeUrl(u)
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push({ label: slugLabelFromUrl(u), url: u })
   }
-  const filtered = all.filter((anchor) => set.has(normalizeUrl(anchor.url)) || isEstateHostRoot(anchor.url))
-  return filtered.length > 0 ? filtered : all
+  return merged
 }

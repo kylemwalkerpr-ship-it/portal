@@ -2417,7 +2417,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         setKeywords(all.join(', '))
       }
       if (Array.isArray(data.sources) && data.sources.length) {
-        setSources((prev) => mergeCitationUrlLists(prev, data.sources.map(String), 12))
+        const incoming = (data.sources as unknown[]).map(String)
+        setSources((prev) => mergeCitationUrlLists(prev, incoming, 12))
       }
       if (typeof data.targetSlug === 'string' && data.targetSlug.trim()) setTargetSlug(data.targetSlug)
       if (typeof data.recommendedTone === 'string') setTone(data.recommendedTone as Tone)
