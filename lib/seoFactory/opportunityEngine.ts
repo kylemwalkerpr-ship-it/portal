@@ -215,7 +215,7 @@ function classifyIntent(term: string, page?: string): Intent {
 }
 
 function contentTypeFor(intent: Intent): Opportunity['contentType'] {
-  if (intent === 'transactional') return 'marketplace_gig'
+  if (intent === 'transactional') return 'blog_post'
   if (intent === 'local') return 'regional_page'
   if (intent === 'commercial') return 'article'
   return 'blog_post'
@@ -469,7 +469,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       trend: trendLabel,
       play,
       intent,
-      contentType: revenue >= 50 || intent === 'transactional' ? 'marketplace_gig' : contentTypeFor(intent),
+      contentType: contentTypeFor(intent),
       signals: signals.slice(0, 4),
       interlinks: interlinkTargets,
       coverage: { matched: matches.length > 0, matches: matches.slice(0, 3) },

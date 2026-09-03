@@ -73,4 +73,16 @@ describe('finalizePipelineContentType — studio blog pin is sticky', () => {
       contentType: 'legal_guide',
     })).toBe('blog_post')
   })
+
+  it('never ships a studio blog as marketplace_gig', () => {
+    expect(finalizePipelineContentType('marketplace_gig', {
+      host: 'legal',
+      filePath: 'app/blog/hire-admissions-consultant/page.tsx',
+      contentType: 'marketplace_gig',
+    })).toBe('blog_post')
+    expect(resolveEditorialContentType({
+      contentType: 'marketplace_gig',
+      filePath: 'app/blog/hire-admissions-consultant/page.tsx',
+    })).toBe('blog_post')
+  })
 })

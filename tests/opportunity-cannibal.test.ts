@@ -63,7 +63,7 @@ describe('opportunity engine — monetary ranking', () => {
     })
     expect(result.opportunities[0].topic).toBe('hire immigration lawyer')
     expect(result.opportunities[0].profitability).toBe('high')
-    expect(result.opportunities[0].contentType).toBe('marketplace_gig')
+    expect(result.opportunities[0].contentType).toBe('blog_post')
     expect(result.opportunities[0].signals.join(' ')).toMatch(/purchase funnel/i)
   })
 

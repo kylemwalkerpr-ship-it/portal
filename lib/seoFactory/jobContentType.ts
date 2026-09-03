@@ -67,7 +67,8 @@ export function resolveEditorialContentType(opts: {
     storedN === 'blog_summary' ||
     yamlN === 'blog_post' ||
     yamlN === 'blog_summary' ||
-    /\/blog\//.test(path)
+    /\/blog\//.test(path) ||
+    /app\/blog\//.test(path)
   ) {
     return 'blog_post'
   }
@@ -81,7 +82,9 @@ export function resolveEditorialContentType(opts: {
   ) {
     return storedN.startsWith('regional') ? storedN : yamlN
   }
-  if (storedN === 'marketplace_gig' || yamlN === 'marketplace_gig') return 'marketplace_gig'
+  if ((storedN === 'marketplace_gig' || yamlN === 'marketplace_gig') && /^catalogue\//.test(path)) {
+    return 'marketplace_gig'
+  }
   if (storedN === 'legal_guide' || storedN === 'article' || stored === 'article' || yamlN === 'legal_guide' || yamlN === 'article') {
     return 'legal_guide'
   }
@@ -97,6 +100,14 @@ export function finalizePipelineContentType(
   const path = String(plan.filePath || '')
   if (req === 'blog_post' || req === 'blog_summary') return 'blog_post'
   if (/\/blog\//.test(path) || /app\/blog\//.test(path)) return 'blog_post'
+  // Content Studio never ships marketplace catalogue pages. "Gig" in a blog
+  // title or transactional "hire" intent is still a /blog/ article.
+  if (
+    (req === 'marketplace_gig' || plan.contentType === 'marketplace_gig' || plan.host === 'market') &&
+    !/^catalogue\//.test(path)
+  ) {
+    return 'blog_post'
+  }
   if (/content\/universities\//.test(path)) return 'regional_university'
   if (/content\/from\//.test(path)) return 'regional_from'
   if (isExplicitDestinationType(req) && req.startsWith('regional')) return req

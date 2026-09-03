@@ -6802,7 +6802,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
     try {
       const contentTypeMap: Record<string, string> = {
-        blog_post: 'blog_post', article: 'legal_guide', legal: 'legal_guide',
+        blog_post: 'blog_post', article: 'legal_guide', legal: 'legal_guide', marketplace_gig: 'blog_post', gig: 'blog_post',
         regional_page: 'regional_page', regional_from: 'regional_from',
         regional_university: 'regional_university', blog_summary: 'blog_summary',
         legal_guide: 'legal_guide',

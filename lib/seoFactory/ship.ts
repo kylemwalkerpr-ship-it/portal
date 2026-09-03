@@ -7,6 +7,7 @@
  *   - All writes via putRepoFile (SHA resolve + 422/409 retry)
  */
 
+import { finalizePipelineContentType } from './jobContentType'
 import type { OwnerPlan } from './ownership'
 import { assertPlanRepoConsistency, HOST_REPO } from './ownership'
 import type { SeoFactoryAudit } from './audit'
@@ -466,6 +467,8 @@ export async function shipContent(opts: {
     )
   }
 
+  const contentType = finalizePipelineContentType(opts.contentType, opts.plan)
+
   const resolved = parseRepoSlug(opts.plan.repo)
   const owner = resolved.owner
   const repo = resolved.repo
@@ -492,7 +495,7 @@ export async function shipContent(opts: {
       primaryKeyword: opts.primaryKeyword,
       region: opts.region,
       indexable: opts.plan.indexable,
-      contentType: opts.contentType,
+      contentType,
       requiredShortKeywords: opts.requiredShortKeywords,
       requiredLongTailKeywords: opts.requiredLongTailKeywords,
       competingUrls: opts.competingUrls,
@@ -544,7 +547,7 @@ export async function shipContent(opts: {
     content: shipContent_,
     title: opts.title,
     region: opts.region,
-    contentType: opts.contentType,
+    contentType,
     primaryKeyword: opts.primaryKeyword,
     indexable,
     canonicalUrl: opts.plan.canonicalUrl,
@@ -557,7 +560,7 @@ export async function shipContent(opts: {
   // 1) Google depth floor (prose word count)
   assertContentDepth({
     content: shipContent_,
-    contentType: opts.contentType,
+    contentType,
     indexable: opts.plan.indexable,
   })
   // 2) Rhythm beyond the deterministic repair's clearing range — the repair
@@ -569,14 +572,14 @@ export async function shipContent(opts: {
   // line — the exact opener + count + sweep direction.
   assertRhythmWithinRepairRange({
     content: shipContent_,
-    contentType: opts.contentType,
+    contentType,
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
   })
   // 2b) Voice, tonality, AI-slop, outcome promises, human cadence, keyword coverage
   assertQualityGate({
     content: shipContent_,
-    contentType: opts.contentType,
+    contentType,
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
     requiredShortKeywords: opts.requiredShortKeywords,
@@ -587,7 +590,7 @@ export async function shipContent(opts: {
   // 3) Host · path · format + build-safe payload (CTAPanel, balanced JSX, FM)
   assertShipAllowed({
     plan: opts.plan,
-    contentType: opts.contentType,
+    contentType,
     title: opts.title,
     primaryKeyword: opts.primaryKeyword,
     filePath,

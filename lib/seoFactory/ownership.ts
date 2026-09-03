@@ -564,15 +564,15 @@ export function standingRulesHost(opts: {
     // The article will include CTA links to the marketplace — it does not
     // create marketplace catalogue entries.
     if (/uk|british|student route|ukvi/i.test(kw) || region === 'UK') {
-      return { host: 'uk', contentType: 'blog_summary', reason: 'transactional (marketplace-blcoked) → uk blog' }
+      return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace)' }
     }
     if (/canada|study permit|pgwp|ircc/i.test(kw) || region === 'CA') {
-      return { host: 'ca', contentType: 'blog_summary', reason: 'transactional (marketplace-blocked) → ca blog' }
+      return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace)' }
     }
     if (/australia|485|subclass/i.test(kw) || region === 'AU') {
-      return { host: 'au', contentType: 'blog_summary', reason: 'transactional (marketplace-blocked) → au blog' }
+      return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace)' }
     }
-    return { host: 'legal', contentType: 'blog_summary', reason: 'transactional (marketplace-blocked) → legal blog' }
+    return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace catalogue)' }
   }
 
   // Geo from-country
@@ -725,7 +725,7 @@ export function contentTypeFromIntent(
     case 'university_modifier':
       return 'regional_university'
     case 'transactional':
-      return 'marketplace_gig'
+      return 'blog_post'
     case 'news_summary':
       return 'blog_summary'
     case 'hub':
