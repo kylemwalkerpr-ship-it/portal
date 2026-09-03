@@ -251,6 +251,18 @@ export async function* runSeoFactoryPipelineStream(
         console.warn('[seoFactory/pipelineStream] early job row insert failed:', early.error.message)
       }
       }
+      if (!earlyJobId) {
+        const { claimDraftingJob } = await import('./claimDraftingJob')
+        earlyJobId = await claimDraftingJob({
+          title,
+          topic,
+          contentType,
+          region,
+          primaryKeyword,
+          userId: input.userId,
+        })
+        if (earlyJobId) yield { type: 'job', jobId: earlyJobId }
+      }
     } catch (e) {
       console.warn('[seoFactory/pipelineStream] early job row skipped', e)
     }

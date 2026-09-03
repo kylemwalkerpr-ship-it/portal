@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     // for Cloudflare to 524, which the studio surfaces as "Content generation failed".
     const input = {
       topic,
-      existingJobId: String(body.supersedesJobId || '').trim() || null,
+      existingJobId: String(body.existingJobId || body.supersedesJobId || '').trim() || null,
       sourceJobId: String(body.supersedesJobId || '').trim() || null,
       regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
       regenerationMode: (body.regenerationMode === 'resume' ? 'resume' : body.regenerationMode === 'expand' ? 'expand' : body.regenerationMode === 'refresh' ? 'refresh' : body.supersedesJobId ? 'manual' : 'new') as 'resume' | 'expand' | 'refresh' | 'manual' | 'new',

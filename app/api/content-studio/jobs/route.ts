@@ -271,9 +271,24 @@ export async function POST(request: NextRequest) {
       action === 'refresh_pr' ||
       action === 'bulk_delete' ||
       action === 'archive_resolved'
+    if (action === 'claim_drafting') {
+      const { claimDraftingJob } = await import('@/lib/seoFactory/claimDraftingJob')
+      const jobId = await claimDraftingJob({
+        title: String(body.title || body.topic || ''),
+        topic: String(body.topic || body.title || ''),
+        contentType: String(body.contentType || body.content_type || 'blog_post'),
+        region: String(body.region || 'US'),
+        primaryKeyword: String(body.primaryKeyword || body.primary_keyword || body.topic || ''),
+        userId: 'admin',
+      })
+      if (!jobId) {
+        return NextResponse.json({ error: 'Could not claim a drafting job' }, { status: 503 })
+      }
+      return NextResponse.json({ ok: true, action, jobId, status: 'drafting' })
+    }
     if (!isBulk && !isQueueAction) {
       return NextResponse.json(
-        { error: 'Unknown action. Supported: bulk_abandon, bulk_monitor, bulk_approve, bulk_reaudit, clear_drafts, clear_stuck, clear_failed, rerun_resume, refresh_pr, bulk_delete, archive_resolved' },
+        { error: 'Unknown action. Supported: claim_drafting, bulk_abandon, bulk_monitor, bulk_approve, bulk_reaudit, clear_drafts, clear_stuck, clear_failed, rerun_resume, refresh_pr, bulk_delete, archive_resolved' },
         { status: 400 },
       )
     }

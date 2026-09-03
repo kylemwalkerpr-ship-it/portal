@@ -5416,8 +5416,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // its own cadence, so the full studio/queue tree never re-renders per token.
   const generationBufRef = React.useRef('')
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
-  const [generationJobId, setGenerationJobId] = React.useState('')
-  const [keepDraftWorkspace, setKeepDraftWorkspace] = React.useState(false)
+  const [generationJobId, setGenerationJobId] = React.useState(() => {
+    if (typeof window === 'undefined') return ''
+    try { return String(sessionStorage.getItem('yousafe.studio.liveDraftJobId') || '').trim() } catch { return '' }
+  })
+  const [keepDraftWorkspace, setKeepDraftWorkspace] = React.useState(() => Boolean(generationJobId))
   const [workspaceShipGate, setWorkspaceShipGate] = React.useState<ShipGate>(null)
   const [draftOperationsOpen, setDraftOperationsOpen] = React.useState(false)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
@@ -6154,6 +6157,31 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
   React.useEffect(() => { void fetchUberOpps(false) }, [fetchUberOpps])
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
+
+  const rememberLiveDraftJob = React.useCallback((id: string) => {
+    const v = String(id || '').trim()
+    if (!v) return
+    setGenerationJobId(v)
+    try { sessionStorage.setItem('yousafe.studio.liveDraftJobId', v) } catch { /* private mode */ }
+  }, [])
+
+  React.useEffect(() => {
+    const saved = generationJobId
+    if (!saved) return
+    setKeepDraftWorkspace(true)
+    setQueueStatusFilter('drafting')
+    void (async () => {
+      try {
+        const res = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(saved)}`, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({})) as { job?: ContentJob }
+        if (!data.job) return
+        setJobs((prev) => (prev.some((j) => j.id === data.job!.id) ? prev : [data.job!, ...prev]))
+        if (data.job.status === 'drafting' || data.job.status === 'pending' || data.job.status === 'failed') {
+          setGenerationReviewJob(data.job)
+        }
+      } catch { /* queue restore is best-effort */ }
+    })()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => { fetchMergeIndex(); void fetchMergeHistory() }, [fetchMergeIndex, fetchMergeHistory])
 
   // Engine surfaces — non-fatal
@@ -6746,6 +6774,57 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const ct = contentTypeMap[rawType] || rawType || 'legal_guide'
       const regionArg = formData.region || 'US'
 
+      let claimedId = ''
+      try {
+        const claimRes = await fetch('/api/content-studio/jobs', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'claim_drafting',
+            title: formData.title || formData.topic,
+            topic: formData.topic,
+            contentType: ct,
+            region: regionArg,
+            primaryKeyword: formData.topic || (formData.keywords && formData.keywords[0]),
+          }),
+        })
+        const claimData = await claimRes.json().catch(() => ({})) as { jobId?: string }
+        claimedId = String(claimData.jobId || '').trim()
+      } catch { /* stream still creates a row if this claim fails */ }
+      if (claimedId) {
+        rememberLiveDraftJob(claimedId)
+        setQueueStatusFilter('drafting')
+        const nowIso = new Date().toISOString()
+        const stub = {
+          id: claimedId,
+          title: String(formData.title || formData.topic || 'Untitled draft'),
+          topic: String(formData.topic || formData.title || ''),
+          content_type: (ct === 'legal_guide' ? 'article' : ct) as ContentJob['content_type'],
+          tone: (formData.tone || 'educational') as ContentJob['tone'],
+          region: regionArg as ContentJob['region'],
+          target_repo: '',
+          status: 'drafting' as const,
+          source_job_id: null,
+          slug: null,
+          content: null,
+          branch_name: null,
+          content_path: null,
+          pr_url: null,
+          pr_number: null,
+          merged_at: null,
+          closed_at: null,
+          error_message: null,
+          ai_provider: null,
+          word_count: 0,
+          seo_score: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+        }
+        setJobs((prev) => (prev.some((j) => j.id === claimedId) ? prev : [stub, ...prev]))
+        void fetchJobs().catch(() => {})
+      }
+
 const controller = new AbortController()
       genAbortRef.current = controller
       const res = await fetch('/api/seo-factory/generate-stream', {
@@ -6780,6 +6859,7 @@ const controller = new AbortController()
           sectionBudgets: formData.sectionBudgets || undefined,
         kwH2Map: formData.kwH2Map || undefined,
         competingUrls: competingUrls.length ? competingUrls : undefined,
+        existingJobId: claimedId || undefined,
       }),
       })
       let streamChars = 0
@@ -6802,8 +6882,8 @@ const controller = new AbortController()
         }
         else if (event.type === 'job') {
           liveJobId = String(event.jobId || '')
-          if (liveJobId) setGenerationJobId(liveJobId)
-          // Refresh immediately so the queue strip flips to '1 In Progress'.
+          if (liveJobId) rememberLiveDraftJob(liveJobId)
+          setQueueStatusFilter('drafting')
           fetchJobs().catch(() => {})
         }
         else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
@@ -6829,7 +6909,7 @@ const controller = new AbortController()
         }
       })
       const generatedJobId = String(data.jobId || data.job?.id || data.ship?.jobId || liveJobId || '')
-      if (generatedJobId) setGenerationJobId(generatedJobId)
+      if (generatedJobId) rememberLiveDraftJob(generatedJobId)
       const shipBlocked = Boolean(data.shipError)
       const notice = data.ship?.prUrl
         ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
@@ -7104,7 +7184,8 @@ const controller = new AbortController()
             selectedJob={selectedJob}
             generationJobId={generationJobId}
             onJobAttached={(id) => {
-              setGenerationJobId(id)
+              rememberLiveDraftJob(id)
+              setQueueStatusFilter('drafting')
               void fetchJobs().catch(() => {})
             }}
             setSelectedJob={setSelectedJob}
