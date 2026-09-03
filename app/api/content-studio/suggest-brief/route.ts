@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
-import { assembleDraftSourceAllowlist, ensureBriefInterlinks, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
+import { assembleDraftSourceAllowlist, ensureBriefInterlinks, filterLiveInternalUrls, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { collectDiscoverCitationUrls, mergeCitationUrlLists } from '@/lib/seoFactory/officialSources'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
@@ -330,11 +330,13 @@ export async function POST(req: NextRequest) {
       const regionKey = (region || 'US').toUpperCase().slice(0, 2)
       briefAllowlist = (ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US).map((a) => ({ label: a.label, url: a.url }))
     }
-    const interlinkTargets = ensureBriefInterlinks(
+    const paddedInterlinks = ensureBriefInterlinks(
       briefAllowlist,
       Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets : [],
       { region, min: 2, max: 6 },
     )
+    const liveInternal = new Set(await filterLiveInternalUrls(paddedInterlinks.map((t) => t.url)))
+    const interlinkTargets = paddedInterlinks.filter((t) => liveInternal.has(t.url.replace(/\/+$/, '')) || liveInternal.has(t.url) || [...liveInternal].some((u) => u.replace(/\/+$/, '') === t.url.replace(/\/+$/, '')))
     const enrichedInterlinkTargets = interlinkTargets.map((target) => {
       const source = interlinks.find((link) => link.url.replace(/\/+$/, '').toLowerCase() === target.url.replace(/\/+$/, '').toLowerCase())
       return { ...source, ...target, placement: target.placement || source?.placement || 'Contextually relevant section' }

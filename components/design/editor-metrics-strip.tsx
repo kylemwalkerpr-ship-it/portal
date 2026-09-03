@@ -15,6 +15,7 @@
 import * as React from 'react'
 import { computeEditorMetrics, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
+import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 
 type Props = {
   content: string
@@ -309,7 +310,22 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
             <button
               type="button"
               disabled={styleBusy || applying}
-              onClick={() => runStyleReview(true)}
+              onClick={() => {
+                setApplying(true)
+                try {
+                  const local = applyQuotedStyleFixes(textRef.current, styleItems)
+                  if (local.applied > 0 && local.content && onApplied) {
+                    onApplied(local.content)
+                    setStyleItems([])
+                    setApplying(false)
+                    return
+                  }
+                  void runStyleReview(true).finally(() => setApplying(false))
+                } catch (err) {
+                  setStyleError(err instanceof Error ? err.message : 'Style apply failed')
+                  setApplying(false)
+                }
+              }}
               style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.12)',
                 background: '#17365D', fontSize: 11, fontWeight: 600, color: '#fff', cursor: applying ? 'wait' : 'pointer',

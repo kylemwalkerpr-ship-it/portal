@@ -467,7 +467,7 @@ export function discoverCardTitle(
     primaryKeyword: kw,
     siblingTitles: opts?.siblingTitles,
   })
-  if (!rejected.ok) title = rejected.replacement
+  if (rejected.ok === false) title = rejected.replacement
   if (!title || isFillerTitle(title)) {
     const cased = titleCaseWords(kw) || 'Immigration Guide'
     title = `${cased}: Checklist Before You Apply`

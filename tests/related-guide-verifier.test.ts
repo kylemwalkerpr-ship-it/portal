@@ -64,14 +64,24 @@ describe('normalizeGuideLabel', () => {
 })
 
 describe('relinkPlainTextRelatedGuides — deterministic verifier', () => {
-  it('fuzzy-matches F-1 OPT related-guide titles onto the documented OPT page', () => {
+  it('fuzzy-matches F-1 OPT related-guide titles only onto a live-verified OPT page', () => {
+    const live = [{ label: 'F-1 OPT: Application, Timeline & EAD', url: 'https://legal.yousafeconsultancy.com/us/f1-opt/' }]
     const out = relinkPlainTextRelatedGuides(
       withBullet('- F-1 OPT: Application, Timeline & EAD'),
-      resolveVerifiedEstateAnchors(null),
+      live,
     )
     expect(out.relinked).toBe(1)
     expect(out.content).toMatch(/\]\(https:\/\/legal\.yousafeconsultancy\.com\/us\/f1-opt\/?\)/)
     expect(orphanCount(out.content)).toBe(0)
+  })
+
+  it('does not invent /us/f1-opt when that leaf is not in the live set', () => {
+    const out = relinkPlainTextRelatedGuides(
+      withBullet('- F-1 OPT: Application, Timeline & EAD'),
+      resolveVerifiedEstateAnchors(new Set(['https://legal.yousafeconsultancy.com/us/'])),
+      true,
+    )
+    expect(out.content).not.toMatch(/f1-opt/)
   })
 
   it('a uniquely matching plain-text entry becomes a verified Markdown link and clears the blocker', () => {
@@ -210,19 +220,27 @@ See the UK guide for details.
 })
 
 describe('resolveVerifiedEstateAnchors — verify-before-relink', () => {
-  it('keeps documented static anchors and adds live sitemap pages as slug labels', () => {
-    const urls = new Set(['https://legal.yousafeconsultancy.com/us/f1-opt/'])
+  it('keeps only live sitemap pages plus documented hubs that are also live', () => {
+    const urls = new Set([
+      'https://legal.yousafeconsultancy.com/us/f1-opt/',
+      'https://legal.yousafeconsultancy.com/uk/',
+      'https://yousafeconsultancy.com/',
+    ])
     const anchors = resolveVerifiedEstateAnchors(urls)
     const urlsPresent = anchors.map((a) => a.url)
     expect(urlsPresent).toContain('https://legal.yousafeconsultancy.com/uk/')
     expect(urlsPresent).toContain('https://yousafeconsultancy.com/')
     expect(urlsPresent.some((u) => /f1-opt/i.test(u))).toBe(true)
+    expect(urlsPresent.some((u) => /\/us\/$/.test(u) || u.endsWith('/us'))).toBe(false)
   })
 
   it('falls back to the documented static anchors when the live set is empty', () => {
-    expect(resolveVerifiedEstateAnchors(new Set())).toEqual(Object.values(ESTATE_ANCHOR_LINKS).flat())
-    expect(resolveVerifiedEstateAnchors([])).toEqual(Object.values(ESTATE_ANCHOR_LINKS).flat())
-    expect(resolveVerifiedEstateAnchors(null)).toEqual(Object.values(ESTATE_ANCHOR_LINKS).flat())
+    const unique = Array.from(
+      new Map(Object.values(ESTATE_ANCHOR_LINKS).flat().map((a) => [a.url.replace(/\/+$/, '').toLowerCase(), a])).values(),
+    )
+    expect(resolveVerifiedEstateAnchors(new Set()).map((a) => a.url)).toEqual(unique.map((a) => a.url))
+    expect(resolveVerifiedEstateAnchors([]).map((a) => a.url)).toEqual(unique.map((a) => a.url))
+    expect(resolveVerifiedEstateAnchors(null).map((a) => a.url)).toEqual(unique.map((a) => a.url))
   })
 
   it('only relinks to URLs the verified set proves (end to end)', () => {

@@ -61,7 +61,6 @@ export const ESTATE_BASE = 'https://legal.yousafeconsultancy.com'
 export const ESTATE_ANCHOR_LINKS: Record<string, Array<{ label: string; url: string }>> = {
   US: [
     { label: 'US Immigration Hub — CaseWorks Guides', url: `${ESTATE_BASE}/us/` },
-    { label: 'F-1 OPT: Application, Timeline & EAD', url: `${ESTATE_BASE}/us/f1-opt/` },
     { label: 'YouSafe Consultancy — Immigration Services', url: 'https://yousafeconsultancy.com/' },
   ],
   UK: [

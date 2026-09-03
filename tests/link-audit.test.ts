@@ -159,6 +159,12 @@ describe('linkAudit · brief internal-link guarantee', () => {
     // UK anchors must be the verified live estate hosts
     expect(out.every((l) => l.url.includes('yousafeconsultancy.com'))).toBe(true)
     expect(out.some((l) => l.url.includes('/uk/'))).toBe(true)
+    expect(out.every((l) => !/f1-opt/i.test(l.url))).toBe(true)
+  })
+
+  it('never pads US briefs with the unproven /us/f1-opt leaf', () => {
+    const out = ensureBriefInterlinks([], [], { region: 'US' })
+    expect(out.every((l) => !/f1-opt/i.test(l.url))).toBe(true)
   })
 
   it('dedupes by normalized URL across model + allowlist', () => {

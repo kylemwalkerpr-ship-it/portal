@@ -1,4 +1,4 @@
-import { applyProseCorrection, harperSafeLines, HARPER_ESTATE_WORDS, mapCorrectedProseToMarkdown, spliceWords } from '../lib/harperText'
+import { applyProseCorrection, harperSafeLines, HARPER_ESTATE_WORDS, isHarperNoiseFinding, isNonClientFacingLine, mapCorrectedProseToMarkdown, spliceWords } from '../lib/harperText'
 import { applyQuotedStyleFixes } from '../lib/seoFactory/styleApply'
 
 describe('harper leak-free transform', () => {
@@ -97,6 +97,15 @@ Official source.`
     const twice = applyQuotedStyleFixes(once.content, items)
     expect(twice.applied).toBe(0)
     expect(twice.content).toBe(once.content)
+  })
+
+  it('ignores TOC glue and treats acronyms as vocabulary not grammar', () => {
+    expect(isNonClientFacingLine('Table of contents What application essay review covers for U.S. filings Who should use a reviewer versus self-edit Docum')).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'SEVIS', fix: 'Semis', message: "Did you mean to spell 'SEVIS' this way?" })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Word Choice', problem: 'B', fix: 'byte', message: "Did you mean 'byte'?" })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'CRS', fix: 'CES' })).toBe(true)
+    expect(isHarperNoiseFinding({ kind: 'Grammar', problem: 'Should i hire', fix: 'Should I hire' })).toBe(false)
+    expect(HARPER_ESTATE_WORDS).toContain('SEVIS')
   })
 
   it('is 1:1 line-preserving (word splice safety)', () => {

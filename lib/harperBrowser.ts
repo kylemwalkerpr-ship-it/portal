@@ -1,7 +1,7 @@
 import { LocalLinter, Dialect, type Lint, type Suggestion } from 'harper.js'
 import { binaryInlined } from 'harper.js/binaryInlined'
 import { scoreHarperLints } from '@/lib/editorMetrics'
-import { harperSafeLines, mapCorrectedProseToMarkdown, HARPER_ESTATE_WORDS } from '@/lib/harperText'
+import { harperSafeLines, mapCorrectedProseToMarkdown, HARPER_ESTATE_WORDS, isHarperNoiseFinding } from '@/lib/harperText'
 
 /**
  * Browser-side Harper.js grammar service — on-device (inlined WASM), lazy.
@@ -103,13 +103,15 @@ export async function runHarperGrammar(md: string, signal?: AbortSignal): Promis
           fix = (s as { get_replacement_text: () => string }).get_replacement_text()
         }
       } catch { /* suggestion text is optional */ }
-      mapped.push({
+      const item = {
         kind: kindOf(l),
         problem,
         message: l.message?.() || '',
         span: l.span?.(),
         fix,
-      })
+      }
+      if (isHarperNoiseFinding(item)) continue
+      mapped.push(item)
     }
     const { score, errors, suggestions } = scoreHarperLints(mapped)
     const items = mapped
@@ -152,22 +154,20 @@ export async function fixHarperIssues(md: string, onlyProblem?: string): Promise
     let applied = 0
     const items: HarperAutofixResult['items'] = []
     const seen = new Set<string>()
-    for (let round = 0; round < 12; round++) {
+    for (let round = 0; round < 8; round++) {
       const lines = harperSafeLines(current)
       const text = lines.filter((l) => !l.skip).map((l) => l.out).join('\n')
       if (text.trim().length < 40) break
       const lints = (await linter.lint(text, { language: 'plaintext', dedup: true })).filter(keepLint)
       let progressed = false
+      let roundText = text
       for (const l of lints) {
         const kind = l.lint_kind() || ''
         if (!allowed.has(kind)) continue
         const problem = String(l.get_problem_text?.() || '').trim()
         if (!problem) continue
-        if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
-        const finger = `${kind}:${problem}`
-        if (seen.has(finger)) continue
-        let suggestion: Suggestion | null = null
         let replacement = ''
+        let suggestion: Suggestion | null = null
         try {
           const list = l.suggestions()
           suggestion = list && list.length ? list[0] : null
@@ -177,28 +177,35 @@ export async function fixHarperIssues(md: string, onlyProblem?: string): Promise
         } catch {
           suggestion = null
         }
-        let next = current
+        if (isHarperNoiseFinding({ kind: kindOf(l), problem, message: l.message?.() || '', fix: replacement })) continue
+        if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
+        const finger = `${kind}:${problem}`
+        if (seen.has(finger)) continue
+        let nextMd = current
         if (suggestion) {
           try {
-            const nextText = await linter.applySuggestion(text, l, suggestion)
-            if (typeof nextText === 'string' && nextText !== text) {
+            const nextText = await linter.applySuggestion(roundText, l, suggestion)
+            if (typeof nextText === 'string' && nextText !== roundText) {
               const mapped = mapCorrectedProseToMarkdown(current, lines, nextText)
-              if (mapped !== current) next = mapped
+              if (mapped !== current) {
+                nextMd = mapped
+                roundText = nextText
+              }
             }
           } catch {
             /* span mismatch — fall through to string replace */
           }
         }
-        if (next === current && problem && replacement && current.includes(problem)) {
-          if (kind === 'Spelling' && problem.toLowerCase() === replacement.toLowerCase()) continue
-          next = current.replace(problem, replacement)
-        }
-        if (next === current) {
-          seen.add(finger)
-          continue
+        if (nextMd === current && problem && replacement && current.includes(problem)) {
+          if (kind === 'Spelling' && problem.toLowerCase() === replacement.toLowerCase()) {
+            seen.add(finger)
+            continue
+          }
+          nextMd = current.replace(problem, replacement)
         }
         seen.add(finger)
-        current = next
+        if (nextMd === current) continue
+        current = nextMd
         applied++
         progressed = true
         if (items.length < 24) {
@@ -209,7 +216,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string): Promise
             fix: replacement.slice(0, 120) || undefined,
           })
         }
-        break
+        if (onlyProblem) break
       }
       if (!progressed) break
       if (onlyProblem) break

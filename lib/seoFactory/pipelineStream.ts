@@ -295,6 +295,21 @@ export async function* runSeoFactoryPipelineStream(
         /* engine interlinks are additive — never fail the run */
       }
     }
+    try {
+      const { filterLiveInternalUrls } = await import('./linkAudit')
+      const live = new Set(
+        await filterLiveInternalUrls(radarInterlinks.map((l) => String(l.url || '')).filter(Boolean)),
+      )
+      const keep = (url: string) => {
+        const n = String(url || '').replace(/\/+$/, '')
+        return live.has(url) || live.has(n) || [...live].some((u) => u.replace(/\/+$/, '') === n)
+      }
+      for (let i = radarInterlinks.length - 1; i >= 0; i--) {
+        if (!keep(String(radarInterlinks[i].url || ''))) radarInterlinks.splice(i, 1)
+      }
+    } catch {
+      /* live filter is best-effort — never invent replacements */
+    }
     const autopilotBlock = [
       radarInterlinks.length
         ? `### Internal linking strategy (from Opportunity Radar)\nLink naturally to these high-value targets with descriptive anchors where relevant:\n${radarInterlinks

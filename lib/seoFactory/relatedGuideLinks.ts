@@ -246,15 +246,25 @@ export function resolveVerifiedEstateAnchors(
 ): VerifiedRelatedGuideAnchor[] {
   const documented = Object.values(ESTATE_ANCHOR_LINKS).flat()
   const urls = !verifiedUrls ? [] : Array.isArray(verifiedUrls) ? verifiedUrls : Array.from(verifiedUrls)
-  const merged: VerifiedRelatedGuideAnchor[] = [...documented]
-  const seen = new Set(documented.map((a) => normalizeUrl(a.url)))
-  for (const url of urls) {
-    const u = String(url || '').trim()
-    if (!u) continue
-    const key = normalizeUrl(u)
-    if (seen.has(key)) continue
+  const liveKeys = new Set(urls.map((u) => normalizeUrl(String(u || ''))).filter(Boolean))
+  const merged: VerifiedRelatedGuideAnchor[] = []
+  const seen = new Set<string>()
+  const push = (label: string, url: string) => {
+    const key = normalizeUrl(url)
+    if (!key || seen.has(key)) return
     seen.add(key)
-    merged.push({ label: slugLabelFromUrl(u), url: u })
+    merged.push({ label, url })
   }
+  if (liveKeys.size > 0) {
+    for (const a of documented) {
+      if (liveKeys.has(normalizeUrl(a.url))) push(a.label, a.url)
+    }
+    for (const url of urls) {
+      const u = String(url || '').trim()
+      if (u) push(slugLabelFromUrl(u), u)
+    }
+    return merged
+  }
+  for (const a of documented) push(a.label, a.url)
   return merged
 }
