@@ -5517,15 +5517,21 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const hasBriefReady = Boolean(topic.trim() && title.trim())
   const hasDraft = jobs.length > 0 || jobTotal > 0
   const hasReviewableJob = jobs.some((j) => ['drafting', 'publishing', 'pr_created', 'merged'].includes(j.status))
-  // Approval is what CREATES the PR (shipContent → pr_created/merged), so a
-  // completed draft (status 'drafting' WITH content) must also unlock the
-  // Approve & Track stage — gating on an existing PR alone made the stage
-  // unreachable for every freshly-completed job.
-  const hasApproval = jobs.some(
-    (j) =>
-      (Boolean(j.pr_url || j.pr_number) && j.status !== 'closed') ||
-      (j.status === 'drafting' && Boolean(j.content)),
-  )
+  // List payloads omit `content`, so Boolean(j.content) is always false on the
+  // queue window. Unlock Approve from status / PR / table summary / the live
+  // generation id — otherwise a just-merged job greys the stage out.
+  const hasApproval =
+    Boolean(generationJobId || generationReviewJob) ||
+    (jobSummary?.pr_created ?? 0) > 0 ||
+    (jobSummary?.merged ?? 0) > 0 ||
+    jobs.some(
+      (j) =>
+        j.status === 'pr_created' ||
+        j.status === 'merged' ||
+        j.status === 'publishing' ||
+        (Boolean(j.pr_url || j.pr_number) && j.status !== 'closed') ||
+        (j.status === 'drafting' && (Number(j.word_count) || 0) >= 40),
+    )
   const hasPublication = jobs.some(isPublishedJob)
 
   const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
@@ -5540,7 +5546,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     approve: { available: hasApproval, reason: 'A completed draft or open PR must exist before approval.' },
     configure: { available: true, reason: 'System configuration is always accessible.' },
     shop: { available: true, reason: 'Shop product blog pipeline — generate and manage product articles.' },
-  }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
+  }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication, generationJobId, generationReviewJob, jobSummary])
 
   const pendingDeepLinkRef = React.useRef<StudioTab | null>(null)
 
@@ -5700,7 +5706,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       let nextJobs = data.jobs ?? []
       try {
-        const hotRes = await fetch('/api/content-studio/jobs?limit=80&status=drafting,pending,publishing,pr_created,failed', { credentials: 'same-origin', cache: 'no-store' })
+        const hotRes = await fetch('/api/content-studio/jobs?limit=80&status=drafting,pending,publishing,pr_created,merged,failed', { credentials: 'same-origin', cache: 'no-store' })
         const hot = await hotRes.json().catch(() => ({})) as { jobs?: ContentJob[] }
         if (hotRes.ok && Array.isArray(hot.jobs) && hot.jobs.length) {
           const seen = new Set(nextJobs.map((j) => j.id))
@@ -7230,10 +7236,18 @@ const controller = new AbortController()
                     return
                   }
                   if (j.status === 'pr_created' && j.pr_number) {
-                    await runMergePr(j)
+                    const merged = await runMergePr(j)
+                    if (merged.ok) {
+                      setQueueStatusFilter('merged')
+                      selectTab('approve')
+                    }
                     return
                   }
-                  await runApproveAndMerge(j)
+                  const shipped = await runApproveAndMerge(j)
+                  if (shipped.ok) {
+                    setQueueStatusFilter('merged')
+                    selectTab('approve')
+                  }
                 } finally {
                   setApproveBusy(false)
                 }
