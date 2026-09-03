@@ -13,7 +13,7 @@
  */
 
 import * as React from 'react'
-import { computeEditorMetrics, expandMetaToBriefTarget, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
+import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 
@@ -114,7 +114,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       if (summary) setHarper(summary)
     }, 1100)
     return () => clearTimeout(timer)
-  }, [content])
+  }, [content, hint?.region])
 
   const runStyleReview = React.useCallback(async (apply: boolean) => {
     const h = hintRef.current
@@ -273,7 +273,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                 type="button"
                 disabled={!onApplied}
                 onClick={() => {
-                  const local = applyQuotedStyleFixes(textRef.current, [{ quote: fx.quote, suggestion: fx.suggestion }])
+                  const local = applyReadabilityFixes(textRef.current, [fx])
                   if (local.applied > 0 && onApplied) onApplied(local.content)
                 }}
                 style={{ marginTop: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
@@ -287,7 +287,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               type="button"
               disabled={!onApplied}
               onClick={() => {
-                const local = applyQuotedStyleFixes(textRef.current, fixes)
+                const local = applyReadabilityFixes(textRef.current, fixes)
                 if (local.applied > 0 && onApplied) onApplied(local.content)
               }}
               style={{ marginTop: 8, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#17365D', fontSize: 11, fontWeight: 600, color: '#fff', cursor: 'pointer' }}

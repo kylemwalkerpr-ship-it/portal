@@ -15,6 +15,7 @@
  */
 
 import { AHREFS_META_MAX, AHREFS_META_MIN, clampMetaToAhrefs, metaDescriptionLength } from '@/lib/seoFactory/ahrefsIssues'
+import { sanitizeLeakedMarkup } from '@/lib/seoFactory/leakedMarkup'
 
 /** Brief / SERP sweet spot. The ship gate is Ahrefs 70–160; prompts ask 140–160. */
 export const BRIEF_META_MIN = 140
@@ -72,7 +73,7 @@ export function fleschTargetForBrief(hint?: EditorSeoHint): number {
 }
 
 export function extractProse(md: string): string {
-  let s = String(md || '')
+  let s = sanitizeLeakedMarkup(String(md || ''))
     .replace(/\s*---[\s\S]*?\n---\s*/g, '\n')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
@@ -250,24 +251,79 @@ function splitLongSentence(sentence: string): string | null {
   return `${a}. ${b}`
 }
 
+function collectReadableParagraphs(md: string): string[] {
+  const body = sanitizeLeakedMarkup(String(md || '')).replace(/^\s*---[\s\S]*?\n---\s*/, '\n')
+  const paras: string[] = []
+  let buf: string[] = []
+  const flush = () => {
+    const p = buf.join(' ').replace(/\s+/g, ' ').trim()
+    if (p) paras.push(p)
+    buf = []
+  }
+  for (const line of body.split('\n')) {
+    const t = line.trim()
+    if (!t) { flush(); continue }
+    if (/^#{1,4}\s+/.test(t)) { flush(); continue }
+    if (/^table of contents\b/i.test(t)) { flush(); continue }
+    if (/^[-*+]\s+/.test(t) || /^\d+[.)]\s+/.test(t)) { flush(); continue }
+    if (/^</.test(t) || /^```/.test(t)) { flush(); continue }
+    buf.push(t.replace(/^>\s?/, ''))
+  }
+  flush()
+  return paras
+}
+
+function isTocOrSourceDump(s: string): boolean {
+  if ((s.match(/\bUSCIS\b/g) || []).length >= 3) return true
+  if (!/[.?!]/.test(s) && s.split(/\s+/).length >= 12) return true
+  return false
+}
+
 export function suggestReadabilityFixes(md: string, hint?: EditorSeoHint): ReadabilityFix[] {
-  const prose = extractProse(md)
-  const sentences = prose.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0)
   const out: ReadabilityFix[] = []
-  for (const s of sentences) {
-    const words = s.trim().split(/\s+/).filter(Boolean).length
-    if (words < 28) continue
-    const suggestion = splitLongSentence(s)
-    if (!suggestion) continue
-    out.push({
-      quote: s.trim().slice(0, 280),
-      suggestion,
-      reason: `${words}-word sentence — brief target is 15–22 words for a ${hint?.audience || 'consumer'} reader`,
-      words,
-    })
-    if (out.length >= 8) break
+  for (const para of collectReadableParagraphs(md)) {
+    if (isTocOrSourceDump(para)) continue
+    const sentences = para.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0)
+    for (const s of sentences) {
+      const words = s.trim().split(/\s+/).filter(Boolean).length
+      if (words < 28) continue
+      if (isTocOrSourceDump(s)) continue
+      const suggestion = splitLongSentence(s)
+      if (!suggestion || suggestion === s.trim()) continue
+      if (!md.includes(s.trim()) && !para.includes(s.trim())) continue
+      out.push({
+        quote: s.trim(),
+        suggestion,
+        reason: `${words}-word sentence — brief target is 15–22 words for a ${hint?.audience || 'consumer'} reader`,
+        words,
+      })
+      if (out.length >= 8) return out
+    }
   }
   return out
+}
+
+export function applyReadabilityFixes(md: string, fixes: ReadabilityFix[]): { content: string; applied: number } {
+  let next = String(md || '')
+  let applied = 0
+  for (const fx of fixes || []) {
+    const quote = String(fx.quote || '').trim()
+    const suggestion = String(fx.suggestion || '').trim()
+    if (!quote || !suggestion || quote === suggestion) continue
+    if (next.includes(quote)) {
+      next = next.replace(quote, suggestion)
+      applied++
+      continue
+    }
+    const words = quote.split(/\s+/).filter(Boolean).slice(0, 10)
+    if (words.length < 5) continue
+    const re = new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'i')
+    const m = next.match(re)
+    if (!m || m.index == null) continue
+    next = next.slice(0, m.index) + suggestion + next.slice(m.index + m[0].length)
+    applied++
+  }
+  return { content: next, applied }
 }
 
 export function computeEditorMetrics(md: string, lints: Array<{ kind: string }>, hint?: EditorSeoHint): EditorMetrics {

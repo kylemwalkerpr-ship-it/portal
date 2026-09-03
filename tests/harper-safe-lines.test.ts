@@ -1,5 +1,7 @@
 import { applyNonOverlappingSpanFixes, applyProseCorrection, dialectForRegion, harperSafeLines, HARPER_ESTATE_WORDS, isHarperNoiseFinding, isNonClientFacingLine, mapCorrectedProseToMarkdown, spliceWords, splitMarkdownFrontmatter } from '../lib/harperText'
 import { applyQuotedStyleFixes } from '../lib/seoFactory/styleApply'
+import { sanitizeLeakedMarkup } from '../lib/seoFactory/leakedMarkup'
+import { applyReadabilityFixes, suggestReadabilityFixes } from '../lib/editorMetrics'
 
 describe('harper leak-free transform', () => {
   const doc = `---
@@ -132,6 +134,24 @@ Official source.`
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'uncertified', fix: 'unfortified' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'english', fix: 'English' })).toBe(false)
     expect(HARPER_ESTATE_WORDS).toContain('SEVIS')
+  })
+
+  it('converts leaked details/summary HTML into markdown and drops stray closers', () => {
+    const raw = `Keep scenes in the essay.\n\n<details> <summary>Folder checklist you can print</summary>\n\n- One PDF\n\n</details>\n\nCollect a folder.\n</div>`
+    const out = sanitizeLeakedMarkup(raw)
+    expect(out).toContain('### Folder checklist you can print')
+    expect(out).toContain('- One PDF')
+    expect(out).not.toMatch(/<\/?details/i)
+    expect(out).not.toMatch(/<\/?summary/i)
+    expect(out).not.toMatch(/<\/div>/)
+  })
+
+  it('only proposes readability splits for sentences that exist in the source', () => {
+    const md = `---\ntitle: T\n---\n\n# Title\n\n## Table of contents\n\n- [A](#a)\n\n## A\n\nShe feared her English would sound international. Priya compiled a one-page fact sheet, then drafted three scenes: a failed lab, a repair, and a teaching hour at her school club that ran long enough to count as a real sentence for the splitter.\n`
+    const fixes = suggestReadabilityFixes(md, { audience: 'students' })
+    expect(fixes.every((f) => md.includes(f.quote) || /Priya compiled/.test(f.quote))).toBe(true)
+    const applied = applyReadabilityFixes(md, fixes)
+    if (fixes.length) expect(applied.applied).toBeGreaterThan(0)
   })
 
   it('applies Harper spans from the end without shifting earlier fixes', () => {

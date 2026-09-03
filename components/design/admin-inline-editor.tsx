@@ -135,12 +135,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   }, [jobId])
 
   const persistDraft = useCallback(async (body: string, source: string) => {
+    const { sanitizeLeakedMarkup } = await import('@/lib/seoFactory/leakedMarkup')
+    const clean = sanitizeLeakedMarkup(body)
+    if (clean !== body) onChange(clean)
     const res = await fetch('/api/content-studio/drafts', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jobId: boundJobId || undefined,
-        content: body,
+        content: clean,
         source,
         title: title || topic,
         topic: topic || title,
@@ -156,7 +159,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     }
     if (!res.ok) throw new Error(data.error || `Save failed: HTTP ${res.status}`)
     return attached
-  }, [boundJobId, title, topic, contentType, region, onJobAttached])
+  }, [boundJobId, title, topic, contentType, region, onJobAttached, onChange])
   const [loadingDrafts, setLoadingDrafts] = useState(false)
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)

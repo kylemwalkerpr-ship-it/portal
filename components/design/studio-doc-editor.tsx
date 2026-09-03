@@ -16,6 +16,7 @@
 import * as React from 'react'
 import { serializeDsHtml } from '@/lib/editorDoc'
 import { peelCollapsedFrontmatter } from '@/lib/seoFactory/formatContract'
+import { sanitizeLeakedMarkup } from '@/lib/seoFactory/leakedMarkup'
 
 const TOKENS = {
   paper: '#fff',
@@ -69,7 +70,7 @@ function tableHtml(rows: string[][]): string {
 /** Render the document's VISIBLE markdown to trusted HTML for contentEditable. */
 export function mdToEditableHtml(md: string): string {
   // Hide frontmatter + JSON-LD; keep them verbatim for the serializer.
-  let s = peelCollapsedFrontmatter(String(md || ''))
+  let s = sanitizeLeakedMarkup(peelCollapsedFrontmatter(String(md || '')))
   let keeps = ''
   if (s.startsWith('---')) {
     const end = s.indexOf('\n---', 3)

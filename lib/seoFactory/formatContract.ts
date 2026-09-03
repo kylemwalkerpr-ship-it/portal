@@ -15,6 +15,8 @@
  * section FAQ "questions" built from headings like "Sources").
  */
 
+import { sanitizeLeakedMarkup } from './leakedMarkup'
+
 /** The canonical reader-facing skeleton every article follows. */
 export const FORMAT_SKELETON = [
   '1. YAML frontmatter (title, content_type, region, description, canonicalUrl, robots, ogImage) — top of document ONLY.',
@@ -641,6 +643,7 @@ export function sanitizeFrontmatter(content: string): string {
   const fields: Record<string, string> = fmMatch ? parseSimpleFm(fmMatch[1]) : {}
   let body = fmMatch ? raw.slice(fmMatch.index + fmMatch[0].length) : raw
   body = cleanLeakedYaml(body)
+  body = sanitizeLeakedMarkup(body)
 
   const title = fields.title || (body.match(/^#\s+(.+)$/m) || [])[1] || 'Guide'
   const pk = fields.primaryKeyword || ''

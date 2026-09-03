@@ -3247,7 +3247,7 @@ function DraftWorkspace({
   rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob, generationJobId,
   onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, onCancelGeneration, error, setError,
-  onApprove, onShipReadyChange, onJobAttached, approving,
+  onApprove, onShipReadyChange, onJobAttached, approving, studioRegion,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
@@ -3271,6 +3271,7 @@ function DraftWorkspace({
   onShipReadyChange?: (gate: ShipGate) => void
   onJobAttached?: (jobId: string) => void
   approving?: boolean
+  studioRegion?: string
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
@@ -3684,7 +3685,7 @@ function DraftWorkspace({
               contentType={completedJob?.content_type}
               primaryKeyword={completedJob?.primary_keyword ?? undefined}
               indexable={completedJob?.indexable}
-              region={completedJob?.region ?? undefined}
+              region={completedJob?.region ?? selectedJob?.region ?? studioRegion}
               competingSnippets={completedJob?.competing_snippets ?? undefined}
               competingUrls={completedJob?.competing_urls ?? undefined}
               requiredShortKeywords={completedJob?.required_short_keywords ?? undefined}
@@ -7198,6 +7199,7 @@ const controller = new AbortController()
       {(tab === 'draft' || generating || keepDraftWorkspace || Boolean(generationReviewJob || generationJobId)) && (
         <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" hidden={tab !== 'draft'} style={{ marginBottom: 14, display: tab === 'draft' ? 'flex' : 'none', flexDirection: 'column', gap: 14 }}>
           {/* ── Draft workspace — inline editor with live streaming ── */}            <DraftWorkspace
+              studioRegion={region}
               generating={generating}
               generationEvents={generationEvents}
               generationStartedAt={generationStartedAt}

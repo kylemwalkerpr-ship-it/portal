@@ -16,6 +16,7 @@ import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
 import { sourcesForRegion } from './officialSources'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
+import { sanitizeLeakedMarkup } from './leakedMarkup'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -1116,7 +1117,7 @@ export function applyDeterministicRepairs(opts: {
   // floors, ship gate — then sees ~2× the words and two conflicting H1s.
   // Strip the second copy FIRST, on the RAW content, so normalize + every
   // later repair work on exactly one article.
-  const rawDeduped = stripDuplicateArticleCopy(opts.content || '')
+  const rawDeduped = stripDuplicateArticleCopy(sanitizeLeakedMarkup(opts.content || ''))
 
   // ── Dangling forward references (FIRST — on the raw body) ────────────
   // "the next section walks through a worked example" with no such section:
