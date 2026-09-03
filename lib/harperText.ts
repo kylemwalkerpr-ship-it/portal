@@ -104,16 +104,60 @@ export function escapeRegExpWord(w: string): string {
 /** Replace the changed words in `src` with the corrected words in `out`,
  *  preserving everything else (markers, links, emphasis) verbatim. */
 export function spliceWords(src: string, out: string): string {
-  const srcWords = src.split(/\s+/)
-  const outWords = out.split(/\s+/)
-  if (srcWords.length !== outWords.length) return src
-  let rebuilt = src
-  for (let i = 0; i < srcWords.length; i++) {
-    if (srcWords[i] !== outWords[i]) {
-      const re = new RegExp(escapeRegExpWord(srcWords[i]))
-      const next = rebuilt.replace(re, outWords[i])
-      if (next !== rebuilt) rebuilt = next
+  const srcWords = src.split(/\s+/).filter(Boolean)
+  const outWords = out.split(/\s+/).filter(Boolean)
+  if (srcWords.length === outWords.length) {
+    let rebuilt = src
+    for (let i = 0; i < srcWords.length; i++) {
+      if (srcWords[i] !== outWords[i]) {
+        const re = new RegExp(escapeRegExpWord(srcWords[i]))
+        const next = rebuilt.replace(re, outWords[i])
+        if (next !== rebuilt) rebuilt = next
+      }
     }
+    return rebuilt
   }
-  return rebuilt
+  return applyProseCorrection(src, srcWords.join(' '), outWords.join(' '))
+}
+
+/** Put Harper's corrected prose back into a markdown source line without throwing. */
+export function applyProseCorrection(src: string, before: string, after: string): string {
+  if (!src || before === after) return src
+  const spliced = (() => {
+    const srcWords = src.split(/\s+/).filter(Boolean)
+    const outWords = after.split(/\s+/).filter(Boolean)
+    if (srcWords.length !== outWords.length) return src
+    let rebuilt = src
+    for (let i = 0; i < srcWords.length; i++) {
+      if (srcWords[i] !== outWords[i]) {
+        const re = new RegExp(escapeRegExpWord(srcWords[i]))
+        const next = rebuilt.replace(re, outWords[i])
+        if (next !== rebuilt) rebuilt = next
+      }
+    }
+    return rebuilt
+  })()
+  if (spliced !== src) return spliced
+  if (before && src.includes(before)) return src.replace(before, after)
+  return src
+}
+
+/** Rebuild markdown from Harper's corrected plaintext lines. Length mismatch is a no-op. */
+export function mapCorrectedProseToMarkdown(
+  md: string,
+  lines: HarperSafeLine[],
+  correctedJoined: string,
+): string {
+  const newOuts = String(correctedJoined || '').split('\n')
+  const prose = lines.filter((l) => !l.skip)
+  if (newOuts.length !== prose.length) return md
+  const result = lines.map((l) => l.src)
+  let p = 0
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].skip) continue
+    const before = lines[i].out
+    const after = newOuts[p++]
+    if (after !== before) result[i] = applyProseCorrection(lines[i].src, before, after)
+  }
+  return result.join('\n')
 }

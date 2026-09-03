@@ -1,7 +1,7 @@
 import { LocalLinter, Dialect, type Lint, type Suggestion } from 'harper.js'
 import { binaryInlined } from 'harper.js/binaryInlined'
 import { scoreHarperLints } from '@/lib/editorMetrics'
-import { harperSafeLines, spliceWords, HARPER_ESTATE_WORDS } from '@/lib/harperText'
+import { harperSafeLines, mapCorrectedProseToMarkdown, HARPER_ESTATE_WORDS } from '@/lib/harperText'
 
 /**
  * Browser-side Harper.js grammar service — on-device (inlined WASM), lazy.
@@ -144,81 +144,81 @@ export async function applyHarperProblem(md: string, problem: string): Promise<H
 }
 
 export async function fixHarperIssues(md: string, onlyProblem?: string): Promise<HarperAutofixResult> {
+  const original = String(md || '')
   try {
     const linter = await getLinter()
-    const lines = harperSafeLines(String(md || ''))
-    const textLines = lines.filter((l) => !l.skip) as Array<{ src: string; out: string }>
-    if (textLines.length === 0) return { content: String(md || ''), applied: 0, items: [] }
-    const text = textLines.map((l) => l.out).join('\n')
-    const lints = (await linter.lint(text, { language: 'plaintext', dedup: true })).filter(keepLint)
-    // Spelling, grammar, punctuation, typos — not opinionated Style/rhythm.
     const allowed = new Set(['Spelling', 'Grammar', 'Typo', 'Punctuation', 'Nonstandard', 'WordOrder', 'Repetition'])
-    const correctedOut = new Map<number, string>()
-    const items: HarperAutofixResult['items'] = []
+    let current = original
     let applied = 0
-    for (const l of lints) {
-      const kind = l.lint_kind() || ''
-      if (!allowed.has(kind)) continue
-      const problem = l.get_problem_text?.() || ''
-      if (!problem.trim()) continue
-      if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem)) continue
-      const span = l.span?.()
-      if (!span || span.start == null || span.end == null) continue
-      const spanLen = span.end - span.start
-      const offset = span.start
-      if (offset < 0 || offset >= text.length) continue
-      const lineIdx = text.slice(0, offset).split('\n').length - 1
-      const targetLine = textLines[lineIdx]
-      if (!targetLine || lineIdx < 0) continue
-      const lineStart = text.slice(0, offset).lastIndexOf('\n') + 1
-      const rel = offset - lineStart
-      if (rel < 0 || rel + spanLen > targetLine.out.length) continue
-      // One word may carry both a correction and a case re-capitalization;
-      // apply walls of repeated identical corrections only once per line.
-      const lastApplied = correctedOut.get(lineIdx)
-      let suggestion: Suggestion | null = null
-      try {
-        const list = l.suggestions()
-        suggestion = list && list.length ? list[0] : null
-      } catch {
-        suggestion = null
+    const items: HarperAutofixResult['items'] = []
+    const seen = new Set<string>()
+    for (let round = 0; round < 12; round++) {
+      const lines = harperSafeLines(current)
+      const text = lines.filter((l) => !l.skip).map((l) => l.out).join('\n')
+      if (text.trim().length < 40) break
+      const lints = (await linter.lint(text, { language: 'plaintext', dedup: true })).filter(keepLint)
+      let progressed = false
+      for (const l of lints) {
+        const kind = l.lint_kind() || ''
+        if (!allowed.has(kind)) continue
+        const problem = String(l.get_problem_text?.() || '').trim()
+        if (!problem) continue
+        if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
+        const finger = `${kind}:${problem}`
+        if (seen.has(finger)) continue
+        let suggestion: Suggestion | null = null
+        let replacement = ''
+        try {
+          const list = l.suggestions()
+          suggestion = list && list.length ? list[0] : null
+          if (suggestion && typeof suggestion.get_replacement_text === 'function') {
+            replacement = suggestion.get_replacement_text() || ''
+          }
+        } catch {
+          suggestion = null
+        }
+        let next = current
+        if (suggestion) {
+          try {
+            const nextText = await linter.applySuggestion(text, l, suggestion)
+            if (typeof nextText === 'string' && nextText !== text) {
+              const mapped = mapCorrectedProseToMarkdown(current, lines, nextText)
+              if (mapped !== current) next = mapped
+            }
+          } catch {
+            /* span mismatch — fall through to string replace */
+          }
+        }
+        if (next === current && problem && replacement && current.includes(problem)) {
+          if (kind === 'Spelling' && problem.toLowerCase() === replacement.toLowerCase()) continue
+          next = current.replace(problem, replacement)
+        }
+        if (next === current) {
+          seen.add(finger)
+          continue
+        }
+        seen.add(finger)
+        current = next
+        applied++
+        progressed = true
+        if (items.length < 24) {
+          items.push({
+            kind: kindOf(l),
+            problem: problem.slice(0, 120),
+            message: (l.message?.() || '').slice(0, 200),
+            fix: replacement.slice(0, 120) || undefined,
+          })
+        }
+        break
       }
-      if (!suggestion) continue
-      const replaced = await linter.applySuggestion(lastApplied ?? targetLine.out, l, suggestion)
-      const base = lastApplied ?? targetLine.out
-      if (replaced == null || replaced === base) continue
-      // Case-only changes: estate names and currencies are case-sensitive —
-      // Harper must not "correct" YouSafe → yousafe or AUD → Aud.
-      if (kind === 'Spelling' && problem.toLowerCase() === replaced.toLowerCase()) continue
-      correctedOut.set(lineIdx, replaced)
-      applied++
-      if (items.length < 24) {
-        const changedStart = Math.max(0, rel)
-        items.push({
-          kind: kindOf(l),
-          problem: problem.slice(0, 120),
-          message: (l.message?.() || '').slice(0, 200),
-          fix: replaced.slice(changedStart, Math.min(replaced.length, changedStart + Math.max(spanLen, problem.length))),
-        })
-      }
+      if (!progressed) break
+      if (onlyProblem) break
     }
-    if (applied === 0) return { content: String(md || ''), applied: 0, items }
-    // Splice corrected words back onto their original markdown lines.
-    const resultLines: string[] = []
-    let proseIdx = 0
-    for (const line of lines) {
-      if (line.skip) {
-        resultLines.push(line.src)
-        continue
-      }
-      const corrected = correctedOut.get(proseIdx)
-      resultLines.push(corrected !== undefined ? spliceWords(line.src, corrected) : line.src)
-      proseIdx++
-    }
-    return { content: resultLines.join('\n'), applied, items }
+    return { content: current, applied, items }
   } catch (err) {
+    linterPromise = null
     console.info('[harper] autofix skipped:', String((err as Error)?.message || err).slice(0, 120))
-    return { content: String(md || ''), applied: 0, items: [] }
+    return { content: original, applied: 0, items: [] }
   }
 }
 

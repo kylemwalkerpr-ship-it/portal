@@ -1,4 +1,5 @@
-import { harperSafeLines, HARPER_ESTATE_WORDS } from '../lib/harperText'
+import { applyProseCorrection, harperSafeLines, HARPER_ESTATE_WORDS, mapCorrectedProseToMarkdown, spliceWords } from '../lib/harperText'
+import { applyQuotedStyleFixes } from '../lib/seoFactory/styleApply'
 
 describe('harper leak-free transform', () => {
   const doc = `---
@@ -69,6 +70,33 @@ Official source.`
     for (const w of ['YouSafe', 'Caseworks', 'AUD', 'ImmiAccount', 'OSHC', 'CoE', 'IELTS', 'dependants', 'lodgement']) {
       expect(HARPER_ESTATE_WORDS).toContain(w)
     }
+  })
+
+  it('splices a same-length correction and a word-count change without throwing', () => {
+    expect(spliceWords('The applcation is ready.', 'The application is ready.')).toContain('application')
+    expect(applyProseCorrection('- Visit **USCIS** today.', 'Visit USCIS today.', 'Visit USCIS today.')).toBe('- Visit **USCIS** today.')
+    expect(applyProseCorrection('You recieve the form.', 'You recieve the form.', 'You receive the form.')).toContain('receive')
+  })
+
+  it('maps Harper plaintext back onto markdown and is a no-op when line counts drift', () => {
+    const md = '## Title\n\nYou recieve the form.\n'
+    const lines = harperSafeLines(md)
+    const joined = lines.filter((l) => !l.skip).map((l) => l.out).join('\n').replace('recieve', 'receive')
+    const next = mapCorrectedProseToMarkdown(md, lines, joined)
+    expect(next).toContain('receive')
+    expect(next).toContain('## Title')
+    expect(mapCorrectedProseToMarkdown(md, lines, 'only-one-line')).toBe(md)
+  })
+
+  it('quoted style fixes are idempotent', () => {
+    const doc = 'You should leverage this process today.'
+    const items = [{ quote: 'leverage this process', suggestion: 'use this process' }]
+    const once = applyQuotedStyleFixes(doc, items)
+    expect(once.applied).toBe(1)
+    expect(once.content).toContain('use this process')
+    const twice = applyQuotedStyleFixes(once.content, items)
+    expect(twice.applied).toBe(0)
+    expect(twice.content).toBe(once.content)
   })
 
   it('is 1:1 line-preserving (word splice safety)', () => {

@@ -3,6 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
+import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 import { countBodyWords, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
 
 /**
@@ -96,6 +97,7 @@ Critique the voice and readability. Return ONLY the JSON.`
       maxTokens: 2048,
       aiProvider: body.reviewModel || undefined,
       exclusive: Boolean(body.reviewModel) && body.reviewModel !== 'auto',
+      cascadeOnCapacity: true,
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
       throw new Error(`style review provider failed: ${message}`)
@@ -119,13 +121,21 @@ Critique the voice and readability. Return ONLY the JSON.`
       maxTokens: 4096,
       aiProvider: body.reviewModel || undefined,
       exclusive: Boolean(body.reviewModel) && body.reviewModel !== 'auto',
-    }).catch((err) => {
-      const message = err instanceof Error ? err.message : String(err)
-      throw new Error(`style apply provider failed: ${message}`)
-    })
+      cascadeOnCapacity: true,
+    }).catch(() => null)
 
-    const patchParsed = parseEditorPatch(applyResult.text)
+    const patchParsed = applyResult ? parseEditorPatch(applyResult.text) : { ok: false as const, reason: 'provider unavailable' }
     if (patchParsed.ok === false) {
+      const local = applyQuotedStyleFixes(content, parsed.items)
+      if (local.applied > 0) {
+        return NextResponse.json({
+          items: parsed.items,
+          applied: true,
+          content: local.content,
+          provider: review.provider,
+          fallback: 'quote-replace',
+        })
+      }
       return NextResponse.json({ items: parsed.items, applied: false, reason: patchParsed.reason })
     }
     const patch: EditorPatch = {
@@ -142,6 +152,10 @@ Critique the voice and readability. Return ONLY the JSON.`
       })),
     })
     if (!outcome.ok) {
+      const local = applyQuotedStyleFixes(content, parsed.items)
+      if (local.applied > 0) {
+        return NextResponse.json({ items: parsed.items, applied: true, content: local.content, fallback: 'quote-replace' })
+      }
       const reason = 'reason' in outcome ? outcome.reason : 'patch could not be applied'
       return NextResponse.json({ items: parsed.items, applied: false, reason })
     }

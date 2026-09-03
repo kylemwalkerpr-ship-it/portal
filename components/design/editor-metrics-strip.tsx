@@ -207,6 +207,8 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                     } else {
                       setHarperFixNote('Could not apply that suggestion automatically — use Auto-fix or edit the phrase.')
                     }
+                  } catch (err) {
+                    setHarperFixNote(err instanceof Error ? err.message : 'Harper apply failed — document unchanged')
                   } finally {
                     setFixingHarper(false)
                   }
