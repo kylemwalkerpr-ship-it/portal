@@ -221,23 +221,18 @@ export default function StudioDocEditor({
   contentRef.current = content
   const lastSerializedRef = React.useRef('')
 
-  // (Re)hydrate the editable DOM when the EXTERNAL content changes and the
-  // user is not mid-edit (e.g. after Audit & Fix returns fixedContent).
+  // (Re)hydrate when parent markdown changes from outside this editor
+  // (Apply style fixes, Audit & Fix, autosave reload). Skip only when
+  // this is the markdown we just serialized from the DOM — otherwise
+  // Apply would update React state while the visible document stayed stale
+  // and the next keystroke would overwrite the fix.
   React.useEffect(() => {
     if (!editorRef.current) return
-    const serialized = lastSerializedRef.current
-    const currentMd = contentRef.current
-    if (!serialized || serialized === currentMd.trim()) return
-    editorRef.current.innerHTML = mdToEditableHtml(currentMd)
-    lastSerializedRef.current = ''
+    const incoming = String(content || '')
+    if (lastSerializedRef.current && lastSerializedRef.current === incoming.trim()) return
+    editorRef.current.innerHTML = mdToEditableHtml(incoming)
+    lastSerializedRef.current = incoming.trim()
   }, [content])
-
-  React.useEffect(() => {
-    if (editorRef.current && !editorRef.current.innerHTML) {
-      editorRef.current.innerHTML = mdToEditableHtml(contentRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const applyCommand = (command: () => void) => {
     if (!editorRef.current) return

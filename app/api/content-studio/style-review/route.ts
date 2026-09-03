@@ -36,6 +36,8 @@ type StyleReviewBody = {
   contentType?: string
   jobId?: string
   apply?: boolean
+  /** When applying known findings, skip a fresh critique so Apply does not resurrect the same list. */
+  items?: StyleItem[]
   reviewModel?: string
 }
 
@@ -79,6 +81,21 @@ export async function POST(request: NextRequest) {
     const doc = content
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '[script-block]')
     const primary = String(body.primaryKeyword || '').trim()
+
+    const knownItems = Array.isArray(body.items)
+      ? body.items.filter((it) => it && typeof it.quote === 'string').slice(0, 12)
+      : []
+    if (body.apply && knownItems.length) {
+      const local = applyQuotedStyleFixes(content, knownItems)
+      return NextResponse.json({
+        items: local.missed,
+        applied: local.applied > 0,
+        content: local.content,
+        appliedCount: local.applied,
+        missedCount: local.missed.length,
+        fallback: 'quote-replace',
+      })
+    }
 
     const sys = SYSTEM_PROMPT
     const prompt = `## Article

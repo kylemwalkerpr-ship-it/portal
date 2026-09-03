@@ -407,6 +407,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                 if (local.applied > 0 && onApplied) {
                   onApplied(local.content)
                   setStyleItems((prev) => prev.filter((_, j) => j !== i))
+                  setStyleError(null)
                 } else {
                   setStyleError(`Could not find “${it.quote.slice(0, 80)}” in the document — edit that phrase by hand.`)
                 }
@@ -435,15 +436,46 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               disabled={styleBusy || applying}
               onClick={() => {
                 setApplying(true)
+                setStyleError(null)
                 try {
-                  const local = applyQuotedStyleFixes(textRef.current, styleItems)
+                  const snapshot = [...styleItems]
+                  const local = applyQuotedStyleFixes(textRef.current, snapshot)
                   if (local.applied > 0 && local.content && onApplied) {
                     onApplied(local.content)
-                    setStyleItems([])
+                    setStyleItems(local.missed)
+                    if (local.missed.length) {
+                      setStyleError(`Applied ${local.applied}; ${local.missed.length} still need a hand edit (quote not found or already identical).`)
+                    }
                     setApplying(false)
                     return
                   }
-                  void runStyleReview(true).finally(() => setApplying(false))
+                  void (async () => {
+                    try {
+                      const res = await fetch('/api/content-studio/style-review', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                          content: textRef.current,
+                          primaryKeyword: hintRef.current?.primaryKeyword || undefined,
+                          reviewModel: reviewModel || undefined,
+                          apply: true,
+                          items: snapshot,
+                        }),
+                      })
+                      const data = await res.json()
+                      if (data?.content && data.applied && onApplied) {
+                        onApplied(data.content)
+                        setStyleItems(Array.isArray(data.items) ? data.items : [])
+                      } else {
+                        setStyleError(data?.reason || 'Could not replace those quotes in the document — edit by hand.')
+                      }
+                    } catch (err) {
+                      setStyleError(err instanceof Error ? err.message : 'Style apply failed')
+                    } finally {
+                      setApplying(false)
+                    }
+                  })()
                 } catch (err) {
                   setStyleError(err instanceof Error ? err.message : 'Style apply failed')
                   setApplying(false)

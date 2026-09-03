@@ -90,6 +90,30 @@ Official source.`
     expect(mapCorrectedProseToMarkdown(md, lines, 'only-one-line')).toBe(md)
   })
 
+  it('collapses duplicate sentences when the suggestion is the same as the quote', () => {
+    const doc = 'Rush weeks raise error risk. Rush weeks raise error risk. File earlier.'
+    const out = applyQuotedStyleFixes(doc, [{
+      quote: 'Rush weeks raise error risk.',
+      suggestion: 'Rush weeks raise error risk.',
+      category: 'readability',
+    }])
+    expect(out.applied).toBe(1)
+    expect(out.missed).toHaveLength(0)
+    expect(out.content).toBe('Rush weeks raise error risk. File earlier.')
+  })
+
+  it('replaces a wordy list even when it wraps across newlines', () => {
+    const doc = 'You may need Form I-20,\nForm DS-160, Form I-94 and Form I-539.'
+    const out = applyQuotedStyleFixes(doc, [{
+      quote: 'Form I-20, Form DS-160, Form I-94 and Form I-539',
+      suggestion: 'the usual student and visitor forms',
+      category: 'wordy',
+    }])
+    expect(out.applied).toBe(1)
+    expect(out.content).toContain('the usual student and visitor forms')
+    expect(out.content).not.toContain('Form DS-160')
+  })
+
   it('quoted style fixes are idempotent', () => {
     const doc = 'You should leverage this process today.'
     const items = [{ quote: 'leverage this process', suggestion: 'use this process' }]
