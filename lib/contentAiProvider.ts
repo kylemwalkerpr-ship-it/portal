@@ -681,6 +681,9 @@ function extractMessageText(content: unknown): string {
  * instruction and wrote a fresh article instead of appending.
  */
 function looksLikeFullRestart(previousText: string, continuationText: string): boolean {
+  const prior = previousText.replace(/^---[\s\S]*?---/, '').replace(/\s+/g, ' ').trim()
+  // YAML-only / empty prior: a new H1 or frontmatter IS the first article, not a restart.
+  if (prior.length < 80) return false
   const head = continuationText.trimStart().slice(0, 300)
   // New frontmatter block — the strongest restart signal.
   // Match a line that is exactly `---` (same pattern as
@@ -2318,8 +2321,12 @@ async function* openAiCompatibleStream(
             // exactly where a restart begins, so `!full.endsWith('\n')` was
             // the wrong guard and let H1 restarts through (2026-09-02 regression).
             if (/^#\s+[A-Z]/.test(head)) {
-              restartDetected = true
-              break
+              const bodySoFar = full.replace(/^---[\s\S]*?---/, '')
+              const alreadyHasH1 = /^#\s+/m.test(bodySoFar.trim())
+              if (alreadyHasH1 && bodySoFar.replace(/\s+/g, ' ').trim().length > 80) {
+                restartDetected = true
+                break
+              }
             }
           }
         }

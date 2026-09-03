@@ -4664,15 +4664,17 @@ function buildWorkPlan(
   }
   // Merge history
   for (const m of merges) {
+    const termCount = Array.isArray(m.terms) ? m.terms.length : 0
     items.push({
       id: `merge-${m.clusterId}`,
       category: 'merge',
       title: `Merged cluster: ${m.stem}`,
       topic: m.stem,
       source: 'Merge History',
-      priority: m.status === 'merged' ? 90 : 50,
-      priorityTier: m.status === 'merged' ? 'high' : 'medium',
-      signals: [`${m.terms.length} terms · ${m.redirectsCreated} redirects · ${m.status}`],
+      priority: m.status === 'merged' ? 40 : 25,
+      priorityTier: 'low',
+      shipped: true,
+      signals: [`${termCount} terms · ${m.redirectsCreated} redirects · ${m.status}`],
       mergeRecord: m,
     })
   }
@@ -4704,8 +4706,15 @@ function WorkPlanTable({
     if (i.shipped && !showShipped) return false
     return true
   })
-  const categoryFiltered = filterCat === 'all' ? activeItems : activeItems.filter((i) => i.category === filterCat)
-  const filtered = priorityFilter === 'all' ? categoryFiltered : categoryFiltered.filter((i) => i.priorityTier === priorityFilter)
+  const withoutLedger = activeItems.filter((i) => i.category !== 'merge')
+  const mergeLedger = items.filter((i) => i.category === 'merge')
+  const categoryFiltered = filterCat === 'merge'
+    ? mergeLedger
+    : filterCat === 'all'
+      ? withoutLedger
+      : withoutLedger.filter((i) => i.category === filterCat)
+  const filtered = [...(priorityFilter === 'all' ? categoryFiltered : categoryFiltered.filter((i) => i.priorityTier === priorityFilter))]
+    .sort((a, b) => (b.priority - a.priority) || a.title.localeCompare(b.title))
   const smartCandidates = filtered.filter((i) => !i.shipped && i.category !== 'merge' && i.category !== 'cannibal' && i.priorityTier !== 'low').slice(0, 6)
   const allSelected = smartCandidates.length > 0 && smartCandidates.every((i) => selectedIds.has(i.id))
   const selectedItems = activeItems.filter((i) => selectedIds.has(i.id) && !i.shipped)
