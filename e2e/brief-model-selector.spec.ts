@@ -119,6 +119,43 @@ function makeBriefResponse() {
 }
 
 test.describe('Research-stage brief model selector (admin)', () => {
+  test('the brief model dropdown offers the three live models — Qwen, DeepSeek Flash, Grok — and nothing else', async ({ browser }) => {
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
+
+    const page = await loginAsAdmin(browser)
+    test.skip(!page, 'Skipping: could not sign in')
+    if (!page) return
+
+    const emptyQueue = JSON.stringify({
+      jobs: [], count: 0, total: 0, hasMore: false, offset: 0, limit: 40,
+      summary: { total: 0, pending: 0, drafting: 0, pr_created: 0, merged: 0, closed: 0, failed: 0, avgScore: 0 },
+    })
+    await page.route('**/api/content-studio/jobs?status=*', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: emptyQueue })
+    })
+    await page.route('**/api/content-studio/jobs', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: emptyQueue })
+        return
+      }
+      await route.continue()
+    })
+
+    await page.goto(`${BASE}/dashboard/admin/content?tab=research`, { waitUntil: 'domcontentloaded' })
+    const panel = page.getByTestId('studio-brief-assembly')
+    await panel.waitFor({ state: 'visible', timeout: 30000 })
+
+    const modelSelect = page.locator('select:has(option[value="qwen3.6-27b"])').first()
+    await modelSelect.waitFor({ state: 'visible', timeout: 10000 })
+    const optionValues = await modelSelect.locator('option').allTextContents()
+    // The three live models are selectable; no retired/gpt option leaks in.
+    await expect(modelSelect.locator('option[value="qwen3.6-27b"]')).toBeVisible()
+    await expect(modelSelect.locator('option[value="deepseek-v4-flash"]')).toBeVisible()
+    await expect(modelSelect.locator('option[value="grok-4.6"]')).toBeVisible()
+    await expect(modelSelect.locator('option[value="gpt-5.6-sol"], option[value="gpt-5.6-terra"], option[value="gpt-5.6-luna"]')).toHaveCount(0)
+    expect(optionValues.length).toBeGreaterThanOrEqual(3)
+  })
+
   test('selecting Qwen3.6 27B sends aiProvider entrim-qwen-27b on Generate Full Brief', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 

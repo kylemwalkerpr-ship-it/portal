@@ -84,14 +84,11 @@ describe('Grok 4.6 Responses transport', () => {
     expect(isPaymentOrQuotaFailure(new Error('timeout'))).toBe(false)
   })
 
-  it('a grok pin calls /v1/responses with grok-4.6 (retired transport, break-glass)', async () => {
+  it('a grok pin calls /v1/responses with grok-4.6 (live transport)', async () => {
     process.env.XAI_API_KEY = 'supergrok-oauth-token'
     process.env.XAI_MODEL = 'grok-4.6'
     process.env.CONTENT_AI_RETRY = '1'
-    // Break-glass: Grok is retired under the live policy — validate the
-    // legacy transport only with the full cascade restored, directly against
-    // generateContentText (the brief layer now coerces grok to Entrim).
-    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
+    delete process.env.CONTENT_AI_ALL_PROVIDERS
 
     const urls: string[] = []
     global.fetch = jest.fn(async (input) => {
@@ -115,28 +112,30 @@ describe('Grok 4.6 Responses transport', () => {
     expect(urls.some((u) => u.includes('/chat/completions'))).toBe(false)
   })
 
-  it('unpaid OpenAI exclusive pin falls through to SuperGrok (retired path, break-glass)', async () => {
-    process.env.OPENAI_API_KEY = 'unpaid-openai'
+  it('an exclusive grok owner failing hard does NOT silently draft on another backend', async () => {
     process.env.XAI_API_KEY = 'supergrok-oauth-token'
+    process.env.ENTRIM_API_KEY = 'entrim-key'
     process.env.CONTENT_AI_RETRY = '1'
-    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
+    delete process.env.CONTENT_AI_ALL_PROVIDERS
 
+    const urls: string[] = []
     global.fetch = jest.fn(async (input) => {
-      const url = String(input)
-      if (url.includes('api.openai.com')) throw new Error('openai 429 insufficient_quota')
+      urls.push(String(input))
       return new Response(JSON.stringify({
-        output_text: 'GROK-PAID-FALLBACK',
+        output_text: 'GROK-ONLY',
         status: 'completed',
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
 
     const result = await generateContentText({
-      aiProvider: 'openai',
+      aiProvider: 'grok',
       exclusive: true,
       system: 'Say ok',
       prompt: 'ok',
     })
     expect(result.provider).toBe('grok')
-    expect(result.text).toBe('GROK-PAID-FALLBACK')
+    expect(result.text).toBe('GROK-ONLY')
+    // Exclusive owner: the Entrim backend was never invoked.
+    expect(urls.every((u) => u.includes('api.x.ai'))).toBe(true)
   })
 })

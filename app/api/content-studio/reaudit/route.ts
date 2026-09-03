@@ -348,10 +348,10 @@ function reviewApiModel(pin: string): string | undefined {
 }
 
 async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewModel?: string): Promise<string> {
-  // Run BiOS GLM 5.3 Flash is the default reviewer (DEFAULT_REVIEW_PIN — the
-  // Review/Editor lane lead). This is separate from the NVIDIA MiniMax
-  // drafting default; the review lane allows only Grok, Claude Opus 5,
-  // Claude Sonnet 5, and GLM 5.3 Flash.
+  // The reviewer is the job's contract OWNER: Entrim Qwen3.6 27B (default),
+  // Entrim DeepSeek V4 Flash, or Grok 4.6. Whichever the owner is, re-audits
+  // use the SAME backend — never coerced to Qwen when the owner is Grok or
+  // DeepSeek.
   const requestedModel = String(reviewModel || DEFAULT_REVIEW_PIN).trim().toLowerCase()
   const runbiosAlias = isRunbiosPin(requestedModel)
     ? canonicalizeRunbiosPin(requestedModel)
@@ -364,11 +364,13 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
           : ''
   const effectiveModel = requestedModel === 'grok' || /^grok(?:-|$)/.test(requestedModel)
     ? 'grok'
-    : requestedModel === 'entrim-qwen-27b' || requestedModel === 'qwen3.6-27b' || requestedModel === 'qwen3.8-27b' || /^qwen3\.[68]/.test(requestedModel)
-      ? 'entrim-qwen-27b'
-      : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
-        ? runbiosAlias
-        : DEFAULT_REVIEW_PIN
+    : requestedModel === 'entrim-deepseek' || /^deepseek-v4-flash/.test(requestedModel) || requestedModel === 'entrim-deepseek-v4-flash'
+      ? 'entrim-deepseek'
+      : requestedModel === 'entrim-qwen-27b' || requestedModel === 'qwen3.6-27b' || requestedModel === 'qwen3.8-27b' || /^qwen3\.[68]/.test(requestedModel)
+        ? 'entrim-qwen-27b'
+        : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
+          ? runbiosAlias
+          : DEFAULT_REVIEW_PIN
   // Run BiOS pins (including the bare 'glm-5.3-flash' alias) execute through
   // the Run BiOS provider with the exact selected slot.
   if (isRunbiosPin(effectiveModel)) {
@@ -384,6 +386,7 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   /* Legacy reviewer pins deliberately coerce to the lane default above. */
   const isGpt = /^gpt-5\.6/i.test(effectiveModel)
   const isEntrimQwen = effectiveModel === 'entrim-qwen-27b'
+  const isEntrimDeepseek = effectiveModel === 'entrim-deepseek'
   const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
   const isGlmFast =
     effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
@@ -424,8 +427,10 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
     ? 'openai'
     : isEntrimQwen
       ? 'entrim-qwen-27b'
-      : isGrok
-        ? 'grok'
+      : isEntrimDeepseek
+        ? 'entrim-deepseek'
+        : isGrok
+          ? 'grok'
       : isGlmFast
         ? 'baseten-glm-fast'
         : isAihubmixGlmFast
@@ -466,6 +471,7 @@ async function generateOutlineSection(
   purpose: string | undefined,
   keyword: string | undefined,
   region: string | undefined,
+  reviewModel?: string,
 ): Promise<string | null> {
   const sys = `You are a legal-content editor completing ONE section of an immigration article. Write natural, practitioner-grade prose for the reader — never a keyword string, never a stub. Respond with ONLY the section body (no heading line).`
   const prompt = `## Article (first 6000 chars for voice/context)
@@ -481,7 +487,7 @@ ${region ? `Region: ${region}` : ''}
 
 Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Use the article's existing headings/voice. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
   try {
-    const raw = await callAiFix(sys, prompt, 4096, DEFAULT_REVIEW_PIN)
+    const raw = await callAiFix(sys, prompt, 4096, reviewModel)
     const clean = raw
       .replace(/^```[\s\S]*?```\s*$/, '')
       .replace(/^(#+)\s+.*$/m, '') // never echo a heading — caller prefixes it
@@ -1173,7 +1179,7 @@ Return ONLY the JSON EditorPatch.`
             let inserted = 0
             for (const heading of batch) {
               const entry = loopCtx.outline.find((o) => o.heading === heading)
-              const section = await generateOutlineSection(loopStartContent, heading, entry?.purpose, loopKeyword, region)
+              const section = await generateOutlineSection(loopStartContent, heading, entry?.purpose, loopKeyword, region, reviewModel)
               if (!section) continue
               loopStartContent = insertSectionBeforeFaqOrSources(loopStartContent, `## ${heading}\n\n${section}`)
               inserted++

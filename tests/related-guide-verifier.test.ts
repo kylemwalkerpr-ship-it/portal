@@ -200,12 +200,18 @@ See the UK guide for details.
 })
 
 describe('resolveVerifiedEstateAnchors — verify-before-relink', () => {
-  it('drops anchors whose URL the live sitemap set does not prove', () => {
+  it('drops anchors whose URL the live sitemap set does not prove — but keeps estate HOST ROOTS', () => {
     const urls = new Set(['https://legal.yousafeconsultancy.com/uk/'])
     const anchors = resolveVerifiedEstateAnchors(urls)
     const urlsPresent = anchors.map((a) => a.url)
     expect(urlsPresent).toContain('https://legal.yousafeconsultancy.com/uk/')
-    expect(urlsPresent).not.toContain('https://yousafeconsultancy.com/')
+    // A deep path on an unproven host/region is still dropped.
+    expect(urlsPresent).not.toContain('https://legal.yousafeconsultancy.com/us/')
+    // The marketing host root is a documented, permanent company homepage.
+    // The legal-site sitemap can never list it, so the old partial filter
+    // amputated it and `YouSafe Consultancy — Immigration Services` could
+    // never be re-linked (unlinked_related_guide held forever).
+    expect(urlsPresent).toContain('https://yousafeconsultancy.com/')
   })
 
   it('falls back to the documented static anchors when the live set is empty', () => {

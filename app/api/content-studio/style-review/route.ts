@@ -95,6 +95,7 @@ Critique the voice and readability. Return ONLY the JSON.`
       prompt,
       maxTokens: 2048,
       aiProvider: body.reviewModel || undefined,
+      exclusive: Boolean(body.reviewModel) && body.reviewModel !== 'auto',
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
       throw new Error(`style review provider failed: ${message}`)
@@ -117,6 +118,7 @@ Critique the voice and readability. Return ONLY the JSON.`
       prompt: `## Document\n\n${doc}\n\n${APPLY_PROMPT(parsed.items)}`,
       maxTokens: 4096,
       aiProvider: body.reviewModel || undefined,
+      exclusive: Boolean(body.reviewModel) && body.reviewModel !== 'auto',
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
       throw new Error(`style apply provider failed: ${message}`)

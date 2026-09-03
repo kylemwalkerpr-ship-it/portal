@@ -1,10 +1,10 @@
 /**
  * Studio catalog — LIVE POLICY (2026-09-02): the pickers offer EXACTLY the
- * two live Entrim families (Qwen3.6 27B lead, DeepSeek V4 Flash complement)
- * plus Auto in the Command lane. Retired families/hosts (Grok, Claude, GLM,
- * MiniMax, Nemotron, GPT-5.6, Run BiOS, Baseten, Parasail, …) are not
- * selectable; a saved legacy pin parses to its label for display but the
- * server gate routes it to the Entrim default.
+ * three live models (Entrim Qwen3.6 27B lead, Entrim DeepSeek V4 Flash, Grok
+ * 4.6). Retired families/hosts (Claude, GLM, MiniMax, Nemotron, GPT-5.6, Run
+ * BiOS, NVIDIA, Baseten, Parasail, OpenAI, …) are not selectable; a saved
+ * legacy pin parses to the Entrim Qwen default and the server gate routes it
+ * there. No `auto` model exists in the catalog.
  */
 import {
   canonicalizePin,
@@ -19,53 +19,54 @@ import {
   pinFor,
 } from '@/lib/contentAiCatalog'
 
-describe('content AI catalog — live Entrim-only model × host', () => {
-  it('lane host allowlists carry only Entrim (+ Auto in command)', () => {
-    expect(LANE_HOSTS.draft).toEqual(['entrim'])
-    expect(LANE_HOSTS.brief).toEqual(['entrim'])
-    expect(LANE_HOSTS.review).toEqual(['entrim'])
-    expect(LANE_HOSTS.command).toEqual(['entrim', 'auto'])
+describe('content AI catalog — live Entrim + Grok model × host', () => {
+  it('lane host allowlists carry Entrim + xAI in every lane', () => {
+    expect(LANE_HOSTS.draft).toEqual(['entrim', 'xai'])
+    expect(LANE_HOSTS.brief).toEqual(['entrim', 'xai'])
+    expect(LANE_HOSTS.review).toEqual(['entrim', 'xai'])
+    expect(LANE_HOSTS.command).toEqual(['entrim', 'xai'])
   })
 
   it('DeepSeek V4 Flash runs on the Entrim host only, labeled with the exact upstream id', () => {
     expect(hostsForModel('deepseek-v4-flash').map((h) => h.id)).toEqual(['entrim'])
-    expect(hostsForModel('deepseek-v4-flash', 'draft').map((h) => h.id)).toEqual(['entrim'])
-    expect(hostsForModel('deepseek-v4-flash', 'brief').map((h) => h.id)).toEqual(['entrim'])
     const model = modelsForLane('brief').find((m) => m.id === 'deepseek-v4-flash')
     expect(model?.label).toBe('deepseek-ai/DeepSeek-V4-Flash')
   })
 
-  it('draft lane offers exactly the two live Entrim families (no Auto, no retired families)', () => {
-    const draft = modelsForLane('draft').map((m) => m.id)
-    expect(draft).toEqual(['deepseek-v4-flash', 'qwen3.6-27b'])
-    for (const retired of ['auto', 'grok-4.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-opus-5', 'claude-sonnet-5', 'cloudflare-llama', 'gemini', 'openrouter', 'glm-5.2-fast', 'minimax-m3', 'nemotron-3-ultra', 'glm-5.2', 'glm-5.3-flash', 'kimi-k2.7-code', 'qwen3.5', 'bios-adaptive'] as const) {
-      expect({ retired, inDraft: draft.includes(retired) }).toEqual({ retired, inDraft: false })
+  it('draft lane offers exactly the three live models (no retired families)', () => {
+    const ids: Set<string> = new Set(modelsForLane('draft').map((m) => m.id))
+    expect(ids).toEqual(new Set(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6']))
+    for (const retired of ['auto', 'gpt-5.6-sol', 'claude-opus-5', 'claude-sonnet-5', 'cloudflare-llama', 'gemini', 'openrouter', 'glm-5.2-fast', 'minimax-m3', 'nemotron-3-ultra', 'glm-5.3-flash', 'kimi-k2.7-code', 'qwen3.5', 'bios-adaptive'] as const) {
+      expect({ retired, inDraft: ids.has(retired) }).toEqual({ retired, inDraft: false })
     }
   })
 
-  it('brief lane offers exactly the two live Entrim families (Qwen lead first)', () => {
-    expect(modelsForLane('brief').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash'])
+  it('brief lane offers exactly the three live models (Qwen lead first)', () => {
+    expect(modelsForLane('brief').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'])
   })
 
-  it('review lane offers exactly the Entrim Qwen lead', () => {
-    expect(modelsForLane('review').map((m) => m.id)).toEqual(['qwen3.6-27b'])
+  it('review lane offers the three live models (Qwen lead first)', () => {
+    expect(modelsForLane('review').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'])
     expect(modelPickerLabel(modelsForLane('review')[0], 'review')).toBe('Qwen/Qwen3.6-27B')
   })
 
-  it('command lane offers Auto plus the two live families (Qwen lead first)', () => {
-    expect(modelsForLane('command').map((m) => m.id)).toEqual(['auto', 'qwen3.6-27b', 'deepseek-v4-flash'])
+  it('command lane offers the same three live models (Qwen lead first)', () => {
+    expect(modelsForLane('command').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'])
   })
 
-  it('Qwen3.6 27B executes in all four lanes through the Entrim host', () => {
+  it('all three models execute in all four lanes through their host', () => {
     for (const lane of ['draft', 'brief', 'review', 'command'] as const) {
       expect(modelsForLane(lane).some((m) => m.id === 'qwen3.6-27b')).toBe(true)
       expect(hostsForModel('qwen3.6-27b', lane).map((h) => h.id)).toEqual(['entrim'])
+      expect(hostsForModel('deepseek-v4-flash', lane).map((h) => h.id)).toEqual(['entrim'])
+      expect(hostsForModel('grok-4.6', lane).map((h) => h.id)).toEqual(['xai'])
     }
   })
 
   it('composes live pins from model + host', () => {
     expect(pinFor('deepseek-v4-flash', 'entrim')).toBe('entrim-deepseek')
     expect(pinFor('qwen3.6-27b', 'entrim')).toBe('entrim-qwen-27b')
+    expect(pinFor('grok-4.6', 'xai')).toBe('grok')
     expect(parseStudioPin('entrim-deepseek')).toMatchObject({
       model: { id: 'deepseek-v4-flash' },
       host: { id: 'entrim' },
@@ -74,38 +75,32 @@ describe('content AI catalog — live Entrim-only model × host', () => {
       model: { id: 'qwen3.6-27b' },
       host: { id: 'entrim' },
     })
+    expect(parseStudioPin('grok')).toMatchObject({
+      model: { id: 'grok-4.6' },
+      host: { id: 'xai' },
+    })
   })
 
-  it('retired pins render as the lane default (Auto fallback) — no selectable host', () => {
-    // A saved legacy pin matches no selectable host any more, so
-    // parseStudioPin falls back to Auto — and the picker resolves that to
-    // the lane's live default while the server gate routes it to Entrim.
+  it('legacy/retired pins render as the Entrim Qwen default — no selectable legacy host', () => {
     expect(parseStudioPin('parasail-deepseek')).toMatchObject({
-      model: { id: 'auto' },
-      host: { id: 'auto' },
+      model: { id: 'qwen3.6-27b' },
+      host: { id: 'entrim' },
     })
     expect(canonicalizePin('GROK-4.6')).toBe('grok')
-    // The retired families expose no hosts in any lane.
-    expect(hostsForModel('grok-4.6' as never)).toEqual([])
-    expect(hostsForModel('claude-opus-5' as never)).toEqual([])
-    expect(hostsForModel('minimax-m3' as never, 'draft')).toEqual([])
+    expect(canonicalizePin('openai')).toBe('entrim-qwen-27b')
+    expect(canonicalizePin('nvidia-minimax')).toBe('entrim-qwen-27b')
+    expect(canonicalizePin('')).toBe('entrim-qwen-27b')
   })
 
   it('defaults: draft = brief = review = Entrim Qwen3.6 27B', () => {
     expect(DEFAULT_DRAFT_PIN).toBe('entrim-qwen-27b')
     expect(DEFAULT_BRIEF_PIN).toBe('entrim-qwen-27b')
     expect(DEFAULT_REVIEW_PIN).toBe('entrim-qwen-27b')
-    expect(parseStudioPin(DEFAULT_DRAFT_PIN)).toMatchObject({
-      model: { id: 'qwen3.6-27b' },
-      host: { id: 'entrim' },
-    })
-    expect(parseStudioPin(DEFAULT_BRIEF_PIN)).toMatchObject({
-      model: { id: 'qwen3.6-27b' },
-      host: { id: 'entrim' },
-    })
-    expect(parseStudioPin(DEFAULT_REVIEW_PIN)).toMatchObject({
-      model: { id: 'qwen3.6-27b' },
-      host: { id: 'entrim' },
-    })
+    for (const pin of [DEFAULT_DRAFT_PIN, DEFAULT_BRIEF_PIN, DEFAULT_REVIEW_PIN]) {
+      expect(parseStudioPin(pin)).toMatchObject({
+        model: { id: 'qwen3.6-27b' },
+        host: { id: 'entrim' },
+      })
+    }
   })
 })

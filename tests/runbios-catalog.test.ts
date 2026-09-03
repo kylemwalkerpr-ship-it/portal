@@ -1,9 +1,9 @@
 import { canonicalizeRunbiosPin, isRunbiosPin, RUNBIOS_SLOTS } from '@/lib/runbiosCatalog'
 import { pinFor, parseStudioPin } from '@/lib/contentAiCatalog'
-import { providerDef, AI_PROVIDERS } from '@/lib/aiKeyVault'
+import { providerDef, AI_PROVIDERS, DEFAULT_PROVIDER_ORDER } from '@/lib/aiKeyVault'
 
-describe('Run BiOS configurator catalog', () => {
-  it('exposes one vault group covering the public Run BiOS library plus GLM 5.3 Flash', () => {
+describe('Run BiOS configurator catalog (retired)', () => {
+  it('RUNBIOS_SLOTS still documents the library, but Run BiOS is absent from the live vault', () => {
     const ids = RUNBIOS_SLOTS.map((s) => s.id)
     expect(ids).toEqual(expect.arrayContaining([
       'runbios-glm-53-flash',
@@ -17,20 +17,20 @@ describe('Run BiOS configurator catalog', () => {
       'runbios-claude-sonnet',
       'runbios-claude-opus',
     ]))
-    const vault = AI_PROVIDERS.filter((p) => p.vaultGroup === 'runbios')
-    expect(vault).toHaveLength(RUNBIOS_SLOTS.length)
-    expect(vault.every((p) => p.keyEnv === 'RUNBIOS_API_KEY')).toBe(true)
-    expect(providerDef('runbios-kimi')?.defaultModel).toBe('kimi-k2.7-code')
+    // Live vault holds only Entrim (x2) + Grok — Run BiOS is fully removed.
+    const idsSet = new Set(AI_PROVIDERS.map((p) => p.id))
+    expect(idsSet).toEqual(new Set(['entrim-deepseek', 'entrim-qwen-27b', 'grok']))
+    expect(AI_PROVIDERS.some((p) => p.vaultGroup === 'runbios')).toBe(false)
+    expect(providerDef('runbios-kimi')).toBeUndefined()
+    expect(DEFAULT_PROVIDER_ORDER).toEqual(['entrim-qwen-27b', 'entrim-deepseek', 'grok'])
   })
 
   it('retired Run BiOS studio hosts expose no selectable pin (live policy)', () => {
-    // Run BiOS slots remain in the vault catalog for credential storage, but
-    // the studio pickers no longer offer Run BiOS model × host mappings.
-    expect(pinFor('glm-5.3-flash', 'runbios')).toBe('auto')
-    expect(pinFor('deepseek-v4-pro', 'runbios')).toBe('auto')
+    // Run BiOS slots are gone from both the vault and the studio pickers.
+    expect(providerDef('runbios-deepseek-pro')).toBeUndefined()
     expect(parseStudioPin('runbios-adaptive')).toMatchObject({
-      model: { id: 'auto' },
-      host: { id: 'auto' },
+      model: { id: 'qwen3.6-27b' },
+      host: { id: 'entrim' },
     })
     expect(canonicalizeRunbiosPin('runbios')).toBe('runbios-glm-53-flash')
     expect(isRunbiosPin('runbios-qwen')).toBe(true)

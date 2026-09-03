@@ -212,6 +212,7 @@ export async function* runSeoFactoryPipelineStream(
           modelVersion: 'seo-intelligence-v1',
           sourceJobId: input.sourceJobId || null,
           regenerationMode: input.regenerationMode || null,
+          ownerProvider: input.aiProvider || null,
         },
         regeneration_reason: input.regenerationReason || null,
         regeneration_mode: input.regenerationMode || null,
@@ -547,6 +548,7 @@ export async function* runSeoFactoryPipelineStream(
               temperature: 0.5,
               aiProvider: input.aiProvider,
               signal: input.signal,
+              exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
             })) {
               if (ev.type === 'provider') {
                 provider = ev.provider
@@ -618,6 +620,7 @@ export async function* runSeoFactoryPipelineStream(
             temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
             aiProvider: input.aiProvider,
             signal: input.signal,
+            exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })) {
             if (ev.type === 'provider') {
               provider = ev.provider
@@ -821,6 +824,7 @@ export async function* runSeoFactoryPipelineStream(
           maxTokens: g.maxTokens,
           temperature: g.temperature,
           aiProvider: g.aiProvider,
+          exclusive: Boolean(g.aiProvider) && g.aiProvider !== 'auto',
         }),
     })) {
       if (ev.type === 'done') {
@@ -915,6 +919,7 @@ export async function* runSeoFactoryPipelineStream(
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
             temperature: 0.35,
             aiProvider: input.aiProvider,
+            exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })
           const aiWords = countBodyWords(ai.text)
           // Accept when the revision clears the floor, OR when it materially
@@ -1011,6 +1016,7 @@ export async function* runSeoFactoryPipelineStream(
           maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
           temperature: 0.4,
           aiProvider: input.aiProvider,
+          exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
         })
         if (countBodyWords(expand.text) > before) {
           content = expand.text
@@ -1114,6 +1120,7 @@ export async function* runSeoFactoryPipelineStream(
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
             temperature: 0.3,
             aiProvider: input.aiProvider,
+            exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })
           const aiWords = countBodyWords(ai.text)
           const fixedBlockers = auditContent({
@@ -1397,6 +1404,7 @@ export async function* runSeoFactoryPipelineStream(
       regenerationReason: input.regenerationReason,
       regenerationMode: input.regenerationMode,
       intelligenceLineage: input.intelligenceLineage,
+      ownerProvider: input.aiProvider || null,
       title,
       topic,
       primaryKeyword,

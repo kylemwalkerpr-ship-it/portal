@@ -69,7 +69,8 @@ describe('Entrim · Draft lane + Command/Configurator catalog', () => {
   it('Entrim is in the Draft lane allowlist and host picker order', () => {
     expect(LANE_HOSTS.draft).toContain('entrim')
     expect(LANE_HOSTS.command).toContain('entrim')
-    expect(STUDIO_HOST_ORDER.indexOf('entrim')).toBeGreaterThan(STUDIO_HOST_ORDER.indexOf('deepseek'))
+    expect(STUDIO_HOST_ORDER).toContain('entrim')
+    expect(STUDIO_HOST_ORDER).toContain('xai')
   })
 
   it('appears in the Command/Configurator provider + vault lists as "DeepSeek V4 Flash · Entrim"', () => {

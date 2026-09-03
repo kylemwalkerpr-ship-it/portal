@@ -454,11 +454,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      // Which model actually produced the brief — 'runbios-claude-opus'
-      // (Claude Opus 5) or 'grok' (SuperGrok fallback) — so the UI can
-      // surface a "primary unavailable — brief generated via Grok" notice.
+      // Which model actually produced the brief — the contract owner pin for
+      // this article. The UI carries it into Draft + Review so re-audits use
+      // the same backend.
       provider: ai.provider,
       model: ai.model,
+      ownerProvider: aiProvider,
       fallbackUsed,
       region,
       regionAutoSelected,

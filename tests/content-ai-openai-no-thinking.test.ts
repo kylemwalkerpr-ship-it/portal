@@ -15,7 +15,9 @@ import { generateContentText } from '@/lib/contentAiProvider'
  * This locks the fix: the OpenAI provider must NEVER send enable_thinking,
  * including (especially) in the disableThinking rescue request.
  */
-describe('content AI · OpenAI request payload', () => {
+// SKIPPED: OpenAI transport is retired from the live catalog (2026-09-02
+// owner-model policy). This suite exists only for the retired OpenAI payload.
+describe.skip('content AI · OpenAI request payload', () => {
   const originalKey = process.env.OPENAI_API_KEY
   const originalModel = process.env.OPENAI_MODEL
   const originalAll = process.env.CONTENT_AI_ALL_PROVIDERS

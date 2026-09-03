@@ -485,6 +485,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
       aiProvider: input.aiProvider,
       signal: input.signal,
+      exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
     })
     // Never accept a shorter body when we were expanding for depth
     if (underDepth && countBodyWords(ai.text) < prevWords) {
@@ -599,6 +600,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'expand'),
           temperature: 0.42,
           aiProvider: input.aiProvider,
+          exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         if (countBodyWords(ai.text) > currentWords) {
@@ -622,6 +624,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'append'),
           temperature: 0.45,
           aiProvider: input.aiProvider,
+          exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         const merged = mergeAppendedSections(content, ai.text)
@@ -704,6 +707,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'draft'),
           temperature: 0.35,
           aiProvider: input.aiProvider,
+          exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
@@ -830,6 +834,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           maxTokens: tokensForType(contentType, 'draft'),
           temperature: 0.3,
           aiProvider: input.aiProvider,
+          exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
@@ -1048,6 +1053,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     regenerationReason: input.regenerationReason,
     regenerationMode: input.regenerationMode,
     intelligenceLineage: input.intelligenceLineage,
+    ownerProvider: input.aiProvider || null,
     title,
     topic,
     primaryKeyword,

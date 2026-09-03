@@ -1739,10 +1739,19 @@ export function applyDeterministicRepairs(opts: {
   // it because the sentences are citation/fragment lines (not prose).
   // Deduplicate: keep the FIRST occurrence of each H2/H3 heading
   // (case-insensitive) and drop later duplicates.
+  //
+  // EXCEPTION — reference sections: a duplicate `## Related guides` /
+  // `## Sources` is NOT always identical. The production draft carried a
+  // delinked artifact copy FIRST (plain-text bullets) and the working copy
+  // SECOND (real hyperlinks). Keep-first threw away the only reachable links,
+  // and unlinked_related_guide then held forever. For reference sections the
+  // occurrence with MORE hyperlinks wins (ties → first).
   {
     const before = b
+    const REF_HEADING_RE = /^##\s+(related guides?|related reading|related resources|further reading|see also|sources|official sources)\s*$/i
+    const countMdLinks = (s: string) => (s.match(/\[[^\]]+\]\([^)]+\)/g) || []).length
     const hSections = b.split(/(?=^## |^### )/gm)
-    const seenH = new Map<string, number>() // key → first index
+    const seenH = new Map<string, number>() // key → index in deduped
     const deduped: string[] = []
     let removed = 0
     for (const section of hSections) {
@@ -1754,7 +1763,10 @@ export function applyDeterministicRepairs(opts: {
       const headingKey = `h${headingMatch[0][2]}:${headingMatch[1].trim().toLowerCase()}`
       const prevIdx = seenH.get(headingKey)
       if (prevIdx != null) {
-        // Duplicate H2 or H3 — skip this section entirely
+        // Duplicate H2 or H3. Reference sections prefer the LINKED copy.
+        if (REF_HEADING_RE.test(headingMatch[0]) && countMdLinks(section) > countMdLinks(deduped[prevIdx])) {
+          deduped[prevIdx] = section
+        }
         removed++
         continue
       }
@@ -2423,35 +2435,80 @@ export function applyDeterministicRepairs(opts: {
   // The duplicate-H2 pass above only removes whole repeated sections. A single
   // `## Related guides` that accumulated the SAME link eight times (the old
   // injector had no label dedupe) still ships a padded, low-quality citation
-  // list. Keep the first occurrence of each identical entry per section.
+  // list.
+  //
+  // A plain-text twin of an ALREADY-LINKED entry is also a duplicate, in EITHER
+  // order: the production row carried BOTH `- YouSafe Consultancy, Immigration
+  // Services` (delinked artifact, listed first) and
+  // `- [YouSafe Consultancy — Immigration Services](…)` (the working link) in
+  // one section. Comma-vs-em-dash normalization makes the keys equal, but the
+  // plain artifact came FIRST, so a naive keep-first dedupe dropped the LINKED
+  // twin and kept the unreachable one — `unlinked_related_guide` then held
+  // forever with no deterministic way out (the AI reviewer can only add, never
+  // safely delete). Resolution: within each reference section, the LINKED
+  // occurrence of a label always wins; plain-text twins and extra duplicates
+  // of the same label are dropped.
   {
     const REF_SECTION_RE =
       /^##\s+(related guides?|related reading|related resources|further reading|see also|sources|official sources)\s*$/i
-    let inRef = false
-    let seenItems = new Set<string>()
+    const normRefLabel = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const lines = b.split('\n')
+    // Pass 1 — locate reference sections and, inside each, every bullet item.
+    type RefItem = { lineIdx: number; text: string; key: string; isLinked: boolean }
+    type RefSection = { start: number; end: number; items: RefItem[]; linkedKeys: Set<string> }
+    const sections: RefSection[] = []
+    for (let i = 0; i < lines.length; i++) {
+      if (!/^##\s+/.test(lines[i]) || !REF_SECTION_RE.test(lines[i].trim())) continue
+      let end = lines.length
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^##\s+/.test(lines[j])) { end = j; break }
+      }
+      const items: RefItem[] = []
+      const linkedKeys = new Set<string>()
+      for (let j = i + 1; j < end; j++) {
+        const item = lines[j].match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)
+        if (!item || !item[1].trim()) continue
+        const md = item[1].match(/\[([^\]]+)\]\([^)]+\)/)
+        const isLinked = Boolean(md)
+        const key = normRefLabel(md ? md[1] : item[1])
+        if (!key) continue
+        if (isLinked) linkedKeys.add(key)
+        items.push({ lineIdx: j, text: item[1], key, isLinked })
+      }
+      sections.push({ start: i, end, items, linkedKeys })
+    }
+    // Pass 2 — per section, decide which item lines to drop:
+    //   (a) a plain-text entry whose label equals (or is a ≥2-word prefix
+    //       subset of) a label that is LINKED in the same section — the
+    //       reachable occurrence already covers it;
+    //   (b) extra occurrences of the same label, always preferring the LINKED
+    //       one when the group has one. Order-independent: a delinked artifact
+    //       listed BEFORE its linked twin is still the copy that must go.
+    const dropLines = new Set<number>()
     let dropped = 0
-    b = b
-      .split('\n')
-      .filter((line) => {
-        if (/^##\s+/.test(line)) {
-          inRef = REF_SECTION_RE.test(line.trim())
-          seenItems = new Set<string>()
-          return true
+    for (const sec of sections) {
+      const byKey = new Map<string, RefItem[]>()
+      for (const item of sec.items) {
+        const twinOfLinked = !item.isLinked &&
+          (sec.linkedKeys.has(item.key) ||
+            Array.from(sec.linkedKeys).some((lk) => lk.startsWith(item.key) && item.text.trim().split(/\s+/).length >= 2))
+        if (twinOfLinked) { dropLines.add(item.lineIdx); dropped++; continue }
+        const group = byKey.get(item.key) || []
+        group.push(item)
+        byKey.set(item.key, group)
+      }
+      for (const group of byKey.values()) {
+        if (group.length <= 1) continue
+        const keeper = group.find((it) => it.isLinked) || group[0]
+        for (const it of group) {
+          if (it !== keeper) { dropLines.add(it.lineIdx); dropped++ }
         }
-        if (!inRef) return true
-        const item = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)
-        if (!item || !item[1].trim()) return true
-        const key = item[1].replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase()
-        if (!key) return true
-        if (seenItems.has(key)) {
-          dropped++
-          return false
-        }
-        seenItems.add(key)
-        return true
-      })
-      .join('\n')
-    if (dropped > 0) applied.push(`duplicate_reference_items_removed (${dropped})`)
+      }
+    }
+    if (dropped > 0) {
+      b = lines.filter((_, i) => !dropLines.has(i)).join('\n')
+      applied.push(`duplicate_reference_items_removed (${dropped})`)
+    }
   }
 
   // ── Internal link injection from verified estate URLs ───────────────

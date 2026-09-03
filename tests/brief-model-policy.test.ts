@@ -1,22 +1,21 @@
 /**
  * Brief-model policy — LIVE POLICY (2026-09-02): the Research/Plan brief
- * offers EXACTLY two model families, both on Entrim (api.entrim.ai/v1, one
- * ENTRIM vault row):
+ * offers EXACTLY three model families:
  *
  *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — the DEFAULT.
  *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — the fallback family.
+ *   3. Grok 4.6 (`grok`) — xAI / SuperGrok, the third live brief family.
  *
  * Regression lock:
  *
- *  1. resolveBriefAiProvider maps the two live pins to their providers and
- *     coerces EVERY other value — 'auto', stale drafting ids, retired pins
- *     (Grok, Claude, Run BiOS/Baseten DeepSeek), removed choices — to the
- *     Entrim Qwen default.
+ *  1. resolveBriefAiProvider keeps the three live pins and coerces EVERY
+ *     other value — 'auto', stale drafting ids, retired pins (Claude, GLM,
+ *     MiniMax, GPT, Run BiOS/Baseten DeepSeek) — to the Entrim Qwen default.
  *  2. exclusive: true means the brief can never cascade to a non-chosen
  *     backend: if the pinned provider fails, the call throws the
  *     explicit-provider error instead of returning prose drafted by another.
- *  3. The ONLY brief fallback leg is the other Entrim family — Grok is out
- *     of commission and is never contacted.
+ *  3. The fallback leg is the Entrim family — a Grok owner falls back to the
+ *     Entrim default, never to a second Grok leg.
  */
 jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
@@ -33,7 +32,7 @@ import {
 } from '@/lib/seoFactory/briefModel'
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('resolveBriefAiProvider — brief model policy (two live Entrim families)', () => {
+describe('resolveBriefAiProvider — brief model policy (three live families)', () => {
   it('empty / auto / default / stale pins coerce to Entrim Qwen3.6 27B', () => {
     expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     for (const raw of ['auto', 'default', 'primary', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6', 'gpt-5.6-luna', 'openai', 'nvidia-minimax', 'minimax', 'nvidia-glm', 'zai-glm', 'baseten-glm-fast', 'glm-5.2-fast', 'aihubmix-glm-fast', 'glm-fast-aihubmix', 'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm', 'nvidia-deepseek', 'deepseek-pro', 'deepseek-flash', 'baseten-deepseek-pro', 'baseten-glm-53-flash', 'runbios-glm-53-flash', 'glm-5.3-flash', 'glm-5.3', 'claude-sonnet-5', 'runbios-claude-sonnet', 'runbios-glm-52', 'nvidia-nemotron', 'cloudflare-ai', 'bios-adaptive', 'runbios-kimi', 'runbios-qwen']) {
@@ -44,19 +43,11 @@ describe('resolveBriefAiProvider — brief model policy (two live Entrim familie
     }
   })
 
-  it('retired premium pins coerce to the Entrim Qwen default (Grok / Claude / Run BiOS / Baseten DeepSeek)', () => {
-    // Grok / xAI / SuperGrok — out of commission (403 credit exhaustion).
-    for (const raw of ['grok', 'xai', 'supergrok', 'grok-4.6', 'grok-4.5']) {
-      expect({ raw, resolved: resolveBriefAiProvider(raw) }).toEqual({
-        raw,
-        resolved: { aiProvider: 'entrim-qwen-27b' },
-      })
-    }
+  it('retired premium pins coerce to the Entrim Qwen default (Claude / Run BiOS / Baseten DeepSeek)', () => {
     // Claude Opus 5 via Run BiOS — out of commission.
     expect(resolveBriefAiProvider('runbios-claude-opus')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('claude-opus-5')).toEqual({ aiProvider: 'entrim-qwen-27b' })
-    // Run BiOS / Baseten DeepSeek hosts — out of commission (the FAMILY is
-    // live only on Entrim).
+    // Run BiOS / Baseten DeepSeek hosts — out of commission.
     expect(resolveBriefAiProvider('runbios-deepseek-flash')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({ aiProvider: 'entrim-qwen-27b' })
@@ -70,18 +61,25 @@ describe('resolveBriefAiProvider — brief model policy (two live Entrim familie
     expect(resolveBriefAiProvider('ENTRIM-QWEN-27B')).toEqual({ aiProvider: 'entrim-qwen-27b' })
   })
 
-  it('Entrim DeepSeek V4 Flash is the second live brief family (never coerced)', () => {
+  it('Entrim DeepSeek V4 Flash is a live brief family (never coerced)', () => {
     expect(resolveBriefAiProvider('entrim-deepseek')).toEqual({ aiProvider: 'entrim-deepseek' })
     expect(resolveBriefAiProvider('ENTRIM-DEEPSEEK')).toEqual({ aiProvider: 'entrim-deepseek' })
   })
 
-  it('the brief fallback is the OTHER Entrim family — never Grok', () => {
+  it('Grok 4.6 is a live brief family (never coerced)', () => {
+    expect(resolveBriefAiProvider('grok')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('grok-4.6')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('xai')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('supergrok')).toEqual({ aiProvider: 'grok' })
+  })
+
+  it('the brief fallback leg is an Entrim family — never Grok', () => {
     expect(resolveBriefFallback()).toEqual({ aiProvider: 'entrim-deepseek' })
     expect(BRIEF_FALLBACK_PROVIDER).toBe('entrim-deepseek')
   })
 })
 
-describe('generateBriefText — Entrim-only resilience (Qwen primary → DeepSeek fallback)', () => {
+describe('generateBriefText — live resilience (Qwen / DeepSeek / Grok owners)', () => {
   const envKeys = ['OPENAI_API_KEY', 'XAI_API_KEY', 'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'ENTRIM_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
@@ -123,11 +121,37 @@ describe('generateBriefText — Entrim-only resilience (Qwen primary → DeepSee
     expect(result.fallbackUsed).toBe(false)
     expect(result.ai.provider).toBe('entrim-qwen-27b')
     expect(result.ai.text).toBe('QWEN-BRIEF')
-    // The exact Entrim Qwen model id was sent — never a leaked model pin.
     expect(bodies.some((b) => b.model === 'Qwen/Qwen3.6-27B')).toBe(true)
   })
 
-  it('retired primary pin (grok) routes to the Entrim Qwen primary', async () => {
+  it('primary path: Grok owner briefs on grok exclusively (never Qwen)', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    const bodies: Array<Record<string, unknown>> = []
+    global.fetch = jest.fn(async (input, init) => {
+      urls.push(String(input))
+      try { bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>) } catch { /* ignore */ }
+      return json({ output_text: 'GROK-BRIEF', status: 'completed' })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'grok',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    expect(result.fallbackUsed).toBe(false)
+    expect(result.ai.provider).toBe('grok')
+    expect(result.ai.text).toBe('GROK-BRIEF')
+    // Only api.x.ai was contacted — the Entrim owner was never invoked.
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(false)
+  })
+
+  it('a retired primary pin (gpt-5.6-terra) routes to the Entrim Qwen primary', async () => {
     process.env.ENTRIM_API_KEY = 'test-entrim-key'
     process.env.CONTENT_AI_RETRY = '1'
 
@@ -138,16 +162,42 @@ describe('generateBriefText — Entrim-only resilience (Qwen primary → DeepSee
     }) as typeof fetch
 
     const result = await generateBriefText({
-      aiProvider: 'grok',
+      aiProvider: 'gpt-5.6-terra',
       system: 'You are the brief architect.',
       prompt: 'TOPIC: dependent visa uk',
     })
 
     expect(result.fallbackUsed).toBe(false)
     expect(result.ai.provider).toBe('entrim-qwen-27b')
-    // Only Entrim was contacted — api.x.ai is out of commission.
     expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
-    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
+    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
+  })
+
+  it('fallback path: Grok failure falls back to Entrim Qwen (same live set)', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.CONTENT_AI_RETRY = '1'
+
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input, init) => {
+      const url = String(input)
+      urls.push(url)
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
+      if (url.includes('api.x.ai')) {
+        throw new Error('grok 429 rate limit')
+      }
+      return json({ choices: [{ message: { content: 'QWEN-ENTRIM-BRIEF' }, finish_reason: 'stop' }] })
+    }) as typeof fetch
+
+    const result = await generateBriefText({
+      aiProvider: 'grok',
+      system: 'You are the brief architect.',
+      prompt: 'TOPIC: dependent visa uk',
+    })
+
+    expect(result.fallbackUsed).toBe(true)
+    expect(result.ai.provider).toBe('entrim-qwen-27b')
+    expect(result.ai.text).toBe('QWEN-ENTRIM-BRIEF')
   })
 
   it('fallback path: Qwen failure falls back to Entrim DeepSeek (same vault key)', async () => {
@@ -175,7 +225,6 @@ describe('generateBriefText — Entrim-only resilience (Qwen primary → DeepSee
     expect(result.fallbackUsed).toBe(true)
     expect(result.ai.provider).toBe('entrim-deepseek')
     expect(result.ai.text).toBe('DEEPSEEK-ENTRIM-BRIEF')
-    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
     expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
   })
 

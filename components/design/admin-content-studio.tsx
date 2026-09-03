@@ -2240,6 +2240,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   region: Region; setRegion: (v: Region) => void
   tone: Tone; setTone: (v: Tone) => void
   aiProvider: string; setAiProvider: (v: string) => void
+  /** Owner-model handoff: after a brief resolves, the SAME pin becomes the
+   *  drafting + review model (the brief choice is the contract owner). */
+  onOwnerModelChange?: (pin: string) => void
   title: string; setTitle: (v: string) => void
   topic: string; setTopic: (v: string) => void
   audience: string; setAudience: (v: string) => void
@@ -2263,6 +2266,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     region, setRegion,
     tone, setTone,
     aiProvider, setAiProvider,
+    onOwnerModelChange,
     title, setTitle,
     topic, setTopic,
     audience, setAudience,
@@ -2379,11 +2383,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
       if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
-      // The model chosen in the Brief stage is the drafting model:
-      // carry it into the Draft stage so the same selected backend writes
-      // the article (previously the brief choice was dropped after the
-      // brief and drafting ran on the separate drafting selector's pin).
+      // The model chosen in the Brief stage is the contract OWNER:
+      // carry it into the Draft AND Review stages so the same selected
+      // backend writes the article and later re-audits/fixes (previously the
+      // brief choice was dropped after the brief and drafting/review ran on
+      // their separate pins).
       setAiProvider(briefModel)
+      onOwnerModelChange?.(briefModel)
       // Region auto-select: when the topic named a different country than the
       // picker (e.g. "Australia student visa fee" while picker said US), the
       // server re-keyed the whole brief to the detected region. Sync the UI
@@ -4061,6 +4067,19 @@ function JobDetail({
     // result can never bleed into another job's banner or buttons.
     setEditorShipGate(null)
     setAudit(null)
+  }, [job.id])
+
+  // Owner contract: the job modal model pickers DEFAULT to the contract
+  // owner pin (persisted on content_jobs.ai_provider). Changing them is
+  // allowed, but they start as the owner — regeneration and re-audits use the
+  // same backend unless the admin overrides.
+  React.useEffect(() => {
+    const owner = (job as { ai_provider?: string | null }).ai_provider || null
+    if (!owner) return
+    if (owner === 'auto') return
+    setAiProvider(owner)
+    setReviewModel(owner)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id])
 
   const loadDetail = React.useCallback(async (opts: { body?: boolean } = {}) => {
@@ -7034,6 +7053,7 @@ const controller = new AbortController()
               region={region} setRegion={setRegion}
               tone={tone} setTone={setTone}
               aiProvider={aiProvider} setAiProvider={setAiProvider}
+              onOwnerModelChange={setReviewModel}
               title={title} setTitle={setTitle}
               topic={topic} setTopic={setTopic}
               audience={audience} setAudience={setAudience}

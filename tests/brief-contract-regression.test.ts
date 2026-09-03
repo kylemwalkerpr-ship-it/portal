@@ -186,18 +186,3 @@ describe('brief contract · depth rescue respects the ceiling', () => {
     expect(prompt).not.toContain('HARD CEILING')
   })
 })
-
-describe('Baseten GLM 5.2 Fast provider', () => {
-  it('is listed as a selectable provider alongside baseten-deepseek', () => {
-    const providers = listConfiguredContentProviders()
-    const ids = providers.map((p) => p.id)
-    expect(ids).toContain('baseten-glm-fast')
-    expect(ids).toContain('baseten-deepseek')
-  })
-
-  it('resolves as an explicit pin without falling to the unknown-provider fallback', () => {
-    const { explicit, prefer } = resolveAiProviderPin('baseten-glm-fast')
-    expect(explicit).toBe('baseten-glm-fast')
-    expect(prefer).toBe('baseten-glm-fast')
-  })
-})

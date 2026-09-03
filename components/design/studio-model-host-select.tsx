@@ -51,7 +51,7 @@ export function StudioModelHostSelect(props: {
           const nextModel = e.target.value as StudioModelId
           const nextHosts = hostsForModel(nextModel, props.lane)
           const keep = nextHosts.some((h) => h.id === hostId) ? hostId : nextHosts[0]?.id
-          props.onPinChange(pinFor(nextModel, keep || 'auto'))
+          props.onPinChange(pinFor(nextModel, keep || nextHosts[0]?.id || 'entrim'))
         }}
         style={props.selectStyle}
       >

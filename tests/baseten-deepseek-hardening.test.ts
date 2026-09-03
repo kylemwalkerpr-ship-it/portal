@@ -21,7 +21,10 @@ jest.mock('@/lib/aiKeyVault', () => ({
 
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('baseten DeepSeek V4 Flash · empty-content hardening', () => {
+// SKIPPED: Baseten/NVIDIA transports are retired from the live catalog
+// (2026-09-02 owner-model policy). This suite exists only for the retired
+// hosts and is disabled until those hosts return.
+describe.skip('baseten DeepSeek V4 Flash · empty-content hardening', () => {
   const envKeys = [
     'BASETEN_API_KEY',
     'BASETEN_MODEL',

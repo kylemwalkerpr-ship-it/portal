@@ -38,6 +38,8 @@ export interface PipelineJobPersistInput {
   regenerationReason?: string | null
   regenerationMode?: string | null
   intelligenceLineage?: Record<string, unknown> | null
+  /** The brief-stage contract owner pin — persisted in lineage.ownerProvider. */
+  ownerProvider?: string | null
   title: string
   topic: string
   primaryKeyword: string
@@ -134,6 +136,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
       modelVersion: 'seo-intelligence-v1',
       sourceJobId: input.sourceJobId || null,
       regenerationMode: input.regenerationMode || null,
+      ownerProvider: input.ownerProvider || null,
       evidence: input.intelligenceLineage || null,
     },
     regeneration_reason: input.regenerationReason || null,
@@ -167,6 +170,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
       attempts: input.attempts,
       model: input.model,
       minAudit: input.minAudit,
+      ownerProvider: input.ownerProvider || null,
       // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
       // reviewer, re-audit, and ship all read this same JSON snapshot.
       ...(input.contentSpec ? { contentSpec: input.contentSpec } : {}),

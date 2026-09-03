@@ -13,7 +13,6 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from './supabaseKey'
-import { RUNBIOS_API_MODELS, RUNBIOS_SLOTS } from './runbiosCatalog'
 
 export interface AiProviderDef {
   id: string
@@ -40,325 +39,18 @@ export interface AiProviderDef {
 
 /** Curated model choices per host for the vault's model dropdowns. */
 const HOST_MODEL_OPTIONS: Record<string, string[]> = {
-  baseten: [
-    'deepseek-ai/DeepSeek-V4-Flash-0731',
-    'deepseek-ai/DeepSeek-V4-Pro-0813',
-    'deepseek-ai/DeepSeek-V4-Pro',
-    'zai-org/GLM-5.2-Fast',
-    'zai-org/GLM-5.3-Flash',
-    'zai-org/GLM-5.2',
-    'zai-org/GLM-4.7',
-    'moonshotai/Kimi-K3',
-    'openai/gpt-oss-120b',
-    'nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B',
-  ],
-  parasail: [
-    'deepseek-ai/DeepSeek-V4-Flash-0731',
-    'deepseek-ai/DeepSeek-V4-Pro-0813',
-    'z-ai/glm-5.2',
-  ],
-  nvidia: [
-    'minimaxai/minimax-m3',
-    'nvidia/nemotron-3-ultra-550b-a55b',
-    'z-ai/glm-5.2',
-    'deepseek-ai/deepseek-v4-flash-0731',
-  ],
-  openai: [
-    'gpt-5.6-terra',
-    'gpt-5.6-sol',
-    'gpt-5.6-luna',
-  ],
-  groq: [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-405b',
-  ],
-  gemini: [
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
-  ],
-  openrouter: [
-    'meta-llama/llama-3.3-70b-instruct:free',
-  ],
-  'cloudflare-ai': [
-    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-    '@cf/meta/m2m100-1.2b',
-  ],
-  custom: [
-    'gpt-5.6-luna',
-    'gpt-5.6-terra',
-    'gpt-5.6-sol',
-  ],
   grok: [
     'grok-4.6',
     'grok-4.5',
     'grok-4',
   ],
-  deepseek: [
-    'deepseek-ai/DeepSeek-V4-Flash-0731',
-    'deepseek-ai/DeepSeek-V4-Pro-0813',
-    'deepseek-ai/DeepSeek-V4-Pro',
-  ],
   entrim: [
     'deepseek-ai/DeepSeek-V4-Flash',
     'Qwen/Qwen3.6-27B',
   ],
-  'zai-glm': [
-    'glm-5.2',
-    'glm-5.2-fast',
-  ],
-  'aihubmix-glm-fast': [
-    'glm-5.2-fast-preview',
-    'glm-5.2-fast',
-    'glm-5.2',
-  ],
-  runbios: RUNBIOS_API_MODELS,
 }
 
 export const AI_PROVIDERS: AiProviderDef[] = [
-  ...RUNBIOS_SLOTS.map((slot) => ({
-    id: slot.id,
-    label: slot.label,
-    keyEnv: 'RUNBIOS_API_KEY',
-    baseUrlEnv: 'RUNBIOS_BASE_URL',
-    modelEnv: slot.id === 'runbios-glm-53-flash' ? 'RUNBIOS_GLM_MODEL' : undefined,
-    fixedBaseUrl: 'https://api.runbios.ai/v1',
-    defaultModel: slot.apiModel,
-    role: slot.role,
-    hint: slot.hint,
-    vaultGroup: 'runbios',
-    vaultGroupLabel: 'Run BiOS · api.runbios.ai',
-    modelOptions: HOST_MODEL_OPTIONS.runbios,
-  })),
-  {
-    id: 'nvidia-minimax',
-    label: 'NVIDIA MiniMax M3 · minimaxai/minimax-m3',
-    keyEnv: 'NVIDIA_API_KEY',
-    baseUrlEnv: 'NVIDIA_BASE_URL',
-    modelEnv: 'NVIDIA_MINIMAX_MODEL',
-    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
-    defaultModel: 'minimaxai/minimax-m3',
-    role: 'primary',
-    hint: 'Drafting lead — validated on long-form SEO briefs via NVIDIA Integrate',
-    vaultGroup: 'nvidia',
-    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
-    modelOptions: HOST_MODEL_OPTIONS.nvidia,
-  },
-  {
-    id: 'nvidia-nemotron',
-    label: 'NVIDIA Nemotron 3 Ultra · nvidia/nemotron-3-ultra-550b-a55b',
-    keyEnv: 'NVIDIA_API_KEY',
-    baseUrlEnv: 'NVIDIA_BASE_URL',
-    modelEnv: 'NVIDIA_NEMOTRON_MODEL',
-    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
-    defaultModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-    role: 'primary',
-    hint: 'Reasoning-enabled NVIDIA Integrate model; uses the shared NVIDIA API key',
-    vaultGroup: 'nvidia',
-    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
-    modelOptions: HOST_MODEL_OPTIONS.nvidia,
-  },
-  {
-    id: 'nvidia-glm',
-    label: 'NVIDIA GLM 5.2 · z-ai/glm-5.2',
-    keyEnv: 'NVIDIA_API_KEY',
-    baseUrlEnv: 'NVIDIA_BASE_URL',
-    modelEnv: 'NVIDIA_GLM_MODEL',
-    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
-    defaultModel: 'z-ai/glm-5.2',
-    role: 'primary',
-    hint: 'Selectable NVIDIA fallback — verified NVIDIA Integrate endpoint',
-    vaultGroup: 'nvidia',
-    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
-    modelOptions: HOST_MODEL_OPTIONS.nvidia,
-  },
-  {
-    id: 'nvidia-deepseek',
-    label: 'DeepSeek V4 Flash · NVIDIA',
-    keyEnv: 'NVIDIA_API_KEY',
-    baseUrlEnv: 'NVIDIA_BASE_URL',
-    modelEnv: 'NVIDIA_DEEPSEEK_MODEL',
-    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
-    defaultModel: 'deepseek-ai/deepseek-v4-flash-0731',
-    role: 'primary',
-    hint: 'NVIDIA fallback — long-form depth',
-    vaultGroup: 'nvidia',
-    vaultGroupLabel: 'NVIDIA · integrate.api.nvidia.com',
-    modelOptions: HOST_MODEL_OPTIONS.nvidia,
-  },
-  {
-    id: 'baseten-deepseek',
-    label: 'DeepSeek V4 Flash · Baseten',
-    keyEnv: 'BASETEN_API_KEY',
-    baseUrlEnv: 'BASETEN_BASE_URL',
-    modelEnv: 'BASETEN_MODEL',
-    fixedBaseUrl: 'https://inference.baseten.co/v1',
-    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
-    role: 'primary',
-    hint: 'Baseten Flash fallback — same model id as the Parasail default.',
-    vaultGroup: 'baseten',
-    vaultGroupLabel: 'Baseten · inference.baseten.co',
-    modelOptions: HOST_MODEL_OPTIONS.baseten,
-  },
-  {
-    id: 'baseten-deepseek-pro',
-    label: 'DeepSeek V4 Pro 0813 · Baseten',
-    keyEnv: 'BASETEN_API_KEY',
-    baseUrlEnv: 'BASETEN_BASE_URL',
-    modelEnv: 'BASETEN_PRO_MODEL',
-    fixedBaseUrl: 'https://inference.baseten.co/v1',
-    defaultModel: 'deepseek-ai/DeepSeek-V4-Pro-0813',
-    role: 'fallback',
-    hint: 'Research + Review — same Baseten key, Pro-0813 model id',
-    vaultGroup: 'baseten',
-    vaultGroupLabel: 'Baseten · inference.baseten.co',
-    modelOptions: HOST_MODEL_OPTIONS.baseten,
-  },
-  {
-    id: 'baseten-glm-53-flash',
-    label: 'GLM 5.3 Flash · Baseten',
-    keyEnv: 'BASETEN_API_KEY',
-    baseUrlEnv: 'BASETEN_BASE_URL',
-    modelEnv: 'BASETEN_GLM_53_MODEL',
-    fixedBaseUrl: 'https://inference.baseten.co/v1',
-    defaultModel: 'zai-org/GLM-5.3-Flash',
-    role: 'fallback',
-    hint: 'Efficient Baseten fallback for brief, writing, audit, and editor stages.',
-    vaultGroup: 'baseten',
-    vaultGroupLabel: 'Baseten · inference.baseten.co',
-    modelOptions: HOST_MODEL_OPTIONS.baseten,
-  },
-  {
-    id: 'baseten-glm-fast',
-    label: 'GLM 5.2 Fast · Baseten',
-    keyEnv: 'BASETEN_API_KEY',
-    baseUrlEnv: 'BASETEN_BASE_URL',
-    modelEnv: 'BASETEN_GLM_MODEL',
-    fixedBaseUrl: 'https://inference.baseten.co/v1',
-    defaultModel: 'zai-org/GLM-5.2-Fast',
-    role: 'fallback',
-    hint: 'Efficient high-volume drafting partner — also the brief fallback when GPT is unconfigured',
-    vaultGroup: 'baseten',
-    vaultGroupLabel: 'Baseten · inference.baseten.co',
-    modelOptions: HOST_MODEL_OPTIONS.baseten,
-  },
-  {
-    id: 'parasail-deepseek',
-    label: 'DeepSeek V4 Flash · Parasail (draft)',
-    keyEnv: 'PARASAIL_API_KEY',
-    baseUrlEnv: 'PARASAIL_BASE_URL',
-    modelEnv: 'PARASAIL_DEEPSEEK_MODEL',
-    fixedBaseUrl: 'https://api.parasail.io/v1',
-    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
-    role: 'primary',
-    hint: 'Default host ($25 credit). Drafting — deepseek-ai/DeepSeek-V4-Flash-0731. Same psk- key as Pro + GLM.',
-    vaultGroup: 'parasail',
-    vaultGroupLabel: 'Parasail · api.parasail.io',
-    modelOptions: HOST_MODEL_OPTIONS.parasail,
-  },
-  {
-    id: 'parasail-deepseek-pro',
-    label: 'DeepSeek V4 Pro 0813 · Parasail (research/review)',
-    keyEnv: 'PARASAIL_API_KEY',
-    baseUrlEnv: 'PARASAIL_BASE_URL',
-    modelEnv: 'PARASAIL_DEEPSEEK_PRO_MODEL',
-    fixedBaseUrl: 'https://api.parasail.io/v1',
-    defaultModel: 'deepseek-ai/DeepSeek-V4-Pro-0813',
-    role: 'fallback',
-    hint: 'Research + Review — Pro-0813 at reasoning_effort low (cap medium). Same psk- key.',
-    vaultGroup: 'parasail',
-    vaultGroupLabel: 'Parasail · api.parasail.io',
-    modelOptions: HOST_MODEL_OPTIONS.parasail,
-  },
-  {
-    id: 'parasail-glm',
-    label: 'GLM 5.2 · Parasail',
-    keyEnv: 'PARASAIL_API_KEY',
-    baseUrlEnv: 'PARASAIL_BASE_URL',
-    modelEnv: 'PARASAIL_GLM_MODEL',
-    fixedBaseUrl: 'https://api.parasail.io/v1',
-    defaultModel: 'z-ai/glm-5.2',
-    role: 'fallback',
-    hint: 'Calls z-ai/glm-5.2 on api.parasail.io (NVFP4 id 404s). Master Engine complement at medium effort. Same psk- key.',
-    vaultGroup: 'parasail',
-    vaultGroupLabel: 'Parasail · api.parasail.io',
-    modelOptions: HOST_MODEL_OPTIONS.parasail,
-  },
-  {
-    id: 'zai-glm',
-    label: 'GLM 5.2 · Zai',
-    keyEnv: 'ZAI_API_KEY',
-    baseUrlEnv: 'ZAI_BASE_URL',
-    modelEnv: 'ZAI_GLM_MODEL',
-    fixedBaseUrl: 'https://api.z.ai/api/paas/v4',
-    defaultModel: 'glm-5.2',
-    role: 'fallback',
-    hint: 'Official Z.ai / Zhipu GLM 5.2 — paste ZAI_API_KEY',
-    modelOptions: HOST_MODEL_OPTIONS['zai-glm'],
-  },
-  {
-    id: 'aihubmix-glm-fast',
-    label: 'GLM 5.2 Fast · AIHubmix (glm-5.2-fast-preview)',
-    keyEnv: 'AIHUBMIX_API_KEY',
-    baseUrlEnv: 'AIHUBMIX_BASE_URL',
-    modelEnv: 'AIHUBMIX_GLM_MODEL',
-    fixedBaseUrl: 'https://aihubmix.com/v1',
-    defaultModel: 'glm-5.2-fast-preview',
-    role: 'fallback',
-    hint: 'GLM 5.2 Fast via the AIHubmix OpenAI-compatible aggregator — selectable in drafting, brief and review',
-    modelOptions: HOST_MODEL_OPTIONS['aihubmix-glm-fast'],
-  },
-  {
-    id: 'cloudflare-ai',
-    label: 'Cloudflare Workers AI',
-    keyEnv: 'CLOUDFLARE_AI_TOKEN',
-    baseUrlEnv: 'CLOUDFLARE_AI_BASE_URL',
-    modelEnv: 'CLOUDFLARE_AI_MODEL',
-    fixedBaseUrl: 'https://api.cloudflare.com/client/v4',
-    defaultModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-    role: 'fallback',
-    hint: 'First fallback — also needs CLOUDFLARE_ACCOUNT_ID',
-    modelOptions: HOST_MODEL_OPTIONS['cloudflare-ai'],
-  },
-  {
-    id: 'groq',
-    label: 'Groq',
-    keyEnv: 'GROQ_API_KEY',
-    modelEnv: 'GROQ_MODEL',
-    fixedBaseUrl: 'https://api.groq.com/openai/v1',
-    defaultModel: 'llama-3.3-70b-versatile',
-    role: 'fallback',
-    modelOptions: HOST_MODEL_OPTIONS.groq,
-  },
-  {
-    id: 'gemini',
-    label: 'Google Gemini',
-    keyEnv: 'GEMINI_API_KEY',
-    modelEnv: 'GEMINI_MODEL',
-    defaultModel: 'gemini-2.5-flash',
-    role: 'fallback',
-    modelOptions: HOST_MODEL_OPTIONS.gemini,
-  },
-  {
-    id: 'openrouter',
-    label: 'OpenRouter',
-    keyEnv: 'OPENROUTER_API_KEY',
-    modelEnv: 'OPENROUTER_MODEL',
-    fixedBaseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
-    role: 'fallback',
-    modelOptions: HOST_MODEL_OPTIONS.openrouter,
-  },
-  {
-    id: 'custom',
-    label: 'Custom OpenAI-compatible',
-    keyEnv: 'CUSTOM_AI_API_KEY',
-    baseUrlEnv: 'CUSTOM_AI_BASE_URL',
-    modelEnv: 'CUSTOM_AI_MODEL',
-    defaultModel: 'gpt-5.6-luna',
-    role: 'fallback',
-    hint: 'Bring your own endpoint — base URL required',
-    modelOptions: HOST_MODEL_OPTIONS.custom,
-  },
   {
     id: 'grok',
     label: 'xAI Grok',
@@ -367,32 +59,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     modelEnv: 'XAI_MODEL',
     fixedBaseUrl: 'https://api.x.ai/v1',
     defaultModel: 'grok-4.6',
-    role: 'fallback',
-    hint: 'Default fallback for Master Engine, Discover, Research, and Draft — connect SuperGrok (no API key) or paste XAI_API_KEY',
+    role: 'primary',
+    hint: 'Grok 4.6 — connect SuperGrok (no API key) or paste XAI_API_KEY',
     modelOptions: HOST_MODEL_OPTIONS.grok,
-  },
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    keyEnv: 'OPENAI_API_KEY',
-    modelEnv: 'OPENAI_MODEL',
-    fixedBaseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5.6-terra',
-    role: 'fallback',
-    hint: 'GPT-5.6 Terra (Research/Plan) · Sol (flagship) · Luna (high-volume)',
-    modelOptions: HOST_MODEL_OPTIONS.openai,
-  },
-  {
-    id: 'deepseek',
-    label: 'DeepSeek.com API',
-    keyEnv: 'DEEPSEEK_API_KEY',
-    baseUrlEnv: 'DEEPSEEK_BASE_URL',
-    modelEnv: 'DEEPSEEK_MODEL',
-    fixedBaseUrl: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
-    role: 'fallback',
-    hint: 'Official DeepSeek.com — Flash-0731 / Pro-0813 via the DeepSeek host on each model',
-    modelOptions: HOST_MODEL_OPTIONS.deepseek,
   },
   {
     id: 'entrim-deepseek',
@@ -402,8 +71,8 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     modelEnv: 'ENTRIM_MODEL',
     fixedBaseUrl: 'https://api.entrim.ai/v1',
     defaultModel: 'deepseek-ai/DeepSeek-V4-Flash',
-    role: 'fallback',
-    hint: 'Entrim-hosted DeepSeek V4 Flash — selectable in Draft and Command Center. Paste ENTRIM_API_KEY; base URL fixed to api.entrim.ai/v1',
+    role: 'primary',
+    hint: 'Entrim-hosted DeepSeek V4 Flash — selectable in every lane. Paste ENTRIM_API_KEY; base URL fixed to api.entrim.ai/v1',
     vaultGroup: 'entrim',
     vaultGroupLabel: 'Entrim · api.entrim.ai',
     modelOptions: HOST_MODEL_OPTIONS.entrim,
@@ -420,8 +89,8 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     modelEnv: 'ENTRIM_QWEN_MODEL',
     fixedBaseUrl: 'https://api.entrim.ai/v1',
     defaultModel: 'Qwen/Qwen3.6-27B',
-    role: 'fallback',
-    hint: 'Entrim-hosted Qwen3.6 27B — selectable in Discover, Brief, and Reviewer lanes (shares the ENTRIM_API_KEY row).',
+    role: 'primary',
+    hint: 'Entrim-hosted Qwen3.6 27B — selectable in every lane (shares the ENTRIM_API_KEY row).',
     vaultGroup: 'entrim',
     vaultGroupLabel: 'Entrim · api.entrim.ai',
     modelOptions: ['Qwen/Qwen3.6-27B'],
@@ -433,12 +102,9 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy.
  *  Entrim (Qwen3.6 27B first, DeepSeek flash second) fronts the auto
- *  cascade — graduated default. */
+ *  cascade, with Grok third — the three live providers. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'entrim-qwen-27b', 'entrim-deepseek', 'nvidia-minimax', 'runbios-glm-53-flash', 'nvidia-nemotron', 'grok', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
-  'parasail-deepseek', 'deepseek-flash', 'parasail-glm', 'baseten-glm-fast', 'openai',
-  'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
-  'aihubmix-glm-fast', 'baseten-glm-53-flash', 'parasail-deepseek-pro', 'baseten-deepseek-pro', 'deepseek-pro', 'zai-glm',
+  'entrim-qwen-27b', 'entrim-deepseek', 'grok',
 ] as const
 
 export interface VaultKeyRow {
@@ -575,7 +241,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   // Default provider / model pins. A provider-specific model wins; otherwise
   // the admin's default model is applied to the selected primary provider.
   const defaultProvider = String(settings.default_provider || '').trim()
-  out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider)
+  out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider) || !isLiveDefaultProvider(defaultProvider)
     ? 'entrim-qwen-27b'
     : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
@@ -656,6 +322,18 @@ export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number
   return (data || []).length
 }
 
+const LIVE_PROVIDERS = new Set(['entrim-qwen-27b', 'entrim-deepseek', 'grok'])
+
+export function isLiveDefaultProvider(value: string): boolean {
+  return LIVE_PROVIDERS.has(String(value || '').trim())
+}
+
+/**
+ * STALE_DEFAULT_PROVIDERS — retired drafting defaults that must resolve to the
+ * Entrim Qwen default. Kept as an explicit set for readability; the stricter
+ * gate in buildVaultEnvOverrides treats EVERY pin not in the three live
+ * providers as stale.
+ */
 const STALE_DEFAULT_PROVIDERS = new Set([
   '',
   'auto',
@@ -666,6 +344,14 @@ const STALE_DEFAULT_PROVIDERS = new Set([
   'baseten-glm-fast',
   'parasail-deepseek',
   'nvidia-deepseek',
+  'openai',
+  'groq',
+  'gemini',
+  'openrouter',
+  'custom',
+  'deepseek',
+  'zai-glm',
+  'aihubmix-glm-fast',
 ])
 
 /** Move Run BiOS GLM 5.3 Flash to the front of a saved provider-order JSON/CSV. */

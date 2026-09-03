@@ -4,7 +4,10 @@ jest.mock('@/lib/aiKeyVault', () => ({
 
 import { generateContentTextStream } from '@/lib/contentAiProvider'
 
-describe('content AI · NVIDIA Nemotron streaming', () => {
+// SKIPPED: NVIDIA (MiniMax/Nemotron) streaming transports are retired from the
+// live catalog (2026-09-02 owner-model policy). This suite validates the
+// retired hosts and is disabled until those transports return.
+describe.skip('content AI · NVIDIA Nemotron streaming', () => {
   const originalKey = process.env.NVIDIA_API_KEY
   const originalModel = process.env.NVIDIA_NEMOTRON_MODEL
   const originalFetch = global.fetch

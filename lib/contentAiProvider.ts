@@ -1,22 +1,22 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * LIVE POLICY (2026-09-02, Entrim-only):
+ * LIVE POLICY (2026-09-02, owner-model): Entrim + Grok.
  *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`, api.entrim.ai/v1) — primary
- *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`, api.entrim.ai/v1) — fallback
+ *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`, api.entrim.ai/v1)
+ *   3. Grok 4.6 (`grok`, api.x.ai/v1 / SuperGrok) — the third live family
  *
- * Both families share one `ENTRIM_API_KEY` and are served by `api.entrim.ai/v1`.
- * Every other host (NVIDIA / Cloudflare / Groq / Gemini / OpenRouter / xAI /
- * OpenAI / DeepSeek.com / Baseten / Parasail / Run BiOS / Zai / AIHubmix /
- * chatProvider bridge) is OUT OF COMMISSION and filtered out of the cascade at
- * runtime even if its key is still configured.
+ * The two Entrim families share one `ENTRIM_API_KEY` and are served by
+ * `api.entrim.ai/v1`; Grok uses XAI_API_KEY or SuperGrok OAuth. Every other
+ * host (NVIDIA / Cloudflare / Groq / Gemini / OpenRouter / OpenAI /
+ * DeepSeek.com / Baseten / Parasail / Run BiOS / Zai / AIHubmix /
+ * chatProvider bridge) is OUT OF COMMISSION and filtered out of the cascade
+ * at runtime even if its key is still configured. Unknown / legacy pins
+ * redirect to the Entrim Qwen default with any model override stripped.
  *
- * Legacy auth notes (kept for fallback providers that must never win):
- * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
- * CF auth: CLOUDFLARE_AI_TOKEN | CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
- *
- * Override only if you must pin a different lead: CONTENT_AI_PROVIDER /
- * AI_PROVIDER. Default / auto / primary → Entrim Qwen3.6 27B.
+ * Owner model: when `aiProvider` names one of the three, the call is
+ * `exclusive` — no capacity cascade to another backend. Capacity cascade only
+ * runs when exclusive is false.
  */
 
 import { qualityPromptBlock } from './seoFactory/contentQualityGate'
@@ -153,7 +153,7 @@ const ENTRIM_MAX_TOKENS = 16384
  *  - CONTENT_AI_ALL_PROVIDERS=1 restores the legacy full cascade (break-glass
  *    for local diagnostics only — never set in production).
  */
-export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL]
+export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL, 'grok']
 export const LIVE_DEFAULT_PROVIDER = ENTRIM_QWEN_LABEL
 
 /** True when the provider label may serve requests under the live policy. */
@@ -184,7 +184,7 @@ function applyLiveProviderPolicy<T extends { model?: string }>(
   const cleaned = { ...opts }
   delete cleaned.model
   console.warn(
-    `[contentAi] provider "${prefer}" is out of commission — routing to ${LIVE_DEFAULT_PROVIDER} (Entrim-only policy)`,
+    `[contentAi] provider "${prefer}" is out of commission — routing to ${LIVE_DEFAULT_PROVIDER} (live Entrim + Grok policy)`,
   )
   return { prefer: LIVE_DEFAULT_PROVIDER, opts: cleaned, redirected: true }
 }
@@ -2645,7 +2645,7 @@ export function isCloudflareAiConfigured(): boolean {
   return resolveCloudflareAiAuth() !== null
 }
 
-/** Operator-facing list of which content AI backends are configured. */
+/** Operator-facing list of which live content AI backends are configured. */
 export function listConfiguredContentProviders(): Array<{
   id: string
   label: string
@@ -2653,121 +2653,24 @@ export function listConfiguredContentProviders(): Array<{
   role: 'primary' | 'fallback'
 }> {
   return [
-    ...RUNBIOS_SLOTS.map((slot) => ({
-      id: slot.id,
-      label: `${slot.label.replace(' · Run BiOS', '')} via Run BiOS`,
-      configured: isRunbiosConfigured(),
-      role: slot.role,
-    })),
     {
-      id: 'nvidia-minimax',
-      label: 'NVIDIA MiniMax M3 · minimaxai/minimax-m3',
-      configured: isNvidiaMinimaxConfigured(),
+      id: ENTRIM_QWEN_LABEL,
+      label: 'Qwen3.6 27B · Entrim (api.entrim.ai/v1)',
+      configured: isEntrimConfigured(),
       role: 'primary',
-    },
-    {
-      id: 'nvidia-nemotron',
-      label: 'NVIDIA Nemotron 3 Ultra · nvidia/nemotron-3-ultra-550b-a55b',
-      configured: isNvidiaNemotronConfigured(),
-      role: 'primary',
-    },
-    {
-      id: 'nvidia-glm',
-      label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 — fallback)',
-      configured: isNvidiaGlmConfigured(),
-      role: 'primary',
-    },
-    {
-      id: 'baseten-deepseek',
-      label: 'DeepSeek V4 Flash via Baseten',
-      configured: isBasetenConfigured(),
-      role: 'primary',
-    },
-    {
-      id: 'baseten-deepseek-pro',
-      label: 'DeepSeek V4 Pro 0813 via Baseten',
-      configured: isBasetenConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'baseten-glm-fast',
-      label: 'GLM 5.2 Fast via Baseten',
-      configured: isBasetenConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'aihubmix-glm-fast',
-      label: 'GLM 5.2 Fast via AIHubmix',
-      configured: isAihubmixGlmFastConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'parasail-deepseek',
-      label: 'DeepSeek V4 Flash via Parasail (draft)',
-      configured: isParasailConfigured(),
-      role: 'primary',
-    },
-    {
-      id: 'parasail-deepseek-pro',
-      label: 'DeepSeek V4 Pro 0813 via Parasail (research/review)',
-      configured: isParasailConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'parasail-glm',
-      label: 'GLM 5.2 via Parasail',
-      configured: isParasailConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'deepseek-flash',
-      label: 'DeepSeek V4 Flash via DeepSeek.com',
-      configured: isDeepseekOfficialConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'deepseek-pro',
-      label: 'DeepSeek V4 Pro 0813 via DeepSeek.com',
-      configured: isDeepseekOfficialConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'zai-glm',
-      label: 'GLM 5.2 via Zai',
-      configured: isZaiConfigured(),
-      role: 'fallback',
     },
     {
       id: ENTRIM_DEEPSEEK_LABEL,
       label: 'DeepSeek V4 Flash · Entrim (api.entrim.ai/v1)',
       configured: isEntrimConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: ENTRIM_QWEN_LABEL,
-      label: 'Qwen3.6 27B · Entrim (api.entrim.ai/v1)',
-      configured: isEntrimConfigured(),
-      role: 'fallback',
-    },
-    {
-      id: 'nvidia-deepseek',
-      label: 'DeepSeek V4 Flash via NVIDIA (fallback)',
-      configured: isNvidiaDeepseekConfigured(),
       role: 'primary',
     },
     {
-      id: 'cloudflare-ai',
-      label: 'Cloudflare Workers AI (default fallback)',
-      configured: isCloudflareAiConfigured(),
-      role: 'fallback',
+      id: 'grok',
+      label: 'xAI Grok (grok-4.6 · api.x.ai/v1)',
+      configured: isGrokConfigured(),
+      role: 'primary',
     },
-    { id: 'groq', label: 'Groq (Llama 3.3 70B)', configured: Boolean(env('GROQ_API_KEY')), role: 'fallback' },
-    { id: 'gemini', label: 'Google Gemini', configured: isGeminiConfigured(), role: 'fallback' },
-    { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
-    { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY') && !looksLikeParasailKey(env('CUSTOM_AI_API_KEY'))), role: 'fallback' },
-    { id: 'grok', label: 'xAI Grok (SuperGrok fallback)', configured: isGrokConfigured(), role: 'fallback' },
-    { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna)', configured: isOpenaiConfigured(), role: 'fallback' },
-    { id: 'deepseek', label: 'DeepSeek.com API', configured: isDeepseekOfficialConfigured(), role: 'fallback' },
   ]
 }
 
@@ -2785,7 +2688,7 @@ export function listConfiguredContentProviders(): Array<{
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
   if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
-    return configuredProviderOrder()[0] || 'xai'
+    return configuredProviderOrder()[0] || ENTRIM_QWEN_LABEL
   }
   // GPT-5.6 model aliases in the env pin → OpenAI provider (mirrors
   // resolveAiProviderPin so both resolution paths agree).
@@ -3015,8 +2918,12 @@ function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
 type CompleteFn = () => Promise<ContentAiResult>
 
 /**
- * Fixed factory order unless CONTENT_AI_PROVIDER pins a different lead:
- * NVIDIA MiniMax → Grok → NVIDIA GLM/DeepSeek → configured fallbacks.
+ * Ordered completers — LIVE POLICY (2026-09-02): ONLY the three live
+ * backends are registered (Entrim Qwen3.6 27B, Entrim DeepSeek V4 Flash,
+ * Grok 4.6). NVIDIA / Run BiOS / OpenAI / Groq / Gemini / Baseten / Parasail
+ * / Cloudflare / OpenRouter / Zai / AIHubmix transports are NOT registered in
+ * the factory cascade under the live policy, so they can never occupy a slot.
+ * The isLiveProviderLabel filter remains as a second safety net.
  */
 function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
   const items: Array<{ label: string; run: CompleteFn }> = []
@@ -3024,280 +2931,16 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushGrok = () => {
     if (isGrokConfigured()) items.push({ label: 'grok', run: () => grokComplete(opts) })
   }
-  const pushOpenAi = () => {
-    const p = listOpenAiFallbackProviders().find((x) => x.label === 'openai')
-    if (p) items.push({ label: 'openai', run: () => openAiCompatibleComplete(p, opts) })
-  }
-  const pushMinimax = () => {
-    if (isNvidiaMinimaxConfigured()) {
-      items.push({ label: 'nvidia-minimax', run: () => nvidiaMinimaxComplete(opts) })
-    }
-  }
-  const pushNemotron = () => {
-    if (isNvidiaNemotronConfigured()) {
-      items.push({ label: 'nvidia-nemotron', run: () => nvidiaNemotronComplete(opts) })
-    }
-  }
-  const pushGlm = () => {
-    if (isNvidiaGlmConfigured()) {
-      items.push({ label: 'nvidia-glm', run: () => nvidiaGlmComplete(opts) })
-    }
-  }
-  const pushBaseten = () => {
-    if (isBasetenConfigured()) {
-      items.push({ label: 'baseten-deepseek', run: () => basetenComplete(opts) })
-    }
-  }
-  const pushRunbiosGlm = () => {
-    const p = getRunbiosProvider(prefer.startsWith('runbios') ? prefer : 'runbios-glm-53-flash')
-    if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
-  }
-  const pushBasetenGlm53Flash = () => {
-    if (isBasetenConfigured()) items.push({ label: 'baseten-glm-53-flash', run: () => openAiCompatibleComplete(getBasetenGlm53FlashProvider()!, opts) })
-  }
-  const pushBasetenGlmFast = () => {
-    if (isBasetenConfigured()) {
-      items.push({ label: 'baseten-glm-fast', run: () => basetenGlmFastComplete(opts) })
-    }
-  }
-  const pushAihubmixGlmFast = () => {
-    if (isAihubmixGlmFastConfigured()) {
-      items.push({ label: 'aihubmix-glm-fast', run: () => aihubmixGlmFastComplete(opts) })
-    }
-  }
-  const pushParasailDeepseek = () => {
-    if (isParasailConfigured()) {
-      items.push({ label: 'parasail-deepseek', run: () => parasailDeepseekComplete(opts) })
-    }
-  }
-  const pushParasailDeepseekPro = () => {
-    if (isParasailConfigured()) {
-      items.push({ label: 'parasail-deepseek-pro', run: () => parasailDeepseekProComplete(opts) })
-    }
-  }
-  const pushParasailGlm = () => {
-    if (isParasailConfigured()) {
-      items.push({ label: 'parasail-glm', run: () => parasailGlmComplete(opts) })
-    }
-  }
-  const pushBasetenPro = () => {
-    if (isBasetenConfigured()) {
-      items.push({ label: 'baseten-deepseek-pro', run: () => basetenDeepseekProComplete(opts) })
-    }
-  }
-  const pushDeepseekFlash = () => {
-    if (isDeepseekOfficialConfigured()) {
-      items.push({ label: 'deepseek-flash', run: () => deepseekOfficialFlashComplete(opts) })
-    }
-  }
-  const pushDeepseekPro = () => {
-    if (isDeepseekOfficialConfigured()) {
-      items.push({ label: 'deepseek-pro', run: () => deepseekOfficialProComplete(opts) })
-    }
-  }
-  const pushZaiGlm = () => {
-    if (isZaiConfigured()) {
-      items.push({ label: 'zai-glm', run: () => zaiGlmComplete(opts) })
-    }
-  }
   const pushEntrim = () => {
     if (isEntrimConfigured()) {
       items.push({ label: ENTRIM_DEEPSEEK_LABEL, run: () => openAiCompatibleComplete(getEntrimProvider()!, opts) })
       items.push({ label: ENTRIM_QWEN_LABEL, run: () => entrimQwenComplete(opts) })
     }
   }
-  const pushNvidia = () => {
-    if (isNvidiaDeepseekConfigured()) {
-      items.push({ label: 'nvidia-deepseek', run: () => nvidiaDeepseekComplete(opts) })
-    }
-  }
-  const pushCf = () => {
-    if (isCloudflareAiConfigured()) {
-      items.push({ label: 'cloudflare-ai', run: () => cloudflareAiComplete(opts) })
-    }
-  }
-  const pushGroq = () => {
-    const p = listOpenAiFallbackProviders().find((x) => x.label === 'groq')
-    if (p) items.push({ label: 'groq', run: () => openAiCompatibleComplete(p, opts) })
-  }
-  const pushGemini = () => {
-    if (isGeminiConfigured()) items.push({ label: 'gemini', run: () => geminiComplete(opts) })
-  }
-  const pushOpenRouter = () => {
-    if (isOpenRouterConfigured()) items.push({ label: 'openrouter', run: () => openRouterComplete(opts) })
-  }
-  const pushRest = () => {
-    for (const p of listOpenAiFallbackProviders()) {
-      if (p.label === 'groq') continue
-      items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
-    }
-  }
-  const pushChatBridge = () => {
-    items.push({ label: 'chatProvider-bridge', run: () => chatProviderBridge(opts) })
-  }
 
-  // Explicit pin: lead with that backend, then always DeepSeek → CF → rest
-  if (isCloudflareExclusive(prefer)) {
-    pushCf()
-    pushNvidia()
-  } else if (prefer === 'groq') {
-    pushGroq()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'gemini') {
-    pushGemini()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'openrouter') {
-    pushOpenRouter()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'xai' || prefer === 'grok') {
-    pushGrok()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'baseten-deepseek') {
-    pushBaseten()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (isRunbiosPin(prefer)) {
-    pushRunbiosGlm()
-    pushBasetenGlm53Flash()
-    pushBasetenGlmFast()
-    pushGlm()
-  } else if (prefer === 'baseten-glm-53-flash') {
-    pushBasetenGlm53Flash()
-    pushBasetenGlmFast()
-    pushBaseten()
-  } else if (prefer === 'baseten-glm-fast') {
-    pushBasetenGlmFast()
-    pushBaseten()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'aihubmix-glm-fast') {
-    pushAihubmixGlmFast()
-    pushBasetenGlmFast()
-    pushBaseten()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'parasail-deepseek') {
-    pushParasailDeepseek()
-    pushBaseten()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'parasail-deepseek-pro') {
-    pushParasailDeepseekPro()
-    pushParasailDeepseek()
-    pushBaseten()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'parasail-glm') {
-    pushParasailGlm()
-    pushBasetenGlmFast()
-    pushGlm()
-    pushZaiGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'baseten-deepseek-pro') {
-    pushBasetenPro()
-    pushParasailDeepseekPro()
-    pushDeepseekPro()
-    pushBaseten()
-    pushCf()
-  } else if (prefer === 'deepseek-pro') {
-    pushDeepseekPro()
-    pushParasailDeepseekPro()
-    pushBasetenPro()
-    pushCf()
-  } else if (prefer === 'deepseek-flash') {
-    pushDeepseekFlash()
-    pushBaseten()
-    pushParasailDeepseek()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'zai-glm') {
-    pushZaiGlm()
-    pushParasailGlm()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === ENTRIM_DEEPSEEK_LABEL) {
-    // Entrim is an explicit pin: lead with it. With no ENTRIM_API_KEY the
-    // early-fail gate throws before this branch is ever reached, so an
-    // explicit Entrim selection never silently executes another host.
-    pushEntrim()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'nvidia-minimax') {
-    pushMinimax()
-    pushNemotron()
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'nvidia-nemotron') {
-    if (isNvidiaNemotronConfigured()) items.push({ label: 'nvidia-nemotron', run: () => nvidiaNemotronComplete(opts) })
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'nvidia-glm') {
-    pushGlm()
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'openai' || prefer === 'custom') {
-    const p = listOpenAiFallbackProviders().find((x) => x.label === prefer)
-    if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
-    pushNvidia()
-    pushCf()
-  } else if (prefer === 'deepseek' && env('DEEPSEEK_API_KEY') && !isNvidiaDeepseekConfigured()) {
-    // DeepSeek.com only if NVIDIA path missing
-    const p = listOpenAiFallbackProviders().find((x) => x.label === 'deepseek')
-    if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
-    pushCf()
-  } else {
-    // DEFAULT: Run BiOS GLM 5.3 Flash lead.
-    pushRunbiosGlm()
-    pushMinimax()
-    pushNemotron()
-    pushGrok()
-    pushGlm()
-    pushNvidia()
-    pushBaseten()
-    pushDeepseekFlash()
-    pushCf()
-  }
-
-  // Fill remaining cascade (deduped below).
-  // MiniMax, Nemotron, GLM, and Baseten are included so an explicit pin still gets the preferred
-  // long-form providers before we drop out to the broader fallback set.
-  pushRunbiosGlm()
-  pushMinimax()
-  pushNemotron()
-  pushBasetenGlm53Flash()
-  pushBasetenGlmFast()
-  pushGlm()
-  pushBaseten()
-  pushParasailDeepseek()
-  pushParasailDeepseekPro()
-  pushParasailGlm()
-  pushBasetenPro()
-  pushDeepseekFlash()
-  pushDeepseekPro()
-  pushZaiGlm()
+  // The three live providers, lead-first.
   pushEntrim()
   pushGrok()
-  pushOpenAi()
-  pushNvidia()
-  pushCf()
-  pushGroq()
-  pushGemini()
-  pushOpenRouter()
-  pushRest()
-  pushChatBridge()
 
   const orderedItems = sortByAdminOrder(items)
   const preferredIndex = orderedItems.findIndex((item) => item.label === prefer)
@@ -3524,7 +3167,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   subrequestBudgetExhausted = false
 
   const { explicit: resolvedExplicit, prefer: resolvedPrefer, model } = resolveAiProviderPin(opts.aiProvider)
-  // Live-provider policy: only the two Entrim backends serve requests. A pin
+  // Live-provider policy: only the three live backends serve requests. A pin
   // naming a decommissioned host is redirected to the Entrim default with any
   // model override stripped (a retired model id must never reach Entrim).
   const { prefer, opts: policyOpts, redirected: pinRedirected } = applyLiveProviderPolicy(resolvedPrefer, opts)
@@ -3539,9 +3182,10 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   const errors: string[] = []
   let candidates = orderedCompleters(opts, prefer)
 
-  // Exclusive pin (e.g. the Research brief): OpenAI ChatGPT alone must draft
-  // it — never silently fall back to the open-source backends. Truncate the
-  // cascade to just the pinned provider so any failure surfaces loudly.
+  // Exclusive pin (owner mode): the chosen model alone must serve this
+  // request — no silent fallback to another backend. Truncate the cascade to
+  // just the pinned provider so any failure surfaces loudly. Capacity cascade
+  // only ever runs when exclusive is false.
   const allCandidates = candidates
   if (opts.exclusive) {
     candidates = candidates.filter((c) => c.label === prefer)
@@ -3564,19 +3208,19 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     const display = model && GPT_ALIAS_RE.test((opts.aiProvider || '').trim().toLowerCase())
       ? `${opts.aiProvider!.trim()} (${prefer})`
       : prefer
-    // Live policy: the Entrim pair is the only commotion-free path, so the
-    // fix is always "set ENTRIM_API_KEY" — recommending a retired provider's
-    // key (OpenAI/SuperGrok) would send the operator in circles.
+    // Live policy: the three live backends are the only path, so the fix is
+    // "set ENTRIM_API_KEY / XAI_API_KEY" — recommending a retired provider's
+    // key (OpenAI/NVIDIA) would send the operator in circles.
     throw new Error(
       `Selected AI provider "${display}" is not configured. ` +
-      `The live policy (Entrim-only) requires ENTRIM_API_KEY — set it in the environment or the AI Key Vault (Command Center → Configure). ` +
+      `The live policy (Entrim + Grok) requires ENTRIM_API_KEY (and XAI_API_KEY / SuperGrok for grok) — set it in the environment or the AI Key Vault (Command Center → Configure). ` +
       `Currently available providers: ${configured}.`,
     )
   }
 
   if (!candidates.length) {
     throw new Error(
-      'No live content AI provider configured. The live policy (Entrim-only) requires ENTRIM_API_KEY — set it in the environment or the AI Key Vault (Command Center → Configure). All other backends are out of commission.',
+      'No live content AI provider configured. The live policy (Entrim + Grok) requires ENTRIM_API_KEY (and XAI_API_KEY / SuperGrok for grok). All other backends are out of commission.',
     )
   }
 
@@ -3591,9 +3235,10 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       errors.push(`${c.label}: ${msg}`)
-      // Grok payment/quota sidecar: break-glass ONLY. Under the live
-      // Entrim-only policy a failed Entrim request must never bounce to
-      // grokComplete — Grok is out of commission.
+      // Grok payment/quota sidecar: break-glass ONLY. An Entrim/other failure
+      // must never silently bounce to grokComplete unless the operator turned
+      // the full cascade back on (CONTENT_AI_ALL_PROVIDERS=1) — owner mode has
+      // its own designated fallback legs.
       const paymentFail =
         allProvidersBreakGlass() && isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
       if (paymentFail) {
@@ -3684,156 +3329,11 @@ export async function* generateContentTextStream(
 
   const candidates: Candidate[] = []
 
-  const runbiosGlm = getRunbiosProvider(isRunbiosPin(prefer) ? prefer : 'runbios-glm-53-flash')
-  if (runbiosGlm) {
-    candidates.push({
-      label: runbiosGlm.label,
-      stream: () => openAiCompatibleStream(runbiosGlm, {
-        ...opts,
-        maxTokens: Math.min(opts.maxTokens ?? RUNBIOS_MAX_TOKENS, RUNBIOS_MAX_TOKENS),
-      }),
-      complete: () => openAiCompatibleComplete(runbiosGlm, opts),
-    })
-  }
-
-  const basetenGlm53Flash = getBasetenGlm53FlashProvider()
-  if (basetenGlm53Flash) {
-    candidates.push({
-      label: 'baseten-glm-53-flash',
-      stream: () => openAiCompatibleStream(basetenGlm53Flash, {
-        ...opts,
-        maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-      }),
-      complete: () => openAiCompatibleComplete(basetenGlm53Flash, opts),
-    })
-  }
-
-  const basetenGlmFast = getBasetenGlmFastProvider()
-  if (basetenGlmFast) {
-    candidates.push({
-      label: 'baseten-glm-fast',
-      stream: () =>
-        openAiCompatibleStream(basetenGlmFast, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-        }),
-      complete: () => basetenGlmFastComplete(opts),
-    })
-  }
-
-  // AIHubmix GLM 5.2 Fast is a first-class streaming provider (OpenAI-compat
-  // SSE) — same role as Baseten GLM Fast in the cascade, alternative route.
-  const aihubmixGlmFast = getAihubmixGlmFastProvider()
-  if (aihubmixGlmFast) {
-    candidates.push({
-      label: 'aihubmix-glm-fast',
-      stream: () =>
-        openAiCompatibleStream(aihubmixGlmFast, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? AIHUBMIX_MAX_TOKENS, AIHUBMIX_MAX_TOKENS),
-        }),
-      complete: () => aihubmixGlmFastComplete(opts),
-    })
-  }
-
-  const parasailDeepseek = getParasailDeepseekProvider()
-  if (parasailDeepseek) {
-    candidates.push({
-      label: 'parasail-deepseek',
-      stream: () =>
-        openAiCompatibleStream(parasailDeepseek, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
-        }),
-      complete: () => parasailDeepseekComplete(opts),
-    })
-  }
-  const parasailDeepseekPro = getParasailDeepseekProProvider()
-  if (parasailDeepseekPro) {
-    candidates.push({
-      label: 'parasail-deepseek-pro',
-      stream: () =>
-        openAiCompatibleStream(parasailDeepseekPro, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
-        }),
-      complete: () => parasailDeepseekProComplete(opts),
-    })
-  }
-  const parasailGlm = getParasailGlmProvider(opts.reasoningEffort)
-  if (parasailGlm) {
-    candidates.push({
-      label: 'parasail-glm',
-      stream: () =>
-        openAiCompatibleStream(parasailGlm, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
-        }),
-      complete: () => parasailGlmComplete(opts),
-    })
-  }
-
-  // NVIDIA GLM 5.2 is a first-class streaming provider. The previous
-  // stream path omitted it entirely, so a selected GLM job visibly started
-  // on DeepSeek/Cloudflare even though the complete path knew about GLM.
-  const glm = getNvidiaGlmProvider()
-  if (glm) {
-    candidates.push({
-      label: 'nvidia-glm',
-      stream: () =>
-        openAiCompatibleStream(glm, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? NVIDIA_GLM_MAX_TOKENS, NVIDIA_GLM_MAX_TOKENS),
-          temperature: opts.temperature ?? 0.7,
-        }),
-      complete: () => nvidiaGlmComplete(opts),
-    })
-  }
-
-  const basetenPro = getBasetenDeepseekProProvider()
-  if (basetenPro) {
-    candidates.push({
-      label: 'baseten-deepseek-pro',
-      stream: () =>
-        openAiCompatibleStream(basetenPro, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-        }),
-      complete: () => basetenDeepseekProComplete(opts),
-    })
-  }
-  const deepseekFlash = getDeepseekOfficialFlashProvider()
-  if (deepseekFlash) {
-    candidates.push({
-      label: 'deepseek-flash',
-      stream: () => openAiCompatibleStream(deepseekFlash, opts),
-      complete: () => deepseekOfficialFlashComplete(opts),
-    })
-  }
-  const deepseekPro = getDeepseekOfficialProProvider()
-  if (deepseekPro) {
-    candidates.push({
-      label: 'deepseek-pro',
-      stream: () => openAiCompatibleStream(deepseekPro, opts),
-      complete: () => deepseekOfficialProComplete(opts),
-    })
-  }
-  const zaiGlm = getZaiGlmProvider()
-  if (zaiGlm) {
-    candidates.push({
-      label: 'zai-glm',
-      stream: () =>
-        openAiCompatibleStream(zaiGlm, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? ZAI_MAX_TOKENS, ZAI_MAX_TOKENS),
-        }),
-      complete: () => zaiGlmComplete(opts),
-    })
-  }
-
-  // Entrim DeepSeek V4 Flash — first-class streaming provider (OpenAI-compat
-  // SSE), same role as the zai-glm lane. Only present when ENTRIM_API_KEY is
-  // configured, so an explicit pin without a key fails closed upstream.
+  // LIVE POLICY (2026-09-02): ONLY the three live backends are registered as
+  // stream candidates — Entrim Qwen3.6 27B, Entrim DeepSeek V4 Flash, Grok.
+  // NVIDIA / Run BiOS / Baseten / Parasail / zai / OpenRouter / Cloudflare /
+  // groq / gemini / aihubmix / chatProvider-bridge are NOT registered here, so
+  // a stale admin order can never push a decommissioned host into the stream.
   const entrim = getEntrimProvider()
   if (entrim) {
     candidates.push({
@@ -3858,122 +3358,13 @@ export async function* generateContentTextStream(
       complete: () => entrimQwenComplete(opts),
     })
   }
-
-  // Baseten DeepSeek V4 Flash is a first-class streaming provider.
-  const baseten = getBasetenProvider()
-  if (baseten) {
-    candidates.push({
-      label: 'baseten-deepseek',
-      stream: () =>
-        openAiCompatibleStream(baseten, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-        }),
-      complete: () => basetenComplete(opts),
-    })
-  }
-
-  // NVIDIA DeepSeek remains available as a separate fallback/explicit pin.
-  const minimax = getNvidiaMinimaxProvider()
-  if (minimax) {
-    candidates.push({
-      label: 'nvidia-minimax',
-      stream: () => openAiCompatibleStream(minimax, {
-        ...opts,
-        maxTokens: Math.min(opts.maxTokens ?? NVIDIA_MINIMAX_MAX_TOKENS, NVIDIA_MINIMAX_MAX_TOKENS),
-        temperature: opts.temperature ?? 1,
-      }),
-      complete: () => nvidiaMinimaxComplete(opts),
-    })
-  }
-
-  const nvidia = getNvidiaDeepseekProvider()
-  if (nvidia) {
-    candidates.push({
-      label: 'nvidia-deepseek',
-      stream: () =>
-        openAiCompatibleStream(nvidia, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? NVIDIA_DEEPSEEK_MAX_TOKENS, NVIDIA_DEEPSEEK_MAX_TOKENS),
-          temperature: opts.temperature ?? 0.7,
-        }),
-      complete: () => nvidiaDeepseekComplete(opts),
-    })
-  }
-
-  // NVIDIA Nemotron remains available as an explicit alternative; the drafting
-  // default is MiniMax and saved admin order promotes it below.
-  const nemotron = getNvidiaNemotronProvider()
-  if (nemotron) {
-    candidates.push({
-      label: 'nvidia-nemotron',
-      stream: () => openAiCompatibleStream(nemotron, {
-        ...opts,
-        maxTokens: Math.min(opts.maxTokens ?? NVIDIA_NEMOTRON_MAX_TOKENS, NVIDIA_NEMOTRON_MAX_TOKENS),
-        temperature: opts.temperature ?? 1,
-      }),
-      complete: () => nvidiaNemotronComplete(opts),
-    })
-  }
-
-  // Streaming-capable OpenAI-compat providers
-  if (isCloudflareAiConfigured()) {
-    candidates.push({
-      label: 'cloudflare-ai',
-      stream: () => cloudflareAiStream(opts),
-      complete: () => cloudflareAiComplete(opts),
-    })
-  }
-  for (const p of listOpenAiFallbackProviders()) {
-    if (p.label === 'grok') {
-      candidates.push({
-        label: 'grok',
-        stream: () => grokResponsesStream(opts),
-        complete: () => grokComplete(opts),
-      })
-      continue
-    }
-    candidates.push({
-      label: p.label,
-      stream: () => openAiCompatibleStream(p, opts),
-      complete: () => openAiCompatibleComplete(p, opts),
-    })
-  }
-  if (isGrokConfigured() && !candidates.some((c) => c.label === 'grok')) {
+  if (isGrokConfigured()) {
     candidates.push({
       label: 'grok',
       stream: () => grokResponsesStream(opts),
       complete: () => grokComplete(opts),
     })
   }
-  if (isOpenRouterConfigured()) {
-    // Multi-model OpenRouter: stream first free model only; complete walks list
-    candidates.push({
-      label: 'openrouter',
-      stream: () =>
-        openAiCompatibleStream(
-          {
-            label: 'openrouter',
-            baseURL: 'https://openrouter.ai/api/v1',
-            apiKey: env('OPENROUTER_API_KEY'),
-            model: OPENROUTER_MODELS[0],
-          },
-          opts,
-        ),
-      complete: () => openRouterComplete(opts),
-    })
-  }
-  // Gemini has no SSE path here — synthetic stream from complete
-  if (isGeminiConfigured()) {
-    candidates.push({
-      label: 'gemini',
-      complete: () => geminiComplete(opts),
-    })
-  }
-  candidates.push({
-    label: 'chatProvider-bridge',
-    complete: () => chatProviderBridge(opts),
-  })
 
   // Admin order controls the default stream cascade; manual pins still win.
   const adminOrder = configuredProviderOrder()
@@ -3981,93 +3372,23 @@ export async function* generateContentTextStream(
     const rank = new Map(adminOrder.map((id, index) => [id, index]))
     candidates.sort((a, b) => (rank.get(a.label) ?? 10000) - (rank.get(b.label) ?? 10000))
   }
-  // A persisted order can be older than the current provider set. In that
-  // case a small max-provider cap may fill with billing-blocked or unrelated
-  // providers before the configured long-form fallback that the operator
-  // selected for this drafting lane. Keep MiniMax first, but reserve the next
-  // slots for the same-model Baseten/Parasail lanes before broad fallbacks.
-  // This is deliberately limited to the MiniMax drafting lane; explicit
-  // reviewer/research pins retain their configured order and semantics.
-  if (prefer === 'nvidia-minimax') {
-    const fallbackRank = new Map([
-      ['nvidia-minimax', 0],
-      ['baseten-deepseek', 1],
-      ['parasail-deepseek', 2],
-      ['baseten-glm-fast', 3],
-      ['aihubmix-glm-fast', 4],
-      ['nvidia-glm', 5],
-      ['nvidia-deepseek', 6],
-      ['nvidia-nemotron', 7],
-      ['grok', 8],
-      ['cloudflare-ai', 9],
-    ])
-    candidates.sort((a, b) => (fallbackRank.get(a.label) ?? 10000) - (fallbackRank.get(b.label) ?? 10000))
-  }
-  if (isCloudflareExclusive(prefer)) {
-    const idx = candidates.findIndex((c) => c.label === 'cloudflare-ai')
-    if (idx > 0) {
-      const [pref] = candidates.splice(idx, 1)
-      candidates.unshift(pref)
-    }
-  } else if (
-    isRunbiosPin(prefer) ||
-    prefer === 'baseten-glm-53-flash' ||
-    prefer === 'baseten-deepseek' ||
-    prefer === 'baseten-deepseek-pro' ||
-    prefer === 'baseten-glm-fast' ||
-    prefer === 'aihubmix-glm-fast' ||
-    prefer === 'parasail-deepseek' ||
-    prefer === 'parasail-deepseek-pro' ||
-    prefer === 'parasail-glm' ||
-    prefer === 'deepseek-flash' ||
-    prefer === 'deepseek-pro' ||
-    prefer === 'zai-glm' ||
-    prefer === ENTRIM_DEEPSEEK_LABEL
+  if (
+    prefer === ENTRIM_DEEPSEEK_LABEL ||
+    prefer === ENTRIM_QWEN_LABEL ||
+    prefer === 'grok' ||
+    prefer === 'xai'
   ) {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  } else if (prefer === 'nvidia-glm' || prefer === 'nvidia-deepseek' || prefer === 'nvidia-nemotron' || prefer === 'nvidia-minimax') {
-    const idx = candidates.findIndex((c) => c.label === prefer)
-    if (idx > 0) {
-      const [pref] = candidates.splice(idx, 1)
-      candidates.unshift(pref)
-    }
-  } else if (prefer === 'groq' || prefer === 'gemini' || prefer === 'openrouter' || prefer === 'openai' || prefer === 'custom') {
-    const want = prefer
-    const idx = candidates.findIndex((c) => c.label === want)
-    if (idx > 0) {
-      const [pref] = candidates.splice(idx, 1)
-      candidates.unshift(pref)
-    }
-  } else if (prefer === 'xai' || prefer === 'grok') {
+  } else if (prefer === 'grok') {
     const idx = candidates.findIndex((c) => c.label === 'grok')
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  }
-
-  // A saved admin order can be stale relative to the current provider set.
-  // Preserve MiniMax as the drafting lead, but keep a configured same-model
-  // fallback inside the provider cap. Otherwise a MiniMax 429 can be followed
-  // by billing-blocked Grok/Nemotron while Baseten Flash is never attempted.
-  if (prefer === 'nvidia-minimax') {
-    const fallbackRank = new Map([
-      ['nvidia-minimax', 0],
-      ['baseten-deepseek', 1],
-      ['parasail-deepseek', 2],
-      ['baseten-glm-fast', 3],
-      ['aihubmix-glm-fast', 4],
-      ['nvidia-glm', 5],
-      ['nvidia-deepseek', 6],
-      ['nvidia-nemotron', 7],
-      ['grok', 8],
-      ['cloudflare-ai', 9],
-    ])
-    candidates.sort((a, b) => (fallbackRank.get(a.label) ?? 10000) - (fallbackRank.get(b.label) ?? 10000))
   }
 
   // Dedupe preserving the MiniMax-first default order.
@@ -4205,6 +3526,6 @@ export async function* generateContentTextStream(
   throw new Error(
     errors.length
       ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${quotaNote} Configure another provider or retry after the affected quota resets.`
-      : 'No live content AI provider configured for streaming — the Entrim-only policy requires ENTRIM_API_KEY.',
+      : 'No live content AI provider configured for streaming — the live policy (Entrim + Grok) requires ENTRIM_API_KEY / XAI_API_KEY.',
   )
 }

@@ -45,49 +45,6 @@ describe('content AI · NVIDIA MiniMax drafting', () => {
       maxTokensCap: 16384,
     })
   })
-
-  it('routes the selected drafting pin through NVIDIA with the documented payload', async () => {
-    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
-    // Break-glass: this test validates the RETIRED NVIDIA transport payload.
-    // The live Entrim-only policy would redirect the pin, so restore the
-    // legacy full cascade for the duration of the test.
-    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
-    const originalFetch = global.fetch
-    let requestBody: Record<string, unknown> | null = null
-    global.fetch = jest.fn(async (_input, init) => {
-      requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'A completed MiniMax draft.', finish_reason: 'stop' } }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-    try {
-      const result = await generateContentText({
-        aiProvider: 'nvidia-minimax',
-        system: 'Write a concise article.',
-        prompt: 'Draft the article.',
-        maxTokens: 2048,
-        skipQualityContract: true,
-      })
-      expect(result).toMatchObject({
-        provider: 'nvidia-minimax',
-        model: 'minimaxai/minimax-m3',
-        text: 'A completed MiniMax draft.',
-      })
-      expect(requestBody).toMatchObject({
-        model: 'minimaxai/minimax-m3',
-        stream: false,
-        max_tokens: 2048,
-        temperature: 1,
-        top_p: 0.95,
-      })
-      expect(requestBody).not.toHaveProperty('max_completion_tokens')
-      expect(requestBody).not.toHaveProperty('reasoning_budget')
-    } finally {
-      global.fetch = originalFetch
-      delete process.env.CONTENT_AI_ALL_PROVIDERS
-    }
-  })
 })
 
 describe('content AI · NVIDIA Nemotron', () => {
@@ -119,9 +76,11 @@ describe('content AI · NVIDIA Nemotron', () => {
     expect(provider.extraBody).toEqual({
       chat_template_kwargs: { enable_thinking: true },
     })
-    expect(listConfiguredContentProviders()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'nvidia-nemotron', configured: true }),
-    ]))
+    // Retired hosts are absent from the live provider report — only the three
+    // live backends are listed.
+    const configuredIds = listConfiguredContentProviders().map((p) => p.id)
+    expect(configuredIds).not.toContain('nvidia-nemotron')
+    expect(configuredIds).not.toContain('nvidia-minimax')
   })
 
   it('normalizes any Nemotron model override to NVIDIA exact lowercase catalog casing', () => {
@@ -217,64 +176,8 @@ describe('content AI · request-level model override (reviewer path)', () => {
   })
 })
 
-describe('content AI · reviewer regression — EOL Pro secret must not reach NVIDIA', () => {
-  const envKeys = ['NVIDIA_API_KEY', 'NVIDIA_DEEPSEEK_MODEL', 'NVIDIA_MODEL'] as const
-  const original: Record<string, string | undefined> = {}
-
-  beforeEach(() => {
-    for (const k of envKeys) {
-      original[k] = process.env[k]
-      delete process.env[k]
-    }
-    // Break-glass: validates the RETIRED NVIDIA reviewer transport. The live
-    // Entrim-only policy would redirect this pin before it reached NVIDIA.
-    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
-  })
-
-  afterEach(() => {
-    for (const k of envKeys) {
-      if (original[k] == null) delete process.env[k]
-      else process.env[k] = original[k]
-    }
-    delete process.env.CONTENT_AI_ALL_PROVIDERS
-  })
-
-  it('reviewer pinned to nvidia-deepseek sends the Flash id even when the env secret is EOL Pro (410 regression)', async () => {
-    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
-    // Simulate the stale deployed secret that caused the 410 Gone.
-    process.env.NVIDIA_DEEPSEEK_MODEL = 'deepseek-ai/deepseek-v4-pro'
-    const originalFetch = global.fetch
-    const bodies: Array<{ model?: string; stream?: boolean }> = []
-    global.fetch = jest.fn(async (_input, init) => {
-      bodies.push(JSON.parse(String(init?.body || '{}')) as { model?: string })
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed.', finish_reason: 'stop' } }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-    try {
-      await generateContentText({
-        aiProvider: 'nvidia-deepseek',
-        // What callAiFix now sends: the Flash API id from the catalog pin.
-        model: 'deepseek-ai/DeepSeek-V4-Flash-0731',
-        exclusive: true,
-        skipQualityContract: true,
-        system: 'Review.',
-        prompt: 'Fix it',
-        maxTokens: 2048,
-      })
-      expect(bodies.length).toBeGreaterThan(0)
-      expect(bodies[0].model).toBe('deepseek-ai/deepseek-v4-flash-0731')
-      expect(bodies[0].stream).toBe(false)
-      expect(bodies[0].model).not.toContain('v4-pro')
-    } finally {
-      global.fetch = originalFetch
-    }
-  })
-})
-
 describe('content AI · reviewer cascade on transient infra errors (cascadeOnCapacity)', () => {
-  const envKeys = ['BASETEN_API_KEY', 'PARASAIL_API_KEY', 'NVIDIA_API_KEY', 'NVIDIA_BASE_URL', 'NVIDIA_DEEPSEEK_MODEL', 'CONTENT_AI_RETRY', 'CONTENT_AI_PROVIDER_ORDER', 'XAI_API_KEY'] as const
+  const envKeys = ['ENTRIM_API_KEY', 'XAI_API_KEY', 'CONTENT_AI_RETRY', 'CONTENT_AI_PROVIDER_ORDER'] as const
   const original: Record<string, string | undefined> = {}
 
   beforeEach(() => {
@@ -283,13 +186,7 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
       delete process.env[k]
     }
     process.env.CONTENT_AI_RETRY = '1' // one attempt per provider — keep the test fast
-    // Break-glass: these tests validate the RETIRED multi-host cascade
-    // (Baseten → Parasail → NVIDIA). Under the live Entrim-only policy every
-    // one of those hosts is filtered out, so restore the legacy cascade.
-    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
-    // Hermetic order: a developer's .env.local CONTENT_AI_PROVIDER_ORDER
-    // (e.g. groq first) must not change which fallback the cascade reaches.
-    process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify(['baseten-deepseek', 'parasail-deepseek', 'nvidia-deepseek', 'nvidia-nemotron'])
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
   })
 
   afterEach(() => {
@@ -297,7 +194,6 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
       if (original[k] == null) delete process.env[k]
       else process.env[k] = original[k]
     }
-    delete process.env.CONTENT_AI_ALL_PROVIDERS
   })
 
   const REVIEW_OPTS = {
@@ -305,146 +201,104 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
     prompt: 'Fix it',
     maxTokens: 2048,
     skipQualityContract: true,
-    aiProvider: 'baseten-deepseek',
+    aiProvider: 'entrim-qwen-27b',
     exclusive: true,
   } as const
 
-  it('an NVIDIA chat deployment 404 cascades to the next provider instead of hard-failing Fix All', async () => {
-    process.env.NVIDIA_API_KEY = 'test-nvidia-key'
-    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
-    // NVIDIA lanes must precede Parasail so the cascade proves the NVIDIA
-    // fallback (nemotron SSE) rather than a generic JSON fallback host.
-    process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify(['nvidia-deepseek', 'nvidia-nemotron', 'parasail-deepseek'])
+  it('a transient overload (524) on the pinned Entrim owner cascades to the next live provider instead of hard-failing Fix All', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
     const originalFetch = global.fetch
-    global.fetch = jest.fn(async (input, init) => {
+    global.fetch = jest.fn(async (input) => {
       const url = String(input)
-      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
-      // Every NVIDIA lane shares the host credential. Fail only the pinned
-      // DeepSeek lane, then let the next NVIDIA lane prove the cascade.
-      if (url.includes('integrate.api.nvidia.com') && body.model !== 'nvidia/nemotron-3-ultra-550b-a55b') {
-        return new Response(
-          JSON.stringify({ detail: "Function id 'test' version 'null': Specified function in account 'test' is not found" }),
-          { status: 404, headers: { 'content-type': 'application/json' } },
-        )
-      }
-      if (url.includes('integrate.api.nvidia.com')) {
-        const sse = [
-          `data: ${JSON.stringify({ choices: [{ delta: { content: 'Fixed via NVIDIA fallback.' } }] })}`,
-          'data: [DONE]',
-          '',
-        ].join('\n\n') + '\n'
-        return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      if (url.includes('api.entrim.ai')) {
+        return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
+          status: 524, headers: { 'content-type': 'application/json' },
+        })
       }
       return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
+        JSON.stringify({ output_text: 'Fixed via Grok.', status: 'completed' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
+      expect(res.provider).toBe('grok')
+      expect(res.text).toContain('Fixed via Grok')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('an AbortError on the pinned Entrim owner cascades to the next live provider (never "The operation was aborted")', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (input) => {
+      if (String(input).includes('api.entrim.ai')) {
+        const err = new Error('The operation was aborted')
+        err.name = 'AbortError'
+        throw err
+      }
+      return new Response(
+        JSON.stringify({ output_text: 'Fixed via Grok.', status: 'completed' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
+      expect(res.provider).toBe('grok')
+      expect(res.text).toContain('Fixed via Grok')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
+  it('a 524 on the pinned DeepSeek owner cascades to the next live provider (Grok)', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    const originalFetch = global.fetch
+    global.fetch = jest.fn(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
+      // DeepSeek owner fails transiently; Grok answers.
+      if (body.model === 'deepseek-ai/DeepSeek-V4-Flash') {
+        return new Response(JSON.stringify({ error: 'service overloaded' }), {
+          status: 529, headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response(
+        JSON.stringify({ output_text: 'Fixed via Grok.', status: 'completed' }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }) as typeof fetch
     try {
       const res = await generateContentText({
-        system: 'Review.', prompt: 'Fix it', maxTokens: 2048,
-        skipQualityContract: true, aiProvider: 'nvidia-deepseek',
-        exclusive: true, cascadeOnCapacity: true,
+        ...REVIEW_OPTS,
+        aiProvider: 'entrim-deepseek',
+        cascadeOnCapacity: true,
       })
-      expect(res.provider).toBe('nvidia-nemotron')
-      expect(res.text).toContain('Fixed via NVIDIA fallback')
+      expect(res.provider).toBe('grok')
+      expect(res.text).toContain('Fixed via Grok')
     } finally {
       global.fetch = originalFetch
     }
   })
 
-  it('an AbortError on the pinned Baseten host cascades to the next provider (never "The operation was aborted")', async () => {
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
-    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
+  it('without cascadeOnCapacity an exclusive reviewer still hard-fails (owner stays owner)', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
     const originalFetch = global.fetch
     global.fetch = jest.fn(async (input) => {
-      if (String(input).includes('inference.baseten.co')) {
+      if (String(input).includes('api.entrim.ai')) {
         const err = new Error('The operation was aborted')
         err.name = 'AbortError'
         throw err
       }
       return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-    try {
-      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
-      expect(res.provider).toBe('parasail-deepseek')
-      expect(res.text).toContain('Fixed via fallback')
-    } finally {
-      global.fetch = originalFetch
-    }
-  })
-
-  it('a 529 overload on the pinned Baseten host cascades to the next provider', async () => {
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
-    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
-    const originalFetch = global.fetch
-    global.fetch = jest.fn(async (input) => {
-      if (String(input).includes('inference.baseten.co')) {
-        return new Response(
-          JSON.stringify({ message: 'Service temporarily overloaded', type: 'Overloaded', code: 529 }),
-          { status: 529, headers: { 'content-type': 'application/json' } },
-        )
-      }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-    try {
-      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
-      expect(res.provider).toBe('parasail-deepseek')
-    } finally {
-      global.fetch = originalFetch
-    }
-  })
-
-  it('a 402 billing failure on the pinned Baseten host cascades to the next provider (Baseten out-of-credits)', async () => {
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
-    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
-    const originalFetch = global.fetch
-    global.fetch = jest.fn(async (input) => {
-      if (String(input).includes('inference.baseten.co')) {
-        return new Response(
-          JSON.stringify({ error: 'please check your current payment status.' }),
-          { status: 402, headers: { 'content-type': 'application/json' } },
-        )
-      }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-    try {
-      const res = await generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: true })
-      expect(res.provider).toBe('parasail-deepseek')
-      expect(res.text).toContain('Fixed via fallback')
-    } finally {
-      global.fetch = originalFetch
-    }
-  })
-
-  it('without cascadeOnCapacity an exclusive reviewer still hard-fails (existing behavior) and the abort is a readable timeout', async () => {
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
-    process.env.PARASAIL_API_KEY = 'psk-test-fallback'
-    const originalFetch = global.fetch
-    global.fetch = jest.fn(async (input) => {
-      if (String(input).includes('inference.baseten.co')) {
-        const err = new Error('The operation was aborted')
-        err.name = 'AbortError'
-        throw err
-      }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Fixed via fallback.', finish_reason: 'stop' } }] }),
+        JSON.stringify({ output_text: 'SHOULD-NOT-BE-USED', status: 'completed' }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }) as typeof fetch
     try {
       await expect(
         generateContentText({ ...REVIEW_OPTS, cascadeOnCapacity: false }),
-      ).rejects.toThrow(/Explicit AI provider "baseten-deepseek" failed.*timed out after/)
+      ).rejects.toThrow(/Explicit AI provider "entrim-qwen-27b" failed.*timed out after/)
     } finally {
       global.fetch = originalFetch
     }

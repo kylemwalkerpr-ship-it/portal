@@ -23,7 +23,7 @@
  * set it already fetched). When no verified set is available the documented
  * static anchors (ESTATE_ANCHOR_LINKS, every entry confirmed live) are used.
  */
-import { ESTATE_ANCHOR_LINKS } from './linkAudit'
+import { ESTATE_ANCHOR_LINKS, ESTATE_HOSTS } from './linkAudit'
 
 export interface VerifiedRelatedGuideAnchor {
   label: string
@@ -178,6 +178,22 @@ export function resolveVerifiedEstateAnchors(
   const urls = Array.isArray(verifiedUrls) ? verifiedUrls : Array.from(verifiedUrls)
   if (urls.length === 0) return all
   const set = new Set<string>(urls.map(normalizeUrl))
-  const filtered = all.filter((anchor) => set.has(normalizeUrl(anchor.url)))
+  // The live sitemap proves DEEP pages, but it is the legal estate's sitemap —
+  // it will never list the marketing host root (https://yousafeconsultancy.com/).
+  // The old partial filter silently amputated that anchor, so
+  // `YouSafe Consultancy — Immigration Services` could never be re-linked and
+  // unlinked_related_guide held forever even though the destination is a
+  // documented, permanent company homepage on a known estate host. A HOST ROOT
+  // of a known estate host is not a 404 risk the way a deep guide page is —
+  // keep it; deep paths still require sitemap proof.
+  const isEstateHostRoot = (url: string): boolean => {
+    try {
+      const u = new URL(url)
+      return ESTATE_HOSTS.has(u.host.toLowerCase()) && (u.pathname === '/' || u.pathname === '')
+    } catch {
+      return false
+    }
+  }
+  const filtered = all.filter((anchor) => set.has(normalizeUrl(anchor.url)) || isEstateHostRoot(anchor.url))
   return filtered.length > 0 ? filtered : all
 }
