@@ -199,18 +199,21 @@ const APPEND_STYLE = `[data-keep]{display:none}
 .gd-editor table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
 .gd-editor th{border-bottom:2px solid rgba(0,0,0,0.08);padding:8px 10px;text-align:left;background:#F8FAFC;font-weight:700;color:#17365D}
 .gd-editor td{border-bottom:1px solid rgba(0,0,0,0.08);padding:8px 10px;vertical-align:top}
-.gd-editor .gd-caret-guard{display:inline-block;width:1px;height:15px}`
+.gd-editor .gd-caret-guard{display:inline-block;width:1px;height:15px}
+.gd-editor mark.gd-jump{background:#FDE68A;color:inherit;padding:0 2px;border-radius:2px}`
 
 export default function StudioDocEditor({
   content,
   onChange,
   disabled,
   minHeight = 640,
+  highlightPhrase,
 }: {
   content: string
   onChange: (md: string) => void
   disabled?: boolean
   minHeight?: number
+  highlightPhrase?: string | null
 }) {
   const editorRef = React.useRef<HTMLDivElement | null>(null)
   const contentRef = React.useRef(content)
@@ -258,14 +261,73 @@ export default function StudioDocEditor({
     onChange(md)
   }, [onChange])
 
-  const cmd = (kind: 'bold' | 'italic' | 'h2' | 'h3' | 'p' | 'ul' | 'ol' | 'quote' | 'hr' | 'link' | 'table') => {
+  const [findOpen, setFindOpen] = React.useState(false)
+  const [findQ, setFindQ] = React.useState('')
+  const findInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  React.useEffect(() => {
+    const phrase = String(highlightPhrase || '').trim()
+    if (!phrase || !editorRef.current) return
+    const root = editorRef.current
+    root.querySelectorAll('mark.gd-jump').forEach((el) => {
+      const parent = el.parentNode
+      if (!parent) return
+      parent.replaceChild(document.createTextNode(el.textContent || ''), el)
+      parent.normalize()
+    })
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let node: Node | null
+    const needle = phrase.slice(0, 80)
+    while ((node = walker.nextNode())) {
+      const text = node.textContent || ''
+      const idx = text.toLowerCase().indexOf(needle.toLowerCase())
+      if (idx < 0) continue
+      const range = document.createRange()
+      range.setStart(node, idx)
+      range.setEnd(node, Math.min(text.length, idx + needle.length))
+      const mark = document.createElement('mark')
+      mark.className = 'gd-jump'
+      mark.dataset.testid = 'studio-jump-mark'
+      try {
+        range.surroundContents(mark)
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      } catch { /* split nodes — skip */ }
+      break
+    }
+  }, [highlightPhrase, content])
+
+  const runFind = (q: string) => {
+    if (!q || !editorRef.current) return
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT)
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      const text = node.textContent || ''
+      const idx = text.toLowerCase().indexOf(q.toLowerCase())
+      if (idx < 0) continue
+      const range = document.createRange()
+      range.setStart(node, idx)
+      range.setEnd(node, Math.min(text.length, idx + q.length))
+      sel?.addRange(range)
+      ;(node.parentElement as HTMLElement | null)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      break
+    }
+  }
+
+  const cmd = (kind: 'bold' | 'italic' | 'underline' | 'strike' | 'h1' | 'h2' | 'h3' | 'p' | 'ul' | 'ol' | 'quote' | 'hr' | 'link' | 'table' | 'undo' | 'redo' | 'clear') => {
     if (disabled) return
     applyCommand(() => {
       const ed = editorRef.current
       if (!ed) return
       switch (kind) {
+        case 'undo': document.execCommand('undo'); break
+        case 'redo': document.execCommand('redo'); break
         case 'bold': document.execCommand('bold'); break
         case 'italic': document.execCommand('italic'); break
+        case 'underline': document.execCommand('underline'); break
+        case 'strike': document.execCommand('strikeThrough'); break
+        case 'h1': document.execCommand('formatBlock', false, 'h1'); break
         case 'h2': document.execCommand('formatBlock', false, 'h2'); break
         case 'h3': document.execCommand('formatBlock', false, 'h3'); break
         case 'p': document.execCommand('formatBlock', false, 'p'); break
@@ -273,6 +335,7 @@ export default function StudioDocEditor({
         case 'ol': document.execCommand('insertOrderedList'); break
         case 'quote': document.execCommand('formatBlock', false, 'blockquote'); break
         case 'hr': document.execCommand('insertHorizontalRule'); break
+        case 'clear': document.execCommand('removeFormat'); break
         case 'link': {
           const url = window.prompt('Link URL', 'https://')
           if (url) document.execCommand('createLink', false, url.trim())
@@ -292,17 +355,24 @@ export default function StudioDocEditor({
   }
 
   const toolbar: Array<{ label: React.ReactNode; title: string; run: () => void; wide?: boolean }> = [
+    { label: 'Undo', title: 'Undo (Ctrl/Cmd+Z)', run: () => cmd('undo') },
+    { label: 'Redo', title: 'Redo (Ctrl/Cmd+Shift+Z)', run: () => cmd('redo') },
     { label: <strong>B</strong>, title: 'Bold (Ctrl/Cmd+B)', run: () => cmd('bold') },
     { label: <em>I</em>, title: 'Italic (Ctrl/Cmd+I)', run: () => cmd('italic') },
+    { label: <u>U</u>, title: 'Underline (Ctrl/Cmd+U)', run: () => cmd('underline') },
+    { label: <s>S</s>, title: 'Strikethrough', run: () => cmd('strike') },
+    { label: 'H1', title: 'Heading 1', run: () => cmd('h1') },
     { label: 'H2', title: 'Heading 2', run: () => cmd('h2') },
     { label: 'H3', title: 'Heading 3', run: () => cmd('h3') },
-    { label: '¶', title: 'Paragraph (Ctrl/Cmd+0)', run: () => cmd('p') },
+    { label: '¶', title: 'Paragraph', run: () => cmd('p') },
     { label: '• List', title: 'Bullet list', run: () => cmd('ul') },
     { label: '1. List', title: 'Numbered list', run: () => cmd('ol') },
     { label: '🔗', title: 'Insert link', run: () => cmd('link') },
     { label: '❝', title: 'Blockquote', run: () => cmd('quote') },
     { label: '—', title: 'Horizontal rule', run: () => cmd('hr') },
     { label: '⊞ Table', title: 'Insert 3-column table', run: () => cmd('table') },
+    { label: 'Clear', title: 'Clear formatting', run: () => cmd('clear') },
+    { label: 'Find', title: 'Find in document (Ctrl/Cmd+F)', run: () => { setFindOpen(true); window.setTimeout(() => findInputRef.current?.focus(), 0) } },
   ]
 
   return (
@@ -311,15 +381,27 @@ export default function StudioDocEditor({
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', padding: '6px 8px', border: `1px solid ${TOKENS.border}`, borderRadius: 8, background: '#FAFAFB' }}>
           {toolbar.map((t, i) => (
             <React.Fragment key={i}>
-              {i === 2 && <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />}
-              {i === 7 && <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />}
+              {(i === 2 || i === 6 || i === 10 || i === 16) && <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />}
               <button type="button" title={t.title} onClick={t.run} style={t.wide ? { ...TOOLBAR_BTN, minWidth: 56 } : TOOLBAR_BTN}>
                 {t.label}
               </button>
             </React.Fragment>
           ))}
+          {findOpen && (
+            <input
+              ref={findInputRef}
+              value={findQ}
+              placeholder="Find in document…"
+              onChange={(e) => { setFindQ(e.target.value); runFind(e.target.value) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); runFind(findQ) }
+                if (e.key === 'Escape') setFindOpen(false)
+              }}
+              style={{ padding: '4px 8px', fontSize: 12, border: `1px solid ${TOKENS.border}`, borderRadius: 6, minWidth: 160 }}
+            />
+          )}
           <span style={{ marginLeft: 'auto', fontSize: 10, color: TOKENS.inkDim, fontFamily: 'var(--portal-font-mono, monospace)' }}>
-            {disabled ? 'read-only' : 'click to edit · changes update markdown + re-audit'}
+            {disabled ? 'read-only' : 'Google Docs-style page · Find, format, jump to issues in this view'}
           </span>
         </div>
       )}
@@ -347,6 +429,14 @@ export default function StudioDocEditor({
               e.preventDefault()
               document.execCommand('insertText', false, '  ')
             }
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+              e.preventDefault()
+              setFindOpen(true)
+              window.setTimeout(() => findInputRef.current?.focus(), 0)
+            }
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); cmd('bold') }
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); cmd('italic') }
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); cmd('underline') }
           }}
           style={{
             width: 'min(816px, 100%)', minHeight, margin: '0 auto',

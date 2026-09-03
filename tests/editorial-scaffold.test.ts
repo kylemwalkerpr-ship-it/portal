@@ -1461,4 +1461,35 @@ Gov.`
     expect(fixed.content).toContain('## 2026 Canada Study Permit: Requirements and Recent Changes')
     expect(fixed.content).not.toContain('## Updated Requirements and Guidance for 2026')
   })
+
+  it('rewrites banned AI slop (streamline) so Audit & Fix can clear ai_slop', () => {
+    const draft = `---
+title: Immigration Lawyer Cost Guide
+content_type: article
+---
+
+# Immigration Lawyer Cost Guide
+
+Lawyers streamline filings when the visa packet is complete.
+
+## In 60 seconds
+
+- Compare government charges and attorney billing.
+- Ask for a written fee agreement before you pay.
+
+## Sources
+
+- https://www.uscis.gov/
+`
+    const fixed = applyDeterministicRepairs({
+      content: draft,
+      indexable: true,
+      contentType: 'legal_guide',
+      primaryKeyword: 'immigration lawyer cost',
+    })
+    expect(fixed.applied.some((a) => a.includes('ai_slop'))).toBe(true)
+    expect(fixed.content).not.toMatch(/\bstreamline\b/i)
+    const q = evaluateContentQuality({ content: fixed.content, contentType: 'legal_guide', primaryKeyword: 'immigration lawyer cost', indexable: true })
+    expect(q.blockers.some((b) => b.code === 'ai_slop')).toBe(false)
+  })
 })

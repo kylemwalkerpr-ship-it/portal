@@ -92,17 +92,35 @@ export async function runHarperGrammar(md: string, signal?: AbortSignal): Promis
     const lints: Lint[] = await linter.lint(text, { language: 'plaintext', dedup: true })
     if (signal?.aborted) return null
     const kept = lints.filter(keepLint)
-    const mapped = kept.map((l) => ({
-      kind: kindOf(l),
-      problem: l.get_problem_text?.() || '',
-      message: l.message?.() || '',
-      span: l.span?.(),
-    }))
+    const mapped = []
+    for (const l of kept) {
+      const problem = l.get_problem_text?.() || ''
+      let fix: string | undefined
+      try {
+        const list = l.suggestions()
+        const s = list && list.length ? list[0] : null
+        if (s && typeof (s as { get_replacement_text?: () => string }).get_replacement_text === 'function') {
+          fix = (s as { get_replacement_text: () => string }).get_replacement_text()
+        }
+      } catch { /* suggestion text is optional */ }
+      mapped.push({
+        kind: kindOf(l),
+        problem,
+        message: l.message?.() || '',
+        span: l.span?.(),
+        fix,
+      })
+    }
     const { score, errors, suggestions } = scoreHarperLints(mapped)
     const items = mapped
       .filter((m) => m.problem.trim().length > 0)
       .slice(0, 24)
-      .map((m) => ({ kind: m.kind, problem: m.problem.slice(0, 120), message: m.message.slice(0, 200) }))
+      .map((m) => ({
+        kind: m.kind,
+        problem: m.problem.slice(0, 120),
+        message: m.message.slice(0, 200),
+        fix: m.fix?.slice(0, 120),
+      }))
     return { score, errors, suggestions, items }
   } catch (err) {
     console.info('[harper] grammar pass skipped:', String((err as Error)?.message || err).slice(0, 120))
@@ -117,7 +135,15 @@ export async function runHarperGrammar(md: string, signal?: AbortSignal): Promis
  * markdown line. Never rewrites scaffold, tables, URLs, frontmatter, link
  * anchors or emphasis — only the corrected words change.
  */
-export async function fixHarperIssues(md: string): Promise<HarperAutofixResult> {
+/** Apply the first Harper lint whose problem text matches. */
+export async function applyHarperProblem(md: string, problem: string): Promise<HarperAutofixResult> {
+  const needle = String(problem || '').trim()
+  if (!needle) return { content: String(md || ''), applied: 0, items: [] }
+  const full = await fixHarperIssues(md, needle)
+  return full
+}
+
+export async function fixHarperIssues(md: string, onlyProblem?: string): Promise<HarperAutofixResult> {
   try {
     const linter = await getLinter()
     const lines = harperSafeLines(String(md || ''))
@@ -135,6 +161,7 @@ export async function fixHarperIssues(md: string): Promise<HarperAutofixResult> 
       if (!allowed.has(kind)) continue
       const problem = l.get_problem_text?.() || ''
       if (!problem.trim()) continue
+      if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem)) continue
       const span = l.span?.()
       if (!span || span.start == null || span.end == null) continue
       const spanLen = span.end - span.start

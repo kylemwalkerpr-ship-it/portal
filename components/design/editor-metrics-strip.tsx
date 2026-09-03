@@ -14,7 +14,7 @@
 
 import * as React from 'react'
 import { computeEditorMetrics, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
-import { runHarperGrammar, fixHarperIssues, type HarperLintSummary } from '@/lib/harperBrowser'
+import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
 
 type Props = {
   content: string
@@ -188,11 +188,33 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
           )}
           {harperFixNote && <div style={{ color: C.green, marginBottom: 6 }}>{harperFixNote}</div>}
           {items.map((it, i) => (
-            <div key={i} style={{ marginBottom: 5, color: C.text }}>
+            <div key={i} style={{ marginBottom: 5, color: C.text, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
               <span style={{ color: pillColor(80), fontWeight: 600, fontFamily: C.mono }}>[{it.kind}]</span>{' '}
               <span style={{ background: '#FEF2F2', padding: '0 4px', borderRadius: 3 }}>“{it.problem}”</span>{' '}
               <span style={{ color: C.muted }}>{it.message}</span>
               {it.fix ? <span style={{ color: C.green }}> → {it.fix}</span> : null}
+              <button
+                type="button"
+                disabled={fixingHarper || !onApplied}
+                onClick={async () => {
+                  setFixingHarper(true)
+                  try {
+                    const result = await applyHarperProblem(textRef.current, it.problem)
+                    if (result.applied > 0 && result.content && onApplied) {
+                      onApplied(result.content)
+                      setHarperFixNote(`Applied ${it.kind}: “${it.problem}”.`)
+                      setHarper(null)
+                    } else {
+                      setHarperFixNote('Could not apply that suggestion automatically — use Auto-fix or edit the phrase.')
+                    }
+                  } finally {
+                    setFixingHarper(false)
+                  }
+                }}
+                style={{ padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+              >
+                Apply
+              </button>
             </div>
           ))}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>

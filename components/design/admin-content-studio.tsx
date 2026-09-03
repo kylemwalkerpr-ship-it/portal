@@ -3188,8 +3188,9 @@ const StudioDocPage = React.memo(function StudioDocPage({ source, showCursor }: 
 function DraftWorkspace({
   generating, generationEvents, generationStartedAt, generationBuffer,
   rescueStats, triedProviders,
-  completedJob, selectedJob, setSelectedJob,
+  completedJob, selectedJob, setSelectedJob, generationJobId,
   onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, onCancelGeneration, error, setError,
+  onApprove, onShipReadyChange,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
@@ -3199,6 +3200,7 @@ function DraftWorkspace({
   triedProviders: string[]
   completedJob: ContentJob | null
   selectedJob: ContentJob | null
+  generationJobId?: string
   setSelectedJob: (j: ContentJob | null) => void
   onContinueToReview: () => void
   selectTab: (k: StudioTab) => void
@@ -3208,6 +3210,8 @@ function DraftWorkspace({
   onCancelGeneration?: () => void
   error: string | null
   setError: (e: string | null) => void
+  onApprove?: () => void
+  onShipReadyChange?: (gate: ShipGate) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
@@ -3579,9 +3583,11 @@ function DraftWorkspace({
           <div style={{ flex: 1, padding: 0 }}>
             <AdminInlineEditor
               content={draftContent}
-              jobId={completedJob?.id || selectedJob?.id || ''}
+              jobId={completedJob?.id || selectedJob?.id || generationJobId || ''}
               onChange={(text) => setDraftContent(text)}
               disabled={generating}
+              onApprove={onApprove}
+              onShipReadyChange={onShipReadyChange}
               contentType={completedJob?.content_type}
               primaryKeyword={completedJob?.primary_keyword ?? undefined}
               indexable={completedJob?.indexable}
@@ -4460,7 +4466,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve') : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
@@ -5311,6 +5317,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // its own cadence, so the full studio/queue tree never re-renders per token.
   const generationBufRef = React.useRef('')
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
+  const [generationJobId, setGenerationJobId] = React.useState('')
+  const [workspaceShipGate, setWorkspaceShipGate] = React.useState<ShipGate>(null)
   const [draftOperationsOpen, setDraftOperationsOpen] = React.useState(false)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
   // Depth-rescue (PASS 2) stats — expansion rounds, stalls, time budget, set
@@ -5356,8 +5364,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       })
       if (g !== null) m.set(selectedJob.id, g)
     }
+    const liveId = generationReviewJob?.id || generationJobId
+    if (liveId && workspaceShipGate) m.set(liveId, workspaceShipGate)
     return m
-  }, [jobs, selectedJob, reviewAuditResult])
+  }, [jobs, selectedJob, reviewAuditResult, generationReviewJob?.id, generationJobId, workspaceShipGate])
 
   // Ref to avoid stale closure in onScoreChange callbacks — always points to latest content.
   const latestJobContentRef = React.useRef(selectedJob?.content)
@@ -5577,7 +5587,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (res.status === 503) { setError('Server busy (503). Waiting before next refresh…'); return [] }
       const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; matched?: number; summary?: QueueSummary; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      const nextJobs = data.jobs ?? []
+      let nextJobs = data.jobs ?? []
+      try {
+        const hotRes = await fetch('/api/content-studio/jobs?limit=50&status=drafting,pending,publishing', { credentials: 'same-origin', cache: 'no-store' })
+        const hot = await hotRes.json().catch(() => ({})) as { jobs?: ContentJob[] }
+        if (hotRes.ok && Array.isArray(hot.jobs) && hot.jobs.length) {
+          const seen = new Set(nextJobs.map((j) => j.id))
+          nextJobs = [...hot.jobs.filter((j) => !seen.has(j.id)), ...nextJobs]
+        }
+      } catch { /* desk hydration is best-effort */ }
       setJobs(nextJobs)
       setJobTotal(typeof data.total === 'number' ? data.total : nextJobs.length)
       if (queueStatusFilterRef.current === 'all') {
@@ -6667,6 +6685,7 @@ const controller = new AbortController()
         }
         else if (event.type === 'job') {
           liveJobId = String(event.jobId || '')
+          if (liveJobId) setGenerationJobId(liveJobId)
           // Refresh immediately so the queue strip flips to '1 In Progress'.
           fetchJobs().catch(() => {})
         }
@@ -6693,6 +6712,7 @@ const controller = new AbortController()
         }
       })
       const generatedJobId = String(data.jobId || data.job?.id || data.ship?.jobId || liveJobId || '')
+      if (generatedJobId) setGenerationJobId(generatedJobId)
       const shipBlocked = Boolean(data.shipError)
       const notice = data.ship?.prUrl
         ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
@@ -6965,7 +6985,13 @@ const controller = new AbortController()
               triedProviders={triedProviders}
               completedJob={generationReviewJob}
             selectedJob={selectedJob}
+            generationJobId={generationJobId}
             setSelectedJob={setSelectedJob}
+            onShipReadyChange={setWorkspaceShipGate}
+            onApprove={() => {
+              const j = generationReviewJob || jobs.find((x) => x.id === generationJobId)
+              if (j) void runApproveAndMerge(j)
+            }}
             onContinueToReview={() => {
               if (generationReviewJob) setSelectedJob(generationReviewJob)
               setDraftOperationsOpen(true)

@@ -1147,6 +1147,11 @@ export function applyDeterministicRepairs(opts: {
   }
   let unwrapped = unwrapWholeDocumentFence(normalizedEditor.content)
   if (unwrapped !== normalizedEditor.content) applied.push('unwrapped_document_fence')
+  const slopClean = sanitizeAiSlop(unwrapped)
+  if (slopClean !== unwrapped) {
+    applied.push('ai_slop_rewritten')
+    unwrapped = slopClean
+  }
   if (rawDeduped.removed) applied.push(`duplicate_article_copy_removed (${rawDeduped.copies} → 1)`)
 
   // ── Keyword-only title repair ────────────────────────────────────────
@@ -3026,7 +3031,13 @@ export function sanitizeAiSlop(text: string): string {
     [/\bin this article we will\b/gi, 'This guide covers'],
     [/\bin this guide we will\b/gi, 'This guide covers'],
     [/\bleverage\b/gi, 'use'],
+    [/\bleverages\b/gi, 'uses'],
+    [/\bleveraging\b/gi, 'using'],
     [/\bdelve into\b/gi, 'cover'],
+    [/\bdelves into\b/gi, 'covers'],
+    [/\bstreamlining\b/gi, 'simplifying'],
+    [/\bstreamlines\b/gi, 'simplifies'],
+    [/\bstreamlined\b/gi, 'simplified'],
     [/\bstreamline\b/gi, 'simplify'],
     [/\brobust\b/gi, 'solid'],
     [/\bseamless\b/gi, 'smooth'],
@@ -3035,10 +3046,18 @@ export function sanitizeAiSlop(text: string): string {
     [/\bgame-?changer\b/gi, 'important change'],
     [/\brevolutionize\b/gi, 'change'],
   ]
-  let out = text
+  const scripts: string[] = []
+  let out = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (block) => {
+    scripts.push(block)
+    return `\n%%SLOP_SCRIPT_${scripts.length - 1}%%\n`
+  })
   for (const [re, rep] of pairs) out = out.replace(re, rep)
-  // Collapse leftover double spaces from empty replacements
-  return out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n')
+  // Collapse leftover double spaces from empty replacements — never inside JSON-LD.
+  out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n')
+  scripts.forEach((block, i) => {
+    out = out.replace(`%%SLOP_SCRIPT_${i}%%`, block)
+  })
+  return out
 }
 
 /**

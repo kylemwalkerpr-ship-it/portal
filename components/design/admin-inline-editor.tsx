@@ -99,6 +99,9 @@ type Props = {
    *  (the initial state and any state after an unchecked content change) means
    *  "unknown" — the owning modal must NOT claim the draft passes. */
   onShipReadyChange?: (gate: ShipGate) => void
+  /** Approve → ship when this editor's latest audit is ship-ready. */
+  onApprove?: () => void
+  approving?: boolean
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -110,7 +113,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -131,6 +134,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [fixingWarnings, setFixingWarnings] = useState(false)
   const [expandingDepth, setExpandingDepth] = useState(false)
   const [shipGate, setShipGate] = React.useState<ShipGate>(null)
+  const [jumpPhrase, setJumpPhrase] = React.useState<string | null>(null)
   useEffect(() => { onShipReadyChange?.(shipGate) }, [shipGate, onShipReadyChange])
   // Content version the latest audit/fix response actually evaluated. When the
   // editor content diverges from it the gate is stale and must be reset to
@@ -248,13 +252,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const handleSave = useCallback(async () => {
     setSaving(true); setError(null)
     try {
-      if (!String(jobId || '').trim()) {
-        throw new Error('Draft has no job yet — generate a draft first')
+      const persistId = String(jobId || '').trim()
+      if (!persistId) {
+        throw new Error('Draft has no job id on this editor — open the job from the queue (Jobs) or wait for generation to attach the job, then Save.')
       }
       const res = await fetch('/api/content-studio/drafts', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, content }),
+        body: JSON.stringify({ jobId: persistId, content }),
       })
       if (!res.ok) throw new Error(`Save failed: HTTP ${res.status}`)
       setDirty(false)
@@ -686,8 +691,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
     setActiveAnnotationId(a.id)
+    const quoted = a.highlightedText || (a.message.match(/"([^"]+)"/) || [])[1] || ''
+    setJumpPhrase(quoted || null)
+    setViewMode('document')
+    setShowAnnotations(true)
     pendingJumpRef.current = a
-    setViewMode('source')
   }, [])
 
   // When switching back to source mode for a "Jump to line", apply the
@@ -1022,6 +1030,18 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {saving ? 'Saving...' : 'Save'}
         </button>
 
+        {shipReady && onApprove && (
+          <button
+            type="button"
+            data-testid="studio-editor-approve"
+            disabled={approving || allBusy}
+            onClick={onApprove}
+            style={btnStyle({ bg: '#166534', border: '#166534', color: '#fff', disabled: approving || allBusy })}
+          >
+            {approving ? 'Approving…' : 'Approve → ship'}
+          </button>
+        )}
+
         {/* Review model selector — hosts/selectors come from the lane config;
             the fallback is the live-policy review lead Entrim Qwen3.6 27B. */}
         {onReviewModelChange && (
@@ -1105,6 +1125,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   onChange={(md) => { onChange(md); setDirty(true) }}
                   disabled={disabled || allBusy}
                   minHeight={640}
+                  highlightPhrase={jumpPhrase}
                 />
               ) : (
                 <>

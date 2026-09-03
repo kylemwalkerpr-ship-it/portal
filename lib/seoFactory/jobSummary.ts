@@ -34,6 +34,13 @@ export interface JobSummaryInput {
 
 const KEY_STATUSES = ['drafting', 'pr_created', 'merged', 'failed', 'closed', 'pending', 'publishing'] as const
 
+/** Head-count each status so the desk/queue never depend on a 5k-row scan. */
+export const JOB_SUMMARY_STATUSES = KEY_STATUSES
+
+export function emptyStatusTotals(): Record<string, number> {
+  return Object.fromEntries(KEY_STATUSES.map((k) => [k, 0]))
+}
+
 export function buildJobSummary(input: JobSummaryInput): JobSummary {
   const { total, window, statusTotals, scored } = input
   const at = (k: (typeof KEY_STATUSES)[number]) => statusTotals[k] ?? 0

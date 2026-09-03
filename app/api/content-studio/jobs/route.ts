@@ -10,7 +10,7 @@ import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
-import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
+import { buildJobSummary, JOB_SUMMARY_STATUSES } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
 import { jobPassesShipGate } from '@/lib/seoFactory/jobShipGate'
 import {
@@ -131,18 +131,17 @@ export async function GET(request: NextRequest) {
     let total = 0
     const statusTotals: Record<string, number> = {}
     try {
-      const [exactRes, statusRes] = await Promise.all([
-        supabase.from('content_jobs').select('id', { count: 'exact', head: true }),
-        supabase.from('content_jobs').select('status').limit(5000),
-      ])
+      const exactRes = await supabase.from('content_jobs').select('id', { count: 'exact', head: true })
       total = typeof exactRes.count === 'number' ? exactRes.count : 0
-      const rows = (statusRes.data ?? []) as Array<{ status?: string | null }>
-      for (const r of rows) {
-        const s = String(r.status || 'unknown')
-        statusTotals[s] = (statusTotals[s] || 0) + 1
-      }
+      const perStatus = await Promise.all(
+        JOB_SUMMARY_STATUSES.map(async (status) => {
+          const r = await supabase.from('content_jobs').select('id', { count: 'exact', head: true }).eq('status', status)
+          return [status, typeof r.count === 'number' ? r.count : 0] as const
+        }),
+      )
+      for (const [status, n] of perStatus) statusTotals[status] = n
     } catch {
-      total = 0 // count failure must never fail the list
+      total = 0
     }
 
     // List without content/event_log/audit_json — those blow Worker CPU + payload size
