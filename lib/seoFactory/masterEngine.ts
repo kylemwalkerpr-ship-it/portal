@@ -1430,7 +1430,7 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   // than 4 columns and no fixed-width pixel layout (both force horizontal
   // scroll on phones); degrades to 0.8 for one wide table and 0.6 for many
   // wide tables or an explicit fixed-width layout. Draft + live HTML only.
-  const tableRows = (body.match(/^\s*\|.*\|\s*$/gm) || [])
+  const tableRows: string[] = Array.from(body.matchAll(/^\s*\|.*\|\s*$/gm), (m) => m[0] ?? '')
   const wideRows = tableRows.filter((row) => row.trim().replace(/^\||\|$/g, '').split('|').length > 4).length
   const fixedWidthLayout = /((?:max-)?width\s*:\s*\d{3,4}px|width=["']\d{3,4}["']|style=["'][^"']*\b\d{3,4}px)/i.test(`${body} ${liveHtml}`)
   out.x_mobile_parity = fixedWidthLayout || wideRows >= 2 ? 0.6 : wideRows === 1 ? 0.8 : 1
