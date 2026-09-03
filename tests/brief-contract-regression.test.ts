@@ -39,7 +39,7 @@ function systemPrompt(contentType: string) {
 }
 
 describe('brief contract · word count is canonical, not hardcoded', () => {
-  it('legal guide prompt states 2200–2800 body words (target 2500) and rejects overshoot', () => {
+  it('legal guide prompt states 2200–2500 body words (target 2350) and rejects overshoot', () => {
     const prompt = buildFactoryUserPrompt({
       title: 'H-1B visa explained',
       topic: 'H-1B visa',
@@ -50,14 +50,14 @@ describe('brief contract · word count is canonical, not hardcoded', () => {
       gscBlock: 'GSC: none',
     })
     expect(prompt).toMatch(/LENGTH \(legal guide \/ article/)
-    expect(prompt).toContain('2200–2800 body words')
-    expect(prompt).toContain('target ~2500')
-    expect(prompt).toContain('BOTH under 2200 (thin) and over 2800 (bloated) are rejected')
+    expect(prompt).toContain('2200–2500 body words')
+    expect(prompt).toContain('target ~2350')
+    expect(prompt).toContain('BOTH under 2200 (thin) and over 2500 (bloated) are rejected')
     // The old hardcoded floor that under-specified guides must be gone.
     expect(prompt).not.toContain('1,800+')
   })
 
-  it('blog prompt carries the blog window (800–1500), not the legal-guide window', () => {
+  it('blog prompt carries the blog window (800–1200), not the legal-guide window', () => {
     const prompt = buildFactoryUserPrompt({
       title: 'Banking in Canada for students',
       topic: 'banking canada students',
@@ -68,12 +68,12 @@ describe('brief contract · word count is canonical, not hardcoded', () => {
       gscBlock: 'GSC: none',
     })
     expect(prompt).toMatch(/LENGTH \(blog \/ news summary/)
-    expect(prompt).toContain('800–1500 body words')
-    expect(prompt).toContain('target ~1200')
-    expect(prompt).not.toContain('2200–2800')
+    expect(prompt).toContain('800–1200 body words')
+    expect(prompt).toContain('target ~1000')
+    expect(prompt).not.toContain('2200–2500')
   })
 
-  it('regional page prompt carries 1200–2000 (target 1500)', () => {
+  it('regional page prompt carries 1200–2000 (target 1600)', () => {
     const prompt = buildFactoryUserPrompt({
       title: 'Student visas in Texas',
       topic: 'texas student visas',
@@ -84,7 +84,7 @@ describe('brief contract · word count is canonical, not hardcoded', () => {
       gscBlock: 'GSC: none',
     })
     expect(prompt).toContain('1200–2000 body words')
-    expect(prompt).toContain('target ~1500')
+    expect(prompt).toContain('target ~1600')
   })
 })
 
@@ -92,7 +92,7 @@ describe('brief contract · SHIP GATES are prescriptive before drafting', () => 
   it('system prompt lists every hard gate so the model clears hurdles on pass one', () => {
     const sys = systemPrompt('legal_guide')
     expect(sys).toMatch(/SHIP GATES — pass ALL of these before you submit/)
-    expect(sys).toMatch(/DEPTH: 2200–2800 body words \(target ~2500\)/)
+    expect(sys).toMatch(/DEPTH: 2200–2500 body words \(target ~2350\)/)
     expect(sys).toMatch(/≥4 H2 sections/)
     expect(sys).toMatch(/In 60 seconds/)
     expect(sys).toMatch(/Article JSON-LD AND FAQPage JSON-LD/)

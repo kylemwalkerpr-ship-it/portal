@@ -20,12 +20,22 @@ function significantTokens(s: string): string[] {
     .filter((t) => t.length >= 3 && !STOPWORDS.has(t) && !/^\d+$/.test(t))
 }
 
+const FILE_LEAF = /^(page|index|layout|route|template)\.(tsx|ts|jsx|js|mdx|md)$/i
+
+/** Last meaningful slug: skip Next `page.tsx` so caseworks paths compare topic vs folder, not vs the file name. */
+export function pathSlugForTopicGuard(filePath: string): string {
+  const parts = String(filePath || '').split('/').filter(Boolean)
+  while (parts.length && FILE_LEAF.test(parts[parts.length - 1])) parts.pop()
+  const leaf = parts.pop() || ''
+  return leaf.replace(/\.(mdx?|tsx?|jsx?)$/i, '')
+}
+
 export function topicPathMismatch(
   topic: string,
   primaryKeyword: string,
   filePath: string,
 ): string | null {
-  const slug = String(filePath || '').split('/').filter(Boolean).pop() || ''
+  const slug = pathSlugForTopicGuard(filePath)
   if (!slug) return null
   const slugTokens = new Set(
     slug

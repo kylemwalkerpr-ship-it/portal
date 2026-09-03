@@ -39,4 +39,21 @@ describe('topicPathMismatch — ship-refuse guard (topic vs path last slug)', ()
     expect(topicPathMismatch('asylum', '', '')).toBeNull()
     expect(topicPathMismatch('', 'asylum', '/')).toBeNull()
   })
+
+  it('uses the parent folder when the path ends in page.tsx (not the file name)', () => {
+    expect(
+      topicPathMismatch(
+        'rush essay editing service',
+        'rush essay editing',
+        'landing-page/app/blog/rush-essay-editing-service/page.tsx',
+      ),
+    ).toBeNull()
+    const mismatch = topicPathMismatch(
+      'rush essay editing service',
+      'rush essay editing',
+      'app/us/opt-stem-opt-complete-guide/page.tsx',
+    )
+    expect(mismatch).toContain('opt-stem-opt-complete-guide')
+    expect(mismatch).not.toContain('page.tsx')
+  })
 })

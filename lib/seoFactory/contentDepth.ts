@@ -6,11 +6,11 @@
  * immigration (YMYL-adjacent) publishing we enforce conservative floors so
  * factory ships never land as thin stubs.
  *
- * SEO guard / master plan word count gates:
- * - Pillar / legal canonicals: 2,200–2,800 body words
- * - Blog / news summaries:   800–1,500 body words
- * - Regional / from-country: 1,200–1,800 body words
- * - Marketplace gigs:         500–1,200 (scannable offer, not essay)
+ * Estate word-count gates (tight):
+ * - Caseworks canonical / legal_guide: 2,200–2,500 body words
+ * - Apex blogs (yousafe-consultancy /blog): 800–1,200
+ * - Regional guides (usa/uk/ca/au): 1,200–2,000
+ * - Marketplace gigs: 500–1,200
  *
  * Absolute thin floor: never ship indexable body under 800 words (guides) /
  * 600 (blogs) regardless of type aliasing.
@@ -38,23 +38,23 @@ const SPECS: Record<DepthTier, DepthSpec> = {
   pillar: {
     tier: 'pillar',
     minWords: 2200,
-    targetWords: 2500,
-    maxWords: 2800,
+    targetWords: 2350,
+    maxWords: 2500,
     absoluteThinFloor: 900,
     label: 'legal guide / article (Google comprehensive / YMYL-safe)',
   },
   blog: {
     tier: 'blog',
     minWords: 800,
-    targetWords: 1200,
-    maxWords: 1500,
+    targetWords: 1000,
+    maxWords: 1200,
     absoluteThinFloor: 600,
     label: 'blog / news summary',
   },
   regional: {
     tier: 'regional',
     minWords: 1200,
-    targetWords: 1500,
+    targetWords: 1600,
     maxWords: 2000,
     absoluteThinFloor: 700,
     label: 'regional / university / from-country page',

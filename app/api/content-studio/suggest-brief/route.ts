@@ -166,7 +166,13 @@ export async function POST(req: NextRequest) {
       'OUTPUT: a single JSON object with EVERY field the drafting system needs:',
       '{',
       '  "suggestedH1": "SEO-optimized H1 title (include primary keyword, keep ≤70 chars)",',
-      '  "h2Outline": ["H2: Section title", ...]  // 6–10 descriptive H2 section headings',
+      `  "h2Outline": ["H2: Section title", ...]  // ${
+        contentType === 'blog_post' || contentType === 'blog_summary'
+          ? '5–7'
+          : contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university'
+            ? '6–8'
+            : '8–10'
+      } H2s sized so STRICT SECTION BUDGETS sum to ${minWords}–${maxWords} words`,
       '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
       '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each). These are COVERAGE terms, never literal text: the drafter must use them naturally in prose/FAQ answers and must NEVER write the keyword string itself as an FAQ question — questions are in natural reader English ("How much does an Australia student visa cost?", never "is it possible to australia student visa…").',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
@@ -185,7 +191,7 @@ export async function POST(req: NextRequest) {
       'RULES (NON-NEGOTIABLE):',
       '1. NEVER suggest a URL not in the interlink allowlist — use ONLY verified internal links. Select a cohesive reader journey, not merely the first URLs: topical authority → practical next step → service handoff only when the query has commercial intent.',
       '2. NEVER duplicate an H2, keyword placement, or slug from completed prior work.',
-      '3. Target the word count range based on content type + Google SEO floor (2,200 min for legal guides).',
+      `3. Word count is gated by estate type: blogs 800–1200 (apex yousafe-consultancy /blog), regional guides 1200–2000 (usa/uk/ca/au), caseworks canonicals 2200–2500. This brief is ${minWords}–${maxWords} (target ~${targetWords}). Subdivide that window across h2Outline — every H2 gets a min/max; honouring them must land the draft inside the gate.`,
       '4. Every short-tail keyword must appear in kwH2Map mapped to exactly one H2 section.',
       '5. Every long-tail keyword must also appear in kwH2Map. Word each long-tail keyword AS a natural FAQ question ("how much is australia student visa" → FAQ "How much does an Australia student visa cost?") and map it to the FAQ H2 so the drafting AI answers the real demand query instead of stuffing the term into prose.',
       '6. Sources must be real, live, and on-topic. PREFER the VERIFIED SOURCE ALLOWLIST verbatim (government departments, official school pages, intergovernmental bodies, issuing bodies). You may also cite institutional pages (.org / .edu / official exam boards) when they directly support a claim in THIS article. Never Wikipedia, social media, URL shorteners, content-mill blogs, or low-authority sites. Every URL is live-checked; dead or off-topic citations are stripped before ship.',

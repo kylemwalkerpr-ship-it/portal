@@ -61,17 +61,17 @@ Applicants pay government filing fees and a separate attorney retainer.
 
 describe('clampBriefWordBudget (Research-stage word-count by content type)', () => {
   it('returns the canonical budget when the model omits min/max words', () => {
-    expect(clampBriefWordBudget('article')).toEqual({ minWords: 2200, maxWords: 2800 })
-    expect(clampBriefWordBudget('blog_post')).toEqual({ minWords: 800, maxWords: 1500 })
+    expect(clampBriefWordBudget('article')).toEqual({ minWords: 2200, maxWords: 2500 })
+    expect(clampBriefWordBudget('blog_post')).toEqual({ minWords: 800, maxWords: 1200 })
     expect(clampBriefWordBudget('regional_page')).toEqual({ minWords: 1200, maxWords: 2000 })
     expect(clampBriefWordBudget('marketplace_gig')).toEqual({ minWords: 500, maxWords: 1200 })
   })
 
   it('returns the canonical window verbatim — model sub-ranges no longer survive (single source of truth)', () => {
-    expect(clampBriefWordBudget('article', 2400, 2600)).toEqual({ minWords: 2200, maxWords: 2800 })
-    expect(clampBriefWordBudget('blog_post', 600, 900)).toEqual({ minWords: 800, maxWords: 1500 })
-    expect(clampBriefWordBudget('article', 1800, 2200)).toEqual({ minWords: 2200, maxWords: 2800 })
-    expect(clampBriefWordBudget('article', 2200, 9000)).toEqual({ minWords: 2200, maxWords: 2800 })
+    expect(clampBriefWordBudget('article', 2400, 2600)).toEqual({ minWords: 2200, maxWords: 2500 })
+    expect(clampBriefWordBudget('blog_post', 600, 900)).toEqual({ minWords: 800, maxWords: 1200 })
+    expect(clampBriefWordBudget('article', 1800, 2200)).toEqual({ minWords: 2200, maxWords: 2500 })
+    expect(clampBriefWordBudget('article', 2200, 9000)).toEqual({ minWords: 2200, maxWords: 2500 })
   })
 
   it('every supported content type has a coherent min ≤ target ≤ max budget', () => {
@@ -86,13 +86,14 @@ describe('clampBriefWordBudget (Research-stage word-count by content type)', () 
 })
 
 describe('minWordsForType (Google depth floors)', () => {
-  it('requires comprehensive depth for legal guides / articles (SEO guard: 2200–2800)', () => {
+  it('requires comprehensive depth for legal guides / articles (SEO guard: 2200–2500)', () => {
     expect(minWordsForType('legal_guide')).toBe(2200)
     expect(minWordsForType('article')).toBe(2200)
-    expect(targetWordsForType('legal_guide')).toBeGreaterThanOrEqual(2500)
+    expect(targetWordsForType('legal_guide')).toBeGreaterThanOrEqual(2300)
+    expect(maxWordsForType('legal_guide')).toBe(2500)
   })
 
-  it('requires solid blogs and regionals (SEO guard: 800–1500)', () => {
+  it('requires solid blogs and regionals (SEO guard: 800–1200 / 1200–2000)', () => {
     expect(minWordsForType('blog_summary')).toBe(800)
     expect(minWordsForType('blog_post')).toBe(800)
     expect(minWordsForType('regional_from')).toBe(1200)

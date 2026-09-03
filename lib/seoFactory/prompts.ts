@@ -55,7 +55,7 @@ export function destinationFormatBlock(plan: OwnerPlan, contentType: string): st
       '- Metadata is a TypeScript export: export const metadata = { title, description, alternates: { canonical } }',
       '- Imports required: ArticleLayout, CTAPanel, Link from next/link.',
       '- Country in metadata is one of us|uk|ca|au.',
-      '- Word count target: 2,200–2,800 body words (YMYL-adjacent, Google Helpful Content depth).',
+      `- Word count target: ${spec.minWords}–${spec.maxWords} body words (YMYL-adjacent, Google Helpful Content depth).`,
       '- Practitioner tone: calm, second-person, no clickbait, cite official sources with URLs.',
       '',
     )
@@ -593,7 +593,10 @@ export function buildSectionBudgets(opts: {
   // FAQ contract is 4–6 questions × 40–80 word answers + placement prose:
   // reserve UP TO 35% of the window (never under 450) so the FAQ never
   // overruns its own reserve.
-  const reserveFaq = Math.min(opts.pageMax * 0.35, Math.max(450, opts.reserveFaq ?? 600))
+  const reserveFaq = Math.min(
+    opts.pageMax * 0.22,
+    Math.max(opts.pageMin <= 1200 ? 160 : 320, opts.reserveFaq ?? Math.round(opts.pageMin * 0.18)),
+  )
   const reserveTldr = Math.max(0, opts.reserveTldr ?? 80)
   const reserveSources = Math.max(0, opts.reserveSources ?? 40)
   const structural = (h: string) => {

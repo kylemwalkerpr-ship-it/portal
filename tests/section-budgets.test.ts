@@ -14,20 +14,20 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
   ]
 
   it('allocates the page window across sections and reserves structural blocks', () => {
-    const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2800 })
+    const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2500 })
     expect(budgets.length).toBe(sections.length)
     const faq = budgets.find((b) => b.heading === 'FAQ')!
     const tldr = budgets.find((b) => b.heading === 'In 60 seconds')!
     expect(faq.maxWords).toBeGreaterThanOrEqual(320)
     expect(tldr.maxWords).toBeLessThanOrEqual(80)
     const bodyTotal = budgets.filter((b) => !/60 seconds|faq|sources/i.test(b.heading)).reduce((a, b) => a + b.maxWords, 0)
-    expect(bodyTotal).toBeLessThanOrEqual(2800)
+    expect(bodyTotal).toBeLessThanOrEqual(2500)
   })
 
   it('produces ranges the sum stays inside the window for the content body', () => {
-    const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2800 })
+    const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2500 })
     const maxSum = budgets.reduce((a, b) => a + b.maxWords, 0)
-    expect(maxSum).toBeLessThanOrEqual(2800)
+    expect(maxSum).toBeLessThanOrEqual(2500)
     expect(maxSum).toBeGreaterThanOrEqual(2200)
   })
 
@@ -36,8 +36,8 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
     // every section minimum is still "under par" and may append a second
     // copy in pursuit of the global count. The contract must close that gap.
     for (const [type, pageMin, pageMax] of [
-      ['article', 2200, 2800],
-      ['blog_post', 800, 1500],
+      ['article', 2200, 2500],
+      ['blog_post', 800, 1200],
       ['regional_page', 1200, 2000],
     ] as const) {
       const budgets = buildSectionBudgets({ sections, pageMin, pageMax })
@@ -53,20 +53,20 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
     }
   })
 
-  it('blog_post window (800–1500) also satisfies the sum invariants with a longer outline', () => {
+  it('blog_post window (800–1200) also satisfies the sum invariants with a longer outline', () => {
     const blogSections = sections.concat([
       { heading: 'Best banks for international students', targetWords: 300 },
       { heading: 'Common mistakes to avoid', targetWords: 250 },
     ])
-    const budgets = buildSectionBudgets({ sections: blogSections, pageMin: 800, pageMax: 1500 })
+    const budgets = buildSectionBudgets({ sections: blogSections, pageMin: 800, pageMax: 1200 })
     const minSum = budgets.reduce((a, b) => a + b.minWords, 0)
     const maxSum = budgets.reduce((a, b) => a + b.maxWords, 0)
     expect(minSum).toBeGreaterThanOrEqual(800)
-    expect(maxSum).toBeLessThanOrEqual(1500)
+    expect(maxSum).toBeLessThanOrEqual(1200)
   })
 
   it('renders the STRICT SECTION BUDGETS block in the drafter prompt when provided', () => {
-    const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2800 })
+    const budgets = buildSectionBudgets({ sections, pageMin: 2200, pageMax: 2500 })
     const prompt = buildFactoryUserPrompt({
       title: 'Green Card Guide', topic: 'green card', primaryKeyword: 'how to apply for a green card',
       region: 'US', contentType: 'legal_guide', tone: 'educational', gscBlock: '',

@@ -103,8 +103,8 @@ function buildParagraph(sentenceCount = 6): string {
   }).join(' ')
 }
 
-/** Full guide: 8 sections × 4 paragraphs × 6 sentences ≈ 2400 body words
- *  (within the 2200–2800 pillar band). */
+/** Full guide: 8 sections × 4 paragraphs × 5 sentences ≈ 2300 body words
+ *  (within the 2200–2500 pillar band). */
 const SECTIONS: Array<{ h2: string }> = [
   { h2: 'Eligibility' },
   { h2: 'Required documents' },
@@ -113,7 +113,6 @@ const SECTIONS: Array<{ h2: string }> = [
   { h2: 'Common mistakes' },
   { h2: 'Risks and refusals' },
   { h2: 'After you file' },
-  { h2: 'Official resources' },
 ]
 
 /** Build a legal guide that clears the quality gate AND the Google depth floor
@@ -515,8 +514,8 @@ describe('depthMediationPlan (the mechanism that clears the depth floor)', () =>
     // The exact "1813/2200" case the editor strip renders.
     expect(result.depthMediation!.currentWords).toBe(countBodyWords(thin))
     expect(result.depthMediation!.minWords).toBe(2200)
-    expect(result.depthMediation!.targetWords).toBe(2500)
-    expect(result.depthMediation!.maxWords).toBe(2800)
+    expect(result.depthMediation!.targetWords).toBe(2350)
+    expect(result.depthMediation!.maxWords).toBe(2500)
     expect(result.depthMediation!.prompt).toBeTruthy()
     // Message matches the ship-gate banner text so the UI stays consistent.
     expect(result.depthMediation!.message).toContain('Below Google-depth floor')
@@ -535,13 +534,10 @@ describe('depthMediationPlan (the mechanism that clears the depth floor)', () =>
   })
 
   it('expands toward the TARGET (not just the floor) when the draft meets the floor but sits under target — the word_count_target warning case', () => {
-    // Full fixture is ~2683 words (≥ target 2500); trim sections to land a
-    // draft INSIDE the 2200–2500 band so the floor passes but the target
-    // warning fires (the exact "2380/2500" case the user reported).
-    const between = buildPassingArticle()
-    // Crop one section (~340 words) → ≈2340 words, still ≥ 2200 floor.
-    const cropped = between.replace(/## Common mistakes[\s\S]*?(?=## |$)/, '')
-    const plan = depthMediationPlan(cropped, 'legal_guide', 'us visa renewal', 'US')
+    // Full fixture sits near target; crop a section so floor still passes
+    // but the target warning can fire when under 2350.
+    const betweenFloorAndTarget = Array.from({ length: 2240 }, () => 'word').join(' ')
+    const plan = depthMediationPlan(betweenFloorAndTarget, 'legal_guide', 'us visa renewal', 'US')
     expect(plan.floorMet).toBe(true)      // floor clears
     expect(plan.ok).toBe(false)           // …but the plan says there is depth to add
     expect(plan.goalWords).toBe(targetThresholdForType('legal_guide'))
@@ -581,7 +577,7 @@ describe('depthMediationPlan (the mechanism that clears the depth floor)', () =>
     expect(prompt).toMatch(/Return ONLY new markdown H2 sections/)
     // The prompt carries the real floor/cap + the region for jurisdictional detail.
     expect(prompt).toContain('2200')
-    expect(prompt).toContain('2800')
+    expect(prompt).toContain('2500')
     expect(prompt).toContain('US')
     // Existing H2s are listed so the model does not duplicate them.
     expect(prompt).toContain('Eligibility')
@@ -591,12 +587,12 @@ describe('depthMediationPlan (the mechanism that clears the depth floor)', () =>
     const blog = buildPassingArticle(2)
     const blogPlan = depthMediationPlan(blog, 'blog_post', 'us visa update')
     expect(blogPlan.minWords).toBe(800)
-    expect(blogPlan.targetWords).toBe(1200)
-    expect(blogPlan.maxWords).toBe(1500)
+    expect(blogPlan.targetWords).toBe(1000)
+    expect(blogPlan.maxWords).toBe(1200)
 
     const regional = depthMediationPlan(blog, 'regional_page', 'texas visa')
     expect(regional.minWords).toBe(1200)
-    expect(regional.targetWords).toBe(1500)
+    expect(regional.targetWords).toBe(1600)
     expect(regional.maxWords).toBe(2000)
   })
 })

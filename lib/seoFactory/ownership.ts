@@ -7,10 +7,10 @@
  *   → OWNERSHIP_REGISTRY.md standing rules
  *
  * Standing rules:
- *   1. Procedural / YMYL → legal (caseworks)
- *   2. Geo "from {country}" → regional /from/ (yousafe-consultancy)
- *   3. University modifiers → regional universities graph by default
- *   4. Blog → news/summary on legal or apex, always links to legal pillar
+ *   1. Canonical long-form / legal_guide / article → caseworks (legal host)
+ *   2. Geo "from {country}" → regional /from/ on usa|uk|ca|au (yousafe-consultancy)
+ *   3. University / regional guides → usa|uk|ca|au content trees
+ *   4. Blog post → apex yousafe-consultancy /blog/ only (never caseworks)
  *   5. Transactional → market (portal), supply_first when blocked
  *   6. Hubs own cluster nav; spokes own long-tail procedure
  *
@@ -756,17 +756,19 @@ export function isExplicitDestinationType(t: string): boolean {
   return EXPLICIT_DESTINATION_TYPES.has(String(t || '').toLowerCase())
 }
 
-export function destinationFamily(contentType: string): 'legal' | 'regional' | 'market' {
+export function destinationFamily(contentType: string): 'legal' | 'regional' | 'market' | 'blog' {
   const t = normalizeStudioContentType(contentType)
   if (t === 'marketplace_gig') return 'market'
+  if (t === 'blog_post' || t === 'blog_summary') return 'blog'
   if (t === 'legal_guide' || t === 'article') return 'legal'
   if (isExplicitDestinationType(t)) return 'regional'
   return 'legal'
 }
 
-export function hostFamily(host: OwnerHost | string | null | undefined): 'legal' | 'regional' | 'market' {
+export function hostFamily(host: OwnerHost | string | null | undefined): 'legal' | 'regional' | 'market' | 'blog' {
   if (host === 'market') return 'market'
   if (host === 'legal') return 'legal'
+  if (host === 'apex') return 'blog'
   return 'regional'
 }
 
