@@ -97,6 +97,42 @@ export function depthSpecForType(contentType: string): DepthSpec {
   return SPECS[depthTierForType(contentType)]
 }
 
+/**
+ * Client-safe editorial type for the draft word chip. Must not import
+ * ownership/seoDataLoaders (those pull node:fs into the webpack client bundle).
+ */
+export function editorialTypeForDepth(opts: {
+  contentType?: string | null
+  studioType?: string | null
+  canonicalUrl?: string | null
+  filePath?: string | null
+  content?: string | null
+}): string {
+  const studio = String(opts.studioType || '').toLowerCase()
+  if (studio === 'blog_post' || studio === 'blog' || studio === 'blog_summary') return 'blog_post'
+  const path = `${opts.filePath || ''} ${opts.canonicalUrl || ''}`.toLowerCase()
+  const yaml = String(opts.content || '').match(/^---[\s\S]*?\ncontent_type:\s*["']?([a-z_]+)/i)
+  const yamlT = (yaml?.[1] || '').toLowerCase()
+  const stored = String(opts.contentType || '').toLowerCase()
+  if (
+    stored === 'blog_post' ||
+    stored === 'blog' ||
+    yamlT === 'blog_post' ||
+    yamlT === 'blog' ||
+    /\/blog\//.test(path) ||
+    /app\/blog\//.test(path)
+  ) {
+    return 'blog_post'
+  }
+  if (stored.startsWith('regional') || yamlT.startsWith('regional') || studio === 'regional_page') {
+    return 'regional_page'
+  }
+  if (stored === 'marketplace_gig' && !/^catalogue\//.test(path)) return 'blog_post'
+  if (stored === 'marketplace_gig') return 'marketplace_gig'
+  if (stored === 'article' || stored === 'legal_guide' || studio === 'article') return 'legal_guide'
+  return stored || studio || 'legal_guide'
+}
+
 /** Hard minimum body words for a content type (ship/audit floor). */
 export function minWordsForType(contentType: string): number {
   return depthSpecForType(contentType).minWords

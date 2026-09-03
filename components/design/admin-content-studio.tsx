@@ -42,8 +42,7 @@ import {
   type QueueClearAction,
   type QueueUiFilter,
 } from '@/lib/seoFactory/jobsQueue'
-import { clampBriefWordBudget, countBodyWords, depthSpecForType, formatBodyWordDisplay, targetWordsForType } from '@/lib/seoFactory/contentDepth'
-import { resolveEditorialContentType } from '@/lib/seoFactory/jobContentType'
+import { clampBriefWordBudget, countBodyWords, depthSpecForType, editorialTypeForDepth, formatBodyWordDisplay, targetWordsForType } from '@/lib/seoFactory/contentDepth'
 import {
   extractMetricValues,
   directionForMetric,
@@ -3548,8 +3547,9 @@ function DraftWorkspace({
             <span style={{ fontFamily: C.mono, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', padding: '4px 10px', border: `1px solid ${E.hairline}`, borderRadius: 999, background: '#F8F9FA' }}>
               {(() => {
                 const wc = generating ? generationWordCount : wordCount
-                const editorial = resolveEditorialContentType({
-                  contentType: studioContentType || completedJob?.content_type || selectedJob?.content_type,
+                const editorial = editorialTypeForDepth({
+                  studioType: studioContentType,
+                  contentType: completedJob?.content_type || selectedJob?.content_type,
                   canonicalUrl: completedJob?.canonical_url || selectedJob?.canonical_url,
                   filePath: completedJob?.content_path || selectedJob?.content_path,
                   content: draftContent || completedJob?.content || selectedJob?.content,
