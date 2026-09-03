@@ -102,6 +102,10 @@ type Props = {
   /** Approve → ship when this editor's latest audit is ship-ready. */
   onApprove?: () => void
   approving?: boolean
+  /** Fired when Save creates a content_jobs row because this editor had no id. */
+  onJobAttached?: (jobId: string) => void
+  title?: string
+  topic?: string
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -113,7 +117,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving, onJobAttached, title, topic }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -125,6 +129,34 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [viewMode, setViewMode] = useState<'document' | 'source'>('document')
   const [showHistory, setShowHistory] = useState(false)
   const [drafts, setDrafts] = useState<DraftVersion[]>([])
+  const [boundJobId, setBoundJobId] = useState(String(jobId || ''))
+  useEffect(() => {
+    if (String(jobId || '').trim()) setBoundJobId(String(jobId).trim())
+  }, [jobId])
+
+  const persistDraft = useCallback(async (body: string, source: string) => {
+    const res = await fetch('/api/content-studio/drafts', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobId: boundJobId || undefined,
+        content: body,
+        source,
+        title: title || topic,
+        topic: topic || title,
+        contentType,
+        region,
+      }),
+    })
+    const data = await res.json().catch(() => ({})) as { jobId?: string; error?: string }
+    const attached = String(data.jobId || '').trim()
+    if (attached && attached !== boundJobId) {
+      setBoundJobId(attached)
+      onJobAttached?.(attached)
+    }
+    if (!res.ok) throw new Error(data.error || `Save failed: HTTP ${res.status}`)
+    return attached
+  }, [boundJobId, title, topic, contentType, region, onJobAttached])
   const [loadingDrafts, setLoadingDrafts] = useState(false)
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -229,15 +261,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       saveTimerRef.current = null
       const controller = new AbortController()
       autosaveAbortRef.current = controller
-      if (!String(jobId || '').trim()) return // no job row yet — skip silently
       try {
-        const res = await fetch('/api/content-studio/drafts', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({ jobId, content, source: 'autosave' }),
-        })
-        if (!res.ok) return
+        await persistDraft(content, 'autosave')
+        if (controller.signal.aborted) return
         setLastSaved(new Date().toLocaleTimeString())
         setDirty(false)
       } catch { /* silent */ }
@@ -246,22 +272,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       }
     }, 2000)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [content, dirty, jobId])
+  }, [content, dirty, persistDraft])
 
   // Explicit save
   const handleSave = useCallback(async () => {
     setSaving(true); setError(null)
     try {
-      const persistId = String(jobId || '').trim()
-      if (!persistId) {
-        throw new Error('Draft has no job id on this editor — open the job from the queue (Jobs) or wait for generation to attach the job, then Save.')
-      }
-      const res = await fetch('/api/content-studio/drafts', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: persistId, content }),
-      })
-      if (!res.ok) throw new Error(`Save failed: HTTP ${res.status}`)
+      await persistDraft(content, 'manual')
       setDirty(false)
       setLastSaved(new Date().toLocaleTimeString())
       setNotice('Draft saved')
@@ -269,7 +286,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally { setSaving(false) }
-  }, [content, jobId])
+  }, [content, persistDraft])
 
   // Persist AI fixes immediately. Waiting for the debounce can leave a
   // re-audit/refresh reading the pre-fix draft and make a real repair appear
@@ -286,19 +303,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     // (completedJob lags the pipeline's lazy row creation) — the server
     // rejects an empty jobId (400). Skip the POST; the next autosave picks
     // the draft up the moment a jobId is available.
-    if (!String(jobId || '').trim()) {
-      console.info('[drafts] persist skipped — no job id yet (row created lazily)')
-      return
-    }
-    const res = await fetch('/api/content-studio/drafts', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId, content: fixedContent, source: 'editor-fix' }),
-    })
-    if (!res.ok) throw new Error(`Fixed draft could not be saved (HTTP ${res.status})`)
+    await persistDraft(fixedContent, 'fix')
     setDirty(false)
     setLastSaved(new Date().toLocaleTimeString())
-  }, [jobId])
+  }, [persistDraft])
 
   const editorHasNoBody = countBodyWords(content) < 40
 

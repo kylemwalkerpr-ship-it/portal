@@ -214,6 +214,7 @@ export async function* runSeoFactoryPipelineStream(
         canonical_url: plan.canonicalUrl,
         owner_host: plan.host,
         primary_keyword: primaryKeyword,
+        content: '',
         event_log: [
           {
             id: `pipe-start-${Date.now()}`,

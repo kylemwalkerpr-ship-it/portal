@@ -46,13 +46,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    const { jobId, content, source, qualityOk, shipReady, blockers, warnings, appliedRepairs } = await request.json() as {
-      jobId: string; content: string; source?: string; qualityOk?: boolean | null; shipReady?: boolean | null
+    const body = await request.json() as {
+      jobId?: string; content: string; source?: string; qualityOk?: boolean | null; shipReady?: boolean | null
       blockers?: unknown; warnings?: unknown; appliedRepairs?: string[]
+      title?: string; topic?: string; contentType?: string; region?: string
     }
-    if (!jobId || !content) {
-      return NextResponse.json({ error: 'jobId and content required' }, { status: 400 })
+    const content = String(body.content || '')
+    if (!content.trim()) {
+      return NextResponse.json({ error: 'content required' }, { status: 400 })
     }
+    let jobId = String(body.jobId || '').trim()
+    if (!jobId) {
+      const { createSupabaseAdminClient } = await import('@/lib/supabase')
+      const { normalizeJobContentType } = await import('@/lib/seoFactory/jobContentType')
+      const { countBodyWords } = await import('@/lib/seoFactory/contentDepth')
+      const db = createSupabaseAdminClient()
+      const title = String(body.title || body.topic || 'Untitled draft').slice(0, 200)
+      const insert = await db.from('content_jobs').insert({
+        user_id: 'admin',
+        title,
+        topic: String(body.topic || title).slice(0, 200),
+        content_type: normalizeJobContentType(body.contentType || 'blog_post'),
+        status: 'drafting',
+        content,
+        word_count: countBodyWords(content),
+        region: String(body.region || 'US').slice(0, 8) || 'US',
+        ship_mode: 'pr',
+        indexable: true,
+      }).select('id').single()
+      if (insert.error || !insert.data?.id) {
+        return NextResponse.json({ error: insert.error?.message || 'Could not create a draft job' }, { status: 503 })
+      }
+      jobId = String(insert.data.id)
+    }
+    const { source, qualityOk, shipReady, blockers, warnings, appliedRepairs } = body
 
     const origin = source === 'manual' || source === 'restore' || source === 'fix' || source === 'reaudit'
       ? source
@@ -69,11 +96,11 @@ export async function POST(request: NextRequest) {
     })
     if (!persisted) {
       return NextResponse.json(
-        { error: error || 'Failed to persist review snapshot', draft: snapshot, persisted: false },
+        { error: error || 'Failed to persist review snapshot', draft: snapshot, persisted: false, jobId },
         { status: 503 },
       )
     }
-    return NextResponse.json({ draft: snapshot, persisted: true })
+    return NextResponse.json({ draft: snapshot, persisted: true, jobId })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Save failed' }, { status: 500 })

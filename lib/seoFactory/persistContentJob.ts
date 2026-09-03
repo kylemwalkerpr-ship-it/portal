@@ -279,7 +279,7 @@ export async function persistPipelineJob(
       jobId = jobInsert.data?.id ?? null
     }
 
-    if (jobId && input.plan.canonicalUrl) {
+    if (jobId && /^https?:\/\//i.test(String(input.plan.canonicalUrl || ''))) {
       await supabase
         .from('content_jobs')
         .update({

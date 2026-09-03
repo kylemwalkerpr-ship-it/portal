@@ -3246,7 +3246,7 @@ function DraftWorkspace({
   rescueStats, triedProviders,
   completedJob, selectedJob, setSelectedJob, generationJobId,
   onContinueToReview, selectTab, queueOpen, onToggleQueue, queueCount, onCancelGeneration, error, setError,
-  onApprove, onShipReadyChange,
+  onApprove, onShipReadyChange, onJobAttached,
 }: {
   generating: boolean
   generationEvents: GenerationActivity[]
@@ -3268,6 +3268,7 @@ function DraftWorkspace({
   setError: (e: string | null) => void
   onApprove?: () => void
   onShipReadyChange?: (gate: ShipGate) => void
+  onJobAttached?: (jobId: string) => void
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
@@ -3275,6 +3276,8 @@ function DraftWorkspace({
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
+  const draftContentRef = React.useRef('')
+  draftContentRef.current = draftContent
 
   // Streaming text lives inside this isolated editor. Reading the mutable SSE
   // buffer here prevents every token from re-rendering the 7k-line studio,
@@ -3295,6 +3298,34 @@ function DraftWorkspace({
     }, 900)
     return () => window.clearInterval(timer)
   }, [generating, generationBuffer])
+
+  // Leaving Draft unmounts this workspace when no job id is attached. Flush
+  // the local buffer so the body is not discarded with the panel.
+  React.useEffect(() => {
+    const jobId = completedJob?.id || selectedJob?.id || generationJobId || ''
+    const title = completedJob?.title || selectedJob?.title || ''
+    const topic = completedJob?.topic || selectedJob?.topic || title
+    const contentType = completedJob?.content_type || selectedJob?.content_type
+    const region = completedJob?.region || selectedJob?.region
+    return () => {
+      const body = (draftContentRef.current || generationBuffer.current || '').trim()
+      if (body.length < 40) return
+      void fetch('/api/content-studio/drafts', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId: jobId || undefined,
+          content: body,
+          source: 'autosave',
+          title,
+          topic,
+          contentType,
+          region,
+        }),
+      }).catch(() => {})
+    }
+  }, [completedJob?.id, selectedJob?.id, generationJobId, completedJob?.title, selectedJob?.title, completedJob?.topic, selectedJob?.topic, completedJob?.content_type, selectedJob?.content_type, completedJob?.region, selectedJob?.region, generationBuffer])
 
   // Track streaming: accumulate deltas into draftContent
   React.useEffect(() => {
@@ -3644,6 +3675,9 @@ function DraftWorkspace({
               disabled={generating}
               onApprove={onApprove}
               onShipReadyChange={onShipReadyChange}
+              onJobAttached={onJobAttached}
+              title={completedJob?.title || selectedJob?.title}
+              topic={completedJob?.topic || selectedJob?.topic}
               contentType={completedJob?.content_type}
               primaryKeyword={completedJob?.primary_keyword ?? undefined}
               indexable={completedJob?.indexable}
@@ -5383,6 +5417,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const generationBufRef = React.useRef('')
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
   const [generationJobId, setGenerationJobId] = React.useState('')
+  const [keepDraftWorkspace, setKeepDraftWorkspace] = React.useState(false)
   const [workspaceShipGate, setWorkspaceShipGate] = React.useState<ShipGate>(null)
   const [draftOperationsOpen, setDraftOperationsOpen] = React.useState(false)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
@@ -6681,6 +6716,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   const handleGenerate = async (formData: any) => {
     setGenerating(true)
+    setKeepDraftWorkspace(true)
     setDraftOperationsOpen(false)
     selectTab('draft') // Auto-navigate to Draft stage to watch the live stream
     setGenerationReviewJob(null)
@@ -7055,7 +7091,7 @@ const controller = new AbortController()
           onJump={selectTab}
         />
       )}
-      {(tab === 'draft' || generating || Boolean(generationReviewJob || generationJobId)) && (
+      {(tab === 'draft' || generating || keepDraftWorkspace || Boolean(generationReviewJob || generationJobId)) && (
         <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" hidden={tab !== 'draft'} style={{ marginBottom: 14, display: tab === 'draft' ? 'flex' : 'none', flexDirection: 'column', gap: 14 }}>
           {/* ── Draft workspace — inline editor with live streaming ── */}            <DraftWorkspace
               generating={generating}
@@ -7067,6 +7103,10 @@ const controller = new AbortController()
               completedJob={generationReviewJob}
             selectedJob={selectedJob}
             generationJobId={generationJobId}
+            onJobAttached={(id) => {
+              setGenerationJobId(id)
+              void fetchJobs().catch(() => {})
+            }}
             setSelectedJob={setSelectedJob}
             onShipReadyChange={setWorkspaceShipGate}
             onApprove={() => {
