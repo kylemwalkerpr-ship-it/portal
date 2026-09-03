@@ -125,4 +125,14 @@ describe('SuperGrok OAuth helpers', () => {
     })
     expect(global.fetch).not.toHaveBeenCalled()
   })
+
+  it('does not reuse an expired SuperGrok access token when refresh fails', async () => {
+    settings.xai_oauth_access_token = 'stale-access'
+    settings.xai_oauth_refresh_token = 'stale-refresh'
+    settings.xai_oauth_expires_at = String(Date.now() - 60_000)
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400, headers: { 'content-type': 'application/json' } }),
+    ) as typeof fetch
+    await expect(ensureSuperGrokAccessToken()).resolves.toBeNull()
+  })
 })

@@ -432,7 +432,18 @@ export async function refreshAiVault(): Promise<string[]> {
         // Configurator precedence: a vault XAI row (admin-pasted key) wins
         // over the SuperGrok OAuth token — the token only fills the gap when
         // no explicit XAI credential is configured.
-        if (!overlay.XAI_API_KEY) {
+        // SuperGrok OAuth must not shadow a configured console API key
+        // (Worker secret or vault `xai-…` key). A previous SuperGrok
+        // device-login stored in ai_settings used to win and 403 on
+        // exhausted team credits while the subscription key sat unused.
+        const envKey = String(process.env.XAI_API_KEY || '').trim()
+        const vaultKey = String(overlay.XAI_API_KEY || '').trim()
+        const vaultIsConsoleKey = /^xai-/i.test(vaultKey)
+        const envIsUsable = Boolean(envKey)
+        if (!vaultIsConsoleKey && envIsUsable) {
+          delete overlay.XAI_API_KEY
+          delete overlay.XAI_AUTH_MODE
+        } else if (!vaultKey && !envIsUsable) {
           const oauth = await ensureSuperGrokAccessToken()
           if (oauth?.accessToken) {
             overlay.XAI_API_KEY = oauth.accessToken

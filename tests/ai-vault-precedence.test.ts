@@ -111,6 +111,15 @@ describe('vault precedence — configurator keys beat deployment env (Entrim + G
     expect(isGrokConfigured()).toBe(true)
   })
 
+  it('a console XAI_API_KEY is not shadowed by SuperGrok OAuth overlay', async () => {
+    process.env.XAI_API_KEY = 'xai-subscription-key'
+    mockModule.__setVaultRows([])
+    const overlay = await buildVaultEnvOverrides(true)
+    expect(overlay.XAI_API_KEY).toBeUndefined()
+    setVaultOverlay(overlay)
+    expect(contentAiEnv('XAI_API_KEY')).toBe('xai-subscription-key')
+  })
+
   it('env values remain the fallback when no usable vault row exists', async () => {
     process.env.XAI_API_KEY = 'env-deployed-xai-secret'
     mockModule.__setVaultRows([])

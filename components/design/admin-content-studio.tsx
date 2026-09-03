@@ -6974,8 +6974,8 @@ const controller = new AbortController()
           onJump={selectTab}
         />
       )}
-      {tab === 'draft' && (
-        <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {(tab === 'draft' || generating || Boolean(generationReviewJob || generationJobId)) && (
+        <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" hidden={tab !== 'draft'} style={{ marginBottom: 14, display: tab === 'draft' ? 'flex' : 'none', flexDirection: 'column', gap: 14 }}>
           {/* ── Draft workspace — inline editor with live streaming ── */}            <DraftWorkspace
               generating={generating}
               generationEvents={generationEvents}
@@ -7027,8 +7027,7 @@ const controller = new AbortController()
           onJump={selectTab}
         />
       )}
-      {tab === 'research' && (
-        <div id={`studio-panel-${tab}`} role="tabpanel" aria-labelledby={`studio-tab-${tab}`} style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div id="studio-panel-research" role="tabpanel" aria-labelledby="studio-tab-research" hidden={tab !== 'research'} style={{ marginBottom: 14, display: tab === 'research' ? 'flex' : 'none', flexDirection: 'column', gap: 14 }}>
           {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
@@ -7099,7 +7098,6 @@ const controller = new AbortController()
             />
 
         </div>
-      )}
 
       {tab === 'draft' && !generating && draftOperationsOpen && (
         <div id="studio-panel-draft-queue" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

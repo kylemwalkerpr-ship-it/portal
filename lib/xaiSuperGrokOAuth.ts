@@ -302,8 +302,9 @@ export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | nu
     return { accessToken: access, expiresAt, authMode: 'supergrok' }
   }
   if (!refresh) {
-    if (!access) return null
-    return { accessToken: access, expiresAt: expiresAt || Date.now() + 5 * 60_000, authMode: 'supergrok' }
+    // Expired access with no refresh — do not keep minting 403s from a
+    // previous SuperGrok session. Let XAI_API_KEY / vault take over.
+    return null
   }
   try {
     const tokens = await refreshSuperGrokToken(refresh)
@@ -311,12 +312,9 @@ export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | nu
     return { accessToken: tokens.access_token, expiresAt: tokens.expires_at, authMode: 'supergrok' }
   } catch (err) {
     console.warn(
-      '[superGrok] refresh failed — using existing access token if present',
+      '[superGrok] refresh failed — not reusing the stale access token',
       err instanceof Error ? err.message : err,
     )
-    if (access) {
-      return { accessToken: access, expiresAt: expiresAt || Date.now() + 30_000, authMode: 'supergrok' }
-    }
     return null
   }
 }
