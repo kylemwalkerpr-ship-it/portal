@@ -221,7 +221,12 @@ async function resolveCanonicalJobMetadata(
     }
   }
 
-  const contentType = normalizeStudioContentType(row?.content_type || fallback.contentType || 'legal_guide')
+  const { resolveEditorialContentType } = await import('@/lib/seoFactory/jobContentType')
+  const contentType = resolveEditorialContentType({
+    contentType: row?.content_type || fallback.contentType,
+    canonicalUrl: row?.canonical_url || fallback.targetUrl,
+    content: fallback.content,
+  })
   let primaryKeyword = String(row?.primary_keyword || row?.topic || fallback.primaryKeyword || '').trim()
   const region = String(row?.region || fallback.region || 'US').trim() || 'US'
   const indexable = typeof row?.indexable === 'boolean'

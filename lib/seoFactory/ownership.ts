@@ -114,15 +114,10 @@ export function reconcileContentTypeWithPath(opts: {
   ) {
     return { contentType: 'regional_page', intentClass: intentClass === 'procedural' ? 'hub' : intentClass }
   }
-  // Legal host: only app/blog/* is a legal blog route. Any other caseworks
-  // app/* path is a legal canonical/guide path, so never let a caller or
-  // cluster hint carry blog/regional semantics into it. This is especially
-  // important when Discover supplies a legal ownerUrlHint while the UI still
-  // has the generic blog_post selection from the previous job.
+  // Legal host + regional types: keep the legal canonical. Explicit blog_post
+  // is never coerced — blogs belong on apex even if a stale path says caseworks.
   if (opts.host === 'legal' && /^app\//.test(p) && !/^app\/blog\//.test(p)) {
     if (
-      contentType === 'blog_post' ||
-      contentType === 'blog_summary' ||
       contentType === 'regional_university' ||
       contentType === 'regional_from' ||
       contentType === 'regional_page'

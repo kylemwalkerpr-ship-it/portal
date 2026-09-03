@@ -645,7 +645,11 @@ export function sanitizeFrontmatter(content: string): string {
   const title = fields.title || (body.match(/^#\s+(.+)$/m) || [])[1] || 'Guide'
   const pk = fields.primaryKeyword || ''
 
-  if (!fields.content_type) fields.content_type = 'article'
+  if (!fields.content_type) {
+    fields.content_type = /\/blog\//i.test(String(fields.canonicalUrl || fields.canonical || ''))
+      ? 'blog_post'
+      : 'article'
+  }
   if (!fields.robots) fields.robots = 'index,follow'
   if (!fields.ogImage) fields.ogImage = '/og-image.png'
 

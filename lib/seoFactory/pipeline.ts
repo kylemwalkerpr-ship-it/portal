@@ -38,6 +38,7 @@ import { isJunkTopic } from './queryNoise'
 import { topicPathMismatch } from './topicPathGuard'
 import { collapseDuplicatedTitle } from './formatContract'
 import { persistPipelineJob } from './persistContentJob'
+import { finalizePipelineContentType } from './jobContentType'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -301,26 +302,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     slug: input.slug,
     ownerUrlHint,
   })
-  // Always trust plan's path/host-reconciled type (never ship legal_guide to usa universities)
-  contentType = plan.contentType || contentType
-  if (plan.intentClass === 'geo_modifier') contentType = 'regional_from'
-  else if (plan.intentClass === 'university_modifier') contentType = 'regional_university'
-  // Transactional intent is downgraded by standingRulesHost to a blog_summary on
-  // legal or the best-fit regional host — the studio never creates marketplace gigs.
-  else if (plan.intentClass === 'transactional' && !input.contentType) contentType = 'blog_summary'
-  else if (plan.intentClass === 'news_summary' && !input.contentType) contentType = 'blog_summary'
-  else if (plan.host === 'legal' && (contentType === 'regional_page' || !input.contentType)) {
-    contentType = 'legal_guide'
-  }
-  // Second pass: path wins if still mismatched (defense in depth)
-  if (/content\/universities\//.test(plan.filePath)) contentType = 'regional_university'
-  else if (/content\/from\//.test(plan.filePath)) contentType = 'regional_from'
-  else if (
-    (plan.host === 'usa' || plan.host === 'uk' || plan.host === 'ca' || plan.host === 'au' || plan.host === 'apex') &&
-    (contentType === 'legal_guide' || contentType === 'article')
-  ) {
-    contentType = 'regional_page'
-  }
+  contentType = finalizePipelineContentType(input.contentType, plan)
   assertPlanRepoConsistency(plan)
   // CANONICAL WINDOW: the spec for the FINAL content type is the single
     // source of truth — brief/input overrides are ignored so the prompt,
