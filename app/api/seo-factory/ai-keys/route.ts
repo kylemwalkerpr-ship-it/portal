@@ -11,7 +11,6 @@ import {
   maskKey,
 } from '@/lib/aiKeyVault'
 import { getSuperGrokStatus } from '@/lib/xaiSuperGrokOAuth'
-import { getChatgptStatus } from '@/lib/chatgptOAuth'
 
 /**
  * AI Key Vault — admin-managed provider keys for the content AI chain.
@@ -46,8 +45,7 @@ export async function GET() {
       overlayOk = false
     }
     const grokOAuth = await getSuperGrokStatus()
-    const chatgptOAuth = await getChatgptStatus()
-    return NextResponse.json({ providers, settings, grokOAuth, chatgptOAuth, overlayOk, overlayNames })
+    return NextResponse.json({ providers, settings, grokOAuth, overlayOk, overlayNames })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'ai keys load failed' },

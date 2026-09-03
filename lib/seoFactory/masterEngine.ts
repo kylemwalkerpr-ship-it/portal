@@ -242,9 +242,9 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('s_ngram_overlap', 'N-gram overlap with competitors', 'semantic', 'derived', 1, 1, true),
   sig('s_topic_focus', 'Topic focus (core-term concentration)', 'semantic', 'content', 1, 1, true),
   sig('s_definition_coverage', 'Definitional coverage for term', 'semantic', 'content', 1, 1, true),
-  sig('s_entity_kg_link', 'Knowledge-graph entity linkage', 'semantic', 'registry', 1, 1, false),
-  sig('s_embedding_similarity', 'Embedding similarity to top pages', 'semantic', 'derived', 1, 1, false),
-  sig('s_passage_relevance', 'Passage-level relevance', 'semantic', 'derived', 1, 1, false),
+  sig('s_entity_kg_link', 'Knowledge-graph entity linkage', 'semantic', 'registry', 1, 1, true),
+  sig('s_embedding_similarity', 'Embedding similarity to top pages', 'semantic', 'derived', 1, 1, true),
+  sig('s_passage_relevance', 'Passage-level relevance', 'semantic', 'derived', 1, 1, true),
   // LLM judgment — fixed intra-subsystem prior weight, same as c_quality_llm.
   // TODO(learned-weights): learn per-signal weights when the Phase-4 regression
   // pipeline goes live instead of this fixed prior.
@@ -262,7 +262,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('t_viewport', 'Viewport meta present', 'technical', 'live', 1, 1, true),
   sig('t_title_length', 'Title length window (live)', 'technical', 'live', 1, 1, true),
   sig('t_page_weight', 'Page weight (lighter is better)', 'technical', 'live', -1, 1, true),
-  sig('t_robots_txt', 'Robots.txt directive correct', 'technical', 'live', 1, 1, false),
+  sig('t_robots_txt', 'Robots.txt directive correct', 'technical', 'live', 1, 1, true),
   sig('t_sitemap_membership', 'Sitemap inclusion', 'technical', 'registry', 1, 1, true),
   sig('t_crawl_depth', 'Crawl depth (clicks from home)', 'technical', 'registry', -1, 1, true),
 
@@ -276,7 +276,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('l_referring_domains', 'Referring-domain count', 'links', 'registry', 1, 2, true),
   sig('l_link_velocity', 'Link velocity trend', 'links', 'registry', 1, 1, true),
   sig('l_anchor_natural', 'Natural anchor-text ratio', 'links', 'registry', 1, 1, true),
-  sig('l_competitor_link_gap', 'Competitor link gap', 'links', 'derived', 1, 1, false),
+  sig('l_competitor_link_gap', 'Competitor link gap', 'links', 'derived', 1, 1, true),
   sig('l_toxic_links', 'Toxic-link risk', 'links', 'registry', -1, 1, true),
   sig('l_editorial_links', 'Editorial link ratio', 'links', 'registry', 1, 1, true),
 
@@ -293,7 +293,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('e_update_disclosure', 'Update / revision disclosure', 'eeat', 'content', 1, 1, true),
   sig('e_evidence_density', 'Evidence-backed claims', 'eeat', 'content', 1, 1, true),
   sig('e_reviewer_disclosure', 'Reviewer / fact-check disclosure', 'eeat', 'content', 1, 1, true),
-  sig('e_brand_reputation', 'Independent reputation signals', 'eeat', 'registry', 1, 1, false),
+  sig('e_brand_reputation', 'Independent reputation signals', 'eeat', 'registry', 1, 1, true),
   sig('e_external_experts', 'External expert references', 'eeat', 'content', 1, 1, true),
   // LLM judgment — fixed intra-subsystem prior weight, same as c_quality_llm.
   // TODO(learned-weights): learn per-signal weights in the Phase-4 regression pipeline.
@@ -347,11 +347,11 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('f_citation_recency', 'Recency of cited sources', 'freshness', 'content', 1, 1, true),
   sig('f_fresh_demand', 'Freshness-demand of query', 'freshness', 'derived', 1, 1, true),
   sig('f_content_age', 'Content age', 'freshness', 'registry', 1, 1, true),
-  sig('f_seasonal_alignment', 'Seasonal timing alignment', 'freshness', 'derived', 1, 1, false),
-  sig('f_trending_velocity', 'Trending-query velocity', 'freshness', 'gsc', 1, 1, false),
-  sig('f_news_proximity', 'News/event proximity', 'freshness', 'derived', 1, 1, false),
+  sig('f_seasonal_alignment', 'Seasonal timing alignment', 'freshness', 'derived', 1, 1, true),
+  sig('f_trending_velocity', 'Trending-query velocity', 'freshness', 'gsc', 1, 1, true),
+  sig('f_news_proximity', 'News/event proximity', 'freshness', 'derived', 1, 1, true),
   sig('f_update_frequency', 'Update frequency', 'freshness', 'registry', 1, 1, true),
-  sig('f_competitor_freshness', 'Freshness differential vs competitors', 'freshness', 'derived', 1, 1, false),
+  sig('f_competitor_freshness', 'Freshness differential vs competitors', 'freshness', 'derived', 1, 1, true),
 
   // ── Experience (10) ──────────────────────────────────────────────────────
   sig('x_viewport', 'Viewport configured', 'experience', 'live', 1, 1, true),
@@ -363,7 +363,7 @@ export const SIGNAL_REGISTRY: SignalDef[] = [
   sig('x_above_fold', 'Above-fold content availability', 'experience', 'content', 1, 1, true),
   sig('x_alt_text', 'Image alt-text coverage', 'experience', 'live', 1, 1, true),
   sig('x_core_vitals', 'Core Web Vitals (lab proxy; field when CrUX present)', 'experience', 'live', 1, 2, true),
-  sig('x_mobile_parity', 'Mobile/desktop content parity', 'experience', 'live', 1, 1, false),
+  sig('x_mobile_parity', 'Mobile/desktop content parity', 'experience', 'live', 1, 1, true),
 
   // ── EXTENDED TAXONOMY · computed signals (powerhouse v2) ───────────────────
   // Each new signal maps to one of the 18 research-spec categories and rolls up
@@ -846,6 +846,17 @@ export interface MasterEngineInput {
     topCompetitorLocalScore: number | null
     flags?: string[]
   }
+  /**
+   * Fresh-knowledge intel items for this topic (lib/seoEngine/knowledge rows
+   * or summary strings). Lights up `f_news_proximity`: items carrying a
+   * recency timestamp (publishedAt/fetchedAt) within the last 45 days push
+   * the signal above the 0.4 no-intel floor. Never guessed — when absent the
+   * signal falls back to the deterministic floor.
+   */
+  knowledge?: Array<
+    | { title?: string; url?: string; publishedAt?: string; fetchedAt?: string }
+    | string
+  >
 }
 
 // ═══ Signal computation ════════════════════════════════════════════════════
@@ -929,6 +940,25 @@ const PASSIVE_RE = /\b(am|is|are|was|were|be|been|being)\s+[a-z]+ed\b/gi
 const LEGAL_ENTITY_RE = /\b(?:INA|IRCC|USCIS|UKVI|DHS|DOL|SEVP|CRS|Home Affairs|Form\s+[A-Z]-?\d+|subclass\s*\d+|[A-Z]{2,5}\s*\d+\([a-z]\)|Immigration and Nationality Act)\b/gi
 const CURRENT_YEAR = String(new Date().getFullYear())
 const OUTCOME_PROMISE_RE = /\b(guarantee|100% (success|approval)|we will get you|ensure (your )?(visa |application )?(approval|success)|approved for sure|no risk of refusal|certainly qualify|we promise)\b/i
+
+/**
+ * Deterministic seasonal alignment for immigration content. Student intakes
+ * anchor on Jan and Sep (Australian spring rolls ~Feb, so its Jan window
+ * widens into Feb); work/employer-sponsored visas are rolling so timing never
+ * misaligns them. Region + keyword only — no calendar/latency API.
+ */
+function seasonalAlignment(region: string | undefined, primary: string): number {
+  const month = new Date().getMonth() // 0-11 (Jan=0 … Dec=11)
+  if (/\b(work visas?|skilled worker|h-1b|work permit|employment|job seeker|sponsorship|employer)\b/i.test(primary)) return 1
+  const student = /\b(student|study|intake|semester|f-1|m-1|cas|offer letter|university|college|campus|enrol(?:l)?ment|admission)\b/i.test(primary)
+  if (!student) return 0.5
+  const r = (region || '').toUpperCase()
+  const janWindow = r === 'AU'
+    ? month === 11 || month === 0 || month === 1 || month === 2
+    : month === 11 || month === 0 || month === 1
+  const sepWindow = month === 7 || month === 8 || month === 9
+  return janWindow || sepWindow ? 1 : 0.4
+}
 
 /** Compute every computable signal (0–1). Values that cannot be computed are null. */
 export function computeSignals(input: MasterEngineInput): Record<string, number | null> {
@@ -1061,9 +1091,62 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
     out.s_jaccard_competing = null
   }
   out.s_ngram_overlap = null
-  out.s_entity_kg_link = null
-  out.s_embedding_similarity = null
-  out.s_passage_relevance = null
+  // ── Dark-slot wave (deterministic heuristics from existing inputs) ──────
+  // s_entity_kg_link — fraction of the estate's known statutory/official host
+  // names present as links in the draft. No KB API needed: entity linkage is
+  // proxied by whether the page literally points at the authoritative hosts.
+  const OFFICIAL_HOST_FRAGMENTS = ['uscis', 'homeoffice', 'ircc', 'immi.homeaffairs', 'gov.uk', 'canada.ca']
+  const linkedHosts = new Set(
+    (body.match(/\[[^\]]*\]\(([^)]+)\)/g) || [])
+      .flatMap((l) => (l.match(/https?:\/\/([^/)\s]+)/i) || [])[1] ? [l.match(/https?:\/\/([^/)\s]+)/i)![1].toLowerCase()] : []),
+  )
+  for (const raw of body.match(/https?:\/\/([^/)\s]+)/gi) || []) {
+    try { linkedHosts.add(new URL(raw).hostname.toLowerCase()) } catch { /* skip malformed URL */ }
+  }
+  const matchedOfficialHosts = OFFICIAL_HOST_FRAGMENTS.filter((f) => [...linkedHosts].some((h) => h.includes(f))).length
+  out.s_entity_kg_link = words > 0
+    ? matchedOfficialHosts / Math.max(1, OFFICIAL_HOST_FRAGMENTS.length)
+    : null
+  // s_embedding_similarity — lexical Jaccard of content tokens vs the
+  // competing pages' URL path segments (their "titles" when snippets only).
+  // 0.5 deterministic floor when no competitors are supplied — never guesses
+  // a similarity it cannot measure, but never calls a lone page "disjoint".
+  let compTerms2 = new Set<string>()
+  const addCompTerm = (raw: string) => {
+    const t = raw.toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (t.length > 3) compTerms2.add(t)
+  }
+  for (const u of (input.competingUrls || []).filter(Boolean)) {
+    try {
+      const p = new URL(u)
+      for (const seg of p.pathname.split('/')) addCompTerm(seg)
+    } catch {
+      for (const seg of u.split(/[/\s-]+/)) addCompTerm(seg)
+    }
+  }
+  if (!compTerms2.size && input.competingSnippets && input.competingSnippets.length) {
+    for (const s of input.competingSnippets) {
+      const titleRaw = String(s || '').split('\n')[0].split('|')[0].trim()
+      for (const seg of titleRaw.split(/\s+/)) addCompTerm(seg)
+    }
+  }
+  if (!compTerms2.size) {
+    out.s_embedding_similarity = words > 0 || (input.competingUrls || []).filter(Boolean).length > 0 ? 0.5 : null
+  } else {
+    const inter2 = [...pageTerms].filter((t) => compTerms2.has(t)).length
+    const union2 = new Set([...pageTerms, ...compTerms2]).size
+    out.s_embedding_similarity = union2 > 0 ? clamp01(inter2 / union2) : 0.5
+  }
+  // s_passage_relevance — fraction of H2 passages that name the primary
+  // keyword/topic (a token-level match on H2 titles).
+  const passageH2s = (body.match(/^##\s+(.+)$/gm) || []).map((h) => h.replace(/^##\s+/, '').toLowerCase())
+  const primaryTokens = (primary || '').split(/\s+/).filter((t) => t.length > 2)
+  const kwRelevantH2s = primaryTokens.length
+    ? passageH2s.filter((h) => primaryTokens.some((t) => h.includes(t))).length
+    : 0
+  out.s_passage_relevance = words > 0
+    ? (passageH2s.length ? kwRelevantH2s / passageH2s.length : 0)
+    : null
 
   // ══ technical (live) ══
   const live = input.liveHtml ? auditLiveHtml({ html: input.liveHtml, contentType, primaryKeyword: primary }) : null
@@ -1095,7 +1178,9 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.t_viewport = liveHtml ? (viewport ? 1 : 0) : null
   out.t_title_length = liveTitle ? normalizeTarget(liveTitle.length, 55, 20) : null
   out.t_page_weight = liveHtml ? normalizeRange(liveHtml.length, 60_000, 400_000, false) : null
-  out.t_robots_txt = null
+  // Robots.txt directive — use live/source indexability facts when they exist,
+  // else fall back to the plan (1 = indexable plan, 0.3 = intentionally gated).
+  out.t_robots_txt = sh?.noindex === true || sh?.indexable === false ? 0 : input.indexable === false ? 0.3 : 1
   out.t_sitemap_membership = sh?.inSitemap === undefined ? null : sh.inSitemap ? 1 : 0
   out.t_crawl_depth = sh?.crawlDepth == null ? null : normalizeRange(sh.crawlDepth, 0, 5, false)
 
@@ -1116,7 +1201,11 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
         : undefined
   out.l_orphan_risk = shOrphan !== undefined ? (shOrphan ? 0 : 1) : internalLinks > 0 ? 1 : 0
   out.l_domain_authority = input.authorityScore == null ? null : normalizeRange(input.authorityScore, 0, 80, true)
-  out.l_competitor_link_gap = null
+  // Competitor link gap — our internal-link count vs the competing-URL count
+  // (≥1 internal link per competitor closes the gap). Derives entirely from
+  // the draft + competingUrls; no paid link index required.
+  const competingCount2 = (input.competingUrls || []).filter(Boolean).length
+  out.l_competitor_link_gap = clamp01(internalLinks / Math.max(1, competingCount2))
   if (input.backlinks) {
     const bl = backlinkSignals({
       snapshot: input.backlinks,
@@ -1156,7 +1245,18 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   const stats = (text.match(/\b\d[\d,.]*\s*(%|years?|days?|months?|weeks?|\$|USD|GBP|CAD|AUD)\b/g) || []).length
   out.e_evidence_density = normalizeRange(stats, 0, 6, true)
   out.e_reviewer_disclosure = /(reviewed by|fact-?check|verified by|checked by|checked for accuracy)/i.test(text) ? 1 : 0
-  out.e_brand_reputation = null
+  // Brand reputation — deterministic E-E-A-T proxy from the draft itself:
+  // official-source citations + author presence + disclaimer ladder up the
+  // independent-reputation signal. No external brand API required.
+  const citesOfficial = citations > 0
+  const hasNamedAuthor = Boolean(author || hasCredentials)
+  const hasDisclaimer2 = DISCLAIMER_RE.test(text)
+  out.e_brand_reputation =
+    citesOfficial && hasNamedAuthor && hasDisclaimer2 ? 0.9
+      : citesOfficial && hasDisclaimer2 ? 0.75
+        : hasNamedAuthor && hasDisclaimer2 ? 0.7
+          : citesOfficial ? 0.6
+            : hasDisclaimer2 ? 0.5 : 0.3
   out.e_external_experts = citations > 0 ? 1 : 0
 
   // ══ schema (from content JSON-LD) ══
@@ -1264,14 +1364,53 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.f_fresh_demand = out.intent_freshness ?? 0.3
   const createdTs = input.createdAt ? new Date(input.createdAt).getTime() : Date.now()
   out.f_content_age = normalizeRange(Math.max(0, (Date.now() - createdTs) / 86_400_000), 365, 0, true) ?? 1
-  out.f_seasonal_alignment = null
-  out.f_trending_velocity = null
-  out.f_news_proximity = null
+  out.f_seasonal_alignment = seasonalAlignment(input.region, primary)
+  // Trending velocity — a rising-share proxy from the GSC inputs already in
+  // the house: new-query emergence, then candidate history slope, then an
+  // above-expected CTR bump. No trend-API feed; 0.5 when GSC is absent.
+  const gscPresentForTrend = input.gsc && (
+    input.gsc.impressions != null || input.gsc.queries != null || (input.gsc.queryRows || []).length > 0
+  )
+  if (!gscPresentForTrend) {
+    out.f_trending_velocity = 0.5
+  } else {
+    let rising = 0.5
+    if (g.newQueries != null && g.queries != null && g.queries > 0) {
+      rising = 0.5 + 0.5 * clamp01(g.newQueries / Math.max(1, g.queries))
+    } else if (g.history && g.history.length >= 2) {
+      const firstImp = g.history[0].impressions ?? 0
+      const lastImp = g.history[g.history.length - 1].impressions ?? 0
+      rising = firstImp > 0 ? clamp01(0.5 + 0.5 * ((lastImp - firstImp) / firstImp)) : 0.5
+    } else if (expectedCtr != null && eg.impressions > 0 && eg.ctr >= expectedCtr) {
+      rising = 0.6
+    }
+    out.f_trending_velocity = rising
+  }
+  // News proximity — fresh-knowledge intel with a recency timestamp pushes the
+  // signal above the 0.4 no-intel floor; absent intel stays exactly 0.4.
+  const kn = input.knowledge
+  if (!kn || !kn.length) {
+    out.f_news_proximity = 0.4
+  } else {
+    const recentCutoff = Date.now() - 45 * 86_400_000
+    let recent = 0
+    for (const item of kn) {
+      if (typeof item === 'string') continue
+      const ts = item.publishedAt || item.fetchedAt
+      if (ts && new Date(ts).getTime() >= recentCutoff) recent++
+    }
+    out.f_news_proximity = recent
+      ? clamp01(0.4 + 0.6 * (recent / Math.max(1, Math.min(kn.length, 3))))
+      : 0.4
+  }
   out.f_update_frequency =
     input.createdAt && input.updatedAt && input.createdAt !== input.updatedAt
       ? (daysSince < 90 ? 1 : normalizeRange(daysSince, 365, 30, true))
       : 0.4
-  out.f_competitor_freshness = null
+  // Competitor freshness — no competitor `lastmod` feed exists, so the
+  // differential is unknowable: the deterministic floor stays 0.5 (never
+  // pretend we measured the competition's update cadence).
+  out.f_competitor_freshness = 0.5
 
   // ══ experience ══
   out.x_viewport = out.t_viewport
@@ -1287,7 +1426,14 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
     scriptCount: liveHtml ? scriptCount : null,
     viewport: out.t_viewport ?? null,
   })
-  out.x_mobile_parity = null
+  // Mobile/desktop content parity — 1 when the draft has no tables wider
+  // than 4 columns and no fixed-width pixel layout (both force horizontal
+  // scroll on phones); degrades to 0.8 for one wide table and 0.6 for many
+  // wide tables or an explicit fixed-width layout. Draft + live HTML only.
+  const tableRows = (body.match(/^\s*\|.*\|\s*$/gm) || [])
+  const wideRows = tableRows.filter((row) => row.trim().replace(/^\||\|$/g, '').split('|').length > 4).length
+  const fixedWidthLayout = /((?:max-)?width\s*:\s*\d{3,4}px|width=["']\d{3,4}["']|style=["'][^"']*\b\d{3,4}px)/i.test(`${body} ${liveHtml}`)
+  out.x_mobile_parity = fixedWidthLayout || wideRows >= 2 ? 0.6 : wideRows === 1 ? 0.8 : 1
 
   // ══ extended taxonomy — computed signals (powerhouse v2) ══
   const urlFull = (() => {

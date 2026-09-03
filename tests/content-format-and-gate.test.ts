@@ -82,6 +82,15 @@ Most delays trace to missing evidence or name mismatches.
 ### Can I file if I travel often?
 Keep every trip under six months to preserve continuous presence.
 
+### How long can I stay outside the US during naturalization?
+Extended trips may break the continuous residence requirement, so count your days carefully before filing.
+
+### Do I need to take the civics test?
+Most applicants must pass the civics and English tests unless an age-and-time-in-status exemption applies.
+
+### What is the continuous presence requirement?
+You must show five years of continuous residence in the United States before you file Form N-400.
+
 ## Sources
 - https://www.uscis.gov/citizenship
 
@@ -317,5 +326,62 @@ describe('deterministic repair loop — blockers clear on the next run', () => {
       region: 'US',
     })
     expect(repaired.applied).not.toContain('disclaimer')
+  })
+})
+
+describe('schema_faq — missing FAQPage JSON-LD blocks indexable long-form', () => {
+  const KEYWORD = 'n 400 eligibility requirements'
+
+  it('is a BLOCKER (not a warning) for an indexable long-form page with no FAQPage JSON-LD', () => {
+    const audit = auditContent({
+      content: pad(bodyWithToc),
+      contentType: 'legal_guide',
+      primaryKeyword: KEYWORD,
+      indexable: true,
+    })
+    const faq = audit.blockers.find((b) => b.code === 'schema_faq')
+    expect(faq).toBeDefined()
+    expect(faq!.fix).toMatch(/schema|FAQ/i)
+    expect(audit.warnings.some((w) => w.code === 'schema_faq')).toBe(false)
+  })
+
+  it('stays a WARNING (never a blocker) for non-indexable content', () => {
+    const audit = auditContent({
+      content: pad(bodyWithToc),
+      contentType: 'legal_guide',
+      primaryKeyword: KEYWORD,
+      indexable: false,
+    })
+    expect(audit.blockers.some((b) => b.code === 'schema_faq')).toBe(false)
+    expect(audit.warnings.some((w) => w.code === 'schema_faq')).toBe(true)
+  })
+
+  it('keeps the marketplace_gig exemption — a gig with no schema passes the check', () => {
+    const audit = auditContent({
+      content: pad(bodyWithToc),
+      contentType: 'marketplace_gig',
+      primaryKeyword: KEYWORD,
+      indexable: true,
+    })
+    expect(audit.blockers.some((b) => b.code === 'schema_faq')).toBe(false)
+    expect(audit.warnings.some((w) => w.code === 'schema_faq')).toBe(false)
+  })
+
+  it('clears after the deterministic repair injects FAQPage JSON-LD', () => {
+    const repaired = applyDeterministicRepairs({
+      content: pad(bodyWithToc),
+      title: 'N-400 naturalization guide',
+      primaryKeyword: KEYWORD,
+      region: 'US',
+    })
+    expect(repaired.content).toMatch(/"@type"\s*:\s*"FAQPage"/)
+    const audit = auditContent({
+      content: repaired.content,
+      contentType: 'legal_guide',
+      primaryKeyword: KEYWORD,
+      indexable: true,
+    })
+    expect(audit.blockers.some((b) => b.code === 'schema_faq')).toBe(false)
+    expect(audit.warnings.some((w) => w.code === 'schema_faq')).toBe(false)
   })
 })

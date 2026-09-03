@@ -311,9 +311,12 @@ export function auditContent(opts: {
     message: hasArticle ? 'Article JSON-LD present' : 'Missing Article JSON-LD',
     fix: 'Add Article schema in application/ld+json',
   }, AUDIT_POINT_WEIGHTS.schemaArticle)
+  // FAQPage JSON-LD is a HARD blocker for indexable long-form — same band as
+  // the quality gate's missing_faq section. A rich-result-ready schema is a
+  // ship requirement, not a nicety; missing it withholds the AI-overview lift.
   add(hasFaq || opts.contentType === 'marketplace_gig', {
     code: 'schema_faq',
-    severity: 'warning',
+    severity: wantIndexable && opts.contentType !== 'marketplace_gig' ? 'blocker' : 'warning',
     message: hasFaq ? 'FAQPage JSON-LD present' : 'Missing FAQPage JSON-LD',
     fix: 'Add 4–6 FAQs with FAQPage schema for AI overviews',
   }, AUDIT_POINT_WEIGHTS.schemaFaq)

@@ -100,7 +100,7 @@ export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
 /**
  * Lane host allowlists — a lane can only select or execute a pin whose host
  * serves that lane. Draft is Run BiOS + NVIDIA only; Brief is Run BiOS,
- * Baseten, xAI (Grok), and OpenAI (ChatGPT Plus / API key); Review is
+ * Baseten, xAI (Grok), and OpenAI (API key); Review is
  * Run BiOS + xAI + OpenAI. Command Center keeps the full host set. `auto`
  * stays a command-only host.
  */

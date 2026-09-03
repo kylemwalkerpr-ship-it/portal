@@ -447,27 +447,6 @@ export async function refreshAiVault(): Promise<string[]> {
         oauthErr instanceof Error ? oauthErr.message : oauthErr,
       )
     }
-    try {
-      if (typeof vault.getAiSettings === 'function') {
-        const { ensureChatgptAccessToken, CHATGPT_DEFAULT_MODEL } = await import('@/lib/chatgptOAuth')
-        // Same precedence as SuperGrok: a vault OPENAI row (admin-pasted key)
-        // wins over the ChatGPT Plus OAuth token. The token only fills the gap
-        // when no explicit OpenAI credential is configured.
-        if (!overlay.OPENAI_API_KEY) {
-          const oauth = await ensureChatgptAccessToken()
-          if (oauth?.accessToken) {
-            overlay.OPENAI_API_KEY = oauth.accessToken
-            overlay.OPENAI_AUTH_MODE = 'chatgpt-plus'
-            if (!overlay.OPENAI_MODEL) overlay.OPENAI_MODEL = CHATGPT_DEFAULT_MODEL
-          }
-        }
-      }
-    } catch (oauthErr) {
-      console.warn(
-        '[contentAi] ChatGPT OAuth overlay skipped',
-        oauthErr instanceof Error ? oauthErr.message : oauthErr,
-      )
-    }
     vaultOverlay = overlay
     return Object.keys(overlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
   } catch (e) {
@@ -1082,12 +1061,11 @@ export function isGrokConfigured(): boolean {
   return Boolean(env('XAI_API_KEY'))
 }
 
-/** True when OpenAI can run: an OPENAI_API_KEY that isn't a Parasail psk- key,
- *  or a connected ChatGPT Plus OAuth token (OPENAI_AUTH_MODE=chatgpt-plus). */
+/** True when OpenAI can run: an OPENAI_API_KEY that isn't a Parasail psk- key.
+ *  ChatGPT Plus OAuth was removed — only a real OpenAI API key counts. */
 export function isOpenaiConfigured(): boolean {
   const key = env('OPENAI_API_KEY')
-  if (key) return !looksLikeParasailKey(key)
-  return env('OPENAI_AUTH_MODE') === 'chatgpt-plus'
+  return key ? !looksLikeParasailKey(key) : false
 }
 
 /** UI / pin aliases that are not xAI model ids. "grok" must never be sent. */
@@ -2788,7 +2766,7 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY') && !looksLikeParasailKey(env('CUSTOM_AI_API_KEY'))), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok (SuperGrok fallback)', configured: isGrokConfigured(), role: 'fallback' },
-    { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna or ChatGPT Plus)', configured: isOpenaiConfigured(), role: 'fallback' },
+    { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna)', configured: isOpenaiConfigured(), role: 'fallback' },
     { id: 'deepseek', label: 'DeepSeek.com API', configured: isDeepseekOfficialConfigured(), role: 'fallback' },
   ]
 }
@@ -3588,7 +3566,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       : prefer
     // Live policy: the Entrim pair is the only commotion-free path, so the
     // fix is always "set ENTRIM_API_KEY" — recommending a retired provider's
-    // key (OpenAI/ChatGPT Plus/SuperGrok) would send the operator in circles.
+    // key (OpenAI/SuperGrok) would send the operator in circles.
     throw new Error(
       `Selected AI provider "${display}" is not configured. ` +
       `The live policy (Entrim-only) requires ENTRIM_API_KEY — set it in the environment or the AI Key Vault (Command Center → Configure). ` +

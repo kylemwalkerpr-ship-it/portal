@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 /**
  * POST /api/content-studio/interlinks
@@ -73,7 +74,10 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/content-studio/interlinks
  *
- * Simple health check — returns total link count and categories.
+ * Unified studio interlink list — registry (estate + hand-maintained) UNION
+ * the Master Engine graph from `seo_interlinks` (read-only), deduped by URL,
+ * so the studio list covers both the estate registry and the planner's
+ * journey/CTA edges. Read-only: nothing here writes to seo_interlinks.
  */
 export async function GET() {
   try {
@@ -84,13 +88,55 @@ export async function GET() {
 
     const { LINKS } = await import('@/lib/interlinkRegistry')
     const bySite = { caseworks: 0, regional: 0, marketplace: 0 }
+    const seen = new Set<string>()
+    const links: Array<Record<string, unknown>> = []
+    const normalize = (u: string) => String(u || '').replace(/\/+$/, '').toLowerCase()
     for (const link of LINKS) {
       bySite[link.site]++
+      if (!link.url) continue
+      const key = normalize(link.url)
+      if (seen.has(key)) continue
+      seen.add(key)
+      links.push({ url: link.url, label: link.label, site: link.site, kind: link.kind, source: 'registry' })
+    }
+
+    // Master Engine graph — the planner's seo_interlinks edges, read-only.
+    let engineGraphCount = 0
+    try {
+      const supabase = createSupabaseAdminClient()
+      const { data } = await supabase
+        .from('seo_interlinks')
+        .select('target_url,target_host,anchor_text,status,reason')
+        .order('score', { ascending: false })
+        .limit(200)
+      for (const row of (data as Array<Record<string, unknown>> | null) || []) {
+        const url = String(row.target_url || '').trim()
+        if (!url) continue
+        const key = normalize(url)
+        if (seen.has(key)) continue
+        seen.add(key)
+        engineGraphCount++
+        const label = String(row.anchor_text || '').trim() || url.replace(/^https?:\/\//i, '').replace(/\/+$/, '').slice(0, 56)
+        const site = String(row.target_host || '').trim() || undefined
+        links.push({
+          url,
+          label,
+          site: site || undefined,
+          status: String(row.status || 'planned'),
+          reason: String(row.reason || 'engine_interlink'),
+          source: 'engine_graph',
+        })
+      }
+    } catch {
+      /* seo_interlinks missing / unreachable — registry still returns */
     }
 
     return NextResponse.json({
       totalLinks: LINKS.length,
       bySite,
+      engineGraphCount,
+      count: links.length,
+      links,
       note: 'POST with { topic, keywords[] } to get ranked interlink suggestions.',
     })
   } catch (err) {

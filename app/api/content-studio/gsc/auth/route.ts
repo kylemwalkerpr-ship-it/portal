@@ -33,6 +33,15 @@ export async function GET(request: NextRequest) {
 
   const scope = 'https://www.googleapis.com/auth/webmasters.readonly'
 
+  // CSRF state: a random, httpOnly, short-lived cookie the callback must echo
+  // back. Prevents an attacker from starting the OAuth flow with their own
+  // redirect and harvesting tokens. (State CSRF is the minimum — this client
+  // already exchanges with a confidential client_secret, so PKCE is optional.)
+  const state = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const secure = request.nextUrl.protocol === 'https:'
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -40,9 +49,18 @@ export async function GET(request: NextRequest) {
     scope,
     access_type: 'offline',       // Get a refresh_token
     prompt: 'consent',            // Force consent screen to always get refresh_token
+    state,
   })
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
 
-  return NextResponse.json({ authUrl })
+  const res = NextResponse.json({ authUrl, state })
+  res.cookies.set('gsc_oauth_state', state, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 600, // short-lived — the OAuth round-trip needs only minutes
+  })
+  return res
 }

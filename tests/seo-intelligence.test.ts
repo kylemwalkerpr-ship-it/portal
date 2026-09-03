@@ -183,6 +183,10 @@ Check the official USCIS page for your category.
 ## Sources
 - [USCIS official site](https://www.uscis.gov/)
 
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"When should you file?","acceptedAnswer":{"@type":"Answer","text":"You file before the current EAD expires to stay within the cap-gap window."}},{"@type":"Question","name":"What is the extension length?","acceptedAnswer":{"@type":"Answer","text":"The extension runs 24 months for most approved STEM degrees."}},{"@type":"Question","name":"Can you change employers?","acceptedAnswer":{"@type":"Answer","text":"Yes, but the new employer must be E-Verify enrolled."}}]}
+</script>
+
 This guide is educational only, not legal advice. Consult an attorney for your situation.
 
 ${solidBody}

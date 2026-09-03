@@ -3567,8 +3567,10 @@ function DraftWorkspace({
               ))}
             </div>
           </div>
-        ) : hasContent ? (
-          /* Content ready — render in AdminInlineEditor */
+        ) : hasContent && !selectedJob ? (
+          /* Content ready — render in AdminInlineEditor. Hidden while a job is
+             open in the JobDetail modal (it carries its own editor) so a draft
+             is never editable in two places for the same job. */
           <div style={{ flex: 1, padding: 0 }}>
             <AdminInlineEditor
               content={draftContent}
@@ -3586,6 +3588,18 @@ function DraftWorkspace({
               reviewModel={reviewModel}
               onReviewModelChange={setReviewModel}
             />
+          </div>
+        ) : hasContent && selectedJob ? (
+          /* A job is open in the JobDetail modal — its editor owns this draft
+             until the modal closes. Keep the workspace quiet so the same job
+             is never editable in two places. */
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 }} data-testid="studio-modal-editor-active">
+            <div style={{ fontFamily: C.serif, fontSize: 18, color: E.inkMuted, fontStyle: 'italic' }}>
+              Editing in the job editor
+            </div>
+            <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkDim, textAlign: 'center', maxWidth: 420 }}>
+              “{selectedJob.title}” is open in its detail editor. Close it to return to the draft workspace.
+            </div>
           </div>
         ) : (
           /* No activity yet — prompt to generate */
@@ -7275,8 +7289,11 @@ const controller = new AbortController()
             setActionNotice={setActionNotice}
             shipGateByJob={shipGateBook}
           />
-          {/* AI-enabled inline editor — fix blockers interactively */}
-          {selectedJob?.content && (
+          {/* AI-enabled inline editor — fix blockers interactively.
+              Only when NO job is open in the JobDetail modal (which carries
+              its own AdminInlineEditor) so the same job never gets two
+              editors at once. */}
+          {!selectedJob && selectedJob?.content && (
             <div style={{ marginTop: 14, padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
               <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
                 INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE

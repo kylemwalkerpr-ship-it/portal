@@ -252,7 +252,8 @@ export async function persistPipelineJob(
       }
       jobId = existingId
     } else {
-      let jobInsert = await supabase.from('content_jobs').insert(baseRow).select('id').single()
+      let insertRow = baseRow
+      let jobInsert = await supabase.from('content_jobs').insert(insertRow).select('id').single()
       if (jobInsert.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(jobInsert.error.message || '')) {
         const {
           source_job_id: _sourceJobId,
@@ -262,10 +263,14 @@ export async function persistPipelineJob(
           event_log: _event_log,
           ...legacyRow
         } = baseRow
-        jobInsert = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
+        insertRow = legacyRow
+        jobInsert = await supabase.from('content_jobs').insert(insertRow).select('id').single()
       }
-      if (jobInsert.error) {
-        console.warn('[persistPipelineJob] job insert skipped', jobInsert.error.message)
+      if (jobInsert.error || !jobInsert.data?.id) {
+        jobInsert = await supabase.from('content_jobs').insert(insertRow).select('id').single()
+      }
+      if (jobInsert.error || !jobInsert.data?.id) {
+        console.error('[persistPipelineJob] job insert failed after retry', jobInsert.error?.message || 'no id returned by insert')
       }
       jobId = jobInsert.data?.id ?? null
     }

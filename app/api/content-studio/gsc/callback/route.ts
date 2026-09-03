@@ -10,8 +10,16 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const error = searchParams.get('error')
+  const state = searchParams.get('state')
 
   const portalOrigin = process.env.GSC_PORTAL_ORIGIN ?? 'https://portal.yousafeconsultancy.com'
+
+  // CSRF state must round-trip: the cookie set by /api/content-studio/gsc/auth
+  // must match the query param Google echoes back. Mismatch → 400, no token.
+  const cookieState = request.cookies.get('gsc_oauth_state')?.value
+  if (!state || !cookieState || state !== cookieState) {
+    return NextResponse.json({ error: 'state_mismatch' }, { status: 400 })
+  }
 
   if (error) {
     return NextResponse.redirect(
@@ -94,9 +102,14 @@ export async function GET(request: NextRequest) {
 
     if (dbError) throw new Error(`Supabase upsert failed: ${dbError.message}`)
 
-    return NextResponse.redirect(
+    // Consume the one-time state cookie on success.
+    const redirect = NextResponse.redirect(
       `${portalOrigin}/dashboard/admin/content?gsc_connected=true&email=${encodeURIComponent(email)}`
     )
+    redirect.cookies.set('gsc_oauth_state', '', {
+      httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0,
+    })
+    return redirect
   } catch (err) {
     console.error('[gsc/callback]', err)
     const msg = err instanceof Error ? err.message : 'Unknown error'

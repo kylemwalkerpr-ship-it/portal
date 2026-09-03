@@ -27,6 +27,9 @@ import {
   type HistoricalOutcome,
 } from '@/lib/seoFactory/masterEngineLearn'
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
+import { scoreContentQuality, contentQualityComposite, buildContentLane1, type ContentQualityResult } from '@/lib/seoFactory/contentQuality'
+import { scoreEeatTrust, eeatTrustComposite, buildEeatLane1, type EeatTrustResult } from '@/lib/seoFactory/eeatTrust'
+import { scoreSemanticNlp, semanticNlpComposite, buildSemanticLane1, type SemanticNlpResult } from '@/lib/seoFactory/semanticNlp'
 
 /** Learned per-intent subsystem weights feed straight from applyRewardNudges. */
 type LearnReportWeights = NonNullable<LearnedWeightsInput['byIntent']>
@@ -40,6 +43,19 @@ export interface MasterEngineFeedRequest {
   canonicalUrl?: string
   gsc?: MasterEngineInput['gsc']
   competingUrls?: string[]
+  /** Optional draft content — when set AND CONTENT_AI_LLM_QUALITY=1 the three
+   *  paid LLM judgment lanes (content quality · E-E-A-T · semantic/NLP) run
+   *  against it and fold their scores into the prompt block. */
+  content?: string
+}
+
+/** Optional LLM quality lane — the ONLY Entrim-spend path in the feed.
+ *  CONTENT_AI_LLM_QUALITY=1 opts in; otherwise null and zero extra spend. */
+export type MasterEngineLlmQuality = null | {
+  enabled: boolean
+  contentQuality: ContentQualityResult | null
+  eeatTrust: EeatTrustResult | null
+  semanticNlp: SemanticNlpResult | null
 }
 
 export interface MasterEngineFeed {
@@ -60,6 +76,7 @@ export interface MasterEngineFeed {
   /** Eligible vs junk vs deep-tail GSC mix — the studio cannot hide behind a
    *  0.3% CTR when the eligible position is deep and junk share is high. */
   gscMix: GscMix
+  llmQuality?: MasterEngineLlmQuality
   lineage: Record<string, unknown>
 }
 
@@ -209,6 +226,62 @@ export function renderMasterEnginePromptBlock(
 }
 
 /**
+ * Optional LLM quality lane — THREE paid Entrim judgment calls per feed.
+ * CONTENT_AI_LLM_QUALITY=1 opts in; any other value (or absence) returns null
+ * so production stays fail-closed with zero extra Entrim spend. When enabled
+ * but the request carries no draft content there is nothing to judge → null.
+ * Every scorer never-throws, so this whole lane degrades to null, never a
+ * failed feed.
+ */
+export async function maybeRunLlmQuality(
+  req: MasterEngineFeedRequest,
+): Promise<MasterEngineLlmQuality> {
+  if (process.env.CONTENT_AI_LLM_QUALITY !== '1') return null
+  const content = String(req.content || '').trim()
+  if (!content) return null
+  const slug = String(req.primaryKeyword || req.topic || 'guide').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+  const pageUrl = String(req.canonicalUrl || `https://yousafeconsultancy.com/${slug}/`)
+  const ymyl = req.contentType === 'legal_guide'
+  const [contentQuality, eeatTrust, semanticNlp] = await Promise.all([
+    scoreContentQuality({
+      pageUrl,
+      targetText: content,
+      competitorTexts: [],
+      lane1: buildContentLane1({ targetText: content, competitorTexts: [], detectedIntent: req.region }),
+    }).catch(() => null),
+    scoreEeatTrust({
+      pageUrl,
+      targetText: content,
+      competitorTexts: [],
+      lane1: buildEeatLane1({ targetText: content, ymyl }),
+    }).catch(() => null),
+    scoreSemanticNlp({
+      pageUrl,
+      targetText: content,
+      competitorTexts: [],
+      lane1: buildSemanticLane1({ questionIntent: true }),
+    }).catch(() => null),
+  ])
+  return { enabled: true, contentQuality, eeatTrust, semanticNlp }
+}
+
+/** Compact, truthful prompt-line rendering of the optional LLM quality lane. */
+export function renderLlmQualityBlock(q: Exclude<MasterEngineLlmQuality, null>): string {
+  const fmt = (n: number | null): string => (n == null ? '—' : `${Math.round(n * 100)}/100`)
+  const bits = [
+    `content-quality ${fmt(q.contentQuality ? contentQualityComposite(q.contentQuality) : null)}`,
+    `E-E-A-T trust ${fmt(q.eeatTrust ? eeatTrustComposite(q.eeatTrust) : null)}`,
+    `semantic/NLP ${fmt(q.semanticNlp ? semanticNlpComposite(q.semanticNlp) : null)}`,
+  ].join(' · ')
+  const flags = [
+    ...(q.contentQuality?.flags || []),
+    ...(q.eeatTrust?.flags || []),
+    ...(q.semanticNlp?.flags || []),
+  ]
+  return `- LLM quality lane (CONTENT_AI_LLM_QUALITY=1): ${bits}${flags.length ? ` · flags: ${flags.slice(0, 6).join(', ')}` : ''}`
+}
+
+/**
  * Load the per-query GSC breakdown the same way the radar already does —
  * live `topQueries` when GSC is configured, else the committed snapshot — and
  * map it to `{ term, impressions, clicks, position }` queryRows.
@@ -272,6 +345,7 @@ export async function assembleMasterEngineFeed(
       position: req.gsc?.position,
       queries: req.gsc?.queryRows,
     }),
+    llmQuality: null,
     lineage: { modelVersion: 'seo-master-engine-feed-v1', ok: false },
   }
   if (!topic) return empty
@@ -313,7 +387,7 @@ export async function assembleMasterEngineFeed(
       gsc,
       competingUrls: req.competingUrls,
     }
-    const [withHealth, llmV, knowledge, cluster, ahrefs, learned] = await Promise.all([
+    const [withHealth, llmV, knowledge, cluster, ahrefs, learned, llmQuality] = await Promise.all([
       attachSiteHealthFacts(input, req.canonicalUrl).catch(() => input),
       loadLlmVisibilityEvidence(primaryKeyword).catch(() => null),
       loadMatchingKnowledge(primaryKeyword, req.region),
@@ -340,6 +414,7 @@ export async function assembleMasterEngineFeed(
           return null
         }
       })(),
+      maybeRunLlmQuality(req),
     ])
     input = withHealth
     if (llmV) input.llmVisibility = llmV
@@ -360,9 +435,13 @@ export async function assembleMasterEngineFeed(
 
     const report = learned ? scoreMaster(input, learned) : scoreMaster(input)
     const fix = masterEngineFixPlan(input)
+    const llmBlock = llmQuality
+      ? renderLlmQualityBlock(llmQuality)
+      : ''
     const promptBlock = [
       renderMasterEnginePromptBlock(report, { knowledge, cluster }),
       fix.promptBlock,
+      llmBlock,
     ].filter(Boolean).join('\n\n')
 
     return {
@@ -373,6 +452,7 @@ export async function assembleMasterEngineFeed(
       recommendationCount: (report.recommendations || []).filter((r) => r.open !== false).length,
       promptBlock,
       gscMix: report.gscMix,
+      llmQuality,
       // Plan-phase honesty: at brief time there is no page yet, so the
       // composite covers only the market/estate signals that had data.
       // Surface how much of the engine was actually computed so the number
@@ -392,6 +472,14 @@ export async function assembleMasterEngineFeed(
         recommendationCount: (report.recommendations || []).filter((r) => r.open !== false).length,
         riskCount: report.risks?.length ?? 0,
         usedLearned: Boolean(report.adaptation?.usedLearned),
+        llmQuality: llmQuality
+          ? {
+              enabled: true,
+              contentQuality: llmQuality.contentQuality ? String(llmQuality.contentQuality.model_used) : null,
+              eeatTrust: llmQuality.eeatTrust ? String(llmQuality.eeatTrust.model_used) : null,
+              semanticNlp: llmQuality.semanticNlp ? String(llmQuality.semanticNlp.model_used) : null,
+            }
+          : null,
         generatedAt: report.generatedAt,
       },
     }

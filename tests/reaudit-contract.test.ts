@@ -157,6 +157,10 @@ The refusal notice explains the reasons for the decision. Depending on the categ
 ### Do I need a lawyer to apply?
 No, but professional advice can help when your circumstances are complex or a previous application was refused. A qualified immigration professional can review your documents and point out risks before you file.
 
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can I renew before my current visa expires?","acceptedAnswer":{"@type":"Answer","text":"Yes, and you should. Most categories allow you to apply before the expiry date, and starting early protects you if processing takes longer than expected."}},{"@type":"Question","name":"What happens if my application is refused?","acceptedAnswer":{"@type":"Answer","text":"The refusal notice explains the reasons for the decision and any right to review or appeal."}},{"@type":"Question","name":"Do I need a lawyer to apply?","acceptedAnswer":{"@type":"Answer","text":"No, but professional advice can help when your circumstances are complex or a previous application was refused."}}]}
+</script>
+
 ---
 
 ${DISCLAIMER}
@@ -180,6 +184,37 @@ describe('evaluateReauditContract — response contract', () => {
     expect(result.shipReady).toBe(true)
     expect(result.blockers).toBe(0)
     expect(result.blockersData).toEqual([])
+  })
+
+  it('returns shipReady=false when the audit carries a hard blocker even though quality+depth pass', () => {
+    // Same clean fixture but with the FAQPage JSON-LD stripped — the audit's
+    // schema_faq is now a BLOCKER (indexable long-form), so a 100/100-quality,
+    // floor-meeting draft must NOT read as shippable. This is the exact
+    // "pipeline refuses but the editor says ready" gap the contract closes:
+    // shipReady agrees with the pipeline's meetsShipQuality(audit).
+    const noFaqSchema = buildPassingArticle().replace(
+      /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
+      '',
+    )
+    expect(countBodyWords(noFaqSchema)).toBeGreaterThanOrEqual(2200)
+
+    const result = evaluateReauditContract({
+      content: noFaqSchema,
+      contentType: 'legal_guide',
+      primaryKeyword: 'us visa renewal',
+      indexable: true,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.depthGate.ok).toBe(true)
+    // The audit blocker withholds ship even though quality + depth clear.
+    expect(result.shipReady).toBe(false)
+    expect(result.blockers).toBeGreaterThan(0)
+    const faq = result.blockersData.find((b) => b.code === 'schema_faq')
+    expect(faq).toBeDefined()
+    expect(faq!.fix.length).toBeGreaterThan(0)
+    // The audit blocker is ALSO annotated so the editor offers a per-issue Fix.
+    expect(result.annotations.some((a) => a.code === 'schema_faq' && a.severity === 'blocker')).toBe(true)
   })
 
   it('reports depthGate=false and shipReady=false for thin content even when the quality gate passes', () => {

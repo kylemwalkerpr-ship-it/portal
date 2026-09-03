@@ -1,5 +1,8 @@
 'use client'
 /**
+ * DEPRECATED — not mounted from admin.jsx; live UI is admin-content-studio.tsx.
+ * Do not delete this file.
+ *
  * SEO COMMAND CENTER — v3 rebuild
  *
  * Six dedicated surfaces, no buried controls:

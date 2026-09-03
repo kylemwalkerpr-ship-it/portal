@@ -9,7 +9,9 @@
  *   blockers / warnings counts → gate + audit
  *   warningsData               → quality + audit warnings merged (deduped)
  *   depthGate                  → Google depth floor (the OTHER hard ship gate)
- *   shipReady                  → BOTH gates pass — warnings never block
+ *   shipReady                  → quality.ok AND depthGate.ok AND zero audit
+ *                               blockers (same as the pipeline's persist) —
+ *                               warnings never block
  *
  * Everything in this module is pure (no DB, no network, no AI) so the exact
  * contract the editor renders can be unit-tested without spinning up the route
@@ -17,7 +19,7 @@
  */
 
 import { evaluateContentQuality } from './contentQualityGate'
-import { auditContent } from './audit'
+import { auditContent, meetsShipQuality } from './audit'
 import { findingToAnnotations, mergeWarnings, type InlineAnnotation } from './inlineAnnotations'
 import { assertContentDepth, countBodyWords, depthSpecForType, targetThresholdForType } from './contentDepth'
 import { buildDepthAppendPrompt, extractH2Titles } from './prompts'
@@ -213,7 +215,8 @@ export type ReauditContractOutput = {
  *  4. warningsData   → quality + audit warnings merged, quality preferred on
  *     code collisions (it carries remediation)
  *  5. depthGate      → Google depth floor
- *  6. shipReady      → quality.ok && depthGate.ok — warnings never block
+ *  6. shipReady      → quality.ok && depthGate.ok && audit blockers === 0
+ *                      (meetsShipQuality) — warnings never block
  */
 export function evaluateReauditContract(input: ReauditContractInput): ReauditContractOutput {
   const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, region, targetUrl, linkAllowlist, competingUrls, outline } = input
@@ -263,6 +266,13 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     if (qualityCodes.has(w.code)) continue
     annotations.push(...findingToAnnotations(content, { ...w, severity: 'warning' as const }))
   }
+  // Audit blockers (schema_faq, citations, word_count…) are ALSO the ship gate's
+  // blockers — annotate them so the editor can fix each one inline, never just
+  // read a blocker count with no remediation path. Same dedupe rule as warnings.
+  for (const b of audit.blockers) {
+    if (qualityCodes.has(b.code)) continue
+    annotations.push(...findingToAnnotations(content, b))
+  }
   const warningsData: ReauditContractOutput['warningsData'] = mergeWarnings(result.warnings, audit.warnings)
   // Title advisory (WARNING only — never a block): a filler H1 or frontmatter
   // title ("Updated Requirements and Guidance for 2026") erodes CTR. Ship
@@ -280,11 +290,19 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
       fix: 'Use a TitleLab-style reader-facing title: procedure + audience + specific (e.g. "UK Spouse Visa Application Checklist for Families: Cost & Timeline").',
     })
   }
-  const blockersData = result.blockers.map((b) => ({
-    code: b.code,
-    message: b.message,
-    fix: b.fix || 'Apply the mechanical repair or Fix blockers.',
-  }))
+  // blockersData = quality blockers + audit blockers (deduped by code, quality
+  // preferred) so the editor sees EVERYTHING that withholds ship — a 100/100
+  // draft with a missing FAQPage schema now lists its real blocker here.
+  const mergedBlockers = new Map<string, { code: string; message: string; fix: string }>()
+  for (const b of [...result.blockers, ...audit.blockers]) {
+    if (mergedBlockers.has(b.code)) continue
+    mergedBlockers.set(b.code, {
+      code: b.code,
+      message: b.message,
+      fix: b.fix || 'Apply the mechanical repair or Fix blockers.',
+    })
+  }
+  const blockersData = [...mergedBlockers.values()]
   const depthGate = checkDepthGate(content, contentType, indexable)
 
   return {
@@ -297,9 +315,12 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     // cap and out of the issues panel. Distinct codes keep a button; repeats
     // are capped per code so the panel stays scannable.
     annotations: capAnnotations(annotations, 60, 3),
-    blockers: result.blockers.length,
+    blockers: blockersData.length,
     warnings: warningsData.length,
-    shipReady: result.ok && depthGate.ok,
+    // shipReady agrees with the pipeline (persistContentJob): quality gate ok
+    // AND Google depth floor ok AND the audit has zero blockers. Warnings never
+    // block; an audit blocker (schema_faq, citations, disclaimer…) always does.
+    shipReady: result.ok && depthGate.ok && meetsShipQuality(audit),
     depthGate,
     warningsData,
     blockersData,
