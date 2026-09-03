@@ -1009,11 +1009,30 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       {tab === 'gate' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>
-            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif, marginBottom: 4 }}>🛡 AEO / GEO / YMYL Compliance Gate</h2>
-            <p style={{ margin: 0, fontSize: 11, color: C.textMuted, marginBottom: 14 }}>
-              Paste a draft and the gate deterministically scans evidence — statistics, statutes, disclaimers, author bylines, question headings, internal links — then scores it.
-              YMYL-critical stages (visa · citizenship · family) require ≥85 and never pass without a statutory anchor + disclaimer.
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🛡 AEO / GEO / YMYL Compliance Gate</h2>
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted, maxWidth: 620 }}>
+                  The gate scans a real draft for evidence — statistics, statutes, disclaimers, author bylines, question headings, internal links — then scores it deterministically.
+                  YMYL-critical stages (visa · citizenship · family) need ≥85 and never pass without a statutory anchor + disclaimer. The same gate now runs on every ship.
+                </p>
+              </div>
+              <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+                {(status?.gate as { runs?: number } | undefined)?.runs ?? 0} runs · {(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}% pass
+              </span>
+            </div>
+
+            {/* Numbered steps — direct, no guessing */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {['Paste a draft below', 'Run the gate', 'Read the verdict + fix blockers'].map((s, i) => (
+                <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 999, background: C.navy, color: '#fff', fontSize: 9, fontWeight: 800 }}>{i + 1}</span>
+                  {s}
+                  {i < 2 && <span style={{ color: C.textFaint }}>→</span>}
+                </span>
+              ))}
+            </div>
+
             <textarea
               value={gateDraft}
               onChange={(e) => setGateDraft(e.target.value)}
@@ -1025,21 +1044,37 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                 {busy ? '⏳ Scanning…' : '🛡 Run compliance gate'}
               </button>
               <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
-                Gate runs so far: {((status?.gate as { runs?: number } | undefined)?.runs ?? gate?.runs ? (gate.runs as unknown[]).length : 0)} · pass rate {(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%
+                {gateDraft.trim().length < 60 ? `${gateDraft.trim().length}/60 chars — keep typing` : `${gateDraft.trim().length} chars ready`}
               </span>
             </div>
 
             {gateVerdict && (
-              <div style={{ marginTop: 14, borderTop: `1px solid ${C.border2}`, paddingTop: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  {gateVerdict.passed
-                    ? badge('PASSED', C.greenSoft, C.green)
-                    : badge('BLOCKED', C.redSoft, C.red)}
-                  <span style={{ fontSize: 24, fontWeight: 800, fontFamily: C.mono, color: Number(gateVerdict.score) >= 85 ? C.green : Number(gateVerdict.score) >= 70 ? C.orange : C.red }}>
-                    {Number(gateVerdict.score)}/100
-                  </span>
-                  <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>threshold {Number(gateVerdict.threshold)}</span>
+              <div style={{ marginTop: 14, borderTop: `1px solid ${C.border2}`, paddingTop: 14 }}>
+                {/* Verdict banner */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderRadius: C.radiusSm,
+                  background: gateVerdict.passed ? C.greenSoft : C.redSoft,
+                  border: `1px solid ${gateVerdict.passed ? C.greenBorder : C.redBorder}`,
+                  marginBottom: 12,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 64, height: 64, borderRadius: '50%', background: gateVerdict.passed ? C.green : C.red, color: '#fff', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 17, fontWeight: 800, fontFamily: C.mono, lineHeight: 1 }}>{Number(gateVerdict.score)}</div>
+                      <div style={{ fontSize: 7, fontFamily: C.mono, letterSpacing: '0.06em', opacity: 0.85 }}>/ {Number(gateVerdict.threshold)}</div>
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: gateVerdict.passed ? C.green : C.red, fontFamily: C.serif }}>
+                      {gateVerdict.passed ? '✓ PASSED — ship-ready on compliance' : '✕ BLOCKED — blockers below'}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                      {gateVerdict.passed
+                        ? 'The draft carries the AEO/GEO/YMYL evidence the gate demands.'
+                        : 'Fix the missing items below, then re-run — the gate is deterministic, so cleared blockers update instantly.'}
+                    </div>
+                  </div>
                 </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 10 }}>
                   {Object.entries((gateVerdict.compliance as { byCategory?: Record<string, { met: number; total: number; score: number }> })?.byCategory || {}).map(([cat, v]) => (
                     <div key={cat} style={{ padding: 8, borderRadius: C.radiusXs, background: C.surface2, fontSize: 10.5 }}>
@@ -1063,8 +1098,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
           </div>
 
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
-            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>Recent gate runs</h2>
+              <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>every draft, job & plan check is recorded</span>
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
               {(!gate?.runs || (gate.runs as unknown[]).length === 0) && (

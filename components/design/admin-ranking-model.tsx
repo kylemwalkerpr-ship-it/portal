@@ -79,11 +79,6 @@ const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
   background: bg, color: fg, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
   display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
 })
-const btnGhost: React.CSSProperties = {
-  padding: '7px 13px', borderRadius: C.radiusXs, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-  background: C.surface, color: C.text, border: `1px solid ${C.border}`, fontFamily: 'inherit',
-  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
-}
 const inputStyle: React.CSSProperties = {
   padding: '7px 11px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`,
   background: C.surface, color: C.text, fontSize: 12, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box',
@@ -173,7 +168,6 @@ export default function AdminRankingModel() {
   const [topicInput, setTopicInput] = React.useState('')
   const [lineageJob, setLineageJob] = React.useState('')
   const [lineage, setLineage] = React.useState<Array<Record<string, any>> | null>(null)
-  const [lineageBusy, setLineageBusy] = React.useState(false)
 
   // Reward form
   const [rwUrl, setRwUrl] = React.useState('')
@@ -182,11 +176,19 @@ export default function AdminRankingModel() {
   const [rwClicks, setRwClicks] = React.useState('')
   const [rwPos, setRwPos] = React.useState('')
 
+  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
   const flash = (msg: string, kind: 'success' | 'error' = 'success') => {
     setNotice(msg)
     setError(kind === 'error' ? msg : null)
     window.setTimeout(() => setNotice(null), 6000)
   }
+
+  // Persistent inline action feedback — the last command's outcome stays
+  // visible until the next command (same contract as the engine console).
+  const [actionResult, setActionResult] = React.useState<{ ok: boolean; title: string; detail: string; at: number } | null>(null)
+  const recordResult = (ok: boolean, title: string, detail: string) =>
+    setActionResult({ ok, title, detail, at: Date.now() })
 
   const loadAll = React.useCallback(async () => {
     setError(null)
@@ -217,9 +219,12 @@ export default function AdminRankingModel() {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'rank failed')
       flash(`Modeled “${data.score.topic}” → ${Math.round(data.score.total)}/100`)
+      recordResult(true, 'Model topic', `“${String(data.score.topic).slice(0, 48)}” → ${Math.round(Number(data.score.total) || 0)}/100`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'rank failed')
+      const msg = e instanceof Error ? e.message : 'rank failed'
+      setError(msg)
+      recordResult(false, 'Model topic', msg)
     } finally {
       setBusy(false)
     }
@@ -235,9 +240,12 @@ export default function AdminRankingModel() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.ok === false) throw new Error(data.error || 'plan pass failed')
       flash(`Ranking model ran over ${data.computed ?? 0} planner missions`)
+      recordResult(true, 'Score top plans', `Model computed over ${data.computed ?? 0} planner mission(s)`)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'plan pass failed')
+      const msg = e instanceof Error ? e.message : 'plan pass failed'
+      setError(msg)
+      recordResult(false, 'Score top plans', msg)
     } finally {
       setBusy(false)
     }
@@ -246,7 +254,7 @@ export default function AdminRankingModel() {
   const loadLineage = async () => {
     const q = lineageJob.trim()
     if (!q) return
-    setLineageBusy(true); setError(null)
+    setError(null)
     try {
       const target = /^[0-9a-f-]{20,}$/i.test(q) ? `jobId=${encodeURIComponent(q)}` : `topic=${encodeURIComponent(q)}`
       const res = await fetch(`/api/seo-engine/lineage?${target}`, { credentials: 'same-origin' })
@@ -254,10 +262,11 @@ export default function AdminRankingModel() {
       if (!res.ok) throw new Error(data.error || 'lineage failed')
       setLineage(Array.isArray(data.timeline) ? data.timeline : [])
       flash(`Lineage: ${(data.nodes || []).length} node(s) · ${(data.events || []).length} event(s)`)
+      recordResult(true, 'Lineage lookup', `${(data.nodes || []).length} node(s) · ${(data.events || []).length} event(s) for “${q.slice(0, 40)}”`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'lineage failed')
-    } finally {
-      setLineageBusy(false)
+      const msg = e instanceof Error ? e.message : 'lineage failed'
+      setError(msg)
+      recordResult(false, 'Lineage lookup', msg)
     }
   }
 
@@ -279,10 +288,13 @@ export default function AdminRankingModel() {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'reward failed')
       flash(`Reward ${data.event.reward} credited to ${data.event.action}${data.recalibrated ? ' · weights recalibrated' : ''}`)
+      recordResult(true, 'Credit outcome', `reward ${data.event?.reward ?? 0} → ${data.event?.action ?? rwAction}${data.recalibrated ? ' · weights recalibrated' : ''}`)
       setRwUrl(''); setRwImp(''); setRwClicks(''); setRwPos('')
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'reward failed')
+      const msg = e instanceof Error ? e.message : 'reward failed'
+      setError(msg)
+      recordResult(false, 'Credit outcome', msg)
     } finally {
       setBusy(false)
     }
@@ -323,8 +335,75 @@ export default function AdminRankingModel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* ── Command console — same contract as the engine panel ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+        {([{
+          key: 'topic', icon: '📡', title: 'Model topic', sub: 'Composite score for one topic', color: C.navy,
+          run: computeTopic, busyLabel: 'Modeling…', done: actionResult?.title === 'Model topic' ? actionResult : null,
+          slot: <input value={topicInput} onChange={(e) => setTopicInput(e.target.value)} placeholder="e.g. UK spouse visa 2026" style={{ ...inputStyle, flex: 1 }} onKeyDown={(e) => e.key === 'Enter' && computeTopic()} />,
+        }, {
+          key: 'plans', icon: '🧭', title: 'Score top plans', sub: 'Rank model over the mission queue', color: C.gold,
+          run: computePlans, busyLabel: 'Scoring…', done: actionResult?.title === 'Score top plans' ? actionResult : null,
+        }, {
+          key: 'lineage', icon: '🧬', title: 'Lineage lookup', sub: 'Walk a job/topic regeneration chain', color: C.cyan2,
+          run: loadLineage, busyLabel: 'Walking…', done: actionResult?.title === 'Lineage lookup' ? actionResult : null,
+          slot: <input value={lineageJob} onChange={(e) => setLineageJob(e.target.value)} placeholder="Job ID or topic…" style={{ ...inputStyle, flex: 1 }} onKeyDown={(e) => e.key === 'Enter' && loadLineage()} />,
+        }, {
+          key: 'reward', icon: '🎁', title: 'Credit outcome', sub: 'Log a shipped-page delta', color: C.gold,
+          run: () => jump('rewards-form'), busyLabel: '', done: actionResult?.title === 'Credit outcome' ? actionResult : null,
+        }]).map((cell) => (
+          <div key={cell.key} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: '12px 14px', boxShadow: C.shadowCard, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 15 }}>{cell.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: C.text }}>{cell.title}</div>
+                <div style={{ fontSize: 9, color: C.textDim }}>{cell.sub}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {cell.slot}
+              <button type="button" onClick={cell.run} disabled={busy} title={cell.key === 'reward' ? 'The credit form lives in the Reward Loop section below' : undefined}
+                style={{ ...btnSolid(cell.color), padding: '6px 12px', fontSize: 10.5, flex: 1, justifyContent: 'center' }}>
+                {busy && cell.busyLabel ? `⏳ ${cell.busyLabel}` : cell.key === 'reward' ? '↓ Open form' : `▶ ${cell.title}`}
+              </button>
+            </div>
+            {cell.done && (
+              <div style={{ fontSize: 9, fontFamily: C.mono, lineHeight: 1.4, color: cell.done.ok ? C.green : C.red, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cell.done.detail}>
+                {cell.done.ok ? '✓' : '✕'} {cell.done.detail}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Persistent result strip ── */}
+      {actionResult && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderRadius: C.radiusSm, background: actionResult.ok ? C.greenSoft : C.redSoft, border: `1px solid ${actionResult.ok ? C.greenBorder : C.redBorder}`, color: actionResult.ok ? C.green : C.red, fontSize: 11, fontFamily: C.mono }}>
+          <span style={{ fontWeight: 800 }}>{actionResult.ok ? '✓' : '✕'} {actionResult.title}</span>
+          <span style={{ flex: 1, opacity: 0.9 }}>{actionResult.detail}</span>
+          <span style={{ opacity: 0.6, whiteSpace: 'nowrap' }}>{(Math.round((Date.now() - actionResult.at) / 1000))}s ago</span>
+          <button type="button" onClick={() => setActionResult(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }} title="Dismiss">✕</button>
+        </div>
+      )}
+
       {notice && <div style={{ padding: '9px 14px', borderRadius: C.radiusSm, background: C.greenSoft, border: `1px solid ${C.greenBorder}`, color: C.green, fontSize: 11, fontWeight: 600 }}>✓ {notice}</div>}
       {error && <div style={{ padding: '9px 14px', borderRadius: C.radiusSm, background: C.redSoft, border: `1px solid ${C.redBorder}`, color: C.red, fontSize: 11, fontFamily: C.mono }}>⚠ {error}</div>}
+
+      {/* ── Quick counts ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+        {[
+          { label: 'Scored subjects', value: fmtN(scores.length), sub: 'radar rows', color: C.navy },
+          { label: 'Forecasts', value: fmtN(forecasts.length), sub: '30/60/90d projections', color: C.blue },
+          { label: 'Reward events', value: fmtN((rewards?.summary as any)?.events ?? (rewards?.ledger as Array<Record<string, any>> | undefined)?.length ?? 0), sub: 'outcome ledger', color: C.gold },
+          { label: 'On-track', value: `${trackerSummary?.onTrackRate ?? 0}%`, sub: `${trackerSummary?.evaluated ?? 0} evaluated`, color: C.green },
+        ].map((k) => (
+          <div key={k.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: '10px 12px', boxShadow: C.shadowCard }}>
+            <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: k.color, fontFamily: C.mono, margin: '2px 0 0' }}>{k.value}</div>
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1 }}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
 
       {/* ══ 1 · RANKING RADAR ══ */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
@@ -335,11 +414,9 @@ export default function AdminRankingModel() {
               Composite model <span style={{ fontFamily: C.mono }}>v1</span> — demand · intent · topical authority · AEO/GEO · E-E-A-T · links · behavior · indexability. Deterministic, no AI in the score.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input value={topicInput} onChange={(e) => setTopicInput(e.target.value)} placeholder="Model a topic…" style={{ ...inputStyle, width: 200 }} onKeyDown={(e) => e.key === 'Enter' && computeTopic()} />
-            <button type="button" onClick={computeTopic} disabled={busy || !topicInput.trim()} style={btnGhost} title="Compute + persist the composite score for a topic">📡 Model topic</button>
-            <button type="button" onClick={computePlans} disabled={busy} style={{ ...btnSolid(C.navy) }} title="Run the ranking model over the top planner missions">🧭 Score top plans</button>
-          </div>
+          <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+            {scores.length} scored · model a topic or score the top plans above
+          </span>
         </div>
         <div style={{ maxHeight: 460, overflowY: 'auto' }}>
           {scores.length === 0 && (
@@ -405,11 +482,9 @@ export default function AdminRankingModel() {
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
             <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🧬 Lineage Timeline</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 10, color: C.textMuted }}>Every regeneration chain, from original job → refresh/expand/resume, with gate events.</p>
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-              <input value={lineageJob} onChange={(e) => setLineageJob(e.target.value)} placeholder="Job ID or topic…" style={{ ...inputStyle, flex: 1 }} onKeyDown={(e) => e.key === 'Enter' && loadLineage()} />
-              <button type="button" onClick={loadLineage} disabled={lineageBusy || !lineageJob.trim()} style={btnGhost}>Show</button>
-            </div>
+            <p style={{ margin: '2px 0 0', fontSize: 10, color: C.textMuted }}>
+              Every regeneration chain, from original job → refresh/expand/resume, with gate events. Look up a job in the console above.
+            </p>
           </div>
           <div style={{ maxHeight: 360, overflowY: 'auto', padding: '10px 18px' }}>
             {!lineage && <div style={{ padding: 14, textAlign: 'center', color: C.textDim, fontSize: 11, fontFamily: C.mono }}>Enter a job ID or topic to walk its regeneration lineage.</div>}
@@ -437,7 +512,7 @@ export default function AdminRankingModel() {
       </div>
 
       {/* ══ 4 · REWARDS ══ */}
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <div id="rewards-form" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
         <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
           <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🎁 Reward Loop & Calibration</h2>
           <p style={{ margin: '2px 0 0', fontSize: 10, color: C.textMuted }}>Outcome ledger → bounded weight recalibration. The model learns from what the estate actually experiences.</p>
