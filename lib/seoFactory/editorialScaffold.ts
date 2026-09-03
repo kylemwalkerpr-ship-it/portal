@@ -53,11 +53,11 @@ function metaDescriptionFrom(title: string, body: string, primaryKeyword: string
     plain.slice(0, 200) ||
     `${title}. Practical guidance on ${primaryKeyword || title} for international students and immigrants.`
   let desc = seed.slice(0, 158)
-  if (desc.length < 120) {
+  if (desc.length < 140) {
     desc = `${title} — practical checklist and steps for ${primaryKeyword || 'your application'}. Editorial only; not legal advice.`
   }
   if (desc.length > 160) desc = desc.slice(0, 157).replace(/\s+\S*$/, '') + '…'
-  if (desc.length < 120) {
+  if (desc.length < 140) {
     desc = (desc + ' Verify every rule against official government sources before you apply.').slice(0, 160)
   }
   return clampMetaToAhrefs(desc.slice(0, 160), title, primaryKeyword)
@@ -2012,8 +2012,8 @@ export function applyDeterministicRepairs(opts: {
 
   // ── Meta description: inject description: into YAML front matter ────
   // The audit checks fm.description || fm.metaDescription in the front matter
-  // (120–170 chars). If missing or too short, inject one using the same
-  // metaDescriptionFrom helper the schema_article repair already relies on.
+  // (Ahrefs 70–160; brief SERP target 140–160). If missing or below the brief
+  // floor, inject one using metaDescriptionFrom.
   // NOTE: fm holds the front matter (stripped from body at function entry).
   // We modify fm so the re-assembly below picks up the new field.
   //
@@ -2039,7 +2039,7 @@ export function applyDeterministicRepairs(opts: {
       const needsQuotes = clamped.includes(':') || /^\d+$/.test(clamped)
       fm = fm.replace(existingDesc[0], `description: ${needsQuotes ? JSON.stringify(clamped) : clamped}`)
       applied.push('meta_description')
-    } else if (!existingDesc || (existingDesc[1] && metaDescriptionLength(rawDescVal) < 100)) {
+    } else if (!existingDesc || (existingDesc[1] && metaDescriptionLength(rawDescVal) < 140)) {
       if (existingDesc) {
         fm = fm.replace(existingDesc[0], `description: ${desc}`)
       } else {

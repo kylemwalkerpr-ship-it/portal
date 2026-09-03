@@ -1,4 +1,4 @@
-import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes } from '../lib/editorMetrics'
+import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, expandMetaToBriefTarget } from '../lib/editorMetrics'
 
 describe('editor metrics', () => {
   it('extracts prose from markdown including frontmatter/headings/lists', () => {
@@ -43,6 +43,23 @@ Plain sentence here. Another one.
     expect(g.score).toBeGreaterThan(60)
     expect(g.pass.some((p) => p.includes('H1'))).toBe(true)
     expect(b.score).toBeLessThan(40)
+  })
+
+  it('meta description uses the ship gate 70–160 and treats 114 as SERP warn not a fail', () => {
+    const desc = 'Check the 485 graduate visa streams, English, and skills evidence before you lodge in Australia.'
+    expect(desc.length).toBeGreaterThanOrEqual(70)
+    expect(desc.length).toBeLessThan(140)
+    const md = `---\ntitle: "Graduate visa 485"\ndescription: "${desc}"\n---\n\n# Graduate visa 485\n\nIntro about graduate visa 485.\n`
+    const s = computeSeoScore(md, { primaryKeyword: 'graduate visa 485' })
+    expect(s.fail.some((f) => /meta/i.test(f))).toBe(false)
+    expect(s.warn.some((w) => /ship-ok/.test(w) && /140/.test(w))).toBe(true)
+    const apostrophe = `---\ndescription: "You'll need documents, English, and a skills assessment for the 485 graduate visa in Australia."\n---\n\n# T\n\nHi.\n`
+    const full = computeSeoScore(apostrophe)
+    expect(full.fail.some((f) => /No meta/.test(f))).toBe(false)
+    const expanded = expandMetaToBriefTarget(md, { primaryKeyword: 'graduate visa 485' })
+    expect(expanded.applied).toBe(true)
+    expect(expanded.length).toBeGreaterThanOrEqual(140)
+    expect(expanded.length).toBeLessThanOrEqual(160)
   })
 
   it('brief content type sets the Flesch floor and long sentences get split suggestions', () => {

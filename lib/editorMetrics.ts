@@ -14,10 +14,16 @@
  * they exist so the operator sees live quality feedback while typing.
  */
 
+import { AHREFS_META_MAX, AHREFS_META_MIN, clampMetaToAhrefs, metaDescriptionLength } from '@/lib/seoFactory/ahrefsIssues'
+
+/** Brief / SERP sweet spot. The ship gate is Ahrefs 70–160; prompts ask 140–160. */
+export const BRIEF_META_MIN = 140
+export const BRIEF_META_MAX = AHREFS_META_MAX
+
 export type EditorMetrics = {
   grammar: { score: number; errors: number; suggestions: number; sample: Array<{ kind: string; problem: string; message: string }> }
   readability: { score: number; words: number; sentences: number; target: number; pass: boolean; fixes: ReadabilityFix[] }
-  seo: { score: number; pass: string[]; fail: string[] }
+  seo: { score: number; pass: string[]; fail: string[]; warn: string[] }
 }
 
 export type EditorSeoHint = {
@@ -110,9 +116,10 @@ const count = (md: string, re: RegExp) => (String(md || '').match(re) || []).len
  * Local SEO posture score (0–100). Each bullet maps 1:1 to a ship-gate
  * signal so the editor preview and the actual audit agree in direction.
  */
-export function computeSeoScore(md: string, hint?: EditorSeoHint): { score: number; pass: string[]; fail: string[] } {
+export function computeSeoScore(md: string, hint?: EditorSeoHint): { score: number; pass: string[]; fail: string[]; warn: string[] } {
   const pass: string[] = []
   const fail: string[] = []
+  const warn: string[] = []
   const primary = String(hint?.primaryKeyword || '').trim().toLowerCase()
   const target = hint?.targetWords
   const words = count(md, /[a-zA-Z][a-zA-Z'-]*/g)
@@ -146,10 +153,17 @@ export function computeSeoScore(md: string, hint?: EditorSeoHint): { score: numb
     else fail.push(`Thin: ${words} words (target ~${target})`)
   }
 
-  const meta = md.match(/description[^"\n]*["']([^"']{0,200})/)
-  const metaLen = meta ? meta[1].length : 0
-  if (metaLen >= 130 && metaLen <= 165) pass.push(`Meta description ${metaLen} chars`)
-  else fail.push(metaLen ? `Meta description ${metaLen} chars (need 140–160)` : 'No meta description yet')
+  const { desc: metaDesc } = readYamlDescription(md)
+  const metaLen = metaDescriptionLength(metaDesc)
+  if (!metaDesc) {
+    fail.push('No meta description yet')
+  } else if (metaLen < AHREFS_META_MIN || metaLen > AHREFS_META_MAX) {
+    fail.push(`Meta description ${metaLen} chars (ship gate ${AHREFS_META_MIN}–${AHREFS_META_MAX})`)
+  } else if (metaLen < BRIEF_META_MIN) {
+    warn.push(`Meta ${metaLen} chars — ship-ok (${AHREFS_META_MIN}–${AHREFS_META_MAX}); brief SERP target ${BRIEF_META_MIN}–${BRIEF_META_MAX}`)
+  } else {
+    pass.push(`Meta description ${metaLen} chars (${BRIEF_META_MIN}–${BRIEF_META_MAX} SERP band)`)
+  }
 
   const required = [...(hint?.requiredShortKeywords || []), ...(hint?.requiredLongTailKeywords || [])].map((k) => k.toLowerCase()).filter(Boolean)
   if (required.length) {
@@ -159,7 +173,48 @@ export function computeSeoScore(md: string, hint?: EditorSeoHint): { score: numb
   }
 
   const score = Math.max(5, Math.round((pass.length / Math.max(1, pass.length + fail.length)) * 100))
-  return { score, pass, fail }
+  return { score, pass, fail, warn }
+}
+
+function stripYamlQuotes(v: string): string {
+  const t = String(v || '').trim()
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) return t.slice(1, -1)
+  return t
+}
+
+export function readYamlDescription(md: string): { desc: string; rawLine: string | null } {
+  const block = String(md || '').match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!block) return { desc: '', rawLine: null }
+  const line = block[1].match(/^description:\s*(.*)$/m)
+  if (!line) return { desc: '', rawLine: null }
+  return { desc: stripYamlQuotes(line[1]), rawLine: line[0] }
+}
+
+/** Lengthen YAML description into the brief 140–160 SERP band without breaking the 70–160 ship gate. */
+export function expandMetaToBriefTarget(md: string, hint?: EditorSeoHint): { content: string; applied: boolean; length: number } {
+  const raw = String(md || '')
+  const { desc, rawLine } = readYamlDescription(raw)
+  const titleMatch = raw.match(/^title:\s*(.+)$/m)
+  const title = stripYamlQuotes(titleMatch?.[1] || '')
+  const pk = String(hint?.primaryKeyword || '').trim()
+  let next = clampMetaToAhrefs(desc || `${title} — practical guidance.`, title, pk)
+  const pad = ` Verify official ${pk || 'immigration'} rules and documents before you apply.`
+  let guard = 0
+  while (metaDescriptionLength(next) < BRIEF_META_MIN && guard++ < 6) {
+    next = `${next}${pad}`.replace(/\s+/g, ' ').trim()
+    if (metaDescriptionLength(next) > AHREFS_META_MAX) {
+      next = clampMetaToAhrefs(next, title, pk)
+      break
+    }
+  }
+  next = clampMetaToAhrefs(next, title, pk)
+  const length = metaDescriptionLength(next)
+  const yamlLine = `description: ${JSON.stringify(next)}`
+  let content = raw
+  if (rawLine) content = raw.replace(rawLine, yamlLine)
+  else if (/^---\r?\n/.test(raw)) content = raw.replace(/^---\r?\n/, `---\ndescription: ${JSON.stringify(next)}\n`)
+  else content = `---\ndescription: ${JSON.stringify(next)}\n---\n\n${raw}`
+  return { content, applied: content !== raw && length >= AHREFS_META_MIN, length }
 }
 
 function escapeRegExp(s: string): string {

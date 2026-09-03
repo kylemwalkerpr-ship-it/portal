@@ -13,7 +13,7 @@
  */
 
 import * as React from 'react'
-import { computeEditorMetrics, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
+import { computeEditorMetrics, expandMetaToBriefTarget, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 
@@ -293,21 +293,37 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     if (expanded === 'seo') {
       const pass = metrics?.seo.pass || []
       const fail = metrics?.seo.fail || []
+      const warn = metrics?.seo.warn || []
+      const metaNeedsExpand = fail.some((f) => /meta/i.test(f)) || warn.some((f) => /meta/i.test(f))
       return (
         <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.6 }}>
           <div style={{ color: C.muted, marginBottom: 4 }}>
-            Local gate-aligned checks (not Harper) — the shipping gate re-verifies every one.
+            Local gate-aligned checks (not Harper) — ship uses Ahrefs 70–160; the brief asks 140–160 for the SERP snippet.
           </div>
           {fail.map((f, i) => (
             <div key={`f${i}`} style={{ color: pillColor(50) }}>✕ {f}</div>
           ))}
-          {fail.length === 0 && <div style={{ color: C.green }}>All local SEO checks pass.</div>}
+          {warn.map((w, i) => (
+            <div key={`w${i}`} style={{ color: pillColor(60) }}>! {w}</div>
+          ))}
+          {fail.length === 0 && warn.length === 0 && <div style={{ color: C.green }}>All local SEO checks pass.</div>}
           {pass.map((p, i) => (
             <div key={`p${i}`} style={{ color: C.muted }}>✓ {p}</div>
           ))}
-          {metrics?.seo.fail.some((f) => /meta/i.test(f)) && (
-            <div style={{ color: C.text, marginTop: 4 }}>
-              Meta description lives in the frontmatter — edit it in Source view or let Audit &amp; Fix rebuild it.
+          {metaNeedsExpand && (
+            <div style={{ color: C.text, marginTop: 6 }}>
+              Meta description is YAML <code>description:</code> in Source view.
+              <button
+                type="button"
+                disabled={!onApplied}
+                onClick={() => {
+                  const next = expandMetaToBriefTarget(textRef.current, hintRef.current)
+                  if (next.applied && onApplied) onApplied(next.content)
+                }}
+                style={{ marginLeft: 8, padding: '2px 8px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+              >
+                Expand meta to 140–160
+              </button>
             </div>
           )}
         </div>
