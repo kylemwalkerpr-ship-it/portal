@@ -102,3 +102,42 @@ describe('GSC query×page rows', () => {
     expect(resolveGscDayWindow(28).days).toBe(28)
   })
 })
+
+describe('resolveGscDayWindow stable window (GSC lag)', () => {
+  afterEach(() => jest.useRealTimers())
+
+  it('is identical for any two calls inside the same UTC day', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T00:01:00Z'))
+    const morning = resolveGscDayWindow(90)
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T23:59:00Z'))
+    const evening = resolveGscDayWindow(90)
+    expect(evening).toEqual(morning)
+  })
+
+  it('shifts the window only at the UTC day boundary', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T23:59:59Z'))
+    const september4 = resolveGscDayWindow(90)
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-05T00:00:00Z'))
+    const september5 = resolveGscDayWindow(90)
+    expect(september4.endDate).toBe('2026-09-03')
+    expect(september5.endDate).toBe('2026-09-04')
+    expect(september5.startDate).toBe('2026-06-07')
+  })
+
+  it('ends at yesterday UTC and covers exactly `days` calendar dates', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T12:00:00Z'))
+    const r = resolveGscDayWindow(90)
+    expect(r.endDate).toBe('2026-09-03')
+    expect(r.startDate).toBe('2026-06-06')
+    expect(r.days).toBe(90)
+    expect((Date.parse(r.endDate) - Date.parse(r.startDate)) / 86400_000).toBe(89)
+  })
+
+  it('still honors explicit start/end overrides', () => {
+    expect(resolveGscDayWindow(90, '2026-06-06', '2026-09-04')).toEqual({
+      startDate: '2026-06-06',
+      endDate: '2026-09-04',
+      days: 90,
+    })
+  })
+})

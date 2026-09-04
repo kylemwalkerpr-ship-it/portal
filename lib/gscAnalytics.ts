@@ -146,7 +146,21 @@ export type QueryPageFetchResult = {
   warnings: string[]
 }
 
-export function resolveGscDayWindow(days?: number, startDate?: string, endDate?: string): { startDate: string; endDate: string; days: number } {
+/**
+ * Resolve the GSC aggregation window as YYYY-MM-DD strings.
+ *
+ * Stable window choice: endDate = **yesterday UTC** (Search Analytics lags by
+ * up to ~2 days, so "today" holds no final data) and startDate = endDate −
+ * (days−1), both printed in UTC from a single timestamp. Any two calls inside
+ * the same UTC day therefore produce the identical start/end pair, which keeps
+ * the `seo_gsc_rows` unique key (site_url, query, page, start_date, end_date)
+ * stable — rows synced one day remain readable by later Performance /
+ * Opportunities queries. A rolling `Date.now()` endDate="today" would shift
+ * the window every day and orphan previously synced rows.
+ *
+ * `now` is exposed for deterministic unit tests only.
+ */
+export function resolveGscDayWindow(days?: number, startDate?: string, endDate?: string, now = Date.now()): { startDate: string; endDate: string; days: number } {
   if (startDate && endDate) {
     const a = Date.parse(startDate)
     const b = Date.parse(endDate)
@@ -155,8 +169,8 @@ export function resolveGscDayWindow(days?: number, startDate?: string, endDate?:
   }
   const allowed = new Set([28, 90, 180, 365])
   const d = allowed.has(Number(days)) ? Number(days) : 90
-  const endMs = Date.now()
-  const startMs = endMs - d * 86400_000
+  const endMs = new Date(now).setUTCHours(0, 0, 0, 0) - 86400_000 // start of yesterday UTC
+  const startMs = endMs - (d - 1) * 86400_000
   return { startDate: ymd(startMs), endDate: ymd(endMs), days: d }
 }
 

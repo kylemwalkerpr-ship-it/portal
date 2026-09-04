@@ -53,10 +53,23 @@ type OppRow = {
   signals?: { topicalGap?: number }
 }
 
+const firstError = (responses: unknown[]): string | null => {
+  for (const v of responses) {
+    if (v && typeof v === 'object' && 'error' in v && String((v as { error: unknown }).error)) return String((v as { error: unknown }).error)
+  }
+  return null
+}
+
 export default function SeoIntelligenceDashboard() {
   const [nav, setNav] = React.useState<SeoIntelNav>('overview')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [syncResult, setSyncResult] = React.useState<{
+    rows: number
+    range?: { startDate: string; endDate: string }
+    source?: string
+    warnings?: string[]
+  } | null>(null)
   const [opps, setOpps] = React.useState<OppRow[]>([])
   const [gsc, setGsc] = React.useState<{ rows?: Array<Record<string, unknown>>; range?: { startDate: string; endDate: string } } | null>(null)
   const [cannibals, setCannibals] = React.useState<Array<{ pageA: string; pageB: string; overlapScore: number; recommendedAction: string; reasons: string[] }>>([])
@@ -74,7 +87,8 @@ export default function SeoIntelligenceDashboard() {
         fetch('/api/content-studio/cannibalization/detect?days=90', { credentials: 'same-origin' }).then((r) => r.json()),
         fetch('/api/content-studio/topics/analyze', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json()),
       ])
-      if (o?.error) setError(String(o.error))
+      const first = firstError([o, p, c, t])
+      if (first) setError(first)
       setOpps(Array.isArray(o?.opportunities) ? o.opportunities : [])
       setGsc(p?.ok ? p : null)
       setCannibals(Array.isArray(c?.candidates) ? c.candidates : [])
@@ -85,6 +99,32 @@ export default function SeoIntelligenceDashboard() {
       setBusy(false)
     }
   }, [])
+
+  const syncGsc = React.useCallback(async () => {
+    setBusy(true)
+    setError(null)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/content-studio/gsc/sync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 90 }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || (data as { error?: unknown }).error) {
+        setError(String((data as { error?: unknown }).error || `GSC sync failed (${res.status})`))
+        return
+      }
+      const d = data as { rowsProcessed?: number; range?: { startDate: string; endDate: string }; source?: string; warnings?: string[] }
+      setSyncResult({ rows: Number(d.rowsProcessed ?? 0), range: d.range, source: d.source, warnings: d.warnings })
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'GSC sync failed')
+    } finally {
+      setBusy(false)
+    }
+  }, [load])
 
   React.useEffect(() => { void load() }, [load])
 
@@ -147,7 +187,7 @@ export default function SeoIntelligenceDashboard() {
           ))}
         </tbody>
       </table>
-      {!opps.length && <div style={{ padding: 12, color: C.muted, fontSize: 12 }}>No scored opportunities yet — sync GSC (90-day) first.</div>}
+      {!opps.length && <div style={{ padding: 12, color: C.muted, fontSize: 12 }}>No scored opportunities yet — click Sync GSC (90d) in the header first.</div>}
     </div>
   )
 
@@ -158,10 +198,22 @@ export default function SeoIntelligenceDashboard() {
           <div style={{ fontSize: 9, fontFamily: C.mono, letterSpacing: '0.14em', color: C.gold, fontWeight: 800 }}>SEO INTELLIGENCE · $0 FIRST-PARTY</div>
           <div style={{ fontFamily: C.serif, fontSize: 20, color: C.ink, marginTop: 4 }}>Opportunities, topics, links, GSC</div>
         </div>
-        <button type="button" onClick={() => void load()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.ink, color: '#fff', cursor: busy ? 'wait' : 'pointer' }}>
-          {busy ? 'Loading…' : 'Refresh intel'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => void syncGsc()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.paper, color: C.ink, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono }}>
+            {busy ? 'Syncing…' : 'Sync GSC (90d)'}
+          </button>
+          <button type="button" onClick={() => void load()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.ink, color: '#fff', cursor: busy ? 'wait' : 'pointer' }}>
+            {busy ? 'Loading…' : 'Refresh intel'}
+          </button>
+        </div>
       </div>
+      {syncResult && (
+        <div style={{ padding: '6px 16px', borderBottom: `1px solid ${C.line}`, fontSize: 11, color: syncResult.rows > 0 ? C.ink : C.muted, fontFamily: C.mono }}>
+          GSC sync: {syncResult.rows.toLocaleString()} rows · {syncResult.range?.startDate} → {syncResult.range?.endDate} · source {syncResult.source || '—'}
+          {syncResult.rows === 0 && ' · Google returned no rows — check GSC credentials / property traffic.'}
+          {syncResult.warnings?.length ? ` · ${syncResult.warnings.join('; ')}` : ''}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.line}`, flexWrap: 'wrap' }}>
         {([
           ['overview', 'Overview'],
@@ -244,7 +296,7 @@ export default function SeoIntelligenceDashboard() {
                 ))}
               </tbody>
             </table>
-            {!(gsc?.rows || []).length && <div style={{ color: C.muted, fontSize: 12, padding: 8 }}>No persisted GSC rows — run POST /api/content-studio/gsc/sync.</div>}
+            {!(gsc?.rows || []).length && <div style={{ color: C.muted, fontSize: 12, padding: 8 }}>No persisted GSC rows — click Sync GSC (90d) in the header.</div>}
           </div>
         )}
         {nav === 'opportunities' && cannibals.length > 0 && (
