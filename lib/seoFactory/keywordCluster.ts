@@ -73,7 +73,7 @@ const STOP = new Set([
   '2026', '2025', 'guide', 'complete', 'full', 'best', 'top', 'near', 'new',
 ])
 
-function tokens(term: string): string[] {
+export function tokens(term: string): string[] {
   return (term || '')
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, ' ')
@@ -90,7 +90,7 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
 }
 
-function jaccard(a: string[], b: string[]): number {
+export function jaccard(a: string[], b: string[]): number {
   if (!a.length || !b.length) return 0
   const setB = new Set(b)
   let shared = 0
