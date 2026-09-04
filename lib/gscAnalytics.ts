@@ -13,6 +13,11 @@
  */
 
 import { getGscAccess } from '@/lib/gscAuth'
+import {
+  normalizeGscMetricRow,
+  paginateGscDimensionPages,
+  type GscMetricRow,
+} from '@/lib/seoFactory/gscRows'
 
 export interface GscRow {
   key: string
@@ -131,4 +136,67 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
     topCountries: mapRows(grab(countriesR, 'countries')).filter((r) => r.key),
     warnings,
   }
+}
+
+export type QueryPageFetchResult = {
+  configured: boolean
+  siteUrl: string | null
+  range: { startDate: string; endDate: string; days: number }
+  rows: GscMetricRow[]
+  warnings: string[]
+}
+
+export function resolveGscDayWindow(days?: number, startDate?: string, endDate?: string): { startDate: string; endDate: string; days: number } {
+  if (startDate && endDate) {
+    const a = Date.parse(startDate)
+    const b = Date.parse(endDate)
+    const span = Number.isFinite(a) && Number.isFinite(b) ? Math.max(1, Math.round((b - a) / 86400_000)) : 90
+    return { startDate, endDate, days: span }
+  }
+  const allowed = new Set([28, 90, 180, 365])
+  const d = allowed.has(Number(days)) ? Number(days) : 90
+  const endMs = Date.now()
+  const startMs = endMs - d * 86400_000
+  return { startDate: ymd(startMs), endDate: ymd(endMs), days: d }
+}
+
+/** Query × page Search Analytics with pagination. Does not replace fetchSiteSearchAnalytics. */
+export async function fetchQueryPageRows(opts?: {
+  days?: number
+  startDate?: string
+  endDate?: string
+  rowLimit?: number
+  siteUrl?: string | null
+}): Promise<QueryPageFetchResult> {
+  const range = resolveGscDayWindow(opts?.days, opts?.startDate, opts?.endDate)
+  const warnings: string[] = []
+  const access = await getGscAccess()
+  const site = opts?.siteUrl || access?.siteUrl || process.env.GSC_SITE_URL || null
+  const token = access?.accessToken ?? null
+  if (!token || !site) {
+    warnings.push(
+      !token
+        ? 'GSC credentials not configured (set GSC_SERVICE_ACCOUNT_JSON or OAuth bundle)'
+        : 'GSC property URL not set (GSC_SITE_URL)',
+    )
+    return { configured: false, siteUrl: site, range, rows: [], warnings }
+  }
+
+  const pageSize = 5_000
+  const maxRows = Math.min(25_000, opts?.rowLimit ?? 25_000)
+  const raw = await paginateGscDimensionPages(
+    (startRow, rowLimit) =>
+      query(token, site, {
+        startDate: range.startDate,
+        endDate: range.endDate,
+        dimensions: ['query', 'page'],
+        rowLimit,
+        startRow,
+      }),
+    { pageSize, maxRows },
+  )
+  const rows = raw
+    .map((r) => normalizeGscMetricRow(r, { siteUrl: site, startDate: range.startDate, endDate: range.endDate }))
+    .filter((r): r is GscMetricRow => Boolean(r))
+  return { configured: true, siteUrl: site, range, rows, warnings }
 }

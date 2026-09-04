@@ -3,7 +3,7 @@
 | Phase | Status | Model | Notes |
 |---|---|---|---|
 | 0 Recon | **done — awaiting review** | Grok supervisor | `REPO_INTEGRATION_MAP.md` |
-| 1 GSC persist query×page | not started | DeepSeek V4 Flash 0731 / Think-High | `PHASE_1_TASK.md` |
+| 1 GSC persist query×page | **done** | Grok after review (High-scope task) | `seo_gsc_rows`; POST `/api/content-studio/gsc/sync`; GET `/api/content-studio/gsc/performance` |
 | 2 Keyword discovery | blocked on 1 | High | |
 | 3 Clustering | blocked | High | reuse `keywordCluster.ts` |
 | 4 Entities | blocked | High | |
