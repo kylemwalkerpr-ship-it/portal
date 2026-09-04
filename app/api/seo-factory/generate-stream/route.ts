@@ -169,6 +169,14 @@ export async function POST(request: Request) {
       // constrained models only; the pipeline no longer auto-splits long-form.
       writeSegments: body.writeSegments != null ? Number(body.writeSegments) : undefined,
       opportunityAction: body.opportunityAction,
+      // Single writer contract from SEO Intelligence Briefing (from-intel brief).
+      // Threaded through the pipeline's writeHint → prompt block ("War-room /
+      // authority brief") so the drafter never re-assembles the intel brief.
+      writeHint: body.seoBriefContract
+        ? String(body.seoBriefContract).trim()
+        : body.writeHint
+          ? String(body.writeHint).trim()
+          : undefined,
       // Radar play/intent/signals — feeds the streaming pipeline's autopilot
       // transparency block (was previously dropped at this route).
       opportunity: body.opportunity && typeof body.opportunity === 'object'

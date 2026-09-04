@@ -29,6 +29,7 @@ import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import SeoIntelligenceDashboard from './seo-intelligence-dashboard'
+import EditorSeoIntelPanel from './editor-seo-intel-panel'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
 import { collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { buildSectionBudgets, ensureSectionBudgets, syncSectionBudgetsToOutline } from '@/lib/seoFactory/prompts'
@@ -2337,6 +2338,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const [newSource, setNewSource] = React.useState('')
   const [newH2, setNewH2] = React.useState('')
 
+  // SEO Intelligence (first-party intel) writer contract, produced here in the
+  // briefing stage by EditorSeoIntelPanel's "Generate SEO Brief". Carried into
+  // the Generate handoff as one structured contract so Drafting never has to
+  // re-assemble it.
+  const [seoIntelBrief, setSeoIntelBrief] = React.useState<{ brief: unknown; writerContract: string } | null>(null)
+  const seoBriefSeed = String(selectedBrief?.primaryKeyword || topic || title || '').trim()
+
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
 
@@ -2577,8 +2585,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     lines.push('')
     lines.push('### AI PROVIDER')
     lines.push(`- Selected: ${aiProvider || 'auto (cascade)'}`)
+    if (seoIntelBrief?.writerContract) {
+      lines.push('')
+      lines.push('### SEO INTELLIGENCE WRITER CONTRACT (first-party intel)')
+      lines.push(seoIntelBrief.writerContract)
+    }
     return lines.join('\n')
-  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider, liveBudgets])
+  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider, liveBudgets, seoIntelBrief])
 
   const handleSubmitBrief = () => {
     onGenerate({
@@ -2592,6 +2605,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       minWords, maxWords,
       targetSlug: targetSlug || undefined,
       kwH2Map: Object.keys(kwH2Map).length ? kwH2Map : undefined,
+      // Single writer contract from SEO Intelligence Briefing — the intel brief
+      // the drafting model receives before generation (no re-analysis needed).
+      seoBriefContract: seoIntelBrief?.writerContract || undefined,
+      seoIntelBrief: seoIntelBrief ? { brief: seoIntelBrief.brief } : undefined,
     })
   }
 
@@ -2974,6 +2991,52 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         </div>
       </section>
 
+      {/* ── SEO INTELLIGENCE BRIEFING — first-party intel writer contract ── */}
+      <div data-testid="seo-intel-briefing" style={{ background: E.paper, border: `1px solid ${seoIntelBrief ? E.gold : E.hairline}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: `1px solid ${E.hairline}` }}>
+          <div>
+            <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.16em', textTransform: 'uppercase', color: E.goldDeep, fontWeight: 700 }}>First-party demand · §0 budget</div>
+            <h4 style={{ margin: '3px 0 0', fontFamily: C.serif, fontSize: 17, color: E.ink }}>SEO Intelligence Briefing</h4>
+          </div>
+          {seoIntelBrief && (
+            <span style={{ fontFamily: C.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', color: E.mossGreen, background: E.mossSoft, padding: '3px 8px' }}>
+              ✓ LOCKED INTO WRITER CONTRACT
+            </span>
+          )}
+        </div>
+        <div style={{ padding: 16, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <EditorSeoIntelPanel
+            mode="briefing"
+            content=""
+            title={title}
+            topic={seoBriefSeed || topic}
+            primaryKeyword={seoBriefSeed}
+            clusterKeywords={kwList.length ? kwList : seoBriefSeed ? [seoBriefSeed] : []}
+            disabled={generating}
+            onBriefReady={setSeoIntelBrief}
+            onInsert={() => {}}
+            style={{ width: 300, maxWidth: '100%' }}
+          />
+          <div style={{ flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontFamily: C.serif, fontSize: 12.5, color: E.ink, lineHeight: 1.5 }}>
+              Analyze the topic against first-party GSC intel (opportunity, confidence, action, coverage, topic fit, internal-link matches), then
+              <strong> Generate SEO Brief</strong> to produce the $0 writer contract. It is merged into the canonical model contract below and
+              carried into Drafting — no re-assembly there.
+            </div>
+            {seoIntelBrief ? (
+              <pre style={{ margin: 0, padding: 12, background: E.ivory, border: `1px solid ${E.hairlineSoft}`, fontFamily: C.mono, fontSize: 10, lineHeight: 1.55, color: E.ink, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+{seoIntelBrief.writerContract}
+              </pre>
+            ) : (
+              <div style={{ padding: '18px 14px', textAlign: 'center', background: E.cream, border: `1px dashed ${E.gold}` }}>
+                <div style={{ fontFamily: C.serif, fontSize: 13, fontWeight: 700, color: E.ink }}>No intel brief yet.</div>
+                <div style={{ marginTop: 4, fontSize: 10.5, color: E.inkMuted }}>Click Analyze SEO to read demand, then Generate SEO Brief to lock the writer contract.</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* ── MODEL CONTRACT + SINGLE HANDOFF ── */}
       <div style={{ background: '#0F172A', border: `1px solid ${E.hairline}` }}>
         <button
@@ -3306,6 +3369,12 @@ function DraftWorkspace({
       }
       return
     }
+    // A fresh generation starts from an empty editor. NEVER inherit the
+    // previous job's body: draftContent (and its ref) feed the unmount flush
+    // and the inline-editor autosave, so a stale article would otherwise be
+    // persisted onto the new claimed job row (title/body cross-write).
+    setDraftContent('')
+    draftContentRef.current = ''
     setGenerationText('')
     const timer = window.setInterval(() => {
       const next = generationBuffer.current
@@ -6879,7 +6948,12 @@ const controller = new AbortController()
           interlinks: briefInterlinks,
           opportunity: selectedBrief,
           aiProvider: formData.aiProvider || undefined,
-          intelligenceLineage: formData.intelligenceLineage || null,
+          intelligenceLineage: formData.intelligenceLineage
+            ? { ...formData.intelligenceLineage, seoBrief: formData.seoIntelBrief ?? null }
+            : formData.seoIntelBrief ? { seoBrief: formData.seoIntelBrief } : null,
+          // SEO Intelligence writer contract from Brief Assembly — the drafting
+          // model receives it as the brief (writeHint in the streaming pipeline).
+          seoBriefContract: formData.seoBriefContract || undefined,
           modelGuidance: selectedBrief?.ranking
             ? {
                 total: selectedBrief.ranking.total,

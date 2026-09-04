@@ -26,7 +26,8 @@ type Opp = {
 }
 
 type Props = {
-  content: string
+  /** Draft body (empty when mounting in Briefing, before any draft exists). */
+  content?: string
   title?: string
   topic?: string
   url?: string
@@ -34,7 +35,18 @@ type Props = {
   clusterKeywords?: string[]
   analyzeTick?: number
   disabled?: boolean
+  /**
+   * 'drafting' — live coverage-while-typing next to an article body.
+   * 'briefing' — analyze + brief against seed/topic + first-party intel only
+   *              (no draft markdown required). Emits the writer contract via
+   *              `onBriefReady` instead of discarding it.
+   */
+  mode?: 'drafting' | 'briefing'
+  /** Receives the structured `{ brief, writerContract }` so Brief Assembly can
+   *  carry the single writer contract into the Generate/Draft handoff. */
+  onBriefReady?: (payload: { brief: unknown; writerContract: string }) => void
   onInsert: (next: string) => void
+  style?: React.CSSProperties
 }
 
 const C = {
@@ -44,8 +56,10 @@ const C = {
 }
 
 export default function EditorSeoIntelPanel({
-  content, title, topic, url, primaryKeyword, clusterKeywords, analyzeTick, disabled, onInsert,
+  content, title, topic, url, primaryKeyword, clusterKeywords, analyzeTick, disabled, mode = 'drafting', onBriefReady, onInsert, style,
 }: Props) {
+  const withBody = mode === 'drafting'
+  const deriveBody = String(content || '').trim()
   const seed = String(primaryKeyword || topic || title || '').trim()
   const kws = (clusterKeywords || []).filter(Boolean)
   const [localCoverage, setLocalCoverage] = React.useState<CoverageBreakdown | null>(null)
@@ -66,19 +80,23 @@ export default function EditorSeoIntelPanel({
   const [note, setNote] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    if (!withBody) {
+      setLocalCoverage(null)
+      return
+    }
     const t = setTimeout(() => {
-      if (countWords(content) < 20) {
+      if (countWords(deriveBody) < 20) {
         setLocalCoverage(null)
         return
       }
       setLocalCoverage(scoreClusterCoverage({
         title: title || topic || '',
-        bodyText: content,
+        bodyText: deriveBody,
         clusterKeywords: kws.length ? kws : seed ? [seed] : [],
       }))
     }, 800)
     return () => clearTimeout(t)
-  }, [content, title, topic, seed, kws.join('|')])
+  }, [deriveBody, title, topic, seed, kws.join('|'), withBody])
 
   const analyze = React.useCallback(async () => {
     setBusy(true)
@@ -89,7 +107,7 @@ export default function EditorSeoIntelPanel({
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content, title: title || topic, url, clusterKeywords: cluster, limit: 6,
+          content: deriveBody, title: title || topic, url, clusterKeywords: cluster, limit: 6,
         }),
       })
       const cov = await covRes.json()
@@ -114,9 +132,9 @@ export default function EditorSeoIntelPanel({
       else if (url && opp?.impressions) gscState = 'ok'
       else if (url) gscState = 'none'
 
-      const bodyEnt = extractEntities(`${title}\n${content}`).map((e) => e.toLowerCase())
+      const bodyEnt = extractEntities(`${title || ''}\n${deriveBody}`).map((e) => e.toLowerCase())
       const required = cluster.map((k) => k.toLowerCase())
-      const missing = required.filter((k) => k.length > 3 && !bodyEnt.some((e) => e.includes(k) || k.includes(e)) && !content.toLowerCase().includes(k))
+      const missing = required.filter((k) => k.length > 3 && !bodyEnt.some((e) => e.includes(k) || k.includes(e)) && !deriveBody.toLowerCase().includes(k))
 
       if (!covRes.ok && cov?.error) setError(String(cov.error))
       setFull({
@@ -134,7 +152,7 @@ export default function EditorSeoIntelPanel({
     } finally {
       setBusy(false)
     }
-  }, [content, title, topic, url, seed, kws.join('|')])
+  }, [deriveBody, title, topic, url, seed, kws.join('|')])
 
   React.useEffect(() => {
     if (analyzeTick && analyzeTick > 0) void analyze()
@@ -147,11 +165,12 @@ export default function EditorSeoIntelPanel({
       const res = await fetch('/api/content-studio/briefs/from-intel', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed: seed || title || topic, content, url, title }),
+        body: JSON.stringify({ seed: seed || title || topic, content: deriveBody, url, title }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Brief failed')
       setBriefText(data.writerContract || JSON.stringify(data.brief, null, 2))
+      onBriefReady?.({ brief: data.brief, writerContract: String(data.writerContract || '') })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Brief failed')
     } finally {
@@ -160,7 +179,7 @@ export default function EditorSeoIntelPanel({
   }
 
   const insertLink = (s: InternalLinkSuggestion) => {
-    const result = applyInternalLinkMarkdown(content, s, url)
+    const result = applyInternalLinkMarkdown(deriveBody, s, url)
     if (!result.applied) {
       setNote(result.reason === 'self-link' ? 'Skipped self-link' : result.reason === 'already-linked' ? 'Already linked' : 'Could not insert')
       return
@@ -182,15 +201,17 @@ export default function EditorSeoIntelPanel({
   )
 
   return (
-    <aside style={{ width: 280, flexShrink: 0, border: `1px solid ${C.line}`, background: '#FFFEFC', padding: 12, fontSize: 12, maxHeight: 720, overflow: 'auto' }}>
-      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: C.gold, fontFamily: C.mono }}>SEO INTELLIGENCE</div>
+    <aside style={{ width: 280, flexShrink: 0, border: `1px solid ${C.line}`, background: '#FFFEFC', padding: 12, fontSize: 12, maxHeight: 720, overflow: 'auto', ...style }}>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: C.gold, fontFamily: C.mono }}>SEO INTELLIGENCE{mode === 'briefing' ? ' · BRIEFING' : ''}</div>
       <div style={{ color: C.muted, fontSize: 10, margin: '4px 0 8px' }}>
-        {unpublished ? 'Unpublished draft — no live GSC URL' : 'Existing URL — GSC when synced'}
+        {mode === 'briefing'
+          ? 'First-party demand intel to shape the writer brief before drafting'
+          : unpublished ? 'Unpublished draft — no live GSC URL' : 'Existing URL — GSC when synced'}
       </div>
       {error && <div style={{ color: C.red, marginBottom: 8 }}>{error}</div>}
       {note && <div style={{ color: C.green, marginBottom: 8 }}>{note}</div>}
       {busy && <div style={{ color: C.muted, marginBottom: 8 }}>Analyzing…</div>}
-      {noAnalysis && !localCoverage && countWords(content) < 20 && (
+      {withBody && noAnalysis && !localCoverage && countWords(deriveBody) < 20 && (
         <div style={{ color: C.muted, marginBottom: 8 }}>Not enough copy yet. Type, then Analyze.</div>
       )}
       {metric('Opportunity', full?.opp?.score != null ? String(full.opp.score) : '—', 'From Phase 6 score API')}

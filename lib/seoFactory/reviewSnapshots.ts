@@ -25,6 +25,78 @@ export interface ReviewSnapshot {
   source: ReviewSource
 }
 
+/**
+ * Cross-contamination guard (title/body mismatch, 2026-09-04).
+ *
+ * `persistReviewSnapshot` is a SECOND write door for `content_jobs.content`
+ * outside `persistPipelineJob` / `shipContent`. It is reached from the editor
+ * autosave and DraftWorkspace flush with a client-supplied `jobId`, so a stale
+ * editor buffer (a previously opened article) can be flushed onto a brand-new
+ * claim row — the title stayed Green Card while the body became the previous
+ * H-1B article (word_count identical to the merged H-1B row).
+ *
+ * This pure check refuses to push a body onto a job whose stored identity
+ * (title / topic / primary keyword) shares no significant words with the
+ * body's own title. The body title is the decisive discriminator — the H-1B
+ * article's H1 shares nothing topical with a Green Card job. Generic words
+ * ("apply", "guide", "2026", …) are stripped so a loose verb can never be the
+ * shared token. Legit drafts always carry the job topic in their H1/front
+ * matter, so they pass. When no title is extractable, a whole-body
+ * proportional check (mirroring the pipeline's content-topic validation) is
+ * used. A rejected write still saves the review snapshot — only the
+ * content_jobs.content clobber is refused.
+ */
+const GENERIC_TOPIC_WORDS = new Set([
+  'apply', 'application', 'applying', 'guide', 'guides', 'guidance',
+  'checklist', 'everything', 'need', 'your', '2025', '2026', '2027', 'year',
+])
+
+function significantWords(text: string): string[] {
+  return [
+    ...new Set(
+      String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length > 4 && !GENERIC_TOPIC_WORDS.has(w)),
+    ),
+  ]
+}
+
+/** The body's own title: H1, else YAML `title:`, else the head of the body. */
+function contentTitle(content: string): string {
+  const h1 = content.match(/^#\s+(.+)$/m)
+  if (h1) return h1[1]
+  const fm = content.match(/^title:\s*(.+)$/m)
+  if (fm) return fm[1]
+  return content.slice(0, 200)
+}
+
+export function reviewSnapshotContentMatchesJob(
+  content: string,
+  job: {
+    title?: string | null
+    topic?: string | null
+    primary_keyword?: string | null
+  } | null,
+): boolean {
+  const body = String(content || '')
+  if (!body.trim()) return false
+  if (!job) return true
+  const identityWords = significantWords(
+    [job.title, job.topic, job.primary_keyword].filter(Boolean).join(' '),
+  )
+  if (!identityWords.length) return true
+  const titleWords = significantWords(contentTitle(body))
+  if (titleWords.length) {
+    return titleWords.some((w) => identityWords.includes(w))
+  }
+  const bodyWords = significantWords(body)
+  if (!bodyWords.length) return true
+  const hits = bodyWords.filter((w) => identityWords.includes(w)).length
+  return hits >= 1 && hits / bodyWords.length >= 0.3
+}
+
 export async function persistReviewSnapshot(opts: {
   jobId: string
   content: string
@@ -76,6 +148,26 @@ export async function persistReviewSnapshot(opts: {
     if (data?.created_at) snapshot.createdAt = String(data.created_at)
 
     if (opts.updateJob !== false) {
+      // Cross-contamination guard: only push a body onto a content_jobs row
+      // after verifying the row exists, is not terminal, and the body actually
+      // matches the job's title/topic/primary keyword. A stale editor buffer
+      // (previous shipped article) must never be flushed onto a newly claimed
+      // draft row — the title would stay while the body becomes another job's.
+      const { data: jobRow } = await db
+        .from('content_jobs')
+        .select('id,title,topic,primary_keyword,status')
+        .eq('id', opts.jobId)
+        .maybeSingle()
+      const terminal = jobRow && (jobRow.status === 'merged' || jobRow.status === 'closed')
+      const matches = reviewSnapshotContentMatchesJob(opts.content, jobRow as Record<string, unknown>)
+      if (jobRow && (terminal || !matches)) {
+        console.warn(
+          `[reviewSnapshots] refusing content_jobs.content write for ${opts.jobId}: ${
+            terminal ? `terminal status ${jobRow.status}` : `content does not match job title/topic (${words} words)`
+          } — review snapshot still saved`,
+        )
+        return { snapshot, persisted: true }
+      }
       const patch: Record<string, unknown> = { content: opts.content, word_count: words }
       if (opts.qualityOk) patch.error_message = null
       const { data: updated, error: upErr } = await db.from('content_jobs').update(patch).eq('id', opts.jobId).select('id').maybeSingle()

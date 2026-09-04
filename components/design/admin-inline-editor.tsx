@@ -2,7 +2,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import StudioDocEditor from './studio-doc-editor'
 import EditorMetricsStrip from './editor-metrics-strip'
-import EditorSeoIntelPanel from './editor-seo-intel-panel'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
@@ -129,7 +128,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [showAnnotations, setShowAnnotations] = useState(false)
   const [viewMode, setViewMode] = useState<'document' | 'source'>('document')
   const [showHistory, setShowHistory] = useState(false)
-  const [seoAnalyzeTick, setSeoAnalyzeTick] = useState(0)
   const [drafts, setDrafts] = useState<DraftVersion[]>([])
   const [boundJobId, setBoundJobId] = useState(String(jobId || ''))
   useEffect(() => {
@@ -287,7 +285,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setDirty(false)
       setLastSaved(new Date().toLocaleTimeString())
       setNotice('Draft saved')
-      setSeoAnalyzeTick((n) => n + 1)
       setTimeout(() => setNotice(null), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
@@ -1192,18 +1189,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             </div>
           )}
         </div>
-
-        <EditorSeoIntelPanel
-          content={content}
-          title={title}
-          topic={topic}
-          url={targetUrl}
-          primaryKeyword={primaryKeyword}
-          clusterKeywords={[primaryKeyword, ...(requiredShortKeywords || []), ...(requiredLongTailKeywords || [])].filter((k): k is string => Boolean(k))}
-          analyzeTick={seoAnalyzeTick}
-          disabled={disabled || allBusy}
-          onInsert={(md) => { onChange(md); setDirty(true) }}
-        />
 
         {/* Annotation sidebar */}
         {showAnnotations && annotations.length > 0 && (
