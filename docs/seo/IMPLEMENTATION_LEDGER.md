@@ -4,7 +4,7 @@
 |---|---|---|---|
 | 0 Recon | **done — awaiting review** | Grok supervisor | `REPO_INTEGRATION_MAP.md` |
 | 1 GSC persist query×page | **done** | Grok after review (High-scope task) | `seo_gsc_rows`; POST `/api/content-studio/gsc/sync`; GET `/api/content-studio/gsc/performance` |
-| 2 Keyword discovery | blocked on 1 | High | |
+| 2 Keyword discovery | **done** | Grok | `keywordDiscover.ts` + `POST /api/content-studio/keywords/discover` |
 | 3 Clustering | blocked | High | reuse `keywordCluster.ts` |
 | 4 Entities | blocked | High | |
 | 5 Coverage / links | blocked | High | |
