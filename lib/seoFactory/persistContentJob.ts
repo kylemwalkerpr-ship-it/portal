@@ -9,6 +9,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { resolveOwnerProviderPin } from '@/lib/contentAiCatalog'
 import { normalizeJobContentType } from './jobContentType'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import type { OwnerPlan } from './ownership'
@@ -129,6 +130,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
   // true only when the pipeline's own ship-quality definition passes AND
   // ownership is not blocked — never implied by score alone.
   const shipReady = input.plan.blockers.length === 0 && meetsShipQuality(input.audit)
+  const ownerPin = resolveOwnerProviderPin(input.ownerProvider, input.provider)
   const baseRow: Record<string, unknown> = {
     user_id: input.userId || 'admin',
     source_job_id: input.sourceJobId || null,
@@ -136,7 +138,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
       modelVersion: 'seo-intelligence-v1',
       sourceJobId: input.sourceJobId || null,
       regenerationMode: input.regenerationMode || null,
-      ownerProvider: input.ownerProvider || null,
+      ownerProvider: ownerPin,
       evidence: input.intelligenceLineage || null,
     },
     regeneration_reason: input.regenerationReason || null,
@@ -154,7 +156,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     content_path: input.shipResult?.path || input.plan.filePath,
     pr_url: input.shipResult?.prUrl || null,
     pr_number: input.shipResult?.prNumber || null,
-    ai_provider: input.provider,
+    ai_provider: ownerPin,
     word_count: input.audit.wordCount,
     seo_score: input.audit.score,
     ship_mode: mapPipelineShipMode(input.shipMode),
@@ -170,7 +172,8 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
       attempts: input.attempts,
       model: input.model,
       minAudit: input.minAudit,
-      ownerProvider: input.ownerProvider || null,
+      ownerProvider: ownerPin,
+      runtimeProvider: input.provider || null,
       // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
       // reviewer, re-audit, and ship all read this same JSON snapshot.
       ...(input.contentSpec ? { contentSpec: input.contentSpec } : {}),

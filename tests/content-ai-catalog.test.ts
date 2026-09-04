@@ -8,6 +8,8 @@
  */
 import {
   canonicalizePin,
+  resolveJobPickerPin,
+  resolveOwnerProviderPin,
   DEFAULT_BRIEF_PIN,
   DEFAULT_DRAFT_PIN,
   DEFAULT_REVIEW_PIN,
@@ -90,6 +92,23 @@ describe('content AI catalog — live Entrim + Grok model × host', () => {
     expect(canonicalizePin('openai')).toBe('entrim-qwen-27b')
     expect(canonicalizePin('nvidia-minimax')).toBe('entrim-qwen-27b')
     expect(canonicalizePin('')).toBe('entrim-qwen-27b')
+  })
+
+  it('owner pin survives cascade runtime when resolving persist + picker', () => {
+    expect(resolveOwnerProviderPin('grok', 'entrim-qwen-27b')).toBe('grok')
+    expect(resolveOwnerProviderPin('GROK-4.6', 'entrim-qwen-27b')).toBe('grok')
+    expect(resolveOwnerProviderPin('auto', 'entrim-deepseek')).toBe('entrim-deepseek')
+    expect(resolveOwnerProviderPin(null, 'entrim-qwen-27b')).toBe('entrim-qwen-27b')
+    expect(resolveOwnerProviderPin(null, null)).toBe(DEFAULT_DRAFT_PIN)
+    expect(resolveJobPickerPin({
+      ai_provider: 'entrim-qwen-27b',
+      lineage: { ownerProvider: 'grok' },
+    })).toBe('grok')
+    expect(resolveJobPickerPin({
+      ai_provider: 'entrim-qwen-27b',
+      audit_json: { ownerProvider: 'grok', runtimeProvider: 'entrim-qwen-27b' },
+    })).toBe('grok')
+    expect(resolveJobPickerPin({ ai_provider: 'grok' })).toBe('grok')
   })
 
   it('defaults: draft = brief = review = Entrim Qwen3.6 27B', () => {

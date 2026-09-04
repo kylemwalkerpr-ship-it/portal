@@ -151,6 +151,43 @@ export function canonicalizePin(raw?: string | null): string {
   return PIN_ALIASES[pin] || ENTRIM_QWEN_PIN
 }
 
+/**
+ * Operator / brief pin wins over last-successful cascade/runtime provider.
+ * `auto` and empty owner fall through to the runtime pin (then the draft default).
+ */
+export function resolveOwnerProviderPin(
+  ownerProvider?: string | null,
+  runtimeProvider?: string | null,
+): string {
+  const owner = String(ownerProvider || '').trim().toLowerCase()
+  if (owner && owner !== 'auto') return canonicalizePin(owner)
+  const runtime = String(runtimeProvider || '').trim().toLowerCase()
+  if (runtime && runtime !== 'auto') return canonicalizePin(runtime)
+  return DEFAULT_DRAFT_PIN
+}
+
+/** Job modal / regenerate picker: lineage/audit owner pin, then stored ai_provider. */
+export function resolveJobPickerPin(job: {
+  ai_provider?: string | null
+  lineage?: unknown
+  audit_json?: unknown
+  owner_provider?: string | null
+}): string {
+  const lineage = job.lineage && typeof job.lineage === 'object'
+    ? (job.lineage as Record<string, unknown>)
+    : null
+  const audit = job.audit_json && typeof job.audit_json === 'object'
+    ? (job.audit_json as Record<string, unknown>)
+    : null
+  const owner = String(
+    job.owner_provider
+    || lineage?.ownerProvider
+    || audit?.ownerProvider
+    || '',
+  ).trim()
+  return resolveOwnerProviderPin(owner || null, job.ai_provider)
+}
+
 export function parseStudioPin(raw?: string | null): { model: StudioModelOption; host: StudioHostOption } {
   const pin = canonicalizePin(raw)
   for (const model of STUDIO_MODELS) {

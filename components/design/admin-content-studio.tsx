@@ -70,7 +70,7 @@ import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { resolveShipRefusalBanner, shipActionsEnabled, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { StudioModelHostSelect } from './studio-model-host-select'
-import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
+import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin, resolveJobPickerPin } from '@/lib/contentAiCatalog'
 import { StudioStageNav } from './studio-stage-nav'
 import { ChapterIntro } from './studio-chapter-intro'
 import { studioTokens as E } from './studio-tokens'
@@ -4316,14 +4316,12 @@ function JobDetail({
     setAudit(null)
   }, [job.id])
 
-  // Owner contract: the job modal model pickers DEFAULT to the contract
-  // owner pin (persisted on content_jobs.ai_provider). Changing them is
-  // allowed, but they start as the owner — regeneration and re-audits use the
-  // same backend unless the admin overrides.
+  // Owner contract: pickers DEFAULT to the operator/brief pin (lineage
+  // ownerProvider, then stored ai_provider). Last cascade runtime must not
+  // overwrite the pin unless the operator changes the picker.
   React.useEffect(() => {
-    const owner = (job as { ai_provider?: string | null }).ai_provider || null
-    if (!owner) return
-    if (owner === 'auto') return
+    const owner = resolveJobPickerPin(job)
+    if (!owner || owner === 'auto') return
     setAiProvider(owner)
     setReviewModel(owner)
     // eslint-disable-next-line react-hooks/exhaustive-deps

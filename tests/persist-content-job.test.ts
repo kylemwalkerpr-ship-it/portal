@@ -296,6 +296,24 @@ describe('mapPipelineJobRow — pure row builder', () => {
     expect(Array.isArray(aj.blockers)).toBe(true)
   })
 
+  it('persists the owner/brief pin as ai_provider even when cascade runtime differs', () => {
+    const row = mapPipelineJobRow(
+      baseInput({ ownerProvider: 'grok', provider: 'entrim-qwen-27b' }),
+    )
+    expect(row.ai_provider).toBe('grok')
+    const lineage = row.lineage as Record<string, unknown>
+    const aj = row.audit_json as Record<string, unknown>
+    expect(lineage.ownerProvider).toBe('grok')
+    expect(aj.ownerProvider).toBe('grok')
+    expect(aj.runtimeProvider).toBe('entrim-qwen-27b')
+  })
+
+  it('falls back to runtime provider when no owner pin was set', () => {
+    const row = mapPipelineJobRow(baseInput({ ownerProvider: null, provider: 'entrim-deepseek' }))
+    expect(row.ai_provider).toBe('entrim-deepseek')
+    expect((row.lineage as Record<string, unknown>).ownerProvider).toBe('entrim-deepseek')
+  })
+
   it('persists shipReady=false when ownership is blocked even on a clean audit', () => {
     const aj = mapPipelineJobRow(
       baseInput({ plan: { ...plan, blockers: ['blocked_on_supply: wait'] } }),
