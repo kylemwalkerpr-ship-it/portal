@@ -5,13 +5,14 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, filterLiveInternalUrls, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
-import { collectDiscoverCitationUrls, mergeCitationUrlLists } from '@/lib/seoFactory/officialSources'
+import { applyEvidenceRegionFloor, collectDiscoverCitationUrls, mergeCitationUrlLists } from '@/lib/seoFactory/officialSources'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
 import { buildSectionBudgets } from '@/lib/seoFactory/prompts'
 import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
+import { preferRegionInterlinks } from '@/lib/seoFactory/studioInterlinks'
 import {
   clampBriefWordBudget,
   depthPromptClause,
@@ -322,7 +323,7 @@ export async function POST(req: NextRequest) {
     let briefAllowlist = interlinks
     if (briefAllowlist.length === 0) {
       try {
-        const verified = await suggestVerifiedInterlinks(primaryKeyword, [topic, primaryKeyword], 6)
+        const verified = await suggestVerifiedInterlinks(primaryKeyword, [topic, primaryKeyword], 6, region)
         briefAllowlist = verified.map((v) => ({ label: v.label, url: v.url }))
       } catch { /* fall through to region anchors below */ }
     }
@@ -330,11 +331,15 @@ export async function POST(req: NextRequest) {
       const regionKey = (region || 'US').toUpperCase().slice(0, 2)
       briefAllowlist = (ESTATE_ANCHOR_LINKS[regionKey] || ESTATE_ANCHOR_LINKS.US).map((a) => ({ label: a.label, url: a.url }))
     }
-    const paddedInterlinks = ensureBriefInterlinks(
-      briefAllowlist,
-      Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets : [],
-      { region, min: 2, max: 6 },
-    )
+    const paddedInterlinks = preferRegionInterlinks(
+      ensureBriefInterlinks(
+        briefAllowlist,
+        Array.isArray(parsed.interlinkTargets) ? parsed.interlinkTargets : [],
+        { region, min: 2, max: 6 },
+      ),
+      region,
+      2,
+    ).kept
     const liveInternal = new Set(await filterLiveInternalUrls(paddedInterlinks.map((t) => t.url)))
     const interlinkTargets = paddedInterlinks.filter((t) => liveInternal.has(t.url.replace(/\/+$/, '')) || liveInternal.has(t.url) || [...liveInternal].some((u) => u.replace(/\/+$/, '') === t.url.replace(/\/+$/, '')))
     const enrichedInterlinkTargets = interlinkTargets.map((target) => {
@@ -467,7 +472,7 @@ export async function POST(req: NextRequest) {
       pageMax: finalMax,
       pageTarget: targetWords,
     })
-    const finalSources = await assembleDraftSourceAllowlist(
+    const assembledSources = await assembleDraftSourceAllowlist(
       region,
       mergeCitationUrlLists(
         discoverSources,
@@ -476,6 +481,11 @@ export async function POST(req: NextRequest) {
       ),
       citationCtx,
     )
+    const regionalSources = applyEvidenceRegionFloor(assembledSources, region)
+    const finalSources = regionalSources.lines
+    if (regionalSources.fallbackUsed && regionalSources.fallbackNote) {
+      droppedOffRegion.push(regionalSources.fallbackNote)
+    }
 
     return NextResponse.json({
       ok: true,
@@ -512,7 +522,9 @@ export async function POST(req: NextRequest) {
       kwH2Map: completedKwH2Map,
       sectionPlan,
       sources: finalSources,
-      interlinkTargets: enrichedInterlinkTargets.slice(0, 8),
+      sourceRegionFallback: regionalSources.fallbackUsed,
+      sourceRegionFallbackNote: regionalSources.fallbackNote,
+      interlinkTargets: preferRegionInterlinks(enrichedInterlinkTargets, region, 2).kept.slice(0, 8),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),

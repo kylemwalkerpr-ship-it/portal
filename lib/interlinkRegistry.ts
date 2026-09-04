@@ -369,6 +369,7 @@ export function suggestInterlinks(
   topic: string,
   keywords: string[] = [],
   maxResults = 5,
+  region?: string | null,
 ): InterlinkSuggestion[] {
   const combined = [topic, ...keywords]
     .filter(Boolean)
@@ -401,7 +402,8 @@ export function suggestInterlinks(
   // Sort by score desc, then priority desc
   matches.sort((a, b) => b.score - a.score || b.entry.priority - a.entry.priority)
 
-  return matches.slice(0, maxResults).map((m) => ({
+  const want = String(region || '').toUpperCase().slice(0, 2)
+  const ranked = matches.map((m) => ({
     label: m.entry.label,
     url: m.entry.url,
     site: m.entry.site,
@@ -410,6 +412,19 @@ export function suggestInterlinks(
     matchedOn: m.matchedTriggers,
     note: m.entry.note,
   }))
+  if (!want) return ranked.slice(0, maxResults)
+  const inRegion = ranked.filter((item) => {
+    const hay = `${item.url} ${item.label}`.toLowerCase()
+    const found = /\/au\/|au\.yousafe|australia/.test(hay) ? 'AU'
+      : /\/ca\/|ca\.yousafe|canada/.test(hay) ? 'CA'
+        : /\/uk\/|uk\.yousafe|\buk\b|united kingdom/.test(hay) ? 'UK'
+          : /\/us\/|usa\.yousafe|uscis|united states/.test(hay) ? 'US'
+            : null
+    return !found || found === want
+  })
+  const offRegion = ranked.filter((item) => !inRegion.includes(item))
+  const kept = inRegion.length > 0 ? inRegion : [...inRegion, ...offRegion]
+  return kept.slice(0, maxResults)
 }
 
 /**
@@ -427,8 +442,9 @@ export async function suggestVerifiedInterlinks(
   topic: string,
   keywords: string[] = [],
   maxResults = 5,
+  region?: string | null,
 ): Promise<InterlinkSuggestion[]> {
-  const suggestions = suggestInterlinks(topic, keywords, maxResults * 2)
+  const suggestions = suggestInterlinks(topic, keywords, maxResults * 2, region)
   if (suggestions.length === 0) return []
   const liveUrls = await filterLiveInternalUrls(suggestions.map((s) => normalizeEstateUrl(s.url)))
   const live = new Set(liveUrls)

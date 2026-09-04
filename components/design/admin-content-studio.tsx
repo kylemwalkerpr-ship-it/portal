@@ -25,14 +25,14 @@ import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { autoMapKeywordsToH2s } from '@/lib/seoFactory/keywordPlacement'
-import { mergeInterlinkLists, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
+import { mergeInterlinkLists, preferRegionInterlinks, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import SeoIntelligenceDashboard from './seo-intelligence-dashboard'
 import EditorSeoIntelPanel from './editor-seo-intel-panel'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
-import { collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
+import { applyEvidenceRegionFloor, collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { buildSectionBudgets, ensureSectionBudgets, syncSectionBudgetsToOutline } from '@/lib/seoFactory/prompts'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
 import {
@@ -2479,7 +2479,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       }
       if (Array.isArray(data.sources) && data.sources.length) {
         const incoming = (data.sources as unknown[]).map(String)
-        setSources((prev) => mergeCitationUrlLists(prev, incoming, 12))
+        const nextRegion = typeof data.region === 'string' ? data.region : region
+        setSources(() => applyEvidenceRegionFloor(mergeCitationUrlLists(incoming, [], 12), nextRegion).lines)
       }
       if (typeof data.targetSlug === 'string' && data.targetSlug.trim()) setTargetSlug(data.targetSlug)
       if (typeof data.recommendedTone === 'string') setTone(data.recommendedTone as Tone)
@@ -2506,7 +2507,11 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (Array.isArray(briefTargets) && briefTargets.length > 0) {
         // Model-selected placements take precedence while the estate ranker's
         // score/reason/live metadata survives for the UI and drafting prompt.
-        onBriefInterlinksChange?.(mergeInterlinkLists(briefTargets as Array<Record<string, unknown>>, briefInterlinks).slice(0, 8))
+        onBriefInterlinksChange?.(preferRegionInterlinks(
+          mergeInterlinkLists(briefTargets as Array<Record<string, unknown>>, briefInterlinks),
+          typeof data.region === 'string' ? data.region : region,
+          2,
+        ).kept.slice(0, 8))
       }
       const engine = data.masterEngine as { ok?: boolean; composite?: number | null; grade?: string | null; recommendationCount?: number } | undefined
       const engineBit = engine?.ok
@@ -2548,14 +2553,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
     })
     const lines = seed.slice(0, 6).map((s) => `${s.title} — ${s.url}`)
-    setSources((p) => {
-      const seen = new Set(p.map((x) => x.toLowerCase()))
-      const next = [...p]
-      for (const line of lines) {
-        if (!seen.has(line.toLowerCase())) next.push(line)
-      }
-      return next.slice(0, 8)
-    })
+    setSources((p) => applyEvidenceRegionFloor([...p, ...lines], region).lines.slice(0, 8))
   }
   const removeSource = (i: number) => setSources(p => p.filter((_, idx) => idx !== i))
   const addH2 = () => { if (newH2.trim()) { setH2s(p => [...p, newH2.trim()]); setNewH2('') } }
@@ -2669,14 +2667,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const labelBase: React.CSSProperties = { display: 'block', marginBottom: 4, fontSize: 9, fontFamily: C.mono, letterSpacing: '0.14em', color: E.inkMuted, textTransform: 'uppercase', fontWeight: 700 }
   const chip = (ok: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: E.radiusFull, fontSize: 9, fontFamily: C.mono, fontWeight: 700, background: ok ? E.mossSoft : '#fff0f0', color: ok ? E.mossGreen : '#a32525' })
   const mappedKeywordCount = kwList.filter((kw) => Boolean(kwH2Map[kw])).length
+  const evidenceGate = applyEvidenceRegionFloor(sources, region)
+  const regionalInterlinks = preferRegionInterlinks(briefInterlinks || [], region, 2)
   const briefChecks = [
     { label: 'Identity', ok: Boolean(title.trim() && topic.trim() && targetSlug.trim()), detail: title.trim() ? 'H1, query and destination' : 'Needs a reader-ready H1' },
     { label: 'Outline', ok: h2s.length >= 6, detail: `${h2s.length} planned sections` },
     { label: 'Keywords', ok: shortOk && longOk, detail: `${shortKw.length} short · ${longKw.length} long-tail` },
     { label: 'Placement', ok: kwList.length >= 9 && mappedKeywordCount === kwList.length, detail: `${mappedKeywordCount}/${kwList.length || 0} assigned to H2s` },
     { label: 'SEO Intel', ok: seoIntelLocked, detail: seoIntelLocked ? 'Writer contract locked' : 'Generate SEO Brief to lock' },
-    { label: 'Evidence', ok: sources.length >= 3, detail: `${sources.length} verified sources` },
-    { label: 'Interlinks', ok: (briefInterlinks?.length || 0) >= 2, detail: `${briefInterlinks?.length || 0} estate targets` },
+    { label: 'Evidence', ok: evidenceGate.counted >= 3, detail: evidenceGate.fallbackUsed ? `${evidenceGate.counted} sources · off-region fallback` : `${evidenceGate.counted} in-region sources` },
+    { label: 'Interlinks', ok: regionalInterlinks.kept.length >= 2, detail: regionalInterlinks.fallbackUsed ? `${regionalInterlinks.kept.length} targets · off-region fallback` : `${regionalInterlinks.kept.length} in-region estate targets` },
   ]
   const briefReadiness = Math.round((briefChecks.filter((check) => check.ok).length / briefChecks.length) * 100)
 
@@ -6826,7 +6826,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (!engineRes.ok && !estateRes.ok) {
         throw new Error(engine.error || estate.error || 'interlink failed')
       }
-      const merged = mergeInterlinkLists(estate.suggestions, engine.edges).slice(0, 10)
+      const merged = preferRegionInterlinks(
+        mergeInterlinkLists(estate.suggestions, engine.edges),
+        country,
+        2,
+      ).kept.slice(0, 10)
       if (!merged.length) throw new Error('No live estate links found for this topic — try a clearer keyword or stage.')
       setBriefInterlinks(merged)
       setInterlinkInventory(estate.inventory || null)
@@ -7751,6 +7755,8 @@ const controller = new AbortController()
             reviewAuditResult={reviewAuditResult}
             setActionNotice={setActionNotice}
             shipGateByJob={shipGateBook}
+            activeTopic={topic || selectedBrief?.title || selectedBrief?.primaryKeyword || null}
+            inFlightJobId={generationJobId || generationReviewJob?.id || null}
           />
           {/* AI-enabled inline editor — fix blockers interactively.
               Only when NO job is open in the JobDetail modal (which carries

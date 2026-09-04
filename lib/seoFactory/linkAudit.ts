@@ -43,6 +43,7 @@ import {
   isReputablePublication,
   shouldKeepExternalHref,
   sourcesForBrief,
+  applyEvidenceRegionFloor,
   type CitationContext,
 } from './officialSources'
 import { applyCitationPolicy, citationContextForContent } from './citationPolicy'
@@ -93,6 +94,15 @@ export interface BriefInterlink {
  *    gap — so the Research brief ALWAYS returns ≥2 estate links end-to-end
  *    and the draft-time INTERNAL_LINKS audit can clear without repairs.
  */
+function estateUrlRegion(url: string, label?: string): string | null {
+  const text = `${url} ${label || ''}`.toLowerCase()
+  if (/\b(australia|australian|immi|home affairs)\b|\/au\/|au\.yousafe/.test(text)) return 'AU'
+  if (/\b(canada|canadian|ircc)\b|\/ca\/|ca\.yousafe/.test(text)) return 'CA'
+  if (/\b(uk|british|united kingdom|home office)\b|\/uk\/|uk\.yousafe/.test(text)) return 'UK'
+  if (/\b(usa?|american|uscis|united states)\b|\/us\/|usa\.yousafe/.test(text)) return 'US'
+  return null
+}
+
 export function ensureBriefInterlinks(
   allowlist: Array<{ label?: string; url: string }>,
   modelTargets: Array<{ label?: string; url?: string; placement?: string }>,
@@ -100,7 +110,16 @@ export function ensureBriefInterlinks(
 ): BriefInterlink[] {
   const min = opts.min ?? 2
   const max = opts.max ?? 6
-  const allowUrls = new Set(allowlist.map((l) => normalizeEstateUrl(l.url)))
+  const want = String(opts.region || '').toUpperCase().slice(0, 2)
+  const inRegionAllow = want
+    ? allowlist.filter((l) => {
+        const found = estateUrlRegion(l.url, l.label)
+        return !found || found === want
+      })
+    : allowlist
+  const offRegionAllow = want ? allowlist.filter((l) => !inRegionAllow.includes(l)) : []
+  const regionalAllow = inRegionAllow.length > 0 ? inRegionAllow : [...inRegionAllow, ...offRegionAllow]
+  const allowUrls = new Set(regionalAllow.map((l) => normalizeEstateUrl(l.url)))
   const chosen: BriefInterlink[] = []
   const used = new Set<string>()
 
@@ -117,7 +136,7 @@ export function ensureBriefInterlinks(
     push(t.url, String(t.label || t.url), String(t.placement || 'contextually relevant section'))
     if (chosen.length >= max) return chosen
   }
-  for (const l of allowlist) {
+  for (const l of regionalAllow) {
     if (chosen.length >= min) break
     push(l.url, String(l.label || l.url), 'contextually relevant section')
   }
@@ -1017,7 +1036,12 @@ export async function assembleDraftSourceAllowlist(
   }
   for (const url of verified) push(url, url)
   for (const s of official) push(`${s.title} — ${s.url}`, s.url)
-  return out.slice(0, 10)
+  const regional = applyEvidenceRegionFloor(out, ctx.region)
+  const lines = regional.lines.slice(0, 10)
+  if (regional.fallbackUsed && regional.fallbackNote) {
+    lines.push(regional.fallbackNote)
+  }
+  return lines
 }
 
 export async function liveOfficialSources(

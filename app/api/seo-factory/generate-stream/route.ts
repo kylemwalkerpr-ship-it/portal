@@ -345,7 +345,7 @@ export async function POST(request: Request) {
             .map((a) => ({ label: a.label, url: a.url }))
           try {
             send({ type: 'progress', stage: 'plan', message: 'Verifying estate interlinks…' })
-            const verified = await suggestVerifiedInterlinks(input.primaryKeyword, (input.keywords || []) as string[], 6)
+            const verified = await suggestVerifiedInterlinks(input.primaryKeyword, (input.keywords || []) as string[], 6, input.region)
             input.interlinks = verified.length
               ? verified as Array<{ label?: string; url?: string; matchedOn?: string[] }>
               : anchors

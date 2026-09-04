@@ -53,6 +53,9 @@ function inferRole(candidate: EstateCandidate, serviceIntent: boolean): Interlin
   return 'topical-guide'
 }
 
+export { inferRegion as inferEstateRegion }
+export { preferRegionInterlinks } from './studioInterlinks'
+
 export function rankEstateInterlinks(
   candidates: EstateCandidate[],
   input: { topic: string; keywords?: string[]; region?: string; sourceUrl?: string; h2Outline?: string[] },
@@ -78,7 +81,7 @@ export function rankEstateInterlinks(
     let raw = matched.length * 12 + titleMatched.length * 8
     if (phrase.length > 8 && candidateText.includes(phrase)) raw += 28
     if (queryRegion && candidateRegion === queryRegion) raw += 18
-    if (queryRegion && candidateRegion && candidateRegion !== queryRegion) raw -= 38
+    if (queryRegion && candidateRegion && candidateRegion !== queryRegion) raw -= 80
     if (candidate.inSitemap === true) raw += 6
     raw += Math.min(8, Math.log2(Math.max(1, (candidate.inboundLinks || 0) + 1)) * 2)
     if (GENERIC_PATH.test(path)) raw -= serviceIntent ? 8 : 42
@@ -98,20 +101,29 @@ export function rankEstateInterlinks(
     })
   }
   scored.sort((a, b) => b.raw - a.raw || (b.inboundLinks || 0) - (a.inboundLinks || 0))
+  const pick = (pool: typeof scored, result: InventoryInterlink[], usedUrls: Set<string>, roleCounts: Map<InterlinkRole, number>) => {
+    for (const item of pool) {
+      const key = normalizedUrl(item.url)
+      if (usedUrls.has(key)) continue
+      const roleCount = roleCounts.get(item.role) || 0
+      if (item.role === 'service-handoff' && !serviceIntent && roleCount >= 1) continue
+      if (roleCount >= 3) continue
+      usedUrls.add(key); roleCounts.set(item.role, roleCount + 1)
+      const { raw: _raw, ...suggestion } = item
+      result.push(suggestion)
+      if (result.length >= maxResults) break
+    }
+  }
+  const inRegion = scored.filter((item) => {
+    const found = inferRegion(`${item.url} ${item.label}`)
+    return !queryRegion || !found || found === queryRegion
+  })
+  const offRegion = scored.filter((item) => !inRegion.includes(item))
   const result: InventoryInterlink[] = []
   const usedUrls = new Set<string>()
   const roleCounts = new Map<InterlinkRole, number>()
-  for (const item of scored) {
-    const key = normalizedUrl(item.url)
-    if (usedUrls.has(key)) continue
-    const roleCount = roleCounts.get(item.role) || 0
-    if (item.role === 'service-handoff' && !serviceIntent && roleCount >= 1) continue
-    if (roleCount >= 3) continue
-    usedUrls.add(key); roleCounts.set(item.role, roleCount + 1)
-    const { raw: _raw, ...suggestion } = item
-    result.push(suggestion)
-    if (result.length >= maxResults) break
-  }
+  pick(inRegion, result, usedUrls, roleCounts)
+  if (result.length === 0) pick(offRegion, result, usedUrls, roleCounts)
   return result
 }
 

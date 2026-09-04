@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // canonical estate inventory and is live-verified before it reaches AI.
     const registry = estate.suggestions.length >= Math.min(3, maxResults)
       ? []
-      : await suggestVerifiedInterlinks(topic, keywords, maxResults).catch(() => [])
+      : await suggestVerifiedInterlinks(topic, keywords, maxResults, typeof body.region === 'string' ? body.region : undefined).catch(() => [])
     const seen = new Set<string>()
     const suggestions: Array<Record<string, unknown>> = []
     for (const s of [

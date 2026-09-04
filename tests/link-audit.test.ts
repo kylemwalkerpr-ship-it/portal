@@ -178,6 +178,17 @@ describe('linkAudit · brief internal-link guarantee', () => {
     expect(new Set(urls).size).toBe(urls.length)
   })
 
+  it('does not pad an AU brief with US/CA estate allowlist rows when AU anchors exist', () => {
+    const out = ensureBriefInterlinks([
+      { label: 'US hub', url: 'https://legal.yousafeconsultancy.com/us/' },
+      { label: 'CA hub', url: 'https://legal.yousafeconsultancy.com/ca/' },
+      { label: 'AU hub', url: 'https://legal.yousafeconsultancy.com/au/' },
+      { label: 'AU student', url: 'https://legal.yousafeconsultancy.com/au/student-visa/' },
+    ], [{ label: 'US estate', url: 'https://legal.yousafeconsultancy.com/us/estate-planning/' }], { region: 'AU', min: 2, max: 6 })
+    expect(out.every((l) => /\/au\//.test(l.url))).toBe(true)
+    expect(out.some((l) => /\/us\/|\/ca\//.test(l.url))).toBe(false)
+  })
+
   it('every region has ≥2 verified live anchors', () => {
     for (const [region, anchors] of Object.entries(ESTATE_ANCHOR_LINKS)) {
       expect(anchors.length).toBeGreaterThanOrEqual(2)

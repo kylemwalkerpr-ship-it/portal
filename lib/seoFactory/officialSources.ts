@@ -350,6 +350,76 @@ export function isCitationRelevant(url: string, ctx?: CitationContext | null, ti
 }
 
 /** Pull citable http(s) URLs out of Discover signals / extras, then append the regional official bank. */
+/** Minimum verified sources the Brief Evidence chip requires. */
+export const EVIDENCE_SOURCE_FLOOR = 3
+
+export function citationRegionsOf(url: string): SourceRegion[] {
+  const curated = findCuratedSource(url)
+  if (curated?.regions?.length) return curated.regions
+  return regionOfUrl(url)
+}
+
+export function isInRegionCitation(url: string, region?: string | null): boolean {
+  if (!region) return true
+  const want = normalizeRegion(region)
+  const regions = citationRegionsOf(url)
+  return regions.includes(want) || regions.includes('ALL')
+}
+
+function extractCitationUrl(line: string): string {
+  const m = String(line || '').match(/https?:\/\/[^\s)\]"'<>]+/i)
+  return m ? m[0].replace(/[.,;]+$/, '') : ''
+}
+
+/**
+ * Prefer in-region official citations. Off-region government sources are
+ * kept only when the in-region + intergovernmental pool is below the
+ * Evidence floor (so a thin regional bank cannot brick readiness).
+ */
+export function applyEvidenceRegionFloor(
+  lines: string[],
+  region?: string | null,
+  floor = EVIDENCE_SOURCE_FLOOR,
+): {
+  lines: string[]
+  counted: number
+  fallbackUsed: boolean
+  fallbackUrls: string[]
+  fallbackNote: string | null
+} {
+  const inRegion: string[] = []
+  const offRegion: string[] = []
+  const seen = new Set<string>()
+  for (const raw of lines) {
+    const line = String(raw || '').trim()
+    if (!line) continue
+    const url = extractCitationUrl(line)
+    const key = (url || line).replace(/\/+$/, '').toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (!url || isInRegionCitation(url, region)) inRegion.push(line)
+    else offRegion.push(line)
+  }
+  const fallback: string[] = []
+  if (inRegion.length < floor) {
+    for (const line of offRegion) {
+      if (inRegion.length + fallback.length >= floor) break
+      fallback.push(line)
+    }
+  }
+  const kept = [...inRegion, ...fallback]
+  const fallbackUsed = fallback.length > 0
+  return {
+    lines: kept,
+    counted: kept.length,
+    fallbackUsed,
+    fallbackUrls: fallback.map((l) => extractCitationUrl(l) || l),
+    fallbackNote: fallbackUsed
+      ? `Off-region official fallback: ${fallback.length} source(s) counted because fewer than ${floor} live in-region alternatives existed.`
+      : null,
+  }
+}
+
 export function collectDiscoverCitationUrls(opts: {
   region?: string | null
   topic?: string | null
@@ -363,7 +433,8 @@ export function collectDiscoverCitationUrls(opts: {
     topic: opts.topic,
     keywords: opts.keywords,
   }
-  const out: string[] = []
+  const inRegion: string[] = []
+  const offRegion: string[] = []
   const seen = new Set<string>()
   const push = (raw: string) => {
     const m = String(raw || '').match(/https?:\/\/[^\s)\]"'<>]+/i)
@@ -373,12 +444,15 @@ export function collectDiscoverCitationUrls(opts: {
     const key = url.replace(/\/+$/, '').toLowerCase()
     if (seen.has(key)) return
     seen.add(key)
-    out.push(url)
+    if (isInRegionCitation(url, ctx.region)) inRegion.push(url)
+    else offRegion.push(url)
   }
   for (const s of opts.signals || []) push(s)
   for (const s of opts.extraUrls || []) push(s)
   for (const s of sourcesForBrief(ctx)) push(s.url)
-  return out.slice(0, Math.max(4, Math.min(12, opts.cap ?? 10)))
+  const cap = Math.max(4, Math.min(12, opts.cap ?? 10))
+  const filtered = applyEvidenceRegionFloor([...inRegion, ...offRegion], ctx.region, EVIDENCE_SOURCE_FLOOR)
+  return filtered.lines.slice(0, cap)
 }
 
 export function mergeCitationUrlLists(preferred: string[], rest: string[], cap = 10): string[] {

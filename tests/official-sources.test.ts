@@ -1,4 +1,5 @@
 import {
+  applyEvidenceRegionFloor,
   collectDiscoverCitationUrls,
   CURATED_OFFICIAL_SOURCES,
   isAuthorityHost,
@@ -28,6 +29,45 @@ describe('collectDiscoverCitationUrls', () => {
     })
     expect(urls.some((u) => /uscis\.gov/i.test(u))).toBe(true)
     expect(urls.some((u) => /boundless/i.test(u))).toBe(false)
+  })
+
+  it('does not keep USCIS among AU Discover citations when Home Affairs exists', () => {
+    const urls = collectDiscoverCitationUrls({
+      region: 'AU',
+      topic: 'Australia student visa subclass 500',
+      keywords: ['subclass 500'],
+      signals: [
+        'https://www.uscis.gov/working-in-the-united-states',
+        'https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/student-500',
+      ],
+    })
+    expect(urls.some((u) => /homeaffairs/i.test(u))).toBe(true)
+    expect(urls.some((u) => /uscis\.gov/i.test(u))).toBe(false)
+  })
+})
+
+describe('applyEvidenceRegionFloor', () => {
+  it('counts only in-region official sources when they meet the floor', () => {
+    const out = applyEvidenceRegionFloor([
+      'USCIS — https://www.uscis.gov/',
+      'Home Affairs — https://immi.homeaffairs.gov.au/',
+      'Study Australia — https://www.studyaustralia.gov.au/',
+      'ATO — https://www.ato.gov.au/',
+    ], 'AU')
+    expect(out.fallbackUsed).toBe(false)
+    expect(out.counted).toBe(3)
+    expect(out.lines.join(' ')).not.toMatch(/uscis/i)
+  })
+
+  it('documents off-region fallback only when in-region alternatives are missing', () => {
+    const out = applyEvidenceRegionFloor([
+      'USCIS — https://www.uscis.gov/',
+      'State Dept — https://travel.state.gov/content/travel/en/us-visas/study.html',
+      'SEVP — https://studyinthestates.dhs.gov/',
+    ], 'AU')
+    expect(out.fallbackUsed).toBe(true)
+    expect(out.fallbackNote).toMatch(/Off-region official fallback/)
+    expect(out.counted).toBe(3)
   })
 })
 

@@ -41,6 +41,47 @@ export function normalizeInterlinkRecord(raw: Record<string, unknown> | null | u
   return out
 }
 
+function inferLinkRegion(value: string): string | null {
+  const text = String(value || '').toLowerCase()
+  if (/\b(australia|australian|immi|home affairs)\b|\/au\/|au\.yousafe/.test(text)) return 'AU'
+  if (/\b(canada|canadian|ircc)\b|\/ca\/|ca\.yousafe/.test(text)) return 'CA'
+  if (/\b(uk|british|united kingdom|home office)\b|\/uk\/|uk\.yousafe/.test(text)) return 'UK'
+  if (/\b(usa?|american|uscis|united states)\b|\/us\/|usa\.yousafe/.test(text)) return 'US'
+  return null
+}
+
+/**
+ * Keep same-region (and region-neutral marketplace) interlinks first.
+ * Off-region estate pages fill only when the in-region pool is below `min`.
+ */
+export function preferRegionInterlinks<T extends { url: string; label?: string }>(
+  items: T[],
+  region?: string | null,
+  min = 2,
+): { kept: T[]; fallbackUsed: boolean; fallbackUrls: string[] } {
+  const want = String(region || '').toUpperCase().slice(0, 2)
+  if (!want) return { kept: items.slice(), fallbackUsed: false, fallbackUrls: [] }
+  const inRegion: T[] = []
+  const offRegion: T[] = []
+  for (const item of items) {
+    const found = inferLinkRegion(`${item.url} ${item.label || ''}`)
+    if (!found || found === want) inRegion.push(item)
+    else offRegion.push(item)
+  }
+  const fallback: T[] = []
+  if (inRegion.length === 0) {
+    for (const item of offRegion) {
+      if (fallback.length >= min) break
+      fallback.push(item)
+    }
+  }
+  return {
+    kept: [...inRegion, ...fallback],
+    fallbackUsed: fallback.length > 0,
+    fallbackUrls: fallback.map((item) => item.url),
+  }
+}
+
 export function mergeInterlinkLists(
   ...lists: Array<Array<Record<string, unknown> | StudioInterlink> | undefined | null>
 ): StudioInterlink[] {

@@ -1,4 +1,4 @@
-import { mergeInterlinkLists, normalizeInterlinkRecord } from '@/lib/seoFactory/studioInterlinks'
+import { mergeInterlinkLists, normalizeInterlinkRecord, preferRegionInterlinks } from '@/lib/seoFactory/studioInterlinks'
 
 describe('studio interlink normalization', () => {
   it('reads Master Engine camelCase edges (the Find-interlinks empty-pill bug)', () => {
@@ -49,5 +49,14 @@ describe('studio interlink normalization', () => {
       'https://legal.yousafeconsultancy.com/uk/ilr/',
       'https://portal.yousafeconsultancy.com/',
     ])
+  })
+
+  it('prefers AU estate URLs and documents CA/US fallback only when AU is empty', () => {
+    const kept = preferRegionInterlinks([
+      { label: 'AU guide', url: 'https://legal.yousafeconsultancy.com/au/wills/' },
+      { label: 'CA estate', url: 'https://legal.yousafeconsultancy.com/ca/estate-planning/' },
+    ], 'AU', 2)
+    expect(kept.fallbackUsed).toBe(false)
+    expect(kept.kept.map((i) => i.url)).toEqual(['https://legal.yousafeconsultancy.com/au/wills/'])
   })
 })
