@@ -5,6 +5,7 @@
  */
 
 import * as React from 'react'
+import { studioTokens as E } from './studio-tokens'
 
 export const SEO_INTEL_NAV = [
   'overview',
@@ -31,14 +32,18 @@ export const OPPORTUNITY_TABLE_COLUMNS = [
 
 export const FORBIDDEN_SEO_COLUMNS = ['Volume', 'KD', 'CPC', 'Keyword Difficulty'] as const
 
+// Single source of truth: the Content Studio design tokens (ivory/parchment/
+// ink/gold editorial palette). Local `C` is only an alias for read ergonomics.
 const C = {
-  ink: '#1A1A1A',
-  muted: '#5C5C5C',
-  gold: '#B8952C',
-  line: 'rgba(0,0,0,0.08)',
-  paper: '#FFFEFC',
-  mono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  serif: 'Georgia, "Times New Roman", serif',
+  ink: E.inkBlack,
+  muted: E.inkMuted,
+  dim: E.inkDim,
+  gold: E.gold,
+  line: E.border,
+  paper: E.paper,
+  tile: E.surface2,
+  mono: E.mono,
+  serif: E.serif,
 }
 
 type OppRow = {
@@ -177,8 +182,8 @@ export default function SeoIntelligenceDashboard() {
   )
 
   const card = (label: string, value: string, sub: string) => (
-    <div style={{ padding: '12px 14px', background: C.paper, border: `1px solid ${C.line}` }}>
-      <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted, fontFamily: C.mono }}>{label}</div>
+    <div style={{ padding: '12px 14px', background: C.tile, border: `1px solid ${E.hairlineSoft}`, boxShadow: '0 1px 0 rgba(17,21,28,0.04)' }}>
+      <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.dim, fontFamily: C.mono }}>{label}</div>
       <div style={{ fontFamily: C.serif, fontSize: 22, color: C.ink, marginTop: 4 }}>{value}</div>
       <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{sub}</div>
     </div>
@@ -214,17 +219,21 @@ export default function SeoIntelligenceDashboard() {
   )
 
   return (
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, marginBottom: 14 }}>
+    <div style={{ background: C.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow, marginBottom: 14, position: 'relative' }}>
+      <div
+        aria-hidden="true"
+        style={{ position: 'absolute', top: 0, left: 18, right: 18, height: 2, borderRadius: 999, background: E.goldRule, opacity: 0.85 }}
+      />
       <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 9, fontFamily: C.mono, letterSpacing: '0.14em', color: C.gold, fontWeight: 800 }}>SEO INTELLIGENCE · $0 FIRST-PARTY</div>
+          <div style={{ ...E.kicker, fontSize: 9 }}>SEO INTELLIGENCE · $0 FIRST-PARTY</div>
           <div style={{ fontFamily: C.serif, fontSize: 20, color: C.ink, marginTop: 4 }}>Opportunities, topics, links, GSC</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => void syncGsc()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.paper, color: C.ink, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono }}>
+          <button type="button" onClick={() => void syncGsc()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.paper, color: C.ink, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, borderRadius: E.radiusXs }}>
             {busy ? 'Syncing…' : 'Sync GSC (90d)'}
           </button>
-          <button type="button" onClick={() => void load()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.ink, color: '#fff', cursor: busy ? 'wait' : 'pointer' }}>
+          <button type="button" onClick={() => void load()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${E.inkBlack}`, background: E.inkBlack, color: E.ivory, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, borderRadius: E.radiusXs }}>
             {busy ? 'Loading…' : 'Refresh intel'}
           </button>
         </div>
@@ -246,10 +255,10 @@ export default function SeoIntelligenceDashboard() {
           ['keywords', 'Keyword Explorer'],
           ['gsc', 'GSC Performance'],
         ] as Array<[SeoIntelNav, string]>).map(([k, label]) => (
-          <button key={k} type="button" onClick={() => setNav(k)} style={{ padding: '8px 12px', border: 'none', borderBottom: nav === k ? `2px solid ${C.gold}` : '2px solid transparent', background: 'transparent', fontSize: 11, fontWeight: 700, color: nav === k ? C.ink : C.muted, cursor: 'pointer' }}>{label}</button>
+          <button key={k} type="button" onClick={() => setNav(k)} style={{ padding: '8px 12px', border: 'none', borderBottom: nav === k ? `2px solid ${C.gold}` : '2px solid transparent', background: 'transparent', fontSize: 11, fontWeight: 700, color: nav === k ? C.ink : C.muted, cursor: 'pointer', fontFamily: C.mono, letterSpacing: '0.04em', transition: 'color 0.15s ease' }}>{label}</button>
         ))}
       </div>
-      {error && <div style={{ padding: '8px 14px', color: '#B91C1C', fontSize: 12 }}>{error}</div>}
+      {error && <div style={{ padding: '8px 14px', color: E.red, fontSize: 12, fontFamily: C.mono, background: E.redSoft, borderBottom: `1px solid ${C.line}` }}>{error}</div>}
       <div style={{ padding: 14 }}>
         {nav === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
@@ -287,8 +296,8 @@ export default function SeoIntelligenceDashboard() {
         {nav === 'keywords' && (
           <div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <input value={seed} onChange={(e) => setSeed(e.target.value)} style={{ flex: 1, padding: '6px 8px', fontSize: 13, border: `1px solid ${C.line}` }} />
-              <button type="button" onClick={() => void explore()} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, background: C.ink, color: '#fff', border: 'none', cursor: 'pointer' }}>Explore</button>
+              <input value={seed} onChange={(e) => setSeed(e.target.value)} style={{ flex: 1, padding: '6px 8px', fontSize: 13, border: `1px solid ${C.line}`, borderRadius: E.radiusXs, background: E.ivory, color: C.ink, fontFamily: 'inherit' }} />
+              <button type="button" onClick={() => void explore()} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, background: E.inkBlack, color: '#fff', border: 'none', borderRadius: E.radiusXs, cursor: 'pointer', fontFamily: C.mono }}>Explore</button>
             </div>
             {keywords.map((k) => (
               <div key={k.keyword} style={{ fontSize: 12, padding: '3px 0' }}>{k.keyword} <span style={{ color: C.muted }}>({k.sources?.join(', ') || k.source})</span></div>

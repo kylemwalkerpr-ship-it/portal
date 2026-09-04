@@ -57,13 +57,28 @@ export function StudioStageNav({
           alignItems: 'center',
           gap: 0,
           marginBottom: 18,
-          padding: '18px 10px 22px',
+          padding: '18px 10px 24px',
           overflowX: 'auto',
-          background: `linear-gradient(180deg, rgba(251,246,236,0.4) 0%, ${E.ivory} 100%)`,
-          borderBottom: `1px solid ${E.hairline}`,
+          background: `linear-gradient(180deg, ${E.paper} 0%, ${E.ivory} 100%)`,
+          border: `1px solid ${E.hairline}`,
+          boxShadow: E.paperShadow,
           justifyContent: 'center',
         }}
       >
+        {/* Gold gradient rule — matches ChapterIntro so the nav reads as one unit */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 26,
+            right: 26,
+            height: 2,
+            borderRadius: E.radiusFull,
+            background: E.goldRule,
+            opacity: 0.8,
+          }}
+        />
         {/* Progress rail — fills from the left as the admin advances stages */}
         <div
           aria-hidden="true"
@@ -73,7 +88,7 @@ export function StudioStageNav({
             right: '6%',
             bottom: 12,
             height: 2,
-            borderRadius: 999,
+            borderRadius: E.radiusFull,
             background: `linear-gradient(90deg, ${E.gold} ${progressPct}%, ${E.hairlineSoft} ${progressPct}%)`,
             transition: 'background 0.4s ease',
           }}
@@ -130,7 +145,7 @@ export function StudioStageNav({
                   cursor: available ? 'pointer' : 'not-allowed',
                   background: 'transparent',
                   border: 'none',
-                  opacity: available ? 1 : 0.4,
+                  opacity: available ? 1 : 0.42,
                   transition: 'all 0.25s ease',
                   minWidth: 88,
                   maxWidth: 124,
@@ -151,7 +166,9 @@ export function StudioStageNav({
                         ? `2px solid ${E.gold}`
                         : isPast
                           ? `1.5px solid ${E.gold}55`
-                          : `1.5px solid ${E.hairline}`,
+                          : !available
+                            ? `1.5px dashed ${E.hairline}`
+                            : `1.5px solid ${E.hairline}`,
                       fontFamily: E.serif,
                       fontSize: 18,
                       fontWeight: 700,

@@ -43,10 +43,10 @@ export function ReviewDraftsPanel({
 }) {
   const drafts = jobs.filter((j) => ['pending', 'drafting', 'publishing', 'pr_created'].includes(j.status))
   const STATUS_LABEL: Record<string, { label: string; fg: string; bg: string }> = {
-    pending: { label: 'Pending', fg: '#92400E', bg: '#FEF3C7' },
-    drafting: { label: 'Drafting', fg: '#B45309', bg: '#FEF3C7' },
-    publishing: { label: 'Publishing', fg: '#1D4ED8', bg: '#DBEAFE' },
-    pr_created: { label: 'PR open', fg: '#166534', bg: '#DCFCE7' },
+    pending: { label: 'Pending', fg: E.amber, bg: E.amberSoft },
+    drafting: { label: 'Drafting', fg: E.ember, bg: E.amberSoft },
+    publishing: { label: 'Publishing', fg: E.blue, bg: E.blueSoft },
+    pr_created: { label: 'PR open', fg: E.green, bg: E.greenSoft },
   }
 
   if (drafts.length === 0) {
@@ -130,9 +130,9 @@ export function ReviewDraftsPanel({
         // actually cleared (shipReady === true && blockers === 0). A high score
         // with no gate evidence stays neutral; a known-blocked gate stays red.
         const badgeColor = cleared
-          ? { bg: '#F0FDF4', fg: '#166534', bd: '#BBF7D0' }
+          ? { bg: E.greenSoft, fg: E.green, bd: '#BBF7D0' }
           : gate !== null
-            ? { bg: '#FEF2F2', fg: '#B91C1C', bd: '#FECACA' }
+            ? { bg: E.redSoft, fg: E.red, bd: E.redBorder }
             : { bg: E.parchment, fg: E.inkMuted, bd: E.hairline }
         const st = STATUS_LABEL[j.status] || { label: j.status, fg: E.inkMuted, bg: E.parchment }
         const active = selectedJobId === j.id

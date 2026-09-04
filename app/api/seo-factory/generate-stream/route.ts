@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       opportunityAction: body.opportunityAction,
       // Single writer contract from SEO Intelligence Briefing (from-intel brief).
       // Threaded through the pipeline's writeHint → prompt block ("War-room /
-      // authority brief") so the drafter never re-assembles the intel brief.
+      // SEO intelligence writer contract") so the drafter never re-assembles the intel brief.
       writeHint: body.seoBriefContract
         ? String(body.seoBriefContract).trim()
         : body.writeHint

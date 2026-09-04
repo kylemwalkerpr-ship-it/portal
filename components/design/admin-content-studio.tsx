@@ -372,6 +372,30 @@ const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
 })
 
+// ── Editorial chrome — shared by every stage panel ──
+// Single source for the gold mono section kickers + paper card surfaces so the
+// Discover / Research / Draft / Approve stages read as one product.
+const kickerStyle: React.CSSProperties = { ...E.kicker }
+const kickerStyleSm: React.CSSProperties = { ...E.kicker, fontSize: 9, letterSpacing: '0.14em' }
+const panelCard: React.CSSProperties = {
+  padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow,
+}
+const panelCardPlain: React.CSSProperties = {
+  background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow,
+}
+// Top gold rule used by stage cards to echo ChapterIntro / the stage nav.
+function GoldRule({ offset = 18 }: { offset?: number }) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute', top: 0, left: offset, right: offset, height: 2,
+        borderRadius: E.radiusFull, background: E.goldRule, opacity: 0.8,
+      }}
+    />
+  )
+}
+
 // ── SEO Master Engine masthead — live telemetry helpers ────────────────────────
 // The masthead strip is a live instrument panel, not a static label: every signal
 // cell is re-read from the engine status DB, and the telemetry panel streams the
@@ -778,8 +802,9 @@ function ApprovePanel({
   }, [onDeclinePr, setActionNotice, onMerged])
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE V · APPROVE</div>
+      <div style={{ ...panelCard, position: 'relative', boxShadow: E.panelShadow }}>
+        <GoldRule offset={18} />
+        <div style={kickerStyle}>STAGE V · APPROVE</div>
         <h3 style={{ margin: '4px 0 12px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Push to main · {prOpen.length} open PR{prOpen.length === 1 ? '' : 's'}</h3>
         {prOpen.length === 0 && (
           <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic' }}>
@@ -932,8 +957,8 @@ function ApprovePanel({
         </div>
       </div>
       {recentMerges.length > 0 && (
-        <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-          <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+        <div style={{ ...panelCard }}>
+          <div style={{ ...kickerStyle, marginBottom: 8 }}>
             LATEST MERGES · AWAITING DEPLOY PROMOTE
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -947,8 +972,8 @@ function ApprovePanel({
         </div>
       )}
       {readyToApprove.length > 0 && (
-        <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-          <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+        <div style={{ ...panelCard }}>
+          <div style={{ ...kickerStyle, marginBottom: 8 }}>
             READY TO APPROVE · {readyToApprove.length} COMPLETED DRAFT{readyToApprove.length === 1 ? '' : 'S'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1040,8 +1065,8 @@ function ApprovePanel({
         </div>
       )}
       {unGatedDrafts.length > 0 && (
-        <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-          <div style={{ fontSize: 10, color: '#B45309', fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+        <div style={{ ...panelCard }}>
+          <div style={{ ...kickerStyle, color: '#B45309', marginBottom: 8 }}>
             AWAITING SHIP GATE · {unGatedDrafts.length} DRAFT{unGatedDrafts.length === 1 ? '' : 'S'}
           </div>
           <p style={{ margin: '0 0 10px', fontFamily: C.serif, fontSize: 12.5, color: E.inkMuted, fontStyle: 'italic' }}>
@@ -1070,7 +1095,7 @@ function ApprovePanel({
                 <button
                   type="button"
                   onClick={() => onOpenJob(j)}
-                  style={{ padding: '7px 14px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}
+                  style={{ padding: '7px 14px', background: E.gold, color: E.ivory, border: 'none', borderRadius: E.radiusXs, cursor: 'pointer', fontFamily: C.serif, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}
                 >
                   Open in editor →
                 </button>
@@ -1366,8 +1391,8 @@ function PublishLedger({
     .sort().join('/')
   return (
     <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+      <div style={{ ...panelCard }}>
+        <div style={kickerStyle}>
           STAGE IV · APPROVE & TRACK
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
@@ -2344,6 +2369,25 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // re-assemble it.
   const [seoIntelBrief, setSeoIntelBrief] = React.useState<{ brief: unknown; writerContract: string } | null>(null)
   const seoBriefSeed = String(selectedBrief?.primaryKeyword || topic || title || '').trim()
+  const seoIntelLocked = Boolean(String(seoIntelBrief?.writerContract || '').trim())
+  const handleSeoBriefReady = React.useCallback((payload: { brief: unknown; writerContract: string }) => {
+    setSeoIntelBrief(payload)
+    const cluster = (payload.brief as { targetCluster?: unknown } | null)?.targetCluster
+    if (!Array.isArray(cluster) || cluster.length === 0) return
+    const extra = cluster.map((k) => String(k).trim()).filter(Boolean)
+    if (!extra.length) return
+    setKeywords((prev) => {
+      const existing = String(prev || '').split(',').map((k) => k.trim()).filter(Boolean)
+      const seen = new Set(existing.map((k) => k.toLowerCase()))
+      const merged = [...existing]
+      for (const term of extra) {
+        if (seen.has(term.toLowerCase())) continue
+        seen.add(term.toLowerCase())
+        merged.push(term)
+      }
+      return merged.join(', ')
+    })
+  }, [setKeywords])
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
@@ -2619,15 +2663,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
   const fieldSection: React.CSSProperties = { marginBottom: 18 }
   const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }
-  const inputBase: React.CSSProperties = { width: '100%', padding: '8px 10px', border: `1px solid ${E.hairline}`, borderRadius: 0, background: E.ivory, color: E.ink, fontSize: 12, fontFamily: C.serif, boxSizing: 'border-box' }
+  const inputBase: React.CSSProperties = { width: '100%', padding: '8px 10px', border: `1px solid ${E.border}`, borderRadius: E.radiusXs, background: E.ivory, color: E.ink, fontSize: 12, fontFamily: C.serif, boxSizing: 'border-box' }
   const labelBase: React.CSSProperties = { display: 'block', marginBottom: 4, fontSize: 9, fontFamily: C.mono, letterSpacing: '0.14em', color: E.inkMuted, textTransform: 'uppercase', fontWeight: 700 }
-  const chip = (ok: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 0, fontSize: 9, fontFamily: C.mono, fontWeight: 700, background: ok ? E.mossSoft : '#fff0f0', color: ok ? E.mossGreen : '#a32525' })
+  const chip = (ok: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: E.radiusFull, fontSize: 9, fontFamily: C.mono, fontWeight: 700, background: ok ? E.mossSoft : '#fff0f0', color: ok ? E.mossGreen : '#a32525' })
   const mappedKeywordCount = kwList.filter((kw) => Boolean(kwH2Map[kw])).length
   const briefChecks = [
     { label: 'Identity', ok: Boolean(title.trim() && topic.trim() && targetSlug.trim()), detail: title.trim() ? 'H1, query and destination' : 'Needs a reader-ready H1' },
     { label: 'Outline', ok: h2s.length >= 6, detail: `${h2s.length} planned sections` },
     { label: 'Keywords', ok: shortOk && longOk, detail: `${shortKw.length} short · ${longKw.length} long-tail` },
     { label: 'Placement', ok: kwList.length >= 9 && mappedKeywordCount === kwList.length, detail: `${mappedKeywordCount}/${kwList.length || 0} assigned to H2s` },
+    { label: 'SEO Intel', ok: seoIntelLocked, detail: seoIntelLocked ? 'Writer contract locked' : 'Generate SEO Brief to lock' },
     { label: 'Evidence', ok: sources.length >= 3, detail: `${sources.length} verified sources` },
     { label: 'Interlinks', ok: (briefInterlinks?.length || 0) >= 2, detail: `${briefInterlinks?.length || 0} estate targets` },
   ]
@@ -2636,9 +2681,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   return (
     <div data-testid="studio-brief-assembly" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Header */}
-      <div style={{ padding: '14px 18px', background: E.paper, border: `1px solid ${E.hairline}` }}>
-        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE II · PLAN</div>
-        <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 20, color: E.ink }}>Brief Assembly</h3>
+      <div style={{ position: 'relative', padding: '16px 18px', background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
+        <GoldRule offset={18} />
+        <div style={{ ...kickerStyle }}>STAGE II · PLAN</div>
+        <h3 style={{ margin: '6px 0 4px', fontFamily: C.serif, fontSize: 20, color: E.ink }}>Brief Assembly</h3>
         <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 12 }}>
           Every field below becomes part of the AI\'s strict template. Nothing is guessed — tweak before you generate.
         </p>
@@ -2854,35 +2900,35 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         )}
       </div>
 
-      {/* ── KEYWORDS + DISTRIBUTION ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12 }}>
-        {/* Keywords textarea */}
-        <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-            <label style={labelBase}>Keywords (comma-separated)</label>
-            <span style={{ fontFamily: E.mono, fontSize: 9, color: E.inkMuted }}>Clustered from Discover and assigned to one section each</span>
-          </div>
-          <textarea
-            value={keywords} onChange={e => setKeywords(e.target.value)}
-            rows={4} placeholder="e.g. uk spouse visa, financial requirement, partner visa 2026, minimum income threshold, appendix fm..."
-            style={{ ...inputBase, resize: 'vertical', fontFamily: C.mono, fontSize: 11 }}
-          />
-          <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <span style={chip(shortOk)}>{shortOk ? '✓' : '!'} {shortKw.length}/5 short-tail</span>
-            <span style={chip(longOk)}>{longOk ? '✓' : '!'} {longKw.length}/4 long-tail</span>
-          </div>
+      {/* ── KEYWORDS (single surface: cluster list + H2 assignment) ── */}
+      <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+          <label htmlFor="studio-brief-keywords" style={labelBase}>Keywords (comma-separated)</label>
+          <span style={{ fontFamily: E.mono, fontSize: 9, color: E.inkMuted }}>Clustered from Discover · assign each term to one H2</span>
         </div>
-        {/* Keyword → section mapping */}
-        <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-          <label style={labelBase}>Keyword Placement (assign to H2)</label>
-          <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <textarea
+          id="studio-brief-keywords"
+          value={keywords} onChange={e => setKeywords(e.target.value)}
+          rows={4} placeholder="e.g. uk spouse visa, financial requirement, partner visa 2026, minimum income threshold, appendix fm..."
+          style={{ ...inputBase, resize: 'vertical', fontFamily: C.mono, fontSize: 11 }}
+        />
+        <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <span style={chip(shortOk)}>{shortOk ? '✓' : '!'} {shortKw.length}/5 short-tail</span>
+          <span style={chip(longOk)}>{longOk ? '✓' : '!'} {longKw.length}/4 long-tail</span>
+          <span style={chip(kwList.length >= 9 && mappedKeywordCount === kwList.length && kwList.length > 0)}>
+            {mappedKeywordCount}/{kwList.length || 0} placed on H2s
+          </span>
+        </div>
+        {kwList.length > 0 && (
+          <div style={{ marginTop: 10, maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {kwList.slice(0, 14).map(kw => (
               <div key={kw} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontFamily: C.mono, fontSize: 10, color: E.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kw}</span>
                 <select
+                  aria-label={`Place ${kw} on H2`}
                   value={kwH2Map[kw] || ''}
                   onChange={e => setKwH2Map(p => e.target.value ? { ...p, [kw]: e.target.value } : { ...p, [kw]: undefined as any, ...Object.keys(p).filter(k => k !== kw).length ? {} : {} as any })}
-                  style={{ ...inputBase, width: 140, fontSize: 10, padding: '4px 6px' }}
+                  style={{ ...inputBase, width: 160, fontSize: 10, padding: '4px 6px' }}
                 >
                   <option value="">Auto</option>
                   {h2s.map(h => <option key={h} value={h}>{h.length > 20 ? h.slice(0, 17) + '…' : h}</option>)}
@@ -2890,7 +2936,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
               </div>
             ))}
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── SOURCES ── */}
@@ -3013,7 +3059,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             primaryKeyword={seoBriefSeed}
             clusterKeywords={kwList.length ? kwList : seoBriefSeed ? [seoBriefSeed] : []}
             disabled={generating}
-            onBriefReady={setSeoIntelBrief}
+            onBriefReady={handleSeoBriefReady}
             onInsert={() => {}}
             style={{ width: 300, maxWidth: '100%' }}
           />
@@ -3549,42 +3595,42 @@ function DraftWorkspace({
 
       {/* ── Error banner ── */}
       {error && (
-        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', padding: '10px 16px', fontSize: 12, color: C.red, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: E.redSoft, border: `1px solid ${E.redBorder}`, borderLeft: `3px solid ${E.red}`, padding: '10px 16px', fontSize: 12, color: C.red, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontFamily: C.mono, fontSize: 11 }}>⚠ {error}</span>
           <button type="button" onClick={() => setError(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, color: C.red }}>×</button>
         </div>
       )}
 
-      {/* ── Document workspace — clean Google Docs-style canvas ── */}
-      <div style={{ background: '#EEF0F2', border: `1px solid ${E.hairline}`, minHeight: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 12px 34px rgba(15,23,42,.10)' }}>
+      {/* ── Document workspace — clean editorial canvas ── */}
+      <div style={{ position: 'relative', background: `linear-gradient(180deg, ${E.parchment} 0%, #EBE4D2 100%)`, border: `1px solid ${E.hairline}`, minHeight: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 12px 34px rgba(17,21,28,.12)' }}>
         {/* Docs-style header: title · status · view toggle · actions */}
         <div style={{
-          minHeight: 56, padding: '0 16px', background: '#fff',
+          minHeight: 56, padding: '0 16px', background: E.paper,
           borderBottom: `1px solid ${E.hairline}`,
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', position: 'relative',
         }}>
           <button
             type="button"
             onClick={() => selectTab('research')}
             title="Back to the brief"
-            style={{ padding: '6px 10px', border: 'none', background: 'transparent', color: '#5B6472', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            style={{ padding: '6px 10px', border: 'none', background: 'transparent', color: E.inkMuted, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: C.serif }}
           >
             ← Brief
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#fff" stroke="#185ABD" strokeWidth="1.5" />
-              <path d="M14 2v6h6" fill="none" stroke="#185ABD" strokeWidth="1.5" />
-              <path d="M8 13h8M8 17h8" stroke="#185ABD" strokeWidth="1.5" />
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke={E.gold} strokeWidth="1.5" />
+              <path d="M14 2v6h6" fill="none" stroke={E.gold} strokeWidth="1.5" />
+              <path d="M8 13h8M8 17h8" stroke={E.gold} strokeWidth="1.5" />
             </svg>
             <div style={{
-              fontFamily: 'Georgia, Cambria, serif', fontSize: 14, fontWeight: 700,
-              color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340,
+              fontFamily: C.serif, fontSize: 15, fontWeight: 700,
+              color: E.inkBlack, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340,
             }} title={draftTitle || completedJob?.title || 'Untitled draft'}>
               {draftTitle || completedJob?.title || 'Untitled draft'}
             </div>
             <span style={{
-              fontSize: 10, fontFamily: C.mono, color: generating ? '#B45309' : hasCompleted ? '#166534' : '#9CA3AF',
+              fontSize: 10, fontFamily: C.mono, color: generating ? E.amber : hasCompleted ? E.green : E.inkDim,
               whiteSpace: 'nowrap',
             }}>
               {generating ? '● AI writing…' : hasCompleted ? '✓ Saved to job history' : 'Ready'}
@@ -3593,7 +3639,7 @@ function DraftWorkspace({
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {/* View toggle — published page vs raw markdown */}
-            <div style={{ display: 'inline-flex', border: `1px solid ${E.hairline}`, borderRadius: 999, overflow: 'hidden', background: '#F8F9FA' }}>
+            <div style={{ display: 'inline-flex', border: `1px solid ${E.hairline}`, borderRadius: E.radiusFull, overflow: 'hidden', background: E.surface2 }}>
               {(['document', 'source'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -3604,8 +3650,8 @@ function DraftWorkspace({
                   style={{
                     padding: '5px 12px', border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
                     fontFamily: C.mono, letterSpacing: '0.04em',
-                    background: streamView === mode ? '#185ABD' : 'transparent',
-                    color: streamView === mode ? '#fff' : '#5B6472',
+                    background: streamView === mode ? E.inkBlack : 'transparent',
+                    color: streamView === mode ? E.ivory : E.inkMuted,
                   }}
                 >
                   {mode === 'document' ? 'Document' : 'Markdown'}
@@ -3614,7 +3660,7 @@ function DraftWorkspace({
             </div>
 
             {/* Word count chip */}
-            <span style={{ fontFamily: C.mono, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', padding: '4px 10px', border: `1px solid ${E.hairline}`, borderRadius: 999, background: '#F8F9FA' }}>
+            <span style={{ fontFamily: C.mono, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', padding: '4px 10px', border: `1px solid ${E.hairline}`, borderRadius: E.radiusFull, background: E.surface2 }}>
               {(() => {
                 const wc = generating ? generationWordCount : wordCount
                 const editorial = editorialTypeForDepth({
@@ -3647,9 +3693,10 @@ function DraftWorkspace({
                 onClick={onCancelGeneration}
                 title="Stop the AI immediately — any checkpointed draft stays in the queue and can be resumed"
                 style={{
-                  padding: '6px 12px', border: '1px solid #FECACA', borderRadius: 6,
-                  background: '#FEF2F2', color: '#B91C1C',
+                  padding: '6px 12px', border: `1px solid ${E.redBorder}`, borderRadius: E.radiusXs,
+                  background: E.redSoft, color: E.red,
                   fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  fontFamily: C.mono, letterSpacing: '0.04em',
                 }}
               >
                 ■ Cancel draft
@@ -3661,10 +3708,11 @@ function DraftWorkspace({
               disabled={generating || !hasCompleted}
               onClick={onContinueToReview}
               style={{
-                padding: '6px 14px', border: 'none', borderRadius: 6,
-                background: generating || !hasCompleted ? '#E5E7EB' : '#185ABD',
-                color: generating || !hasCompleted ? '#9CA3AF' : '#fff',
+                padding: '6px 14px', border: 'none', borderRadius: E.radiusXs,
+                background: generating || !hasCompleted ? E.surface2 : E.inkBlack,
+                color: generating || !hasCompleted ? E.inkDim : E.ivory,
                 fontSize: 11, fontWeight: 700, cursor: generating || !hasCompleted ? 'not-allowed' : 'pointer',
+                fontFamily: C.mono, letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -3676,9 +3724,10 @@ function DraftWorkspace({
               onClick={onToggleQueue}
               aria-pressed={queueOpen}
               style={{
-                padding: '6px 12px', border: `1px solid ${E.hairline}`, borderRadius: 6,
-                background: queueOpen ? '#EAF2FF' : '#fff', color: queueOpen ? '#185ABD' : '#5B6472',
+                padding: '6px 12px', border: `1px solid ${E.hairline}`, borderRadius: E.radiusXs,
+                background: queueOpen ? E.goldSoft : E.paper, color: queueOpen ? E.goldDeep : E.inkMuted,
                 fontSize: 11, fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer',
+                fontFamily: C.mono, letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -3691,7 +3740,7 @@ function DraftWorkspace({
         {generating && generationText.length > 0 ? (
           /* Live preview — document view renders the published page; source is the raw stream. */
           <div ref={livePreviewRef} data-testid="studio-stream-preview" style={{
-            marginTop: 0, background: '#EEF0F2',
+            marginTop: 0, background: `linear-gradient(180deg, ${E.parchment} 0%, #EBE4D2 100%)`,
             border: 'none', borderRadius: 0,
             height: 'min(72vh, 860px)', minHeight: 560, overflowY: 'auto', padding: '20px 12px',
           }}>
@@ -3699,12 +3748,12 @@ function DraftWorkspace({
               display: 'flex', alignItems: 'center', gap: 10,
               position: 'sticky', top: 0, zIndex: 2, margin: '0 auto 12px',
               width: 'min(816px, 100%)', padding: '6px 14px',
-              background: 'rgba(255,255,255,.88)', backdropFilter: 'blur(4px)',
-              border: `1px solid ${E.hairline}`, borderRadius: 6,
-              fontFamily: C.mono, fontSize: 9.5, color: '#5B6472',
+              background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(4px)',
+              border: `1px solid ${E.hairline}`, borderRadius: E.radiusXs,
+              fontFamily: C.mono, fontSize: 9.5, color: E.inkMuted,
             }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#185ABD', fontWeight: 800, letterSpacing: '0.08em' }}>
-                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 9, background: '#22C55E' }} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: E.goldDeep, fontWeight: 800, letterSpacing: '0.08em' }}>
+                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 9, background: E.mossGreen, animation: 'pulse 1.5s infinite' }} />
                 ✍️ AI WRITING LIVE
               </span>
               <span style={{ marginLeft: 'auto' }}>
@@ -3718,9 +3767,9 @@ function DraftWorkspace({
                 data-testid="studio-stream-source-body"
                 style={{
                   width: 'min(816px, 100%)', margin: '0 auto', minHeight: 'min(68vh, 840px)',
-                  padding: '24px 28px', background: '#fff', borderRadius: 4,
-                  boxShadow: '0 1px 3px rgba(15,23,42,.12)',
-                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: '#334155',
+                  padding: '24px 28px', background: E.paper, borderRadius: E.radiusSm,
+                  boxShadow: E.paperShadow,
+                  fontFamily: C.mono, fontSize: 12, lineHeight: 1.7, color: E.ink,
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}
               >
@@ -3750,7 +3799,7 @@ function DraftWorkspace({
               {generationEvents.slice(-10).map((e) => (
                 <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                   <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 72 }}>{fmtTime(e.ts)}</span>
-                  <span style={{ fontFamily: C.mono, fontSize: 10, color: e.level === 'error' ? '#DC2626' : e.level === 'warn' ? '#D97706' : e.level === 'success' ? '#166534' : '#2563EB', flex: 1 }}>
+                  <span style={{ fontFamily: C.mono, fontSize: 10, color: e.level === 'error' ? E.red : e.level === 'warn' ? E.amber : e.level === 'success' ? E.green : E.blue, flex: 1 }}>
                     {e.message}
                   </span>
                 </div>
@@ -3824,11 +3873,11 @@ function DraftWorkspace({
             per pass) so the queue shows the draft growing pass by pass. */}
         {(auditRecords.length > 0 || effectiveRescue) && (
           <div data-testid="studio-rescue-feed" style={{
-            marginTop: 14, padding: '10px 14px', background: '#FFFDF5',
+            marginTop: 14, padding: '10px 14px', background: E.cream, borderTop: `1px solid ${E.hairline}`,
             border: `1px solid ${E.hairline}`, borderRadius: 0,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-              <div style={{ fontSize: 9, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+              <div style={{ ...kickerStyleSm }}>
                 ⏱ DEPTH RESCUE · ATTEMPT FEED — expand/append passes with word counts
               </div>
               {/* Depth-rescue attempt stats — expansion rounds needed, stall count,
@@ -5317,7 +5366,7 @@ function ResearchLiveOperations() {
     <section data-testid="research-live-operations" aria-label="Live research operations" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontFamily: C.mono, fontSize: 9, letterSpacing: '0.16em', color: E.gold, textTransform: 'uppercase', fontWeight: 700 }}>Live evidence services</div>
+          <div style={{ ...kickerStyleSm }}>Live evidence services</div>
           <div style={{ marginTop: 2, fontFamily: C.serif, fontSize: 15, color: E.ink }}>Research operations retained from the former Command Center</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -7188,16 +7237,20 @@ const controller = new AbortController()
     <div style={{ padding: '24px 28px 40px', maxWidth: 1480, margin: '0 auto', background: E.ivory, minHeight: 'calc(100vh - 80px)' }}>
       {/* ── Masthead — editorial spread-style studio cover ── */}
       <div style={{
-        marginBottom: 18, padding: '20px 24px', borderRadius: 0,
+        position: 'relative',
+        marginBottom: 18, padding: '22px 26px 20px',
         background: `linear-gradient(135deg, ${E.ivory} 0%, ${E.parchment} 100%)`,
+        border: `1px solid ${E.hairline}`,
         borderBottom: `2px solid ${E.gold}`,
+        boxShadow: E.panelShadow,
         display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'center',
       }}>
+        <GoldRule offset={26} />
         <div>
-          <div style={{ ...TYPE.caption, color: E.gold, marginBottom: 6, fontWeight: 800 }}>
+          <div style={{ ...kickerStyleSm, marginBottom: 7 }}>
             THE CONTENT STUDIO · {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}
           </div>
-          <h1 style={{ ...TYPE.display, margin: 0, color: E.inkBlack }}>
+          <h1 style={{ ...TYPE.display, fontSize: 30, margin: 0, color: E.inkBlack }}>
             One Pipeline, End‑to‑End.
           </h1>
           <p style={{ ...TYPE.byline, margin: '6px 0 0', color: E.inkSoft, fontStyle: 'italic' }}>
@@ -7226,7 +7279,7 @@ const controller = new AbortController()
               setActionNotice(`Refresh failed — ${msg}`)
             }
           }} disabled={loading} style={{
-            marginTop: 6, padding: '8px 18px', borderRadius: 0,
+            marginTop: 6, padding: '8px 18px', borderRadius: E.radiusXs,
             background: E.inkBlack, color: E.ivory,
             border: 'none', cursor: loading ? 'progress' : 'pointer', fontSize: 11, fontWeight: 800,
             fontFamily: E.mono, letterSpacing: '0.08em', textTransform: 'uppercase',
@@ -7681,7 +7734,7 @@ const controller = new AbortController()
       {tab === 'draft' && !generating && draftOperationsOpen && (
         <div id="studio-panel-draft-review" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px 0', borderTop: `1px solid ${E.hairline}` }}>
-            <span style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>REVIEW &amp; GATES</span>
+            <span style={{ ...kickerStyle, fontSize: 10 }}>REVIEW &amp; GATES</span>
             <span style={{ fontSize: 10.5, color: E.inkSoft, fontFamily: E.mono }}>quality · compliance · depth · link integrity — every gate must clear before approve</span>
           </div>
           <ReviewDraftsPanel
@@ -7698,8 +7751,8 @@ const controller = new AbortController()
               its own AdminInlineEditor) so the same job never gets two
               editors at once. */}
           {!selectedJob && selectedJob?.content && (
-            <div style={{ marginTop: 14, padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
+            <div style={{ marginTop: 14, ...panelCard }}>
+              <div style={{ ...kickerStyle, marginBottom: 12 }}>
                 INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE
               </div>
               <AdminInlineEditor
@@ -7780,11 +7833,12 @@ const controller = new AbortController()
           <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <SeoIntelligenceDashboard />
             {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
-            <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow, overflow: 'hidden' }}>
+            <div style={{ position: 'relative', background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.panelShadow, overflow: 'hidden' }}>
+              <GoldRule offset={18} />
               <div style={{ padding: '22px 22px 18px', background: `linear-gradient(120deg, ${E.inkBlack} 0%, #202A3A 72%, #473B25 100%)`, color: E.ivory, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
                 <div style={{ maxWidth: 780 }}>
-                  <div style={{ fontSize: 9, color: '#E8C979', fontFamily: C.mono, letterSpacing: '0.18em', fontWeight: 800, textTransform: 'uppercase' }}>SEO Master Engine · decision output</div>
-                  <h3 style={{ margin: '7px 0 0', fontFamily: C.serif, fontSize: 27, lineHeight: 1.08, color: '#FFFFFF' }}>What the search landscape says to do next</h3>
+                  <div style={{ ...kickerStyleSm, color: '#E8C979', fontSize: 9, letterSpacing: '0.18em' }}>SEO Master Engine · decision output</div>
+                  <h3 style={{ margin: '7px 0 0', fontFamily: C.serif, fontSize: 26, lineHeight: 1.08, color: '#FFFFFF' }}>What the search landscape says to do next</h3>
                   <p style={{ margin: '8px 0 0', maxWidth: 690, color: 'rgba(255,255,255,0.68)', fontFamily: C.serif, fontSize: 13.5, lineHeight: 1.5 }}>
                     One ranked view of demand, topical gaps, estate conflicts and answer-engine visibility. Select only the opportunities worth turning into a research brief.
                   </p>
@@ -7802,6 +7856,7 @@ const controller = new AbortController()
                   style={{
                     padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
                     fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    borderRadius: E.radiusXs,
                     cursor: uberOppsLoading ? 'wait' : 'pointer',
                   }}
                 >
@@ -7918,20 +7973,16 @@ const controller = new AbortController()
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {/* ── Row 1: AI Key Vault (full width) ── */}
-            <section style={{
-              padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-            }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <section style={{ ...panelCard }}>
+              <div style={{ ...kickerStyle, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 14 }}>🔑</span>AI PROVIDER KEYS
               </div>
               <AiKeyVaultPanel onChanged={() => { fetchSuggestions(region) }} />
             </section>
 
             {/* ── Row 2: Model Calibration (full width) ── */}
-            <section style={{
-              padding: 18, background: E.paper, border: '1px solid ' + E.hairline,
-            }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <section style={panelCard}>
+              <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 14 }}>🧠</span>RANKING MODEL CALIBRATION
               </div>
               {!modelCalibration ? (
@@ -8032,10 +8083,8 @@ const controller = new AbortController()
             </section>
 
             {/* ── Row 3: System Health Summary ── */}
-            <section style={{
-              padding: 18, background: E.paper, border: '1px solid ' + E.hairline,
-            }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <section style={panelCard}>
+              <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 14 }}>📋</span>SYSTEM HEALTH SUMMARY
               </div>
               {!systemHealth ? (
@@ -8162,17 +8211,15 @@ const controller = new AbortController()
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14,
             }}>
               {/* GSC Connection */}
-              <section style={{
-                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-              }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <section style={panelCard}>
+                <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14 }}>🔗</span>SEARCH CONSOLE
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                   <span style={{
                     width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                    background: gscStatus?.connected ? (gscStatus?.live ? '#16A34A' : '#D97706') : '#DC2626',
-                    boxShadow: gscStatus?.connected ? `0 0 0 3px ${gscStatus?.live ? 'rgba(22,163,74,0.16)' : 'rgba(217,119,6,0.16)'}` : '0 0 0 3px rgba(220,38,38,0.16)',
+                    background: gscStatus?.connected ? (gscStatus?.live ? '#16A34A' : E.amber) : E.red,
+                    boxShadow: gscStatus?.connected ? `0 0 0 3px ${gscStatus?.live ? 'rgba(22,163,74,0.16)' : 'rgba(217,119,6,0.16)'}` : `0 0 0 3px rgba(220,38,38,0.16)`,
                   }} />
                   <div>
                     <div style={{ fontFamily: C.serif, fontSize: 16, fontWeight: 600, color: E.ink }}>
@@ -8181,8 +8228,8 @@ const controller = new AbortController()
                     <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
                       {gscStatus?.mode ? (
                         <span style={{
-                          padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
-                          background: String(gscStatus.mode) === 'oauth' ? '#DBEAFE' : '#FEF3C7',
+                          padding: '1px 6px', borderRadius: E.radiusXs, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
+                          background: String(gscStatus.mode) === 'oauth' ? E.blueSoft : E.amberSoft,
                           color: String(gscStatus.mode) === 'oauth' ? '#1E40AF' : '#92400E',
                         }}>
                           {String(gscStatus.mode).toUpperCase()}
@@ -8209,16 +8256,14 @@ const controller = new AbortController()
               </section>
 
               {/* Google Analytics 4 */}
-              <section style={{
-                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-              }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <section style={panelCard}>
+                <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14 }}>📈</span>GOOGLE ANALYTICS 4
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <span style={{
                     width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                    background: ga4Status?.connected ? '#16A34A' : '#DC2626',
+                    background: ga4Status?.connected ? '#16A34A' : E.red,
                     boxShadow: ga4Status?.connected ? '0 0 0 3px rgba(22,163,74,0.16)' : '0 0 0 3px rgba(220,38,38,0.16)',
                   }} />
                   <div>
@@ -8300,16 +8345,14 @@ const controller = new AbortController()
               </section>
 
               {/* Ubersuggest MCP */}
-              <section style={{
-                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-              }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <section style={panelCard}>
+                <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14 }}>◇</span>UBERSUGGEST MCP
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <span style={{
                     width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                    background: uberStatus?.connected ? '#16A34A' : '#DC2626',
+                    background: uberStatus?.connected ? '#16A34A' : E.red,
                     boxShadow: uberStatus?.connected ? '0 0 0 3px rgba(22,163,74,0.16)' : '0 0 0 3px rgba(220,38,38,0.16)',
                   }} />
                   <div>
@@ -8456,20 +8499,16 @@ const controller = new AbortController()
               </section>
 
               {/* Site Health */}
-              <section style={{
-                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-              }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <section style={panelCard}>
+                <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14 }}>🩺</span>SITE HEALTH
                 </div>
                 <AdminSiteHealthPanel />
               </section>
 
               {/* Rhythm Alerts (weekly scan) */}
-              <section style={{
-                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-              }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <section style={panelCard}>
+                <div style={{ ...kickerStyle, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14 }}>🎼</span>RHYTHM ALERTS <span style={{ color: E.inkMuted, fontWeight: 400 }}>— weekly sentence-opening scan</span>
                 </div>
                 <AdminRhythmAlertsPanel onOpenJob={(jobId) => { void openRhythmAlertJob(jobId) }} />
@@ -8477,10 +8516,8 @@ const controller = new AbortController()
             </div>
 
             {/* ── Row 5: Deep Interlinks (full width) ── */}
-            <section style={{
-              padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
-            }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <section style={panelCard}>
+              <div style={{ ...kickerStyle, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 14 }}>🕸️</span>DEEP INTERLINKS
               </div>
               <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />

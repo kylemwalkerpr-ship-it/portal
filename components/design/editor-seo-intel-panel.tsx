@@ -12,6 +12,7 @@ import {
   type InternalLinkSuggestion,
 } from '@/lib/seoFactory/coverageLinks'
 import { extractEntities } from '@/lib/seoFactory/topicGraph'
+import { studioTokens as E } from './studio-tokens'
 
 type Opp = {
   query?: string
@@ -49,10 +50,11 @@ type Props = {
   style?: React.CSSProperties
 }
 
+// Single source of truth: Content Studio tokens (editorial consultancy palette).
 const C = {
-  muted: '#6B7280', ink: '#1F2937', line: 'rgba(0,0,0,0.08)', gold: '#9A7B3B',
-  navy: '#0F172A', red: '#B91C1C', green: '#166534',
-  mono: 'ui-monospace, Menlo, monospace',
+  muted: E.inkMuted, ink: E.ink, line: E.border, gold: E.gold,
+  navy: E.inkBlack, red: E.red, green: E.green,
+  mono: E.mono,
 }
 
 export default function EditorSeoIntelPanel({
@@ -201,8 +203,8 @@ export default function EditorSeoIntelPanel({
   )
 
   return (
-    <aside style={{ width: 280, flexShrink: 0, border: `1px solid ${C.line}`, background: '#FFFEFC', padding: 12, fontSize: 12, maxHeight: 720, overflow: 'auto', ...style }}>
-      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: C.gold, fontFamily: C.mono }}>SEO INTELLIGENCE{mode === 'briefing' ? ' · BRIEFING' : ''}</div>
+    <aside style={{ width: 280, flexShrink: 0, border: `1px solid ${E.hairline}`, background: E.paper, boxShadow: E.paperShadow, borderTop: `2px solid ${E.gold}`, padding: 12, fontSize: 12, maxHeight: 720, overflow: 'auto', ...style }}>
+      <div style={{ ...E.kicker, fontSize: 9 }}>SEO INTELLIGENCE{mode === 'briefing' ? ' · BRIEFING' : ''}</div>
       <div style={{ color: C.muted, fontSize: 10, margin: '4px 0 8px' }}>
         {mode === 'briefing'
           ? 'First-party demand intel to shape the writer brief before drafting'
@@ -228,7 +230,7 @@ export default function EditorSeoIntelPanel({
         </div>
       )}
       {full?.cannibals && full.cannibals.length > 0 && (
-        <div style={{ background: '#FEF2F2', padding: 8, margin: '8px 0', color: C.red }}>
+        <div style={{ background: E.redSoft, borderLeft: `3px solid ${E.red}`, padding: 8, margin: '8px 0', color: '#991B1B' }}>
           Cannibalization: {full.cannibals[0].recommendedAction} — {full.cannibals[0].reasons?.[0] || 'review overlapping URL'}
         </div>
       )}
@@ -250,15 +252,15 @@ export default function EditorSeoIntelPanel({
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
-        <button type="button" disabled={busy || disabled} onClick={() => void analyze()} style={{ padding: '6px 8px', fontSize: 11, fontWeight: 700, background: C.navy, color: '#fff', border: 'none', cursor: busy ? 'wait' : 'pointer' }}>
+        <button type="button" disabled={busy || disabled} onClick={() => void analyze()} style={{ padding: '6px 8px', fontSize: 11, fontWeight: 700, background: E.inkBlack, color: '#fff', border: 'none', borderRadius: E.radiusXs, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, letterSpacing: '0.04em' }}>
           {busy ? 'Analyzing…' : 'Analyze SEO'}
         </button>
-        <button type="button" disabled={briefBusy || disabled || !seed} onClick={() => void generateBrief()} style={{ padding: '6px 8px', fontSize: 11, fontWeight: 700, background: '#fff', color: C.navy, border: `1px solid ${C.line}`, cursor: 'pointer' }}>
+        <button type="button" disabled={briefBusy || disabled || !seed} onClick={() => void generateBrief()} style={{ padding: '6px 8px', fontSize: 11, fontWeight: 700, background: E.paper, color: E.inkBlack, border: `1px solid ${E.hairline}`, borderRadius: E.radiusXs, cursor: 'pointer', fontFamily: C.mono, letterSpacing: '0.04em' }}>
           {briefBusy ? 'Briefing…' : 'Generate SEO Brief'}
         </button>
       </div>
       {briefText && (
-        <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap', fontSize: 10, fontFamily: C.mono, maxHeight: 180, overflow: 'auto', background: '#F8FAFC', padding: 8 }}>{briefText}</pre>
+        <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap', fontSize: 10, fontFamily: C.mono, maxHeight: 180, overflow: 'auto', background: E.inkBlack, color: '#D6D3C9', padding: 8, borderRadius: E.radiusXs }}>{briefText}</pre>
       )}
     </aside>
   )

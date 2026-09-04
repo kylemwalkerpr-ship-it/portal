@@ -42,6 +42,8 @@ export const studioTokens = {
 
   // ── status colors ──
   ember: '#C2410C', // warning ink
+  amber: '#D97706', // drafting / in-progress ink
+  amberSoft: '#FEF3C7', // drafting in-progress bg
   mossGreen: '#3F6F3F', // success ink
   mossSoft: '#D8E5D5',
   red: '#DC2626',
@@ -71,12 +73,38 @@ export const studioTokens = {
   radius: 12,
   radiusSm: 8,
   radiusXs: 6,
+  radiusFull: 999,
 
   // ── elevation ──
   shadowCard: '0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.04)',
   ivoryShadow: '0 1px 0 rgba(17,21,28,0.04), 0 12px 30px rgba(17,21,28,0.07)',
   paperShadow: '0 1px 2px rgba(17,21,28,0.06), 0 4px 14px rgba(17,21,28,0.04)',
+  panelShadow: '0 1px 0 rgba(17,21,28,0.03), 0 10px 28px rgba(17,21,28,0.07)',
   inset: 'inset 0 0 0 1px rgba(160,126,58,0.12)',
+
+  // ── decorative rules / gradients ──
+  goldRule: 'linear-gradient(90deg, #A07E3A 0%, #F2E6C2 55%, rgba(242,230,194,0) 100%)',
+
+  // ── editorial chrome (shared style fragments) ──
+  // Section kicker — the mono, letter-spaced, uppercase label that opens every
+  // panel header (STAGE II · PLAN, SEO INTELLIGENCE, etc.).
+  kicker: {
+    fontFamily: 'var(--portal-font-mono, "SF Mono", "Menlo", "Monaco", "Consolas", monospace)',
+    fontSize: 10,
+    letterSpacing: '0.16em',
+    textTransform: 'uppercase',
+    color: '#A07E3A',
+    fontWeight: 700,
+  },
+  // Form / field label — mono micro-label paired with inputs and controls.
+  fieldLabel: {
+    fontFamily: 'var(--portal-font-mono, "SF Mono", "Menlo", "Monaco", "Consolas", monospace)',
+    fontSize: 10,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    fontWeight: 600,
+  },
 } as const
 
 export type StudioTokens = typeof studioTokens

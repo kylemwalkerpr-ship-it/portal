@@ -117,18 +117,26 @@ export function formatDate(iso: string) {
 
 export function statusBadge(status: JobStatus) {
   const map: Record<JobStatus, { label: string; bg: string; fg: string; dot: string }> = {
-    pending:    { label: 'Queued',     bg: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
-    drafting:   { label: 'Drafting',   bg: '#FEF3C7', fg: '#D97706', dot: '#F59E0B' },
-    publishing: { label: 'Opening PR', bg: '#DBEAFE', fg: '#3B82F6', dot: '#60A5FA' },
-    pr_created: { label: 'PR Ready',   bg: '#DBEAFE', fg: '#2563EB', dot: '#3B82F6' },
-    merged:     { label: 'Merged',     bg: '#D1FAE5', fg: '#166534', dot: '#10B981' },
-    closed:     { label: 'Closed',     bg: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
-    failed:     { label: 'Failed',     bg: '#FEE2E2', fg: '#DC2626', dot: '#EF4444' },
+    pending:    { label: 'Queued',     bg: C.surface2, fg: C.inkMuted,    dot: C.inkDim },
+    drafting:   { label: 'Drafting',   bg: C.amberSoft, fg: C.amber,      dot: '#F59E0B' },
+    publishing: { label: 'Opening PR', bg: C.blueSoft,  fg: '#3B82F6',    dot: '#60A5FA' },
+    pr_created: { label: 'PR Ready',   bg: C.blueSoft,  fg: C.blue,       dot: '#3B82F6' },
+    merged:     { label: 'Merged',     bg: C.greenSoft, fg: C.green,      dot: '#10B981' },
+    closed:     { label: 'Closed',     bg: C.surface2,  fg: C.inkMuted,   dot: C.inkDim },
+    failed:     { label: 'Failed',     bg: C.redSoft,   fg: C.red,        dot: '#EF4444' },
   }
   const s = map[status]
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: s.bg, color: s.fg, whiteSpace: 'nowrap' }}>
-      <span style={{ width: 5, height: 5, borderRadius: 999, background: s.dot }} />{s.label}
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px',
+        borderRadius: C.radiusFull, fontSize: 10, fontWeight: 600,
+        background: s.bg, color: s.fg, whiteSpace: 'nowrap',
+        boxShadow: `inset 0 0 0 1px rgba(17,21,28,0.04)`,
+        fontFamily: C.mono,
+      }}
+    >
+      <span style={{ width: 5, height: 5, borderRadius: C.radiusFull, background: s.dot }} />{s.label}
     </span>
   )
 }
@@ -141,9 +149,10 @@ export function gateBadge(score: number | null | undefined, passed: boolean | nu
     <span
       title={`Compliance gate ${score}/100 — ${ok ? 'passed' : 'blocked (YMYL/AEO/GEO requirements)'}`}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 999,
+        display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: C.radiusFull,
         fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap', cursor: 'help',
-        background: ok ? '#ECFDF5' : '#FEF2F2', color: ok ? C.green : C.red,
+        background: ok ? C.greenSoft : C.redSoft, color: ok ? C.green : C.red,
+        boxShadow: `inset 0 0 0 1px rgba(17,21,28,0.04)`,
       }}
     >
       {ok ? '✓ PASS' : '✕ BLOCK'} {score}
@@ -198,11 +207,62 @@ export function CardHeader({ icon, title, sub, right }: { icon: string; title: s
   return (
     <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>{icon} {title}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, fontFamily: C.serif, display: 'inline-flex', alignItems: 'center', gap: 7 }}>{icon && <span style={{ fontSize: 13 }}>{icon}</span>}<span>{title}</span></div>
         {sub && <div style={{ marginTop: 1, fontSize: 10.5, color: C.textMuted }}>{sub}</div>}
       </div>
       {right}
     </div>
+  )
+}
+
+// ── Shared editorial chrome primitives ──
+
+/**
+ * Paper card surface — the standard Content Studio panel. Sharp edges are
+ * intentional (editorial consultancy look); elevation comes from paperShadow.
+ */
+export function Panel({ children, style, as }: { children: React.ReactNode; style?: React.CSSProperties; as?: keyof React.JSX.IntrinsicElements }) {
+  const Tag = as || 'div'
+  return (
+    <Tag
+      style={{
+        background: C.paper,
+        border: `1px solid ${C.hairline}`,
+        boxShadow: C.paperShadow,
+        ...style,
+      }}
+    >
+      {children}
+    </Tag>
+  )
+}
+
+/** Section kicker — the mono, letter-spaced, uppercase gold label. */
+export function Kicker({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div style={{ ...C.kicker, ...style }}>{children}</div>
+}
+
+/** Micro label for form fields / list metadata (mono, uppercase, muted). */
+export function FieldLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <label style={{ ...C.fieldLabel, ...style }}>{children}</label>
+}
+
+/** Pill-shaped status/label chip. */
+export function Chip({ children, bg, fg, border, title, style }: { children: React.ReactNode; bg?: string; fg?: string; border?: string; title?: string; style?: React.CSSProperties }) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+        padding: '3px 9px', borderRadius: C.radiusFull,
+        background: bg || C.surface2, color: fg || C.inkMuted,
+        border: border ? `1px solid ${border}` : 'none',
+        fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+        ...style,
+      }}
+    >
+      {children}
+    </span>
   )
 }
 
@@ -283,9 +343,14 @@ export function GscMini() {
         right={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {stats && stats.source && (
-              <span title={stats.source === 'live' ? 'Scored from live Search Console data' : 'Committed snapshot — connect GSC for live numbers'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: stats.source === 'live' ? C.greenSoft : '#FFFBEB', color: stats.source === 'live' ? C.green : '#92400E' }}>
+              <Chip
+                bg={stats.source === 'live' ? C.greenSoft : '#FFFBEB'}
+                fg={stats.source === 'live' ? C.green : '#92400E'}
+                title={stats.source === 'live' ? 'Scored from live Search Console data' : 'Committed snapshot — connect GSC for live numbers'}
+                style={{ fontSize: 9, fontFamily: C.mono }}
+              >
                 {stats.source === 'live' ? '● LIVE' : '◐ SNAPSHOT'}
-              </span>
+              </Chip>
             )}
             <button type="button" onClick={fetchGsc} disabled={loading} style={{ ...btnGhost, padding: '4px 10px' }}>
               {loading ? '…' : '↻'}

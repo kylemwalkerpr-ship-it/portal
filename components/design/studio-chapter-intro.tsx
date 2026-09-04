@@ -69,6 +69,8 @@ export function ChapterIntro({
         .chapter-intro .ch-jump-next:hover { background: ${E.goldDeep}; border-color: ${E.goldDeep}; }
         .chapter-intro .ch-mini:not(:disabled):hover .ch-mini-bubble { transform: scale(1.1); border-color: ${E.gold}88; }
         .chapter-intro .ch-mini:not(:disabled):hover .ch-mini-label { color: ${E.ink}; }
+        .chapter-intro .ch-scope { transition: background 0.2s ease, border-color 0.2s ease; }
+        .chapter-intro .ch-scope:hover { background: ${E.paper}; border-color: ${E.gold}44; }
       `}</style>
       <div
         className="chapter-intro"
@@ -76,9 +78,9 @@ export function ChapterIntro({
         style={{
           marginBottom: 14,
           padding: '20px 26px 18px',
-          background: `linear-gradient(180deg, ${E.parchment} 0%, ${E.ivory} 100%)`,
-          borderBottom: `1px solid ${E.hairline}`,
-          boxShadow: E.paperShadow,
+          background: `linear-gradient(180deg, ${E.paper} 0%, ${E.ivory} 100%)`,
+          border: `1px solid ${E.hairline}`,
+          boxShadow: E.panelShadow,
           fontFamily: E.serif,
           position: 'relative',
         }}
@@ -113,12 +115,13 @@ export function ChapterIntro({
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <span
               style={{
-                fontSize: 11,
+                fontSize: 10,
                 color: E.gold,
                 fontFamily: E.mono,
                 letterSpacing: '0.18em',
                 textTransform: 'uppercase',
-                marginBottom: 2,
+                marginBottom: 3,
+                fontWeight: 700,
               }}
             >
               Chapter {numeral}
@@ -126,7 +129,7 @@ export function ChapterIntro({
             <h2
               style={{
                 margin: 0,
-                fontSize: 26,
+                fontSize: 24,
                 fontFamily: E.serif,
                 fontWeight: 700,
                 color: E.ink,
@@ -195,12 +198,14 @@ export function ChapterIntro({
           {scope.map((s, i) => (
             <div
               key={i}
+              className="ch-scope"
               style={{
                 flex: '1 1 240px',
                 minWidth: 220,
-                padding: '8px 12px',
+                padding: '9px 12px',
                 borderLeft: `2px solid ${E.goldSoft}`,
-                background: E.ivory,
+                background: E.paper,
+                boxShadow: '0 1px 0 rgba(17,21,28,0.04)',
               }}
             >
               <span
