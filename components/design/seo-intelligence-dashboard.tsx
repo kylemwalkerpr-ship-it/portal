@@ -76,6 +76,7 @@ export default function SeoIntelligenceDashboard() {
   const [topics, setTopics] = React.useState<{ query?: { strongTopics?: Array<{ label: string; pages: number }>; thinClusters?: Array<{ label: string; pages: number }>; linkCandidates?: Array<{ from: string; to: string; via: string }> }; pages?: number } | null>(null)
   const [seed, setSeed] = React.useState('canada study permit')
   const [keywords, setKeywords] = React.useState<Array<{ keyword: string; source: string; sources: string[] }>>([])
+  const [clusters, setClusters] = React.useState<Array<{ id: string; label: string; size: number; keywords: Array<{ keyword: string; source: string; sources: string[] }> }>>([])
 
   const load = React.useCallback(async () => {
     setBusy(true)
@@ -130,6 +131,7 @@ export default function SeoIntelligenceDashboard() {
 
   const explore = async () => {
     setBusy(true)
+    setError(null)
     try {
       const res = await fetch('/api/content-studio/keywords/discover', {
         method: 'POST',
@@ -138,7 +140,27 @@ export default function SeoIntelligenceDashboard() {
         body: JSON.stringify({ seed }),
       })
       const data = await res.json()
-      setKeywords(Array.isArray(data.candidates) ? data.candidates : [])
+      if (!res.ok || (data as { error?: unknown }).error) {
+        setError(String((data as { error?: unknown }).error || `Keyword discover failed (${res.status})`))
+        setKeywords([])
+        setClusters([])
+        return
+      }
+      const candidates = Array.isArray(data.candidates) ? (data.candidates as Array<{ keyword: string; source: string; sources: string[] }>) : []
+      setKeywords(candidates)
+      const clusterRes = await fetch('/api/content-studio/keywords/cluster', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(candidates.length ? { candidates } : { seed }),
+      })
+      const clusterData = await clusterRes.json().catch(() => ({}))
+      if (!clusterRes.ok || (clusterData as { error?: unknown }).error) {
+        setError(String((clusterData as { error?: unknown }).error || `Cluster failed (${clusterRes.status})`))
+      }
+      setClusters(Array.isArray(clusterData.clusters) ? clusterData.clusters : [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Keyword explorer failed')
     } finally {
       setBusy(false)
     }
@@ -271,6 +293,18 @@ export default function SeoIntelligenceDashboard() {
             {keywords.map((k) => (
               <div key={k.keyword} style={{ fontSize: 12, padding: '3px 0' }}>{k.keyword} <span style={{ color: C.muted }}>({k.sources?.join(', ') || k.source})</span></div>
             ))}
+            {!keywords.length && <div style={{ color: C.muted, fontSize: 12 }}>No candidates yet — enter a seed and click Explore.</div>}
+            {clusters.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 9, fontFamily: C.mono, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted, marginBottom: 8 }}>Jaccard clusters ({clusters.length})</div>
+                {clusters.map((cl) => (
+                  <div key={cl.id} style={{ border: `1px solid ${C.line}`, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{cl.label} <span style={{ color: C.muted, fontWeight: 400 }}>· {cl.size}</span></div>
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{cl.keywords.map((k) => k.keyword).join(' · ')}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {nav === 'gsc' && (
