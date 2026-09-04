@@ -369,22 +369,33 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       // the blocker is visibly cleared, not stuck at "100/100 but blocked".
       if (data.fixedContent && data.fixedContent !== latestContent) {
         onChange(data.fixedContent)
-        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setShowAnnotations(true)
+      // Apply shipGate from the successful audit BEFORE draft Save — upstream
+      // Save timeouts must not wipe a cleared gate.
       applyShipGate(data, data.fixedContent || latestContent)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       setEnginePlan(null) // a fresh audit supersedes the last fix plan
       onScoreChange?.(data.score)
+      let saveFailed = false
+      if (data.fixedContent && data.fixedContent !== latestContent) {
+        try {
+          await persistFixedContent(data.fixedContent)
+        } catch {
+          saveFailed = true
+        }
+      }
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · auto-fixed: ${data.appliedRepairs.join(', ')}`
         : ''
-      setNotice(`Score ${data.score}/100 - ${data.blockers} blocker(s), ${data.warnings} warning(s) - ${data.ok ? 'PASSED' : 'BLOCKED'}${repairs}`)
+      setNotice(saveFailed
+        ? 'Audit passed; draft Save failed — retry Save'
+        : `Score ${data.score}/100 - ${data.blockers} blocker(s), ${data.warnings} warning(s) - ${data.ok ? 'PASSED' : 'BLOCKED'}${repairs}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
@@ -434,18 +445,26 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
         onChange(data.fixedContent)
-        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       setBlockerItems(Array.isArray(data.blockersData) ? data.blockersData : [])
       setWarningItems(Array.isArray(data.warningsData) ? data.warningsData : [])
+      // Ship gate from the successful Fix response first — draft Save may time out.
       applyShipGate(data, data.fixedContent || contentToFix)
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
       const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number; evidence?: string }>
       setEnginePlan(engine.length ? engine : null)
+      let saveFailed = false
+      if (data.fixedContent) {
+        try {
+          await persistFixedContent(data.fixedContent)
+        } catch {
+          saveFailed = true
+        }
+      }
       const parts = [`Score ${data.score}/100`]
       if (data.ok) { parts.push('PASSED') } else { parts.push('BLOCKED') }
       if (data.contentLoop?.rounds?.length) parts.push(`${data.contentLoop.rounds.length} audit/fix round(s)`)
@@ -461,7 +480,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           message += ` (${data.providerError.slice(0, 200)})`
         }
       }
-      setNotice(message)
+      setNotice(saveFailed ? 'Audit passed; draft Save failed — retry Save' : message)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Audit & Fix failed')
@@ -550,7 +569,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
         onChange(data.fixedContent)
-        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -560,10 +578,20 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setDepthGate(data.depthGate || null)
       setDepthMediation(data.depthMediation || null)
       onScoreChange?.(data.score)
+      let saveFailed = false
+      if (data.fixedContent) {
+        try {
+          await persistFixedContent(data.fixedContent)
+        } catch {
+          saveFailed = true
+        }
+      }
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · ${data.appliedRepairs.join(', ')}`
         : ''
-      setNotice(`Depth expansion applied - ${data.shipReady ? 'ship gate now ready' : 'still below the floor'}: ${data.depthGate?.message || ''}${repairs}`)
+      setNotice(saveFailed
+        ? 'Audit passed; draft Save failed — retry Save'
+        : `Depth expansion applied - ${data.shipReady ? 'ship gate now ready' : 'still below the floor'}: ${data.depthGate?.message || ''}${repairs}`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Depth expansion failed')
@@ -611,7 +639,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
         onChange(data.fixedContent)
-        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -625,7 +652,17 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const engine = (data.enginePriorities || []) as Array<{ code: string; priority: number; subsystem: string; action: string; effort: string; lift: number; confidence: number; evidence?: string }>
       setEnginePlan(engine.length ? engine : null)
       onScoreChange?.(data.score)
-      setNotice(`Warnings sweep applied - ${data.warnings ?? 0} warning(s) remain`)
+      let saveFailed = false
+      if (data.fixedContent) {
+        try {
+          await persistFixedContent(data.fixedContent)
+        } catch {
+          saveFailed = true
+        }
+      }
+      setNotice(saveFailed
+        ? 'Audit passed; draft Save failed — retry Save'
+        : `Warnings sweep applied - ${data.warnings ?? 0} warning(s) remain`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Warnings fix failed')
@@ -671,7 +708,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
         onChange(data.fixedContent)
-        await persistFixedContent(data.fixedContent)
       }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
@@ -682,10 +718,20 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setDepthMediation(data.depthMediation || null)
       setShowAnnotations(true)
       onScoreChange?.(data.score)
+      let saveFailed = false
+      if (data.fixedContent) {
+        try {
+          await persistFixedContent(data.fixedContent)
+        } catch {
+          saveFailed = true
+        }
+      }
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · ${data.appliedRepairs.join(', ')}`
         : ''
-      setNotice(`Blockers sweep ${data.ok ? 'cleared the gate' : 'applied'} — ${data.blockers ?? 0} remain${repairs}`)
+      setNotice(saveFailed
+        ? 'Audit passed; draft Save failed — retry Save'
+        : `Blockers sweep ${data.ok ? 'cleared the gate' : 'applied'} — ${data.blockers ?? 0} remain${repairs}`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Blockers fix failed')
@@ -1052,7 +1098,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   const id = await persistDraft(content, 'manual')
                   onApprove(id || boundJobId || undefined)
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Save before approve failed')
+                  const msg = err instanceof Error ? err.message : 'Save before approve failed'
+                  // Job already exists — do not block Approve on a draft Save timeout.
+                  if (boundJobId) {
+                    setError(`Save failed — approving anyway: ${msg}`)
+                    onApprove(boundJobId)
+                    return
+                  }
+                  setError(msg)
                 }
               })()
             }}
