@@ -1,7 +1,8 @@
 /**
  * Estate ship-gate: host ↔ repo ↔ path ↔ content type.
  */
-import { validateShipPlan, validateRenderedPayload } from '@/lib/seoFactory/shipGate'
+import { validateShipPlan, validateRenderedPayload, assertShipAllowed } from '@/lib/seoFactory/shipGate'
+import { renderTargetFile } from '@/lib/seoFactory/renderTarget'
 import type { OwnerPlan } from '@/lib/seoFactory/ownership'
 
 function plan(partial: Partial<OwnerPlan> & Pick<OwnerPlan, 'host' | 'repo' | 'filePath' | 'canonicalUrl'>): OwnerPlan {
@@ -123,6 +124,22 @@ describe('validateShipPlan', () => {
     expect(r.errors.some((e) => /Blog content on legal must use app\/blog/i.test(e))).toBe(true)
   })
 
+  it('allows apex consultancy blog as landing-page/app/blog/{slug}/page.tsx', () => {
+    const r = validateShipPlan({
+      plan: plan({
+        host: 'apex',
+        repo: 'yousafe-consultancy',
+        filePath: 'landing-page/app/blog/essay-editing-service/page.tsx',
+        canonicalUrl: 'https://yousafeconsultancy.com/blog/essay-editing-service/',
+        contentType: 'blog_post',
+        intentClass: 'news_summary',
+      }),
+      contentType: 'blog_post',
+    })
+    expect(r.ok).toBe(true)
+    expect(r.errors).toEqual([])
+  })
+
   it('blocks market gig on legal', () => {
     const r = validateShipPlan({
       plan: plan({
@@ -158,6 +175,85 @@ export default function Page() {
     })
     expect(r.ok).toBe(false)
     expect(r.errors.some((e) => /CTAPanel|headline|href/i.test(e))).toBe(true)
+  })
+
+  it('validates apex blog JSX by BlogDepthSection, not caseworks CTAPanel', () => {
+    const filePath = 'landing-page/app/blog/essay-editing-service/page.tsx'
+    const r = validateRenderedPayload({
+      plan: plan({
+        host: 'apex',
+        repo: 'yousafe-consultancy',
+        filePath,
+        canonicalUrl: 'https://yousafeconsultancy.com/blog/essay-editing-service/',
+        contentType: 'blog_post',
+        intentClass: 'news_summary',
+      }),
+      filePath,
+      contentType: 'blog_post',
+      fileContent: `
+import type { Metadata } from "next";
+import { BlogDepthSection } from "@/components/blog-depth-section";
+export const metadata: Metadata = { title: "Essay editing" };
+export default function Page() {
+  return (
+    <article>
+      <p className="mt-4">Hire an editor before you file.</p>
+      <ul className="mt-4">
+        <li>I-20</li>
+      </ul>
+      <BlogDepthSection />
+    </article>
+  );
+}
+`,
+    })
+    expect(r.errors).toEqual([])
+    expect(r.ok).toBe(true)
+  })
+
+  it('lets a rendered apex blog page.tsx through assertShipAllowed', () => {
+    const filePath = 'landing-page/app/blog/essay-editing-service/page.tsx'
+    const owner = plan({
+      host: 'apex',
+      repo: 'yousafe-consultancy',
+      filePath,
+      canonicalUrl: 'https://yousafeconsultancy.com/blog/essay-editing-service/',
+      contentType: 'blog_post',
+      intentClass: 'news_summary',
+    })
+    const rendered = renderTargetFile({
+      plan: owner,
+      content: `---
+title: Essay Editing Service for F-1 Students
+description: How F-1 students use an essay editor before a school or visa file.
+---
+
+An editor checks structure, citations, and school-specific prompts.
+
+## What to send
+- Form I-20
+- Personal statement draft
+
+## FAQ
+Should you hire an editor? Only if the school allows outside review.
+`,
+      title: 'Essay Editing Service for F-1 Students',
+      region: 'US',
+      contentType: 'blog_post',
+      primaryKeyword: 'essay editing service',
+      indexable: true,
+      canonicalUrl: owner.canonicalUrl,
+    })
+    expect(() =>
+      assertShipAllowed({
+        plan: owner,
+        contentType: 'blog_post',
+        title: 'Essay Editing Service for F-1 Students',
+        primaryKeyword: 'essay editing service',
+        filePath: rendered.filePath,
+        fileContent: rendered.fileContent,
+      }),
+    ).not.toThrow()
   })
 
   it('requires markdown front matter for consultancy', () => {

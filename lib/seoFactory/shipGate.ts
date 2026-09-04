@@ -91,6 +91,8 @@ export const HOST_PATH_PATTERNS: Record<OwnerHost, RegExp[]> = {
     /^au\/content\/[a-z0-9][a-z0-9/-]*\.md$/,
   ],
   apex: [
+    // Live yousafe-consultancy blog pages (static App Router routes).
+    /^landing-page\/app\/blog\/[a-z0-9][a-z0-9-]*\/page\.tsx$/,
     /^landing-page\/content\/blog\/[a-z0-9][a-z0-9-]*\.md$/,
     /^landing-page\/content\/[a-z0-9][a-z0-9/-]*\.md$/,
   ],
@@ -200,7 +202,11 @@ export function validateShipPlan(opts: {
         errors.push(
           `Blog content on legal must use app/blog/{slug}/page.tsx (got ${filePath})`,
         )
-      } else if (host !== 'legal' && !/\/content\/blog\//.test(filePath)) {
+      } else if (host === 'apex' && !/\/(app\/blog|content\/blog)\//.test(filePath)) {
+        errors.push(
+          `Blog content on apex must use landing-page/app/blog/{slug}/page.tsx (got ${filePath})`,
+        )
+      } else if (host !== 'legal' && host !== 'apex' && !/\/content\/blog\//.test(filePath)) {
         errors.push(
           `Blog content on ${host} must use {region}/content/blog/{slug}.md (got ${filePath})`,
         )
@@ -248,8 +254,15 @@ export function validateShipPlan(opts: {
   if (repo === 'caseworks' && filePath && !filePath.endsWith('page.tsx')) {
     errors.push(`caseworks ships must be Next.js page.tsx files (got ${filePath})`)
   }
-  if (repo === 'yousafe-consultancy' && filePath && !filePath.endsWith('.md')) {
-    errors.push(`yousafe-consultancy ships must be Markdown .md files (got ${filePath})`)
+  if (
+    repo === 'yousafe-consultancy' &&
+    filePath &&
+    !filePath.endsWith('.md') &&
+    !/^landing-page\/app\/blog\/[a-z0-9][a-z0-9-]*\/page\.tsx$/.test(filePath)
+  ) {
+    errors.push(
+      `yousafe-consultancy ships must be Markdown .md files or landing-page/app/blog/{slug}/page.tsx (got ${filePath})`,
+    )
   }
   if (repo === 'portal' && filePath && !filePath.endsWith('.mdx')) {
     errors.push(`portal/market ships must be .mdx catalogue files (got ${filePath})`)
@@ -290,7 +303,30 @@ export function validateRenderedPayload(opts: {
     return { ok: false, errors }
   }
 
-  if (plan.repo === 'caseworks' || filePath.endsWith('page.tsx')) {
+  const isConsultancyBlog =
+    plan.repo === 'yousafe-consultancy' && /landing-page\/app\/blog\/[^/]+\/page\.tsx$/.test(filePath)
+
+  if (isConsultancyBlog) {
+    if (!content.includes('BlogDepthSection')) {
+      errors.push('apex blog page must import BlogDepthSection')
+    }
+    if (!content.includes('export const metadata')) {
+      errors.push('apex blog page must export Next.js metadata')
+    }
+    if (!content.includes('export default function')) {
+      errors.push('apex blog page must export a default page component')
+    }
+    if (content.includes('ArticleLayout') || content.includes('CTAPanel')) {
+      errors.push('apex blog page must not use caseworks ArticleLayout / CTAPanel')
+    }
+    if (/```/.test(content)) {
+      errors.push('apex blog page.tsx still contains markdown fences — refuse ship')
+    }
+    pushUnbalancedJsxErrors(content, errors)
+    return { ok: errors.length === 0, errors }
+  }
+
+  if (plan.repo === 'caseworks' || (filePath.endsWith('page.tsx') && plan.host === 'legal')) {
     // Must be a valid caseworks ArticleLayout page with correct CTAPanel contract.
     // These checks mirror caseworks scripts/check-ctapanel-contract.mjs so a
     // factory ship never lands on main and red-X's Deploy Caseworks Worker.
@@ -359,24 +395,9 @@ export function validateRenderedPayload(opts: {
     if (/\bundefined\b/.test(content) && /href\s*=\s*\{[^}]*undefined/.test(content)) {
       errors.push('Rendered page interpolates undefined into href — refuse ship')
     }
-    // Unclosed JSX from bad AI markdown conversion
-    const openP = (content.match(/<p>/g) || []).length
-    const closeP = (content.match(/<\/p>/g) || []).length
-    if (openP !== closeP) {
-      errors.push(`Unbalanced <p> tags (${openP} open / ${closeP} close) — would break caseworks build`)
-    }
-    const openUl = (content.match(/<ul>/g) || []).length
-    const closeUl = (content.match(/<\/ul>/g) || []).length
-    if (openUl !== closeUl) {
-      errors.push(`Unbalanced <ul> tags (${openUl} open / ${closeUl} close) — would break caseworks build`)
-    }
-    for (const tag of ['ol', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote']) {
-      const open = (content.match(new RegExp(`<${tag}(?=[\\s>])`, 'g')) || []).length
-      const close = (content.match(new RegExp(`</${tag}>`, 'g')) || []).length
-      if (open !== close) {
-        errors.push(`Unbalanced <${tag}> tags (${open} open / ${close} close) — would break caseworks build`)
-      }
-    }
+    // Unclosed JSX from bad AI markdown conversion. Count <p className> as
+    // opens — a bare `<p>` regex under-counts consultancy-style JSX.
+    pushUnbalancedJsxErrors(content, errors)
     // Raw script / JSON-LD left in body breaks JSX parse
     if (/<script\b/i.test(content) && !content.includes('// Generated by SEO Factory')) {
       errors.push('caseworks page contains raw <script> — refuse ship')
@@ -473,6 +494,17 @@ export function assertShipAllowed(opts: {
   return planGate
 }
 
+/** Count opening tags with optional attributes (`<p className=…>`) vs closes. */
+function pushUnbalancedJsxErrors(content: string, errors: string[]): void {
+  for (const tag of ['p', 'ul', 'ol', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote', 'section']) {
+    const open = (content.match(new RegExp(`<${tag}\\b(?![^>]*\\/>)`, 'g')) || []).length
+    const close = (content.match(new RegExp(`</${tag}>`, 'g')) || []).length
+    if (open !== close) {
+      errors.push(`Unbalanced <${tag}> tags (${open} open / ${close} close) — would break the target build`)
+    }
+  }
+}
+
 function describePathExamples(host: OwnerHost): string {
   switch (host) {
     case 'legal':
@@ -486,7 +518,7 @@ function describePathExamples(host: OwnerHost): string {
     case 'au':
       return 'au/content/from/{slug}.md · au/content/blog/{slug}.md'
     case 'apex':
-      return 'landing-page/content/blog/{slug}.md · landing-page/content/{slug}.md'
+      return 'landing-page/app/blog/{slug}/page.tsx · landing-page/content/blog/{slug}.md'
     case 'market':
       return 'catalogue/{slug}.mdx'
     default:
