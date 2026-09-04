@@ -16,6 +16,7 @@ import * as React from 'react'
 import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
+import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
 type Props = {
   content: string
@@ -93,6 +94,8 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   const [styleBusy, setStyleBusy] = React.useState(false)
   const [applying, setApplying] = React.useState(false)
   const [styleError, setStyleError] = React.useState<string | null>(null)
+  const [styleRawSnippet, setStyleRawSnippet] = React.useState<string | null>(null)
+  const [styleReviewed, setStyleReviewed] = React.useState(false)
   const textRef = React.useRef('')
   textRef.current = content
   const hintRef = React.useRef(hint)
@@ -137,6 +140,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     const h = hintRef.current
     setStyleBusy(true)
     setStyleError(null)
+    setStyleRawSnippet(null)
     try {
       const res = await fetch('/api/content-studio/style-review', {
         method: 'POST',
@@ -145,23 +149,34 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
         body: JSON.stringify({
           content: textRef.current,
           primaryKeyword: h?.primaryKeyword || undefined,
-          reviewModel: reviewModel || undefined,
+          reviewModel: reviewModel || DEFAULT_REVIEW_PIN,
           apply,
         }),
       })
       const data = await res.json()
+      setExpanded('style')
       if (!res.ok) {
         setStyleError(data?.error || 'Style review failed')
+        setStyleItems([])
+        setStyleReviewed(true)
         setStyleBusy(false)
         return
       }
-      setStyleItems(data.items || [])
+      const items = Array.isArray(data.items) ? data.items : []
+      setStyleItems(items)
+      setStyleReviewed(true)
+      const snippet = typeof data.rawSnippet === 'string' && data.rawSnippet.trim() ? data.rawSnippet.trim() : null
+      if (items.length === 0 && snippet) {
+        setStyleRawSnippet(snippet)
+        setStyleError('Style review did not return structured findings')
+      }
       if (apply && data.applied && data.content && onApplied) {
         onApplied(data.content)
       }
       if (data.applied === false && data.reason) setStyleError(`Apply incomplete: ${data.reason}`)
     } catch (err) {
       setStyleError(err instanceof Error ? err.message : 'Style review network error')
+      setStyleReviewed(true)
     } finally {
       setStyleBusy(false)
     }
@@ -414,7 +429,17 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     return (
       <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.5 }}>
         {styleError && <div style={{ color: C.red, marginBottom: 6 }}>{styleError}</div>}
-        {!styleBusy && styleItems.length === 0 && !styleError && (
+        {styleRawSnippet && (
+          <pre style={{
+            color: C.text, marginBottom: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            fontFamily: C.mono, fontSize: 10, background: '#F9FAFB', padding: 8, borderRadius: 4,
+            maxHeight: 160, overflow: 'auto',
+          }}>{styleRawSnippet}</pre>
+        )}
+        {!styleBusy && styleItems.length === 0 && !styleError && !styleRawSnippet && styleReviewed && (
+          <div style={{ color: C.green, marginBottom: 6 }}>No style issues found</div>
+        )}
+        {!styleBusy && styleItems.length === 0 && !styleError && !styleRawSnippet && !styleReviewed && (
           <div style={{ color: C.muted }}>
             Review the draft with the reviewing model — it critiques voice, clichés, forced keywords, AI-tells and hedging, then offers one-click apply.
           </div>
@@ -484,7 +509,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                         body: JSON.stringify({
                           content: textRef.current,
                           primaryKeyword: hintRef.current?.primaryKeyword || undefined,
-                          reviewModel: reviewModel || undefined,
+                          reviewModel: reviewModel || DEFAULT_REVIEW_PIN,
                           apply: true,
                           items: snapshot,
                         }),

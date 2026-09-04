@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import { extractProse } from '@/lib/editorMetrics'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 import { countBodyWords, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
+import { parseStyleJson, type StyleItem } from '@/lib/seoFactory/styleReviewParse'
 
 /**
  * POST /api/content-studio/style-review
@@ -22,13 +24,6 @@ import { countBodyWords, unwrapWholeDocumentFence } from '@/lib/seoFactory/conte
  * This is a REVIEW lane — the ship gates and Audit & Fix remain the
  * authority. Style findings are a human-in-the-loop enhancement, not a gate.
  */
-
-type StyleItem = {
-  category: string
-  quote: string
-  issue: string
-  suggestion: string
-}
 
 type StyleReviewBody = {
   content: string
@@ -98,22 +93,32 @@ export async function POST(request: NextRequest) {
     }
 
     const sys = SYSTEM_PROMPT
-    const prompt = `## Article
+    const prose = extractProse(content)
+    const proseWords = (prose.match(/[a-zA-Z][a-zA-Z'-]*/g) || []).length
+    // Critique the client-facing body, not KEEP--- / yaml soup. Apply still
+    // patches the full document. Quotes must remain exact body substrings.
+    const critiqueSlice = proseWords >= 80 ? prose.slice(0, 120_000) : doc.slice(0, 120_000)
+    const prompt = `## Article (body prose for critique)
 
-${doc.slice(0, 120_000)}
+${critiqueSlice}
 
 ## Job context
 ${primary ? `Primary keyword: ${primary}` : 'No primary keyword supplied'}
 Content type: ${body.contentType || 'unknown'}
 
-Critique the voice and readability. Return ONLY the JSON.`
+Critique the voice and readability of the article body only. Ignore YAML, KEEP--- blocks, frontmatter keys, and leaked markup. \`quote\` must be an exact short substring of a body sentence (not a YAML key). Return ONLY the JSON.`
+
+    const pin = String(body.reviewModel || DEFAULT_REVIEW_PIN).trim() || DEFAULT_REVIEW_PIN
+    // Default review pin must be allowed to cascade when Entrim is at capacity.
+    // Operator-chosen non-default pins stay exclusive except cascadeOnCapacity.
+    const exclusive = pin !== 'auto' && pin !== DEFAULT_REVIEW_PIN
 
     const review = await generateContentText({
       system: sys,
       prompt,
       maxTokens: 2048,
-      aiProvider: body.reviewModel || undefined,
-      exclusive: Boolean(body.reviewModel) && body.reviewModel !== 'auto',
+      aiProvider: pin,
+      exclusive,
       cascadeOnCapacity: true,
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
@@ -148,8 +153,8 @@ Critique the voice and readability. Return ONLY the JSON.`
       system: 'You are a surgical editorial copy editor. Respond with ONLY the EditorPatch JSON.',
       prompt: `## Document\n\n${doc}\n\n${APPLY_PROMPT(parsed.items)}`,
       maxTokens: 4096,
-      aiProvider: body.reviewModel || undefined,
-      exclusive: Boolean(body.reviewModel) && body.reviewModel !== 'auto',
+      aiProvider: pin,
+      exclusive,
       cascadeOnCapacity: true,
     }).catch(() => null)
 
@@ -192,27 +197,5 @@ Critique the voice and readability. Return ONLY the JSON.`
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Style review failed'
     return NextResponse.json({ error: message }, { status: 502 })
-  }
-}
-
-function parseStyleJson(raw: string): { items: StyleItem[] } | null {
-  try {
-    const t = String(raw || '').trim()
-    const start = t.indexOf('{')
-    if (start === -1) return null
-    const obj = JSON.parse(t.slice(start, t.lastIndexOf('}') + 1))
-    if (!Array.isArray(obj.items)) return null
-    const items: StyleItem[] = obj.items
-      .filter((it) => it && typeof it.quote === 'string' && typeof it.issue === 'string')
-      .slice(0, 10)
-      .map((it) => ({
-        category: String(it.category || 'style').slice(0, 24),
-        quote: String(it.quote || '').slice(0, 160),
-        issue: String(it.issue || '').slice(0, 240),
-        suggestion: String(it.suggestion || '').slice(0, 320),
-      }))
-    return { items }
-  } catch {
-    return null
   }
 }
