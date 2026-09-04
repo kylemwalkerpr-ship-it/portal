@@ -53,23 +53,52 @@ function escapeSql(s) {
   return String(s).replace(/'/g, "''")
 }
 
-async function runSql(query) {
-  const res = await fetch(
-    `https://api.supabase.com/v1/projects/${REF}/database/query`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query }),
-    },
-  )
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`SQL endpoint HTTP ${res.status}: ${body.slice(0, 400)}`)
+async function sleep(ms) {
+  await new Promise((r) => setTimeout(r, ms))
+}
+
+/** Retry transient Management API / SQL failures (e.g. HTTP 544 connection timeout). */
+async function runSql(query, { attempts = 3, baseDelayMs = 2000 } = {}) {
+  let lastErr
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(
+        `https://api.supabase.com/v1/projects/${REF}/database/query`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query }),
+        },
+      )
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        const err = new Error(`SQL endpoint HTTP ${res.status}: ${body.slice(0, 400)}`)
+        // Retry 5xx (incl. 544 SQL timeout) and 429; fail fast on other 4xx
+        if (res.status < 500 && res.status !== 429) throw err
+        lastErr = err
+      } else {
+        return res
+      }
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e))
+      if (lastErr.message.startsWith('SQL endpoint HTTP ')) {
+        const m = lastErr.message.match(/HTTP (\d+)/)
+        const status = m ? Number(m[1]) : 0
+        if (status && status < 500 && status !== 429) throw lastErr
+      }
+    }
+    if (attempt < attempts) {
+      const delay = baseDelayMs * attempt
+      console.warn(
+        `AI vault SQL attempt ${attempt}/${attempts} failed: ${lastErr?.message || lastErr}; retrying in ${delay}ms...`,
+      )
+      await sleep(delay)
+    }
   }
-  return res
+  throw lastErr
 }
 
 async function main() {
