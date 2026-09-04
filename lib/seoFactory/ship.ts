@@ -36,7 +36,7 @@ import {
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { verifyLiveInBackground } from './liveVerify'
 import { stripNoIndex } from './siteHealthFixes'
-import { CONFIGS, publicPathFromRepoFile, upsertStudioSitemapEntry } from './siteHealth'
+import { publicPathFromRepoFile, sitemapPathForShippedFile, upsertStudioSitemapEntry } from './siteHealth'
 
 /** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
@@ -391,14 +391,10 @@ async function ensureCanonicalOnSitemap(opts: {
   filePath: string
 }): Promise<{ path: string; added: boolean; note: string }> {
   const kind = opts.repo === 'caseworks' ? 'caseworks' : opts.repo === 'yousafe-consultancy' ? 'regional' : 'portal'
-  const sitemapPath =
-    opts.repo === 'caseworks'
-      ? CONFIGS.caseworks.sitemapPaths[0]
-      : opts.repo === 'yousafe-consultancy'
-        ? (opts.filePath.match(/^(usa|uk|ca|au)\//)?.[0]
-            ? `${opts.filePath.split('/')[0]}/app/sitemap.xml/route.ts`
-            : CONFIGS['yousafe-consultancy'].sitemapPaths[0])
-        : CONFIGS.portal.sitemapPaths[0]
+  const sitemapPath = sitemapPathForShippedFile(
+    opts.repo === 'caseworks' ? 'caseworks' : opts.repo === 'portal' ? 'portal' : 'yousafe-consultancy',
+    opts.filePath,
+  )
   try {
     const current = await getRepoFileContent(opts.owner, opts.repo, sitemapPath, opts.branch)
     if (!current) return { path: sitemapPath, added: false, note: 'sitemap file not found' }

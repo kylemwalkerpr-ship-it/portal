@@ -231,6 +231,20 @@ function injectRepairSection(content: string, links: Array<{ url: string; label:
   return content + '\n' + section
 }
 
+/**
+ * Which sitemap file a studio ship should edit. Apex blogs must NOT write
+ * usa/app/sitemap (CONFIGS.yousafe-consultancy.sitemapPaths[0]) — that
+ * triggered Deploy USA on every blog merge and listed /blog/ on usa.*.
+ */
+export function sitemapPathForShippedFile(repo: RepoId, filePath: string): string {
+  const p = String(filePath || '').replace(/^\/+/, '')
+  if (repo === 'caseworks') return CONFIGS.caseworks.sitemapPaths[0]
+  if (repo === 'portal') return CONFIGS.portal.sitemapPaths[0]
+  const region = p.match(/^(usa|uk|ca|au)\//)
+  if (region) return `${region[1]}/app/sitemap.xml/route.ts`
+  return 'landing-page/app/sitemap.xml/route.ts'
+}
+
 /** Public path for a shipped page.tsx / .md file. */
 export function publicPathFromRepoFile(filePath: string): string {
   let route = String(filePath || '')
