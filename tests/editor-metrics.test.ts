@@ -1,4 +1,4 @@
-import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, expandMetaToBriefTarget } from '../lib/editorMetrics'
+import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget } from '../lib/editorMetrics'
 
 describe('editor metrics', () => {
   it('extracts prose from markdown including frontmatter/headings/lists', () => {
@@ -70,6 +70,16 @@ Plain sentence here. Another one.
     const fixes = suggestReadabilityFixes(`# T\n\n${long}\n`, { contentType: 'blog_post', audience: 'graduates' })
     expect(fixes.length).toBeGreaterThan(0)
     expect(fixes[0].suggestion).toMatch(/\.\s+[A-Z]/)
+  })
+
+  it('readability auto-fix shortens dense wording when sentences are already short', () => {
+    const md = `# T\n\nYou should utilize the portal in order to file. Subsequently you demonstrate status.\n`
+    const fixes = suggestReadabilityFixes(md, { contentType: 'blog_post' })
+    expect(fixes.some((f) => /utilize|in order to|subsequently|demonstrate/i.test(f.quote))).toBe(true)
+    const out = applyReadabilityFixes(md, fixes)
+    expect(out.applied).toBeGreaterThan(0)
+    expect(out.content).toMatch(/\buse\b/)
+    expect(out.content).not.toMatch(/\butilize\b/i)
   })
 
   it('computeEditorMetrics aggregates all three', () => {

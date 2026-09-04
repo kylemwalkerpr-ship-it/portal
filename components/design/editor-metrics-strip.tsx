@@ -38,21 +38,23 @@ const C = {
   mono: 'var(--portal-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
 }
 
-function pillColor(score: number | null): string {
+function pillColor(score: number | null, pass?: boolean): string {
   if (score === null) return C.muted
+  if (pass === true) return C.green
   if (score >= 80) return C.green
   if (score >= 50) return C.amber
   return C.red
 }
 
-function ScorePill({ label, score, sub, busy, onClick }: {
+function ScorePill({ label, score, sub, busy, onClick, pass }: {
   label: string
   score: number | null
   sub: string
   busy?: boolean
+  pass?: boolean
   onClick?: () => void
 }) {
-  const color = pillColor(score)
+  const color = pillColor(score, pass)
   return (
     <div
       onClick={onClick}
@@ -323,7 +325,9 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
             disabled={!onApplied || fixes.length === 0}
             onClick={() => {
               const local = applyReadabilityFixes(textRef.current, fixes)
-              if (local.applied > 0 && onApplied) onApplied(local.content)
+              if (local.applied > 0 && onApplied) {
+                onApplied(local.content)
+              }
             }}
             style={{
               marginTop: 8, padding: '4px 10px', borderRadius: 6, border: 'none',
@@ -332,14 +336,16 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               opacity: fixes.length ? 1 : 0.55,
             }}
           >
-            {fixes.length ? `Auto-fix ${fixes.length} long sentence${fixes.length === 1 ? '' : 's'}` : 'Auto-fix readability'}
+            {fixes.length ? `Auto-fix ${fixes.length} readability issue${fixes.length === 1 ? '' : 's'}` : 'Auto-fix readability'}
           </button>
           {fixes.length === 0 && r?.pass && (
-            <div style={{ color: C.green, marginTop: 6 }}>Readability is at the brief floor.</div>
+            <div style={{ color: C.green, marginTop: 6 }}>
+              Flesch meets this brief (≥{r.target}). The pill is green — Harper grammar is a separate control and will not change this score.
+            </div>
           )}
           {fixes.length === 0 && r && !r.pass && (
             <div style={{ color: C.muted, marginTop: 6 }}>
-              Score is below the brief floor, but body sentences are already short. Dense words (not length) are holding Flesch down — shorten jargon in AI Style or Audit &amp; Fix.
+              Score is below the brief floor, but there is no safe auto-split or wording swap left. Shorten remaining jargon in AI Style.
             </div>
           )}
         </div>
@@ -512,6 +518,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
         <ScorePill
           label="Readability" score={metrics ? metrics.readability.score : null}
           sub={readabilityLabel}
+          pass={metrics?.readability.pass}
           onClick={() => setExpanded(expanded === 'readability' ? null : 'readability')}
         />
         <ScorePill

@@ -40,6 +40,78 @@ export type EditorSeoHint = {
 
 export type ReadabilityFix = { quote: string; suggestion: string; reason: string; words: number }
 
+/**
+ * Safe, high-frequency dense phrases → shorter words. Legal terms of art
+ * (I-20, SEVIS, petition, consulate) are left alone — these only cut
+ * syllable load so Flesch can move when sentences are already short.
+ */
+const PLAIN_ENGLISH: Array<[string, string]> = [
+  ['in order to', 'to'],
+  ['prior to', 'before'],
+  ['subsequent to', 'after'],
+  ['in the event that', 'if'],
+  ['with respect to', 'about'],
+  ['in accordance with', 'under'],
+  ['a number of', 'several'],
+  ['it is important to note that', ''],
+  ['it is essential to', 'you should'],
+  ['it is recommended that you', 'you should'],
+  ['due to the fact that', 'because'],
+  ['for the purpose of', 'to'],
+  ['in close proximity to', 'near'],
+  ['at this point in time', 'now'],
+  ['in a timely manner', 'promptly'],
+  ['make a determination', 'decide'],
+  ['provide assistance', 'help'],
+  ['utilize', 'use'],
+  ['utilisation', 'use'],
+  ['utilization', 'use'],
+  ['facilitate', 'help'],
+  ['approximately', 'about'],
+  ['subsequently', 'then'],
+  ['additionally', 'also'],
+  ['commence', 'start'],
+  ['terminate', 'end'],
+  ['necessitate', 'need'],
+  ['pertaining to', 'about'],
+  ['notwithstanding', 'despite'],
+  ['endeavour', 'try'],
+  ['endeavor', 'try'],
+  ['ascertain', 'find out'],
+  ['demonstrate', 'show'],
+  ['indicate', 'show'],
+  ['regarding', 'about'],
+  ['assistance', 'help'],
+  ['requirement', 'need'],
+  ['requirements', 'needs'],
+]
+
+function suggestPlainEnglishFixes(md: string): ReadabilityFix[] {
+  const body = String(md || '')
+  const out: ReadabilityFix[] = []
+  const seen = new Set<string>()
+  for (const [from, to] of PLAIN_ENGLISH) {
+    const re = new RegExp(`\\b${escapeRegExp(from)}\\b`, 'i')
+    const m = body.match(re)
+    if (!m || seen.has(from)) continue
+    // Skip hits inside YAML / fences / JSON-LD
+    const at = m.index ?? -1
+    if (at < 0) continue
+    const before = body.slice(0, at)
+    if ((before.match(/^```/gm) || []).length % 2 === 1) continue
+    if (/^---[\s\S]*$/.test(before) && !/\n---\s/.test(before.slice(3))) continue
+    seen.add(from)
+    out.push({
+      quote: m[0],
+      suggestion: to,
+      reason: `Dense wording — shorter form raises Flesch without changing the legal meaning`,
+      words: from.split(/\s+/).length,
+    })
+    if (out.length >= 8) break
+  }
+  return out
+}
+
 /** Harper lint severity buckets (order matters: more serious first). */
 const HARPER_ERROR_KINDS = new Set(['Spelling', 'Grammar', 'Repetition'])
 const HARPER_STYLE_KINDS = new Set(['Style', 'Register', 'Semicolon', 'ComplexWord', 'PassiveVoice'])
@@ -324,6 +396,13 @@ export function suggestReadabilityFixes(md: string, hint?: EditorSeoHint): Reada
       if (out.length >= 8) return out
     }
   }
+  if (out.length < 8) {
+    for (const extra of suggestPlainEnglishFixes(md)) {
+      if (out.some((f) => f.quote.toLowerCase() === extra.quote.toLowerCase())) continue
+      out.push(extra)
+      if (out.length >= 8) break
+    }
+  }
   return out
 }
 
@@ -333,7 +412,7 @@ export function applyReadabilityFixes(md: string, fixes: ReadabilityFix[]): { co
   for (const fx of fixes || []) {
     const quote = String(fx.quote || '').trim()
     const suggestion = String(fx.suggestion || '').trim()
-    if (!quote || !suggestion || quote === suggestion) continue
+    if (!quote || quote === suggestion) continue
     if (next.includes(quote)) {
       next = next.replace(quote, suggestion)
       applied++
