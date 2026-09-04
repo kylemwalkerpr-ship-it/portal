@@ -22,10 +22,16 @@ const C = E
 // here with its gate score, warnings, and blockers visible inline. Click a
 // document to open the full AI editor (AdminInlineEditor) for re-audit,
 // fix-all, per-issue fix, save, and approval. No separate DefendPanel.
+function topicKey(value: string | null | undefined): string {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
 export function ReviewDraftsPanel({
   jobs, gateByJob, selectedJobId, onOpenJob,
   reviewAuditResult, setActionNotice,
   shipGateByJob,
+  activeTopic,
+  inFlightJobId,
 }: {
   jobs: ContentJob[]
   gateByJob: Map<string, { score: number | null; passed: boolean | null }>
@@ -40,8 +46,24 @@ export function ReviewDraftsPanel({
   setActionNotice?: (msg: string) => void
   /** Canonical ship-gate snapshots keyed by job id (from the studio desk). */
   shipGateByJob?: ReadonlyMap<string, ShipGate> | null
+  /** In-flight brief topic — Review lists this brief's job, not the whole queue. */
+  activeTopic?: string | null
+  /** Generate-stream job id when a draft is in flight. */
+  inFlightJobId?: string | null
 }) {
-  const drafts = jobs.filter((j) => ['pending', 'drafting', 'publishing', 'pr_created'].includes(j.status))
+  const queueDrafts = jobs.filter((j) => ['pending', 'drafting', 'publishing', 'pr_created'].includes(j.status))
+  const focusId = selectedJobId || inFlightJobId || null
+  const briefKey = topicKey(activeTopic)
+  const hasActiveWork = Boolean(focusId || briefKey)
+  const drafts = hasActiveWork
+    ? queueDrafts.filter((j) => {
+        if (focusId && j.id === focusId) return true
+        if (!briefKey) return false
+        return topicKey(j.topic) === briefKey
+          || topicKey(j.title) === briefKey
+          || topicKey(j.primary_keyword) === briefKey
+      })
+    : []
   const STATUS_LABEL: Record<string, { label: string; fg: string; bg: string }> = {
     pending: { label: 'Pending', fg: E.amber, bg: E.amberSoft },
     drafting: { label: 'Drafting', fg: E.ember, bg: E.amberSoft },
@@ -53,14 +75,24 @@ export function ReviewDraftsPanel({
     return (
       <div data-testid="studio-review-drafts" style={{ padding: '40px 32px', background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center' }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
-        <div style={{ fontFamily: C.serif, fontSize: 20, color: E.ink, marginBottom: 8 }}>Document Vault</div>
-        <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: '0 auto', maxWidth: 440 }}>
-          Every draft from the pipeline lands here. Open any document to revise it with the AI editor, run gate checks, and clear blockers before approval.
+        <div style={{ fontFamily: C.serif, fontSize: 20, color: E.ink, marginBottom: 8 }}>
+          {hasActiveWork ? 'No job for this brief yet' : 'Document Vault'}
+        </div>
+        <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: '0 auto', maxWidth: 440 }} data-testid="studio-review-empty-brief">
+          {hasActiveWork
+            ? 'Review is scoped to the selected job and in-flight brief. Generate a draft for this topic before audit — unrelated queue documents stay in Draft operations, not here.'
+            : 'Every draft from the pipeline lands here. Open any document to revise it with the AI editor, run gate checks, and clear blockers before approval.'}
         </p>
         <div style={{ marginTop: 16, display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <span style={{ padding: '4px 10px', fontSize: 9, fontFamily: C.mono, color: E.inkDim, border: `1px solid ${E.hairline}` }}>No pending drafts</span>
-          <span style={{ padding: '4px 10px', fontSize: 9, fontFamily: C.mono, color: E.inkDim, border: `1px solid ${E.hairline}` }}>No drafting jobs</span>
-          <span style={{ padding: '4px 10px', fontSize: 9, fontFamily: C.mono, color: E.inkDim, border: `1px solid ${E.hairline}` }}>No PRs ready</span>
+          <span style={{ padding: '4px 10px', fontSize: 9, fontFamily: C.mono, color: E.inkDim, border: `1px solid ${E.hairline}` }}>
+            {hasActiveWork ? 'No job for the current brief' : 'No pending drafts'}
+          </span>
+          {!hasActiveWork && (
+            <>
+              <span style={{ padding: '4px 10px', fontSize: 9, fontFamily: C.mono, color: E.inkDim, border: `1px solid ${E.hairline}` }}>No drafting jobs</span>
+              <span style={{ padding: '4px 10px', fontSize: 9, fontFamily: C.mono, color: E.inkDim, border: `1px solid ${E.hairline}` }}>No PRs ready</span>
+            </>
+          )}
         </div>
       </div>
     )
@@ -100,7 +132,7 @@ export function ReviewDraftsPanel({
         flexWrap: 'wrap',
       }}>
         <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-          DOCUMENT VAULT · {drafts.length} DOCUMENT{drafts.length === 1 ? '' : 'S'}
+          THIS BRIEF · {drafts.length} DOCUMENT{drafts.length === 1 ? '' : 'S'}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginLeft: 'auto' }}>
           <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted }}>

@@ -329,11 +329,26 @@ describe('ReviewDraftsPanel — drafts document list', () => {
     )
     expect(html).toContain('data-testid="studio-review-drafts"')
     expect(html).toContain('data-testid="studio-review-draft-j1"')
-    expect(html).toContain('data-testid="studio-review-draft-j2"')
+    expect(html).not.toContain('data-testid="studio-review-draft-j2"')
     expect(html).toContain('US Visa Update Guide')
-    expect(html).toContain('Canada Study Permit Guide')
+    expect(html).not.toContain('Canada Study Permit Guide')
     expect(html).toContain('1234 words') // raw word count format
     expect(html).toContain('Open in editor →')
+  })
+
+  it('shows an empty state when a brief is active but no matching job exists', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ReviewDraftsPanel, {
+        jobs: [prJob],
+        gateByJob,
+        selectedJobId: null,
+        activeTopic: 'Australia student visa fees',
+        onOpenJob: () => undefined,
+      }),
+    )
+    expect(html).toContain('No job for this brief yet')
+    expect(html).toContain('data-testid="studio-review-empty-brief"')
+    expect(html).not.toContain('Canada Study Permit Guide')
   })
 })
 
@@ -384,14 +399,14 @@ describe('ReviewDraftsPanel — "gates cleared" count derives from the ship gate
           [gatePassedJob.id, { score: 88, passed: false }],
           [highScoreNoAudit.id, { score: 96, passed: false }],
         ]),
-        selectedJobId: null,
+        selectedJobId: gatePassedJob.id,
         onOpenJob: () => undefined,
       }),
     )
     expect(html).toContain('1 gate cleared')
-    expect(html).toContain('1 awaiting audit')
-    // The high-score draft renders its score badge but never a cleared label.
-    expect(html).toContain('>96<')
+    expect(html).not.toContain('awaiting audit')
+    expect(html).toContain('Gate Confirmed')
+    expect(html).not.toContain('High Score, No Audit')
   })
 })
 
@@ -414,12 +429,12 @@ describe('ReviewDraftsPanel — document vault', () => {
       React.createElement(ReviewDraftsPanel, {
         jobs: [drafting],
         gateByJob: new Map([[drafting.id, { score: 48, passed: false }]]),
-        selectedJobId: null,
+        selectedJobId: drafting.id,
         onOpenJob: () => undefined,
       }),
     )
     expect(html).toContain('data-testid="studio-review-drafts"')
-    expect(html).toContain('DOCUMENT VAULT')
+    expect(html).toContain('THIS BRIEF')
     expect(html).toContain('Open in editor →')
     expect(html).toContain('48') // gate score
   })
