@@ -47,6 +47,30 @@ export function normalizeUrl(url: string): string {
   return String(url || '').trim().replace(/\/+$/, '').toLowerCase()
 }
 
+/** Controlled insert — never self-link or duplicate an existing markdown URL. */
+export function applyInternalLinkMarkdown(
+  md: string,
+  suggestion: InternalLinkSuggestion,
+  currentUrl?: string,
+): { content: string; applied: boolean; reason?: string } {
+  const raw = String(suggestion.targetUrl || '').trim()
+  if (!/^https?:\/\//i.test(raw)) return { content: md, applied: false, reason: 'invalid-url' }
+  const target = normalizeUrl(raw)
+  if (currentUrl && normalizeUrl(currentUrl) === target) {
+    return { content: md, applied: false, reason: 'self-link' }
+  }
+  if (extractMarkdownUrls(md).includes(target)) {
+    return { content: md, applied: false, reason: 'already-linked' }
+  }
+  const anchor = String(suggestion.suggestedAnchor || suggestion.targetTitle || 'related guide')
+    .replace(/[\[\]]/g, '')
+    .trim()
+    .slice(0, 80) || 'related guide'
+  const href = raw.replace(/\/+$/, '')
+  const snippet = `\n\nSee [${anchor}](${href}).\n`
+  return { content: String(md || '').replace(/\s*$/, '') + snippet, applied: true }
+}
+
 function presentNaturally(haystack: string, phrase: string): boolean {
   const h = normalizeKeyword(haystack)
   const p = normalizeKeyword(phrase)

@@ -1,4 +1,4 @@
-import { extractMarkdownUrls, scoreClusterCoverage, suggestInternalLinks } from '@/lib/seoFactory/coverageLinks'
+import { applyInternalLinkMarkdown, extractMarkdownUrls, scoreClusterCoverage, suggestInternalLinks } from '@/lib/seoFactory/coverageLinks'
 
 describe('coverage + internal links (Phase 5)', () => {
   it('scores coverage from presence, headings, questions, and links — not stuffing', () => {
@@ -37,5 +37,24 @@ describe('coverage + internal links (Phase 5)', () => {
     expect(suggestions.every((s) => /^https?:\/\//.test(s.targetUrl))).toBe(true)
     expect(suggestions[0].reason.length).toBeGreaterThan(8)
     expect(suggestions[0].suggestedAnchor.length).toBeGreaterThan(2)
+  })
+
+  it('inserts a markdown link once and refuses self-links and duplicates', () => {
+    const sug = {
+      targetUrl: 'https://legal.yousafeconsultancy.com/ca/pgwp/',
+      targetTitle: 'PGWP',
+      relevance: 90,
+      suggestedAnchor: 'post-graduation work permit',
+      reason: 'related',
+    }
+    const self = applyInternalLinkMarkdown('# x', sug, 'https://legal.yousafeconsultancy.com/ca/pgwp/')
+    expect(self.applied).toBe(false)
+    expect(self.reason).toBe('self-link')
+    const once = applyInternalLinkMarkdown('# Canada study permit\n\nBody.', sug, 'https://legal.yousafeconsultancy.com/ca/study-permit/')
+    expect(once.applied).toBe(true)
+    expect(once.content).toContain('[post-graduation work permit](https://legal.yousafeconsultancy.com/ca/pgwp)')
+    const twice = applyInternalLinkMarkdown(once.content, sug, 'https://legal.yousafeconsultancy.com/ca/study-permit/')
+    expect(twice.applied).toBe(false)
+    expect(twice.reason).toBe('already-linked')
   })
 })
