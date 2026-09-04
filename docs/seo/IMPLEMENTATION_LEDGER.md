@@ -6,7 +6,7 @@
 | 1 GSC persist query×page | **done** | Grok after review (High-scope task) | `seo_gsc_rows`; POST `/api/content-studio/gsc/sync`; GET `/api/content-studio/gsc/performance` |
 | 2 Keyword discovery | **done** | Grok | `keywordDiscover.ts` + `POST /api/content-studio/keywords/discover` |
 | 3 Clustering | **done** | Grok | `keywordGrouping.ts` Jaccard + `POST /api/content-studio/keywords/cluster` |
-| 4 Entities | blocked | High | |
+| 4 Entities | **done** | Grok | `topicGraph.ts` + `POST/GET /api/content-studio/topics/analyze` |
 | 5 Coverage / links | blocked | High | |
 | 6 Opportunity scoring | blocked | High | reuse `opportunityEngine.ts` |
 | 7 Action classify | blocked | High | |
