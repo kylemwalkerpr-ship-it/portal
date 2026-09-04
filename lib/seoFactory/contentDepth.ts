@@ -241,7 +241,8 @@ const YAML_LEAD_KEY =
 
 /** Drop YAML scaffolding. Never discard H1/body just because the opening fence never closed. */
 function stripLeadingYaml(content: string): string {
-  const raw = String(content || '').replace(/^\uFEFF/, '')
+  // Models glue KEEP onto the opening fence (KEEP---). Treat as --- so YAML is excluded from body counts.
+  const raw = String(content || '').replace(/^\uFEFF/, '').replace(/\bKEEP---+/gi, '---')
   const closed = raw.match(/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/)
   if (closed) return raw.slice(closed.index! + closed[0].length)
 

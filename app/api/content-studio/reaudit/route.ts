@@ -1396,7 +1396,7 @@ Return ONLY the JSON EditorPatch.`
         .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}"`)
         .join('\n')
 
-      const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. For dead links: read the surrounding sentence and either swap in a live official/estate URL that fits the claim, or remove the href and add a new verifiable citation. Never invent URLs. Return ONLY the complete fixed article. Do not add explanations.' + editorResponseContract()
+      const sys = 'You are a master SEO content editor. TOPIC LOCK: the primary keyword/topic is "' + (primaryKeyword || 'guide') + '" — every edit must stay on that topic; never replace the article with a different visa/product/intent. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. For dead links: read the surrounding sentence and either swap in a live official/estate URL that fits the claim, or remove the href and add a new verifiable citation. Never invent URLs. Return ONLY the complete fixed article. Do not add explanations.' + editorResponseContract()
 
       // Count currently-failing issues so the model understands scope.
       const failingCount = annotations.filter((a) => a.severity === 'blocker').length
@@ -1510,6 +1510,18 @@ ${warningList}
         const CONVERGE_MAX = 3
         for (let attempt = 0; attempt < CONVERGE_MAX; attempt++) {
           const curWords = countBodyWords(fixedContent)
+          // Over-max must TRIM, never expand — expanding worsens word_count_over_max.
+          if (curWords > maxWords) {
+            fixedContent = applyDeterministicRepairs({
+              content: fixedContent,
+              primaryKeyword: primaryKeyword || 'guide',
+              region, indexable, contentType,
+              requiredShortKeywords, requiredLongTailKeywords,
+              competingUrls: competingPages, targetUrl,
+              maxWords, minWords,
+            }).content
+            break
+          }
           const deficit = targetWords - curWords
           if (curWords >= minWords && deficit <= 0) break // target met
           // Build a precise prompt: tell the model exactly how many new words
@@ -1537,7 +1549,7 @@ RULES:
 - Return ONLY the new sections, nothing else.`
           depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
           if (depthPlan.ok) break // already at target
-          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.' + editorResponseContract()
+          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Stay strictly on the article primary keyword/topic — never introduce a different visa subclass or intent. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.' + editorResponseContract()
           try {
             const appended = await callAiFix(sys, depthPrompt, 16384, reviewModel)
             const merged = mergeAppendedSections(fixedContent, appended)
@@ -1570,7 +1582,7 @@ RULES:
       }
 
     } else if (action === 'fix_one' && annotation) {
-      const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.' + editorResponseContract()
+      const sys = 'You are a surgical content editor. TOPIC LOCK: stay on "' + (primaryKeyword || 'guide') + '"; do not change the article subject. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.' + editorResponseContract()
       // Document-level warnings (schema, meta description, internal links,
       // AI-answer block…) anchor at line 1 with no highlighted text. Give the
       // model concrete context instead of an empty quote so the fix is precise.
@@ -1661,7 +1673,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       if (hasDepthWarning) {
         depthPlan = depthMediationPlan(fixedContent, contentType, primaryKeyword, region)
         if (!depthPlan.ok && depthPlan.prompt) {
-          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.' + editorResponseContract()
+          const sys = 'You are a master SEO content editor expanding an immigration article to clear its word-count target. Stay strictly on the article primary keyword/topic — never introduce a different visa subclass or intent. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.' + editorResponseContract()
           try {
             const appended = await callAiFix(sys, depthPlan.prompt || '', 16384, reviewModel)
             const merged = mergeAppendedSections(fixedContent, appended)
@@ -1830,7 +1842,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         fixedContent = content
       } else {
         const before = countBodyWords(content)
-        const sys = 'You are a master SEO content editor expanding an immigration legal guide to clear the Google depth floor. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
+        const sys = 'You are a master SEO content editor expanding an immigration legal guide to clear the Google depth floor. Stay strictly on the article primary keyword/topic — never introduce a different visa subclass or intent. Write ONLY new markdown H2 sections (no front matter, no JSON-LD, no duplicate of existing headings). Preserve every existing section, fact, citation, and interlink. Return ONLY the new sections.'
         let appended = ''
         try {
           appended = await callAiFixWithSpec(sys, depthPlan.prompt || '', 16384, reviewModel)
@@ -2023,34 +2035,21 @@ ${enginePlan.promptBlock}` + editorResponseContract()
     } catch {
       /* final strip is best-effort */
     }
-    // If dead link stripping dropped the word count below the Google depth
-    // floor, expand the content with structured sections to meet the minimum.
+    // Below-floor after dead-link strip: do NOT inject hardcoded AU 189
+    // filler (that caused Student Visa Fee drafts to drift into subclass 189).
+    // Leave depth to fix_depth / depthMediationPlan so expansion stays on-topic.
+    // Optionally flag for the editor:
     try {
-      const { countBodyWords, minWordsForType } = await import('@/lib/seoFactory/contentDepth')
       const minWords = minWordsForType(String(contentType || 'legal_guide'))
       const currentWords = countBodyWords(fixedContent)
       if (currentWords < minWords) {
-        const deficit = minWords - currentWords
-        const expansionSections = [
-          `## Key Requirements\n\nThe Skilled Independent visa (subclass 189) is a points-tested visa for skilled workers who are not sponsored by an employer, state or territory government, or family member. Applicants must score at least 65 points on the points test, though competitive scores are typically higher.\n`,
-          `## Application Process\n\nThe application process involves several stages: skills assessment, expression of interest through SkillSelect, receiving an invitation to apply, and submitting a complete application with all supporting documents within the specified timeframe.\n`,
-          `## Processing Times\n\nProcessing times vary based on the complexity of your application and the volume of applications being processed. Check the Department of Home Affairs website for current estimated processing times.\n`,
+        response.appliedRepairs = [
+          ...(response.appliedRepairs || []),
+          `below depth floor after link strip (${currentWords}/${minWords}) — run Expand to depth (topic-locked) rather than auto-padding`,
         ]
-        let added = 0
-        for (const section of expansionSections) {
-          if (added >= deficit) break
-          fixedContent = fixedContent.trimEnd() + '\n\n' + section
-          added += section.split(/\s+/).length
-        }
-        if (added > 0) {
-          response.appliedRepairs = [
-            ...(response.appliedRepairs || []),
-            `depth-expanded by ~${added} words to meet minimum floor`,
-          ]
-        }
       }
     } catch {
-      /* depth expansion is best-effort */
+      /* depth note is best-effort */
     }
     response.fixedContent = fixedContent
     // After live sanitization strips dead/malformed links, stale blockers

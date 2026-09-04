@@ -4316,14 +4316,14 @@ function JobDetail({
     setAudit(null)
   }, [job.id])
 
-  // Owner contract: pickers DEFAULT to the operator/brief pin (lineage
-  // ownerProvider, then stored ai_provider). Last cascade runtime must not
-  // overwrite the pin unless the operator changes the picker.
+  // Owner contract: draft picker defaults to the job owner pin. Review pin is
+  // independent — overwriting it with the draft owner made regen sticky to the
+  // wrong reviewer (operator review selection lost on every job open / regen).
   React.useEffect(() => {
     const owner = resolveJobPickerPin(job)
     if (!owner || owner === 'auto') return
     setAiProvider(owner)
-    setReviewModel(owner)
+    // Intentionally do NOT setReviewModel(owner) here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id])
 

@@ -39,6 +39,7 @@ export function editorResponseContract(): string {
     '- Return ONLY the complete corrected article as raw markdown. No preamble, no closing remarks, no explanations.',
     '- NEVER wrap the article (or any part of it) in ``` code fences.',
     '- NEVER add your own YAML frontmatter, JSON-LD <script> blocks, or metadata unless that exact block already exists in the input. If the input starts with a `---` frontmatter block, return it unchanged at the top.',
+    '- NEVER emit the literal token `KEEP---` (or `KEEP` glued to `---`). Preserve means leave the existing `---` fence as-is — do not prefix it with KEEP.',
     '- Preserve the existing structure exactly: same H1, same H2/### heading text and levels, same section order, same bullet (`- `) and numbered (`1. `) markers, same table pipes — except the specific lines a listed finding requires you to change.',
     '- Keep every list item on its own line. Never merge list items into a paragraph, and never split a paragraph into fake list items.',
     '- Do not reorder, rename, merge, or split sections.',
@@ -97,6 +98,14 @@ function isValidSchemaScript(block: string): boolean {
 export function normalizeEditorDocument(raw: string): NormalizeResult {
   const fixed: string[] = []
   let s = String(raw || '')
+
+  // 0. Models often glue prompt verb "KEEP" onto the YAML fence → `KEEP---`.
+  // That token must become a real `---` before any frontmatter parse, or the
+  // fence never matches and YAML leaks into the persisted body (prod 8cc5d523).
+  if (/\bKEEP---+/i.test(s)) {
+    s = s.replace(/\bKEEP---+/gi, '---')
+    fixed.push('editor_keep_fence_normalized')
+  }
 
   // 1. Whole-reply code fence (```markdown ... ``` / ```md ... ```)
   const fenced = s.trim().match(/^```(?:markdown|md|mdx)?[ \t]*\r?\n([\s\S]*?)\r?\n?```[ \t]*$/i)
@@ -638,7 +647,8 @@ function cleanLeakedYaml(body: string): string {
  * so the renderer never ships a mangled nested-YAML header.
  */
 export function sanitizeFrontmatter(content: string): string {
-  const raw = peelCollapsedFrontmatter(String(content || '')).trim()
+  // Same KEEP--- glue as normalizeEditorDocument — peel/split expect `---`.
+  const raw = peelCollapsedFrontmatter(String(content || '').replace(/\bKEEP---+/gi, '---')).trim()
   const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
   const fields: Record<string, string> = fmMatch ? parseSimpleFm(fmMatch[1]) : {}
   let body = fmMatch ? raw.slice(fmMatch.index + fmMatch[0].length) : raw

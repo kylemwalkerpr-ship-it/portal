@@ -542,6 +542,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/contentQualityPlaybook.test.ts#depth fixtures',
   }),
   def({
+    code: 'word_count_over_max', title: 'Exceeds hard max word count',
+    severity: 'blocker', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
+    requirement: 'Body words ≤ type hard maximum.',
+    promptInstruction: 'Do NOT expand. Trim redundant sections / tighten FAQs until inside the max window. Expansion worsens this blocker.',
+    evidence: 'contentDepth.checkContentDepth / audit.auditContent',
+    shipEffect: 'block', evaluator: 'contentDepth.checkContentDepth',
+    testFixture: 'tests/contentQualityPlaybook.test.ts#depth fixtures',
+  }),
+  def({
     code: 'title', title: 'Title length outside the 30–60 band',
     severity: 'warning', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
     requirement: 'Title present and 30–60 characters (missing title blocks ship).',

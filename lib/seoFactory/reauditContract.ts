@@ -97,6 +97,20 @@ export function depthMediationPlan(
     ? (currentWords >= spec.targetWords ? spec.targetWords : targetThreshold)
     : spec.minWords
   const deficit = Math.max(0, goalWords - currentWords)
+  // Over max: never ask for expansion. Callers must trim via enforceBodyWordBudget.
+  if (currentWords > spec.maxWords) {
+    return {
+      ok: true,
+      message: `Over max word count (${currentWords}/${spec.maxWords}) — trim, do not expand`,
+      currentWords,
+      minWords: spec.minWords,
+      targetWords: spec.targetWords,
+      maxWords: spec.maxWords,
+      goalWords,
+      floorMet,
+      deficit: 0,
+    }
+  }
   if (deficit === 0) {
     return {
       ok: true,
