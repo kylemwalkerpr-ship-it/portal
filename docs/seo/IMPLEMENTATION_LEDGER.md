@@ -7,7 +7,7 @@
 | 2 Keyword discovery | **done** | Grok | `keywordDiscover.ts` + `POST /api/content-studio/keywords/discover` |
 | 3 Clustering | **done** | Grok | `keywordGrouping.ts` Jaccard + `POST /api/content-studio/keywords/cluster` |
 | 4 Entities | **done** | Grok | `topicGraph.ts` + `POST/GET /api/content-studio/topics/analyze` |
-| 5 Coverage / links | blocked | High | |
+| 5 Coverage / links | **done** | Grok | `coverageLinks.ts` + `POST /api/content-studio/coverage/suggest` |
 | 6 Opportunity scoring | blocked | High | reuse `opportunityEngine.ts` |
 | 7 Action classify | blocked | High | |
 | 8 Cannibalization | blocked | High | reuse `cannibalMerge.ts` |
