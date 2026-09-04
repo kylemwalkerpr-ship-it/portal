@@ -348,7 +348,8 @@ export function trimMarkdownProseToWordBudget(
     if (isFence(value) || isHeadingOnly(value) || isTable(value)) return true
     // YMYL / required end-matter: never truncate the educational disclaimer,
     // FAQ, or official-sources blocks the same way we keep fences intact.
-    if (/\*\*Disclaimer\*\*|^\*?Disclaimer\s*:/i.test(trimmed)) return true
+    // Match **Disclaimer:** (colon inside bold) as well as **Disclaimer**: / Disclaimer:
+    if (/\*{0,2}Disclaimer\*{0,2}\s*:/i.test(trimmed)) return true
     if (/^##\s+(FAQ|Frequently asked questions|Official sources|Sources|Disclaimer|In 60 seconds|TL;DR|Key takeaways)\b/i.test(trimmed)) return true
     return false
   }
@@ -364,7 +365,7 @@ export function trimMarkdownProseToWordBudget(
   }
 
   const protectedSectionBody = (arr: string[], index: number, value: string) => {
-    if (/\*\*Disclaimer\*\*|^\*?Disclaimer\s*:/i.test(value.trim())) return true
+    if (/\*{0,2}Disclaimer\*{0,2}\s*:/i.test(value.trim())) return true
     const heading = precedingHeading(arr, index)
     return /^(FAQ|Frequently asked questions|Official sources|Sources|Disclaimer|In 60 seconds|TL;DR|Key takeaways|Table of contents)\b/i.test(heading)
   }

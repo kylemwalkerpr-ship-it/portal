@@ -292,4 +292,19 @@ describe('enforceBodyWordBudget — soft overshoot must land inside [min, max]',
     expect(removedWords).toBe(0)
     expect(content).toBe(ok)
   })
+
+  it('keeps **Disclaimer:** (colon-in-bold) through over-max trim', () => {
+    // Regression: hardProtected used /\*\*Disclaimer\*\*/ which does NOT match
+    // **Disclaimer:** — final re-trim after scaffold could strip YMYL copy.
+    const disclaimer =
+      '**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
+      'Immigration rules change; verify every requirement against official government sources.'
+    const oversize = `${blogBody(1300).trimEnd()}\n\n---\n\n${disclaimer}\n`
+    expect(countBodyWords(oversize)).toBeGreaterThan(1200)
+    const { content, removedWords } = enforceBodyWordBudget(oversize, 'blog_post')
+    expect(removedWords).toBeGreaterThan(0)
+    expect(content).toMatch(/not legal advice/i)
+    expect(content).toMatch(/\*{0,2}Disclaimer\*{0,2}\s*:/i)
+    expect(countBodyWords(content)).toBeLessThanOrEqual(maxWordsForType('blog_post'))
+  })
 })

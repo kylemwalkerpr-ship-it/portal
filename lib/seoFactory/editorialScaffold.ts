@@ -3009,6 +3009,22 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // Restore YMYL disclaimer AFTER the final re-trim (same pattern as 3351284).
+  // Over-max clip must never strip "not legal advice" from the educational block.
+  {
+    const requireDisclaimerFinal =
+      opts.indexable !== false &&
+      String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
+    if (requireDisclaimerFinal && !DISCLAIMER_RE.test(preSanitize)) {
+      preSanitize =
+        `${preSanitize.trimEnd()}\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ` +
+        'Immigration rules change; verify every requirement against official government sources and consult a ' +
+        'licensed attorney, solicitor, or registered migration agent for your situation.\n'
+      if (!applied.includes('disclaimer')) applied.push('disclaimer')
+      else applied.push('disclaimer_restored_after_final_trim')
+    }
+  }
+
   const sanitized = sanitizeFrontmatter(preSanitize)
   if (sanitized !== preSanitize) applied.push('frontmatter_sanitized')
   return {
