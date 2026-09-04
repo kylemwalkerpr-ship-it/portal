@@ -13,7 +13,7 @@
  */
 
 import * as React from 'react'
-import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
+import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 
@@ -114,7 +114,8 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       setHarperBusy(true)
       setHarperEngineError(null)
       try {
-        const summary = await runHarperGrammar(content, undefined, hintRef.current?.region)
+        const extra = listBriefKeywords(hintRef.current)
+        const summary = await runHarperGrammar(content, undefined, hintRef.current?.region, extra)
         if (summary) {
           setHarper(summary)
           setHarperEngineError(null)
@@ -356,6 +357,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       const fail = metrics?.seo.fail || []
       const warn = metrics?.seo.warn || []
       const metaNeedsExpand = fail.some((f) => /meta/i.test(f)) || warn.some((f) => /meta/i.test(f))
+      const missingKw = missingBriefKeywords(textRef.current, hintRef.current)
       return (
         <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.6 }}>
           <div style={{ color: C.muted, marginBottom: 4 }}>
@@ -371,6 +373,24 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
           {pass.map((p, i) => (
             <div key={`p${i}`} style={{ color: C.muted }}>✓ {p}</div>
           ))}
+          {missingKw.length > 0 && (
+            <div style={{ color: C.text, marginTop: 8 }}>
+              <div style={{ marginBottom: 4 }}>
+                Missing from the body (SEO check, not Harper grammar): {missingKw.slice(0, 12).join(' · ')}
+              </div>
+              <button
+                type="button"
+                disabled={!onApplied}
+                onClick={() => {
+                  const next = injectMissingBriefKeywords(textRef.current, hintRef.current)
+                  if (next.applied > 0 && onApplied) onApplied(next.content)
+                }}
+                style={{ padding: '2px 8px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+              >
+                Insert {missingKw.length} missing keyword{missingKw.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          )}
           {metaNeedsExpand && (
             <div style={{ color: C.text, marginTop: 6 }}>
               Meta description is YAML <code>description:</code> in Source view.

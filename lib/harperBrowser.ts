@@ -61,6 +61,8 @@ function getLinter(region?: string | null): Promise<LocalLinter> {
       const dialect = dialectEnum(key)
       const linter = new LocalLinter({ binary: binaryInlined, dialect })
       await linter.setup()
+      // Worker/Local: materialize default rule registry (harper.js#3490).
+      try { await linter.getDefaultLintConfig() } catch { /* older builds */ }
       try {
         await linter.setDialect(dialect)
       } catch { /* constructed dialect is enough */ }
@@ -121,21 +123,38 @@ export function harperLintItems(md: string): { lines: Array<{ src: string; out: 
   return { lines, items: [] }
 }
 
-function suggestionReplacement(s: Suggestion | null, spanLen: number): string | null {
+function suggestionReplacement(
+  s: Suggestion | null,
+  span: { start: number; end: number } | null,
+  source?: string,
+): string | null {
   if (!s) return null
   try {
     const kind = typeof s.kind === 'function' ? s.kind() : undefined
     const repl = typeof s.get_replacement_text === 'function' ? (s.get_replacement_text() || '') : ''
     if (kind === SuggestionKind.Remove) return ''
-    if (kind === SuggestionKind.InsertAfter) return null
-    if (kind === SuggestionKind.Replace || repl.length > 0 || spanLen > 0) return repl
+    if (kind === SuggestionKind.InsertAfter) {
+      const original = span && source ? source.slice(span.start, span.end) : ''
+      return `${original}${repl}`
+    }
+    if (kind === SuggestionKind.Replace || repl.length > 0 || (span && span.end > span.start)) return repl
   } catch { /* kind/text optional */ }
   return null
 }
 
-export async function runHarperGrammar(md: string, signal?: AbortSignal, region?: string | null): Promise<HarperLintSummary | null> {
+export async function runHarperGrammar(
+  md: string,
+  signal?: AbortSignal,
+  region?: string | null,
+  extraWords?: string[],
+): Promise<HarperLintSummary | null> {
   try {
     const linter = await getLinter(region)
+    if (extraWords?.length) {
+      try {
+        await linter.importWords(extraWords.map((w) => String(w || '').trim()).filter(Boolean).slice(0, 80))
+      } catch { /* vocabulary is best-effort */ }
+    }
     if (signal?.aborted) return null
     const { body } = splitMarkdownFrontmatter(String(md || ''))
     const source = body.trim().length >= 80 ? maskHarperScaffold(body) : harperSafeLines(String(md || '')).filter((l) => !l.skip).map((l) => l.out).join('\n')
@@ -153,7 +172,7 @@ export async function runHarperGrammar(md: string, signal?: AbortSignal, region?
         const list = l.suggestions()
         const s = list && list.length ? list[0] : null
         const span = l.span?.()
-        const repl = suggestionReplacement(s, span ? span.end - span.start : 0)
+        const repl = suggestionReplacement(s, span || null, source)
         if (repl != null) fix = repl
       } catch { /* suggestion text is optional */ }
       const item = {
@@ -201,7 +220,10 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
   const original = String(md || '')
   try {
     const linter = await getLinter(region)
-    const allowed = new Set(['Spelling', 'Grammar', 'Punctuation', 'Nonstandard', 'WordOrder', 'Repetition', 'Agreement'])
+    const allowed = new Set([
+      'Spelling', 'Grammar', 'Punctuation', 'Nonstandard', 'WordOrder',
+      'Repetition', 'Agreement', 'Typo', 'WordChoice', 'RepeatedWords',
+    ])
     const { fm, body } = splitMarkdownFrontmatter(original)
     let currentBody = body
     let applied = 0
@@ -225,7 +247,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
         } catch {
           suggestion = null
         }
-        const replacement = suggestionReplacement(suggestion, span.end - span.start)
+        const replacement = suggestionReplacement(suggestion, span, currentBody)
         if (replacement == null) continue
         if (isHarperNoiseFinding({ kind: kindOf(l), problem, message: l.message?.() || '', fix: replacement })) continue
         if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
@@ -263,7 +285,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
                   kind: kindOf(l),
                   problem: problem.slice(0, 120),
                   message: (l.message?.() || '').slice(0, 200),
-                  fix: suggestionReplacement(suggestion, 0) || undefined,
+                  fix: suggestionReplacement(suggestion, null, currentBody) || undefined,
                 })
               }
               if (onlyProblem) break

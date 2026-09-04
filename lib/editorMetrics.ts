@@ -260,15 +260,60 @@ export function computeSeoScore(md: string, hint?: EditorSeoHint): { score: numb
     pass.push(`Meta description ${metaLen} chars (${BRIEF_META_MIN}–${BRIEF_META_MAX} SERP band)`)
   }
 
-  const required = [...(hint?.requiredShortKeywords || []), ...(hint?.requiredLongTailKeywords || [])].map((k) => k.toLowerCase()).filter(Boolean)
+  const required = listBriefKeywords(hint)
   if (required.length) {
-    const covered = required.filter((k) => extractProse(md).toLowerCase().includes(k)).length
+    const covered = required.length - missingBriefKeywords(md, hint).length
     if (covered >= Math.max(1, Math.floor(required.length * 0.7))) pass.push(`${covered}/${required.length} brief keywords naturally present`)
     else fail.push(`Only ${covered}/${required.length} brief keywords present`)
   }
 
   const score = Math.max(5, Math.round((pass.length / Math.max(1, pass.length + fail.length)) * 100))
   return { score, pass, fail, warn }
+}
+
+export function listBriefKeywords(hint?: EditorSeoHint): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of [...(hint?.requiredShortKeywords || []), ...(hint?.requiredLongTailKeywords || [])]) {
+    const k = String(raw || '').trim()
+    if (!k) continue
+    const key = k.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(k)
+  }
+  return out
+}
+
+export function missingBriefKeywords(md: string, hint?: EditorSeoHint): string[] {
+  const prose = extractProse(md).toLowerCase()
+  return listBriefKeywords(hint).filter((k) => !prose.includes(k.toLowerCase()))
+}
+
+/**
+ * Weave missing brief keywords into a short body paragraph (never as an H2 —
+ * pasted-keyword headings fail the quality gate). Inserted before FAQ/Sources
+ * so coverage rises without stuffing the title.
+ */
+export function injectMissingBriefKeywords(
+  md: string,
+  hint?: EditorSeoHint,
+): { content: string; applied: number; inserted: string[] } {
+  const missing = missingBriefKeywords(md, hint).slice(0, 8)
+  if (!missing.length) return { content: String(md || ''), applied: 0, inserted: [] }
+  const listed = missing.length === 1
+    ? missing[0]
+    : missing.length === 2
+      ? `${missing[0]} and ${missing[1]}`
+      : `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]}`
+  const para = `The same document and school-rule checks apply if you are comparing ${listed}. Use the institution’s written instructions, not a vendor checklist, as the source of truth.`
+  const src = String(md || '')
+  const faq = src.search(/^##\s+.*faq/im)
+  const sources = src.search(/^##\s+.*sources/im)
+  const at = faq >= 0 ? faq : sources >= 0 ? sources : -1
+  const chunk = `\n\n${para}\n\n`
+  const next = at >= 0 ? src.slice(0, at) + chunk + src.slice(at) : src.replace(/\s*$/, chunk)
+  return { content: next, applied: missing.length, inserted: missing }
 }
 
 function stripYamlQuotes(v: string): string {

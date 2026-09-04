@@ -1,4 +1,4 @@
-import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget } from '../lib/editorMetrics'
+import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget, missingBriefKeywords, injectMissingBriefKeywords } from '../lib/editorMetrics'
 
 describe('editor metrics', () => {
   it('extracts prose from markdown including frontmatter/headings/lists', () => {
@@ -80,6 +80,39 @@ Plain sentence here. Another one.
     expect(out.applied).toBeGreaterThan(0)
     expect(out.content).toMatch(/\buse\b/)
     expect(out.content).not.toMatch(/\butilize\b/i)
+  })
+
+  it('injects missing brief keywords into the body without making them headings', () => {
+    const md = `---
+title: Essay editing
+description: How F-1 students use an editor before a school file in 2026 cycle now.
+---
+
+# Essay editing service
+
+Intro about editors and honour codes.
+
+## What to send
+Passport and I-20.
+
+## FAQ
+Who can edit? A reviewer the school allows.
+
+## Sources
+- a
+`
+    const hint = {
+      primaryKeyword: 'essay editing service',
+      requiredShortKeywords: ['essay editing service', 'college essay', 'personal statement'],
+      requiredLongTailKeywords: ['f-1 essay editing', 'us college application essay'],
+    }
+    const missing = missingBriefKeywords(md, hint)
+    expect(missing.length).toBeGreaterThan(0)
+    const out = injectMissingBriefKeywords(md, hint)
+    expect(out.applied).toBeGreaterThan(0)
+    expect(out.content).not.toMatch(/^##\s+college essay/m)
+    const after = missingBriefKeywords(out.content, hint)
+    expect(after.length).toBeLessThan(missing.length)
   })
 
   it('computeEditorMetrics aggregates all three', () => {
