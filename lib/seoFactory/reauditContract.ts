@@ -79,6 +79,10 @@ export type DepthMediationPlan = {
   floorMet: boolean
   /** Word gap to the goal (goalWords - currentWords, ≥0). */
   deficit: number
+  /** True when body words exceed the hard max — callers must TRIM, never expand. */
+  overMax?: boolean
+  /** Words over the hard max (currentWords - maxWords, ≥0). */
+  surplus?: number
   /** Append-only expansion prompt (only when !ok). */
   prompt?: string
 }
@@ -98,6 +102,7 @@ export function depthMediationPlan(
     : spec.minWords
   const deficit = Math.max(0, goalWords - currentWords)
   // Over max: never ask for expansion. Callers must trim via enforceBodyWordBudget.
+  // ok stays true so Expand is not offered; overMax flags the dedicated Trim path.
   if (currentWords > spec.maxWords) {
     return {
       ok: true,
@@ -109,6 +114,8 @@ export function depthMediationPlan(
       goalWords,
       floorMet,
       deficit: 0,
+      overMax: true,
+      surplus: currentWords - spec.maxWords,
     }
   }
   if (deficit === 0) {

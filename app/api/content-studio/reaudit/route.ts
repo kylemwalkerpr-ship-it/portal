@@ -1137,6 +1137,29 @@ Return ONLY the JSON EditorPatch.`
         loopStartContent = sanitized.content
       } catch { /* keep the current body if live audit is unavailable */ }
 
+      // ── Over-max trim pre-pass ───────────────────────────────────────
+      // Soft overshoots must be clearable even when outline completion will
+      // later hold the loop. Trim BEFORE inserting missing outline sections
+      // so Audit & Fix never returns outline_completion_failed while an
+      // uncleared word_count_over_max remains from the pre-outline body.
+      {
+        const ct = String(contentType || 'legal_guide')
+        const maxW = maxWordsForType(ct)
+        const minW = minWordsForType(ct)
+        if (countBodyWords(loopStartContent) > maxW) {
+          const trimmed = applyDeterministicRepairs({
+            content: loopStartContent,
+            ...loopCtx,
+            maxWords: maxW,
+            minWords: minW,
+          })
+          loopStartContent = trimmed.content
+          if (trimmed.applied.some((a) => /trim_to_max_words/.test(a))) {
+            console.info(`[reaudit] over-max trim pre-pass: ${trimmed.applied.filter((a) => /trim_to_max_words/.test(a)).join('; ')}`)
+          }
+        }
+      }
+
       // ── Outline completion pre-pass ──────────────────────────────────
       // The truncated-draft defect: an article whose quick-response floors
       // all pass but whose canonical brief outline is unfinished ("the next
@@ -1174,6 +1197,21 @@ Return ONLY the JSON EditorPatch.`
       const boundary = applyDeterministicRepairs({ content: finalContent, ...loopCtx })
       boundaryRepairs.push(...boundary.applied)
       finalContent = boundary.content
+      // Belt-and-suspenders: outline inserts / scaffold additions can reintroduce
+      // soft overshoot after the loop stops on outline_completion_failed. Always
+      // land inside the type max before the final contract evaluation.
+      {
+        const ct = String(contentType || 'legal_guide')
+        const maxW = maxWordsForType(ct)
+        const minW = minWordsForType(ct)
+        if (countBodyWords(finalContent) > maxW) {
+          const capped = enforceBodyWordBudget(finalContent, ct, { minWords: minW, maxWords: maxW })
+          if (capped.removedWords > 0) {
+            finalContent = capped.content
+            boundaryRepairs.push(`trim_to_max_words_boundary (${capped.removedWords} prose words removed)`)
+          }
+        }
+      }
       // Synthesized filler closure (2026-09-01): uncovered synthesized terms
       // have no demand evidence and can never be honestly forced into prose.
       // After the AI sweep, EVICT them from the contract at the boundary
@@ -1835,7 +1873,28 @@ ${enginePlan.promptBlock}` + editorResponseContract()
       // before the schema block. This preserves every passing section instead
       // of forcing a full rewrite that re-introduces voice/depth failures.
       depthPlan = depthMediationPlan(content, contentType, primaryKeyword, region)
-      if (depthPlan.ok) {
+      if (depthPlan.overMax) {
+        // Soft overshoot: deterministic trim (never expand). Dedicated path so
+        // operators can clear word_count_over_max without waiting on outline AI.
+        const ct = String(contentType || 'legal_guide')
+        const maxW = maxWordsForType(ct)
+        const minW = minWordsForType(ct)
+        fixedContent = applyDeterministicRepairs({
+          content,
+          primaryKeyword: primaryKeyword || 'guide',
+          region, indexable, contentType,
+          requiredShortKeywords, requiredLongTailKeywords,
+          competingUrls: competingPages, targetUrl,
+          maxWords: maxW, minWords: minW,
+        }).content
+        // closeShipGate also re-trims; keep the guarantee after scaffold adds.
+        fixedContent = closeShipGate(fixedContent, {
+          primaryKeyword: primaryKeyword || 'guide',
+          region, indexable, contentType,
+          requiredShortKeywords, requiredLongTailKeywords,
+          competingUrls: competingPages, targetUrl,
+        })
+      } else if (depthPlan.ok) {
         // Goal (floor OR target) already met — nothing to expand; keep the
         // draft as-is and re-evaluate below so the response reflects the true
         // state.

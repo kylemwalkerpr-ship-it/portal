@@ -1,6 +1,7 @@
 import { normalizeEditorDocument, sanitizeFrontmatter } from '@/lib/seoFactory/formatContract'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { repairClassFor } from '@/lib/seoFactory/contentQualityPlaybook'
+import { depthMediationPlan } from '@/lib/seoFactory/reauditContract'
 
 describe('KEEP--- fence normalization (Audit & Fix pollution)', () => {
   const polluted = `KEEP---
@@ -41,5 +42,22 @@ The base student visa charge rose. Confirm the live figure on the Department of 
 
   it('word_count_over_max is a deterministic trim gate (never expand)', () => {
     expect(repairClassFor('word_count_over_max')).toBe('deterministic')
+  })
+})
+
+describe('over-max trim remains clearable with outline gaps', () => {
+  it('depthMediationPlan flags overMax so Trim UI can run without Expand', () => {
+    const para = 'Applicants should gather passport copies, fee receipts, and a timeline of prior visas before filing. '
+    const body = `# Blog title\n\n${para.repeat(90)}`
+    const plan = depthMediationPlan(body, 'blog_post', 'student visa fees')
+    expect(plan.overMax).toBe(true)
+    expect(plan.surplus).toBeGreaterThan(0)
+    expect(plan.ok).toBe(true) // Expand must not be offered
+    expect(plan.deficit).toBe(0)
+  })
+
+  it('word_count_over_max stays a deterministic repair class for Audit & Fix priority', () => {
+    expect(repairClassFor('word_count_over_max')).toBe('deterministic')
+    expect(repairClassFor('missing_outline_section')).not.toBe('deterministic')
   })
 })

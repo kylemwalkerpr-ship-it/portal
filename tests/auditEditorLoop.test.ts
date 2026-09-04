@@ -218,6 +218,59 @@ describe('runAuditEditorLoop — convergence and holds', () => {
     expect(aiCalls).toBe(0)
   })
 
+  it('trims word_count_over_max even when outline completion fails', async () => {
+    const oversize = `${BASE_DOC}
+
+## Eligibility details
+
+Applicants should gather passport copies, fee receipts, and a timeline of prior visas before filing. Sponsors must confirm the Certificate of Sponsorship is assigned and the salary meets the going rate for the occupation code. Keep every receipt and correspondence in one folder so the caseworker can verify the timeline without chasing missing pages.
+
+Applicants should gather passport copies, fee receipts, and a timeline of prior visas before filing. Sponsors must confirm the Certificate of Sponsorship is assigned and the salary meets the going rate for the occupation code. Keep every receipt and correspondence in one folder so the caseworker can verify the timeline without chasing missing pages.
+
+Applicants should gather passport copies, fee receipts, and a timeline of prior visas before filing. Sponsors must confirm the Certificate of Sponsorship is assigned and the salary meets the going rate for the occupation code. Keep every receipt and correspondence in one folder so the caseworker can verify the timeline without chasing missing pages.
+`
+    let repairCalls = 0
+    const result = await runAuditEditorLoop(
+      { content: oversize, spec: SPEC, budget: { maxAiPasses: 1, maxDeterministicRepasses: 3 } },
+      {
+        evaluate: (c) => {
+          const findings: Array<{ code: string; severity: 'blocker' }> = [
+            {
+              code: 'missing_outline_section',
+              severity: 'blocker',
+            },
+          ]
+          // Simulate the live gate: over-max only while the body is still bloated.
+          if (c.length >= oversize.length - 80) {
+            findings.push({ code: 'word_count_over_max', severity: 'blocker' })
+          }
+          return findings
+        },
+        deterministicRepair: (c, findings) => {
+          repairCalls++
+          if (!findings.some((f) => f.code === 'word_count_over_max')) {
+            return { content: c, repairs: [] }
+          }
+          // Deterministic trim: drop the last oversized eligibility block.
+          const trimmed = c.replace(
+            /\nApplicants should gather passport copies[\s\S]*?missing pages\.\n?$/,
+            '\n',
+          )
+          return {
+            content: trimmed === c ? c.slice(0, Math.floor(c.length * 0.85)) : trimmed,
+            repairs: ['trim_to_max_words (synthetic)'],
+          }
+        },
+        requestEditorPatch: async () => null,
+      },
+    )
+    expect(repairCalls).toBeGreaterThan(0)
+    expect(result.content.length).toBeLessThan(oversize.length)
+    expect(result.leftoverCodes).toContain('missing_outline_section')
+    expect(result.leftoverCodes).not.toContain('word_count_over_max')
+    expect(result.stopReason).toBe('outline_completion_failed')
+  })
+
   it('does not stop with patch_rejected_twice for missing_outline_section', async () => {
     let patchCalls = 0
     const result = await runAuditEditorLoop(

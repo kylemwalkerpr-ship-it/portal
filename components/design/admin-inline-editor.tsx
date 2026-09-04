@@ -195,7 +195,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // append-only expansion aims at; floorMet distinguishes the hard floor
   // blocker from the word_count_target warning.
   const [depthMediation, setDepthMediation] = useState<{
-    ok: boolean; message: string; currentWords: number; minWords: number; targetWords: number; maxWords: number; goalWords: number; floorMet: boolean; deficit: number
+    ok: boolean; message: string; currentWords: number; minWords: number; targetWords: number; maxWords: number; goalWords: number; floorMet: boolean; deficit: number; overMax?: boolean; surplus?: number
   } | null>(null)
   // Merged quality + audit warnings (schema/meta/internal-links included).
   const [warningItems, setWarningItems] = useState<Array<{ code: string; message: string; fix?: string }>>([])
@@ -589,9 +589,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
         ? ` · ${data.appliedRepairs.join(', ')}`
         : ''
+      const wasOverMax = Boolean(depthMediation?.overMax) || Boolean(data.depthMediation?.overMax === false && (data.appliedRepairs || []).some((r: string) => /trim_to_max/.test(String(r))))
+      const trimmedNotice = (Array.isArray(data.appliedRepairs) ? data.appliedRepairs : []).some((r: string) => /trim_to_max/.test(String(r)))
       setNotice(saveFailed
         ? 'Audit passed; draft Save failed — retry Save'
-        : `Depth expansion applied - ${data.shipReady ? 'ship gate now ready' : 'still below the floor'}: ${data.depthGate?.message || ''}${repairs}`)
+        : trimmedNotice || wasOverMax
+          ? `Trimmed to max word budget — ${data.shipReady ? 'ship gate now ready' : 're-check remaining blockers'}: ${data.depthGate?.message || data.depthMediation?.message || ''}${repairs}`
+          : `Depth expansion applied - ${data.shipReady ? 'ship gate now ready' : 'still below the floor'}: ${data.depthGate?.message || ''}${repairs}`)
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Depth expansion failed')
@@ -603,7 +607,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         setFixElapsed(0)
       }
     }
-  }, [content, expandingDepth, onChange, onScoreChange, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, expandingDepth, onChange, onScoreChange, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel, depthMediation?.overMax])
 
   // Fix ALL warnings via AI — evidence-less quality warnings AND indexability
   // warnings (schema/meta/internal-links) included. The sweep prompt lists
@@ -877,7 +881,25 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               the word-count target (word_count_target warning). GPT Sol
               (senior editor) writes the new sections by default; Terra is the
               fast alternative. */}
-          {depthMediation && !depthMediation.ok && (
+          {(depthMediation?.overMax || blockerItems.some((b) => b.code === 'word_count_over_max')) && (
+            <button
+              type="button"
+              data-testid="studio-trim-over-max"
+              disabled={expandingDepth || busy || disabled}
+              onClick={handleExpandDepth}
+              style={btnStyle({
+                bg: expandingDepth ? '#FEE2E2' : '#FEF3C7',
+                border: expandingDepth ? C.red : '#D97706',
+                color: expandingDepth ? C.red : '#92400E',
+                disabled: expandingDepth || busy || disabled,
+              })}
+            >
+              {expandingDepth
+                ? `Trimming… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
+                : `Trim to max (${depthMediation?.surplus || Math.max(0, (depthMediation?.currentWords || 0) - (depthMediation?.maxWords || 0)) || 'over'} words)`}
+            </button>
+          )}
+          {depthMediation && !depthMediation.ok && !depthMediation.overMax && (
             <button
               type="button"
               data-testid="studio-expand-depth"

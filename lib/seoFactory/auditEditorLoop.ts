@@ -274,6 +274,9 @@ export async function runAuditEditorLoop(
     }
 
     // 3. Deterministic, idempotent repairs only.
+    // Prefer word_count_over_max / other deterministic codes FIRST so a soft
+    // overshoot is trimmed even when missing_outline_section will later hold
+    // the loop (outline cannot be patched; over-max must still clear).
     let repairs: string[] = []
     if (deps.deterministicRepair && deterministicRepasses < budget.maxDeterministicRepasses) {
       const result = deps.deterministicRepair(content, findings)
@@ -299,6 +302,14 @@ export async function runAuditEditorLoop(
     // 7. Targeted AI request: only outstanding targeted_ai codes.
     // missing_outline_section cannot be fixed by EditorPatch (no new headings).
     const outlineMissing = findings.filter((f) => f.code === MISSING_OUTLINE_SECTION_CODE)
+    const deterministicOpen = findings.filter((f) => {
+      if (f.code === MISSING_OUTLINE_SECTION_CODE) return false
+      try {
+        return repairClassFor(f.code) === 'deterministic'
+      } catch {
+        return false
+      }
+    })
     const targeted = findings.filter((f) => {
       if (f.code === MISSING_OUTLINE_SECTION_CODE) return false
       try {
@@ -307,16 +318,46 @@ export async function runAuditEditorLoop(
         return false
       }
     })
-    if (!targeted.length || !deps.requestEditorPatch) {
+    // Deterministic leftovers (esp. word_count_over_max) must get another
+    // pass when budget remains — do NOT abort solely on outline failure while
+    // an over-max blocker is still open and repairable.
+    if (
+      deterministicOpen.length
+      && deps.deterministicRepair
+      && deterministicRepasses < budget.maxDeterministicRepasses
+      && (!targeted.length || repairs.length > 0)
+    ) {
       rounds.push({
         round, beforeHash, openFindings: findings, deterministicRepairs: repairs,
-        afterHash: beforeHash, progress: { blockersReduced: false, fingerprintPreserved: true },
+        afterHash: computeDocumentFingerprint(content).hash,
+        progress: { blockersReduced: repairs.length > 0, fingerprintPreserved: true },
+      })
+      continue
+    }
+    if (!targeted.length || !deps.requestEditorPatch) {
+      const afterHash = computeDocumentFingerprint(content).hash
+      rounds.push({
+        round, beforeHash, openFindings: findings, deterministicRepairs: repairs,
+        afterHash, progress: { blockersReduced: repairs.length > 0, fingerprintPreserved: true },
       })
       status = 'held_for_review'
       leftoverCodes = findings.map((f) => f.code)
+      const onlyDeterministic =
+        leftoverCodes.length > 0
+        && leftoverCodes.every((c) => {
+          try {
+            return repairClassFor(c) === 'deterministic' || c === MISSING_OUTLINE_SECTION_CODE
+          } catch {
+            return c === MISSING_OUTLINE_SECTION_CODE
+          }
+        })
       stopReason = outlineMissing.length
         ? 'outline_completion_failed'
-        : 'human_only_findings'
+        : onlyDeterministic && leftoverCodes.includes('word_count_over_max')
+          ? 'budget_exhausted'
+          : human.length
+            ? 'human_only_findings'
+            : 'budget_exhausted'
       break
     }
 

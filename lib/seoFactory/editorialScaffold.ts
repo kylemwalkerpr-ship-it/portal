@@ -2989,6 +2989,26 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
+  // Final word-budget pass: disclaimer / TLDR / Ahrefs repairs above can push
+  // a draft that was just trimmed back over the hard max (live bug: blog at
+  // 1300 with max 1200 after Audit & Fix). Re-trim AFTER those additions so
+  // the returned body is always inside [min, max]. Disclaimer / FAQ / Sources
+  // stay protected inside enforceBodyWordBudget.
+  {
+    const maxW = opts.maxWords ?? maxWordsForType(String(opts.contentType || 'legal_guide'))
+    const minW = opts.minWords ?? minWordsForType(String(opts.contentType || 'legal_guide'))
+    if (countBodyWords(preSanitize) > maxW) {
+      const trimmed = enforceBodyWordBudget(preSanitize, String(opts.contentType || 'legal_guide'), {
+        minWords: minW,
+        maxWords: maxW,
+      })
+      if (trimmed.removedWords > 0) {
+        preSanitize = trimmed.content
+        applied.push(`trim_to_max_words_final (${trimmed.removedWords} prose words removed after scaffold)`)
+      }
+    }
+  }
+
   const sanitized = sanitizeFrontmatter(preSanitize)
   if (sanitized !== preSanitize) applied.push('frontmatter_sanitized')
   return {
