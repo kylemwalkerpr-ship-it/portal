@@ -48,12 +48,6 @@ const HOST_MODEL_OPTIONS: Record<string, string[]> = {
     'deepseek-ai/DeepSeek-V4-Flash',
     'Qwen/Qwen3.6-27B',
   ],
-  openai: [
-    'gpt-5.6-sol',
-    'gpt-5.6-terra',
-    'gpt-5.6-luna',
-    'gpt-4o',
-  ],
 }
 
 export const AI_PROVIDERS: AiProviderDef[] = [
@@ -101,17 +95,6 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     vaultGroupLabel: 'Entrim · api.entrim.ai',
     modelOptions: ['Qwen/Qwen3.6-27B'],
   },
-  {
-    id: 'openai',
-    label: 'ChatGPT · OpenAI (api.openai.com/v1)',
-    keyEnv: 'OPENAI_API_KEY',
-    modelEnv: 'OPENAI_MODEL',
-    fixedBaseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5.6-sol',
-    role: 'fallback',
-    hint: 'ChatGPT — paste OPENAI_API_KEY in Command Center (same path as Entrim). Pin `openai` / ChatGPT in every studio lane.',
-    modelOptions: HOST_MODEL_OPTIONS.openai,
-  },
 ]
 
 export const providerDef = (id: string): AiProviderDef | undefined =>
@@ -121,7 +104,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
  *  Entrim (Qwen3.6 27B first, DeepSeek flash second) fronts the auto
  *  cascade, with Grok third — the three live providers. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'entrim-qwen-27b', 'entrim-deepseek', 'grok', 'openai',
+  'entrim-qwen-27b', 'entrim-deepseek', 'grok',
 ] as const
 
 export interface VaultKeyRow {
@@ -339,7 +322,7 @@ export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number
   return (data || []).length
 }
 
-const LIVE_PROVIDERS = new Set(['entrim-qwen-27b', 'entrim-deepseek', 'grok', 'openai'])
+const LIVE_PROVIDERS = new Set(['entrim-qwen-27b', 'entrim-deepseek', 'grok'])
 
 export function isLiveDefaultProvider(value: string): boolean {
   return LIVE_PROVIDERS.has(String(value || '').trim())
@@ -361,6 +344,7 @@ const STALE_DEFAULT_PROVIDERS = new Set([
   'baseten-glm-fast',
   'parasail-deepseek',
   'nvidia-deepseek',
+  'openai',
   'groq',
   'gemini',
   'openrouter',

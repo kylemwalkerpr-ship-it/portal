@@ -1,15 +1,18 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * LIVE POLICY: Entrim + Grok + ChatGPT (OpenAI).
+ * LIVE POLICY (2026-09-02, owner-model): Entrim + Grok.
  *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`, api.entrim.ai/v1) — primary
  *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`, api.entrim.ai/v1)
- *   3. Grok 4.6 (`grok`, api.x.ai/v1 / SuperGrok)
- *   4. ChatGPT (`openai`, api.openai.com/v1) — OPENAI_API_KEY / vault
+ *   3. Grok 4.6 (`grok`, api.x.ai/v1 / SuperGrok) — the third live family
  *
- * Unknown / legacy pins redirect to the Entrim Qwen default with any model
- * override stripped. NVIDIA / Groq / Gemini / OpenRouter / Baseten /
- * Parasail / Run BiOS stay out of commission.
+ * The two Entrim families share one `ENTRIM_API_KEY` and are served by
+ * `api.entrim.ai/v1`; Grok uses XAI_API_KEY or SuperGrok OAuth. Every other
+ * host (NVIDIA / Cloudflare / Groq / Gemini / OpenRouter / OpenAI /
+ * DeepSeek.com / Baseten / Parasail / Run BiOS / Zai / AIHubmix /
+ * chatProvider bridge) is OUT OF COMMISSION and filtered out of the cascade
+ * at runtime even if its key is still configured. Unknown / legacy pins
+ * redirect to the Entrim Qwen default with any model override stripped.
  *
  * Owner model: when `aiProvider` names one of the three, the call is
  * `exclusive` — no capacity cascade to another backend. Capacity cascade only
@@ -150,7 +153,7 @@ const ENTRIM_MAX_TOKENS = 16384
  *  - CONTENT_AI_ALL_PROVIDERS=1 restores the legacy full cascade (break-glass
  *    for local diagnostics only — never set in production).
  */
-export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL, 'grok', 'openai']
+export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL, 'grok']
 export const LIVE_DEFAULT_PROVIDER = ENTRIM_QWEN_LABEL
 
 /** True when the provider label may serve requests under the live policy. */

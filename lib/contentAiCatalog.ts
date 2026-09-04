@@ -8,22 +8,21 @@
  *
  * Lane policy (single source of truth for UI pickers AND server defaults),
  * mirroring the live provider policy in contentAiProvider.ts:
- *   Draft/Brief/Review/Command — Entrim Qwen3.6 27B (default) + Entrim
- *   DeepSeek V4 Flash + Grok 4.6 + ChatGPT (OpenAI, when OPENAI_API_KEY is set).
- * Retired families (Claude, GLM, MiniMax, Nemotron, Run BiOS, NVIDIA,
- * Baseten, Parasail, Groq, Gemini, …) are no longer selectable — a saved
- * legacy pin parses to the Entrim Qwen default and the server gate routes
- * it to `entrim-qwen-27b`.
+ *   Draft  — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash + Grok.
+ *   Brief  — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash + Grok.
+ *   Review — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash + Grok.
+ *   Command — the same three models (no Auto).
+ * Retired families (Claude, GLM, MiniMax, Nemotron, GPT-5.6, Run BiOS,
+ * NVIDIA, Baseten, Parasail, OpenAI, Groq, Gemini, …) are no longer
+ * selectable — a saved legacy pin parses to the Entrim Qwen default and the
+ * server gate routes it to `entrim-qwen-27b`.
  */
 
 export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
 
-export type StudioModelId = 'qwen3.6-27b' | 'deepseek-v4-flash' | 'grok-4.6' | 'gpt-5.6'
+export type StudioModelId = 'qwen3.6-27b' | 'deepseek-v4-flash' | 'grok-4.6'
 
-export type StudioHostId = 'entrim' | 'xai' | 'openai'
-
-export const OPENAI_PIN = 'openai'
-export const OPENAI_CHAT_MODEL = 'gpt-5.6-sol'
+export type StudioHostId = 'entrim' | 'xai'
 
 export interface StudioHostOption {
   id: StudioHostId
@@ -67,21 +66,21 @@ export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
  * (Grok). No `auto` model exists in the catalog.
  */
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
-  draft: ['entrim', 'xai', 'openai'],
-  brief: ['entrim', 'xai', 'openai'],
-  review: ['entrim', 'xai', 'openai'],
-  command: ['entrim', 'xai', 'openai'],
+  draft: ['entrim', 'xai'],
+  brief: ['entrim', 'xai'],
+  review: ['entrim', 'xai'],
+  command: ['entrim', 'xai'],
 }
 
 /** Host picker order — skip a host when that model is not served there. */
-export const STUDIO_HOST_ORDER: StudioHostId[] = ['entrim', 'xai', 'openai']
+export const STUDIO_HOST_ORDER: StudioHostId[] = ['entrim', 'xai']
 
 const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
   // All lanes list the same three models (Qwen lead, then DeepSeek, then Grok).
-  draft: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'],
-  brief: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'],
-  review: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'],
-  command: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'],
+  draft: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
+  brief: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
+  review: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
+  command: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
 }
 
 export const STUDIO_MODELS: StudioModelOption[] = [
@@ -108,13 +107,6 @@ export const STUDIO_MODELS: StudioModelOption[] = [
     lanes: ['draft', 'brief', 'review', 'command'],
     hosts: [{ id: 'xai', label: 'xAI / Grok', pin: 'grok' }],
   },
-  {
-    id: 'gpt-5.6',
-    label: 'ChatGPT',
-    apiModel: OPENAI_CHAT_MODEL,
-    lanes: ['draft', 'brief', 'review', 'command'],
-    hosts: [{ id: 'openai', label: 'OpenAI', pin: OPENAI_PIN }],
-  },
 ]
 
 const PIN_ALIASES: Record<string, string> = {
@@ -130,14 +122,6 @@ const PIN_ALIASES: Record<string, string> = {
   xai: 'grok',
   supergrok: 'grok',
   'super-grok': 'grok',
-  [OPENAI_PIN]: OPENAI_PIN,
-  chatgpt: OPENAI_PIN,
-  'chatgpt-plus': OPENAI_PIN,
-  'gpt-5.6': OPENAI_PIN,
-  'gpt-5.6-sol': OPENAI_PIN,
-  'gpt-5.6-terra': OPENAI_PIN,
-  'gpt-5.6-luna': OPENAI_PIN,
-  'gpt-4o': OPENAI_PIN,
 }
 
 export function modelsForLane(lane: StudioLane): StudioModelOption[] {
