@@ -24,6 +24,7 @@ import { AeoRemediationQueue } from './studio-aeo-remediation'
 import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/seoEngine/citationRemediation'
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { autoMapKeywordsToH2s } from '@/lib/seoFactory/keywordPlacement'
 import { mergeInterlinkLists, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
@@ -2389,6 +2390,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
+  React.useEffect(() => {
+    setKwH2Map((prev) => autoMapKeywordsToH2s(kwList, h2s, prev))
+  }, [kwList, h2s])
 
   // AI-powered full-brief generation — the selected Brief model ingests ALL
   // Discover intel (radar gaps, GSC demand, keyword research, LLM visibility,
@@ -2919,13 +2923,19 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         </div>
         {kwList.length > 0 && (
           <div style={{ marginTop: 10, maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {kwList.slice(0, 14).map(kw => (
+            {kwList.map(kw => (
               <div key={kw} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontFamily: C.mono, fontSize: 10, color: E.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kw}</span>
                 <select
                   aria-label={`Place ${kw} on H2`}
                   value={kwH2Map[kw] || ''}
-                  onChange={e => setKwH2Map(p => e.target.value ? { ...p, [kw]: e.target.value } : { ...p, [kw]: undefined as any, ...Object.keys(p).filter(k => k !== kw).length ? {} : {} as any })}
+                  onChange={e => setKwH2Map((p) => {
+                    const next = { ...p }
+                    const value = e.target.value
+                    if (value) next[kw] = value
+                    else delete next[kw]
+                    return next
+                  })}
                   style={{ ...inputBase, width: 160, fontSize: 10, padding: '4px 6px' }}
                 >
                   <option value="">Auto</option>
