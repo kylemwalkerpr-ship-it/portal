@@ -3,7 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { discoverKeywords } from '@/lib/seoFactory/keywordDiscover'
 import { groupKeywords } from '@/lib/seoFactory/keywordGrouping'
 import { scoreClusterCoverage, suggestInternalLinks } from '@/lib/seoFactory/coverageLinks'
-import { scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
+import { pickOpportunityForSeed, scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
 import { detectCannibalization } from '@/lib/seoFactory/cannibalDetect'
 import { buildSeoBrief, formatSeoBriefForWriter } from '@/lib/seoFactory/seoBrief'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
@@ -58,8 +58,11 @@ export async function POST(request: NextRequest) {
     const links = suggestInternalLinks({ currentUrl: url, currentTitle: title, currentBody: content, corpus, limit: 6 })
 
     const matchingHits = gscHits.filter((h) => h.query.toLowerCase().includes(seed.toLowerCase()) || seed.toLowerCase().includes(h.query.toLowerCase().slice(0, 24)))
-    const opportunity = matchingHits.length
-      ? scoreAndClassify(matchingHits.map((h) => ({
+    // Classify the full GSC window (same pagesForQuery as Analyze / score API)
+    // then pick the seed row — classifying only matchingHits undercounts URLs
+    // and drifts CONSOLIDATE → WATCH.
+    const classified = gscHits.length
+      ? scoreAndClassify(gscHits.map((h) => ({
         query: h.query,
         page: h.page,
         impressions: h.impressions,
@@ -69,8 +72,9 @@ export async function POST(request: NextRequest) {
         coverageScore: coverage?.score,
         relatedVariantCount: discovered.candidates.length,
         inSuggestions: discovered.candidates.some((c) => c.sources.includes('suggest')),
-      })))[0]
-      : undefined
+      })))
+      : []
+    const opportunity = pickOpportunityForSeed(classified, seed)
     const cannibals = detectCannibalization({ hits: matchingHits.length ? matchingHits : gscHits.slice(0, 400) })
 
     const brief = buildSeoBrief({

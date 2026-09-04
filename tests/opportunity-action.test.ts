@@ -1,4 +1,4 @@
-import { scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
+import { pickOpportunityForSeed, scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
 import { scoreOpportunity, type OpportunityEvidence } from '@/lib/seoFactory/opportunityScore'
 import { classifyOpportunityAction } from '@/lib/seoFactory/opportunityAction'
 
@@ -48,6 +48,20 @@ describe('Phase 7 action classification', () => {
     ])
     expect(list.every((o) => o.action === 'CONSOLIDATE')).toBe(true)
     expect(list[0].actionReasons.join(' ')).toMatch(/2 URLs/)
+  })
+
+  it('pickOpportunityForSeed keeps CONSOLIDATE from the full GSC window', () => {
+    const classified = scoreAndClassify([
+      base({ query: 'f-1 visa', page: 'https://a.example/one', impressions: 2000, position: 12 }),
+      base({ query: 'f-1 visa', page: 'https://a.example/two', impressions: 1500, position: 18 }),
+      base({ query: 'unrelated', page: 'https://a.example/other', impressions: 800, position: 20 }),
+    ])
+    const picked = pickOpportunityForSeed(classified, 'f-1 visa')
+    expect(picked?.action).toBe('CONSOLIDATE')
+    const subsetOnly = scoreAndClassify([
+      base({ query: 'f-1 visa', page: 'https://a.example/one', impressions: 2000, position: 12 }),
+    ])
+    expect(subsetOnly[0].action).not.toBe('CONSOLIDATE')
   })
 
   it('WATCH when evidence is thin', () => {

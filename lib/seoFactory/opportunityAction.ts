@@ -80,6 +80,20 @@ export function scoreAndClassify(
   return classifyOpportunityList(scoreOpportunityList(rows, weights))
 }
 
+/** Same seed match the Analyze panel uses — pick from the classified list. */
+export function pickOpportunityForSeed(
+  classified: ClassifiedOpportunity[],
+  seed: string,
+): ClassifiedOpportunity | undefined {
+  const n = String(seed || '').trim().toLowerCase()
+  if (!classified.length) return undefined
+  if (!n) return classified[0]
+  return classified.find((o) => {
+    const q = String(o.query || '').toLowerCase()
+    return q.includes(n) || n.includes(q.slice(0, 40))
+  }) || classified[0]
+}
+
 export function classifyOpportunityList(opps: SeoOpportunity[]): ClassifiedOpportunity[] {
   const pagesByQuery = new Map<string, Set<string>>()
   for (const o of opps) {
