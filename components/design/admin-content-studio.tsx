@@ -2376,18 +2376,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     if (!Array.isArray(cluster) || cluster.length === 0) return
     const extra = cluster.map((k) => String(k).trim()).filter(Boolean)
     if (!extra.length) return
-    setKeywords((prev) => {
-      const existing = String(prev || '').split(',').map((k) => k.trim()).filter(Boolean)
-      const seen = new Set(existing.map((k) => k.toLowerCase()))
-      const merged = [...existing]
-      for (const term of extra) {
-        if (seen.has(term.toLowerCase())) continue
-        seen.add(term.toLowerCase())
-        merged.push(term)
-      }
-      return merged.join(', ')
-    })
-  }, [setKeywords])
+    const existing = String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean)
+    const seen = new Set(existing.map((k) => k.toLowerCase()))
+    const merged = [...existing]
+    for (const term of extra) {
+      if (seen.has(term.toLowerCase())) continue
+      seen.add(term.toLowerCase())
+      merged.push(term)
+    }
+    setKeywords(merged.join(', '))
+  }, [keywords, setKeywords])
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
