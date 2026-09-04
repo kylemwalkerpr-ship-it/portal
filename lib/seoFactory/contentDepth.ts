@@ -345,7 +345,27 @@ export function trimMarkdownProseToWordBudget(
     const trimmed = value.trim()
     if (!trimmed) return true
     if (isFence(value) || isHeadingOnly(value) || isTable(value)) return true
+    // YMYL / required end-matter: never truncate the educational disclaimer,
+    // FAQ, or official-sources blocks the same way we keep fences intact.
+    if (/\*\*Disclaimer\*\*|^\*?Disclaimer\s*:/i.test(trimmed)) return true
+    if (/^##\s+(FAQ|Frequently asked questions|Official sources|Sources|Disclaimer|In 60 seconds|TL;DR|Key takeaways)\b/i.test(trimmed)) return true
     return false
+  }
+
+  const precedingHeading = (arr: string[], index: number): string => {
+    for (let i = index - 1; i >= 0; i--) {
+      const t = arr[i].trim()
+      if (!t || isSeparator(arr[i])) continue
+      const h = t.match(/^#{1,6}\s+(.+)/)
+      return h ? h[1] : ''
+    }
+    return ''
+  }
+
+  const protectedSectionBody = (arr: string[], index: number, value: string) => {
+    if (/\*\*Disclaimer\*\*|^\*?Disclaimer\s*:/i.test(value.trim())) return true
+    const heading = precedingHeading(arr, index)
+    return /^(FAQ|Frequently asked questions|Official sources|Sources|Disclaimer|In 60 seconds|TL;DR|Key takeaways|Table of contents)\b/i.test(heading)
   }
 
   const dropLastSentence = (value: string, beforeTotal: number): string => {
@@ -376,7 +396,7 @@ export function trimMarkdownProseToWordBudget(
     const beforeTotal = countBodyWords(blocks.join(''))
     const prose = blocks
       .map((value, index) => ({ value, index, words: countBodyWords(value) }))
-      .filter((b) => !isSeparator(b.value) && !hardProtected(b.value) && !isList(b.value) && b.words >= 4)
+      .filter((b) => !isSeparator(b.value) && !hardProtected(b.value) && !protectedSectionBody(blocks, b.index, b.value) && !isList(b.value) && b.words >= 4)
       .sort((a, b) => b.words - a.words || b.index - a.index)
     const candidate = prose[0]
     if (candidate) {
@@ -406,7 +426,7 @@ export function trimMarkdownProseToWordBudget(
     // Soft overshoot often lives in TLDR / FAQ lists. Drop trailing items.
     const lists = blocks
       .map((value, index) => ({ value, index, words: countBodyWords(value) }))
-      .filter((b) => !isSeparator(b.value) && isList(b.value) && b.words >= 4)
+      .filter((b) => !isSeparator(b.value) && isList(b.value) && b.words >= 4 && !protectedSectionBody(blocks, b.index, b.value))
       .sort((a, b) => b.index - a.index)
     const list = lists[0]
     if (list) {
@@ -432,7 +452,7 @@ export function trimMarkdownProseToWordBudget(
     const need = finalWords - maxWords
     const clipAt = fallbackBlocks
       .map((value, index) => ({ value, index, words: countBodyWords(value) }))
-      .filter((b) => !isSeparator(b.value) && !hardProtected(b.value) && b.words > 0)
+      .filter((b) => !isSeparator(b.value) && !hardProtected(b.value) && !protectedSectionBody(fallbackBlocks, b.index, b.value) && b.words > 0)
       .sort((a, b) => b.words - a.words || b.index - a.index)[0]
     if (clipAt) {
       const tokens = clipAt.value.trim().split(/\s+/)

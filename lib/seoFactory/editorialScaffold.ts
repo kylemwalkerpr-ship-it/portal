@@ -1290,17 +1290,6 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
-  const requireDisclaimer =
-    opts.indexable !== false &&
-    String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
-
-  if (requireDisclaimer && !DISCLAIMER_RE.test(b)) {
-    b = `${b.trimEnd()}\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ` +
-      'Immigration rules change; verify every requirement against official government sources and consult a ' +
-      'licensed attorney, solicitor, or registered migration agent for your situation.\n'
-    applied.push('disclaimer')
-  }
-
   {
     const tldr = b.match(/(?:^|\n)##\s+In 60 seconds\s*[:：-]?\s*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     const existing = tldr ? (tldr[1].match(/^[-*+]\s+\S/gm) || []).length : 0
@@ -2912,6 +2901,18 @@ export function applyDeterministicRepairs(opts: {
       b = trimmed.content.trim()
       applied.push(`trim_to_max_words (${trimmed.removedWords} prose words removed; structure preserved)`)
     }
+  }
+
+  // Append YMYL disclaimer AFTER the word-budget trim so enforceBodyWordBudget
+  // cannot clip "not legal advice" from the educational block.
+  const requireDisclaimer =
+    opts.indexable !== false &&
+    String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
+  if (requireDisclaimer && !DISCLAIMER_RE.test(b)) {
+    b = `${b.trimEnd()}\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ` +
+      'Immigration rules change; verify every requirement against official government sources and consult a ' +
+      'licensed attorney, solicitor, or registered migration agent for your situation.\n'
+    applied.push('disclaimer')
   }
 
   {
