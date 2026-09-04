@@ -21,7 +21,7 @@ import {
   minWordsForType,
   type ModelGuidanceInput,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType, trimMarkdownProseToWordBudget } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget } from './contentDepth'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
@@ -502,11 +502,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     {
       const deduped = stripDuplicateArticleCopy(content)
       if (deduped.removed) content = deduped.content
-      const overMaxBy = countBodyWords(content) - maxWords
-      if (overMaxBy > 0) {
-        const trimmed = trimMarkdownProseToWordBudget(content, maxWords, minWords)
-        if (trimmed.removedWords > 0) content = trimmed.content
-      }
+      const capped = enforceBodyWordBudget(content, contentType, { minWords, maxWords })
+      if (capped.removedWords > 0) content = capped.content
     }
 
     audit = runAudit(content)
@@ -691,7 +688,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
-          content = ai.text
+          content = enforceBodyWordBudget(ai.text, contentType, { minWords, maxWords }).content
           provider = ai.provider
           model = ai.model
         }
@@ -774,7 +771,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
       })
       if (completed.inserted.length) {
-        content = completed.content
+        content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
         console.info(`[seoFactory/pipeline] outline completion inserted: ${completed.inserted.join(', ')}`)
       }
     } catch (err) {
@@ -833,7 +830,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           signal: input.signal,
         })
         if (countBodyWords(ai.text) >= minWords) {
-          content = ai.text
+          content = enforceBodyWordBudget(ai.text, contentType, { minWords, maxWords }).content
           provider = ai.provider
           model = ai.model
         }
@@ -887,7 +884,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       console.info(`[seoFactory/pipeline] live link sanitize: stripped=${sanitized.stripped} injected=${sanitized.injected}`)
       content = sanitized.content
     }
-    if (repaired.applied.length || sanitized.stripped || sanitized.injected) {
+    const capped = enforceBodyWordBudget(content, contentType, { minWords, maxWords })
+    if (capped.removedWords > 0) content = capped.content
+    if (repaired.applied.length || sanitized.stripped || sanitized.injected || capped.removedWords > 0) {
       audit = runAudit(content)
     }
   }

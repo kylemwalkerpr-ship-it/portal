@@ -17,7 +17,7 @@ import {
   extractH2Titles,
   mergeAppendedSections,
 } from './prompts'
-import { countBodyWords, openingFrontmatterClosed, trimMarkdownProseToWordBudget } from './contentDepth'
+import { countBodyWords, openingFrontmatterClosed, enforceBodyWordBudget } from './contentDepth'
 import { smoothSentenceRhythm, stripDuplicateArticleCopy } from './editorialScaffold'
 import type { ContentAiResult } from '@/lib/contentAiProvider'
 
@@ -347,16 +347,13 @@ export async function* runDepthRescue(
           // Append can overshoot the hard ceiling when the draft is already
           // deep and the model adds generously — never let depth rescue
           // push a page over maxWords (bloat regresses the audit WHOLE).
-          const over = countBodyWords(merged) - maxWords
-          if (over > 0) {
-            const trimmed = trimMarkdownProseToWordBudget(merged, maxWords, Math.min(minWords, maxWords))
-            if (trimmed.removedWords > 0) {
-              merged = trimmed.content
-              yield {
-                type: 'progress',
-                stage: 'refine',
-                message: `Depth rescue pass ${expandPasses}: trimmed ${trimmed.removedWords} appended words to stay inside the ${maxWords}-word window`,
-              }
+          const trimmed = enforceBodyWordBudget(merged, contentType, { minWords, maxWords })
+          if (trimmed.removedWords > 0) {
+            merged = trimmed.content
+            yield {
+              type: 'progress',
+              stage: 'refine',
+              message: `Depth rescue pass ${expandPasses}: trimmed ${trimmed.removedWords} appended words to stay inside the ${maxWords}-word window`,
             }
           }
           content = merged

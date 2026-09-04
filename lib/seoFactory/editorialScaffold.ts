@@ -9,7 +9,7 @@
 import { DISCLAIMER_RE, detectForcedFaqWordings, detectDanglingForwardReferences, detectKeywordPastedHeadings, suggestHeadingRewrite } from './contentQualityGate'
 import { isGenericCurrentInfoHeading, topicSpecificCurrentInfoHeading } from '@/lib/seoEngine/titleLab'
 import type { CompetingPage } from './contentQualityGate'
-import { countBodyWords, maxWordsForType, minWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from './contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType, enforceBodyWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { relinkPlainTextRelatedGuides, resolveVerifiedEstateAnchors, type VerifiedRelatedGuideAnchor } from './relatedGuideLinks'
 import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
@@ -2907,7 +2907,7 @@ export function applyDeterministicRepairs(opts: {
   const maxWords = opts.maxWords ?? maxWordsForType(String(opts.contentType || 'legal_guide'))
   const minWords = opts.minWords ?? minWordsForType(String(opts.contentType || 'legal_guide'))
   if (countBodyWords(b) > maxWords) {
-    const trimmed = trimMarkdownProseToWordBudget(b, maxWords, minWords)
+    const trimmed = enforceBodyWordBudget(b, String(opts.contentType || 'legal_guide'), { minWords, maxWords })
     if (trimmed.removedWords > 0) {
       b = trimmed.content.trim()
       applied.push(`trim_to_max_words (${trimmed.removedWords} prose words removed; structure preserved)`)

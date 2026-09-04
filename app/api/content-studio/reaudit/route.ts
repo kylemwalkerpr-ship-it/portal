@@ -9,7 +9,7 @@ import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
 import { masterEngineFixPlan, type MasterEngineFixPlan } from '@/lib/seoFactory/masterEngine'
 import { mergeAppendedSections } from '@/lib/seoFactory/prompts'
-import { countBodyWords, maxWordsForType, minWordsForType, targetWordsForType, trimMarkdownProseToWordBudget, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
+import { countBodyWords, maxWordsForType, minWordsForType, targetWordsForType, enforceBodyWordBudget, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument, editorResponseContract, sanitizeFrontmatter } from '@/lib/seoFactory/formatContract'
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 import { runAuditEditorLoop, CONTENT_LOOP_BUDGET, type LoopFinding } from '@/lib/seoFactory/auditEditorLoop'
@@ -67,12 +67,8 @@ function closeShipGate(raw: string, ctx: RepairCtx): string {
   // can be re-audited or persisted — a 3× overshoot must never read as
   // "gated". The trim never cuts below the floor.
   {
-    const max = maxWordsForType(ctx.contentType)
-    const overMaxBy = countBodyWords(out) - max
-    if (overMaxBy > 0) {
-      const trimmed = trimMarkdownProseToWordBudget(out, max, minWordsForType(ctx.contentType))
-      if (trimmed.removedWords > 0) out = trimmed.content
-    }
+    const trimmed = enforceBodyWordBudget(out, ctx.contentType)
+    if (trimmed.removedWords > 0) out = trimmed.content
   }
   for (let attempt = 0; attempt < 2; attempt++) {
     const gate = evaluateReauditContract({

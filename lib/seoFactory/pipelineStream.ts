@@ -25,7 +25,7 @@ import {
   minWordsForType,
   planWriteSegments,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType, trimMarkdownProseToWordBudget } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { topicPathMismatch } from './topicPathGuard'
@@ -703,21 +703,18 @@ export async function* runSeoFactoryPipelineStream(
       // Runs on EVERY attempt — the old `!underDepth` gate let a thin→huge
       // first attempt escape (underDepth was computed BEFORE the attempt)
       // and a bloated 3×-window draft sailed through as "gated".
-      const overMaxBy = countBodyWords(content) - maxWords
-      if (overMaxBy > 0) {
-        const trimmed = trimMarkdownProseToWordBudget(content, maxWords, minWords)
-        if (trimmed.removedWords > 0) {
-          const trimmedWc = countBodyWords(trimmed.content)
-          yield {
-            type: 'attempt',
-            attempt: attempts,
-            score: 0,
-            wordCount: trimmedWc,
-            goodEnough: false,
-            draft: trimmed.content,
-          }
-          content = trimmed.content
+      const capped = enforceBodyWordBudget(content, contentType, { minWords, maxWords })
+      if (capped.removedWords > 0) {
+        const trimmedWc = countBodyWords(capped.content)
+        yield {
+          type: 'attempt',
+          attempt: attempts,
+          score: 0,
+          wordCount: trimmedWc,
+          goodEnough: false,
+          draft: capped.content,
         }
+        content = capped.content
       }
 
       audit = runAudit(content)
@@ -957,7 +954,7 @@ export async function* runSeoFactoryPipelineStream(
           // single huge expand from a shrunken base.
           const notShrunk = stillUnderFloor ? aiWords >= prevWords : aiWords >= prevWords - 200
           if (aiWords >= minWords || (blockerReduced && notShrunk)) {
-            content = ai.text
+            content = enforceBodyWordBudget(ai.text, contentType, { minWords, maxWords }).content
             provider = ai.provider
             model = ai.model
           }
@@ -1087,7 +1084,7 @@ export async function* runSeoFactoryPipelineStream(
             }),
         })
         if (completed.inserted.length) {
-          content = completed.content
+          content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
           yield {
             type: 'progress',
             stage: 'refine',
@@ -1163,7 +1160,7 @@ export async function* runSeoFactoryPipelineStream(
             ? aiWords >= countBodyWords(content)
             : aiWords >= countBodyWords(content) - 200
           if (aiWords >= minWords || (blockerReduced && notShrunk)) {
-            content = ai.text
+            content = enforceBodyWordBudget(ai.text, contentType, { minWords, maxWords }).content
             provider = ai.provider
             model = ai.model
           }
@@ -1248,7 +1245,7 @@ export async function* runSeoFactoryPipelineStream(
         minWords,
       })
       if (repairedFull.applied.length) {
-        content = repairedFull.content
+        content = enforceBodyWordBudget(repairedFull.content, contentType, { minWords, maxWords }).content
         audit = runAudit(content)
         yield {
           type: 'progress',

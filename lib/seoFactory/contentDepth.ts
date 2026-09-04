@@ -335,48 +335,136 @@ export function trimMarkdownProseToWordBudget(
 
   const blocks = original.split(/(\r?\n\s*\r?\n)/)
   const isSeparator = (value: string) => /^\r?\n\s*\r?\n$/.test(value)
-  const protectedBlock = (value: string) => {
+  const isHeadingOnly = (value: string) => /^\s*#{1,6}\s+\S/.test(value.trim()) && !/\n\s*\S/.test(value.trim().replace(/^\s*#{1,6}\s+[^\n]+/, ''))
+  const isFence = (value: string) => /^(?:---|```|~~~|<script\b)/i.test(value.trim())
+  const isTable = (value: string) =>
+    value.split(/\r?\n/).some((line) => /\|/.test(line) && /^\s*\|?\s*:?-{3,}/.test(line))
+  const isList = (value: string) =>
+    value.split(/\r?\n/).filter((l) => l.trim()).every((line) => /^\s*(?:[-+*]\s|\d+[.)]\s|>)/.test(line))
+  const hardProtected = (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) return true
-    if (/^(?:---|```|~~~|<script\b)/i.test(trimmed)) return true
-    return value.split(/\r?\n/).some((line) =>
-      /^\s*(?:#{1,6}\s|[-+*]\s|\d+[.)]\s|>|\|)/.test(line) ||
-      (/\|/.test(line) && /^\s*\|?\s*:?-{3,}/.test(line)),
-    )
+    if (isFence(value) || isHeadingOnly(value) || isTable(value)) return true
+    return false
+  }
+
+  const dropLastSentence = (value: string, beforeTotal: number): string => {
+    const sentences = value.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) || []
+    if (sentences.length > 1) return sentences.slice(0, -1).join(' ').trim()
+    const remove = Math.max(1, beforeTotal - maxWords)
+    const rawTokens = value.trim().split(/\s+/)
+    const keep = Math.max(0, rawTokens.length - remove)
+    return keep >= 4 ? `${rawTokens.slice(0, keep).join(' ').replace(/[,:;\-]+$/, '')}.` : ''
+  }
+
+  const dropLastListItem = (value: string): string => {
+    const lines = value.split(/\r?\n/)
+    let lastItem = -1
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/^\s*(?:[-+*]\s|\d+[.)]\s)/.test(lines[i])) {
+        lastItem = i
+        break
+      }
+    }
+    if (lastItem < 0) return value
+    const kept = lines.filter((_, i) => i !== lastItem)
+    return kept.some((l) => l.trim()) ? kept.join('\n') : ''
   }
 
   let guard = 0
-  while (countBodyWords(blocks.join('')) > maxWords && guard++ < 500) {
-    const candidates = blocks
-      .map((value, index) => ({ value, index, words: countBodyWords(value) }))
-      .filter((b) => !isSeparator(b.value) && !protectedBlock(b.value) && b.words > 20)
-      .sort((a, b) => b.words - a.words || b.index - a.index)
-    const candidate = candidates[0]
-    if (!candidate) break
-    const sentences = candidate.value.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) || []
+  while (countBodyWords(blocks.join('')) > maxWords && guard++ < 800) {
     const beforeTotal = countBodyWords(blocks.join(''))
-    let nextParagraph = ''
-    if (sentences.length > 1) {
-      nextParagraph = sentences.slice(0, -1).join(' ').trim()
-    } else {
-      // Runaway single-sentence paragraphs have no safe sentence boundary.
-      // Keep their opening words (and add terminal punctuation) instead of
-      // deleting a heading/list/table or flattening the whole document.
-      const remove = Math.max(1, beforeTotal - maxWords)
-      const rawTokens = candidate.value.trim().split(/\s+/)
-      const keep = Math.max(0, rawTokens.length - remove)
-      nextParagraph = keep >= 8 ? `${rawTokens.slice(0, keep).join(' ').replace(/[,:;\-]+$/, '')}.` : ''
+    const prose = blocks
+      .map((value, index) => ({ value, index, words: countBodyWords(value) }))
+      .filter((b) => !isSeparator(b.value) && !hardProtected(b.value) && !isList(b.value) && b.words >= 4)
+      .sort((a, b) => b.words - a.words || b.index - a.index)
+    const candidate = prose[0]
+    if (candidate) {
+      const nextParagraph = dropLastSentence(candidate.value, beforeTotal)
+      const afterTotal = beforeTotal - candidate.words + countBodyWords(nextParagraph)
+      if (afterTotal >= beforeTotal) break
+      if (afterTotal < minWords && afterTotal < maxWords) {
+        // Prefer landing at max rather than refusing the trim when the
+        // leftover still clears the floor on a later, smaller cut.
+        if (beforeTotal - 1 < minWords) break
+      }
+      if (afterTotal < minWords && countBodyWords(nextParagraph) === 0 && afterTotal < minWords) {
+        // Emptying this block would undershoot — try a smaller cut via tokens.
+        const tokens = candidate.value.trim().split(/\s+/)
+        const need = beforeTotal - maxWords
+        const keep = Math.max(4, tokens.length - need)
+        if (keep >= tokens.length) break
+        const clipped = `${tokens.slice(0, keep).join(' ').replace(/[,:;\-]+$/, '')}.`
+        if (beforeTotal - candidate.words + countBodyWords(clipped) < minWords) break
+        blocks[candidate.index] = clipped
+        continue
+      }
+      blocks[candidate.index] = nextParagraph
+      continue
     }
-    const afterTotal = beforeTotal - candidate.words + countBodyWords(nextParagraph)
-    if (afterTotal < minWords || afterTotal >= beforeTotal) break
-    blocks[candidate.index] = nextParagraph
+
+    // Soft overshoot often lives in TLDR / FAQ lists. Drop trailing items.
+    const lists = blocks
+      .map((value, index) => ({ value, index, words: countBodyWords(value) }))
+      .filter((b) => !isSeparator(b.value) && isList(b.value) && b.words >= 4)
+      .sort((a, b) => b.index - a.index)
+    const list = lists[0]
+    if (list) {
+      const next = dropLastListItem(list.value)
+      const afterTotal = beforeTotal - list.words + countBodyWords(next)
+      if (afterTotal >= beforeTotal || afterTotal < minWords) break
+      blocks[list.index] = next
+      continue
+    }
+    break
   }
 
   const trimmed = blocks.join('').replace(/[ \t]+\r?\n/g, '\n').replace(/\n{3,}/g, '\n\n')
   const finalWords = countBodyWords(trimmed)
-  return finalWords < originalWords && finalWords >= minWords
+  if (finalWords <= maxWords && finalWords >= Math.min(minWords, maxWords) && finalWords < originalWords) {
+    return { content: trimmed, removedWords: originalWords - finalWords }
+  }
+  // Last resort: still over max — keep heading/fence/table bytes, clip leftover
+  // prose tokens from the longest remaining non-heading block so the desk
+  // never receives a ship-blocking overshoot.
+  if (finalWords > maxWords) {
+    const fallbackBlocks = trimmed.split(/(\r?\n\s*\r?\n)/)
+    const need = finalWords - maxWords
+    const clipAt = fallbackBlocks
+      .map((value, index) => ({ value, index, words: countBodyWords(value) }))
+      .filter((b) => !isSeparator(b.value) && !hardProtected(b.value) && b.words > 0)
+      .sort((a, b) => b.words - a.words || b.index - a.index)[0]
+    if (clipAt) {
+      const tokens = clipAt.value.trim().split(/\s+/)
+      const keep = Math.max(0, tokens.length - need)
+      const next = keep >= 4 ? `${tokens.slice(0, keep).join(' ').replace(/[,:;\-]+$/, '')}.` : ''
+      fallbackBlocks[clipAt.index] = next
+      const out = fallbackBlocks.join('').replace(/\n{3,}/g, '\n\n')
+      const outWords = countBodyWords(out)
+      if (outWords <= maxWords && outWords >= Math.min(minWords, maxWords) && outWords < originalWords) {
+        return { content: out, removedWords: originalWords - outWords }
+      }
+    }
+  }
+  return finalWords < originalWords && finalWords >= minWords && finalWords <= maxWords
     ? { content: trimmed, removedWords: originalWords - finalWords }
     : { content: original, removedWords: 0 }
+}
+
+/**
+ * Pipeline door: after generate / refine / outline / depth expansion, the
+ * draft handed to the desk must sit in [minWords, maxWords] when the body
+ * started at or above the floor. Uses the same countBodyWords rules as the
+ * audit (prose only — YAML, fences, JSON-LD excluded).
+ */
+export function enforceBodyWordBudget(
+  content: string,
+  contentType: string,
+  bounds?: { minWords?: number; maxWords?: number },
+): { content: string; removedWords: number } {
+  const maxWords = bounds?.maxWords ?? maxWordsForType(contentType)
+  const minWords = bounds?.minWords ?? minWordsForType(contentType)
+  return trimMarkdownProseToWordBudget(content, maxWords, Math.min(minWords, maxWords))
 }
 
 export interface DepthCheckResult {

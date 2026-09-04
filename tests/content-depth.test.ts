@@ -5,6 +5,7 @@ import {
   checkContentDepth,
   clampBriefWordBudget,
   countBodyWords,
+  enforceBodyWordBudget,
   formatBodyWordDisplay,
   maxWordsForType,
   minWordsForType,
@@ -244,5 +245,51 @@ describe('unwrapWholeDocumentFence + honest body-word display', () => {
     expect(formatBodyWordDisplay(0, 2618)).toBe('0 (stored 2618 — not in editor)')
     expect(formatBodyWordDisplay(2618, 2618)).toBe('2618')
     expect(formatBodyWordDisplay(0, 0)).toBe('0')
+  })
+})
+
+describe('enforceBodyWordBudget — soft overshoot must land inside [min, max]', () => {
+  function blogBody(words: number): string {
+    const para = 'Applicants should gather passport copies, fee receipts, and a timeline of prior visas before filing.'
+    const unit = countBodyWords(para)
+    const n = Math.ceil(words / unit)
+    const sections = ['Eligibility', 'Documents', 'Costs', 'Processing times', 'Common mistakes', 'FAQ']
+    const chunks: string[] = [
+      '# Student visa filing timeline 2026',
+      '',
+      '## In 60 seconds',
+      '- Confirm the correct form and filing window.',
+      '- Keep copies of every receipt you receive.',
+      '',
+    ]
+    let i = 0
+    while (countBodyWords(chunks.join('\n')) < words) {
+      const heading = sections[i % sections.length]
+      if (i % 8 === 0) chunks.push(`## ${heading}`, '')
+      chunks.push(para, '')
+      i++
+    }
+    return chunks.join('\n')
+  }
+
+  it('trims a synthetic oversize blog (~1240+) to ≤ 1200 and ≥ 800', () => {
+    const oversize = blogBody(1242)
+    expect(countBodyWords(oversize)).toBeGreaterThan(1200)
+    const { content, removedWords } = enforceBodyWordBudget(oversize, 'blog_post')
+    const wc = countBodyWords(content)
+    expect(removedWords).toBeGreaterThan(0)
+    expect(wc).toBeLessThanOrEqual(maxWordsForType('blog_post'))
+    expect(wc).toBeGreaterThanOrEqual(minWordsForType('blog_post'))
+    expect(checkContentDepth({ content, contentType: 'blog_post' }).overMax).toBe(false)
+  })
+
+  it('leaves an in-window blog untouched', () => {
+    const ok = blogBody(950)
+    const before = countBodyWords(ok)
+    expect(before).toBeLessThanOrEqual(1200)
+    expect(before).toBeGreaterThanOrEqual(800)
+    const { content, removedWords } = enforceBodyWordBudget(ok, 'blog_post')
+    expect(removedWords).toBe(0)
+    expect(content).toBe(ok)
   })
 })
