@@ -131,6 +131,50 @@ export function scoreHarperLints(lints: Array<{ kind: string }>): { score: numbe
   return { score, errors, suggestions }
 }
 
+/** YAML / editor-leak keys that must never enter Flesch (fenced or unfenced). */
+const EDITOR_YAML_KEYS = 'title|description|content_type|primaryKeyword|region|canonicalUrl|robots|ogImage'
+const EDITOR_YAML_LINE_RE = new RegExp(`^\\s*(?:${EDITOR_YAML_KEYS})\\s*:\\s*.*$`, 'i')
+const EDITOR_YAML_INLINE_RE = new RegExp(
+  `(?:^|\\s)(?:${EDITOR_YAML_KEYS})\\s*:\\s*(?:"[^"]*"|'[^']*'|\\S+)`,
+  'gi',
+)
+
+/**
+ * Drop YAML frontmatter and editor artifacts (KEEP---, duplicated unfenced
+ * key lines) so readability scores client-facing body prose only.
+ */
+function stripEditorFrontmatter(md: string): string {
+  let s = String(md || '').replace(/\uFEFF/g, '')
+  s = s.replace(/\bKEEP---+/gi, '\n---\n')
+  for (let i = 0; i < 6; i++) {
+    const next = s.replace(/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '\n')
+    if (next === s) break
+    s = next
+  }
+  // Unclosed opening fence at the top (KEEP--- / --- without a closer).
+  s = s.replace(/^\s*---[ \t]*\r?\n?/, '\n')
+  s = s.replace(/^\s*---+\s*$/gm, '')
+
+  const h1 = s.match(/^#\s+.+$/m)
+  if (h1 && h1.index != null) {
+    s = s.slice(h1.index + h1[0].length)
+  }
+
+  const kept: string[] = []
+  let leadingMeta = true
+  for (const line of s.split(/\r?\n/)) {
+    if (EDITOR_YAML_LINE_RE.test(line)) {
+      if (leadingMeta) continue
+      // Duplicated yaml-in-body (production leak): drop those lines too.
+      continue
+    }
+    if (leadingMeta && /^\s*$/.test(line)) continue
+    leadingMeta = false
+    kept.push(line.replace(EDITOR_YAML_INLINE_RE, ' '))
+  }
+  return kept.join('\n')
+}
+
 /**
  * Extract prose from a markdown article: drops frontmatter, JSON-LD, code
  * fences, headings, list/toolbar markers, table pipes, links/emphasis, and
@@ -157,8 +201,7 @@ export function fleschTargetForBrief(hint?: EditorSeoHint, md?: string): number 
 }
 
 export function extractProse(md: string): string {
-  let s = sanitizeLeakedMarkup(String(md || ''))
-    .replace(/\s*---[\s\S]*?\n---\s*/g, '\n')
+  let s = stripEditorFrontmatter(sanitizeLeakedMarkup(String(md || '')))
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
@@ -391,7 +434,7 @@ function splitLongSentence(sentence: string, minWords = 22): string | null {
 }
 
 function collectReadableParagraphs(md: string): string[] {
-  const body = sanitizeLeakedMarkup(String(md || '')).replace(/^\s*---[\s\S]*?\n---\s*/, '\n')
+  const body = stripEditorFrontmatter(sanitizeLeakedMarkup(String(md || '')))
   const paras: string[] = []
   let buf: string[] = []
   const flush = () => {

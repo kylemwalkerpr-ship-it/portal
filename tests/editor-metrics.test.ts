@@ -20,6 +20,77 @@ Plain sentence here. Another one.
     expect(prose).not.toContain('#')
     expect(prose).not.toContain('|')
     expect(prose).not.toContain('---')
+    expect(prose).not.toMatch(/\btitle\s*:/)
+    expect(prose).not.toMatch(/\bdescription\s*:/)
+    expect(prose).not.toContain('Guide')
+  })
+
+  it('extractProse drops fenced YAML keys and does not feed them to Flesch', () => {
+    const md = `---
+title: "PhD Research Proposal Writing Service"
+description: "PhD Research Proposal Writing Service for doctoral applicants who need a structured proposal."
+content_type: blog_post
+primaryKeyword: phd research proposal writing service
+region: AU
+canonicalUrl: https://example.com/phd
+robots: index
+ogImage: /og.png
+---
+
+# PhD Research Proposal Writing Service
+
+You can hire a researcher to draft a proposal. You still own the argument. Supervisors expect a clear question, method, and timeline.
+
+Write short sentences. Use the same terms your faculty uses.
+`
+    const prose = extractProse(md)
+    expect(prose).toContain('You can hire a researcher')
+    expect(prose).toContain('Write short sentences')
+    expect(prose).not.toMatch(/\btitle\s*:/i)
+    expect(prose).not.toMatch(/\bdescription\s*:/i)
+    expect(prose).not.toMatch(/\bcontent_type\s*:/i)
+    expect(prose).not.toMatch(/\bprimaryKeyword\s*:/i)
+    expect(prose).not.toMatch(/\bcanonicalUrl\s*:/i)
+    expect(prose).not.toMatch(/\bogImage\s*:/i)
+    expect(prose).not.toContain('blog_post')
+    const metrics = computeEditorMetrics(md, [], { contentType: 'blog_post', primaryKeyword: 'phd research proposal writing service' })
+    expect(metrics.readability.words).toBeGreaterThan(20)
+    expect(prose.toLowerCase()).not.toContain('primarykeyword')
+  })
+
+  it('extractProse strips KEEP--- and duplicated unfenced yaml like production job 8cc5d523', () => {
+    const md = `KEEP---
+description: "PhD Research Proposal Writing Service for doctoral applicants in Australia."
+---
+KEEP--- title: "PhD Research Proposal Writing Service" content_type: blog_post primaryKeyword: phd research proposal writing service description: "PhD Research Proposal Writing Service for doctoral applicants in Australia." region: AU
+canonicalUrl: https://yousafe.au/blog/phd
+robots: index,follow
+ogImage: /images/phd.png
+
+# PhD Research Proposal Writing Service
+
+A research proposal states the question you will answer. It also states how you will gather evidence. Keep the method honest and the timeline realistic.
+
+You should name the gap in the literature. Then you should explain why that gap matters for practice.
+`
+    const prose = extractProse(md)
+    expect(prose).toContain('A research proposal states the question')
+    expect(prose).toContain('You should name the gap')
+    expect(prose).not.toMatch(/KEEP---/i)
+    expect(prose).not.toMatch(/\btitle\s*:/i)
+    expect(prose).not.toMatch(/\bdescription\s*:/i)
+    expect(prose).not.toMatch(/\bcontent_type\s*:/i)
+    expect(prose).not.toMatch(/\bprimaryKeyword\s*:/i)
+    expect(prose).not.toMatch(/\bcanonicalUrl\s*:/i)
+    expect(prose).not.toContain('blog_post')
+    const bodyOnly = fleschReadingEase(prose)
+    const withYaml = fleschReadingEase(
+      'description: PhD Research Proposal Writing Service. primaryKeyword: phd research proposal writing service. A research proposal states the question you will answer.',
+    )
+    const metrics = computeEditorMetrics(md, [], { contentType: 'blog_post' })
+    expect(metrics.readability.words).toBe(bodyOnly.words)
+    expect(metrics.readability.score).toBe(bodyOnly.score)
+    expect(metrics.readability.words).not.toBe(withYaml.words)
   })
 
   it('scores readability with Flesch', () => {
