@@ -54,13 +54,14 @@ describe('live provider policy — Entrim + Grok gate', () => {
   })
 
   it('admits exactly the three live labels', () => {
-    expect(LIVE_PROVIDER_LABELS).toEqual(expect.arrayContaining(['entrim-qwen-27b', 'entrim-deepseek', 'grok']))
+    expect(LIVE_PROVIDER_LABELS).toEqual(expect.arrayContaining(['entrim-qwen-27b', 'entrim-deepseek', 'grok', 'openai']))
     expect(LIVE_DEFAULT_PROVIDER).toBe('entrim-qwen-27b')
     expect(isLiveProviderLabel('entrim-qwen-27b')).toBe(true)
     expect(isLiveProviderLabel('entrim-deepseek')).toBe(true)
     expect(isLiveProviderLabel('grok')).toBe(true)
+    expect(isLiveProviderLabel('openai')).toBe(true)
     // Every decommissioned host is refused.
-    for (const retired of ['nvidia-minimax', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek', 'openai', 'baseten-deepseek', 'baseten-glm-fast', 'parasail-deepseek', 'runbios-glm-53-flash', 'cloudflare-ai', 'groq', 'zai-glm', 'aihubmix-glm-fast', 'openrouter', 'gemini', 'chatProvider-bridge', 'custom']) {
+    for (const retired of ['nvidia-minimax', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek', 'baseten-glm-fast', 'parasail-deepseek', 'runbios-glm-53-flash', 'cloudflare-ai', 'groq', 'zai-glm', 'aihubmix-glm-fast', 'openrouter', 'gemini', 'chatProvider-bridge', 'custom']) {
       expect({ retired, live: isLiveProviderLabel(retired) }).toEqual({ retired, live: false })
     }
   })
@@ -86,17 +87,17 @@ describe('live provider policy — Entrim + Grok gate', () => {
     }) as typeof fetch
 
     const result = await generateContentText({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
+      aiProvider: 'nvidia-minimax',
+      model: 'minimaxai/minimax-m3',
       system: 'Write an article.',
       prompt: 'Draft the article.',
       skipQualityContract: true,
     })
 
-    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
+    expect(urls.some((u) => u.includes('integrate.api.nvidia.com'))).toBe(false)
     expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
     expect(result.provider).toBe(LIVE_DEFAULT_PROVIDER)
-    expect(bodies.every((b) => b.model !== 'gpt-5.6-terra')).toBe(true)
+    expect(bodies.every((b) => b.model !== 'minimaxai/minimax-m3')).toBe(true)
   })
 
   it('the cascade contains only live providers even when retired hosts have keys', async () => {
@@ -111,7 +112,7 @@ describe('live provider policy — Entrim + Grok gate', () => {
       urls.push(url)
       // Every LIVE backend fails too, so a retired host would only surface if
       // the cascade leaked past Entrim + Grok.
-      if (url.includes('api.entrim.ai') || url.includes('api.x.ai')) {
+      if (url.includes('api.entrim.ai') || url.includes('api.x.ai') || url.includes('api.openai.com')) {
         return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
           status: 524, headers: { 'content-type': 'application/json' },
         })
@@ -131,8 +132,8 @@ describe('live provider policy — Entrim + Grok gate', () => {
       }),
     ).rejects.toThrow(/All content AI providers failed/)
 
-    // Only Entrim + Grok (api.x.ai) were attempted — no retired host was contacted.
-    expect(urls.filter((u) => !u.includes('api.entrim.ai') && !u.includes('api.x.ai')).length).toBe(0)
+    // Only live hosts were attempted — no retired NVIDIA/Baseten host.
+    expect(urls.filter((u) => !u.includes('api.entrim.ai') && !u.includes('api.x.ai') && !u.includes('api.openai.com')).length).toBe(0)
   })
 
   it('a stale crowded admin order cannot crowd the live set out of the bounded cascade', async () => {
@@ -148,7 +149,7 @@ describe('live provider policy — Entrim + Grok gate', () => {
     global.fetch = jest.fn(async (input) => {
       const url = String(input)
       urls.push(url)
-      if (url.includes('api.entrim.ai') || url.includes('api.x.ai')) {
+      if (url.includes('api.entrim.ai') || url.includes('api.x.ai') || url.includes('api.openai.com')) {
         return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
           status: 524, headers: { 'content-type': 'application/json' },
         })
@@ -168,9 +169,8 @@ describe('live provider policy — Entrim + Grok gate', () => {
       }),
     ).rejects.toThrow(/All content AI providers failed/)
 
-    // Only the three live backends were attempted — no retired host was contacted.
-    expect(urls.filter((u) => !u.includes('api.entrim.ai') && !u.includes('api.x.ai')).length).toBe(0)
-    expect(urls.some((u) => u.includes('api.entrim.ai')) || urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+    expect(urls.filter((u) => !u.includes('api.entrim.ai') && !u.includes('api.x.ai') && !u.includes('api.openai.com')).length).toBe(0)
+    expect(urls.some((u) => u.includes('api.entrim.ai')) || urls.some((u) => u.includes('api.x.ai')) || urls.some((u) => u.includes('api.openai.com'))).toBe(true)
   })
 
   it('an Entrim payment/quota failure never calls the Grok sidecar under the live policy', async () => {

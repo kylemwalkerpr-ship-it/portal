@@ -21,10 +21,10 @@ import {
 
 describe('content AI catalog — live Entrim + Grok model × host', () => {
   it('lane host allowlists carry Entrim + xAI in every lane', () => {
-    expect(LANE_HOSTS.draft).toEqual(['entrim', 'xai'])
-    expect(LANE_HOSTS.brief).toEqual(['entrim', 'xai'])
-    expect(LANE_HOSTS.review).toEqual(['entrim', 'xai'])
-    expect(LANE_HOSTS.command).toEqual(['entrim', 'xai'])
+    expect(LANE_HOSTS.draft).toEqual(['entrim', 'xai', 'openai'])
+    expect(LANE_HOSTS.brief).toEqual(['entrim', 'xai', 'openai'])
+    expect(LANE_HOSTS.review).toEqual(['entrim', 'xai', 'openai'])
+    expect(LANE_HOSTS.command).toEqual(['entrim', 'xai', 'openai'])
   })
 
   it('DeepSeek V4 Flash runs on the Entrim host only, labeled with the exact upstream id', () => {
@@ -35,23 +35,23 @@ describe('content AI catalog — live Entrim + Grok model × host', () => {
 
   it('draft lane offers exactly the three live models (no retired families)', () => {
     const ids: Set<string> = new Set(modelsForLane('draft').map((m) => m.id))
-    expect(ids).toEqual(new Set(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6']))
+    expect(ids).toEqual(new Set(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6']))
     for (const retired of ['auto', 'gpt-5.6-sol', 'claude-opus-5', 'claude-sonnet-5', 'cloudflare-llama', 'gemini', 'openrouter', 'glm-5.2-fast', 'minimax-m3', 'nemotron-3-ultra', 'glm-5.3-flash', 'kimi-k2.7-code', 'qwen3.5', 'bios-adaptive'] as const) {
       expect({ retired, inDraft: ids.has(retired) }).toEqual({ retired, inDraft: false })
     }
   })
 
   it('brief lane offers exactly the three live models (Qwen lead first)', () => {
-    expect(modelsForLane('brief').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'])
+    expect(modelsForLane('brief').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'])
   })
 
   it('review lane offers the three live models (Qwen lead first)', () => {
-    expect(modelsForLane('review').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'])
+    expect(modelsForLane('review').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'])
     expect(modelPickerLabel(modelsForLane('review')[0], 'review')).toBe('Qwen/Qwen3.6-27B')
   })
 
   it('command lane offers the same three live models (Qwen lead first)', () => {
-    expect(modelsForLane('command').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'])
+    expect(modelsForLane('command').map((m) => m.id)).toEqual(['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6', 'gpt-5.6'])
   })
 
   it('all three models execute in all four lanes through their host', () => {
@@ -60,6 +60,7 @@ describe('content AI catalog — live Entrim + Grok model × host', () => {
       expect(hostsForModel('qwen3.6-27b', lane).map((h) => h.id)).toEqual(['entrim'])
       expect(hostsForModel('deepseek-v4-flash', lane).map((h) => h.id)).toEqual(['entrim'])
       expect(hostsForModel('grok-4.6', lane).map((h) => h.id)).toEqual(['xai'])
+      expect(hostsForModel('gpt-5.6', lane).map((h) => h.id)).toEqual(['openai'])
     }
   })
 
@@ -79,6 +80,15 @@ describe('content AI catalog — live Entrim + Grok model × host', () => {
       model: { id: 'grok-4.6' },
       host: { id: 'xai' },
     })
+    expect(pinFor('gpt-5.6', 'openai')).toBe('openai')
+    expect(parseStudioPin('openai')).toMatchObject({
+      model: { id: 'gpt-5.6' },
+      host: { id: 'openai' },
+    })
+    expect(parseStudioPin('chatgpt')).toMatchObject({
+      model: { id: 'gpt-5.6' },
+      host: { id: 'openai' },
+    })
   })
 
   it('legacy/retired pins render as the Entrim Qwen default — no selectable legacy host', () => {
@@ -87,7 +97,7 @@ describe('content AI catalog — live Entrim + Grok model × host', () => {
       host: { id: 'entrim' },
     })
     expect(canonicalizePin('GROK-4.6')).toBe('grok')
-    expect(canonicalizePin('openai')).toBe('entrim-qwen-27b')
+    expect(canonicalizePin('openai')).toBe('openai')
     expect(canonicalizePin('nvidia-minimax')).toBe('entrim-qwen-27b')
     expect(canonicalizePin('')).toBe('entrim-qwen-27b')
   })

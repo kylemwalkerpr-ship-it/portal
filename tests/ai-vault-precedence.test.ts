@@ -189,8 +189,8 @@ describe('vault status — masking does not regress', () => {
     mockModule.__setVaultRows([])
     const status = await listVaultStatus()
     const ids = status.map((s) => s.id).sort()
-    expect(ids).toEqual(['entrim-deepseek', 'entrim-qwen-27b', 'grok'].sort())
-    for (const retired of ['nvidia-minimax', 'runbios-glm-53-flash', 'baseten-deepseek', 'parasail-deepseek', 'openai', 'groq', 'gemini']) {
+    expect(ids).toEqual(['entrim-deepseek', 'entrim-qwen-27b', 'grok', 'openai'].sort())
+    for (const retired of ['nvidia-minimax', 'runbios-glm-53-flash', 'baseten-deepseek', 'parasail-deepseek', 'groq', 'gemini']) {
       expect(status.some((s) => s.id === retired)).toBe(false)
     }
   })
