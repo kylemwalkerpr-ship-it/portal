@@ -12,7 +12,7 @@
 | 7 Action classify | **done** | Grok | `opportunityAction.ts` CREATE/REFRESH/DEFEND/CONSOLIDATE/WATCH + reasons |
 | 8 Cannibalization | **done** | Grok | `cannibalDetect.ts` recommend-only; merge still human via cannibalMerge |
 | 9 Briefs | **done** | Grok | `seoBrief.ts` + `POST /api/content-studio/briefs/from-intel` |
-| 10 Dashboard | blocked | High | existing studio UI |
+| 10 Dashboard | **done** | Grok | Discover → `SeoIntelligenceDashboard` (no Volume/KD/CPC; no `app/seo`) |
 | OpenSERP | not scheduled | — | optional, never production dep |
 
 Escalation used: none.

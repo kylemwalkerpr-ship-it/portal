@@ -28,6 +28,7 @@ import { mergeInterlinkLists, type StudioInterlink } from '@/lib/seoFactory/stud
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
+import SeoIntelligenceDashboard from './seo-intelligence-dashboard'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
 import { collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { buildSectionBudgets, ensureSectionBudgets, syncSectionBudgetsToOutline } from '@/lib/seoFactory/prompts'
@@ -7703,6 +7704,7 @@ const controller = new AbortController()
             onJump={selectTab}
           />
           <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <SeoIntelligenceDashboard />
             {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
             <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow, overflow: 'hidden' }}>
               <div style={{ padding: '22px 22px 18px', background: `linear-gradient(120deg, ${E.inkBlack} 0%, #202A3A 72%, #473B25 100%)`, color: E.ivory, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
