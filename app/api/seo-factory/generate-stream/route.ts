@@ -227,7 +227,13 @@ export async function POST(request: Request) {
       interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,
       // Brief Assembly Panel fields — the full template from Stage II
-      h2Outline: Array.isArray(body.h2Outline) ? body.h2Outline.map(String) : undefined,
+      h2Outline: Array.isArray(body.h2Outline) && body.h2Outline.length
+        ? body.h2Outline.map(String)
+        : Array.isArray(body.contentSpec?.outline) && body.contentSpec.outline.length
+          ? (body.contentSpec.outline as Array<string | { heading?: string }>)
+              .map((o) => (typeof o === 'string' ? o : String(o?.heading || '').trim()))
+              .filter(Boolean)
+          : undefined,
       sources: Array.isArray(body.sources) ? body.sources.map(String) : undefined,
       minWords: body.minWords != null ? Number(body.minWords) : undefined,
       maxWords: body.maxWords != null ? Number(body.maxWords) : undefined,

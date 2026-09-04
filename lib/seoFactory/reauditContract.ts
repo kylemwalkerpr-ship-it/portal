@@ -255,6 +255,7 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
     requiredLongTailKeywords,
     shortKeywordTerms,
     longTailKeywordTerms,
+    outline,
   })
   // Audit-only warnings (indexability family) must ALSO get inline annotations
   // so the issues panel renders a per-warning AI Fix button for them — not

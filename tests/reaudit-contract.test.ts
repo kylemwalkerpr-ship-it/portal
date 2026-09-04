@@ -487,6 +487,43 @@ describe('capAnnotations (payload bound that never starves a finding code)', () 
   })
 })
 
+describe('evaluateReauditContract — outline parity with ship', () => {
+  it('reports missing_outline_section when a contentSpec outline H2 is absent', () => {
+    const article = buildPassingArticle()
+    expect(article).not.toMatch(/^## Worked Example/m)
+    const result = evaluateReauditContract({
+      content: article,
+      contentType: 'legal_guide',
+      primaryKeyword: 'us visa renewal',
+      indexable: true,
+      outline: [
+        { heading: 'Eligibility', level: 2 },
+        { heading: 'Worked Example', level: 2, purpose: 'walk through a realistic case' },
+        { heading: 'FAQ', level: 2 },
+      ],
+    })
+    expect(result.shipReady).toBe(false)
+    expect(result.blockersData.some((b) => b.code === 'missing_outline_section')).toBe(true)
+    expect(result.blockersData.find((b) => b.code === 'missing_outline_section')!.message).toContain('Worked Example')
+  })
+
+  it('does not report missing_outline_section when every outline H2 is present', () => {
+    const article = buildPassingArticle()
+    const result = evaluateReauditContract({
+      content: article,
+      contentType: 'legal_guide',
+      primaryKeyword: 'us visa renewal',
+      indexable: true,
+      outline: [
+        { heading: 'Eligibility', level: 2 },
+        { heading: 'Required documents', level: 2 },
+        { heading: 'FAQ', level: 2 },
+      ],
+    })
+    expect(result.blockersData.some((b) => b.code === 'missing_outline_section')).toBe(false)
+  })
+})
+
 describe('checkDepthGate (extracted shared depth gate)', () => {
   it('returns ok=true when the floor is met and a friendly message when not', () => {
     expect(checkDepthGate(buildPassingArticle(), 'legal_guide', true)).toEqual({

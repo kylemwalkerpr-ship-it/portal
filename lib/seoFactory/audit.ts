@@ -107,6 +107,8 @@ export function auditContent(opts: {
   /** Per-term provenance — uncovered `synthesized` terms warn instead of blocking. */
   shortKeywordTerms?: KeywordTerm[]
   longTailKeywordTerms?: KeywordTerm[]
+  /** Canonical brief outline — missing H2s block ship (missing_outline_section). */
+  outline?: Array<{ heading: string; level?: number; purpose?: string }> | null
 }): SeoFactoryAudit {
   const content = opts.content || ''
   const fm = extractFrontMatter(content)
@@ -383,6 +385,7 @@ export function auditContent(opts: {
     contentType: opts.contentType,
     primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
     indexable: wantIndexable,
+    outline: opts.outline,
     requiredShortKeywords: opts.requiredShortKeywords,
     requiredLongTailKeywords: opts.requiredLongTailKeywords,
     shortKeywordTerms: opts.shortKeywordTerms,

@@ -15,6 +15,7 @@
  */
 
 import { blocksShip, repairClassFor } from './contentQualityPlaybook'
+import { MISSING_OUTLINE_SECTION_CODE } from './outlineCompletion'
 import type { ContentSpec } from './contentSpec'
 import { validateContentSpec } from './contentSpec'
 import { PLAYBOOK_VERSION } from './contentQualityPlaybook'
@@ -79,6 +80,7 @@ export type AuditEditorLoopResult = {
     | 'provider_failed'
     | 'patch_rejected_twice'
     | 'spec_invalid'
+    | 'outline_completion_failed'
 }
 
 export type AuditEditorLoopDeps = {
@@ -295,7 +297,10 @@ export async function runAuditEditorLoop(
     }
 
     // 7. Targeted AI request: only outstanding targeted_ai codes.
+    // missing_outline_section cannot be fixed by EditorPatch (no new headings).
+    const outlineMissing = findings.filter((f) => f.code === MISSING_OUTLINE_SECTION_CODE)
     const targeted = findings.filter((f) => {
+      if (f.code === MISSING_OUTLINE_SECTION_CODE) return false
       try {
         return repairClassFor(f.code) === 'targeted_ai'
       } catch {
@@ -308,8 +313,10 @@ export async function runAuditEditorLoop(
         afterHash: beforeHash, progress: { blockersReduced: false, fingerprintPreserved: true },
       })
       status = 'held_for_review'
-      stopReason = 'human_only_findings'
       leftoverCodes = findings.map((f) => f.code)
+      stopReason = outlineMissing.length
+        ? 'outline_completion_failed'
+        : 'human_only_findings'
       break
     }
 
@@ -358,8 +365,11 @@ export async function runAuditEditorLoop(
       rounds.push(roundRecord)
       if (consecutiveRejections >= 2) {
         status = 'held_for_review'
-        stopReason = 'patch_rejected_twice'
         leftoverCodes = findings.map((f) => f.code)
+        // Outline gaps are not patchable — never report patch_rejected_twice
+        // as the only outcome for this finding class.
+        const onlyOutline = leftoverCodes.length > 0 && leftoverCodes.every((c) => c === MISSING_OUTLINE_SECTION_CODE)
+        stopReason = onlyOutline ? 'outline_completion_failed' : 'patch_rejected_twice'
         break
       }
       continue

@@ -30,6 +30,7 @@ import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { topicPathMismatch } from './topicPathGuard'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
+import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineHeadings } from './outlineCompletion'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
 import { isJunkTopic } from './queryNoise'
@@ -383,6 +384,11 @@ export async function* runSeoFactoryPipelineStream(
       contentSpec = null
     }
 
+    const briefOutline = canonicalOutlineForGate(contentSpec, input.h2Outline as string[] | undefined)
+    const promptOutline = (input.h2Outline as string[] | undefined)?.length
+      ? (input.h2Outline as string[])
+      : outlineHeadings(briefOutline)
+
     const system = buildFactorySystemPrompt({
       plan,
       contentType,
@@ -391,7 +397,7 @@ export async function* runSeoFactoryPipelineStream(
       strategyBlock,
       requiredShortKeywords,
       requiredLongTailKeywords,
-      h2Outline: input.h2Outline as string[] | undefined,
+      h2Outline: promptOutline,
       sources: verifiedSources,
       interlinkAllowlist: radarInterlinks as Array<{ label?: string; url?: string }>,
       targetSlug: input.targetSlug as string | undefined,
@@ -407,13 +413,19 @@ export async function* runSeoFactoryPipelineStream(
     let lastDraftSent = 0
     let provider = 'unknown'
     let model = 'unknown'
-    let audit: SeoFactoryAudit = auditContent({
-      content,
+    const runAudit = (body: string): SeoFactoryAudit => auditContent({
+      content: body,
       contentType,
       primaryKeyword,
       indexable: plan.indexable,
       ownershipBlockers: plan.blockers,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
+      outline: briefOutline,
     })
+    let audit: SeoFactoryAudit = runAudit(content)
     let attempts = 0
     let refineNotes: string | undefined
     let expandPasses = 0
@@ -708,13 +720,7 @@ export async function* runSeoFactoryPipelineStream(
         }
       }
 
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-      })
+      audit = runAudit(content)
 
       const goodEnough =
         audit.score >= minAudit &&
@@ -772,6 +778,7 @@ export async function* runSeoFactoryPipelineStream(
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
+        outline: briefOutline,
         requiredShortKeywords,
         requiredLongTailKeywords,
         shortKeywordTerms,
@@ -887,6 +894,7 @@ export async function* runSeoFactoryPipelineStream(
           contentType,
           primaryKeyword,
           indexable: plan.indexable,
+          outline: briefOutline,
           region,
         })
         refineNotes = [
@@ -940,19 +948,7 @@ export async function* runSeoFactoryPipelineStream(
           // improves the blockers (voice/schema/disclaimer) without shrinking
           // the draft below where it started. Depth can still be topped up by
           // the post-refine expand below.
-          const fixedBlockers = auditContent({
-            content: ai.text,
-            contentType,
-            primaryKeyword,
-            indexable: plan.indexable,
-            ownershipBlockers: plan.blockers,
-            // Apples-to-apples with the refineNotes the model was told to fix:
-            // keyword coverage must count toward the blocker comparison too.
-            requiredShortKeywords,
-            requiredLongTailKeywords,
-            shortKeywordTerms,
-            longTailKeywordTerms,
-          })
+          const fixedBlockers = runAudit(ai.text)
           const blockerReduced = fixedBlockers.blockers.length < prevBlockers
           const stillUnderFloor = aiWords < minWords
           // When still under the floor, never accept a shrink (depth is the
@@ -974,13 +970,7 @@ export async function* runSeoFactoryPipelineStream(
           break
         }
 
-        audit = auditContent({
-          content,
-          contentType,
-          primaryKeyword,
-          indexable: plan.indexable,
-          ownershipBlockers: plan.blockers,
-        })
+        audit = runAudit(content)
 
         yield {
           type: 'attempt',
@@ -1050,13 +1040,7 @@ export async function* runSeoFactoryPipelineStream(
           message: `Final depth top-up skipped: ${e instanceof Error ? e.message.slice(0, 120) : 'error'}`,
         }
       }
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-      })
+      audit = runAudit(content)
       attempts++
       yield {
         type: 'attempt',
@@ -1077,13 +1061,45 @@ export async function* runSeoFactoryPipelineStream(
       region,
     })
 
-    audit = auditContent({
-      content,
-      contentType,
-      primaryKeyword,
-      indexable: plan.indexable,
-      ownershipBlockers: plan.blockers,
-    })
+    if (briefOutline?.length) {
+      try {
+        const completed = await completeMissingOutlineSections({
+          content,
+          outline: briefOutline,
+          generateSection: async ({ article, heading, purpose }) =>
+            generateOutlineSection({
+              article,
+              heading,
+              purpose,
+              keyword: primaryKeyword,
+              region,
+              generateText: async (systemPrompt, prompt) => {
+                const ai = await generateContentText({
+                  system: systemPrompt,
+                  prompt,
+                  maxTokens: 4096,
+                  temperature: 0.2,
+                  skipQualityContract: true,
+                  signal: input.signal,
+                })
+                return ai.text
+              },
+            }),
+        })
+        if (completed.inserted.length) {
+          content = completed.content
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: `Outline completion inserted: ${completed.inserted.join(', ')}`,
+          }
+        }
+      } catch (err) {
+        console.warn('[seoFactory/pipelineStream] outline completion skipped', err)
+      }
+    }
+
+    audit = runAudit(content)
 
     // After scaffold, if blockers remain, do one final targeted refine
     if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 8) {
@@ -1092,6 +1108,7 @@ export async function* runSeoFactoryPipelineStream(
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
+        outline: briefOutline,
         requiredShortKeywords,
         requiredLongTailKeywords,
         shortKeywordTerms,
@@ -1139,17 +1156,7 @@ export async function* runSeoFactoryPipelineStream(
             cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           })
           const aiWords = countBodyWords(ai.text)
-          const fixedBlockers = auditContent({
-            content: ai.text,
-            contentType,
-            primaryKeyword,
-            indexable: plan.indexable,
-            ownershipBlockers: plan.blockers,
-            requiredShortKeywords,
-            requiredLongTailKeywords,
-            shortKeywordTerms,
-            longTailKeywordTerms,
-          })
+          const fixedBlockers = runAudit(ai.text)
           const blockerReduced = fixedBlockers.blockers.length < audit.blockers.length
           const stillUnderFloor = aiWords < minWords
           const notShrunk = stillUnderFloor
@@ -1174,13 +1181,7 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeyword,
           region,
         })
-        audit = auditContent({
-          content,
-          contentType,
-          primaryKeyword,
-          indexable: plan.indexable,
-          ownershipBlockers: plan.blockers,
-        })
+        audit = runAudit(content)
       }
     }
 
@@ -1218,17 +1219,7 @@ export async function* runSeoFactoryPipelineStream(
         }
       }
       if (repaired !== content || sanitized.stripped || sanitized.injected) {
-        audit = auditContent({
-          content,
-          contentType,
-          primaryKeyword,
-          indexable: plan.indexable,
-          ownershipBlockers: plan.blockers,
-          requiredShortKeywords,
-          requiredLongTailKeywords,
-          shortKeywordTerms,
-          longTailKeywordTerms,
-        })
+        audit = runAudit(content)
         yield { type: 'attempt', attempt: attempts + 1, score: audit.score, wordCount: audit.wordCount, goodEnough: meetsShipQuality(audit) && audit.score >= minAudit, draft: content }
       }
     }
@@ -1258,17 +1249,7 @@ export async function* runSeoFactoryPipelineStream(
       })
       if (repairedFull.applied.length) {
         content = repairedFull.content
-        audit = auditContent({
-          content,
-          contentType,
-          primaryKeyword,
-          indexable: plan.indexable,
-          ownershipBlockers: plan.blockers,
-          requiredShortKeywords,
-          requiredLongTailKeywords,
-          shortKeywordTerms,
-          longTailKeywordTerms,
-        })
+        audit = runAudit(content)
         yield {
           type: 'progress',
           stage: 'refine',
@@ -1308,13 +1289,7 @@ export async function* runSeoFactoryPipelineStream(
       const stripped = stripNoIndex(content)
       if (stripped !== content) {
         content = stripped
-        audit = auditContent({
-          content,
-          contentType,
-          primaryKeyword,
-          indexable: plan.indexable,
-          ownershipBlockers: plan.blockers,
-        })
+        audit = runAudit(content)
         yield {
           type: 'progress',
           stage: 'ship',

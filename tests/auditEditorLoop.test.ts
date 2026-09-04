@@ -218,6 +218,40 @@ describe('runAuditEditorLoop — convergence and holds', () => {
     expect(aiCalls).toBe(0)
   })
 
+  it('does not stop with patch_rejected_twice for missing_outline_section', async () => {
+    let patchCalls = 0
+    const result = await runAuditEditorLoop(
+      { content: BASE_DOC, spec: SPEC },
+      {
+        evaluate: () => [{
+          code: 'missing_outline_section',
+          severity: 'blocker',
+          message: 'Template sections from the brief outline are missing from the body: Worked Example.',
+        }],
+        requestEditorPatch: async () => {
+          patchCalls++
+          return {
+            version: 1 as const,
+            operations: [
+              {
+                kind: 'replace' as const,
+                findingCode: 'missing_outline_section',
+                anchor: 'You must have a sponsor. We guarantee your visa approval.',
+                expectedHash: anchorHash(BASE_DOC, 'You must have a sponsor. We guarantee your visa approval.') || '',
+                replacement: '## Worked Example\n\nA new heading via patch.',
+              },
+            ],
+          }
+        },
+      },
+    )
+    expect(patchCalls).toBe(0)
+    expect(result.stopReason).toBe('outline_completion_failed')
+    expect(result.stopReason).not.toBe('patch_rejected_twice')
+    expect(result.leftoverCodes).toContain('missing_outline_section')
+    expect(result.content).toBe(BASE_DOC)
+  })
+
   it('refuses an unknown spec version before any evaluation', async () => {
     let evaluated = false
     const result = await runAuditEditorLoop(

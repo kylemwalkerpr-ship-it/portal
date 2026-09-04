@@ -19,6 +19,13 @@ import { normalizeStudioContentType } from '@/lib/seoFactory/ownership'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { computeDocumentFingerprint, shadowPreservationCheck } from '@/lib/seoFactory/documentFingerprint'
+import {
+  canonicalOutlineForGate,
+  completeMissingOutlineSections,
+  generateOutlineSection as generateOutlineSectionShared,
+  outlineCompletionErrorMessage,
+  MISSING_OUTLINE_SECTION_CODE,
+} from '@/lib/seoFactory/outlineCompletion'
 
 export type { ReauditResponse }
 
@@ -41,6 +48,7 @@ type RepairCtx = {
    *  set — the deterministic related-guide relink only ever re-links a
    *  plain-text label to a URL in this set. */
   verifiedEstateAnchors?: Array<{ label: string; url: string }>
+  outline?: Array<{ heading: string; level?: number; purpose?: string }> | null
 }
 
 /**
@@ -79,6 +87,7 @@ function closeShipGate(raw: string, ctx: RepairCtx): string {
       region: ctx.region,
       targetUrl: ctx.targetUrl,
       competingUrls: ctx.competingUrls,
+      outline: ctx.outline,
     })
     const codes = new Set([
       ...(gate.blockersData || []).map((b) => b.code),
@@ -464,12 +473,6 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewM
   return callAiFixWithProvider(sys, prompt, maxTokens, aiProvider, effectiveModel, isGrok)
 }
 
-/**
- * Generate a single missing outline section in natural reader language.
- * Purpose-driven: the model is told WHAT the section must do for the reader
- * (from the brief contract), given the article's existing context so it
- * writes the continuation — never a keyword string appended for the gate.
- */
 async function generateOutlineSection(
   article: string,
   heading: string,
@@ -478,44 +481,14 @@ async function generateOutlineSection(
   region: string | undefined,
   reviewModel?: string,
 ): Promise<string | null> {
-  const sys = `You are a legal-content editor completing ONE section of an immigration article. Write natural, practitioner-grade prose for the reader — never a keyword string, never a stub. Respond with ONLY the section body (no heading line).`
-  const prompt = `## Article (first 6000 chars for voice/context)
-
-${article.slice(0, 6000)}
-
-## Section to write
-
-## ${heading}
-${purpose ? `\nPurpose (from the brief contract): ${purpose}` : ''}
-${keyword ? `\nPrimary topic: ${keyword}` : ''}
-${region ? `Region: ${region}` : ''}
-
-Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Use the article's existing headings/voice. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
-  try {
-    const raw = await callAiFix(sys, prompt, 4096, reviewModel)
-    const clean = raw
-      .replace(/^```[\s\S]*?```\s*$/, '')
-      .replace(/^(#+)\s+.*$/m, '') // never echo a heading — caller prefixes it
-      .trim()
-    return clean.length >= 120 ? clean : null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Insert a rendered section before ## FAQ / ## Sources (or append to the
- * body) so the completed content lands in reading order without disturbing
- * the scaffold. Deterministic — never a patch, never a heading edit by AI.
- */
-function insertSectionBeforeFaqOrSources(body: string, section: string): string {
-  const sectionBlock = `${section}\n\n`
-  const match = body.match(/^##\s+(?:faq|sources|official sources)\b/im)
-  if (match) {
-    const at = match.index ?? body.length
-    return `${body.slice(0, at).trimEnd()}\n\n${sectionBlock}${body.slice(at).trimStart()}`
-  }
-  return `${body.trimEnd()}\n\n${sectionBlock}${''}`.trimEnd()
+  return generateOutlineSectionShared({
+    article,
+    heading,
+    purpose,
+    keyword,
+    region,
+    generateText: (sys, prompt) => callAiFix(sys, prompt, 4096, reviewModel),
+  })
 }
 
 async function callAiFixWithProvider(
@@ -811,6 +784,7 @@ export async function POST(request: NextRequest) {
         region,
         targetUrl,
         competingUrls,
+        outline: canonicalOutlineForGate(canonicalSpec.spec),
       }),
     }
     // Live HEAD/GET of every URL is a Worker subrequest bomb. The desk auto-gate
@@ -920,6 +894,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(CONTENT_SPEC_MISMATCH_RESPONSE, { status: 409 })
     }
     let contentSpec = canonicalSpec.spec
+    const reauditOutline = canonicalOutlineForGate(contentSpec)
     const { renderReviewerRules, PLAYBOOK_VERSION } = await import('@/lib/seoFactory/contentQualityPlaybook')
     const specReviewerRules = contentSpec
       ? renderReviewerRules([...(blockers || []), ...(warnings || [])], contentSpec)
@@ -1175,25 +1150,16 @@ Return ONLY the JSON EditorPatch.`
       // to cheat (EditorPatch cannot add headings).
       if (loopCtx.outline && loopCtx.outline.length) {
         try {
-          const { missingOutlineSections } = await import('@/lib/seoFactory/contentQualityGate')
-          let missing = missingOutlineSections(loopStartContent, loopCtx.outline)
-          let completionPasses = 0
-          const maxSectionsPerPass = 3
-          while (missing.length && completionPasses < 2) {
-            const batch = missing.slice(0, maxSectionsPerPass)
-            let inserted = 0
-            for (const heading of batch) {
-              const entry = loopCtx.outline.find((o) => o.heading === heading)
-              const section = await generateOutlineSection(loopStartContent, heading, entry?.purpose, loopKeyword, region, reviewModel)
-              if (!section) continue
-              loopStartContent = insertSectionBeforeFaqOrSources(loopStartContent, `## ${heading}\n\n${section}`)
-              inserted++
-            }
-            completionPasses++
-            missing = missingOutlineSections(loopStartContent, loopCtx.outline)
-            if (!inserted) break // generation failed — leave the honest blocker
+          const completed = await completeMissingOutlineSections({
+            content: loopStartContent,
+            outline: loopCtx.outline,
+            generateSection: ({ article, heading, purpose }) =>
+              generateOutlineSection(article, heading, purpose, loopKeyword, region, reviewModel),
+          })
+          loopStartContent = completed.content
+          if (completed.inserted.length) {
+            console.info(`[reaudit] outline completion inserted: ${completed.inserted.join(', ')}; remaining: ${completed.remaining.join(', ') || 'none'}`)
           }
-          if (completionPasses > 0) console.info(`[reaudit] outline completion: ${completionPasses} pass(es), remaining missing: ${missing.join(', ') || 'none'}`)
         } catch (err) {
           console.warn('[reaudit] outline completion skipped:', String((err as Error)?.message || err).slice(0, 120))
         }
@@ -1237,6 +1203,29 @@ Return ONLY the JSON EditorPatch.`
         ? { ...loopCtx, ...pruned }
         : loopCtx
       let finalContract = evaluateReauditContract({ content: finalContent, ...gateCtx })
+      // If outline H2s are still missing, retry insert completion once more
+      // (the loop never patches headings). Failure lists the headings — never
+      // patch_rejected_twice with unchanged content as the only outcome.
+      if (
+        loopCtx.outline?.length
+        && (finalContract.blockersData || []).some((b) => b.code === MISSING_OUTLINE_SECTION_CODE)
+      ) {
+        try {
+          const retry = await completeMissingOutlineSections({
+            content: finalContent,
+            outline: loopCtx.outline,
+            generateSection: ({ article, heading, purpose }) =>
+              generateOutlineSection(article, heading, purpose, loopKeyword, region, reviewModel),
+          })
+          if (retry.inserted.length) {
+            finalContent = retry.content
+            boundaryRepairs.push(`outline_sections_inserted (${retry.inserted.join(', ')})`)
+            finalContract = evaluateReauditContract({ content: finalContent, ...gateCtx })
+          }
+        } catch (err) {
+          console.warn('[reaudit] outline completion retry skipped:', String((err as Error)?.message || err).slice(0, 120))
+        }
+      }
       // The eviction is authoritative for this boundary: synthesized filler
       // terms that could not be placed are CLOSED here, so their warnings are
       // dropped from the response (the count floors are preserved by the
@@ -1256,10 +1245,21 @@ Return ONLY the JSON EditorPatch.`
         ...(finalContract.blockersData || []).map((finding) => finding.code),
         ...(finalContract.warningsData || []).map((finding) => finding.code),
       ]
+      const { missingOutlineSections } = await import('@/lib/seoFactory/contentQualityGate')
+      const missingOutlineHeadings = loopCtx.outline?.length
+        ? missingOutlineSections(finalContent, loopCtx.outline)
+        : []
+      const outlineFailed = missingOutlineHeadings.length > 0
       const contentLoop = {
         action: 'fix_until_gates',
         status: allFindingsCleared ? 'cleared' : loopResult.status,
-        stopReason: allFindingsCleared ? 'no_open_findings' : loopResult.stopReason,
+        stopReason: allFindingsCleared
+          ? 'no_open_findings'
+          : outlineFailed
+            ? 'outline_completion_failed'
+            : loopResult.stopReason === 'patch_rejected_twice' && finalLeftoverCodes.every((c) => c === MISSING_OUTLINE_SECTION_CODE)
+              ? 'outline_completion_failed'
+              : loopResult.stopReason,
         leftoverCodes: [...new Set(finalLeftoverCodes)],
         boundaryRepairs: [...new Set(boundaryRepairs)],
         specVersion: loopResult.specVersion,
@@ -1322,10 +1322,12 @@ Return ONLY the JSON EditorPatch.`
       // response instead of the generic "still blocked" summary, so the
       // operator sees whether the queue is waiting on money, not on the draft.
       const loopFailure =
-        loopResult.status === 'provider_failed'
+        outlineFailed
+          ? outlineCompletionErrorMessage(missingOutlineHeadings)
+          : loopResult.status === 'provider_failed'
           ? 'The review AI could not run (quota, credits, or billing on the configured providers). Deterministic repairs are complete. Add credits or switch the Review model, then run Audit & Fix again.'
           : loopResult.status !== 'cleared'
-            ? `The fix loop stopped (${loopResult.stopReason}) with blockers that need the review AI or a human pass.`
+            ? `The fix loop stopped (${contentLoop.stopReason}) with blockers that need the review AI or a human pass.`
             : null
       return NextResponse.json({
         ...finalContract,
@@ -1337,6 +1339,7 @@ Return ONLY the JSON EditorPatch.`
         contentLoop,
         heldForReview: !allFindingsCleared,
         ...(loopFailure ? { error_message: loopFailure } : {}),
+        ...(outlineFailed ? { error: loopFailure, missingOutlineHeadings } : {}),
         ...(lastAiFixError ? { providerError: lastAiFixError.slice(0, 800) } : {}),
       })
     }
@@ -1367,6 +1370,7 @@ Return ONLY the JSON EditorPatch.`
         region,
         targetUrl,
         competingUrls: competingPages,
+        outline: reauditOutline,
       })
       const leftover = leftoverAnnotationCodes(annotations, afterMech)
       if (leftover.length === 0) {
@@ -1648,6 +1652,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         region,
         targetUrl,
         competingUrls: competingPages,
+        outline: reauditOutline,
       })
       const afterCodes = new Set([
         ...(afterMech.blockersData || []).map((b) => b.code),
@@ -1691,6 +1696,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
         region,
         targetUrl,
         competingUrls: competingPages,
+        outline: reauditOutline,
       })
       const stillPresent = new Set([
         ...(postDepth.blockersData || []).map((b) => b.code),
@@ -1769,6 +1775,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         region,
         targetUrl,
         competingUrls: competingPages,
+        outline: reauditOutline,
       })
       const leftoverLinks = (await auditLinksLive(sanitized.content, {
         knownLiveUrls: targetUrl ? [targetUrl] : undefined,
@@ -1912,6 +1919,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
         region,
         targetUrl,
         competingUrls: competingPages,
+        outline: reauditOutline,
       }),
       fixedContent,
       // Let the editor show which engine gaps the fix targeted, in order.
@@ -2165,6 +2173,7 @@ ${enginePlan.promptBlock}` + editorResponseContract()
       region,
       targetUrl,
       competingUrls: competingPages,
+      outline: reauditOutline,
     })
     // Shadow-mode preservation check (brief §5.4, Milestone B): record what a
     // preservation gate WOULD reject about this AI fix. Never alters the

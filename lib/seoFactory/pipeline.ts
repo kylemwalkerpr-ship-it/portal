@@ -28,6 +28,7 @@ import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolve
 export type { RequestedShipMode } from './resolveShipMode'
 import type { RequestedShipMode } from './resolveShipMode'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
+import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineHeadings } from './outlineCompletion'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
@@ -385,6 +386,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     contentSpec = null
   }
 
+  const briefOutline = canonicalOutlineForGate(contentSpec, input.h2Outline as string[] | undefined)
+  const promptOutline = (input.h2Outline as string[] | undefined)?.length
+    ? (input.h2Outline as string[])
+    : outlineHeadings(briefOutline)
+
   const system = buildFactorySystemPrompt({
     plan,
     contentType,
@@ -393,7 +399,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     strategyBlock,
     requiredShortKeywords,
     requiredLongTailKeywords,
-    h2Outline: input.h2Outline as string[] | undefined,
+    h2Outline: promptOutline,
     sources: verifiedSources,
     targetSlug: input.targetSlug as string | undefined,
     kwH2Map: input.kwH2Map as Record<string, string> | undefined,
@@ -403,13 +409,19 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let content = input.resumeContent || ''
   let provider = 'unknown'
   let model = 'unknown'
-  let audit: SeoFactoryAudit = auditContent({
-    content: '',
+  const runAudit = (body: string): SeoFactoryAudit => auditContent({
+    content: body,
     contentType,
     primaryKeyword,
     indexable: plan.indexable,
     ownershipBlockers: plan.blockers,
+    requiredShortKeywords,
+    requiredLongTailKeywords,
+    shortKeywordTerms,
+    longTailKeywordTerms,
+    outline: briefOutline,
   })
+  let audit: SeoFactoryAudit = runAudit('')
   let attempts = 0
   let refineNotes: string | undefined
   let expandPasses = 0
@@ -497,17 +509,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       }
     }
 
-    audit = auditContent({
-      content,
-      contentType,
-      primaryKeyword,
-      indexable: plan.indexable,
-      ownershipBlockers: plan.blockers,
-      requiredShortKeywords,
-      requiredLongTailKeywords,
-      shortKeywordTerms,
-      longTailKeywordTerms,
-    })
+    audit = runAudit(content)
 
     // Depth + voice/tone/compliance — unattended publish must clear all gates
     const goodEnough =
@@ -537,6 +539,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       contentType,
       primaryKeyword,
       indexable: plan.indexable,
+      outline: briefOutline,
       requiredShortKeywords,
       requiredLongTailKeywords,
       shortKeywordTerms,
@@ -629,17 +632,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       )
       break
     }
-    audit = auditContent({
-      content,
-      contentType,
-      primaryKeyword,
-      indexable: plan.indexable,
-      ownershipBlockers: plan.blockers,
-      requiredShortKeywords,
-      requiredLongTailKeywords,
-      shortKeywordTerms,
-      longTailKeywordTerms,
-    })
+    audit = runAudit(content)
     if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) {
       break
     }
@@ -661,6 +654,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
+        outline: briefOutline,
         region,
       })
       refineNotes = [
@@ -707,17 +701,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         break
       }
 
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-        requiredShortKeywords,
-        requiredLongTailKeywords,
-        shortKeywordTerms,
-        longTailKeywordTerms,
-      })
+      audit = runAudit(content)
 
       if (meetsShipQuality(audit) && audit.score >= minAudit) break
 
@@ -763,19 +747,42 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     conversionCtaBlock: seoCanon.conversionCtaBlock,
   })
 
-  // After scaffold, audit again. If blockers remain, do one final refine pass
-  // targeting the specific scaffold-level issues (citations, disclaimer, TL;DR).
-  audit = auditContent({
-    content,
-    contentType,
-    primaryKeyword,
-    indexable: plan.indexable,
-    ownershipBlockers: plan.blockers,
-    requiredShortKeywords,
-    requiredLongTailKeywords,
-    shortKeywordTerms,
-    longTailKeywordTerms,
-  })
+  // After scaffold, complete missing brief-outline H2s (EditorPatch cannot
+  // add headings). Then audit with the same outline the desk uses.
+  if (briefOutline?.length) {
+    try {
+      const completed = await completeMissingOutlineSections({
+        content,
+        outline: briefOutline,
+        generateSection: async ({ article, heading, purpose }) =>
+          generateOutlineSection({
+            article,
+            heading,
+            purpose,
+            keyword: primaryKeyword,
+            region,
+            generateText: async (systemPrompt, prompt) => {
+              const ai = await generateContentText({
+                system: systemPrompt,
+                prompt,
+                maxTokens: 4096,
+                temperature: 0.2,
+                skipQualityContract: true,
+              })
+              return ai.text
+            },
+          }),
+      })
+      if (completed.inserted.length) {
+        content = completed.content
+        console.info(`[seoFactory/pipeline] outline completion inserted: ${completed.inserted.join(', ')}`)
+      }
+    } catch (err) {
+      console.warn('[seoFactory/pipeline] outline completion skipped', err)
+    }
+  }
+
+  audit = runAudit(content)
 
   if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 8) {
     throwIfAborted(input.signal, 'post-scaffold refine')
@@ -784,6 +791,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       contentType,
       primaryKeyword,
       indexable: plan.indexable,
+      outline: briefOutline,
       requiredShortKeywords,
       requiredLongTailKeywords,
       shortKeywordTerms,
@@ -840,17 +848,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         primaryKeyword,
         region,
       })
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-        requiredShortKeywords,
-        requiredLongTailKeywords,
-        shortKeywordTerms,
-        longTailKeywordTerms,
-      })
+      audit = runAudit(content)
     }
   }
 
@@ -890,17 +888,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       content = sanitized.content
     }
     if (repaired.applied.length || sanitized.stripped || sanitized.injected) {
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-        requiredShortKeywords,
-        requiredLongTailKeywords,
-        shortKeywordTerms,
-        longTailKeywordTerms,
-      })
+      audit = runAudit(content)
     }
   }
 
@@ -931,17 +919,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     const stripped = stripNoIndex(content)
     if (stripped !== content) {
       content = stripped
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-        requiredShortKeywords,
-        requiredLongTailKeywords,
-        shortKeywordTerms,
-        longTailKeywordTerms,
-      })
+      audit = runAudit(content)
     }
   }
 
