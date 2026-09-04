@@ -9,7 +9,7 @@
 | 4 Entities | **done** | Grok | `topicGraph.ts` + `POST/GET /api/content-studio/topics/analyze` |
 | 5 Coverage / links | **done** | Grok | `coverageLinks.ts` + `POST /api/content-studio/coverage/suggest` |
 | 6 Opportunity scoring | **done** | Grok | `opportunityScore.ts` spec weights + `GET/POST /api/content-studio/opportunities/score` |
-| 7 Action classify | blocked | High | |
+| 7 Action classify | **done** | Grok | `opportunityAction.ts` CREATE/REFRESH/DEFEND/CONSOLIDATE/WATCH + reasons |
 | 8 Cannibalization | blocked | High | reuse `cannibalMerge.ts` |
 | 9 Briefs | blocked | High | |
 | 10 Dashboard | blocked | High | existing studio UI |

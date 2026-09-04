@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import {
   DEFAULT_OPPORTUNITY_WEIGHTS,
-  scoreOpportunityList,
   type OpportunityEvidence,
   type OpportunityWeights,
 } from '@/lib/seoFactory/opportunityScore'
+import { scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
 
 /**
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       ctr: r.ctr,
       position: r.position,
     }))
-    const opportunities = scoreOpportunityList(evidence)
+    const opportunities = scoreAndClassify(evidence)
     return NextResponse.json({
       ok: true,
       weights: DEFAULT_OPPORTUNITY_WEIGHTS,
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     const weights = { ...DEFAULT_OPPORTUNITY_WEIGHTS, ...(body.weights && typeof body.weights === 'object' ? body.weights as Partial<OpportunityWeights> : {}) }
     const rows = Array.isArray(body.rows) ? (body.rows as OpportunityEvidence[]) : null
     if (rows) {
-      const opportunities = scoreOpportunityList(rows, weights as OpportunityWeights)
+      const opportunities = scoreAndClassify(rows, weights as OpportunityWeights)
       return NextResponse.json({ ok: true, weights, count: opportunities.length, opportunities })
     }
     return GET(request)
