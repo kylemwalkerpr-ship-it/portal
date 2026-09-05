@@ -1,6 +1,6 @@
 import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm, stripDuplicateArticleCopy } from '@/lib/seoFactory/editorialScaffold'
 import { isFillerTitle } from '@/lib/seoEngine/titleLab'
-import { detectDanglingForwardReferences } from '@/lib/seoFactory/contentQualityGate'
+import { detectDanglingForwardReferences, detectKeywordPastedHeadings, missingOutlineSections } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { normalizeEditorDocument } from '@/lib/seoFactory/formatContract'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
@@ -1336,13 +1336,17 @@ describe('keyword-pasted heading deterministic rewrite (real fix, never hide)', 
   })
 
   it('applyDeterministicRepairs rewrites the heading and tags the repair', () => {
+    // Detection is exact / year-suffix only — embedded-keyword FAQ questions are
+    // not KEYWORD_PASTED_HEADING (those belong to forced_faq_wordings). Use a
+    // verbatim pasted H2 here so Audit & Fix's deterministic rewrite path is
+    // what we assert.
     const draft = `# Guide
 
 ## In 60 seconds
 
 Prose.
 
-## Do you need an Australia student visa fee increase plan if you already hold a visa?
+## Australia student visa fee increase plan
 
 Prose body.
 
@@ -1357,14 +1361,15 @@ Gov.`
       content: draft,
       indexable: true,
       contentType: 'legal_guide',
-      primaryKeyword: 'australia student visa fee increase',
-      requiredShortKeywords: ['australia student visa fee increase', 'b', 'c', 'd', 'e'],
+      // Primary must not be a prefix of the pasted H2 — primary-mirroring
+      // exemption uses startsWith and would skip the rewrite otherwise.
+      primaryKeyword: 'student visa fee changes',
+      requiredShortKeywords: ['student visa fee changes', 'b', 'c', 'd', 'e'],
       requiredLongTailKeywords: ['australia student visa fee increase plan', 'x y z q r', 'x y z q s'],
     })
     expect(fixed.applied).toContain('keyword_pasted_headings_rewritten (1)')
-    expect(fixed.content).toContain('## Do you need a plan if you already hold a visa?')
-    // The keyword phrase is no longer the heading — it reads for a reader.
-    expect(fixed.content).not.toMatch(/^## Do you need an Australia student visa fee increase plan/im)
+    expect(fixed.content).not.toMatch(/^## Australia student visa fee increase plan\s*$/im)
+    expect(fixed.content).toMatch(/^## /m)
   })
 
   it('never rewrites the H1 or a primary-mirroring heading', () => {
@@ -1399,9 +1404,10 @@ Gov.`
     const heading = 'What an I-129 nonimmigrant worker petition covers'
     const out = rewritePastedHeading(heading, 'i-129 nonimmigrant worker petition', 'i-129 nonimmigrant worker petition')
     expect(out).toBeTruthy()
+    expect(out).not.toBe(heading)
     expect(out!.toLowerCase()).not.toContain('nonimmigrant worker petition')
-    expect(out!.toLowerCase()).not.toMatch(/i-?129/)
-    expect(out).toMatch(/^What this petition covers$/i)
+    // Outline-safe: keep form id + worker/petition so ≥60% token overlap holds.
+    expect(out).toMatch(/^What the I-129 worker petition covers$/i)
   })
 
   it('rewrites "How to file an I-129 …" even when primary is a short form code', () => {
@@ -1449,8 +1455,29 @@ Gov.`
       ],
     })
     expect(fixed.applied).toContain('keyword_pasted_headings_rewritten (1)')
-    expect(fixed.content).toMatch(/^## What this petition covers$/m)
+    expect(fixed.content).toMatch(/^## What the I-129 worker petition covers$/m)
     expect(fixed.content).not.toMatch(/^## What an I-129 nonimmigrant worker petition covers$/m)
+    const shorts = ['i-129 petition', 'nonimmigrant worker', 'h-1b transfer', 'l-1 petition', 'petition filing']
+    const longs = [
+      'i-129 nonimmigrant worker petition',
+      'what an i-129 nonimmigrant worker petition covers',
+      'i-129 petition requirements checklist',
+    ]
+    expect(
+      detectKeywordPastedHeadings(
+        fixed.content,
+        shorts,
+        longs,
+        'i-129 nonimmigrant worker petition',
+      ),
+    ).toEqual([])
+    // Outline entry was the pasted keyword — rewrite must keep ≥60% overlap
+    // or Audit & Fix re-inserts the verbatim H2 via outline completion.
+    expect(
+      missingOutlineSections(fixed.content, [
+        { heading: 'What an I-129 nonimmigrant worker petition covers' },
+      ]),
+    ).toEqual([])
   })
 
 describe('title_keyword_only_fixed — TitleLab replacement', () => {

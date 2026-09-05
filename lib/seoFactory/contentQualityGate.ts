@@ -613,14 +613,20 @@ export function suggestHeadingRewrite(
   work = work.replace(/^(?:a|an|the)\s+/i, '').replace(/[,;:](?=\s*$)|\.$/g, '').trim()
 
   // Rebuild natural reader-facing frames when we recognized them up front.
+  // Covers-frame: keep distinctive topic tokens (form id + worker/petition)
+  // so missingOutlineSections (≥60% token overlap) still accepts the rewrite
+  // and Audit & Fix does not re-insert the pasted keyword H2.
   if (coversFrame) {
-    const noun = (work.split(/\s+/).filter(Boolean).pop() || 'petition').toLowerCase()
-    // Prefer a concrete noun when residue still has one; else "petition".
-    const head =
-      /^(petition|application|process|request|form|case|option|pathway|visa)$/i.test(noun)
-        ? noun
-        : 'petition'
-    work = `What this ${head} covers`
+    const rawForm = (String(h).match(/\b([IiHhLlOoPp]-?\d{2,4}[A-Za-z]?)\b/) || [])[1]
+    const form = rawForm
+      ? rawForm.toUpperCase().replace(/^([A-Z])(?=\d)/, '$1-').replace(/--+/g, '-')
+      : ''
+    const keep = ['worker', 'petition', 'application', 'request', 'visa']
+      .filter((t) => new RegExp(`\\b${t}\\b`, 'i').test(h))
+    const nouns = keep.length ? keep : ['petition']
+    work = form
+      ? `What the ${form} ${nouns.join(' ')} covers`
+      : `What the ${nouns.join(' ')} covers`
   } else if (howToFrame) {
     const verb = howToFrame[2].toLowerCase().replace(/\s+for$/, '')
     work = verb === 'file' || verb === 'submit' ? 'How to file' : `How to ${verb}`
@@ -651,8 +657,19 @@ export function detectKeywordPastedHeadings(
   primaryKeyword?: string | null,
 ): Array<{ heading: string; keyword: string }> {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  /** Strip trailing year/boilerplate only — not arbitrary natural extensions. */
+  const stripYearBoilerplate = (s: string) =>
+    s
+      .replace(/\s+(?:in|for|updated|as of|of)?\s*\(?\d{4}\)?\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const isVerbatimKeyword = (normH: string, keywordNorm: string) => {
+    if (!keywordNorm) return false
+    if (normH === keywordNorm) return true
+    return stripYearBoilerplate(normH) === keywordNorm
+  }
   const primaryNorm = norm(primaryKeyword || '')
-  const sho = new Set((shortKeywords || []).map((k) => norm(k)).filter(Boolean))
+  const shorts = [...new Set((shortKeywords || []).map((k) => norm(k)).filter(Boolean))]
   const longs = [...new Set((longTailKeywords || []).map((k) => norm(k)).filter((k) => k.split(' ').length >= 3))]
   const out: Array<{ heading: string; keyword: string }> = []
   for (const kick of String(content || '').matchAll(/^(#{1,3})\s+(.+)$/gm)) {
@@ -662,16 +679,22 @@ export function detectKeywordPastedHeadings(
     if (!normH || level === 1) continue
     // Primary mirroring is never stuffing on any level.
     if (primaryNorm && (normH === primaryNorm || normH.startsWith(`${primaryNorm} `))) continue
-    if (sho.has(normH)) {
-      out.push({ heading, keyword: heading })
-      continue
-    }
-    for (const long of longs) {
-      if (normH === long || normH.includes(`${long} `) || normH.startsWith(long)) {
-        out.push({ heading, keyword: long })
+    let matched: string | null = null
+    for (const short of shorts) {
+      if (isVerbatimKeyword(normH, short)) {
+        matched = heading
         break
       }
     }
+    if (!matched) {
+      for (const long of longs) {
+        if (isVerbatimKeyword(normH, long)) {
+          matched = long
+          break
+        }
+      }
+    }
+    if (matched) out.push({ heading, keyword: matched })
   }
   return out
 }

@@ -297,18 +297,18 @@ export function rewritePastedHeading(
     .trim()
 
   if (coversFrame) {
-    const residueNoun = section
-      .replace(/^what\s+/i, '')
-      .replace(/\bcovers\b/i, '')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .pop()
-    const head =
-      residueNoun && /^(petition|application|process|request|form|case|option|pathway|visa)$/i.test(residueNoun)
-        ? residueNoun.toLowerCase()
-        : 'petition'
-    section = `What this ${head} covers`
+    // Outline-safe: keep form id + distinctive nouns so ≥60% token overlap
+    // with the pasted outline heading remains after the rewrite.
+    const rawForm = (String(h).match(/\b([IiHhLlOoPp]-?\d{2,4}[A-Za-z]?)\b/) || [])[1]
+    const form = rawForm
+      ? rawForm.toUpperCase().replace(/^([A-Z])(?=\d)/, '$1-').replace(/--+/g, '-')
+      : ''
+    const keep = ['worker', 'petition', 'application', 'request', 'visa']
+      .filter((t) => new RegExp(`\\b${t}\\b`, 'i').test(h))
+    const nouns = keep.length ? keep : ['petition']
+    section = form
+      ? `What the ${form} ${nouns.join(' ')} covers`
+      : `What the ${nouns.join(' ')} covers`
   } else if (howToFrame) {
     const verb = howToFrame[2].toLowerCase().replace(/\s+for$/, '')
     section = verb === 'file' || verb === 'submit' ? 'How to file' : `How to ${verb}`

@@ -239,6 +239,33 @@ Natural heading stays untouched.
     expect(headings).not.toContain('What each fee model includes')
   })
 
+  it('flags year-suffixed pasted long-tails but not natural extensions', () => {
+    const body = `# Guide
+
+## What an I-129 nonimmigrant worker petition covers
+
+Prose.
+
+## What an I-129 nonimmigrant worker petition covers in 2026
+
+Prose.
+
+## What an I-129 nonimmigrant worker petition covers for H-1B employers
+
+Natural extension stays untouched.
+`
+    const found = detectKeywordPastedHeadings(
+      body,
+      ['i-129 petition', 'worker petition', 'petition filing', 'h-1b transfer', 'l-1 petition'],
+      ['what an i-129 nonimmigrant worker petition covers', 'i-129 petition requirements checklist'],
+      'i-129 nonimmigrant worker petition',
+    )
+    const headings = found.map((f) => f.heading)
+    expect(headings).toContain('What an I-129 nonimmigrant worker petition covers')
+    expect(headings).toContain('What an I-129 nonimmigrant worker petition covers in 2026')
+    expect(headings).not.toContain('What an I-129 nonimmigrant worker petition covers for H-1B employers')
+  })
+
   it('never flags the H1 / primary-mirroring headings (title contract)', () => {
     const body = `# Diy green card application vs attorney
 
