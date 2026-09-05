@@ -130,6 +130,26 @@ export function resolveAhrefsIssueId(raw: string): string {
   return snake
 }
 
+/** YouSafe estate hosts that may appear as page canonicals / OG images. */
+const ESTATE_HOST_RE = /^(?:[a-z0-9-]+\.)?yousafeconsultancy\.com$/i
+
+/**
+ * True when `url` is an https URL on a YouSafe estate host
+ * (apex, legal, ca, uk, usa, au, market, …). Official government citations
+ * such as alberta.ca/iqas must NEVER become the page canonical.
+ */
+export function isEstateCanonicalUrl(url: string): boolean {
+  const raw = String(url || '').trim()
+  if (!raw) return false
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'https:') return false
+    return ESTATE_HOST_RE.test(u.hostname)
+  } catch {
+    return false
+  }
+}
+
 /** Collapse `https://host//path` and `https://host/foo//bar` to a single slash. */
 export function sanitizeEstateUrl(url: string): string {
   const raw = String(url || '').trim()
@@ -323,6 +343,28 @@ export function evaluateAhrefsDraft(
       message: 'No canonical URL in front matter — Ahrefs will flag a missing canonical after deploy.',
       fix: 'Set canonicalUrl to the live estate URL. Ship repair injects it from the owner plan.',
     })
+  } else if (!isEstateCanonicalUrl(canonical)) {
+    findings.push({
+      code: 'ahrefs_canonical_off_estate', issueId: 'canonical_missing', severity: 'blocker',
+      message: `canonicalUrl is off-estate (${canonical}) — government/citation URLs must not be the page canonical.`,
+      fix: 'Set canonicalUrl to the YouSafe owner-plan URL (ca/uk/usa/au/legal/apex). Repair overwrites non-estate values from targetUrl.',
+    })
+  } else if (opts.targetUrl && isEstateCanonicalUrl(opts.targetUrl)) {
+    const norm = (u: string) => {
+      try {
+        const p = new URL(u)
+        return (p.host + (p.pathname.replace(/\/+$/, '') || '/')).toLowerCase()
+      } catch {
+        return u.replace(/\/+$/, '').toLowerCase()
+      }
+    }
+    if (norm(canonical) !== norm(opts.targetUrl)) {
+      findings.push({
+        code: 'ahrefs_canonical_mismatch', issueId: 'canonical_missing', severity: 'warning',
+        message: `canonicalUrl (${canonical}) does not match owner target (${opts.targetUrl}).`,
+        fix: 'Align front-matter canonicalUrl with the owner-plan live URL before ship.',
+      })
+    }
   }
 
   if (/noindex/.test(robots)) {
@@ -464,13 +506,23 @@ export function applyAhrefsDraftRepairs(
 
   fm.title = title
   fm.description = desc
-  const target = opts.targetUrl ? sanitizeEstateUrl(opts.targetUrl) : ''
+  const target = opts.targetUrl && isEstateCanonicalUrl(opts.targetUrl)
+    ? sanitizeEstateUrl(opts.targetUrl)
+    : ''
   if (target && urlHasDoubleSlash(opts.targetUrl || '')) applied.push('ahrefs_double_slash')
-  if (target && !fm.canonicalUrl && !fm.canonical) {
+  const existingCanonical = String(fm.canonicalUrl || fm.canonical || '').trim()
+  // Models often paste a citation (e.g. alberta.ca/iqas) into canonicalUrl.
+  // Prefer the owner-plan target whenever the existing value is missing or
+  // not an estate URL — never leave a government page as our canonical.
+  if (target && (!existingCanonical || !isEstateCanonicalUrl(existingCanonical))) {
+    if (existingCanonical && existingCanonical !== target) {
+      applied.push('ahrefs_canonical_estate')
+    } else if (!existingCanonical) {
+      applied.push('ahrefs_canonical')
+    }
     fm.canonicalUrl = target
-    applied.push('ahrefs_canonical')
-  }
-  if (fm.canonicalUrl) {
+    delete fm.canonical
+  } else if (fm.canonicalUrl) {
     const clean = sanitizeEstateUrl(fm.canonicalUrl)
     if (clean !== fm.canonicalUrl) applied.push('ahrefs_double_slash')
     fm.canonicalUrl = clean
@@ -480,8 +532,15 @@ export function applyAhrefsDraftRepairs(
     applied.push('ahrefs_indexable')
   }
   if (!fm.robots) fm.robots = 'index,follow'
-  if (!fm.ogImage && !fm['og:image'] && !fm.image) {
+  const existingOg = String(fm.ogImage || fm['og:image'] || fm.image || '').trim()
+  if (!existingOg) {
     fm.ogImage = AHREFS_OG_IMAGE
+    applied.push('ahrefs_og_image')
+  } else if (/^https?:\/\//i.test(existingOg) && !isEstateCanonicalUrl(existingOg)) {
+    // Absolute OG pointing at a citation host (e.g. alberta.ca) — reset.
+    fm.ogImage = AHREFS_OG_IMAGE
+    delete fm['og:image']
+    delete fm.image
     applied.push('ahrefs_og_image')
   }
 

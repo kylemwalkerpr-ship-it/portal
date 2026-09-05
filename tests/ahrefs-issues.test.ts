@@ -8,6 +8,7 @@ import {
   resolveAhrefsIssueId,
   sanitizeEstateUrl,
   urlHasDoubleSlash,
+  isEstateCanonicalUrl,
 } from '@/lib/seoFactory/ahrefsIssues'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { fallbackLegalAhrefsSnapshot, normalizeAhrefsPayload } from '@/lib/seoEngine/ahrefsAudit'
@@ -133,6 +134,54 @@ describe('Ahrefs payload normalize', () => {
     expect(v.t_ahrefs_og).toBeLessThan(1)
     expect(v.t_ahrefs_schema).toBeLessThan(1)
     expect(v.t_ahrefs_orphan).toBe(0)
+  })
+})
+
+
+describe('Ahrefs estate canonical guard', () => {
+  it('exports isEstateCanonicalUrl for YouSafe hosts only', () => {
+    expect(isEstateCanonicalUrl('https://ca.yousafeconsultancy.com/express-entry/')).toBe(true)
+    expect(isEstateCanonicalUrl('https://legal.yousafeconsultancy.com/ca/foo/')).toBe(true)
+    expect(isEstateCanonicalUrl('https://www.alberta.ca/iqas.aspx/')).toBe(false)
+    expect(isEstateCanonicalUrl('https://www.canada.ca/en/immigration-refugees-citizenship.html')).toBe(false)
+  })
+
+  it('overwrites model-invented alberta IQAS canonical with owner targetUrl', () => {
+    const target = 'https://ca.yousafeconsultancy.com/canada-express-entry-crs-international-student-graduates/'
+    const { content, applied } = applyAhrefsDraftRepairs(`---
+title: Canada Express Entry CRS for Graduates: 2026 Guide
+description: Learn canada express entry crs international student graduates steps, CRS factors, and documents for applicants.
+canonicalUrl: https://www.alberta.ca/iqas.aspx/
+ogImage: https://www.alberta.ca/iqas.aspx
+robots: index,follow
+---
+
+# Canada Express Entry CRS for Graduates: 2026 Guide
+
+Body about Express Entry CRS for international student graduates.
+`, { primaryKeyword: 'canada express entry crs international student graduates', targetUrl: target })
+    expect(applied).toEqual(expect.arrayContaining(['ahrefs_canonical_estate', 'ahrefs_og_image']))
+    expect(content).toContain(`canonicalUrl: ${target}`)
+    expect(content).not.toMatch(/alberta\.ca/)
+    expect(content).toMatch(/ogImage:\s*\/og-image\.png/)
+    const findings = evaluateAhrefsDraft(content, { targetUrl: target })
+    expect(findings.some((f) => f.code === 'ahrefs_canonical_off_estate')).toBe(false)
+    expect(findings.filter((f) => f.severity === 'blocker')).toHaveLength(0)
+  })
+
+  it('flags off-estate canonical as a blocker before repair', () => {
+    const findings = evaluateAhrefsDraft(`---
+title: Canada Express Entry CRS for Graduates: 2026 Guide
+description: Learn canada express entry crs international student graduates steps, CRS factors, and documents for applicants.
+canonicalUrl: https://www.alberta.ca/iqas.aspx/
+ogImage: /og-image.png
+---
+
+# Canada Express Entry CRS for Graduates: 2026 Guide
+
+Body.
+`)
+    expect(findings.some((f) => f.code === 'ahrefs_canonical_off_estate' && f.severity === 'blocker')).toBe(true)
   })
 })
 
