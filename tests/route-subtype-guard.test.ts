@@ -3,7 +3,12 @@
  * 2026-08 incident where "uk graduate visa requirements" shipped onto the
  * spouse-visa-document-checklist page and overwrote live content.
  */
-import { extractGeoModifiers, extractRouteSubtypes } from '@/lib/seoFactory/ownership'
+import {
+  extractGeoModifiers,
+  extractRouteSubtypes,
+  isAuSubclass485,
+  isUsFormI485,
+} from '@/lib/seoFactory/ownership'
 import {
   assertNoRouteSubtypeConflict,
   extractExistingPageSubject,
@@ -87,6 +92,36 @@ describe('extractRouteSubtypes', () => {
     expect(extractRouteSubtypes('Form I-485 document checklist')).toEqual([])
     expect(extractRouteSubtypes('form i 485 adjustment of status')).toEqual([])
     expect(extractRouteSubtypes('form-i485-adjustment-of-status-document-checklist')).toEqual([])
+  })
+})
+
+describe('isUsFormI485 / isAuSubclass485', () => {
+  it('classifies US Form I-485 / AOS keywords as US, never AU graduate', () => {
+    for (const s of [
+      'i-485',
+      'I-485',
+      'Form I-485',
+      'form-i485-adjustment-of-status-document-checklist',
+      'i 485 adjustment of status',
+      '485 adjustment of status checklist',
+    ]) {
+      expect(isUsFormI485(s)).toBe(true)
+      expect(isAuSubclass485(s)).toBe(false)
+    }
+  })
+
+  it('still classifies AU Temporary Graduate 485 keywords correctly', () => {
+    for (const s of [
+      '485 visa',
+      'australia 485 visa english requirements',
+      'temporary graduate 485 checklist',
+      'subclass 485',
+      '485-pte-requirement',
+    ]) {
+      expect(isUsFormI485(s)).toBe(false)
+      expect(isAuSubclass485(s)).toBe(true)
+      expect(extractRouteSubtypes(s)).toEqual(expect.arrayContaining(['graduate']))
+    }
   })
 })
 

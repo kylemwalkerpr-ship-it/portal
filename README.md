@@ -82,12 +82,19 @@ Cloudflare will then deploy with the full hardening.
 ## Cloudflare Pages deploy token (regional landings)
 
 GitHub Actions secret `CLOUDFLARE_API_TOKEN` must include **Cloudflare Pages Edit**
-(or broader Pages write) for the `yousafe-uk`, `yousafe-ca`, `yousafe-usa`, and
-`yousafe-landing` Pages projects. Without that scope, CI deploys for those
-regional/apex landings fail even when Workers deploys succeed.
+(or broader Pages write) for the `yousafe-uk`, `yousafe-ca`, and `yousafe-usa`
+Pages projects (and apex/`yousafe-landing` when that workflow is used). Without
+that scope, CI deploys for those regional landings fail even when Workers
+deploys succeed. Do not invent or paste token values into the repo.
 
 **Workaround:** on a Mac with Wrangler already authenticated via `wrangler login`
-(OAuth), operators can deploy those Pages projects locally with Wrangler while
-the token scopes are fixed. Prefer fixing the GH secret scopes so CI stays the
-only deploy path.
+(OAuth), operators can deploy those Pages projects locally while token scopes
+are fixed:
 
+```bash
+export CLOUDFLARE_ACCOUNT_ID=48f2c5185be44e14fea1df7d0591932a
+# wrangler pages deploy … --project-name=yousafe-uk|yousafe-ca|yousafe-usa
+```
+
+Prefer fixing the GH secret scopes so CI stays the only deploy path. Full note:
+`docs/ops-cloudflare-pages-token.md`.
