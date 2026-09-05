@@ -17,17 +17,17 @@ Drive YouSafe Content Studio (yousafe-portal) to **100% functional**. Zero toler
 
 ---
 
-## Current git / Deploy (as of handoff)
+## Current git / Deploy (as of this wake ~2:55 PM ET)
 | Item | Value |
 |------|--------|
-| `origin/main` tip | `109ca8f` — `feat(studio): Drafting stage file vault for last 10 jobs` |
-| Prior tip | `6d366d3` — `feat(studio): move Jobs queue under Approve & Track` |
-| **Live green Deploy** | `2a4da13` — Flesch/Harper JSON-LD strip (run `33950316233` success ~6:47–6:53 AM UTC / ~2:47–2:53 AM ET) |
-| **Deploy RED** | `109ca8f` run `33951450540` **FAILED Typecheck** — `studio-drafting-file-vault.tsx:125` Property `bg`/`fg`/`label` does not exist on type `Element` |
-| Dirty local (uncommitted) | `package.json` + `package-lock.json` (+TipTap-looking deps, ~10 lines package.json) — **Phase 3 TipTap editor NOT committed yet** |
-| Working tree otherwise | Phases 1–2 on origin; TipTap deps dirty only |
+| `origin/main` tip | `95604ae` — `fix(seo): stop JSON-LD/orphan-link leaks in consultancy blog render` |
+| Recent stack | `0374e31` shipReady stamp · `8e924d6` CF Pages docs · `cc00bd3` factory quality · `eefeec1` I-485 subtype · `2ed9583` SEO Intel lock |
+| **Live green Deploy** | `95604ae` run `33985378000` **success** |
+| Cancelled (superseded) | Deploys for `0374e31` / `8e924d6` / `cc00bd3` cancelled by newer pushes — tip green is what matters |
+| Dirty local (uncommitted) | scratch scripts under `scripts/i129-*` / `scan-body-corruption.mjs` — **do not commit unless asked** |
+| Cold-start historical note | Early handoff tip was `109ca8f` vault TS-red; long since superseded — see rescore sections below |
 
-**Immediate unblock:** Fix TS in `components/design/studio-drafting-file-vault.tsx` (~L125 status badge typing), commit, push, get Deploy green. Then finish TipTap Phase 3 (deps already partially in dirty package.json).
+**Immediate unblock (path-to-100):** CF Pages token Pages Edit + Ahrefs recrawl + optional I-129 FAQ JSON-LD — not vault TS.
 
 ---
 
@@ -36,7 +36,9 @@ Drive YouSafe Content Studio (yousafe-portal) to **100% functional**. Zero toler
 |------|-------|-------|
 | Live E2E (2026-09-04) | **42/100** | Original Grok admin audit |
 | DeepSeek×4 gaps (2026-09-05) | Code **72/100** · Live **58/100** | `docs/Content_Studio_Pipeline_Gaps_2026-09-05.md` (`e8a6773`) |
-| Path to 100 | Not done | Pulse routine still enabled |
+| Live E2E after CA+AU (~07:30 AM ET) | **~80/100** | Prior honest rescore in this doc |
+| **Live E2E this wake (~2:55 PM ET)** | **88/100** | I-129 chrome + Wave C I-485 + smoke + tip Deploy — see rescore section below |
+| Path to 100 | Not done | Pulse routine still enabled; CF Pages token + Ahrefs + FAQ JSON-LD open |
 
 ---
 
@@ -166,4 +168,83 @@ Treat Harper a–f as **still unverified on live**. Next session: restore a job 
 3. Run smoke checklist + ship one clean `article`→caseworks Wave C proof; Ahrefs-recrawl CA/AU URLs.
 
 *End rescore update — docs only.*
+---
 
+## Live rescore after I-129 chrome fix + multi-stage smoke (2026-09-05 ~2:55 PM ET)
+
+**Portal tip:** `95604ae` — `fix(seo): stop JSON-LD/orphan-link leaks in consultancy blog render`  
+**Deploy YouSafe Portal:** run `33985378000` **success** (Build and deploy Worker green). Earlier tip candidates `0374e31` / `8e924d6` / `cc00bd3` Deploys were **cancelled** by newer pushes — tip Deploy is the one that counts.  
+**Method:** Same pillar lens as 09-04 audit + prior ~07:30 AM ET rescore (~80). Live HTTP + quality spot-checks this wake. **Not 100%.**
+
+### Score
+
+| Lens | Score | Notes |
+|------|------:|-------|
+| Live E2E (pillar) | **88 / 100** | Was ~80 after CA+AU; +Wave C I-485 caseworks, I-129 chrome fix, SEO Intel lock, Discover→shipReady smoke, tip Deploy green |
+| Code (gaps lens) | **92 / 100** | shipReady stamp, renderTarget durable, subtype guard, factory quality, SEO Intel reset |
+| Path to 100 | **Not done** | CF Pages token + Ahrefs recrawl + optional FAQ JSON-LD + residual ops gaps |
+
+### Pillar breakdown (honest)
+
+| Stage | Max | Prior (~80) | Now | Green / open |
+|-------|----:|------------:|----:|--------------|
+| Discover / Ingest / Plan | 15 | 13 | 14 | GSC/GA4 live in smoke `9a378602` (sync 1768 rows, GA4 `550749414`); not full 15 — cron retry historically flaky |
+| Brief Assembly + SEO Intel | 20 | 15 | 17 | **SEO Intel lock reset** `2ed9583`; Grok brief in smoke |
+| Grok pin fidelity | 15 | 13 | 14 | Content AI / style-review Grok; smoke style-review 200 |
+| Draft generation quality | 15 | 12 | 14 | **Wave C article→caseworks** I-485 live; factory `cc00bd3`; TipTap Phase 3 still not the Wave C bar |
+| Review / Audit & Fix / metrics | 15 | 12 | 13 | shipReady stamp `0374e31`; I-129 live dek clean / no KEEP; **optional FAQ JSON-LD not on I-129** (only Org/WebSite) |
+| Approve → GitHub merge | 10 | 8 | 9 | Blog + regional + article caseworks all live 200; **CF `CLOUDFLARE_API_TOKEN` still lacks Pages Edit** (Mac OAuth workaround) |
+| Cohesion | 10 | 7 | 7 | Smoke artifacts + this rescore; **Ahrefs recrawl still open**; I-129 briefly shipped with chrome (fixed `95604ae` — partial credit only) |
+| **Total** | **100** | **80** | **88** | |
+
+### Live proofs verified this wake (HTTP 200 + spot-checks)
+
+| Proof | URL | Spot-check |
+|-------|-----|------------|
+| CA CRS | https://ca.yousafeconsultancy.com/canada-express-entry-crs-international-student-graduates/ | 200; canonical OK; Related guides = real links; Article+FAQPage JSON-LD; no KEEP |
+| AU fee blog | https://yousafeconsultancy.com/blog/australia-student-visa-fee-increase | 200; canonical blog path; Related guides real; no KEEP / no escaped dek |
+| I-129 | https://yousafeconsultancy.com/blog/i-129-nonimmigrant-worker-petition/ | 200; **dek clean** (no escaped JSON-LD); Related guides → `legal…/us/` real `<a>`; canonical on blog path (`95604ae` / prior `7067bae` path fix) |
+| Wave C I-485 | https://legal.yousafeconsultancy.com/us/form-i485-adjustment-of-status-document-checklist/ | 200; job `8b936567` / caseworks `e57b034`; Article JSON-LD; US AOS (not AU 485) — subtype `eefeec1` |
+| UK Warwick sister | https://uk.yousafeconsultancy.com/universities/uk-student-visa-process-for-warwick-university/ | 200; Article+FAQPage; Related guides real |
+
+### Multi-stage smoke
+
+- Job `9a378602-5cec-4048-9fb9-ab2e28fe3435` — Discover→Brief→Generate→Audit→**shipReady STOP** (no Approve)  
+- Artifacts: `tmp/path-to-100-smoke/` (`CHECKLIST_RESULTS.md`, `smoke-report.json`, `shipready-persist-evidence.json`)  
+- Evidence: `audit_shipReady=true`, blockers=0, seo_score=100, word_count=1197
+
+### Key SHAs (tip → older)
+
+| SHA | What |
+|-----|------|
+| `95604ae` | stop JSON-LD/orphan-link leaks in consultancy blog render (**tip**; Deploy green) |
+| `0374e31` | stamp `audit_json.shipReady` on POST reaudit + drafts Save |
+| `8e924d6` | CF Pages token scopes docs + I-485 helper regression tests |
+| `cc00bd3` | durable caseworks render quality for factory ships |
+| `eefeec1` | Form I-485 = US AOS, not AU graduate 485 |
+| `2ed9583` | reset SEO Intel lock on topic/region/keyword change |
+
+### Closed since last rescore (~80 @ `ff39e42` / `2852a20`)
+
+1. SEO Intel lock reset (`2ed9583`)
+2. Multi-stage Discover→shipReady smoke PASS (`9a378602`)
+3. Wave C long-form `article`→caseworks I-485 live 200
+4. I-129 chrome / escaped JSON-LD dek + orphan Related guides fixed live (`95604ae`)
+5. I-485 subtype guard + factory render quality + shipReady persist (`eefeec1` / `cc00bd3` / `0374e31`)
+6. Tip Deploy green on `95604ae` (run `33985378000`)
+
+### Still open (actionable)
+
+1. **GH `CLOUDFLARE_API_TOKEN` Pages Edit** — CI still broken for Pages write; Mac OAuth workaround only (`docs/ops-cloudflare-pages-token.md`)
+2. **Ahrefs recrawl** of shipped CA / AU / I-129 / I-485 / Warwick URLs (if still desired)
+3. **Optional FAQ JSON-LD** not re-emitted on live I-129 (FAQ section in HTML; schema = Org/WebSite only)
+4. Residual: content-studio-retry cron flakiness; TipTap Phase 3 not required for Wave C bar but unfinished if product wants Docs-class editor
+5. Do **not** Approve contaminated IDs (`a80c077c`, `e1c5e2ee`); smoke job `9a378602` left at shipReady on purpose
+
+### Next 3 P0 actions
+
+1. Fix org/repo `CLOUDFLARE_API_TOKEN` scopes → Pages Edit; confirm Pages deploy without Mac OAuth.
+2. Ahrefs-recrawl (or GSC URL inspection) on the five live proofs above.
+3. Re-emit FAQPage JSON-LD on I-129 (or accept as optional and close) → then re-rescore toward 100.
+
+*End rescore — docs only. No Cloud Agents. No random job Approves.*
