@@ -238,9 +238,12 @@ const HYPE_PATTERNS: Array<{ re: RegExp; label: string }> = [
 
 function stripForScan(content: string): string {
   return String(content || '')
+    // KEEP--- must peel before the frontmatter strip or YAML counts as body.
+    .replace(/\bKEEP---+/gi, '---')
     .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/&lt;script\b[\s\S]*?(?:&lt;\/script&gt;|$)/gi, ' ')
 }
 
 /** Section bodies for an H2, code fences and front matter already removed. */
@@ -854,6 +857,24 @@ export function evaluateContentQuality(opts: {
   // cannot make malformed source readable after the fact.
   if (indexable && contentType !== 'marketplace_gig') {
     const raw = String(opts.content || '')
+    // TipTap / model KEEP chrome that can still leave shipReady true when the
+    // rest of the audit is green (prod a80c077c: KEEP--- + KEEP&lt;script).
+    if (/\bKEEP(?:---+|<script\b|&lt;script\b)/i.test(raw)) {
+      add({
+        code: 'keep_chrome_leak',
+        severity: 'blocker',
+        message: 'KEEP chrome leaked into the document (KEEP--- / KEEP<script / KEEP&lt;script)',
+        fix: 'Strip the KEEP prefix from YAML fences and script tags. Preserve means leave --- / <script> unchanged.',
+      })
+    }
+    if (/&lt;script\b/i.test(raw) || /&amp;lt;script\b/i.test(raw)) {
+      add({
+        code: 'escaped_script_leak',
+        severity: 'blocker',
+        message: 'HTML-escaped <script> / JSON-LD is visible in the body',
+        fix: 'Unescape or remove entity-encoded script blocks so schema is a real <script> tag or absent.',
+      })
+    }
     {
       const topFm = raw.match(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/)
       const rest = topFm ? raw.slice(topFm[0].length) : raw

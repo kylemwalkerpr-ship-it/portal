@@ -39,7 +39,7 @@ export function editorResponseContract(): string {
     '- Return ONLY the complete corrected article as raw markdown. No preamble, no closing remarks, no explanations.',
     '- NEVER wrap the article (or any part of it) in ``` code fences.',
     '- NEVER add your own YAML frontmatter, JSON-LD <script> blocks, or metadata unless that exact block already exists in the input. If the input starts with a `---` frontmatter block, return it unchanged at the top.',
-    '- NEVER emit the literal token `KEEP---` (or `KEEP` glued to `---`). Preserve means leave the existing `---` fence as-is — do not prefix it with KEEP.',
+    '- NEVER emit the literal token `KEEP---` / `KEEP<script` / `KEEP&lt;script` (KEEP glued to a fence or schema tag). Preserve means leave `---` / `<script>` as-is — do not prefix them with KEEP.',
     '- Preserve the existing structure exactly: same H1, same H2/### heading text and levels, same section order, same bullet (`- `) and numbered (`1. `) markers, same table pipes — except the specific lines a listed finding requires you to change.',
     '- Keep every list item on its own line. Never merge list items into a paragraph, and never split a paragraph into fake list items.',
     '- Do not reorder, rename, merge, or split sections.',
@@ -99,12 +99,50 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
   const fixed: string[] = []
   let s = String(raw || '')
 
-  // 0. Models often glue prompt verb "KEEP" onto the YAML fence → `KEEP---`.
-  // That token must become a real `---` before any frontmatter parse, or the
-  // fence never matches and YAML leaks into the persisted body (prod 8cc5d523).
-  if (/\bKEEP---+/i.test(s)) {
-    s = s.replace(/\bKEEP---+/gi, '---')
-    fixed.push('editor_keep_fence_normalized')
+  // 0. Models / TipTap glue prompt verb "KEEP" onto chrome:
+  //   KEEP---  → ---          (prod 8cc5d523 YAML leak)
+  //   KEEP<script → <script   (TipTap data-keep serialize fallback)
+  //   KEEP&lt;script → &lt;script then unescape below (prod a80c077c)
+  // Peel KEEP first so frontmatter/schema parsers see real fences.
+  {
+    let keepFixed = false
+    if (/\bKEEP---+/i.test(s)) {
+      s = s.replace(/\bKEEP---+/gi, '---')
+      keepFixed = true
+    }
+    if (/\bKEEP(?=<script\b)/i.test(s)) {
+      s = s.replace(/\bKEEP(?=<script\b)/gi, '')
+      keepFixed = true
+    }
+    if (/\bKEEP(?=&lt;script\b)/i.test(s)) {
+      s = s.replace(/\bKEEP(?=&lt;script\b)/gi, '')
+      keepFixed = true
+    }
+    if (keepFixed) fixed.push('editor_keep_fence_normalized')
+  }
+
+  // 0b. HTML-escaped / double-escaped JSON-LD scripts print as visible garbage
+  // in Document view (prod a80c077c: KEEP&lt;script … &amp;lt;/script&amp;gt;).
+  // Unescape ONLY script-tag entities so schema becomes a real <script> block
+  // (healthy drafts store raw tags). Orphan double-escaped closers are dropped.
+  {
+    const before = s
+    s = s
+      .replace(/&amp;lt;script\b/gi, '&lt;script')
+      .replace(/&amp;lt;\/script&amp;gt;/gi, '&lt;/script&gt;')
+      .replace(/&amp;lt;\/script&gt;/gi, '&lt;/script&gt;')
+      // Decode &gt; only on entity-encoded script open tags: &lt;script …&gt;
+      .replace(/&lt;script\b([^&]*?)&amp;gt;/gi, '&lt;script$1&gt;')
+      .replace(/&lt;script\b([^&]*?)&gt;/gi, '<script$1>')
+      .replace(/&lt;\/script&gt;/gi, '</script>')
+    // Residual orphan closers with no escaped open left.
+    if (!/&lt;script\b/i.test(s)) {
+      s = s.replace(/[ \t]*&amp;lt;\/script&amp;gt;/gi, '').replace(/[ \t]*&lt;\/script&gt;/gi, '')
+    }
+    if (s !== before) {
+      s = s.replace(/\n{3,}/g, '\n\n')
+      fixed.push('editor_escaped_script_unescaped')
+    }
   }
 
   // 1. Whole-reply code fence (```markdown ... ``` / ```md ... ```)
@@ -647,8 +685,13 @@ function cleanLeakedYaml(body: string): string {
  * so the renderer never ships a mangled nested-YAML header.
  */
 export function sanitizeFrontmatter(content: string): string {
-  // Same KEEP--- glue as normalizeEditorDocument — peel/split expect `---`.
-  const raw = peelCollapsedFrontmatter(String(content || '').replace(/\bKEEP---+/gi, '---')).trim()
+  // Same KEEP chrome peel as normalizeEditorDocument — peel/split expect `---`.
+  const raw = peelCollapsedFrontmatter(
+    String(content || '')
+      .replace(/\bKEEP---+/gi, '---')
+      .replace(/\bKEEP(?=<script\b)/gi, '')
+      .replace(/\bKEEP(?=&lt;script\b)/gi, ''),
+  ).trim()
   const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
   const fields: Record<string, string> = fmMatch ? parseSimpleFm(fmMatch[1]) : {}
   let body = fmMatch ? raw.slice(fmMatch.index + fmMatch[0].length) : raw

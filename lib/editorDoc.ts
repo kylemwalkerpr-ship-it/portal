@@ -227,7 +227,7 @@ export function serializeDsHtml(html: string): string {
           }
         }
         // TipTap KeepBlock may strip null markers; still emit parked payload.
-        if (/^KEEP---/.test(raw) || /^KEEP<script\b/i.test(raw)) {
+        if (/^KEEP---/.test(raw) || /^KEEP<script\b/i.test(raw) || /^KEEP&lt;script\b/i.test(raw)) {
           out.push(raw.replace(/^KEEP/, ''))
           return
         }

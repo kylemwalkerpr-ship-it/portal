@@ -2,6 +2,8 @@ import { normalizeEditorDocument, sanitizeFrontmatter } from '@/lib/seoFactory/f
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { repairClassFor } from '@/lib/seoFactory/contentQualityPlaybook'
 import { depthMediationPlan } from '@/lib/seoFactory/reauditContract'
+import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
+import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 
 describe('KEEP--- fence normalization (Audit & Fix pollution)', () => {
   const polluted = `KEEP---
@@ -59,5 +61,94 @@ describe('over-max trim remains clearable with outline gaps', () => {
   it('word_count_over_max stays a deterministic repair class for Audit & Fix priority', () => {
     expect(repairClassFor('word_count_over_max')).toBe('deterministic')
     expect(repairClassFor('missing_outline_section')).not.toBe('deterministic')
+  })
+})
+
+describe('KEEP&lt;script + escaped JSON-LD (prod a80c077c)', () => {
+  const polluted = `KEEP---
+title: "I-129 Nonimmigrant Worker Petition Checklist (2026)"
+content_type: blog_post
+primaryKeyword: i-129 nonimmigrant worker petition
+region: us
+description: Use this I-129 nonimmigrant worker petition checklist, gather evidence, then confirm current USCIS forms and fees before your employer files.
+---
+
+KEEP&lt;script type="application/ld+json"&gt;
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": []
+}
+&lt;/script&gt;
+
+# I-129 Petition Checklist Before You File (2026)
+
+Employers file Form I-129. Confirm the live USCIS edition before you mail the packet.
+
+## In 60 seconds
+
+- Confirm the current Form I-129 edition on USCIS.
+- Match the wage on the offer letter to the LCA.
+- Gather passport, degree, and worksite evidence early.
+- Premium processing uses a separate Form I-907.
+- An approval notice is not a visa stamp.
+
+## What the petition covers
+
+USCIS uses Form I-129 when a U.S. employer asks to classify you in a temporary worker category.
+
+## FAQ
+
+### Who files, you or your employer?
+
+The employer files Form I-129. You supply evidence.
+
+## Sources
+
+- [USCIS Forms](https://www.uscis.gov/forms)
+
+**Disclaimer:** This page is educational only. It is not legal advice.
+`
+
+  it('normalizeEditorDocument peels KEEP--- and unescapes KEEP&lt;script', () => {
+    const { content, fixed } = normalizeEditorDocument(polluted)
+    expect(fixed).toContain('editor_keep_fence_normalized')
+    expect(fixed).toContain('editor_escaped_script_unescaped')
+    expect(content).not.toMatch(/KEEP---/i)
+    expect(content).not.toMatch(/KEEP&lt;script/i)
+    expect(content).not.toMatch(/&lt;script\b/i)
+    expect(content).toMatch(/<script\b[^>]*application\/ld\+json/i)
+    expect(content.trimStart().startsWith('---')).toBe(true)
+  })
+
+  it('applyDeterministicRepairs clears KEEP chrome so body is ship-safe', () => {
+    const { content, applied } = applyDeterministicRepairs({
+      content: polluted,
+      title: 'I-129 Petition Checklist Before You File (2026)',
+      primaryKeyword: 'i-129 nonimmigrant worker petition',
+      region: 'US',
+      contentType: 'blog_post',
+    })
+    expect(applied.some((a) => a.includes('editor_keep_fence_normalized'))).toBe(true)
+    expect(content).not.toMatch(/\bKEEP(?:---+|<script\b|&lt;script\b)/i)
+    expect(content).not.toMatch(/&lt;script\b/i)
+  })
+
+  it('quality gate blocks KEEP chrome and escaped scripts before repair', () => {
+    const result = evaluateContentQuality({
+      content: polluted,
+      primaryKeyword: 'i-129 nonimmigrant worker petition',
+      region: 'US',
+      contentType: 'blog_post',
+      indexable: true,
+    })
+    const codes = result.blockers.map((f) => f.code)
+    expect(codes).toContain('keep_chrome_leak')
+    expect(codes).toContain('escaped_script_leak')
+  })
+
+  it('keep_chrome_leak and escaped_script_leak are deterministic format blockers', () => {
+    expect(repairClassFor('keep_chrome_leak')).toBe('deterministic')
+    expect(repairClassFor('escaped_script_leak')).toBe('deterministic')
   })
 })
