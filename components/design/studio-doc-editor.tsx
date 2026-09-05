@@ -35,7 +35,8 @@ const TOKENS = {
   serif: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)",
 }
 
-const KEEP_PREFIX = '\u0000KEEP\u0000'
+/** Private-use markers — never U+0000 (DOMParser/innerHTML strip or truncate). */
+const KEEP_PREFIX = '\uE000KEEP\uE000'
 
 function esc(s: string): string {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -290,10 +291,14 @@ export default function StudioDocEditor({
   minHeight?: number
   highlightPhrase?: string | null
 }) {
-  const lastSerializedRef = React.useRef('')
+  const lastSerializedRef = React.useRef(String(content || '').trim())
+  const contentRef = React.useRef(content)
+  contentRef.current = content
+  const onChangeRef = React.useRef(onChange)
+  onChangeRef.current = onChange
   const [findOpen, setFindOpen] = React.useState(false)
   const [findQ, setFindQ] = React.useState('')
-  const [liveWords, setLiveWords] = React.useState(0)
+  const [liveWords, setLiveWords] = React.useState(() => countLiveWords(String(content || '')))
   const findInputRef = React.useRef<HTMLInputElement | null>(null)
   const [, bump] = React.useState(0)
 
@@ -336,9 +341,14 @@ export default function StudioDocEditor({
     },
     onUpdate: ({ editor: ed }) => {
       const md = serializeDsHtml(ed.getHTML())
+      const live = countLiveWords(md)
+      const parentLive = countLiveWords(String(contentRef.current || ''))
+      // Empty/sparse TipTap must never wipe a parent that still holds a real body
+      // (mount/setEditable races + keepBlock parse desync).
+      if (live < 40 && parentLive >= 40) return
       lastSerializedRef.current = md.trim()
-      setLiveWords(countLiveWords(md))
-      onChange(md)
+      setLiveWords(live)
+      onChangeRef.current(md)
     },
     onSelectionUpdate: () => bump((n) => n + 1),
     immediatelyRender: false,
@@ -346,16 +356,26 @@ export default function StudioDocEditor({
 
   React.useEffect(() => {
     if (!editor) return
-    editor.setEditable(!disabled)
+    // emitUpdate=false — setEditable defaults to emitting onUpdate which can
+    // serialize an empty doc and wipe AdminInlineEditor content on mount.
+    editor.setEditable(!disabled, false)
   }, [editor, disabled])
 
   React.useEffect(() => {
     if (!editor) return
     const incoming = String(content || '')
-    if (lastSerializedRef.current && lastSerializedRef.current === incoming.trim()) return
+    const incomingWords = countLiveWords(incoming)
+    const sameAsLast = Boolean(lastSerializedRef.current) && lastSerializedRef.current === incoming.trim()
+    let editorWords = 0
+    try {
+      editorWords = countLiveWords(serializeDsHtml(editor.getHTML()))
+    } catch { /* ignore */ }
+    // Re-hydrate when parent has body words but the TipTap doc is empty/sparse.
+    const desynced = incomingWords >= 40 && editorWords < 40
+    if (sameAsLast && !desynced) return
     editor.commands.setContent(mdToEditableHtml(incoming), false)
     lastSerializedRef.current = incoming.trim()
-    setLiveWords(countLiveWords(incoming))
+    setLiveWords(incomingWords)
   }, [content, editor])
 
   React.useEffect(() => {

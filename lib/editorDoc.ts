@@ -218,12 +218,20 @@ export function serializeDsHtml(html: string): string {
       }
       case 'hr': out.push('---'); return
       case 'div': {
-        if (node.text.startsWith('\u0000KEEP\u0000')) {
-          out.push(node.text.slice('\u0000KEEP\u0000'.length))
+        // Keep markers: legacy U+0000KEEPU+0000 (DOM-unsafe) and U+E000KEEPU+E000.
+        const raw = (node.text || inlineMd(node) || '').trim()
+        for (const prefix of ['\u0000KEEP\u0000', '\uE000KEEP\uE000'] as const) {
+          if (raw.startsWith(prefix)) {
+            out.push(raw.slice(prefix.length))
+            return
+          }
+        }
+        // TipTap KeepBlock may strip null markers; still emit parked payload.
+        if (/^KEEP---/.test(raw) || /^KEEP<script\b/i.test(raw)) {
+          out.push(raw.replace(/^KEEP/, ''))
           return
         }
-        const text = inlineMd(node).trim()
-        if (text) out.push(text)
+        if (raw) out.push(raw)
         return
       }
       default: {
