@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import { DEFAULT_REVIEW_PIN, ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
 import { extractProse } from '@/lib/editorMetrics'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
@@ -11,10 +11,21 @@ import { parseStyleJson, type StyleItem } from '@/lib/seoFactory/styleReviewPars
 /** Cloudflare / platform wall clock for this route (seconds). */
 export const maxDuration = 90
 
-/** Per-provider deadline for style critique/apply — strict, not inflated to Grok draft floors. */
-const STYLE_PROVIDER_TIMEOUT_MS = 55_000
+/**
+ * Style critique is latency-sensitive (client aborts ~75s). Prefer Entrim
+ * DeepSeek V4 Flash over the Genesis Review default (Qwen 27B) — Flash
+ * finishes a bounded critique well under budget; Qwen often burned the
+ * whole client abort on a 120k-char slice.
+ */
+const STYLE_REVIEW_DEFAULT_PIN = ENTRIM_DEEPSEEK_FLASH_PIN
+
+/** Per-provider deadline — keep headroom so a failure returns JSON before the 75s client abort. */
+const STYLE_PROVIDER_TIMEOUT_MS = 40_000
 /** Hard overall budget so cascade cannot outrun the client abort (~75s). */
-const STYLE_ROUTE_BUDGET_MS = 80_000
+const STYLE_ROUTE_BUDGET_MS = 65_000
+
+/** Bound the critique sample — full articles at 120k chars made Qwen/Flash stall. */
+const STYLE_CRITIQUE_MAX_CHARS = 16_000
 
 async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -37,8 +48,8 @@ async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>
  * POST /api/content-studio/style-review
  *
  * AI Style Review layer for the Article Editor ("Your AI model rewriting /
- * style / SEO / humanization"). One cascade call (default review model =
- * Genesis Review pin) that critiques the draft against the estate's voice
+ * style / SEO / humanization"). One cascade call (default = Entrim DeepSeek
+ * V4 Flash for latency; Genesis Qwen remapped) that critiques the estate voice
  * contract — clichés, wordy phrasing, weak/passive construction, forced
  * keywords, AI-tell rhythms, hedging, outcome-promise risk — and returns a
  * structured findings list. With `apply: true` a second pass executes the
@@ -122,8 +133,11 @@ export async function POST(request: NextRequest) {
     const proseWords = (prose.match(/[a-zA-Z][a-zA-Z'-]*/g) || []).length
     // Critique the client-facing body, not KEEP--- / yaml soup. Apply still
     // patches the full document. Quotes must remain exact body substrings.
-    const critiqueSlice = proseWords >= 80 ? prose.slice(0, 120_000) : doc.slice(0, 120_000)
-    const prompt = `## Article (body prose for critique)
+    // Cap the sample so style critique finishes under the client abort budget.
+    const critiqueSource = proseWords >= 80 ? prose : doc
+    const truncated = critiqueSource.length > STYLE_CRITIQUE_MAX_CHARS
+    const critiqueSlice = critiqueSource.slice(0, STYLE_CRITIQUE_MAX_CHARS)
+    const prompt = `## Article (body prose for critique${truncated ? '; truncated for latency — critique this sample' : ''})
 
 ${critiqueSlice}
 
@@ -133,10 +147,20 @@ Content type: ${body.contentType || 'unknown'}
 
 Critique the voice and readability of the article body only. Ignore YAML, KEEP--- blocks, frontmatter keys, and leaked markup. \`quote\` must be an exact short substring of a body sentence (not a YAML key). Return ONLY the JSON.`
 
-    const pin = String(body.reviewModel || DEFAULT_REVIEW_PIN).trim() || DEFAULT_REVIEW_PIN
-    // Default review pin must be allowed to cascade when Entrim is at capacity.
-    // Operator-chosen non-default pins stay exclusive except cascadeOnCapacity.
-    const exclusive = pin !== 'auto' && pin !== DEFAULT_REVIEW_PIN
+    const requestedPin = String(body.reviewModel || '').trim()
+    // Remap the Genesis Review default (Qwen) / auto / empty → Flash for this
+    // latency-sensitive lane. Explicit Grok / DeepSeek / other pins are kept.
+    const pin =
+      !requestedPin ||
+      requestedPin === 'auto' ||
+      requestedPin === DEFAULT_REVIEW_PIN ||
+      requestedPin === 'qwen' ||
+      requestedPin === 'qwen3.6-27b'
+        ? STYLE_REVIEW_DEFAULT_PIN
+        : requestedPin
+    // Style default (Flash) may cascade; operator-chosen non-default pins stay
+    // exclusive except cascadeOnCapacity.
+    const exclusive = pin !== 'auto' && pin !== STYLE_REVIEW_DEFAULT_PIN
 
     const review = await withRouteBudget(
       'Style review',
@@ -150,6 +174,8 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
         cascadeOnCapacity: true,
         timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
         strictTimeout: true,
+        // JSON critique — not article prose; skip the ~4k writing contract.
+        skipQualityContract: true,
       }),
     ).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
@@ -193,6 +219,7 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
         cascadeOnCapacity: true,
         timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
         strictTimeout: true,
+        skipQualityContract: true,
       }),
     ).catch((err) => {
       applyProviderError = err instanceof Error ? err.message : String(err)

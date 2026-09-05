@@ -16,7 +16,16 @@ import * as React from 'react'
 import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, harperKindAutofixable, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
-import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import { DEFAULT_REVIEW_PIN, ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
+
+/** Style Review prefers Flash — Qwen (Genesis Review default) routinely hit the 75s abort. */
+function resolveStyleReviewPin(reviewModel?: string): string {
+  const raw = String(reviewModel || '').trim()
+  if (!raw || raw === 'auto' || raw === DEFAULT_REVIEW_PIN || raw === 'qwen' || raw === 'qwen3.6-27b') {
+    return ENTRIM_DEEPSEEK_FLASH_PIN
+  }
+  return raw
+}
 
 /** Hard client deadline so AI Style "Reviewing…" cannot stick if the fetch hangs. */
 const STYLE_REVIEW_CLIENT_TIMEOUT_MS = 75_000
@@ -186,7 +195,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
           content: textRef.current,
           primaryKeyword: h?.primaryKeyword || undefined,
           contentType: h?.contentType || undefined,
-          reviewModel: reviewModel || DEFAULT_REVIEW_PIN,
+          reviewModel: resolveStyleReviewPin(reviewModel),
           apply,
         }),
       })
@@ -576,7 +585,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                           content: textRef.current,
                           primaryKeyword: hintRef.current?.primaryKeyword || undefined,
                           contentType: hintRef.current?.contentType || undefined,
-                          reviewModel: reviewModel || DEFAULT_REVIEW_PIN,
+                          reviewModel: resolveStyleReviewPin(reviewModel),
                           apply: true,
                           items: snapshot,
                         }),
