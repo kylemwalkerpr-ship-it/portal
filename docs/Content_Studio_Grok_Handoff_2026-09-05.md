@@ -60,7 +60,7 @@ Drive YouSafe Content Studio (yousafe-portal) to **100% functional**. Zero toler
 1. **Fix Deploy red on vault** (`studio-drafting-file-vault.tsx` type errors) → green Deploy.
 2. **Phase 3 TipTap document editor** for Drafting (Google Docs–class + SEO + Harper) — DeepSeek tasked; deps dirty in package.json, **no TipTap component commit yet**. Spec in conversation: additive only; keep Audit&Fix/Re-audit/Trim/Markdown; body-only Flesch.
 3. **Harper live re-verify** after `2a4da13`: first browser pass was STALE_DEPLOY (JSON-LD still in Flesch). Post-green re-verify was dispatched; treat as **needs confirmation** — Grammar lint PASS earlier; Flesch/Apply split/Auto-fix/AI Style had fails on stale build; grammar Apply vocab fail + AI Style blank may still be real bugs.
-4. **Regional E2E** Canada Express Entry CRS job `e1c5e2ee` — Brief+Generate+Audit PASS historically; blocked on Save timeout then **Clerk reauth**; Approve not proven for regional. (Job id reused from old Green Card quarantine — verify body is CA Express Entry before ship.)
+4. **Regional E2E** Canada Express Entry CRS job `c72d74c4` (`c72d74c4-f70e-4a3e-bb77-1156e6baffab`) — title "Canada Express Entry CRS for International Student Graduates: 2026 Guide", region CA, `regional_page`, Express Entry/CRS/IRCC body. Blockers before Approve: `seo_score` 19; bad `canonicalUrl` `https://www.alberta.ca/iqas.aspx/`. Approve not proven for regional. **Do not** use `e1c5e2ee` (`e1c5e2ee-44ab-436b-aca8-3693b18dd427`) — that id is **US Green Card** (stale reuse); quarantine for regional E2E; never Approve as CA proof.
 5. **Long-form E2E** — not started.
 6. **Live rescore to 100** — pending after regional + long-form + editor work.
 
