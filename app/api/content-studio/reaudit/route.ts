@@ -801,12 +801,53 @@ export async function POST(request: NextRequest) {
       response.fixedContent = effective
       response.appliedRepairs = [...repaired.applied, ...(response.appliedRepairs || []).filter((r) => !repaired.applied.includes(r))]
     }
-    // POST is score/audit only. The repaired body returns as `fixedContent` for
-    // the editor to preview/apply — it is deliberately NOT persisted to
-    // content_jobs (or a review snapshot) here. Persisting repaired content is
-    // the PATCH fix_* contract (fix_all / fix_one / fix_warnings / fix_depth /
-    // fix_blockers / fix_until_gates) — a pure re-audit on tab-enter must never
-    // silently mutate the saved draft.
+    // POST is score/audit only for *content*: fixedContent is returned for the
+    // editor to preview/apply and is deliberately NOT written to
+    // content_jobs.content here. Persisting repaired bodies is the PATCH
+    // fix_* contract — a pure re-audit on tab-enter must never silently mutate
+    // the saved draft body.
+    //
+    // P0-SHIP-1 (POST): still stamp server-derived gate fields onto
+    // audit_json when jobId is present so Approve/workspace see shipReady
+    // after Audit (not only after Audit & Fix). Content column untouched.
+    if (jobId) {
+      try {
+        const { createSupabaseAdminClient } = await import('@/lib/supabase')
+        const { countBodyWords } = await import('@/lib/seoFactory/contentDepth')
+        const db = createSupabaseAdminClient()
+        const { data: row } = await db
+          .from('content_jobs')
+          .select('audit_json')
+          .eq('id', jobId)
+          .maybeSingle()
+        const baseAudit =
+          row && typeof (row as { audit_json?: unknown }).audit_json === 'object' && (row as { audit_json?: unknown }).audit_json
+            ? { ...((row as { audit_json: Record<string, unknown> }).audit_json) }
+            : {}
+        const shipReadyFlag = Boolean(response.shipReady)
+        await db
+          .from('content_jobs')
+          .update({
+            ...(typeof response.score === 'number' ? { seo_score: response.score } : {}),
+            // Score the body we audited (repaired preview if present); do not write content.
+            word_count: countBodyWords(effective),
+            audit_json: {
+              ...baseAudit,
+              ...(typeof response.score === 'number' ? { score: response.score } : {}),
+              shipReady: shipReadyFlag,
+              blockers: response.blockersData || [],
+              blockersCount:
+                typeof response.blockers === 'number'
+                  ? response.blockers
+                  : (response.blockersData || []).length,
+              reauditedAt: new Date().toISOString(),
+            },
+          })
+          .eq('id', jobId)
+      } catch {
+        /* gate stamp is best-effort; response still carries shipReady */
+      }
+    }
     return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Re-audit failed'

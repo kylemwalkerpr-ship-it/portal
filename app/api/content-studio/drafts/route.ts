@@ -121,6 +121,32 @@ export async function POST(request: NextRequest) {
         { status: 503 },
       )
     }
+    // P0-SHIP-1: when the editor Save/drafts path carries an explicit shipReady,
+    // stamp it onto content_jobs.audit_json so Approve gate survives Save
+    // (review snapshot alone is not enough for jobPassesShipGate).
+    if (typeof shipReady === 'boolean') {
+      try {
+        const { createSupabaseAdminClient } = await import('@/lib/supabase')
+        const { mergeAuditJsonPreservingGate } = await import('@/lib/seoFactory/jobShipGate')
+        const db = createSupabaseAdminClient()
+        const { data: row } = await db
+          .from('content_jobs')
+          .select('audit_json')
+          .eq('id', jobId)
+          .maybeSingle()
+        const prior = (row as { audit_json?: unknown } | null)?.audit_json
+        const blockersArr = Array.isArray(blockers) ? blockers : []
+        const audit_json = mergeAuditJsonPreservingGate(prior, {
+          shipReady,
+          blockers: blockersArr,
+          blockersCount: blockersArr.length,
+          ...(typeof qualityOk === 'boolean' ? { qualityOk } : {}),
+        })
+        await db.from('content_jobs').update({ audit_json }).eq('id', jobId)
+      } catch {
+        /* snapshot already persisted; gate stamp best-effort */
+      }
+    }
     return NextResponse.json({ draft: snapshot, persisted: true, jobId })
   } catch (error) {
     return NextResponse.json(
