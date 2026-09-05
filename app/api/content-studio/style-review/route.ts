@@ -8,6 +8,31 @@ import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 import { countBodyWords, unwrapWholeDocumentFence } from '@/lib/seoFactory/contentDepth'
 import { parseStyleJson, type StyleItem } from '@/lib/seoFactory/styleReviewParse'
 
+/** Cloudflare / platform wall clock for this route (seconds). */
+export const maxDuration = 90
+
+/** Per-provider deadline for style critique/apply — strict, not inflated to Grok draft floors. */
+const STYLE_PROVIDER_TIMEOUT_MS = 55_000
+/** Hard overall budget so cascade cannot outrun the client abort (~75s). */
+const STYLE_ROUTE_BUDGET_MS = 80_000
+
+async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+          ms,
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * POST /api/content-studio/style-review
  *
@@ -113,14 +138,20 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
     // Operator-chosen non-default pins stay exclusive except cascadeOnCapacity.
     const exclusive = pin !== 'auto' && pin !== DEFAULT_REVIEW_PIN
 
-    const review = await generateContentText({
-      system: sys,
-      prompt,
-      maxTokens: 2048,
-      aiProvider: pin,
-      exclusive,
-      cascadeOnCapacity: true,
-    }).catch((err) => {
+    const review = await withRouteBudget(
+      'Style review',
+      STYLE_ROUTE_BUDGET_MS,
+      generateContentText({
+        system: sys,
+        prompt,
+        maxTokens: 2048,
+        aiProvider: pin,
+        exclusive,
+        cascadeOnCapacity: true,
+        timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
+        strictTimeout: true,
+      }),
+    ).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
       throw new Error(`style review provider failed: ${message}`)
     })
@@ -149,16 +180,29 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
     }
 
     // Apply pass: surgical EditorPatch, one op per finding, hash-verified.
-    const applyResult = await generateContentText({
-      system: 'You are a surgical editorial copy editor. Respond with ONLY the EditorPatch JSON.',
-      prompt: `## Document\n\n${doc}\n\n${APPLY_PROMPT(parsed.items)}`,
-      maxTokens: 4096,
-      aiProvider: pin,
-      exclusive,
-      cascadeOnCapacity: true,
-    }).catch(() => null)
+    let applyProviderError: string | null = null
+    const applyResult = await withRouteBudget(
+      'Style apply',
+      Math.min(STYLE_ROUTE_BUDGET_MS, 60_000),
+      generateContentText({
+        system: 'You are a surgical editorial copy editor. Respond with ONLY the EditorPatch JSON.',
+        prompt: `## Document\n\n${doc}\n\n${APPLY_PROMPT(parsed.items)}`,
+        maxTokens: 4096,
+        aiProvider: pin,
+        exclusive,
+        cascadeOnCapacity: true,
+        timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
+        strictTimeout: true,
+      }),
+    ).catch((err) => {
+      applyProviderError = err instanceof Error ? err.message : String(err)
+      console.warn('[style-review] apply provider failed:', applyProviderError)
+      return null
+    })
 
-    const patchParsed = applyResult ? parseEditorPatch(applyResult.text) : { ok: false as const, reason: 'provider unavailable' }
+    const patchParsed = applyResult
+      ? parseEditorPatch(applyResult.text)
+      : { ok: false as const, reason: applyProviderError || 'provider unavailable' }
     if (patchParsed.ok === false) {
       const local = applyQuotedStyleFixes(content, parsed.items)
       if (local.applied > 0) {

@@ -18,6 +18,33 @@ import { runHarperGrammar, fixHarperIssues, applyHarperProblem, harperKindAutofi
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
+/** Hard client deadline so AI Style "Reviewing…" cannot stick if the fetch hangs. */
+const STYLE_REVIEW_CLIENT_TIMEOUT_MS = 75_000
+
+async function fetchStyleReview(init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
+  const { timeoutMs = STYLE_REVIEW_CLIENT_TIMEOUT_MS, signal, ...rest } = init
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort)
+  try {
+    return await fetch('/api/content-studio/style-review', { ...rest, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      const cancelled = Boolean(signal?.aborted)
+      throw new Error(
+        cancelled
+          ? 'Style review cancelled'
+          : `Style review timed out after ${Math.round(timeoutMs / 1000)}s — try again or switch the reviewing model.`,
+      )
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+  }
+}
+
 type Props = {
   content: string
   hint?: EditorSeoHint
@@ -137,18 +164,24 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   }, [content, hint?.region])
 
   const styleReviewInFlightRef = React.useRef(false)
+  const styleAbortRef = React.useRef<AbortController | null>(null)
 
   const runStyleReview = React.useCallback(async (apply: boolean) => {
     const h = hintRef.current
+    styleAbortRef.current?.abort()
+    const controller = new AbortController()
+    styleAbortRef.current = controller
     styleReviewInFlightRef.current = true
     setStyleBusy(true)
     setStyleError(null)
     setStyleRawSnippet(null)
     try {
-      const res = await fetch('/api/content-studio/style-review', {
+      const res = await fetchStyleReview({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
+        signal: controller.signal,
+        timeoutMs: STYLE_REVIEW_CLIENT_TIMEOUT_MS,
         body: JSON.stringify({
           content: textRef.current,
           primaryKeyword: h?.primaryKeyword || undefined,
@@ -157,44 +190,56 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
           apply,
         }),
       })
-      const data = await res.json()
+      let data: Record<string, unknown> = {}
+      try {
+        data = await res.json()
+      } catch {
+        throw new Error(res.ok ? 'Style review returned an empty response' : `Style review failed (HTTP ${res.status})`)
+      }
       setExpanded('style')
       if (!res.ok) {
-        setStyleError(data?.error || 'Style review failed')
+        setStyleError(typeof data?.error === 'string' ? data.error : 'Style review failed')
         setStyleItems([])
         setStyleReviewed(true)
-        styleReviewInFlightRef.current = false
-        setStyleBusy(false)
         return
       }
       const items = Array.isArray(data.items) ? data.items : []
-      setStyleItems(items)
+      setStyleItems(items as Array<{ category: string; quote: string; issue: string; suggestion: string }>)
       setStyleReviewed(true)
       const snippet = typeof data.rawSnippet === 'string' && data.rawSnippet.trim() ? data.rawSnippet.trim() : null
       if (items.length === 0 && snippet) {
         setStyleRawSnippet(snippet)
         setStyleError('Style review did not return structured findings')
       }
-      if (apply && data.applied && data.content && onApplied) {
+      if (apply && data.applied && typeof data.content === 'string' && onApplied) {
         onApplied(data.content)
       }
-      if (data.applied === false && data.reason) setStyleError(`Apply incomplete: ${data.reason}`)
+      if (data.applied === false && typeof data.reason === 'string') setStyleError(`Apply incomplete: ${data.reason}`)
     } catch (err) {
+      // A superseded run (aborted because a newer Review started) must not
+      // clobber the newer run's UI state.
+      if (styleAbortRef.current !== controller) return
       setStyleError(err instanceof Error ? err.message : 'Style review network error')
       setStyleReviewed(true)
+      setStyleItems([])
     } finally {
-      styleReviewInFlightRef.current = false
-      setStyleBusy(false)
+      if (styleAbortRef.current === controller) {
+        styleAbortRef.current = null
+        styleReviewInFlightRef.current = false
+        setStyleBusy(false)
+      }
     }
   }, [reviewModel, onApplied])
 
-  // Parent busy may show a busy cue on the style panel, but must NEVER clear an
-  // in-flight Review (that blanked the AI Style panel on blog drafts mid-generate).
+  // Parent `busy` must NEVER drive styleBusy. Mirroring it left the Review button
+  // stuck on "Reviewing…" whenever the editor was disabled/terminal or mid-pipeline,
+  // and clearing it mid-fetch blanked in-flight reviews. styleBusy is owned only by
+  // runStyleReview / Apply. The `busy` prop still soft-cues panel copy.
   React.useEffect(() => {
-    if (styleReviewInFlightRef.current) return
-    if (busy && expanded === 'style') setStyleBusy(true)
-    else if (!busy) setStyleBusy(false)
-  }, [busy, expanded])
+    return () => {
+      styleAbortRef.current?.abort()
+    }
+  }, [])
 
   const readabilityLabel =
     !metrics ? '' :
@@ -518,10 +563,15 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                   }
                   void (async () => {
                     try {
-                      const res = await fetch('/api/content-studio/style-review', {
+                      styleAbortRef.current?.abort()
+                      const controller = new AbortController()
+                      styleAbortRef.current = controller
+                      const res = await fetchStyleReview({
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin',
+                        signal: controller.signal,
+                        timeoutMs: STYLE_REVIEW_CLIENT_TIMEOUT_MS,
                         body: JSON.stringify({
                           content: textRef.current,
                           primaryKeyword: hintRef.current?.primaryKeyword || undefined,
@@ -531,8 +581,15 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                           items: snapshot,
                         }),
                       })
-                      const data = await res.json()
-                      if (data?.content && data.applied && onApplied) {
+                      let data: Record<string, unknown> = {}
+                      try {
+                        data = await res.json()
+                      } catch {
+                        throw new Error(res.ok ? 'Style apply returned an empty response' : `Style apply failed (HTTP ${res.status})`)
+                      }
+                      if (!res.ok) {
+                        setStyleError(typeof data?.error === 'string' ? data.error : 'Style apply failed')
+                      } else if (typeof data?.content === 'string' && data.applied && onApplied) {
                         onApplied(data.content)
                         setStyleItems(
                           Array.isArray(data.items)
@@ -542,7 +599,11 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                             : [],
                         )
                       } else {
-                        setStyleError(data?.reason || 'Could not replace those quotes in the document — edit by hand.')
+                        setStyleError(
+                          (typeof data?.reason === 'string' && data.reason)
+                            || (typeof data?.error === 'string' && data.error)
+                            || 'Could not replace those quotes in the document — edit by hand.',
+                        )
                       }
                     } catch (err) {
                       setStyleError(err instanceof Error ? err.message : 'Style apply failed')
