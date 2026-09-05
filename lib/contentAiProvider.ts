@@ -353,6 +353,12 @@ export interface ContentAiOptions {
    *  so the ~4k-token writing contract is pure dead weight there — it also
    *  pushes those calls over Groq's 8k TPM free-tier limit. */
   skipQualityContract?: boolean
+  /**
+   * Force thinking OFF on the first completion (DeepSeek/GLM chat_template_kwargs).
+   * Latency-sensitive JSON lanes (style-review) must not burn the token budget on
+   * chain-of-thought. OpenAI never receives thinking flags.
+   */
+  disableThinking?: boolean
   /** Override reasoning budget. Draft Grok stays low on long outputs; the
    *  Master Engine pair sends Grok high + Parasail GLM medium. */
   reasoningEffort?: 'low' | 'medium' | 'high'
@@ -840,16 +846,19 @@ async function openAiCompatFetch(
     body.reasoning_effort =
       want === 'high' || want === 'medium' ? 'high' : 'low'
   }
-  // Empty-content rescue: re-ask the SAME prompt with thinking OFF so a
-  // reasoning model that spent its whole budget on chain-of-thought is forced
-  // to emit final prose instead of bouncing the entire provider cascade.
-  if (patch?.disableThinking) {
-    if (body.chat_template_kwargs && typeof body.chat_template_kwargs === 'object') {
+  // Empty-content rescue OR caller opts.disableThinking: force thinking OFF.
+  // Entrim DeepSeek ships WITHOUT extraBody — the old path only mutated
+  // chat_template_kwargs when it already existed, so Flash kept thinking ON
+  // and burned style-review's 35s budget on reasoning_content.
+  // Always CREATE kwargs for non-OpenAI hosts (stream path already does this).
+  // OpenAI rejects enable_thinking / chat_template_kwargs — never send them.
+  const shouldDisableThinking = Boolean(patch?.disableThinking || opts.disableThinking)
+  if (shouldDisableThinking) {
+    if (p.label !== 'openai') {
       body.chat_template_kwargs = {
-        ...(body.chat_template_kwargs as Record<string, unknown>),
+        ...((body.chat_template_kwargs as Record<string, unknown> | undefined) || {}),
         // DeepSeek-family templates read `thinking`; GLM/Nemotron read
-        // `enable_thinking`. Neutralize BOTH so the rescue re-ask cannot
-        // silently re-enable chain-of-thought and return empty again.
+        // `enable_thinking`. Neutralize BOTH.
         thinking: false,
         enable_thinking: false,
       }
@@ -868,11 +877,7 @@ async function openAiCompatFetch(
     }
     // Only CUSTOM OpenAI-compatible endpoints accept a top-level
     // enable_thinking flag. OpenAI itself REJECTS it (400 "Unknown
-    // parameter: enable_thinking") — a GPT reasoning model that burned its
-    // budget returns empty + finish_reason:length, and the disableThinking
-    // re-ask must NOT send this flag to OpenAI or it hard-fails. OpenAI's
-    // empty-content case is recovered by a larger completion budget (see
-    // resolveMaxTokens), not by toggling a thinking flag it doesn't support.
+    // parameter: enable_thinking") — never send this flag to OpenAI.
     if (!p.extraBody && p.label === 'custom') body.enable_thinking = false
   }
   // Per-fetch deadline — a hung upstream must fail fast so the cascade can
@@ -3068,7 +3073,7 @@ async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): 
       promise,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`${label}: timed out after ${Math.round(ms / 1000)}s — trying next provider`)),
+          () => reject(new Error(`${label}: timed out after ${Math.round(ms / 1000)}s`)),
           ms,
         )
       }),

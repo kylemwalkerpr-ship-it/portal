@@ -23,8 +23,12 @@ const STYLE_PROVIDER_TIMEOUT_MS = 35_000
 /** Hard overall budget — must finish (or return JSON error) before client abort (~50s). */
 const STYLE_ROUTE_BUDGET_MS = 40_000
 
-/** Bound the critique sample (~1.2k-word blogs fit; larger docs sample the lead). */
-const STYLE_CRITIQUE_MAX_CHARS = 8_000
+/**
+ * Bound the critique sample for Flash latency. ~1.2k-word blogs are ~6–7.5k
+ * chars; sampling the lead ~4.5k keeps typical reviews well under 30s when
+ * thinking is off. Larger docs still get a useful lead sample.
+ */
+const STYLE_CRITIQUE_MAX_CHARS = 4_500
 
 async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -156,7 +160,7 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
       generateContentText({
         system: sys,
         prompt,
-        maxTokens: 1024,
+        maxTokens: 768,
         aiProvider: pin,
         exclusive: true,
         cascadeOnCapacity: false,
@@ -164,6 +168,9 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
         strictTimeout: true,
         // JSON critique — not article prose; skip the ~4k writing contract.
         skipQualityContract: true,
+        // Flash defaults to thinking ON on Entrim; CoT burned the 35s budget
+        // on ~8k critique samples. Force thinking off for this JSON lane.
+        disableThinking: true,
       }),
     ).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
@@ -201,13 +208,14 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
       generateContentText({
         system: 'You are a surgical editorial copy editor. Respond with ONLY the EditorPatch JSON.',
         prompt: `## Document\n\n${doc}\n\n${APPLY_PROMPT(parsed.items)}`,
-        maxTokens: 2048,
+        maxTokens: 1536,
         aiProvider: pin,
         exclusive: true,
         cascadeOnCapacity: false,
         timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
         strictTimeout: true,
         skipQualityContract: true,
+        disableThinking: true,
       }),
     ).catch((err) => {
       applyProviderError = err instanceof Error ? err.message : String(err)

@@ -215,4 +215,34 @@ describe('Entrim · explicit selection fails closed', () => {
       global.fetch = originalFetch
     }
   })
+
+  it('disableThinking forces chat_template_kwargs even when Entrim has no extraBody', async () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    const originalFetch = global.fetch
+    let requestBody: Record<string, unknown> | null = null
+    global.fetch = jest.fn(async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"items":[]}', finish_reason: 'stop' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      await generateContentText({
+        aiProvider: 'entrim-deepseek',
+        exclusive: true,
+        cascadeOnCapacity: false,
+        system: 'Review.',
+        prompt: 'Critique this.',
+        maxTokens: 256,
+        skipQualityContract: true,
+        disableThinking: true,
+      })
+      const kw = (requestBody!.chat_template_kwargs || {}) as Record<string, unknown>
+      expect(kw.thinking).toBe(false)
+      expect(kw.enable_thinking).toBe(false)
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
 })
