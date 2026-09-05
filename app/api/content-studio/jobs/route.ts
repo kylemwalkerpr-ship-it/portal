@@ -12,14 +12,17 @@ import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary, emptyStatusTotals, statusTotalsFromRows } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
-import { jobPassesShipGate, mergeAuditJsonPreservingGate } from '@/lib/seoFactory/jobShipGate'
+import { jobPassesShipGate, mergeAuditJsonPreservingGate, withSlimAuditJson } from '@/lib/seoFactory/jobShipGate'
 import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
   JOB_LIST_COLUMNS,
+  JOB_LIST_WITH_GATE_COLUMNS,
   JOB_MUTATE_COLUMNS,
   JOB_OPEN_COLUMNS,
+  JOB_OPEN_WITH_AUDIT_COLUMNS,
   jobCompetingPages,
+  projectListJobGate,
   slimJobForClient,
 } from '@/lib/seoFactory/jobColumns'
 
@@ -30,13 +33,33 @@ function sb() {
   )
 }
 
+/** Re-read audit_json at write time so a concurrent Audit & Fix stamp is not
+ *  lost to a stale Save merge (P0-SHIP-2 race). */
+async function mergeAuditJsonFresh(
+  supabase: ReturnType<typeof sb>,
+  jobId: string,
+  fallbackPrior: unknown,
+  overlay: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const { data } = await supabase.from('content_jobs').select('audit_json').eq('id', jobId).maybeSingle()
+    const prior = (data as { audit_json?: unknown } | null)?.audit_json ?? fallbackPrior
+    return mergeAuditJsonPreservingGate(prior, overlay)
+  } catch {
+    return mergeAuditJsonPreservingGate(fallbackPrior, overlay)
+  }
+}
+
+
 /**
  * GET /api/content-studio/jobs
  * Query: status, region, host (owner_host), repo (target_repo), limit, q, id, ids
  *
- * List responses intentionally omit heavy columns (content, event_log, audit_json,
- * gsc_json) so the queue can poll without exceeding Worker CPU / response limits.
- * Full row is available via ?id= for the editor (never event_log/lineage/audit_json).
+ * List responses omit heavy blobs (content, event_log, full audit_json, gsc_json)
+ * so the queue can poll without exceeding Worker CPU limits. A tiny ship-gate
+ * projection (shipReady / blockersCount / score) is included so Approve→main
+ * can read a stamped Audit & Fix verdict. Single-job ?id= returns slimmed
+ * audit_json (gate fields only), never the raw blob.
  */
 
 export async function GET(request: NextRequest) {
@@ -77,7 +100,8 @@ export async function GET(request: NextRequest) {
     if (id) {
       const bodyOnly = searchParams.get('body') === '1'
       const wantLineage = searchParams.get('lineage') === '1'
-      const cols = bodyOnly ? JOB_BODY_COLUMNS : JOB_OPEN_COLUMNS
+      // P0-SHIP-3: open includes slimmed audit_json so Approve can see shipReady.
+      const cols = bodyOnly ? JOB_BODY_COLUMNS : JOB_OPEN_WITH_AUDIT_COLUMNS
       const { data, error } = await supabase.from('content_jobs').select(cols).eq('id', id).single()
       if (error) throw new Error(error.message)
       const job = data as unknown as Record<string, unknown>
@@ -109,7 +133,7 @@ export async function GET(request: NextRequest) {
         }
       }
       return NextResponse.json(
-        { job: slimJobForClient(job), lineage },
+        { job: withSlimAuditJson(slimJobForClient(job)), lineage },
         { headers: { 'Cache-Control': 'no-store, max-age=0' } },
       )
     }
@@ -117,10 +141,13 @@ export async function GET(request: NextRequest) {
     if (ids.length) {
       const { data, error } = await supabase
         .from('content_jobs')
-        .select(includeContent ? '*' : JOB_LIST_COLUMNS)
+        .select(includeContent ? '*' : JOB_LIST_WITH_GATE_COLUMNS)
         .in('id', ids.slice(0, 50))
       if (error) throw new Error(error.message)
-      return NextResponse.json({ jobs: data ?? [], count: data?.length ?? 0 })
+      const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((j) =>
+        includeContent ? withSlimAuditJson(slimJobForClient(j)) : projectListJobGate(j),
+      )
+      return NextResponse.json({ jobs: rows, count: rows.length })
     }
 
     // Real total count — the #1 complaint was "the queue always shows 40 jobs".
@@ -149,7 +176,7 @@ export async function GET(request: NextRequest) {
     }
 
     // List without content/event_log/audit_json — those blow Worker CPU + payload size
-    const selectCols = includeContent ? '*' : JOB_LIST_COLUMNS
+    const selectCols = includeContent ? '*' : JOB_LIST_WITH_GATE_COLUMNS
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let query: any = supabase
       .from('content_jobs')
@@ -193,7 +220,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
     if (error) throw new Error(`Supabase query failed: ${error.message}`)
 
-    const jobs = (data ?? []) as Array<Record<string, unknown>>
+    const jobs = (data ?? []) as unknown as Array<Record<string, unknown>>
 
     // Summary for admin queue dashboard — totals are the REAL table counts
     // (query-level aggregates) rather than the window that was returned, so
@@ -207,12 +234,15 @@ export async function GET(request: NextRequest) {
     })
     const matched = queueMatchedCount(status, statusTotals, total)
 
+    const projected = includeContent
+      ? jobs.map((j) => withSlimAuditJson(slimJobForClient(j)))
+      : jobs.map((j) => projectListJobGate(j))
     return NextResponse.json({
-      jobs,
-      count: jobs.length,
+      jobs: projected,
+      count: projected.length,
       total,
       matched,
-      hasMore: offset + jobs.length < matched,
+      hasMore: offset + projected.length < matched,
       offset,
       limit,
       summary,
@@ -986,7 +1016,7 @@ export async function PATCH(request: NextRequest) {
         word_count: words,
         // P0-SHIP-2: bare auditContent() never emits shipReady/contentSpec/contentLoop —
         // merge over prior audit_json so Save/reaudit cannot wipe a cleared gate.
-        audit_json: mergeAuditJsonPreservingGate(job.audit_json, {
+        audit_json: await mergeAuditJsonFresh(supabase, id, job.audit_json, {
           ...audit,
           reauditedAt: new Date().toISOString(),
           model: job.audit_json?.model,
@@ -1160,7 +1190,7 @@ export async function PATCH(request: NextRequest) {
           word_count: words,
           seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
           audit_json: audit
-            ? mergeAuditJsonPreservingGate(job.audit_json, {
+            ? await mergeAuditJsonFresh(supabase, id, job.audit_json, {
                 ...audit,
                 model: job.audit_json?.model,
               })
@@ -1659,7 +1689,7 @@ export async function PATCH(request: NextRequest) {
               content: String(content),
               word_count: countBodyWords(String(content)),
               seo_score: audit.score,
-              audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
+              audit_json: await mergeAuditJsonFresh(supabase, id, job.audit_json, { ...audit }),
             })
             .eq('id', id)
         }

@@ -90,13 +90,15 @@ export function isOpenPr(j: ContentJob): boolean {
  */
 export function shipGateFromAuditPayload(aj: unknown): ShipGate {
   if (!aj || typeof aj !== 'object') return null
-  const a = aj as { shipReady?: unknown; blockers?: unknown }
+  const a = aj as { shipReady?: unknown; blockers?: unknown; blockersCount?: unknown }
   if (typeof a.shipReady !== 'boolean') return null
   const blockers = Array.isArray(a.blockers)
     ? a.blockers.length
     : typeof a.blockers === 'number' && Number.isFinite(a.blockers)
       ? a.blockers
-      : 0
+      : typeof a.blockersCount === 'number' && Number.isFinite(a.blockersCount)
+        ? a.blockersCount
+        : 0
   return shipGateFromResponse({ shipReady: a.shipReady, blockers })
 }
 

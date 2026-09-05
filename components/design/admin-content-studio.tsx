@@ -4308,8 +4308,14 @@ function JobDetail({
   React.useEffect(() => {
     // Reset stale audit/ship state when the selected job changes so one job's
     // result can never bleed into another job's banner or buttons.
-    setEditorShipGate(null)
+    // P0-SHIP-3: seed from slimmed audit_json immediately so Approve is not
+    // stuck unknown while the editor finishes review-snapshot hydrate.
+    setEditorShipGate(shipGateFromAuditPayload(job.audit_json ?? null))
     setAudit(null)
+    // Only re-seed when the job identity changes — a later Audit & Fix updates
+    // the gate via onShipReadyChange; re-running on audit_json identity would
+    // fight in-editor edits that correctly clear the gate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id])
 
   // Owner contract: draft picker defaults to the job owner pin. Review pin is
@@ -4589,7 +4595,9 @@ function JobDetail({
             <div style={{ marginTop: 7, display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
               {statusBadge(detail.status)} {statusStepper(detail.status)}
               <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{detail.region} · {detail.content_type?.replace('_', ' ')}</span>
-              {gateScore != null && gateBadge(gateScore, gatePassed)}
+              {shipReady
+                ? gateBadge(detail.seo_score ?? gateScore ?? 100, true)
+                : gateScore != null && gateBadge(gateScore, gatePassed)}
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close job details" style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textDim }}>×</button>
@@ -4702,7 +4710,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve') : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve') : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
@@ -6367,9 +6375,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const data = await res.json().catch(() => ({}))
       if (!data.ok || !Array.isArray(data.runs)) return
       const map = new Map<string, { score: number; passed: boolean }>()
+      // loadGateRuns returns newest-first — keep the FIRST row per subject so a
+      // fresh PASS is not overwritten by an older BLOCK (P0-SHIP-3 / BLOCK 77).
       for (const r of data.runs as Array<Record<string, unknown>>) {
         const id = String(r.subject_id || '')
-        if (!id) continue
+        if (!id || map.has(id)) continue
         map.set(id, { score: Number(r.score) || 0, passed: Boolean(r.passed) })
       }
       setGateByJob(map)

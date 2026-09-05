@@ -60,6 +60,22 @@ export function shipGateFromResponse(data: { shipReady?: unknown; blockers?: num
   }
 }
 
+/** Build a ship-gate snapshot from persisted job.audit_json (slim or full).
+ *  Same contract as the studio UI helper — UNKNOWN when shipReady is absent. */
+export function shipGateFromAuditJson(aj: unknown): ShipGate {
+  if (!aj || typeof aj !== 'object' || Array.isArray(aj)) return null
+  const a = aj as { shipReady?: unknown; blockers?: unknown; blockersCount?: unknown }
+  if (typeof a.shipReady !== 'boolean') return null
+  const blockers = Array.isArray(a.blockers)
+    ? a.blockers.length
+    : typeof a.blockers === 'number' && Number.isFinite(a.blockers)
+      ? a.blockers
+      : typeof a.blockersCount === 'number' && Number.isFinite(a.blockersCount)
+        ? a.blockersCount
+        : 0
+  return shipGateFromResponse({ shipReady: a.shipReady, blockers })
+}
+
 /** Is the current-gate state shippable (passes + zero blockers)? */
 export function shipGateReady(gate: ShipGate): boolean {
   return gate !== null && gate.shipReady === true && gate.blockers === 0

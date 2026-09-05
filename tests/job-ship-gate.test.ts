@@ -6,7 +6,9 @@
  * boolean shipReady in audit_json, or no audit_json at all) is a FAIL, never a
  * silent pass.
  */
-import { jobPassesShipGate, mergeAuditJsonPreservingGate } from '../lib/seoFactory/jobShipGate'
+import { jobPassesShipGate, mergeAuditJsonPreservingGate, slimAuditJsonForClient, withSlimAuditJson } from '../lib/seoFactory/jobShipGate'
+import { projectListJobGate } from '../lib/seoFactory/jobColumns'
+import { shipGateFromAuditJson } from '../lib/seoFactory/currentGate'
 
 function job(auditJson: unknown): Record<string, unknown> {
   return { id: 'j1', title: 'Study Permit Guide', topic: 'canada study permit', audit_json: auditJson }
@@ -109,5 +111,64 @@ describe('mergeAuditJsonPreservingGate', () => {
     expect(jobPassesShipGate(job(merged))).toBe(true)
     expect(merged.contentSpec).toEqual(prior.contentSpec)
     expect(merged.contentLoop).toEqual(prior.contentLoop)
+  })
+})
+
+describe('slimAuditJsonForClient / list gate projection (P0-SHIP-3)', () => {
+  it('keeps shipReady and trims heavy contentLoop rounds', () => {
+    const slim = slimAuditJsonForClient({
+      score: 100,
+      shipReady: true,
+      blockers: [],
+      blockersCount: 0,
+      contentLoop: {
+        action: 'fix_until_gates',
+        status: 'cleared',
+        rounds: [{ round: 1, openFindings: ['x'.repeat(200)] }],
+      },
+      contentSpec: { version: 'cs-1', outline: [{ heading: 'A' }, { heading: 'B' }] },
+      grade: 'A',
+    })
+    expect(slim?.shipReady).toBe(true)
+    expect(slim?.score).toBe(100)
+    expect(slim?.contentLoop).toEqual({
+      action: 'fix_until_gates',
+      status: 'cleared',
+      stopReason: undefined,
+      generatedAt: undefined,
+    })
+    expect(slim?.contentSpec).toEqual({ version: 'cs-1' })
+    expect(slim).not.toHaveProperty('grade')
+    expect(jobPassesShipGate(job(slim))).toBe(true)
+  })
+
+  it('withSlimAuditJson drops empty audit blobs', () => {
+    expect(withSlimAuditJson({ id: 'j1', audit_json: { grade: 'A' } })).toEqual({ id: 'j1' })
+  })
+
+  it('projectListJobGate rebuilds audit_json from JSON-path aliases', () => {
+    const row = projectListJobGate({
+      id: 'j1',
+      title: 'AU student visa',
+      audit_ship_ready: true,
+      audit_blockers_count: 0,
+      audit_score: 100,
+    } as Record<string, unknown>)
+    expect(row.audit_json).toEqual({ shipReady: true, blockersCount: 0, blockers: 0, score: 100 })
+    expect(row).not.toHaveProperty('audit_ship_ready')
+    expect(jobPassesShipGate(row)).toBe(true)
+    expect(shipGateFromAuditJson(row.audit_json)?.shipReady).toBe(true)
+  })
+
+  it('shipGateFromAuditJson treats blockersCount as blockers when array omitted', () => {
+    expect(shipGateFromAuditJson({ shipReady: true, blockersCount: 0 })).toEqual({
+      shipReady: true,
+      blockers: 0,
+    })
+    expect(shipGateFromAuditJson({ shipReady: true, blockersCount: 2 })).toEqual({
+      shipReady: false,
+      blockers: 2,
+    })
+    expect(shipGateFromAuditJson({ score: 100 })).toBeNull()
   })
 })

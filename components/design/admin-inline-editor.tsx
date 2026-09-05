@@ -4,7 +4,7 @@ import StudioDocEditor from './studio-doc-editor'
 import EditorMetricsStrip from './editor-metrics-strip'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
-import { shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
+import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
 const C = {
@@ -106,6 +106,9 @@ type Props = {
   onJobAttached?: (jobId: string) => void
   title?: string
   topic?: string
+  /** Slimmed job.audit_json from GET ?id= — seeds ship gate when review
+   *  snapshot hydrate misses (autosave fingerprint drift). P0-SHIP-3. */
+  persistedAuditJson?: unknown
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -117,7 +120,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving, onJobAttached, title, topic }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving, onJobAttached, title, topic, persistedAuditJson }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -137,7 +140,13 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const persistDraft = useCallback(async (body: string, source: string) => {
     const { sanitizeLeakedMarkup } = await import('@/lib/seoFactory/leakedMarkup')
     const clean = sanitizeLeakedMarkup(body)
-    if (clean !== body) onChange(clean)
+    // P0-SHIP-3: sanitize-only edits must NOT clear a just-stamped ship gate.
+    // The content effect resets shipGate whenever content !== auditedContentRef;
+    // advance the audited ref first when we are the ones changing the body.
+    if (clean !== body) {
+      if (auditedContentRef.current === body) auditedContentRef.current = clean
+      onChange(clean)
+    }
     const res = await fetch('/api/content-studio/drafts', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -168,14 +177,18 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [fixElapsed, setFixElapsed] = useState(0)
   const [fixingWarnings, setFixingWarnings] = useState(false)
   const [expandingDepth, setExpandingDepth] = useState(false)
-  const [shipGate, setShipGate] = React.useState<ShipGate>(null)
+  const [shipGate, setShipGate] = React.useState<ShipGate>(() => shipGateFromAuditJson(persistedAuditJson))
   const [jumpPhrase, setJumpPhrase] = React.useState<string | null>(null)
   useEffect(() => { onShipReadyChange?.(shipGate) }, [shipGate, onShipReadyChange])
   // Content version the latest audit/fix response actually evaluated. When the
   // editor content diverges from it the gate is stale and must be reset to
   // "unknown" so one audited version's pass can never bleed onto an edited one
   // or onto a different job.
-  const auditedContentRef = useRef<string | null>(null)
+  // P0-SHIP-3: when we seed from slimmed audit_json, bind the current body so
+  // the first content effect does not immediately clear a cleared gate.
+  const auditedContentRef = useRef<string | null>(
+    shipGateFromAuditJson(persistedAuditJson) ? content : null,
+  )
   useEffect(() => {
     if (content !== auditedContentRef.current) {
       setShipGate(null)
@@ -245,6 +258,16 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         if (hydratedGate) {
           auditedContentRef.current = latest
           setShipGate(hydratedGate)
+        } else {
+          // P0-SHIP-3: review snapshot may be an autosave without shipReady, or
+          // fingerprint-drift after sanitize. Fall back to slimmed audit_json
+          // stamped by Audit & Fix — bind it to the body we are about to show.
+          const fromJob = shipGateFromAuditJson(persistedAuditJson)
+          if (fromJob) {
+            const bindTo = (stored >= 40 && (incoming < 40 || stored > incoming + 40)) ? latest : content
+            auditedContentRef.current = bindTo || latest || content
+            setShipGate(fromJob)
+          }
         }
         if (stored >= 40 && (incoming < 40 || stored > incoming + 40)) {
           onChange(latest)
@@ -252,7 +275,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       } catch { /* keep the in-pane body */ }
     })()
     return () => { cancelled = true }
-  }, [jobId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobId, persistedAuditJson]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save (debounced 2s) — skip when content is empty or too small
   useEffect(() => {

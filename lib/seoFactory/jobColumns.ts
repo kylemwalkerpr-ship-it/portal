@@ -52,8 +52,23 @@ export const JOB_LIST_COLUMNS = [
 
 export const JOB_OPEN_COLUMNS = [JOB_LIST_COLUMNS, 'content'].join(',')
 
+/** Single-job open: content + audit_json (slimmed before response — see withSlimAuditJson). */
+export const JOB_OPEN_WITH_AUDIT_COLUMNS = [JOB_OPEN_COLUMNS, 'audit_json'].join(',')
+
 /** PATCH mutate/return — content + audit, never event_log / lineage / gsc_json. */
 export const JOB_MUTATE_COLUMNS = [JOB_OPEN_COLUMNS, 'audit_json'].join(',')
+
+/**
+ * Lightweight list projection of the ship gate — PostgREST JSON-path aliases so
+ * the queue never downloads full audit_json blobs (contentLoop rounds / specs).
+ */
+export const JOB_LIST_GATE_PROJECTION = [
+  'audit_ship_ready:audit_json->shipReady',
+  'audit_blockers_count:audit_json->blockersCount',
+  'audit_score:audit_json->score',
+].join(',')
+
+export const JOB_LIST_WITH_GATE_COLUMNS = [JOB_LIST_COLUMNS, JOB_LIST_GATE_PROJECTION].join(',')
 
 export const JOB_BODY_COLUMNS = 'id,content,word_count,error_message,status,updated_at'
 
@@ -75,7 +90,34 @@ export function slimJobForClient<T extends Record<string, unknown>>(row: T): T {
   delete (next as Record<string, unknown>).event_log
   delete (next as Record<string, unknown>).lineage
   delete (next as Record<string, unknown>).gsc_json
+  // Lazy import avoided — callers that need audit slim use withSlimAuditJson /
+  // projectListJobGate. Keeping this function sync + dependency-light.
   return next
+}
+
+/** Map list JSON-path gate aliases onto a tiny audit_json for the client. */
+export function projectListJobGate<T extends Record<string, unknown>>(row: T): T {
+  const shipReady = row.audit_ship_ready
+  const blockersCount = row.audit_blockers_count
+  const score = row.audit_score
+  const next: Record<string, unknown> = { ...row }
+  delete next.audit_ship_ready
+  delete next.audit_blockers_count
+  delete next.audit_score
+  const hasGate =
+    typeof shipReady === 'boolean' ||
+    (typeof blockersCount === 'number' && Number.isFinite(blockersCount)) ||
+    (typeof score === 'number' && Number.isFinite(score))
+  if (!hasGate) return next as T
+  const audit: Record<string, unknown> = {}
+  if (typeof shipReady === 'boolean') audit.shipReady = shipReady
+  if (typeof score === 'number' && Number.isFinite(score)) audit.score = score
+  if (typeof blockersCount === 'number' && Number.isFinite(blockersCount)) {
+    audit.blockersCount = blockersCount
+    audit.blockers = blockersCount
+  }
+  next.audit_json = audit
+  return next as T
 }
 
 /** Brief keyword floors persisted on the job — empty when a legacy row never stored them. */

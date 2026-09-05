@@ -1329,11 +1329,15 @@ Return ONLY the JSON EditorPatch.`
           }
           // P0-SHIP-1: persist server-derived shipReady/blockers into audit_json
           // so jobPassesShipGate (workspace / VII / queue) agrees with the editor.
+          const { countBodyWords } = await import('@/lib/seoFactory/contentDepth')
           await db
             .from('content_jobs')
             .update({
+              seo_score: finalContract.score,
+              word_count: countBodyWords(finalContent),
               audit_json: {
                 ...baseAudit,
+                score: finalContract.score,
                 contentSpec,
                 contentLoop,
                 shipReady: finalShipReady,
@@ -2298,11 +2302,15 @@ ${enginePlan.promptBlock}` + editorResponseContract()
             ? { ...((row as { audit_json: Record<string, unknown> }).audit_json) }
             : {}
         const shipReadyFlag = Boolean(finalResponse.shipReady)
+        const { countBodyWords: countWordsStamp } = await import('@/lib/seoFactory/contentDepth')
         await db
           .from('content_jobs')
           .update({
+            ...(typeof finalResponse.score === 'number' ? { seo_score: finalResponse.score } : {}),
+            word_count: countWordsStamp(finalResponse.fixedContent),
             audit_json: {
               ...baseAudit,
+              ...(typeof finalResponse.score === 'number' ? { score: finalResponse.score } : {}),
               shipReady: shipReadyFlag,
               blockers: finalResponse.blockersData || [],
               blockersCount:

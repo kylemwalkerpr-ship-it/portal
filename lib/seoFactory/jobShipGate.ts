@@ -65,3 +65,63 @@ export function mergeAuditJsonPreservingGate(
   return next
 }
 
+/**
+ * Strip heavy audit_json blobs (full contentLoop rounds, outline specs, long
+ * finding lists) down to the gate fields the studio client needs for Approve
+ * enablement. GET ?id= / list must never ship the raw audit blob — it freezes
+ * the Worker — but without shipReady the modal cannot enable Approve→main
+ * after Audit & Fix (P0-SHIP-3).
+ */
+export function slimAuditJsonForClient(prior: unknown): Record<string, unknown> | null {
+  if (!prior || typeof prior !== 'object' || Array.isArray(prior)) return null
+  const a = prior as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  if (typeof a.shipReady === 'boolean') out.shipReady = a.shipReady
+  if (typeof a.score === 'number') out.score = a.score
+  if (typeof a.humanScore === 'number') out.humanScore = a.humanScore
+  if (typeof a.ok === 'boolean') out.ok = a.ok
+  if (typeof a.model === 'string') out.model = a.model
+  if (typeof a.reauditedAt === 'string') out.reauditedAt = a.reauditedAt
+  if (typeof a.blockersCount === 'number' && Number.isFinite(a.blockersCount)) {
+    out.blockersCount = a.blockersCount
+  }
+  if (Array.isArray(a.blockers)) {
+    out.blockers = a.blockers.slice(0, 12)
+    if (out.blockersCount === undefined) out.blockersCount = a.blockers.length
+  } else if (typeof a.blockers === 'number' && Number.isFinite(a.blockers)) {
+    out.blockers = a.blockers
+    if (out.blockersCount === undefined) out.blockersCount = a.blockers
+  } else if (typeof out.blockersCount === 'number') {
+    // List projection often has count only — normalize so shipGateFromAuditPayload works.
+    out.blockers = out.blockersCount
+  }
+  if (a.contentLoop && typeof a.contentLoop === 'object' && !Array.isArray(a.contentLoop)) {
+    const cl = a.contentLoop as Record<string, unknown>
+    out.contentLoop = {
+      action: cl.action,
+      status: cl.status,
+      stopReason: cl.stopReason,
+      generatedAt: cl.generatedAt,
+    }
+  }
+  if (a.contentSpec && typeof a.contentSpec === 'object' && !Array.isArray(a.contentSpec)) {
+    const cs = a.contentSpec as Record<string, unknown>
+    out.contentSpec = { version: cs.version }
+  }
+  return Object.keys(out).length ? out : null
+}
+
+/** Attach a slimmed audit_json onto a job row for client responses. */
+export function withSlimAuditJson<T extends Record<string, unknown>>(row: T): T {
+  const slim = slimAuditJsonForClient(row.audit_json)
+  if (!slim) {
+    if ('audit_json' in row) {
+      const next = { ...row }
+      delete (next as Record<string, unknown>).audit_json
+      return next
+    }
+    return row
+  }
+  return { ...row, audit_json: slim }
+}
+
