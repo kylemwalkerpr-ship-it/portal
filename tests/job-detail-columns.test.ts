@@ -10,11 +10,16 @@ import {
 } from '@/lib/seoFactory/jobColumns'
 
 describe('content_jobs select lists stay slim', () => {
-  it('never selects event_log, lineage, audit_json, or gsc_json on list or open', () => {
+  it('never selects event_log, lineage, or gsc_json; slim audit_json only on body/mutate', () => {
+    // List/open/lineage must stay free of every heavy blob — including full audit_json.
     expect(JOB_HEAVY_COLUMN_RE.test(JOB_LIST_COLUMNS)).toBe(false)
     expect(JOB_HEAVY_COLUMN_RE.test(JOB_OPEN_COLUMNS)).toBe(false)
-    expect(JOB_HEAVY_COLUMN_RE.test(JOB_BODY_COLUMNS)).toBe(false)
     expect(JOB_HEAVY_COLUMN_RE.test(JOB_LINEAGE_COLUMNS)).toBe(false)
+    // Body GET needs slim audit_json so shipReady survives hydration (P0-SHIP-4).
+    // Still exclude truly heavy columns (event_log / lineage / gsc_json).
+    const trulyHeavy = /(?:^|,)(?:event_log|lineage|gsc_json)(?:$|,)/
+    expect(trulyHeavy.test(JOB_BODY_COLUMNS)).toBe(false)
+    expect(JOB_BODY_COLUMNS.split(',')).toContain('audit_json')
     expect(JOB_MUTATE_COLUMNS).not.toMatch(/(?:^|,)(?:event_log|lineage|gsc_json)(?:$|,)/)
     expect(JOB_MUTATE_COLUMNS.split(',')).toContain('audit_json')
     expect(JOB_LIST_COLUMNS.split(',')).not.toContain('content')
