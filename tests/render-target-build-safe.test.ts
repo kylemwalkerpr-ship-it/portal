@@ -185,4 +185,51 @@ describe('renderTargetFile build-safety', () => {
     expect(ogBlock).not.toMatch(/(?:^|\n)\s*title:/)
     expect(ogBlock).not.toMatch(/(?:^|\n)\s*description:/)
   })
+
+  it('consultancy blog strips JSON-LD from dek, repairs orphan links, sets canonical', () => {
+    const p = plan({
+      host: 'apex',
+      repo: 'yousafe-consultancy',
+      filePath: 'landing-page/app/blog/i-129-nonimmigrant-worker-petition/page.tsx',
+      canonicalUrl: 'https://yousafeconsultancy.com/blog/i-129-nonimmigrant-worker-petition/',
+      contentType: 'blog_post',
+      intentClass: 'procedural',
+    })
+    const messy = [
+      '---',
+      'title: I-129 Nonimmigrant Worker Petition Checklist (2026)',
+      'description: Use this I-129 nonimmigrant worker petition checklist to gather evidence before your employer files.',
+      '---',
+      '',
+      '<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage"}</script>',
+      '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article"}</script>',
+      '# I-129 Nonimmigrant Worker Petition Checklist (2026)',
+      'Your employer files Form I-129 so USCIS can classify you in a temporary worker category.',
+      '',
+      '## Related guides',
+      '- CaseWorks Guides](https://legal.yousafeconsultancy.com/us/)',
+      '',
+      '## FAQ',
+      'Who files Form I-129?',
+      '',
+    ].join('\n')
+    const { fileContent } = renderTargetFile({
+      plan: p,
+      content: messy,
+      title: 'I-129 Nonimmigrant Worker Petition Checklist (2026)',
+      region: 'US',
+      contentType: 'blog_post',
+      primaryKeyword: 'i-129 nonimmigrant worker petition',
+      indexable: true,
+      canonicalUrl: p.canonicalUrl,
+    })
+    expect(fileContent).toContain('BlogDepthSection')
+    expect(fileContent).toMatch(/alternates:\s*\{\s*canonical:\s*"https:\/\/yousafeconsultancy\.com\/blog\/i-129-nonimmigrant-worker-petition"/)
+    expect(fileContent).not.toMatch(/&lt;script|@context|FAQPage|application\/ld\+json/)
+    expect(fileContent).toContain('Your employer files Form I-129')
+    expect(fileContent).toContain('<a href="https://legal.yousafeconsultancy.com/us/"')
+    expect(fileContent).toContain('CaseWorks Guides')
+    expect(fileContent).not.toMatch(/CaseWorks Guides\]\(/)
+  })
+
 })
