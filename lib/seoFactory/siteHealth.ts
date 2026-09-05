@@ -259,7 +259,9 @@ export function publicPathFromRepoFile(filePath: string): string {
     let rest = md[2].replace(/\.(md|mdx)$/i, '')
     if (/^index$/i.test(rest)) return '/'
     rest = rest.replace(/\/index$/i, '')
-    return rest ? `/${rest}/`.replace(/\/+/g, '/') : '/'
+    const path = rest ? `/${rest}/`.replace(/\/+/g, '/') : '/'
+    if (/^landing-page\//i.test(raw)) return path === '/' ? '/' : path.replace(/\/+$/, '')
+    return path
   }
   let route = raw
     .replace(/^(app|usa\/app|uk\/app|ca\/app|au\/app|landing-page\/app)\//, '')
@@ -268,7 +270,13 @@ export function publicPathFromRepoFile(filePath: string): string {
   if (!route || route === 'page.tsx') return '/'
   if (!route.startsWith('/')) route = `/${route}`
   if (!route.endsWith('/')) route += '/'
-  return route.replace(/\/+/g, '/')
+  route = route.replace(/\/+/g, '/')
+  // Apex landing-page is trailingSlash:false — CS must not emit /blog/foo/
+  // or CF 308-strips to /blog/foo and Ahrefs sees a redirect chain / soft 404.
+  if (/^landing-page\/(app\/)?/i.test(raw) || /^landing-page\/content\//i.test(raw)) {
+    return route === '/' ? '/' : route.replace(/\/+$/, '')
+  }
+  return route
 }
 
 /** Normalize a studio sitemap path that may be a repo file path or already-public URL. */
