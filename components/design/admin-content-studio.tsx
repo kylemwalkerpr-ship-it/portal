@@ -101,6 +101,7 @@ import {
 } from './studio-ui-shared'
 import { QueueStats, QueueTable } from './studio-queue'
 import { ReviewDraftsPanel } from './studio-review-panels'
+import { DraftingFileVault } from './studio-drafting-file-vault'
 import { MasterEnginePanel } from './master-engine-panel'
 
 
@@ -7357,6 +7358,13 @@ const controller = new AbortController()
       )}
       {(tab === 'draft' || generating || keepDraftWorkspace || Boolean(generationReviewJob || generationJobId)) && (
         <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" hidden={tab !== 'draft'} style={{ marginBottom: 14, display: tab === 'draft' ? 'flex' : 'none', flexDirection: 'column', gap: 14 }}>
+          {!generating && (
+            <DraftingFileVault
+              jobs={jobs}
+              selectedJobId={selectedJob?.id ?? null}
+              onOpenJob={(j) => { setSelectedJob(j) }}
+            />
+          )}
           {/* ── Draft workspace — inline editor with live streaming ── */}            <DraftWorkspace
               studioRegion={region}
               studioContentType={contentType}
