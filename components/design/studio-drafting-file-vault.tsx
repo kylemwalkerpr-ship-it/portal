@@ -85,7 +85,6 @@ export function DraftingFileVault({
           {files.map((j) => {
             const active = selectedJobId === j.id
             const words = Number(j.word_count) || 0
-            const badge = statusBadge(j.status)
             return (
               <li key={j.id} style={{ borderTop: `1px solid ${E.hairlineSoft || E.hairline}` }}>
                 <button
@@ -120,11 +119,8 @@ export function DraftingFileVault({
                       <span>updated {fmtUpdated(j.updated_at)}</span>
                     </span>
                   </span>
-                  <span style={{
-                    padding: '3px 8px', fontSize: 9.5, fontWeight: 700, fontFamily: E.mono,
-                    background: badge.bg, color: badge.fg, whiteSpace: 'nowrap', flexShrink: 0,
-                  }}>
-                    {badge.label}
+                  <span style={{ flexShrink: 0 }}>
+                    {statusBadge(j.status)}
                   </span>
                   <span style={{
                     padding: '6px 12px', background: E.gold, color: E.ivory,
