@@ -7,7 +7,7 @@
  * silent pass.
  */
 import { jobPassesShipGate, mergeAuditJsonPreservingGate, slimAuditJsonForClient, withSlimAuditJson } from '../lib/seoFactory/jobShipGate'
-import { projectListJobGate } from '../lib/seoFactory/jobColumns'
+import { JOB_BODY_COLUMNS, projectListJobGate } from '../lib/seoFactory/jobColumns'
 import { shipGateFromAuditJson } from '../lib/seoFactory/currentGate'
 
 function job(auditJson: unknown): Record<string, unknown> {
@@ -170,5 +170,11 @@ describe('slimAuditJsonForClient / list gate projection (P0-SHIP-3)', () => {
       blockers: 2,
     })
     expect(shipGateFromAuditJson({ score: 100 })).toBeNull()
+  })
+})
+
+describe('JOB_BODY_COLUMNS (P0-SHIP-4)', () => {
+  it('includes audit_json so GET ?body=1 can slim-stamp shipReady for Approve', () => {
+    expect(JOB_BODY_COLUMNS.split(',')).toContain('audit_json')
   })
 })

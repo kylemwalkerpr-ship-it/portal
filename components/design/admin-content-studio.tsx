@@ -4305,12 +4305,16 @@ function JobDetail({
   // Approve must stay disabled. The green stale-refusal banner is driven by
   // this state now, never by `audit.score` (score is not ship readiness).
   const [editorShipGate, setEditorShipGate] = React.useState<ShipGate>(null)
+  // Bumped after intentional body sync so AdminInlineEditor re-binds a stamped
+  // ship clear (P0-SHIP-4 — body load / Save repairs were wiping Approve→main).
+  const [gateBindGeneration, setGateBindGeneration] = React.useState(0)
   React.useEffect(() => {
     // Reset stale audit/ship state when the selected job changes so one job's
     // result can never bleed into another job's banner or buttons.
     // P0-SHIP-3: seed from slimmed audit_json immediately so Approve is not
     // stuck unknown while the editor finishes review-snapshot hydrate.
     setEditorShipGate(shipGateFromAuditPayload(job.audit_json ?? null))
+    setGateBindGeneration(0)
     setAudit(null)
     // Only re-seed when the job identity changes — a later Audit & Fix updates
     // the gate via onShipReadyChange; re-running on audit_json identity would
@@ -4346,7 +4350,13 @@ function JobDetail({
       const data = await response.json().catch(() => ({})) as { job?: ContentJob; lineage?: Array<Record<string, any>>; error?: string }
       if (gen !== loadGenRef.current) return
       if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
-      const next = { ...job, ...data.job, id: jobIdRef.current }
+      const next = {
+        ...job,
+        ...data.job,
+        id: jobIdRef.current,
+        // body=1 historically omitted audit_json — never drop a list/open stamp.
+        audit_json: data.job.audit_json ?? job.audit_json ?? null,
+      }
       setDetail(next)
       if (typeof data.job.content === 'string') {
         // Guard: huge content (failed jobs with error logs) freezes the editor
@@ -4354,6 +4364,11 @@ function JobDetail({
           setEditorContent(data.job.content.slice(0, 60_000) + '\n\n<!-- Content truncated — ' + (data.job.content.length - 60_000).toLocaleString() + ' chars omitted -->')
         } else {
           setEditorContent(data.job.content)
+        }
+        // P0-SHIP-4: body hydration must re-bind Approve when audit stamp clears.
+        if (shipGateIsCleared(shipGateFromAuditPayload(next.audit_json ?? null))) {
+          setEditorShipGate(shipGateFromAuditPayload(next.audit_json ?? null))
+          setGateBindGeneration((g) => g + 1)
         }
       }
       setActionError(null)
@@ -4536,10 +4551,25 @@ function JobDetail({
       const data = await response.json().catch(() => ({})) as { job?: ContentJob; audit?: unknown; message?: string; error?: string }
       if (!response.ok) throw new Error(data.error || data.message || `HTTP ${response.status}`)
       if (data.job) {
-        setDetail(data.job)
+        setDetail((prev) => {
+          const merged = {
+            ...prev,
+            ...data.job!,
+            id: prev.id,
+            audit_json: data.job!.audit_json ?? prev.audit_json ?? null,
+          }
+          return merged
+        })
         if (data.job.content != null && action !== 'regenerate') {
           const c = String(data.job.content)
           setEditorContent(c.length > 60_000 ? c.slice(0, 60_000) + '\n\n<!-- Truncated -->' : c)
+        }
+        // P0-SHIP-4: Save/approve responses used to omit audit_json and wipe the
+        // pane gate via setDetail(data.job). Re-bind when the stamp still clears.
+        const stamp = shipGateFromAuditPayload(data.job.audit_json ?? detail.audit_json ?? null)
+        if (shipGateIsCleared(stamp)) {
+          setEditorShipGate(stamp)
+          setGateBindGeneration((g) => g + 1)
         }
       }
       if (data.audit) setAudit(data.audit)
@@ -4710,7 +4740,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve') : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} gateBindGeneration={gateBindGeneration} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve') : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely

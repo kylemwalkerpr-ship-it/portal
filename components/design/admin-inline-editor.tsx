@@ -4,7 +4,7 @@ import StudioDocEditor from './studio-doc-editor'
 import EditorMetricsStrip from './editor-metrics-strip'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
-import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, type ShipGate } from '@/lib/seoFactory/currentGate'
+import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
 const C = {
@@ -109,6 +109,9 @@ type Props = {
   /** Slimmed job.audit_json from GET ?id= — seeds ship gate when review
    *  snapshot hydrate misses (autosave fingerprint drift). P0-SHIP-3. */
   persistedAuditJson?: unknown
+  /** Bumped by the parent after intentional body sync (GET ?body=1 / Save
+   *  repairs) so we re-bind a stamped clear instead of treating it as an edit. */
+  gateBindGeneration?: number
 }
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
@@ -120,7 +123,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving, onJobAttached, title, topic, persistedAuditJson }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving, onJobAttached, title, topic, persistedAuditJson, gateBindGeneration = 0 }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -189,18 +192,49 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const auditedContentRef = useRef<string | null>(
     shipGateFromAuditJson(persistedAuditJson) ? content : null,
   )
+  // True after the operator edits away from the audited body — blocks Save/open
+  // audit_json identity churn from re-enabling Approve on unaudited edits.
+  const gateStaleFromEditRef = useRef(false)
   useEffect(() => {
-    if (content !== auditedContentRef.current) {
-      setShipGate(null)
-      setAuditResult(null)
-      setAnnotations([])
-      setBlockerItems([])
-      setWarningItems([])
-      setDepthGate(null)
-      setDepthMediation(null)
-      setEnginePlan(null)
+    if (content === auditedContentRef.current) return
+    // P0-SHIP-4: body hydration — list/open seeds a clear against empty/stub
+    // content, then GET ?body=1 fills the pane. Re-bind the stamped clear to the
+    // loaded body instead of wiping Approve→main (PASS badge alone is not enough).
+    const stamped = shipGateFromAuditJson(persistedAuditJson)
+    const prevWords = countBodyWords(auditedContentRef.current || '')
+    const nextWords = countBodyWords(content)
+    if (shipGateReady(stamped) && prevWords < 40 && nextWords >= 40) {
+      auditedContentRef.current = content
+      gateStaleFromEditRef.current = false
+      setShipGate(stamped)
+      return
     }
-  }, [content])
+    gateStaleFromEditRef.current = true
+    setShipGate(null)
+    setAuditResult(null)
+    setAnnotations([])
+    setBlockerItems([])
+    setWarningItems([])
+    setDepthGate(null)
+    setDepthMediation(null)
+    setEnginePlan(null)
+  }, [content, persistedAuditJson])
+
+  // P0-SHIP-4: parent bumped gateBindGeneration after body load / Save repairs.
+  // Re-bind the stamped clear to the synced body; ignore if the operator edited.
+  useEffect(() => {
+    if (!gateBindGeneration) return
+    if (gateStaleFromEditRef.current) {
+      // Parent sync wins over the edit-stale flag — this generation is an
+      // intentional server body replace (load/save), not a keystroke.
+      gateStaleFromEditRef.current = false
+    }
+    const stamped = shipGateFromAuditJson(persistedAuditJson)
+    if (!shipGateReady(stamped)) return
+    if (countBodyWords(content) < 40) return
+    auditedContentRef.current = content
+    setShipGate(stamped)
+  }, [gateBindGeneration]) // eslint-disable-line react-hooks/exhaustive-deps
   const [depthGate, setDepthGate] = useState<{ ok: boolean; message: string } | null>(null)
   // Depth-mediation plan — how far below the goal (floor OR word-count target)
   // the draft is, so the ship-gate strip can show "1813/2200 words" or
@@ -340,8 +374,9 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // mark the exact content version it evaluated. `shipReady` is ONLY true when
   // the response itself reported shipReady AND zero blockers — the human score
   // alone never implies readiness.
-  const applyShipGate = useCallback((data: { shipReady?: unknown; blockers?: number }, auditedContent: string) => {
+  const applyShipGate = useCallback((data: { shipReady?: unknown; blockers?: unknown }, auditedContent: string) => {
     auditedContentRef.current = auditedContent
+    gateStaleFromEditRef.current = false
     setShipGate(shipGateFromResponse(data))
   }, [])
 

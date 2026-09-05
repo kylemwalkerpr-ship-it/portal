@@ -70,7 +70,7 @@ export const JOB_LIST_GATE_PROJECTION = [
 
 export const JOB_LIST_WITH_GATE_COLUMNS = [JOB_LIST_COLUMNS, JOB_LIST_GATE_PROJECTION].join(',')
 
-export const JOB_BODY_COLUMNS = 'id,content,word_count,error_message,status,updated_at'
+export const JOB_BODY_COLUMNS = 'id,content,word_count,error_message,status,updated_at,audit_json'
 
 /** Jobs that already failed and need regen must not auto-fetch the stored body.
  *  That fetch (and the editor mount that follows) is what freezes the modal. */

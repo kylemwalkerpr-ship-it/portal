@@ -1205,10 +1205,16 @@ export async function PATCH(request: NextRequest) {
                 : 'drafting',
         })
         .eq('id', id)
-        .select(JOB_OPEN_COLUMNS)
+        // P0-SHIP-4: return slimmed audit_json so Save cannot wipe the client gate stamp.
+        .select(JOB_MUTATE_COLUMNS)
         .single()
       if (upErr) throw upErr
-      return NextResponse.json({ ok: true, job: updated, audit, appliedRepairs: repaired.applied })
+      return NextResponse.json({
+        ok: true,
+        job: withSlimAuditJson(slimJobForClient(updated as unknown as Record<string, unknown>)),
+        audit,
+        appliedRepairs: repaired.applied,
+      })
     }
 
     if (action === 'refresh_pr') {

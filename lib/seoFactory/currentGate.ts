@@ -52,11 +52,19 @@ export function shipGateFromPersistedReview(
  *  `shipReady` is ONLY true when the response said `shipReady === true`
  *  AND `blockers === 0` — the human score alone never implies readiness.
  *  Unknown responses (no boolean shipReady) yield `null`. */
-export function shipGateFromResponse(data: { shipReady?: unknown; blockers?: number; [key: string]: unknown }): ShipGate {
+/** Normalize blockers whether the audit returned a count, findings array, or omitted. */
+export function normalizeShipBlockers(blockers: unknown): number {
+  if (Array.isArray(blockers)) return blockers.length
+  if (typeof blockers === 'number' && Number.isFinite(blockers)) return blockers
+  return 0
+}
+
+export function shipGateFromResponse(data: { shipReady?: unknown; blockers?: unknown; [key: string]: unknown }): ShipGate {
   if (typeof data.shipReady !== 'boolean') return null
+  const blockers = normalizeShipBlockers(data.blockers)
   return {
-    shipReady: data.shipReady === true && (data.blockers ?? 0) === 0,
-    blockers: data.blockers ?? 0,
+    shipReady: data.shipReady === true && blockers === 0,
+    blockers,
   }
 }
 
@@ -66,10 +74,9 @@ export function shipGateFromAuditJson(aj: unknown): ShipGate {
   if (!aj || typeof aj !== 'object' || Array.isArray(aj)) return null
   const a = aj as { shipReady?: unknown; blockers?: unknown; blockersCount?: unknown }
   if (typeof a.shipReady !== 'boolean') return null
-  const blockers = Array.isArray(a.blockers)
-    ? a.blockers.length
-    : typeof a.blockers === 'number' && Number.isFinite(a.blockers)
-      ? a.blockers
+  const blockers =
+    a.blockers !== undefined && a.blockers !== null
+      ? normalizeShipBlockers(a.blockers)
       : typeof a.blockersCount === 'number' && Number.isFinite(a.blockersCount)
         ? a.blockersCount
         : 0

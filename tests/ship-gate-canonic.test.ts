@@ -8,6 +8,7 @@
 import {
   resolveShipRefusalBanner,
   contentFingerprint,
+  normalizeShipBlockers,
   shipActionsEnabled,
   shipGateFromResponse,
   shipGateFromPersistedReview,
@@ -100,5 +101,23 @@ describe('ship gate · modal decision wiring applied in render', () => {
   it('approve enablement is the same snapshot the banner uses', () => {
     expect(shipActionsEnabled(gate)).toBe(true)
     expect(resolveShipRefusalBanner({ refused: true, gate })).toBe('cleared')
+  })
+})
+
+describe('normalizeShipBlockers / array-safe shipGateFromResponse (P0-SHIP-4)', () => {
+  it('treats an empty blockers array as zero — Approve must not stay locked', () => {
+    expect(normalizeShipBlockers([])).toBe(0)
+    expect(normalizeShipBlockers([{ code: 'x' }])).toBe(1)
+    expect(shipGateFromResponse({ shipReady: true, blockers: [] })).toEqual({
+      shipReady: true,
+      blockers: 0,
+    })
+  })
+
+  it('ANDs shipReady with a non-empty blockers array', () => {
+    expect(shipGateFromResponse({ shipReady: true, blockers: [{ code: 'x' }] })).toEqual({
+      shipReady: false,
+      blockers: 1,
+    })
   })
 })
