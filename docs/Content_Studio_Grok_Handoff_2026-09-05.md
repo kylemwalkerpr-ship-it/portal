@@ -112,3 +112,58 @@ Post-`2a4da13` browser pass could not validate Harper/Flesch:
 - Draft queue: provider timeout / jobs stuck loading
 Treat Harper a–f as **still unverified on live**. Next session: restore a job with real body (or re-open after auth), then re-run checklist. Also investigate Unauthorized on draft fetch if it persists after Clerk Super Admin session.
 
+---
+
+## Live rescore after regional + long-form proofs (2026-09-05 ~07:30 AM ET)
+
+**Portal HEAD:** `2852a20` (Deploy green for Approve in-app modal).  
+**Method:** Same pillar lens as `docs/Content_Studio_Pipeline_Audit_Report_2026-09-04.md` (max 100) + gaps dual lens. **Not 100%.**
+
+### How score is computed
+1. **Live E2E /100** — weighted pillars in the 09-04 audit report (Discover 15 · Brief/SEO 20 · Grok pin 15 · Draft 15 · Review/metrics 15 · Approve→GitHub 10 · cohesion 10). No separate scoreboard API; admin UI shows per-job audit score + `shipReady`, not path-to-100.
+2. **Gaps dual score** — `docs/Content_Studio_Pipeline_Gaps_2026-09-05.md` Code vs Live after DeepSeek×4 rollup.
+3. **Wave C bar** (`Content_Studio_100_Fix_Plan.md`) — blog + regional + long-form/`article` through Approve→GitHub before claiming 100.
+
+### Current estimate
+
+| Lens | Score | Notes |
+|------|------:|-------|
+| Live E2E (pillar) | **80 / 100** | Was 42 (09-04) → 58 (gaps) → **~80** after CA regional + AU blog live ships |
+| Code (gaps lens) | **88 / 100** | Was 72; P0-GEN + P0-SHIP landed (`d7fc3f7`/`1337ad3`); P1s remain |
+| Path to 100 | **Not done** | Pulse routine still enabled |
+
+### Pillar breakdown (honest)
+
+| Stage | Max | Now | Green / open |
+|-------|----:|----:|--------------|
+| Discover / Ingest / Plan | 15 | 13 | GSC/GA4 bridges + honest radar (`3cfbc93`); multi-stage ingest E2E not freshly walked; cron retry timed out (exit 28) |
+| Brief Assembly + SEO Intel | 20 | 15 | Placement/region fixed; **SEO Intel lock still stale on topic/region change (P1-E1)** |
+| Grok pin fidelity | 15 | 13 | Grok default Content AI + style-review |
+| Draft generation quality | 15 | 12 | TipTap + budget P0s; **`article`→caseworks long-form CS ship still unproven** (AU `91786e3e` is `blog_post`) |
+| Review / Audit & Fix / metrics | 15 | 12 | shipReady persist, KEEP chrome gate, AI Style API green ~18–20s on 3 jobs; **I-129 KEEP reaudit before Approve** |
+| Approve → GitHub merge | 10 | 8 | Blog + regional live 200 proven; in-app confirm; article→caseworks open; Warwick is sister live page |
+| Cohesion | 10 | 7 | Handoff was stale; smoke checklist in `tmp/path-to-100-smoke-checklist.md` |
+| **Total** | **100** | **80** | |
+
+### Proven live (do not re-litigate)
+- Regional CA CRS `c72d74c4` → https://ca.yousafeconsultancy.com/canada-express-entry-crs-international-student-graduates/ **200**
+- AU blog `91786e3e` → https://yousafeconsultancy.com/blog/australia-student-visa-fee-increase **200** (merged)
+- UK Warwick sister pages **200** + JSON-LD Article/FAQPage present
+- Harper/AI Style sample (Mac, no Approve): AU merged, CA merged, I-129 drafting — all `style_ok` 200 in 17–21s; `harper_ready` body≥40
+
+### Still open (selected)
+- SEO Intel lock reset (P1-E1)
+- Multi-stage ingest smoke (Discover sync → brief → generate → audit → shipReady)
+- I-129 `a80c077c` KEEP reaudit (hold Approve)
+- True long-form `article`/`legal_guide` → caseworks Approve→GitHub
+- Ahrefs recrawl of shipped URLs
+- CF API token CI health beyond Deploy green (Worker secrets hourly OK; content-studio-retry flaky timeout)
+- CF/vault Deploy history: latest portal Deploy **success** on `2852a20`
+
+### Next 3 P0 actions
+1. Reaudit I-129 `a80c077c` for KEEP chrome / escaped script; only Approve if clean (or quarantine).
+2. Fix SEO Intel lock reset on topic/region/keyword change (P1-E1).
+3. Run smoke checklist + ship one clean `article`→caseworks Wave C proof; Ahrefs-recrawl CA/AU URLs.
+
+*End rescore update — docs only.*
+
