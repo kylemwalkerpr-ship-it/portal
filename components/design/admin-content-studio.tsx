@@ -7238,8 +7238,8 @@ const controller = new AbortController()
   const TABS: Array<{ key: StudioTab; numeral: string; label: string; sub: string; hint: string }> = [
     { key: 'discover',  numeral: 'I',   label: 'Discover',  sub: 'Signal Intelligence',   hint: 'GSC · radar · gaps · opportunities' },
     { key: 'research',  numeral: 'II',  label: 'Research',  sub: 'Keywords & Brief',       hint: 'Intent · keywords · interlinks · template' },
-    { key: 'draft',     numeral: 'III', label: 'Draft & Review',   sub: 'Generate · Gate · Fix',    hint: `${jobTotal || jobs.length} jobs · queue · review` },
-    { key: 'approve',   numeral: 'IV',  label: 'Approve & Track',  sub: 'Merge · Deploy · Verify',  hint: 'PR · deploy · ledger · GSC' },
+    { key: 'draft',     numeral: 'III', label: 'Draft & Review',   sub: 'Generate · Gate · Fix',    hint: 'vault · editor · review' },
+    { key: 'approve',   numeral: 'IV',  label: 'Approve & Track',  sub: 'Jobs · Merge · Deploy',  hint: `${jobTotal || jobs.length} jobs · PR · ledger` },
     { key: 'configure', numeral: 'V',   label: 'Configure',     sub: 'System Settings',        hint: 'AI models · API keys · GSC · health' },
   ]
 
@@ -7320,7 +7320,7 @@ const controller = new AbortController()
         onPlan={() => void runEngineAction('plan')}
         onLlm={() => void runEngineAction('llm')}
         onOpenJob={(job) => { setSelectedJob(job); selectTab('draft') }}
-        onFilterQueue={(status) => { setQueueStatusFilter(asQueueUiFilter(status)); selectTab('draft') }}
+        onFilterQueue={(status) => { setQueueStatusFilter(asQueueUiFilter(status)); selectTab('approve') }}
         onRefresh={() => { void fetchJobs(); void fetchEngineStatus() }}
       />
 
@@ -7343,11 +7343,11 @@ const controller = new AbortController()
         <ChapterIntro
           numeral="III"
           title="Draft & Review"
-          subtitle="Generate against the plan, then put every claim through the quality gate in one continuous flow: live streaming, the job queue, inline editing, re-audit, and blocker resolution before approval."
+          subtitle="Generate against the plan, open recent draft files from the vault, and put every claim through the quality gate: live streaming, inline editing, re-audit, and blocker resolution before approval."
           chapterKey="draft"
           scope={[
             { chip: 'Live stream', text: 'SSE-fed, line-by-line generation paired with the SEO-enrichment pass.' },
-            { chip: 'Queue',       text: 'Every active job with bulk rerun / resume / abandon / clear; per-job clock + ETA.' },
+            { chip: 'File vault',  text: 'Open the last drafts as documents — edit, re-audit, and clear blockers here.' },
             { chip: 'Review',      text: 'Re-audit, inline editor, blocker resolution and link-integrity checks — all gates clear here.' },
           ]}
           prev="II · Research"
@@ -7421,8 +7421,8 @@ const controller = new AbortController()
               window.setTimeout(() => document.getElementById('studio-panel-draft-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
             }}
             selectTab={selectTab}
-            queueOpen={draftOperationsOpen}
-            onToggleQueue={() => setDraftOperationsOpen((open) => !open)}
+            queueOpen={tab === 'approve'}
+            onToggleQueue={() => { selectTab('approve') }}
             queueCount={jobTotal || jobs.length}
             onCancelGeneration={cancelGeneration}
             error={error}
@@ -7523,8 +7523,210 @@ const controller = new AbortController()
 
         </div>
 
-      {tab === 'draft' && !generating && draftOperationsOpen && (
-        <div id="studio-panel-draft-queue" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {tab === 'draft' && !generating && draftOperationsOpen && (
+        <div id="studio-panel-draft-review" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px 0', borderTop: `1px solid ${E.hairline}` }}>
+            <span style={{ ...kickerStyle, fontSize: 10 }}>REVIEW &amp; GATES</span>
+            <span style={{ fontSize: 10.5, color: E.inkSoft, fontFamily: E.mono }}>quality · compliance · depth · link integrity — every gate must clear before approve</span>
+          </div>
+          <ReviewDraftsPanel
+            jobs={jobs}
+            gateByJob={gateByJob}
+            selectedJobId={selectedJob?.id ?? null}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+            reviewAuditResult={reviewAuditResult}
+            setActionNotice={setActionNotice}
+            shipGateByJob={shipGateBook}
+            activeTopic={topic || selectedBrief?.title || selectedBrief?.primaryKeyword || null}
+            inFlightJobId={generationJobId || generationReviewJob?.id || null}
+          />
+          {/* AI-enabled inline editor — fix blockers interactively.
+              Only when NO job is open in the JobDetail modal (which carries
+              its own AdminInlineEditor) so the same job never gets two
+              editors at once. */}
+          {!selectedJob && selectedJob?.content && (
+            <div style={{ marginTop: 14, ...panelCard }}>
+              <div style={{ ...kickerStyle, marginBottom: 12 }}>
+                INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE
+              </div>
+              <AdminInlineEditor
+                content={selectedJob.content}
+                jobId={selectedJob.id}
+                onChange={(v: string) => {
+                  setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
+                }}
+                contentType={selectedJob.content_type}
+                primaryKeyword={selectedJob.primary_keyword ?? undefined}
+                indexable={selectedJob.indexable}
+                region={selectedJob.region ?? undefined}
+                targetUrl={selectedJob.canonical_url ?? undefined}
+                competingSnippets={selectedJob.competing_snippets ?? undefined}
+                competingUrls={selectedJob.competing_urls ?? undefined}
+                requiredShortKeywords={selectedJob.required_short_keywords ?? undefined}
+                requiredLongTailKeywords={selectedJob.required_long_tail_keywords ?? undefined}
+                reviewModel={reviewModel}
+                onReviewModelChange={setReviewModel}
+                onScoreChange={async (_s) => {
+                  void fetchGateRuns()
+                  const latestContent = latestJobContentRef.current
+                  if (latestContent) {
+                    try {
+                      const res = await fetch('/api/content-studio/reaudit', {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          content: latestContent,
+                          contentType: selectedJob?.content_type,
+                          primaryKeyword: selectedJob?.primary_keyword ?? undefined,
+                          indexable: selectedJob?.indexable,
+                        }),
+                      })
+                      const data = await res.json().catch(() => ({})) as any
+                      if (res.ok) {
+                        setReviewAuditResult({
+                          score: data.score ?? 0,
+                          ok: Boolean(data.ok),
+                          blockers: data.blockers ?? 0,
+                          warnings: data.warnings ?? 0,
+                          summary: data.summary ?? '',
+                          annotations: data.annotations ?? [],
+                        })
+                      }
+                    } catch { /* best-effort */ }
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* Master SEO Engine — 130+ signal layered analysis of the selected job */}
+          <MasterEnginePanel job={selectedJob} notice={setActionNotice} />
+        </div>
+      )}
+
+
+      {/* ══════════ I · DISCOVER ══════════ */}
+      {/* Stage I — scan all signals. GSC, radar, insights, LLM/AEO visibility,
+          engine knowledge, systems health, and ownership constraints all enter
+          before any research question is formed. */}
+      {tab === 'discover' && (
+        <>
+          <ChapterIntro
+            numeral="I"
+            title="Discover"
+            subtitle="No research starts until the signals are assembled. Read the live search landscape, engine knowledge, topical gaps, ownership constraints, and visibility signals before committing to a direction."
+            chapterKey="discover"
+            scope={[
+              { chip: 'Signals', text: 'Live GSC, committed snapshots, engine knowledge, LLM/AEO visibility, and site-health signals.' },
+              { chip: 'Opportunity', text: 'Radar, Ubersuggest market demand (no planner required), reward forecasts, weak families, and cannibalization risk.' },
+              { chip: 'Constraints', text: 'Ownership registry, destination repo, format rules, and canonical supply are known before research begins.' },
+            ]}
+            next="II · Research"
+            onJump={selectTab}
+          />
+          <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <SeoIntelligenceDashboard />
+            {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
+            <div style={{ position: 'relative', background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.panelShadow, overflow: 'hidden' }}>
+              <GoldRule offset={18} />
+              <div style={{ padding: '22px 22px 18px', background: `linear-gradient(120deg, ${E.inkBlack} 0%, #202A3A 72%, #473B25 100%)`, color: E.ivory, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+                <div style={{ maxWidth: 780 }}>
+                  <div style={{ ...kickerStyleSm, color: '#E8C979', fontSize: 9, letterSpacing: '0.18em' }}>SEO Master Engine · decision output</div>
+                  <h3 style={{ margin: '7px 0 0', fontFamily: C.serif, fontSize: 26, lineHeight: 1.08, color: '#FFFFFF' }}>What the search landscape says to do next</h3>
+                  <p style={{ margin: '8px 0 0', maxWidth: 690, color: 'rgba(255,255,255,0.68)', fontFamily: C.serif, fontSize: 13.5, lineHeight: 1.5 }}>
+                    One ranked view of demand, topical gaps, estate conflicts and answer-engine visibility. Select only the opportunities worth turning into a research brief.
+                  </p>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 13 }}>
+                    {['GSC demand', 'Master Engine', 'Ubersuggest', 'Estate graph', 'AEO visibility'].map((source) => (
+                      <span key={source} style={{ padding: '4px 7px', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.72)', fontFamily: C.mono, fontSize: 8, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{source}</span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void fetchUberOpps(true)}
+                  disabled={uberOppsLoading}
+                  title={uberOppsMeta.connected === false ? 'Connect Ubersuggest in Configure first' : 'Pull fresh Ubersuggest market opportunities (uses MCP credits)'}
+                  style={{
+                    padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
+                    fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    borderRadius: E.radiusXs,
+                    cursor: uberOppsLoading ? 'wait' : 'pointer',
+                  }}
+                >
+                  {uberOppsLoading ? '◇ Loading Ubersuggest…' : `◇ Refresh Ubersuggest (${uberOpps.length})`}
+                </button>
+              </div>
+              <div style={{ padding: 18 }}>
+              {uberOppsMeta.lastError && !uberOpps.length && (
+                <div style={{ marginBottom: 12, padding: '9px 11px', background: E.redSoft, border: `1px solid ${E.redBorder}`, fontFamily: C.mono, fontSize: 10, color: C.red }}>
+                  Ubersuggest: {uberOppsMeta.lastError}{uberOppsMeta.connected === false ? ' — connect it in Configure.' : ''}
+                </div>
+              )}
+              <WorkPlanTable
+                items={workPlanItems}
+                selectedIds={selectedWorkPlanIds}
+                onToggleSelect={(id) => setSelectedWorkPlanIds((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(id)) next.delete(id); else next.add(id)
+                  return next
+                })}
+                onSelectAll={(ids) => setSelectedWorkPlanIds(new Set(ids))}
+                onClearSelection={() => setSelectedWorkPlanIds(new Set())}
+                onSendToResearch={handleSendToResearch}
+                onResolveCannibal={handleResolveCannibal}
+                onResolveAllCannibal={handleResolveAllCannibal}
+                resolvingIds={resolvingCannibalIds}
+                resolvingAll={resolvingAllCannibal}
+                resolvedIds={resolvedCannibalIds}
+              />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <GscMini />
+                <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <MergeHistory />
+                <OrphanWatch setActionNotice={setActionNotice} />
+                <InterlinksMini topic={topic} keywords={keywords} />
+                <ResearchLiveOperations />
+              </div>
+            </div>
+            <div style={{ padding: '12px 14px', background: E.cream, border: `1px dashed ${E.hairline}`, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
+              The evidence room is complete here: engine status and ingestion controls are in the masthead; GSC, radar, ownership, interlinks, and site health remain attached to this dossier. No second command-center navigation is required.
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ══════════ V · DEFENSE ══════════ */}
+
+      {/* ══════════ VI · APPROVE ══════════ */}
+      {/* Stage VI — approve and merge the reviewed draft,
+          monitor the Cloudflare build, and ensure the deploy lands before
+          the publication record receives the citation. */}
+      {tab === 'approve' && (
+        <>
+          <ChapterIntro
+          numeral="IV"
+          title="Approve & Track"
+          subtitle="Manage the jobs queue, approve cleared drafts, push reviewed PRs, watch deployment, verify the live URL, and record publication in the ledger."
+          chapterKey="approve"
+            scope={[
+              { chip: 'Jobs queue',   text: 'Full job queue with filters, bulk re-audit / approve / abandon / clear, and per-job status.' },
+              { chip: 'Push to main',  text: 'Approves a completed draft and ships it, or merges an already-open PR to main.' },
+              { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
+              { chip: 'Decline',       text: 'Reject an open PR — closes it on GitHub and marks the job closed.' },
+            ]}
+            prev="III · Draft"
+            next="V · Configure"
+            onJump={selectTab}
+          />
+
+          {/* Jobs queue — relocated from Drafting */}
+          <div id="studio-panel-approve-queue" role="tabpanel" aria-labelledby="studio-tab-approve" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
 
           {/* ── Queue command bar — bulk actions & visible status counts ── */}
@@ -7740,207 +7942,6 @@ const controller = new AbortController()
             bulkAction={queueBulkAction}
           />}
         </div>
-      )}
-      {tab === 'draft' && !generating && draftOperationsOpen && (
-        <div id="studio-panel-draft-review" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px 0', borderTop: `1px solid ${E.hairline}` }}>
-            <span style={{ ...kickerStyle, fontSize: 10 }}>REVIEW &amp; GATES</span>
-            <span style={{ fontSize: 10.5, color: E.inkSoft, fontFamily: E.mono }}>quality · compliance · depth · link integrity — every gate must clear before approve</span>
-          </div>
-          <ReviewDraftsPanel
-            jobs={jobs}
-            gateByJob={gateByJob}
-            selectedJobId={selectedJob?.id ?? null}
-            onOpenJob={(j) => { setSelectedJob(j) }}
-            reviewAuditResult={reviewAuditResult}
-            setActionNotice={setActionNotice}
-            shipGateByJob={shipGateBook}
-            activeTopic={topic || selectedBrief?.title || selectedBrief?.primaryKeyword || null}
-            inFlightJobId={generationJobId || generationReviewJob?.id || null}
-          />
-          {/* AI-enabled inline editor — fix blockers interactively.
-              Only when NO job is open in the JobDetail modal (which carries
-              its own AdminInlineEditor) so the same job never gets two
-              editors at once. */}
-          {!selectedJob && selectedJob?.content && (
-            <div style={{ marginTop: 14, ...panelCard }}>
-              <div style={{ ...kickerStyle, marginBottom: 12 }}>
-                INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE
-              </div>
-              <AdminInlineEditor
-                content={selectedJob.content}
-                jobId={selectedJob.id}
-                onChange={(v: string) => {
-                  setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
-                }}
-                contentType={selectedJob.content_type}
-                primaryKeyword={selectedJob.primary_keyword ?? undefined}
-                indexable={selectedJob.indexable}
-                region={selectedJob.region ?? undefined}
-                targetUrl={selectedJob.canonical_url ?? undefined}
-                competingSnippets={selectedJob.competing_snippets ?? undefined}
-                competingUrls={selectedJob.competing_urls ?? undefined}
-                requiredShortKeywords={selectedJob.required_short_keywords ?? undefined}
-                requiredLongTailKeywords={selectedJob.required_long_tail_keywords ?? undefined}
-                reviewModel={reviewModel}
-                onReviewModelChange={setReviewModel}
-                onScoreChange={async (_s) => {
-                  void fetchGateRuns()
-                  const latestContent = latestJobContentRef.current
-                  if (latestContent) {
-                    try {
-                      const res = await fetch('/api/content-studio/reaudit', {
-                        method: 'POST', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          content: latestContent,
-                          contentType: selectedJob?.content_type,
-                          primaryKeyword: selectedJob?.primary_keyword ?? undefined,
-                          indexable: selectedJob?.indexable,
-                        }),
-                      })
-                      const data = await res.json().catch(() => ({})) as any
-                      if (res.ok) {
-                        setReviewAuditResult({
-                          score: data.score ?? 0,
-                          ok: Boolean(data.ok),
-                          blockers: data.blockers ?? 0,
-                          warnings: data.warnings ?? 0,
-                          summary: data.summary ?? '',
-                          annotations: data.annotations ?? [],
-                        })
-                      }
-                    } catch { /* best-effort */ }
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {/* Master SEO Engine — 130+ signal layered analysis of the selected job */}
-          <MasterEnginePanel job={selectedJob} notice={setActionNotice} />
-        </div>
-      )}
-
-
-      {/* ══════════ I · DISCOVER ══════════ */}
-      {/* Stage I — scan all signals. GSC, radar, insights, LLM/AEO visibility,
-          engine knowledge, systems health, and ownership constraints all enter
-          before any research question is formed. */}
-      {tab === 'discover' && (
-        <>
-          <ChapterIntro
-            numeral="I"
-            title="Discover"
-            subtitle="No research starts until the signals are assembled. Read the live search landscape, engine knowledge, topical gaps, ownership constraints, and visibility signals before committing to a direction."
-            chapterKey="discover"
-            scope={[
-              { chip: 'Signals', text: 'Live GSC, committed snapshots, engine knowledge, LLM/AEO visibility, and site-health signals.' },
-              { chip: 'Opportunity', text: 'Radar, Ubersuggest market demand (no planner required), reward forecasts, weak families, and cannibalization risk.' },
-              { chip: 'Constraints', text: 'Ownership registry, destination repo, format rules, and canonical supply are known before research begins.' },
-            ]}
-            next="II · Research"
-            onJump={selectTab}
-          />
-          <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <SeoIntelligenceDashboard />
-            {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
-            <div style={{ position: 'relative', background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.panelShadow, overflow: 'hidden' }}>
-              <GoldRule offset={18} />
-              <div style={{ padding: '22px 22px 18px', background: `linear-gradient(120deg, ${E.inkBlack} 0%, #202A3A 72%, #473B25 100%)`, color: E.ivory, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
-                <div style={{ maxWidth: 780 }}>
-                  <div style={{ ...kickerStyleSm, color: '#E8C979', fontSize: 9, letterSpacing: '0.18em' }}>SEO Master Engine · decision output</div>
-                  <h3 style={{ margin: '7px 0 0', fontFamily: C.serif, fontSize: 26, lineHeight: 1.08, color: '#FFFFFF' }}>What the search landscape says to do next</h3>
-                  <p style={{ margin: '8px 0 0', maxWidth: 690, color: 'rgba(255,255,255,0.68)', fontFamily: C.serif, fontSize: 13.5, lineHeight: 1.5 }}>
-                    One ranked view of demand, topical gaps, estate conflicts and answer-engine visibility. Select only the opportunities worth turning into a research brief.
-                  </p>
-                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 13 }}>
-                    {['GSC demand', 'Master Engine', 'Ubersuggest', 'Estate graph', 'AEO visibility'].map((source) => (
-                      <span key={source} style={{ padding: '4px 7px', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.72)', fontFamily: C.mono, fontSize: 8, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{source}</span>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void fetchUberOpps(true)}
-                  disabled={uberOppsLoading}
-                  title={uberOppsMeta.connected === false ? 'Connect Ubersuggest in Configure first' : 'Pull fresh Ubersuggest market opportunities (uses MCP credits)'}
-                  style={{
-                    padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
-                    fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                    borderRadius: E.radiusXs,
-                    cursor: uberOppsLoading ? 'wait' : 'pointer',
-                  }}
-                >
-                  {uberOppsLoading ? '◇ Loading Ubersuggest…' : `◇ Refresh Ubersuggest (${uberOpps.length})`}
-                </button>
-              </div>
-              <div style={{ padding: 18 }}>
-              {uberOppsMeta.lastError && !uberOpps.length && (
-                <div style={{ marginBottom: 12, padding: '9px 11px', background: E.redSoft, border: `1px solid ${E.redBorder}`, fontFamily: C.mono, fontSize: 10, color: C.red }}>
-                  Ubersuggest: {uberOppsMeta.lastError}{uberOppsMeta.connected === false ? ' — connect it in Configure.' : ''}
-                </div>
-              )}
-              <WorkPlanTable
-                items={workPlanItems}
-                selectedIds={selectedWorkPlanIds}
-                onToggleSelect={(id) => setSelectedWorkPlanIds((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(id)) next.delete(id); else next.add(id)
-                  return next
-                })}
-                onSelectAll={(ids) => setSelectedWorkPlanIds(new Set(ids))}
-                onClearSelection={() => setSelectedWorkPlanIds(new Set())}
-                onSendToResearch={handleSendToResearch}
-                onResolveCannibal={handleResolveCannibal}
-                onResolveAllCannibal={handleResolveAllCannibal}
-                resolvingIds={resolvingCannibalIds}
-                resolvingAll={resolvingAllCannibal}
-                resolvedIds={resolvedCannibalIds}
-              />
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <GscMini />
-                <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <MergeHistory />
-                <OrphanWatch setActionNotice={setActionNotice} />
-                <InterlinksMini topic={topic} keywords={keywords} />
-                <ResearchLiveOperations />
-              </div>
-            </div>
-            <div style={{ padding: '12px 14px', background: E.cream, border: `1px dashed ${E.hairline}`, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
-              The evidence room is complete here: engine status and ingestion controls are in the masthead; GSC, radar, ownership, interlinks, and site health remain attached to this dossier. No second command-center navigation is required.
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ══════════ V · DEFENSE ══════════ */}
-
-      {/* ══════════ VI · APPROVE ══════════ */}
-      {/* Stage VI — approve and merge the reviewed draft,
-          monitor the Cloudflare build, and ensure the deploy lands before
-          the publication record receives the citation. */}
-      {tab === 'approve' && (
-        <>
-          <ChapterIntro
-          numeral="IV"
-          title="Approve & Track"
-          subtitle="Once review is green, the content earns approval. Push the reviewed PR, watch the deployment, verify the live URL, and record the publication in the ledger."
-          chapterKey="approve"
-            scope={[
-              { chip: 'Push to main',  text: 'Approves a completed draft and ships it, or merges an already-open PR to main.' },
-              { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
-              { chip: 'Decline',       text: 'Reject an open PR — closes it on GitHub and marks the job closed.' },
-            ]}
-            prev="III · Draft"
-            next="V · Configure"
-            onJump={selectTab}
-          />
           <ApprovePanel
             selectedJob={selectedJob}
             jobs={jobs}

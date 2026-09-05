@@ -34,8 +34,8 @@ import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-sha
 const NAV_TABS = [
   { key: 'discover', numeral: 'I', label: 'Discover', sub: 'Signal Intelligence', hint: 'GSC · radar · gaps · opportunities' },
   { key: 'research', numeral: 'II', label: 'Research', sub: 'Keywords & Brief', hint: 'Intent · keywords · interlinks · template' },
-  { key: 'draft', numeral: 'III', label: 'Draft & Review', sub: 'Generate · Gate · Fix', hint: '2 jobs · queue · review' },
-  { key: 'approve', numeral: 'IV', label: 'Approve & Track', sub: 'Merge · Deploy · Verify', hint: 'PR · deploy · ledger · GSC' },
+  { key: 'draft', numeral: 'III', label: 'Draft & Review', sub: 'Generate · Gate · Fix', hint: 'vault · editor · review' },
+  { key: 'approve', numeral: 'IV', label: 'Approve & Track', sub: 'Jobs · Merge · Deploy', hint: '2 jobs · PR · ledger' },
   { key: 'configure', numeral: 'V', label: 'Configure', sub: 'System Settings', hint: 'AI models · API keys · GSC · health' },
 ] as const
 
