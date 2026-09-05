@@ -5,6 +5,7 @@ import EditorMetricsStrip from './editor-metrics-strip'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
+import { confirmApproveToMain } from '@/lib/seoFactory/approveConfirm'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
 const C = {
@@ -99,7 +100,7 @@ type Props = {
    *  (the initial state and any state after an unchecked content change) means
    *  "unknown" — the owning modal must NOT claim the draft passes. */
   onShipReadyChange?: (gate: ShipGate) => void
-  /** Approve → ship when this editor's latest audit is ship-ready. */
+  /** Approve → main when this editor's latest audit is ship-ready. */
   onApprove?: (jobId?: string) => void
   approving?: boolean
   /** Fired when Save creates a content_jobs row because this editor had no id. */
@@ -1173,10 +1174,26 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             data-testid="studio-editor-approve"
             disabled={approving || allBusy}
             onClick={() => {
+              // Confirm MUST stay in the click's user-gesture turn. Awaiting
+              // persistDraft first lets Chrome/Safari suppress window.confirm
+              // (returns false, no dialog) — enabled Approve that looks dead.
+              if (!confirmApproveToMain()) return
               void (async () => {
                 try {
+                  if (boundJobId) {
+                    onApprove(boundJobId)
+                    void persistDraft(content, 'manual').catch((err) => {
+                      const msg = err instanceof Error ? err.message : 'Save before approve failed'
+                      setError(`Save failed after approve started: ${msg}`)
+                    })
+                    return
+                  }
                   const id = await persistDraft(content, 'manual')
-                  onApprove(id || boundJobId || undefined)
+                  if (!id) {
+                    setError('Approve needs a saved job — Save the draft, then try Approve → main again.')
+                    return
+                  }
+                  onApprove(id)
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : 'Save before approve failed'
                   // Job already exists — do not block Approve on a draft Save timeout.
@@ -1191,9 +1208,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             }}
             style={btnStyle({ bg: '#166534', border: '#166534', color: '#fff', disabled: approving || allBusy })}
           >
-            {approving ? 'Approving…' : 'Approve → ship'}
+            {approving ? 'Approving…' : 'Approve → main'}
           </button>
         )}
+
 
         {/* Review model selector — hosts/selectors come from the lane config;
             the fallback is the live-policy review lead Entrim Qwen3.6 27B. */}

@@ -69,6 +69,7 @@ import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { resolveShipRefusalBanner, shipActionsEnabled, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
+import { confirmApproveToMain } from '@/lib/seoFactory/approveConfirm'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin, resolveJobPickerPin } from '@/lib/contentAiCatalog'
 import { StudioStageNav } from './studio-stage-nav'
@@ -4519,15 +4520,17 @@ function JobDetail({
       value.includes('sentence opening')
   }
 
-  const runAction = async (action: string) => {
+  const runAction = async (action: string, opts?: { skipConfirm?: boolean }) => {
     if (busy) return
-    if (action === 'regenerate' || action === 'approve' || action === 'merge_pr') {
-      const prompt = action === 'regenerate'
-        ? 'Regenerate this job and create a replacement job?'
-        : action === 'approve'
-          ? 'Approve this content for main and trigger deployment?'
+    if (!opts?.skipConfirm && (action === 'regenerate' || action === 'approve' || action === 'merge_pr')) {
+      if (action === 'approve') {
+        if (!confirmApproveToMain()) return
+      } else {
+        const prompt = action === 'regenerate'
+          ? 'Regenerate this job and create a replacement job?'
           : 'Merge the open pull request?'
-      if (typeof window !== 'undefined' && !window.confirm(prompt)) return
+        if (typeof window !== 'undefined' && !window.confirm(prompt)) return
+      }
     }
     if (action === 'regenerate') {
       void runRegenerateStream()
@@ -4617,7 +4620,7 @@ function JobDetail({
   )
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={detail.title || 'Job details'} style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={detail.title || 'Job details'} style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radius, border: `1px solid ${C.border}`, maxWidth: 840, width: '92vw', maxHeight: '92vh', overflow: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
@@ -4740,7 +4743,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} gateBindGeneration={gateBindGeneration} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve') : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} gateBindGeneration={gateBindGeneration} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve', { skipConfirm: true }) : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
