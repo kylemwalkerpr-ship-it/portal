@@ -1,4 +1,4 @@
-import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget, missingBriefKeywords, injectMissingBriefKeywords } from '../lib/editorMetrics'
+import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget, missingBriefKeywords, injectMissingBriefKeywords, stripNonClientChrome } from '../lib/editorMetrics'
 
 describe('editor metrics', () => {
   it('extracts prose from markdown including frontmatter/headings/lists', () => {
@@ -184,6 +184,127 @@ Who can edit? A reviewer the school allows.
     expect(out.content).not.toMatch(/^##\s+college essay/m)
     const after = missingBriefKeywords(out.content, hint)
     expect(after.length).toBeLessThan(missing.length)
+  })
+
+
+  it('extractProse and readability Auto-fix ignore JSON-LD / ld+json / schema chrome', () => {
+    const md = `---
+title: "Graduate visa checklist"
+description: "A practical graduate visa checklist for applicants who need clear next steps before they lodge."
+content_type: blog_post
+ogImage: /images/og-graduate.png
+---
+
+# Graduate visa checklist
+
+You should gather your passport and transcripts first. Keep a short list of forms. File only when every field matches the school letter.
+
+## Costs
+
+Fees change. Check the official page before you pay.
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Graduate visa checklist",
+  "datePublished": "2026-09-01",
+  "dateModified": "2026-09-04",
+  "publisher": {
+    "@type": "Organization",
+    "name": "YouSafe Consultancy",
+    "logo": { "@type": "ImageObject", "url": "https://yousafe.au/images/og-graduate.png" }
+  },
+  "image": "https://yousafe.au/images/og-graduate.png",
+  "mainEntity": {
+    "@type": "FAQPage",
+    "mainEntity": [{ "@type": "Question", "acceptedAnswer": { "@type": "Answer", "text": "Yes." } }]
+  }
+}
+</script>
+
+\`\`\`json
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "datePublished": "2026-09-01",
+  "publisher": { "name": "YouSafe" }
+}
+\`\`\`
+
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "datePublished": "2026-09-01",
+  "publisher": { "name": "YouSafe", "url": "https://yousafe.au" },
+  "image": "/images/og-graduate.png"
+}
+
+## FAQ
+
+### Do I need every form on day one?
+
+No. Start with identity and study evidence.
+`
+
+    const prose = extractProse(md)
+    expect(prose).toContain('You should gather your passport')
+    expect(prose).toContain('Fees change')
+    expect(prose).not.toMatch(/datePublished/i)
+    expect(prose).not.toMatch(/acceptedAnswer/i)
+    expect(prose).not.toMatch(/@context/i)
+    expect(prose).not.toMatch(/schema\.org/i)
+    expect(prose).not.toMatch(/og-graduate/i)
+    expect(prose).not.toMatch(/BreadcrumbList/i)
+    expect(prose).not.toMatch(/application\/ld\+json/i)
+
+    const chrome = stripNonClientChrome(md)
+    expect(chrome).toContain('You should gather your passport')
+    expect(chrome).not.toMatch(/datePublished/i)
+    expect(chrome).not.toMatch(/@context/i)
+
+    const fixes = suggestReadabilityFixes(md, { contentType: 'blog_post', audience: 'graduates' })
+    expect(fixes.every((f) => !/datePublished|publisher|acceptedAnswer|@context|og-graduate|schema\.org/i.test(f.quote))).toBe(true)
+    expect(fixes.every((f) => !/datePublished|publisher|acceptedAnswer|@context/i.test(f.suggestion))).toBe(true)
+
+    const metrics = computeEditorMetrics(md, [], { contentType: 'blog_post', primaryKeyword: 'graduate visa checklist' })
+    const bodyOnly = fleschReadingEase(extractProse(`# Graduate visa checklist
+
+You should gather your passport and transcripts first. Keep a short list of forms. File only when every field matches the school letter.
+
+## Costs
+
+Fees change. Check the official page before you pay.
+
+## FAQ
+
+### Do I need every form on day one?
+
+No. Start with identity and study evidence.
+`))
+    // Word count must track real prose, not schema keys padded into "sentences".
+    expect(metrics.readability.words).toBe(bodyOnly.words)
+    expect(metrics.readability.words).toBeLessThan(120)
+    expect(metrics.readability.score).toBe(bodyOnly.score)
+  })
+
+  it('extractProse drops unclosed script JSON-LD tails', () => {
+    const md = `# Title
+
+Real guidance for applicants who need a clear next step.
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "datePublished": "2026-01-01",
+  "publisher": { "name": "YouSafe" },
+  "image": "og-image.png"
+`
+    const prose = extractProse(md)
+    expect(prose).toContain('Real guidance for applicants')
+    expect(prose).not.toMatch(/datePublished/i)
+    expect(prose).not.toMatch(/publisher/i)
+    expect(prose).not.toMatch(/og-image/i)
   })
 
   it('computeEditorMetrics aggregates all three', () => {

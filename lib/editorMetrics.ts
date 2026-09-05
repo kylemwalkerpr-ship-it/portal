@@ -16,6 +16,7 @@
 
 import { AHREFS_META_MAX, AHREFS_META_MIN, clampMetaToAhrefs, metaDescriptionLength } from '@/lib/seoFactory/ahrefsIssues'
 import { sanitizeLeakedMarkup } from '@/lib/seoFactory/leakedMarkup'
+import { stripLeakedJsonLdFromBody } from '@/lib/seoFactory/jsonLdBody'
 
 /** Brief / SERP sweet spot. The ship gate is Ahrefs 70–160; prompts ask 140–160. */
 export const BRIEF_META_MIN = 140
@@ -87,19 +88,16 @@ const PLAIN_ENGLISH: Array<[string, string]> = [
 ]
 
 function suggestPlainEnglishFixes(md: string): ReadabilityFix[] {
-  const body = String(md || '')
+  // Score wording on client-facing body only — never YAML / fences / JSON-LD.
+  const body = stripNonClientChrome(md)
   const out: ReadabilityFix[] = []
   const seen = new Set<string>()
   for (const [from, to] of PLAIN_ENGLISH) {
     const re = new RegExp(`\\b${escapeRegExp(from)}\\b`, 'i')
     const m = body.match(re)
     if (!m || seen.has(from)) continue
-    // Skip hits inside YAML / fences / JSON-LD
     const at = m.index ?? -1
     if (at < 0) continue
-    const before = body.slice(0, at)
-    if ((before.match(/^```/gm) || []).length % 2 === 1) continue
-    if (/^---[\s\S]*$/.test(before) && !/\n---\s/.test(before.slice(3))) continue
     seen.add(from)
     out.push({
       quote: m[0],
@@ -176,6 +174,43 @@ function stripEditorFrontmatter(md: string): string {
 }
 
 /**
+ * Drop markdown / editor chrome that must never enter Flesch or readability
+ * Auto-fix: KEEP--- YAML, fenced code, <script>/JSON-LD, schema.org blobs.
+ * Frontmatter is already removed by stripEditorFrontmatter.
+ */
+export function stripNonClientChrome(md: string): string {
+  let s = stripEditorFrontmatter(sanitizeLeakedMarkup(String(md || '')))
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '\n')
+  s = s.replace(/<script\b[^>]*>[\s\S]*$/gi, '\n')
+  s = s.replace(/&lt;script\b[\s\S]*?(?:&lt;\/script&gt;|$)/gi, '\n')
+  // All fenced code (json / ld+json / html / bare) — including an unclosed tail.
+  s = s.replace(/```[\s\S]*?```/g, '\n')
+  s = s.replace(/```[\s\S]*$/g, '\n')
+  s = stripLeakedJsonLdFromBody(s).body
+  // Residual schema-ish single lines (og-image / datePublished dumps without braces).
+  s = s
+    .split(/\r?\n/)
+    .filter((line) => !isSchemaOrJsonChromeLine(line))
+    .join('\n')
+  return s.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function isSchemaOrJsonChromeLine(line: string): boolean {
+  const t = String(line || '').trim()
+  if (!t) return false
+  if (/^<script\b/i.test(t) || /^<\/script>/i.test(t)) return true
+  if (/application\/ld\+json/i.test(t)) return true
+  if (/^[{}\[\],]+$/.test(t)) return true
+  if (/^["']?@(?:context|type|id|graph)["']?\s*:/i.test(t)) return true
+  // JSON-LD-only keys (safe unquoted). Ambiguous keys (name/url/image) need quotes.
+  if (/^["']?(?:datePublished|dateModified|publisher|headline|mainEntity|acceptedAnswer|inLanguage|isPartOf|breadcrumb|ogImage|og:image)["']?\s*:/i.test(t)) return true
+  if (/^["'](?:author|image|logo|url|name|sameAs)["']\s*:/i.test(t)) return true
+  if (/^\{\s*["']@context["']/i.test(t)) return true
+  if (/schema\.org/i.test(t) && /["']@type["']/i.test(t)) return true
+  return false
+}
+
+/**
  * Extract prose from a markdown article: drops frontmatter, JSON-LD, code
  * fences, headings, list/toolbar markers, table pipes, links/emphasis, and
  * collapses the rest into plain sentences. Deterministic — used by both the
@@ -201,10 +236,8 @@ export function fleschTargetForBrief(hint?: EditorSeoHint, md?: string): number 
 }
 
 export function extractProse(md: string): string {
-  let s = stripEditorFrontmatter(sanitizeLeakedMarkup(String(md || '')))
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+  let s = stripNonClientChrome(md)
     .replace(/<[^>]+>/g, ' ')
-    .replace(/```[\s\S]*?```/g, ' ')
     .replace(/^#{1,4}\s+.*$/gm, ' ')
     .replace(/table of contents[\s\S]{0,400}?(?=\n##\s|\n#\s|$)/gi, ' ')
     .replace(/^\s*[|>-]\s?/gm, ' ')
@@ -434,12 +467,14 @@ function splitLongSentence(sentence: string, minWords = 22): string | null {
 }
 
 function collectReadableParagraphs(md: string): string[] {
-  const body = stripEditorFrontmatter(sanitizeLeakedMarkup(String(md || '')))
+  // Body-only: JSON-LD / fences / KEEP--- already removed so Auto-fix never
+  // proposes splits on schema keys (datePublished, publisher, og-image).
+  const body = stripNonClientChrome(md)
   const paras: string[] = []
   let buf: string[] = []
   const flush = () => {
     const p = buf.join(' ').replace(/\s+/g, ' ').trim()
-    if (p) paras.push(p)
+    if (p && !isSchemaOrJsonChromeLine(p) && !/schema\.org|datePublished|acceptedAnswer/i.test(p)) paras.push(p)
     buf = []
   }
   for (const line of body.split('\n')) {
@@ -448,7 +483,7 @@ function collectReadableParagraphs(md: string): string[] {
     if (/^#{1,4}\s+/.test(t)) { flush(); continue }
     if (/^table of contents\b/i.test(t)) { flush(); continue }
     if (/^[-*+]\s+/.test(t) || /^\d+[.)]\s+/.test(t)) { flush(); continue }
-    if (/^</.test(t) || /^```/.test(t)) { flush(); continue }
+    if (/^</.test(t) || /^```/.test(t) || isSchemaOrJsonChromeLine(t)) { flush(); continue }
     buf.push(t.replace(/^>\s?/, ''))
   }
   flush()

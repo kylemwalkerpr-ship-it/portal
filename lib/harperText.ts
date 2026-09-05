@@ -37,8 +37,23 @@ function classifyLine(raw: string): 'skip' | 'table' | 'text' {
   if (t.startsWith('|') && t.endsWith('|')) return 'table'
   if (/^\s*(?:-{3,}|\*{3,}|_{3,}|~{3,})\s*$/.test(t)) return 'skip'
   if (/^```/.test(t)) return 'skip'
-  if (t.startsWith('<script') || t.startsWith('</script>')) return 'skip'
+  if (/^KEEP---+/i.test(t)) return 'skip'
+  if (t.startsWith('<script') || t.startsWith('</script>') || /application\/ld\+json/i.test(t)) return 'skip'
+  if (isJsonLdChromeLine(t)) return 'skip'
   return 'text'
+}
+
+/** Schema.org / JSON-LD rows that must never reach Harper or look like sentences. */
+function isJsonLdChromeLine(line: string): boolean {
+  const t = String(line || '').trim()
+  if (!t) return false
+  if (/^[{}\[\],]+$/.test(t)) return true
+  if (/^["']?@(?:context|type|id|graph)["']?\s*:/i.test(t)) return true
+  if (/^["']?(?:datePublished|dateModified|publisher|headline|mainEntity|acceptedAnswer|inLanguage|isPartOf|breadcrumb|ogImage|og:image)["']?\s*:/i.test(t)) return true
+  if (/^["'](?:author|image|logo|url|name|sameAs)["']\s*:/i.test(t)) return true
+  if (/^\{\s*["']@context["']/i.test(t)) return true
+  if (/schema\.org/i.test(t) && /["']@type["']/i.test(t)) return true
+  return false
 }
 
 /**
@@ -49,19 +64,31 @@ function classifyLine(raw: string): 'skip' | 'table' | 'text' {
  * estate contract — Harper's title-case rule must never see them).
  */
 export function harperSafeLines(md: string): HarperSafeLine[] {
-  const rawLines = String(md || '').split('\n')
+  const rawLines = String(md || '').replace(/\bKEEP---+/gi, '---').split('\n')
   const out: HarperSafeLine[] = []
   let inFence = false
   let inFm = false
+  let inScript = false
+  let schemaDepth = 0
   for (const raw of rawLines) {
     const t = raw.trim()
-    if (!inFence && !inFm && t === '---' && out.every((o) => o.skip)) {
+    if (!inFence && !inFm && !inScript && schemaDepth === 0 && t === '---' && out.every((o) => o.skip)) {
       inFm = true
       out.push({ src: raw, out: '', skip: true })
       continue
     }
     if (inFm) {
       if (t === '---') inFm = false
+      out.push({ src: raw, out: '', skip: true })
+      continue
+    }
+    if (!inFence && !inScript && (/^<script\b/i.test(t) || /application\/ld\+json/i.test(t))) {
+      inScript = !/<\/script>/i.test(t)
+      out.push({ src: raw, out: '', skip: true })
+      continue
+    }
+    if (inScript) {
+      if (/<\/script>/i.test(t)) inScript = false
       out.push({ src: raw, out: '', skip: true })
       continue
     }
@@ -72,6 +99,18 @@ export function harperSafeLines(md: string): HarperSafeLine[] {
     }
     if (inFence) {
       if (/^```/.test(t)) inFence = false
+      out.push({ src: raw, out: '', skip: true })
+      continue
+    }
+    if (schemaDepth === 0 && (/^\{\s*["']@context["']/i.test(t) || (t.startsWith('{') && /schema\.org/i.test(t)))) {
+      schemaDepth = (t.match(/\{/g) || []).length - (t.match(/\}/g) || []).length
+      out.push({ src: raw, out: '', skip: true })
+      if (schemaDepth < 0) schemaDepth = 0
+      continue
+    }
+    if (schemaDepth > 0) {
+      schemaDepth += (t.match(/\{/g) || []).length - (t.match(/\}/g) || []).length
+      if (schemaDepth < 0) schemaDepth = 0
       out.push({ src: raw, out: '', skip: true })
       continue
     }
@@ -235,9 +274,34 @@ export function applyNonOverlappingSpanFixes(
 
 /** Same length as `md`, but JSON-LD / fences / HTML script become spaces so Harper spans still map. */
 export function maskHarperScaffold(md: string): string {
-  return String(md || '')
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (m) => ' '.repeat(m.length))
-    .replace(/```[\s\S]*?```/g, (m) => ' '.repeat(m.length))
+  let s = String(md || '')
+  const space = (m: string) => ' '.repeat(m.length)
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, space)
+  s = s.replace(/<script\b[^>]*>[\s\S]*$/gi, space)
+  s = s.replace(/```[\s\S]*?```/g, space)
+  // Brace-balanced schema.org blobs (unfenced JSON-LD leaks).
+  const schemaRe = /\{\s*["']@context["']\s*:\s*["']https?:\/\/schema\.org/gi
+  for (let n = 0; n < 24; n++) {
+    schemaRe.lastIndex = 0
+    const m = schemaRe.exec(s)
+    if (!m || m.index == null) break
+    const start = m.index
+    let depth = 0
+    let end = -1
+    for (let j = start; j < s.length; j++) {
+      if (s[j] === '{') depth++
+      else if (s[j] === '}') {
+        depth--
+        if (depth === 0) { end = j + 1; break }
+      }
+    }
+    if (end < 0) {
+      s = s.slice(0, start) + ' '.repeat(s.length - start)
+      break
+    }
+    s = s.slice(0, start) + ' '.repeat(end - start) + s.slice(end)
+  }
+  return s
 }
 
 export function splitMarkdownFrontmatter(md: string): { fm: string; body: string } {

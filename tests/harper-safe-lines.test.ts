@@ -201,6 +201,47 @@ Official source.`
     expect(masked).not.toContain('datePublished')
   })
 
+
+  it('skips script JSON-LD, unfenced schema.org blobs, and KEEP--- chrome', () => {
+    const md = `KEEP---
+title: X
+---
+
+# Heading
+
+Body sentence about visas stays visible to Harper.
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "datePublished": "2026-09-01",
+  "publisher": { "@type": "Organization", "name": "YouSafe" },
+  "image": "https://example.com/og-image.png"
+}
+</script>
+
+{
+  "@context": "https://schema.org",
+  "datePublished": "2026-09-01",
+  "publisher": { "name": "YouSafe" }
+}
+
+More client prose after schema.
+`
+    const lines = harperSafeLines(md)
+    const text = lines.filter((l) => !l.skip).map((l) => l.out).join('\n')
+    expect(text).toContain('Body sentence about visas')
+    expect(text).toContain('More client prose after schema')
+    expect(text).not.toContain('datePublished')
+    expect(text).not.toContain('og-image')
+    expect(text).not.toContain('@context')
+    expect(text).not.toContain('publisher')
+    const masked = maskHarperScaffold(md.replace(/^KEEP---/m, '---'))
+    expect(masked).not.toContain('datePublished')
+    expect(masked.length).toBe(md.replace(/^KEEP---/m, '---').length)
+  })
+
   it('is 1:1 line-preserving (word splice safety)', () => {
     const lines = harperSafeLines(doc)
     const proseLabels = lines.filter((l) => !l.skip).map((l) => l.out.trim().split(/\s+/).length)
