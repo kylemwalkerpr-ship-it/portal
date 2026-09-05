@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { DEFAULT_REVIEW_PIN, ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
+import { ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
 import { extractProse } from '@/lib/editorMetrics'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
@@ -12,20 +12,19 @@ import { parseStyleJson, type StyleItem } from '@/lib/seoFactory/styleReviewPars
 export const maxDuration = 90
 
 /**
- * Style critique is latency-sensitive (client aborts ~75s). Prefer Entrim
- * DeepSeek V4 Flash over the Genesis Review default (Qwen 27B) — Flash
- * finishes a bounded critique well under budget; Qwen often burned the
- * whole client abort on a 120k-char slice.
+ * Style critique is latency-sensitive (client aborts ~50s). Force Entrim
+ * DeepSeek V4 Flash only — never remap to / cascade into Genesis Qwen 27B,
+ * which burned the prior 65–75s budgets on a large critique slice.
  */
 const STYLE_REVIEW_DEFAULT_PIN = ENTRIM_DEEPSEEK_FLASH_PIN
 
-/** Per-provider deadline — keep headroom so a failure returns JSON before the 75s client abort. */
-const STYLE_PROVIDER_TIMEOUT_MS = 40_000
-/** Hard overall budget so cascade cannot outrun the client abort (~75s). */
-const STYLE_ROUTE_BUDGET_MS = 65_000
+/** Per-provider deadline — single Flash attempt; fail before the route budget. */
+const STYLE_PROVIDER_TIMEOUT_MS = 35_000
+/** Hard overall budget — must finish (or return JSON error) before client abort (~50s). */
+const STYLE_ROUTE_BUDGET_MS = 40_000
 
-/** Bound the critique sample — full articles at 120k chars made Qwen/Flash stall. */
-const STYLE_CRITIQUE_MAX_CHARS = 16_000
+/** Bound the critique sample (~1.2k-word blogs fit; larger docs sample the lead). */
+const STYLE_CRITIQUE_MAX_CHARS = 8_000
 
 async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -49,7 +48,7 @@ async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>
  *
  * AI Style Review layer for the Article Editor ("Your AI model rewriting /
  * style / SEO / humanization"). One cascade call (default = Entrim DeepSeek
- * V4 Flash for latency; Genesis Qwen remapped) that critiques the estate voice
+ * V4 Flash only — no Qwen cascade) that critiques the estate voice
  * contract — clichés, wordy phrasing, weak/passive construction, forced
  * keywords, AI-tell rhythms, hedging, outcome-promise risk — and returns a
  * structured findings list. With `apply: true` a second pass executes the
@@ -147,20 +146,9 @@ Content type: ${body.contentType || 'unknown'}
 
 Critique the voice and readability of the article body only. Ignore YAML, KEEP--- blocks, frontmatter keys, and leaked markup. \`quote\` must be an exact short substring of a body sentence (not a YAML key). Return ONLY the JSON.`
 
-    const requestedPin = String(body.reviewModel || '').trim()
-    // Remap the Genesis Review default (Qwen) / auto / empty → Flash for this
-    // latency-sensitive lane. Explicit Grok / DeepSeek / other pins are kept.
-    const pin =
-      !requestedPin ||
-      requestedPin === 'auto' ||
-      requestedPin === DEFAULT_REVIEW_PIN ||
-      requestedPin === 'qwen' ||
-      requestedPin === 'qwen3.6-27b'
-        ? STYLE_REVIEW_DEFAULT_PIN
-        : requestedPin
-    // Style default (Flash) may cascade; operator-chosen non-default pins stay
-    // exclusive except cascadeOnCapacity.
-    const exclusive = pin !== 'auto' && pin !== STYLE_REVIEW_DEFAULT_PIN
+    // Latency lane: always Entrim DeepSeek Flash, exclusive, no capacity
+    // cascade into Qwen/Grok (those ate the prior 65s budget on I-129).
+    const pin = STYLE_REVIEW_DEFAULT_PIN
 
     const review = await withRouteBudget(
       'Style review',
@@ -168,10 +156,10 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
       generateContentText({
         system: sys,
         prompt,
-        maxTokens: 2048,
+        maxTokens: 1024,
         aiProvider: pin,
-        exclusive,
-        cascadeOnCapacity: true,
+        exclusive: true,
+        cascadeOnCapacity: false,
         timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
         strictTimeout: true,
         // JSON critique — not article prose; skip the ~4k writing contract.
@@ -213,10 +201,10 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
       generateContentText({
         system: 'You are a surgical editorial copy editor. Respond with ONLY the EditorPatch JSON.',
         prompt: `## Document\n\n${doc}\n\n${APPLY_PROMPT(parsed.items)}`,
-        maxTokens: 4096,
+        maxTokens: 2048,
         aiProvider: pin,
-        exclusive,
-        cascadeOnCapacity: true,
+        exclusive: true,
+        cascadeOnCapacity: false,
         timeoutMs: STYLE_PROVIDER_TIMEOUT_MS,
         strictTimeout: true,
         skipQualityContract: true,

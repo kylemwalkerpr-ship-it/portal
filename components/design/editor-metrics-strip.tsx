@@ -16,19 +16,18 @@ import * as React from 'react'
 import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, harperKindAutofixable, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
-import { DEFAULT_REVIEW_PIN, ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
+import { ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
 
-/** Style Review prefers Flash — Qwen (Genesis Review default) routinely hit the 75s abort. */
-function resolveStyleReviewPin(reviewModel?: string): string {
-  const raw = String(reviewModel || '').trim()
-  if (!raw || raw === 'auto' || raw === DEFAULT_REVIEW_PIN || raw === 'qwen' || raw === 'qwen3.6-27b') {
-    return ENTRIM_DEEPSEEK_FLASH_PIN
-  }
-  return raw
+/** Style Review is Flash-only — ignore Genesis Review / other picker pins. */
+function resolveStyleReviewPin(_reviewModel?: string): string {
+  return ENTRIM_DEEPSEEK_FLASH_PIN
 }
 
-/** Hard client deadline so AI Style "Reviewing…" cannot stick if the fetch hangs. */
-const STYLE_REVIEW_CLIENT_TIMEOUT_MS = 75_000
+/**
+ * Client abort must sit ABOVE the server route budget (40s) so a timed-out
+ * provider still returns JSON ({ error }) instead of a bare AbortError.
+ */
+const STYLE_REVIEW_CLIENT_TIMEOUT_MS = 50_000
 
 async function fetchStyleReview(init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { timeoutMs = STYLE_REVIEW_CLIENT_TIMEOUT_MS, signal, ...rest } = init
