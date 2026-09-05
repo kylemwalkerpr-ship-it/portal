@@ -81,6 +81,19 @@ describe('renderTargetFile build-safety', () => {
     expect(fileContent).toMatch(/images:\s*\[\s*\{\s*url:\s*"\/og-image\.png"/)
     expect(fileContent).toContain('card: "summary_large_image"')
     expect(fileContent).toContain('images: ["/og-image.png"]')
+    // caseworks article-quality: no SEO Factory kicker, non-empty related/sources,
+    // and no mirrored OG/Twitter title+description (Next.js derives those).
+    expect(fileContent).not.toMatch(/kicker:\s*"SEO Factory"/)
+    expect(fileContent).toMatch(/kicker:\s*"[^"]+"/)
+    expect(fileContent).not.toMatch(/const related[^=]*=\s*\[\s*\]/)
+    expect(fileContent).toMatch(/const related: RelatedRef\[\] = \[\{ slug:/)
+    expect(fileContent).toMatch(/const sources: SourceRef\[\] = \[\{ title:/)
+    const ogBlock = fileContent.match(/openGraph:\s*\{([\s\S]*?)\},\s*\n\s*twitter:/)?.[1] || ''
+    expect(ogBlock).not.toMatch(/(?:^|\n)\s*title:/)
+    expect(ogBlock).not.toMatch(/(?:^|\n)\s*description:/)
+    const twBlock = fileContent.match(/twitter:\s*\{([\s\S]*?)\},/)?.[1] || ''
+    expect(twBlock).not.toMatch(/(?:^|\n)\s*title:/)
+    expect(twBlock).not.toMatch(/(?:^|\n)\s*description:/)
 
     const gate = validateRenderedPayload({
       plan: p,
@@ -142,5 +155,34 @@ describe('renderTargetFile build-safety', () => {
     })
     expect(fileContent).toMatch(/country:\s*"au"/)
     expect(fileContent).toContain('/intake?country=au')
+    expect(fileContent).not.toMatch(/kicker:\s*"SEO Factory"/)
+    expect(fileContent).toMatch(/const related: RelatedRef\[\] = \[\{ slug:/)
+  })
+
+  it('renders US Form I-485 pages without SEO Factory kicker / empty related / mirrored OG', () => {
+    const p = plan({
+      host: 'legal',
+      repo: 'caseworks',
+      filePath: 'app/us/i-485-adjustment-of-status-document-checklist/page.tsx',
+      canonicalUrl: 'https://legal.yousafeconsultancy.com/us/i-485-adjustment-of-status-document-checklist/',
+      contentType: 'legal_guide',
+    })
+    const { fileContent } = renderTargetFile({
+      plan: p,
+      content: messyAiMarkdown,
+      title: 'I-485 Adjustment of Status Document Checklist (2026)',
+      region: 'US',
+      contentType: 'legal_guide',
+      primaryKeyword: 'I-485 adjustment of status document checklist',
+      indexable: true,
+      canonicalUrl: p.canonicalUrl,
+    })
+    expect(fileContent).toMatch(/country:\s*"us"/)
+    expect(fileContent).not.toMatch(/kicker:\s*"SEO Factory"/)
+    expect(fileContent).toMatch(/const related: RelatedRef\[\] = \[\{ slug:/)
+    expect(fileContent).toMatch(/const sources: SourceRef\[\] = \[\{ title:/)
+    const ogBlock = fileContent.match(/openGraph:\s*\{([\s\S]*?)\},\s*\n\s*twitter:/)?.[1] || ''
+    expect(ogBlock).not.toMatch(/(?:^|\n)\s*title:/)
+    expect(ogBlock).not.toMatch(/(?:^|\n)\s*description:/)
   })
 })

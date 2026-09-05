@@ -414,6 +414,35 @@ export function validateRenderedPayload(opts: {
     if (countryM && !['us', 'uk', 'ca', 'au'].includes(countryM[1])) {
       errors.push(`caseworks country "${countryM[1]}" is not us|uk|ca|au — refuse ship`)
     }
+    // Mirror caseworks scripts/check-article-quality.mjs so factory ships never
+    // red-X Deploy Caseworks on kicker / empty related / mirrored OG+Twitter.
+    if (/kicker:\s*"SEO Factory"/.test(content)) {
+      errors.push('caseworks hero kicker must not be "SEO Factory" (renders in hero + JSON-LD)')
+    }
+    if (/const related[^=]*=\s*\[\s*\]/.test(content)) {
+      errors.push('caseworks related[] must not be empty — pick registered batch-map slugs')
+    }
+    const mdIdx = content.indexOf('export const metadata')
+    if (mdIdx !== -1) {
+      const mdSlice = content.slice(mdIdx, mdIdx + 2500)
+      const topTitle = (mdSlice.match(/title:\s*"([^"]+)"/) || [])[1]
+      const topDesc = (mdSlice.match(/description:\s*"([^"]+)"/) || [])[1]
+      for (const key of ['openGraph', 'twitter'] as const) {
+        const keyRe = new RegExp(`${key}:\\s*\\{([\\s\\S]*?)\\n\\s*\\}`, 'g')
+        let km: RegExpExecArray | null
+        while ((km = keyRe.exec(mdSlice)) !== null) {
+          const sub = km[1]
+          const subTitle = (sub.match(/(?:^|\n)\s*title:\s*"([^"]+)"/) || [])[1]
+          const subDesc = (sub.match(/(?:^|\n)\s*description:\s*"([^"]+)"/) || [])[1]
+          if (topTitle && subTitle === topTitle) {
+            errors.push(`${key}.title verbatim-copies top-level title — omit it; Next.js derives it`)
+          }
+          if (topDesc && subDesc === topDesc) {
+            errors.push(`${key}.description verbatim-copies top-level description — omit it; Next.js derives it`)
+          }
+        }
+      }
+    }
   } else if (filePath.endsWith('.md') || filePath.endsWith('.mdx')) {
     if (!content.startsWith('---')) {
       errors.push('Markdown/MDX ships must start with YAML front matter (---)')

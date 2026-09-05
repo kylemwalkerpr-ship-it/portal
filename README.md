@@ -78,3 +78,16 @@ npx supabase db push   # picks up supabase/migrations/20260806_hardening.sql
 ```
 
 Cloudflare will then deploy with the full hardening.
+
+## Cloudflare Pages deploy token (regional landings)
+
+GitHub Actions secret `CLOUDFLARE_API_TOKEN` must include **Cloudflare Pages Edit**
+(or broader Pages write) for the `yousafe-uk`, `yousafe-ca`, `yousafe-usa`, and
+`yousafe-landing` Pages projects. Without that scope, CI deploys for those
+regional/apex landings fail even when Workers deploys succeed.
+
+**Workaround:** on a Mac with Wrangler already authenticated via `wrangler login`
+(OAuth), operators can deploy those Pages projects locally with Wrangler while
+the token scopes are fixed. Prefer fixing the GH secret scopes so CI stays the
+only deploy path.
+
