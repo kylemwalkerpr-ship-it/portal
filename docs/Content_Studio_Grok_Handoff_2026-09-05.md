@@ -104,3 +104,11 @@ Slice audits: `tmp/cs-audit-2026-09-05/01-discover-brief.md` … `04-types-live-
 - Force-push main.
 - Claim 100% until regional + long-form E2E + green Deploy of editor/vault.
 - Use Cloud Agents (plan blocked).
+
+## Update (~3:05 AM ET) — Harper re-verify blocked
+Post-`2a4da13` browser pass could not validate Harper/Flesch:
+- I-129 / Untitled: **No draft body stored** / word count 0; Audit & Fix disabled
+- Markdown view: **Unauthorized** banner
+- Draft queue: provider timeout / jobs stuck loading
+Treat Harper a–f as **still unverified on live**. Next session: restore a job with real body (or re-open after auth), then re-run checklist. Also investigate Unauthorized on draft fetch if it persists after Clerk Super Admin session.
+
