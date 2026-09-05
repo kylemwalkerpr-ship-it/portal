@@ -35,7 +35,7 @@
 | ID | Stage | Gap | Evidence file | Status |
 |----|-------|-----|---------------|--------|
 | P1-A2 | Discover → Brief | Radar gaps / backlink gaps / body-level LLM visibility never populate `radarMeta` or reach `suggest-brief` on the advertised path (prompt blocks empty) | `01-discover-brief.md` | **open** |
-| P1-E1 | Brief / SEO Intel | SEO Intel lock does not reset on topic/region/keyword change — stale `writerContract` certifies prior topic into Drafting | `01-discover-brief.md` | **open** |
+| P1-E1 | Brief / SEO Intel | SEO Intel lock does not reset on topic/region/keyword change — stale `writerContract` certifies prior topic into Drafting | `01-discover-brief.md` | **fixed** (`seoIntelLock` seed bind + reset on topic/region/keyword) |
 | P1-GEN-1 | Generate | Stale token-budget comments (pillar 2800 / blog 1500) vs SPECS (2500 / 1200); stream uses large fixed `maxTokens` → overshoot | `02-generate-depth.md` | **open** |
 | P1-GEN-2 | Generate | PASS 5 italic disclaimer not `hardProtected` the same way as `**Disclaimer:**` → trim/re-add churn with P0-GEN-2 | `02-generate-depth.md` | **open** |
 | P1-GEN-3 | Generate | `ensureEditorialScaffold` adds disclaimer/TLDR/CTA without type/budget; relies on later PASS 5b | `02-generate-depth.md` | **open** |

@@ -25,6 +25,11 @@ import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { autoMapKeywordsToH2s } from '@/lib/seoFactory/keywordPlacement'
+import {
+  buildSeoIntelLockSeed,
+  isSeoIntelLocked,
+  type SeoIntelBriefLock,
+} from '@/lib/seoFactory/seoIntelLock'
 import { mergeInterlinkLists, preferRegionInterlinks, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
@@ -2367,11 +2372,34 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // briefing stage by EditorSeoIntelPanel's "Generate SEO Brief". Carried into
   // the Generate handoff as one structured contract so Drafting never has to
   // re-assemble it.
-  const [seoIntelBrief, setSeoIntelBrief] = React.useState<{ brief: unknown; writerContract: string } | null>(null)
+  const [seoIntelBrief, setSeoIntelBrief] = React.useState<SeoIntelBriefLock | null>(null)
   const seoBriefSeed = String(selectedBrief?.primaryKeyword || topic || title || '').trim()
-  const seoIntelLocked = Boolean(String(seoIntelBrief?.writerContract || '').trim())
+  // P1-E1: lock fingerprint binds writerContract to region + keyword/topic seed.
+  const seoIntelLockSeed = buildSeoIntelLockSeed({
+    region,
+    primaryKeyword: selectedBrief?.primaryKeyword || seoBriefSeed,
+    topic,
+    title,
+  })
+  const seoIntelLocked = isSeoIntelLocked(seoIntelBrief, seoIntelLockSeed)
+  // P1-E1: drop a locked writerContract when topic/region/keyword seed drifts.
+  // briefIntel is cleared separately on topic/keyword identity (not region-only)
+  // so suggest-brief region auto-select does not wipe the brief it just built.
+  React.useEffect(() => {
+    setSeoIntelBrief((prev) => {
+      if (!prev) return prev
+      if (isSeoIntelLocked(prev, seoIntelLockSeed)) return prev
+      return null
+    })
+  }, [seoIntelLockSeed])
   const handleSeoBriefReady = React.useCallback((payload: { brief: unknown; writerContract: string }) => {
-    setSeoIntelBrief(payload)
+    const lockSeed = buildSeoIntelLockSeed({
+      region,
+      primaryKeyword: selectedBrief?.primaryKeyword || topic || title,
+      topic,
+      title,
+    })
+    setSeoIntelBrief({ ...payload, lockSeed })
     const cluster = (payload.brief as { targetCluster?: unknown } | null)?.targetCluster
     if (!Array.isArray(cluster) || cluster.length === 0) return
     const extra = cluster.map((k) => String(k).trim()).filter(Boolean)
@@ -2385,7 +2413,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       merged.push(term)
     }
     setKeywords(merged.join(', '))
-  }, [keywords, setKeywords])
+  }, [keywords, setKeywords, region, selectedBrief?.primaryKeyword, topic, title])
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
@@ -2402,6 +2430,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     reasoning?: string; metaDescription?: string; sectionPlan?: Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }>
     masterEngine?: { composite?: number | null; grade?: string | null; recommendationCount?: number; coveragePct?: number | null; computedSignals?: number | null; totalSignals?: number | null; phase?: string | null }
   } | null>(null)
+  // P1-E1 companion: Full Brief intel is topic/keyword-scoped. Region-only
+  // changes (including suggest-brief auto-select) keep briefIntel so the just-
+  // generated contract remains visible; topic/keyword edits force a rebuild.
+  const briefIntelIdentity = `${String(topic || '').trim().toLowerCase()}::${String(selectedBrief?.primaryKeyword || '').trim().toLowerCase()}`
+  const briefIntelIdentityRef = React.useRef(briefIntelIdentity)
+  React.useEffect(() => {
+    if (briefIntelIdentityRef.current === briefIntelIdentity) return
+    briefIntelIdentityRef.current = briefIntelIdentity
+    setBriefIntel(null)
+  }, [briefIntelIdentity])
   // Strict per-section word budgets from the brief — carried into drafting so
   // the one-run contract is hardlined (never a three-copy echo).
   const [sectionBudgets, setSectionBudgets] = React.useState<Array<{ heading: string; minWords: number; maxWords: number }> | null>(null)
@@ -2671,7 +2709,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     { label: 'Outline', ok: h2s.length >= 6, detail: `${h2s.length} planned sections` },
     { label: 'Keywords', ok: shortOk && longOk, detail: `${shortKw.length} short · ${longKw.length} long-tail` },
     { label: 'Placement', ok: kwList.length >= 9 && mappedKeywordCount === kwList.length, detail: `${mappedKeywordCount}/${kwList.length || 0} assigned to H2s` },
-    { label: 'SEO Intel', ok: seoIntelLocked, detail: seoIntelLocked ? 'Writer contract locked' : 'Generate SEO Brief to lock' },
+    { label: 'SEO Intel', ok: seoIntelLocked, detail: seoIntelLocked ? 'Writer contract locked to topic/region' : 'Generate SEO Brief to lock (resets on topic/region/keyword change)' },
     { label: 'Evidence', ok: evidenceGate.counted >= 3, detail: evidenceGate.fallbackUsed ? `${evidenceGate.counted} sources · off-region fallback` : `${evidenceGate.counted} in-region sources` },
     { label: 'Interlinks', ok: regionalInterlinks.kept.length >= 2, detail: regionalInterlinks.fallbackUsed ? `${regionalInterlinks.kept.length} targets · off-region fallback` : `${regionalInterlinks.kept.length} in-region estate targets` },
   ]
