@@ -1,19 +1,24 @@
 'use client'
 /**
- * StudioDocEditor — a word-processor-style editor for the rendered article.
+ * StudioDocEditor — TipTap document editor for the rendered article.
  *
- * The Document view is contentEditable over a markdown-rendered HTML page:
- * the operator clicks anywhere and types, selects text and presses the
- * formatting toolbar (B / I / H2 / H3 / lists / link / quote / hr / table),
- * and every change is serialized back to markdown (the pipeline's single
- * source of truth). Frontmatter and JSON-LD render as hidden keep-regions
- * and round-trip verbatim.
- *
- * Pasting is forced to plain text so the DOM can never be corrupted by
- * arbitrary HTML; the serializer accepts only the trusted tag subset.
+ * TipTap (ProseMirror) edits trusted HTML from mdToEditableHtml; every
+ * change serializes back to markdown via serializeDsHtml (pipeline SoT).
+ * Frontmatter and JSON-LD live in atom keepBlock nodes and round-trip
+ * verbatim. Markdown mode remains in AdminInlineEditor.
  */
 
 import * as React from 'react'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Underline from '@tiptap/extension-underline'
+import Link from '@tiptap/extension-link'
+import Placeholder from '@tiptap/extension-placeholder'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { Node as TipTapNode } from '@tiptap/core'
 import { serializeDsHtml } from '@/lib/editorDoc'
 import { peelCollapsedFrontmatter } from '@/lib/seoFactory/formatContract'
 import { sanitizeLeakedMarkup } from '@/lib/seoFactory/leakedMarkup'
@@ -203,6 +208,75 @@ const APPEND_STYLE = `[data-keep]{display:none}
 .gd-editor .gd-caret-guard{display:inline-block;width:1px;height:15px}
 .gd-editor mark.gd-jump{background:#FDE68A;color:inherit;padding:0 2px;border-radius:2px}`
 
+/** Atom node so frontmatter / JSON-LD never enter the prose schema. */
+const KeepBlock = TipTapNode.create({
+  name: 'keepBlock',
+  group: 'block',
+  atom: true,
+  selectable: false,
+  draggable: false,
+  addAttributes() {
+    return {
+      kind: { default: 'fm' },
+      payload: { default: '' },
+    }
+  },
+  parseHTML() {
+    return [{
+      tag: 'div[data-keep]',
+      getAttrs: (el) => {
+        const node = el as HTMLElement
+        return {
+          kind: node.getAttribute('data-keep') || 'fm',
+          payload: node.textContent || '',
+        }
+      },
+    }]
+  },
+  renderHTML({ node }) {
+    return [
+      'div',
+      {
+        'data-keep': node.attrs.kind,
+        contenteditable: 'false',
+        style: 'display:none',
+      },
+      node.attrs.payload,
+    ]
+  },
+})
+
+function countLiveWords(md: string): number {
+  const body = String(md || '')
+    .replace(/^---[\s\S]*?\n---\s*/, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/[#>*`\[\]()|-]/g, ' ')
+  return body.trim().split(/\s+/).filter(Boolean).length
+}
+
+function markActive(editor: Editor | null, name: string, attrs?: Record<string, unknown>): boolean {
+  if (!editor) return false
+  return editor.isActive(name, attrs)
+}
+
+const TIP_STYLE = `
+.gd-editor .ProseMirror{outline:none;min-height:inherit}
+.gd-editor .ProseMirror p{margin:0 0 14px;line-height:1.7;color:${TOKENS.ink};font-size:16px;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+.gd-editor .ProseMirror h1{font-family:${TOKENS.serif};font-size:32px;line-height:1.2;margin:28px 0 14px;color:${TOKENS.heading};font-weight:700}
+.gd-editor .ProseMirror h2{font-family:${TOKENS.serif};font-size:24px;line-height:1.25;margin:26px 0 12px;color:${TOKENS.heading2};font-weight:700}
+.gd-editor .ProseMirror h3{font-family:${TOKENS.serif};font-size:19px;line-height:1.3;margin:22px 0 10px;color:${TOKENS.heading2};font-weight:700}
+.gd-editor .ProseMirror ul,.gd-editor .ProseMirror ol{margin:0 0 14px;padding-left:1.4em;line-height:1.7}
+.gd-editor .ProseMirror blockquote{margin:16px 0;padding:8px 16px;border-left:3px solid #9A7B3B;color:#4B5563;background:#FAFAF8}
+.gd-editor .ProseMirror a{color:${TOKENS.link};text-decoration:underline}
+.gd-editor .ProseMirror hr{border:none;border-top:1px solid ${TOKENS.border};margin:22px 0}
+.gd-editor .ProseMirror table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+.gd-editor .ProseMirror th{border-bottom:2px solid rgba(0,0,0,0.08);padding:8px 10px;text-align:left;background:#F8FAFC;font-weight:700;color:#17365D}
+.gd-editor .ProseMirror td{border-bottom:1px solid rgba(0,0,0,0.08);padding:8px 10px;vertical-align:top}
+.gd-editor .ProseMirror mark.gd-jump{background:#FDE68A;color:inherit;padding:0 2px;border-radius:2px}
+.gd-editor .ProseMirror p.is-editor-empty:first-child::before{color:${TOKENS.inkDim};content:attr(data-placeholder);float:left;height:0;pointer-events:none;font-style:italic}
+.gd-toolbar-sticky{position:sticky;top:0;z-index:5}
+`
+
 export default function StudioDocEditor({
   content,
   onChange,
@@ -216,55 +290,78 @@ export default function StudioDocEditor({
   minHeight?: number
   highlightPhrase?: string | null
 }) {
-  const editorRef = React.useRef<HTMLDivElement | null>(null)
-  const contentRef = React.useRef(content)
-  contentRef.current = content
   const lastSerializedRef = React.useRef('')
-
-  // (Re)hydrate when parent markdown changes from outside this editor
-  // (Apply style fixes, Audit & Fix, autosave reload). Skip only when
-  // this is the markdown we just serialized from the DOM — otherwise
-  // Apply would update React state while the visible document stayed stale
-  // and the next keystroke would overwrite the fix.
-  React.useEffect(() => {
-    if (!editorRef.current) return
-    const incoming = String(content || '')
-    if (lastSerializedRef.current && lastSerializedRef.current === incoming.trim()) return
-    editorRef.current.innerHTML = mdToEditableHtml(incoming)
-    lastSerializedRef.current = incoming.trim()
-  }, [content])
-
-  const applyCommand = (command: () => void) => {
-    if (!editorRef.current) return
-    const sel = window.getSelection()
-    const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
-    command()
-    // Restore focus + selection.
-    editorRef.current.focus()
-    if (range) {
-      const restored = window.getSelection()
-      restored?.removeAllRanges()
-      restored?.addRange(range)
-    }
-    syncFromDom()
-  }
-
-  const syncFromDom = React.useCallback(() => {
-    if (!editorRef.current) return
-    const md = serializeDsHtml(editorRef.current.innerHTML)
-    lastSerializedRef.current = md.trim()
-    contentRef.current = md
-    onChange(md)
-  }, [onChange])
-
   const [findOpen, setFindOpen] = React.useState(false)
   const [findQ, setFindQ] = React.useState('')
+  const [liveWords, setLiveWords] = React.useState(0)
   const findInputRef = React.useRef<HTMLInputElement | null>(null)
+  const [, bump] = React.useState(0)
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      Underline,
+      Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer' } }),
+      Placeholder.configure({ placeholder: 'Start writing your draft…' }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      KeepBlock,
+    ],
+    content: mdToEditableHtml(String(content || '')),
+    editable: !disabled,
+    editorProps: {
+      attributes: {
+        class: 'gd-prosemirror',
+        'data-testid': 'studio-wysiwyg-document',
+      },
+      handlePaste(_view, event) {
+        const text = event.clipboardData?.getData('text/plain')
+        if (text == null) return false
+        event.preventDefault()
+        // Insert plain text only — never raw HTML paste.
+        _view.dispatch(_view.state.tr.insertText(text))
+        return true
+      },
+      handleKeyDown(_view, event) {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+          event.preventDefault()
+          setFindOpen(true)
+          window.setTimeout(() => findInputRef.current?.focus(), 0)
+          return true
+        }
+        return false
+      },
+    },
+    onUpdate: ({ editor: ed }) => {
+      const md = serializeDsHtml(ed.getHTML())
+      lastSerializedRef.current = md.trim()
+      setLiveWords(countLiveWords(md))
+      onChange(md)
+    },
+    onSelectionUpdate: () => bump((n) => n + 1),
+    immediatelyRender: false,
+  })
+
+  React.useEffect(() => {
+    if (!editor) return
+    editor.setEditable(!disabled)
+  }, [editor, disabled])
+
+  React.useEffect(() => {
+    if (!editor) return
+    const incoming = String(content || '')
+    if (lastSerializedRef.current && lastSerializedRef.current === incoming.trim()) return
+    editor.commands.setContent(mdToEditableHtml(incoming), false)
+    lastSerializedRef.current = incoming.trim()
+    setLiveWords(countLiveWords(incoming))
+  }, [content, editor])
 
   React.useEffect(() => {
     const phrase = String(highlightPhrase || '').trim()
-    if (!phrase || !editorRef.current) return
-    const root = editorRef.current
+    if (!phrase || !editor) return
+    const root = editor.view.dom
     root.querySelectorAll('mark.gd-jump').forEach((el) => {
       const parent = el.parentNode
       if (!parent) return
@@ -272,7 +369,7 @@ export default function StudioDocEditor({
       parent.normalize()
     })
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    let node: Node | null
+    let node: globalThis.Node | null
     const needle = phrase.slice(0, 80)
     while ((node = walker.nextNode())) {
       const text = node.textContent || ''
@@ -290,14 +387,15 @@ export default function StudioDocEditor({
       } catch { /* split nodes — skip */ }
       break
     }
-  }, [highlightPhrase, content])
+  }, [highlightPhrase, content, editor])
 
   const runFind = (q: string) => {
-    if (!q || !editorRef.current) return
+    if (!q || !editor) return
+    const root = editor.view.dom
     const sel = window.getSelection()
     sel?.removeAllRanges()
-    const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT)
-    let node: Node | null
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let node: globalThis.Node | null
     while ((node = walker.nextNode())) {
       const text = node.textContent || ''
       const idx = text.toLowerCase().indexOf(q.toLowerCase())
@@ -311,78 +409,98 @@ export default function StudioDocEditor({
     }
   }
 
-  const cmd = (kind: 'bold' | 'italic' | 'underline' | 'strike' | 'h1' | 'h2' | 'h3' | 'p' | 'ul' | 'ol' | 'quote' | 'hr' | 'link' | 'table' | 'undo' | 'redo' | 'clear') => {
-    if (disabled) return
-    applyCommand(() => {
-      const ed = editorRef.current
-      if (!ed) return
-      switch (kind) {
-        case 'undo': document.execCommand('undo'); break
-        case 'redo': document.execCommand('redo'); break
-        case 'bold': document.execCommand('bold'); break
-        case 'italic': document.execCommand('italic'); break
-        case 'underline': document.execCommand('underline'); break
-        case 'strike': document.execCommand('strikeThrough'); break
-        case 'h1': document.execCommand('formatBlock', false, 'h1'); break
-        case 'h2': document.execCommand('formatBlock', false, 'h2'); break
-        case 'h3': document.execCommand('formatBlock', false, 'h3'); break
-        case 'p': document.execCommand('formatBlock', false, 'p'); break
-        case 'ul': document.execCommand('insertUnorderedList'); break
-        case 'ol': document.execCommand('insertOrderedList'); break
-        case 'quote': document.execCommand('formatBlock', false, 'blockquote'); break
-        case 'hr': document.execCommand('insertHorizontalRule'); break
-        case 'clear': document.execCommand('removeFormat'); break
-        case 'link': {
-          const url = window.prompt('Link URL', 'https://')
-          if (url) document.execCommand('createLink', false, url.trim())
-          break
-        }
-        case 'table': {
-          const html = tableHtml([
-            ['Column A', 'Column B', 'Column C'],
-            ['', '', ''],
-            ['', '', ''],
-          ])
-          document.execCommand('insertHTML', false, html)
-          break
-        }
+  const cmd = (kind: string) => {
+    if (!editor || disabled) return
+    const chain = editor.chain().focus()
+    switch (kind) {
+      case 'undo': chain.undo().run(); break
+      case 'redo': chain.redo().run(); break
+      case 'bold': chain.toggleBold().run(); break
+      case 'italic': chain.toggleItalic().run(); break
+      case 'underline': chain.toggleUnderline().run(); break
+      case 'strike': chain.toggleStrike().run(); break
+      case 'h1': chain.toggleHeading({ level: 1 }).run(); break
+      case 'h2': chain.toggleHeading({ level: 2 }).run(); break
+      case 'h3': chain.toggleHeading({ level: 3 }).run(); break
+      case 'p': chain.setParagraph().run(); break
+      case 'ul': chain.toggleBulletList().run(); break
+      case 'ol': chain.toggleOrderedList().run(); break
+      case 'quote': chain.toggleBlockquote().run(); break
+      case 'hr': chain.setHorizontalRule().run(); break
+      case 'clear': chain.unsetAllMarks().clearNodes().run(); break
+      case 'link': {
+        const prev = editor.getAttributes('link').href as string | undefined
+        const url = window.prompt('Link URL', prev || 'https://')
+        if (url === null) break
+        if (!url.trim()) chain.extendMarkRange('link').unsetLink().run()
+        else chain.extendMarkRange('link').setLink({ href: url.trim() }).run()
+        break
       }
-    })
+      case 'table':
+        chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        break
+    }
   }
 
-  const toolbar: Array<{ label: React.ReactNode; title: string; run: () => void; wide?: boolean }> = [
-    { label: 'Undo', title: 'Undo (Ctrl/Cmd+Z)', run: () => cmd('undo') },
-    { label: 'Redo', title: 'Redo (Ctrl/Cmd+Shift+Z)', run: () => cmd('redo') },
-    { label: <strong>B</strong>, title: 'Bold (Ctrl/Cmd+B)', run: () => cmd('bold') },
-    { label: <em>I</em>, title: 'Italic (Ctrl/Cmd+I)', run: () => cmd('italic') },
-    { label: <u>U</u>, title: 'Underline (Ctrl/Cmd+U)', run: () => cmd('underline') },
-    { label: <s>S</s>, title: 'Strikethrough', run: () => cmd('strike') },
-    { label: 'H1', title: 'Heading 1', run: () => cmd('h1') },
-    { label: 'H2', title: 'Heading 2', run: () => cmd('h2') },
-    { label: 'H3', title: 'Heading 3', run: () => cmd('h3') },
-    { label: '¶', title: 'Paragraph', run: () => cmd('p') },
-    { label: '• List', title: 'Bullet list', run: () => cmd('ul') },
-    { label: '1. List', title: 'Numbered list', run: () => cmd('ol') },
-    { label: '🔗', title: 'Insert link', run: () => cmd('link') },
-    { label: '❝', title: 'Blockquote', run: () => cmd('quote') },
-    { label: '—', title: 'Horizontal rule', run: () => cmd('hr') },
-    { label: '⊞ Table', title: 'Insert 3-column table', run: () => cmd('table') },
-    { label: 'Clear', title: 'Clear formatting', run: () => cmd('clear') },
-    { label: 'Find', title: 'Find in document (Ctrl/Cmd+F)', run: () => { setFindOpen(true); window.setTimeout(() => findInputRef.current?.focus(), 0) } },
-  ]
+  const btn = (label: React.ReactNode, title: string, kind: string, active?: boolean) => (
+    <button
+      type="button"
+      title={title}
+      onClick={() => cmd(kind)}
+      aria-pressed={active || false}
+      style={{
+        ...TOOLBAR_BTN,
+        background: active ? '#FEF3C7' : '#fff',
+        borderColor: active ? '#9A7B3B' : TOKENS.border,
+        fontWeight: active ? 700 : 500,
+      }}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight }}>
       {!disabled && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', padding: '6px 8px', border: `1px solid ${TOKENS.border}`, borderRadius: 8, background: '#FAFAFB' }}>
-          {toolbar.map((t, i) => (
-            <React.Fragment key={i}>
-              {(i === 2 || i === 6 || i === 10 || i === 16) && <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />}
-              <button type="button" title={t.title} onClick={t.run} style={t.wide ? { ...TOOLBAR_BTN, minWidth: 56 } : TOOLBAR_BTN}>
-                {t.label}
-              </button>
-            </React.Fragment>
-          ))}
+        <div
+          className="gd-toolbar-sticky"
+          role="toolbar"
+          aria-label="Document formatting"
+          style={{
+            display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center',
+            padding: '8px 10px', border: `1px solid ${TOKENS.border}`, borderRadius: 8,
+            background: 'rgba(250,250,251,.96)', backdropFilter: 'blur(6px)',
+            boxShadow: '0 1px 2px rgba(15,23,42,.06)',
+          }}
+        >
+          {btn('Undo', 'Undo (Ctrl/Cmd+Z)', 'undo')}
+          {btn('Redo', 'Redo (Ctrl/Cmd+Shift+Z)', 'redo')}
+          <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />
+          {btn(<strong>B</strong>, 'Bold', 'bold', markActive(editor, 'bold'))}
+          {btn(<em>I</em>, 'Italic', 'italic', markActive(editor, 'italic'))}
+          {btn(<u>U</u>, 'Underline', 'underline', markActive(editor, 'underline'))}
+          {btn(<s>S</s>, 'Strikethrough', 'strike', markActive(editor, 'strike'))}
+          <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />
+          {btn('H1', 'Heading 1', 'h1', markActive(editor, 'heading', { level: 1 }))}
+          {btn('H2', 'Heading 2', 'h2', markActive(editor, 'heading', { level: 2 }))}
+          {btn('H3', 'Heading 3', 'h3', markActive(editor, 'heading', { level: 3 }))}
+          {btn('¶', 'Paragraph', 'p', markActive(editor, 'paragraph'))}
+          <span style={{ width: 1, height: 18, background: TOKENS.border, margin: '0 4px' }} />
+          {btn('• List', 'Bullet list', 'ul', markActive(editor, 'bulletList'))}
+          {btn('1. List', 'Numbered list', 'ol', markActive(editor, 'orderedList'))}
+          {btn('🔗', 'Insert link', 'link', markActive(editor, 'link'))}
+          {btn('❝', 'Blockquote', 'quote', markActive(editor, 'blockquote'))}
+          {btn('—', 'Horizontal rule', 'hr')}
+          {btn('⊞ Table', 'Insert table', 'table')}
+          {btn('Clear', 'Clear formatting', 'clear')}
+          <button
+            type="button"
+            title="Find in document (Ctrl/Cmd+F)"
+            onClick={() => { setFindOpen(true); window.setTimeout(() => findInputRef.current?.focus(), 0) }}
+            style={TOOLBAR_BTN}
+          >
+            Find
+          </button>
           {findOpen && (
             <input
               ref={findInputRef}
@@ -396,44 +514,18 @@ export default function StudioDocEditor({
               style={{ padding: '4px 8px', fontSize: 12, border: `1px solid ${TOKENS.border}`, borderRadius: 6, minWidth: 160 }}
             />
           )}
-          <span style={{ marginLeft: 'auto', fontSize: 10, color: TOKENS.inkDim, fontFamily: 'var(--portal-font-mono, monospace)' }}>
-            {disabled ? 'read-only' : 'Google Docs-style page · Find, format, jump to issues in this view'}
+          <span style={{ marginLeft: 'auto', fontSize: 10, color: TOKENS.inkDim, fontFamily: 'var(--portal-font-mono, monospace)', whiteSpace: 'nowrap' }}>
+            {liveWords.toLocaleString()} words · TipTap · page layout
           </span>
         </div>
       )}
-      <style>{APPEND_STYLE}</style>
+      <style>{APPEND_STYLE + TIP_STYLE}</style>
       <div style={{
         border: `1px solid ${TOKENS.border}`, borderRadius: 8, background: TOKENS.canvas,
         padding: '18px 12px', overflow: 'auto', maxHeight: 780,
       }}>
         <div
-          ref={editorRef}
-          data-testid="studio-wysiwyg-document"
           className="gd-editor"
-          contentEditable={!disabled}
-          suppressContentEditableWarning
-          onInput={() => syncFromDom()}
-          onPaste={(e) => {
-            if (disabled) return
-            e.preventDefault()
-            const text = e.clipboardData?.getData('text/plain') || ''
-            document.execCommand('insertText', false, text)
-            syncFromDom()
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Tab') {
-              e.preventDefault()
-              document.execCommand('insertText', false, '  ')
-            }
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-              e.preventDefault()
-              setFindOpen(true)
-              window.setTimeout(() => findInputRef.current?.focus(), 0)
-            }
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); cmd('bold') }
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); cmd('italic') }
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); cmd('underline') }
-          }}
           style={{
             width: 'min(816px, 100%)', minHeight, margin: '0 auto',
             padding: '56px clamp(32px, 6vw, 72px) 84px',
@@ -441,7 +533,9 @@ export default function StudioDocEditor({
             boxShadow: '0 1px 3px rgba(15,23,42,.12), 0 8px 28px rgba(15,23,42,.08)',
             boxSizing: 'border-box',
           }}
-        />
+        >
+          <EditorContent editor={editor} />
+        </div>
       </div>
     </div>
   )
