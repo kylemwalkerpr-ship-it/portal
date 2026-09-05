@@ -1579,3 +1579,46 @@ Lawyers streamline filings when the visa packet is complete.
     expect(q.blockers.some((b) => b.code === 'ai_slop')).toBe(false)
   })
 })
+
+describe('applyDeterministicRepairs — disclaimer restore must not lock over-max (P0-GEN-2)', () => {
+  it('restores disclaimer then re-trims unprotected prose so body stays ≤ maxWords', () => {
+    // Near-ceiling blog without disclaimer: scaffold adds disclaimer after trim,
+    // which previously locked word_count_over_max because disclaimer is hardProtected.
+    const section = (name: string, n: number) =>
+      `## ${name}\n\n` +
+      Array.from(
+        { length: n },
+        (_, i) =>
+          `Paragraph ${i} in the ${name} section covers practical steps, required documents, processing times, fees, and common pitfalls for applicants navigating study abroad in 2026.`,
+      ).join('\n\n')
+    const content =
+      `# Study Abroad Tips 2026\n\n` +
+      `Intro paragraph with the primary keyword study abroad tips for applicants.\n\n` +
+      `${section('In 60 seconds', 6)}\n` +
+      `${section('Eligibility', 12)}\n` +
+      `${section('Documents', 12)}\n` +
+      `${section('Costs', 10)}\n` +
+      `${section('FAQ', 10)}\n`
+    // Force a tight ceiling so restore would overshoot without re-trim.
+    const maxWords = 900
+    const minWords = 800
+    expect(countBodyWords(content)).toBeGreaterThan(maxWords)
+
+    const r = applyDeterministicRepairs({
+      content,
+      contentType: 'blog_post',
+      primaryKeyword: 'study abroad tips',
+      title: 'Study Abroad Tips 2026',
+      indexable: true,
+      maxWords,
+      minWords,
+    })
+    const words = countBodyWords(r.content)
+    expect(words).toBeLessThanOrEqual(maxWords)
+    expect(words).toBeGreaterThanOrEqual(Math.min(minWords, maxWords))
+    // Prefer restore + re-trim; never leave over-max.
+    expect(r.content).toMatch(/not legal advice/i)
+    expect(r.applied.some((a) => a === 'disclaimer' || a === 'disclaimer_restored_after_final_trim' || a === 'trim_to_max_words_after_disclaimer_restore')).toBe(true)
+    expect(r.applied).not.toContain('disclaimer_restore_skipped_over_max')
+  })
+})

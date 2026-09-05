@@ -160,25 +160,37 @@ export function maxWordsForType(contentType: string): number {
 }
 
 /**
- * Clamp a model-echoed word range into the canonical depth budget for a
- * content type. Used by the Research brief so a generated brief can never
- * under-spec (below the Google floor) or over-spec (above the hard max) the
- * drafting length — the same numbers the draft audit and ship gate enforce.
+ * Clamp a brief/operator word range into the canonical depth budget for a
+ * content type. Used by Research brief + Generate so a window can never
+ * under-spec (below the Google floor) or over-spec (above the hard max).
  *
- * CANONICAL WINDOW (single source of truth): the spec window is returned
- * verbatim — a model sub-range no longer survives, because the pipeline,
- * the prompt LENGTH line, the section budgets and the audit must all show
- * the SAME window or the drafter resolves the contradiction by writing long.
+ * When min/max are present they are honored inside [specMin, specMax].
+ * When omitted, the full type SPECS window is returned.
  */
 export function clampBriefWordBudget(
   contentType: string,
-  _modelMin?: number | null,
-  _modelMax?: number | null,
+  modelMin?: number | null,
+  modelMax?: number | null,
 ): { minWords: number; maxWords: number } {
-  // Spec is canonical. Ignore model-echoed ranges entirely.
-  void _modelMin
-  void _modelMax
-  return { minWords: minWordsForType(contentType), maxWords: maxWordsForType(contentType) }
+  // SPECS are the floor/ceiling. When a brief (or operator) supplies min/max,
+  // honor them clamped into [specMin, specMax] so Generate matches the brief
+  // chip without under-spec or over-spec. Absent values → full type SPECS.
+  const specMin = minWordsForType(contentType)
+  const specMax = maxWordsForType(contentType)
+  const hasMin = modelMin != null && Number.isFinite(Number(modelMin)) && Number(modelMin) > 0
+  const hasMax = modelMax != null && Number.isFinite(Number(modelMax)) && Number(modelMax) > 0
+  let minWords = specMin
+  let maxWords = specMax
+  if (hasMin) {
+    minWords = Math.max(specMin, Math.min(Math.round(Number(modelMin)), specMax))
+  }
+  if (hasMax) {
+    maxWords = Math.max(specMin, Math.min(Math.round(Number(modelMax)), specMax))
+  }
+  if (minWords > maxWords) {
+    return { minWords: specMin, maxWords: specMax }
+  }
+  return { minWords, maxWords }
 }
 
 /**

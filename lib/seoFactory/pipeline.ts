@@ -21,14 +21,14 @@ import {
   minWordsForType,
   type ModelGuidanceInput,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget, clampBriefWordBudget } from './contentDepth'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
 export type { RequestedShipMode } from './resolveShipMode'
 import type { RequestedShipMode } from './resolveShipMode'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
-import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineHeadings } from './outlineCompletion'
+import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings } from './outlineCompletion'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
@@ -305,12 +305,10 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   })
   contentType = finalizePipelineContentType(input.contentType, plan)
   assertPlanRepoConsistency(plan)
-  // CANONICAL WINDOW: the spec for the FINAL content type is the single
-    // source of truth — brief/input overrides are ignored so the prompt,
-    // budgets, audit and ship gate all agree on one window.
-    const minWords = minWordsForType(contentType)
-  const targetWords = targetWordsForType(contentType)
-  const maxWords = maxWordsForType(contentType)
+  // Word window: honor brief/operator minWords/maxWords when present,
+  // clamped into type SPECS via clampBriefWordBudget; else full SPECS (P0-GEN-4).
+  const { minWords, maxWords } = clampBriefWordBudget(contentType, input.minWords, input.maxWords)
+  const targetWords = Math.max(minWords, Math.min(targetWordsForType(contentType), maxWords))
   // CANONICAL SECTION BUDGETS — always present in the drafting contract
   // (derived from the outline when the brief omits them; sum invariants
   // Σ(mins) ≥ pageMin, Σ(maxs) ≤ pageMax enforced).
@@ -751,6 +749,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       const completed = await completeMissingOutlineSections({
         content,
         outline: briefOutline,
+        maxWords,
         generateSection: async ({ article, heading, purpose }) =>
           generateOutlineSection({
             article,
@@ -773,6 +772,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       if (completed.inserted.length) {
         content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
         console.info(`[seoFactory/pipeline] outline completion inserted: ${completed.inserted.join(', ')}`)
+      } else if (completed.content !== content) {
+        content = completed.content
+      }
+      // P0-GEN-3: fail closed on remaining outline sections.
+      if (completed.remaining.length) {
+        const why = completed.stoppedForBudget
+          ? `Outline completion stopped at word budget (${maxWords}); remaining: ${completed.remaining.join(', ')}`
+          : outlineCompletionErrorMessage(completed.remaining)
+        console.warn(`[seoFactory/pipeline] ${why}`)
       }
     } catch (err) {
       console.warn('[seoFactory/pipeline] outline completion skipped', err)
@@ -867,8 +875,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       requiredLongTailKeywords,
       competingUrls: (input.competingUrls ?? []) as any,
       targetUrl: plan.canonicalUrl || undefined,
-      maxWords: maxWordsForType(contentType),
-      minWords: minWordsForType(contentType),
+      maxWords,
+      minWords,
     })
     if (repaired.applied.length) {
       console.info(`[seoFactory/pipeline] deterministic repair applied: ${repaired.applied.join(', ')}`)

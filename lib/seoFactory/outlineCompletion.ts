@@ -6,6 +6,7 @@
 
 import { missingOutlineSections } from './contentQualityGate'
 import type { ContentSpec } from './contentSpec'
+import { countBodyWords } from './contentDepth'
 
 export type OutlineEntry = { heading: string; level?: number; purpose?: string }
 
@@ -99,21 +100,33 @@ export async function completeMissingOutlineSections(opts: {
   generateSection: (args: { article: string; heading: string; purpose?: string }) => Promise<string | null>
   maxPasses?: number
   maxSectionsPerPass?: number
-}): Promise<{ content: string; inserted: string[]; remaining: string[] }> {
+  /** Hard page max — stop inserting once body words are at/over this (P0-GEN-3). */
+  maxWords?: number
+}): Promise<{ content: string; inserted: string[]; remaining: string[]; stoppedForBudget: boolean }> {
   const outline = opts.outline
   if (!outline?.length) {
-    return { content: opts.content, inserted: [], remaining: [] }
+    return { content: opts.content, inserted: [], remaining: [], stoppedForBudget: false }
   }
   let content = opts.content
   const inserted: string[] = []
   const maxPasses = opts.maxPasses ?? 2
   const maxSectionsPerPass = opts.maxSectionsPerPass ?? 3
+  const maxWords = opts.maxWords != null && Number.isFinite(opts.maxWords) ? Number(opts.maxWords) : null
+  let stoppedForBudget = false
   let remaining = missingOutlineSections(content, outline)
   let pass = 0
   while (remaining.length && pass < maxPasses) {
+    if (maxWords != null && countBodyWords(content) >= maxWords) {
+      stoppedForBudget = true
+      break
+    }
     const batch = remaining.slice(0, maxSectionsPerPass)
     let insertedThisPass = 0
     for (const heading of batch) {
+      if (maxWords != null && countBodyWords(content) >= maxWords) {
+        stoppedForBudget = true
+        break
+      }
       const entry = outline.find((o) => o.heading === heading)
       const section = await opts.generateSection({
         article: content,
@@ -124,12 +137,17 @@ export async function completeMissingOutlineSections(opts: {
       content = insertSectionBeforeFaqOrSources(content, `## ${heading}\n\n${section}`)
       inserted.push(heading)
       insertedThisPass++
+      if (maxWords != null && countBodyWords(content) >= maxWords) {
+        stoppedForBudget = true
+        break
+      }
     }
     pass++
     remaining = missingOutlineSections(content, outline)
-    if (!insertedThisPass) break
+    if (stoppedForBudget || !insertedThisPass) break
   }
-  return { content, inserted, remaining }
+  remaining = missingOutlineSections(content, outline)
+  return { content, inserted, remaining, stoppedForBudget }
 }
 
 export function outlineCompletionErrorMessage(headings: string[]): string {

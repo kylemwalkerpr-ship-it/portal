@@ -3066,18 +3066,40 @@ export function applyDeterministicRepairs(opts: {
   }
 
   // Restore YMYL disclaimer AFTER the final re-trim (same pattern as 3351284).
-  // Over-max clip must never strip "not legal advice" from the educational block.
+  // Prefer restore → re-trim unprotected prose so hardProtected disclaimer never
+  // locks word_count_over_max (P0-GEN-2). If restore+retrim still exceeds max,
+  // skip restore rather than ship an over-max body.
   {
     const requireDisclaimerFinal =
       opts.indexable !== false &&
       String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
     if (requireDisclaimerFinal && !DISCLAIMER_RE.test(preSanitize)) {
-      preSanitize =
+      const maxW = opts.maxWords ?? maxWordsForType(String(opts.contentType || 'legal_guide'))
+      const minW = opts.minWords ?? minWordsForType(String(opts.contentType || 'legal_guide'))
+      const restored =
         `${preSanitize.trimEnd()}\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ` +
         'Immigration rules change; verify every requirement against official government sources and consult a ' +
         'licensed attorney, solicitor, or registered migration agent for your situation.\n'
-      if (!applied.includes('disclaimer')) applied.push('disclaimer')
-      else applied.push('disclaimer_restored_after_final_trim')
+      let candidate = restored
+      if (countBodyWords(candidate) > maxW) {
+        const trimmed = enforceBodyWordBudget(candidate, String(opts.contentType || 'legal_guide'), {
+          minWords: minW,
+          maxWords: maxW,
+        })
+        if (trimmed.removedWords > 0) {
+          candidate = trimmed.content
+        }
+      }
+      if (countBodyWords(candidate) <= maxW && DISCLAIMER_RE.test(candidate)) {
+        preSanitize = candidate
+        if (!applied.includes('disclaimer')) applied.push('disclaimer')
+        else applied.push('disclaimer_restored_after_final_trim')
+        if (candidate !== restored) {
+          applied.push('trim_to_max_words_after_disclaimer_restore')
+        }
+      } else {
+        applied.push('disclaimer_restore_skipped_over_max')
+      }
     }
   }
 

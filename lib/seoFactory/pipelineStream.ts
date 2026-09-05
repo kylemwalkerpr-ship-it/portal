@@ -25,12 +25,12 @@ import {
   minWordsForType,
   planWriteSegments,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget } from './contentDepth'
+import { countBodyWords, targetWordsForType, enforceBodyWordBudget, clampBriefWordBudget } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { topicPathMismatch } from './topicPathGuard'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
-import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineHeadings } from './outlineCompletion'
+import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings } from './outlineCompletion'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
 import { isJunkTopic } from './queryNoise'
@@ -130,12 +130,10 @@ export async function* runSeoFactoryPipelineStream(
     })
     contentType = finalizePipelineContentType(input.contentType, plan)
     assertPlanRepoConsistency(plan)
-    // CANONICAL WINDOW: the spec for the FINAL content type is the single
-    // source of truth — brief/input overrides are ignored so the prompt,
-    // budgets, audit and ship gate all agree on one window.
-    const minWords = minWordsForType(contentType)
-    const targetWords = targetWordsForType(contentType)
-    const maxWords = maxWordsForType(contentType)
+    // Word window: honor brief/operator minWords/maxWords when present,
+    // clamped into type SPECS via clampBriefWordBudget; else full SPECS (P0-GEN-4).
+    const { minWords, maxWords } = clampBriefWordBudget(contentType, input.minWords, input.maxWords)
+    const targetWords = Math.max(minWords, Math.min(targetWordsForType(contentType), maxWords))
     // CANONICAL SECTION BUDGETS — the brief contract the drafter reads always
     // carries per-section word windows. When the brief omits them (older
     // briefs, cron runs, manual composer) they are derived deterministically
@@ -1021,7 +1019,9 @@ export async function* runSeoFactoryPipelineStream(
           cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
         })
         if (countBodyWords(expand.text) > before) {
-          content = expand.text
+          // P0-GEN-1: always enforce budget after PASS 3b expand — never hand
+          // an overshooting body to scaffold/outline.
+          content = enforceBodyWordBudget(expand.text, contentType, { minWords, maxWords }).content
           provider = expand.provider
           model = expand.model
           yield {
@@ -1063,6 +1063,7 @@ export async function* runSeoFactoryPipelineStream(
         const completed = await completeMissingOutlineSections({
           content,
           outline: briefOutline,
+          maxWords,
           generateSection: async ({ article, heading, purpose }) =>
             generateOutlineSection({
               article,
@@ -1089,6 +1090,20 @@ export async function* runSeoFactoryPipelineStream(
             type: 'progress',
             stage: 'refine',
             message: `Outline completion inserted: ${completed.inserted.join(', ')}`,
+          }
+        } else if (completed.content !== content) {
+          content = completed.content
+        }
+        // P0-GEN-3: fail closed on remaining outline — surface and leave
+        // missing_outline_section for audit; do not claim outline ready.
+        if (completed.remaining.length) {
+          const why = completed.stoppedForBudget
+            ? `Outline completion stopped at word budget (${maxWords}); remaining: ${completed.remaining.join(', ')}`
+            : outlineCompletionErrorMessage(completed.remaining)
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: why,
           }
         }
       } catch (err) {

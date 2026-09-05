@@ -49,6 +49,7 @@ describe('completeMissingOutlineSections', () => {
     })
     expect(result.inserted).toEqual(['Worked Example'])
     expect(result.remaining).toEqual([])
+    expect(result.stoppedForBudget).toBe(false)
     expect(result.content).toContain('## Worked Example')
     expect(result.content.indexOf('## Worked Example')).toBeLessThan(result.content.indexOf('## FAQ'))
   })
@@ -62,6 +63,7 @@ describe('completeMissingOutlineSections', () => {
     })
     expect(result.inserted).toEqual([])
     expect(result.remaining).toEqual(['Worked Example'])
+    expect(result.stoppedForBudget).toBe(false)
     expect(outlineCompletionErrorMessage(result.remaining)).toContain('Worked Example')
     expect(outlineCompletionErrorMessage(result.remaining)).toMatch(/EditorPatch cannot add headings/)
   })
@@ -70,5 +72,56 @@ describe('completeMissingOutlineSections', () => {
 describe('parseGeneratedOutlineSection', () => {
   it('rejects stubs under 120 chars', () => {
     expect(parseGeneratedOutlineSection('Too short.')).toBeNull()
+  })
+})
+
+describe('completeMissingOutlineSections — word budget fail-closed (P0-GEN-3)', () => {
+  it('stops inserting when body is already at/over maxWords and reports remaining', async () => {
+    const filler = Array.from({ length: 30 }, (_, i) =>
+      `Paragraph ${i} covers eligibility documents fees timelines and pitfalls for applicants in 2026 with practical detail.`,
+    ).join('\n\n')
+    const article = `## Eligibility\n\n${filler}\n\n## FAQ\n\n### Q?\n\nA.\n`
+    const result = await completeMissingOutlineSections({
+      content: article,
+      outline: [
+        { heading: 'Eligibility' },
+        { heading: 'Worked Example' },
+        { heading: 'Costs' },
+        { heading: 'FAQ' },
+      ],
+      maxWords: 50,
+      generateSection: async ({ heading }) =>
+        `Generated ${heading} section with enough words to pass the outline completion length floor for real prose content. `.repeat(4),
+    })
+    expect(result.stoppedForBudget).toBe(true)
+    expect(result.inserted).toEqual([])
+    expect(result.remaining).toEqual(expect.arrayContaining(['Worked Example', 'Costs']))
+  })
+
+  it('stops further inserts once an insert pushes the body to maxWords', async () => {
+    const article = `## Eligibility\n\nShort opener.\n\n## FAQ\n\n### Q?\n\nA.\n`
+    let calls = 0
+    const result = await completeMissingOutlineSections({
+      content: article,
+      outline: [
+        { heading: 'Eligibility' },
+        { heading: 'Worked Example' },
+        { heading: 'Costs' },
+        { heading: 'FAQ' },
+      ],
+      maxWords: 80,
+      maxPasses: 2,
+      maxSectionsPerPass: 3,
+      generateSection: async ({ heading }) => {
+        calls++
+        return (
+          `Generated ${heading} section with enough words to pass the outline completion length floor for real prose content about documents fees and timelines. `.repeat(5)
+        )
+      },
+    })
+    expect(result.stoppedForBudget).toBe(true)
+    expect(result.inserted.length).toBeGreaterThanOrEqual(1)
+    expect(result.remaining.length).toBeGreaterThan(0)
+    expect(calls).toBeLessThan(3)
   })
 })

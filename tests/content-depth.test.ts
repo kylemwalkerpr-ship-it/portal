@@ -68,11 +68,17 @@ describe('clampBriefWordBudget (Research-stage word-count by content type)', () 
     expect(clampBriefWordBudget('marketplace_gig')).toEqual({ minWords: 500, maxWords: 1200 })
   })
 
-  it('returns the canonical window verbatim — model sub-ranges no longer survive (single source of truth)', () => {
-    expect(clampBriefWordBudget('article', 2400, 2600)).toEqual({ minWords: 2200, maxWords: 2500 })
-    expect(clampBriefWordBudget('blog_post', 600, 900)).toEqual({ minWords: 800, maxWords: 1200 })
-    expect(clampBriefWordBudget('article', 1800, 2200)).toEqual({ minWords: 2200, maxWords: 2500 })
+  it('honors brief min/max when present, clamped into type SPECS (P0-GEN-4)', () => {
+    expect(clampBriefWordBudget('article', 2400, 2600)).toEqual({ minWords: 2400, maxWords: 2500 })
+    expect(clampBriefWordBudget('blog_post', 600, 900)).toEqual({ minWords: 800, maxWords: 900 })
+    expect(clampBriefWordBudget('article', 1800, 2200)).toEqual({ minWords: 2200, maxWords: 2200 })
     expect(clampBriefWordBudget('article', 2200, 9000)).toEqual({ minWords: 2200, maxWords: 2500 })
+    expect(clampBriefWordBudget('blog_post', 900, 1100)).toEqual({ minWords: 900, maxWords: 1100 })
+  })
+
+  it('falls back to full SPECS when clamped min > max', () => {
+    // max below floor and min above ceiling after clamp → invalid → SPECS
+    expect(clampBriefWordBudget('blog_post', 1100, 500)).toEqual({ minWords: 800, maxWords: 1200 })
   })
 
   it('every supported content type has a coherent min ≤ target ≤ max budget', () => {
@@ -306,5 +312,22 @@ describe('enforceBodyWordBudget — soft overshoot must land inside [min, max]',
     expect(content).toMatch(/not legal advice/i)
     expect(content).toMatch(/\*{0,2}Disclaimer\*{0,2}\s*:/i)
     expect(countBodyWords(content)).toBeLessThanOrEqual(maxWordsForType('blog_post'))
+  })
+})
+
+describe('enforceBodyWordBudget — PASS 3b expand must be budget-capped (P0-GEN-1)', () => {
+  it('caps an overshooting expand body into [min, max]', () => {
+    const paragraphs = Array.from({ length: 90 }, (_, i) =>
+      `Expand paragraph ${i} adds practical steps, required documents, processing fees, timelines, common pitfalls, and eligibility checks for applicants navigating the process carefully in 2026.`,
+    ).join('\n\n')
+    const overshoot = `# Blog Title\n\nIntro about the primary keyword study abroad tips.\n\n## Section\n\n${paragraphs}\n`
+    expect(countBodyWords(overshoot)).toBeGreaterThan(maxWordsForType('blog_post'))
+    const { content, removedWords } = enforceBodyWordBudget(overshoot, 'blog_post', {
+      minWords: minWordsForType('blog_post'),
+      maxWords: maxWordsForType('blog_post'),
+    })
+    expect(removedWords).toBeGreaterThan(0)
+    expect(countBodyWords(content)).toBeLessThanOrEqual(maxWordsForType('blog_post'))
+    expect(countBodyWords(content)).toBeGreaterThanOrEqual(minWordsForType('blog_post'))
   })
 })
