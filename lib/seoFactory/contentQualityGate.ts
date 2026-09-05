@@ -547,33 +547,88 @@ export function detectDanglingForwardReferences(content: string): Array<{ senten
  * rewords the residue into a reader-facing section name. Fallbacks guarantee
  * a usable suggestion even for headings that are the keyword alone.
  */
-export function suggestHeadingRewrite(heading: string, primaryKeyword?: string | null): string {
-  let h = String(heading || '').trim()
-  const primaryNorm = String(primaryKeyword || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-  const strip = (s: string, prefix: RegExp, word?: string) => {
-    const out = s.replace(new RegExp(`^${prefix.source}`, word || 'i'), '')
-    return out.trim()
-  }
-  // Remove template scaffolding prefixes and the primary phrase wherever the
-  // keyword got glued into the heading.
+export function suggestHeadingRewrite(
+  heading: string,
+  primaryKeyword?: string | null,
+  pastedKeyword?: string | null,
+): string {
+  const h = String(heading || '').trim()
+  const norm = (s: string) =>
+    String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const primaryNorm = norm(primaryKeyword || '')
+  const pastedNorm = norm(pastedKeyword || '')
+
+  // Preserve recognizable reader frames before stripping the keyword paste.
+  const coversFrame = /^(what)\s+(?:an?|the)\s+.+\s+covers\??$/i.test(h)
+  const howToFrame = h.match(
+    /^(how to)\s+(file|apply(?:\s+for)?|get|obtain|submit|start|request)\b/i,
+  )
+
   let work = h
-    .replace(/^(?:requirements?\s+for\s+|do you need\s+|is it possible to\s+|what is the\s+|how to apply for\s+|everything about\s+)/i, '')
+    // Template scaffolding prefixes (including "what an/a/the" and "how to file/…").
+    .replace(
+      /^(?:requirements?\s+for\s+|do you need\s+|is it possible to\s+|what is the\s+|what\s+(?:an?|the)\s+|how to apply for\s+|how to\s+(?:file|apply(?:\s+for)?|get|obtain|submit|start|request)\s+(?:an?|the)\s+|how to\s+(?:file|apply(?:\s+for)?|get|obtain|submit|start|request)\s+|everything about\s+)/i,
+      '',
+    )
     .replace(/\b(?:requirements?|application|process|guide|checklist)\s+(?:for|about|to)\b/gi, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
-  const primaryTokens = new Set(primaryNorm.split(' ').filter((t) => t.length > 2))
-  if (primaryTokens.size >= 2) {
+
+  // Strip the pasted long-tail / primary as a contiguous phrase first.
+  for (const phrase of [pastedNorm, primaryNorm].filter((p) => p && p.length >= 3)) {
+    const re = new RegExp(`\\b${phrase.replace(/\s+/g, '\\s+')}\\b`, 'ig')
+    work = work.replace(re, ' ').replace(/\s{2,}/g, ' ').trim()
+  }
+
+  // Token strip — including short form codes ("129" from I-129). Run even when
+  // only one meaningful primary token remains (previous >=2 gate left
+  // single-token primaries like "i-129" unrewritable).
+  const primaryTokens = new Set(
+    primaryNorm
+      .split(' ')
+      .filter((t) => t.length > 1)
+      .concat(
+        // Digits inside form codes: I-129 → 129
+        (String(primaryKeyword || '').match(/\d{2,4}[a-z]?/gi) || []).map((t) => t.toLowerCase()),
+      ),
+  )
+  if (primaryTokens.size >= 1) {
     work = work
       .split(/\s+/)
-      .filter((token) => !primaryTokens.has(token.toLowerCase()))
-      .filter((token) => !/^[a-z]$/i.test(token)) // drop lone articles/determiners
+      .filter((token) => !primaryTokens.has(token.toLowerCase().replace(/[^a-z0-9]/g, '')))
+      .filter((token) => !/^(?:a|an|the|for|of|to|and|or)$/i.test(token))
+      .filter((token) => !/^i-?\d{2,4}[a-z]?$/i.test(token)) // drop Form I-129 residue
       .join(' ')
   }
+
+  // Drop leftover USCIS-style form codes if they survived phrase strip.
+  work = work
+    .replace(/\b(?:form\s+)?i-?\d{2,4}[a-z]?\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
   work = work.replace(/^(?:a|an|the)\s+/i, '').replace(/[,;:](?=\s*$)|\.$/g, '').trim()
-  if (!work) work = 'How this applies to your case'
+
+  // Rebuild natural reader-facing frames when we recognized them up front.
+  if (coversFrame) {
+    const noun = (work.split(/\s+/).filter(Boolean).pop() || 'petition').toLowerCase()
+    // Prefer a concrete noun when residue still has one; else "petition".
+    const head =
+      /^(petition|application|process|request|form|case|option|pathway|visa)$/i.test(noun)
+        ? noun
+        : 'petition'
+    work = `What this ${head} covers`
+  } else if (howToFrame) {
+    const verb = howToFrame[2].toLowerCase().replace(/\s+for$/, '')
+    work = verb === 'file' || verb === 'submit' ? 'How to file' : `How to ${verb}`
+  }
+
+  if (!work || norm(work) === norm(h) || (pastedNorm && norm(work) === pastedNorm) || (primaryNorm && norm(work) === primaryNorm)) {
+    work = 'How this applies to your case'
+  }
   if (work.split(/\s+/).length < 2) work = `What ${work.toLowerCase()} means for your case`
   return `${work[0].toUpperCase()}${work.slice(1)}`.replace(/\?+$/g, '')
 }
@@ -1470,7 +1525,7 @@ export function evaluateContentQuality(opts: {
         code: 'keyword_pasted_heading',
         severity: 'warning',
         message: `Heading is the keyword string pasted verbatim: "${pasted.heading}". Name the section for a reader instead of repeating brief keywords.`,
-        fix: `Rewrite the heading in natural reader language that names the section's purpose. Prescription for this heading: "${suggestHeadingRewrite(pasted.heading, opts.primaryKeyword)}". The keyword belongs in the body copy, not as the heading.`,
+        fix: `Rewrite the heading in natural reader language that names the section's purpose. Prescription for this heading: "${suggestHeadingRewrite(pasted.heading, opts.primaryKeyword, pasted.keyword)}". The keyword belongs in the body copy, not as the heading.`,
         evidence: pasted.heading,
       })
     }

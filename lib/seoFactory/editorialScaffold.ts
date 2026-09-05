@@ -202,6 +202,7 @@ export function rewritePastedHeading(
   const h = String(heading || '').trim()
   if (!h) return null
   const isQuestion = h.endsWith('?')
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
   // Longest pasted keyword substring first (long-tail > short > primary).
   const candidates = [
     String(pastedKeyword || ''),
@@ -210,27 +211,38 @@ export function rewritePastedHeading(
     .map((k) => k.trim())
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
-  const hLower = norm(h)
-  let stripped = h
-  for (const k of candidates) {
-    const key = norm(k)
-    if (!key || key.length < 4) continue
-    const idx = hLower.indexOf(key)
-    if (idx < 0) continue
-    // Only strip when the keyword is a contiguous phrase in the heading.
-    // Extend the cut to swallow the article directly before the phrase
-    // ("an Australia student visa fee increase plan" → the whole noun-group
-    // goes, so the remnant is "Do you need if you already hold a visa?"
-    // and the conjunction repair below can rebuild it as a natural question).
-    const before = h.slice(0, idx) // NOT trimmed — the article match needs the trailing space
-    const articleMatch = before.match(/(\b(?:a|an|the)\s+)$/i)
-    const cutStart = articleMatch ? idx - articleMatch[1].length : idx
-    const beforeClean = h.slice(0, cutStart).trim()
-    const after = h.slice(idx + k.length).trim()
-    stripped = `${beforeClean} ${after}`.replace(/\s{2,}/g, ' ').trim()
-    break
+
+  const stripKeywordPhrase = (source: string): string => {
+    const hLower = norm(source)
+    for (const k of candidates) {
+      const key = norm(k)
+      if (!key || key.length < 3) continue
+      const idx = hLower.indexOf(key)
+      if (idx < 0) continue
+      // Extend the cut to swallow the article directly before the phrase.
+      const before = source.slice(0, idx)
+      const articleMatch = before.match(/(\b(?:a|an|the)\s+)$/i)
+      const cutStart = articleMatch ? idx - articleMatch[1].length : idx
+      const beforeClean = source.slice(0, cutStart).trim()
+      // pasted keyword length in original may differ from norm length when
+      // punctuation (I-129) is present — walk the original by normalized match.
+      // Approximate: consume from idx across the same token count as `key`.
+      const keyTokenCount = key.split(' ').filter(Boolean).length
+      const origTokens = source.slice(idx).split(/(\s+)/)
+      let taken = 0
+      let end = idx
+      for (let i = 0; i < origTokens.length && taken < keyTokenCount; i++) {
+        end += origTokens[i].length
+        if (!/^\s+$/.test(origTokens[i]) && origTokens[i].length) taken++
+      }
+      const after = source.slice(end).trim()
+      return `${beforeClean} ${after}`.replace(/\s{2,}/g, ' ').trim()
+    }
+    return source
   }
+
+  let stripped = stripKeywordPhrase(h)
+
   if (isQuestion) {
     // Article/preposition cleanup for question frames.
     let q = stripped
@@ -240,9 +252,7 @@ export function rewritePastedHeading(
       .trim()
     // A conjunction directly after the verb means the keyword noun was the
     // sentence's object ("Do you need if you already hold a visa?"). Salvage
-    // the head noun deterministically from the pasted keyword ("plan" from
-    // “…fee increase PLAN”), or "one" as the anaphor when it cannot be
-    // recovered, so the question still reads for a reader.
+    // the head noun deterministically from the pasted keyword.
     const conjunctionTail = q.match(/^(is it possible to|do you need|would you need|can you|are you|does one need|should you)\s+(if|when|for|because|that|whether)\b/i)
     if (conjunctionTail) {
       const headNoun = String(pastedKeyword || '')
@@ -252,9 +262,7 @@ export function rewritePastedHeading(
       q = `${conjunctionTail[1]} a ${headNoun} ${conjunctionTail[2]}${q.slice(conjunctionTail[0].length)}`
     }
     if (q !== stripped) stripped = q
-    // "How do I apply for if I already hold a visa?"-style fragments: the
-    // keyword was the verb's object. Re-frame into a natural reader question
-    // ("What if I apply after rejection?") rather than emit broken grammar.
+    // "How do I apply for if I already hold a visa?"-style fragments.
     const applyVerb = q.match(/^(?:how do i|how can i|what about|what if)\s+(apply for|apply|get|obtain|file|submit|make an application)\s+(after|before|when|while|without)\b/i)
     if (applyVerb) {
       const verb = applyVerb[1].replace(/\s+for$/, '')
@@ -263,13 +271,61 @@ export function rewritePastedHeading(
       stripped = q
     }
     if (!/^[a-z]/i.test(stripped) || stripped.split(/\s+/).length < 3) {
-      const fallback = suggestHeadingRewrite(h, primaryKeyword)
-      return `${fallback}?` === h ? null : `${fallback}?`
+      const fallback = suggestHeadingRewrite(h, primaryKeyword, pastedKeyword)
+      const withQ = fallback.endsWith('?') ? fallback : `${fallback}?`
+      return withQ === h ? fallback : withQ
     }
-    return stripped === h ? suggestHeadingRewrite(h, primaryKeyword) : stripped
+    if (stripped === h || norm(stripped) === norm(h)) {
+      const fallback = suggestHeadingRewrite(h, primaryKeyword, pastedKeyword)
+      return fallback === h ? null : (fallback.endsWith('?') ? fallback : `${fallback}?`)
+    }
+    return stripped
   }
-  const rewritten = suggestHeadingRewrite(h, primaryKeyword)
-  return rewritten === h ? null : rewritten
+
+  // ── Non-question H2/H3 (the Audit & Fix path that was returning null) ──
+  // Apply the same keyword-phrase strip, then rebuild a reader-facing section
+  // name. Never leave a flagged paste unchanged when a rewrite is achievable.
+  const coversFrame = /^(what)\s+(?:an?|the)\s+.+/i.test(h) && /\bcovers\b/i.test(h)
+  const howToFrame = h.match(
+    /^(how to)\s+(file|apply(?:\s+for)?|get|obtain|submit|start|request)\b/i,
+  )
+
+  let section = stripped
+    .replace(/\b(?:form\s+)?i-?\d{2,4}[a-z]?\b/gi, ' ')
+    .replace(/\b(?:a|an|the)\s+(?=\s|$)/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
+  if (coversFrame) {
+    const residueNoun = section
+      .replace(/^what\s+/i, '')
+      .replace(/\bcovers\b/i, '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .pop()
+    const head =
+      residueNoun && /^(petition|application|process|request|form|case|option|pathway|visa)$/i.test(residueNoun)
+        ? residueNoun.toLowerCase()
+        : 'petition'
+    section = `What this ${head} covers`
+  } else if (howToFrame) {
+    const verb = howToFrame[2].toLowerCase().replace(/\s+for$/, '')
+    section = verb === 'file' || verb === 'submit' ? 'How to file' : `How to ${verb}`
+  } else {
+    // Fall back to the shared prescription helper (now accepts pastedKeyword).
+    section = suggestHeadingRewrite(h, primaryKeyword, pastedKeyword)
+  }
+
+  // Final guard: if we somehow still equal the input / pasted keyword, force
+  // the stable purpose fallback so Audit & Fix always clears the finding.
+  if (!section || norm(section) === norm(h) || norm(section) === norm(pastedKeyword || '')) {
+    section = suggestHeadingRewrite(h, primaryKeyword, pastedKeyword)
+  }
+  if (!section || norm(section) === norm(h)) {
+    section = 'How this applies to your case'
+  }
+  return section === h ? null : section
 }
 
 export function stripDuplicateArticleCopy(body: string): {

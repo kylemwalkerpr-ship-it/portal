@@ -1394,6 +1394,65 @@ Gov.`
   })
 })
 
+
+  it('rewrites I-129 "What an … covers" H2 into a reader-facing section name', () => {
+    const heading = 'What an I-129 nonimmigrant worker petition covers'
+    const out = rewritePastedHeading(heading, 'i-129 nonimmigrant worker petition', 'i-129 nonimmigrant worker petition')
+    expect(out).toBeTruthy()
+    expect(out!.toLowerCase()).not.toContain('nonimmigrant worker petition')
+    expect(out!.toLowerCase()).not.toMatch(/i-?129/)
+    expect(out).toMatch(/^What this petition covers$/i)
+  })
+
+  it('rewrites "How to file an I-129 …" even when primary is a short form code', () => {
+    const heading = 'How to file an I-129 nonimmigrant worker petition'
+    const out = rewritePastedHeading(
+      heading,
+      'how to file an i-129 nonimmigrant worker petition',
+      'i-129',
+    )
+    expect(out).toBeTruthy()
+    expect(out).not.toBe(heading)
+    expect(out!.toLowerCase()).not.toContain('nonimmigrant worker petition')
+    expect(out!.toLowerCase()).not.toMatch(/i-?129/)
+    expect(out!.toLowerCase()).toMatch(/^how to /)
+  })
+
+  it('applyDeterministicRepairs clears the I-129 pasted H2 and tags the repair', () => {
+    const draft = `# Guide
+
+## In 60 seconds
+
+Prose.
+
+## What an I-129 nonimmigrant worker petition covers
+
+Body about the petition for a reader.
+
+## FAQ
+
+Q&A.
+
+## Sources
+
+Gov.`
+    const fixed = applyDeterministicRepairs({
+      content: draft,
+      indexable: true,
+      contentType: 'legal_guide',
+      primaryKeyword: 'i-129 nonimmigrant worker petition',
+      requiredShortKeywords: ['i-129 petition', 'nonimmigrant worker', 'h-1b transfer', 'l-1 petition', 'petition filing'],
+      requiredLongTailKeywords: [
+        'i-129 nonimmigrant worker petition',
+        'what an i-129 nonimmigrant worker petition covers',
+        'i-129 petition requirements checklist',
+      ],
+    })
+    expect(fixed.applied).toContain('keyword_pasted_headings_rewritten (1)')
+    expect(fixed.content).toMatch(/^## What this petition covers$/m)
+    expect(fixed.content).not.toMatch(/^## What an I-129 nonimmigrant worker petition covers$/m)
+  })
+
 describe('title_keyword_only_fixed — TitleLab replacement', () => {
   it('replaces a keyword-only title with a TitleLab CTR title (keyword-bearing, not filler)', () => {
     const draft = [

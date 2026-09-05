@@ -449,12 +449,12 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   }),
   def({
     code: 'keyword_pasted_heading', title: 'Heading is a keyword string pasted verbatim',
-    severity: 'warning', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
-    requirement: 'Headings name the section for a reader; they are never the brief\'s keyword strings verbatim ("### Requirements for a study abroad consultant cost").',
+    severity: 'warning', owner: 'deterministic', repairClass: 'deterministic', appliesTo: INDEXABLE_FORM,
+    requirement: 'Headings name the section for a reader; they are never the brief\'s keyword strings verbatim ("### Requirements for a study abroad consultant cost"). Audit & Fix rewrites them deterministically via applyDeterministicRepairs (keyword_pasted_headings_rewritten).',
     promptInstruction: 'Rewrite the heading in natural reader language that names the section\'s purpose; the keyword belongs in the body copy, not as the heading text.',
-    evidence: 'contentQualityGate.evaluateContentQuality heading-vs-keyword scan',
+    evidence: 'contentQualityGate.evaluateContentQuality heading-vs-keyword scan + editorialScaffold.rewritePastedHeading',
     shipEffect: 'allow_with_flag', evaluator: 'contentQualityGate.evaluateContentQuality',
-    testFixture: 'tests/content-quality.test.ts#keyword_pasted_heading',
+    testFixture: 'tests/editorial-scaffold.test.ts#keyword-pasted heading deterministic rewrite',
   }),
   def({
     code: 'short_keyword_density_violation', title: 'Short keyword over the 4-hit cap',
