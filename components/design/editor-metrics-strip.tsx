@@ -14,7 +14,7 @@
 
 import * as React from 'react'
 import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
-import { runHarperGrammar, fixHarperIssues, applyHarperProblem, type HarperLintSummary } from '@/lib/harperBrowser'
+import { runHarperGrammar, fixHarperIssues, applyHarperProblem, harperKindAutofixable, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
@@ -136,8 +136,11 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     return () => clearTimeout(timer)
   }, [content, hint?.region])
 
+  const styleReviewInFlightRef = React.useRef(false)
+
   const runStyleReview = React.useCallback(async (apply: boolean) => {
     const h = hintRef.current
+    styleReviewInFlightRef.current = true
     setStyleBusy(true)
     setStyleError(null)
     setStyleRawSnippet(null)
@@ -149,6 +152,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
         body: JSON.stringify({
           content: textRef.current,
           primaryKeyword: h?.primaryKeyword || undefined,
+          contentType: h?.contentType || undefined,
           reviewModel: reviewModel || DEFAULT_REVIEW_PIN,
           apply,
         }),
@@ -159,6 +163,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
         setStyleError(data?.error || 'Style review failed')
         setStyleItems([])
         setStyleReviewed(true)
+        styleReviewInFlightRef.current = false
         setStyleBusy(false)
         return
       }
@@ -178,12 +183,17 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       setStyleError(err instanceof Error ? err.message : 'Style review network error')
       setStyleReviewed(true)
     } finally {
+      styleReviewInFlightRef.current = false
       setStyleBusy(false)
     }
   }, [reviewModel, onApplied])
 
+  // Parent busy may show a busy cue on the style panel, but must NEVER clear an
+  // in-flight Review (that blanked the AI Style panel on blog drafts mid-generate).
   React.useEffect(() => {
-    setStyleBusy(Boolean(busy && expanded === 'style'))
+    if (styleReviewInFlightRef.current) return
+    if (busy && expanded === 'style') setStyleBusy(true)
+    else if (!busy) setStyleBusy(false)
   }, [busy, expanded])
 
   const readabilityLabel =
@@ -259,30 +269,34 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               <span style={{ background: '#FEF2F2', padding: '0 4px', borderRadius: 3 }}>“{it.problem}”</span>{' '}
               <span style={{ color: C.muted }}>{it.message}</span>
               {it.fix ? <span style={{ color: C.green }}> → {it.fix}</span> : null}
-              <button
-                type="button"
-                disabled={fixingHarper || !onApplied}
-                onClick={async () => {
-                  setFixingHarper(true)
-                  try {
-                    const result = await applyHarperProblem(textRef.current, it.problem, hintRef.current?.region)
-                    if (result.applied > 0 && result.content && onApplied) {
-                      onApplied(result.content)
-                      setHarperFixNote(`Applied ${it.kind}: “${it.problem}”.`)
-                      setHarper(null)
-                    } else {
-                      setHarperFixNote('Could not apply that suggestion automatically — use Auto-fix or edit the phrase.')
+              {it.fix && harperKindAutofixable(it.kind) ? (
+                <button
+                  type="button"
+                  disabled={fixingHarper || !onApplied}
+                  onClick={async () => {
+                    setFixingHarper(true)
+                    try {
+                      const result = await applyHarperProblem(textRef.current, it.problem, hintRef.current?.region)
+                      if (result.applied > 0 && result.content && onApplied) {
+                        onApplied(result.content)
+                        setHarperFixNote(`Applied ${it.kind}: “${it.problem}”.`)
+                        setHarper(null)
+                      } else {
+                        setHarperFixNote('Could not apply that suggestion automatically — use Auto-fix or edit the phrase.')
+                      }
+                    } catch (err) {
+                      setHarperFixNote(err instanceof Error ? err.message : 'Harper apply failed — document unchanged')
+                    } finally {
+                      setFixingHarper(false)
                     }
-                  } catch (err) {
-                    setHarperFixNote(err instanceof Error ? err.message : 'Harper apply failed — document unchanged')
-                  } finally {
-                    setFixingHarper(false)
-                  }
-                }}
-                style={{ padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
-              >
-                Apply
-              </button>
+                  }}
+                  style={{ padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Apply
+                </button>
+              ) : (
+                <span style={{ fontSize: 10, color: C.muted, fontFamily: C.mono }}>Manual / vocabulary — not auto-applied</span>
+              )}
             </div>
           ))}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
@@ -439,9 +453,11 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
         {!styleBusy && styleItems.length === 0 && !styleError && !styleRawSnippet && styleReviewed && (
           <div style={{ color: C.green, marginBottom: 6 }}>No style issues found</div>
         )}
-        {!styleBusy && styleItems.length === 0 && !styleError && !styleRawSnippet && !styleReviewed && (
+        {styleItems.length === 0 && !styleError && !styleRawSnippet && !styleReviewed && (
           <div style={{ color: C.muted }}>
-            Review the draft with the reviewing model — it critiques voice, clichés, forced keywords, AI-tells and hedging, then offers one-click apply.
+            {styleBusy
+              ? (busy ? 'Editor busy — style Review is running or waiting on the pipeline…' : 'Reviewing style…')
+              : 'Review the draft with the reviewing model — it critiques voice, clichés, forced keywords, AI-tells and hedging, then offers one-click apply.'}
           </div>
         )}
         {styleItems.map((it, i) => (
@@ -509,6 +525,7 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
                         body: JSON.stringify({
                           content: textRef.current,
                           primaryKeyword: hintRef.current?.primaryKeyword || undefined,
+                          contentType: hintRef.current?.contentType || undefined,
                           reviewModel: reviewModel || DEFAULT_REVIEW_PIN,
                           apply: true,
                           items: snapshot,

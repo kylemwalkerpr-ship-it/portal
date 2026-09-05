@@ -42,6 +42,19 @@ export type HarperAutofixResult = {
   items: Array<{ kind: string; problem: string; message: string; fix?: string }>
 }
 
+/** Kinds Harper can safely one-click autofix in Studio. Vocabulary / suggestion
+ *  kinds (Usage, Enhancement, Eggcorn, …) stay visible but are not Apply targets. */
+export const HARPER_AUTOFIX_KINDS = new Set([
+  'Spelling', 'Grammar', 'Punctuation', 'Nonstandard', 'WordOrder',
+  'Repetition', 'Agreement', 'Typo', 'WordChoice', 'RepeatedWords',
+])
+
+export function harperKindAutofixable(kind: string | null | undefined): boolean {
+  const k = String(kind || '').trim()
+  if (!k) return false
+  return HARPER_AUTOFIX_KINDS.has(k)
+}
+
 export { HARPER_ESTATE_WORDS, harperSafeLines, spliceWords } from '@/lib/harperText'
 
 const linterByDialect = new Map<string, Promise<LocalLinter>>()
@@ -220,10 +233,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
   const original = String(md || '')
   try {
     const linter = await getLinter(region)
-    const allowed = new Set([
-      'Spelling', 'Grammar', 'Punctuation', 'Nonstandard', 'WordOrder',
-      'Repetition', 'Agreement', 'Typo', 'WordChoice', 'RepeatedWords',
-    ])
+    const allowed = HARPER_AUTOFIX_KINDS
     const { fm, body } = splitMarkdownFrontmatter(original)
     let currentBody = body
     let applied = 0
@@ -231,7 +241,10 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
     const seen = new Set<string>()
     for (let round = 0; round < 16; round++) {
       if (currentBody.trim().length < 40) break
-      const lints = (await lintSource(linter, maskHarperScaffold(currentBody))).filter(keepLint)
+      // Lint + suggestion spans are on the masked body so Apply matches the
+      // same coordinate space (scaffold chrome never reaches Harper).
+      const masked = maskHarperScaffold(currentBody)
+      const lints = (await lintSource(linter, masked)).filter(keepLint)
       const spanFixes: Array<{ start: number; end: number; replacement: string; kind: string; problem: string; message: string }> = []
       for (const l of lints) {
         const kind = l.lint_kind() || ''
@@ -247,7 +260,7 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
         } catch {
           suggestion = null
         }
-        const replacement = suggestionReplacement(suggestion, span, currentBody)
+        const replacement = suggestionReplacement(suggestion, span, masked)
         if (replacement == null) continue
         if (isHarperNoiseFinding({ kind: kindOf(l), problem, message: l.message?.() || '', fix: replacement })) continue
         if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
@@ -264,13 +277,13 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
         })
       }
       if (!spanFixes.length) break
-      const pass = applyNonOverlappingSpanFixes(currentBody, spanFixes)
+      const pass = applyNonOverlappingSpanFixes(currentBody, spanFixes) // spans from length-preserving mask
       if (pass.applied === 0) {
         // Harper span apply missed — last resort: applySuggestion one-at-a-time on markdown body
         let progressed = false
         for (const l of lints) {
           const problem = String(l.get_problem_text?.() || '').trim()
-          if (onlyProblem && problem !== onlyProblem) continue
+          if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
           const list = (() => { try { return l.suggestions() } catch { return [] } })()
           const suggestion = list && list[0]
           if (!suggestion) continue
