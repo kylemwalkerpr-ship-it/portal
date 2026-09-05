@@ -25,12 +25,15 @@ import {
  * POST /api/content-studio/suggest-brief
  *
  * The Research-stage intelligence engine. The selected Brief model ingests
- * everything Stage I (Discover) gathered — radar gaps, GSC demand, LLM
- * visibility scores, backlink gaps, keyword research, completed prior work,
- * verified interlinks — and produces a maximally prescriptive brief so the
- * drafting AI has zero room to hallucinate.
+ * live Discover signals that actually reach this route — selected opportunity
+ * contract, GSC demand (when provided), research-demand context, master engine
+ * feed (incl. LLM visibility evidence when assembled server-side), completed
+ * prior work, and verified interlinks — and produces a maximally prescriptive
+ * brief so the drafting AI has zero room to hallucinate.
  *
- * Every field the generate-stream route needs is populated from live intel.
+ * Optional body keys radarGaps / llmVisibility / backlinkGaps are accepted if
+ * a caller supplies them, but Discover does not currently populate those
+ * radarMeta fields — do not advertise them as guaranteed Stage I inputs.
  */
 export async function POST(req: NextRequest) {
   // Grok 4.6 reasoning needs 1–3 minutes for a full brief. A 90s/120s
@@ -155,15 +158,15 @@ export async function POST(req: NextRequest) {
       'You are the master editorial brief architect for an immigration legal marketplace.',
       'Your job: given EVERY available intelligence signal, produce a complete, prescriptive brief that leaves the drafting AI with ZERO room to guess or hallucinate.',
       '',
-      'INPUTS you receive:',
+      'INPUTS you receive (only use what is actually present below — never invent missing intel):',
       '- Topic, primary keyword, region, content type, target audience',
-      '- Live GSC demand data (impressions, clicks, position)',
-      '- Radar gap opportunities (underserved search demand the estate does not yet cover)',
-      '- LLM visibility scores (how often this topic is cited in AI answers — target high-citation clusters)',
-      '- Backlink gaps (topics where competing sites outrank us in backlink authority)',
+      '- GSC demand data when provided (impressions, clicks, position)',
+      '- Selected Discover opportunity contract when provided (priority, play, signals, cluster)',
+      '- Master engine / research-demand blocks when assembled server-side',
       '- Completed prior work (slugs + topics of pages already published — never duplicate or cannibalize)',
       '- Verified interlink allowlist (the ONLY internal URLs the draft may link to)',
       '- Estate sitemap size (for context on topical breadth)',
+      '- Optional extras only if present: radar gap list, body-level LLM visibility, backlink gap list',
       '',
       'OUTPUT: a single JSON object with EVERY field the drafting system needs:',
       '{',

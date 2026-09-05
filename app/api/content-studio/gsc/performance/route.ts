@@ -30,11 +30,21 @@ export async function GET(request: NextRequest) {
       .limit(limit)
     if (siteUrl) q = q.eq('site_url', siteUrl)
 
-    const { data, error } = await q
+    let countQ = auth.db
+      .from('seo_gsc_rows')
+      .select('id', { count: 'exact', head: true })
+      .eq('start_date', range.startDate)
+      .eq('end_date', range.endDate)
+    if (siteUrl) countQ = countQ.eq('site_url', siteUrl)
+
+    const [{ data, error }, { count, error: countError }] = await Promise.all([q, countQ])
     if (error) {
       return NextResponse.json({ error: error.message.slice(0, 240) }, { status: 502 })
     }
-    return NextResponse.json({ ok: true, range, siteUrl, rows: data || [] })
+    if (countError) {
+      return NextResponse.json({ error: countError.message.slice(0, 240) }, { status: 502 })
+    }
+    return NextResponse.json({ ok: true, range, siteUrl, rows: data || [], rowCount: count ?? 0 })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'GSC performance read failed'
     return NextResponse.json({ error: message.slice(0, 240) }, { status: 502 })

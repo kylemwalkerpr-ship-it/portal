@@ -2286,8 +2286,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   interlinkStage: string; setInterlinkStage: (v: string) => void
   selectedBrief?: AISuggestion | null
   setActionNotice?: (msg: string) => void
-  /** Discover-stage intelligence fed into the full-brief generator. */
-  radarMeta?: Record<string, unknown> | null
   completedWorkSlugs?: Array<{ slug: string; topic: string }>
   competingUrls?: Array<{ url: string; title?: string; primaryKeyword?: string | null }>
 }>(function BriefAssemblyPanel(
@@ -2309,7 +2307,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     interlinkStage, setInterlinkStage,
     selectedBrief,
     setActionNotice,
-    radarMeta,
     completedWorkSlugs,
     competingUrls = [],
   },
@@ -2395,11 +2392,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     setKwH2Map((prev) => autoMapKeywordsToH2s(kwList, h2s, prev))
   }, [kwList, h2s])
 
-  // AI-powered full-brief generation — the selected Brief model ingests ALL
-  // Discover intel (radar gaps, GSC demand, keyword research, LLM visibility,
-  // backlink gaps, completed work, verified interlinks) and produces a
-  // maximally prescriptive brief so the drafting AI has zero room to
-  // hallucinate. "Generate Full Brief" is the single integrated action.
+  // AI-powered full-brief generation. Sends selected opportunity + sources /
+  // interlinks to suggest-brief. radarMeta does not carry gapOpportunities /
+  // llmVisibility / backlinkGaps today — do not pretend those Discover props
+  // reach the brief (P1-A2).
   const [briefGenerating, setBriefGenerating] = React.useState(false)
   const [briefIntel, setBriefIntel] = React.useState<{
     reasoning?: string; metaDescription?: string; sectionPlan?: Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }>
@@ -2419,7 +2415,6 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     const briefAbort = new AbortController()
     const briefTimer = window.setTimeout(() => briefAbort.abort(), 660_000)
     try {
-      const r = (radarMeta && typeof radarMeta === 'object') ? radarMeta as Record<string, unknown> : {}
       const res = await fetch('/api/content-studio/suggest-brief', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -2431,9 +2426,9 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           // endpoint's policy coerces unknown values to the Entrim Qwen
           // default. The same pin is carried into the Draft stage below.
           aiProvider: briefModel,
-          radarGaps: Array.isArray(r.gapOpportunities) ? r.gapOpportunities : [],
-          llmVisibility: r.llmVisibility || null,
-          backlinkGaps: Array.isArray(r.backlinkGaps) ? r.backlinkGaps : [],
+          // P1-A2: radarMeta never stores gapOpportunities / llmVisibility /
+          // backlinkGaps (gsc/suggestions does not return them). Opportunity
+          // contract + server-side masterEngineFeed carry real Discover intel.
           completedWork: completedWorkSlugs || [],
           interlinks: briefInterlinks || [],
           opportunity: selectedBrief ? {
@@ -5516,7 +5511,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [gscStatus, setGscStatus] = React.useState<Record<string, unknown> | null>(null)
   const gscStatusRef = React.useRef<Record<string, unknown> | null>(null)
   const [gscConnectOpen, setGscConnectOpen] = React.useState(false)
-  const [ga4Status, setGa4Status] = React.useState<{ connected?: boolean; propertyId?: string | null; lastError?: string | null } | null>(null)
+  const [ga4Status, setGa4Status] = React.useState<{ connected?: boolean; propertyId?: string | null; lastError?: string | null; hasServiceAccount?: boolean; serviceAccountEmail?: string | null } | null>(null)
   const [ga4PropertyInput, setGa4PropertyInput] = React.useState('')
   const [ga4Busy, setGa4Busy] = React.useState(false)
   const [ga4Notice, setGa4Notice] = React.useState<string | null>(null)
@@ -6174,6 +6169,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (res.ok) {
         setGa4Status(data)
         if (data.propertyId) setGa4PropertyInput((prev) => prev || String(data.propertyId))
+        else setGa4PropertyInput((prev) => prev || '550749414')
+        if (data.lastError && !data.connected) setGa4Notice(String(data.lastError))
       }
     } catch { /* silent */ }
   }, [])
@@ -7525,7 +7522,6 @@ const controller = new AbortController()
               autoInterlinkBusy={autoInterlinkBusy}
               selectedBrief={selectedBrief}
               setActionNotice={setActionNotice}
-              radarMeta={radarMeta}
               competingUrls={competingUrls}
             />
 
@@ -8292,22 +8288,34 @@ const controller = new AbortController()
                       {ga4Status?.connected ? 'Connected · landing-page demand' : 'Not connected'}
                     </div>
                     <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
-                      Reuses the GSC service-account key · add the SA as a Viewer on the GA4 property
+                      Reuses the GSC service-account key · add the SA as a Viewer on GA4 property 550749414 (Yousafe Consultancy)
                     </div>
                   </div>
                 </div>
                 <input
                   value={ga4PropertyInput}
                   onChange={(e) => setGa4PropertyInput(e.target.value)}
-                  placeholder="GA4 property ID (e.g. 123456789)"
+                  placeholder="GA4 property ID (Yousafe: 550749414)"
                   style={{
                     width: '100%', marginBottom: 8, padding: '8px 10px',
                     border: `1px solid ${E.hairline}`, background: E.ivory,
                     fontFamily: C.mono, fontSize: 12, color: E.ink,
                   }}
                 />
-                {ga4Notice && (
-                  <div style={{ fontSize: 10, fontFamily: C.mono, color: ga4Status?.connected ? E.mossGreen : C.red, marginBottom: 8 }}>{ga4Notice}</div>
+                {ga4Status && ga4Status.hasServiceAccount === false && (
+                  <div style={{ fontSize: 10, fontFamily: C.mono, color: C.red, marginBottom: 8 }}>
+                    Missing GSC service-account key (GSC_SERVICE_ACCOUNT_JSON / Worker secret). Connect GSC with SA JSON first.
+                  </div>
+                )}
+                {ga4Status?.serviceAccountEmail && (
+                  <div style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, marginBottom: 8 }}>
+                    SA: {ga4Status.serviceAccountEmail}
+                  </div>
+                )}
+                {(ga4Notice || (!ga4Status?.connected && ga4Status?.lastError)) && (
+                  <div style={{ fontSize: 10, fontFamily: C.mono, color: ga4Status?.connected ? E.mossGreen : C.red, marginBottom: 8 }}>
+                    {ga4Notice || ga4Status?.lastError}
+                  </div>
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button

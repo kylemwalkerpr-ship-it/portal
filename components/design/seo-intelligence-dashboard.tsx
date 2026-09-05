@@ -76,7 +76,7 @@ export default function SeoIntelligenceDashboard() {
     warnings?: string[]
   } | null>(null)
   const [opps, setOpps] = React.useState<OppRow[]>([])
-  const [gsc, setGsc] = React.useState<{ rows?: Array<Record<string, unknown>>; range?: { startDate: string; endDate: string } } | null>(null)
+  const [gsc, setGsc] = React.useState<{ rows?: Array<Record<string, unknown>>; range?: { startDate: string; endDate: string }; rowCount?: number } | null>(null)
   const [cannibals, setCannibals] = React.useState<Array<{ pageA: string; pageB: string; overlapScore: number; recommendedAction: string; reasons: string[] }>>([])
   const [topics, setTopics] = React.useState<{ query?: { strongTopics?: Array<{ label: string; pages: number }>; thinClusters?: Array<{ label: string; pages: number }>; linkCandidates?: Array<{ from: string; to: string; via: string }> }; pages?: number } | null>(null)
   const [seed, setSeed] = React.useState('canada study permit')
@@ -238,9 +238,19 @@ export default function SeoIntelligenceDashboard() {
           </button>
         </div>
       </div>
+      <div style={{ padding: '6px 16px', borderBottom: `1px solid ${C.line}`, fontSize: 11, color: C.ink, fontFamily: C.mono, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <span>
+          seo_gsc_rows: {typeof gsc?.rowCount === 'number' ? gsc.rowCount.toLocaleString() : '—'} persisted
+          {gsc?.range ? ` · window ${gsc.range.startDate} → ${gsc.range.endDate}` : ''}
+          {(gsc?.rows || []).length ? ` · showing top ${(gsc?.rows || []).length}` : ''}
+        </span>
+        {typeof gsc?.rowCount === 'number' && gsc.rowCount === 0 && (
+          <span style={{ color: C.muted }}>· empty — click Sync GSC (90d) to pull Search Analytics into from-intel / score</span>
+        )}
+      </div>
       {syncResult && (
         <div style={{ padding: '6px 16px', borderBottom: `1px solid ${C.line}`, fontSize: 11, color: syncResult.rows > 0 ? C.ink : C.muted, fontFamily: C.mono }}>
-          GSC sync: {syncResult.rows.toLocaleString()} rows · {syncResult.range?.startDate} → {syncResult.range?.endDate} · source {syncResult.source || '—'}
+          Last sync: {syncResult.rows.toLocaleString()} rows upserted · {syncResult.range?.startDate} → {syncResult.range?.endDate} · source {syncResult.source || '—'}
           {syncResult.rows === 0 && ' · Google returned no rows — check GSC credentials / property traffic.'}
           {syncResult.warnings?.length ? ` · ${syncResult.warnings.join('; ')}` : ''}
         </div>
@@ -267,7 +277,7 @@ export default function SeoIntelligenceDashboard() {
             {card('Cannibalization candidates', String(cannibals.length), 'recommend only')}
             {card('Internal-link opportunities', String(topics?.query?.linkCandidates?.length || 0), 'shared entities')}
             {card('Uncovered topic clusters', String(topics?.query?.thinClusters?.length || 0), '≤1 page')}
-            {card('GSC clicks / impressions', `${gscTotals.clicks.toLocaleString()} / ${gscTotals.impressions.toLocaleString()}`, gsc?.range ? `${gsc.range.startDate} → ${gsc.range.endDate}` : 'sync GSC')}
+            {card('GSC clicks / impressions', `${gscTotals.clicks.toLocaleString()} / ${gscTotals.impressions.toLocaleString()}`, typeof gsc?.rowCount === 'number' ? `${gsc.rowCount.toLocaleString()} rows in seo_gsc_rows` : (gsc?.range ? `${gsc.range.startDate} → ${gsc.range.endDate}` : 'sync GSC'))}
           </div>
         )}
         {nav === 'opportunities' && table}
@@ -339,7 +349,7 @@ export default function SeoIntelligenceDashboard() {
                 ))}
               </tbody>
             </table>
-            {!(gsc?.rows || []).length && <div style={{ color: C.muted, fontSize: 12, padding: 8 }}>No persisted GSC rows — click Sync GSC (90d) in the header.</div>}
+            {!(gsc?.rows || []).length && <div style={{ color: C.muted, fontSize: 12, padding: 8 }}>No persisted GSC rows for this window (rowCount={typeof gsc?.rowCount === 'number' ? gsc.rowCount : '—'}) — click Sync GSC (90d) in the header.</div>}
           </div>
         )}
         {nav === 'opportunities' && cannibals.length > 0 && (
