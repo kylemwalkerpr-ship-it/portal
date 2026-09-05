@@ -80,6 +80,14 @@ describe('extractRouteSubtypes', () => {
     expect(extractRouteSubtypes('australia 485 visa english requirements')).toEqual(['graduate'])
     expect(extractRouteSubtypes('i-485 adjustment of status')).toEqual([])
   })
+
+  it('does not treat Form I-485 as AU graduate after hyphen→space normalization', () => {
+    // slugSubjectFromFilePath turns i-485 into "i 485" — that must stay US AOS.
+    expect(extractRouteSubtypes('i 485 adjustment of status')).toEqual([])
+    expect(extractRouteSubtypes('Form I-485 document checklist')).toEqual([])
+    expect(extractRouteSubtypes('form i 485 adjustment of status')).toEqual([])
+    expect(extractRouteSubtypes('form-i485-adjustment-of-status-document-checklist')).toEqual([])
+  })
 })
 
 describe('extractGeoModifiers', () => {
@@ -211,6 +219,22 @@ describe('pathSlugConflict (keyword vs target path, including new files)', () =>
     ).toBe(false)
     expect(
       pathSlugConflict('485 visa', 'app/au/student-visa-subclass-500-checklist/page.tsx').conflict,
+    ).toBe(true)
+  })
+
+  it('allows Form I-485 / i-485 on a US adjustment-of-status slug (not AU graduate)', () => {
+    const path = 'app/us/i-485-adjustment-of-status-document-checklist/page.tsx'
+    expect(slugSubjectFromFilePath(path)).toBe('i 485 adjustment of status document checklist')
+    expect(
+      pathSlugConflict('I-485 adjustment of status document checklist', path).conflict,
+    ).toBe(false)
+    expect(pathSlugConflict('Form I-485 document checklist', path).conflict).toBe(false)
+    // US AOS keyword must not be forced onto an AU temporary-graduate-485 page
+    expect(
+      pathSlugConflict(
+        'I-485 adjustment of status document checklist',
+        'app/au/temporary-graduate-485-checklist/page.tsx',
+      ).conflict,
     ).toBe(true)
   })
 })

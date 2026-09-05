@@ -253,6 +253,28 @@ export function extractGeoModifiers(text: string): string[] {
   return [...seen]
 }
 
+/**
+ * USCIS Form I-485 (Adjustment of Status) — must never be read as AU Temporary
+ * Graduate subclass 485. Hyphen→space normalization ("i-485" → "i 485") used to
+ * trip a bare \b485\b match and block / mis-route US AOS ships.
+ */
+export function isUsFormI485(text: string): boolean {
+  const raw = String(text || '')
+  const spaced = raw.toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/(?:^|\b)(?:form\s+)?i\s*485\b/.test(spaced)) return true
+  // glued forms: form-i485 / i485 / formi485
+  if (/(?:^|[^a-z0-9])(?:form)?i485\b/i.test(raw.replace(/[-_\s]+/g, ''))) return true
+  if (/\b485\b/.test(spaced) && /\badjustment of status\b/.test(spaced)) return true
+  return false
+}
+
+/** True when text refers to AU Temporary Graduate / subclass 485 (not US Form I-485). */
+export function isAuSubclass485(text: string): boolean {
+  if (isUsFormI485(text)) return false
+  const spaced = String(text || '').toLowerCase().replace(/[-_]+/g, ' ')
+  return /\b485\b/.test(spaced) || /\bsubclass\s*485\b/.test(spaced)
+}
+
 /** All distinct, normalized route subtypes present in a subject string. */
 export function extractRouteSubtypes(text: string): string[] {
   const seen = new Set<string>()
@@ -265,9 +287,9 @@ export function extractRouteSubtypes(text: string): string[] {
   }
   // AU subclass 485 is the Temporary Graduate visa — map the bare number to the
   // "graduate" route subtype so a "485 visa" keyword matches graduate-485 pages
-  // (never the English-requirements-student page). "i-485" (US adjustment of
-  // status) is not a route subtype and must not read as one.
-  if (/(?<![a-z0-9-])485\b/i.test(text || '')) seen.add('graduate')
+  // (never the English-requirements-student page). US Form I-485 (Adjustment of
+  // Status) — including after hyphen→space ("i 485") — is NOT a graduate route.
+  if (isAuSubclass485(text || '')) seen.add('graduate')
   return [...seen]
 }
 
@@ -376,12 +398,12 @@ function regionMismatchPenalty(keyword: string, primary: string, ownerUrl?: stri
   const pr = (primary + ' ' + (ownerUrl || '')).toLowerCase()
   const kwCa = /\bcanada|canadian|ircc|pgwp|express entry\b/.test(kw)
   const kwUk = /\buk\b|british|ukvi|ilr|appendix fm|skilled worker\b/.test(kw)
-  const kwUs = /\b(us|usa|f-1|f1|opt|uscis|sevis|asu|arizona state)\b/.test(kw)
-  const kwAu = /\b(australia|485|subclass|home affairs|pte)\b/.test(kw)
+  const kwUs = /\b(us|usa|f-1|f1|opt|uscis|sevis|asu|arizona state|i-?485|adjustment of status)\b/.test(kw) || isUsFormI485(kw)
+  const kwAu = (/\b(australia|subclass|home affairs|pte)\b/.test(kw) || isAuSubclass485(kw))
   const prCa = /\bcanada|canadian|ircc|\/ca\/|ca\.yousafe/.test(pr)
   const prUk = /\buk\b|british|ukvi|\/uk\/|uk\.yousafe|gov\.uk/.test(pr)
-  const prUs = /\b(us|usa|f-1|opt|\/us\/|usa\.yousafe|uscis)\b/.test(pr)
-  const prAu = /\b(australia|485|\/au\/|au\.yousafe|homeaffairs)\b/.test(pr)
+  const prUs = /\b(us|usa|f-1|opt|\/us\/|usa\.yousafe|uscis|i-?485|adjustment of status)\b/.test(pr) || isUsFormI485(pr)
+  const prAu = (/\b(australia|\/au\/|au\.yousafe|homeaffairs)\b/.test(pr) || isAuSubclass485(pr))
 
   if (kwCa && prUk && !prCa) return 55
   if (kwCa && prUs && !prCa) return 55
@@ -569,7 +591,7 @@ export function standingRulesHost(opts: {
     if (/canada|study permit|pgwp|ircc/i.test(kw) || region === 'CA') {
       return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace)' }
     }
-    if (/australia|485|subclass/i.test(kw) || region === 'AU') {
+    if (/australia|subclass/i.test(kw) || isAuSubclass485(kw) || region === 'AU') {
       return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace)' }
     }
     return { host: 'apex', contentType: 'blog_post', reason: 'transactional how-to → apex /blog (never marketplace catalogue)' }
@@ -586,7 +608,7 @@ export function standingRulesHost(opts: {
     let host: OwnerHost = 'usa'
     if (/uk|british|student route/i.test(kw) || region === 'UK') host = 'uk'
     else if (/canada|study permit|pgwp|ircc/i.test(kw) || region === 'CA') host = 'ca'
-    else if (/australia|485|subclass/i.test(kw) || region === 'AU') host = 'au'
+    else if (/australia|subclass/i.test(kw) || isAuSubclass485(kw) || region === 'AU') host = 'au'
     else if (region === 'US') host = 'usa'
     return { host, contentType: 'regional_from', reason: 'geo_modifier from-country → regional' }
   }
