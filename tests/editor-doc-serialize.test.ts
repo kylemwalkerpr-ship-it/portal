@@ -27,10 +27,12 @@ describe('editorDoc — WYSIWYG DOM ↔ markdown gateway', () => {
   })
 
   it('emits data-keep containers verbatim (frontmatter / JSON-LD)', () => {
-    const keep = '<div data-keep="1">\u0000KEEP\u0000<script type="application/ld+json">{"@type": "Article"}</script></div>'
-    const md = serializeDsHtml('<h1>Title</h1>' + keep)
-    expect(md).toContain('# Title')
-    expect(md).toContain('{"@type": "Article"}')
+    const keepLegacy = '<div data-keep="1">\u0000KEEP\u0000<script type="application/ld+json">{"@type": "Article"}</script></div>'
+    const keepSafe = '<div data-keep="fm">\uE000KEEP\uE000---\ntitle: Kept\n---</div>'
+    expect(serializeDsHtml('<h1>Title</h1>' + keepLegacy)).toContain('{"@type": "Article"}')
+    expect(serializeDsHtml('<h1>Title</h1>' + keepSafe)).toContain('title: Kept')
+    // TipTap may strip null markers → bare KEEP prefix still recovers payload
+    expect(serializeDsHtml('<div data-keep="fm">KEEP---\ntitle: Bare\n---</div>')).toContain('title: Bare')
   })
 
   it('blockquotes and hr survive the round trip', () => {
