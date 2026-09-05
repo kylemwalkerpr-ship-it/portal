@@ -247,12 +247,46 @@ export function sitemapPathForShippedFile(repo: RepoId, filePath: string): strin
 
 /** Public path for a shipped page.tsx / .md file. */
 export function publicPathFromRepoFile(filePath: string): string {
-  let route = String(filePath || '')
+  const raw = String(filePath || '').replace(/^\/+/, '').trim()
+  // Regional / landing markdown content shards:
+  //   ca/content/foo.md → /foo/
+  //   uk/content/universities/bar.md → /universities/bar/
+  // Never leave the repo region prefix, "content/", or a .md suffix in the URL —
+  // that produced live Ahrefs 4xx-in-sitemap rows like
+  // /uk/content/universities/….md// on uk.*.
+  const md = raw.match(/^(usa|uk|ca|au|landing-page)\/content\/(.+)$/i)
+  if (md) {
+    let rest = md[2].replace(/\.(md|mdx)$/i, '')
+    if (/^index$/i.test(rest)) return '/'
+    rest = rest.replace(/\/index$/i, '')
+    return rest ? `/${rest}/`.replace(/\/+/g, '/') : '/'
+  }
+  let route = raw
     .replace(/^(app|usa\/app|uk\/app|ca\/app|au\/app|landing-page\/app)\//, '')
     .replace(/\/(page|route)\.(tsx|ts|jsx|js)$/, '')
-    .replace(/\.mdx?$/, '')
+    .replace(/\.mdx?$/i, '')
   if (!route || route === 'page.tsx') return '/'
   if (!route.startsWith('/')) route = `/${route}`
+  if (!route.endsWith('/')) route += '/'
+  return route.replace(/\/+/g, '/')
+}
+
+/** Normalize a studio sitemap path that may be a repo file path or already-public URL. */
+export function normalizeStudioSitemapPath(routePath: string): string {
+  const raw = String(routePath || '').trim()
+  if (!raw) return '/'
+  const stripped = raw.replace(/^\/+/, '').replace(/\/+$/, '')
+  // Repo file paths (page.tsx / regional content/*.md) → publicPathFromRepoFile.
+  // Already-public URL paths (e.g. /us/education-verification/) pass through.
+  if (
+    /^(app|usa|uk|ca|au|landing-page)\//i.test(stripped) ||
+    /\.(md|mdx|tsx|ts|jsx|js)$/i.test(stripped) ||
+    /\/content\//i.test(stripped) ||
+    /\/(page|route)\.(tsx|ts|jsx|js)$/i.test(stripped)
+  ) {
+    return publicPathFromRepoFile(stripped)
+  }
+  let route = raw.startsWith('/') ? raw : `/${raw}`
   if (!route.endsWith('/')) route += '/'
   return route.replace(/\/+/g, '/')
 }
@@ -266,33 +300,52 @@ export function upsertStudioSitemapEntry(
   routePath: string,
   kind: 'caseworks' | 'regional' | 'portal' = 'caseworks',
 ): { content: string; added: boolean } {
-  const looksLikeFile = /page\.(tsx|jsx|mdx?)$/.test(routePath) || /(?:^|\/)app\//.test(routePath)
-  const normalized = looksLikeFile
-    ? publicPathFromRepoFile(routePath)
-    : `${routePath.startsWith('/') ? routePath : `/${routePath}`}`.replace(/\/?$/, '/')
+  const normalized = normalizeStudioSitemapPath(routePath)
+  // Refuse to write junk that still looks like a repo file after normalize.
+  if (!normalized || normalized === '/' || /\.mdx?\/?$/i.test(normalized) || /\/content\//i.test(normalized)) {
+    return { content: source, added: false }
+  }
   const start = source.indexOf('// SITEMAP_ORPHAN_FIX_START')
   const endMark = '// SITEMAP_ORPHAN_FIX_END'
   const end = source.indexOf(endMark)
   let entries: Array<{ path: string; priority: number; changefreq: string }> = []
+  let mutatedExisting = false
   if (start >= 0 && end > start) {
     const block = source.slice(start, end + endMark.length)
     const jsonMatch = block.match(/=\s*(\[[\s\S]*?\])\s*(?:\n|\/\/)/)
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1]) as Array<string | { path?: string; priority?: number; changefreq?: string; changeFrequency?: string }>
-        entries = parsed.map((e) => {
-          if (typeof e === 'string') return { path: e, priority: 0.7, changefreq: 'weekly' }
-          return {
-            path: String(e.path || ''),
-            priority: Number(e.priority) || 0.7,
-            changefreq: String(e.changefreq || e.changeFrequency || 'weekly'),
+        const seen = new Set<string>()
+        for (const e of parsed) {
+          const rawPath = typeof e === 'string' ? e : String(e.path || '')
+          if (!rawPath) continue
+          const path = normalizeStudioSitemapPath(rawPath)
+          if (!path || path === '/' || /\.mdx?\/?$/i.test(path) || /\/content\//i.test(path)) {
+            mutatedExisting = true
+            continue
           }
-        }).filter((e) => e.path)
+          if (path !== (rawPath.endsWith('/') ? rawPath : `${rawPath}/`) && path !== rawPath) mutatedExisting = true
+          if (seen.has(path)) {
+            mutatedExisting = true
+            continue
+          }
+          seen.add(path)
+          entries.push({
+            path,
+            priority: typeof e === 'string' ? 0.7 : Number(e.priority) || 0.7,
+            changefreq: typeof e === 'string' ? 'weekly' : String(e.changefreq || e.changeFrequency || 'weekly'),
+          })
+        }
       } catch {
         entries = []
       }
     }
-    if (entries.some((e) => e.path === normalized)) return { content: source, added: false }
+    if (entries.some((e) => e.path === normalized)) {
+      if (!mutatedExisting) return { content: source, added: false }
+      const next = sitemapBlock(entries, kind)
+      return { content: source.slice(0, start) + next + source.slice(end + endMark.length), added: false }
+    }
     entries.push({ path: normalized, priority: 0.75, changefreq: 'weekly' })
     const next = sitemapBlock(entries, kind)
     return { content: source.slice(0, start) + next + source.slice(end + endMark.length), added: true }
