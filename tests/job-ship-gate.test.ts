@@ -6,7 +6,7 @@
  * boolean shipReady in audit_json, or no audit_json at all) is a FAIL, never a
  * silent pass.
  */
-import { jobPassesShipGate } from '../lib/seoFactory/jobShipGate'
+import { jobPassesShipGate, mergeAuditJsonPreservingGate } from '../lib/seoFactory/jobShipGate'
 
 function job(auditJson: unknown): Record<string, unknown> {
   return { id: 'j1', title: 'Study Permit Guide', topic: 'canada study permit', audit_json: auditJson }
@@ -52,5 +52,62 @@ describe('jobPassesShipGate', () => {
 
   it('treats missing blockers as zero — a declared pass without a count passes', () => {
     expect(jobPassesShipGate(job({ score: 90, shipReady: true }))).toBe(true)
+  })
+})
+
+describe('mergeAuditJsonPreservingGate', () => {
+  it('preserves shipReady / contentSpec / contentLoop when overlay omits them', () => {
+    const prior = {
+      score: 88,
+      shipReady: true,
+      blockers: [],
+      contentSpec: { version: 'cs-1', outline: [] },
+      contentLoop: { action: 'fix_until_gates', status: 'cleared' },
+      model: 'grok',
+    }
+    const merged = mergeAuditJsonPreservingGate(prior, {
+      score: 90,
+      blockers: [{ code: 'x' }],
+      wordCount: 1200,
+      model: 'grok',
+    })
+    expect(merged.shipReady).toBe(true)
+    expect(merged.contentSpec).toEqual(prior.contentSpec)
+    expect(merged.contentLoop).toEqual(prior.contentLoop)
+    expect(merged.score).toBe(90)
+    expect(merged.blockers).toEqual([{ code: 'x' }])
+    // Fresh audit overlay must still be readable by the server gate AND:
+    // blockers>0 means jobPassesShipGate fails even with preserved shipReady.
+    expect(jobPassesShipGate(job(merged))).toBe(false)
+  })
+
+  it('lets an explicit overlay shipReady win (recompute path)', () => {
+    const prior = { score: 88, shipReady: true, contentSpec: { version: 'cs-1' } }
+    const merged = mergeAuditJsonPreservingGate(prior, { score: 70, shipReady: false, blockers: 2 })
+    expect(merged.shipReady).toBe(false)
+    expect(merged.contentSpec).toEqual({ version: 'cs-1' })
+  })
+
+  it('works when prior is missing — overlay alone', () => {
+    const merged = mergeAuditJsonPreservingGate(null, { score: 80, blockers: [] })
+    expect(merged).toEqual({ score: 80, blockers: [] })
+    expect(jobPassesShipGate(job(merged))).toBe(false)
+  })
+
+  it('keeps a cleared gate when Save rebuilds from bare auditContent()', () => {
+    // Regression for P0-SHIP-2: { ...audit, model } wiped shipReady.
+    const prior = {
+      score: 96,
+      shipReady: true,
+      blockers: [],
+      contentSpec: { version: 'cs-1' },
+      contentLoop: { status: 'cleared' },
+      model: 'x',
+    }
+    const bareAudit = { score: 96, blockers: [], wordCount: 1400, humanScore: 70 }
+    const merged = mergeAuditJsonPreservingGate(prior, { ...bareAudit, model: prior.model })
+    expect(jobPassesShipGate(job(merged))).toBe(true)
+    expect(merged.contentSpec).toEqual(prior.contentSpec)
+    expect(merged.contentLoop).toEqual(prior.contentLoop)
   })
 })

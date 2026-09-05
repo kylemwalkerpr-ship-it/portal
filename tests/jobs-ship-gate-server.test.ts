@@ -181,18 +181,30 @@ describe('PATCH approve — PR-merge shortcut (no editor content) refuses an ung
     expect(mockShipContent).not.toHaveBeenCalled()
   })
 
-  it('returns 409 on an explicit gate fail even when shipping content was requested in the body', async () => {
-    // body.content present but job pr_created + no forceNewShip → merge branch
-    // is skipped; content branch runs shipContent gates instead (not merged).
+  it('returns 409 when shipping content was requested but persisted gate is not cleared (P1-SHIP-1)', async () => {
+    // Direct modal approve must use the same audit_json.shipReady evidence as
+    // workspace / bulk_approve — content in the body no longer bypasses the gate.
     supabaseClient.__builder._rows.set('j1', baseJob({ audit_json: { score: 96, blockers: [] } }))
     mockShipContent.mockResolvedValue({ status: 'pr_created', path: 'app/ca/x/page.tsx', mode: 'pr' })
     const res = await patch({ id: 'j1', action: 'approve', humanApproved: true, content: 'approved full body content' })
-    // approve-with-content is NOT gated on the persisted snapshot — it re-audits
-    // and ships through shipContent's own gates.
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('Ship gate not cleared')
+    expect(mockShipContent).not.toHaveBeenCalled()
+    expect(mockMergePullRequest).not.toHaveBeenCalled()
+  })
+
+  it('ships via shipContent when body.content is present AND audit_json.shipReady is true', async () => {
+    supabaseClient.__builder._rows.set(
+      'j1',
+      baseJob({ audit_json: { score: 96, shipReady: true, blockers: [] } }),
+    )
+    mockShipContent.mockResolvedValue({ status: 'pr_created', path: 'app/ca/x/page.tsx', mode: 'pr' })
+    supabaseClient.__builder._updatedRow = { ...baseJob(), status: 'pr_created' }
+    const res = await patch({ id: 'j1', action: 'approve', humanApproved: true, content: mkContent() })
+    expect(res.status).toBe(200)
     expect(mockShipContent).toHaveBeenCalled()
     expect(mockMergePullRequest).not.toHaveBeenCalled()
-    const body = await res.json()
-    expect(body.ok).toBe(true)
+    expect((await res.json()).ok).toBe(true)
   })
 })
 
@@ -225,5 +237,30 @@ describe('POST bulk_approve — never ships an ungated row', () => {
     const results = body.results as Array<{ id: string; skipped?: boolean; ok: boolean }>
     expect(results.find((r) => r.id === 'bad')).toMatchObject({ ok: false, skipped: true, error: 'Ship gate not cleared' })
     expect(results.find((r) => r.id === 'good')?.ok).toBe(true)
+  })
+})
+
+describe('PATCH save — must not wipe shipReady / contentSpec / contentLoop (P0-SHIP-2)', () => {
+  it('merges bare auditContent overlay over prior gate fields', async () => {
+    const priorAudit = {
+      score: 96,
+      shipReady: true,
+      blockers: [],
+      contentSpec: { version: 'cs-1', outline: [{ heading: 'Overview' }] },
+      contentLoop: { action: 'fix_until_gates', status: 'cleared' },
+      model: 'grok',
+    }
+    supabaseClient.__builder._rows.set(
+      'j1',
+      baseJob({ status: 'drafting', pr_number: null, audit_json: priorAudit }),
+    )
+    supabaseClient.__builder._updatedRow = baseJob({ status: 'drafting', audit_json: priorAudit })
+    const res = await patch({ id: 'j1', action: 'save', content: mkContent() })
+    expect(res.status).toBe(200)
+    const patchWritten = supabaseClient.__builder._patch
+    expect(patchWritten).toBeTruthy()
+    expect(patchWritten.audit_json.shipReady).toBe(true)
+    expect(patchWritten.audit_json.contentSpec).toEqual(priorAudit.contentSpec)
+    expect(patchWritten.audit_json.contentLoop).toEqual(priorAudit.contentLoop)
   })
 })

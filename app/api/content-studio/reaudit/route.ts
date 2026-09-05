@@ -1327,9 +1327,24 @@ Return ONLY the JSON EditorPatch.`
           if (Object.keys(contractPersist).length) {
             await db.from('content_jobs').update(contractPersist).eq('id', jobId)
           }
+          // P0-SHIP-1: persist server-derived shipReady/blockers into audit_json
+          // so jobPassesShipGate (workspace / VII / queue) agrees with the editor.
           await db
             .from('content_jobs')
-            .update({ audit_json: { ...baseAudit, contentSpec, contentLoop, ...(synthesizedEvicted ? { synthesized_evicted: true } : {}) } })
+            .update({
+              audit_json: {
+                ...baseAudit,
+                contentSpec,
+                contentLoop,
+                shipReady: finalShipReady,
+                blockers: finalContract.blockersData || [],
+                blockersCount:
+                  typeof finalContract.blockers === 'number'
+                    ? finalContract.blockers
+                    : (finalContract.blockersData || []).length,
+                ...(synthesizedEvicted ? { synthesized_evicted: true } : {}),
+              },
+            })
             .eq('id', jobId)
           const { persistReviewSnapshot } = await import('@/lib/seoFactory/reviewSnapshots')
           await persistReviewSnapshot({
@@ -2269,6 +2284,34 @@ ${enginePlan.promptBlock}` + editorResponseContract()
           warnings: finalResponse.warningsData || [],
           appliedRepairs: finalResponse.appliedRepairs || [],
         })
+        // P0-SHIP-1: same shipReady/blockers into audit_json for fix_all /
+        // fix_warnings / fix_depth / fix_blockers writers (not just fix_until_gates).
+        const { createSupabaseAdminClient } = await import('@/lib/supabase')
+        const db = createSupabaseAdminClient()
+        const { data: row } = await db
+          .from('content_jobs')
+          .select('audit_json')
+          .eq('id', jobId)
+          .maybeSingle()
+        const baseAudit =
+          row && typeof (row as { audit_json?: unknown }).audit_json === 'object' && (row as { audit_json?: unknown }).audit_json
+            ? { ...((row as { audit_json: Record<string, unknown> }).audit_json) }
+            : {}
+        const shipReadyFlag = Boolean(finalResponse.shipReady)
+        await db
+          .from('content_jobs')
+          .update({
+            audit_json: {
+              ...baseAudit,
+              shipReady: shipReadyFlag,
+              blockers: finalResponse.blockersData || [],
+              blockersCount:
+                typeof finalResponse.blockers === 'number'
+                  ? finalResponse.blockers
+                  : (finalResponse.blockersData || []).length,
+            },
+          })
+          .eq('id', jobId)
       } catch { /* editor still holds the repaired body */ }
     }
     return NextResponse.json(finalResponse)

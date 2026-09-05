@@ -12,7 +12,7 @@ import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary, emptyStatusTotals, statusTotalsFromRows } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
-import { jobPassesShipGate } from '@/lib/seoFactory/jobShipGate'
+import { jobPassesShipGate, mergeAuditJsonPreservingGate } from '@/lib/seoFactory/jobShipGate'
 import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
@@ -575,7 +575,7 @@ export async function POST(request: NextRequest) {
             .update({
               seo_score: audit.score,
               word_count: words,
-              audit_json: audit,
+              audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
             })
             .eq('id', id)
           results.push({ id, ok: true, detail: { score: audit.score, words } })
@@ -675,7 +675,7 @@ export async function POST(request: NextRequest) {
                 error_message: null,
                 ship_mode: 'autodeploy',
                 seo_score: audit.score,
-                audit_json: audit,
+                audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
               })
               .eq('id', id)
             if ((ship.status === 'deployed' || ship.status === 'merged') && !body.dryRun) {
@@ -984,11 +984,13 @@ export async function PATCH(request: NextRequest) {
       const patch: Record<string, unknown> = {
         seo_score: audit.score,
         word_count: words,
-        audit_json: {
+        // P0-SHIP-2: bare auditContent() never emits shipReady/contentSpec/contentLoop —
+        // merge over prior audit_json so Save/reaudit cannot wipe a cleared gate.
+        audit_json: mergeAuditJsonPreservingGate(job.audit_json, {
           ...audit,
           reauditedAt: new Date().toISOString(),
           model: job.audit_json?.model,
-        },
+        }),
         owner_host: plan.host,
         canonical_url: plan.canonicalUrl,
         content_path: plan.filePath,
@@ -1158,7 +1160,10 @@ export async function PATCH(request: NextRequest) {
           word_count: words,
           seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
           audit_json: audit
-            ? { ...audit, model: job.audit_json?.model }
+            ? mergeAuditJsonPreservingGate(job.audit_json, {
+                ...audit,
+                model: job.audit_json?.model,
+              })
             : job.audit_json,
           error_message: null,
           // Keep terminal states; otherwise mark as drafting after manual edit
@@ -1645,7 +1650,8 @@ export async function PATCH(request: NextRequest) {
       }
 
       try {
-        // Persist editor content before ship
+        // Persist editor content before ship — merge-preserve gate fields so a
+        // pre-ship body write cannot wipe Audit & Fix shipReady (P0-SHIP-2).
         if (body.content != null) {
           await supabase
             .from('content_jobs')
@@ -1653,9 +1659,21 @@ export async function PATCH(request: NextRequest) {
               content: String(content),
               word_count: countBodyWords(String(content)),
               seo_score: audit.score,
-              audit_json: audit,
+              audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
             })
             .eq('id', id)
+        }
+
+        // P1-SHIP-1: direct modal approve uses the same persisted gate evidence
+        // as workspace / bulk_approve / merge_pr (audit_json.shipReady). Read the
+        // job row as stored — do not AND a fresh bare auditContent() overlay,
+        // which never emits shipReady and can invent blockers that would
+        // disagree with a cleared Audit & Fix verdict.
+        if (!jobPassesShipGate(job)) {
+          return NextResponse.json(
+            { error: 'Ship gate not cleared' },
+            { status: 409 },
+          )
         }
 
         // If PR already open and approve sent NO editor body → merge that PR.
@@ -1698,7 +1716,7 @@ export async function PATCH(request: NextRequest) {
                   error_message: null,
                   ship_mode: 'autodeploy',
                   seo_score: audit.score,
-                  audit_json: audit,
+                  audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
                 })
                 .eq('id', id)
                 .select(JOB_OPEN_COLUMNS)
@@ -1771,7 +1789,7 @@ export async function PATCH(request: NextRequest) {
             ship_mode: ship.mode === 'pr' ? 'pr' : 'autodeploy',
             seo_score: audit.score,
             word_count: audit.wordCount,
-            audit_json: audit,
+            audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
           })
           .eq('id', id)
           .select(JOB_OPEN_COLUMNS)

@@ -37,3 +37,31 @@ export function jobPassesShipGate(job: unknown): boolean {
   const gate = shipGateFromResponse({ shipReady: a.shipReady, blockers: blockersCount(a.blockers) })
   return shipGateReady(gate)
 }
+
+/** Gate / loop fields bare `auditContent()` never emits. */
+export const AUDIT_GATE_PRESERVE_KEYS = ['shipReady', 'contentSpec', 'contentLoop'] as const
+
+/**
+ * Merge a fresh audit overlay onto prior `audit_json` without wiping gate
+ * fields that `auditContent()` never emits (`shipReady`, `contentSpec`,
+ * `contentLoop`). Overlay wins for every key it actually sets; omitted gate
+ * keys are re-copied from `prior` so Save / reaudit cannot destroy a cleared
+ * Audit & Fix verdict (P0-SHIP-2).
+ */
+export function mergeAuditJsonPreservingGate(
+  prior: unknown,
+  overlay: Record<string, unknown>,
+): Record<string, unknown> {
+  const base =
+    prior && typeof prior === 'object' && !Array.isArray(prior)
+      ? { ...(prior as Record<string, unknown>) }
+      : {}
+  const next: Record<string, unknown> = { ...base, ...overlay }
+  for (const key of AUDIT_GATE_PRESERVE_KEYS) {
+    if (!(key in overlay) || overlay[key] === undefined) {
+      if (key in base) next[key] = base[key]
+    }
+  }
+  return next
+}
+
