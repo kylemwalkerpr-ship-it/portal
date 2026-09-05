@@ -69,7 +69,7 @@ import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { resolveShipRefusalBanner, shipActionsEnabled, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
-import { confirmApproveToMain } from '@/lib/seoFactory/approveConfirm'
+import { ApproveConfirmModal } from './approve-confirm-modal'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { DEFAULT_BRIEF_PIN, DEFAULT_DRAFT_PIN, DEFAULT_REVIEW_PIN, parseStudioPin, resolveJobPickerPin } from '@/lib/contentAiCatalog'
 import { StudioStageNav } from './studio-stage-nav'
@@ -4292,6 +4292,7 @@ function JobDetail({
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [actionNotice, setLocalActionNotice] = React.useState<string | null>(null)
   const [activeAction, setActiveAction] = React.useState<string | null>(null)
+  const [approveConfirmOpen, setApproveConfirmOpen] = React.useState(false)
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
   const [aiProvider, setAiProvider] = React.useState<string>(DEFAULT_DRAFT_PIN)
@@ -4522,15 +4523,16 @@ function JobDetail({
 
   const runAction = async (action: string, opts?: { skipConfirm?: boolean }) => {
     if (busy) return
-    if (!opts?.skipConfirm && (action === 'regenerate' || action === 'approve' || action === 'merge_pr')) {
-      if (action === 'approve') {
-        if (!confirmApproveToMain()) return
-      } else {
-        const prompt = action === 'regenerate'
-          ? 'Regenerate this job and create a replacement job?'
-          : 'Merge the open pull request?'
-        if (typeof window !== 'undefined' && !window.confirm(prompt)) return
-      }
+    // Approve confirm is an in-DOM modal opened sync on click (not window.confirm).
+    if (!opts?.skipConfirm && action === 'approve') {
+      setApproveConfirmOpen(true)
+      return
+    }
+    if (!opts?.skipConfirm && (action === 'regenerate' || action === 'merge_pr')) {
+      const prompt = action === 'regenerate'
+        ? 'Regenerate this job and create a replacement job?'
+        : 'Merge the open pull request?'
+      if (typeof window !== 'undefined' && !window.confirm(prompt)) return
     }
     if (action === 'regenerate') {
       void runRegenerateStream()
@@ -4773,6 +4775,16 @@ function JobDetail({
         </div>
 
         {audit && <details style={{ marginTop: 12 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Raw audit JSON</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: C.radiusXs, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
+
+        <ApproveConfirmModal
+          open={approveConfirmOpen}
+          busy={busy && activeAction === 'approve'}
+          onCancel={() => setApproveConfirmOpen(false)}
+          onConfirm={() => {
+            setApproveConfirmOpen(false)
+            void runAction('approve', { skipConfirm: true })
+          }}
+        />
       </div>
     </div>
   )

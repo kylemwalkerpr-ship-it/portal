@@ -5,7 +5,7 @@ import EditorMetricsStrip from './editor-metrics-strip'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
-import { confirmApproveToMain } from '@/lib/seoFactory/approveConfirm'
+import { ApproveConfirmModal } from './approve-confirm-modal'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 
 const C = {
@@ -140,6 +140,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   useEffect(() => {
     if (String(jobId || '').trim()) setBoundJobId(String(jobId).trim())
   }, [jobId])
+
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false)
 
   const persistDraft = useCallback(async (body: string, source: string) => {
     const { sanitizeLeakedMarkup } = await import('@/lib/seoFactory/leakedMarkup')
@@ -1174,43 +1176,52 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             data-testid="studio-editor-approve"
             disabled={approving || allBusy}
             onClick={() => {
-              // Confirm MUST stay in the click's user-gesture turn. Awaiting
-              // persistDraft first lets Chrome/Safari suppress window.confirm
-              // (returns false, no dialog) — enabled Approve that looks dead.
-              if (!confirmApproveToMain()) return
-              void (async () => {
-                try {
-                  if (boundJobId) {
-                    onApprove(boundJobId)
-                    void persistDraft(content, 'manual').catch((err) => {
-                      const msg = err instanceof Error ? err.message : 'Save before approve failed'
-                      setError(`Save failed after approve started: ${msg}`)
-                    })
-                    return
-                  }
-                  const id = await persistDraft(content, 'manual')
-                  if (!id) {
-                    setError('Approve needs a saved job — Save the draft, then try Approve → main again.')
-                    return
-                  }
-                  onApprove(id)
-                } catch (err) {
-                  const msg = err instanceof Error ? err.message : 'Save before approve failed'
-                  // Job already exists — do not block Approve on a draft Save timeout.
-                  if (boundJobId) {
-                    setError(`Save failed — approving anyway: ${msg}`)
-                    onApprove(boundJobId)
-                    return
-                  }
-                  setError(msg)
-                }
-              })()
+              // Open in-DOM confirm synchronously in the click turn. Native
+              // window.confirm is suppressed after awaits and invisible to
+              // desktop automation.
+              setApproveConfirmOpen(true)
             }}
             style={btnStyle({ bg: '#166534', border: '#166534', color: '#fff', disabled: approving || allBusy })}
           >
             {approving ? 'Approving…' : 'Approve → main'}
           </button>
         )}
+
+        <ApproveConfirmModal
+          open={approveConfirmOpen}
+          busy={Boolean(approving)}
+          onCancel={() => setApproveConfirmOpen(false)}
+          onConfirm={() => {
+            setApproveConfirmOpen(false)
+            void (async () => {
+              try {
+                if (boundJobId) {
+                  onApprove(boundJobId)
+                  void persistDraft(content, 'manual').catch((err) => {
+                    const msg = err instanceof Error ? err.message : 'Save before approve failed'
+                    setError(`Save failed after approve started: ${msg}`)
+                  })
+                  return
+                }
+                const id = await persistDraft(content, 'manual')
+                if (!id) {
+                  setError('Approve needs a saved job — Save the draft, then try Approve → main again.')
+                  return
+                }
+                onApprove(id)
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Save before approve failed'
+                // Job already exists — do not block Approve on a draft Save timeout.
+                if (boundJobId) {
+                  setError(`Save failed — approving anyway: ${msg}`)
+                  onApprove(boundJobId)
+                  return
+                }
+                setError(msg)
+              }
+            })()
+          }}
+        />
 
 
         {/* Review model selector — hosts/selectors come from the lane config;
