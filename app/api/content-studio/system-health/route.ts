@@ -57,9 +57,9 @@ export async function GET() {
     const gscEmail = gscCfg.connectedEmail ?? null
     const gscExpiresAt = null
     const gscConnectedSince = gscCfg.connectedAt ?? null
-    const ga4Cfg = await loadGa4Config().catch(() => ({ enabled: false, propertyId: '' }))
+    const ga4Cfg = await loadGa4Config().catch(() => ({ enabled: false, propertyId: '', connectedAt: null as string | null }))
     const uberCfg = await loadUbersuggestConfig().catch(() => ({ enabled: false, accessToken: '', refreshToken: '' }))
-    const ga4Connected = Boolean(ga4Cfg.enabled && ga4Cfg.propertyId)
+    const ga4Connected = Boolean(ga4Cfg.enabled && ga4Cfg.propertyId && ga4Cfg.connectedAt)
     const ubersuggestConnected = Boolean(uberCfg.enabled && (uberCfg.accessToken || uberCfg.refreshToken))
 
     // ── Interlink registry size ──

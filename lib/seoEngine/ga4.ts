@@ -53,14 +53,20 @@ export async function loadGa4Config(): Promise<Ga4Config> {
   }
 }
 
-export async function getGa4AccessToken(): Promise<string | null> {
+/** Resolve SA JSON shared with GSC (env or gsc_connection row). */
+export async function resolveGa4ServiceAccountJson(): Promise<string> {
   const cfg = await getGscConfig()
-  const saJson =
+  return (
     cfg.serviceAccountKey ||
     process.env.GSC_SERVICE_ACCOUNT_JSON ||
     process.env.GSC_SERVICE_ACCOUNT_KEY ||
     process.env.GA4_SERVICE_ACCOUNT_JSON ||
     ''
+  )
+}
+
+export async function getGa4AccessToken(): Promise<string | null> {
+  const saJson = await resolveGa4ServiceAccountJson()
   if (!saJson) return null
   try {
     const sa = parseServiceAccountJson(saJson)
@@ -232,23 +238,44 @@ export async function persistGa4Config(next: Partial<Ga4Config>): Promise<Ga4Con
 export async function probeGa4(propertyId: string): Promise<{ ok: boolean; error?: string; sessions?: number }> {
   const id = normalizeGa4PropertyId(propertyId)
   if (!id) return { ok: false, error: 'Enter a GA4 numeric property ID' }
-  const token = await getGa4AccessToken()
-  if (!token) return { ok: false, error: 'No Google service-account key (reuse GSC JSON or set GA4_SERVICE_ACCOUNT_JSON)' }
-  const res = await fetch(
-    `https://analyticsdata.googleapis.com/v1beta/properties/${id}:runReport`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dateRanges: [{ startDate: '7daysAgo', endDate: 'yesterday' }],
-        metrics: [{ name: 'sessions' }],
-        limit: 1,
-      }),
-    },
-  )
+  const saJson = await resolveGa4ServiceAccountJson()
+  if (!saJson) {
+    return {
+      ok: false,
+      error:
+        'Missing Google service-account key (set GSC_SERVICE_ACCOUNT_JSON / Worker secret, or paste via GSC connect)',
+    }
+  }
+  let token: string
+  try {
+    const sa = parseServiceAccountJson(saJson)
+    token = await mintServiceAccountToken(sa, GA4_SCOPE)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: `GA4 service-account token failed: ${msg.slice(0, 180)}` }
+  }
+  let res: Response
+  try {
+    res = await fetch(
+      `https://analyticsdata.googleapis.com/v1beta/properties/${id}:runReport`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dateRanges: [{ startDate: '7daysAgo', endDate: 'yesterday' }],
+          metrics: [{ name: 'sessions' }],
+          limit: 1,
+        }),
+      },
+    )
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: `GA4 probe network error: ${msg.slice(0, 180)}` }
+  }
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    return { ok: false, error: `GA4 ${res.status}: ${text.slice(0, 180)}` }
+    const body = await res.text().catch(() => '')
+    // Common: SA not added as Viewer on the property → 403 PERMISSION_DENIED
+    return { ok: false, error: `GA4 ${res.status}: ${body.slice(0, 220)}` }
   }
   const data = (await res.json()) as { rows?: Array<{ metricValues?: Array<{ value?: string }> }> }
   const sessions = Number(data.rows?.[0]?.metricValues?.[0]?.value) || 0
