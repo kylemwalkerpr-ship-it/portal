@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
+import { GROK_PIN } from '@/lib/contentAiCatalog'
 import { extractProse } from '@/lib/editorMetrics'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
@@ -12,21 +12,23 @@ import { parseStyleJson, type StyleItem } from '@/lib/seoFactory/styleReviewPars
 export const maxDuration = 90
 
 /**
- * Style critique is latency-sensitive (client aborts ~50s). Force Entrim
- * DeepSeek V4 Flash only — never remap to / cascade into Genesis Qwen 27B,
- * which burned the prior 65–75s budgets on a large critique slice.
+ * Style critique is latency-sensitive (client aborts ~55s). Force Grok
+ * exclusive — paid SuperGrok is the studio default; never cascade into
+ * Entrim Qwen/Flash (those burned prior 65–75s budgets on large critiques).
  */
-const STYLE_REVIEW_DEFAULT_PIN = ENTRIM_DEEPSEEK_FLASH_PIN
+const STYLE_REVIEW_DEFAULT_PIN = GROK_PIN
 
-/** Per-provider deadline — single Flash attempt; fail before the route budget. */
-const STYLE_PROVIDER_TIMEOUT_MS = 35_000
-/** Hard overall budget — must finish (or return JSON error) before client abort (~50s). */
-const STYLE_ROUTE_BUDGET_MS = 40_000
+/** Per-provider deadline — single Grok attempt (strictTimeout bypasses the
+ *  180s Grok drafting floor). Slightly above prior Flash 35s so low-effort
+ *  Grok can finish ~1.2k-word samples without blowing the route budget. */
+const STYLE_PROVIDER_TIMEOUT_MS = 38_000
+/** Hard overall budget — must finish (or return JSON error) before client abort (~55s). */
+const STYLE_ROUTE_BUDGET_MS = 45_000
 
 /**
- * Bound the critique sample for Flash latency. ~1.2k-word blogs are ~6–7.5k
- * chars; sampling the lead ~4.5k keeps typical reviews well under 30s when
- * thinking is off. Larger docs still get a useful lead sample.
+ * Bound the critique sample for latency. ~1.2k-word blogs are ~6–7.5k
+ * chars; sampling the lead ~4.5k + reasoningEffort low / disableThinking
+ * keeps typical Grok reviews under ~45s. Larger docs still get a useful lead sample.
  */
 const STYLE_CRITIQUE_MAX_CHARS = 4_500
 
@@ -51,8 +53,8 @@ async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>
  * POST /api/content-studio/style-review
  *
  * AI Style Review layer for the Article Editor ("Your AI model rewriting /
- * style / SEO / humanization"). One cascade call (default = Entrim DeepSeek
- * V4 Flash only — no Qwen cascade) that critiques the estate voice
+ * style / SEO / humanization"). One exclusive Grok call (paid SuperGrok
+ * default — no Entrim cascade) that critiques the estate voice
  * contract — clichés, wordy phrasing, weak/passive construction, forced
  * keywords, AI-tell rhythms, hedging, outcome-promise risk — and returns a
  * structured findings list. With `apply: true` a second pass executes the
@@ -150,8 +152,8 @@ Content type: ${body.contentType || 'unknown'}
 
 Critique the voice and readability of the article body only. Ignore YAML, KEEP--- blocks, frontmatter keys, and leaked markup. \`quote\` must be an exact short substring of a body sentence (not a YAML key). Return ONLY the JSON.`
 
-    // Latency lane: always Entrim DeepSeek Flash, exclusive, no capacity
-    // cascade into Qwen/Grok (those ate the prior 65s budget on I-129).
+    // Latency lane: always Grok, exclusive, no capacity cascade into Entrim
+    // (Qwen/Flash ate the prior 65s budget on I-129).
     const pin = STYLE_REVIEW_DEFAULT_PIN
 
     const review = await withRouteBudget(
@@ -168,9 +170,10 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
         strictTimeout: true,
         // JSON critique — not article prose; skip the ~4k writing contract.
         skipQualityContract: true,
-        // Flash defaults to thinking ON on Entrim; CoT burned the 35s budget
-        // on ~8k critique samples. Force thinking off for this JSON lane.
+        // Grok 4.6 defaults to HIGH reasoning; force low / thinking-off so
+        // the JSON lane finishes under the client abort budget.
         disableThinking: true,
+        reasoningEffort: 'low',
       }),
     ).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
@@ -216,6 +219,7 @@ Critique the voice and readability of the article body only. Ignore YAML, KEEP--
         strictTimeout: true,
         skipQualityContract: true,
         disableThinking: true,
+        reasoningEffort: 'low',
       }),
     ).catch((err) => {
       applyProviderError = err instanceof Error ? err.message : String(err)

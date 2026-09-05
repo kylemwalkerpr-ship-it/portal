@@ -196,20 +196,20 @@ describe('vault status — masking does not regress', () => {
   })
 })
 
-describe('auto-cascade default — graduated Entrim fallback, never stale MiniMax', () => {
-  it('empty/stale default_provider resolves CONTENT_AI_PROVIDER to entrim-qwen-27b', async () => {
+describe('auto-cascade default — graduated Grok fallback, never stale MiniMax', () => {
+  it('empty/stale default_provider resolves CONTENT_AI_PROVIDER to grok', async () => {
     process.env.ENTRIM_API_KEY = 'test-entrim-key'
     const overlay = await buildVaultEnvOverrides(true)
-    expect(overlay.CONTENT_AI_PROVIDER).toBe('entrim-qwen-27b')
+    expect(overlay.CONTENT_AI_PROVIDER).toBe('grok')
   })
 
-  it('a persisted nvidia-minimax default is treated as stale → entrim qwen', async () => {
+  it('a persisted nvidia-minimax default is treated as stale → grok', async () => {
     process.env.ENTRIM_API_KEY = 'test-entrim-key'
     mockModule.__setSettingRows([
       { key: 'default_provider', value: 'nvidia-minimax' },
     ])
     const overlay = await buildVaultEnvOverrides(true)
-    expect(overlay.CONTENT_AI_PROVIDER).toBe('entrim-qwen-27b')
+    expect(overlay.CONTENT_AI_PROVIDER).toBe('grok')
   })
 
   it('a persisted grok default is honored (grok is a live provider)', async () => {

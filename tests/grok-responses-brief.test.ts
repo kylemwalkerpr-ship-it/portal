@@ -71,6 +71,13 @@ describe('Grok 4.6 Responses transport', () => {
     expect(grokRequestLimits(16384, 'high')).toEqual({ maxOutputTokens: 4096, reasoningEffort: 'high' })
   })
 
+  it('disableThinking forces low effort for latency JSON lanes', () => {
+    expect(grokRequestLimits(768, undefined, { disableThinking: true })).toEqual({
+      maxOutputTokens: 768,
+      reasoningEffort: 'low',
+    })
+  })
+
   it('extracts output_text and output[].content[].text', () => {
     expect(extractResponsesText({ output_text: '  HELLO  ' })).toBe('HELLO')
     expect(extractResponsesText({

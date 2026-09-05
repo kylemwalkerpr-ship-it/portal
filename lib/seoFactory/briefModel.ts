@@ -1,22 +1,20 @@
 /**
- * Brief-stage model policy (2026-09-02 live policy) — THREE families:
- *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — the DEFAULT. It consumes all
- *      Discover intelligence.
- *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — second Entrim family.
- *   3. Grok 4.6 (`grok`) — xAI / SuperGrok, the third live brief family.
- * 'auto', empty, stale, or unrecognized pins coerce to the Entrim Qwen
- * default. No other brief choice exists.
+ * Brief-stage model policy — THREE families (Grok-first studio default):
+ *   1. Grok 4.6 (`grok`) — the DEFAULT (paid SuperGrok / xAI).
+ *   2. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — second live brief family.
+ *   3. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — third / fallback family.
+ * 'auto', empty, stale, or unrecognized pins coerce to Grok. No other brief
+ * choice exists.
  *
  * The model chosen at Generate Full Brief is the contract OWNER for that
  * article until ship-ready. Retired pins (Claude Opus via Run BiOS, GLM,
  * MiniMax, Nemotron, GPT-5.6, Run BiOS/Baseten DeepSeek) are kept as
  * recognized aliases only so a stale picker selection still RESOLVES — but
- * every non-live resolution redirects to the Entrim default, because
+ * every non-live resolution redirects to the Grok default, because
  * generateContentText enforces the same live provider policy.
  *
  * FALLBACK: when the chosen brief family fails, the fallback is the Entrim
- * DeepSeek family (same vault key) or, for a Grok owner, back to the Entrim
- * default. All legs run exclusively.
+ * DeepSeek family (same vault key). All legs run exclusively.
  */
 
 import { generateContentText, isEntrimConfigured, type ContentAiResult } from '@/lib/contentAiProvider'
@@ -27,8 +25,8 @@ import { generateContentText, isEntrimConfigured, type ContentAiResult } from '@
  */
 export const BRIEF_FALLBACK_PROVIDER = 'entrim-deepseek' as const
 
-/** Brief lead pin — Entrim Qwen3.6 27B (graduated default). */
-export const BRIEF_DEFAULT_PROVIDER = 'entrim-qwen-27b' as const
+/** Brief lead pin — Grok 4.6 (paid SuperGrok studio default). */
+export const BRIEF_DEFAULT_PROVIDER = 'grok' as const
 
 /** Retired: Claude Opus 5 via Run BiOS. Kept as a recognized legacy alias. */
 export const BRIEF_CLAUDE_PROVIDER = 'runbios-claude-opus' as const
@@ -37,9 +35,9 @@ export const BRIEF_CLAUDE_PROVIDER = 'runbios-claude-opus' as const
 export const BRIEF_ENTRIM_QWEN_PROVIDER = 'entrim-qwen-27b' as const
 
 export type BriefProviderChoice =
-  | { aiProvider: typeof BRIEF_DEFAULT_PROVIDER; model?: undefined }
-  | { aiProvider: 'entrim-deepseek'; model?: undefined }
   | { aiProvider: 'grok'; model?: undefined }
+  | { aiProvider: 'entrim-qwen-27b'; model?: undefined }
+  | { aiProvider: 'entrim-deepseek'; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
   const pin = String(rawProvider || '').trim().toLowerCase()
@@ -57,7 +55,7 @@ export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice
   }
   // EVERY other pin — Claude Opus (Run BiOS), Run BiOS/Baseten DeepSeek,
   // GLM, MiniMax, Nemotron, GPT aliases, 'auto', empty, stale drafting ids —
-  // is out of commission and coerces to the Entrim Qwen default.
+  // is out of commission and coerces to the Grok default.
   return { aiProvider: BRIEF_DEFAULT_PROVIDER }
 }
 

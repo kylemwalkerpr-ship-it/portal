@@ -2,15 +2,15 @@
  * Brief-model policy — LIVE POLICY (2026-09-02): the Research/Plan brief
  * offers EXACTLY three model families:
  *
- *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — the DEFAULT.
- *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — the fallback family.
- *   3. Grok 4.6 (`grok`) — xAI / SuperGrok, the third live brief family.
+ *   1. Grok 4.6 (`grok`) — the DEFAULT (paid SuperGrok).
+ *   2. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — second live brief family.
+ *   3. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — the fallback family.
  *
  * Regression lock:
  *
  *  1. resolveBriefAiProvider keeps the three live pins and coerces EVERY
  *     other value — 'auto', stale drafting ids, retired pins (Claude, GLM,
- *     MiniMax, GPT, Run BiOS/Baseten DeepSeek) — to the Entrim Qwen default.
+ *     MiniMax, GPT, Run BiOS/Baseten DeepSeek) — to the Grok default.
  *  2. exclusive: true means the brief can never cascade to a non-chosen
  *     backend: if the pinned provider fails, the call throws the
  *     explicit-provider error instead of returning prose drafted by another.
@@ -33,28 +33,28 @@ import {
 import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 
 describe('resolveBriefAiProvider — brief model policy (three live families)', () => {
-  it('empty / auto / default / stale pins coerce to Entrim Qwen3.6 27B', () => {
-    expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+  it('empty / auto / default / stale pins coerce to Grok 4.6', () => {
+    expect(resolveBriefAiProvider('')).toEqual({ aiProvider: 'grok' })
     for (const raw of ['auto', 'default', 'primary', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6', 'gpt-5.6-luna', 'openai', 'nvidia-minimax', 'minimax', 'nvidia-glm', 'zai-glm', 'baseten-glm-fast', 'glm-5.2-fast', 'aihubmix-glm-fast', 'glm-fast-aihubmix', 'parasail', 'parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm', 'nvidia-deepseek', 'deepseek-pro', 'deepseek-flash', 'baseten-deepseek-pro', 'baseten-glm-53-flash', 'runbios-glm-53-flash', 'glm-5.3-flash', 'glm-5.3', 'claude-sonnet-5', 'runbios-claude-sonnet', 'runbios-glm-52', 'nvidia-nemotron', 'cloudflare-ai', 'bios-adaptive', 'runbios-kimi', 'runbios-qwen']) {
       expect({ raw, resolved: resolveBriefAiProvider(raw) }).toEqual({
         raw,
-        resolved: { aiProvider: 'entrim-qwen-27b' },
+        resolved: { aiProvider: 'grok' },
       })
     }
   })
 
-  it('retired premium pins coerce to the Entrim Qwen default (Claude / Run BiOS / Baseten DeepSeek)', () => {
+  it('retired premium pins coerce to the Grok default (Claude / Run BiOS / Baseten DeepSeek)', () => {
     // Claude Opus 5 via Run BiOS — out of commission.
-    expect(resolveBriefAiProvider('runbios-claude-opus')).toEqual({ aiProvider: 'entrim-qwen-27b' })
-    expect(resolveBriefAiProvider('claude-opus-5')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+    expect(resolveBriefAiProvider('runbios-claude-opus')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('claude-opus-5')).toEqual({ aiProvider: 'grok' })
     // Run BiOS / Baseten DeepSeek hosts — out of commission.
-    expect(resolveBriefAiProvider('runbios-deepseek-flash')).toEqual({ aiProvider: 'entrim-qwen-27b' })
-    expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash')).toEqual({ aiProvider: 'entrim-qwen-27b' })
-    expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({ aiProvider: 'entrim-qwen-27b' })
-    expect(resolveBriefAiProvider('deepseek-v4-flash')).toEqual({ aiProvider: 'entrim-qwen-27b' })
+    expect(resolveBriefAiProvider('runbios-deepseek-flash')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('deepseek-ai/deepseek-v4-flash')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('baseten-deepseek')).toEqual({ aiProvider: 'grok' })
+    expect(resolveBriefAiProvider('deepseek-v4-flash')).toEqual({ aiProvider: 'grok' })
   })
 
-  it('Entrim Qwen3.6 27B is the default brief family (never coerced)', () => {
+  it('Entrim Qwen3.6 27B is a live brief family (never coerced)', () => {
     expect(resolveBriefAiProvider('entrim-qwen-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('qwen3.6-27b')).toEqual({ aiProvider: 'entrim-qwen-27b' })
     expect(resolveBriefAiProvider('qwen')).toEqual({ aiProvider: 'entrim-qwen-27b' })
@@ -151,14 +151,14 @@ describe('generateBriefText — live resilience (Qwen / DeepSeek / Grok owners)'
     expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(false)
   })
 
-  it('a retired primary pin (gpt-5.6-terra) routes to the Entrim Qwen primary', async () => {
-    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+  it('a retired primary pin (gpt-5.6-terra) routes to the Grok primary', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
     process.env.CONTENT_AI_RETRY = '1'
 
     const urls: string[] = []
     global.fetch = jest.fn(async (input) => {
       urls.push(String(input))
-      return json({ choices: [{ message: { content: 'QWEN-AFTER-STALE-PIN' }, finish_reason: 'stop' }] })
+      return json({ output_text: 'GROK-AFTER-STALE-PIN', status: 'completed' })
     }) as typeof fetch
 
     const result = await generateBriefText({
@@ -168,8 +168,8 @@ describe('generateBriefText — live resilience (Qwen / DeepSeek / Grok owners)'
     })
 
     expect(result.fallbackUsed).toBe(false)
-    expect(result.ai.provider).toBe('entrim-qwen-27b')
-    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
+    expect(result.ai.provider).toBe('grok')
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
   })
 
@@ -291,9 +291,12 @@ describe('exclusive pin — the brief never cascades to a non-chosen backend', (
       headers: { 'content-type': 'application/json' },
     })
 
-  it('complete path: unconfigured Entrim with an exclusive retired pin throws the live-policy error — no silent auto-pick', async () => {
-    // No ENTRIM_API_KEY. A retired pin (gpt-5.6-terra) must not silently
-    // draft on any decommissioned backend that happens to have a local key.
+  it('complete path: unconfigured Grok/Entrim with an exclusive retired pin throws — no silent auto-pick', async () => {
+    // No XAI_API_KEY / ENTRIM_API_KEY. A retired pin (gpt-5.6-terra) redirects
+    // to the Grok default and must fail closed — never draft on a decommissioned
+    // backend that happens to have a local key.
+    delete process.env.XAI_API_KEY
+    delete process.env.ENTRIM_API_KEY
     process.env.BASETEN_API_KEY = 'test-baseten-key'
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
 
@@ -308,7 +311,7 @@ describe('exclusive pin — the brief never cascades to a non-chosen backend', (
         prompt: 'TOPIC: dependent visa uk',
         exclusive: true,
       }),
-    ).rejects.toThrow(/No live content AI provider configured|ENTRIM_API_KEY/i)
+    ).rejects.toThrow(/Grok is not configured|No live content AI provider configured|ENTRIM_API_KEY|XAI_API_KEY/i)
 
     // Zero upstream calls — nothing outside the live policy executed.
     expect(global.fetch).toHaveBeenCalledTimes(0)

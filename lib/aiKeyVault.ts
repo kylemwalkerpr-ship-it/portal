@@ -101,10 +101,10 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
   AI_PROVIDERS.find((p) => p.id === id)
 
 /** Safe default cascade; Settings can override it without a redeploy.
- *  Entrim (Qwen3.6 27B first, DeepSeek flash second) fronts the auto
- *  cascade, with Grok third — the three live providers. */
+ *  Grok (paid SuperGrok) fronts the auto cascade, then Entrim Qwen /
+ *  DeepSeek Flash — the three live providers. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'entrim-qwen-27b', 'entrim-deepseek', 'grok',
+  'grok', 'entrim-qwen-27b', 'entrim-deepseek',
 ] as const
 
 export interface VaultKeyRow {
@@ -242,7 +242,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   // the admin's default model is applied to the selected primary provider.
   const defaultProvider = String(settings.default_provider || '').trim()
   out['CONTENT_AI_PROVIDER'] = !defaultProvider || STALE_DEFAULT_PROVIDERS.has(defaultProvider) || !isLiveDefaultProvider(defaultProvider)
-    ? 'entrim-qwen-27b'
+    ? 'grok'
     : defaultProvider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
@@ -330,7 +330,7 @@ export function isLiveDefaultProvider(value: string): boolean {
 
 /**
  * STALE_DEFAULT_PROVIDERS — retired drafting defaults that must resolve to the
- * Entrim Qwen default. Kept as an explicit set for readability; the stricter
+ * Grok default. Kept as an explicit set for readability; the stricter
  * gate in buildVaultEnvOverrides treats EVERY pin not in the three live
  * providers as stale.
  */
@@ -411,6 +411,25 @@ export function entrimFirstProviderOrder(raw?: string | null): string {
   return JSON.stringify(order)
 }
 
+/** Move Grok to the front of a saved provider-order JSON/CSV — the live
+ *  studio persist default (matches DEFAULT_PROVIDER_ORDER[0]). */
+export function grokFirstProviderOrder(raw?: string | null): string {
+  const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
+  if (!raw || !String(raw).trim()) return fallback
+  let values: unknown
+  try { values = JSON.parse(raw) } catch { values = String(raw).split(',') }
+  if (!Array.isArray(values)) return fallback
+  const order = values.map((v) => String(v).trim()).filter(Boolean)
+  const pin = 'grok'
+  const at = order.indexOf(pin)
+  if (at < 0) order.unshift(pin)
+  else if (at > 0) {
+    order.splice(at, 1)
+    order.unshift(pin)
+  }
+  return JSON.stringify(order)
+}
+
 /** Move NVIDIA Nemotron to the front of a saved provider-order JSON/CSV. */
 export function nemotronFirstProviderOrder(raw?: string | null): string {
   const fallback = JSON.stringify(DEFAULT_PROVIDER_ORDER)
@@ -449,19 +468,19 @@ export function parasailFirstProviderOrder(raw?: string | null): string {
 
 let draftDefaultsEnsured = false
 
-/** Persist Entrim Qwen3.6 27B as the drafting default when the saved pin is
- *  missing or belongs to a previous Run BiOS GLM / NVIDIA MiniMax / Nemotron /
- *  Parasail / Baseten default. The UI Draft default is `entrim-qwen-27b`; the
- *  backend must match. */
+/** Persist Grok as the drafting default when the saved pin is missing or
+ *  belongs to a previous Run BiOS GLM / NVIDIA MiniMax / Nemotron /
+ *  Parasail / Baseten / stale default. The UI Draft default is `grok`; the
+ *  backend must match (paid SuperGrok subscription). */
 export async function ensureDraftDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
   if (draftDefaultsEnsured) return
   draftDefaultsEnsured = true
   const settings = await getAiSettings(true)
   const current = String(settings.default_provider || '').trim()
   if (STALE_DEFAULT_PROVIDERS.has(current)) {
-    await setAiSetting('default_provider', 'entrim-qwen-27b', updatedBy)
+    await setAiSetting('default_provider', 'grok', updatedBy)
   }
-  const nextOrder = entrimFirstProviderOrder(settings.provider_order)
+  const nextOrder = grokFirstProviderOrder(settings.provider_order)
   if (nextOrder !== settings.provider_order) {
     await setAiSetting('provider_order', nextOrder, updatedBy)
   }

@@ -154,7 +154,7 @@ const ENTRIM_MAX_TOKENS = 16384
  *    for local diagnostics only — never set in production).
  */
 export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL, 'grok']
-export const LIVE_DEFAULT_PROVIDER = ENTRIM_QWEN_LABEL
+export const LIVE_DEFAULT_PROVIDER = 'grok'
 
 /** True when the provider label may serve requests under the live policy. */
 export function isLiveProviderLabel(label: string): boolean {
@@ -1115,11 +1115,20 @@ export function grokModelId(opts?: { model?: string } | null): string {
 export function grokRequestLimits(
   maxTokens?: number,
   effort?: 'low' | 'medium' | 'high',
+  opts?: { disableThinking?: boolean },
 ): {
   maxOutputTokens: number
   reasoningEffort: 'low' | 'medium' | 'high'
 } {
   const requested = Math.max(256, maxTokens ?? DEFAULT_MAX_TOKENS)
+  // Latency JSON lanes (style-review) pass disableThinking — force low effort
+  // so Grok does not burn the abort budget on HIGH reasoning.
+  if (opts?.disableThinking) {
+    return {
+      maxOutputTokens: Math.min(requested, 8192),
+      reasoningEffort: 'low',
+    }
+  }
   if (effort === 'high' || effort === 'medium' || effort === 'low') {
     return {
       maxOutputTokens: Math.min(requested, effort === 'high' ? 4096 : 8192),
@@ -1156,7 +1165,7 @@ async function grokResponsesFetch(
 ): Promise<{ text: string; finishReason?: string | null; model: string }> {
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
-  const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort)
+  const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort, { disableThinking: opts.disableThinking })
   const timeoutMs = opts.strictTimeout && opts.timeoutMs != null
     ? Math.max(2_000, opts.timeoutMs)
     : Math.max(
@@ -1209,7 +1218,7 @@ async function grokResponsesFetch(
 async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<ContentAiStreamEvent> {
   const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
-  const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort)
+  const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort, { disableThinking: opts.disableThinking })
   const timeoutMs = deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true)
   yield { type: 'provider', provider: 'grok', model: `${model} · ${limits.reasoningEffort} effort` }
   const controller = new AbortController()
@@ -2730,7 +2739,7 @@ export function listConfiguredContentProviders(): Array<{
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
   if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
-    return configuredProviderOrder()[0] || ENTRIM_QWEN_LABEL
+    return configuredProviderOrder()[0] || 'grok'
   }
   // GPT-5.6 model aliases in the env pin → OpenAI provider (mirrors
   // resolveAiProviderPin so both resolution paths agree).
@@ -2855,9 +2864,9 @@ function preferProvider(): string {
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
-      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using entrim-qwen-27b (the graduated default)`,
+      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using grok (the studio default)`,
     )
-    return 'entrim-qwen-27b'
+    return 'grok'
   }
   return explicit
 }
@@ -2885,21 +2894,25 @@ function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
-/** Graduate the Entrim families to the lead of the auto cascade — the same
- *  order DEFAULT_PROVIDER_ORDER declares (Entrim Qwen, Entrim DeepSeek,
- *  then the legacy hosts), so the worker WITHOUT a vault overlay – the anon/
- *  RLS condition that broke pasted keys – resolves AUTO to Entrim first. */
-function promoteEntrimAsLead(order: string[]): string[] {
-  const lead = ['entrim-qwen-27b', 'entrim-deepseek']
+/** Graduate Grok + Entrim families to the lead of the auto cascade — the same
+ *  order DEFAULT_PROVIDER_ORDER declares (Grok first, then Entrim Qwen /
+ *  DeepSeek), so AUTO prefers the paid SuperGrok subscription. */
+function promoteLiveStudioLead(order: string[]): string[] {
+  const lead = ['grok', 'entrim-qwen-27b', 'entrim-deepseek']
   const without = order.filter((id) => !lead.includes(id))
   return [...lead, ...without]
+}
+
+/** @deprecated alias — prefer promoteLiveStudioLead (Grok-first). */
+function promoteEntrimAsLead(order: string[]): string[] {
+  return promoteLiveStudioLead(order)
 }
 
 /** Parse the admin-saved order defensively (JSON or CSV). */
 function configuredProviderOrder(): string[] {
   const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
   if (!raw) {
-    return promoteEntrimAsLead([
+    return promoteLiveStudioLead([
       'nvidia-minimax', 'runbios-glm-53-flash', 'grok', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek', 'baseten-deepseek',
       'parasail-deepseek', 'deepseek-flash', 'parasail-glm',    'baseten-glm-fast', 'baseten-glm-53-flash',
     'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
@@ -2944,7 +2957,7 @@ function configuredProviderOrder(): string[] {
   const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
-  return promoteEntrimAsLead(merged)
+  return promoteLiveStudioLead(merged)
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {

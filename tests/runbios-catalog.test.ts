@@ -22,15 +22,15 @@ describe('Run BiOS configurator catalog (retired)', () => {
     expect(idsSet).toEqual(new Set(['entrim-deepseek', 'entrim-qwen-27b', 'grok']))
     expect(AI_PROVIDERS.some((p) => p.vaultGroup === 'runbios')).toBe(false)
     expect(providerDef('runbios-kimi')).toBeUndefined()
-    expect(DEFAULT_PROVIDER_ORDER).toEqual(['entrim-qwen-27b', 'entrim-deepseek', 'grok'])
+    expect(DEFAULT_PROVIDER_ORDER).toEqual(['grok', 'entrim-qwen-27b', 'entrim-deepseek'])
   })
 
   it('retired Run BiOS studio hosts expose no selectable pin (live policy)', () => {
     // Run BiOS slots are gone from both the vault and the studio pickers.
     expect(providerDef('runbios-deepseek-pro')).toBeUndefined()
     expect(parseStudioPin('runbios-adaptive')).toMatchObject({
-      model: { id: 'qwen3.6-27b' },
-      host: { id: 'entrim' },
+      model: { id: 'grok-4.6' },
+      host: { id: 'xai' },
     })
     expect(canonicalizeRunbiosPin('runbios')).toBe('runbios-glm-53-flash')
     expect(isRunbiosPin('runbios-qwen')).toBe(true)

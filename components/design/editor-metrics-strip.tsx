@@ -16,18 +16,18 @@ import * as React from 'react'
 import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, harperKindAutofixable, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
-import { ENTRIM_DEEPSEEK_FLASH_PIN } from '@/lib/contentAiCatalog'
+import { GROK_PIN } from '@/lib/contentAiCatalog'
 
-/** Style Review is Flash-only — ignore Genesis Review / other picker pins. */
+/** Style Review is Grok-only — ignore Genesis Review / other picker pins. */
 function resolveStyleReviewPin(_reviewModel?: string): string {
-  return ENTRIM_DEEPSEEK_FLASH_PIN
+  return GROK_PIN
 }
 
 /**
- * Client abort must sit ABOVE the server route budget (40s) so a timed-out
+ * Client abort must sit ABOVE the server route budget (45s) so a timed-out
  * provider still returns JSON ({ error }) instead of a bare AbortError.
  */
-const STYLE_REVIEW_CLIENT_TIMEOUT_MS = 50_000
+const STYLE_REVIEW_CLIENT_TIMEOUT_MS = 55_000
 
 async function fetchStyleReview(init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { timeoutMs = STYLE_REVIEW_CLIENT_TIMEOUT_MS, signal, ...rest } = init

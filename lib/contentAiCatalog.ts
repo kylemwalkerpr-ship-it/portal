@@ -8,14 +8,14 @@
  *
  * Lane policy (single source of truth for UI pickers AND server defaults),
  * mirroring the live provider policy in contentAiProvider.ts:
- *   Draft  — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash + Grok.
- *   Brief  — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash + Grok.
- *   Review — Entrim Qwen3.6 27B (default) + Entrim DeepSeek V4 Flash + Grok.
+ *   Draft  — Grok 4.6 (default) + Entrim Qwen3.6 27B + Entrim DeepSeek V4 Flash.
+ *   Brief  — Grok 4.6 (default) + Entrim Qwen3.6 27B + Entrim DeepSeek V4 Flash.
+ *   Review — Grok 4.6 (default) + Entrim Qwen3.6 27B + Entrim DeepSeek V4 Flash.
  *   Command — the same three models (no Auto).
  * Retired families (Claude, GLM, MiniMax, Nemotron, GPT-5.6, Run BiOS,
  * NVIDIA, Baseten, Parasail, OpenAI, Groq, Gemini, …) are no longer
- * selectable — a saved legacy pin parses to the Entrim Qwen default and the
- * server gate routes it to `entrim-qwen-27b`.
+ * selectable — a saved legacy pin parses to the Grok default and the
+ * server gate routes it to `grok`.
  */
 
 export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
@@ -52,13 +52,16 @@ export const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 export const ENTRIM_QWEN_PIN = 'entrim-qwen-27b'
 export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.6-27B'
 
-/** Draft lead: Entrim Qwen3.6 27B — graduated to the drafting default
- *  (api.entrim.ai/v1, ENTRIM_API_KEY). Falls back through the auto cascade. */
-export const DEFAULT_DRAFT_PIN = ENTRIM_QWEN_PIN
-/** Research / Generate Full Brief lead: Entrim Qwen3.6 27B. */
-export const DEFAULT_BRIEF_PIN = ENTRIM_QWEN_PIN
-/** Reviewer / Editor lead: Entrim Qwen3.6 27B. */
-export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
+/** xAI Grok 4.6 — paid SuperGrok / XAI_API_KEY pin used across studio defaults. */
+export const GROK_PIN = 'grok'
+
+/** Draft lead: Grok 4.6 — paid SuperGrok subscription default
+ *  (api.x.ai/v1). Falls back through Entrim in the auto cascade. */
+export const DEFAULT_DRAFT_PIN = GROK_PIN
+/** Research / Generate Full Brief lead: Grok 4.6. */
+export const DEFAULT_BRIEF_PIN = GROK_PIN
+/** Reviewer / Editor lead: Grok 4.6. */
+export const DEFAULT_REVIEW_PIN = GROK_PIN
 
 /**
  * Lane host allowlists — a lane can only select or execute a pin whose host
@@ -66,21 +69,21 @@ export const DEFAULT_REVIEW_PIN = ENTRIM_QWEN_PIN
  * (Grok). No `auto` model exists in the catalog.
  */
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
-  draft: ['entrim', 'xai'],
-  brief: ['entrim', 'xai'],
-  review: ['entrim', 'xai'],
-  command: ['entrim', 'xai'],
+  draft: ['xai', 'entrim'],
+  brief: ['xai', 'entrim'],
+  review: ['xai', 'entrim'],
+  command: ['xai', 'entrim'],
 }
 
 /** Host picker order — skip a host when that model is not served there. */
-export const STUDIO_HOST_ORDER: StudioHostId[] = ['entrim', 'xai']
+export const STUDIO_HOST_ORDER: StudioHostId[] = ['xai', 'entrim']
 
 const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
-  // All lanes list the same three models (Qwen lead, then DeepSeek, then Grok).
-  draft: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
-  brief: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
-  review: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
-  command: ['qwen3.6-27b', 'deepseek-v4-flash', 'grok-4.6'],
+  // All lanes list the same three models (Grok lead, then Qwen, then DeepSeek).
+  draft: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
+  brief: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
+  review: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
+  command: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
 }
 
 export const STUDIO_MODELS: StudioModelOption[] = [
@@ -147,8 +150,8 @@ export function findModel(modelId: string): StudioModelOption | undefined {
 
 export function canonicalizePin(raw?: string | null): string {
   const pin = String(raw || '').trim().toLowerCase()
-  if (!pin) return ENTRIM_QWEN_PIN
-  return PIN_ALIASES[pin] || ENTRIM_QWEN_PIN
+  if (!pin) return GROK_PIN
+  return PIN_ALIASES[pin] || GROK_PIN
 }
 
 /**
@@ -194,13 +197,13 @@ export function parseStudioPin(raw?: string | null): { model: StudioModelOption;
     const host = model.hosts.find((h) => h.pin === pin)
     if (host) return { model, host }
   }
-  const qwen = findModel('qwen3.6-27b') || STUDIO_MODELS[0]
-  return { model: qwen, host: qwen.hosts[0] }
+  const grok = findModel('grok-4.6') || STUDIO_MODELS[0]
+  return { model: grok, host: grok.hosts[0] }
 }
 
 export function pinFor(modelId: StudioModelId, hostId: StudioHostId): string {
   const model = findModel(modelId)
-  if (!model) return ENTRIM_QWEN_PIN
+  if (!model) return GROK_PIN
   const host = model.hosts.find((h) => h.id === hostId) || model.hosts[0]
   return host.pin
 }
@@ -221,7 +224,7 @@ export function hostsForModel(modelId: StudioModelId, lane?: StudioLane): Studio
 
 export function defaultHostFor(modelId: StudioModelId): StudioHostOption {
   const hosts = hostsForModel(modelId)
-  return hosts[0] || { id: 'entrim', label: 'Entrim', pin: ENTRIM_QWEN_PIN }
+  return hosts[0] || { id: 'xai', label: 'xAI / Grok', pin: GROK_PIN }
 }
 
 /** Every stage shows the dated checkpoint id so Flash-0731 vs Pro-0813 cannot be confused. */

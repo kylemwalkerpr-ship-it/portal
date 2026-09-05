@@ -5,7 +5,7 @@
  *
  *  1. isLiveProviderLabel admits exactly those three labels (plus the
  *     CONTENT_AI_ALL_PROVIDERS=1 break-glass).
- *  2. A retired pin is REDIRECTED to the Entrim default with its model
+ *  2. A retired pin is REDIRECTED to the Grok default with its model
  *     override stripped — a decommissioned host's model id must never reach
  *     an Entrim request.
  *  3. The cascade filter runs BEFORE the candidate cap, so a stale admin
@@ -55,7 +55,7 @@ describe('live provider policy — Entrim + Grok gate', () => {
 
   it('admits exactly the three live labels', () => {
     expect(LIVE_PROVIDER_LABELS).toEqual(expect.arrayContaining(['entrim-qwen-27b', 'entrim-deepseek', 'grok']))
-    expect(LIVE_DEFAULT_PROVIDER).toBe('entrim-qwen-27b')
+    expect(LIVE_DEFAULT_PROVIDER).toBe('grok')
     expect(isLiveProviderLabel('entrim-qwen-27b')).toBe(true)
     expect(isLiveProviderLabel('entrim-deepseek')).toBe(true)
     expect(isLiveProviderLabel('grok')).toBe(true)
@@ -72,7 +72,7 @@ describe('live provider policy — Entrim + Grok gate', () => {
     expect(isLiveProviderLabel('entrim-qwen-27b')).toBe(true)
   })
 
-  it('a retired pin redirects to the Entrim default with the model override stripped', async () => {
+  it('a retired pin redirects to the Grok default with the model override stripped', async () => {
     process.env.XAI_API_KEY = 'test-xai-key' // retired host with a local key
     const bodies: Array<Record<string, unknown>> = []
     const urls: string[] = []
@@ -80,7 +80,7 @@ describe('live provider policy — Entrim + Grok gate', () => {
       urls.push(String(input))
       try { bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>) } catch { /* ignore */ }
       return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'ENTRIM-DRAFT', finish_reason: 'stop' } }] }),
+        JSON.stringify({ output_text: 'GROK-DRAFT', status: 'completed' }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }) as typeof fetch
@@ -94,7 +94,7 @@ describe('live provider policy — Entrim + Grok gate', () => {
     })
 
     expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
-    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
+    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
     expect(result.provider).toBe(LIVE_DEFAULT_PROVIDER)
     expect(bodies.every((b) => b.model !== 'gpt-5.6-terra')).toBe(true)
   })
