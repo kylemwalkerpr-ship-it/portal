@@ -56,6 +56,8 @@ export interface RegenerationFilters {
   /** Only items whose evidence is fresher than this window (days). Uses `freshness`
    *  (0-1) when present, else derives from `observedAt` via the 45-day half-life. */
   freshnessWindowDays?: number
+  /** Optional clock override for freshness scoring (tests / deterministic runs). */
+  now?: number
 }
 
 export interface PredictiveSignal {
@@ -180,7 +182,7 @@ export function filterRegenerationCandidates<T extends {
   const minAeoGeo = Number.isFinite(filters.minAeoGeo) ? Number(filters.minAeoGeo) : 0
   const freshnessWindowDays = Number.isFinite(filters.freshnessWindowDays) ? Math.max(0, Number(filters.freshnessWindowDays)) : null
   const minFreshness = freshnessWindowDays == null ? 0 : Math.pow(0.5, freshnessWindowDays / 45)
-  const now = Date.now()
+  const now = Number.isFinite(filters.now) ? Number(filters.now) : Date.now()
 
   return items.filter((item) => {
     const topic = normalizeTopic(item.topic)

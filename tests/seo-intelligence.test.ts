@@ -108,10 +108,22 @@ describe('regeneration filters', () => {
   })
 
   it('filters by freshness window using the 45-day half-life', () => {
-    const now = Date.parse('2026-08-09T00:00:00.000Z')
-    const fresh = { topic: 'Fresh policy change', play: 'content_gap' as const, opportunityScore: 75, observedAt: '2026-08-07T00:00:00.000Z' }
-    const stale = { topic: 'Old rumor', play: 'content_gap' as const, opportunityScore: 90, observedAt: '2026-03-01T00:00:00.000Z' }
-    const result = filterRegenerationCandidates([fresh, stale], { freshnessWindowDays: 30 })
+    const now = Date.now()
+    const dayMs = 86_400_000
+    // Relative to now so the 30-day window never ages out as wall-clock advances.
+    const fresh = {
+      topic: 'Fresh policy change',
+      play: 'content_gap' as const,
+      opportunityScore: 75,
+      observedAt: new Date(now - 2 * dayMs).toISOString(),
+    }
+    const stale = {
+      topic: 'Old rumor',
+      play: 'content_gap' as const,
+      opportunityScore: 90,
+      observedAt: new Date(now - 160 * dayMs).toISOString(),
+    }
+    const result = filterRegenerationCandidates([fresh, stale], { freshnessWindowDays: 30, now })
     expect(result.map((item) => item.topic)).toEqual(['Fresh policy change'])
     // freshnessScore is exported and the threshold math mirrors the half-life
     expect(freshnessScore(stale.observedAt, now, 45)).toBeLessThan(0.1)
@@ -392,23 +404,26 @@ ${solidBody}
   })
 
   it('denies regeneration when evidence is older than the freshness window', () => {
+    const now = Date.now()
+    const dayMs = 86_400_000
+    const staleObservedAt = new Date(now - 160 * dayMs).toISOString()
     const { shipped, regenerations, timeline } = replayPipeline({
       original: slopDraft,
       regenerated: cleanDraft,
-      filters: { minRankingScore: 70, freshnessWindowDays: 30 },
+      filters: { minRankingScore: 70, freshnessWindowDays: 30, now },
       candidate: {
         topic: 'opt stem extension',
         rankingScore: 88,
         confidence: 0.8,
         aeoGeoScore: 75,
-        observedAt: '2026-03-01T00:00:00.000Z', // ~5 months stale → below 30-day window
+        observedAt: staleObservedAt, // ~5 months stale → below 30-day window
       },
     })
     expect(shipped).toBe(false)
     expect(regenerations).toBe(0)
     expect(timeline.some((e) => e.label && String(e.label).includes('denied by ranking-model filters'))).toBe(true)
     // The stale evidence itself is provably past the 45-day half-life floor.
-    expect(freshnessScore('2026-03-01T00:00:00.000Z', Date.parse('2026-08-09T00:00:00.000Z'), 45)).toBeLessThan(0.1)
+    expect(freshnessScore(staleObservedAt, now, 45)).toBeLessThan(0.1)
   })
 
   it('ships on the first draft when the gate passes — no regeneration needed', () => {
