@@ -17,17 +17,18 @@ Drive YouSafe Content Studio (yousafe-portal) to **100% functional**. Zero toler
 
 ---
 
-## Current git / Deploy (as of this wake ~2:55 PM ET)
+## Current git / Deploy (as of this wake ~6:25 AM ET 2026-09-06)
 | Item | Value |
 |------|--------|
-| `origin/main` tip | `95604ae` — `fix(seo): stop JSON-LD/orphan-link leaks in consultancy blog render` |
-| Recent stack | `0374e31` shipReady stamp · `8e924d6` CF Pages docs · `cc00bd3` factory quality · `eefeec1` I-485 subtype · `2ed9583` SEO Intel lock |
-| **Live green Deploy** | `95604ae` run `33985378000` **success** |
-| Cancelled (superseded) | Deploys for `0374e31` / `8e924d6` / `cc00bd3` cancelled by newer pushes — tip green is what matters |
+| Portal `origin/main` tip | `538a8ec` — `fix(seo): make freshness-window unit tests time-stable` (includes Harper `9bbad48`) |
+| **Portal Deploy green** | `538a8ec` run `34026591241` **success** |
+| Consultancy tip | `7067bae` — `fix(blog): clean I-129 dek, related link, and canonical` |
+| **Consultancy Deploy CA proof** | run `34027240450` **success** (post token update; Pages Edit + purge) |
+| Secrets | Portal `CLOUDFLARE_API_TOKEN` updated `2026-09-06T10:04:28Z`; Consultancy `CLOUDFLARE_API_TOKEN` updated `2026-09-06T10:22:01Z` (`github-yousafe-consultancy-deploy-purge`) |
 | Dirty local (uncommitted) | scratch scripts under `scripts/i129-*` / `scan-body-corruption.mjs` — **do not commit unless asked** |
 | Cold-start historical note | Early handoff tip was `109ca8f` vault TS-red; long since superseded — see rescore sections below |
 
-**Immediate unblock (path-to-100):** CF Pages token Pages Edit + Ahrefs recrawl + optional I-129 FAQ JSON-LD — not vault TS.
+**Immediate unblock (path-to-100):** Ahrefs Site Audit results (queued, not yet green-verified) + optional I-129 FAQ JSON-LD + optional UK/USA Deploy re-dispatch (same consultancy token; CA already proven) — not vault TS.
 
 ---
 
@@ -37,8 +38,9 @@ Drive YouSafe Content Studio (yousafe-portal) to **100% functional**. Zero toler
 | Live E2E (2026-09-04) | **42/100** | Original Grok admin audit |
 | DeepSeek×4 gaps (2026-09-05) | Code **72/100** · Live **58/100** | `docs/Content_Studio_Pipeline_Gaps_2026-09-05.md` (`e8a6773`) |
 | Live E2E after CA+AU (~07:30 AM ET) | **~80/100** | Prior honest rescore in this doc |
-| **Live E2E this wake (~2:55 PM ET)** | **88/100** | I-129 chrome + Wave C I-485 + smoke + tip Deploy — see rescore section below |
-| Path to 100 | Not done | Pulse routine still enabled; CF Pages token + Ahrefs + FAQ JSON-LD open |
+| Live E2E after I-129/smoke (~2:55 PM ET 09-05) | **88/100** | I-129 chrome + Wave C I-485 + smoke + tip Deploy |
+| **Live E2E this wake (~6:25 AM ET 09-06)** | **91/100** | CF consultancy token + Deploy CA green + Harper case-only + Ahrefs queued — **not 100** |
+| Path to 100 | Not done | Pulse still on; Ahrefs results + optional FAQ JSON-LD + UK/USA re-dispatch open |
 
 ---
 
@@ -248,3 +250,78 @@ Treat Harper a–f as **still unverified on live**. Next session: restore a job 
 3. Re-emit FAQPage JSON-LD on I-129 (or accept as optional and close) → then re-rescore toward 100.
 
 *End rescore — docs only. No Cloud Agents. No random job Approves.*
+
+---
+
+## Live rescore after CF token + Harper + Ahrefs queue (2026-09-06 ~6:25 AM ET)
+
+**Portal tip:** `538a8ec` — `fix(seo): make freshness-window unit tests time-stable` (stack includes Harper `9bbad48` case-only Spelling autofix)  
+**Portal Deploy YouSafe Portal:** run `34026591241` **success** on `538a8ec`  
+**Consultancy tip:** `7067bae`  
+**Deploy CA token proof:** run `34027240450` **success** (triggered ~`2026-09-06T10:22:32Z` after consultancy `CLOUDFLARE_API_TOKEN` update `2026-09-06T10:22:01Z`) — Build + **Deploy to Cloudflare Pages** both green.  
+**Method:** Same pillar lens as 09-04 audit + 88/100 rescore (`3e6bdfe` era). Live HTTP spot-checks this wake. **Not 100%.**
+
+### Score
+
+| Lens | Score | Notes |
+|------|------:|-------|
+| Live E2E (pillar) | **91 / 100** | Was 88; +CF consultancy Pages token proven via Deploy CA, +Harper case-only autofix on tip, +Ahrefs full-project recrawls **queued** (apex/ca/legal/uk) |
+| Code (gaps lens) | **94 / 100** | Harper `9bbad48` + freshness `538a8ec`; prior shipReady/render/subtype/factory already in |
+| Path to 100 | **Not done** | Ahrefs results not yet verified; I-129 FAQ JSON-LD still absent; UK/USA Deploy not re-dispatched this wake |
+
+### Pillar breakdown (honest)
+
+| Stage | Max | Prior (88) | Now | Green / open |
+|-------|----:|-----------:|----:|--------------|
+| Discover / Ingest / Plan | 15 | 14 | 14 | Unchanged; cron retry historically flaky |
+| Brief Assembly + SEO Intel | 20 | 17 | 17 | SEO Intel lock already fixed; residual P1s |
+| Grok pin fidelity | 15 | 14 | 14 | Unchanged |
+| Draft generation quality | 15 | 14 | 14 | Wave C caseworks already live; TipTap Phase 3 still unfinished (not Wave C bar) |
+| Review / Audit & Fix / metrics | 15 | 13 | 14 | **Harper case-only Spelling** live (`9bbad48`/`538a8ec`, australia→Australia); **I-129 FAQ JSON-LD still missing** (Org/WebSite only) |
+| Approve → GitHub merge | 10 | 9 | 10 | **Consultancy `CLOUDFLARE_API_TOKEN` Pages Edit proven** — Deploy CA `34027240450` success; Portal token also refreshed `10:04:28Z`. UK/USA not re-run this wake (same secret claim) |
+| Cohesion | 10 | 7 | 8 | Ahrefs Site Audit recrawls **queued** (apex, ca, legal, uk) — not yet result-green; live proofs still 200 |
+| **Total** | **100** | **88** | **91** | |
+
+### Closed since 88/100 (`3e6bdfe` era)
+
+1. Ahrefs Site Audit full-project recrawls **queued**: apex, ca, legal, uk
+2. Portal GH `CLOUDFLARE_API_TOKEN` updated `2026-09-06T10:04:28Z` (Portal Pages Workers)
+3. Consultancy GH `CLOUDFLARE_API_TOKEN` updated `2026-09-06T10:22:01Z` (`github-yousafe-consultancy-deploy-purge` — Pages Edit + cache purge) — **this is what UK/CA/USA CI needed**
+4. Harper case-only Spelling autofix live via `538a8ec` / `9bbad48` (australia→Australia)
+5. Prior already in 88: smoke `9a378602`, I-129 chrome, Wave C, subtype guard, factory kicker
+
+### Live proofs re-verified this wake (HTTP 200)
+
+| Proof | URL | Spot-check |
+|-------|-----|------------|
+| I-129 | https://yousafeconsultancy.com/blog/i-129-nonimmigrant-worker-petition/ | 200; **dek clean**; no KEEP; meta description clean; JSON-LD = Org/WebSite graph only (**no FAQPage**) |
+| CA CRS | https://ca.yousafeconsultancy.com/canada-express-entry-crs-international-student-graduates/ | 200; canonical OK; Article+FAQPage; no KEEP |
+| AU fee blog | https://yousafeconsultancy.com/blog/australia-student-visa-fee-increase | 200; canonical blog path; no KEEP |
+| Wave C I-485 | https://legal.yousafeconsultancy.com/us/form-i485-adjustment-of-status-document-checklist/ | 200; no KEEP |
+| UK Warwick | https://uk.yousafeconsultancy.com/universities/uk-student-visa-process-for-warwick-university/ | 200; FAQPage present; no KEEP |
+
+### Key SHAs
+
+| Repo | SHA | What |
+|------|-----|------|
+| Portal tip | `538a8ec` | freshness-window unit tests time-stable (**Deploy green** `34026591241`) |
+| Portal | `9bbad48` | Harper case-only Spelling autofix |
+| Portal | `3e6bdfe` | prior path-to-100 rescore docs (88 era) |
+| Consultancy tip | `7067bae` | I-129 dek/related/canonical clean |
+
+### Still open (do **not** claim 100)
+
+1. **Ahrefs Site Audit** — queued for apex/ca/legal/uk; results not yet verified green
+2. **Optional FAQ JSON-LD** still absent on live I-129
+3. **UK / USA Deploy** not re-dispatched this wake (CA proven with updated consultancy token; Landing Page historically red for other reasons)
+4. Residual: content-studio-retry / reconcile flakiness; TipTap Phase 3 unfinished if product still wants Docs-class editor
+5. Do **not** Approve contaminated IDs (`a80c077c`, `e1c5e2ee`); smoke `9a378602` left at shipReady on purpose
+
+### Next 3 P0 actions
+
+1. Confirm Ahrefs Site Audit results for queued projects (or GSC URL inspection fallback) → close cohesion gap.
+2. Re-emit FAQPage JSON-LD on I-129 (or explicitly accept optional and close).
+3. Optionally re-dispatch Deploy UK / Deploy USA once to mirror the CA token proof; then re-rescore toward 100.
+
+*End rescore — docs only. No Cloud Agents. No random job Approves.*
+
