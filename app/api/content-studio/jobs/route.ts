@@ -10,6 +10,7 @@ import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
+import { enqueueAuthorityMultiplexerSignal } from '@/lib/seoFactory/specialistFeeds'
 import { buildJobSummary, emptyStatusTotals, statusTotalsFromRows } from '@/lib/seoFactory/jobSummary'
 import { queueClearSpec, queueMatchedCount, type QueueClearAction } from '@/lib/seoFactory/jobsQueue'
 import { jobPassesShipGate, mergeAuditJsonPreservingGate, withSlimAuditJson } from '@/lib/seoFactory/jobShipGate'
@@ -31,6 +32,27 @@ function sb() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
+}
+
+/**
+ * Authority Multiplexer hook — on any Approve/ship success that reaches main,
+ * enqueue an authority_multiplexer signal so the repurpose pipeline can offer a
+ * pack (x-posts / threads / video hooks / newsletter) from the shipped pillar.
+ * Never external sends here; strictly a durable marker. Best-effort and
+ * fail-open so a feed outage can never fail a human-approved ship.
+ */
+async function enqueueRepurposeHook(sourceUrl: string, relatedJobId: string) {
+  try {
+    await enqueueAuthorityMultiplexerSignal({
+      sourceUrl: String(sourceUrl || '').trim(),
+      relatedJobId,
+    })
+  } catch (e) {
+    console.warn(
+      '[content-studio/jobs] authority_multiplexer signal skipped',
+      e instanceof Error ? e.message : e,
+    )
+  }
 }
 
 /** Re-read audit_json at write time so a concurrent Audit & Fix stamp is not
@@ -709,6 +731,8 @@ export async function POST(request: NextRequest) {
               })
               .eq('id', id)
             if ((ship.status === 'deployed' || ship.status === 'merged') && !body.dryRun) {
+              // Authority Multiplexer: bulk-approve shipped pillar → enforce repurpose pack.
+              await enqueueRepurposeHook(ship.canonicalUrl || job.canonical_url || plan.canonicalUrl || '', id)
               await monitorContentJob(id, { openIssueOnFailure: true, waitMs: 1500 })
             }
             results.push({ id, ok: true, detail: ship })
@@ -1459,6 +1483,9 @@ export async function PATCH(request: NextRequest) {
           .select(JOB_OPEN_COLUMNS)
           .single()
 
+        // Authority Multiplexer: approve-merge → enqueue repurpose pack.
+        await enqueueRepurposeHook(job.canonical_url || '', id)
+
         // Fire-and-watch CI after merge
         const monitor = await monitorContentJob(id, {
           openIssueOnFailure: true,
@@ -1757,6 +1784,8 @@ export async function PATCH(request: NextRequest) {
                 .eq('id', id)
                 .select(JOB_OPEN_COLUMNS)
                 .single()
+              // Authority Multiplexer: shipped pillar → enqueue repurpose pack.
+              await enqueueRepurposeHook(job.canonical_url || plan.canonicalUrl || '', id)
               const monitor = await monitorContentJob(id, {
                 openIssueOnFailure: true,
                 waitMs: 2500,
@@ -1836,6 +1865,8 @@ export async function PATCH(request: NextRequest) {
           (ship.status === 'deployed' || ship.status === 'merged') &&
           !body.dryRun
         ) {
+          // Authority Multiplexer: shipped pillar on main → enqueue repurpose pack.
+          await enqueueRepurposeHook(ship.canonicalUrl || job.canonical_url || plan.canonicalUrl || '', id)
           monitor = await monitorContentJob(id, {
             openIssueOnFailure: true,
             waitMs: 2000,

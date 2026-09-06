@@ -30,6 +30,7 @@ import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { scoreContentQuality, contentQualityComposite, buildContentLane1, type ContentQualityResult } from '@/lib/seoFactory/contentQuality'
 import { scoreEeatTrust, eeatTrustComposite, buildEeatLane1, type EeatTrustResult } from '@/lib/seoFactory/eeatTrust'
 import { scoreSemanticNlp, semanticNlpComposite, buildSemanticLane1, type SemanticNlpResult } from '@/lib/seoFactory/semanticNlp'
+import { buildSpecialistPromptBlock, loadOpenSignalsForTopic, type SpecialistSignal } from '@/lib/seoFactory/specialistFeeds'
 
 /** Learned per-intent subsystem weights feed straight from applyRewardNudges. */
 type LearnReportWeights = NonNullable<LearnedWeightsInput['byIntent']>
@@ -387,7 +388,7 @@ export async function assembleMasterEngineFeed(
       gsc,
       competingUrls: req.competingUrls,
     }
-    const [withHealth, llmV, knowledge, cluster, ahrefs, learned, llmQuality] = await Promise.all([
+    const [withHealth, llmV, knowledge, cluster, ahrefs, learned, llmQuality, specialistSignals] = await Promise.all([
       attachSiteHealthFacts(input, req.canonicalUrl).catch(() => input),
       loadLlmVisibilityEvidence(primaryKeyword).catch(() => null),
       loadMatchingKnowledge(primaryKeyword, req.region),
@@ -415,6 +416,12 @@ export async function assembleMasterEngineFeed(
         }
       })(),
       maybeRunLlmQuality(req),
+      // Specialist intel feeds: role-sourced signals matching this
+      // topic/region fold into the prompt block, so overnight policy moves,
+      // competitor deltas and support-triage gaps reach the brief. Fail-open.
+      loadOpenSignalsForTopic({ topic: primaryKeyword, region: req.region }).catch(
+        (): SpecialistSignal[] => [],
+      ),
     ])
     input = withHealth
     if (llmV) input.llmVisibility = llmV
@@ -438,10 +445,14 @@ export async function assembleMasterEngineFeed(
     const llmBlock = llmQuality
       ? renderLlmQualityBlock(llmQuality)
       : ''
+    const specialistBlock = specialistSignals.length
+      ? buildSpecialistPromptBlock(specialistSignals)
+      : ''
     const promptBlock = [
       renderMasterEnginePromptBlock(report, { knowledge, cluster }),
       fix.promptBlock,
       llmBlock,
+      specialistBlock,
     ].filter(Boolean).join('\n\n')
 
     return {
@@ -472,6 +483,9 @@ export async function assembleMasterEngineFeed(
         recommendationCount: (report.recommendations || []).filter((r) => r.open !== false).length,
         riskCount: report.risks?.length ?? 0,
         usedLearned: Boolean(report.adaptation?.usedLearned),
+        specialistSignals: specialistSignals.length
+          ? specialistSignals.map((s) => ({ role: s.role, priority: s.priority, region: s.region }))
+          : [],
         llmQuality: llmQuality
           ? {
               enabled: true,
