@@ -266,7 +266,6 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
         if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
         const finger = `${kind}:${problem}:${span.start}`
         if (seen.has(finger)) continue
-        if (kind === 'Spelling' && problem.toLowerCase() === replacement.toLowerCase()) continue
         spanFixes.push({
           start: span.start,
           end: span.end,

@@ -157,6 +157,7 @@ Official source.`
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'rumour', fix: 'rumor' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'uncertified', fix: 'unfortified' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'english', fix: 'English' })).toBe(false)
+    expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'australia', fix: 'Australia' })).toBe(false)
     expect(isHarperNoiseFinding({ kind: 'Typo', problem: 'datePublished', fix: 'date Published', message: '`datePublished` should probably be written as `date Published`.' })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Spelling', problem: 'url', fix: 'urn', message: "Did you mean to spell 'url' this way?" })).toBe(true)
     expect(isHarperNoiseFinding({ kind: 'Typo', problem: 'acceptedAnswer', fix: 'accepted Answer' })).toBe(true)
@@ -247,5 +248,19 @@ More client prose after schema.
     const proseLabels = lines.filter((l) => !l.skip).map((l) => l.out.trim().split(/\s+/).length)
     const srcLabels = lines.filter((l) => !l.skip)
     expect(proseLabels.length).toBe(srcLabels.length)
+  })
+
+  it('capitalizes every lowercase australia span via applyNonOverlappingSpanFixes', () => {
+    const body = 'Moving from australia to australia was fine, and australia is big.'
+    const spans = []
+    let i = -1
+    while ((i = body.indexOf('australia', i + 1)) !== -1) {
+      spans.push({ start: i, end: i + 'australia'.length, replacement: 'Australia' })
+    }
+    const out = applyNonOverlappingSpanFixes(body, spans)
+    expect(spans).toHaveLength(3)
+    expect(out.applied).toBe(3)
+    expect(out.text).toBe('Moving from Australia to Australia was fine, and Australia is big.')
+    expect(out.text).not.toContain('australia')
   })
 })
