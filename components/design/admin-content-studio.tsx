@@ -71,6 +71,7 @@ import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
 import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
+import AdminSpecialistIntel from './admin-specialist-intel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { resolveShipRefusalBanner, shipActionsEnabled, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
@@ -8644,6 +8645,9 @@ const controller = new AbortController()
               </div>
               <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
             </section>
+
+            {/* ── Row 6: Specialist Intel (full width) — role feeds feed Discover/briefs ── */}
+            <AdminSpecialistIntel />
           </div>
         </>
       )}
