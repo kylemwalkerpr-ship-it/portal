@@ -266,3 +266,24 @@ API: `POST /api/content-studio/specialist-signals` (admin). Panel: Content Studi
 - [ ] Specialist signals consumed or dismissed with reason
 - [ ] Repurpose packs labeled for approval only
 
+---
+
+## 8) Wired into Studio
+
+This playbook is a first-class Content Studio capability (not docs-only). The
+structure lives in TS (`lib/seoFactory/portableSeoPlaybook.ts`); this markdown
+stays the human SSOT — no fs reads at runtime (Worker-light).
+
+- **API** — `GET /api/content-studio/portable-playbook?week=N` (admin): returns
+  `{ ok, manifest, week, highlightedWeek }` via `getPlaybookManifest()`.
+- **Configure panel** — Content Studio → Configure → **Portable SEO Playbook**
+  (Row 7, next to Specialist Intel): week picker 1–6 with focus / done-when /
+  preferred Specialist roles, expandable P0–P12 prompt pack with Copy, and a
+  docs link back to this file.
+- **Master Engine feed** — `lib/seoFactory/masterEngineFeed.ts` appends
+  `buildPortablePlaybookPromptBlock({ region, intent })` to every brief's
+  `promptBlock` (after the specialist block) and surfaces
+  `portablePlaybook: { version }` in `lineage`. Fail-open; no ship path added.
+
+Version: `2026.09.7` (`PLAYBOOK_VERSION`).
+

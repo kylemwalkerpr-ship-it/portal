@@ -31,6 +31,7 @@ import { scoreContentQuality, contentQualityComposite, buildContentLane1, type C
 import { scoreEeatTrust, eeatTrustComposite, buildEeatLane1, type EeatTrustResult } from '@/lib/seoFactory/eeatTrust'
 import { scoreSemanticNlp, semanticNlpComposite, buildSemanticLane1, type SemanticNlpResult } from '@/lib/seoFactory/semanticNlp'
 import { buildSpecialistPromptBlock, loadOpenSignalsForTopic, type SpecialistSignal } from '@/lib/seoFactory/specialistFeeds'
+import { buildPortablePlaybookPromptBlock, PLAYBOOK_VERSION } from '@/lib/seoFactory/portableSeoPlaybook'
 
 /** Learned per-intent subsystem weights feed straight from applyRewardNudges. */
 type LearnReportWeights = NonNullable<LearnedWeightsInput['byIntent']>
@@ -448,11 +449,19 @@ export async function assembleMasterEngineFeed(
     const specialistBlock = specialistSignals.length
       ? buildSpecialistPromptBlock(specialistSignals)
       : ''
+    // Portable SEO Playbook directive — fail-open, pure, Worker-light. Kept
+    // compact and last so the sprint cadence (update-on-owner, YMYL honesty,
+    // no Map Pack) brackets the engine + specialist block without dominating.
+    const portableBlock = buildPortablePlaybookPromptBlock({
+      region: req.region,
+      intent: primaryKeyword,
+    })
     const promptBlock = [
       renderMasterEnginePromptBlock(report, { knowledge, cluster }),
       fix.promptBlock,
       llmBlock,
       specialistBlock,
+      portableBlock,
     ].filter(Boolean).join('\n\n')
 
     return {
@@ -494,6 +503,7 @@ export async function assembleMasterEngineFeed(
               semanticNlp: llmQuality.semanticNlp ? String(llmQuality.semanticNlp.model_used) : null,
             }
           : null,
+        portablePlaybook: { version: PLAYBOOK_VERSION },
         generatedAt: report.generatedAt,
       },
     }

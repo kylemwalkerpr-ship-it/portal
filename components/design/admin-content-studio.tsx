@@ -72,6 +72,7 @@ import AdminSiteHealthPanel from './admin-site-health-panel'
 import OrphanWatch from './studio-orphan-watch'
 import AdminRhythmAlertsPanel from './admin-rhythm-alerts-panel'
 import AdminSpecialistIntel from './admin-specialist-intel'
+import AdminPortablePlaybook from './admin-portable-playbook'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 import { resolveShipRefusalBanner, shipActionsEnabled, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
@@ -8648,6 +8649,9 @@ const controller = new AbortController()
 
             {/* ── Row 6: Specialist Intel (full width) — role feeds feed Discover/briefs ── */}
             <AdminSpecialistIntel />
+
+            {/* ── Row 7: Portable SEO Playbook (full width) — 6-week sprint + P0–P12 prompt pack ── */}
+            <AdminPortablePlaybook />
           </div>
         </>
       )}
