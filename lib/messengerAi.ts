@@ -21,6 +21,7 @@ import {
   toCents,
 } from '@/lib/fiverr'
 import { buildMessengerSiteKnowledge } from '@/lib/messengerSiteKnowledge'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 export type AiMode = 'auto' | 'paused' | 'off'
 
@@ -99,6 +100,35 @@ export async function setConversationAiMode(
   return mode
 }
 
+
+/** Persist AI skip/error diagnostics on conversation.metadata (no secrets). */
+async function recordAiDiagnostic(
+  db: any,
+  conversationId: string,
+  patch: Record<string, unknown>,
+) {
+  try {
+    const current = await getConversationAiState(db, conversationId)
+    if (!current) return
+    const metadata = {
+      ...(current.metadata || {}),
+      ...patch,
+      ai_mode: normalizeAiMode(
+        patch.ai_mode ?? (current.metadata as any)?.ai_mode ?? current.ai_mode,
+      ),
+    }
+    await db
+      .from('conversations')
+      .update({ metadata, updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+  } catch (err) {
+    console.warn(
+      '[messengerAi] recordAiDiagnostic failed',
+      err instanceof Error ? err.message : err,
+    )
+  }
+}
+
 export type MessengerGrokAuth = {
   apiKey: string
   baseURL: string
@@ -172,33 +202,47 @@ async function resolveGrokAuth(): Promise<MessengerGrokAuth> {
   return resolveMessengerGrokAuth()
 }
 
-const SYSTEM_PROMPT = `You are YouSafe Messenger AI — a disclosed AI sales + fulfillment assistant helping a licensed provider (attorney or consultant) chat with a prospective client on the YouSafe marketplace.
+const SYSTEM_PROMPT = `You are **YouSafe Assistant** — the marketplace concierge for YouSafe (Yousafe Consultancy).
+
+IDENTITY (non-negotiable):
+- You are YouSafe's disclosed AI site assistant. You help clients and students connect with a licensed provider (attorney or consultant) on this thread.
+- You are NOT the provider, NOT a licensed attorney/consultant, and you never silently impersonate them.
+- Speak as YouSafe Assistant supporting "{provider}" (the live specialist named in context) — warm marketplace host + helpful closer, not a dry bot footer.
+- First reply (and whenever unclear) must include a natural on-brand disclosure, e.g.:
+  "Hey — I'm YouSafe Assistant, the AI concierge on YouSafe helping you connect with {provider}. I'm not a licensed attorney myself — I'll help scope your needs and loop in the human specialist when it matters."
+  Adapt tone to the client's message; keep it human and confident, not a legal disclaimer dump.
+
+VOICE / BRAND:
+- Professional, warm, immigration & education marketplace confident.
+- Clear, concise, encouraging — like a sharp marketplace host who knows escrow, gigs, and offers.
+- Prefer short paragraphs or tight bullets (2–5 beats). No corporate fluff, no scare tactics.
+- Celebrate that YouSafe keeps messaging, documents, offers, and escrow on one trusted platform.
 
 HARD RULES (legal / YMYL):
-1. Always disclose you are an AI assistant helping the provider / YouSafe — never silently impersonate a licensed attorney or claim you are the provider.
+1. Always disclose YouSafe Assistant (AI) — never claim you are the licensed provider.
 2. No outcome guarantees (visa approvals, case wins, refunds, timelines as promises).
-3. Do not invent jurisdiction-specific legal advice. Stick to general process questions needed to scope work, then escalate.
-4. If the matter is high-risk, uncertain, involves court deadlines, criminal issues, asylum, removal, or the user asks for a licensed opinion — say a human provider should take over. Set escalate=true.
+3. Do not invent jurisdiction-specific legal advice, bar numbers, credentials, or statutes. Scope discovery only; escalate for licensed opinions.
+4. High-risk / uncertain / court deadlines / criminal / asylum / removal / "are you a lawyer?" → say the human provider should take over. Set escalate=true.
 5. Never ask the client to leave the platform, share personal contact info, or pay off-platform.
-6. Keep replies concise (2–5 short paragraphs / bullets). Warm, professional, natural.
+6. Prefer SITE KNOWLEDGE + this provider's live profile/gigs for product answers. Do not invent fee math, policies, or gig ids.
 
 DISCOVERY:
 - Ask order-critical questions (country, case type, deadlines, docs already held, budget/timeline expectations).
-- Use any document summaries provided; ask clarifying questions if incomplete.
+- Use document summaries when present; ask clarifying questions if incomplete.
+- Ground recommendations in THIS provider's live gigs/profile when relevant, while staying in YouSafe Assistant voice.
 
 OFFERS:
-- Only propose an offer when you have enough discovery AND a sensible title, price (USD dollars), and delivery_days.
+- Only propose an offer when discovery is enough AND you have a sensible title, price (USD dollars), and delivery_days.
 - Offers must be realistic; never invent a gig_id — only use gig ids listed in site/provider context.
-- If not ready, set offer=null and keep gathering requirements.
+- If not ready, set offer=null and keep gathering requirements warmly.
 
 SITE KNOWLEDGE:
-- A SITE KNOWLEDGE appendix (platform facts, FAQ, escrow/offers, policies) plus live provider/gig context is appended to this system prompt.
-- Prefer those sources for product / marketplace / process answers. Do not invent legal outcomes or credentials.
-- When unsure, disclose limits and set escalate=true.
+- A SITE KNOWLEDGE appendix (platform identity, FAQ, escrow/offers, policies/YMYL) plus live provider/gig context is appended below.
+- Prefer those sources. When unsure, disclose limits and set escalate=true.
 
 RESPONSE FORMAT — return ONLY valid JSON (no markdown fences):
 {
-  "reply": "message text shown to the client (include AI disclosure on first reply or when unclear)",
+  "reply": "message text shown to the client (on-brand YouSafe Assistant voice; include AI disclosure on first reply or when unclear)",
   "escalate": false,
   "offer": null
 }
@@ -570,6 +614,12 @@ export async function maybeAutoReply(opts: {
 
     const { provider, client } = await resolveProviderAndClient(db, conv)
     if (!provider || !client) {
+      await recordAiDiagnostic(db, opts.conversationId, {
+        ai_last_skip: 'not_provider_client_thread',
+        ai_last_skip_at: new Date().toISOString(),
+        ai_last_error: 'Thread is not provider↔client/student — AI closer skipped',
+        ai_last_error_at: new Date().toISOString(),
+      })
       return { replied: false, skipped: 'not_provider_client_thread', aiMode }
     }
 
@@ -583,6 +633,15 @@ export async function maybeAutoReply(opts: {
     const msgs = messages || []
     const lastMsg = msgs[msgs.length - 1]
     if (!lastMsg) return { replied: false, skipped: 'empty_thread', aiMode }
+
+    // Persist default ai_mode=auto so Take over / Resume UI has an explicit value.
+    if (aiMode === 'auto' && (conv.metadata as any)?.ai_mode == null) {
+      await recordAiDiagnostic(db, opts.conversationId, {
+        ai_mode: 'auto',
+        ai_mode_defaulted_at: new Date().toISOString(),
+      })
+      conv.metadata = { ...(conv.metadata || {}), ai_mode: 'auto' }
+    }
 
     // Only reply when the latest message is from the client (unless forced).
     if (!opts.force && lastMsg.sender_id !== client.id) {
@@ -645,9 +704,11 @@ export async function maybeAutoReply(opts: {
         err instanceof Error ? err.message : err,
       )
     }
+    const providerLabel = provider.full_name || provider.email || 'this YouSafe specialist'
+    const systemBase = SYSTEM_PROMPT.replace(/\{provider\}/g, providerLabel)
     const systemWithSite = siteAppendix
-      ? `${SYSTEM_PROMPT}\n\n${siteAppendix}`
-      : SYSTEM_PROMPT
+      ? `${systemBase}\n\n${siteAppendix}`
+      : systemBase
     const userPrompt = [
       `Provider: ${provider.full_name || provider.email} (role=${provider.role})`,
       `Client: ${client.full_name || client.email}`,
@@ -666,15 +727,26 @@ export async function maybeAutoReply(opts: {
       const raw = await callGrokChat({ system: systemWithSite, user: userPrompt })
       decision = parseDecision(raw)
     } catch (err) {
-      console.error('[messengerAi] grok call failed', err instanceof Error ? err.message : err)
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[messengerAi] grok call failed', msg)
+      await recordAiDiagnostic(db, opts.conversationId, {
+        ai_last_skip: 'grok_error',
+        ai_last_skip_at: new Date().toISOString(),
+        ai_last_error: msg.slice(0, 500),
+        ai_last_error_at: new Date().toISOString(),
+        ai_last_trigger_message_id: opts.triggerMessageId || lastMsg.id,
+      })
       return { replied: false, skipped: 'grok_error', aiMode }
     }
 
     let replyText = String(decision.reply || '').trim().slice(0, 8000)
     if (!replyText) return { replied: false, skipped: 'empty_reply', aiMode }
-    if (!disclosed && !/ai assistant|i'?m an ai|artificial intelligence|automated assistant/i.test(replyText)) {
+    if (
+      !disclosed &&
+      !/yousafe assistant|i'?m an ai|artificial intelligence|ai concierge|automated assistant/i.test(replyText)
+    ) {
       replyText =
-        `Hi — I'm an AI assistant helping ${provider.full_name || 'this YouSafe provider'} on YouSafe (not a licensed attorney myself).\n\n` +
+        `Hey — I'm **YouSafe Assistant**, the AI concierge on YouSafe helping you connect with ${providerLabel}. I'm not a licensed attorney myself.\n\n` +
         replyText
     }
 
@@ -695,7 +767,14 @@ export async function maybeAutoReply(opts: {
       .select('id')
       .maybeSingle()
     if (insertErr || !inserted) {
-      console.error('[messengerAi] insert reply failed', insertErr?.message)
+      const msg = insertErr?.message || 'insert returned no row'
+      console.error('[messengerAi] insert reply failed', msg)
+      await recordAiDiagnostic(db, opts.conversationId, {
+        ai_last_skip: 'insert_failed',
+        ai_last_skip_at: new Date().toISOString(),
+        ai_last_error: String(msg).slice(0, 500),
+        ai_last_error_at: new Date().toISOString(),
+      })
       return { replied: false, skipped: 'insert_failed', aiMode }
     }
 
@@ -722,6 +801,8 @@ export async function maybeAutoReply(opts: {
       ai_last_reply_at: new Date().toISOString(),
       ai_last_trigger_message_id: opts.triggerMessageId || lastMsg.id,
       ai_last_message_id: inserted.id,
+      ai_last_error: null,
+      ai_last_skip: null,
       ...(decision.escalate ? { ai_escalated_at: new Date().toISOString() } : {}),
     }
     await db
@@ -744,11 +825,57 @@ export async function maybeAutoReply(opts: {
   return run
 }
 
-/** Fire-and-forget wrapper for route handlers. */
+/**
+ * Schedule AI auto-reply without blocking the HTTP response.
+ *
+ * Critical on Cloudflare Workers / OpenNext: bare `void promise` is cancelled
+ * as soon as the response is sent. Use getCloudflareContext().ctx.waitUntil()
+ * (same pattern as /api/indexnow). next/server after() does NOT keep work alive
+ * under this OpenNext setup.
+ */
 export function scheduleAutoReply(conversationId: string, triggerMessageId?: string | null) {
-  void maybeAutoReply({ conversationId, triggerMessageId }).catch((err) => {
-    console.error('[messengerAi] scheduleAutoReply', err instanceof Error ? err.message : err)
-  })
+  const work = maybeAutoReply({ conversationId, triggerMessageId })
+    .then(async (result) => {
+      if (result?.replied) return result
+      const skip = result?.skipped
+      if (skip === 'empty_reply' || skip === 'empty_thread' || skip === 'not_found') {
+        try {
+          const db = createSupabaseAdminClient()
+          await recordAiDiagnostic(db, conversationId, {
+            ai_last_skip: skip,
+            ai_last_skip_at: new Date().toISOString(),
+            ai_last_error: `AI closer skipped: ${skip}`,
+            ai_last_error_at: new Date().toISOString(),
+          })
+        } catch {
+          /* ignore */
+        }
+      }
+      return result
+    })
+    .catch(async (err) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[messengerAi] scheduleAutoReply', msg)
+      try {
+        const db = createSupabaseAdminClient()
+        await recordAiDiagnostic(db, conversationId, {
+          ai_last_skip: 'schedule_exception',
+          ai_last_skip_at: new Date().toISOString(),
+          ai_last_error: msg.slice(0, 500),
+          ai_last_error_at: new Date().toISOString(),
+          ai_last_trigger_message_id: triggerMessageId || null,
+        })
+      } catch {
+        /* ignore */
+      }
+    })
+
+  try {
+    getCloudflareContext().ctx.waitUntil(work)
+  } catch {
+    // Local / non-Workers runtime — Node keeps the process alive for the promise.
+    void work
+  }
 }
 
 export function isClientRole(role: string | null | undefined): boolean {

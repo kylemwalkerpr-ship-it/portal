@@ -135,7 +135,7 @@ export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): 
   if (!chunks.length) return []
   if (!tokens.length) {
     // Prefer platform + escrow + faq when query is empty / tiny.
-    const preferred = ['platform', 'offers-orders', 'faq', 'policies']
+    const preferred = ['brand-identity', 'platform', 'offers-orders', 'faq', 'policies']
     return [...chunks]
       .sort((a, b) => {
         const ai = preferred.findIndex((p) => a.id.startsWith(p) || a.source.includes(p))
@@ -153,7 +153,7 @@ export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): 
       if (c.title.toLowerCase().includes(t)) score += 2
     }
     // Light boosts for always-useful safety docs.
-    if (/escrow|offer|payment|ymyl|policy|platform/i.test(c.id + c.title)) score += 0.5
+    if (/brand|identity|escrow|offer|payment|ymyl|policy|platform/i.test(c.id + c.title)) score += 0.5
     return { ...c, score }
   })
   scored.sort((a, b) => (b.score || 0) - (a.score || 0))
@@ -304,12 +304,26 @@ export async function buildMessengerSiteKnowledge(opts: {
     providerContext = await loadProviderGigContext(opts.db, opts.provider)
   }
 
+  // Always pin brand-identity so the model keeps YouSafe Assistant persona even on tiny queries.
+  const brand = all.filter((c) => /brand-identity/i.test(c.id) || /brand-identity/i.test(c.source))
+  const merged: KnowledgeChunk[] = []
+  const seen = new Set<string>()
+  for (const c of [...brand, ...(ranked.length ? ranked : all.slice(0, 5))]) {
+    if (seen.has(c.id)) continue
+    seen.add(c.id)
+    merged.push(c)
+  }
+
   const parts: string[] = [
+    '## YOUSAFE SITE IDENTITY',
+    'You are YouSafe Assistant — the disclosed AI marketplace concierge for YouSafe.',
+    'In this DM you help the client connect with the live provider below. Stay in YouSafe Assistant voice; never impersonate the provider.',
+    '',
     '## SITE KNOWLEDGE (authoritative for product / marketplace questions)',
     'Answer from this knowledge when relevant. Do not invent legal outcomes, bar numbers, fee math, or policy exceptions.',
     'If the answer is not in site knowledge or the provider/gig context below, say you are unsure and escalate rather than guessing.',
     '',
-    formatChunks(ranked.length ? ranked : all.slice(0, 4)),
+    formatChunks(merged.slice(0, 8)),
   ]
 
   if (providerContext) {
@@ -326,7 +340,7 @@ export async function buildMessengerSiteKnowledge(opts: {
   const systemAppendix = parts.join('\n').slice(0, 14_000)
   return {
     systemAppendix,
-    chunks: ranked.length ? ranked : all.slice(0, 4),
+    chunks: merged.slice(0, 8),
     providerContext,
   }
 }
