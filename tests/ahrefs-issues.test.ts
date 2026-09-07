@@ -9,6 +9,7 @@ import {
   sanitizeEstateUrl,
   urlHasDoubleSlash,
   isEstateCanonicalUrl,
+  normalizeCanonicalKey,
 } from '@/lib/seoFactory/ahrefsIssues'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { fallbackLegalAhrefsSnapshot, normalizeAhrefsPayload } from '@/lib/seoEngine/ahrefsAudit'
@@ -182,6 +183,42 @@ ogImage: /og-image.png
 Body.
 `)
     expect(findings.some((f) => f.code === 'ahrefs_canonical_off_estate' && f.severity === 'blocker')).toBe(true)
+  })
+
+  it('overwrites apex homepage canonical when owner target is blog path', () => {
+    const target = 'https://yousafeconsultancy.com/blog/business-plan-writing-service/'
+    const before = evaluateAhrefsDraft(`---
+title: Business Plan Writing Service: 2026 Docs for Visa Founders
+description: Officers and lenders read facts — a business plan writing service for visa founders with document checklist and next steps.
+canonicalUrl: https://yousafeconsultancy.com/
+ogImage: /og-image.png
+robots: index,follow
+---
+
+# Business Plan Writing Service: 2026 Docs for Visa Founders
+
+Body about business plan writing for visa founders.
+`, { targetUrl: target })
+    expect(before.some((f) => f.code === 'ahrefs_canonical_mismatch')).toBe(true)
+    expect(normalizeCanonicalKey('https://yousafeconsultancy.com/')).not.toBe(normalizeCanonicalKey(target))
+
+    const { content, applied } = applyAhrefsDraftRepairs(`---
+title: Business Plan Writing Service: 2026 Docs for Visa Founders
+description: Officers and lenders read facts — a business plan writing service for visa founders with document checklist and next steps.
+canonicalUrl: https://yousafeconsultancy.com/
+ogImage: /og-image.png
+robots: index,follow
+---
+
+# Business Plan Writing Service: 2026 Docs for Visa Founders
+
+Body about business plan writing for visa founders.
+`, { primaryKeyword: 'business plan writing service', targetUrl: target })
+    expect(applied).toEqual(expect.arrayContaining(['ahrefs_canonical_mismatch']))
+    expect(content).toContain(`canonicalUrl: ${target}`)
+    expect(content).not.toMatch(/canonicalUrl:\s*https:\/\/yousafeconsultancy\.com\/\s*$/m)
+    const after = evaluateAhrefsDraft(content, { targetUrl: target })
+    expect(after.some((f) => f.code === 'ahrefs_canonical_mismatch')).toBe(false)
   })
 })
 

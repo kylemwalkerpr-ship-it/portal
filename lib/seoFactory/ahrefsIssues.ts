@@ -150,6 +150,16 @@ export function isEstateCanonicalUrl(url: string): boolean {
   }
 }
 
+/** Host + path key for estate canonical compare (trailing slash ignored). */
+export function normalizeCanonicalKey(url: string): string {
+  try {
+    const p = new URL(url)
+    return (p.host + (p.pathname.replace(/\/+$/, '') || '/')).toLowerCase()
+  } catch {
+    return String(url || '').replace(/\/+$/, '').toLowerCase()
+  }
+}
+
 /** Collapse `https://host//path` and `https://host/foo//bar` to a single slash. */
 export function sanitizeEstateUrl(url: string): string {
   const raw = String(url || '').trim()
@@ -350,15 +360,7 @@ export function evaluateAhrefsDraft(
       fix: 'Set canonicalUrl to the YouSafe owner-plan URL (ca/uk/usa/au/legal/apex). Repair overwrites non-estate values from targetUrl.',
     })
   } else if (opts.targetUrl && isEstateCanonicalUrl(opts.targetUrl)) {
-    const norm = (u: string) => {
-      try {
-        const p = new URL(u)
-        return (p.host + (p.pathname.replace(/\/+$/, '') || '/')).toLowerCase()
-      } catch {
-        return u.replace(/\/+$/, '').toLowerCase()
-      }
-    }
-    if (norm(canonical) !== norm(opts.targetUrl)) {
+    if (normalizeCanonicalKey(canonical) !== normalizeCanonicalKey(opts.targetUrl)) {
       findings.push({
         code: 'ahrefs_canonical_mismatch', issueId: 'canonical_missing', severity: 'warning',
         message: `canonicalUrl (${canonical}) does not match owner target (${opts.targetUrl}).`,
@@ -511,12 +513,21 @@ export function applyAhrefsDraftRepairs(
     : ''
   if (target && urlHasDoubleSlash(opts.targetUrl || '')) applied.push('ahrefs_double_slash')
   const existingCanonical = String(fm.canonicalUrl || fm.canonical || '').trim()
-  // Models often paste a citation (e.g. alberta.ca/iqas) into canonicalUrl.
-  // Prefer the owner-plan target whenever the existing value is missing or
-  // not an estate URL — never leave a government page as our canonical.
-  if (target && (!existingCanonical || !isEstateCanonicalUrl(existingCanonical))) {
-    if (existingCanonical && existingCanonical !== target) {
+  // Models often paste a citation (e.g. alberta.ca/iqas) into canonicalUrl,
+  // or leave the apex homepage when the owner plan is a blog/region path.
+  // Prefer owner-plan target when missing, off-estate, or estate path mismatch
+  // (same class as off-estate overwrite 41ca748).
+  const existingMismatched = Boolean(
+    target
+    && existingCanonical
+    && isEstateCanonicalUrl(existingCanonical)
+    && normalizeCanonicalKey(existingCanonical) !== normalizeCanonicalKey(target),
+  )
+  if (target && (!existingCanonical || !isEstateCanonicalUrl(existingCanonical) || existingMismatched)) {
+    if (existingCanonical && !isEstateCanonicalUrl(existingCanonical)) {
       applied.push('ahrefs_canonical_estate')
+    } else if (existingMismatched) {
+      applied.push('ahrefs_canonical_mismatch')
     } else if (!existingCanonical) {
       applied.push('ahrefs_canonical')
     }
