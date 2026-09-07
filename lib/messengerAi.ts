@@ -21,7 +21,6 @@ import {
   toCents,
 } from '@/lib/fiverr'
 import { buildMessengerSiteKnowledge } from '@/lib/messengerSiteKnowledge'
-import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 export type AiMode = 'auto' | 'paused' | 'off'
 
@@ -871,6 +870,10 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
     })
 
   try {
+    // Lazy require — static import of @opennextjs/cloudflare breaks Jest (ESM).
+    // Same pattern as lib/serverTranslate.ts.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getCloudflareContext } = require('@opennextjs/cloudflare') as typeof import('@opennextjs/cloudflare')
     getCloudflareContext().ctx.waitUntil(work)
   } catch {
     // Local / non-Workers runtime — Node keeps the process alive for the promise.
