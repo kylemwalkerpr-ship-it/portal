@@ -734,15 +734,14 @@ const CSS = `
 .cw-market .gig-link { display: flex; }
 .cw-market .gig { flex: 1; min-width: 0; color: ${T.ink}; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform .22s, box-shadow .22s; }
 .cw-market .gig:hover { transform: translateY(-5px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
-.cw-market .gig .plate { position: relative; aspect-ratio: 4/3; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; overflow: hidden; }
+.cw-market .gig .plate { position: relative; aspect-ratio: 1280/769; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; overflow: hidden; }
 .cw-market .gig .plate::before { content: ""; position: absolute; inset: 0; background: ${T.paper2}; }
 .cw-market .gig .plate::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: ${T.indigo}; }
 .cw-market .gig[data-c="uk"] .plate::after { background: #012169; }
 .cw-market .gig[data-c="ca"] .plate::after { background: #C8102E; }
 .cw-market .gig .plate-tag { position: absolute; left: 12px; bottom: 12px; padding: 5px 10px; background: ${T.indigo}; color: #FFFFFF; font-family: ${F.ui}; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; border-radius: 999px; }
 .cw-market .gig .plate-glyph { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-family: ${F.display}; font-style: italic; font-size: 56px; color: rgba(14,124,116,0.22); letter-spacing: -0.02em; font-weight: 700; pointer-events: none; }
-.cw-market .gig .plate-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .45s cubic-bezier(0.22,1,0.36,1); }
-.cw-market .gig:hover .plate-img { transform: scale(1.07); }
+.cw-market .gig .plate-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
 .cw-market .gig .plate.has-cover { background: ${T.ink}; }
 .cw-market .gig .plate.has-cover::before { content: ""; background: rgba(8,10,14,0.4); }
 .cw-market .gig .plate.has-cover .plate-tag { background: ${T.indigo}; box-shadow: 0 8px 16px -10px rgba(4,31,30,0.6); }
