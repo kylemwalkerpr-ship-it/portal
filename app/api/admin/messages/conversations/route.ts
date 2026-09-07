@@ -12,6 +12,7 @@
  *   page, page_size — default 50, max 200
  */
 import { requireAdminUser } from '@/lib/portalAuth'
+import { readAiMode } from '@/lib/messengerAi'
 
 const PROVIDER_ROLES = new Set(['attorney', 'consultant'])
 const CLIENT_ROLES = new Set(['client', 'student'])
@@ -30,9 +31,20 @@ export async function GET(req: Request) {
 
   let { data: convs, error } = await db
     .from('conversations')
-    .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at')
+    .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at, metadata')
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(2000)
+
+  // Part B metadata column may not be migrated yet — retry without it.
+  if (error && /metadata|column/i.test(error.message || '')) {
+    const fb = await db
+      .from('conversations')
+      .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at')
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(2000)
+    convs = (fb.data || []).map((c: any) => ({ ...c, metadata: {} }))
+    error = fb.error
+  }
 
   if (error && /relation .* does not exist/i.test(error.message || '')) {
     return Response.json({
@@ -127,6 +139,7 @@ export async function GET(req: Request) {
       last_message_at: c.last_message_at,
       last_message: preview ? String(preview).slice(0, 160) : null,
       last_sender_id: lastMsg?.sender_id ?? null,
+      ai_mode: readAiMode(c.metadata),
       has_unread: hasUnread,
       unread_parties: [aUnread ? c.participant_a : null, bUnread ? c.participant_b : null].filter(Boolean),
       roles,

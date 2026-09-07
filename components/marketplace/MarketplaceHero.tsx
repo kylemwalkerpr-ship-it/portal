@@ -111,6 +111,7 @@ interface GigCardProps {
     }
     provider_id?: string
     provider_type?: string
+    provider_headshot_url?: string | null
     gallery_images?: Array<{ url: string }>
   }
 }
@@ -225,7 +226,17 @@ export function GigCard({ gig }: GigCardProps) {
           onClick={handleProviderClick}
           role={providerId ? 'link' : undefined}
         >
-          <span style={providerAvatar}>{initials}</span>
+          {(gig.provider_headshot_url || (gig as any).providerHeadshot) ? (
+            <img
+              src={gig.provider_headshot_url || (gig as any).providerHeadshot}
+              alt=""
+              width={20}
+              height={20}
+              style={{ ...providerAvatar, objectFit: 'cover', padding: 0, background: T.paper2 }}
+            />
+          ) : (
+            <span style={providerAvatar}>{initials}</span>
+          )}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{providerName}</span>
           {showRating && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 12 }}>

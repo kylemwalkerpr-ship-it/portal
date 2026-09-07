@@ -155,6 +155,18 @@ export async function GET(req: Request) {
         specialties:       a.specialties,
         languages:         a.languages,
         credential_type:   credentialByProfile.get(a.profile_id)?.credential_type || application?.credential_type || null,
+        bar_number: (() => {
+          const c = credentialByProfile.get(a.profile_id)
+          const num = c?.bar_number || null
+          const show = c?.show_bar_number !== false
+          return show && num ? num : null
+        })(),
+        bar_state: (() => {
+          const c = credentialByProfile.get(a.profile_id)
+          const num = c?.bar_number || null
+          const show = c?.show_bar_number !== false
+          return show && num ? (c?.bar_state || null) : null
+        })(),
         years_experience:  a.years_experience,
         starting_price:    a.starting_price,
         offers_free_consult: a.offers_free_consult ?? false,

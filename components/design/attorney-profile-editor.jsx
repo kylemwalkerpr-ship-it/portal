@@ -386,13 +386,30 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
           <EditableField
             fieldId="bar"
             label="Bar / registration number"
-            help="Required for a verified listing. Shown on your profile and used in disputes."
+            help="Required for a verified listing. You control whether it appears publicly with the toggle below."
             value={a.bar_number ?? application.bar_number ?? ''}
             maxLength={120}
             placeholder="e.g. NY 1234567"
             onSave={(v) => save('bar_number', v)}
           />
+          <EditableField
+            fieldId="bar_state"
+            label="Bar jurisdiction / regulator"
+            help="Short label for the issuing body (e.g. FL, NY, VA, SRA E&W, MB)."
+            value={a.bar_state ?? ''}
+            maxLength={80}
+            placeholder="e.g. FL"
+            onSave={(v) => save('bar_state', v)}
+          />
         </div>
+        <div style={{ height: 8 }} />
+        <ToggleRow
+          fieldId="show_bar_number"
+          label="Show bar number on public profile"
+          help="When off, your bar / registration number stays on file for verification but is hidden from marketplace and public profile pages."
+          value={a.show_bar_number !== false}
+          onChange={(v) => save('show_bar_number', v)}
+        />
       </Card>
 
       {/* Tags */}

@@ -120,6 +120,16 @@ export async function GET() {
       specialties: attorney.specialties,
       languages: attorney.languages,
       credential_type: credentialByProfile.get(attorney.profile_id)?.credential_type || app?.credential_type || null,
+      bar_number: (() => {
+        const c = credentialByProfile.get(attorney.profile_id)
+        const num = c?.bar_number || null
+        return c?.show_bar_number !== false && num ? num : null
+      })(),
+      bar_state: (() => {
+        const c = credentialByProfile.get(attorney.profile_id)
+        const num = c?.bar_number || null
+        return c?.show_bar_number !== false && num ? (c?.bar_state || null) : null
+      })(),
       years_experience: attorney.years_experience,
       starting_price: attorney.starting_price,
       offers_free_consult: attorney.offers_free_consult,

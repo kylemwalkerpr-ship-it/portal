@@ -3,31 +3,42 @@
    Scoped to .yousafe-messenger so tokens cannot leak into the rest of
    the portal. Theming via [data-theme], [data-accent], [data-wallpaper],
    [data-density] on the .yousafe-messenger root.
+
+   Surfaces use a SELF-CONTAINED neutral palette. Do NOT inherit marketplace
+   --ys-* (mahogany/sepia) or portal theme --portal-* vars for chat chrome —
+   parent themes wash into the slideover / Messages panel and kill contrast.
+   Accent stays sparingly on Send / chips; everything else is slate neutrals.
    ═══════════════════════════════════════════════════════════════════════ */
 
 .yousafe-messenger {
+  /* Isolate from parent color-scheme / theme bleed */
+  color-scheme: light;
+  background: #FFFFFF;
+  color: #0F172A;
+
   /* ── Tokens ───────────────────────────────────────────────────────── */
   --msg-font-size: 14px;
 
-  /* Portal theme inheritance — messenger follows the user's dashboard theme */
-  --paper:        var(--portal-bg);
-  --paper-2:      var(--portal-surface-2);
-  --paper-3:      var(--portal-surface-3);
-  --vellum:       var(--portal-surface);
-  --ink:          var(--portal-ink);
-  --ink-mid:      var(--portal-ink-mid);
-  --ink-soft:     var(--portal-ink-soft);
-  --rule:         var(--portal-rule);
-  --rule-soft:    var(--portal-rule-soft);
+  /* Self-contained neutrals (independent of marketplace / portal themes) */
+  --paper:        #F7F8FA;
+  --paper-2:      #EEF1F6;
+  --paper-3:      #E2E8F0;
+  --vellum:       #FFFFFF;
+  --ink:          #0F172A;
+  --ink-mid:      #334155;
+  --ink-soft:     #64748B;
+  --rule:         #E2E8F0;
+  --rule-soft:    #F1F5F9;
   --rule-hair:    rgba(15,23,42,0.10);
 
-  --indigo:       var(--portal-accent);
-  --indigo-deep:  var(--portal-accent-deep);
-  --indigo-soft:  var(--portal-accent-soft);
-  --brick:        var(--portal-brick);
-  --gold:         var(--portal-gold);
-  --moss:         var(--portal-moss);
-  --star:         var(--portal-star);
+  /* Brand accents used sparingly (Send, chips) — not surfaces */
+  --indigo:       #3C3B6E;
+  --indigo-deep:  #2A2A55;
+  --indigo-soft:  rgba(60,59,110,0.12);
+  --brick:        #B22234;
+  --gold:         #C4A45A;
+  --moss:         #5F6B3A;
+  --star:         #C68B27;
 
   /* WhatsApp signature greens (default accent) */
   --wa-green:     #00A884;
@@ -35,18 +46,19 @@
   --wa-tick-blue: #53BDEB;
 
   /* Resolved theme variables — overridden by [data-theme] */
-  --bg:           var(--portal-bg);
-  --panel:        var(--portal-surface);
-  --panel-2:      var(--portal-surface-2);
+  --bg:           #F7F8FA;
+  --panel:        #FFFFFF;
+  --panel-2:      #F1F5F9;
   --hover:        rgba(15,23,42,0.045);
-  --border:       var(--portal-rule);
-  --border-soft:  var(--portal-rule-soft);
-  --text:         var(--portal-ink);
-  --text-mid:     var(--portal-ink-mid);
-  --text-soft:    var(--portal-ink-soft);
+  --border:       #E2E8F0;
+  --border-soft:  #F1F5F9;
+  --text:         #0F172A;
+  --text-mid:     #334155;
+  --text-soft:    #64748B;
   --dim:          #98A2B3;
 
-  --chat-bg:      #ECE5DD;
+  /* Neutral chat canvas (was WhatsApp sepia #ECE5DD — muddy on brown themes) */
+  --chat-bg:      #F0F2F5;
   --bub-out:      #D9FDD3;
   --bub-in:       #FFFFFF;
   --bub-shadow:   0 1px 0.5px rgba(11,20,26,0.13);
@@ -54,7 +66,8 @@
 
   --accent:       var(--wa-green);
   --accent-d:     var(--wa-green-d);
-  --danger:       var(--portal-brick);
+  --danger:       var(--brick);
+  --accent-soft:  rgba(0,168,132,0.14);
 
   --shadow-pop:   0 12px 32px -16px rgba(11,20,26,0.4), 0 1px 0 rgba(11,20,26,0.06);
   --shadow-menu:  0 2px 5px rgba(11,20,26,0.26);
@@ -63,6 +76,27 @@
   --row-gap:      12px;
   --bub-gap:      2px;
   --bub-gap-end:  10px;
+}
+
+/* Explicit light theme (system preference sets data-theme="light") */
+.yousafe-messenger[data-theme="light"] {
+  color-scheme: light;
+  background: #FFFFFF;
+  color: #0F172A;
+  --bg:           #F7F8FA;
+  --panel:        #FFFFFF;
+  --panel-2:      #F1F5F9;
+  --hover:        rgba(15,23,42,0.045);
+  --border:       #E2E8F0;
+  --border-soft:  #F1F5F9;
+  --text:         #0F172A;
+  --text-mid:     #334155;
+  --text-soft:    #64748B;
+  --dim:          #98A2B3;
+  --chat-bg:      #F0F2F5;
+  --bub-out:      #D9FDD3;
+  --bub-in:       #FFFFFF;
+  --bub-link:     #027EB5;
 }
 
 .yousafe-messenger[data-accent="indigo"] {
@@ -74,6 +108,9 @@
 .yousafe-messenger[data-accent="gold"]   { --accent: #C4A45A; --accent-d: #8a702f; --bub-out: #F5ECD6; --bub-link: #8B5E0A; }
 
 .yousafe-messenger[data-theme="dark"] {
+  color-scheme: dark;
+  background: #0B141A;
+  color: #E9EDEF;
   --bg:          #0B141A;
   --panel:       #111B21;
   --panel-2:     #202C33;
@@ -91,9 +128,22 @@
   --bub-link:    #53BDEB;
   --accent:      #00A884;
   --accent-d:    #00A884;
+  --accent-soft: rgba(0,168,132,0.18);
+  --paper:       #0B141A;
+  --paper-2:     #111B21;
+  --paper-3:     #202C33;
+  --vellum:      #111B21;
+  --ink:         #E9EDEF;
+  --ink-mid:     #B4BFC4;
+  --ink-soft:    #8696A0;
+  --rule:        #222D33;
+  --rule-soft:   #1B252C;
 }
 
 .yousafe-messenger[data-theme="paper"] {
+  color-scheme: light;
+  background: #FFFFFF;
+  color: #0F172A;
   --bg:          #F7F8FA;
   --panel:       #FFFFFF;
   --panel-2:     #EEF1F6;
@@ -475,8 +525,9 @@
 
 .yousafe-messenger .cv-divider { display: flex; justify-content: center; margin: 16px 0 12px; position: relative; z-index: 2; }
 .yousafe-messenger .cv-divider span {
-  background: rgba(231, 225, 211, 0.92);
+  background: rgba(241, 245, 249, 0.96);
   color: var(--text-mid);
+  border: 1px solid var(--border-soft);
   padding: 4px 14px;
   border-radius: 8px;
   font-size: 11px; font-weight: 600;
@@ -1217,4 +1268,34 @@
 .cw-market .yousafe-messenger .cv-canvas-inner {
   max-width: none;
   margin: 0;
+}
+
+/* ── Marketplace isolation ────────────────────────────────────────────
+   .cw-market sets color: var(--ys-onPaper) on the page and forces
+   .chat-side-pane { color: var(--ys-ink) }. When the messenger lives
+   inside marketplace chrome (Messages panel OR ChatSidePane slideover),
+   re-assert neutrals so mahogany/sepia cannot leak onto chat surfaces.
+   Scope is .yousafe-messenger only — marketplace pages outside it keep
+   their theme. */
+.cw-market .yousafe-messenger,
+.cw-market .yousafe-messenger.chat-side-pane,
+.yousafe-messenger.chat-side-pane {
+  color: var(--text, #0F172A) !important;
+  background: var(--bg, #F7F8FA);
+  color-scheme: light;
+}
+.cw-market .yousafe-messenger[data-theme="dark"],
+.yousafe-messenger.chat-side-pane[data-theme="dark"] {
+  color: var(--text, #E9EDEF) !important;
+  background: var(--bg, #0B141A);
+  color-scheme: dark;
+}
+/* Prevent marketplace button reset (.cw-market button { background:none })
+   from wiping messenger chrome that relies on token backgrounds — token
+   selectors already win on specificity for .comp-send / .iconbtn; this
+   covers any bare buttons inside the shell that inherit market rules. */
+.cw-market .yousafe-messenger button.comp-send,
+.cw-market .yousafe-messenger .comp-send {
+  background: var(--accent) !important;
+  color: #fff !important;
 }

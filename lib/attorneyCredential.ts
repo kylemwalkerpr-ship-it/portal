@@ -18,6 +18,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export type CredentialPair = {
   credential_type: string | null
   bar_number: string | null
+  /** Public display preference; only meaningful on attorneys row. */
+  show_bar_number?: boolean | null
+  bar_state?: string | null
 }
 
 // Reads the editable columns off the attorneys row. Returns nulls (not an
@@ -29,17 +32,19 @@ export async function fetchAttorneyCredentialColumns(
 ): Promise<CredentialPair> {
   const { data, error } = await db
     .from('attorneys')
-    .select('credential_type, bar_number')
+    .select('credential_type, bar_number, show_bar_number, bar_state')
     .eq('profile_id', profileId)
     // Order + limit so this resolves the SAME (newest) row the write path
     // targets, and so maybeSingle doesn't error on duplicate rows.
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-  if (error) return { credential_type: null, bar_number: null }
+  if (error) return { credential_type: null, bar_number: null, show_bar_number: null, bar_state: null }
   return {
     credential_type: (data?.credential_type as string | null) ?? null,
     bar_number: (data?.bar_number as string | null) ?? null,
+    show_bar_number: (data?.show_bar_number as boolean | null) ?? null,
+    bar_state: (data?.bar_state as string | null) ?? null,
   }
 }
 
@@ -75,13 +80,15 @@ export async function fetchAttorneyCredentialColumnsBatch(
   if (profileIds.length === 0) return map
   const { data, error } = await db
     .from('attorneys')
-    .select('profile_id, credential_type, bar_number')
+    .select('profile_id, credential_type, bar_number, show_bar_number, bar_state')
     .in('profile_id', profileIds)
   if (error || !data) return map
   for (const row of data as any[]) {
     map.set(row.profile_id, {
       credential_type: (row.credential_type as string | null) ?? null,
       bar_number: (row.bar_number as string | null) ?? null,
+      show_bar_number: (row.show_bar_number as boolean | null) ?? null,
+      bar_state: (row.bar_state as string | null) ?? null,
     })
   }
   return map
@@ -100,5 +107,7 @@ export async function resolveAttorneyCredential(
   return {
     credential_type: editable.credential_type ?? approved.credential_type,
     bar_number: editable.bar_number ?? approved.bar_number,
+    show_bar_number: editable.show_bar_number ?? true,
+    bar_state: editable.bar_state ?? null,
   }
 }

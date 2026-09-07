@@ -1,14 +1,15 @@
 'use client'
 /**
- * AdminMasterMessenger — admin oversight of ALL provider↔client chats.
- * Reuses ChatScreen / MessageBubble / Avatar / messenger-tokens patterns.
- * Read-only (Part A): no send composer.
+ * AdminMasterMessenger — admin oversight + direct chat into provider↔client threads.
+ * Approach (a): admin messages land in the same conversation with sender_id = admin.
+ * Both parties see admin messages in shared history; To: Client|Provider sets address intent.
  */
 import React from 'react'
 import './messenger-tokens.css'
 import ChatScreen from './ChatScreen'
 import MessageBubble from './MessageBubble'
 import Avatar from './Avatar'
+import AutoGrowInput from './AutoGrowInput'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel } from '@/lib/messaging/format'
 
 const CTX_LABEL: Record<string, string> = {
@@ -36,6 +37,8 @@ function roleBadgeColor(role?: string | null) {
   }
 }
 
+type DirectTo = 'client' | 'provider'
+
 export default function AdminMasterMessenger() {
   const [searchInput, setSearchInput] = React.useState('')
   const [debouncedQ, setDebouncedQ] = React.useState('')
@@ -55,6 +58,19 @@ export default function AdminMasterMessenger() {
   const [threadLoading, setThreadLoading] = React.useState(false)
   const [threadError, setThreadError] = React.useState('')
   const [mobileShowChat, setMobileShowChat] = React.useState(false)
+  const [aiModeBusy, setAiModeBusy] = React.useState(false)
+
+  const [myProfileId, setMyProfileId] = React.useState<string | null>(null)
+  const [directTo, setDirectTo] = React.useState<DirectTo>('client')
+  const [draft, setDraft] = React.useState('')
+  const [sending, setSending] = React.useState(false)
+
+  React.useEffect(() => {
+    fetch('/api/profile', { credentials: 'same-origin' })
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setMyProfileId(d?.profile?.id || null))
+      .catch(() => setMyProfileId(null))
+  }, [])
 
   React.useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(searchInput.trim()), 280)
@@ -62,6 +78,13 @@ export default function AdminMasterMessenger() {
   }, [searchInput])
 
   React.useEffect(() => { setPage(1) }, [debouncedQ, role, unreadOnly])
+
+  // Prefer client when available; otherwise provider
+  React.useEffect(() => {
+    if (!activeConv) return
+    if (activeConv.client?.id) setDirectTo('client')
+    else if (activeConv.provider?.id) setDirectTo('provider')
+  }, [activeConv?.id])
 
   const loadList = React.useCallback(async () => {
     setListLoading(true)
@@ -104,6 +127,7 @@ export default function AdminMasterMessenger() {
     setThreadError('')
     setActiveMsgs([])
     setActiveConv(null)
+    setDraft('')
     try {
       const res = await fetch(`/api/admin/messages/conversations/${id}/messages`, { credentials: 'same-origin' })
       if (res.status === 401 || res.status === 403) {
@@ -124,6 +148,84 @@ export default function AdminMasterMessenger() {
     }
   }, [])
 
+  const setAiMode = React.useCallback(async (mode: 'auto' | 'paused' | 'off') => {
+    if (!activeId || aiModeBusy) return
+    setAiModeBusy(true)
+    setThreadError('')
+    try {
+      const r = await fetch(`/api/admin/messages/conversations/${activeId}/ai-mode`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_mode: mode }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      const next = d.ai_mode || mode
+      setActiveConv((prev: any) => prev ? { ...prev, ai_mode: next } : prev)
+      setConversations((prev) => prev.map((c) => c.id === activeId ? { ...c, ai_mode: next } : c))
+    } catch (e: any) {
+      setThreadError(e?.message || 'Could not update AI mode')
+    } finally {
+      setAiModeBusy(false)
+    }
+  }, [activeId, aiModeBusy])
+
+  const targetParty = React.useMemo(() => {
+    if (!activeConv) return null
+    if (directTo === 'client') {
+      return activeConv.client || activeConv.participant_b || activeConv.participant_a || null
+    }
+    return activeConv.provider || activeConv.participant_a || activeConv.participant_b || null
+  }, [activeConv, directTo])
+
+  const canMessageClient = Boolean(activeConv?.client?.id)
+  const canMessageProvider = Boolean(activeConv?.provider?.id)
+
+  const send = React.useCallback(async () => {
+    const text = draft.trim()
+    if (!text || sending || !activeId) return
+    if (directTo === 'client' && !canMessageClient) {
+      setThreadError('No client participant in this thread.')
+      return
+    }
+    if (directTo === 'provider' && !canMessageProvider) {
+      setThreadError('No provider participant in this thread.')
+      return
+    }
+    setSending(true)
+    setThreadError('')
+    try {
+      const r = await fetch(`/api/admin/messages/conversations/${activeId}/messages`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: text, to: directTo }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (r.status === 401 || r.status === 403) throw new Error('Admin access required.')
+      if (!r.ok) throw new Error(d?.error || `Send failed (${r.status})`)
+      setDraft('')
+      if (d.message) {
+        setActiveMsgs((prev) => [...prev, d.message])
+      }
+      setActiveConv((prev: any) => prev ? { ...prev, ai_mode: d.ai_mode || 'paused' } : prev)
+      setConversations((prev) => prev.map((c) => {
+        if (c.id !== activeId) return c
+        return {
+          ...c,
+          ai_mode: d.ai_mode || 'paused',
+          last_message: text.slice(0, 160),
+          last_message_at: d.message?.created_at || new Date().toISOString(),
+        }
+      }))
+    } catch (e: any) {
+      setThreadError(e?.message || 'Send failed')
+    } finally {
+      setSending(false)
+    }
+  }, [draft, sending, activeId, directTo, canMessageClient, canMessageProvider])
+
   const titleFor = (c: any) => {
     const provider = c.provider?.name || c.participant_a?.name || 'Provider'
     const client = c.client?.name || c.participant_b?.name || 'Client'
@@ -137,7 +239,7 @@ export default function AdminMasterMessenger() {
           Master Chats
         </div>
         <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
-          Admin oversight · {counts.all ?? 0} threads{typeof counts.unread === 'number' ? ` · ${counts.unread} with unread` : ''}
+          Admin chat · {counts.all ?? 0} threads{typeof counts.unread === 'number' ? ` · ${counts.unread} with unread` : ''}
         </div>
         <input
           value={searchInput}
@@ -214,6 +316,16 @@ export default function AdminMasterMessenger() {
                         {CTX_LABEL[c.context_kind] || c.context_kind}
                       </span>
                     )}
+
+                    {c.ai_mode && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase',
+                        color: c.ai_mode === 'auto' ? '#1A6B45' : c.ai_mode === 'paused' ? '#8B5E0A' : '#64748B',
+                        background: c.ai_mode === 'auto' ? '#E8F7EF' : c.ai_mode === 'paused' ? '#FEF5E4' : '#F1F5F9',
+                        padding: '2px 6px', borderRadius: 999,
+                      }}>AI {c.ai_mode}</span>
+                    )}
+
                     {c.has_unread && (
                       <span style={{ fontSize: 10, fontWeight: 700, color: '#8B5E0A', background: '#FEF5E4', padding: '2px 6px', borderRadius: 999 }}>unread</span>
                     )}
@@ -256,13 +368,36 @@ export default function AdminMasterMessenger() {
         <div style={{ fontSize: 12, color: '#64748B' }}>
           {[activeConv.participant_a?.role, activeConv.participant_b?.role].filter(Boolean).join(' · ')}
           {activeConv.context_kind ? ` · ${CTX_LABEL[activeConv.context_kind] || activeConv.context_kind}` : ''}
-          {' · read-only oversight'}
+          {' · direct admin chat'}
         </div>
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase',
+          padding: '4px 8px', borderRadius: 999,
+          background: (activeConv.ai_mode || 'auto') === 'auto' ? '#E8F7EF'
+            : (activeConv.ai_mode === 'paused' ? '#FEF5E4' : '#F1F5F9'),
+          color: (activeConv.ai_mode || 'auto') === 'auto' ? '#1A6B45'
+            : (activeConv.ai_mode === 'paused' ? '#8B5E0A' : '#64748B'),
+        }}>AI {activeConv.ai_mode || 'auto'}</span>
+        {(activeConv.ai_mode || 'auto') === 'auto' ? (
+          <button type="button" disabled={aiModeBusy} onClick={() => void setAiMode('paused')}
+            style={{ fontSize: 12, fontWeight: 600, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(15,23,42,0.12)', background: '#0F172A', color: '#fff', cursor: 'pointer' }}>
+            Take over
+          </button>
+        ) : (
+          <button type="button" disabled={aiModeBusy} onClick={() => void setAiMode('auto')}
+            style={{ fontSize: 12, fontWeight: 600, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(15,23,42,0.12)', background: '#fff', color: '#0F172A', cursor: 'pointer' }}>
+            Resume AI
+          </button>
+        )}
+      </div>
+
     </div>
   ) : (
     <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(15,23,42,0.08)', background: '#fff', color: '#64748B', fontSize: 13 }}>
-      Select a conversation to inspect the full thread.
+      Select a conversation to read or message either party.
     </div>
   )
 
@@ -277,9 +412,11 @@ export default function AdminMasterMessenger() {
         const prev = activeMsgs[idx - 1]
         const next = activeMsgs[idx + 1]
         const showDate = !prev || !sameDay(prev.created_at, m.created_at)
-        const mine = m.sender_id === activeConv?.participant_a?.id
+        const isAdminMsg = Boolean(m.is_admin_message) || m.sender?.role === 'admin' || (myProfileId && m.sender_id === myProfileId)
+        const mine = isAdminMsg || (myProfileId ? m.sender_id === myProfileId : false)
         const isFirstInGroup = !prev || prev.sender_id !== m.sender_id || !sameDay(prev.created_at, m.created_at)
         const isLastInGroup = !next || next.sender_id !== m.sender_id || !sameDay(next.created_at, m.created_at)
+        const directedTo = m.metadata?.admin_directed_to_name || m.metadata?.admin_directed_to || null
         const body =
           m.type === 'attachment' && m.attachment_url
             ? (
@@ -289,6 +426,10 @@ export default function AdminMasterMessenger() {
             )
             : (m.body || (m.type && m.type !== 'text' ? `[${m.type}]` : ''))
 
+        const senderLabel = isAdminMsg
+          ? `Admin${directedTo ? ` → ${directedTo}` : ''}`
+          : `${m.sender?.name || 'User'}${m.sender?.role ? ` · ${m.sender.role}` : ''}`
+
         return (
           <React.Fragment key={m.id}>
             {showDate && (
@@ -297,9 +438,19 @@ export default function AdminMasterMessenger() {
               </div>
             )}
             {isFirstInGroup && (
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B', margin: mine ? '8px 12px 2px auto' : '8px 12px 2px', textAlign: mine ? 'right' : 'left', maxWidth: '78%' }}>
-                {m.sender?.name || 'User'}
-                {m.sender?.role ? ` · ${m.sender.role}` : ''}
+              <div style={{
+                fontSize: 11, fontWeight: 700, margin: mine ? '8px 12px 2px auto' : '8px 12px 2px',
+                textAlign: mine ? 'right' : 'left', maxWidth: '78%',
+                color: isAdminMsg ? '#8B1A1A' : '#64748B',
+              }}>
+                {isAdminMsg && (
+                  <span style={{
+                    display: 'inline-block', marginRight: 6, fontSize: 10, letterSpacing: 0.3,
+                    textTransform: 'uppercase', background: '#8B1A1A', color: '#fff',
+                    padding: '1px 6px', borderRadius: 999,
+                  }}>Admin</span>
+                )}
+                {senderLabel}
               </div>
             )}
             <MessageBubble
@@ -310,8 +461,9 @@ export default function AdminMasterMessenger() {
               isLastInGroup={isLastInGroup}
               timestamp={fmtFullTime(m.created_at)}
               avatarUrl={m.sender?.avatar_url}
-              avatarName={m.sender?.name}
+              avatarName={m.sender?.name || (isAdminMsg ? 'Admin' : 'User')}
               rawBody={typeof m.body === 'string' ? m.body : undefined}
+              style={isAdminMsg ? { boxShadow: 'inset 0 0 0 1px rgba(139,26,26,0.35)' } : undefined}
             />
           </React.Fragment>
         )
@@ -319,9 +471,56 @@ export default function AdminMasterMessenger() {
     </>
   )
 
-  const composer = (
+  const composer = activeId ? (
+    <div style={{ borderTop: '1px solid rgba(15,23,42,0.08)', background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px 0', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748B' }}>To:</span>
+        <button
+          type="button"
+          disabled={!canMessageClient}
+          onClick={() => setDirectTo('client')}
+          style={{
+            fontSize: 12, fontWeight: 650, padding: '6px 12px', borderRadius: 999, cursor: canMessageClient ? 'pointer' : 'default',
+            border: directTo === 'client' ? '1px solid #1A6B45' : '1px solid rgba(15,23,42,0.12)',
+            background: directTo === 'client' ? '#E8F7EF' : '#fff',
+            color: canMessageClient ? '#1A6B45' : '#94A3B8',
+            opacity: canMessageClient ? 1 : 0.5,
+          }}
+        >
+          Client{activeConv?.client?.name ? ` · ${activeConv.client.name}` : ''}
+        </button>
+        <button
+          type="button"
+          disabled={!canMessageProvider}
+          onClick={() => setDirectTo('provider')}
+          style={{
+            fontSize: 12, fontWeight: 650, padding: '6px 12px', borderRadius: 999, cursor: canMessageProvider ? 'pointer' : 'default',
+            border: directTo === 'provider' ? '1px solid #3D2B6B' : '1px solid rgba(15,23,42,0.12)',
+            background: directTo === 'provider' ? 'rgba(61,43,107,0.08)' : '#fff',
+            color: canMessageProvider ? '#3D2B6B' : '#94A3B8',
+            opacity: canMessageProvider ? 1 : 0.5,
+          }}
+        >
+          Provider{activeConv?.provider?.name ? ` · ${activeConv.provider.name}` : ''}
+        </button>
+        <span style={{ fontSize: 12, color: '#64748B', marginLeft: 'auto' }}>
+          Sending to <strong style={{ color: '#0F172A' }}>{targetParty?.name || (directTo === 'client' ? 'Client' : 'Provider')}</strong>
+          {targetParty?.role ? ` (${targetParty.role})` : ''} — visible in shared thread
+        </span>
+      </div>
+      <div className="comp" style={{ paddingTop: 6 }}>
+        <AutoGrowInput
+          value={draft}
+          onChange={setDraft}
+          onSubmit={() => { void send() }}
+          disabled={sending || !activeId}
+          placeholder={`Message ${targetParty?.name || directTo} as Admin…`}
+        />
+      </div>
+    </div>
+  ) : (
     <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(15,23,42,0.08)', background: '#fff', color: '#64748B', fontSize: 12, textAlign: 'center' }}>
-      Read-only admin oversight — sending is disabled in Master Chats (Part A).
+      Select a conversation to message the client or provider.
     </div>
   )
 
@@ -341,7 +540,7 @@ export default function AdminMasterMessenger() {
         mobileShowChat={mobileShowChat && !!activeId}
         banner={
           <div style={{ padding: '8px 14px', background: '#FEF5E4', color: '#8B5E0A', fontSize: 12, borderBottom: '1px solid rgba(139,94,10,0.15)' }}>
-            Oversight mode: you can read every attorney/consultant to client thread. Do not share contents outside the support process.
+            Master Chats: message either party directly. Admin sends appear in the shared thread as Admin and pause AI auto-replies.
           </div>
         }
       />

@@ -7,7 +7,12 @@ import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
 import Avatar from '../messaging/Avatar'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
-import { T, F } from './tokens'
+import '../messaging/messenger-tokens.css'
+import { F } from './tokens'
+
+/* Messenger shell stays on a self-contained NEUTRAL palette so marketplace
+   mahogany / sepia (--ys-paper) cannot wash into the slide-over. Accent is
+   used only for the Send CTA. Do not reintroduce T.paper / T.ink here. */
 
 // Props (loose because this component is JSX-ish via @ts-nocheck):
 //   open, onClose, attorneyName, attorneyAvatar
@@ -31,10 +36,21 @@ import { T, F } from './tokens'
  *   attorneyAvatar — optional avatar URL
  */
 
-const NAVY=T.indigoDeep, GREEN=T.moss, RED=T.brick, CYAN=T.indigo
-const BG=T.paper, SURFACE=T.vellum, BORDER=T.rule, TEXT=T.ink, MUTED=T.inkMid, DIM=T.inkSoft
-const SANS=F.ui
-const MONO=F.mono
+const GREEN = '#3F774A'
+const RED = '#B22234'
+const CYAN = '#0B786C'
+const ACCENT = '#00A884'
+const ACCENT_DEEP = '#008069'
+/* Neutral messenger surfaces — independent of marketplace palette */
+const BG = 'var(--chat-bg, #F0F2F5)'
+const SURFACE = 'var(--panel, #FFFFFF)'
+const PANEL2 = 'var(--panel-2, #F1F5F9)'
+const BORDER = 'var(--border, #E2E8F0)'
+const TEXT = 'var(--text, #0F172A)'
+const MUTED = 'var(--text-mid, #334155)'
+const DIM = 'var(--text-soft, #64748B)'
+const SANS = F.ui
+const MONO = F.mono
 
 interface ChatSidePaneProps {
   open: boolean
@@ -271,7 +287,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
           {presence === 'online' ? '● Online · quick replies likely' : '○ Offline · will respond when available'}
         </div>
       </div>
-      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: T.paper, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16, fontFamily: F.ui }}>×</button>
+      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: PANEL2, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16, fontFamily: F.ui }}>×</button>
     </div>
   )
 
@@ -362,10 +378,10 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
           onClick={send}
           disabled={sending || !draft.trim()}
           style={{
-            background: T.indigo,
+            background: ACCENT,
             color: '#fff',
             borderRadius: 999,
-            boxShadow: '0 10px 22px -10px rgba(60,59,110,0.55)',
+            boxShadow: '0 10px 22px -10px rgba(0,168,132,0.45)',
             fontFamily: F.ui,
           }}
         >
@@ -397,14 +413,22 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       <button onClick={onClose} aria-label="Close chat" style={{ flex: 1, background: 'rgba(15,18,32,0.45)', border: 'none', cursor: 'pointer' }} />
-      <aside style={{
-        width: 'min(440px, 100vw)', height: '100vh',
-        background: BG, display: 'flex', flexDirection: 'column',
-        borderLeft: `1px solid ${BORDER}`,
-        boxShadow: '-24px 0 60px rgba(29,36,51,0.18)',
-        fontFamily: SANS,
-        color: TEXT,
-      }}>
+      <aside
+        className="yousafe-messenger chat-side-pane"
+        data-theme="light"
+        style={{
+          width: 'min(440px, 100vw)', height: '100vh',
+          background: 'var(--bg, #F7F8FA)',
+          display: 'flex', flexDirection: 'column',
+          borderLeft: `1px solid ${BORDER}`,
+          boxShadow: '-24px 0 60px rgba(29,36,51,0.18)',
+          fontFamily: SANS,
+          color: TEXT,
+          colorScheme: 'light',
+          /* Beat marketplace .cw-market color inheritance (ys-onPaper / ys-ink) */
+          isolation: 'isolate',
+        }}
+      >
         <ChatScreen mode="panel" header={header} messages={messageNodes} composer={composer} banner={banner} />
       </aside>
     </div>

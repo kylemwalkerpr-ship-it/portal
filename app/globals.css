@@ -1245,7 +1245,12 @@ section[id] {
   color: var(--ys-ink);
 }
 
-/* Chat side pane — keep dark only on accent bg */
+/* Chat side pane — neutral messenger shell (not marketplace paper/ink).
+   Full token isolation lives in messenger-tokens.css (.yousafe-messenger). */
 .cw-market .chat-side-pane {
-  color: var(--ys-ink);
+  color: var(--text, #0F172A);
+  background: var(--bg, #F7F8FA);
+}
+.cw-market .chat-side-pane.yousafe-messenger {
+  color: var(--text, #0F172A) !important;
 }

@@ -1,6 +1,7 @@
 import { revalidateTag } from 'next/cache'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { activateProviderListings, suspendProviderListings } from '@/lib/activateProviderListings'
 
 async function requireAdmin() {
   const clerkUserId = await getClerkUserId()
@@ -79,15 +80,15 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   // Cascade status changes to provider-owned listings so the marketplace
-  // never advertises a suspended provider's gigs. Active → re-activate the
-  // archived-on-suspend gigs; Suspended → archive them. The status check on
-  // the public landing query is gig-level, not profile-level, so without
-  // this cascade a suspended attorney's gigs would still appear.
+  // never advertises a suspended provider's gigs — and so activating a
+  // staged provider (draft + is_hidden gigs) actually surfaces them.
+  // Marketplace /api/marketplace/gigs filters status='active' only; the old
+  // cascade only flipped paused→active and left draft/hidden gigs invisible.
   if (payload.status && (data?.role === 'attorney' || data?.role === 'consultant')) {
     if (payload.status === 'suspended') {
-      await auth.db.from('gigs').update({ status: 'paused' }).eq('provider_id', id).eq('status', 'active')
+      await suspendProviderListings(auth.db, id)
     } else if (payload.status === 'active') {
-      await auth.db.from('gigs').update({ status: 'active' }).eq('provider_id', id).eq('status', 'paused')
+      await activateProviderListings(auth.db, id)
     }
     // Bust the landing-featured-providers cache so the dashboard's
     // suspend/reactivate reflects on /, /marketplace and the regional homes

@@ -423,7 +423,7 @@ function ProviderSidePane({ a, onClose }) {
               </div>
               {a.bar_number && (
                 <div style={{ fontFamily: F.mono, fontSize: 11, color: T.inkMid, marginTop: 2 }}>
-                  Bar / Reg #: <b style={{ color: T.onPaper }}>{a.bar_number}</b>
+                  Bar / Reg #: <b style={{ color: T.onPaper }}>{a.bar_state ? `${a.bar_state} ` : ''}{a.bar_number}</b>
                 </div>
               )}
             </div>

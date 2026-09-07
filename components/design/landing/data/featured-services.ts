@@ -103,6 +103,21 @@ async function fetchFeaturedGigsFromDb(): Promise<FeaturedGig[]> {
 
     const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p.full_name]))
 
+    // Seller headshots live on attorneys/consultants, not profiles.avatar_url.
+    const headshotByProfileId = new Map<string, string>()
+    if (providerIds.length > 0) {
+      const [attyHs, consHs] = await Promise.all([
+        db.from('attorneys').select('profile_id, headshot_url').in('profile_id', providerIds),
+        db.from('consultants').select('profile_id, headshot_url').in('profile_id', providerIds),
+      ])
+      for (const row of (attyHs.data ?? []) as Array<{ profile_id: string; headshot_url: string | null }>) {
+        if (row.headshot_url) headshotByProfileId.set(row.profile_id, row.headshot_url)
+      }
+      for (const row of (consHs.data ?? []) as Array<{ profile_id: string; headshot_url: string | null }>) {
+        if (row.headshot_url) headshotByProfileId.set(row.profile_id, row.headshot_url)
+      }
+    }
+
     const mapped: FeaturedGig[] = gigs.map((g: any) => {
       // Cheapest active tier — source of truth for "From ..." price + delivery.
       const activeTiers = Array.isArray(g.tiers)
@@ -136,7 +151,7 @@ async function fetchFeaturedGigsFromDb(): Promise<FeaturedGig[]> {
         category: g.category,
         providerName: profileById.get(g.provider_id) || 'YouSafe Provider',
         providerRole: g.provider_type || 'consultant',
-        providerAvatarUrl: null,
+        providerAvatarUrl: headshotByProfileId.get(g.provider_id) || null,
         avgRating: rating,
         reviewCount: reviews,
         deliveryDays: cheapest?.delivery_days ?? null,

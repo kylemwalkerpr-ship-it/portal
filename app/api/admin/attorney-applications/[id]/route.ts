@@ -1,6 +1,7 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { sendEmail, attorneyApprovalEmail, attorneyDeclineEmail } from '@/lib/email'
+import { activateProviderListings } from '@/lib/activateProviderListings'
 
 
 async function requireAdmin() {
@@ -72,9 +73,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
             application_id: application.id,
             jurisdictions: application.jurisdictions,
             practice_areas: application.practice_areas,
+            available: true,
           },
           { onConflict: 'profile_id' },
         )
+      // Surface draft/hidden gigs + unhide profile for marketplace visibility.
+      await activateProviderListings(db, application.profile_id)
     }
 
     try {

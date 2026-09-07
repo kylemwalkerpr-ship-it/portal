@@ -70,6 +70,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [showOfferComposer, setShowOfferComposer] = React.useState(false)
+  const [aiModeBusy, setAiModeBusy] = React.useState(false)
   const [offerBusyId, setOfferBusyId] = React.useState(null)
   const [payingOfferId, setPayingOfferId] = React.useState(null)
   const [mobileShowChat, setMobileShowChat] = React.useState(false)
@@ -387,6 +388,28 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       setOfferBusyId(null)
     }
   }, [offerBusyId, loadThread, loadList])
+
+
+  const setAiMode = React.useCallback(async (mode: 'auto' | 'paused' | 'off') => {
+    if (!activeId || aiModeBusy) return
+    setAiModeBusy(true)
+    setThreadError('')
+    try {
+      const r = await fetch(`/api/messages/conversations/${activeId}/ai-mode`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_mode: mode }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      setActiveConv((prev: any) => prev ? { ...prev, ai_mode: d.ai_mode || mode } : prev)
+    } catch (e: any) {
+      setThreadError(e?.message || 'Could not update AI mode')
+    } finally {
+      setAiModeBusy(false)
+    }
+  }, [activeId, aiModeBusy])
 
   const send = async () => {
     const text = draft.trim()
@@ -1091,6 +1114,48 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         </button>
       )}
 
+
+      {(role === 'attorney' || role === 'consultant' || role === 'admin') && activeConv && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 6 }}>
+          <span
+            title="SuperGrok AI closer"
+            style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase',
+              padding: '3px 8px', borderRadius: 999,
+              background: (activeConv.ai_mode || 'auto') === 'auto' ? '#E8F7EF'
+                : (activeConv.ai_mode === 'paused' ? '#FEF5E4' : '#F1F5F9'),
+              color: (activeConv.ai_mode || 'auto') === 'auto' ? '#1A6B45'
+                : (activeConv.ai_mode === 'paused' ? '#8B5E0A' : '#64748B'),
+            }}
+          >
+            AI {(activeConv.ai_mode || 'auto')}
+          </span>
+          {(activeConv.ai_mode || 'auto') === 'auto' ? (
+            <button
+              type="button"
+              className="cv-head-offer-cta"
+              disabled={aiModeBusy}
+              onClick={() => void setAiMode('paused')}
+              title="Pause AI auto-replies (human take over)"
+              style={{ fontSize: 12 }}
+            >
+              Take over
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="cv-head-offer-cta"
+              disabled={aiModeBusy}
+              onClick={() => void setAiMode('auto')}
+              title="Resume SuperGrok AI auto-replies"
+              style={{ fontSize: 12 }}
+            >
+              Resume AI
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="cv-head-actions">
         <button
           className="iconbtn"
@@ -1293,17 +1358,32 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         return visibleMsgs.map((m: any, i: number) => {
           const prev = visibleMsgs[i - 1]
           const next = visibleMsgs[i + 1]
-        const mine = m.sender_id !== activeConv?.counterpart?.id
-        const prevMine = prev ? prev.sender_id !== activeConv?.counterpart?.id : null
-        const nextMine = next ? next.sender_id !== activeConv?.counterpart?.id : null
-        const isFirstInGroup = prevMine !== mine
-        const isLastInGroup = nextMine !== mine
+        // Prefer explicit viewer id so admin/third-party sends are not treated as "mine".
+        const mine = myProfileId
+          ? m.sender_id === myProfileId
+          : m.sender_id !== activeConv?.counterpart?.id
+        const isFirstInGroup = !prev || prev.sender_id !== m.sender_id || !sameDay(m.created_at, prev.created_at)
+        const isLastInGroup = !next || next.sender_id !== m.sender_id || !sameDay(m.created_at, next.created_at)
         const showDate = !prev || !sameDay(m.created_at, prev.created_at)
+        const isAdminMsg = Boolean(m?.metadata?.admin_message) || (
+          myProfileId
+          && m.sender_id
+          && m.sender_id !== myProfileId
+          && m.sender_id !== activeConv?.counterpart?.id
+        )
         return (
           <React.Fragment key={m.id}>
             {showDate && (
               <div className="cv-divider">
                 <span>{dateLabel(m.created_at)}</span>
+              </div>
+            )}
+            {isAdminMsg && isFirstInGroup && (
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#8B1A1A', margin: '8px 14px 2px', letterSpacing: 0.2 }}>
+                <span style={{ display: 'inline-block', marginRight: 6, fontSize: 10, textTransform: 'uppercase', background: '#8B1A1A', color: '#fff', padding: '1px 6px', borderRadius: 999 }}>Admin</span>
+                {m?.metadata?.admin_directed_to_name
+                  ? `YouSafe Admin → ${m.metadata.admin_directed_to_name}`
+                  : 'YouSafe Admin'}
               </div>
             )}
             <div data-msgid={m.id}>
@@ -1313,6 +1393,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                 counterpartName={activeConv?.counterpart?.full_name || 'Them'}
                 counterpartAvatarUrl={activeConv?.counterpart?.avatar_url}
                 counterpartAvatarColor={activeConv?.counterpart?.avatar_color}
+                viewerId={myProfileId}
                 offerBusy={offerBusyId === m.offer?.id}
                 onAccept={handleOfferAccept}
                 onDecline={handleOfferDecline}
@@ -1607,6 +1688,7 @@ function ThreadMessage({
   counterpartName,
   counterpartAvatarUrl,
   counterpartAvatarColor,
+  viewerId,
   offerBusy,
   onAccept,
   onDecline,
@@ -1625,7 +1707,10 @@ function ThreadMessage({
   onShowInfo,
   viewerRole,
 }) {
-  const mine = m.sender_id !== counterpartId
+  const mine = viewerId ? m.sender_id === viewerId : m.sender_id !== counterpartId
+  const isAdminMsg = Boolean(m?.metadata?.admin_message) || (
+    viewerId && m.sender_id && m.sender_id !== viewerId && m.sender_id !== counterpartId
+  )
   const isOffer = m.type === 'offer' && m.offer && m.offer.id
 
   if (isOffer) {
@@ -1684,7 +1769,13 @@ function ThreadMessage({
   const replyTo = m.reply_preview
     ? {
         id: m.reply_preview.id,
-        senderName: m.reply_preview.sender_id !== counterpartId ? 'You' : (counterpartName || 'Them'),
+        senderName: viewerId
+          ? (m.reply_preview.sender_id === viewerId
+              ? 'You'
+              : m.reply_preview.sender_id === counterpartId
+                ? (counterpartName || 'Them')
+                : 'Admin')
+          : (m.reply_preview.sender_id !== counterpartId ? 'You' : (counterpartName || 'Them')),
         snippet: m.reply_preview.snippet,
       }
     : null
@@ -1706,10 +1797,10 @@ function ThreadMessage({
         const name = senderName === 'Them' ? (counterpartName || 'Them') : senderName
         onReplyStart?.(msgId, snippet, name)
       }}
-      avatarUrl={!mine ? counterpartAvatarUrl : undefined}
-      avatarColor={!mine ? counterpartAvatarColor || '#3C3B6E' : undefined}
-      avatarName={!mine ? counterpartName : undefined}
-      onAvatarClick={!mine && isFirstInGroup ? () => onOpenProfile?.(m.sender_id) : undefined}
+      avatarUrl={!mine && !isAdminMsg ? counterpartAvatarUrl : undefined}
+      avatarColor={!mine ? (isAdminMsg ? '#8B1A1A' : (counterpartAvatarColor || '#3C3B6E')) : undefined}
+      avatarName={!mine ? (isAdminMsg ? 'Admin' : counterpartName) : undefined}
+      onAvatarClick={!mine && !isAdminMsg && isFirstInGroup ? () => onOpenProfile?.(m.sender_id) : undefined}
       body={renderMessageBody(m)}
       rawBody={m.body || ''}
       starred={starred}

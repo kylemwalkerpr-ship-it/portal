@@ -76,7 +76,7 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
     const [aRes, cRes, gRes] = await Promise.all([
       db
         .from('attorneys')
-        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience')
+        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, bar_number, show_bar_number, bar_state, credential_type')
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -181,7 +181,7 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
     const [aRes, cRes, gRes] = await Promise.all([
       db
         .from('attorneys')
-        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, languages')
+        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, languages, bar_number, show_bar_number, bar_state, credential_type')
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -219,6 +219,10 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
   const jurisdictions = Array.isArray(attorney?.jurisdictions) ? attorney.jurisdictions.filter(Boolean) : []
   const languages = Array.isArray(seller?.languages) ? seller.languages.filter(Boolean) : []
   const years = seller?.years_experience
+  const publicBar =
+    attorney && attorney.show_bar_number !== false && attorney.bar_number
+      ? { number: String(attorney.bar_number), state: attorney.bar_state || null }
+      : null
 
   // SellerProfilePage is a client component that fetches its own data via
   // /api/sellers/[id] (which accepts profile_id, attorneys.id, or consultants.id).
@@ -257,6 +261,11 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
         {jurisdictions.length > 0 && (
           <p style={{ fontSize: 14, margin: '0 0 8px' }}>
             <strong>Jurisdictions:</strong> {jurisdictions.slice(0, 6).join(', ')}
+          </p>
+        )}
+        {publicBar && (
+          <p style={{ fontSize: 14, margin: '0 0 8px' }}>
+            <strong>Bar / Reg #:</strong> {publicBar.state ? `${publicBar.state} ` : ''}{publicBar.number}
           </p>
         )}
         {languages.length > 0 && (

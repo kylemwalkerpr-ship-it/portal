@@ -21,6 +21,8 @@ const ENRICHED_FIELDS = [
   'available',
   'credential_type',
   'bar_number',
+  'show_bar_number',
+  'bar_state',
 ] as const
 
 type EditablePayload = Partial<Record<(typeof ENRICHED_FIELDS)[number], unknown>>
@@ -65,7 +67,7 @@ export async function GET() {
     // after save" bug.
     db
       .from('attorneys')
-      .select('id, jurisdictions, practice_areas, bio, available, application_id, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, consult_booking_url, starting_price, video_intro_url, timezone, created_at')
+      .select('id, jurisdictions, practice_areas, bio, available, application_id, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, consult_booking_url, starting_price, video_intro_url, timezone, created_at, show_bar_number, bar_state')
       .eq('profile_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -151,6 +153,8 @@ export async function PATCH(req: Request) {
   // existing missing-column self-heal below covers the pre-migration case.
   if ('credential_type' in body) update.credential_type = clean((body as any).credential_type, 120)
   if ('bar_number' in body) update.bar_number = clean((body as any).bar_number, 120)
+  if ('show_bar_number' in body) update.show_bar_number = Boolean((body as any).show_bar_number)
+  if ('bar_state' in body) update.bar_state = clean((body as any).bar_state, 80)
 
   if ('years_experience' in body) {
     const n = Number(body.years_experience)

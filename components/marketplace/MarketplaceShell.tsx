@@ -139,7 +139,19 @@ function MessagesPanel({ role }: { role: Role }) {
   }
 
   return (
-    <div className="yousafe-messenger" style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div
+      className="yousafe-messenger"
+      style={{
+        height: 'calc(100vh - 60px)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: 'var(--bg, #F7F8FA)',
+        color: 'var(--text, #0F172A)',
+        colorScheme: 'light',
+        isolation: 'isolate',
+      }}
+    >
       <UnifiedInbox
         canSendOffer={role === 'attorney' || role === 'consultant'}
         defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}

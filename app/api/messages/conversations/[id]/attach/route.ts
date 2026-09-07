@@ -15,6 +15,12 @@
  * append it to the thread.
  */
 import { requirePortalUser } from '@/lib/portalAuth'
+import {
+  isClientRole,
+  isProviderRole,
+  scheduleAutoReply,
+  setConversationAiMode,
+} from '@/lib/messengerAi'
 
 const BUCKET = 'message-attachments'
 const MAX_BYTES = 25 * 1024 * 1024 // 25 MB
@@ -139,6 +145,21 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', id)
     .then(() => null, () => null)
+
+  // Part B: attachments from clients can trigger AI (doc parse path);
+  // provider attachments pause AI.
+  try {
+    if (isProviderRole(auth.role) || auth.role === 'admin') {
+      await setConversationAiMode(db, id, 'paused', {
+        ai_paused_reason: 'human_attachment',
+        ai_mode_set_by: profileId,
+      })
+    } else if (isClientRole(auth.role)) {
+      scheduleAutoReply(id, message?.id)
+    }
+  } catch (e) {
+    console.warn('[attach] ai hook failed', e instanceof Error ? e.message : e)
+  }
 
   return Response.json({ message }, { status: 201 })
 }

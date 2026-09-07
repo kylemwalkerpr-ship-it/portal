@@ -5,6 +5,13 @@
  */
 import { requirePortalUser } from '@/lib/portalAuth'
 import { safetyGuard } from '@/lib/safety'
+import {
+  isClientRole,
+  isProviderRole,
+  readAiMode,
+  scheduleAutoReply,
+  setConversationAiMode,
+} from '@/lib/messengerAi'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -12,12 +19,25 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const { db, profileId } = auth
   const { id } = await context.params
 
-  const { data: conv, error } = await db
+  let { data: conv, error } = await db
     .from('conversations')
-    .select('id, participant_a, participant_b, context_kind, context_id, status, last_message_at, created_at')
+    .select('id, participant_a, participant_b, context_kind, context_id, status, last_message_at, created_at, metadata')
     .eq('id', id)
     .single()
-  if (error || !conv) return Response.json({ error: 'Conversation not found' }, { status: 404 })
+  if (error || !conv) {
+    const missingCol = error && /metadata|column/i.test(error.message || '')
+    if (missingCol) {
+      const fb = await db
+        .from('conversations')
+        .select('id, participant_a, participant_b, context_kind, context_id, status, last_message_at, created_at')
+        .eq('id', id)
+        .single()
+      if (fb.error || !fb.data) return Response.json({ error: 'Conversation not found' }, { status: 404 })
+      conv = { ...fb.data, metadata: {} }
+    } else {
+      return Response.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+  }
   if (conv.participant_a !== profileId && conv.participant_b !== profileId) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -245,6 +265,8 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       created_at:   conv.created_at,
       last_message_at: conv.last_message_at,
       source_inquiry_archived_at: sourceInquiryArchivedAt,
+      ai_mode: readAiMode((conv as any).metadata),
+      ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
     },
     messages,
     sidebar: {
@@ -305,6 +327,20 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .select('id, sender_id, type, body, created_at')
     .single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Part B: human provider/admin outbound pauses AI; client inbound schedules AI reply.
+  try {
+    if (isProviderRole(auth.role) || auth.role === 'admin') {
+      await setConversationAiMode(db, id, 'paused', {
+        ai_paused_reason: 'human_message',
+        ai_mode_set_by: profileId,
+      })
+    } else if (isClientRole(auth.role)) {
+      scheduleAutoReply(id, data?.id)
+    }
+  } catch (e) {
+    console.warn('[messages] ai hook failed', e instanceof Error ? e.message : e)
+  }
 
   return Response.json({ message: data })
 }

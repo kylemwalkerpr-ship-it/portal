@@ -105,6 +105,24 @@ export async function GET(req: Request) {
     if (saved) saved.forEach((s: any) => savedGigIds.add(s.gig_id))
   }
 
+  // Batch-resolve seller headshots (attorneys/consultants tables). profiles.avatar_url
+  // is rarely the source of truth for verified sellers; without this join GigCard
+  // fell through to initials even when headshot_url was set.
+  const headshotByProfileId = new Map<string, string>()
+  const providerIds = Array.from(new Set((gigs ?? []).map((g: any) => g.provider_id).filter(Boolean)))
+  if (providerIds.length > 0) {
+    const [attyHs, consHs] = await Promise.all([
+      db.from('attorneys').select('profile_id, headshot_url').in('profile_id', providerIds),
+      db.from('consultants').select('profile_id, headshot_url').in('profile_id', providerIds),
+    ])
+    for (const row of (attyHs.data ?? []) as Array<{ profile_id: string; headshot_url: string | null }>) {
+      if (row.headshot_url) headshotByProfileId.set(row.profile_id, row.headshot_url)
+    }
+    for (const row of (consHs.data ?? []) as Array<{ profile_id: string; headshot_url: string | null }>) {
+      if (row.headshot_url) headshotByProfileId.set(row.profile_id, row.headshot_url)
+    }
+  }
+
   const shaped = (gigs ?? [])
     .map((gig: any) => {
       const activeTiers = (gig.tiers || []).filter((t: any) => t.is_active)
@@ -119,6 +137,7 @@ export async function GET(req: Request) {
         // resolved cover without re-implementing the lookup.
         gallery_images: gallery,
         cover_image_url: resolveCoverUrl(gig),
+        provider_headshot_url: headshotByProfileId.get(gig.provider_id) || null,
         starting_price: cheapest?.price ?? null,
         delivery_days: cheapest?.delivery_days ?? null,
         new_badge: Number(gig.order_count || 0) < 5 && Number(gig.review_count || 0) < 3,

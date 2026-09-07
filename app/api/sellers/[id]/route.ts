@@ -47,6 +47,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     let application = null
     let credentialType: string | null = null
+    let publicBarNumber: string | null = null
+    let publicBarState: string | null = null
     if (role === 'attorney') {
       const { data: appData } = await db
         .from('attorney_applications')
@@ -60,6 +62,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       // Editable credential off the attorneys row wins over the application.
       const credential = await resolveAttorneyCredential(db, profileId)
       credentialType = credential.credential_type || (appData?.credential_type ?? null)
+      if (credential.show_bar_number !== false && credential.bar_number) {
+        publicBarNumber = credential.bar_number
+        publicBarState = credential.bar_state || null
+      }
     }
 
     const ratingsTable = role === 'attorney' ? 'attorney_ratings' : 'consultant_ratings'
@@ -122,6 +128,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       specialties: provider.specialties,
       languages: provider.languages,
       credential_type: credentialType ?? application?.credential_type,
+      bar_number: publicBarNumber,
+      bar_state: publicBarState,
       years_experience: provider.years_experience,
       starting_price: provider.starting_price,
       offers_free_consult: provider.offers_free_consult,

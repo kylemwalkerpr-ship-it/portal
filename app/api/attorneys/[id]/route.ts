@@ -91,6 +91,8 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       languages: attorney.languages,
       education: attorney.education,
       credential_type: credential.credential_type || application?.credential_type || null,
+      bar_number: (credential.show_bar_number !== false && credential.bar_number) ? credential.bar_number : null,
+      bar_state: (credential.show_bar_number !== false && credential.bar_number) ? (credential.bar_state || null) : null,
       years_experience: attorney.years_experience,
       starting_price: attorney.starting_price,
       offers_free_consult: attorney.offers_free_consult ?? false,
