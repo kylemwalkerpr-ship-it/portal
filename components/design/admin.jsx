@@ -17,6 +17,7 @@ const AdminConsultantManagement = React.lazy(() => import('./admin-consultant-ma
 const AdminTemplates = React.lazy(() => import('./admin-templates'))
 const UserDetailDrawer = React.lazy(() => import('./admin-user-detail'))
 const AdminContentStudio = React.lazy(() => import('./admin-content-studio'))
+const AdminMasterMessenger = React.lazy(() => import('../messaging/AdminMasterMessenger'))
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
@@ -97,7 +98,7 @@ function AdminApp({ onLogout }) {
   // app/dashboard/admin/[section]/page.tsx); the legacy /dashboard?page=...
   // form is still read for old bookmarks. escrow / payouts / wallets /
   // loyalty are aliases for the matching Financials tab.
-  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'financials', 'gigs', 'content', 'settings'];
+  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'financials', 'gigs', 'content', 'master-chats', 'settings'];
   const FINANCIAL_TAB_ALIASES = { escrow: 'escrow', payouts: 'payouts', wallets: 'wallets', loyalty: 'loyalty' };
   const [financialsTab, setFinancialsTab] = React.useState(null);
   const rawSectionFromUrl = () => {
@@ -583,6 +584,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
         <NavGroupLabel label="Support" />
         <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
+        <NavItem icon="💬" label="Master Chats" active={page === 'master-chats'} onClick={() => setPage('master-chats')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
 <NavItem icon="📝" label="Content Studio" active={page === 'content'} onClick={() => setPage('content')} />
       </div>
@@ -2534,7 +2536,7 @@ const Settings = () => {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', 'master-chats': 'Master Chats', content: 'Content Studio', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2555,6 +2557,7 @@ const Settings = () => {
           {page === 'users' && <Users />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
           {page === 'tickets' && <AdminTickets />}
+          {page === 'master-chats' && <AdminMasterMessenger />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} initialTab={financialsTab} />}

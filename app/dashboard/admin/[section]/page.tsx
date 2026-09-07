@@ -20,6 +20,8 @@ const VALID_SECTIONS = new Set([
   'financials', 'gigs', 'settings',
   // Content Studio command center (deep-linkable)
   'content',
+  // Admin Master Chats (oversight messenger)
+  'master-chats',
   // Financials tab aliases
   'escrow', 'payouts', 'wallets', 'loyalty',
 ])
