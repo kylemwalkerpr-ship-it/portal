@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import { cache } from 'react'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { resolveLegacyGigRedirect } from '@/lib/gigSlugRedirects'
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 import { providerDisplayLabel } from '@/lib/providerDisplayName'
@@ -18,6 +19,11 @@ export const revalidate = 3600
  * This is separated so both generateMetadata and Page can use it.
  */
 async function checkSlugRedirect(slug: string): Promise<string | null> {
+  // Static map first — covers known GSC soft-200 noindex slugs even when
+  // gig_slug_redirects has no row yet (or the edge DB lookup fails).
+  const legacy = resolveLegacyGigRedirect(slug)
+  if (legacy) return legacy
+
   try {
     const db = createSupabaseAdminClient()
     const { data: row } = await db
@@ -127,10 +133,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const gig = await loadGigForSeo(slug)
 
     if (!gig) {
-      // Always emit a self-canonical even on the noindex fallback. Without
-      // alternates.canonical, Next.js falls back to root layout's metadata
-      // (which canonicalises to portal home) — Ahrefs flagged that as
-      // "non-canonical" on every draft / missing gig URL.
+      // Missing/inactive/draft: noindex. Page calls notFound() so crawlers
+      // get a real 404 instead of a soft-200 loading shell. Keep a
+      // self-canonical so Next does not fall back to portal-home canonical
+      // (Ahrefs flagged that as non-canonical on draft/missing gig URLs).
       const fallbackCanonical = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
       return {
         title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
@@ -185,6 +191,12 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
   // Single load for JSON-LD + SSR body (React cache() also dedupes with metadata).
   const gig = await loadGigForSeo(slug)
+
+  // Missing / inactive / draft gigs must not soft-200 with a client loading
+  // shell + noindex meta — that pattern inflates GSC "Excluded by noindex".
+  // Real 404 (not-found) is the correct signal for unknown slugs; renamed
+  // slugs are handled by the 301 above.
+  if (!gig) notFound()
 
   // Build the JSON-LD graph for this gig. Failure here must never break the
   // page render — emit nothing rather than a broken script.
