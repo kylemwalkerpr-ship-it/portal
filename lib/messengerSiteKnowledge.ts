@@ -157,14 +157,14 @@ export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): 
     return { ...c, score }
   })
   scored.sort((a, b) => (b.score || 0) - (a.score || 0))
-  const top = scored.filter((c) => (c.score || 0) > 0).slice(0, limit)
+  const top: KnowledgeChunk[] = scored.filter((c) => (c.score || 0) > 0).slice(0, limit)
   // Always include at least a core pack so the model stays site-aware.
   if (top.length < 3) {
     const core = rankChunks(chunks, '', Math.max(limit, 4))
     const seen = new Set(top.map((c) => c.id))
     for (const c of core) {
       if (seen.has(c.id)) continue
-      top.push(c)
+      top.push({ ...c, score: c.score ?? 0 })
       if (top.length >= limit) break
     }
   }
