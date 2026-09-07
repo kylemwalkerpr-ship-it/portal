@@ -1,0 +1,48 @@
+name: Gig Taxonomy Guard
+
+# Data-quality gate for marketplace inventory: fails when any ACTIVE gig has
+# no canonical category or jurisdiction placement (NULL or a value that maps
+# to nothing). The listing APIs deliberately OR in NULL/legacy values so
+# untagged gigs stay visible — this guard keeps that a temporary state, not
+# permanent drift.
+#
+# Standalone on purpose: it does NOT gate deploys (a red data issue must not
+# block shipping unrelated code), but it fails loudly on GitHub so ops sees
+# it. Fix = scripts/backfill-gig-taxonomy.mts (dry-run first) + manual
+# assignment for rows it flags for review.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/check-gig-taxonomy.mts'
+      - 'scripts/backfill-gig-taxonomy.mts'
+      - 'lib/gigTaxonomy.ts'
+      - 'lib/categories.ts'
+      - 'lib/jurisdictionFilter.ts'
+      - '.github/workflows/gig-taxonomy-guard.yml'
+  schedule:
+    - cron: '30 6 * * *' # daily 06:30 UTC
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check active gig taxonomy placement
+        # Read-only against Supabase (selects only). Fails (exit 1) when any
+        # active gig has an unmapped category or jurisdiction.
+        run: npx -y tsx scripts/check-gig-taxonomy.mts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
