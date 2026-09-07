@@ -3100,5 +3100,61 @@
     "repo": "caseworks",
     "path": "https://legal.yousafeconsultancy.com/us/wharton-essay/",
     "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/marketplace/categories/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/categories/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/marketplace/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/marketplace/providers/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/providers/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/marketplace/templates/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/templates/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/page.tsx/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/page.tsx/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/sellers/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/sellers/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1788800581016-https://market.yousafeconsultancy.com/shop/",
+    "timestamp": "2026-09-07T17:03:01.016Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/shop/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
   }
 ]
