@@ -10,6 +10,7 @@ module.exports = {
   modulePathIgnorePatterns: ['<rootDir>/.next', '<rootDir>/.open-next'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^@opennextjs/cloudflare$': '<rootDir>/tests/mocks/opennext-cloudflare.js',
   },
   transform: {
     '^.+\\.tsx?$': [
