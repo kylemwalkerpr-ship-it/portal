@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CATEGORIES } from '@/lib/categories'
 
 type Country = 'all' | 'us' | 'uk' | 'ca' | 'au'
@@ -19,7 +19,9 @@ interface Gig {
   provider?: { full_name?: string | null } | null
 }
 
-interface ApiEnvelope { gigs?: Gig[]; total?: number }
+interface ApiEnvelope { gigs?: Gig[]; total?: number; hasMore?: boolean; page?: number }
+
+const PAGE_SIZE = 48
 
 const CURRENCY_BY: Record<Country, string> = { all: 'USD', us: 'USD', uk: 'GBP', ca: 'CAD', au: 'AUD' }
 
@@ -41,8 +43,11 @@ export function AllGigsDrawer({
   const [sort, setSort] = useState<'trending' | 'best_rated' | 'most_orders' | 'newest' | 'price_asc'>('trending')
   const [gigs, setGigs] = useState<Gig[]>([])
   const [total, setTotal] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const resultsRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -51,9 +56,16 @@ export function AllGigsDrawer({
     setError('')
     const params = new URLSearchParams()
     if (country !== 'all') params.set('country', country)
-    for (const id of picked) params.append('category', id)
+    // "All categories checked" means unfiltered — don't send category
+    // params at all. Sending every taxonomy id as a filter made the API
+    // drop active gigs whose category is NULL or outside the taxonomy,
+    // so part of the inventory was invisible even on "show everything".
+    if (picked.size !== CATEGORIES.length) {
+      for (const id of picked) params.append('category', id)
+    }
     params.set('sort', sort)
-    params.set('limit', '48')
+    params.set('limit', String(PAGE_SIZE))
+    params.set('page', String(page))
 
     fetch(`/api/marketplace/gigs?${params.toString()}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
@@ -63,13 +75,14 @@ export function AllGigsDrawer({
         const payload = (body as any).data ?? body
         setGigs(payload.gigs ?? [])
         setTotal(payload.total ?? 0)
+        setHasMore(Boolean(payload.hasMore))
       })
       .catch((e) => !cancelled && setError(typeof e === 'string' ? e : 'Failed to load gigs'))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [open, country, picked, sort])
+  }, [open, country, picked, sort, page])
 
   // Close on Escape, lock body scroll while open
   useEffect(() => {
@@ -87,6 +100,28 @@ export function AllGigsDrawer({
   const allChecked = picked.size === CATEGORIES.length
   const noneChecked = picked.size === 0
 
+  const currency = CURRENCY_BY[country]
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const canPrev = page > 1
+  const canNext = hasMore || page < totalPages
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const rangeEnd = (page - 1) * PAGE_SIZE + gigs.length
+
+  function goToPage(next: number) {
+    if (next < 1) return
+    setPage(next)
+    // Keep the top of the result grid in view after the swap.
+    requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
+  }
+
+  // Filter mutations always restart at page 1 — resetting here (in the same
+  // handlers that change state) avoids an extra fetch with the stale page.
+  function changeCountry(c: Country) {
+    setCountry(c)
+    setPage(1)
+  }
+
   function toggle(id: string) {
     setPicked((prev) => {
       const next = new Set(prev)
@@ -94,9 +129,23 @@ export function AllGigsDrawer({
       else next.add(id)
       return next
     })
+    setPage(1)
   }
 
-  const currency = CURRENCY_BY[country]
+  function pickAll() {
+    setPicked(new Set(CATEGORIES.map((c) => c.id)))
+    setPage(1)
+  }
+
+  function pickNone() {
+    setPicked(new Set())
+    setPage(1)
+  }
+
+  function changeSort(s: typeof sort) {
+    setSort(s)
+    setPage(1)
+  }
 
   return (
     <>
@@ -125,7 +174,7 @@ export function AllGigsDrawer({
                       <button
                         key={c}
                         type="button"
-                        onClick={() => setCountry(c)}
+                        onClick={() => changeCountry(c)}
                         className={c === country ? 'on' : ''}
                       >
                         {c === 'all' ? 'All' : c.toUpperCase()}
@@ -138,9 +187,9 @@ export function AllGigsDrawer({
                   <div className="cw-all-filter-label">
                     Categories
                     <span className="cw-all-bulk">
-                      <button type="button" onClick={() => setPicked(new Set(CATEGORIES.map((c) => c.id)))} disabled={allChecked}>All</button>
+                      <button type="button" onClick={pickAll} disabled={allChecked}>All</button>
                       <span>·</span>
-                      <button type="button" onClick={() => setPicked(new Set())} disabled={noneChecked}>None</button>
+                      <button type="button" onClick={pickNone} disabled={noneChecked}>None</button>
                     </span>
                   </div>
                   <ul className="cw-all-cats">
@@ -161,7 +210,7 @@ export function AllGigsDrawer({
 
                 <div className="cw-all-filterblock">
                   <div className="cw-all-filter-label">Sort by</div>
-                  <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="cw-all-sort">
+                  <select value={sort} onChange={(e) => changeSort(e.target.value as typeof sort)} className="cw-all-sort">
                     <option value="trending">Most popular</option>
                     <option value="best_rated">Best rated</option>
                     <option value="most_orders">Most orders</option>
@@ -171,9 +220,15 @@ export function AllGigsDrawer({
                 </div>
               </aside>
 
-              <section className="cw-all-results">
+              <section className="cw-all-results" ref={resultsRef}>
                 <div className="cw-all-count">
-                  {loading ? 'Loading…' : error ? `${error}` : `${total.toLocaleString('en-US')} services match · showing ${gigs.length}`}
+                  {loading
+                    ? 'Loading…'
+                    : error
+                      ? `${error}`
+                      : total === 0
+                        ? '0 services match'
+                        : `${total.toLocaleString('en-US')} services match · showing ${rangeStart}–${rangeEnd}`}
                 </div>
                 {!loading && !error && gigs.length === 0 && (
                   <div className="cw-all-empty">No services match these filters. Try widening the categories or switching jurisdiction.</div>
@@ -208,6 +263,38 @@ export function AllGigsDrawer({
                     )
                   })}
                 </div>
+
+                {!loading && !error && total > PAGE_SIZE && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '18px 0 4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => goToPage(page - 1)}
+                      disabled={!canPrev || loading}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, border: '1px solid #DDD8CE',
+                        background: '#FFFFFF', cursor: canPrev && !loading ? 'pointer' : 'not-allowed',
+                        opacity: canPrev && !loading ? 1 : 0.45, fontWeight: 600, fontSize: 13,
+                      }}
+                    >
+                      ← Prev
+                    </button>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#5C6070' }}>
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => goToPage(page + 1)}
+                      disabled={!canNext || loading}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, border: '1px solid #DDD8CE',
+                        background: '#FFFFFF', cursor: canNext && !loading ? 'pointer' : 'not-allowed',
+                        opacity: canNext && !loading ? 1 : 0.45, fontWeight: 600, fontSize: 13,
+                      }}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </section>
             </div>
           </div>

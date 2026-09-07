@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { CaseworksReadMoreRail } from '@/components/marketplace/CaseworksReadMoreRail'
 import { notFound } from 'next/navigation'
-import { resolveCategoryOrSubcategory } from '@/lib/categories'
+import { buildCategoryOrFilter, resolveCategoryOrSubcategory } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { getCaseworksItemListJsonLd } from '@/lib/caseworksClusterMap'
@@ -12,6 +12,34 @@ import { getCategoryEditorial } from '@/lib/categoryEditorial'
 interface CategoryPageProps {
   params: Promise<{ categoryId: string }>
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+/**
+ * Count active gigs for a category/subcategory using the SAME filter shape
+ * the discovery listing applies (lib/categories taxonomy terms, with NULL
+ * categories OR'd in — see buildCategoryOrFilter). The old exact
+ * `.eq('category', id)` / `.eq('subcategory', id)` counts disagreed with the
+ * listing on two axes: gigs stored with taxonomy labels instead of ids, and
+ * gigs with an unset category (PostgREST `in`/`eq` never match NULL). That
+ * skewed the "(N services)" title and, worse, the empty-shelf noindex
+ * policy — a category whose listing renders gigs could still count 0 here
+ * and get de-indexed.
+ */
+async function countActiveGigsForCategory(filterId: string): Promise<number> {
+  try {
+    const db = createSupabaseAdminClient()
+    let query = db
+      .from('gigs')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active')
+    const categoryOr = buildCategoryOrFilter([filterId])
+    if (categoryOr) query = query.or(categoryOr)
+    const { count } = await query
+    return count || 0
+  } catch {
+    // Count is best-effort; treat as 0 (same as before).
+    return 0
+  }
 }
 
 export async function generateMetadata({ params, searchParams }: CategoryPageProps): Promise<Metadata> {
@@ -27,19 +55,7 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
   const { category, subcategory } = resolved
   const display = subcategory ?? category
 
-  let count = 0
-  try {
-    const db = createSupabaseAdminClient()
-    let query = db
-      .from('gigs')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active')
-    query = subcategory
-      ? query.eq('subcategory', subcategory.id)
-      : query.eq('category', category.id)
-    const { count: c } = await query
-    count = c || 0
-  } catch { /* count is best-effort */ }
+  const count = await countActiveGigsForCategory(subcategory?.id ?? category.id)
 
   // Empty shelves: keep follow so caseworks inbound equity is not wasted, but
   // do NOT index pure empty category shells (SEO deep strategy §5.2).
@@ -88,19 +104,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   const filterId = subcategory?.id ?? category.id
 
   // Active-gig count for empty-shelf UI + indexing policy (matches generateMetadata).
-  let activeCount = 0
-  try {
-    const db = createSupabaseAdminClient()
-    let query = db
-      .from('gigs')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active')
-    query = subcategory
-      ? query.eq('subcategory', subcategory.id)
-      : query.eq('category', category.id)
-    const { count: c } = await query
-    activeCount = c || 0
-  } catch { /* best-effort */ }
+  const activeCount = await countActiveGigsForCategory(filterId)
 
   const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
   const host = new URL(canonicalUrl).origin

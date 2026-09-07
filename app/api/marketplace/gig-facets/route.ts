@@ -1,6 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
-import { CATEGORIES, getCategoryFilterTerms } from '@/lib/categories'
+import { CATEGORIES, buildCategoryOrFilter } from '@/lib/categories'
+import { jurisdictionCountryOrFilter } from '@/lib/jurisdictionFilter'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const CACHE_TTL_SECONDS = 120
@@ -57,7 +58,9 @@ export async function GET(req: Request) {
   // resolving to a single integer; cheap on the gigs table size.
   const applyBaseFilters = (q: any) => {
     let query = q.eq('status', 'active')
-    if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.eq('jurisdiction', country)
+    // Same OR-filter as the listing (NULL/invalid jurisdiction counts toward
+    // every country context) so count badges equal listing sizes.
+    if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.or(jurisdictionCountryOrFilter(country))
     const validTypes = providerTypes.filter((t) => ['attorney', 'consultant'].includes(t))
     if (validTypes.length === 1) query = query.eq('provider_type', validTypes[0])
     else if (validTypes.length > 1) query = query.in('provider_type', validTypes)
@@ -65,17 +68,20 @@ export async function GET(req: Request) {
     return query
   }
 
+  // Counts use the same OR-filter as /api/marketplace/gigs (uncategorized
+  // gigs count toward every category) so a sidebar count badge always equals
+  // what the listing shows when that category is selected.
   const categoryCounts: Record<string, number> = {}
   await Promise.all(
     CATEGORIES.map(async (cat) => {
-      const terms = getCategoryFilterTerms(cat.id)
-      if (!terms || terms.length === 0) {
+      const categoryOr = buildCategoryOrFilter([cat.id])
+      if (!categoryOr) {
         categoryCounts[cat.id] = 0
         return
       }
       const { count } = await applyBaseFilters(
         db.from('gigs').select('id', { count: 'exact', head: true }),
-      ).in('category', terms)
+      ).or(categoryOr)
       categoryCounts[cat.id] = count ?? 0
     }),
   )
@@ -85,9 +91,11 @@ export async function GET(req: Request) {
     (['us', 'uk', 'ca', 'au'] as const).map(async (j) => {
       // Don't double-filter on jurisdiction — the caller's jurisdiction
       // param is for context (e.g. "what category counts in the UK")
-      // but the jurisdiction-facet itself should always reflect total
-      // active inventory in that jurisdiction.
-      let q = db.from('gigs').select('id', { count: 'exact', head: true }).eq('status', 'active').eq('jurisdiction', j)
+      // but the jurisdiction-facet itself should always reflect what the
+      // country tab would LIST: exact matches plus NULL/invalid-jurisdiction
+      // gigs, which the landing surfaces under every tab. Keeps the sidebar
+      // badge equal to the listing size when the filter is clicked.
+      let q = db.from('gigs').select('id', { count: 'exact', head: true }).eq('status', 'active').or(jurisdictionCountryOrFilter(j))
       const validTypes = providerTypes.filter((t) => ['attorney', 'consultant'].includes(t))
       if (validTypes.length === 1) q = q.eq('provider_type', validTypes[0])
       else if (validTypes.length > 1) q = q.in('provider_type', validTypes)
@@ -101,7 +109,7 @@ export async function GET(req: Request) {
   await Promise.all(
     (['attorney', 'consultant'] as const).map(async (t) => {
       let q = db.from('gigs').select('id', { count: 'exact', head: true }).eq('status', 'active').eq('provider_type', t)
-      if (['us', 'uk', 'ca', 'au'].includes(country)) q = q.eq('jurisdiction', country)
+      if (['us', 'uk', 'ca', 'au'].includes(country)) q = q.or(jurisdictionCountryOrFilter(country))
       if (minRating) q = q.gte('avg_rating', parseFloat(minRating))
       const { count } = await q
       providerTypeCounts[t] = count ?? 0

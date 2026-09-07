@@ -110,4 +110,41 @@ describe('GET /api/marketplace/gigs — search query safety', () => {
     expect(res.status).toBe(200)
     expect(lastQuery.orCalls).toHaveLength(0)
   })
+
+  it('category filters OR in NULL categories — uncategorized active gigs stay visible', async () => {
+    // Regression: a plain `category.in.(…)` never matches NULL, so every
+    // active gig with an unset/out-of-taxonomy category silently vanished
+    // from the AllGigsDrawer, category pages, and filtered discovery even
+    // though admin counted them as live inventory.
+    const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?category=immigration&limit=20')
+    expect(res.status).toBe(200)
+    expect(lastQuery.orCalls).toHaveLength(1)
+    const filter = lastQuery.orCalls[0]
+    expect(filter).toContain('category.is.null')
+    expect(filter).toContain('category.in.(')
+    // Taxonomy terms survive — quoted values with spaces, no FTS leaking in.
+    expect(filter).toContain('"Immigration Services"')
+    expect(filter).not.toContain('.fts.')
+  })
+
+  it('country filter ORs in NULL/invalid jurisdictions — unlocalised gigs stay visible', async () => {
+    // Regression: a plain `.eq('jurisdiction', country)` hid every active gig
+    // with an unset/invalid jurisdiction from the drawer + discovery country
+    // tabs, while the landing surfaced those gigs under every tab.
+    const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?country=us&limit=20')
+    expect(res.status).toBe(200)
+    expect(lastQuery.orCalls).toHaveLength(1)
+    const filter = lastQuery.orCalls[0]
+    expect(filter).toContain('jurisdiction.eq.us')
+    expect(filter).toContain('jurisdiction.is.null')
+    expect(filter).toContain('jurisdiction.not.in.("us","uk","ca","au")')
+  })
+
+  it('search + country filters compose as separate or() expressions', async () => {
+    const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?q=visa&country=uk&limit=20')
+    expect(res.status).toBe(200)
+    expect(lastQuery.orCalls).toHaveLength(2)
+    expect(lastQuery.orCalls[0]).toContain('title.plfts.visa')
+    expect(lastQuery.orCalls[1]).toContain('jurisdiction.eq.uk')
+  })
 })

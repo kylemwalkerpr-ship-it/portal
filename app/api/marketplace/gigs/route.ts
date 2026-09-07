@@ -1,6 +1,7 @@
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
-import { getCategoryFilterTerms } from '@/lib/categories'
+import { buildCategoryOrFilter } from '@/lib/categories'
+import { jurisdictionCountryOrFilter } from '@/lib/jurisdictionFilter'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -74,13 +75,19 @@ export async function GET(req: Request) {
     }
   }
   if (categories.length > 0) {
-    const terms = Array.from(new Set(categories.flatMap(category => getCategoryFilterTerms(category))))
-    if (terms.length > 0) query = query.in('category', terms)
+    // OR-filter (not a plain `in`) so uncategorized gigs (category IS NULL)
+    // stay visible: PostgREST `in` never matches NULL, which silently hid
+    // active inventory from every category-filtered surface.
+    const categoryOr = buildCategoryOrFilter(categories)
+    if (categoryOr) query = query.or(categoryOr)
   }
   const validProviderTypes = providerTypes.filter(type => ['attorney', 'consultant'].includes(type))
   if (validProviderTypes.length === 1) query = query.eq('provider_type', validProviderTypes[0])
   else if (validProviderTypes.length > 1) query = query.in('provider_type', validProviderTypes)
-  if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.eq('jurisdiction', country)
+  // OR-filter (not a plain `eq`) so NULL/invalid-jurisdiction gigs surface
+  // under every country tab — same bucketing rule as the landing page.
+  // A plain `eq` hid those rows from the drawer/discovery country tabs.
+  if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.or(jurisdictionCountryOrFilter(country))
   if (minRating) query = query.gte('avg_rating', parseFloat(minRating))
 
   if (sort === 'best_rated') query = query.gte('review_count', 3).order('avg_rating', { ascending: false })

@@ -811,6 +811,29 @@ export function getCategoryPath(
 }
 
 /**
+ * Build a PostgREST `.or()` filter string that matches a gig's `category`
+ * column against every taxonomy term of the selected categories AND also
+ * matches NULL categories.
+ *
+ * Why: PostgREST `category.in.(...)` never matches NULL, so any active gig
+ * whose `category` is unset (or a legacy string outside the taxonomy) was
+ * silently dropped from every category-filtered surface — the AllGigsDrawer
+ * (which always sends category params), category pages, and filtered
+ * discovery — even though admin counts them as live inventory.
+ *
+ * Returns null when no terms resolve (caller should skip the filter).
+ */
+export function buildCategoryOrFilter(categoryIds: CategoryId[]): string | null {
+  const terms = Array.from(new Set(categoryIds.flatMap((id) => getCategoryFilterTerms(id))))
+  if (terms.length === 0) return null
+  // PostgREST quoted values: commas are safe inside `in.("…")`, and embedded
+  // double quotes are escaped by doubling. Quote every term so spaces and
+  // reserved chars survive the or= parser.
+  const inList = terms.map((t) => `"${String(t).replace(/"/g, '""')}"`).join(',')
+  return `category.is.null,category.in.(${inList})`
+}
+
+/**
  * Legacy category mapping for backward compatibility
  * Maps old category names to new category IDs
  */

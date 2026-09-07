@@ -315,6 +315,18 @@ async function loadLandingData(): Promise<LandingData> {
   for (const g of allGigs) {
     if (g.jx) gigsByCountry[g.jx].push(g)
   }
+  // Gigs whose jurisdiction can't be resolved (no valid `jurisdiction` column
+  // value AND no mappable provider.country) previously vanished from every
+  // country tab — they only surfaced under "All jurisdictions". Include them
+  // under every jurisdiction instead, mirroring the NULL-category treatment
+  // in the category filters: active inventory must not be invisible. Card
+  // badges already fall back to the active tab's code for jx=null gigs.
+  const unresolvedJx = allGigs.filter((g) => !g.jx)
+  if (unresolvedJx.length > 0) {
+    for (const code of Object.keys(gigsByCountry) as JxCode[]) {
+      gigsByCountry[code].push(...unresolvedJx)
+    }
+  }
 
   const slices: Record<Country, Slice> = {
     all: buildSlice('All jurisdictions', 'USD', allGigs),
