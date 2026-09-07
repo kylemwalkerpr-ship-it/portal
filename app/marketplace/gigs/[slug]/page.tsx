@@ -9,6 +9,7 @@ import { resolveLegacyGigRedirect } from '@/lib/gigSlugRedirects'
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 import { providerDisplayLabel } from '@/lib/providerDisplayName'
+import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
 // ISR: revalidate at most once per hour
 export const revalidate = 3600
@@ -301,7 +302,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
             <p style={{ fontSize: 17, lineHeight: 1.55, margin: '0 0 16px', fontWeight: 500 }}>{ssrPitch}</p>
           )}
           {ssrDescription && (
-            <div style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-wrap' }}>{ssrDescription}</div>
+            <div style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 20 }}>
+              {renderBioMarkdown(ssrDescription)}
+            </div>
           )}
           {ssrTags.length > 0 && (
             <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 16px' }}>

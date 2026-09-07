@@ -17,6 +17,7 @@ import ChatSidePane from './ChatSidePane'
 import { useGatedAction } from './useGatedAction'
 import { signalSsrReady } from './SsrHydrateGate'
 import { T, F } from './tokens'
+import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -77,9 +78,14 @@ const sidebar: CSSProperties = {
 }
 
 const gigImage: CSSProperties = {
+  /* Fiverr-style covers are full designed cards (1280×769) with baked-in
+     title + headshot. Forcing a shorter box + object-fit:cover was chopping
+     heads off the artwork. Match generated aspect and show the full card. */
   width: '100%',
-  height: '400px',
-  objectFit: 'cover',
+  height: 'auto',
+  aspectRatio: '1280 / 769',
+  objectFit: 'contain',
+  objectPosition: 'center top',
   borderRadius: '14px',
   border: `1px solid ${T.rule}`,
   background: T.vellum,
@@ -579,7 +585,13 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
 
             <Card style={{ padding: '24px' }}>
               <h3 style={sectionTitle}>About This Service</h3>
-              <p style={gigDescription}>{gig.description || 'Details are being finalized by the provider.'}</p>
+              <div style={{ fontSize: '15px', lineHeight: 1.75, color: T.ink, fontFamily: F.ui }}>
+                {gig.description
+                  ? renderBioMarkdown(gig.description)
+                  : (
+                    <p style={gigDescription}>Details are being finalized by the provider.</p>
+                  )}
+              </div>
               {gig.tags && gig.tags.length > 0 && (
                 <div style={tagsContainer}>
                   {gig.tags.map((tag: string, index: number) => (
