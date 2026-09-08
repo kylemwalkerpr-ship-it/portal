@@ -6,8 +6,19 @@ import {
   normalizeCategory,
 } from '@/lib/categories'
 import { unstable_cache } from 'next/cache'
-import type { CSSProperties } from 'react'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import {
+  COUNTRY_META,
+  clampPage,
+  deepLinkVisibleCount,
+  FEATURED_PAGE_SIZE,
+  resolveJurisdiction,
+  withCountry,
+  type Country,
+  type JxCode,
+  type LandingGig,
+} from '@/lib/marketplaceDisplay'
+import { FeaturedBriefsGrid } from '@/components/marketplace/FeaturedBriefsGrid'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
@@ -27,9 +38,6 @@ import { T, F } from '@/components/marketplace/tokens'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
-type Country = 'all' | 'us' | 'uk' | 'ca' | 'au'
-type JxCode = Exclude<Country, 'all'>
-
 function signUpHref(utm: string): string {
   return (
     `${PORTAL_URL}/sign-up/student` +
@@ -38,31 +46,6 @@ function signUpHref(utm: string): string {
 }
 
 /* ───────────────────────── Server data ─────────────────────────── */
-
-interface LandingGig {
-  id: string
-  slug: string | null
-  title: string
-  category: string | null
-  provider_type: 'attorney' | 'consultant' | null
-  avg_rating: number
-  review_count: number
-  rank_score: number
-  order_count: number
-  starting_price: number | null
-  delivery_days: number | null
-  providerName: string
-  providerCountry: string | null
-  // Resolved headshot from the seller-specific table (attorneys.headshot_url
-  // or consultants.headshot_url). profiles.avatar_url is rarely populated
-  // for verified sellers, so the cards previously fell through to initials
-  // even when the seller had uploaded a real photo on their profile.
-  providerHeadshot: string | null
-  jx: JxCode | null
-  tiers: Array<{ price: number; delivery_days: number | null }>
-  cover_image_url: string | null
-  gallery_images: Array<{ url: string }>
-}
 
 interface CategoryStat {
   cat: Category
@@ -101,25 +84,6 @@ interface LandingData {
   slices: Record<Country, Slice>
   jurisdictions: JurisdictionStat[]
   reviews: LandingReview[]
-}
-
-const COUNTRY_CODE_MAP: Record<string, JxCode> = {
-  US: 'us', USA: 'us', 'UNITED STATES': 'us',
-  UK: 'uk', GB: 'uk', GBR: 'uk', 'UNITED KINGDOM': 'uk',
-  CA: 'ca', CAN: 'ca', CANADA: 'ca',
-  AU: 'au', AUS: 'au', AUSTRALIA: 'au',
-}
-
-const COUNTRY_META: Record<JxCode, { name: string; currency: string }> = {
-  us: { name: 'United States', currency: 'USD' },
-  uk: { name: 'United Kingdom', currency: 'GBP' },
-  ca: { name: 'Canada', currency: 'CAD' },
-  au: { name: 'Australia', currency: 'AUD' },
-}
-
-function resolveJurisdiction(country?: string | null): JxCode | null {
-  if (!country) return null
-  return COUNTRY_CODE_MAP[country.toUpperCase().trim()] || null
 }
 
 function emptySlice(label: string, currency: string): Slice {
@@ -383,84 +347,9 @@ async function loadLandingData(): Promise<LandingData> {
 
 /* ───────────────────────── Helpers ─────────────────────────── */
 
-function formatPrice(cents: number | null, currency = 'USD'): string {
-  if (cents == null) return '—'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(cents / 100))
-}
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).slice(0, 2)
-  return parts.map((p) => p.charAt(0).toUpperCase()).join('') || 'YS'
-}
-
-function glyphFor(gig: LandingGig): string {
-  const cat = (gig.category ?? '').toLowerCase()
-  const title = gig.title.toLowerCase()
-  if (/i-?130|i130/.test(title)) return 'I-130'
-  if (/i-?485|i485|green card/.test(title)) return 'I-485'
-  if (/i-?765|i765|opt/.test(title)) return 'OPT'
-  if (/i-?20|f-?1|f1\b/.test(title)) return 'F-1'
-  if (/h-?1b|h1b/.test(title)) return 'H-1B'
-  if (/ilr\b|spouse/.test(title)) return 'ILR'
-  if (/section 21|s21|§21|renters? rights/.test(title)) return '§21'
-  if (/express entry|crs/.test(title)) return 'CRS'
-  if (/pgwp/.test(title)) return 'PGWP'
-  if (/1040|tax|treaty/.test(title)) return '1040'
-  if (/lmia/.test(title)) return 'LMIA'
-  if (cat.includes('study')) return 'F-1'
-  if (cat.includes('work')) return 'OPT'
-  if (cat.includes('pr') || cat.includes('residency')) return 'PR'
-  if (cat.includes('family')) return '§'
-  if (cat.includes('document')) return 'Doc'
-  if (cat.includes('tax')) return '1040'
-  if (cat.includes('housing') || cat.includes('tenancy') || cat.includes('settlement')) return '§21'
-  const firstWord = gig.title.split(' ')[0]
-  return firstWord ? firstWord.slice(0, 4) : 'YS'
-}
-
-function deliveryLabel(days: number | null): string {
-  if (!days || days < 1) return 'Flexible delivery'
-  if (days === 1) return 'Same-day'
-  if (days === 2) return '48-hour delivery'
-  return `${days}-day delivery`
-}
-
-function avatarBgFor(provider_type: LandingGig['provider_type']): string {
-  return provider_type === 'attorney' ? T.indigo : T.moss
-}
-
-function withCountry(href: string, country: Country): string {
-  if (country === 'all') return href
-  const sep = href.includes('?') ? '&' : '?'
-  return `${href}${sep}country=${country}`
-}
-
-// Fiverr-style pagination chip: filled for the active page, outlined for
-// links. Inline styles match the rest of this file's token-driven look.
-function pagerChipStyle(isActive: boolean): CSSProperties {
-  return {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 34,
-    height: 34,
-    padding: '0 10px',
-    borderRadius: 999,
-    fontFamily: F.mono,
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: '0.04em',
-    textDecoration: 'none',
-    border: `1px solid ${isActive ? T.ink : 'rgba(0,0,0,0.18)'}`,
-    background: isActive ? T.ink : 'transparent',
-    color: isActive ? '#fff' : T.ink,
-  }
-}
+// Card-render display helpers (formatPrice, glyphFor, initialsOf, …) and the
+// country maps moved to lib/marketplaceDisplay.ts — shared with the client
+// FeaturedBriefsGrid so both surfaces render cards identically.
 
 const POPULAR_CHIPS: Record<Country, Array<{ label: string; q: string }>> = {
   all: [
@@ -990,7 +879,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   const totalActive = slice.totalActive
   const currency = slice.currency
   const baseCountryParam = active === 'all' ? '' : `&country=${active}`
-
   // Build one slide per jurisdiction that has a caseFile (most-popular gig).
   // Always include the active slice first, then remaining jurisdictions.
   // Fallback to the global top brief only for jurisdictions with zero gigs.
@@ -1044,19 +932,15 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   }
   // Featured grid fallback: same idea — fill with the global ranked list
   // if the slice has nothing.
+  // Fiverr/Upwork-style browsing over the full ranked slice — no extra
+  // fetches, the inventory is already in memory. The server clamps what it
+  // renders to ?page=N (SSR matches the URL for crawlers); the client
+  // FeaturedBriefsGrid then appends pages in place (Load more) or jumps
+  // between page windows without a reload.
   const fullList = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
   const featuredIsFallback = slice.featured.length === 0 && data.slices.all.featured.length > 0
-
-  // Fiverr/Upwork-style pagination over the full ranked slice — no extra
-  // fetches, the inventory is already in memory. Page is URL-driven
-  // (?page=N) so it stays server-rendered, crawlable and shareable.
-  const PAGE_SIZE = 48
-  const totalPages = Math.max(1, Math.ceil(fullList.length / PAGE_SIZE))
-  const safePage = Math.min(Math.max(1, page), totalPages)
-  const pageStart = (safePage - 1) * PAGE_SIZE
-  const featuredToShow = fullList.slice(pageStart, pageStart + PAGE_SIZE)
-  const rangeFrom = fullList.length === 0 ? 0 : pageStart + 1
-  const rangeTo = pageStart + featuredToShow.length
+  const safePage = clampPage(page, fullList.length)
+  const serverVisible = deepLinkVisibleCount(page, fullList.length)
 
   const trustItems: Array<{ label: string }> = []
   if (totalActive > 0) trustItems.push({ label: `${totalActive.toLocaleString('en-US')} active briefs` })
@@ -1151,8 +1035,8 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
       </section>
 
       {/* Featured gigs */}
-      {featuredToShow.length > 0 ? (
-        <section className="featured">
+      {fullList.length > 0 ? (
+        <section className="featured" id="featured">
           <div className="wrap">
             <div className="section-head">
               <h2>{featuredIsFallback ? (
@@ -1176,115 +1060,12 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
               <a href={withCountry('/marketplace?delivery_days=3', active)}>· Delivery ≤ 3d</a>
             </div>
 
-            <div className="gig-grid">
-              {featuredToShow.map((g) => {
-                const tag = `${(g.jx ?? active === 'all' ? (g.jx ?? 'us') : active).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
-                const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
-                const cardCountry = g.jx ?? (active !== 'all' ? active : 'us')
-                const localCurrency = COUNTRY_META[cardCountry as JxCode]?.currency ?? currency
-                const href = g.slug
-                  ? `/marketplace/gigs/${g.slug}`
-                  : withCountry(`/marketplace?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, active)
-                return (
-                  <a key={g.id} href={href} className="gig-link" style={{ display: 'flex', textDecoration: 'none', color: 'inherit' }}>
-                  <article className="gig" data-c={cardCountry}>
-                    <div className={`plate${g.cover_image_url ? ' has-cover' : ''}`}>
-                      {g.cover_image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img className="plate-img" src={g.cover_image_url} alt={`${g.title || 'Service'} — preview`} loading="lazy" />
-                      ) : (
-                        <span className="plate-glyph">{glyphFor(g)}</span>
-                      )}
-                      <span className="plate-tag">{tag}</span>
-                    </div>
-                    <div className="body">
-                      <div className="seller">
-                        {g.providerHeadshot ? (
-                          // Real headshot. `next/image` would be ideal but
-                          // this surface already uses plain <img> elsewhere
-                          // (PNG flag tiles, gig covers) so we stay
-                          // consistent. The CSS .av rule already sets
-                          // size/circle clipping; object-fit:cover prevents
-                          // the photo from squashing into the 36px circle.
-                          <img
-                            className="av"
-                            src={g.providerHeadshot}
-                            alt={g.providerName}
-                            loading="lazy"
-                            style={{ objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <span className="av" style={{ background: avatarBgFor(g.provider_type) }}>{initialsOf(g.providerName)}</span>
-                        )}
-                        <span className="info">
-                          <b>{g.providerName}</b>
-                          <span>{g.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
-                        </span>
-                        <span className="pro">{proLabel}</span>
-                      </div>
-                      <h4>{g.title}</h4>
-                      {g.review_count > 0 && (
-                        <div className="stars">
-                          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>
-                          {g.avg_rating.toFixed(2)} <span className="rev">· ({g.review_count})</span>
-                        </div>
-                      )}
-                      <div className="gig-foot">
-                        <span className="delivery">{deliveryLabel(g.delivery_days)}</span>
-                        <span className="price">
-                          <span className="from">From</span>
-                          <b>{formatPrice(g.starting_price, localCurrency)}</b>
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                  </a>
-                )
-              })}
-            </div>
-
-            {totalPages > 1 && (
-              <nav
-                className="pager"
-                aria-label="Featured briefs pagination"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap', padding: '28px 0 8px' }}
-              >
-                <span
-                  className="pg-range"
-                  style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.inkSoft, marginRight: 12 }}
-                >
-                  Showing {rangeFrom.toLocaleString('en-US')}–{rangeTo.toLocaleString('en-US')} of {fullList.length.toLocaleString('en-US')}
-                </span>
-                {safePage > 1 && (
-                  <a
-                    href={withCountry(`/marketplace?page=${safePage - 1}`, active)}
-                    aria-label="Previous page"
-                    style={pagerChipStyle(true)}
-                  >
-                    ← Prev
-                  </a>
-                )}
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <a
-                    key={p}
-                    href={withCountry(`/marketplace?page=${p}`, active)}
-                    aria-current={p === safePage ? 'page' : undefined}
-                    style={pagerChipStyle(p === safePage)}
-                  >
-                    {p}
-                  </a>
-                ))}
-                {safePage < totalPages && (
-                  <a
-                    href={withCountry(`/marketplace?page=${safePage + 1}`, active)}
-                    aria-label="Next page"
-                    style={pagerChipStyle(true)}
-                  >
-                    Next →
-                  </a>
-                )}
-              </nav>
-            )}
+            <FeaturedBriefsGrid
+              gigs={fullList}
+              initialVisible={serverVisible}
+              country={active}
+              currency={currency}
+            />
           </div>
         </section>
       ) : null}
