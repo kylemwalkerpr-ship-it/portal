@@ -5,6 +5,7 @@ import { jurisdictionCountryOrFilter } from '@/lib/jurisdictionFilter'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { marketplaceGigSortOrder } from '@/lib/marketplaceGigSort'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -90,12 +91,16 @@ export async function GET(req: Request) {
   if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.or(jurisdictionCountryOrFilter(country))
   if (minRating) query = query.gte('avg_rating', parseFloat(minRating))
 
-  if (sort === 'best_rated') query = query.gte('review_count', 3).order('avg_rating', { ascending: false })
-  else if (sort === 'most_orders') query = query.order('order_count', { ascending: false })
-  else if (sort === 'newest') query = query.order('published_at', { ascending: false })
-  else if (sort === 'featured') query = query.not('featured_until', 'is', null).order('featured_until', { ascending: false })
-  else if (sort === 'trending') query = query.order('rank_score', { ascending: false }).order('order_count', { ascending: false })
-  else query = query.order('rank_score', { ascending: false }).order('published_at', { ascending: false })
+  if (sort === 'best_rated') query = query.gte('review_count', 3)
+  // 'featured' filters the slice; the sort ORDER is applied below.
+  if (sort === 'featured') query = query.not('featured_until', 'is', null)
+
+  // Deterministic total-order pagination: every sort adds the stable `id`
+  // tie-breaker so range(offset, …) never duplicates or omits a gig across
+  // pages (see marketplaceGigSortOrder).
+  for (const o of marketplaceGigSortOrder(sort)) {
+    query = query.order(o.column, { ascending: o.ascending })
+  }
 
   const { data: gigs, error, count } = await query.range(offset, offset + limit - 1)
   if (error) return fail(error.message, 500)

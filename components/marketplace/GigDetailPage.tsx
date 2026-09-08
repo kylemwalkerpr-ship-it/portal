@@ -16,6 +16,7 @@ import { ReviewsSection } from './ReviewComponents'
 import ChatSidePane from './ChatSidePane'
 import { useGatedAction } from './useGatedAction'
 import { signalSsrReady } from './SsrHydrateGate'
+import { stripHtmlComments } from '@/lib/bioMarkdown'
 import { T, F } from './tokens'
 import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
@@ -578,7 +579,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               </div>
               {gig.pitch && (
                 <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, marginBottom: '16px', lineHeight: 1.55 }}>
-                  {gig.pitch}
+                  {stripHtmlComments(gig.pitch)}
                 </p>
               )}
             </Card>

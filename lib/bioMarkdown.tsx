@@ -39,9 +39,72 @@ const UL: React.CSSProperties = {
   color: '#1C1410',
 }
 
+/**
+ * Remove HTML comments (`<!-- … -->`) from story copy. Roster-ref / internal
+ * annotations were historically embedded in gig descriptions and bios and the
+ * tiny markdown renderer leaked them as visible text; this keeps the copy clean
+ * at the renderer layer even if a legacy comment survives in storage. Bare
+ * unterminated `<!--`/`-->` tokens are dropped too. Legitimate markdown is
+ * otherwise preserved byte-for-byte.
+ */
+export function stripHtmlComments(text: string | null | undefined): string {
+  if (!text) return ''
+  // Well-formed comments first (may span lines).
+  let out = String(text).replace(/<!--[\s\S]*?-->/g, ' ')
+  // Residual malformed markers: an unterminated `<!--` swallows the rest of
+  // ITS line (the internal marker body must never render). Stray `-->`.
+  out = out
+    .split('\n')
+    .map((line) => {
+      const c = line.indexOf('<!--')
+      return c >= 0 ? line.slice(0, c) : line.replace(/-->/g, ' ')
+    })
+    .join('\n')
+  // Collapse the whitespace a removed comment can leave (incl. blank lines).
+  return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+}
+
+/**
+ * Replace ONE markdown section (from a heading-prefix line up to the next
+ * `## ` heading or the TRUE end of input) inside description copy.
+ *
+ * Explicitly avoids regex `\Z`-style asserts: in JS `\Z` is an identity escape
+ * (matches the literal letter "Z"), which would falsely terminate a section
+ * whenever the copy contains a "Z". Section boundaries are found by scanning
+ * physical lines, which handles (a) a section at the very end of the input,
+ * (b) a following `## ` heading, and (c) arbitrary letter "Z" content.
+ *
+ * Falls back to `description` unchanged when the heading is not present.
+ */
+export function replaceMarkdownSection(
+  description: string,
+  headingPrefix: string,
+  replacement: string,
+): string {
+  const src = String(description || '').replace(/\r\n/g, '\n')
+  const lines = src.split('\n')
+  const prefix = (headingPrefix || '').trim()
+  if (!prefix) return description || ''
+  const headingIdx = lines.findIndex((l) => l.trim().startsWith(prefix))
+  if (headingIdx < 0) return description || ''
+  let nextIdx = lines.length
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i].trim())) {
+      nextIdx = i
+      break
+    }
+  }
+  const head = lines.slice(0, headingIdx)
+  const tail = lines.slice(nextIdx)
+  const block = String(replacement || '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\s*$/g, '')
+  const before = head.length ? head.join('\n') + '\n' : ''
+  const after = tail.length ? '\n' + tail.join('\n') : ''
+  return (before + block + after).replace(/\n{3,}/g, '\n\n')
+}
+
 export function renderBioMarkdown(bio: string | null | undefined): React.ReactNode {
   if (!bio) return null
-  const lines = String(bio).replace(/\r\n/g, '\n').split('\n')
+  const lines = stripHtmlComments(bio).replace(/\r\n/g, '\n').split('\n')
   const nodes: React.ReactNode[] = []
   let i = 0
   let key = 0
