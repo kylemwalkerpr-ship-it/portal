@@ -16,6 +16,9 @@ export async function generateMetadata({
   const filterParams = ['q', 'category', 'sort', 'jurisdiction', 'provider_type', 'min_price', 'max_price', 'min_rating', 'delivery_days']
   const hasFilters = filterParams.some((k) => sp[k] !== undefined)
   const hasUtm = Object.keys(sp).some((k) => k.startsWith('utm_'))
+  // Paginated views (?page=N, N ≥ 2) duplicate the canonical landing —
+  // keep them out of the index like filtered views.
+  const hasPagination = parsePage(sp.page) > 1
 
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =
@@ -25,7 +28,7 @@ export async function generateMetadata({
     title,
     description,
     alternates: { canonical: canonicalUrl },
-    robots: hasFilters || hasUtm ? { index: false, follow: true } : { index: true, follow: true },
+    robots: hasFilters || hasUtm || hasPagination ? { index: false, follow: true } : { index: true, follow: true },
     openGraph: {
       url: canonicalUrl,
       title,
@@ -44,11 +47,20 @@ function parseCountry(raw: string | string[] | undefined): Country {
   return 'all'
 }
 
+// Featured-grid pagination (?page=N). Accepts positive integers only;
+// anything malformed, zero, or negative falls back to page 1.
+function parsePage(raw: string | string[] | undefined): number {
+  const v = Array.isArray(raw) ? raw[0] : raw
+  const n = v ? Number.parseInt(v, 10) : NaN
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
+
 export default async function Page({
   searchParams,
 }: {
   searchParams?: Promise<{
     country?: string | string[]
+    page?: string | string[]
     q?: string | string[]
     category?: string | string[]
     sort?: string | string[]
@@ -62,6 +74,7 @@ export default async function Page({
 }) {
   const sp = (await searchParams) ?? {}
   const country = parseCountry(sp.country)
+  const page = parsePage(sp.page)
 
   // When ANY filter param is present, render the discovery results page.
   // GigDiscoveryPage reads useSearchParams() client-side and seeds all
@@ -94,5 +107,5 @@ export default async function Page({
   // cookies + hit Supabase on EVERY anonymous landing render for no used
   // return value, pure Worker CPU burn (CF error 1102 contributor).
 
-  return <PublicMarketplaceLanding country={country} />
+  return <PublicMarketplaceLanding country={country} page={page} />
 }

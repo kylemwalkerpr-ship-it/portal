@@ -6,6 +6,7 @@ import {
   normalizeCategory,
 } from '@/lib/categories'
 import { unstable_cache } from 'next/cache'
+import type { CSSProperties } from 'react'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { providerDisplayName } from '@/lib/providerDisplayName'
@@ -154,9 +155,12 @@ function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice 
     }
   }
 
-  const featured = [...gigs]
-    .sort((a, b) => b.rank_score - a.rank_score)
-    .slice(0, 6)
+  // Featured grid shows the full slice, ranked by demand & review score.
+  // It was previously capped at 6 cards, which made the chips row claim
+  // "All (217)" while the grid rendered 6 — the exact mismatch users
+  // reported. The inventory query below already pulls every active gig,
+  // so no truncation here.
+  const featured = [...gigs].sort((a, b) => b.rank_score - a.rank_score)
 
   // "Case file" hero card = highest-impressions-or-most-reviews gig in the
   // slice. We use a composite signal (max(order_count, review_count)) since
@@ -237,7 +241,10 @@ async function loadLandingData(): Promise<LandingData> {
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })
-    .limit(400)
+    // Headroom above the current 217 active gigs so the "show all" grid
+    // contract holds as inventory grows; the whole-inventory pull stays
+    // cheap per the comment above.
+    .limit(1000)
 
   const reviewsP = db
     .from('gig_reviews')
@@ -431,6 +438,28 @@ function withCountry(href: string, country: Country): string {
   if (country === 'all') return href
   const sep = href.includes('?') ? '&' : '?'
   return `${href}${sep}country=${country}`
+}
+
+// Fiverr-style pagination chip: filled for the active page, outlined for
+// links. Inline styles match the rest of this file's token-driven look.
+function pagerChipStyle(isActive: boolean): CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 34,
+    height: 34,
+    padding: '0 10px',
+    borderRadius: 999,
+    fontFamily: F.mono,
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+    textDecoration: 'none',
+    border: `1px solid ${isActive ? T.ink : 'rgba(0,0,0,0.18)'}`,
+    background: isActive ? T.ink : 'transparent',
+    color: isActive ? '#fff' : T.ink,
+  }
 }
 
 const POPULAR_CHIPS: Record<Country, Array<{ label: string; q: string }>> = {
@@ -951,7 +980,7 @@ const loadLandingDataCached = unstable_cache(loadLandingData, ['marketplace-land
   revalidate: 300,
 })
 
-export async function PublicMarketplaceLanding({ country = 'all' as Country }: { country?: Country }) {
+export async function PublicMarketplaceLanding({ country = 'all' as Country, page = 1 }: { country?: Country; page?: number }) {
   const data = await loadLandingDataCached()
   const active: Country = (['all', 'us', 'uk', 'ca', 'au'] as Country[]).includes(country) ? country : 'all'
   const slice = data.slices[active]
@@ -1013,10 +1042,21 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       deduped.push(s)
     }
   }
-  // Featured grid fallback: same idea — fill with global top 6 if the slice
-  // has nothing.
-  const featuredToShow = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
+  // Featured grid fallback: same idea — fill with the global ranked list
+  // if the slice has nothing.
+  const fullList = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
   const featuredIsFallback = slice.featured.length === 0 && data.slices.all.featured.length > 0
+
+  // Fiverr/Upwork-style pagination over the full ranked slice — no extra
+  // fetches, the inventory is already in memory. Page is URL-driven
+  // (?page=N) so it stays server-rendered, crawlable and shareable.
+  const PAGE_SIZE = 48
+  const totalPages = Math.max(1, Math.ceil(fullList.length / PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+  const pageStart = (safePage - 1) * PAGE_SIZE
+  const featuredToShow = fullList.slice(pageStart, pageStart + PAGE_SIZE)
+  const rangeFrom = fullList.length === 0 ? 0 : pageStart + 1
+  const rangeTo = pageStart + featuredToShow.length
 
   const trustItems: Array<{ label: string }> = []
   if (totalActive > 0) trustItems.push({ label: `${totalActive.toLocaleString('en-US')} active briefs` })
@@ -1202,6 +1242,49 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                 )
               })}
             </div>
+
+            {totalPages > 1 && (
+              <nav
+                className="pager"
+                aria-label="Featured briefs pagination"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap', padding: '28px 0 8px' }}
+              >
+                <span
+                  className="pg-range"
+                  style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.inkSoft, marginRight: 12 }}
+                >
+                  Showing {rangeFrom.toLocaleString('en-US')}–{rangeTo.toLocaleString('en-US')} of {fullList.length.toLocaleString('en-US')}
+                </span>
+                {safePage > 1 && (
+                  <a
+                    href={withCountry(`/marketplace?page=${safePage - 1}`, active)}
+                    aria-label="Previous page"
+                    style={pagerChipStyle(true)}
+                  >
+                    ← Prev
+                  </a>
+                )}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <a
+                    key={p}
+                    href={withCountry(`/marketplace?page=${p}`, active)}
+                    aria-current={p === safePage ? 'page' : undefined}
+                    style={pagerChipStyle(p === safePage)}
+                  >
+                    {p}
+                  </a>
+                ))}
+                {safePage < totalPages && (
+                  <a
+                    href={withCountry(`/marketplace?page=${safePage + 1}`, active)}
+                    aria-label="Next page"
+                    style={pagerChipStyle(true)}
+                  >
+                    Next →
+                  </a>
+                )}
+              </nav>
+            )}
           </div>
         </section>
       ) : null}
