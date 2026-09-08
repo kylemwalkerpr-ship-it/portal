@@ -19,6 +19,7 @@ import {
   type LandingGig,
 } from '@/lib/marketplaceDisplay'
 import { FeaturedBriefsGrid } from '@/components/marketplace/FeaturedBriefsGrid'
+import { computeFacetCounts, isResolved, type FacetCounts } from '@/lib/marketplaceFacets'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
@@ -84,6 +85,8 @@ interface LandingData {
   slices: Record<Country, Slice>
   jurisdictions: JurisdictionStat[]
   reviews: LandingReview[]
+  /** Live DB facet counts (lib/marketplaceFacets). null = COUNT path failed entirely. */
+  facets: FacetCounts | null
 }
 
 function emptySlice(label: string, currency: string): Slice {
@@ -177,6 +180,7 @@ async function loadLandingData(): Promise<LandingData> {
       { code: 'au', name: 'Australia', currency: 'AUD', count: 0, fromCents: null, topCategories: [] },
     ],
     reviews: [],
+    facets: null,
   }
 
   let db
@@ -221,7 +225,15 @@ async function loadLandingData(): Promise<LandingData> {
     .order('created_at', { ascending: false })
     .limit(3)
 
-  const [inventoryRes, reviewsRes] = await Promise.all([inventoryP, reviewsP])
+  // Facet counts straight from the DB (same lib the gig-facets API serves
+  // from) — keeps the "All (N)" and category chips in sync with what the
+  // drawer/API would actually list, even when a seller pauses a gig between
+  // this cached snapshot and a chip click. Runs in parallel with the
+  // inventory pull; never throws (failed COUNTs come back null and the
+  // render falls back to the in-memory partition per-field).
+  const facetsP = computeFacetCounts(db)
+
+  const [inventoryRes, reviewsRes, facetCounts] = await Promise.all([inventoryP, reviewsP, facetsP])
 
   // Batch-fetch headshots from the seller-specific tables. Each profile_id
   // is unique per attorney/consultant row (we added unique(profile_id) in
@@ -319,7 +331,11 @@ async function loadLandingData(): Promise<LandingData> {
       code,
       name: COUNTRY_META[code].name,
       currency: COUNTRY_META[code].currency,
-      count: slice.totalActive,
+      // Prefer the DB COUNT (same source as the country-tab badges in the
+      // drawer/API); in-memory partition only if that COUNT failed.
+      count: isResolved(facetCounts.jurisdictionCounts[code])
+        ? (facetCounts.jurisdictionCounts[code] as number)
+        : slice.totalActive,
       fromCents: slice.fromCents,
       topCategories: top,
     }
@@ -342,7 +358,7 @@ async function loadLandingData(): Promise<LandingData> {
       }
     })
 
-  return { slices, jurisdictions, reviews }
+  return { slices, jurisdictions, reviews, facets: facetCounts }
 }
 
 /* ───────────────────────── Helpers ─────────────────────────── */
@@ -874,10 +890,18 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   const active: Country = (['all', 'us', 'uk', 'ca', 'au'] as Country[]).includes(country) ? country : 'all'
   const slice = data.slices[active]
   const { reviews } = data
+  const facets = data.facets
   const headline = HERO_HEADLINES[active]
   const chips = POPULAR_CHIPS[active]
   const totalActive = slice.totalActive
   const currency = slice.currency
+
+  // Chip counts prefer the live DB facet COUNTs (same source as the
+  // gig-facets API and the drawer), falling back per-field to the in-memory
+  // partition whenever that COUNT didn't resolve.
+  const chipTotal = isResolved(facets?.total) ? (facets!.total as number) : totalActive
+  const catCountFor = (catId: CategoryId, inMemory: number): number =>
+    isResolved(facets?.categoryCounts?.[catId]) ? (facets!.categoryCounts[catId] as number) : inMemory
   const baseCountryParam = active === 'all' ? '' : `&country=${active}`
   // Build one slide per jurisdiction that has a caseFile (most-popular gig).
   // Always include the active slice first, then remaining jurisdictions.
@@ -943,7 +967,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   const serverVisible = deepLinkVisibleCount(page, fullList.length)
 
   const trustItems: Array<{ label: string }> = []
-  if (totalActive > 0) trustItems.push({ label: `${totalActive.toLocaleString('en-US')} active briefs` })
+  if (chipTotal > 0) trustItems.push({ label: `${chipTotal.toLocaleString('en-US')} active briefs` })
   trustItems.push({ label: 'Escrow on every brief — released on approval' })
   trustItems.push({ label: 'Licensed attorneys & regulated consultants only' })
 
@@ -1051,10 +1075,10 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             </div>
 
             <div className="filters">
-              <a className="on" href={withCountry('/marketplace', active)}>All <span className="ct">({totalActive})</span></a>
+              <a className="on" href={withCountry('/marketplace', active)}>All <span className="ct">({chipTotal})</span></a>
               {slice.categories.filter((c) => c.count > 0).slice(0, 5).map((cs) => (
                 <a key={cs.cat.id} href={withCountry(`/marketplace?category=${cs.cat.id}`, active)}>
-                  {cs.cat.name.replace(' Services', '')} <span className="ct">({cs.count})</span>
+                  {cs.cat.name.replace(' Services', '')} <span className="ct">({catCountFor(cs.cat.id, cs.count)})</span>
                 </a>
               ))}
               <a href={withCountry('/marketplace?delivery_days=3', active)}>· Delivery ≤ 3d</a>
