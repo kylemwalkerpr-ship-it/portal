@@ -1,3 +1,4 @@
+import { applyEditorialHold } from '@/lib/seoFactory/editorialGate'
 import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
@@ -725,6 +726,8 @@ export async function POST(request: NextRequest) {
       /** Caller-supplied ContentSpec snapshot — validated against the persisted
        *  audit_json.contentSpec, never trusted over it (Milestone C). */
       contentSpec?: unknown
+      editorialReview?: unknown
+      editorialReviewPending?: boolean
     }
     const { content, jobId } = body
     if (!content || typeof content !== 'string') {
@@ -810,6 +813,7 @@ export async function POST(request: NextRequest) {
     // P0-SHIP-1 (POST): still stamp server-derived gate fields onto
     // audit_json when jobId is present so Approve/workspace see shipReady
     // after Audit (not only after Audit & Fix). Content column untouched.
+    applyEditorialHold(response, effective, body.editorialReview)
     if (jobId) {
       try {
         const { createSupabaseAdminClient } = await import('@/lib/supabase')
@@ -824,6 +828,7 @@ export async function POST(request: NextRequest) {
           row && typeof (row as { audit_json?: unknown }).audit_json === 'object' && (row as { audit_json?: unknown }).audit_json
             ? { ...((row as { audit_json: Record<string, unknown> }).audit_json) }
             : {}
+        if (!body.editorialReview) applyEditorialHold(response, effective, baseAudit.editorialReview)
         const shipReadyFlag = Boolean(response.shipReady)
         await db
           .from('content_jobs')
@@ -833,6 +838,7 @@ export async function POST(request: NextRequest) {
             word_count: countBodyWords(effective),
             audit_json: {
               ...baseAudit,
+              ...(body.editorialReview ? { editorialReview: body.editorialReview } : {}),
               ...(typeof response.score === 'number' ? { score: response.score } : {}),
               shipReady: shipReadyFlag,
               blockers: response.blockersData || [],
@@ -895,6 +901,8 @@ export async function PATCH(request: NextRequest) {
        *  carries a persisted audit_json.contentSpec snapshot that snapshot is
        *  canonical and a mismatching request snapshot is rejected (Milestone C). */
       contentSpec?: unknown
+      editorialReview?: unknown
+      editorialReviewPending?: boolean
     }
     const { action, content, annotations, annotation, warnings, blockers, competingSnippets, competingUrls, reviewModel, jobId } = body
     if (!content || !action) {
@@ -1314,7 +1322,7 @@ Return ONLY the JSON EditorPatch.`
           finalContract = { ...finalContract, warningsData: keptWarnings, warnings: keptWarnings.length }
         }
       }
-      const finalShipReady = finalContract.blockers === 0 && finalContract.shipReady
+      const finalShipReady = !body.editorialReviewPending && finalContract.blockers === 0 && finalContract.shipReady
       const allFindingsCleared = finalShipReady && finalContract.warnings === 0
       const finalLeftoverCodes = [
         ...(finalContract.blockersData || []).map((finding) => finding.code),
@@ -1381,6 +1389,7 @@ Return ONLY the JSON EditorPatch.`
                 score: finalContract.score,
                 contentSpec,
                 contentLoop,
+                ...(body.editorialReviewPending ? { editorialReview: { status: 'pending' } } : {}),
                 shipReady: finalShipReady,
                 blockers: finalContract.blockersData || [],
                 blockersCount:

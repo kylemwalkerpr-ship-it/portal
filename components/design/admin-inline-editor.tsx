@@ -2,6 +2,9 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import StudioDocEditor from './studio-doc-editor'
 import EditorMetricsStrip from './editor-metrics-strip'
+import { superviseEditorial } from '@/lib/editorialSupervisor'
+import { runHarperGrammar, fixHarperIssues } from '@/lib/harperBrowser'
+import { editorialReport } from '@/lib/seoFactory/editorialGate'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
@@ -477,7 +480,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     const seq = ++fixSeqRef.current
     const controller = new AbortController()
     fixAbortRef.current = controller
-    setFixingAll(true); setError(null); setNotice(null); setFixElapsed(0)
+    setFixingAll(true); setShipGate(null); setError(null); setNotice(null); setFixElapsed(0)
     const startedAt = Date.now()
     const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
     try {
@@ -499,11 +502,48 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         timeoutMs: 300_000,
-        body: JSON.stringify({ action: 'fix_until_gates', content: contentToFix, jobId, annotations, ...briefMeta }),
+        body: JSON.stringify({ action: 'fix_until_gates', content: contentToFix, jobId, annotations, ...briefMeta, editorialReviewPending: true }),
       })
-      const data = await res.json().catch(() => ({})) as any
+      let data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      if (seq !== fixSeqRef.current) return
+      if (seq !== fixSeqRef.current || controller.signal.aborted) return
+      let editorialNote = ''
+      // The structural loop runs first. Harper/model supervise its final body;
+      // the last server audit must evaluate that exact corrected version.
+      let reviewContent = data.fixedContent || contentToFix
+      for (let boundary = 0; boundary < 2; boundary++) {
+        const hint = { contentType, primaryKeyword, region, requiredShortKeywords, requiredLongTailKeywords }
+        const review = await superviseEditorial({ content: reviewContent, hint, signal: controller.signal }, {
+          grammar: md => runHarperGrammar(md, controller.signal, region),
+          autofix: md => fixHarperIssues(md, undefined, region),
+          progress: message => setNotice(message),
+          review: async (md, snapshot) => {
+            const response = await fetchWithTimeout('/api/content-studio/editorial-review', {
+              method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal, timeoutMs: 80_000,
+              body: JSON.stringify({ content: md, hint, grammar: snapshot.grammar, reviewModel }),
+            })
+            const result = await response.json()
+            if (!response.ok) throw new Error(result.error || 'Editorial model review failed')
+            return result
+          },
+        })
+        if (seq !== fixSeqRef.current || controller.signal.aborted) return
+        editorialNote = review.reason
+        const finalAudit = await fetchWithTimeout('/api/content-studio/reaudit', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal, timeoutMs: 80_000,
+          body: JSON.stringify({ content: review.content, jobId, ...briefMeta, editorialReview: editorialReport(review) }),
+        })
+        const finalData = await finalAudit.json()
+        if (!finalAudit.ok) throw new Error(finalData.error || 'Final editorial audit failed')
+        data = { ...finalData, fixedContent: finalData.fixedContent || review.content, contentLoop: data.contentLoop }
+        if (data.fixedContent === review.content || review.status !== 'cleared') break
+        // A final deterministic repair changed the body: measure again, never
+        // carry a previous version's grammar clearance onto the new text.
+        reviewContent = data.fixedContent
+      }
+      if (seq !== fixSeqRef.current || controller.signal.aborted) return
       if (data.fixedContent) {
         onChange(data.fixedContent)
       }
@@ -531,7 +571,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (data.contentLoop?.rounds?.length) parts.push(`${data.contentLoop.rounds.length} audit/fix round(s)`)
       if (engine.length) { parts.push(`${engine.length} engine gap${engine.length === 1 ? '' : 's'} targeted`) }
       const outcome = data.shipReady ? 'complete' : data.heldForReview ? 'paused for review' : 'stopped with blockers'
-      let message = `Audit & Fix ${outcome} — ${parts.join(' · ')}`
+      let message = `Audit & Fix ${outcome} — ${parts.join(' · ')} · ${editorialNote}`
       // A quota / billing wall on the review AI is the difference between a
       // draft that needs a human and a queue that needs money. The loop now
       // names the real reason when the provider failed outright.
@@ -554,6 +594,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       }
     }
   }, [content, annotations, fixingAll, onChange, onScoreChange, fetchLatestDraft, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
+
+  // Audit & Fix is explicit. A green ship gate is a terminal approval state,
+  // not a trigger for another mutation: silently invoking the fixer here could
+  // change text after it passed and invalidate the very audit that enabled
+  // Approve. Revisions only happen through an operator action above.
 
   // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
@@ -1303,7 +1348,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 }}
                 reviewModel={reviewModel}
                 busy={allBusy}
-                shipReady={Boolean(shipReady)}
                 onApplied={(md) => { onChange(md); setDirty(true) }}
               />
               {viewMode === 'document' ? (

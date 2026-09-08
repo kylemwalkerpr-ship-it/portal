@@ -51,9 +51,27 @@ describe('jobPassesShipGate', () => {
     expect(jobPassesShipGate(null)).toBe(false)
     expect(jobPassesShipGate(undefined)).toBe(false)
   })
-
   it('treats missing blockers as zero — a declared pass without a count passes', () => {
     expect(jobPassesShipGate(job({ score: 90, shipReady: true }))).toBe(true)
+  })
+
+  it('fails when a cleared editorial report belongs to a different body', () => {
+    const content = 'The final body is not the body that Harper and the reviewer cleared.'
+    const staleReport = {
+      status: 'cleared',
+      fingerprint: '1:stale000',
+      grammar: 100,
+      seo: 100,
+      voice: 100,
+      flesch: 70,
+      fleschTarget: 60,
+      reason: 'cleared',
+    }
+    expect(jobPassesShipGate({
+      id: 'j1',
+      content,
+      audit_json: { shipReady: true, blockers: [], editorialReview: staleReport },
+    })).toBe(false)
   })
 })
 

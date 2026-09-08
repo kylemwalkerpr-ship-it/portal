@@ -1,3 +1,4 @@
+import { editorialReportReady } from './editorialGate'
 /**
  * Server-side ship-gate enforcement for a persisted content_jobs row.
  *
@@ -32,14 +33,15 @@ export function jobPassesShipGate(job: unknown): boolean {
   if (!job || typeof job !== 'object') return false
   const audit = (job as { audit_json?: unknown }).audit_json
   if (!audit || typeof audit !== 'object') return false
-  const a = audit as { shipReady?: unknown; blockers?: unknown }
+  const a = audit as { shipReady?: unknown; blockers?: unknown; editorialReview?: unknown }
+  if (a.editorialReview && !editorialReportReady(a.editorialReview, (job as { content?: string }).content)) return false
   if (typeof a.shipReady !== 'boolean') return false
   const gate = shipGateFromResponse({ shipReady: a.shipReady, blockers: blockersCount(a.blockers) })
   return shipGateReady(gate)
 }
 
 /** Gate / loop fields bare `auditContent()` never emits. */
-export const AUDIT_GATE_PRESERVE_KEYS = ['shipReady', 'contentSpec', 'contentLoop'] as const
+export const AUDIT_GATE_PRESERVE_KEYS = ['shipReady', 'contentSpec', 'contentLoop', 'editorialReview'] as const
 
 /**
  * Merge a fresh audit overlay onto prior `audit_json` without wiping gate
@@ -76,6 +78,7 @@ export function slimAuditJsonForClient(prior: unknown): Record<string, unknown> 
   if (!prior || typeof prior !== 'object' || Array.isArray(prior)) return null
   const a = prior as Record<string, unknown>
   const out: Record<string, unknown> = {}
+  if (a.editorialReview) out.editorialReview = a.editorialReview
   if (typeof a.shipReady === 'boolean') out.shipReady = a.shipReady
   if (typeof a.score === 'number') out.score = a.score
   if (typeof a.humanScore === 'number') out.humanScore = a.humanScore

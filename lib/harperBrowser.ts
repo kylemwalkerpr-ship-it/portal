@@ -3,7 +3,6 @@ import { binaryInlined } from 'harper.js/binaryInlined'
 import { scoreHarperLints } from '@/lib/editorMetrics'
 import {
   harperSafeLines,
-  mapCorrectedProseToMarkdown,
   HARPER_ESTATE_WORDS,
   isHarperNoiseFinding,
   applyNonOverlappingSpanFixes,
@@ -172,7 +171,7 @@ export async function runHarperGrammar(
     const { body } = splitMarkdownFrontmatter(String(md || ''))
     const source = body.trim().length >= 80 ? maskHarperScaffold(body) : harperSafeLines(String(md || '')).filter((l) => !l.skip).map((l) => l.out).join('\n')
     if (source.trim().length < 80) {
-      return { score: 100, errors: 0, suggestions: 0, items: [] }
+      return null // Too little prose to evaluate; never manufacture a perfect score.
     }
     const lints: Lint[] = await lintSource(linter, source)
     if (signal?.aborted) return null
@@ -262,9 +261,12 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
         }
         const replacement = suggestionReplacement(suggestion, span, masked)
         if (replacement == null) continue
+        // Masked scaffold must never be edited, even by a cross-boundary lint.
+        if (currentBody.slice(span.start, span.end) !== masked.slice(span.start, span.end)) continue
+        if (masked.slice(span.start, span.end) === replacement) continue
         if (isHarperNoiseFinding({ kind: kindOf(l), problem, message: l.message?.() || '', fix: replacement })) continue
         if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
-        const finger = `${kind}:${problem}:${span.start}`
+        const finger = `${kindOf(l)}:${problem}:${span.start}`
         if (seen.has(finger)) continue
         spanFixes.push({
           start: span.start,
@@ -277,37 +279,9 @@ export async function fixHarperIssues(md: string, onlyProblem?: string, region?:
       }
       if (!spanFixes.length) break
       const pass = applyNonOverlappingSpanFixes(currentBody, spanFixes) // spans from length-preserving mask
-      if (pass.applied === 0) {
-        // Harper span apply missed — last resort: applySuggestion one-at-a-time on markdown body
-        let progressed = false
-        for (const l of lints) {
-          const problem = String(l.get_problem_text?.() || '').trim()
-          if (onlyProblem && problem !== onlyProblem && !problem.includes(onlyProblem) && !onlyProblem.includes(problem)) continue
-          const list = (() => { try { return l.suggestions() } catch { return [] } })()
-          const suggestion = list && list[0]
-          if (!suggestion) continue
-          try {
-            const next = await linter.applySuggestion(currentBody, l, suggestion)
-            if (typeof next === 'string' && next !== currentBody) {
-              currentBody = next
-              applied++
-              progressed = true
-              if (items.length < 48) {
-                items.push({
-                  kind: kindOf(l),
-                  problem: problem.slice(0, 120),
-                  message: (l.message?.() || '').slice(0, 200),
-                  fix: suggestionReplacement(suggestion, null, currentBody) || undefined,
-                })
-              }
-              if (onlyProblem) break
-            }
-          } catch { /* try next lint */ }
-        }
-        if (!progressed) break
-        if (onlyProblem) break
-        continue
-      }
+      // Never replay old lints on a mutated document or bypass the approved
+      // kind/noise filters. An unmappable suggestion stays open for review.
+      if (pass.applied === 0) break
       for (const f of spanFixes) {
         seen.add(`${f.kind}:${f.problem}:${f.start}`)
         if (items.length < 48) {

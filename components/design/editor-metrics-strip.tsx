@@ -59,8 +59,6 @@ type Props = {
   reviewModel?: string
   busy?: boolean
   onApplied?: (content: string) => void
-  /** After the ship gate is green, Harper auto-applies remaining grammar fixes. */
-  shipReady?: boolean
 }
 
 const C = {
@@ -117,7 +115,7 @@ function ScorePill({ label, score, sub, busy, onClick, pass }: {
   )
 }
 
-export default function EditorMetricsStrip({ content, hint, reviewModel, busy, onApplied, shipReady }: Props) {
+export default function EditorMetricsStrip({ content, hint, reviewModel, busy, onApplied }: Props) {
   const [metrics, setMetrics] = React.useState<EditorMetrics | null>(null)
   const [harper, setHarper] = React.useState<HarperLintSummary | null>(null)
   const [harperBusy, setHarperBusy] = React.useState(false)
@@ -135,7 +133,6 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   textRef.current = content
   const hintRef = React.useRef(hint)
   hintRef.current = hint
-  const autoFixKeyRef = React.useRef('')
 
   // Local metrics (readability + SEO) — cheap, recompute on debounce.
   React.useEffect(() => {
@@ -147,13 +144,16 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
 
   // Harper grammar — lazy WASM, debounced.
   React.useEffect(() => {
-    if (String(content).trim().length < 120) return
+    setHarper(null)
+    const controller = new AbortController()
+    if (String(content).trim().length < 120) { setHarperBusy(false); return }
     const timer = setTimeout(async () => {
       setHarperBusy(true)
       setHarperEngineError(null)
       try {
         const extra = listBriefKeywords(hintRef.current)
-        const summary = await runHarperGrammar(content, undefined, hintRef.current?.region, extra)
+        const summary = await runHarperGrammar(content, controller.signal, hintRef.current?.region, extra)
+        if (controller.signal.aborted) return
         if (summary) {
           setHarper(summary)
           setHarperEngineError(null)
@@ -165,10 +165,10 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
         setHarper(null)
         setHarperEngineError(err instanceof Error ? err.message : 'Harper could not start in this browser')
       } finally {
-        setHarperBusy(false)
+        if (!controller.signal.aborted) setHarperBusy(false)
       }
     }, 1100)
-    return () => clearTimeout(timer)
+    return () => { clearTimeout(timer); controller.abort() }
   }, [content, hint?.region])
 
   const styleReviewInFlightRef = React.useRef(false)
@@ -259,7 +259,9 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     setFixingHarper(true)
     setHarperFixNote(null)
     try {
-      const result = await fixHarperIssues(textRef.current, undefined, hintRef.current?.region)
+      const original = textRef.current
+      const result = await fixHarperIssues(original, undefined, hintRef.current?.region)
+      if (textRef.current !== original) { setHarperFixNote('Draft changed during correction; run again on the current text.'); return }
       if (result.applied > 0 && result.content && onApplied) {
         onApplied(result.content)
         setHarperFixNote(`Harper applied ${result.applied} fix${result.applied === 1 ? '' : 'es'}.`)
@@ -273,15 +275,6 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
       setFixingHarper(false)
     }
   }, [onApplied])
-
-  React.useEffect(() => {
-    if (!shipReady || !onApplied || harperBusy || fixingHarper) return
-    if (!harper || harper.errors + harper.suggestions === 0) return
-    const key = `${content.length}:${harper.errors}:${harper.suggestions}`
-    if (autoFixKeyRef.current === key) return
-    autoFixKeyRef.current = key
-    void runHarperAutofix()
-  }, [shipReady, harper, harperBusy, fixingHarper, onApplied, content.length, runHarperAutofix])
 
   const panel = (() => {
     if (!expanded) return null
