@@ -1,10 +1,21 @@
 name: Apply SEO Factory Migrations
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/migration-order.mjs'
+      - 'scripts/apply-migrations.mjs'
+      - '.github/workflows/apply-seo-factory-migrations.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: seo-factory-migrations-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   migrate:

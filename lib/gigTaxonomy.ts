@@ -75,7 +75,8 @@ export const VALID_JX = new Set(['us', 'uk', 'ca', 'au'])
  * constraint gigs_jurisdiction_check (supabase/marketplace_gig_jurisdiction.sql)
  * predates AU support and allows only us|uk|ca|NULL — 'au' is app-valid
  * (landing AU tab, COUNTRY_CODE_MAP above) but the DB rejects writes of it
- * until supabase/marketplace_gig_jurisdiction_au.sql is applied.
+ * until supabase/migrations/20260908_marketplace_gig_jurisdiction_au.sql
+ * is applied (now auto-applied by the apply-seo-factory-migrations workflow).
  */
 export const DB_WRITABLE_JX = new Set(['us', 'uk', 'ca'])
 const COUNTRY_CODE_MAP: Record<string, string> = {

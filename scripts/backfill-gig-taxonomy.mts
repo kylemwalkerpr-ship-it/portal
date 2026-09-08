@@ -30,9 +30,10 @@
  *   --limit=N   cap rows processed
  *   --allow-au  also write jurisdiction='au'. The DB CHECK constraint
  *               (gigs_jurisdiction_check) only allows us|uk|ca|NULL until
- *               supabase/marketplace_gig_jurisdiction_au.sql is applied —
- *               without it those writes fail. Without this flag, 'au'
- *               writes are deferred to a separate report bucket.
+ *               supabase/migrations/20260908_marketplace_gig_jurisdiction_au.sql
+ *               is applied (auto-applied by the apply-seo-factory-migrations
+ *               workflow on push) — without it those writes fail. Without this
+ *               flag, 'au' writes are deferred to a separate report bucket.
  *   --selftest  run the resolver against sample rows, no DB / env needed
  *
  * Usage:
@@ -200,7 +201,7 @@ async function main() {
   if (deferred.length > 0) {
     console.log(`\ndeferred jurisdiction writes (NOT ${APPLY ? 'applied' : 'written'}): ${deferred.length}`)
     console.log(`  DB constraint gigs_jurisdiction_check only allows us|uk|ca|NULL — 'au' is rejected.`)
-    console.log(`  Fix: apply supabase/marketplace_gig_jurisdiction_au.sql, then re-run with --apply --allow-au.`)
+    console.log(`  Fix: apply supabase/migrations/20260908_marketplace_gig_jurisdiction_au.sql, then re-run with --apply --allow-au.`)
     for (const { gig, patch } of deferred) {
       const parts = Object.entries(patch).map(([k, v]) => `${k}: ${JSON.stringify((gig as any)[k])} → ${JSON.stringify(v)}`)
       console.log(`  [${gig.status}] ${gig.slug || gig.id} — ${parts.join('; ')}`)
