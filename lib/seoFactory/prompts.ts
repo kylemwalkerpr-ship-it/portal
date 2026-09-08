@@ -47,13 +47,13 @@ export function destinationFormatBlock(plan: OwnerPlan, contentType: string): st
     // Caseworks legal guides — JSX page.tsx with ArticleLayout + CTAPanel
     lines.push(
       'CASEBOOKS / LEGAL GUIDE FORMAT (.tsx JSX page):',
-      '- Output is a Next.js page.tsx — NOT markdown. The renderer converts your markdown to JSX.',
-      '- Wrap body prose in <p> tags. Lists become <ul><li>. H2 → <h2>. H3 → <h3>.',
-      '- Every page MUST end with a <CTAPanel> component:',
+      '- Write Markdown with YAML front matter. The destination renderer converts it to a Next.js page.tsx; do not emit JSX, imports, or TypeScript exports.',
+      '- Use Markdown paragraphs, lists, ## and ### headings. The renderer supplies the corresponding HTML tags.',
+      '- Destination renderer requirement (not literal draft output): every page ends with a <CTAPanel> component:',
       '  <CTAPanel headline="…" body="…" cta="Get a free review" href="/intake?…" />',
       '- The CTA routes to the intake form, not to another article.',
-      '- Metadata is a TypeScript export: export const metadata = { title, description, alternates: { canonical } }',
-      '- Imports required: ArticleLayout, CTAPanel, Link from next/link.',
+      '- Supply title, description and canonical in YAML; the renderer creates the metadata export.',
+      '- The destination renderer owns ArticleLayout, CTAPanel and Link imports.',
       '- Country in metadata is one of us|uk|ca|au.',
       `- Word count target: ${spec.minWords}–${spec.maxWords} body words (YMYL-adjacent, Google Helpful Content depth).`,
       '- Practitioner tone: calm, second-person, no clickbait, cite official sources with URLs.',
@@ -1163,7 +1163,7 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
         ? 'RULES FOR THE FINAL PART:'
         : 'RULES FOR CONTINUATION PARTS:',
     isFirst
-      ? '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening answer + ## In 60 seconds (3-5 direct bullets) + the sections listed above. Do NOT include the final ## Sources / JSON-LD / disclaimer — the final part writes those.'
+      ? '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening answer + ## In 60 seconds (3-5 direct bullets) + the sections listed above. ' + (isLast ? 'This is the complete article: include the closing sections specified in rule 6 exactly once.' : 'Do NOT include the final ## Sources / JSON-LD / disclaimer — the final part writes those.')
       : '1) Do NOT emit YAML front matter, do NOT repeat the H1/title/intro, and do NOT wrap in code fences. Start directly with the first section heading of THIS part.'
     ,
     '2) Practitioner voice: second person, plain English (~8th grade), define legal terms on first use, sentences under ~20 words.',

@@ -137,3 +137,15 @@ describe('segmented writing helpers', () => {
     expect(countBodyWords(merged)).toBeGreaterThanOrEqual(1200)
   })
 })
+
+it('a single segment owns both opening and closing material without contradictory omissions', () => {
+  const [segment] = planWriteSegments({ minWords: 900, segmentCount: 1 })
+  const prompt = buildSegmentWritePrompt({
+    title: 'Application checklist', topic: 'Application checklist',
+    primaryKeyword: 'application checklist', region: 'US', contentType: 'blog_post',
+    tone: 'educational', segment, minWords: 900, targetWords: 1000, gscBlock: '',
+  })
+  expect(prompt).toContain('This is the complete article')
+  expect(prompt).toContain('finish with ## FAQ')
+  expect(prompt).not.toContain('Do NOT include the final')
+})

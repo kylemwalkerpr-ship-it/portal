@@ -124,3 +124,18 @@ describe('buildFactoryUserPrompt · model guidance threading', () => {
     expect(prompt).toMatch(/composite 61\/100/)
   })
 })
+
+// The model writes source Markdown even when the published destination is JSX.
+describe('draft source format and editorial contract', () => {
+  it('keeps destination implementation details out of the writer output contract', () => {
+    const { destinationFormatBlock } = require('@/lib/seoFactory/prompts')
+    const block = destinationFormatBlock({
+      repo: 'caseworks', host: 'legal', filePath: 'app/us/example/page.tsx',
+      canonicalUrl: 'https://legal.yousafeconsultancy.com/us/example',
+    }, 'legal_guide')
+    expect(block).toContain('Write Markdown with YAML front matter')
+    expect(block).toContain('do not emit JSX, imports, or TypeScript exports')
+    expect(block).not.toContain('NOT markdown')
+    expect(block).not.toContain('Wrap body prose in <p>')
+  })
+})
