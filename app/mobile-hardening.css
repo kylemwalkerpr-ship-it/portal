@@ -1,0 +1,73 @@
+/* Mobile hardening layer
+   ----------------------
+   This file contains narrowly-scoped fixes for desktop-first inline styles
+   that cannot respond to viewport changes on their own. Keep selectors
+   scoped to the portal/marketplace shells so public content and embedded
+   surfaces are not changed accidentally. */
+
+@media (max-width: 760px) {
+  /* Dashboard sidebars become horizontal nav rails in globals.css. Group
+     headings are useful in the desktop rail but waste scarce horizontal
+     space on phones, so keep only actual nav items in the swipe row. */
+  .yousafe-sidebar-nav > :not(.yousafe-nav-item) {
+    display: none !important;
+  }
+
+  .yousafe-nav-item {
+    min-height: 44px !important;
+    min-width: max-content !important;
+    touch-action: manipulation;
+  }
+
+  /* Prevent Safari from zooming the page when a dashboard form control is
+     focused. Inputs remain visually compact through padding/line-height; only
+     the editable text size is raised to the iOS-safe 16px threshold. */
+  .yousafe-dashboard-shell input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .yousafe-dashboard-shell select,
+  .yousafe-dashboard-shell textarea {
+    font-size: 16px !important;
+  }
+
+  /* A number of dashboard panels are authored with desktop-only inline grid
+     definitions. Collapse the common fixed multi-column patterns on phones.
+     Existing explicitly responsive grids continue to work as before. */
+  .yousafe-dashboard-shell [style*='grid-template-columns: 1fr 1fr'],
+  .yousafe-dashboard-shell [style*='grid-template-columns: 1fr 1fr 1fr'],
+  .yousafe-dashboard-shell [style*='grid-template-columns: 2fr 1fr'],
+  .yousafe-dashboard-shell [style*='grid-template-columns: 1fr 320px'],
+  .yousafe-dashboard-shell [style*='grid-template-columns: 1fr 280px'],
+  .yousafe-dashboard-shell [style*='grid-template-columns: 280px 1fr'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Fixed 320px card minima overflow once page padding is deducted on
+     320-375px phones. Force one fluid column inside portal shells. */
+  .yousafe-dashboard-shell [style*='minmax(320px, 1fr)'],
+  .cw-market [style*='minmax(320px, 1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Use the dynamic viewport where supported so browser chrome does not
+     artificially make dashboard shells taller than the visible screen. */
+  @supports (min-height: 100dvh) {
+    .yousafe-dashboard-shell,
+    .ys-auth-page {
+      min-height: 100dvh !important;
+    }
+  }
+}
+
+@media (max-width: 420px) {
+  /* Last-resort guard for narrow phones on non-dashboard marketplace/index
+     pages that still carry a 320px minimum card width in inline styles. */
+  body [style*='minmax(320px, 1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Keep fixed support launcher clear of the iPhone home indicator. */
+  button[aria-label='Open chat'],
+  button[aria-label='Close chat'] {
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: max(16px, calc(10px + env(safe-area-inset-bottom))) !important;
+  }
+}
