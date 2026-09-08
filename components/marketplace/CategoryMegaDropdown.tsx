@@ -47,7 +47,16 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
 
   if (!anchorRect || !portalNode) return null
 
-  const left = Math.min(anchorRect.left, window.innerWidth - 16 - 380)
+  // Clamp both the panel width and its horizontal position to the viewport.
+  // The previous `window.innerWidth - 16 - 380` calculation became negative
+  // on phones narrower than 396px, which rendered the menu partly off-screen.
+  const viewportPadding = 16
+  const panelWidth = Math.min(380, Math.max(0, window.innerWidth - viewportPadding * 2))
+  const left = Math.max(
+    viewportPadding,
+    Math.min(anchorRect.left, window.innerWidth - panelWidth - viewportPadding),
+  )
+  const compact = panelWidth < 340
 
   const buildHref = (subId?: string) => {
     const params = new URLSearchParams()
@@ -69,12 +78,15 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
         top: `${anchorRect.bottom + 8}px`,
         left: `${left}px`,
         zIndex: 240,
-        width: '380px',
+        width: `${panelWidth}px`,
         maxWidth: 'calc(100vw - 32px)',
+        maxHeight: 'min(70dvh, 560px)',
+        overflowY: 'auto',
+        overscrollBehavior: 'contain',
         background: T.vellum,
         border: `1px solid ${T.rule}`,
         borderRadius: '14px',
-        padding: '22px 24px',
+        padding: compact ? '18px 16px' : '22px 24px',
         boxShadow: '0 30px 60px -20px rgba(15,23,42,0.25)',
         fontFamily: F.ui,
       }}
@@ -111,8 +123,8 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
           margin: 0,
           padding: 0,
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '6px 18px',
+          gridTemplateColumns: compact ? '1fr' : '1fr 1fr',
+          gap: compact ? '6px' : '6px 18px',
         }}
       >
         {subs.map(sub => (
@@ -122,7 +134,8 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
               onClick={onNavigate}
               style={{
                 display: 'block',
-                padding: '5px 0',
+                padding: '7px 0',
+                minHeight: '36px',
                 fontSize: '13px',
                 color: T.inkMid,
                 borderBottom: '1px dashed transparent',
@@ -150,7 +163,8 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
         style={{
           display: 'block',
           marginTop: '14px',
-          paddingTop: '10px',
+          paddingTop: '12px',
+          minHeight: '40px',
           borderTop: `1px solid ${T.rule}`,
           fontFamily: F.mono,
           fontSize: '11px',
