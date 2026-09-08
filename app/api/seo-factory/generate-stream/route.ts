@@ -373,6 +373,11 @@ export async function POST(request: Request) {
               masterEngine: engineFeed.lineage,
             }
           }
+          // Verified official-origin evidence URLs join the brief's source
+          // allowlist (user sources preserved; pipeline re-validates + dedupes).
+          if (engineFeed.sources?.length) {
+            input.sources = [...(Array.isArray(input.sources) ? input.sources : []), ...engineFeed.sources]
+          }
         } catch (e) {
           console.warn('[seo-factory/generate-stream] master engine feed skipped', e)
         }

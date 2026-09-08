@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     const primaryKeyword = String(body.primaryKeyword || body.primary_keyword || topic).trim()
     const region = String(body.region || 'US').toUpperCase()
     const contentType = String(body.contentType || body.content_type || 'legal_guide')
+    const userSources = Array.isArray(body.sources) ? body.sources.map(String) : []
     const engineFeed = await assembleMasterEngineFeed({
       topic,
       primaryKeyword,
@@ -75,6 +76,10 @@ export async function POST(request: NextRequest) {
         : undefined,
       titleCandidate: body.titleCandidate ? String(body.titleCandidate).trim() : undefined,
       masterEngineBlock: engineFeed?.promptBlock || null,
+      // Brief Assembly Panel user sources are preserved; the feed's verified
+      // official-origin evidence URLs are appended so the draft can cite them.
+      // (runSeoFactoryPipeline re-validates + dedupes the combined allowlist.)
+      sources: [...userSources, ...(engineFeed?.sources || [])].filter(Boolean),
       intelligenceLineage: engineFeed?.lineage ? { masterEngine: engineFeed.lineage } : null,
       userId,
       signal: request.signal,

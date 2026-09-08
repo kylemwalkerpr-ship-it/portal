@@ -1586,15 +1586,88 @@ export async function attributizeOutcomes(
   try {
     const client = await db()
     if (!client) return empty
-    const { data } = await client
-      .from('content_jobs')
-      .select('id,title,topic,primary_keyword,status,content_path,canonical_url,created_at,merged_at,regeneration_mode')
-      .in('status', ['merged', 'closed'])
-      .gte('created_at', new Date(Date.now() - 180 * 86400_000).toISOString())
-      .limit(50)
-    const jobs = (data as Array<Record<string, unknown>>) || []
+    // Bounded pagination over ALL merged/closed jobs in ascending merge order.
+    // No rolling created_at cutoff and no silent 50/500-row truncation: the
+    // page anchor needs the globally-earliest merge (the front of the set),
+    // while governing-job selection needs the LATEST merge PER PAGE — a single
+    // capped ascending slice would silently lose the newest refreshes and any
+    // page whose jobs rank past the cap.
+    const PAGE_SIZE = 200
+    const MAX_PAGES = 100 // 20k-job hard ceiling
+    const jobs: Array<Record<string, unknown>> = []
+    let paginationComplete = false
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE_SIZE
+      const to = from + PAGE_SIZE - 1
+      const { data, error } = await client
+        .from('content_jobs')
+        .select('id,title,topic,primary_keyword,status,content_path,canonical_url,created_at,merged_at,regeneration_mode')
+        .in('status', ['merged', 'closed'])
+        .order('merged_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to)
+      if (error) {
+        // History read failed → hold attribution, write no rewards (fail closed).
+        console.warn('[seoEngine] attributizeOutcomes content_jobs read failed — holding attribution', error.message)
+        return empty
+      }
+      const rows = (data as Array<Record<string, unknown>>) || []
+      jobs.push(...rows)
+      if (rows.length < PAGE_SIZE) {
+        paginationComplete = true
+        break
+      }
+    }
+    if (!paginationComplete) {
+      // Ceiling reached without a short page — the fetched history may be
+      // incomplete. FAIL CLOSED: explicitly probe for any row strictly beyond
+      // the last fetched index; if one exists, hold EVERYTHING and return with
+      // zero reward writes (never credit against partial history).
+      const probeFrom = jobs.length
+      const probe = await client
+        .from('content_jobs')
+        .select('id')
+        .in('status', ['merged', 'closed'])
+        .order('merged_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(probeFrom, probeFrom)
+      if (probe.error) {
+        console.warn('[seoEngine] attributizeOutcomes ceiling probe failed — holding attribution', probe.error.message)
+        return empty
+      }
+      if ((probe.data as Array<Record<string, unknown>> | null | undefined)?.length) {
+        console.warn('[seoEngine] attributizeOutcomes hit the content_jobs page ceiling — holding attribution (incomplete history)')
+        return empty
+      }
+    }
     if (!jobs.length) return empty
     const runDate = (today || new Date().toISOString().slice(0, 10)).slice(0, 10)
+
+    // VERIFIED publication ONLY: a real merge timestamp. created_at/closed_at
+    // are draft/closure bookkeeping, not publication — unknown means skip, so
+    // pre-publication clicks can never leak into an observation window.
+    type AttrJob = { jobId: string; pageUrl: string; topic: string; mergedDay: string; action: string | null }
+    const byPage = new Map<string, AttrJob[]>()
+    for (const job of jobs) {
+      const merged = String(job.merged_at || '').trim()
+      if (!merged) continue
+      const pageUrl = String(job.canonical_url || '').trim().replace(/\/+$/, '')
+      if (!pageUrl) continue
+      // RECORDED action only (regeneration_mode). A null/absent value stays
+      // 'unknown' — never guessed from row order or job ordering.
+      const recordedAction = String(job.regeneration_mode || '').trim()
+      const entry: AttrJob = {
+        jobId: String(job.id),
+        pageUrl,
+        topic: String(job.topic || job.primary_keyword || job.title || ''),
+        mergedDay: merged.slice(0, 10),
+        action: recordedAction || null,
+      }
+      const list = byPage.get(pageUrl)
+      if (list) list.push(entry)
+      else byPage.set(pageUrl, [entry])
+    }
+
     // Window fetch cache: one GSC call per distinct (start,end).
     const windowCache = new Map<string, GscPageQueryRow[]>()
     const getRows = async (w: CronAttributionWindow): Promise<GscPageQueryRow[]> => {
@@ -1606,26 +1679,40 @@ export async function attributizeOutcomes(
     let persistFailed = 0
     let jobsMatched = 0
     let duplicatesSkipped = 0
-    for (const job of jobs) {
-      // VERIFIED publication ONLY: a real merge timestamp. created_at/closed_at
-      // are draft/closure bookkeeping, not publication — unknown means skip, so
-      // pre-publication clicks can never leak into an observation window.
-      const merged = String(job.merged_at || '').trim()
-      if (!merged) continue
-      const pageUrl = String(job.canonical_url || '').trim() || null
-      // RECORDED action only (regeneration_mode). A null/absent value stays
-      // 'unknown' — never guessed from row order in an unordered 50-row subset.
-      const recordedAction = String(job.regeneration_mode || '').trim()
-      const mission: CronMission = {
-        jobId: String(job.id),
-        pageUrl,
-        topic: String(job.topic || job.primary_keyword || job.title || ''),
-        publishDate: merged,
-        action: recordedAction || null,
-      }
-      if (!mission.pageUrl) continue
-      const win = attributionWindowsFor(mission.publishDate, runDate)
+    for (const [, pageJobs] of byPage) {
+      // CANONICAL PAGE/PROPERTY observation schedule: every same-page job
+      // (create + successive refresh merges) shares ONE anchor — the page's
+      // earliest verified publication — so windows align and overlapping GSC
+      // traffic can never be double-credited under per-job-merged_at keys.
+      const basePublication = pageJobs.reduce((min, j) => (j.mergedDay < min ? j.mergedDay : min), pageJobs[0].mergedDay)
+      const win = attributionWindowsFor(basePublication, runDate)
       if (!win) continue
+      // Deterministic ELIGIBLE RECORDED job/action per interval: the job whose
+      // version opened the interval (latest verified merge on/before the window
+      // start; tie → lowest job id). One interval, one observation, one action —
+      // a refresh merged mid/after the window never spawns a second, shifted
+      // window over the same days.
+      const governing =
+        pageJobs
+          .filter((j) => j.mergedDay <= win.window.start)
+          .sort((a, b) =>
+            a.mergedDay === b.mergedDay
+              ? a.jobId < b.jobId
+                ? -1
+                : a.jobId > b.jobId
+                  ? 1
+                  : 0
+              : a.mergedDay < b.mergedDay
+                ? 1
+                : -1,
+          )[0] || pageJobs[0]
+      const mission: CronMission = {
+        jobId: governing.jobId,
+        pageUrl: governing.pageUrl,
+        topic: governing.topic,
+        publishDate: `${basePublication}T00:00:00Z`,
+        action: governing.action,
+      }
       const currentRows = await getRows(win.window)
       const baselineRows = win.baselineWindow ? await getRows(win.baselineWindow) : null
       const prepared = prepareCronRewards({
@@ -1642,6 +1729,35 @@ export async function attributizeOutcomes(
           .eq('dedupe_key', p.dedupeKey)
           .maybeSingle()
         if (already.data) {
+          duplicatesSkipped += 1
+          continue
+        }
+        // Overlap reconciliation — exact dedupe keys are NOT enough. Historical
+        // per-job-anchored observations (or any prior credited window on the
+        // same page/property+query) must suppress a NEW window that covers any
+        // of the same GSC days, even under a renamed start/end. Only intervals
+        // sharing no day with a previously credited window are fresh evidence.
+        // The history lookup itself is FAIL-CLOSED: a returned error or a
+        // thrown lookup means we cannot prove the interval is fresh, so the
+        // attribution is HELD and no reward is written.
+        let prior: Array<Record<string, unknown>> = []
+        try {
+          const overlap = await client
+            .from('seo_reward_events')
+            .select('window_start,window_end')
+            .eq('page_url', p.pageUrl)
+            .eq('query', String(p.query || ''))
+            .gte('window_end', p.windowStart)
+          if (overlap.error) {
+            duplicatesSkipped += 1
+            continue
+          }
+          prior = (overlap.data as Array<Record<string, unknown>> | null | undefined) || []
+        } catch {
+          duplicatesSkipped += 1
+          continue
+        }
+        if (prior.some((o) => String(o.window_start || '') <= p.windowEnd && String(o.window_end || '') >= p.windowStart)) {
           duplicatesSkipped += 1
           continue
         }

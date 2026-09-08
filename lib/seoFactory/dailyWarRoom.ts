@@ -172,9 +172,11 @@ export async function runOneDailyWin(opts: {
   maxRefine?: number
   userId?: string
   skipRecent?: boolean
-  /** Pre-composed Master Engine prompt block — skip duplicate assembly when an
-   *  upstream caller already built the feed for this term. */
+  /** Pre-composed Master Engine prompt block — the caller's block is prompt
+   *  TEXT, never evidence; verified engine sources are still assembled below. */
   masterEngineBlock?: string | null
+  /** Caller-supplied brief sources — preserved and merged with engine evidence. */
+  sources?: string[]
 }): Promise<DailyWorkItem> {
   const {
     win,
@@ -227,27 +229,32 @@ export async function runOneDailyWin(opts: {
             : win.contentType || 'legal_guide'
 
     // Master SEO Engine feed — write the daily win against the same
-    // scoreMaster + gap plan the studio lanes use. Assembled per-win; skipped
-    // when the caller already supplied one (feed used upstream — no duplicate
-    // assembly just to save a stalled GSC/DB round).
+    // scoreMaster + gap plan the studio lanes use. Assembled ALWAYS so the
+    // verified official-origin evidence URLs reach the pipeline even when an
+    // upstream caller supplied a prompt block (that block is rewritten-text,
+    // never trusted as evidence in its own right).
     let masterEngineBlock: string | null = opts.masterEngineBlock || null
-    if (!masterEngineBlock) {
-      try {
-        const feed = await assembleMasterEngineFeed({
-          topic: win.term,
-          primaryKeyword: win.term,
-          region: win.region || 'US',
-          contentType,
-          title: win.term,
-        })
-        masterEngineBlock = feed.promptBlock || null
-      } catch (e) {
-        console.warn(
-          '[dailyWarRoom] master engine feed skipped — continuing without engine block',
-          e instanceof Error ? e.message : e,
-        )
-      }
+    let evidenceSources: string[] | undefined
+    try {
+      const feed = await assembleMasterEngineFeed({
+        topic: win.term,
+        primaryKeyword: win.term,
+        region: win.region || 'US',
+        contentType,
+        title: win.term,
+      })
+      if (!masterEngineBlock) masterEngineBlock = feed.promptBlock || null
+      // Verified official-origin evidence URLs → runSeoFactoryPipeline sources,
+      // merged with any caller sources.
+      if (feed.sources?.length) evidenceSources = feed.sources
+    } catch (e) {
+      console.warn(
+        '[dailyWarRoom] master engine feed skipped — continuing without engine block',
+        e instanceof Error ? e.message : e,
+      )
     }
+
+    const draftSources = [...(opts.sources || []), ...(evidenceSources || [])]
 
     const result = await runSeoFactoryPipeline({
       topic: win.term,
@@ -263,6 +270,7 @@ export async function runOneDailyWin(opts: {
       opportunityAction: playToOpportunityAction(win.play as WarPlay),
       writeHint: win.writeHint,
       masterEngineBlock,
+      sources: draftSources.length ? draftSources : undefined,
       userId,
     })
 

@@ -421,13 +421,16 @@ export async function POST(request: NextRequest) {
       'admin'
 
     // Master SEO Engine feed guard: an upstream UI may already compose the
-    // feed (e.g. the studio's generate-stream). If provided, reuse it and skip
-    // per-candidate assembly — assembling is a GSC + DB + Ahrefs round per
-    // candidate, so never duplicate it inside an already-long HTTP window.
+    // feed (e.g. the studio's generate-stream). The CALLER BLOCK is prompt
+    // text — it is NOT evidence. Verified evidence sources are always merged
+    // from the engine feed, independently of whether a block was supplied.
     const feedFromCaller =
       typeof body.masterEngineBlock === 'string' && body.masterEngineBlock.trim()
         ? (body.masterEngineBlock as string)
         : null
+    // Caller-supplied brief sources are preserved and merged with the engine's
+    // verified official-origin evidence URLs for every candidate.
+    const callerSources = Array.isArray(body.sources) ? body.sources.map(String).filter(Boolean) : []
 
     const results: Array<Record<string, unknown>> = []
 
@@ -451,26 +454,27 @@ export async function POST(request: NextRequest) {
 
         const cand = opp as Candidate
 
-        // Per-candidate Master Engine feed (topic-scoped). Skipped when the
-        // caller already supplied one so a stalled GSC/DB round cannot double
-        // the work or blow the request window.
+        // Per-candidate Master Engine feed. Assembled ALWAYS so verified evidence
+        // sources reach the pipeline even when a caller supplied a prompt block —
+        // the caller block is preserved verbatim for the writer, never treated
+        // as evidence.
         let masterEngineBlock: string | null = feedFromCaller
-        if (!masterEngineBlock) {
-          try {
-            const feed = await assembleMasterEngineFeed({
-              topic: opp.term,
-              primaryKeyword: opp.term,
-              region: opp.region || 'US',
-              contentType: opp.suggestedContentType || 'legal_guide',
-              title: opp.term,
-            })
-            masterEngineBlock = feed.promptBlock || null
-          } catch (e) {
-            console.warn(
-              '[seo-factory/auto-run] master engine feed skipped — continuing without engine block',
-              e instanceof Error ? e.message : e,
-            )
-          }
+        let evidenceSources: string[] | undefined
+        try {
+          const feed = await assembleMasterEngineFeed({
+            topic: opp.term,
+            primaryKeyword: opp.term,
+            region: opp.region || 'US',
+            contentType: opp.suggestedContentType || 'legal_guide',
+            title: opp.term,
+          })
+          if (!masterEngineBlock) masterEngineBlock = feed.promptBlock || null
+          if (feed.sources?.length) evidenceSources = feed.sources
+        } catch (e) {
+          console.warn(
+            '[seo-factory/auto-run] master engine feed skipped — continuing without engine block',
+            e instanceof Error ? e.message : e,
+          )
         }
 
         const result = await runSeoFactoryPipeline({
@@ -492,6 +496,9 @@ export async function POST(request: NextRequest) {
           masterEngineBlock,
           marketplaceCta: typeof opp.marketplaceCta === 'object' ? opp.marketplaceCta : undefined,
           titleCandidate: typeof opp.titleCandidate === 'string' && opp.titleCandidate ? opp.titleCandidate : undefined,
+          sources: callerSources.length || evidenceSources?.length
+            ? [...callerSources, ...(evidenceSources || [])]
+            : undefined,
           userId,
         })
 

@@ -32,6 +32,15 @@ import { scoreEeatTrust, eeatTrustComposite, buildEeatLane1, type EeatTrustResul
 import { scoreSemanticNlp, semanticNlpComposite, buildSemanticLane1, type SemanticNlpResult } from '@/lib/seoFactory/semanticNlp'
 import { buildSpecialistPromptBlock, loadOpenSignalsForTopic, type SpecialistSignal } from '@/lib/seoFactory/specialistFeeds'
 import { buildPortablePlaybookPromptBlock, PLAYBOOK_VERSION } from '@/lib/seoFactory/portableSeoPlaybook'
+import {
+  buildPlanEvidence,
+  packetFromPlanRow,
+  planEvidencePromptBlock,
+  readerDeliverableFor,
+  unresolvedQuestionsFor,
+  type PlanEvidence,
+  type PlanEvidencePacket,
+} from '@/lib/seoEngine/planEvidence'
 
 /** Learned per-intent subsystem weights feed straight from applyRewardNudges. */
 type LearnReportWeights = NonNullable<LearnedWeightsInput['byIntent']>
@@ -80,6 +89,10 @@ export interface MasterEngineFeed {
   gscMix: GscMix
   llmQuality?: MasterEngineLlmQuality
   lineage: Record<string, unknown>
+  /** Official-origin evidence URLs (allowlisted) the writer may cite. Carried
+   *  into pipeline `sources` by the automated callers so verified evidence
+   *  reaches the draft's citation allowlist — not just the prompt block. */
+  sources?: string[]
 }
 
 function fmtPct(n: number | null | undefined): string {
@@ -87,39 +100,81 @@ function fmtPct(n: number | null | undefined): string {
   return `${Math.round(n * 100)}`
 }
 
-async function loadMatchingKnowledge(term: string, region?: string): Promise<string[]> {
+/** Matching cluster-plan handoff: the provenance line + persisted evidence. */
+export interface ClusterFeedResult {
+  planLine: string | null
+  evidence: PlanEvidencePacket | null
+}
+
+/**
+ * Merge the bounded evidence packets that reach a mission (live seo_knowledge
+ * + persisted cluster-plan evidence) into ONE packet for the writer prompt.
+ * Deduped by source URL; the reader deliverable + unresolved questions are
+ * recomputed deterministically from the merged items. Pure + client-safe.
+ */
+export function mergeEvidencePackets(
+  country: string,
+  packets: Array<PlanEvidencePacket | null | undefined>,
+): PlanEvidencePacket | null {
+  const seen = new Map<string, PlanEvidence>()
+  for (const p of packets) {
+    for (const item of p?.items || []) {
+      const url = String(item.url || '').trim()
+      if (url && !seen.has(url)) seen.set(url, item)
+    }
+  }
+  const items = [...seen.values()]
+  if (!items.length) return null
+  return {
+    items,
+    readerDeliverable: readerDeliverableFor({ country, items }),
+    unresolvedQuestions: unresolvedQuestionsFor(items),
+  }
+}
+
+/**
+ * Load matching seo_knowledge as a STRUCTURED bounded evidence packet — the
+ * same builder the master planner uses. URL, published/observed dates and the
+ * RAW feed summary survive (never ai_summary — machine text is not evidence),
+ * and official identity is allowlisted from the source URL's government ORIGIN.
+ */
+async function loadMatchingKnowledge(term: string, region?: string): Promise<PlanEvidencePacket | null> {
   const q = term.trim()
-  if (q.length < 3) return []
+  if (q.length < 3) return null
   try {
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_knowledge')
-      .select('title,ai_summary,summary,url,countries')
+      .select('title,ai_summary,summary,url,countries,stages,kind,source,source_label,published_at,fetched_at')
       .order('fetched_at', { ascending: false })
       .limit(40)
     const rows = (data as Array<Record<string, unknown>>) || []
     const needle = q.toLowerCase()
-    const regionKey = String(region || '').toUpperCase()
-    return rows
-      .filter((r) => {
-        const blob = `${r.title || ''} ${r.ai_summary || ''} ${r.summary || ''}`.toLowerCase()
-        if (!blob.includes(needle.split(/\s+/)[0] || needle)) return false
-        if (!regionKey) return true
-        const countries = Array.isArray(r.countries) ? r.countries.map(String) : []
-        return countries.length === 0 || countries.some((c) => c.toUpperCase() === regionKey)
-      })
-      .slice(0, 4)
-      .map((r) => {
-        const title = String(r.title || 'untitled')
-        const summary = String(r.ai_summary || r.summary || '').replace(/\s+/g, ' ').slice(0, 160)
-        return summary ? `${title} — ${summary}` : title
-      })
+    const regionKey = String(region || 'US').toUpperCase()
+    const matching = rows.filter((r) => {
+      const blob = `${r.title || ''}`.toLowerCase()
+      if (!blob.includes(needle.split(/\s+/)[0] || needle)) return false
+      const countries = Array.isArray(r.countries) ? r.countries.map(String) : []
+      return countries.length === 0 || countries.some((c) => c.toUpperCase() === regionKey)
+    })
+    if (!matching.length) return null
+    const items = buildPlanEvidence({
+      country: region || 'US',
+      knowledge: matching,
+      maxItems: 4,
+    })
+    if (!items.length) return null
+    return {
+      items,
+      readerDeliverable: readerDeliverableFor({ country: region || 'US', items }),
+      unresolvedQuestions: unresolvedQuestionsFor(items),
+    }
   } catch {
-    return []
+    return null
   }
 }
 
-async function loadMatchingCluster(term: string, region?: string): Promise<string | null> {
+async function loadMatchingCluster(term: string, region?: string): Promise<ClusterFeedResult | null> {
   const q = term.trim()
   if (q.length < 3) return null
   try {
@@ -131,7 +186,7 @@ async function loadMatchingCluster(term: string, region?: string): Promise<strin
       .limit(40)
     const rows = (data as Array<Record<string, unknown>>) || []
     const needle = q.toLowerCase()
-    const regionKey = String(region || '').toUpperCase()
+    const regionKey = String(region || 'US').toUpperCase()
     const hit = rows.find((r) => {
       const primary = String(r.primary_term || '').toLowerCase()
       if (!primary) return false
@@ -162,7 +217,19 @@ async function loadMatchingCluster(term: string, region?: string): Promise<strin
       provenance,
     ].filter(Boolean)
     const rationale = String(hit.rationale || '').replace(/\s+/g, ' ').slice(0, 180)
-    return rationale ? `${bits.join(' · ')} — ${rationale}` : bits.join(' · ')
+    const planLine = rationale ? `${bits.join(' · ')} — ${rationale}` : bits.join(' · ')
+    // Persisted structured evidence from `plan.evidence` — the planner's bounded
+    // packet survives persistence → handoff → writer prompt (packetFromPlanRow).
+    // Never fall back to inventing citations when the plan carries none.
+    const evidence = packetFromPlanRow(
+      planJson,
+      String(hit.country || region || 'US'),
+      String(hit.stage || ''),
+    )
+    return {
+      planLine: planLine || null,
+      evidence: evidence.items.length ? evidence : null,
+    }
   } catch {
     return null
   }
@@ -170,7 +237,7 @@ async function loadMatchingCluster(term: string, region?: string): Promise<strin
 
 export function renderMasterEnginePromptBlock(
   report: MasterEngineReport,
-  extras: { knowledge?: string[]; cluster?: string | null } = {},
+  extras: { country?: string; knowledge?: PlanEvidencePacket | null; cluster?: ClusterFeedResult | null } = {},
 ): string {
   const recs = (report.recommendations || []).filter((r) => r.open !== false).slice(0, 6)
   const risks = (report.risks || []).slice(0, 4)
@@ -216,10 +283,17 @@ export function renderMasterEnginePromptBlock(
         (report.prediction.expectedLift != null ? ` · expected lift ${Math.round(report.prediction.expectedLift * 100)}%` : ''),
     )
   }
-  if (extras.cluster) lines.push(`- Matching cluster plan: ${extras.cluster}`)
-  if (extras.knowledge?.length) {
-    lines.push('- Fresh knowledge (cite only if it matches an official source):')
-    for (const k of extras.knowledge) lines.push(`  · ${k}`)
+  if (extras.cluster?.planLine) lines.push(`- Matching cluster plan: ${extras.cluster.planLine}`)
+  // Structured, bounded evidence: live knowledge + persisted cluster-plan
+  // evidence merge into ONE untrusted-data region (URL + dates preserved, AI
+  // summaries never used as excerpts, official identity allowlisted, escaped so
+  // injection strings stay quoted data). planEvidencePromptBlock supplies the
+  // untrusted-source boundary + reader deliverable + unresolved questions — no
+  // raw source string is ever spliced into prompt text.
+  const evidence = mergeEvidencePackets(extras.country || 'US', [extras.cluster?.evidence, extras.knowledge])
+  if (evidence) {
+    lines.push('')
+    lines.push(planEvidencePromptBlock(evidence))
   }
   lines.push(
     '- Engine rule: answer-first opening, statute/official source where YMYL, named-author E-E-A-T, FAQ + Article JSON-LD, ≥2 estate interlinks, no invented fees or timelines.',
@@ -333,6 +407,10 @@ export async function assembleMasterEngineFeed(
 ): Promise<MasterEngineFeed> {
   const topic = String(req.topic || '').trim()
   const primaryKeyword = String(req.primaryKeyword || topic).trim()
+  // Country hint for the bounded evidence packet (reader deliverable + region
+  // filter). Every production caller defaults region to 'US'; the evidence
+  // builder keeps country-less items regardless.
+  const country = (req.region || 'US').toUpperCase()
   const empty: MasterEngineFeed = {
     ok: false,
     intent: 'unknown',
@@ -443,6 +521,26 @@ export async function assembleMasterEngineFeed(
 
     const report = learned ? scoreMaster(input, learned) : scoreMaster(input)
     const fix = masterEngineFixPlan(input)
+    // Verified evidence URL allowlist for the pipeline `sources` handoff: ONLY
+    // official-origin items (URL allowlist verdict `verified === 'official'`)
+    // become citeable sources — pending/lookalike leads and AI-derived text
+    // stay out of the citation allowlist entirely. Deduped + trailing-slash
+    // normalized so the pipeline's own source validation sees clean URLs.
+    const sources = (() => {
+      const merged = mergeEvidencePackets(country, [cluster?.evidence, knowledge])
+      if (!merged) return undefined
+      const seen = new Set<string>()
+      const out: string[] = []
+      for (const item of merged.items) {
+        if (item.verified !== 'official') continue
+        const url = String(item.url || '').trim().replace(/\/+$/, '')
+        if (url && !seen.has(url)) {
+          seen.add(url)
+          out.push(url)
+        }
+      }
+      return out.length ? out : undefined
+    })()
     const llmBlock = llmQuality
       ? renderLlmQualityBlock(llmQuality)
       : ''
@@ -457,7 +555,7 @@ export async function assembleMasterEngineFeed(
       intent: primaryKeyword,
     })
     const promptBlock = [
-      renderMasterEnginePromptBlock(report, { knowledge, cluster }),
+      renderMasterEnginePromptBlock(report, { country, knowledge, cluster }),
       fix.promptBlock,
       llmBlock,
       specialistBlock,
@@ -473,6 +571,7 @@ export async function assembleMasterEngineFeed(
       promptBlock,
       gscMix: report.gscMix,
       llmQuality,
+      sources,
       // Plan-phase honesty: at brief time there is no page yet, so the
       // composite covers only the market/estate signals that had data.
       // Surface how much of the engine was actually computed so the number
@@ -504,6 +603,14 @@ export async function assembleMasterEngineFeed(
             }
           : null,
         portablePlaybook: { version: PLAYBOOK_VERSION },
+        evidence: {
+          knowledgeItems: knowledge ? knowledge.items.length : 0,
+          clusterPlan: Boolean(cluster?.evidence && cluster.evidence.items.length),
+          official: [
+            ...(knowledge ? knowledge.items : []),
+            ...(cluster?.evidence ? cluster.evidence.items : []),
+          ].filter((i) => i.verified === 'official').length,
+        },
         generatedAt: report.generatedAt,
       },
     }
