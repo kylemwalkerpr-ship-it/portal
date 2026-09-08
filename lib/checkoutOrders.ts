@@ -237,7 +237,14 @@ export async function createPaidOrder(
     consultant_id: item.providerProfileId,
     attorney_id: attorneyId,
     status: 'created',
+    // Financial metadata is initialized here so cancellation/refund checks can
+    // rely on REAL values instead of a misleading default:
+    //  - currency is the actual resolved item currency (not the DB 'usd' default);
+    //  - escrow_amount mirrors the captured amount in DOLLARS so the escrow
+    //    reconciliation (held + exact-cent match) can verify the order at cancel time.
+    currency: item.currency,
     escrow_status: 'held',
+    escrow_amount: item.totalCents / 100,
     total_amount: item.totalCents / 100,
     amount_paid: item.totalCents,
     platform_fee: item.platformFeeCents / 100,
@@ -267,7 +274,11 @@ export async function createPaidOrder(
   // (PGRST204 "Could not find the 'X' column …", or "column orders.X does not
   // exist"); we strip whatever it names and retry, rather than relying on a
   // hardcoded allow-list that drifts out of sync with the schema.
-  const ESSENTIAL = new Set(['client_id', 'status', 'total_amount'])
+  // 'currency' and 'escrow_amount' are ESSENTIAL: silently stripping them would
+  // leave cancellation unable to reconcile the order's money (or refund in a
+  // currency the wallet cannot represent) — if a schema is missing either, the
+  // insert FAILS loudly instead of writing a financially ambiguous order.
+  const ESSENTIAL = new Set(['client_id', 'status', 'total_amount', 'amount_paid', 'currency', 'escrow_amount'])
   let order: { id: string } | null = null
   let error: { message: string } | null = null
   for (let attempt = 0; attempt < 8; attempt++) {

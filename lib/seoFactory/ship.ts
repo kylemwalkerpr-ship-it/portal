@@ -41,6 +41,71 @@ import { publicPathFromRepoFile, sitemapPathForShippedFile, upsertStudioSitemapE
 /** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
 
+/**
+ * Mandatory-evidence hold decision — the ONLY compliance reason ship.ts lets
+ * block a Git write. Authority is the gate's `mandatory` verdict: on a
+ * YMYL-critical (visa/citizenship/family) mission ONE missing required item
+ * holds shipping, legal OR regional. Exported (pure) so focused tests pin the
+ * strict-OR semantics without running the whole GitHub door.
+ */
+export interface MandatoryShipCtx {
+  applicable: boolean
+  met: boolean
+  missing: string[]
+}
+
+export function mandatoryShipHold(mandatory: MandatoryShipCtx, stage: string): Error | null {
+  if (mandatory.applicable && !mandatory.met) {
+    return new Error(
+      `Refusing ship: engine compliance gate BLOCKED on YMYL-critical stage "${stage}" — missing ${mandatory.missing.join(' AND ')}. Await human review or add the missing required item(s) to the draft.`,
+    )
+  }
+  return null
+}
+
+/**
+ * Fail-closed hold for the mandatory compliance gate. ANY setup/classification/
+ * evaluation failure on this path produces a TYPED hold — the ship door must
+ * never write Git without knowing whether mandatory YMYL evidence applies.
+ */
+export class MandatoryComplianceHeldError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MandatoryComplianceHeldError'
+  }
+}
+
+/**
+ * The ship-door mandatory-compliance evaluation seam. Runs the dynamic gate
+ * module load, the stage classifier, and the authoritative evidence gate. Every
+ * step (load, classify, evaluate) lives HERE so a failure of any of them
+ * propagates as a reject — shipContent wraps this seam and converts any
+ * unexpected failure into a `MandatoryComplianceHeldError` fail-closed hold.
+ * Exported so the actual ship path is directly testable.
+ */
+export async function evaluateMandatoryComplianceAtShip(opts: {
+  primaryKeyword: string
+  title: string
+  jobId?: string
+  content: string
+  contentType: string
+}): Promise<{ verdict: { mandatory: MandatoryShipCtx; recorded: boolean }; stage: string }> {
+  const gate = await import('@/lib/seoEngine/gate')
+  const planner = await import('@/lib/seoEngine/planner')
+  // Classifier: resolve the mission cell. A classifier THROW must fail closed.
+  const cell = planner.bestCellForTerm(opts.primaryKeyword || opts.title)
+  const stage = cell && cell.score >= planner.MIN_CELL_MATCH_SCORE ? cell.stage : ''
+  const verdict = await gate.enforceGate(
+    { subjectType: 'job', subjectId: opts.jobId || null, stage: stage || 'unmapped', country: cell?.country },
+    opts.content,
+    { stage: stage || undefined, country: cell?.country, title: opts.title, contentType: opts.contentType },
+  )
+  return {
+    verdict: { mandatory: verdict.mandatory, recorded: verdict.recorded },
+    stage,
+  }
+}
+
 export interface ShipResult {
   mode: ShipMode
   repo: string
@@ -596,43 +661,47 @@ export async function shipContent(opts: {
   // ── Master Engine compliance gate on the REAL draft ──────────────────────
   // Previously `enforceGate` was only callable from its own API route — the
   // ship door never consulted it, so "compliance" was telemetry. Now every
-  // ship runs the deterministic AEO/GEO/YMYL evidence scan (recorded to
-  // seo_gate_runs). YMYL-critical maps (visa/citizenship/family) on legal
-  // content hard-block when BOTH the statutory anchor AND the professional
-  // disclaimer are missing; everything else is advisory (documented in the
-  // gate run, never silently skipped).
+  // ship consults the AUTHORITATIVE mandatory-evidence result through
+  // evaluateMandatoryComplianceAtShip: on a YMYL-critical stage
+  // (visa/citizenship/family) ONE missing required item (statutory anchor OR
+  // professional disclaimer) holds shipping — legal and regional targets
+  // alike. This is STRICTER than the old "both missing, legal content only"
+  // guard. Advisory style/score thresholds stay distinct (the `passed` flag
+  // is telemetry, never a hold). A citation being present permits the ship;
+  // it is never claimed to prove substantive legal accuracy.
+  //
+  // FAIL-CLOSED: the module load, stage classifier and evaluation ALL run in
+  // the seam, so a setup/classification/evaluation THROW becomes a TYPED
+  // MandatoryComplianceHeldError — the ship can never write Git without
+  // knowing whether mandatory evidence applied. Only a legitimately-EVALUATED
+  // noncritical (non-applicable) verdict is nonblocking.
   try {
-    const { enforceGate } = await import('@/lib/seoEngine/gate')
-    const { bestCellForTerm, MIN_CELL_MATCH_SCORE } = await import('@/lib/seoEngine/planner')
-    const cell = bestCellForTerm(opts.primaryKeyword || opts.title)
-    const stage = cell && cell.score >= MIN_CELL_MATCH_SCORE ? cell.stage : ''
-    const isLegalContent =
-      opts.plan.host === 'legal' ||
-      opts.plan.repo === 'caseworks' ||
-      /legal_guide|article/i.test(opts.contentType)
-    {
-      const verdict = await enforceGate(
-        { subjectType: 'job', subjectId: opts.jobId || null, stage: stage || 'unmapped', country: cell?.country },
-        shipContent_,
-        { stage: stage || undefined, country: cell?.country, title: opts.title, contentType: opts.contentType },
+    const { verdict, stage } = await evaluateMandatoryComplianceAtShip({
+      primaryKeyword: opts.primaryKeyword,
+      title: opts.title,
+      jobId: opts.jobId,
+      content: shipContent_,
+      contentType,
+    })
+    if (verdict.mandatory.applicable) {
+      const hold = mandatoryShipHold(verdict.mandatory, stage)
+      if (hold) throw new MandatoryComplianceHeldError(hold.message)
+    } else {
+      console.warn(
+        `[ship] compliance gate advisory verdict (nonblocking) — noncritical stage "${stage || 'unmapped'}"`,
       )
-      if (isLegalContent && ['visa', 'citizenship', 'family'].includes(stage) && !verdict.passed) {
-        const missingMandatory = verdict.blockers.filter((b) => b.includes('(YMYL-critical)'))
-        if (missingMandatory.length >= 2) {
-          throw new Error(
-            `Refusing ship: engine compliance gate BLOCKED on YMYL-critical stage "${stage}" — missing statutory anchor AND professional disclaimer (${missingMandatory.join('; ')}). Await human review or add both to the draft.`,
-          )
-        }
-      }
-      if (!verdict.recorded) {
-        console.warn('[ship] compliance gate run not recorded (seo_gate_runs) — verdict still enforced in-memory')
-      }
+    }
+    if (!verdict.recorded) {
+      console.warn('[ship] compliance gate run not recorded (seo_gate_runs) — verdict still enforced in-memory')
     }
   } catch (e) {
-    // Only YMYL hard-blocks throw; everything else must never fail a ship.
-    const msg = e instanceof Error ? e.message : ''
-    if (msg.includes('compliance gate BLOCKED')) throw e
-    console.warn('[ship] compliance gate advisory run failed (non-blocking):', msg || e)
+    // Typed holds pass through; ANY other failure (module load, classifier,
+    // evaluation) is converted to a typed fail-closed hold with a reason.
+    if (e instanceof MandatoryComplianceHeldError) throw e
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new MandatoryComplianceHeldError(
+      `Held ship: mandatory compliance evaluation could not run for "${opts.primaryKeyword || opts.title}": ${msg}`,
+    )
   }
 
   // ── Route-subtype overwrite guard (last line of defence) ─────────────────

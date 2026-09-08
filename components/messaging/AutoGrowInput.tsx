@@ -22,6 +22,13 @@ interface AutoGrowInputProps {
   // rather than the prior silent no-op.
   conversationId?: string
   onAttachmentSent?: (message: any) => void
+  // Backward-compatible capability flags: views that do NOT have an
+  // authenticated participant attach path (e.g. the admin Master Chats
+  // oversight composer) can omit the paperclip / mic controls entirely
+  // instead of exposing buttons that always fail. Defaults preserve the
+  // historical behavior for every existing caller.
+  allowAttach?: boolean
+  allowVoice?: boolean
 }
 
 // Curated emoji set — shows in the popover. Kept small + categorised so
@@ -45,6 +52,8 @@ export default function AutoGrowInput({
   onCancelReply,
   conversationId,
   onAttachmentSent,
+  allowAttach = true,
+  allowVoice = true,
 }: AutoGrowInputProps) {
   const ref = React.useRef<HTMLTextAreaElement>(null)
   const hasContent = value.trim().length > 0
@@ -362,24 +371,28 @@ export default function AutoGrowInput({
           </div>
         )}
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
-          onChange={handleFilePick}
-          style={{ display: 'none' }}
-        />
-        <button
-          type="button"
-          className="iconbtn"
-          title={uploading ? 'Uploading…' : 'Attach a file'}
-          onClick={() => fileRef.current?.click()}
-          disabled={disabled || uploading || recording || !conversationId}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-          </svg>
-        </button>
+        {allowAttach && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
+              onChange={handleFilePick}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              className="iconbtn"
+              title={uploading ? 'Uploading…' : 'Attach a file'}
+              onClick={() => fileRef.current?.click()}
+              disabled={disabled || uploading || recording || !conversationId}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+          </>
+        )}
 
         <textarea
           ref={ref}
@@ -410,7 +423,7 @@ export default function AutoGrowInput({
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
           </button>
-        ) : (
+        ) : allowVoice ? (
           <button
             type="button"
             className="comp-mic"
@@ -426,7 +439,7 @@ export default function AutoGrowInput({
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   )

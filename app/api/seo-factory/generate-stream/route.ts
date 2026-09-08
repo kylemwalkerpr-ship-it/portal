@@ -146,7 +146,7 @@ export async function POST(request: Request) {
       regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
       regenerationMode: (body.regenerationMode === 'resume' ? 'resume' : body.regenerationMode === 'expand' ? 'expand' : body.regenerationMode === 'refresh' ? 'refresh' : body.supersedesJobId ? 'manual' : 'new') as 'resume' | 'expand' | 'refresh' | 'manual' | 'new',
       intelligenceLineage: body.intelligenceLineage && typeof body.intelligenceLineage === 'object' ? body.intelligenceLineage as Record<string, unknown> : null,
-      masterEngineBlock: null as string | null,
+      masterEngineBlock: body.evidenceBlock && String(body.evidenceBlock).trim() ? String(body.evidenceBlock).trim() : null,
       title: String(body.title || topic).trim(),
       // When regenerating (supersedesJobId set), always use topic as primaryKeyword
       // to prevent stale keywords from a prior job from hijacking the new draft.

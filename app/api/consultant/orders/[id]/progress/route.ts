@@ -23,13 +23,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (progress >= 90 && ['active', 'in_progress'].includes(order.status)) payload.status = 'under_review'
   else if (progress > 0 && ['pending', 'queued', 'created', 'new'].includes(order.status)) payload.status = 'in_progress'
 
+  // Conditional update: only progress the order if it is STILL in the state we
+  // read. If the client cancels between the read and this write, zero rows
+  // match and we return 409 — a cancelled order can never be brought back to
+  // 'in_progress'/'under_review' by a stale progress save.
   const { data, error } = await auth.db
     .from('orders')
     .update(payload)
     .eq('id', id)
+    .eq('status', order.status)
     .select('*')
-    .single()
+    .maybeSingle()
   if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (!data) return Response.json({ error: 'Order status changed by another request — refresh and try again.' }, { status: 409 })
 
   return Response.json({ order: data })
 }

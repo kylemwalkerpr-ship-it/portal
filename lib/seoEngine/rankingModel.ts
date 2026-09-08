@@ -632,6 +632,17 @@ export interface RewardEventInput {
    * unique index) so concurrent/weekly/daily runs collide harmlessly.
    */
   dedupeKey?: string
+  /** Canonical page/query attribution fields (cron GSC pass). */
+  query?: string
+  /** Explicit observation window the delta was measured over (YYYY-MM-DD). */
+  windowStart?: string
+  windowEnd?: string
+  /** Baseline clicks from the prior disjoint observation window (null = none). */
+  baselineClicks?: number | null
+  /** True only when a baseline existed and the measured change was positive. */
+  improvementCredited?: boolean
+  /** Stable identity of the action actually observed (e.g. cron_gsc_improvement). */
+  observationLabel?: string
 }
 export interface RewardEvent extends RewardEventInput {
   id: string
@@ -1138,6 +1149,12 @@ export async function persistRewardEvent(event: RewardEvent): Promise<{ ok: bool
       reward: event.reward,
       attribution: event.attribution as unknown as Record<string, unknown>,
       note: event.note || null,
+      ...(event.query ? { query: event.query } : {}),
+      ...(event.windowStart ? { window_start: event.windowStart } : {}),
+      ...(event.windowEnd ? { window_end: event.windowEnd } : {}),
+      ...(event.baselineClicks != null ? { baseline_clicks: event.baselineClicks } : { baseline_clicks: null }),
+      improvement_credited: event.improvementCredited === true,
+      observation_label: event.observationLabel || null,
       ...(event.dedupeKey ? { dedupe_key: event.dedupeKey } : {}),
     }
     if (event.dedupeKey) {
@@ -1332,61 +1349,327 @@ export async function runRankingPassForPlans(limit = 15): Promise<{ computed: nu
 /**
  * Cron pass: attribute observed GSC gains of shipped jobs into reward events.
  *
- * Honesty rule: only REAL observed quantities are credited. Without a position/
- * impressions history baseline we cannot compute deltas, so this pass credits
- * observed clicks only (clicks in the GSC window) and explicitly zeroes the
- * position/impression deltas — never fabricating gains. Richer deltas come
- * from operator-recorded outcomes via /api/seo-engine/rewards.
+ * Honesty model (2026-09-07): the previous pass matched jobs via a 24-char
+ * query substring, credited the WHOLE GSC window as `deltaClicks`, and de-duped
+ * by UTC run day — so overlapping observations were re-credited on later runs
+ * and query clicks were never evidence of that page's incremental performance.
+ *
+ * Now every reward is tied to a CANONICAL PAGE + EXACT QUERY + an explicit,
+ * COMPLETED, fixed-duration post-publication observation window, with the fixed
+ * prior completed window as baseline.
+ *
+ *  - WINDOWS are COMPLETED 14-day buckets only — but "completed" is judged
+ *    against an AVAILABILITY CUTOFF strictly before today (GSC reports lag by
+ *    ~2 days). A bucket whose inclusive end falls on or after the cutoff is
+ *    treated as still-partial/unreliable and is NOT credited; because we never
+ *    persist it, it is re-examined on later runs once its data is available
+ *    (nothing partial is ever permanently deduped). A window that ends TODAY
+ *    is never eligible today.
+ *  - PUBLICATION must be VERIFIED: only a real merged timestamp is accepted.
+ *    created_at/closed_at are NOT publication; unknown provenance means the
+ *    job is skipped (fail closed, no improvement).
+ *  - Improvement is ONLY credited when the prior completed window's clicks
+ *    exist as a baseline AND the current completed window measured more.
+ *  - The job's ACTION uses the RECORDED `regeneration_mode` when present. An
+ *    absent action is kept as 'unknown' — never guessed from row-order — and
+ *    an unknown-action observation is never credited as an improvement (no
+ *    training on an invented create/refresh attribution).
+ *  - A persistence failure is NOT reported as a credited success.
+ *  - pre-publication clicks are never part of any window here.
  */
-export async function attributizeOutcomes(): Promise<{ events: number; jobsConsidered: number; jobsMatched: number; duplicatesSkipped: number }> {
-  const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0, duplicatesSkipped: 0 }
+
+export const CRON_ATTRIBUTION_BUCKET_DAYS = 14
+export const CRON_ATTRIBUTION_AVAILABILITY_CUTOFF_DAYS = 2
+export const CRON_ATTRIBUTION_ACTION = 'cron_gsc_observation'
+export const CRON_ATTRIBUTION_IMPROVEMENT_ACTION = 'cron_gsc_improvement'
+
+export interface CronMission {
+  jobId: string
+  /** Canonical page URL — the page-specific attribution anchor. Never a query. */
+  pageUrl: string | null
+  topic: string
+  /** VERIFIED post-publication time (real merge). Null/unknown → attribution skipped. */
+  publishDate: string | null
+  /** ACTUAL recorded action (content_jobs.regeneration_mode). null = unknown,
+   *  never guessed from row order; unknown-action observations get no
+   *  improvement credit. */
+  action: string | null
+}
+
+export interface CronAttributionWindow {
+  start: string
+  end: string
+}
+
+export interface GscPageQueryRow {
+  page: string
+  query: string
+  clicks: number
+  impressions: number
+  position: number
+}
+
+/**
+ * The last date GSC data is considered fully available — strictly BEFORE
+ * `today` (default 2 days). Buckets whose inclusive end is <= this cutoff are
+ * "completed+available"; anything ending on/after it stays uncredited.
+ */
+export function attributionAvailabilityCutoff(today: string, cutoffDays = CRON_ATTRIBUTION_AVAILABILITY_CUTOFF_DAYS): string {
+  const end = new Date(`${String(today).slice(0, 10)}T00:00:00Z`).getTime()
+  if (!Number.isFinite(end)) return ''
+  return new Date(end - Math.max(1, cutoffDays) * 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * Compose the COMPLETED + AVAILABLE fixed-duration post-publication windows for
+ * a verified publish date. bucket i spans [publish + i*14d, publish + (i+1)*14d - 1].
+ * Eligible ONLY when the inclusive end is strictly on/before the availability
+ * cutoff (i.e. a bucket ending TODAY or YESTERDAY is still partial to GSC and
+ * is never credited → never permanently deduped, re-examined once available).
+ * `baselineWindow` is the immediately prior eligible bucket (measurable click
+ * level), never a pre-publication window. Deterministic + pure for tests.
+ */
+export function attributionWindowsFor(
+  publishDate: string,
+  today: string,
+  bucketDays = CRON_ATTRIBUTION_BUCKET_DAYS,
+  cutoffDays = CRON_ATTRIBUTION_AVAILABILITY_CUTOFF_DAYS,
+): { window: CronAttributionWindow; baselineWindow: CronAttributionWindow | null; completedBucket: number; daysSincePublish: number } | null {
+  const MS_DAY = 86_400_000
+  const pub = new Date(`${String(publishDate).slice(0, 10)}T00:00:00Z`).getTime()
+  const end = new Date(`${String(today).slice(0, 10)}T00:00:00Z`).getTime()
+  if (!Number.isFinite(pub) || !Number.isFinite(end) || pub > end) return null
+  const cutoff = new Date(`${attributionAvailabilityCutoff(String(today).slice(0, 10), cutoffDays)}T00:00:00Z`).getTime()
+  if (!Number.isFinite(cutoff) || cutoff >= end) return null
+  const span = bucketDays - 1
+  const daysSincePublish = Math.floor((end - pub) / MS_DAY)
+  const ymd = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+  // Furthest bucket whose INCLUSIVE end has fully settled into available GSC
+  // data (end <= cutoff). Buckets ending today/yesterday stay partial.
+  const completedBucket = Math.floor((cutoff - pub - span * MS_DAY) / (bucketDays * MS_DAY))
+  if (completedBucket < 0) return null
+  const startMs = pub + completedBucket * bucketDays * MS_DAY
+  const window: CronAttributionWindow = { start: ymd(startMs), end: ymd(startMs + span * MS_DAY) }
+  let baselineWindow: CronAttributionWindow | null = null
+  if (completedBucket > 0) {
+    const prevStart = pub + (completedBucket - 1) * bucketDays * MS_DAY
+    baselineWindow = { start: ymd(prevStart), end: ymd(prevStart + span * MS_DAY) }
+  }
+  return { window, baselineWindow, completedBucket, daysSincePublish }
+}
+
+export interface PreparedCronReward {
+  pageUrl: string
+  topic: string
+  query: string | null
+  action: string
+  observationLabel: string
+  deltaClicks: number
+  baselineClicks: number | null
+  improvementCredited: boolean
+  windowStart: string
+  windowEnd: string
+  note: string
+  dedupeKey: string
+}
+
+function normalizeRewardQuery(q: string): string {
+  return String(q || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200)
+}
+
+/**
+ * Build the reward events for one (mission, COMPLETED window) observation set.
+ * pageUrl / verified publish / window are required; a null pageUrl → [] (fail
+ * closed — never attribute by query alone). Without a baseline the observation
+ * is kept but improvement is not credited. Pure + exported for focused tests.
+ */
+export function prepareCronRewards(opts: {
+  mission: CronMission
+  currentWindow: CronAttributionWindow
+  currentRows: GscPageQueryRow[]
+  baselineRows: GscPageQueryRow[] | null
+  bucket: number
+}): PreparedCronReward[] {
+  if (!opts.mission.pageUrl) return []
+  const page = opts.mission.pageUrl.replace(/\/+$/, '')
+  const dedupeBase = `cron-attr:${page}:`
+  const baselineByQuery = new Map<string, number>()
+  for (const r of opts.baselineRows || []) {
+    const matches = r.page.replace(/\/+$/, '') === page
+    if (!matches) continue
+    const k = normalizeRewardQuery(r.query)
+    if (k) baselineByQuery.set(k, (baselineByQuery.get(k) || 0) + Number(r.clicks) || 0)
+  }
+  const out: PreparedCronReward[] = []
+  const seen = new Set<string>()
+  for (const r of opts.currentRows) {
+    if (r.page.replace(/\/+$/, '') !== page) continue
+    const query = normalizeRewardQuery(r.query)
+    if (!query || seen.has(query)) continue
+    seen.add(query)
+    const clicks = Math.max(0, Number(r.clicks) || 0)
+    if (clicks <= 0) continue
+    const baselineClicks = baselineByQuery.has(query) ? baselineByQuery.get(query)! : null
+    // Improvement credit is ONLY warranted when we actually know the action that
+    // led to the observation. An absent/unknown action can never be credited as
+    // an improvement — that would train a specific create/refresh attribution
+    // against guessed provenance.
+    const actionKnown = Boolean(opts.mission.action && opts.mission.action !== 'unknown')
+    const improvementCredited = actionKnown && baselineClicks != null && clicks > baselineClicks
+    const deltaClicks = improvementCredited ? clicks - baselineClicks : 0
+    const label = improvementCredited ? CRON_ATTRIBUTION_IMPROVEMENT_ACTION : CRON_ATTRIBUTION_ACTION
+    out.push({
+      pageUrl: page,
+      topic: opts.mission.topic,
+      query,
+      // The job's RECORDED action identity (regeneration_mode) lives in `action`;
+      // the observation/improvement status is the label — never conflated.
+      // 'unknown' means no recorded action — no invented create/refresh claim.
+      action: opts.mission.action || 'unknown',
+      observationLabel: label,
+      deltaClicks,
+      baselineClicks,
+      improvementCredited,
+      windowStart: opts.currentWindow.start,
+      windowEnd: opts.currentWindow.end,
+      note: improvementCredited
+        ? `completed-window gain: baseline ${baselineClicks} → ${clicks} clicks (window ${opts.currentWindow.start}..${opts.currentWindow.end}, bucket ${opts.bucket}, action ${opts.mission.action})`
+        : opts.mission.action
+          ? `completed-window observation for action "${opts.mission.action}" (${clicks} clicks) in ${opts.currentWindow.start}..${opts.currentWindow.end}`
+          : `completed-window observation — action not recorded, no improvement credited (${clicks} clicks) in ${opts.currentWindow.start}..${opts.currentWindow.end}`,
+      dedupeKey: `${dedupeBase}${query}:${opts.currentWindow.start}:${opts.currentWindow.end}`,
+    })
+  }
+  return out
+}
+
+/** Fetch GSC page+query rows for an explicit window (page-specific, not query gossip). */
+export async function fetchGscPageQueryRows(window: CronAttributionWindow): Promise<GscPageQueryRow[]> {
+  try {
+    const { getGscAccess } = await import('@/lib/gscAuth')
+    const access = await getGscAccess()
+    if (!access?.accessToken || !access.siteUrl) return []
+    const res = await fetch(
+      `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(access.siteUrl)}/searchAnalytics/query`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${access.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: window.start,
+          endDate: window.end,
+          dimensions: ['page', 'query'],
+          rowLimit: 25000,
+          type: 'web',
+        }),
+      },
+    )
+    if (!res.ok) return []
+    const data = (await res.json()) as { rows?: Array<{ keys: string[]; clicks: number; impressions: number; position: number }> }
+    return (data.rows || [])
+      .filter((r) => Array.isArray(r.keys) && r.keys.length >= 2 && typeof r.keys[0] === 'string')
+      .map((r) => ({
+        page: String(r.keys[0]).trim(),
+        query: String(r.keys[1]).trim(),
+        clicks: Number(r.clicks) || 0,
+        impressions: Number(r.impressions) || 0,
+        position: Number(r.position) || 0,
+      }))
+  } catch {
+    return []
+  }
+}
+
+export async function attributizeOutcomes(
+  today?: string,
+): Promise<{ events: number; jobsConsidered: number; jobsMatched: number; duplicatesSkipped: number; persistFailed: number }> {
+  const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0, duplicatesSkipped: 0, persistFailed: 0 }
   try {
     const client = await db()
     if (!client) return empty
     const { data } = await client
       .from('content_jobs')
-      .select('id,title,topic,primary_keyword,status,content_path')
+      .select('id,title,topic,primary_keyword,status,content_path,canonical_url,created_at,merged_at,regeneration_mode')
       .in('status', ['merged', 'closed'])
-      .gte('created_at', new Date(Date.now() - 90 * 86400_000).toISOString())
+      .gte('created_at', new Date(Date.now() - 180 * 86400_000).toISOString())
       .limit(50)
     const jobs = (data as Array<Record<string, unknown>>) || []
     if (!jobs.length) return empty
-    const { pullGscSignals } = await import('./planner')
-    const signals = await pullGscSignals()
+    const runDate = (today || new Date().toISOString().slice(0, 10)).slice(0, 10)
+    // Window fetch cache: one GSC call per distinct (start,end).
+    const windowCache = new Map<string, GscPageQueryRow[]>()
+    const getRows = async (w: CronAttributionWindow): Promise<GscPageQueryRow[]> => {
+      const key = `${w.start}:${w.end}`
+      if (!windowCache.has(key)) windowCache.set(key, await fetchGscPageQueryRows(w))
+      return windowCache.get(key)!
+    }
     let events = 0
+    let persistFailed = 0
     let jobsMatched = 0
     let duplicatesSkipped = 0
-    const today = new Date().toISOString().slice(0, 10)
     for (const job of jobs) {
-      const hay = `${String(job.title || '')} ${String(job.topic || '')} ${String(job.primary_keyword || '')}`.toLowerCase()
-      const matched = signals.find((s) => hay.includes(s.term.toLowerCase().slice(0, 24)))
-      if (!matched || matched.clicks <= 0) continue
-      // Idempotency: the same job's GSC window must never be re-credited on
-      // later daily runs — one credit per (job, term, UTC day).
-      const dedupeKey = `cron-attr:${String(job.id)}:${matched.term.toLowerCase().slice(0, 24)}:${today}`
-      const already = await client
-        .from('seo_reward_events')
-        .select('id')
-        .eq('dedupe_key', dedupeKey)
-        .maybeSingle()
-      if (already.data) {
-        duplicatesSkipped += 1
-        continue
+      // VERIFIED publication ONLY: a real merge timestamp. created_at/closed_at
+      // are draft/closure bookkeeping, not publication — unknown means skip, so
+      // pre-publication clicks can never leak into an observation window.
+      const merged = String(job.merged_at || '').trim()
+      if (!merged) continue
+      const pageUrl = String(job.canonical_url || '').trim() || null
+      // RECORDED action only (regeneration_mode). A null/absent value stays
+      // 'unknown' — never guessed from row order in an unordered 50-row subset.
+      const recordedAction = String(job.regeneration_mode || '').trim()
+      const mission: CronMission = {
+        jobId: String(job.id),
+        pageUrl,
+        topic: String(job.topic || job.primary_keyword || job.title || ''),
+        publishDate: merged,
+        action: recordedAction || null,
       }
-      jobsMatched += 1
-      const event = creditOutcome({
-        pageUrl: String(job.content_path || `job:${String(job.id)}`),
-        topic: String(job.topic || job.primary_keyword || ''),
-        action: 'refresh',
-        // Only real clicks are credited; no baseline → no fabricated position/impression deltas.
-        deltaClicks: matched.clicks,
-        note: 'cron attribution from GSC (clicks-only — no history baseline)',
-        dedupeKey,
+      if (!mission.pageUrl) continue
+      const win = attributionWindowsFor(mission.publishDate, runDate)
+      if (!win) continue
+      const currentRows = await getRows(win.window)
+      const baselineRows = win.baselineWindow ? await getRows(win.baselineWindow) : null
+      const prepared = prepareCronRewards({
+        mission,
+        currentWindow: win.window,
+        currentRows,
+        baselineRows,
+        bucket: win.completedBucket,
       })
-      await persistRewardEvent(event)
-      events += 1
+      for (const p of prepared) {
+        const already = await client
+          .from('seo_reward_events')
+          .select('id')
+          .eq('dedupe_key', p.dedupeKey)
+          .maybeSingle()
+        if (already.data) {
+          duplicatesSkipped += 1
+          continue
+        }
+        jobsMatched += 1
+        const event = creditOutcome({
+          pageUrl: p.pageUrl,
+          topic: p.topic,
+          query: p.query || undefined,
+          action: p.action,
+          observationLabel: p.observationLabel,
+          deltaClicks: p.deltaClicks,
+          baselineClicks: p.baselineClicks,
+          improvementCredited: p.improvementCredited,
+          windowStart: p.windowStart,
+          windowEnd: p.windowEnd,
+          note: p.note,
+          dedupeKey: p.dedupeKey,
+        })
+        const res = await persistRewardEvent(event)
+        // A persistence failure is NOT a credited success — fail the count.
+        if (!res.ok) {
+          persistFailed += 1
+          continue
+        }
+        events += 1
+      }
     }
-    return { events, jobsConsidered: jobs.length, jobsMatched, duplicatesSkipped }
+    return { events, jobsConsidered: jobs.length, jobsMatched, duplicatesSkipped, persistFailed }
   } catch {
     return empty
   }

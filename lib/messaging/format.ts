@@ -1,28 +1,49 @@
+/**
+ * Coerce any accepted timestamp input to a valid Date. Returns null for
+ * null/undefined/empty values, invalid strings (which `new Date` silently
+ * turns into "Invalid Date"), or non-numeric/malformed offsets — callers
+ * then render an empty label instead of "Invalid Date".
+ */
+export const toValidDate = (s: string | Date | null | undefined): Date | null => {
+  if (s === null || s === undefined || s === '') return null
+  const d = s instanceof Date ? s : new Date(s)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+const DIFF_MIN = 60_000
+const DIFF_HOUR = 3_600_000
+const DIFF_DAY = 86_400_000
+const DIFF_WEEK = 7 * DIFF_DAY
+const DIFF_YEAR = 365 * DIFF_DAY
+
 export const fmtRelative = (s: string | null | undefined): string => {
-  if (!s) return ''
-  const d = new Date(s)
+  const d = toValidDate(s)
+  if (!d) return ''
   const diff = Date.now() - d.getTime()
-  if (diff < 60_000) return 'now'
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d`
-  if (diff < 365 * 86_400_000) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (diff < DIFF_MIN) return 'now'
+  if (diff < DIFF_HOUR) return `${Math.floor(diff / DIFF_MIN)}m`
+  if (diff < DIFF_DAY) return `${Math.floor(diff / DIFF_HOUR)}h`
+  if (diff < DIFF_WEEK) return `${Math.floor(diff / DIFF_DAY)}d`
+  if (diff < DIFF_YEAR) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
-export const fmtFullTime = (s: string | null | undefined): string =>
-  s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+export const fmtFullTime = (s: string | Date | null | undefined): string => {
+  const d = toValidDate(s)
+  if (!d) return ''
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 export const sameDay = (a: string | Date | null | undefined, b: string | Date | null | undefined): boolean => {
-  if (!a || !b) return false
-  const da = new Date(a)
-  const db = new Date(b)
+  const da = toValidDate(a)
+  const db = toValidDate(b)
+  if (!da || !db) return false
   return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
 }
 
 export const dateLabel = (s: string | Date | null | undefined): string => {
-  if (!s) return ''
-  const d = new Date(s)
+  const d = toValidDate(s)
+  if (!d) return ''
   const now = new Date()
   if (sameDay(d, now)) return 'Today'
   const yesterday = new Date(now)

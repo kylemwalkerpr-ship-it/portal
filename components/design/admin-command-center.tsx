@@ -32,6 +32,7 @@ import SeoMasterEngine from './admin-seo-engine'
 import { RankingModelBlock } from './admin-ranking-model-block'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
+import { planEvidencePromptBlock, planEvidenceUrls, type PlanEvidence } from '@/lib/seoEngine/planEvidence'
 import { DEFAULT_DRAFT_PIN } from '@/lib/contentAiCatalog'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { JobSummary } from '@/lib/seoFactory/jobSummary'
@@ -941,6 +942,16 @@ export default function AdminCommandCenter({
       titleCandidates: o.titleCandidates || undefined,
       actionType: o.actionType || undefined,
       expectedRevenue: o.expectedRevenue || undefined,
+      // Phase E — evidence packet handoff: the planner's bounded intelligence
+      // (URL/identity/dates/excerpt/verification) rides `sources` (live-link
+      // verification stays authoritative) AND a writer proof block carrying the
+      // full packet with explicit verification status.
+      sources: planEvidenceUrls((o.evidence || []) as PlanEvidence[]),
+      evidenceBlock: planEvidencePromptBlock({
+        items: (o.evidence || []) as PlanEvidence[],
+        readerDeliverable: String(o.readerDeliverable || ''),
+        unresolvedQuestions: Array.isArray(o.unresolvedQuestions) ? (o.unresolvedQuestions as string[]) : [],
+      }),
     })
     setLaunchFeed([])
     setWorkspaceOpen(false)
@@ -1180,6 +1191,9 @@ export default function AdminCommandCenter({
           // Ranking-model recommendedActions + forecast → the generation prompt,
           // so the brief is written against the topic's weak families.
           modelGuidance: brief.ranking || null,
+          // Evidence packet (planner intel) as approved sources + writer proof block.
+          sources: Array.isArray(brief.sources) ? brief.sources : [],
+          evidenceBlock: brief.evidenceBlock ? String(brief.evidenceBlock) : undefined,
         }),
       })
       if (!res.ok) {
@@ -3064,6 +3078,12 @@ function RecheckDuePanel() {
           actionType: p.actionType,
           expectedRevenue: p.expectedRevenue,
           marketplaceCta: p.marketplaceCta,
+          // Phase E — plan→composer evidence handoff: the bounded intelligence
+          // packet (persisted inside the plan JSONB) rides into the brief so the
+          // writer grounds claims in supplied evidence, not a score multiplier.
+          evidence: p.plan && p.plan.evidence ? p.plan.evidence : undefined,
+          readerDeliverable: p.plan && p.plan.readerDeliverable ? p.plan.readerDeliverable : undefined,
+          unresolvedQuestions: p.plan && p.plan.unresolvedQuestions ? p.plan.unresolvedQuestions : undefined,
         })}
         onIngest={(r: any) => notify(`Knowledge ingested: ${r.stored} stored / ${r.fetched} fetched (${r.aiSummarized} AI-summarized)`, 'success')}
       />

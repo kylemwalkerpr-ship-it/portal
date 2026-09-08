@@ -1,6 +1,16 @@
 /**
  * GET  /api/admin/messages/conversations/[id]/messages
- *   Full message history for any conversation — admin oversight read path.
+ *   Bounded latest-first message history for any conversation — admin
+ *   oversight read path. Returns the newest page by default (ascending for
+ *   display) with a composite cursor (`older_cursor`) for older-history
+ *   pagination so long threads never hide their newest messages behind the
+ *   old 1000-row cap, and equal boundary timestamps are never skipped:
+ *     GET .../messages?limit=100
+ *     GET .../messages?limit=100&before=<older_cursor>
+ *
+ *   Ordering is the stable (created_at DESC, id DESC); `before` is a strict
+ *   older-than cursor: `created_at < c OR (created_at = c AND id < i)`.
+ *   Malformed cursors → 400.
  *
  * POST /api/admin/messages/conversations/[id]/messages
  *   Admin send into an existing provider↔client thread (approach a):
@@ -16,6 +26,7 @@ import {
   readAiMode,
   setConversationAiMode,
 } from '@/lib/messengerAi'
+import { buildThreadPage, cursorFilter, keyOf, parseCursor, parseThreadPageLimit } from '@/lib/adminMessages/threadPage'
 
 const PROVIDER_ROLES = new Set(['attorney', 'consultant'])
 const CLIENT_ROLES = new Set(['client', 'student'])
@@ -125,14 +136,33 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   if (error || !conv) return Response.json({ error: 'Conversation not found' }, { status: 404 })
 
-  const messagesRes = await db
+  const { searchParams } = new URL(_req.url)
+  const limit = parseThreadPageLimit(searchParams.get('limit'))
+  const before = searchParams.get('before')?.trim() || ''
+
+  // Stable newest-first bounded page: (created_at DESC, id DESC) so messages
+  // sharing a boundary timestamp are deterministically ordered, and limit+1
+  // rows prove whether older history exists. The composite `before` cursor
+  // is the lexicographic older-than filter for the next older page.
+  let messagesQuery = db
     .from('conversation_messages')
     .select(
       'id, sender_id, type, body, attachment_url, attachment_name, ref_offer_id, ref_order_id, ref_inquiry_id, reply_to_id, metadata, created_at',
     )
     .eq('conversation_id', id)
-    .order('created_at', { ascending: true })
-    .limit(1000)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(limit + 1)
+
+  if (before) {
+    const cursor = parseCursor(before)
+    if (!cursor?.created_at || !cursor?.id) {
+      return Response.json({ error: 'Invalid before cursor' }, { status: 400 })
+    }
+    messagesQuery = messagesQuery.or(cursorFilter(cursor.created_at, cursor.id))
+  }
+
+  const messagesRes = await messagesQuery
 
   if (messagesRes.error) {
     return Response.json({ error: messagesRes.error.message }, { status: 500 })
@@ -180,6 +210,11 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     }
   })
 
+  // rawMessages came back newest-first (stable (created_at,id) tie-break);
+  // recover ascending display order and expose the composite older cursor
+  // (compatible: `messages` + `total`).
+  const page = buildThreadPage(messages, limit, keyOf)
+
   return Response.json({
     conversation: {
       id: conv.id,
@@ -197,8 +232,10 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       ai_mode: readAiMode((conv as any).metadata),
       ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
     },
-    messages,
-    total: messages.length,
+    messages: page.messages,
+    total: page.messages.length,
+    has_older: page.has_older,
+    older_cursor: page.older_cursor,
   })
 }
 

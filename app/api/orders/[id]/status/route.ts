@@ -43,13 +43,21 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (nextStatus === 'cancelled') payload.cancelled_at = new Date().toISOString()
   if (nextStatus === 'revision_requested') payload.revision_reason = note
 
+  // Conditional update: only apply if the order is STILL in the state we read.
+  // If a client cancellation (or another actor) commits between the read and
+  // this write, zero rows match -> 409, so a cancelled/terminal order can never
+  // be resurrected by a stale request.
   const { data: updated, error: updErr } = await auth.db
     .from('orders')
     .update(payload)
     .eq('id', id)
+    .eq('status', current)
     .select('*')
-    .single()
-  if (updErr || !updated) return fail(updErr?.message || 'Could not update order.', 500)
+    .maybeSingle()
+  if (updErr || !updated) {
+    if (updErr) return fail(updErr?.message || 'Could not update order.', 500)
+    return fail(`Order is no longer ${current} — refresh and try again.`, 409)
+  }
 
   await auth.db.from('order_events').insert({
     order_id: id,

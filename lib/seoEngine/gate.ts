@@ -31,6 +31,17 @@ export interface GateSubject {
   country?: string
 }
 
+export interface MandatoryCheck {
+  /** True when a YMYL-critical stage applies (mandatory evidence needed). */
+  applicable: boolean
+  /** True when ALL mandatory YMYL evidence for critical content is present. */
+  met: boolean
+  /** Missing mandatory items (statutory anchor / professional disclaimer). */
+  missing: string[]
+  /** Why the check could not be evaluated (holding reason), when applicable. */
+  reason?: string
+}
+
 export interface GateVerdict {
   passed: boolean
   score: number
@@ -39,6 +50,43 @@ export interface GateVerdict {
   blockers: string[]
   signals: Record<string, unknown>
   recorded: boolean
+  /**
+   * Authoritative mandatory-evidence result for YMYL-critical drafts. THE ship
+   * door consults this, not the advisory `passed` flag: on a critical stage a
+   * single missing required item (statute OR disclaimer) fails the check.
+   */
+  mandatory: MandatoryCheck
+}
+
+/**
+ * Deterministic mandatory-evidence check for YMYL-critical stages. One missing
+ * required item FAILS the check (strict-OR) — immigration is YMYL-critical and
+ * citation presence never proves substantive legal accuracy, it only permits
+ * the ship to proceed.
+ * Pure + exported so focused tests can pin the strict-OR semantics.
+ */
+export function evaluateMandatoryEvidence(
+  signals: Record<string, unknown>,
+  opts: { critical?: boolean; stageLabel?: string },
+): MandatoryCheck {
+  if (!opts.critical) return { applicable: false, met: true, missing: [] }
+  const missing: string[] = []
+  if (!signals.ymyl_statutory) missing.push('statutory anchor cited')
+  if (!signals.ymyl_disclaimer) missing.push('professional disclaimer')
+  return {
+    applicable: true,
+    met: missing.length === 0,
+    missing,
+    reason: opts.stageLabel ? `YMYL-critical stage "${opts.stageLabel}" requires every mandatory evidence item.` : undefined,
+  }
+}
+
+/** Thrown when the mandatory-evidence evaluation itself fails. */
+export class MandatoryGateHeldError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MandatoryGateHeldError'
+  }
 }
 
 export interface DraftMeta {
@@ -150,6 +198,12 @@ export async function enforceGate(subject: GateSubject, draft?: string, meta: Dr
 
   const passed = compliance.score >= threshold && blockers.filter((b) => b.includes('(YMYL-critical)')).length === 0
 
+  // Authoritative mandatory-evidence result — the metric ship.ts must consult.
+  const mandatory = evaluateMandatoryEvidence(signals, {
+    critical: isCritical,
+    stageLabel: stageDef?.label || subject.stage,
+  })
+
   let recorded = false
   try {
     const supabase = createSupabaseAdminClient()
@@ -169,6 +223,7 @@ export async function enforceGate(subject: GateSubject, draft?: string, meta: Dr
       by_category: byCategory as unknown as Record<string, unknown>,
       blockers,
       signals: signals as unknown as Record<string, unknown>,
+      mandatory: mandatory as unknown as Record<string, unknown>,
     })
     if (error) console.warn('[seo_gate_runs] insert failed', error.message)
     recorded = !error
@@ -177,7 +232,7 @@ export async function enforceGate(subject: GateSubject, draft?: string, meta: Dr
     recorded = false
   }
 
-  return { passed, score: compliance.score, threshold, compliance, blockers, signals, recorded }
+  return { passed, score: compliance.score, threshold, compliance, blockers, signals, recorded, mandatory }
 }
 
 /** Persist a Content Studio ship-quality audit so the desk chip is not stuck at 0. */

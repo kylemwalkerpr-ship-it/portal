@@ -362,6 +362,8 @@ function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flas
 
   return (
     <>
+      <CancelOrderCard order={order} onAction={onAction} flash={flash} />
+
       {order.requirements && (
         <Section title="Your requirements">
           <div style={{ padding: '14px 18px', fontSize: 13, color: TEXT, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
@@ -729,6 +731,99 @@ function ReceiptTab({ order, items, services, currency }) {
           </Btn>
           <Btn variant="secondary" size="sm" onClick={() => window.print()}>🖨 Print this page</Btn>
         </div>
+      </div>
+    </Section>
+  )
+}
+
+// ── Cancel order (client, before work starts) ────────────────────────────────
+// Only rendered when the server says the order is safely cancellable. The
+// actual cancellation + refund is atomic in the `client_cancel_order` RPC; the
+// UI just explains the financial outcome (refund to wallet) and asks for a
+// typed confirmation.
+function CancelOrderCard({ order, onAction, flash }) {
+  const [step, setStep] = React.useState('idle') // idle | confirm | busy | done | error
+  const [reason, setReason] = React.useState('')
+  const [error, setError] = React.useState('')
+
+  const elig = order.cancelEligibility || {}
+  if (!elig.cancellable) return null
+
+  const refundCents = Number(elig.refundCents || 0)
+
+  const cancel = async () => {
+    setStep('busy'); setError('')
+    try {
+      const r = await fetch(`/api/orders/${order.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() || null }),
+        credentials: 'same-origin',
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const msg = d?.error?.message || `Cancellation failed (${r.status})`
+        throw new Error(msg)
+      }
+      setStep('done')
+      flash('ok', `Order cancelled — ${fmtMoneyCents(refundCents, 'USD').replace(/\s?USD/, '')} was refunded to your wallet.`)
+      onAction()
+    } catch (e) {
+      setStep('confirm')
+      setError(e.message || 'Failed to cancel the order.')
+    }
+  }
+
+  if (step === 'confirm' || step === 'busy') {
+    return (
+      <Section title="Cancel this order">
+        <div style={{ padding: '16px 18px' }}>
+          <div style={{ background: `${AMBER}10`, border: `1px solid ${AMBER}33`, borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, color: AMBER, fontSize: 13, marginBottom: 4 }}>Please confirm the outcome</div>
+            <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.55 }}>
+              This order has not been started, so it can be cancelled. The held
+              amount of <strong>{fmtMoneyCents(refundCents, 'USD')}</strong> will be
+              refunded to your <strong>wallet balance</strong>. Once cancelled it cannot be resumed —
+              if the specialist has already begun any work, do not cancel.
+            </div>
+          </div>
+          {error && (
+            <div style={{ background: `${RED}10`, border: `1px solid ${RED}33`, borderRadius: 8, padding: '10px 12px', marginBottom: 10, fontSize: 13, color: RED }}>
+              {error}
+            </div>
+          )}
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Reason (optional) — will be shared with your specialist"
+            rows={2}
+            disabled={step === 'busy'}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', fontSize: 13, background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT, fontFamily: SANS, marginBottom: 10, outline: 'none' }}
+          />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Btn variant="danger" size="sm" disabled={step === 'busy'} onClick={cancel}>
+              {step === 'busy' ? 'Cancelling…' : '✕ Cancel order & refund to wallet'}
+            </Btn>
+            <Btn variant="secondary" size="sm" disabled={step === 'busy'} onClick={() => { setStep('idle'); setError('') }}>
+              Keep order
+            </Btn>
+          </div>
+        </div>
+      </Section>
+    )
+  }
+
+  return (
+    <Section
+      title="Cancel this order"
+      right={<Badge color="gray">Before work starts</Badge>}
+    >
+      <div style={{ padding: '16px 18px', display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 240, fontSize: 13, color: MUTED, lineHeight: 1.5 }}>
+          No work has started on this order yet. You can cancel now and{" "}
+          <strong style={{ color: TEXT }}>{fmtMoneyCents(refundCents, 'USD')}</strong> will be refunded to your wallet.
+        </div>
+        <Btn variant="danger" size="sm" onClick={() => setStep('confirm')}>✕ Cancel order</Btn>
       </div>
     </Section>
   )

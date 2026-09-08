@@ -53,6 +53,12 @@ import {
   SCORING_CONSTANTS,
 } from './scoring'
 import { marketplaceValue } from './marketplaceValue'
+import {
+  buildPlanEvidencePacket,
+  planEvidencePromptBlock,
+  type PlanEvidence,
+  type PlanEvidencePacket,
+} from './planEvidence'
 
 export type DemandSourceId = 'gsc' | 'ga4' | 'ubersuggest' | 'ads'
 
@@ -121,6 +127,12 @@ export interface ClusterPlan {
     contentType: ContentType
     services: string[]
     proofPoints: string[]
+    /** Bounded intelligence evidence packet (URL/identity/dates/excerpt/verification). */
+    evidence: PlanEvidence[]
+    /** Concrete reader-value deliverable grounded in the evidence. */
+    readerDeliverable?: string
+    /** Explicit unresolved factual questions the draft must verify. */
+    unresolvedQuestions?: string[]
   }
   compliance: ComplianceResult
   distribution: Array<{ repo: string; path: string; contentType: string }>
@@ -634,7 +646,7 @@ export async function pullLatestKnowledge(limit = 25): Promise<Array<Record<stri
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_knowledge')
-      .select('title,stages,countries,source,ai_summary,url,kind,confidence,published_at')
+      .select('title,stages,countries,source,ai_summary,summary,url,kind,confidence,published_at,fetched_at')
       .order('fetched_at', { ascending: false })
       .limit(limit)
     return (data as Array<Record<string, unknown>>) || []
@@ -644,12 +656,62 @@ export async function pullLatestKnowledge(limit = 25): Promise<Array<Record<stri
 }
 
 /**
+ * Freshness provenance for a knowledge item — never substitutes `now` for an
+ * unknown publication date:
+ *   - published  — a valid, not-future, not-zero `published_at` (age from it).
+ *   - observed   — published date unknown/malformed; age from the STABLE
+ *                  `fetched_at` (first-seen, never re-stamped by repeat
+ *                  ingestion) with an explicit uncertainty penalty. Fetch time
+ *                  is never relabelled as publication time.
+ *   - none       — neither timestamp is trustworthy → maximal uncertainty.
+ * Exported (pure) so focused tests can pin the decay + penalty math.
+ */
+export function knowledgeAgeInfo(
+  knowledge: Record<string, unknown>,
+  now = Date.now(),
+): { ageFrom: 'published' | 'observed' | 'none'; publishedTs: number | null; observedTs: number | null; ageDays: number; uncertainty: number } {
+  const MS_DAY = 86_400_000
+  const parseTs = (v: unknown): number | null => {
+    if (v == null || v === '') return null
+    const t = new Date(String(v)).getTime()
+    if (!Number.isFinite(t)) return null
+    // Future-dated stamps are malformed (clamped at ingest to now) — distrust.
+    if (t > now + MS_DAY) return null
+    return t
+  }
+  const publishedTs = parseTs(knowledge.published_at)
+  if (publishedTs != null) {
+    return {
+      ageFrom: 'published',
+      publishedTs,
+      observedTs: null,
+      ageDays: Math.max(0, (now - publishedTs) / MS_DAY),
+      uncertainty: 0,
+    }
+  }
+  const observedTs = parseTs(knowledge.fetched_at)
+  if (observedTs != null) {
+    // Undated item: decay from first-seen, but explicitly uncertain — it must
+    // never earn a fresh-publication bonus. Only a small confidence discount:
+    // the fetched_at date IS stored (not invented) and is stable across
+    // re-ingestion (upsert leaves fetched_at untouched).
+    return {
+      ageFrom: 'observed',
+      publishedTs: null,
+      observedTs,
+      ageDays: Math.max(0, (now - observedTs) / MS_DAY),
+      uncertainty: 0.25,
+    }
+  }
+  return { ageFrom: 'none', publishedTs: null, observedTs: null, ageDays: 0, uncertainty: 1 }
+}
+
+/**
  * Knowledge bias per (stage,country) cell — WEIGHTED, not a raw row count.
- * A raw +1-per-row count let keyword-demand churn and Google-News noise
- * outrank a single authoritative policy change; source authority, confidence
- * and freshness now shape the bias:
+ * Source authority + confidence + freshness shape the bias:
  *   kindWeight: policy 1.3 · guidance 1.0 · manual 1.2 · signal 0.8 · trend 0.6 · competitor 0.5
  *   × confidence (0–1, default 0.6) × freshness decay (1 day → 1.0, 30+ days → 0.4)
+ * Undated items never earn a fresh-publication bonus (knowledgeAgeInfo).
  */
 function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, number> {
   const KIND_WEIGHT: Record<string, number> = { policy: 1.3, guidance: 1, manual: 1.2, signal: 0.8, trend: 0.6, competitor: 0.5 }
@@ -661,9 +723,11 @@ function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, n
     const kind = String(k.kind || 'guidance')
     const kindWeight = KIND_WEIGHT[kind] ?? 1
     const confidence = Math.max(0.1, Math.min(1, Number(k.confidence ?? 0.6) || 0.6))
-    const published = k.published_at ? new Date(String(k.published_at)).getTime() : now
-    const ageDays = Number.isFinite(published) ? Math.max(0, (now - published) / 86_400_000) : 0
-    const freshness = Math.max(0.4, 1 - ageDays / 50)
+    // Unknown/malformed publication dates get zero freshness credit and a
+    // hard uncertainty penalty — the old `now` fallback gave undated items
+    // indefinite full freshness and let repeat ingestion reparent their age.
+    const { ageDays, uncertainty } = knowledgeAgeInfo(k, now)
+    const freshness = Math.max(0.4, 1 - ageDays / 50) * (1 - uncertainty)
     const weight = kindWeight * confidence * freshness
     for (const s of stages) {
       for (const c of countries) {
@@ -802,6 +866,16 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   //    UBER_BOOST when SOME GSC signal proved real impressions in that cell
   //    this month. Volume without GSC proof ranks at 1.0.
   const cellKey = (s: string, c: Country) => `${s}|${c}`
+  // Inclusion-constraint resolution: stage/country filters are gates on the
+  // MATCHED cell — a signal that resolves to a different jurisdiction/stage is
+  // excluded, never relabelled (a UK query must not become a US mission).
+  const resolveFilteredCell = (
+    m: { stage: string; country: Country },
+  ): { stage: string; country: Country } | null => {
+    if (stageFilter && m.stage !== stageFilter) return null
+    if (countryFilter && m.country !== countryFilter) return null
+    return m
+  }
   const marketSupply = new Map<string, { hasLiveSupply: boolean }>()
   {
     const neededCells = new Set<string>()
@@ -809,8 +883,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       if (!sig.term || sig.impressions < 10 || isJunkQuery(sig.term)) continue
       const m = bestCellForTerm(sig.term)
       if (m.score < MIN_CELL_MATCH_SCORE || !m.stage) continue
-      const st = stageFilter && stageFilter !== m.stage ? stageFilter : m.stage
-      neededCells.add(cellKey(st, countryFilter || m.country))
+      const cell = resolveFilteredCell(m)
+      if (!cell) continue
+      neededCells.add(cellKey(cell.stage, cell.country))
     }
     if (stageFilter && countryFilter) neededCells.add(cellKey(stageFilter, countryFilter))
     await Promise.all(
@@ -846,8 +921,13 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     if (isJunkQuery(sig.term)) continue
     const match = bestCellForTerm(sig.term)
     if (match.score < MIN_CELL_MATCH_SCORE || !match.stage) continue
-    const stage = stageFilter && stageFilter !== match.stage ? stageFilter : match.stage
-    const country = countryFilter || match.country
+    // Filters are inclusion constraints on the matched cell — never relabel.
+    // A UK-only signal is excluded under a US filter; visa-only demand is
+    // excluded under a housing filter. Ambiguous terms keep bestCellForTerm's
+    // existing matching semantics (best cell wins, other countries zeroed).
+    const resolved = resolveFilteredCell(match)
+    if (!resolved) continue
+    const { stage, country } = resolved
     const stageDef = getStage(stage)
     if (!stageDef) continue
     const cell = stageDef.countries[country]
@@ -988,6 +1068,14 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       `How long does ${primaryTerm} take in ${country}?`,
       `What documents do I need for ${primaryTerm}?`,
     ]
+    // Bounded evidence packet — intelligence as evidence for generation, NOT
+    // only a score multiplier. Country/stage-incompatible knowledge is excluded;
+    // unknown dates/excerpts surface as explicit unresolved questions.
+    const evidencePacket: PlanEvidencePacket = buildPlanEvidencePacket({
+      country,
+      stage,
+      knowledge,
+    })
     const plan = {
       pillar: `${stageDef.label} in ${country}: the complete guide`,
       spokes: related.slice(0, 3).map((t) => `${t}: deep dive`),
@@ -995,6 +1083,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       contentType,
       services: stageDef.services,
       proofPoints: stageDef.proofPoints,
+      evidence: evidencePacket.items,
+      readerDeliverable: evidencePacket.readerDeliverable,
+      unresolvedQuestions: evidencePacket.unresolvedQuestions,
       // Demand provenance — surfaced on plan cards so "imp/month" is honest:
       // 'gsc-90d' (live GSC window ÷ 3) vs 'snapshot' (static export, dated)
       // vs 'research' (Ubersuggest/Ads volumes).
@@ -1053,6 +1144,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
             `PROOF POINTS: ${stageDef.proofPoints.join('; ')}`,
             `TARGET ESTATE: ${targetsFor(stageDef, country).map((t) => `${t.repo}/${t.path}`).join(', ')}`,
             `PURCHASE PATH: Close the brief with a marketplace CTA to ${primaryServiceFor(stageDef)} — every mission must funnel a reader to a paid consult/gig, not a dead-end article.`,
+            planEvidencePromptBlock(evidencePacket),
           ].join('\n'),
           maxTokens: 600,
           temperature: 0.4,

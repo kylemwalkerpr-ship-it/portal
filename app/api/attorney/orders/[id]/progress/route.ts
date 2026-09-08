@@ -1,5 +1,10 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 
+// Only an order that is actually in progress may be pushed to 'under_review'.
+// A client-cancelled (or never-started) order must never be resurrected into
+// review by a stale or concurrent request.
+const REVIEWABLE = ['in_progress', 'under_review', 'revision_requested', 'active', 'review', 'delivered']
+
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
@@ -21,13 +26,31 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (body.status === 'review' || body.status === 'under_review') update.status = 'under_review'
   if (Object.keys(update).length === 0) return Response.json({ error: 'Nothing to update.' }, { status: 400 })
 
-  const { data: order, error: updErr } = await ctx.db
+  // Read the order first so the write below is conditional on the state we saw.
+  const { data: order } = await ctx.db
+    .from('orders')
+    .select('id, status, consultant_id')
+    .eq('id', id)
+    .eq('consultant_id', ctx.profileId)
+    .single()
+
+  if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
+  if (update.status === 'under_review' && !REVIEWABLE.includes(order.status)) {
+    return Response.json({ error: `Order cannot be moved to review from status ${order.status}.` }, { status: 409 })
+  }
+
+  // Conditional update: only apply if the order is STILL in the state we read.
+  // A client cancellation committed between read and write matches zero rows
+  // -> 409, so a cancelled/terminal order can never be resurrected.
+  const { data, error: updErr } = await ctx.db
     .from('orders')
     .update(update)
     .eq('id', id)
     .eq('consultant_id', ctx.profileId)
+    .eq('status', order.status)
     .select('id, status, progress')
-    .single()
-  if (updErr || !order) return Response.json({ error: updErr?.message || 'Could not update.' }, { status: 500 })
-  return Response.json({ order })
+    .maybeSingle()
+  if (updErr) return Response.json({ error: updErr?.message || 'Could not update.' }, { status: 500 })
+  if (!data) return Response.json({ error: 'Order status changed by another request — refresh and try again.' }, { status: 409 })
+  return Response.json({ order: data })
 }

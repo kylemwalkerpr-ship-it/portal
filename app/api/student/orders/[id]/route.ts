@@ -6,6 +6,7 @@
  */
 import { getCurrentStudent } from '@/lib/student'
 import { mintSignedDocumentUrl } from '@/lib/documentStorage'
+import { getClientCancellationEligibility, UNSTARTED_STATUSES } from '@/lib/orderCancellation'
 
 function dollarsFromCents(cents: unknown) { return Number(cents || 0) / 100 }
 
@@ -20,7 +21,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   // Load order with ownership check.
   let { data: order, error } = await db
     .from('orders')
-    .select('id, order_number, client_id, consultant_id, attorney_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, payout_status, escrow_status, escrow_amount, escrow_released_amount, escrow_refunded_amount, auto_release_eligible_at, terms_accepted_at, refund_policy_accepted_at')
+    .select('id, order_number, client_id, consultant_id, attorney_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, amount_paid, currency, payout_status, escrow_status, escrow_amount, escrow_released_amount, escrow_refunded_amount, auto_release_eligible_at, terms_accepted_at, refund_policy_accepted_at, refunded_amount, refund_status, refund_method, cancelled_at')
     .eq('id', id)
     .single()
   if (error && /column .* does not exist/i.test(error.message || '')) {
@@ -103,6 +104,49 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const milestones = milestonesRes.status === 'fulfilled' ? (milestonesRes.value.data ?? []) : []
   const scopeChanges = scopeRes.status === 'fulfilled' ? (scopeRes.value.data ?? []) : []
 
+  // Client-cancellation eligibility (server-authoritative check is the SQL RPC;
+  // this is the shared fast-path so the UI only shows the action when legal).
+  let cancelEligibility: Record<string, unknown> | null = null
+  if ((UNSTARTED_STATUSES as readonly string[]).includes(String(order.status || ''))) {
+    let earningReleased = false
+    try {
+      const { data: earnings } = await db.from('provider_earnings').select('status').eq('order_id', id)
+      earningReleased = ((earnings ?? []) as Array<{ status: string }>).some((e) =>
+        ['releasable', 'paid'].includes(e.status),
+      )
+    } catch { /* optional evidence — the RPC re-checks authoritatively */ }
+    const verdict = getClientCancellationEligibility(
+      {
+        id: order.id,
+        client_id: order.client_id,
+        status: order.status,
+        progress: order.progress,
+        currency: order.currency,
+        amount_paid: order.amount_paid,
+        total_amount: order.total_amount,
+        escrow_status: order.escrow_status,
+        escrow_amount: order.escrow_amount,
+        escrow_released_amount: order.escrow_released_amount,
+        escrow_refunded_amount: order.escrow_refunded_amount,
+        auto_release_eligible_at: order.auto_release_eligible_at,
+        cancelled_at: order.cancelled_at,
+        refunded_amount: order.refunded_amount,
+        refund_status: order.refund_status,
+        payout_status: order.payout_status,
+      },
+      {
+        callerId: profile.id,
+        milestoneWork: milestones.some((m: any) => m.status !== 'pending' && m.status !== 'cancelled'),
+        earningReleased,
+      },
+    )
+    if (verdict.cancellable === true) {
+      cancelEligibility = { cancellable: true, refundCents: verdict.refundCents, refundMethod: verdict.refundMethod }
+    } else {
+      cancelEligibility = { cancellable: false, code: verdict.code, reason: verdict.reason }
+    }
+  }
+
   const totalCents = Math.round(Number(order.total_amount || 0) * 100)
   const storedProgress = Number.isFinite(Number(order.progress)) ? Number(order.progress) : null
   const friendlyStatus = order.status === 'queued' ? 'pending'
@@ -146,6 +190,8 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       payoutStatus: order.payout_status || 'pending',
       termsAcceptedAt: order.terms_accepted_at || null,
       refundPolicyAcceptedAt: order.refund_policy_accepted_at || null,
+      canCancel: !!cancelEligibility?.cancellable,
+      cancelEligibility,
     },
     items,
     services,

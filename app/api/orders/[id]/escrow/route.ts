@@ -105,9 +105,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .from('orders')
       .update({ status: 'revision_requested', revision_reason: note, updated_at: new Date().toISOString() })
       .eq('id', orderId)
+      // Concurrency guard: refuse to move the order if its state changed since
+      // we read it (e.g. the client cancelled / it was already approved).
+      .eq('status', ord.status)
       .select('id, status')
-      .single() as any
-    if (updErr || !updated) return fail(updErr?.message || 'Could not request a revision.', 500)
+      .maybeSingle() as any
+    if (updErr) return fail(updErr?.message || 'Could not request a revision.', 500)
+    if (!updated) return fail('Order state changed — refresh and try again.', 409)
 
     if (counterpartId) {
       try {
@@ -123,13 +127,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // ── Raise a dispute ─────────────────────────────────────────────────────
   if (action === 'raise_dispute') {
+    // A cancelled/refunded/completed order can never be resurrected into a
+    // dispute; and the transition must be conditional on the state we read.
+    if (['cancelled', 'refunded', 'completed', 'released'].includes(String(ord.status))) {
+      return fail(`This order is ${ord.status} and cannot be disputed.`, 409)
+    }
     const { data: updated, error: updErr } = await db
       .from('orders')
       .update({ escrow_status: 'disputed', status: 'disputed', updated_at: new Date().toISOString() })
       .eq('id', orderId)
+      .eq('status', ord.status)
       .select('id, status, escrow_status')
-      .single() as any
-    if (updErr || !updated) return fail(updErr?.message || 'Could not raise a dispute.', 500)
+      .maybeSingle() as any
+    if (updErr) return fail(updErr?.message || 'Could not raise a dispute.', 500)
+    if (!updated) return fail('Order state changed — refresh and try again.', 409)
 
     try {
       await db.from('escrow_events').insert({

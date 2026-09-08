@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react'
-import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { useEditor, EditorContent, Node as TipTapNode, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -18,7 +18,6 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
-import { Node as TipTapNode } from '@tiptap/core'
 import { serializeDsHtml } from '@/lib/editorDoc'
 import { peelCollapsedFrontmatter } from '@/lib/seoFactory/formatContract'
 import { sanitizeLeakedMarkup } from '@/lib/seoFactory/leakedMarkup'
@@ -303,6 +302,10 @@ export default function StudioDocEditor({
   const [, bump] = React.useState(0)
 
   const editor = useEditor({
+    // KeepBlock's Node is imported through @tiptap/react so it shares the exact
+    // core identity useEditor uses. A direct `@tiptap/core` import resolved to a
+    // separate copy of the library (2.27.3 root vs 2.27.2 under @tiptap/react),
+    // which made TS reject the extension list on nominal-type grounds.
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       Underline,
