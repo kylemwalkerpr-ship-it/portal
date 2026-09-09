@@ -12,10 +12,10 @@ import {
   SellerStats,
   SellerAbout,
   SellerGigs,
-  SellerReviews,
   type SellerProfile,
   type SellerGig,
 } from './SellerProfileComponents'
+import { ReviewsSection } from './ReviewComponents'
 import { signalSsrReady } from './SsrHydrateGate'
 
 export function SellerProfilePage({
@@ -66,7 +66,8 @@ export function SellerProfilePage({
           setGigs(gPayload.gigs || [])
         }
 
-        // Load seller reviews — endpoint is optional and may not exist yet
+        // Load seller reviews for the tab count. ReviewsSection performs its
+        // own seller-scoped fetch when the Reviews tab is opened/rendered.
         try {
           const reviewsRes = await fetch(`/api/sellers/${sellerId}/reviews`, { credentials: 'same-origin' })
           if (reviewsRes.ok) {
@@ -157,7 +158,12 @@ export function SellerProfilePage({
       <div className="ys-seller-profile-tab-content" style={{ ...tabContent, background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '14px', padding: '24px' }}>
         {activeTab === 'about' && <SellerAbout seller={seller} />}
         {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
-        {activeTab === 'reviews' && <SellerReviews reviews={reviews} />}
+        {activeTab === 'reviews' && (
+          <ReviewsSection
+            sellerId={seller.id}
+            sellerType={seller.role === 'consultant' ? 'consultant' : 'attorney'}
+          />
+        )}
       </div>
 
       {/* Side-pane chat — opens from "Chat now" without leaving the profile.
