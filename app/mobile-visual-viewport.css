@@ -1,0 +1,99 @@
+/* Mobile visual viewport contract
+   ===============================
+   iOS Safari's browser chrome and software keyboard can make the layout
+   viewport taller than the pixels currently visible to the user. The root
+   MobileVisualViewport coordinator publishes the live visible bottom edge as
+   --ys-visual-viewport-height. This final cascade layer makes that measurement
+   the single height owner for app-like mobile surfaces.
+
+   Important: only the OUTER shell owns the visual viewport. Messenger's nested
+   flex surfaces stay at 100% so header + canvas + composer divide that one
+   viewport instead of stacking another 100vh/100dvh boundary.
+*/
+
+@media (max-width: 768px) {
+  :root {
+    --ys-visual-viewport-height: 100dvh;
+    --ys-visual-viewport-offset-top: 0px;
+  }
+
+  /* All role dashboards share the same viewport contract. This deliberately
+     overrides legacy inline height:100vh as well as student 100dvh rules. */
+  body .yousafe-dashboard-shell {
+    box-sizing: border-box !important;
+    height: var(--ys-visual-viewport-height, 100dvh) !important;
+    min-height: var(--ys-visual-viewport-height, 100dvh) !important;
+    max-height: var(--ys-visual-viewport-height, 100dvh) !important;
+    overflow: hidden !important;
+  }
+
+  body .yousafe-dashboard-shell:has(.yousafe-messenger) .yousafe-dashboard-main,
+  body .yousafe-dashboard-shell:has(.yousafe-messenger) .yousafe-dashboard-body,
+  body .yousafe-dashboard-shell:has(.yousafe-messenger) .yousafe-dashboard-content {
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+
+  /* Open thread = one WhatsApp-style app viewport. Nothing below the outer
+     shell may claim another viewport unit; the canvas is the only scroll owner
+     and the composer remains a non-shrinking final flex child. */
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-main {
+    box-sizing: border-box !important;
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    padding-bottom: 0 !important;
+    scroll-padding-bottom: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-body,
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-content,
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-messenger,
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen,
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen-chat {
+    box-sizing: border-box !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) [data-chat-canvas] {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body .yousafe-dashboard-shell:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .comp {
+    position: relative !important;
+    inset: auto !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Marketplace Messages has a 60px product header outside Messenger, while
+     the pre-sale side pane owns the whole phone viewport. Use the same live
+     visual measurement so these surfaces cannot regress independently. */
+  body .cw-market > .yousafe-messenger {
+    height: max(360px, calc(var(--ys-visual-viewport-height, 100dvh) - 60px)) !important;
+    min-height: 0 !important;
+    max-height: calc(var(--ys-visual-viewport-height, 100dvh) - 60px) !important;
+    overflow: hidden !important;
+  }
+
+  body .chat-side-pane.yousafe-messenger,
+  body .cw-market .chat-side-pane.yousafe-messenger {
+    height: var(--ys-visual-viewport-height, 100dvh) !important;
+    min-height: 0 !important;
+    max-height: var(--ys-visual-viewport-height, 100dvh) !important;
+    overflow: hidden !important;
+  }
+}
