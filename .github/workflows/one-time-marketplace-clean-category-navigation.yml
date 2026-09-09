@@ -10,16 +10,13 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/marketplace-clean-category-navigation
           fetch-depth: 0
-
       - name: Rewrite remaining public category emitters
-        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -28,19 +25,19 @@ jobs:
           source = landing.read_text()
           old_all = "href={withCountry('/marketplace', active)}"
           old_cat = "href={withCountry(`/marketplace?category=${cs.cat.id}`, active)}"
-          assert old_all in source, 'marketplace landing All link not found'
-          assert old_cat in source, 'marketplace landing category link not found'
+          assert old_all in source
+          assert old_cat in source
           source = source.replace(old_all, "href={withCountry('/', active)}")
           source = source.replace(old_cat, "href={withCountry(`/categories/${cs.cat.id}`, active)}")
           landing.write_text(source)
 
           featured = Path('components/marketplace/FeaturedBriefsGrid.tsx')
           source = featured.read_text()
-          old = """          const href = g.slug
+          old = '''          const href = g.slug
             ? `/marketplace/gigs/${g.slug}`
             : withCountry(`/marketplace?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, country)
-"""
-          new = """          const fallbackCategory = g.category
+'''
+          new = '''          const fallbackCategory = g.category
             ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category))
             : ''
           const href = g.slug
@@ -48,18 +45,16 @@ jobs:
             : fallbackCategory
               ? withCountry(`/categories/${fallbackCategory}`, country)
               : withCountry('/', country)
-"""
-          assert old in source, 'featured fallback category URL block not found'
+'''
+          assert old in source
           featured.write_text(source.replace(old, new))
           PY
-
-      - name: Remove one-time workflow and commit
-        shell: bash
+      - name: Commit cleanup
         run: |
           rm .github/workflows/one-time-marketplace-clean-category-navigation.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/marketplace/PublicMarketplaceLanding.tsx components/marketplace/FeaturedBriefsGrid.tsx .github/workflows/one-time-marketplace-clean-category-navigation.yml
+          git add -A
           git diff --cached --check
           git commit -m "Clean remaining public category URL emitters"
           git push origin HEAD:fix/marketplace-clean-category-navigation
