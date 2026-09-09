@@ -192,3 +192,34 @@ jobs:
             process.exit(1)
           })
           NODE
+
+      - name: Checkout main for self-removal
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 20
+
+      - name: Remove one-time cleanup machinery
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-branch-cleanup.yml
+          rm -f .github/one-time-branch-cleanup-trigger
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A .github/workflows/one-time-branch-cleanup.yml .github/one-time-branch-cleanup-trigger
+
+          if git diff --cached --quiet; then
+            echo "One-time cleanup files are already absent."
+            exit 0
+          fi
+
+          git commit -m "chore: remove one-time branch cleanup machinery"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            echo "Cleanup self-removal push attempt $attempt failed; retrying..."
+            sleep $((attempt * 2))
+          done
+          exit 1
