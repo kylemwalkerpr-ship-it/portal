@@ -1,0 +1,917 @@
+/* YouSafe Messenger product contract
+   ==================================
+   Final, self-contained UI contract for every .yousafe-messenger surface.
+
+   This layer is intentionally loaded after dashboard / marketplace mobile
+   skins. It exists to stop generic responsive rules from degrading chat UI.
+   The interaction model is WhatsApp-inspired (density, hierarchy, mobile
+   ergonomics) while keeping YouSafe's own identity, safety controls and data.
+*/
+
+.yousafe-messenger {
+  isolation: isolate;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.yousafe-messenger,
+.yousafe-messenger .ys-chatscreen,
+.yousafe-messenger .ys-chatscreen-sidebar,
+.yousafe-messenger .ys-chatscreen-chat,
+.yousafe-messenger .cl,
+.yousafe-messenger .cv-body-bg {
+  min-width: 0;
+  min-height: 0;
+}
+
+.yousafe-messenger button,
+.yousafe-messenger input,
+.yousafe-messenger textarea {
+  font: inherit;
+}
+
+@media (max-width: 768px) {
+  body .yousafe-messenger {
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: var(--panel) !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .ys-chatscreen {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    background: var(--panel) !important;
+  }
+
+  body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar {
+    display: block !important;
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    background: var(--panel) !important;
+  }
+
+  body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar > .cl {
+    position: relative !important;
+    inset: auto !important;
+    z-index: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border: 0 !important;
+    background: var(--panel) !important;
+  }
+
+  body .yousafe-messenger .cl-head {
+    flex: 0 0 auto !important;
+    padding: 12px 14px 10px !important;
+    background: var(--panel) !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+    box-shadow: none !important;
+  }
+
+  body .yousafe-messenger .cl-title {
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 0 0 10px !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+
+  body .yousafe-messenger .cl-title-l {
+    min-width: 0 !important;
+    gap: 0 !important;
+  }
+
+  body .yousafe-messenger .cl-title-l > .cl-avatar {
+    display: none !important;
+  }
+
+  body .yousafe-messenger .cl-title-name {
+    margin: 0 !important;
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    font-size: 25px !important;
+    font-weight: 760 !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.025em !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .cl-title-sub {
+    margin-top: 3px !important;
+    font-family: inherit !important;
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    color: var(--text-soft) !important;
+  }
+
+  body .yousafe-messenger .cl-title-r {
+    gap: 4px !important;
+    align-items: center !important;
+  }
+
+  body .yousafe-messenger .cl-title-r .iconbtn,
+  body .yousafe-messenger .cl-title .iconbtn {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    flex: 0 0 42px !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: var(--text-mid) !important;
+    border: 0 !important;
+  }
+
+  body .yousafe-messenger .cl-title-r .iconbtn:active,
+  body .yousafe-messenger .cl-title .iconbtn:active {
+    background: var(--hover) !important;
+    transform: scale(.96);
+  }
+
+  body .yousafe-messenger .cl-search {
+    width: 100% !important;
+    min-height: 42px !important;
+    margin: 0 0 10px !important;
+    padding: 0 12px !important;
+    gap: 9px !important;
+    border: 0 !important;
+    border-radius: 14px !important;
+    background: var(--panel-2) !important;
+    color: var(--text-soft) !important;
+    box-shadow: none !important;
+  }
+
+  body .yousafe-messenger .cl-search input {
+    min-width: 0 !important;
+    height: 42px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    outline: 0 !important;
+    background: transparent !important;
+    color: var(--text) !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+  }
+
+  body .yousafe-messenger .cl-search-x {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    flex: 0 0 30px !important;
+  }
+
+  body .yousafe-messenger .cl-filters {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 7px !important;
+    width: 100% !important;
+    padding: 0 0 2px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body .yousafe-messenger .cl-filters::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  body .yousafe-messenger .cl-pill {
+    flex: 0 0 auto !important;
+    min-height: 34px !important;
+    padding: 0 13px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 999px !important;
+    background: var(--panel) !important;
+    color: var(--text-mid) !important;
+    font-size: 13px !important;
+    font-weight: 620 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  body .yousafe-messenger .cl-pill.on {
+    background: color-mix(in oklab, var(--accent) 14%, var(--panel)) !important;
+    border-color: color-mix(in oklab, var(--accent) 42%, var(--border)) !important;
+    color: var(--accent-d) !important;
+  }
+
+  body .yousafe-messenger .cl-scroll {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: var(--panel) !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body .yousafe-messenger .cl-archived {
+    min-height: 58px !important;
+    padding: 8px 14px !important;
+    gap: 12px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+    border-radius: 0 !important;
+    background: var(--panel) !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .cl-archived-icon {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: var(--accent-d) !important;
+  }
+
+  body .yousafe-messenger .cl-archived-l {
+    gap: 12px !important;
+    font-size: 14.5px !important;
+    font-weight: 650 !important;
+  }
+
+  body .yousafe-messenger .row {
+    width: 100% !important;
+    min-height: 76px !important;
+    margin: 0 !important;
+    padding: 10px 14px !important;
+    gap: 11px !important;
+    align-items: center !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    text-align: left !important;
+    overflow: visible !important;
+  }
+
+  body .yousafe-messenger .row.on {
+    background: var(--hover) !important;
+  }
+
+  body .yousafe-messenger .row.on::before {
+    display: none !important;
+  }
+
+  body .yousafe-messenger .row:active {
+    background: color-mix(in oklab, var(--text) 7%, var(--panel)) !important;
+  }
+
+  body .yousafe-messenger .statusring {
+    flex: 0 0 auto !important;
+  }
+
+  body .yousafe-messenger .row-avatar,
+  body .yousafe-messenger .row-avatar img {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 50% !important;
+  }
+
+  body .yousafe-messenger .row-body {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    align-self: center !important;
+  }
+
+  body .yousafe-messenger .row-line1 {
+    min-width: 0 !important;
+    gap: 8px !important;
+    align-items: baseline !important;
+  }
+
+  body .yousafe-messenger .row-name {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    font-size: 16px !important;
+    font-weight: 650 !important;
+    line-height: 1.22 !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .row.unread .row-name {
+    font-weight: 760 !important;
+  }
+
+  body .yousafe-messenger .row-time {
+    flex: 0 0 auto !important;
+    font-family: inherit !important;
+    font-size: 11.5px !important;
+    font-weight: 520 !important;
+    color: var(--text-soft) !important;
+  }
+
+  body .yousafe-messenger .row-time.on {
+    color: var(--accent-d) !important;
+    font-weight: 650 !important;
+  }
+
+  body .yousafe-messenger .row-line2 {
+    min-width: 0 !important;
+    margin-top: 3px !important;
+    gap: 5px !important;
+    align-items: center !important;
+    color: var(--text-soft) !important;
+    font-size: 13.5px !important;
+    line-height: 1.25 !important;
+  }
+
+  body .yousafe-messenger .row-snippet {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  body .yousafe-messenger .row-icons {
+    flex: 0 0 auto !important;
+    gap: 4px !important;
+  }
+
+  body .yousafe-messenger .row-unread {
+    min-width: 20px !important;
+    height: 20px !important;
+    padding: 0 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 999px !important;
+    background: var(--accent) !important;
+    color: #fff !important;
+    font-family: inherit !important;
+    font-size: 10.5px !important;
+    font-weight: 750 !important;
+  }
+
+  body .yousafe-messenger .row-chev {
+    display: grid !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    place-items: center !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: var(--text-soft) !important;
+    opacity: .68 !important;
+  }
+
+  body .yousafe-messenger .row-ctx {
+    margin-top: 5px !important;
+    padding: 2px 7px !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: var(--panel-2) !important;
+    color: var(--text-soft) !important;
+    font-family: inherit !important;
+    font-size: 10px !important;
+    font-weight: 650 !important;
+    letter-spacing: .02em !important;
+  }
+
+  body .yousafe-messenger .cl-empty {
+    padding: 38px 26px !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+    color: var(--text-soft) !important;
+  }
+
+  body .yousafe-messenger .ctxmenu,
+  body .yousafe-messenger .bub-emoji-picker {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: min(70dvh, 560px) !important;
+    padding: 8px !important;
+    overflow-y: auto !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 20px !important;
+    background: color-mix(in oklab, var(--panel) 96%, transparent) !important;
+    box-shadow: 0 22px 70px rgba(15, 23, 42, .24) !important;
+    z-index: 10050 !important;
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+  }
+
+  body .yousafe-messenger .ctxmenu-item,
+  body .yousafe-messenger .bub-emoji-picker-action {
+    min-height: 48px !important;
+    border-radius: 12px !important;
+    font-size: 15px !important;
+  }
+
+  body .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-chat {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    background: var(--chat-bg) !important;
+  }
+
+  body .yousafe-messenger .cv-head {
+    flex: 0 0 auto !important;
+    min-height: 60px !important;
+    padding: 7px 8px !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    border-bottom: 1px solid var(--border) !important;
+    background: color-mix(in oklab, var(--panel) 94%, transparent) !important;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, .03) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  body .yousafe-messenger .cv-head > button.iconbtn:first-child {
+    display: inline-grid !important;
+    order: -10 !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    flex: 0 0 40px !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .cv-head-info {
+    order: -9 !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 2px !important;
+    gap: 8px !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+  }
+
+  body .yousafe-messenger .cv-head-avatar,
+  body .yousafe-messenger .cv-head-avatar img {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+    border-radius: 50% !important;
+  }
+
+  body .yousafe-messenger .cv-head-text {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  body .yousafe-messenger .cv-head-name {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 15.5px !important;
+    font-weight: 710 !important;
+    line-height: 1.18 !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .cv-head-status {
+    max-width: 100% !important;
+    margin-top: 2px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 10.5px !important;
+    line-height: 1.15 !important;
+    color: var(--text-soft) !important;
+  }
+
+  body .yousafe-messenger .cv-head-actions {
+    order: 0 !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    gap: 1px !important;
+    overflow: visible !important;
+    justify-content: flex-end !important;
+  }
+
+  body .yousafe-messenger .cv-head-actions .iconbtn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    flex: 0 0 40px !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: var(--text-mid) !important;
+  }
+
+  body .yousafe-messenger .cv-head-actions .iconbtn:active {
+    background: var(--hover) !important;
+  }
+
+  body .yousafe-messenger .cv-head-ctx {
+    display: none !important;
+  }
+
+  body .yousafe-messenger .cv-head-offer-cta {
+    min-height: 36px !important;
+    padding: 7px 10px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+  }
+
+  body .yousafe-messenger .cv-head > div:has(> span[title='SuperGrok AI closer']) {
+    order: 20 !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    margin: 3px 0 0 !important;
+    padding: 6px 8px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    background: var(--panel-2) !important;
+  }
+
+  body .yousafe-messenger [data-chat-canvas] {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: var(--chat-bg) !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body .yousafe-messenger .cv-canvas-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 12px 6px 18px !important;
+  }
+
+  body .yousafe-messenger .cv-divider {
+    margin: 10px 0 12px !important;
+  }
+
+  body .yousafe-messenger .cv-divider span {
+    padding: 4px 10px !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    background: color-mix(in oklab, var(--panel) 84%, transparent) !important;
+    color: var(--text-mid) !important;
+    font-family: inherit !important;
+    font-size: 10.5px !important;
+    font-weight: 650 !important;
+    letter-spacing: .01em !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .12) !important;
+  }
+
+  body .yousafe-messenger .cv-encrypted {
+    max-width: calc(100% - 48px) !important;
+    margin: 4px auto 12px !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+  }
+
+  body .yousafe-messenger .bubrow {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-bottom: 2px !important;
+  }
+
+  body .yousafe-messenger .bubrow.last {
+    margin-bottom: 8px !important;
+  }
+
+  body .yousafe-messenger .bubrow.theirs {
+    justify-content: flex-start !important;
+    padding-left: 7px !important;
+    padding-right: 46px !important;
+  }
+
+  body .yousafe-messenger .bubrow.mine {
+    justify-content: flex-end !important;
+    padding-left: 46px !important;
+    padding-right: 7px !important;
+  }
+
+  body .yousafe-messenger .bub {
+    width: auto !important;
+    max-width: 84% !important;
+    min-width: 62px !important;
+    margin: 0 !important;
+    padding: 7px 9px 6px !important;
+    border: 0 !important;
+    border-radius: 11px !important;
+    box-shadow: 0 1px .5px rgba(11, 20, 26, .17) !important;
+    font-size: 15.5px !important;
+    line-height: 1.32 !important;
+    letter-spacing: -.005em !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    white-space: pre-wrap !important;
+  }
+
+  body .yousafe-messenger .bubrow.theirs .bub {
+    background: var(--bub-in) !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .bubrow.mine .bub {
+    background: var(--bub-out) !important;
+    color: var(--text) !important;
+  }
+
+  body .yousafe-messenger .bub.tail-l {
+    border-top-left-radius: 3px !important;
+  }
+
+  body .yousafe-messenger .bub.tail-r {
+    border-top-right-radius: 3px !important;
+  }
+
+  body .yousafe-messenger .bub-foot {
+    margin: 4px -2px -2px 8px !important;
+    gap: 3px !important;
+    font-family: inherit !important;
+    font-size: 10px !important;
+    line-height: 1 !important;
+    color: var(--text-soft) !important;
+  }
+
+  body .yousafe-messenger .bub img,
+  body .yousafe-messenger .bub video,
+  body .yousafe-messenger .bub audio,
+  body .yousafe-messenger .bub iframe,
+  body .yousafe-messenger .inq-card,
+  body .yousafe-messenger .of-req-card {
+    max-width: 100% !important;
+  }
+
+  body .yousafe-messenger .inq-card,
+  body .yousafe-messenger .of-req-card {
+    border-radius: 12px !important;
+  }
+
+  body .yousafe-messenger .comp {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    border-top: 1px solid var(--border) !important;
+    background: color-mix(in oklab, var(--panel-2) 96%, transparent) !important;
+    z-index: 30 !important;
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  body .yousafe-messenger .comp-row {
+    display: flex !important;
+    align-items: flex-end !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    gap: 6px !important;
+    padding: 7px 8px max(8px, env(safe-area-inset-bottom)) !important;
+  }
+
+  body .yousafe-messenger .comp-input {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    max-height: 132px !important;
+    padding: 10px 14px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 22px !important;
+    outline: 0 !important;
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    font-size: 16px !important;
+    line-height: 1.32 !important;
+    box-shadow: none !important;
+  }
+
+  body .yousafe-messenger .comp-send,
+  body .yousafe-messenger .comp-mic {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    flex: 0 0 44px !important;
+    border-radius: 50% !important;
+    background: var(--accent) !important;
+    color: #fff !important;
+  }
+
+  body .yousafe-messenger .comp-row .iconbtn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    flex: 0 0 40px !important;
+    background: transparent !important;
+    color: var(--text-mid) !important;
+  }
+
+  body .yousafe-messenger .backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10040 !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    background: rgba(15, 23, 42, .42) !important;
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+
+  body .yousafe-messenger .settings-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: min(88dvh, 760px) !important;
+    max-height: 88dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 24px 24px 0 0 !important;
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    box-shadow: 0 -18px 60px rgba(15, 23, 42, .22) !important;
+    overflow: hidden !important;
+  }
+
+  body .yousafe-messenger .modal-head {
+    min-height: 58px !important;
+    padding: 8px 14px !important;
+    border-bottom: 1px solid var(--border) !important;
+    background: var(--panel) !important;
+    font-size: 17px !important;
+    font-weight: 720 !important;
+  }
+
+  body .yousafe-messenger .settings-scroll {
+    max-height: calc(88dvh - 58px) !important;
+    padding: 14px 14px max(22px, env(safe-area-inset-bottom)) !important;
+    overflow-y: auto !important;
+    background: var(--bg) !important;
+  }
+
+  body .yousafe-messenger .settings-section {
+    margin: 0 0 14px !important;
+  }
+
+  body .yousafe-messenger .settings-section-title {
+    margin: 0 4px 7px !important;
+    color: var(--text-soft) !important;
+    font-size: 11px !important;
+    font-weight: 760 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+  }
+
+  body .yousafe-messenger .settings-list,
+  body .yousafe-messenger .settings-row {
+    border-color: var(--border-soft) !important;
+    background: var(--panel) !important;
+  }
+
+  body .yousafe-messenger .settings-row {
+    min-height: 58px !important;
+    padding: 11px 12px !important;
+    gap: 12px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  body .yousafe-messenger .settings-sub {
+    margin-top: 2px !important;
+    font-size: 11.5px !important;
+    line-height: 1.35 !important;
+    color: var(--text-soft) !important;
+  }
+
+  body .yousafe-messenger .seg {
+    width: 100% !important;
+    padding: 3px !important;
+    border-radius: 12px !important;
+    background: var(--panel-2) !important;
+  }
+
+  body .yousafe-messenger .seg button {
+    min-height: 38px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+  }
+
+  body .yousafe-messenger .settings-btn {
+    min-height: 48px !important;
+    border-radius: 12px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  body .yousafe-messenger .cv-head-actions > .iconbtn:nth-child(n+4) {
+    display: none !important;
+  }
+
+  body .yousafe-messenger .cv-head {
+    padding-inline: 5px !important;
+    gap: 3px !important;
+  }
+
+  body .yousafe-messenger .cv-head-info {
+    gap: 6px !important;
+  }
+
+  body .yousafe-messenger .cv-head-name {
+    font-size: 15px !important;
+  }
+
+  body .yousafe-messenger .cv-head-actions .iconbtn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    flex-basis: 38px !important;
+  }
+
+  body .yousafe-messenger .bub {
+    max-width: 88% !important;
+  }
+
+  body .yousafe-messenger .bubrow.theirs {
+    padding-right: 32px !important;
+  }
+
+  body .yousafe-messenger .bubrow.mine {
+    padding-left: 32px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  body .yousafe-messenger .cl-head {
+    padding-inline: 10px !important;
+  }
+
+  body .yousafe-messenger .row {
+    padding-inline: 10px !important;
+    gap: 9px !important;
+  }
+
+  body .yousafe-messenger .cv-head-actions > .iconbtn:first-child {
+    display: none !important;
+  }
+
+  body .yousafe-messenger .cv-head-avatar,
+  body .yousafe-messenger .cv-head-avatar img {
+    width: 36px !important;
+    height: 36px !important;
+    flex-basis: 36px !important;
+  }
+
+  body .yousafe-messenger .bub {
+    max-width: 91% !important;
+    font-size: 15px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yousafe-messenger *,
+  .yousafe-messenger *::before,
+  .yousafe-messenger *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
