@@ -53,6 +53,21 @@ export function followUpDue(args: {
   return args.nowMs - lastMs >= FOLLOW_UP_DELAYS_MS[count]
 }
 
+export function countFollowUpsSinceLatestClient(messages: any[], clientId: string) {
+  let lastClientIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.sender_id === clientId) {
+      lastClientIndex = i
+      break
+    }
+  }
+  if (lastClientIndex < 0) return 0
+  return messages
+    .slice(lastClientIndex + 1)
+    .filter((m: any) => Boolean(m?.metadata?.ai_follow_up))
+    .length
+}
+
 async function generateFollowUp(args: {
   conversationId: string
   providerName: string
@@ -143,7 +158,10 @@ async function processConversation(db: any, conversationId: string, nowMs: numbe
   if (!last) return { sent: false, reason: 'empty' }
 
   const lastWasYqaa = last.sender_id === provider.id && Boolean(last?.metadata?.ai_generated || last?.metadata?.ai_assistant)
-  const count = Math.max(0, Number((conv.metadata as any)?.ai_follow_up_count || 0))
+  // Derive the follow-up count from the current silence cycle rather than a
+  // lifetime metadata counter. As soon as the client replies, the next silence
+  // cycle starts at zero automatically.
+  const count = countFollowUpsSinceLatestClient(messages, client.id)
 
   let pendingOffer = false
   let terminalOffer = false
