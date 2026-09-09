@@ -304,21 +304,19 @@ async function resolveCanonicalJobMetadata(
 // ---------- AI-powered fix endpoints ----------
 
 /**
- * AI fix through the canonical content AI provider chain. The default reviewer
- * pin is Baseten DeepSeek V4 Flash 0731; explicit capacity failures may still
- * cascade through configured providers. Same engine the generator uses, so fix
- * prompts get the same model routing, retries and fallbacks as first-pass generation.
+ * AI fix through the canonical content AI provider. The default reviewer
+ * pin is Grok 4.6 (DEFAULT_REVIEW_PIN). The selected reviewer is exclusive —
+ * a Grok abort must not silently fall through to Entrim (or any unselected
+ * host). Same engine the generator uses for routing, retries and model ids.
  */
 /** Per-provider budget for one reviewer fix call. Larger than the default
- *  120s fetch timeout so a slow-but-funded host (Baseten Flash + thinking on
- *  a long fix prompt) gets real headroom before the cascade moves on. */
+ *  120s fetch timeout so Grok on a long Harper/Audit prompt gets real headroom. */
 const FIX_CANDIDATE_TIMEOUT_MS = Math.max(
   30_000,
   Number.parseInt(process.env.CONTENT_STUDIO_FIX_CANDIDATE_TIMEOUT_MS || '200000', 10) || 200_000,
 )
 
-/** Overall fix deadline. With the reviewer cascade enabled, allow the pinned
- *  provider plus at least one fallback within the budget. */
+/** Overall fix deadline. Exclusive reviewer — one host, not a cascade budget. */
 const FIX_TIMEOUT_MS = Math.max(
   15_000,
   Number.parseInt(process.env.CONTENT_STUDIO_FIX_TIMEOUT_MS || '240000', 10) || 240_000,
@@ -501,12 +499,14 @@ async function callAiFixWithProvider(
     prompt,
     maxTokens,
     temperature: 0.2,
-    aiProvider,
-    exclusive: Boolean(aiProvider),
-    // A capacity hiccup on the pinned reviewer (NVIDIA 529, Baseten timeout/
-    // abort, Baseten 402 billing) must not fail the fix sweep — fall through
-    // to the next provider.
-    cascadeOnCapacity: Boolean(aiProvider),
+    aiProvider: aiProvider || DEFAULT_REVIEW_PIN,
+    exclusive: true,
+    // Harper / Audit & Fix must stay on the operator's selected reviewer
+    // (Grok by default). Capacity cascade was falling through to Entrim
+    // Qwen/DeepSeek after a Grok abort and surfacing 401 proxy-token errors
+    // for models nobody selected. Never fall through, even if the pin is
+    // missing — generateContentText then stays on LIVE_DEFAULT_PROVIDER (Grok).
+    cascadeOnCapacity: false,
     // Per-candidate fetch/complete headroom (overrides the 120s global).
     timeoutMs: FIX_CANDIDATE_TIMEOUT_MS,
     // Reviewer is not a first-pass drafter. The universal quality contract
