@@ -1,45 +1,18 @@
 import type { MetadataRoute } from 'next'
-import { headers } from 'next/headers'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
 import { CATEGORIES } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const MARKET_HOST = 'market.yousafeconsultancy.com'
-const PORTAL_HOST = 'portal.yousafeconsultancy.com'
 
-// Host-aware: the same worker serves portal + market. A static market sitemap
-// on portal.yousafeconsultancy.com (noindex) was being listed in the estate
-// index and cloning market's URLs. Portal must emit an empty map.
+// This route always builds the public Marketplace sitemap. Host separation is
+// enforced in middleware: market.yousafeconsultancy.com passes /sitemap.xml
+// through, while portal.yousafeconsultancy.com receives an explicit empty map.
+// Keeping host detection out of this route avoids Cloudflare/OpenNext request-
+// header ambiguity turning the real Marketplace sitemap into an empty document.
 export const dynamic = 'force-dynamic'
 
-function firstHost(value: string | null): string {
-  if (!value) return ''
-  return value.split(',')[0].trim().split(':')[0].toLowerCase()
-}
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  // Default-deny: empty map unless we positively identify the market host
-  // AND never see the portal host. OpenNext/CF often bakes `host` as the
-  // first custom domain (market) at prerender. Middleware also intercepts.
-  let host = PORTAL_HOST
-  try {
-    const h = await headers()
-    const candidates = [
-      firstHost(h.get('x-forwarded-host')),
-      firstHost(h.get('x-original-host')),
-      firstHost(h.get('host')),
-    ].filter(Boolean)
-    if (candidates.some((c) => c === PORTAL_HOST || c.startsWith('portal.'))) {
-      return []
-    }
-    if (candidates.some((c) => c === MARKET_HOST)) host = MARKET_HOST
-  } catch {
-    // Build-time fallback — portal is the default app host (empty sitemap).
-    return []
-  }
-
-  if (host !== MARKET_HOST) return []
-
   const base = `https://${MARKET_HOST}`
 
   // Strip /marketplace and trailing slashes because the market host rewrites
@@ -114,6 +87,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const db = createSupabaseAdminClient()
 
+    // Every active gig with a real provider and stored slug is eligible for
+    // discovery. Do not gate this list on request-host headers: middleware has
+    // already established that only the Marketplace host can expose the map.
     const { data: gigs } = await db
       .from('gigs')
       .select('slug, updated_at, provider_id')
@@ -129,7 +105,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: `${base}${mp(`/marketplace/gigs/${gig.slug}`)}`,
         lastModified: gig.updated_at ? new Date(gig.updated_at) : undefined,
         changeFrequency: 'weekly',
-        priority: 0.6,
+        priority: 0.7,
       })
     }
 
@@ -163,7 +139,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       })
     }
   } catch {
-    // Build-time DB unavailable — verified static hubs above remain valid.
+    // Runtime DB unavailable — verified static hubs above remain valid. The
+    // next successful crawl rebuilds the dynamic sitemap and restores gig URLs.
   }
 
   return entries
