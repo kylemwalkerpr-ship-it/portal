@@ -37,6 +37,15 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(css).toContain('padding-bottom: 8px !important')
   })
 
+  test('keyboard resizing keeps the newest message visible only when the reader was at the tail', () => {
+    expect(coordinator).toContain('let chatNearBottom = true')
+    expect(coordinator).toContain("document.addEventListener('scroll', onChatScroll, true)")
+    expect(coordinator).toContain('target.scrollHeight - target.scrollTop - target.clientHeight < 120')
+    expect(coordinator).toContain('if (!chatNearBottom) return')
+    expect(coordinator).toContain('canvas.scrollTop = canvas.scrollHeight')
+    expect(coordinator).toContain('pinChatTailIfNeeded()')
+  })
+
   test('underlying dashboard cannot become a second scroll owner while chat is open', () => {
     expect(css).toContain("html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat'])")
     expect(css).toContain('overscroll-behavior: none !important')
