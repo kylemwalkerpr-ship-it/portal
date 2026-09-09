@@ -16,7 +16,7 @@ import {
   synthesizeThesis,
 } from './registerCard'
 
-export const DENOISE_SYSTEM = `You rewrite ONLY the marked mill spans of an immigration/education article. Return replacements for those spans and nothing else. Facts, URLs, numbers, and legal qualifiers in each span stay. Do not add URLs or numbers that were not in the span. Do not invent experience, fees, dates, or citations. Do not add, remove, or rename headings. Mix short and medium sentences. Second person. Named forms and agencies. FAQ questions must not paste an H2.`
+export const DENOISE_SYSTEM = `You rewrite ONLY the marked mill spans of an immigration/education article. Return replacements for those spans and nothing else. Preserve facts, numbers, legal qualifiers, and claim-specific/protected URLs. A generic UNHCR/IOM/ILO/OECD/WHO homepage is a citation candidate, not a fact: if it does not support the span, you may remove it. Do not add URLs or numbers that were not in the span. Do not invent experience, fees, dates, or citations. Do not add, remove, or rename headings. Mix short and medium sentences. Second person. Named forms and agencies. FAQ questions must not paste an H2.`
 
 export type DenoiseStrength = 'high' | 'mid'
 
@@ -79,6 +79,16 @@ function laterHeadingFromEvidence(evidence?: string, message?: string): string {
   return q ? q[2].trim() : ''
 }
 
+function evidenceValue(evidence: string | undefined, key: string): string {
+  const m = String(evidence || '').match(new RegExp(`(?:^|;)${escapeRe(key)}=([^;]+)`))
+  if (!m) return ''
+  try {
+    return decodeURIComponent(m[1])
+  } catch {
+    return m[1]
+  }
+}
+
 function findH2Body(content: string, heading: string): { start: number; end: number } | null {
   if (!heading) return null
   const re = new RegExp(`^##\\s+${escapeRe(heading)}\\s*$`, 'im')
@@ -91,6 +101,27 @@ function findH2Body(content: string, heading: string): { start: number; end: num
   const end = next < 0 ? content.length : start + next
   if (end - start < 40) return null
   return { start, end }
+}
+
+function findFirstProseParagraphInH2(content: string, heading: string): { start: number; end: number } | null {
+  const body = findH2Body(content, heading)
+  if (!body) return null
+  const section = content.slice(body.start, body.end)
+  const chunks = section.split(/(\n{2,})/)
+  let offset = body.start
+  for (const chunk of chunks) {
+    const lead = chunk.length - chunk.trimStart().length
+    const text = chunk.trim()
+    const start = offset + lead
+    const end = start + text.length
+    offset += chunk.length
+    if (!text || text.length < 24) continue
+    if (/^#{1,6}\s/.test(text)) continue
+    if (/^(?:[-*+]\s+|\d+[.)]\s+)/.test(text)) continue
+    if (/^(?:```|<script)/i.test(text)) continue
+    return { start, end }
+  }
+  return null
 }
 
 function findFaqQuestionLine(content: string, question: string): { start: number; end: number } | null {
@@ -178,7 +209,7 @@ function mergeSpans(spans: DenoiseSpan[]): DenoiseSpan[] {
     if (last && s.start < last.end) {
       if (s.t === 'high' && last.t !== 'high') last.t = 'high'
       last.end = Math.max(last.end, s.end)
-      last.original = '' // filled after
+      last.original = ''
       last.instruction = `${last.instruction} Also: ${s.instruction}`
       last.code = last.code === s.code ? last.code : `${last.code}+${s.code}`
       continue
@@ -190,84 +221,46 @@ function mergeSpans(spans: DenoiseSpan[]): DenoiseSpan[] {
 
 function fillOriginals(content: string, spans: DenoiseSpan[]): DenoiseSpan[] {
   return spans
-    .map((s, i) => ({
-      ...s,
-      id: `SPAN_${i + 1}`,
-      original: content.slice(s.start, s.end),
-    }))
+    .map((s, i) => ({ ...s, id: `SPAN_${i + 1}`, original: content.slice(s.start, s.end) }))
     .filter((s) => s.original.trim().length >= 12)
 }
 
-export function collectDenoiseSpans(
-  content: string,
-  findings: ProseGeometryFinding[],
-): DenoiseSpan[] {
+export function collectDenoiseSpans(content: string, findings: ProseGeometryFinding[]): DenoiseSpan[] {
   const raw: DenoiseSpan[] = []
   const used = new Set<string>()
-  const mark = (start: number, end: number) => `${start}:${end}`
-
-  const push = (span: Omit<DenoiseSpan, 'id' | 'original'> & { original?: string }) => {
+  const push = (span: Omit<DenoiseSpan, 'id' | 'original'>) => {
     if (span.start < bodyStart(content) || span.end <= span.start) return
-    const key = mark(span.start, span.end)
+    const key = `${span.start}:${span.end}`
     if (used.has(key)) return
     used.add(key)
-    raw.push({
-      id: '',
-      original: content.slice(span.start, span.end),
-      ...span,
-    })
+    raw.push({ id: '', original: content.slice(span.start, span.end), ...span })
   }
 
   for (const f of findings) {
     if (f.code === 'adjacent_section_overlap_severe' || f.code === 'adjacent_section_overlap') {
-      const later = laterHeadingFromEvidence(f.evidence, f.message)
-      const loc = findH2Body(content, later)
-      if (loc) {
-        push({
-          code: f.code,
-          t: f.code.endsWith('severe') ? 'high' : 'high',
-          start: loc.start,
-          end: loc.end,
-          instruction:
-            'Rewrite this later H2 body so it advances a new claim, step, or constraint. Do not restate the previous section. Keep the heading above untouched.',
-        })
-      }
+      const loc = findH2Body(content, laterHeadingFromEvidence(f.evidence, f.message))
+      if (loc) push({ code: f.code, t: 'high', ...loc, instruction: 'Rewrite this later H2 body so it advances a new claim, step, or constraint. Do not restate the previous section. Keep the heading above untouched.' })
     }
     if (f.code === 'faq_duplicates_h2') {
       const loc = findFaqQuestionLine(content, String(f.evidence || ''))
-      if (loc) {
-        push({
-          code: f.code,
-          t: 'high',
-          start: loc.start,
-          end: loc.end,
-          instruction:
-            'Rewrite as one reader question this H2 did not already ask. Keep a single ### line. Do not paste the heading.',
-        })
-      }
+      if (loc) push({ code: f.code, t: 'high', ...loc, instruction: 'Rewrite as one reader question this H2 did not already ask. Keep a single ### line. Do not paste the heading.' })
     }
     if (f.code === 'repeated_paragraph_opener') {
       const opener = String(f.evidence || '').trim().toLowerCase()
       let seen = 0
       for (const p of proseParagraphs(content)) {
         if (firstFour(p.text) !== opener) continue
-        seen++
-        if (seen === 1) continue
-        push({
-          code: f.code,
-          t: 'mid',
-          start: p.start,
-          end: p.end,
-          instruction: 'Rewrite this paragraph with a new opening actor, constraint, or next step. Keep the facts.',
-        })
+        if (++seen === 1) continue
+        push({ code: f.code, t: 'mid', start: p.start, end: p.end, instruction: 'Rewrite this paragraph with a new opening actor, constraint, or next step. Keep the facts.' })
       }
+    }
+    if (f.code === 'stuffed_primary_opener') {
+      const loc = findFirstProseParagraphInH2(content, evidenceValue(f.evidence, 'heading'))
+      if (loc) push({ code: f.code, t: 'mid', ...loc, instruction: 'Rewrite this opening paragraph so the first sentence answers the section with a reader decision, constraint, or concrete fact. Do not mechanically restate the full primary keyword. Keep factual tokens and claim-specific citations.' })
     }
   }
 
-  const needRhythm = findings.some(
-    (f) => f.code === 'low_sentence_burstiness' || f.code === 'low_trigram_variety',
-  )
-  if (needRhythm) {
+  if (findings.some((f) => f.code === 'low_sentence_burstiness' || f.code === 'low_trigram_variety')) {
     const scored = proseParagraphs(content)
       .map((p) => ({ p, counts: sentenceWordCounts(p.text) }))
       .filter((x) => x.counts.length >= 3 && x.p.text.split(/\s+/).length >= 40)
@@ -275,22 +268,12 @@ export function collectDenoiseSpans(
       .filter((x) => x.cv < 0.12)
       .sort((a, b) => a.cv - b.cv)
       .slice(0, 2)
-    for (const x of scored) {
-      push({
-        code: 'low_sentence_burstiness',
-        t: 'mid',
-        start: x.p.start,
-        end: x.p.end,
-        instruction:
-          'Rewrite this paragraph so sentence length varies. Follow a longer explanatory sentence with a short one. Keep every URL, number, and qualifier.',
-      })
-    }
+    for (const x of scored) push({ code: 'low_sentence_burstiness', t: 'mid', start: x.p.start, end: x.p.end, instruction: 'Rewrite this paragraph so sentence length varies. Follow a longer explanatory sentence with a short one. Keep every protected URL, number, and qualifier; remove a generic global homepage only when it is irrelevant.' })
   }
 
   const high = raw.filter((s) => s.t === 'high')
   const mid = raw.filter((s) => s.t !== 'high')
-  const capped = mergeSpans([...high, ...mid]).slice(0, 4)
-  return fillOriginals(content, capped)
+  return fillOriginals(content, mergeSpans([...high, ...mid]).slice(0, 4))
 }
 
 export function parseSpanReplacements(raw: string): Map<string, string> {
@@ -307,35 +290,25 @@ export function parseSpanReplacements(raw: string): Map<string, string> {
 
 export function replacementAllowed(span: DenoiseSpan, next: string, wholeOriginal: string): boolean {
   const revised = String(next || '').trim()
-  if (revised.length < 8) return false
-  if (/<script/i.test(revised) || /===SPAN_/i.test(revised)) return false
+  if (revised.length < 8 || /<script/i.test(revised) || /===SPAN_/i.test(revised)) return false
   if (/^##\s/m.test(revised) && !/^##\s/m.test(span.original.trim())) return false
   if (span.code.includes('faq_duplicates_h2') && !/^###\s+\S/m.test(revised)) return false
-  const preserved = factsWerePreserved(span.original, revised)
-  if (!preserved.ok) return false
+  if (!factsWerePreserved(span.original, revised).ok) return false
   if (inventedUrls(wholeOriginal, revised).length) return false
   const prevWords = span.original.split(/\s+/).filter(Boolean).length
   const nextWords = revised.split(/\s+/).filter(Boolean).length
-  if (prevWords >= 80 && nextWords < prevWords * 0.4) return false
-  return true
+  return !(prevWords >= 80 && nextWords < prevWords * 0.4)
 }
 
-export function applySpanReplacements(
-  content: string,
-  spans: DenoiseSpan[],
-  replacements: Map<string, string>,
-): { content: string; applied: number } {
+export function applySpanReplacements(content: string, spans: DenoiseSpan[], replacements: Map<string, string>): { content: string; applied: number } {
   let next = content
   let applied = 0
-  const ordered = [...spans].sort((a, b) => b.start - a.start)
-  for (const span of ordered) {
+  for (const span of [...spans].sort((a, b) => b.start - a.start)) {
     const rev = replacements.get(span.id)
     if (!rev || !replacementAllowed(span, rev, content)) continue
     let piece = rev.trim()
     const after = next.slice(span.end, span.end + 4)
-    if ((span.original.endsWith('\n') || /^#{1,6}\s/.test(after) || after.startsWith('#')) && !piece.endsWith('\n')) {
-      piece += '\n'
-    }
+    if ((span.original.endsWith('\n') || /^#{1,6}\s/.test(after) || after.startsWith('#')) && !piece.endsWith('\n')) piece += '\n'
     next = next.slice(0, span.start) + piece + next.slice(span.end)
     applied++
   }
@@ -344,52 +317,29 @@ export function applySpanReplacements(
 
 function annotateForPrompt(content: string, spans: DenoiseSpan[]): string {
   let out = content
-  const ordered = [...spans].sort((a, b) => b.start - a.start)
-  for (const span of ordered) {
-    out =
-      out.slice(0, span.start) +
-      `<<<${span.id}>>>\n${span.original}\n<<<END_${span.id}>>>` +
-      out.slice(span.end)
+  for (const span of [...spans].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + `<<<${span.id}>>>\n${span.original}\n<<<END_${span.id}>>>` + out.slice(span.end)
   }
   return out
 }
 
-function buildDenoisePrompt(opts: {
-  content: string
-  spans: DenoiseSpan[]
-  contentType?: string | null
-  thesis?: string | null
-  primaryKeyword?: string | null
-  reader?: string | null
-  queryNeed?: string | null
-}): string {
+function buildDenoisePrompt(opts: { content: string; spans: DenoiseSpan[]; contentType?: string | null; thesis?: string | null; primaryKeyword?: string | null; reader?: string | null; queryNeed?: string | null }): string {
   const house = houseRegisterFor(opts.contentType)
   const current = extractRegisterCard(opts.content)
-  const thesis = synthesizeThesis({
-    thesis: opts.thesis,
-    primaryKeyword: opts.primaryKeyword,
-    reader: opts.reader,
-    queryNeed: opts.queryNeed,
-  })
-  const jobs = opts.spans
-    .map((s) => `${s.id} [${s.t}/${s.code}]: ${s.instruction}`)
-    .join('\n')
+  const thesis = synthesizeThesis({ thesis: opts.thesis, primaryKeyword: opts.primaryKeyword, reader: opts.reader, queryNeed: opts.queryNeed })
   return [
     'CFG — high on facts, low on cadence:',
-    '- Keep every URL, number, and legal qualifier that appears inside a span.',
+    '- Keep every number, legal qualifier, and claim-specific/protected URL that appears inside a span.',
+    '- Generic UNHCR/IOM/ILO/OECD/WHO homepages are not facts. If one is irrelevant to the span, remove it.',
     '- Do not add a URL or number that was not in that span.',
     '- Mix short and medium sentences. Second person. Named forms.',
     registerCardPromptBlock(house, current),
     `THESIS (do not restate; advance it in the later span if you touch a section body): ${thesis}`,
     '',
     'SPANS TO REWRITE:',
-    jobs,
+    opts.spans.map((s) => `${s.id} [${s.t}/${s.code}]: ${s.instruction}`).join('\n'),
     '',
-    'Return ONLY blocks in this form (no other prose):',
-    '===SPAN_1===',
-    '(rewritten markdown for SPAN_1)',
-    '===SPAN_2===',
-    '(rewritten markdown for SPAN_2)',
+    'Return ONLY blocks in the ===SPAN_N=== form and no other prose.',
     '',
     'ARTICLE (spans marked; rewrite only the marked regions):',
     annotateForPrompt(opts.content, opts.spans),
@@ -400,146 +350,50 @@ function acceptPass(original: string, next: string): { ok: boolean; reason?: str
   if (next === original) return { ok: false, reason: 'unchanged' }
   const preserved = factsWerePreserved(original, next)
   if (!preserved.ok) return preserved
-  if (inventedUrls(original, next).length) {
-    return { ok: false, reason: 'Invented URLs in denoise pass' }
-  }
+  if (inventedUrls(original, next).length) return { ok: false, reason: 'Invented URLs in denoise pass' }
   const prevH = headingLines(original)
   const nextH = headingLines(next)
-  if (prevH.length !== nextH.length || prevH.some((h, i) => h !== nextH[i])) {
-    return { ok: false, reason: 'Heading identity changed' }
-  }
+  if (prevH.length !== nextH.length || prevH.some((h, i) => h !== nextH[i])) return { ok: false, reason: 'Heading identity changed' }
   const prevWords = countBodyWords(original)
   const nextWords = countBodyWords(next)
-  if (prevWords >= 800 && nextWords < 800 && (nextWords < 400 || nextWords < prevWords * 0.4)) {
-    return { ok: false, reason: 'Denoise thinned the body' }
-  }
+  if (prevWords >= 800 && nextWords < 800 && (nextWords < 400 || nextWords < prevWords * 0.4)) return { ok: false, reason: 'Denoise thinned the body' }
   return { ok: true }
 }
 
-export async function runMaskedDenoise(opts: {
-  content: string
-  contentType?: string | null
-  thesis?: string | null
-  primaryKeyword?: string | null
-  reader?: string | null
-  queryNeed?: string | null
-  generateText: (system: string, prompt: string) => Promise<string>
-  maxPasses?: number
-}): Promise<MaskedDenoiseResult> {
+export async function runMaskedDenoise(opts: { content: string; contentType?: string | null; thesis?: string | null; primaryKeyword?: string | null; reader?: string | null; queryNeed?: string | null; generateText: (system: string, prompt: string) => Promise<string>; maxPasses?: number }): Promise<MaskedDenoiseResult> {
   let current = String(opts.content || '')
   const maxPasses = opts.maxPasses ?? 2
   let passes = 0
   let spanCount = 0
   let appliedAny = false
-
   for (let i = 0; i < maxPasses; i++) {
     const geometry = evaluateProseGeometry(current, { contentType: opts.contentType, indexable: true })
     const spans = collectDenoiseSpans(current, geometry.findings)
-    if (!spans.length) {
-      return {
-        content: current,
-        applied: appliedAny,
-        rejected: false,
-        passes,
-        spans: spanCount,
-        reason: appliedAny ? undefined : 'no mill spans',
-      }
-    }
+    if (!spans.length) return { content: current, applied: appliedAny, rejected: false, passes, spans: spanCount, reason: appliedAny ? undefined : 'no mill spans' }
     spanCount += spans.length
     let raw = ''
     try {
-      raw = await opts.generateText(
-        DENOISE_SYSTEM,
-        buildDenoisePrompt({
-          content: current,
-          spans,
-          contentType: opts.contentType,
-          thesis: opts.thesis,
-          primaryKeyword: opts.primaryKeyword,
-          reader: opts.reader,
-          queryNeed: opts.queryNeed,
-        }),
-      )
+      raw = await opts.generateText(DENOISE_SYSTEM, buildDenoisePrompt({ content: current, spans, contentType: opts.contentType, thesis: opts.thesis, primaryKeyword: opts.primaryKeyword, reader: opts.reader, queryNeed: opts.queryNeed }))
     } catch (err) {
-      return {
-        content: current,
-        applied: appliedAny,
-        rejected: !appliedAny,
-        passes,
-        spans: spanCount,
-        reason: err instanceof Error ? err.message : 'Denoise generate failed',
-      }
+      return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: err instanceof Error ? err.message : 'Denoise generate failed' }
     }
-    const replacements = parseSpanReplacements(raw)
-    const spliced = applySpanReplacements(current, spans, replacements)
-    if (!spliced.applied) {
-      return {
-        content: current,
-        applied: appliedAny,
-        rejected: !appliedAny,
-        passes,
-        spans: spanCount,
-        reason: 'Denoise replacements rejected',
-      }
-    }
+    const spliced = applySpanReplacements(current, spans, parseSpanReplacements(raw))
+    if (!spliced.applied) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: 'Denoise replacements rejected' }
     const check = acceptPass(current, spliced.content)
-    if (!check.ok) {
-      return {
-        content: current,
-        applied: appliedAny,
-        rejected: !appliedAny,
-        passes,
-        spans: spanCount,
-        reason: check.reason,
-      }
-    }
+    if (!check.ok) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: check.reason }
     current = spliced.content
     appliedAny = true
     passes++
   }
-
   return { content: current, applied: appliedAny, rejected: false, passes, spans: spanCount }
 }
 
-export async function runFactoryMaskedDenoise(opts: {
-  content: string
-  contentType: string
-  indexable: boolean
-  thesis?: string | null
-  primaryKeyword?: string | null
-  reader?: string | null
-  queryNeed?: string | null
-  generateText: (system: string, prompt: string) => Promise<string>
-}): Promise<MaskedDenoiseResult> {
+export async function runFactoryMaskedDenoise(opts: { content: string; contentType: string; indexable: boolean; thesis?: string | null; primaryKeyword?: string | null; reader?: string | null; queryNeed?: string | null; generateText: (system: string, prompt: string) => Promise<string> }): Promise<MaskedDenoiseResult> {
   const words = countBodyWords(opts.content)
-  if (!shouldRunMaskedDenoise({ contentType: opts.contentType, indexable: opts.indexable, words })) {
-    return {
-      content: opts.content,
-      applied: false,
-      rejected: false,
-      passes: 0,
-      spans: 0,
-      reason: 'denoise not applicable',
-    }
-  }
+  if (!shouldRunMaskedDenoise({ contentType: opts.contentType, indexable: opts.indexable, words })) return { content: opts.content, applied: false, rejected: false, passes: 0, spans: 0, reason: 'denoise not applicable' }
   try {
-    return await runMaskedDenoise({
-      content: opts.content,
-      contentType: opts.contentType,
-      thesis: opts.thesis,
-      primaryKeyword: opts.primaryKeyword,
-      reader: opts.reader,
-      queryNeed: opts.queryNeed,
-      generateText: opts.generateText,
-    })
+    return await runMaskedDenoise({ ...opts })
   } catch (err) {
-    return {
-      content: opts.content,
-      applied: false,
-      rejected: true,
-      passes: 0,
-      spans: 0,
-      reason: err instanceof Error ? err.message : 'Denoise failed',
-    }
+    return { content: opts.content, applied: false, rejected: true, passes: 0, spans: 0, reason: err instanceof Error ? err.message : 'Denoise failed' }
   }
 }
