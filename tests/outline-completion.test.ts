@@ -11,6 +11,11 @@ import {
   articleContextForSection,
   isBlogLikeContentType,
 } from '@/lib/seoFactory/outlineCompletion'
+import {
+  isStructuralOutlineHeading,
+  missingOutlineSections,
+  stripOutlineHeadingDecorations,
+} from '@/lib/seoFactory/contentQualityGate'
 
 describe('insertSectionBeforeFaqOrSources', () => {
   it('inserts before FAQ', () => {
@@ -192,5 +197,67 @@ describe('pipeline fail-closed + blog whole-document drafting', () => {
     expect(isBlogLikeContentType('blog_summary')).toBe(true)
     expect(isBlogLikeContentType('news_summary')).toBe(true)
     expect(isBlogLikeContentType('legal_guide')).toBe(false)
+  })
+})
+
+describe('outline heading word-budget decorations (live Canada Spousal job)', () => {
+  it('strips FAQ (320–380 words) down to FAQ', () => {
+    expect(stripOutlineHeadingDecorations('FAQ (320–380 words)')).toBe('FAQ')
+    expect(stripOutlineHeadingDecorations('FAQ (320-380 words)')).toBe('FAQ')
+    expect(stripOutlineHeadingDecorations('Eligibility (400-600 words)')).toBe('Eligibility')
+    expect(isStructuralOutlineHeading('FAQ (320–380 words)')).toBe(true)
+    expect(isStructuralOutlineHeading('Sources (40 words)')).toBe(true)
+    expect(isStructuralOutlineHeading('Eligibility (400-600 words)')).toBe(false)
+  })
+
+  it('does not treat a budget-decorated FAQ as a missing content H2', () => {
+    const article = `## Eligibility\n\nEnough body copy about inland vs overseas sponsorship.\n\n## FAQ\n\n### How long does it take?\n\nIRCC's clock starts after a complete package.\n`
+    expect(
+      missingOutlineSections(article, [
+        { heading: 'Eligibility' },
+        { heading: 'FAQ (320–380 words)' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('does not fail-closed at the word ceiling when remaining is only FAQ (320–380 words)', async () => {
+    const filler = Array.from({ length: 40 }, (_, i) =>
+      `Paragraph ${i} covers inland vs overseas sponsorship clocks fees documents and IRCC processing for 2026 applicants in practical detail.`,
+    ).join('\n\n')
+    const article = `## Eligibility\n\n${filler}\n\n## FAQ\n\n### How long does IRCC take?\n\nThe clock starts after a complete package is received.\n`
+    const result = await completeMissingOutlineSections({
+      content: article,
+      outline: [
+        { heading: 'Eligibility' },
+        { heading: 'FAQ (320–380 words)' },
+      ],
+      maxWords: 2500,
+      generateSection: async () => {
+        throw new Error('FAQ kit must not be generated when ## FAQ already exists')
+      },
+    })
+    expect(result.remaining).toEqual([])
+    expect(result.stoppedForBudget).toBe(false)
+    expect(result.error).toBeUndefined()
+    expect(result.content).toContain('## FAQ')
+    expect(result.content).not.toContain('## FAQ (320–380 words)')
+  })
+
+  it('inserts the clean H2 when a budget-decorated content heading is actually missing', async () => {
+    const article = `## Eligibility\n\nEnough opener about inland vs overseas.\n\n## FAQ\n\n### Q?\n\nA.\n`
+    const result = await completeMissingOutlineSections({
+      content: article,
+      outline: [
+        { heading: 'Eligibility' },
+        { heading: 'Worked Example (180-350 words)' },
+        { heading: 'FAQ (320–380 words)' },
+      ],
+      generateSection: async ({ heading }) =>
+        `This is a generated ${heading} section with enough words to pass the length floor for outline completion so the helper accepts it as real prose rather than a stub. `.repeat(3),
+    })
+    expect(result.inserted).toEqual(['Worked Example (180-350 words)'])
+    expect(result.remaining).toEqual([])
+    expect(result.content).toContain('## Worked Example\n')
+    expect(result.content).not.toContain('## Worked Example (180-350 words)')
   })
 })

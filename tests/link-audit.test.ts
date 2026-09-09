@@ -476,6 +476,26 @@ describe('linkAudit · external citations must be live official sources', () => 
     expect(sourcesForRegion('US').length).toBeGreaterThan(0)
   })
 
+  it('sanitizeDraftLinksLive keeps a marketplace reviewer profile even when HEAD 404s', async () => {
+    process.env.LINK_AUDIT_FETCH_TIMEOUT_MS = '3000'
+    process.env.ESTATE_SITEMAP_URL = 'https://legal.yousafeconsultancy.com/sitemap.xml'
+    const profile = 'https://market.yousafeconsultancy.com/marketplace/providers/charlotte-sullivan/'
+    global.fetch = jest.fn(async (input: any) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '')
+      if (url.includes('/sitemap.xml')) {
+        return new Response(SITEMAP_XML, { status: 200, headers: { 'content-type': 'application/xml' } })
+      }
+      if (url.includes('charlotte-sullivan') || url.includes('market.yousafe')) {
+        return new Response('nope', { status: 404 })
+      }
+      return okJson()
+    }) as typeof fetch
+    const draft = `IRCC processing starts after a complete package. See the [Reviewer Profile](${profile}).`
+    const result = await sanitizeDraftLinksLive(draft, { region: 'CA', topic: 'canada spousal sponsorship processing time' })
+    expect(result.content).toContain(`[Reviewer Profile](${profile})`)
+    expect(result.remediations.every((r) => !String(r.deadUrl || '').includes('charlotte-sullivan'))).toBe(true)
+  })
+
   it('stripDeadLinks unwraps markdown, HTML, and bare URLs', () => {
     const { content, stripped } = stripDeadLinks(
       'See [x](https://www.uscis.gov/nope) and <a href="https://www.uscis.gov/nope">y</a> plus https://www.uscis.gov/nope.',

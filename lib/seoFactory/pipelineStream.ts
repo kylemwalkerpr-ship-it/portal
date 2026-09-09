@@ -1125,7 +1125,11 @@ export async function* runSeoFactoryPipelineStream(
               }),
           })
           if (completed.inserted.length) {
-            content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
+            content = enforceBodyWordBudgetPreserving(completed.content, contentType, {
+              min: minWords,
+              max: maxWords,
+              preserveHeadings: ['disclaimer', 'sources', 'faq'],
+            }).content
             yield {
               type: 'progress',
               stage: 'refine',
