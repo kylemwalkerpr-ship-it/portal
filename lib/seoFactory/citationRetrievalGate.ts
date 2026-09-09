@@ -4,8 +4,8 @@
  * A source being reputable does not mean it belongs in every brief. Generic
  * intergovernmental homepages were leaking into country-specific visa briefs
  * because they were tagged ALL + broad topics such as immigration/work.
- * This module keeps those pages available only when the article actually
- * names the organisation or the narrow subject that makes it relevant.
+ * This module keeps those pages available only when the article topic/keyword
+ * contract names the organisation or the narrow subject that makes it relevant.
  */
 
 import type { CitationContext, OfficialSource } from './officialSources'
@@ -77,15 +77,19 @@ function hostAndPath(url: string): { host: string; path: string } | null {
   }
 }
 
-function retrievalBlob(ctx?: CitationContext | null, title?: string): string {
-  return [
-    title || '',
-    ctx?.topic || '',
-    ...(ctx?.keywords || []),
-    ctx?.body ? String(ctx.body).slice(0, 5000) : '',
-  ]
+/**
+ * Retrieval is decided from the query/brief contract, not from the candidate
+ * source title and not from the current body. Otherwise a leaked `[UNHCR](…)`
+ * anchor would justify itself simply because the body now contains “UNHCR”.
+ * Body is a fallback only for legacy callers that provide no topic/keywords.
+ */
+function retrievalBlob(ctx?: CitationContext | null): string {
+  const explicit = [ctx?.topic || '', ...(ctx?.keywords || [])]
     .filter(Boolean)
     .join(' ')
+    .trim()
+  if (explicit) return explicit
+  return ctx?.body ? String(ctx.body).slice(0, 1600) : ''
 }
 
 function matchingRule(url: string): RetrievalRule | null {
@@ -106,11 +110,11 @@ function matchingRule(url: string): RetrievalRule | null {
 export function isRetrievalGatedCitationAllowed(
   url: string,
   ctx?: CitationContext | null,
-  title?: string,
+  _title?: string,
 ): boolean {
   const rule = matchingRule(url)
   if (!rule) return true
-  const blob = retrievalBlob(ctx, title)
+  const blob = retrievalBlob(ctx)
   return Boolean(blob.trim() && rule.require.test(blob))
 }
 
@@ -118,7 +122,7 @@ export function filterRetrievalGatedSources<T extends CitationLike>(
   sources: T[],
   ctx?: CitationContext | null,
 ): T[] {
-  return sources.filter((source) => isRetrievalGatedCitationAllowed(source.url, ctx, source.title))
+  return sources.filter((source) => isRetrievalGatedCitationAllowed(source.url, ctx))
 }
 
 /**
