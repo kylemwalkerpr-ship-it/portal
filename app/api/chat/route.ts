@@ -11,6 +11,7 @@ import {
   isAllowedAssistantOrigin,
   normalizeAssistantOrigin,
 } from '@/lib/centralAssistantKnowledge'
+import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
 
 const MAX_HISTORY_TURNS = 16
@@ -72,19 +73,19 @@ export async function POST(req: Request) {
   try {
     body = await req.json()
   } catch {
-    return withCors(req, { error: 'Expected JSON body' }, { status: 400 })
+    return withCors(req, { error: 'Expected JSON body', retryable: false }, { status: 400 })
   }
 
   const rawMessages = Array.isArray(body.messages) ? body.messages : []
   const cleaned: SystemAssistantTurn[] = rawMessages.filter(isValidTurn).slice(-MAX_HISTORY_TURNS)
   if (cleaned.length === 0 || cleaned[cleaned.length - 1].role !== 'user') {
-    return withCors(req, { error: 'Send at least one user message' }, { status: 400 })
+    return withCors(req, { error: 'Send at least one user message', retryable: false }, { status: 400 })
   }
   const lastUser = cleaned[cleaned.length - 1]
   if (lastUser.content.length > MAX_USER_MESSAGE_CHARS) {
     return withCors(
       req,
-      { error: `Message too long — keep it under ${MAX_USER_MESSAGE_CHARS} characters.` },
+      { error: `Message too long — keep it under ${MAX_USER_MESSAGE_CHARS} characters.`, retryable: false },
       { status: 400 },
     )
   }
@@ -120,6 +121,7 @@ export async function POST(req: Request) {
   }
 
   const inquiryOrigin = normalizeAssistantOrigin(body.origin ?? body.pageContext, req)
+  const marketplaceRecommendation = matchMarketplaceIntent(lastUser.content)
 
   const wantsAgent =
     body.requestAgent === true || shouldEscalateToLiveAgent(lastUser.content)
@@ -146,6 +148,7 @@ export async function POST(req: Request) {
         reply:
           "I'm connecting you to a live support agent. They'll join the chat as soon as someone is available — feel free to share more context here in the meantime.",
         provider: 'handoff',
+        retryable: false,
       })
     } catch (err) {
       console.error('[system-assistant] escalation failed', err instanceof Error ? err.message : err)
@@ -161,9 +164,10 @@ export async function POST(req: Request) {
     const result = await callSystemSuperGrok(systemKnowledge + viewerContext, cleaned)
     return withCors(req, {
       reply: result.text,
-      provider: 'supergrok',
-      model: result.model,
+      provider: 'system-ai',
       supportApiUrl: SUPPORT_WIDGET_API,
+      marketplaceRecommendation,
+      retryable: false,
       origin: {
         surface: inquiryOrigin.surface,
         hostname: inquiryOrigin.hostname,
@@ -172,12 +176,14 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[system-assistant] SuperGrok error', message)
+    console.error('[system-assistant] model error', message)
     return withCors(
       req,
       {
         error:
-          "Sorry — the YouSafe Assistant couldn't reach SuperGrok right now. Please try again in a moment or ask for a human support agent.",
+          "I couldn't complete that response just now. Your message is still here — you can retry it, or ask for a human if you need immediate help.",
+        retryable: true,
+        marketplaceRecommendation,
       },
       { status: 502 },
     )
