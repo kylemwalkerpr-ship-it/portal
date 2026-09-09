@@ -38,6 +38,7 @@ import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
+import { resolveProviderAuthors } from './providerAuthors'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
 import { keywordContractForDraft } from './keywordContract'
@@ -323,6 +324,29 @@ export async function* runSeoFactoryPipelineStream(
     } catch {
       /* live filter is best-effort — never invent replacements */
     }
+
+    const providerAuthors = await resolveProviderAuthors({
+      region,
+      topic,
+      primaryKeyword,
+      contentType,
+    })
+    if (providerAuthors.links.length) {
+      const seen = new Set(radarInterlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean))
+      for (const link of providerAuthors.links) {
+        const key = link.url.replace(/\/+$/, '').toLowerCase()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        radarInterlinks.push({ label: link.label, url: link.url, matchedOn: ['ymyl-marketplace'] })
+      }
+      yield {
+        type: 'progress',
+        stage: 'brief',
+        message: providerAuthors.author
+          ? `Citing ${providerAuthors.author.name} (${providerAuthors.author.credential}) from the marketplace`
+          : `Attached ${providerAuthors.links.length} marketplace service link(s)`,
+      }
+    }
     const autopilotBlock = [
       radarInterlinks.length
         ? `### Internal linking strategy (from Opportunity Radar)\nLink naturally to these high-value targets with descriptive anchors where relevant:\n${radarInterlinks
@@ -372,6 +396,7 @@ export async function* runSeoFactoryPipelineStream(
         targetWords,
         maxWords,
         plannerRunId: input.sourceJobId || undefined,
+        author: providerAuthors.author || undefined,
       })
       contentSpec = specResolution.spec
       if (!contentSpec) {
@@ -408,6 +433,7 @@ export async function* runSeoFactoryPipelineStream(
       targetSlug: input.targetSlug as string | undefined,
       kwH2Map: input.kwH2Map as Record<string, string> | undefined,
       spec: contentSpec ?? undefined,
+      citedProviders: providerAuthors.cited,
     })
 
     let content = input.resumeContent?.trim() || ''

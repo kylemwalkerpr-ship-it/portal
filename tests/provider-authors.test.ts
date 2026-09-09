@@ -1,0 +1,271 @@
+import {
+  authorPackFromProvider,
+  citedProvidersPromptBlock,
+  citedProvidersPublic,
+  credentialLineFor,
+  experienceScopeFor,
+  isMarketplaceServiceUrl,
+  marketplaceServiceLinks,
+  matchProvidersToTopic,
+  mergeMarketplaceServiceLinks,
+  overlappingTokens,
+  providerGigUrl,
+  providerProfileUrl,
+  tokenize,
+  type CitableProvider,
+} from '@/lib/seoFactory/providerAuthors'
+import { validateAuthorPack } from '@/lib/seoFactory/authorPack'
+import { buildFactorySystemPrompt } from '@/lib/seoFactory/prompts'
+import type { OwnerPlan } from '@/lib/seoFactory/ownership'
+
+function attorney(partial: Partial<CitableProvider> & { name: string; profileId: string }): CitableProvider {
+  const seed: CitableProvider = {
+    profileId: partial.profileId,
+    role: 'attorney',
+    name: partial.name,
+    username: partial.username ?? 'jane-doe',
+    credentialType: partial.credentialType ?? 'Licensed attorney',
+    barNumber: partial.barNumber ?? '123456',
+    showBarNumber: partial.showBarNumber ?? false,
+    barState: partial.barState ?? 'NY',
+    yearsExperience: partial.yearsExperience ?? 8,
+    tagline: partial.tagline ?? 'US immigration petitions',
+    practiceAreas: partial.practiceAreas ?? ['immigration', 'visas'],
+    specialties: partial.specialties ?? ['H-1B', 'family petitions'],
+    jurisdictions: partial.jurisdictions ?? ['US', 'United States'],
+    profileUrl: '',
+    gigs: partial.gigs ?? [
+      { slug: 'h1b-petition-review', title: 'H-1B petition review', category: 'work visa', jurisdiction: 'US' },
+      { slug: 'generic-consult', title: 'General consult', category: 'consult', jurisdiction: 'US' },
+    ],
+    ...partial,
+  }
+  seed.profileUrl = partial.profileUrl || providerProfileUrl(seed)
+  return seed
+}
+
+function consultant(partial: Partial<CitableProvider> & { name: string; profileId: string }): CitableProvider {
+  const seed: CitableProvider = {
+    profileId: partial.profileId,
+    role: 'consultant',
+    name: partial.name,
+    username: partial.username ?? 'priya-admissions',
+    credentialType: 'Verified consultant',
+    barNumber: null,
+    showBarNumber: false,
+    barState: null,
+    yearsExperience: 6,
+    tagline: 'UK university admissions',
+    practiceAreas: ['admissions', 'SOP'],
+    specialties: ['study', 'university'],
+    jurisdictions: ['UK'],
+    profileUrl: '',
+    gigs: [
+      { slug: 'uk-sop-review', title: 'UK statement of purpose review', category: 'admissions', jurisdiction: 'UK' },
+    ],
+    ...partial,
+  }
+  seed.profileUrl = partial.profileUrl || providerProfileUrl(seed)
+  return seed
+}
+
+describe('provider author matching', () => {
+  it('overlappingTokens treats visa/visas as a hit', () => {
+    expect(overlappingTokens(tokenize('h-1b visa requirements'), tokenize('immigration visas'))).toContain('visa')
+    expect(overlappingTokens(tokenize('h-1b visa requirements'), tokenize('H-1B family petitions'))).toContain('h1b')
+  })
+
+  it('never publishes a bar number when show_bar_number is false', () => {
+    const line = credentialLineFor({
+      role: 'attorney',
+      credentialType: 'Licensed attorney',
+      barNumber: '999888',
+      showBarNumber: false,
+      barState: 'CA',
+    })
+    expect(line).toContain('Licensed attorney')
+    expect(line).toContain('CA')
+    expect(line).not.toMatch(/999888/)
+    expect(line).not.toMatch(/bar /)
+  })
+
+  it('includes the bar number only when the attorney opted in', () => {
+    const line = credentialLineFor({
+      role: 'attorney',
+      credentialType: 'Solicitor',
+      barNumber: 'SRA-441',
+      showBarNumber: true,
+      barState: 'England & Wales',
+    })
+    expect(line).toBe('Solicitor · England & Wales · bar SRA-441')
+  })
+
+  it('picks the US immigration attorney over a UK solicitor for a US H-1B guide', () => {
+    const us = attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })
+    const uk = attorney({
+      profileId: 'a-uk',
+      name: 'Alex Harper',
+      username: 'alex-harper',
+      jurisdictions: ['UK', 'England & Wales'],
+      practiceAreas: ['immigration'],
+      specialties: ['skilled worker'],
+      barState: 'England & Wales',
+      gigs: [{ slug: 'uk-skilled-worker', title: 'UK skilled worker advice', category: 'work visa', jurisdiction: 'UK' }],
+    })
+    const cited = matchProvidersToTopic([uk, us], {
+      region: 'US',
+      topic: 'H-1B visa requirements',
+      primaryKeyword: 'h-1b visa',
+      contentType: 'legal_guide',
+    })
+    expect(cited[0]?.name).toBe('Jordan Hale')
+    expect(cited[0]?.matchReasons.some((r) => /US/.test(r) || /expertise/.test(r))).toBe(true)
+    expect(cited[0]?.servicePages[0]?.url).toBe(providerGigUrl('h1b-petition-review'))
+  })
+
+  it('prefers an admissions consultant on a study-abroad topic', () => {
+    const lawyer = attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })
+    const advisor = consultant({ profileId: 'c-uk', name: 'Priya Shah', username: 'priya-shah' })
+    const cited = matchProvidersToTopic([lawyer, advisor], {
+      region: 'UK',
+      topic: 'statement of purpose for UK university admissions',
+      primaryKeyword: 'uk university sop',
+      contentType: 'article',
+    })
+    expect(cited[0]?.name).toBe('Priya Shah')
+    expect(cited[0]?.role).toBe('consultant')
+  })
+
+  it('does not cite a mismatched attorney on a non-YMYL blog', () => {
+    const tax = attorney({
+      profileId: 'a-tax',
+      name: 'Sam Tax',
+      username: 'sam-tax',
+      practiceAreas: ['tax'],
+      specialties: ['corporate tax'],
+      jurisdictions: ['DE'],
+      tagline: 'Delaware corporate tax',
+      gigs: [],
+    })
+    const cited = matchProvidersToTopic([tax], {
+      region: 'US',
+      topic: 'packing list for a weekend trip',
+      primaryKeyword: 'weekend packing list',
+      contentType: 'blog_post',
+    })
+    expect(cited).toEqual([])
+  })
+
+  it('YMYL fallback still cites a licensed attorney when expertise is thin', () => {
+    const generic = attorney({
+      profileId: 'a-us',
+      name: 'Jordan Hale',
+      username: 'jordan-hale',
+      practiceAreas: ['litigation'],
+      specialties: ['civil'],
+      jurisdictions: [],
+      tagline: 'Civil litigator',
+      gigs: [],
+    })
+    const cited = matchProvidersToTopic([generic], {
+      region: 'US',
+      topic: 'I-130 affidavit of support',
+      primaryKeyword: 'i-130 affidavit',
+      contentType: 'legal_guide',
+    })
+    expect(cited[0]?.name).toBe('Jordan Hale')
+    expect(cited[0]?.matchReasons.join(' ')).toMatch(/YMYL fallback|practises in US/)
+  })
+})
+
+describe('author pack and prompt block', () => {
+  it('authorPackFromProvider carries the marketplace profile URL and recorded credential only', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale', showBarNumber: false, barNumber: 'SECRET-99' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    expect(cited[0]).toBeTruthy()
+    const pack = authorPackFromProvider(cited[0]!)
+    expect(pack.name).toBe('Jordan Hale')
+    expect(pack.marketplaceUrl).toBe('https://market.yousafeconsultancy.com/providers/jordan-hale')
+    expect(pack.providerType).toBe('attorney')
+    expect(pack.credential).not.toMatch(/SECRET-99/)
+    expect(validateAuthorPack(pack, { contentType: 'legal_guide', ymyl: true })).toEqual([])
+    expect(experienceScopeFor(cited[0]!)).toMatch(/immigration/i)
+  })
+
+  it('prompt block lists profile + service URLs and forbids invented people', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    const block = citedProvidersPromptBlock(cited)
+    expect(block).toContain('Jordan Hale')
+    expect(block).toContain('https://market.yousafeconsultancy.com/providers/jordan-hale')
+    expect(block).toContain('https://market.yousafeconsultancy.com/gigs/h1b-petition-review')
+    expect(block).toContain('never invent YouSafe Editorial Team')
+    expect(block).toMatch(/Do not invent additional people/)
+    expect(citedProvidersPromptBlock([])).toMatch(/Do not invent a named author/)
+  })
+
+  it('marketplace service links merge without duplicates and survive public serialization', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    const links = marketplaceServiceLinks(cited)
+    expect(links.some((l) => l.url.includes('/providers/jordan-hale'))).toBe(true)
+    expect(links.some((l) => l.url.includes('/gigs/h1b-petition-review'))).toBe(true)
+    const merged = mergeMarketplaceServiceLinks(
+      [{ label: 'H-1B petition review', url: links.find((l) => l.url.includes('/gigs/'))!.url }],
+      links,
+    )
+    expect(merged.filter((l) => l.url.includes('/gigs/h1b-petition-review'))).toHaveLength(1)
+    const pub = citedProvidersPublic(cited)
+    expect(pub[0]).toMatchObject({ name: 'Jordan Hale', role: 'attorney' })
+    expect(pub[0]).not.toHaveProperty('barNumber')
+  })
+
+  it('recognises canonical marketplace service URLs only', () => {
+    expect(isMarketplaceServiceUrl('https://market.yousafeconsultancy.com/providers/jordan-hale')).toBe(true)
+    expect(isMarketplaceServiceUrl('https://market.yousafeconsultancy.com/gigs/h1b-petition-review')).toBe(true)
+    expect(isMarketplaceServiceUrl('https://legal.yousafeconsultancy.com/us/h1b-visa/')).toBe(false)
+    expect(isMarketplaceServiceUrl('https://example.com/providers/fake')).toBe(false)
+  })
+})
+
+describe('writer prompt cites the matched attorney', () => {
+  const plan = {
+    matched: null,
+    host: 'legal',
+    repo: 'caseworks',
+    filePath: 'app/us/h1b-visa/page.tsx',
+    canonicalUrl: 'https://legal.yousafeconsultancy.com/us/h1b-visa/',
+    indexable: true,
+    action: 'create',
+    intentClass: 'informational',
+    contentType: 'legal_guide',
+    blockers: [],
+    routingSource: 'registry',
+  } as unknown as OwnerPlan
+
+  it('injects the marketplace citation block into the factory system prompt', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    const prompt = buildFactorySystemPrompt({
+      plan,
+      contentType: 'legal_guide',
+      minWords: 1200,
+      citedProviders: cited,
+      interlinkAllowlist: marketplaceServiceLinks(cited),
+    })
+    expect(prompt).toContain('YMYL AUTHOR / MARKETPLACE CITATION')
+    expect(prompt).toContain('Jordan Hale')
+    expect(prompt).toContain('https://market.yousafeconsultancy.com/providers/jordan-hale')
+    expect(prompt).toContain('https://market.yousafeconsultancy.com/gigs/h1b-petition-review')
+    expect(prompt).toMatch(/never invent YouSafe Editorial Team/)
+    expect(prompt).toContain('Jordan Hale — Licensed attorney')
+  })
+})

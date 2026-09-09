@@ -32,6 +32,7 @@ import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlin
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
+import { resolveProviderAuthors, mergeMarketplaceServiceLinks } from './providerAuthors'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
 import { isJunkTopic } from './queryNoise'
@@ -355,6 +356,19 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined, citationCtx)
   const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
 
+  const providerAuthors = await resolveProviderAuthors({
+    region,
+    topic,
+    primaryKeyword,
+    contentType,
+  })
+  const providerInterlinks = mergeMarketplaceServiceLinks(
+    (Array.isArray(input.interlinks) ? input.interlinks : [])
+      .filter((l) => l && l.url)
+      .map((l) => ({ label: String(l.label || l.url), url: String(l.url) })),
+    providerAuthors.links,
+  )
+
   // ── Canonical ContentSpec (implementation brief §3.2) ─────────────────────
   // Non-stream pipeline parity with pipelineStream: resolved ONCE at
   // planning/brief start, validated, passed unchanged to briefing + writer
@@ -382,6 +396,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       targetWords,
       maxWords,
       plannerRunId: input.sourceJobId || undefined,
+      author: providerAuthors.author || undefined,
     })
     contentSpec = specResolution.spec
     if (!contentSpec) {
@@ -414,9 +429,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     primaryKeyword,
     h2Outline: promptOutline,
     sources: verifiedSources,
+    interlinkAllowlist: providerInterlinks,
     targetSlug: input.targetSlug as string | undefined,
     kwH2Map: input.kwH2Map as Record<string, string> | undefined,
     spec: contentSpec ?? undefined,
+    citedProviders: providerAuthors.cited,
   })
 
   let content = input.resumeContent || ''

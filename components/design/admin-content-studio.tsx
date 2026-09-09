@@ -2439,6 +2439,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   const [briefIntel, setBriefIntel] = React.useState<{
     reasoning?: string; metaDescription?: string; sectionPlan?: Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }>
     masterEngine?: { composite?: number | null; grade?: string | null; recommendationCount?: number; coveragePct?: number | null; computedSignals?: number | null; totalSignals?: number | null; phase?: string | null }
+    citedAuthor?: { name: string; credential: string; marketplaceUrl?: string; providerType?: string }
+    citedProviders?: Array<{ name: string; role: string; credentialLine: string; profileUrl: string; matchReasons: string[]; servicePages: Array<{ title: string; url: string }> }>
   } | null>(null)
   // P1-E1 companion: Full Brief intel is topic/keyword-scoped. Region-only
   // changes (including suggest-brief auto-select) keep briefIntel so the just-
@@ -2559,6 +2561,26 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         metaDescription: typeof data.metaDescription === 'string' ? data.metaDescription : '',
         sectionPlan: Array.isArray(data.sectionPlan) ? data.sectionPlan as Array<{ heading: string; intent: string; format: string; targetWords: number; keywords: string[] }> : [],
         masterEngine: data.masterEngine && typeof data.masterEngine === 'object' ? data.masterEngine as { composite?: number | null; grade?: string | null; recommendationCount?: number; coveragePct?: number | null; computedSignals?: number | null; totalSignals?: number | null; phase?: string | null } : undefined,
+        citedAuthor: data.authorPack && typeof data.authorPack === 'object'
+          ? {
+              name: String((data.authorPack as { name?: string }).name || ''),
+              credential: String((data.authorPack as { credential?: string }).credential || ''),
+              marketplaceUrl: (data.authorPack as { marketplaceUrl?: string }).marketplaceUrl,
+              providerType: (data.authorPack as { providerType?: string }).providerType,
+            }
+          : undefined,
+        citedProviders: Array.isArray(data.citedProviders)
+          ? (data.citedProviders as Array<Record<string, unknown>>).map((p) => ({
+              name: String(p.name || ''),
+              role: String(p.role || ''),
+              credentialLine: String(p.credentialLine || ''),
+              profileUrl: String(p.profileUrl || ''),
+              matchReasons: Array.isArray(p.matchReasons) ? p.matchReasons.map(String) : [],
+              servicePages: Array.isArray(p.servicePages)
+                ? (p.servicePages as Array<Record<string, unknown>>).map((s) => ({ title: String(s.title || ''), url: String(s.url || '') }))
+                : [],
+            }))
+          : [],
       })
       // Merge the brief's interlinkTargets into briefInterlinks (deduped) so
       // the drafting call receives the brief's guaranteed ≥2 verified estate
@@ -2833,6 +2855,37 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             This score reads the market/estate snapshot only (demand, coverage, competition, trust). On-page quality joins the composite once a draft exists — 100/100 requires both a demand-rich query and a ship-ready article, so the brief itself cannot force 100.
           </div>
           {briefIntel.metaDescription && <div style={{ marginTop: 6, fontFamily: C.mono, fontSize: 9.5, color: 'rgba(255,255,255,.58)' }}>SERP copy: {briefIntel.metaDescription}</div>}
+          {briefIntel.citedAuthor?.name && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(248,231,176,.18)' }}>
+              <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }}>
+                YMYL author · marketplace citation
+              </div>
+              <div style={{ marginTop: 6, fontFamily: C.serif, fontSize: 13, color: 'rgba(255,255,255,.9)' }}>
+                {briefIntel.citedAuthor.name}
+                {briefIntel.citedAuthor.credential ? ` · ${briefIntel.citedAuthor.credential}` : ''}
+              </div>
+              {briefIntel.citedAuthor.marketplaceUrl && (
+                <a
+                  href={briefIntel.citedAuthor.marketplaceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: 'block', marginTop: 4, fontFamily: C.mono, fontSize: 10, color: '#F8E7B0' }}
+                >
+                  {briefIntel.citedAuthor.marketplaceUrl}
+                </a>
+              )}
+              {(briefIntel.citedProviders || []).slice(1).map((person) => (
+                <div key={person.profileUrl} style={{ marginTop: 6, fontFamily: C.serif, fontSize: 12, color: 'rgba(255,255,255,.7)' }}>
+                  Also citing {person.name} · {person.credentialLine}{' '}
+                  {person.profileUrl && (
+                    <a href={person.profileUrl} target="_blank" rel="noreferrer" style={{ fontFamily: C.mono, fontSize: 10, color: '#F8E7B0' }}>
+                      service page
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

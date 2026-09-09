@@ -26,7 +26,33 @@ import {
   regionalShipRequirements,
   writingFamilyFor,
 } from './writingShape'
-import { experienceBeatsPromptBlock } from './authorPack'
+import { experienceBeatsPromptBlock, ymylAuthorRequired, type AuthorPack, type ExperienceBeat } from './authorPack'
+import { citedProvidersPromptBlock, type CitedProvider } from './providerAuthors'
+
+function authorCitationPromptBlock(opts: {
+  contentType: string
+  indexable: boolean
+  cited?: CitedProvider[]
+  author?: AuthorPack | null
+}): string {
+  if (opts.cited && opts.cited.length) return citedProvidersPromptBlock(opts.cited)
+  if (opts.author?.name) {
+    return [
+      'YMYL AUTHOR / MARKETPLACE CITATION (mandatory — this person consented at signup to be cited).',
+      `Named author/reviewer: ${opts.author.name} — ${opts.author.credential}`,
+      opts.author.experienceScope ? `Field: ${opts.author.experienceScope}` : '',
+      opts.author.marketplaceUrl ? `Profile: ${opts.author.marketplaceUrl}` : '',
+      ...(opts.author.servicePages || []).map((page) => `Service: [${page.title}](${page.url})`),
+      'YAML `author` MUST be this person\'s name — never invent YouSafe Editorial Team.',
+      'Include each marketplace URL verbatim as a markdown link in the byline or “Need professional help”.',
+      'Do not invent additional people, bar numbers, case results, or service pages.',
+    ].filter(Boolean).join('\n')
+  }
+  if (ymylAuthorRequired(opts.contentType, opts.indexable)) {
+    return citedProvidersPromptBlock([])
+  }
+  return ''
+}
 
 /**
  * Destination format contract — deterministic instructions per host+repo+contentType.
@@ -127,7 +153,13 @@ export function destinationFormatBlock(plan: OwnerPlan, contentType: string): st
   return lines.join('\n')
 }
 
-function factoryShipGatesBlock(contentType: string, minWords: number, maxWords: number, target: number): string[] {
+function factoryShipGatesBlock(
+  contentType: string,
+  minWords: number,
+  maxWords: number,
+  target: number,
+  beats?: ExperienceBeat[],
+): string[] {
   const family = writingFamilyFor(contentType)
   const depth = `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`
   const shared = [
@@ -135,7 +167,7 @@ function factoryShipGatesBlock(contentType: string, minWords: number, maxWords: 
     '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
     '- SOURCES: prefer URLs VERBATIM from SOURCES TO CITE / SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are always valid. On-topic institutional pages (.org / .edu / official boards) that directly support a claim are also valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
     '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
-    experienceBeatsPromptBlock([]),
+    experienceBeatsPromptBlock(beats || []),
   ]
   if (family === 'blog' || family === 'short') {
     return [
@@ -260,9 +292,11 @@ export function buildFactorySystemPrompt(opts: {
    * the keyword/link/source allowlists are rendered from the registry
    * projections and the spec snapshot — never from duplicated arrays.
    */
-  spec?: ContentSpec
+   spec?: ContentSpec
+  /** Marketplace attorneys/consultants matched to this topic for YMYL citation. */
+  citedProviders?: CitedProvider[]
 }): string {
-  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist, spec } = opts
+  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist, spec, citedProviders } = opts
   const target = targetWordsForType(contentType)
   const maxWords = opts.maxWords ?? depthMaxWords(contentType)
   // Registry/spec-derived allowlists. A spec only ever NARROWS these lists to
@@ -301,6 +335,12 @@ export function buildFactorySystemPrompt(opts: {
   const briefOutline = spec && spec.outline.length ? spec.outline.map((o) => o.heading) : h2Outline
   const family = writingFamilyFor(contentType)
   const blog = family === 'blog' || family === 'short'
+  const authorBlock = authorCitationPromptBlock({
+    contentType,
+    indexable: plan.indexable,
+    cited: citedProviders,
+    author: spec?.author || null,
+  })
   return [
     blog
       ? 'You are a senior specialist writing one YouSafe / MyCaseworks article, not an SEO content factory filling a kit.'
@@ -310,7 +350,7 @@ export function buildFactorySystemPrompt(opts: {
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
     'Cite official sources with full https URLs: immigration departments, government departments, official school pages, named intergovernmental bodies, AND the issuing body for the article’s claim (exam boards, licensing councils — e.g. NCSBN for NCLEX, IELTS.org for IELTS, NMC/GMC for UK professional registration). A host is valid because it issues that rule or exam, not because it is on a generic .gov list.',
     '',
-    ...factoryShipGatesBlock(contentType, minWords, maxWords, target),
+    ...factoryShipGatesBlock(contentType, minWords, maxWords, target, spec?.author?.experienceBeats),
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
@@ -386,6 +426,7 @@ export function buildFactorySystemPrompt(opts: {
       'INTERNAL LINKS: the verified allowlist is EMPTY — do NOT create ANY internal links to legal.yousafeconsultancy.com or any yousafe domain. Disable internal linking entirely for this draft. Only link externally to .gov / .edu sources if they appear in the SOURCES list above, using their EXACT URLs. Creating an invented or guessed internal URL is a hard error.',
       '',
     ]),
+    ...(authorBlock ? [authorBlock, ''] : []),
     ...(targetSlug ? [
       `TARGET SLUG: ${targetSlug}`,
       '',

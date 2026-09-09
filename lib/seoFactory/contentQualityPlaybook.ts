@@ -1280,6 +1280,7 @@ interface SpecLike {
   approvedSources: Array<{ url: string; publisher: string; purpose: string }>
   ymyl: { disclaimerRequired: boolean }
   aeoGeo: { answerFirst: boolean; faqRequired: boolean }
+  author?: { name?: string; credential?: string; marketplaceUrl?: string } | null
 }
 
 function keywordLines(spec: SpecLike): string[] {
@@ -1305,6 +1306,9 @@ function coreRequirements(spec: SpecLike): string[] {
     `- Canonical outline (single source of truth — do NOT restructure or add sections; every H2/H3 and its purpose comes from the brief): ${outline.join(' ')}`,
     `- Verified estate links (use ONLY these URLs for internal links): ${spec.verifiedEstateLinks.map((l) => l.url).join(', ') || '(none — do not create internal links)'}`,
     `- Approved sources: ${spec.approvedSources.map((s) => s.url).join(', ') || '(none — prefer agency names as plain text)'}`,
+    spec.author?.name
+      ? `- Named YMYL author (use this person only; never invent YouSafe Editorial Team): ${spec.author.name}${spec.author.credential ? ` · ${spec.author.credential}` : ''}${spec.author.marketplaceUrl ? ` · ${spec.author.marketplaceUrl}` : ''}`
+      : '',
     spec.ymyl.disclaimerRequired ? '- YMYL: educational disclaimer required; no outcome promises; official jurisdiction-appropriate sources.' : '',
     spec.aeoGeo.answerFirst ? '- AEO/GEO: answer first in the opening block; self-contained FAQ answers when required.' : '',
   ].filter(Boolean)

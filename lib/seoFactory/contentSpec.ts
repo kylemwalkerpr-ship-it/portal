@@ -439,6 +439,11 @@ export function validateContentSpec(spec: unknown): string[] {
       if (s.author.experienceBeats !== undefined && !Array.isArray(s.author.experienceBeats)) {
         issues.push('author.experienceBeats: must be an array')
       }
+      if (s.author.marketplaceUrl !== undefined) {
+        if (typeof s.author.marketplaceUrl !== 'string' || !/^https:\/\/market\.yousafeconsultancy\.com\//i.test(s.author.marketplaceUrl)) {
+          issues.push('author.marketplaceUrl: must be an https marketplace URL')
+        }
+      }
     }
   }
 

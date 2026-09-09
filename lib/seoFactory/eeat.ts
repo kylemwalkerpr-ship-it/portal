@@ -49,7 +49,11 @@ export function buildEeatJsonLd(input: {
   })
   let author: { '@type': 'Person'; name?: string; url?: string } | undefined
   if (realName) {
-    author = { '@type': 'Person', name: realName, url: input.authorUrl }
+    author = {
+      '@type': 'Person',
+      name: realName,
+      url: input.authorUrl || input.authorPack?.marketplaceUrl,
+    }
   } else if (input.requireRealAuthor) {
     // Explicit opt-in: never emit a fake Editorial Team on YMYL.
     author = undefined

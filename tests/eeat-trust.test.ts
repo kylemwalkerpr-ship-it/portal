@@ -211,6 +211,19 @@ describe('AuthorPack + experience beats', () => {
     expect(ymylAuthorRequired('blog_post', true)).toBe(false)
     expect(ymylAuthorRequired('legal_guide', false)).toBe(false)
   })
+
+  it('rejects a non-marketplace author URL', () => {
+    expect(validateAuthorPack(
+      {
+        name: 'Jordan Hale',
+        credential: 'Licensed attorney',
+        experienceScope: 'US visas',
+        experienceBeats: [],
+        marketplaceUrl: 'https://example.com/jordan',
+      },
+      { contentType: 'legal_guide', ymyl: true },
+    )).toContain('author.marketplaceUrl: must be an https marketplace URL')
+  })
 })
 
 describe('buildEeatJsonLd — requireRealAuthor / AuthorPack', () => {
@@ -247,5 +260,21 @@ describe('buildEeatJsonLd — requireRealAuthor / AuthorPack', () => {
       authorPack: { name: 'Alex Harper', credential: 'Solicitor', experienceScope: '', experienceBeats: [] },
       ymyl: true,
     })).toBe('Alex Harper')
+  })
+
+  it('uses the marketplace profile URL as JSON-LD author.url', () => {
+    const json = buildEeatJsonLd({
+      ...baseLd,
+      ymyl: true,
+      authorPack: {
+        name: 'Jordan Hale',
+        credential: 'Licensed attorney · NY',
+        experienceScope: 'US immigration',
+        experienceBeats: [],
+        marketplaceUrl: 'https://market.yousafeconsultancy.com/providers/jordan-hale',
+      },
+    })
+    expect(json).toContain('Jordan Hale')
+    expect(json).toContain('https://market.yousafeconsultancy.com/providers/jordan-hale')
   })
 })

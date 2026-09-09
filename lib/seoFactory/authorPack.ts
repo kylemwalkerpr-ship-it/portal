@@ -30,6 +30,10 @@ export type AuthorPack = {
   reviewedBy?: string
   lastReviewed?: string
   experienceBeats: ExperienceBeat[]
+  /** Public marketplace profile URL of the cited attorney/consultant. */
+  marketplaceUrl?: string
+  providerType?: 'attorney' | 'consultant'
+  servicePages?: Array<{ title: string; url: string; match?: string }>
 }
 
 export type ResearchClaim = {
@@ -82,6 +86,14 @@ export function validateAuthorPack(
   }
   if (pack.lastReviewed !== undefined && typeof pack.lastReviewed !== 'string') {
     issues.push('author.lastReviewed: must be a string')
+  }
+  if (pack.marketplaceUrl !== undefined) {
+    if (typeof pack.marketplaceUrl !== 'string' || !/^https:\/\/market\.yousafeconsultancy\.com\//i.test(pack.marketplaceUrl)) {
+      issues.push('author.marketplaceUrl: must be an https marketplace URL')
+    }
+  }
+  if (pack.providerType !== undefined && pack.providerType !== 'attorney' && pack.providerType !== 'consultant') {
+    issues.push('author.providerType: must be attorney or consultant')
   }
   if (pack.experienceBeats !== undefined && !Array.isArray(pack.experienceBeats)) {
     issues.push('author.experienceBeats: must be an array')

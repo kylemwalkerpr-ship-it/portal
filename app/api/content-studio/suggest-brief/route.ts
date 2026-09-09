@@ -21,6 +21,7 @@ import {
   minWordsForType,
   targetWordsForType,
 } from '@/lib/seoFactory/contentDepth'
+import { resolveProviderAuthors, citedProvidersPromptBlock, citedProvidersPublic, isMarketplaceServiceUrl, mergeMarketplaceServiceLinks } from '@/lib/seoFactory/providerAuthors'
 
 /**
  * POST /api/content-studio/suggest-brief
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest) {
       'QUALITY WARNING PREVENTION (these checks are enforced at draft time — the brief must preempt them):',
       '11. ANTI-WALL-OF-TEXT: for guides/regional, design H2s so each section is 2-4 short paragraphs. Blogs may use a developed 4–6 sentence paragraph when it earns its place.',
       '12. CONCRETE PROCEDURE: long-form guides/regional must include procedural concreteness (forms, documents, sequences). Do NOT invent a named person, testimonial, or personal story. If EXPERIENCE_BEATS are supplied, use those anonymised beats only. Blogs never require a worked-example H2 or a protagonist.',
-      '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline.',
+      '13. SCHEMA ARTICLE JSON-LD: the drafting system injects Article schema (`{"@type":"Article"}`) from the brief metadata. Your brief MUST supply: author name, datePublished, dateModified, description, and mainEntityOfPage URL. These appear in the response as metadata fields, not in the outline. When YMYL AUTHOR / MARKETPLACE CITATION lists a real attorney or consultant, that person is the author — never invent YouSafe Editorial Team.',
       '14. SCHEMA FAQ JSON-LD: include exactly one "## FAQ" H2 in h2Outline — never list individual FAQ questions as sibling H2s. The drafting AI writes 4–6 questions as ### H3s under that FAQ section (eligibility, timeline, required documents, costs, DIY-vs-attorney, denial/reapply). The system wraps those H3 Q&A pairs in FAQPage JSON-LD.',
       '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
       '16. INTERNAL LINKS (HARD REQUIREMENT): ALWAYS return at least 2 interlinkTargets — never fewer than 2, prefer 3–4. Each URL must come from the allowlist VERBATIM (no invented, guessed, or modified paths). The draft-time audit blocks on fewer than 2 internal estate links, so a thin interlinkTargets list forces rewrites.',
@@ -255,6 +256,28 @@ export async function POST(req: NextRequest) {
       ],
     })
     const seedOfficialSources = await assembleDraftSourceAllowlist(region, discoverSources, citationCtx)
+    const providerAuthors = await resolveProviderAuthors({
+      region,
+      topic,
+      primaryKeyword,
+      contentType,
+    })
+    if (providerAuthors.links.length) {
+      const existing = new Set(interlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()))
+      for (const link of providerAuthors.links) {
+        const key = link.url.replace(/\/+$/, '').toLowerCase()
+        if (existing.has(key)) continue
+        existing.add(key)
+        interlinks.push({
+          label: link.label,
+          url: link.url,
+          role: link.role,
+          placement: link.placement,
+          reason: link.reason,
+          score: 100,
+        } as typeof interlinks[number])
+      }
+    }
 
     const prompt = [
       `TOPIC: ${topic}`,
@@ -290,6 +313,7 @@ export async function POST(req: NextRequest) {
       seedOfficialSources.length
         ? `VERIFIED SOURCE ALLOWLIST (live-checked authorities for this topic — copy URLs VERBATIM into "sources"; government/edu/intergov preferred, on-topic institutional pages allowed; no blogs/Wikipedia/social):\n${seedOfficialSources.map((s) => `  - ${s}`).join('\n')}`
         : 'VERIFIED SOURCE ALLOWLIST: empty after live check — return an empty sources array or cite only institutional pages you are certain exist and are on-topic. Never invent a path.',
+      citedProvidersPromptBlock(providerAuthors.cited),
       sitemapCount > 0
         ? `ESTATE SITEMAP SIZE: ${sitemapCount} pages live — find adjacency opportunities.`
         : '',
@@ -355,7 +379,12 @@ export async function POST(req: NextRequest) {
       2,
     ).kept
     const liveInternal = new Set(await filterLiveInternalUrls(paddedInterlinks.map((t) => t.url)))
-    const interlinkTargets = paddedInterlinks.filter((t) => liveInternal.has(t.url.replace(/\/+$/, '')) || liveInternal.has(t.url) || [...liveInternal].some((u) => u.replace(/\/+$/, '') === t.url.replace(/\/+$/, '')))
+    const interlinkTargets = paddedInterlinks.filter((t) =>
+      isMarketplaceServiceUrl(t.url)
+      || liveInternal.has(t.url.replace(/\/+$/, ''))
+      || liveInternal.has(t.url)
+      || [...liveInternal].some((u) => u.replace(/\/+$/, '') === t.url.replace(/\/+$/, '')),
+    )
     const enrichedInterlinkTargets = interlinkTargets.map((target) => {
       const source = interlinks.find((link) => link.url.replace(/\/+$/, '').toLowerCase() === target.url.replace(/\/+$/, '').toLowerCase())
       return { ...source, ...target, placement: target.placement || source?.placement || 'Contextually relevant section' }
@@ -547,7 +576,12 @@ export async function POST(req: NextRequest) {
       sources: finalSources,
       sourceRegionFallback: regionalSources.fallbackUsed,
       sourceRegionFallbackNote: regionalSources.fallbackNote,
-      interlinkTargets: preferRegionInterlinks(enrichedInterlinkTargets, region, 2).kept.slice(0, 8),
+      interlinkTargets: mergeMarketplaceServiceLinks(
+        preferRegionInterlinks(enrichedInterlinkTargets, region, 2).kept.slice(0, Math.max(2, 8 - providerAuthors.links.length)),
+        providerAuthors.links,
+      ),
+      authorPack: providerAuthors.author,
+      citedProviders: citedProvidersPublic(providerAuthors.cited),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),
