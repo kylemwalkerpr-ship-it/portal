@@ -189,3 +189,48 @@ export async function loadPersistedGscWindow(
   }
 }
 
+/** Query-level demand shaped from persisted query×page rows. */
+export type PersistedDemandQuery = {
+  term: string
+  impressions: number
+  clicks: number
+  ctr: number
+  position: number
+  page?: string
+}
+
+/**
+ * Collapse seo_gsc_rows (query×page) into one query per term, keeping the
+ * highest-impression page. Optional `isJunk` drops PDF/URL/brand noise so
+ * Discover does not score leaked filenames as demand.
+ */
+export function queriesFromPersistedGscRows(
+  rows: Array<{
+    query?: unknown
+    page?: unknown
+    impressions?: unknown
+    clicks?: unknown
+    ctr?: unknown
+    position?: unknown
+  }>,
+  isJunk: (term: string) => boolean = () => false,
+): PersistedDemandQuery[] {
+  const best = new Map<string, PersistedDemandQuery>()
+  for (const row of rows) {
+    const term = String(row.query || '').trim()
+    if (term.length < 3 || isJunk(term)) continue
+    const key = term.toLowerCase()
+    const next: PersistedDemandQuery = {
+      term,
+      impressions: Number(row.impressions) || 0,
+      clicks: Number(row.clicks) || 0,
+      ctr: Number(row.ctr) || 0,
+      position: Number(row.position) || 0,
+      page: String(row.page || '').trim() || undefined,
+    }
+    const prev = best.get(key)
+    if (!prev || next.impressions > prev.impressions) best.set(key, next)
+  }
+  return [...best.values()].sort((a, b) => b.impressions - a.impressions)
+}
+
