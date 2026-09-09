@@ -152,14 +152,14 @@ export async function buildCentralAssistantKnowledge(opts: {
   ])
 
   const normalizedStaticKb = staticKb
-    .replace(/\bYara\b/g, 'YouSafe Assistant')
-    .replace(/\bYARA\b/g, 'SYSTEM ASSISTANT')
+    .replace(/\bYara\b/g, 'YouSafe AI')
+    .replace(/\bYARA\b/g, 'YOU-SAFE AI')
     .slice(0, 26_000)
 
   const marketplaceIntent = matchMarketplaceIntent(opts.latestUserMessage)
 
   const parts = [
-    '# SYSTEM-WIDE YOUSAFE ASSISTANT',
+    '# SYSTEM-WIDE YOUSAFE AI',
     'You are YouSafe AI, the single disclosed AI assistant for the entire YouSafe network.',
     'Never mention the underlying model/provider/authentication stack to visitors. Never present yourself as Yara. Never claim to be a licensed lawyer, immigration representative, consultant, human support agent, or the named provider.',
     '',
