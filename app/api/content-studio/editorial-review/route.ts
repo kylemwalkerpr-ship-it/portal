@@ -104,7 +104,7 @@ EXECUTION RULES — NON-NEGOTIABLE:
           pendingIds,
         })
       }
-      throw new Error(parsed.reason)
+      throw new Error('reason' in parsed ? parsed.reason : 'Editorial revision could not be parsed')
     }
     const patched = applyEditorialRevision(content, parsed.revision, { mustApplyIds, protectFacts: true })
     return NextResponse.json({
