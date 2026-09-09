@@ -1,0 +1,117 @@
+/* Marketplace mobile brand lockup
+   --------------------------------
+   Keep the YouSafe mark prominent on phones and surface the company slogan
+   beneath the wordmark without disturbing the hamburger/account controls. */
+
+@media (max-width: 768px) {
+  .cw-market .ys-shell-brand {
+    max-width: min(54vw, 196px) !important;
+    overflow: visible !important;
+  }
+
+  .cw-market .ys-shell-brand > div {
+    min-width: 0;
+    gap: 9px !important;
+  }
+
+  .cw-market .ys-shell-brand img {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+    object-fit: contain;
+  }
+
+  /* Anonymous marketplace header: stack the slogan under YouSafe. */
+  .cw-market .ys-shell-brand > div > span {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap;
+    font-size: 16px !important;
+    line-height: 1 !important;
+  }
+
+  .cw-market .ys-shell-brand > div > span::after {
+    content: 'Your Safe Path to Success.';
+    display: block;
+    margin-top: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    color: #9fe3d8;
+    white-space: nowrap;
+  }
+
+  /* Signed-in header currently uses this second line for the role label.
+     On phones the stronger brand lockup is more useful, so render the same
+     slogan there while desktop keeps Marketplace / Attorney Portal / etc. */
+  .cw-market .ys-shell-brand > div > div {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap;
+  }
+
+  .cw-market .ys-shell-brand-sub {
+    display: block !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    margin-top: 4px !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    color: transparent !important;
+  }
+
+  .cw-market .ys-shell-brand-sub::after {
+    content: 'Your Safe Path to Success.';
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    color: #9fe3d8;
+    white-space: nowrap;
+  }
+}
+
+/* The existing premium-nav layer intentionally hid all brand text at <=360px.
+   Preserve the slogan even on narrow phones, but trim the lockup slightly so
+   the menu and account avatar retain their full 44px touch targets. */
+@media (max-width: 360px) {
+  .cw-market .ys-shell-brand {
+    width: auto !important;
+    max-width: 168px !important;
+    flex: 0 1 168px !important;
+  }
+
+  .cw-market .ys-shell-brand > div {
+    gap: 7px !important;
+  }
+
+  .cw-market .ys-shell-brand > div > :not(img) {
+    display: flex !important;
+  }
+
+  .cw-market .ys-shell-brand img {
+    width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  .cw-market .ys-shell-brand > div > span {
+    font-size: 14px !important;
+  }
+
+  .cw-market .ys-shell-brand > div > span::after,
+  .cw-market .ys-shell-brand-sub::after {
+    margin-top: 3px;
+    font-size: 8px;
+  }
+}
