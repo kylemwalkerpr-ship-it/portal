@@ -7,6 +7,7 @@ import { runHarperGrammar, fixHarperIssues } from '@/lib/harperBrowser'
 import { editorialReport } from '@/lib/seoFactory/editorialGate'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { DRAFT_RENDERER_SAFE_CHARS, inspectDraftIntegrity } from '@/lib/seoFactory/draftIntegrity'
 import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { ApproveConfirmModal } from './approve-confirm-modal'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
@@ -169,13 +170,26 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         region,
       }),
     })
-    const data = await res.json().catch(() => ({})) as { jobId?: string; error?: string }
+    const data = await res.json().catch(() => ({})) as {
+      jobId?: string
+      error?: string
+      recovered?: boolean
+      draft?: { content?: string }
+    }
     const attached = String(data.jobId || '').trim()
     if (attached && attached !== boundJobId) {
       setBoundJobId(attached)
       onJobAttached?.(attached)
     }
     if (!res.ok) throw new Error(data.error || `Save failed: HTTP ${res.status}`)
+    // The server is the integrity boundary. If it deterministically recovered
+    // a fenced/metadata-heavy payload, immediately bind the browser to that
+    // canonical stored body instead of leaving the bad string in memory.
+    const canonical = String(data.draft?.content || '')
+    if (canonical && canonical !== clean) {
+      if (auditedContentRef.current === clean) auditedContentRef.current = canonical
+      onChange(canonical)
+    }
     return attached
   }, [boundJobId, title, topic, contentType, region, onJobAttached, onChange])
   const [loadingDrafts, setLoadingDrafts] = useState(false)
@@ -287,9 +301,10 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         }
         const latest = data.latest?.content || ''
         if (cancelled || !latest) return
-        // Guard: skip content that could freeze the editor (Safari caps at ~80k)
-        if (latest.length > 50_000) {
-          console.warn('[editor] draft too large for auto-load:', latest.length, 'chars — use Load draft')
+        // Guard: the server already attempts deterministic recovery of legacy
+        // malformed snapshots. Only an actually still-large body is skipped.
+        if (latest.length > DRAFT_RENDERER_SAFE_CHARS) {
+          console.warn('[editor] draft too large for auto-load:', latest.length, 'chars — open Markdown source')
           return
         }
         const incoming = countBodyWords(content)
@@ -387,15 +402,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   }, [])
 
   // Fetch the latest draft from Supabase — always audit the most recent
-  // version, not a stale in-pane buffer.
+  // version, not a stale in-pane buffer. Legacy snapshots are integrity-
+  // recovered server-side before they reach this function.
   const fetchLatestDraft = useCallback(async (): Promise<string> => {
     if (!jobId) return content
     try {
       const res = await fetch(`/api/content-studio/drafts?jobId=${encodeURIComponent(jobId)}&latest=1`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({})) as { latest?: { content?: string; wordCount?: number } }
       const latest = data.latest?.content || ''
-      // Guard: skip content that could freeze the editor
-      if (latest.length > 50_000) return content
+      if (latest.length > DRAFT_RENDERER_SAFE_CHARS) return content
       if (latest && countBodyWords(latest) >= 40) return latest
     } catch { /* fall through to in-pane content */ }
     return content
@@ -467,12 +482,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
   // One closed Audit & Fix loop: audit → deterministic repair → targeted AI
   // patch → re-audit, repeated server-side until gates clear or the bounded
-  // three-pass budget is exhausted. Clicking again while running cancels.
+  // pass budget is exhausted. Clicking again while running cancels.
   const handleFixAll = useCallback(async () => {
-    if (countBodyWords(content) < 40) {
-      setError('No countable body words. Load a draft before Audit & Fix.')
-      return
-    }
     if (fixingAll) {
       fixAbortRef.current?.abort()
       return
@@ -493,10 +504,29 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       autosaveAbortRef.current?.abort()
       autosaveAbortRef.current = null
       setDirty(false)
-      // Always fix the latest draft from Supabase
+
+      // Recover the exact intermittent failure shown by large-draft incidents:
+      // model/editor chrome can make a payload 50k+ chars while body-word scan
+      // sees almost no prose. The old code rejected it BEFORE Audit & Fix and
+      // also hid Source view, leaving no recovery path. Deterministic recovery
+      // now gets first chance both on the DB copy and on the in-pane body.
+      const currentIntegrity = inspectDraftIntegrity(content)
+      const recoveredCurrent = currentIntegrity.recovered ? currentIntegrity.content : content
       const latestContent = await fetchLatestDraft()
-      const contentToFix = countBodyWords(latestContent) >= 40 ? latestContent : content
-      if (latestContent !== content) onChange(latestContent)
+      const latestIntegrity = inspectDraftIntegrity(latestContent)
+      const recoveredLatest = latestIntegrity.recovered ? latestIntegrity.content : latestContent
+      const contentToFix = countBodyWords(recoveredLatest) >= 40 ? recoveredLatest : recoveredCurrent
+      if (countBodyWords(contentToFix) < 40) {
+        throw new Error(
+          `Audit & Fix could not recover reader-facing prose from this payload (${contentToFix.length.toLocaleString()} chars, ${countBodyWords(contentToFix)} body words). Open Markdown source or restore a prior draft; malformed provider/schema output will not be persisted over a good snapshot.`,
+        )
+      }
+      if (contentToFix !== content) {
+        onChange(contentToFix)
+        // Self-heal the durable review snapshot before invoking another model.
+        try { await persistFixedContent(contentToFix) } catch { /* audit can continue on the recovered in-memory body */ }
+      }
+
       const res = await fetchWithTimeout('/api/content-studio/reaudit', {
         method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -1322,34 +1352,43 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       <div style={{ display: 'flex', gap: 12, minHeight: 320 }}>
         {/* Editor */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          {content.length > 50_000 ? (
+          {content.length > DRAFT_RENDERER_SAFE_CHARS && viewMode === 'document' ? (
             <div style={{
               border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8',
               minHeight: 320, paddingTop: 14,
             }}>
               <div style={{ padding: 20, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: C.text }}>Document view unavailable for large drafts</div>
-                <div>This draft is {(content.length / 1000).toFixed(0)}k characters. The document renderer cannot safely render content this size in a browser.</div>
-                <div style={{ marginTop: 8 }}>Switch to <strong>Source</strong> view to edit the raw markdown, or use <strong>Audit &amp; Fix</strong> to reduce the content size.</div>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: C.text }}>Document view paused for a large draft</div>
+                <div>This draft is {(content.length / 1000).toFixed(0)}k characters. The rich document renderer is intentionally disabled at this size to protect the browser.</div>
+                <div style={{ marginTop: 8 }}><strong>Markdown source remains available.</strong> Audit &amp; Fix also attempts deterministic fence/metadata recovery before it calls any model.</div>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('source')}
+                  style={{ marginTop: 12, ...smallBtnStyle({ bg: C.navy, color: '#fff' }) }}
+                >
+                  Open Markdown source
+                </button>
               </div>
             </div>
           ) : (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: '#EFEDE8', minHeight: 320, paddingTop: 14 }}>
-              <EditorMetricsStrip
-                content={content}
-                hint={{
-                  primaryKeyword,
-                  requiredShortKeywords,
-                  requiredLongTailKeywords,
-                  region,
-                  contentType,
-                  audience: topic || title,
-                  tone: undefined,
-                }}
-                reviewModel={reviewModel}
-                busy={allBusy}
-                onApplied={(md) => { onChange(md); setDirty(true) }}
-              />
+              {content.length <= DRAFT_RENDERER_SAFE_CHARS && (
+                <EditorMetricsStrip
+                  content={content}
+                  hint={{
+                    primaryKeyword,
+                    requiredShortKeywords,
+                    requiredLongTailKeywords,
+                    region,
+                    contentType,
+                    audience: topic || title,
+                    tone: undefined,
+                  }}
+                  reviewModel={reviewModel}
+                  busy={allBusy}
+                  onApplied={(md) => { onChange(md); setDirty(true) }}
+                />
+              )}
               {viewMode === 'document' ? (
                 <StudioDocEditor
                   content={content}
@@ -1481,7 +1520,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     Restore
                   </button>
                 </div>
-              ))
+              ))}
             )}
           </div>
         )}
