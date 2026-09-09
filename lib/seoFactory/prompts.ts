@@ -17,7 +17,7 @@ import { qualityPromptBlock, formattingRequirementsBlock } from './contentQualit
 import { formatContractBriefBlock } from './formatContract'
 import { renderBriefRules, renderWriterRules } from './contentQualityPlaybook'
 import type { ContentSpec } from './contentSpec'
-import { keywordContractFromLists, renderKeywordContractBrief } from './keywordContract'
+import { keywordContractFromLists, renderKeywordContractBrief } from './keywordContractBrief'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 /**
