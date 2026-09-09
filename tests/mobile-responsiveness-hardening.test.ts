@@ -45,10 +45,11 @@ describe('mobile responsiveness hardening', () => {
 
   test('prevents the category mega menu from being positioned off-screen', () => {
     expect(megaMenu).toContain('const panelWidth = Math.min(380')
-    expect(megaMenu).toContain('Math.max(')
+    expect(megaMenu).toContain('const left = Math.max(')
     expect(megaMenu).toContain('viewportPadding')
     expect(megaMenu).toContain("maxHeight: 'min(70dvh, 560px)'")
-    expect(megaMenu).not.toContain('window.innerWidth - 16 - 380')
+    // Guard the executable assignment, not comments that document the old bug.
+    expect(megaMenu).not.toContain('const left = Math.min(anchorRect.left')
   })
 
   test('keeps iOS form focus and safe-area behavior in the hardening layer', () => {
