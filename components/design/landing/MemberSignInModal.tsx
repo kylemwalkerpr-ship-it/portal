@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useRef, useCallback } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { T } from './tokens'
 import { Arrow, ArrowUR, Cap, Scale, Briefcase, Headset, Close, Lock } from './icons'
@@ -120,6 +120,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
       aria-modal="true"
       aria-label="Member sign-in"
       onClick={onClose}
+      className="ys-member-modal-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
@@ -137,10 +138,120 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
       <style>{`
         @keyframes ysFadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes ysRise { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .ys-member-modal {
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .ys-member-role-card,
+        .ys-member-role-actions,
+        .ys-member-role-actions > a {
+          min-width: 0;
+        }
+
+        @media (max-width: 700px) {
+          .ys-member-modal-backdrop {
+            padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)) !important;
+          }
+
+          .ys-member-modal {
+            width: 100% !important;
+            max-height: calc(100vh - 16px) !important;
+            max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+            border-radius: 20px !important;
+          }
+
+          .ys-member-modal-header {
+            padding: 22px 18px 10px !important;
+            gap: 12px !important;
+          }
+
+          .ys-member-modal-title {
+            font-size: clamp(28px, 8vw, 32px) !important;
+            line-height: 1.08 !important;
+          }
+
+          .ys-member-modal-subtitle {
+            margin-top: 8px !important;
+            font-size: 13.5px !important;
+            line-height: 1.5 !important;
+          }
+
+          .ys-member-modal-close {
+            width: 42px !important;
+            height: 42px !important;
+            border-radius: 12px !important;
+          }
+
+          .ys-lane-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 10px !important;
+            padding: 12px 14px 18px !important;
+          }
+
+          .ys-member-role-card {
+            padding: 15px 15px 14px !important;
+            gap: 7px !important;
+          }
+
+          .ys-member-role-copy {
+            min-height: 0 !important;
+            margin-bottom: 6px !important;
+          }
+
+          .ys-member-role-actions {
+            flex-wrap: wrap !important;
+          }
+
+          .ys-member-role-primary,
+          .ys-member-role-secondary {
+            min-height: 42px !important;
+            padding: 9px 13px !important;
+            text-align: center;
+            white-space: normal;
+          }
+
+          .ys-member-role-primary {
+            flex: 1 1 42% !important;
+          }
+
+          .ys-member-role-secondary {
+            flex: 1 1 52% !important;
+          }
+
+          .ys-member-modal-footer {
+            padding: 14px 18px calc(14px + env(safe-area-inset-bottom)) !important;
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+            gap: 10px !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .ys-member-modal-header {
+            padding-inline: 16px !important;
+          }
+
+          .ys-lane-grid {
+            padding-inline: 12px !important;
+          }
+
+          .ys-member-role-actions {
+            flex-direction: column !important;
+          }
+
+          .ys-member-role-primary,
+          .ys-member-role-secondary {
+            width: 100% !important;
+            flex: 1 1 auto !important;
+          }
+        }
       `}</style>
       <div
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}
+        className="ys-member-modal"
         style={{
           width: 'min(900px, 100%)',
           background: T.paper,
@@ -165,6 +276,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
 
         {/* Header */}
         <div
+          className="ys-member-modal-header"
           style={{
             padding: '32px 36px 12px',
             display: 'flex',
@@ -173,7 +285,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
             gap: 16,
           }}
         >
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontFamily: T.mono,
@@ -188,6 +300,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
               Member access
             </div>
             <h2
+              className="ys-member-modal-title"
               style={{
                 margin: 0,
                 fontSize: 'clamp(28px, 3.6vw, 36px)',
@@ -201,6 +314,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
               Sign in to the portal.
             </h2>
             <p
+              className="ys-member-modal-subtitle"
               style={{
                 margin: '10px 0 0',
                 color: T.inkMid,
@@ -217,6 +331,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
             type="button"
             onClick={onClose}
             aria-label="Close"
+            className="ys-member-modal-close"
             style={{
               background: 'transparent',
               border: `1px solid ${T.rule}`,
@@ -240,7 +355,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
           className="ys-lane-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             gap: 12,
             padding: '20px 36px 32px',
           }}
@@ -252,6 +367,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
 
         {/* Footer */}
         <div
+          className="ys-member-modal-footer"
           style={{
             borderTop: `1px solid ${T.rule}`,
             background: T.surface2,
@@ -263,7 +379,7 @@ export default function MemberSignInModal({ open, onClose }: MemberSignInModalPr
             flexWrap: 'wrap',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.inkSoft }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: 1.4, color: T.inkSoft }}>
             <Lock size={13} stroke={1.6} />
             <span>Clerk-secured sign-in · TLS &amp; 2FA · noindex members area</span>
           </div>
@@ -290,6 +406,7 @@ function RoleCard({ role }: { role: Role }) {
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      className="ys-member-role-card"
       style={{
         background: '#fff',
         border: `1px solid ${hover ? role.accent : T.rule}`,
@@ -303,7 +420,7 @@ function RoleCard({ role }: { role: Role }) {
         boxShadow: hover ? `0 10px 24px ${role.accent}22` : '0 1px 2px rgba(15,23,42,0.04)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
         <span
           style={{
             width: 34,
@@ -314,6 +431,7 @@ function RoleCard({ role }: { role: Role }) {
             justifyContent: 'center',
             background: `${role.accent}14`,
             color: role.accent,
+            flexShrink: 0,
           }}
         >
           <IconC size={18} stroke={1.6} />
@@ -325,12 +443,14 @@ function RoleCard({ role }: { role: Role }) {
             fontWeight: 500,
             color: T.ink,
             lineHeight: 1.1,
+            minWidth: 0,
           }}
         >
           {role.label}
         </div>
       </div>
       <p
+        className="ys-member-role-copy"
         style={{
           margin: '4px 0 8px',
           fontSize: 13,
@@ -341,11 +461,12 @@ function RoleCard({ role }: { role: Role }) {
       >
         {role.blurb}
       </p>
-      <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+      <div className="ys-member-role-actions" style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
         <a
           href={role.signInHref}
           target={role.external ? '_blank' : undefined}
           rel={role.external ? 'noopener noreferrer' : undefined}
+          className="ys-member-role-primary"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -372,6 +493,7 @@ function RoleCard({ role }: { role: Role }) {
         {role.secondary && role.signUpHref && (
           <a
             href={role.signUpHref}
+            className="ys-member-role-secondary"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
