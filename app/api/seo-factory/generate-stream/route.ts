@@ -5,6 +5,7 @@ import { ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
 import { checkCompetingPages } from '@/lib/seoEngine/planner'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -158,6 +159,10 @@ export async function POST(request: Request) {
       tone: String(body.tone || 'educational'),
       audience: body.audience ? String(body.audience) : undefined,
       keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
+      requiredShortKeywords: parseKeywordPhrases(body.requiredShortKeywords),
+      requiredLongTailKeywords: parseKeywordPhrases(body.requiredLongTailKeywords),
+      shortKeywordTerms: parseKeywordTerms(body.shortKeywordTerms),
+      longTailKeywordTerms: parseKeywordTerms(body.longTailKeywordTerms),
       slug: body.slug,
       indexable: body.indexable !== false,
       shipMode: (body.shipMode || body.ship_mode || 'pr') as RequestedShipMode,

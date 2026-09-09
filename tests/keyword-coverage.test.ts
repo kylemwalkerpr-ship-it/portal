@@ -98,6 +98,26 @@ describe('mergeBriefKeywords — brief floor guarantee', () => {
     expect(seen.size).toBe(merged.short.length + merged.longTail.length)
     expect(merged.short[0]).toBe('study abroad sop')
   })
+
+  it('treats research terms as demand and model extras as synthesized', () => {
+    const merged = mergeBriefKeywords({
+      researchShort: ['study abroad', 'sop writing', 'sop sample', 'sop tips', 'sop format'],
+      researchLong: [
+        'how to write a study abroad sop',
+        'study abroad statement of purpose tips',
+        'sop for study abroad programs',
+        'study abroad sop examples 2026',
+      ],
+      modelShort: ['study abroad', 'invented filler kw'],
+      modelLong: ['How to write a study abroad SOP?'],
+      primaryTerm: 'study abroad statement of purpose',
+    })
+    expect(merged.shortTerms.find((t) => t.term === 'study abroad')?.source).toBe('demand')
+    expect(merged.shortTerms.find((t) => t.term === 'invented filler kw')?.source).toBe('synthesized')
+    expect(merged.longTailTerms.some((t) => t.term.endsWith('?'))).toBe(false)
+    expect(merged.short.length).toBeGreaterThanOrEqual(KEYWORD_REQUIREMENTS.SHORT_MIN)
+    expect(merged.longTail.length).toBeGreaterThanOrEqual(KEYWORD_REQUIREMENTS.LONG_TAIL_MIN)
+  })
 })
 
 function makeCompliantBody(short: string[], longTail: string[]) {

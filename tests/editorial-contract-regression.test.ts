@@ -179,4 +179,11 @@ describe('prompts.ts · system-prompt guardrail regression', () => {
     expect(prompt).toContain('PRONOUN CLARITY')
     expect(prompt).toMatch(/"It then compares"/)
   })
+
+  it('seals a demand-vs-synthesized keyword contract instead of hard-blocking every coverage term', () => {
+    expect(prompt).toContain('KEYWORD CONTRACT')
+    expect(prompt).toMatch(/DEMAND short keywords/i)
+    expect(prompt).not.toMatch(/missing any one = HARD BLOCK/)
+    expect(prompt).not.toMatch(/FAQ question is the cleanest slot/)
+  })
 })

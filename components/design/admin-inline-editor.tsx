@@ -11,6 +11,17 @@ import { DRAFT_RENDERER_SAFE_CHARS, inspectDraftIntegrity } from '@/lib/seoFacto
 import { shipGateFromAuditJson, shipGateFromPersistedReview, shipGateFromResponse, shipGateReady, type ShipGate } from '@/lib/seoFactory/currentGate'
 import { ApproveConfirmModal } from './approve-confirm-modal'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+
+function asHintTerms(raw?: Array<{ term: string; source?: string }>): KeywordTerm[] | undefined {
+  if (!raw?.length) return undefined
+  return raw
+    .map((entry) => ({
+      term: String(entry?.term || '').trim(),
+      source: entry?.source === 'synthesized' ? 'synthesized' as const : 'demand' as const,
+    }))
+    .filter((entry) => entry.term)
+}
 
 const C = {
   surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -100,6 +111,8 @@ type Props = {
   competingUrls?: Array<{ url?: string; title?: string; primaryKeyword?: string | null } | string>
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: Array<{ term: string; source?: string }>
+  longTailKeywordTerms?: Array<{ term: string; source?: string }>
   /** Canonical ship-gate snapshot from the latest audit/fix response. `null`
    *  (the initial state and any state after an unchecked content change) means
    *  "unknown" — the owning modal must NOT claim the draft passes. */
@@ -128,7 +141,7 @@ function severityBadge(s: 'blocker' | 'warning') {
   }
 }
 
-export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, onShipReadyChange, onApprove, approving, onJobAttached, title, topic, persistedAuditJson, gateBindGeneration = 0 }: Props) {
+export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange, contentType, primaryKeyword, indexable, region, targetUrl, reviewModel, onReviewModelChange, competingSnippets, competingUrls, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, onShipReadyChange, onApprove, approving, onJobAttached, title, topic, persistedAuditJson, gateBindGeneration = 0 }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -478,7 +491,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft, persistFixedContent, requiredShortKeywords, requiredLongTailKeywords, competingUrls, region, targetUrl])
+  }, [content, jobId, onChange, onScoreChange, contentType, primaryKeyword, indexable, reviewModel, fetchLatestDraft, persistFixedContent, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, competingUrls, region, targetUrl])
 
   // One closed Audit & Fix loop: audit → deterministic repair → targeted AI
   // patch → re-audit, repeated server-side until gates clear or the bounded
@@ -542,7 +555,15 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       // the last server audit must evaluate that exact corrected version.
       let reviewContent = data.fixedContent || contentToFix
       for (let boundary = 0; boundary < 2; boundary++) {
-        const hint = { contentType, primaryKeyword, region, requiredShortKeywords, requiredLongTailKeywords }
+        const hint = {
+          contentType,
+          primaryKeyword,
+          region,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          shortKeywordTerms: asHintTerms(shortKeywordTerms),
+          longTailKeywordTerms: asHintTerms(longTailKeywordTerms),
+        }
         const review = await superviseEditorial({ content: reviewContent, hint, signal: controller.signal }, {
           grammar: md => runHarperGrammar(md, controller.signal, region),
           autofix: md => fixHarperIssues(md, undefined, region),
@@ -954,6 +975,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(competingUrls?.length ? { competingUrls } : {}),
     ...(requiredShortKeywords?.length ? { requiredShortKeywords } : {}),
     ...(requiredLongTailKeywords?.length ? { requiredLongTailKeywords } : {}),
+    ...(asHintTerms(shortKeywordTerms)?.length ? { shortKeywordTerms: asHintTerms(shortKeywordTerms) } : {}),
+    ...(asHintTerms(longTailKeywordTerms)?.length ? { longTailKeywordTerms: asHintTerms(longTailKeywordTerms) } : {}),
   }
 
   const allBusy = busy || fixingAll || fixingWarnings || fixingBlockers || disabled
@@ -1344,6 +1367,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     primaryKeyword,
                     requiredShortKeywords,
                     requiredLongTailKeywords,
+                    shortKeywordTerms: asHintTerms(shortKeywordTerms),
+                    longTailKeywordTerms: asHintTerms(longTailKeywordTerms),
                     region,
                     contentType,
                     audience: topic || title,

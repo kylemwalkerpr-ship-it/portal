@@ -534,6 +534,8 @@ export type ResolveContentSpecArgs = {
   primaryKeyword: string
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: Array<{ term?: string; phrase?: string; source?: string }>
+  longTailKeywordTerms?: Array<{ term?: string; phrase?: string; source?: string }>
   /** Live-verified official citation URLs (from assembleDraftSourceAllowlist). */
   verifiedSourceUrls?: string[]
   outline?: string[]
@@ -569,9 +571,23 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
     return { spec: null, reason: `canonicalUrl is not a URL: "${args.canonicalUrl}"` }
   }
   const seenKeywords = new Set<string>()
+  const synthesized = new Set(
+    [...(args.shortKeywordTerms || []), ...(args.longTailKeywordTerms || [])]
+      .filter((t) => String(t?.source || '') === 'synthesized')
+      .map((t) => String(t.term || t.phrase || '').trim().toLowerCase())
+      .filter(Boolean),
+  )
   const requiredKeywords: ContentSpecKeyword[] = [
-    ...(args.requiredShortKeywords || []).map((phrase) => ({ phrase, kind: 'short' as const })),
-    ...(args.requiredLongTailKeywords || []).map((phrase) => ({ phrase, kind: 'long_tail' as const })),
+    ...(args.requiredShortKeywords || []).map((phrase) => ({
+      phrase,
+      kind: 'short' as const,
+      ...(synthesized.has(String(phrase || '').trim().toLowerCase()) ? { optional: true } : {}),
+    })),
+    ...(args.requiredLongTailKeywords || []).map((phrase) => ({
+      phrase,
+      kind: 'long_tail' as const,
+      ...(synthesized.has(String(phrase || '').trim().toLowerCase()) ? { optional: true } : {}),
+    })),
   ].map((keyword) => ({ ...keyword, phrase: String(keyword.phrase || '').trim().replace(/\s+/g, ' ') }))
     .filter((keyword) => {
       const key = keyword.phrase.toLowerCase()

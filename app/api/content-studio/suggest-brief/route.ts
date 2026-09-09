@@ -10,6 +10,7 @@ import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
 import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
+import { keywordContractForDraft, renderKeywordContractBrief, sanitizeBriefOutline } from '@/lib/seoFactory/keywordContract'
 import { buildSectionBudgets } from '@/lib/seoFactory/prompts'
 import { suggestInventoryInterlinks } from '@/lib/seoFactory/estateInterlinks'
 import { preferRegionInterlinks } from '@/lib/seoFactory/studioInterlinks'
@@ -97,6 +98,13 @@ export async function POST(req: NextRequest) {
     const researchCtx = await loadResearchDemandContext(topic, primaryKeyword, region)
     const pickedKw = pickResearchKeywords(researchCtx, topic)
     const researchBlock = formatResearchPromptBlock(researchCtx, pickedKw)
+    const seedKeywordContract = keywordContractForDraft({
+      primaryKeyword,
+      requiredShortKeywords: pickedKw.shortTail,
+      requiredLongTailKeywords: pickedKw.longTail,
+      shortKeywordTerms: (pickedKw.shortTail || []).map((term) => ({ term, source: 'demand' as const })),
+      longTailKeywordTerms: (pickedKw.longTail || []).map((term) => ({ term, source: 'demand' as const })),
+    })
     const completedWork = Array.isArray(body.completedWork)
       ? body.completedWork.map((w: any) => typeof w === 'object' && w ? { slug: String(w.slug || ''), topic: String(w.topic || '') } : { slug: '', topic: '' }).filter((w) => w.slug)
       : [] as Array<{ slug: string; topic: string }>
@@ -178,8 +186,8 @@ export async function POST(req: NextRequest) {
             ? '6–8'
             : '8–10'
       } H2s sized so ABSOLUTE SECTION QUOTAS (min–max per H2) sum to ${minWords}–${maxWords} words`,
-      '  "shortTail": ["kw", ...]                   // 5–8 short-tail keywords (1–3 words each)',
-      '  "longTail": ["longer phrase", ...]          // 4–6 long-tail keywords (4+ words each). These are COVERAGE terms, never literal text: the drafter must use them naturally in prose/FAQ answers and must NEVER write the keyword string itself as an FAQ question — questions are in natural reader English ("How much does an Australia student visa cost?", never "is it possible to australia student visa…").',
+      '  "shortTail": ["kw", ...]                   // echo KEYWORD CONTRACT demand shorts (1–3 words). Do not invent replacements.',
+      '  "longTail": ["longer phrase", ...]          // echo KEYWORD CONTRACT demand long-tails (4+ words). These are COVERAGE terms, never literal FAQ questions or H2s. The drafter uses them naturally in prose/FAQ answers.',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
       '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — never invent a path; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
@@ -197,15 +205,17 @@ export async function POST(req: NextRequest) {
       '1. NEVER suggest a URL not in the interlink allowlist — use ONLY verified internal links. Select a cohesive reader journey, not merely the first URLs: topical authority → practical next step → service handoff only when the query has commercial intent.',
       '2. NEVER duplicate an H2, keyword placement, or slug from completed prior work.',
       `3. Word count is gated by estate type: blogs 800–1200 (apex yousafe-consultancy /blog), regional guides 1200–2000 (usa/uk/ca/au), caseworks canonicals 2200–2500. This brief is ${minWords}–${maxWords} (target ~${targetWords}). Subdivide that window across h2Outline — every H2 gets a min/max; honouring them must land the draft inside the gate.`,
-      '4. Every short-tail keyword must appear in kwH2Map mapped to exactly one H2 section.',
-      '5. Every long-tail keyword must also appear in kwH2Map. Word each long-tail keyword AS a natural FAQ question ("how much is australia student visa" → FAQ "How much does an Australia student visa cost?") and map it to the FAQ H2 so the drafting AI answers the real demand query instead of stuffing the term into prose.',
+      '4. Echo the KEYWORD CONTRACT demand terms. Do not invent extra required keywords or paraphrase them into unplaceable FAQ-question strings.',
+      '5. Map each demand keyword to exactly one H2 in kwH2Map. Long-tails belong in the FAQ section as ANSWER coverage, never as the question text and never as an H2 heading.',
       '6. Sources must be real, live, and on-topic. PREFER the VERIFIED SOURCE ALLOWLIST verbatim (government departments, official school pages, intergovernmental bodies, issuing bodies). You may also cite institutional pages (.org / .edu / official exam boards) when they directly support a claim in THIS article. Never Wikipedia, social media, URL shorteners, content-mill blogs, or low-authority sites. Every URL is live-checked; dead or off-topic citations are stripped before ship.',
       '7. targetSlug must be kebab-case, descriptive, and not collide with any completedWork slug.',
       '8. The h2Outline order must follow search intent flow: answer-first → evidence → process → FAQ.',
-      '9. Prefer keywords with clear informational or commercial intent — avoid terms without a search volume signal.',
+      '9. Prefer keywords from MASTER ENGINE / UBERSUGGEST. Do not replace the KEYWORD CONTRACT with invented coverage terms.',
       '10. Return ONLY valid JSON — no markdown wrapper, no explanations outside the JSON.',
       '',
       formatContractBriefBlock(),
+      '',
+      renderKeywordContractBrief(seedKeywordContract, primaryKeyword),
       '',
       'TITLE SAFETY: suggestedH1 must be a reader-ready title, not the primary keyword alone. It must add a specific benefit, audience, process, comparison, or accurate year. Never return a lowercase keyword-only H1.',
       'LAYOUT SAFETY: h2Outline is the document skeleton. Include exactly one In 60 seconds H2, one Table of contents marker, one FAQ H2, one Sources H2, and one Worked Example H2; do not put Sources or Related guides into FAQ questions.',
@@ -261,6 +271,7 @@ export async function POST(req: NextRequest) {
         ? `SELECTED DISCOVER CONTRACT (canonical — preserve this strategy):\nPriority: ${String(opportunity.priorityTier || 'unranked')} · value ${Number(opportunity.valueScore) || 0}/100 · play ${String(opportunity.play || '')} · intent ${String(opportunity.intent || '')}\nHarmonized title: ${String(opportunity.title || '')}\nEvidence: ${Array.isArray(opportunity.signals) ? opportunity.signals.map(String).join(' | ') : ''}\nCluster: ${JSON.stringify(opportunity.cluster || null)}\nQUALITY-FIRST RULE: one canonical page must satisfy this whole cluster. Prefer expanding an existing owner when mode=expand. Do not split related queries into multiple pages and do not create a low-value page merely to increase output volume.`
         : '',
       researchBlock,
+      renderKeywordContractBrief(seedKeywordContract, primaryKeyword),
       radarGaps.length > 0
         ? `RADAR GAP OPPORTUNITIES (underserved demand — fill these): ${radarGaps.join(' | ')}`
         : '',
@@ -388,13 +399,15 @@ export async function POST(req: NextRequest) {
     droppedOffRegion.push(...kwMapFilter.dropped)
 
     const merged = mergeBriefKeywords({
-      modelShort: [...pickedKw.shortTail, ...shortFilter.kept],
-      modelLong: [...pickedKw.longTail, ...longFilter.kept],
+      researchShort: pickedKw.shortTail,
+      researchLong: pickedKw.longTail,
+      modelShort: shortFilter.kept,
+      modelLong: longFilter.kept,
       primaryTerm: primaryKeyword,
     })
 
     const normalizeHeading = (value: string) => String(value || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
-    const finalOutlineUncapped = ensureMinimumOutline(outlineFilter.kept.length ? outlineFilter.kept : [
+    const skeletonOutline = [
       'In 60 seconds',
       `What ${primaryKeyword} means for this reader`,
       'Eligibility and requirements',
@@ -404,7 +417,12 @@ export async function POST(req: NextRequest) {
       'Worked Example',
       'FAQ',
       'Sources',
-    ])
+    ]
+    const sanitizedModelOutline = sanitizeBriefOutline(
+      outlineFilter.kept,
+      [...merged.short, ...merged.longTail, primaryKeyword],
+    )
+    const finalOutlineUncapped = ensureMinimumOutline(sanitizedModelOutline.length ? sanitizedModelOutline : skeletonOutline)
     // Minimum-outline guarantee: legal/immigration guides need a real
     // skeleton — a 5-section brief invites truncated expansion, and the
     // review gate now BLOCKS when canonical outline sections are absent
@@ -427,9 +445,9 @@ export async function POST(req: NextRequest) {
         completedKwH2Map[keyword] = exact
         continue
       }
-      // Long-tail keywords belong in the FAQ question slot because that is
-      // where the drafting AI answers the demand query naturally. Prefer the
-      // FAQ H2 over any prose heading; only fall back when no FAQ exists.
+      // Long-tail keywords belong in the FAQ ANSWER, never as the question
+      // text. Harper is prose-only and cannot rewrite an H2/FAQ question that
+      // is a pasted demand phrase. Prefer the FAQ H2 as the placement target.
       if (longTailSet.has(keyword.toLowerCase())) {
         completedKwH2Map[keyword] = faqHeading || finalOutline[1] || finalOutline[0]
         continue
@@ -522,6 +540,8 @@ export async function POST(req: NextRequest) {
       sectionBudgets,
       shortTail: merged.short.slice(0, 8),
       longTail: merged.longTail.slice(0, 6),
+      shortKeywordTerms: merged.shortTerms.slice(0, 8),
+      longTailKeywordTerms: merged.longTailTerms.slice(0, 6),
       kwH2Map: completedKwH2Map,
       sectionPlan,
       sources: finalSources,

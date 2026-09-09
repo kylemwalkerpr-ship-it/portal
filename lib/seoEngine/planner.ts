@@ -357,26 +357,54 @@ export function isFabricatedSyntheticTerm(term: string): boolean {
 }
 
 /**
+ * Coverage terms Harper/review cannot honestly place without stuffing.
+ * Briefing must never emit these as required demand — a later prose-only
+ * Harper pass cannot invent a grammatical slot for a broken template.
+ */
+export function isUnplaceableCoverageTerm(term: string): boolean {
+  const t = String(term || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!t) return false
+  if (isFabricatedSyntheticTerm(t)) return true
+  if (/\?$/.test(t)) return true
+  if (/^(is it possible to|do you need a|requirements for a)\b/.test(t)) return true
+  if (/\bhow to apply for how to apply for\b/.test(t)) return true
+  if (/\bin 2026 explained\b/.test(t)) return true
+  return false
+}
+
+/**
  * Merge a model-generated brief keyword list with the deterministic
  * partitioner so the brief ALWAYS ships ≥5 short + ≥4 long-tail keywords.
  * Model terms come first; partitioner-synthesized terms fill any shortfall.
  * The primary keyword is excluded from the returned arrays — it appears in
  * the title/H1 by definition and has its own keyword_stuffing check.
+ *
+ * Unplaceable template mashups are never promoted to demand. They either
+ * drop (when the floor can be met without them) or stay synthesized so
+ * Harper/review can warn instead of hard-blocking an unfixable phrase.
  */
 export function mergeBriefKeywords(opts: {
+  /** Engine ∪ Ubersuggest demand pool — always demand when placeable. */
+  researchShort?: string[]
+  researchLong?: string[]
   modelShort?: string[]
   modelLong?: string[]
   primaryTerm?: string
   maxShort?: number
   maxLong?: number
 }): { short: string[]; longTail: string[]; shortTerms: KeywordTerm[]; longTailTerms: KeywordTerm[] } {
+  const researchShort = (opts.researchShort || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
+  const researchLong = (opts.researchLong || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
   const modelShort = (opts.modelShort || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
   const modelLong = (opts.modelLong || []).map(String).filter((s) => s && s.trim()).map((s) => s.trim())
   const primaryL = (opts.primaryTerm || '').trim().toLowerCase()
   const maxShort = Math.max(5, opts.maxShort ?? 8)
   const maxLong = Math.max(4, opts.maxLong ?? 6)
 
-  const partitioned = partitionKeywords([...modelShort, ...modelLong], opts.primaryTerm || '')
+  const partitioned = partitionKeywords(
+    [...researchShort, ...researchLong, ...modelShort, ...modelLong],
+    opts.primaryTerm || '',
+  )
   const partitionSource = keywordSourceMap([...partitioned.shortTerms, ...partitioned.longTailTerms])
   const shortTerms: KeywordTerm[] = []
   const longTailTerms: KeywordTerm[] = []
@@ -386,23 +414,53 @@ export function mergeBriefKeywords(opts: {
     if (arr.some((x) => x.term.toLowerCase() === norm)) return
     arr.push({ term: t, source })
   }
-  // Model/brief terms are real demand signals.
-  for (const t of modelShort) pushUnique(shortTerms, t, 'demand')
-  for (const t of modelLong) pushUnique(longTailTerms, t, 'demand')
-  // Partitioner fill carries whatever provenance the partitioner assigned.
+  const researchShortKeys = new Set(researchShort.map((t) => t.toLowerCase()))
+  const researchLongKeys = new Set(researchLong.map((t) => t.toLowerCase()))
+  // Research demand first. Harper/review can only honestly cover these.
+  for (const t of researchShort) {
+    if (isUnplaceableCoverageTerm(t)) continue
+    pushUnique(shortTerms, t, 'demand')
+  }
+  for (const t of researchLong) {
+    if (isUnplaceableCoverageTerm(t)) continue
+    pushUnique(longTailTerms, t, 'demand')
+  }
+  // Brief-model extras: keep only placeable phrases. They are synthesized
+  // unless they already appeared in the research pool (same term, demand).
+  for (const t of modelShort) {
+    if (isUnplaceableCoverageTerm(t)) continue
+    pushUnique(shortTerms, t, researchShortKeys.has(t.toLowerCase()) ? 'demand' : 'synthesized')
+  }
+  for (const t of modelLong) {
+    if (isUnplaceableCoverageTerm(t)) continue
+    pushUnique(longTailTerms, t, researchLongKeys.has(t.toLowerCase()) ? 'demand' : 'synthesized')
+  }
+  // Partitioner fill — synthesized unless the research pool already owns it.
   for (const t of partitioned.short) {
     if (shortTerms.length >= maxShort) break
-    pushUnique(shortTerms, t, partitionSource.get(t.toLowerCase()) ?? 'synthesized')
+    if (isUnplaceableCoverageTerm(t) && shortTerms.length >= KEYWORD_REQUIREMENTS.SHORT_MIN) continue
+    const source = isUnplaceableCoverageTerm(t)
+      ? 'synthesized'
+      : researchShortKeys.has(t.toLowerCase())
+        ? 'demand'
+        : (partitionSource.get(t.toLowerCase()) ?? 'synthesized')
+    pushUnique(shortTerms, t, source)
   }
   for (const t of partitioned.longTail) {
     if (longTailTerms.length >= maxLong) break
-    pushUnique(longTailTerms, t, partitionSource.get(t.toLowerCase()) ?? 'synthesized')
+    if (isUnplaceableCoverageTerm(t) && longTailTerms.length >= KEYWORD_REQUIREMENTS.LONG_TAIL_MIN) continue
+    const source = isUnplaceableCoverageTerm(t)
+      ? 'synthesized'
+      : researchLongKeys.has(t.toLowerCase())
+        ? 'demand'
+        : (partitionSource.get(t.toLowerCase()) ?? 'synthesized')
+    pushUnique(longTailTerms, t, source)
   }
   return {
-    short: shortTerms.map((entry) => entry.term),
-    longTail: longTailTerms.map((entry) => entry.term),
-    shortTerms,
-    longTailTerms,
+    short: shortTerms.slice(0, maxShort).map((entry) => entry.term),
+    longTail: longTailTerms.slice(0, maxLong).map((entry) => entry.term),
+    shortTerms: shortTerms.slice(0, maxShort),
+    longTailTerms: longTailTerms.slice(0, maxLong),
   }
 }
 

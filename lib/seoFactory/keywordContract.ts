@@ -1,5 +1,5 @@
 /** One canonical keyword contract for audit, editor, approval, and shipping. */
-import { KEYWORD_REQUIREMENTS, partitionKeywords, isFabricatedSyntheticTerm } from '@/lib/seoEngine/planner'
+import { KEYWORD_REQUIREMENTS, partitionKeywords, isFabricatedSyntheticTerm, isUnplaceableCoverageTerm } from '@/lib/seoEngine/planner'
 import { coversKeywordIntent } from '@/lib/seoFactory/contentQualityGate'
 import {
   keywordSourceMap,
@@ -21,6 +21,40 @@ export interface KeywordContract {
   longTailKeywordTerms: KeywordTerm[]
   /** True when the partitioner had to backfill either floor. */
   backfilled: boolean
+}
+
+function demoteUnplaceableTerms(terms: KeywordTerm[]): KeywordTerm[] {
+  return terms.map((entry) => (
+    isUnplaceableCoverageTerm(entry.term)
+      ? { term: entry.term, source: 'synthesized' as KeywordSource }
+      : entry
+  ))
+}
+
+function sealContract(contract: KeywordContract): KeywordContract {
+  const shortKeywordTerms = demoteUnplaceableTerms(contract.shortKeywordTerms)
+  const longTailKeywordTerms = demoteUnplaceableTerms(contract.longTailKeywordTerms)
+  return {
+    ...contract,
+    requiredShortKeywords: shortKeywordTerms.map((entry) => entry.term),
+    requiredLongTailKeywords: longTailKeywordTerms.map((entry) => entry.term),
+    shortKeywordTerms,
+    longTailKeywordTerms,
+  }
+}
+
+function splitKeywordBag(raw: unknown): { short: string[]; long: string[] } {
+  const short: string[] = []
+  const long: string[] = []
+  if (!Array.isArray(raw)) return { short, long }
+  for (const item of raw) {
+    const term = String(item || '').trim()
+    if (!term) continue
+    const words = term.split(/\s+/).filter(Boolean).length
+    if (words <= 3) short.push(term)
+    else if (words >= 4) long.push(term)
+  }
+  return { short, long }
 }
 
 /**
@@ -170,7 +204,9 @@ export function resolveKeywordContract(input: {
       // machine backfill, never real demand — typing them 'demand' would turn
       // every old queue draft into a permanent missing_*_keyword blocker after
       // a template change (the fabrications no longer round-trip).
-      if (isFabricatedSyntheticTerm(term)) return { term, source: 'synthesized' as KeywordSource }
+      if (isFabricatedSyntheticTerm(term) || isUnplaceableCoverageTerm(term)) {
+        return { term, source: 'synthesized' as KeywordSource }
+      }
       return { term, source: 'demand' as KeywordSource }
     })
   }
@@ -178,13 +214,13 @@ export function resolveKeywordContract(input: {
   const short = asTerms(input.requiredShortKeywords, input.shortKeywordTerms)
   const longTail = asTerms(input.requiredLongTailKeywords, input.longTailKeywordTerms)
   if (short.length >= KEYWORD_REQUIREMENTS.SHORT_MIN && longTail.length >= KEYWORD_REQUIREMENTS.LONG_TAIL_MIN) {
-    return {
+    return sealContract({
       requiredShortKeywords: short.map((entry) => entry.term),
       requiredLongTailKeywords: longTail.map((entry) => entry.term),
       shortKeywordTerms: short,
       longTailKeywordTerms: longTail,
       backfilled: false,
-    }
+    })
   }
 
   const partition = partitionKeywords(
@@ -199,18 +235,163 @@ export function resolveKeywordContract(input: {
   const supplied = keywordSourceMap([...short, ...longTail])
   const withProvenance = (terms: KeywordTerm[]): KeywordTerm[] => terms.map(({ term, source }) => ({
     term,
-    source: isFabricatedSyntheticTerm(term)
+    source: isFabricatedSyntheticTerm(term) || isUnplaceableCoverageTerm(term)
       ? ('synthesized' as KeywordSource)
       : (supplied.get(term.toLowerCase()) ?? source),
   }))
   const shortTerms = withProvenance(partition.shortTerms)
   const longTailTerms = withProvenance(partition.longTailTerms)
 
-  return {
+  return sealContract({
     requiredShortKeywords: shortTerms.map((entry) => entry.term),
     requiredLongTailKeywords: longTailTerms.map((entry) => entry.term),
     shortKeywordTerms: shortTerms,
     longTailKeywordTerms: longTailTerms,
     backfilled: true,
+  })
+}
+
+/**
+ * Single hop from a brief / generate payload to the contract the drafter,
+ * Harper, audit, and ship all share. If the brief already met the floors,
+ * this MUST NOT re-run the partitioner and invent extra coverage terms.
+ */
+export function keywordContractForDraft(input: {
+  primaryKeyword?: string | null
+  topic?: string | null
+  keywords?: unknown
+  requiredShortKeywords?: unknown
+  requiredLongTailKeywords?: unknown
+  shortKeywordTerms?: unknown
+  longTailKeywordTerms?: unknown
+}): KeywordContract {
+  const providedShort = Array.isArray(input.requiredShortKeywords)
+    ? input.requiredShortKeywords.map(String).map((t) => t.trim()).filter(Boolean)
+    : []
+  const providedLong = Array.isArray(input.requiredLongTailKeywords)
+    ? input.requiredLongTailKeywords.map(String).map((t) => t.trim()).filter(Boolean)
+    : []
+  const bag = (!providedShort.length && !providedLong.length)
+    ? splitKeywordBag(input.keywords)
+    : { short: providedShort, long: providedLong }
+  return resolveKeywordContract({
+    primaryKeyword: input.primaryKeyword,
+    topic: input.topic,
+    requiredShortKeywords: bag.short,
+    requiredLongTailKeywords: bag.long,
+    shortKeywordTerms: input.shortKeywordTerms,
+    longTailKeywordTerms: input.longTailKeywordTerms,
+  })
+}
+
+function demandTerms(terms: KeywordTerm[]): string[] {
+  return terms.filter((t) => t.source === 'demand').map((t) => t.term)
+}
+
+function synthesizedTerms(terms: KeywordTerm[]): string[] {
+  return terms.filter((t) => t.source === 'synthesized').map((t) => t.term)
+}
+
+/**
+ * The one keyword brief injected into briefing, drafting, and Harper.
+ * Demand terms are required coverage. Synthesized floor-fill is optional —
+ * never a heading, never an FAQ question, never a ship blocker.
+ */
+export function renderKeywordContractBrief(
+  contract: KeywordContract,
+  primaryKeyword?: string,
+): string {
+  const primary = String(primaryKeyword || '').trim()
+  const demandShort = demandTerms(contract.shortKeywordTerms)
+  const demandLong = demandTerms(contract.longTailKeywordTerms)
+  const synth = [
+    ...synthesizedTerms(contract.shortKeywordTerms),
+    ...synthesizedTerms(contract.longTailKeywordTerms),
+  ]
+  const bullet = (terms: string[]) => (terms.length ? terms.map((t) => `    - "${t}"`).join('\n') : '    - (none)')
+  return [
+    '## KEYWORD CONTRACT (single source of truth — brief, drafter, Harper, audit)',
+    primary ? `- Primary keyword (title/H1 only; not a coverage checkbox): "${primary}"` : '',
+    '- DEMAND short keywords (required, 1–4 natural uses, never as an H2 or FAQ question):',
+    bullet(demandShort),
+    '- DEMAND long-tail keywords (required, 1–2 natural uses in prose or an FAQ ANSWER — never as the question text):',
+    bullet(demandLong),
+    '- SYNTHESIZED floor-fill (optional; place only if natural; never stuff; never a ship blocker):',
+    bullet(synth),
+    '- Echo these exact phrases. Do not invent replacements or extra required keywords.',
+    '- If a term has no clean slot, omit it. Harper cannot honestly stuff it later.',
+  ].filter(Boolean).join('\n')
+}
+
+export function demandKeywordPhrases(contract: KeywordContract): string[] {
+  return [
+    ...demandTerms(contract.shortKeywordTerms),
+    ...demandTerms(contract.longTailKeywordTerms),
+  ]
+}
+
+export function parseKeywordPhrases(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw) || !raw.length) return undefined
+  const list = raw.map((item) => String(item || '').trim()).filter(Boolean)
+  return list.length ? list : undefined
+}
+
+export function parseKeywordTerms(raw: unknown): KeywordTerm[] | undefined {
+  if (!Array.isArray(raw) || !raw.length) return undefined
+  const list = keywordTermList(raw as Array<string | KeywordTerm>)
+  return list.length ? list : undefined
+}
+
+/**
+ * Strip briefing H2s Harper cannot honestly rewrite: verbatim keyword pastes
+ * and question-mark FAQ items listed as sibling sections. Structural headings
+ * (In 60 seconds / FAQ / Sources / Worked Example / TOC) are kept.
+ */
+export function sanitizeBriefOutline(headings: string[], keywords: string[] = []): string[] {
+  const keywordNorms = new Set(
+    keywords
+      .map((k) => String(k || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean),
+  )
+  const structural = /^(in 60 seconds|table of contents|faq|sources|worked example)$/i
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of headings || []) {
+    const heading = String(raw || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
+    if (!heading) continue
+    const key = heading.toLowerCase()
+    if (seen.has(key)) continue
+    if (!structural.test(heading)) {
+      if (/\?$/.test(heading)) continue
+      const norm = heading.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+      if (keywordNorms.has(norm)) continue
+    }
+    seen.add(key)
+    out.push(heading)
   }
+  return out
+}
+
+/** Render a KeywordContract already sealed by briefing/pipeline — never re-partition. */
+export function keywordContractFromLists(input: {
+  requiredShortKeywords?: string[]
+  requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
+}): KeywordContract {
+  const short = Array.isArray(input.requiredShortKeywords) ? input.requiredShortKeywords.map(String).map((t) => t.trim()).filter(Boolean) : []
+  const longTail = Array.isArray(input.requiredLongTailKeywords) ? input.requiredLongTailKeywords.map(String).map((t) => t.trim()).filter(Boolean) : []
+  const shortKeywordTerms = input.shortKeywordTerms?.length
+    ? input.shortKeywordTerms
+    : short.map((term) => ({ term, source: 'demand' as KeywordSource }))
+  const longTailKeywordTerms = input.longTailKeywordTerms?.length
+    ? input.longTailKeywordTerms
+    : longTail.map((term) => ({ term, source: 'demand' as KeywordSource }))
+  return sealContract({
+    requiredShortKeywords: short,
+    requiredLongTailKeywords: longTail,
+    shortKeywordTerms,
+    longTailKeywordTerms,
+    backfilled: false,
+  })
 }

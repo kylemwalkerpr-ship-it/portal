@@ -17,6 +17,7 @@
 import { AHREFS_META_MAX, AHREFS_META_MIN, clampMetaToAhrefs, metaDescriptionLength } from '@/lib/seoFactory/ahrefsIssues'
 import { sanitizeLeakedMarkup } from '@/lib/seoFactory/leakedMarkup'
 import { stripLeakedJsonLdFromBody } from '@/lib/seoFactory/jsonLdBody'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 /** Brief / SERP sweet spot. The ship gate is Ahrefs 70–160; prompts ask 140–160. */
 export const BRIEF_META_MIN = 140
@@ -33,6 +34,8 @@ export type EditorSeoHint = {
   targetWords?: number
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   region?: string | null
   contentType?: string | null
   audience?: string | null
@@ -336,11 +339,15 @@ export function computeSeoScore(md: string, hint?: EditorSeoHint): { score: numb
     pass.push(`Meta description ${metaLen} chars (${BRIEF_META_MIN}–${BRIEF_META_MAX} SERP band)`)
   }
 
-  const required = listBriefKeywords(hint)
+  const required = listDemandBriefKeywords(hint)
   if (required.length) {
     const covered = required.length - missingBriefKeywords(md, hint).length
-    if (covered >= Math.max(1, Math.floor(required.length * 0.7))) pass.push(`${covered}/${required.length} brief keywords naturally present`)
-    else fail.push(`Only ${covered}/${required.length} brief keywords present`)
+    if (covered >= Math.max(1, Math.floor(required.length * 0.7))) pass.push(`${covered}/${required.length} demand keywords naturally present`)
+    else fail.push(`Only ${covered}/${required.length} demand keywords present`)
+  }
+  const synthMissing = listSynthesizedBriefKeywords(hint).filter((k) => !extractProse(md).toLowerCase().includes(k.toLowerCase()))
+  if (synthMissing.length) {
+    warn.push(`${synthMissing.length} synthesized coverage term(s) unused (advisory — not a Harper blocker)`)
   }
 
   const score = Math.max(5, Math.round((pass.length / Math.max(1, pass.length + fail.length)) * 100))
@@ -361,9 +368,36 @@ export function listBriefKeywords(hint?: EditorSeoHint): string[] {
   return out
 }
 
+function termsBySource(hint: EditorSeoHint | undefined, source: 'demand' | 'synthesized'): string[] {
+  const terms = [...(hint?.shortKeywordTerms || []), ...(hint?.longTailKeywordTerms || [])]
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const entry of terms) {
+    if (String(entry?.source || 'demand') !== source) continue
+    const k = String(entry?.term || '').trim()
+    if (!k) continue
+    const key = k.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(k)
+  }
+  return out
+}
+
+/** Demand coverage only — synthesized floor-fill is never a Harper SEO fail. */
+export function listDemandBriefKeywords(hint?: EditorSeoHint): string[] {
+  const demand = termsBySource(hint, 'demand')
+  if (demand.length || (hint?.shortKeywordTerms?.length || hint?.longTailKeywordTerms?.length)) return demand
+  return listBriefKeywords(hint)
+}
+
+export function listSynthesizedBriefKeywords(hint?: EditorSeoHint): string[] {
+  return termsBySource(hint, 'synthesized')
+}
+
 export function missingBriefKeywords(md: string, hint?: EditorSeoHint): string[] {
   const prose = extractProse(md).toLowerCase()
-  return listBriefKeywords(hint).filter((k) => !prose.includes(k.toLowerCase()))
+  return listDemandBriefKeywords(hint).filter((k) => !prose.includes(k.toLowerCase()))
 }
 
 /**

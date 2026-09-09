@@ -1,4 +1,10 @@
-import { pruneUnplaceableSynthesizedKeywords, resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
+import {
+  keywordContractForDraft,
+  pruneUnplaceableSynthesizedKeywords,
+  renderKeywordContractBrief,
+  resolveKeywordContract,
+  sanitizeBriefOutline,
+} from '@/lib/seoFactory/keywordContract'
 
 describe('canonical job keyword contract', () => {
   it('backfills legacy jobs so editor and ship use the same non-empty floors', () => {
@@ -187,5 +193,97 @@ Estimate your tax, divide it into four payments, and send them by the quarterly 
     })
     expect(pruned.requiredShortKeywords.length).toBe(5)
     expect(pruned.requiredLongTailKeywords.length).toBe(4)
+  })
+})
+
+describe('keywordContractForDraft — briefing and pipeline share one sealed list', () => {
+  it('does not re-partition when the brief already meets the floors', () => {
+    const short = ['student visa', 'visa fee', 'australia visa', 'fee increase', 'visa cost']
+    const longTail = [
+      'australia student visa fee increase',
+      'student visa fees in australia',
+      'how to pay student visa fees',
+      'australia visa fee guide 2026',
+    ]
+    const contract = keywordContractForDraft({
+      primaryKeyword: 'australia student visa fee',
+      requiredShortKeywords: short,
+      requiredLongTailKeywords: longTail,
+      shortKeywordTerms: short.map((term) => ({ term, source: 'demand' as const })),
+      longTailKeywordTerms: longTail.map((term) => ({ term, source: 'demand' as const })),
+    })
+    expect(contract.backfilled).toBe(false)
+    expect(contract.requiredShortKeywords).toEqual(short)
+    expect(contract.requiredLongTailKeywords).toEqual(longTail)
+    expect(contract.shortKeywordTerms.every((t) => t.source === 'demand')).toBe(true)
+  })
+
+  it('demotes unplaceable FAQ-question strings so Harper never hard-blocks them', () => {
+    const contract = keywordContractForDraft({
+      primaryKeyword: 'student visa',
+      requiredShortKeywords: ['student visa', 'visa fee', 'visa cost', 'visa rules', 'visa help'],
+      requiredLongTailKeywords: [
+        'how much is a student visa?',
+        'requirements for a student visa',
+        'student visa processing time australia',
+        'student visa documents checklist 2026',
+      ],
+      shortKeywordTerms: ['student visa', 'visa fee', 'visa cost', 'visa rules', 'visa help'].map((term) => ({ term, source: 'demand' as const })),
+      longTailKeywordTerms: [
+        { term: 'how much is a student visa?', source: 'demand' },
+        { term: 'requirements for a student visa', source: 'demand' },
+        { term: 'student visa processing time australia', source: 'demand' },
+        { term: 'student visa documents checklist 2026', source: 'demand' },
+      ],
+    })
+    expect(contract.longTailKeywordTerms.find((t) => t.term === 'how much is a student visa?')?.source).toBe('synthesized')
+    expect(contract.longTailKeywordTerms.find((t) => t.term === 'requirements for a student visa')?.source).toBe('synthesized')
+    expect(contract.longTailKeywordTerms.find((t) => t.term === 'student visa processing time australia')?.source).toBe('demand')
+  })
+})
+
+describe('renderKeywordContractBrief', () => {
+  it('labels demand as required and synthesized as optional', () => {
+    const brief = renderKeywordContractBrief({
+      requiredShortKeywords: ['student visa', 'visa fee'],
+      requiredLongTailKeywords: ['how to apply student visa', 'student visa in 2026 explained'],
+      shortKeywordTerms: [
+        { term: 'student visa', source: 'demand' },
+        { term: 'visa fee', source: 'synthesized' },
+      ],
+      longTailKeywordTerms: [
+        { term: 'how to apply student visa', source: 'demand' },
+        { term: 'student visa in 2026 explained', source: 'synthesized' },
+      ],
+      backfilled: false,
+    }, 'student visa')
+    expect(brief).toContain('KEYWORD CONTRACT')
+    expect(brief).toContain('"student visa"')
+    expect(brief).toContain('"how to apply student visa"')
+    expect(brief).toContain('SYNTHESIZED floor-fill')
+    expect(brief).toContain('"visa fee"')
+    expect(brief).toContain('never a ship blocker')
+  })
+})
+
+describe('sanitizeBriefOutline — never ship H2s Harper cannot rewrite', () => {
+  it('drops question-mark FAQ items and verbatim keyword pastes, keeps structural headings', () => {
+    const outline = sanitizeBriefOutline(
+      [
+        'In 60 seconds',
+        'student visa',
+        'How much is a student visa?',
+        'Eligibility and requirements',
+        'FAQ',
+        'Sources',
+      ],
+      ['student visa', 'visa fee'],
+    )
+    expect(outline).toEqual([
+      'In 60 seconds',
+      'Eligibility and requirements',
+      'FAQ',
+      'Sources',
+    ])
   })
 })
