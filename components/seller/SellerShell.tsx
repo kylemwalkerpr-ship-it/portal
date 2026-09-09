@@ -3,6 +3,8 @@
 import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { DEFAULT_PALETTE_NAME, getPalette } from '@/components/marketplace/palettes'
+import { T, paletteCssVars } from '@/components/marketplace/tokens'
 
 interface SellerShellProps {
   title: string
@@ -21,33 +23,97 @@ const NAV_LINKS = [
 const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
 
+const sellerPalette = getPalette(DEFAULT_PALETTE_NAME).tokens
+const sellerTheme = {
+  ...paletteCssVars(sellerPalette),
+  '--portal-bg': '#F7FAF9',
+  '--portal-surface': '#FFFFFF',
+  '--portal-surface-2': '#F7FAF9',
+  '--portal-surface-3': '#EEF6F3',
+  '--portal-rule': '#D5E5DF',
+  '--portal-rule-soft': '#E5EEEA',
+  '--portal-accent': sellerPalette.indigo,
+  '--portal-accent-deep': sellerPalette.indigoDeep,
+  '--portal-accent-soft': sellerPalette.indigoSoft,
+  '--portal-ink': sellerPalette.ink,
+  '--portal-ink-mid': sellerPalette.inkMid,
+  '--portal-ink-soft': sellerPalette.inkSoft,
+  '--portal-moss': sellerPalette.moss,
+  '--portal-brick': sellerPalette.brick,
+  '--ui-primary': sellerPalette.indigo,
+  '--ui-brand': sellerPalette.indigoDeep,
+  '--ui-accent': sellerPalette.indigo,
+  '--ui-accent-deep': sellerPalette.indigoDeep,
+  '--ui-accent-soft': sellerPalette.indigoSoft,
+} as React.CSSProperties
+
 export default function SellerShell({ title, subtitle, children }: SellerShellProps) {
   const pathname = usePathname()
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F7F5F0', fontFamily: sans, color: '#1A1F2E' }}>
+    <div
+      className="ys-seller-marketplace"
+      style={{
+        ...sellerTheme,
+        minHeight: '100vh',
+        background: T.cream,
+        fontFamily: sans,
+        color: T.ink,
+      }}
+    >
+      {/*
+        Seller Marketplace UI uses the same emerald/neutral contract as the
+        public Marketplace. The !important declarations intentionally beat
+        legacy inline wizard styles that used dark paper fills behind dark
+        text; form controls stay white, readable, and keyboard-visible.
+      */}
+      <style>{`
+        .ys-seller-marketplace input:not([type='checkbox']):not([type='radio']),
+        .ys-seller-marketplace textarea,
+        .ys-seller-marketplace select {
+          background: var(--ys-vellum, #FFFFFF) !important;
+          color: var(--ys-ink, #17201D) !important;
+          border-color: #D5E5DF !important;
+        }
+        .ys-seller-marketplace input:not([type='checkbox']):not([type='radio']):focus,
+        .ys-seller-marketplace textarea:focus,
+        .ys-seller-marketplace select:focus {
+          border-color: var(--ys-indigo, #087A5B) !important;
+          box-shadow: 0 0 0 3px var(--ys-indigoSoft, rgba(8,122,91,0.14)) !important;
+          outline: none !important;
+        }
+        .ys-seller-marketplace input::placeholder,
+        .ys-seller-marketplace textarea::placeholder {
+          color: var(--ys-inkSoft, #5E6F68) !important;
+          opacity: 0.82;
+        }
+        .ys-seller-marketplace button:focus-visible,
+        .ys-seller-marketplace a:focus-visible {
+          outline: 3px solid #34D399;
+          outline-offset: 3px;
+        }
+      `}</style>
 
-      {/* Gold accent line at very top */}
-      <div style={{ height: '3px', background: 'linear-gradient(90deg, #9A7B3B 0%, #C4A45A 50%, #9A7B3B 100%)' }} />
+      {/* Bright emerald accent line */}
+      <div style={{ height: '3px', background: 'linear-gradient(90deg, #087A5B 0%, #34D399 50%, #087A5B 100%)' }} />
 
       {/* Top navigation */}
-      <nav style={{ background: '#0F172A', boxShadow: '0 2px 12px rgba(0,0,0,0.18)' }}>
+      <nav style={{ background: T.paper3, boxShadow: '0 2px 12px rgba(5,76,57,0.18)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '8px' }}>
-
           {/* Brand mark */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '16px', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '16px', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.12)', flexShrink: 0 }}>
             <img
               src="/logo.png"
               alt="YouSafe Consultancy"
               width="32"
               height="32"
-              style={{ width: 32, height: 32, objectFit: 'contain', background: '#fff', borderRadius: 4 }}
+              style={{ width: 32, height: 32, objectFit: 'contain', background: '#fff', borderRadius: 6 }}
             />
             <div>
-              <div style={{ fontFamily: serif, fontSize: '17px', fontWeight: 600, color: '#F7F5F0', letterSpacing: '0.01em', lineHeight: 1.1 }}>
+              <div style={{ fontFamily: serif, fontSize: '17px', fontWeight: 600, color: T.onPaper, letterSpacing: '0.01em', lineHeight: 1.1 }}>
                 YouSafe
               </div>
-              <div style={{ fontSize: '10px', color: '#C4A45A', marginTop: '1px', whiteSpace: 'nowrap', fontWeight: 700 }}>
+              <div style={{ fontSize: '10px', color: '#D6F5E9', marginTop: '2px', whiteSpace: 'nowrap', fontWeight: 700 }}>
                 Your Safe Path to Success.
               </div>
             </div>
@@ -68,15 +134,15 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
                     alignItems: 'center',
                     padding: '0 16px',
                     fontSize: '13px',
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.55)',
+                    fontWeight: isActive ? 700 : 500,
+                    color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)',
                     textDecoration: 'none',
-                    borderBottom: isActive ? '2px solid #C4A45A' : '2px solid transparent',
+                    borderBottom: isActive ? '3px solid #34D399' : '3px solid transparent',
                     height: '56px',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
                     letterSpacing: isActive ? '0.01em' : '0',
-                    transition: 'all 0.15s ease',
+                    transition: 'color 0.15s ease, background 0.15s ease, border-color 0.15s ease',
                     position: 'relative',
                   }}
                 >
@@ -86,9 +152,17 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
             })}
           </div>
 
-          {/* Right side: context links */}
+          {/* Right side: context link */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-            <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: '5px', fontSize: '12px', color: 'rgba(255,255,255,0.50)', border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.04)', textDecoration: 'none', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>
+            <Link
+              href="/dashboard"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px',
+                borderRadius: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.82)',
+                border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.07)',
+                textDecoration: 'none', letterSpacing: '0.01em', whiteSpace: 'nowrap',
+              }}
+            >
               ← Dashboard
             </Link>
           </div>
@@ -96,7 +170,7 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
       </nav>
 
       {/* Page header */}
-      <div style={{ background: '#FFFFFF', borderBottom: '1px solid #DDD8CE', boxShadow: '0 1px 0 rgba(27,45,79,0.04)' }}>
+      <div style={{ background: T.vellum, borderBottom: '1px solid #D5E5DF', boxShadow: '0 1px 0 rgba(8,122,91,0.04)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: 'clamp(20px, 4vw, 28px) clamp(16px, 4vw, 32px) clamp(18px, 3vw, 24px)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 240px' }}>
@@ -105,20 +179,19 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
                 fontSize: 'clamp(22px, 5vw, 32px)',
                 fontWeight: 600,
                 letterSpacing: '-0.015em',
-                color: '#0F172A',
+                color: T.ink,
                 margin: 0,
                 lineHeight: 1.15,
               }}>
                 {title}
               </h1>
               {subtitle && (
-                <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#5C6070', lineHeight: 1.5 }}>
+                <p style={{ margin: '6px 0 0', fontSize: '14px', color: T.inkMid, lineHeight: 1.55 }}>
                   {subtitle}
                 </p>
               )}
             </div>
-            {/* Decorative gold rule */}
-            <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, #DDD8CE, #F7F5F0)', maxWidth: '160px', marginBottom: '6px' }} />
+            <div style={{ flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(8,122,91,0.32), rgba(8,122,91,0.04))', maxWidth: '160px', marginBottom: '6px' }} />
           </div>
         </div>
       </div>
