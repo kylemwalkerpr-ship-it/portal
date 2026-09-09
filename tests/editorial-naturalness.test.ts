@@ -21,15 +21,19 @@ function acceptedDoc(variant: number): string {
   return `# Student filing guide ${variant}
 
 ## Eligibility
+
 IRCC first checks whether the applicant fits the program rules. ${pad(`Eligibility evidence ${variant} links the applicant, program and decision.`)}
 
 ## Documents
+
 Keep the passport with the application record. A bank letter has a different job: it supports the financial evidence. ${pad(`Document control ${variant} starts with the named record and the action it supports.`, 5)}
 
 ## Process
+
 Start with the live account instructions. Then upload the requested record. If IRCC asks for an update, respond through the account rather than rebuilding the whole file. ${pad(`The filing sequence ${variant} changes actor and sentence shape as the reader moves from account to evidence.`, 5)}
 
 ## Risks
+
 A complete upload can still need follow-up evidence. However, a request for another document is different from a refusal. ${pad(`Risk note ${variant} distinguishes a rule from its consequence and gives the reader a concrete next action.`, 5)}
 `
 }
@@ -39,9 +43,11 @@ function rejectedDoc(variant: number): string {
   return `# Application process ${variant}
 
 ## Overview
+
 ${Array.from({ length: 8 }, () => boiler).join('\n\n')}
 
 ## Requirements
+
 ${Array.from({ length: 7 }, () => boiler).join('\n\n')}
 `
 }
@@ -51,13 +57,20 @@ describe('editorial naturalness intelligence', () => {
     const doc = `# CRS guide
 
 ## Score inputs
-Applicants submit identity evidence and employment records so the authority can verify the score inputs before a decision. The file should connect each document to the factor it proves and keep the supporting record with the application.
+
+Applicants submit identity evidence and employment records so the authority can verify score inputs before a decision. The application connects each document to the scoring factor it proves. Keep supporting evidence with the application.
 
 ## Timing
-IRCC publishes invitation rounds separately from an individual profile. Check the current round before treating an older threshold as a prediction for the next draw.
+
+IRCC publishes invitation rounds separately from an individual profile. Check the current round before treating an older threshold as a prediction for the next draw. A previous round is historical evidence, not a guarantee. The reader should separate a published threshold from a personal forecast.
+
+## Profile maintenance
+
+A profile can change when the applicant updates supported information. Keep the underlying record before changing a scored field. Review the new total after the update. Save the evidence that supports the revised entry.
 
 ## Evidence review
-Candidates file identity documents and job evidence so the agency can confirm the scoring factors before deciding the file. The application should connect every record to the point it supports and retain that evidence with the submission.
+
+Candidates file identity documents and employment records so the agency can confirm score inputs before a decision. The filing connects each record to the scoring factor it proves. Keep supporting documents with the filing.
 `
     const report = evaluateEditorialNaturalness(doc)
     expect(report.findings.some((f) => f.code === 'semantic_repetition' || f.code === 'section_semantic_overlap')).toBe(true)
