@@ -1,7 +1,8 @@
 /* Conversion-critical mobile polish
    ---------------------------------
    Small-screen refinements for marketplace discovery, gig detail, filters,
-   seller profiles, and messenger controls. Loaded after mobile-hardening.css. */
+   seller profiles, cart/checkout, and messenger controls. Loaded after
+   mobile-hardening.css. */
 
 @media (max-width: 600px) {
   /* Finger-sized marketplace controls without altering desktop density. */
@@ -44,6 +45,78 @@
   .cw-market [style*='maxHeight: 90vh'] {
     max-width: calc(100vw - 16px) !important;
     max-height: 92dvh !important;
+  }
+
+  /* ── Cart / checkout conversion route ───────────────────────────── */
+  .cw-market main:has(button[aria-label='Decrease quantity']) {
+    width: 100% !important;
+    max-width: 800px !important;
+    padding: 28px 14px max(64px, env(safe-area-inset-bottom)) !important;
+    box-sizing: border-box;
+  }
+
+  .cw-market main:has(button[aria-label='Decrease quantity']) > h1 {
+    margin-bottom: 22px !important;
+    font-size: clamp(27px, 8vw, 32px) !important;
+  }
+
+  /* A cart item is identified by its direct quantity-control child. The
+     desktop row cannot fit title + quantity + price + remove on a 320px
+     viewport, so title gets a full row and controls wrap below it. */
+  .cw-market main:has(button[aria-label='Decrease quantity'])
+    div:has(> div > button[aria-label='Decrease quantity']) {
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 10px 12px !important;
+    padding: 14px !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market main:has(button[aria-label='Decrease quantity'])
+    div:has(> div > button[aria-label='Decrease quantity']) > div:first-child {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market main:has(button[aria-label='Decrease quantity'])
+    div:has(> div > button[aria-label='Decrease quantity']) > div:nth-child(2) {
+    flex: 0 0 auto !important;
+  }
+
+  .cw-market main:has(button[aria-label='Decrease quantity'])
+    div:has(> div > button[aria-label='Decrease quantity']) > div:nth-child(3) {
+    min-width: 0 !important;
+    margin-left: auto;
+    text-align: right !important;
+  }
+
+  .cw-market button[aria-label='Decrease quantity'],
+  .cw-market button[aria-label='Increase quantity'],
+  .cw-market button[aria-label='Remove item'] {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    flex: 0 0 44px !important;
+  }
+
+  /* Payment method rows contain status copy on the far edge; permit that
+     copy to wrap rather than compress the method label. */
+  .cw-market main:has(button[type='submit']) form > div [style*='display: flex'][style*='align-items: center'] {
+    min-width: 0;
+  }
+
+  .cw-market main:has(button[type='submit']) form select {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Embedded expiry/CVV fields are intentionally side by side, but they
+     need a zero minimum to stay inside the payment card. */
+  .cw-market #nmi-card-expiry,
+  .cw-market #nmi-card-cvv {
+    min-width: 0 !important;
   }
 
   /* ── Seller profile conversion route ────────────────────────────── */
