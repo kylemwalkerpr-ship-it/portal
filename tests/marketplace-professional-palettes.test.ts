@@ -59,10 +59,18 @@ describe('marketplace professional palette set', () => {
     }
   })
 
-  test('default Studio accent is vivid navy-violet, not emerald or teal', () => {
+  test('default Studio is white paper + charcoal actions, not a blue wash', () => {
     const studio = PALETTES.find((p) => p.name === DEFAULT_PALETTE_NAME)!
-    expect(studio.tokens.indigo).toBe('#3948C8')
-    expect(studio.tokens.indigoDeep).toBe('#2B36A0')
-    expect(studio.tokens.paper).toBe('#F1F3FB')
+    expect(studio.tokens.indigo).toBe('#111827')
+    expect(studio.tokens.indigoDeep).toBe('#030712')
+    expect(studio.tokens.paper).toBe('#F7F8FA')
+  })
+
+  test('opt-in palettes actually change the action accent', () => {
+    const studio = PALETTES.find((p) => p.name === 'mahogany')!.tokens.indigo
+    const parchment = PALETTES.find((p) => p.name === 'luxury-classic')!.tokens.indigo
+    const olive = PALETTES.find((p) => p.name === 'modern-luxury')!.tokens.indigo
+    const stone = PALETTES.find((p) => p.name === 'santorini')!.tokens.indigo
+    expect(new Set([studio, parchment, olive, stone]).size).toBe(4)
   })
 })

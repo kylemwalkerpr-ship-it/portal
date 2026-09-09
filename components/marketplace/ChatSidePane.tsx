@@ -15,7 +15,7 @@ import { F } from './tokens'
 
 const GREEN = '#3F774A'
 const RED = '#B22234'
-const CYAN = '#3948C8'
+const CYAN = '#111827'
 const BG = 'var(--chat-bg, #F0F2F5)'
 const SURFACE = 'var(--panel, #FFFFFF)'
 const PANEL2 = 'var(--panel-2, #F1F5F9)'

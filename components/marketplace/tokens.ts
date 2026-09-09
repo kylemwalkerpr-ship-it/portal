@@ -2,17 +2,17 @@
  * Marketplace design tokens.
  *
  * Every value is a CSS custom-property reference with a fallback to the
- * default Studio (light professional) palette. Paper is a LIGHT chrome
- * surface; onPaper is dark ink. Accent tokens (legacy names indigo / teal)
- * are action colour only — never the page fill.
+ * default Studio (white paper, charcoal action) palette. Paper is a LIGHT
+ * chrome surface; onPaper is dark ink. Accent tokens (legacy names indigo /
+ * teal) are action colour only — never the page fill.
  */
 
 export const T = {
-  paper:       'var(--ys-paper, #F1F3FB)',
-  paper2:      'var(--ys-paper2, #E8ECF8)',
-  paper3:      'var(--ys-paper3, #DDE3F4)',
+  paper:       'var(--ys-paper, #F7F8FA)',
+  paper2:      'var(--ys-paper2, #F1F3F5)',
+  paper3:      'var(--ys-paper3, #E8EBEE)',
   vellum:      'var(--ys-vellum, #FFFFFF)',
-  cream:       'var(--ys-cream, #F7F8FD)',
+  cream:       'var(--ys-cream, #F9FAFB)',
   ink:         'var(--ys-ink, #0F172A)',
   inkMid:      'var(--ys-inkMid, #334155)',
   inkSoft:     'var(--ys-inkSoft, #526072)',
@@ -25,17 +25,17 @@ export const T = {
   rule:        'var(--ys-rule, rgba(15,23,42,0.10))',
   ruleSoft:    'var(--ys-ruleSoft, rgba(15,23,42,0.06))',
   /** Legacy token name; semantic role is Marketplace action accent. */
-  indigo:      'var(--ys-indigo, #3948C8)',
-  indigoDeep:  'var(--ys-indigoDeep, #2B36A0)',
-  indigoSoft:  'var(--ys-indigoSoft, rgba(57,72,200,0.16))',
+  indigo:      'var(--ys-indigo, #111827)',
+  indigoDeep:  'var(--ys-indigoDeep, #030712)',
+  indigoSoft:  'var(--ys-indigoSoft, rgba(17,24,39,0.10))',
   brick:       'var(--ys-brick, #B42318)',
   gold:        'var(--ys-gold, #7A5000)',
   moss:        'var(--ys-moss, #3F5A28)',
   star:        'var(--ys-star, #7A5000)',
   /** Legacy token name; alias of the same action accent. */
-  teal:        'var(--ys-teal, #3948C8)',
-  tealDeep:    'var(--ys-tealDeep, #2B36A0)',
-  footer:      'var(--ys-footer, #E4E8F4)',
+  teal:        'var(--ys-teal, #111827)',
+  tealDeep:    'var(--ys-tealDeep, #030712)',
+  footer:      'var(--ys-footer, #F1F3F5)',
 } as const
 
 export const F = {

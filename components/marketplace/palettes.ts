@@ -1,10 +1,9 @@
 /**
- * Marketplace colour palettes — light, professional, Messages-grade.
+ * Marketplace colour palettes — light, professional, Fiverr-grade.
  *
- * The public market used to flood the shell with mahogany / emerald / teal /
- * blue. That fails as a professional services surface: low-legibility chrome,
- * competing hues, and a visual language that does not match Portal Messages
- * (cool gray paper, white cards, charcoal type, one quiet accent).
+ * Default Studio is a white sheet + charcoal actions (no hue on the page).
+ * Other palettes are opt-in colourways the picker actually applies to paper
+ * and the action accent. Accents never fill the page.
  *
  * Contract:
  *   - paper / paper2 / paper3 / footer are LIGHT chrome (page, header, rails)
@@ -94,16 +93,16 @@ function lightPalette(opts: {
   }
 }
 
-/** Default — indigo-tinted paper + vivid navy-violet actions. */
+/** Default — Fiverr-like white paper, charcoal actions, no colour wash. */
 const STUDIO: PaletteTokens = lightPalette({
-  paper:      '#F1F3FB',
-  paper2:     '#E8ECF8',
-  paper3:     '#DDE3F4',
-  cream:      '#F7F8FD',
-  footer:     '#E4E8F4',
-  accent:     '#3948C8',
-  accentDeep: '#2B36A0',
-  accentSoft: 'rgba(57,72,200,0.16)',
+  paper:      '#F7F8FA',
+  paper2:     '#F1F3F5',
+  paper3:     '#E8EBEE',
+  cream:      '#F9FAFB',
+  footer:     '#F1F3F5',
+  accent:     '#111827',
+  accentDeep: '#030712',
+  accentSoft: 'rgba(17,24,39,0.10)',
 })
 
 const PARCHMENT: PaletteTokens = lightPalette({
@@ -123,9 +122,9 @@ const GRAPHITE: PaletteTokens = lightPalette({
   paper3:     '#E2E5EB',
   cream:      '#F8F9FB',
   footer:     '#E4E7EC',
-  accent:     '#3F3F8C',
-  accentDeep: '#27276A',
-  accentSoft: 'rgba(63,63,140,0.14)',
+  accent:     '#1E293B',
+  accentDeep: '#0F172A',
+  accentSoft: 'rgba(30,41,59,0.12)',
 })
 
 const CLARET: PaletteTokens = lightPalette({
@@ -167,7 +166,7 @@ export const PALETTES: PaletteDef[] = [
     name: 'mahogany',
     label: 'Studio',
     emoji: '●',
-    description: 'Indigo-tinted paper, charcoal type, vivid navy-violet actions. Professional default with more life.',
+    description: 'White paper, charcoal type, black actions. Clean professional default — no colour wash.',
     tokens: STUDIO,
   },
   {
@@ -181,7 +180,7 @@ export const PALETTES: PaletteDef[] = [
     name: 'executive',
     label: 'Graphite',
     emoji: '■',
-    description: 'Neutral gray paper with graphite actions. Precise, modern, no decorative hue.',
+    description: 'Neutral gray paper with slate actions. Precise, modern, no decorative hue.',
     tokens: GRAPHITE,
   },
   {

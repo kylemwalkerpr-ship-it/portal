@@ -21,12 +21,12 @@ const PATTERNS: Array<{ id: PatternId; label: string; emoji: string }> = [
 export function ThemePicker() {
   const { palettes, palette, setPaletteName } = usePalette()
   const [selectedPattern, setSelectedPattern] = useState<PatternId>(() => {
-    if (typeof window === 'undefined') return 'linen'
+    if (typeof window === 'undefined') return 'none'
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored && PATTERNS.some(p => p.id === stored)) return stored as PatternId
     } catch {}
-    return 'linen'
+    return 'none'
   })
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)

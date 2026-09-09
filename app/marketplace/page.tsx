@@ -89,7 +89,7 @@ export default async function Page({
   )
   if (hasFilters) {
     return (
-      <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #F1F3FB)' }} />}>
+      <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #F7F8FA)' }} />}>
         <GigDiscoveryPage />
       </Suspense>
     )

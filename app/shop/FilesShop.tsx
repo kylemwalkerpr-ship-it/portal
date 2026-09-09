@@ -14,17 +14,17 @@ type FilterId = 'all' | FileShopCategory
  * paint never floods mahogany or cream-on-cream.
  */
 const V = {
-  paper: 'var(--ys-paper, #F1F3FB)',
-  paper2: 'var(--ys-paper2, #E8ECF8)',
-  paper3: 'var(--ys-paper3, #DDE3F4)',
+  paper: 'var(--ys-paper, #F7F8FA)',
+  paper2: 'var(--ys-paper2, #F1F3F5)',
+  paper3: 'var(--ys-paper3, #E8EBEE)',
   vellum: 'var(--ys-vellum, #FFFFFF)',
-  cream: 'var(--ys-cream, #F7F8FD)',
+  cream: 'var(--ys-cream, #F9FAFB)',
   ink: 'var(--ys-ink, #0F172A)',
   inkMid: 'var(--ys-inkMid, #334155)',
   inkSoft: 'var(--ys-inkSoft, #526072)',
   rule: 'var(--ys-rule, rgba(15,23,42,0.10))',
-  teal: 'var(--ys-teal, #3948C8)',
-  tealDeep: 'var(--ys-tealDeep, #2B36A0)',
+  teal: 'var(--ys-teal, #111827)',
+  tealDeep: 'var(--ys-tealDeep, #030712)',
   gold: 'var(--ys-gold, #7A5000)',
   star: 'var(--ys-star, #7A5000)',
   cardRule: 'rgba(15,23,42,0.10)',

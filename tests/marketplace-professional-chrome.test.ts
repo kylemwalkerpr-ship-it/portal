@@ -42,10 +42,10 @@ const MARKET_SURFACES = [
 ]
 
 describe('marketplace professional chrome (source scan)', () => {
-  test('first-paint Studio tokens are indigo-tinted paper + charcoal ink', () => {
+  test('first-paint Studio tokens are white paper + charcoal ink', () => {
     const globals = read('app/globals.css')
-    expect(globals).toContain('--ys-paper: #F1F3FB')
-    expect(globals).toContain('--ys-indigo: #3948C8')
+    expect(globals).toContain('--ys-paper: #F7F8FA')
+    expect(globals).toContain('--ys-indigo: #111827')
     expect(globals).toContain('--ys-ink: #0F172A')
     expect(globals).toContain('--ys-onPaper: #0F172A')
     expect(globals).not.toMatch(/\.cw-market \.seller-card,\s*\n\s*\.cw-market \[style\*=\"background: var\(--ys-indigo\)\"\]/)
@@ -90,9 +90,9 @@ describe('marketplace professional chrome (source scan)', () => {
 
   test('file shop SSR fallbacks match Studio, not Polished Walnut', () => {
     const shop = read('app/shop/FilesShop.tsx')
-    expect(shop).toContain("paper: 'var(--ys-paper, #F1F3FB)'")
+    expect(shop).toContain("paper: 'var(--ys-paper, #F7F8FA)'")
     expect(shop).toContain("ink: 'var(--ys-ink, #0F172A)'")
-    expect(shop).toContain("teal: 'var(--ys-teal, #3948C8)'")
+    expect(shop).toContain("teal: 'var(--ys-teal, #111827)'")
     expect(shop).toContain('color: ${V.ink}')
     expect(shop).not.toMatch(/color: \$\{V\.cream\}/)
   })
@@ -100,6 +100,18 @@ describe('marketplace professional chrome (source scan)', () => {
   test('file shop and marketplace layouts share the polish stylesheet', () => {
     expect(read('app/marketplace/layout.tsx')).toContain("import './marketplace-polish.css'")
     expect(read('app/shop/layout.tsx')).toContain("marketplace-polish.css")
+  })
+
+  test('polish layer does not paint a persistent colour wash on the page', () => {
+    const polish = read('app/marketplace/marketplace-polish.css')
+    expect(polish).not.toContain('background-attachment: fixed')
+    expect(polish).not.toMatch(/\.cw-market\s*\{[^}]*background-image:/)
+  })
+
+  test('palette picker always writes tokens onto the market shell', () => {
+    const ctx = read('contexts/palette-context.tsx')
+    expect(ctx).toContain('applyPaletteCssVars(root, next.tokens)')
+    expect(ctx).not.toContain("getAttribute('data-ys-palette') === paletteName")
   })
 
   test('portal default theme matches Studio paper + slate-navy accent', () => {

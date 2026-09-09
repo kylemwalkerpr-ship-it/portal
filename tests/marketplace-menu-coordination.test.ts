@@ -32,7 +32,7 @@ describe('marketplace account menu quality and overlay coordination', () => {
     expect(auth).toContain('styles.itemPrimary')
     expect(css).toContain('border-radius: 20px;')
     expect(css).toContain('0 28px 70px -18px rgba(15, 23, 42, 0.42)')
-    expect(css).toContain('linear-gradient(90deg, var(--ys-indigo, #3948C8), var(--ys-indigoDeep, #2B36A0))')
+    expect(css).toContain('linear-gradient(90deg, var(--ys-indigo, #111827), var(--ys-indigoDeep, #030712))')
   })
 
   test('keeps the mobile account menu roomy but clearly smaller than a full sheet', () => {

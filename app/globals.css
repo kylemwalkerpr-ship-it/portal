@@ -1127,31 +1127,31 @@ section[id] {
 /* ═══════════════════════════════════════════════════════════════════════
    MARKETPLACE LEGIBILITY — first-paint paper + ink
 
-   Light professional chrome. The palette picker can still change the
-   action accent (legacy names indigo / teal) but paper stays a cool,
-   indigo-tinted sheet and type stays charcoal. Do not flood the shell
-   with saturated fills.
+   Light professional chrome. Default Studio is a white sheet + charcoal
+   actions (Fiverr-grade). The palette picker rewrites these --ys-* tokens
+   on .cw-market; do not treat them as a permanent hue. Paper stays LIGHT
+   and type stays charcoal. Accents never fill the page.
    ═══════════════════════════════════════════════════════════════════════ */
 .cw-market {
-  --ys-paper: #F1F3FB;
-  --ys-paper2: #E8ECF8;
-  --ys-paper3: #DDE3F4;
+  --ys-paper: #F7F8FA;
+  --ys-paper2: #F1F3F5;
+  --ys-paper3: #E8EBEE;
   --ys-vellum: #FFFFFF;
-  --ys-cream: #F7F8FD;
+  --ys-cream: #F9FAFB;
   --ys-ink: #0F172A;
   --ys-inkMid: #334155;
   --ys-inkSoft: #526072;
   --ys-onPaper: #0F172A;
   --ys-onPaperSoft: rgba(15,23,42,0.72);
   --ys-onPaperEm: #0F172A;
-  --ys-indigo: #3948C8;
-  --ys-indigoDeep: #2B36A0;
-  --ys-indigoSoft: rgba(57,72,200,0.16);
-  --ys-teal: #3948C8;
-  --ys-tealDeep: #2B36A0;
+  --ys-indigo: #111827;
+  --ys-indigoDeep: #030712;
+  --ys-indigoSoft: rgba(17,24,39,0.10);
+  --ys-teal: #111827;
+  --ys-tealDeep: #030712;
   --ys-gold: #7A5000;
   --ys-star: #7A5000;
-  --ys-footer: #E4E8F4;
+  --ys-footer: #F1F3F5;
   background: var(--ys-paper);
   color: var(--ys-onPaper);
 }

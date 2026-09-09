@@ -1,78 +1,67 @@
-/* Marketplace polish + vibrancy
-   -----------------------------
-   Light professional chrome stays. Accents, gold, depth and motion do more
-   work so every market surface feels finished — not a grey magazine.
-   PatternPicker still owns .cw-market::before; do not override its image. */
+/* Marketplace polish — Fiverr-grade professional chrome
+   ------------------------------------------------------
+   White/neutral paper. One action accent (palette-driven). No page wash,
+   no glass header, no hue sitting on the sheet. PatternPicker still owns
+   .cw-market::before; do not override its image. */
 
 .cw-market {
   --ys-goldBright: #F0D078;
   --ys-shadow-card:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 12px 32px -20px color-mix(in srgb, var(--ys-indigo, #3948C8) 40%, transparent);
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 8px 24px -18px rgba(15, 23, 42, 0.12);
   --ys-shadow-card-hover:
-    0 8px 16px -12px rgba(15, 23, 42, 0.12),
-    0 24px 52px -22px color-mix(in srgb, var(--ys-indigo, #3948C8) 42%, transparent);
-  background-image:
-    radial-gradient(1200px 520px at 8% -12%, color-mix(in srgb, var(--ys-indigo, #3948C8) 14%, transparent), transparent 62%),
-    radial-gradient(900px 480px at 108% 6%, color-mix(in srgb, var(--ys-gold, #7A5000) 8%, transparent), transparent 58%);
-  background-attachment: fixed;
+    0 4px 10px -6px rgba(15, 23, 42, 0.10),
+    0 16px 36px -20px rgba(15, 23, 42, 0.16);
 }
 
-/* Sticky header: glass + indigo/gold hairline */
+/* Sticky header: opaque white, hairline only — never see-through. */
 .cw-market > header,
 .cw-market header.ys-shell-header,
 .cw-market [data-ys-shell-header] {
-  background: color-mix(in srgb, var(--ys-vellum, #FFFFFF) 88%, transparent) !important;
-  backdrop-filter: saturate(1.25) blur(16px);
-  -webkit-backdrop-filter: saturate(1.25) blur(16px);
-  box-shadow:
-    0 1px 0 color-mix(in srgb, var(--ys-indigo, #3948C8) 18%, transparent),
-    0 2px 0 color-mix(in srgb, var(--ys-gold, #7A5000) 22%, transparent),
-    0 10px 28px -22px rgba(15, 23, 42, 0.18) !important;
+  background: var(--ys-vellum, #FFFFFF) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none !important;
+  border-bottom: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10));
 }
 
-/* Active nav pills get a faint inner sheen */
-.cw-market .ys-shell-desktop-pill,
-.cw-market .ys-market-nav button {
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
-}
-
-/* Category bar — slightly cooler wash than the page, indigo selected chips */
+/* Category bar: opaque so rails cannot bleed through. */
 .cw-market .ys-cat-bar {
-  background: color-mix(in srgb, var(--ys-paper2, #E8ECF8) 86%, var(--ys-indigoSoft, rgba(57, 72, 200, 0.16))) !important;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ys-indigo, #3948C8) 10%, transparent);
+  background: var(--ys-vellum, #FFFFFF) !important;
+  box-shadow: none;
+  border-bottom: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10));
 }
 
 .cw-market .ys-cat-chev:hover {
-  border-color: color-mix(in srgb, var(--ys-indigo, #3948C8) 40%, transparent) !important;
-  color: var(--ys-indigoDeep, #2B36A0) !important;
+  border-color: var(--ys-ink, #0F172A) !important;
+  color: var(--ys-ink, #0F172A) !important;
 }
 
-/* Hero: indigo night, gold italic on white type */
+/* Hero: neutral night (not blue), gold italic only on the dark video. */
 .cw-market .hero-media video {
-  filter: saturate(0.92) contrast(1.1) brightness(0.62) hue-rotate(-8deg) !important;
+  filter: saturate(0.88) contrast(1.08) brightness(0.58) !important;
 }
 .cw-market .hero-media-overlay {
   background:
-    linear-gradient(180deg, rgba(18, 22, 64, 0.42) 0%, rgba(18, 22, 64, 0.58) 46%, rgba(18, 22, 64, 0.78) 100%) !important;
+    linear-gradient(180deg, rgba(15, 23, 42, 0.42) 0%, rgba(15, 23, 42, 0.58) 46%, rgba(15, 23, 42, 0.78) 100%) !important;
 }
 .cw-market .hero h1 em {
   color: var(--ys-goldBright, #F0D078) !important;
   font-style: italic;
-  text-shadow: 0 1px 18px rgba(240, 208, 120, 0.35);
+  text-shadow: 0 1px 18px rgba(240, 208, 120, 0.28);
 }
 .cw-market .hero-search {
   box-shadow:
-    0 18px 50px rgba(8, 11, 26, 0.28),
+    0 18px 50px rgba(15, 23, 42, 0.22),
     0 1px 0 rgba(255, 255, 255, 0.55) inset !important;
 }
 .cw-market .hero-search:focus-within {
   box-shadow:
     0 18px 50px rgba(15, 23, 42, 0.16),
-    0 0 0 3px color-mix(in srgb, var(--ys-indigo, #3948C8) 38%, transparent) !important;
+    0 0 0 3px color-mix(in srgb, var(--ys-indigo, #111827) 28%, transparent) !important;
 }
 
-/* Primary CTAs — sheen + indigo glow, still one accent */
+/* Primary CTAs — flat accent fill, Fiverr Join energy */
 .cw-market .hero-search button.search-go,
 .cw-files-band-cta,
 .cw-market nav.nav-links a.cta,
@@ -81,14 +70,19 @@
 .cw-market .ys-shop-buy,
 .cw-market .ys-shop-empty button,
 .cw-market .ys-gig-checkout button {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ys-indigo, #3948C8) 88%, white), var(--ys-indigo, #3948C8)) !important;
+  background: var(--ys-indigo, #111827) !important;
   color: #FFFFFF !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.22) inset,
-    0 10px 22px color-mix(in srgb, var(--ys-indigo, #3948C8) 34%, transparent) !important;
+  box-shadow: none !important;
+}
+.cw-market .hero-search button.search-go:hover,
+.cw-files-band-cta:hover,
+.cw-market .seller-card .btn.primary:hover,
+.cw-market .ys-shop-btn.primary:hover,
+.cw-market .ys-shop-buy:hover {
+  background: var(--ys-indigoDeep, #030712) !important;
 }
 
-/* Cards — brief, files, shop, discovery, how-it-works */
+/* Cards — light rule + quiet depth, no coloured border */
 .cw-market .gig,
 .cw-files-card,
 .cw-market .hero-card,
@@ -99,7 +93,7 @@
 .cw-market .seller-card,
 .cw-market .faq-item {
   box-shadow: var(--ys-shadow-card) !important;
-  border-color: color-mix(in srgb, var(--ys-indigo, #3948C8) 14%, var(--ys-rule, rgba(15, 23, 42, 0.1))) !important;
+  border-color: var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
 }
 .cw-market .gig-link:hover .gig,
 .cw-market .gig:hover,
@@ -107,123 +101,100 @@
 .cw-market .hero-card-link:hover .hero-card,
 .cw-market .ys-shop-card:hover,
 .cw-market .ys-shop-featured-card:hover {
-  transform: translateY(-6px) !important;
+  transform: translateY(-3px) !important;
   box-shadow: var(--ys-shadow-card-hover) !important;
-  border-color: color-mix(in srgb, var(--ys-indigo, #3948C8) 42%, transparent) !important;
+  border-color: var(--ys-rule, rgba(15, 23, 42, 0.16)) !important;
 }
 
-/* Watermark glyph on cover-less gigs — indigo, not leftover teal */
 .cw-market .gig .plate-glyph {
-  color: color-mix(in srgb, var(--ys-indigo, #3948C8) 22%, transparent) !important;
+  color: color-mix(in srgb, var(--ys-ink, #0F172A) 16%, transparent) !important;
 }
 
-/* Gig prices sit on light cards — keep them as solid accent type */
+/* Prices follow the action accent so a palette change is visible */
 .cw-market .gig .price b {
-  color: var(--ys-indigo, #3948C8) !important;
+  color: var(--ys-indigo, #111827) !important;
   background: none;
   -webkit-text-fill-color: currentColor;
 }
 
-/* Country / filter / shop chips */
+/* Chips: hover is a light wash of the chosen accent, not a blue stain */
 .cw-market .country-bar a:hover,
 .cw-market .filters a:hover,
 .cw-cat-trigger:hover,
 .cw-market .ys-shop-filters button:hover {
-  border-color: color-mix(in srgb, var(--ys-indigo, #3948C8) 45%, transparent);
-  background: var(--ys-indigoSoft, rgba(57, 72, 200, 0.16));
-  color: var(--ys-indigoDeep, #2B36A0);
-}
-.cw-market .country-bar a.active,
-.cw-market .filters a.on,
-.cw-market .ys-shop-filters button.on {
-  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--ys-indigo, #3948C8) 70%, transparent);
+  border-color: color-mix(in srgb, var(--ys-indigo, #111827) 35%, transparent);
+  background: var(--ys-indigoSoft, rgba(17, 24, 39, 0.10));
+  color: var(--ys-indigoDeep, #030712);
 }
 
-/* Editorial italics on light paper — accent, not a second grey */
+/* Section italics stay ink on Studio; colourful palettes tint them via --ys-indigo */
 .cw-market .section-head h2 em,
 .cw-market .how-step h3 em,
 .cw-market .seller-card h2 em,
 .cw-market .cw-files-rail-head h2 em,
 .cw-market .hero-card h3 em {
-  color: var(--ys-indigo, #3948C8) !important;
+  color: var(--ys-indigo, #111827) !important;
 }
 
 .cw-market .section-head .meta a:hover,
 .cw-market .cw-files-rail-head a:hover,
 .cw-market .ys-shop-return a,
 .cw-market .ys-shop-kicker {
-  color: var(--ys-indigo, #3948C8);
+  color: var(--ys-indigo, #111827);
 }
 
 .cw-market .quote {
-  border-top-width: 3px !important;
+  border-top-width: 2px !important;
 }
 
-/* Trust dots stay green as a status signal, not a page fill */
 .cw-market .trust-inner .item .dot {
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16);
 }
 
-/* Footer accent hairline */
+/* Footer — one rule, no dual colour bar */
 .cw-mkt-footer {
-  box-shadow:
-    inset 0 3px 0 var(--ys-indigo, #3948C8),
-    inset 0 4px 0 var(--ys-gold, #7A5000) !important;
+  box-shadow: none !important;
+  border-top: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10));
 }
 .cw-mkt-footer-nav a:hover,
 .cw-mkt-footer-legal-inner a:hover {
-  color: var(--ys-indigo, #3948C8) !important;
+  color: var(--ys-indigo, #111827) !important;
 }
 
-/* File shop — same card/CTA language as the service market */
 .cw-market .ys-shop-bar {
-  background: color-mix(in srgb, var(--ys-paper2, #E8ECF8) 80%, var(--ys-indigoSoft, rgba(57, 72, 200, 0.16)));
+  background: var(--ys-paper2, #F1F3F5);
 }
 .cw-market .ys-shop-hero {
-  background:
-    radial-gradient(120% 160% at 85% -10%, color-mix(in srgb, var(--ys-indigo, #3948C8) 12%, var(--ys-paper3, #DDE3F4)) 0%, var(--ys-paper, #F1F3FB) 55%) !important;
+  background: var(--ys-paper, #F7F8FA) !important;
 }
 .cw-market .ys-shop-search input:focus {
-  border-color: var(--ys-indigo, #3948C8) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ys-indigo, #3948C8) 22%, transparent) !important;
+  border-color: var(--ys-indigo, #111827) !important;
+  box-shadow: 0 0 0 3px var(--ys-indigoSoft, rgba(17, 24, 39, 0.10)) !important;
 }
 .cw-market .ys-shop-cover-price {
-  color: var(--ys-indigo, #3948C8) !important;
-  border: 1px solid color-mix(in srgb, var(--ys-indigo, #3948C8) 18%, transparent);
-}
-
-/* Discovery / gig detail / cart sheets that use inline vellum cards */
-.cw-market .ys-content-layout,
-.cw-market .ys-sidebar,
-.cw-market .ys-gig-checkout {
-  --ys-shadow-local: var(--ys-shadow-card);
+  color: var(--ys-ink, #0F172A) !important;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10));
 }
 
 .cw-market .ys-shell-drawer-backdrop {
-  background: rgba(18, 22, 64, 0.38) !important;
+  background: rgba(15, 23, 42, 0.32) !important;
 }
 .cw-market .ys-shell-drawer-panel {
-  box-shadow: -24px 0 56px rgba(15, 23, 42, 0.18);
-  border-left-color: color-mix(in srgb, var(--ys-indigo, #3948C8) 16%, transparent) !important;
+  box-shadow: -24px 0 56px rgba(15, 23, 42, 0.14);
+  background: var(--ys-vellum, #FFFFFF);
 }
 .cw-market .ys-shell-drawer-link:hover,
 .cw-market .ys-shell-drawer-link:focus-visible {
-  background: var(--ys-indigoSoft, rgba(57, 72, 200, 0.16)) !important;
-  color: var(--ys-indigoDeep, #2B36A0) !important;
-}
-.cw-market .ys-shell-menu-toggle:hover,
-.cw-market .ys-shell-menu-toggle[aria-expanded='true'] {
-  border-color: color-mix(in srgb, var(--ys-indigo, #3948C8) 40%, transparent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ys-indigo, #3948C8) 16%, transparent);
+  background: var(--ys-indigoSoft, rgba(17, 24, 39, 0.10)) !important;
+  color: var(--ys-ink, #0F172A) !important;
 }
 
-/* Mega-menu + help + all-gigs drawer */
 .cw-cat-panel,
 .cw-market .cw-all-drawer,
 .cw-market .cw-help-panel {
   box-shadow:
-    0 28px 70px -18px rgba(15, 23, 42, 0.28),
-    0 0 0 1px color-mix(in srgb, var(--ys-indigo, #3948C8) 12%, transparent) !important;
+    0 28px 70px -18px rgba(15, 23, 42, 0.22),
+    0 0 0 1px var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

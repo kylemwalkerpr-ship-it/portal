@@ -106,7 +106,7 @@ const sub: React.CSSProperties = {
 }
 const primaryCta: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', height: 32,
-  padding: '0 14px', background: '#3948C8', color: '#fff',
+  padding: '0 14px', background: '#111827', color: '#fff',
   borderRadius: 999, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
 }
 const dismissBtn: React.CSSProperties = {

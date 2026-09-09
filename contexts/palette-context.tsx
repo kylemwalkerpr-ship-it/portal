@@ -35,23 +35,22 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
 
   const palette = getPalette(paletteName)
 
-  // Apply CSS vars to .cw-market whenever the palette ACTUALLY changes.
-  // The blocking boot script already wrote identical vars + set
-  // data-ys-palette before hydration, so on mount (and on every inner
-  // navigation remount) with the same palette this is a no-op — re-applying
-  // here is what made tokens look like they "load" after each navigation.
-  useEffect(() => {
+  const apply = useCallback((name: string) => {
+    if (typeof document === 'undefined') return
+    const next = getPalette(name)
     const root = document.querySelector('.cw-market') as HTMLElement | null
-    if (!root) return
-    if (document.documentElement.getAttribute('data-ys-palette') === paletteName) return
-    applyPaletteCssVars(root, palette.tokens)
-    document.documentElement.setAttribute('data-ys-palette', paletteName)
-  }, [paletteName, palette.tokens])
+    if (root) applyPaletteCssVars(root, next.tokens)
+    document.documentElement.setAttribute('data-ys-palette', name)
+  }, [])
 
-  // Leaving the marketplace unmounts this provider — restore the portal's
-  // own body background so the dark market paper doesn't leak into it.
-  // Empty deps: this cleanup runs ONLY when the marketplace layout unmounts,
-  // never on inner navigations (which keep the provider mounted).
+  // Always write tokens onto .cw-market. The boot script paints <html>
+  // before the shell exists; globals.css also declares first-paint fallbacks
+  // on .cw-market which would otherwise lock the default hue and make the
+  // picker look like a no-op. Re-applying identical values is visually idle.
+  useEffect(() => {
+    apply(paletteName)
+  }, [paletteName, apply])
+
   useEffect(() => {
     return () => {
       if (typeof document !== 'undefined') document.body.style.backgroundColor = ''
@@ -61,7 +60,8 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
   const setPaletteName = useCallback((name: string) => {
     setPaletteNameRaw(name)
     try { window.localStorage.setItem(STORAGE_KEY, name) } catch {}
-  }, [])
+    apply(name)
+  }, [apply])
 
   return (
     <PaletteContext.Provider value={{ palettes: PALETTES, palette, setPaletteName }}>

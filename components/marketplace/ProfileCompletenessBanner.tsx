@@ -120,7 +120,7 @@ export function ProfileCompletenessBanner({
 }
 
 function ScoreRing({ score, tone }: { score: number; tone: 'ready' | 'progress' | 'urgent' }) {
-  const stroke = tone === 'ready' ? '#1A6B3A' : tone === 'urgent' ? '#B22234' : '#3948C8'
+  const stroke = tone === 'ready' ? '#1A6B3A' : tone === 'urgent' ? '#B22234' : '#111827'
   const circumference = 2 * Math.PI * 18
   const offset = circumference * (1 - score / 100)
   return (
@@ -165,7 +165,7 @@ const statusLabel = (tone: 'ready' | 'progress' | 'urgent'): React.CSSProperties
 })
 const primaryCta = (tone: 'ready' | 'progress' | 'urgent'): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', height: 32, padding: '0 14px',
-  background: tone === 'ready' ? '#1A6B3A' : '#3948C8', color: '#fff',
+  background: tone === 'ready' ? '#1A6B3A' : '#111827', color: '#fff',
   borderRadius: 999, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
 })
 const ghostCta: React.CSSProperties = {

@@ -98,7 +98,7 @@
   .cw-market .ys-shell-menu-toggle:focus-visible,
   .cw-market .ys-shell-drawer-link:focus-visible,
   .cw-market .ys-shell-drawer-extras button:focus-visible {
-    outline: 2px solid var(--ys-indigo, #3948C8) !important;
+    outline: 2px solid var(--ys-indigo, #111827) !important;
     outline-offset: 2px !important;
   }
 
