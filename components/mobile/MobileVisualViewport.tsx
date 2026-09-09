@@ -3,6 +3,7 @@
 import React from 'react'
 
 const HEIGHT_VAR = '--ys-visual-viewport-height'
+const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'
 const OFFSET_VAR = '--ys-visual-viewport-offset-top'
 
 /**
@@ -14,12 +15,14 @@ const OFFSET_VAR = '--ys-visual-viewport-offset-top'
  * layouts: the final flex child (Messenger's composer) can sit underneath
  * browser chrome even though the document itself is not scrollable.
  *
- * This coordinator publishes the live VisualViewport geometry as CSS custom
- * properties. The mobile viewport contract consumes them for every role
- * dashboard and full-screen Messenger surface, while retaining 100dvh as the
- * no-JS fallback. It is intentionally mounted once at the root instead of
- * inside a student-only component so clients, attorneys and consultants behave
- * alike.
+ * Two measurements are intentionally published:
+ * - --ys-visual-viewport-height is the visible bottom edge in layout-viewport
+ *   coordinates. Existing dashboard shells use it while remaining in normal
+ *   document flow.
+ * - --ys-visual-viewport-block-size is the actual visible height. Full-screen
+ *   mobile conversations pair it with --ys-visual-viewport-offset-top and
+ *   become fixed to the VisualViewport, which prevents Safari's keyboard pan
+ *   from clipping the chat header or composer.
  */
 export default function MobileVisualViewport() {
   React.useLayoutEffect(() => {
@@ -33,15 +36,15 @@ export default function MobileVisualViewport() {
       frame = 0
       const viewport = window.visualViewport
       const rawHeight = viewport?.height || window.innerHeight
+      const visualHeight = Math.max(1, Math.round(rawHeight))
       const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0))
-      // visualViewport.height is the visible block size. During keyboard-driven
-      // viewport panning Safari may also move offsetTop; adding that offset keeps
-      // the shell's bottom edge aligned with the visible bottom edge instead of
-      // leaving a dead strip beneath the composer. Do not impose a minimum:
-      // landscape keyboards can legitimately leave less than 320px visible.
-      const visibleBottom = Math.max(1, Math.round(rawHeight) + offsetTop)
+      // Normal-flow dashboard shells need their bottom edge to reach the visual
+      // viewport bottom even when Safari pans the layout viewport. Fixed mobile
+      // chats instead consume visualHeight + offsetTop as separate values.
+      const visibleBottom = visualHeight + offsetTop
 
       root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)
+      root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)
       root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)
     }
 
@@ -89,6 +92,7 @@ export default function MobileVisualViewport() {
       document.removeEventListener('focusout', onFocusChange)
       document.removeEventListener('visibilitychange', onVisibility)
       root.style.removeProperty(HEIGHT_VAR)
+      root.style.removeProperty(BLOCK_SIZE_VAR)
       root.style.removeProperty(OFFSET_VAR)
     }
   }, [])
