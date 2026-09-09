@@ -20,6 +20,7 @@ import { stripHtmlComments } from '@/lib/bioMarkdown'
 import { T, F } from './tokens'
 import { renderBioMarkdown } from '@/lib/bioMarkdown'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
+import { getCategoryById, getSubcategoryById } from '@/lib/categories'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -51,6 +52,7 @@ const breadcrumb: CSSProperties = {
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
   color: T.onPaperSoft,
+  flexWrap: 'wrap',
 }
 
 const breadcrumbLink: CSSProperties = {
@@ -216,10 +218,6 @@ interface GigDetailPageProps {
 
 export function GigDetailPage({ slug }: GigDetailPageProps) {
   const [gig, setGig] = React.useState<any>(null)
-  // Defer hostname read to after mount so SSR + first client paint
-  // produce the same markup (owner banner hidden). Once mounted we
-  // know whether we're on the portal host vs market subdomain and
-  // can show the banner where appropriate.
   const [isPortalHost, setIsPortalHost] = React.useState(false)
   React.useEffect(() => {
     setIsPortalHost(window.location.hostname === 'portal.yousafeconsultancy.com')
@@ -258,7 +256,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
       setGig(loaded)
       setSelectedTierId(tiers[0]?.id || '')
       setMainImage(loaded.gallery_images?.[0]?.url || '')
-      // Collapse server-rendered SEO shell now that interactive body is ready.
       signalSsrReady('yousafe:gig-ssr-ready')
       if (typeof window !== 'undefined') {
         const saved = readLocalList(SAVED_GIGS_KEY)
@@ -284,7 +281,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         )
       }
 
-      // Track view
       requestJson('/api/gig-metrics/event', {
         method: 'POST',
         body: JSON.stringify({ gig_id: loaded.id, event_type: 'click' }),
@@ -300,8 +296,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     load()
   }, [load])
 
-  // One idempotency key per checkout attempt: double-clicks and network
-  // retries replay the same server-side outcome instead of double-charging.
   const idemKeyRef = React.useRef<string | null>(null)
 
   const openCheckout = () => {
@@ -402,7 +396,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         // User cancelled
       }
     } else {
-      // Fallback: copy to clipboard
       navigator.clipboard.writeText(window.location.href)
       alert('Link copied to clipboard!')
     }
@@ -415,11 +408,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   }
 
   if (loading) {
-    // SSR pass renders this branch (loading=true on initial render),
-    // so the H1 here is what crawlers see. Derive a heading from the
-    // slug as a placeholder; once data arrives, this whole subtree is
-    // replaced by the real gig render which has its own visible <h1>.
-    // Single H1 per page is preserved either way — never two at once.
     const placeholderWords = (slug || 'Service')
       .split('-')
       .filter(Boolean)
@@ -448,10 +436,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   }
 
   if (!gig) {
-    // Derive a readable headline from the slug so crawlers (this surface is
-    // noindex but still flagged by Ahrefs for "missing h1") have a real
-    // <h1> at the top of the empty-state page. Matches the slug→title
-    // helper used by generateMetadata in app/marketplace/gigs/[slug]/page.tsx.
     const words = (slug || 'Service')
       .split('-')
       .filter(Boolean)
@@ -460,10 +444,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     return (
       <div style={pageShell}>
         <main style={inner}>
-          {/* Off-screen h1 so SEO/accessibility tools see a heading even
-              though the page itself shows "Gig not found" as the dominant
-              copy. We don't want to mislead a human visitor with a slug-
-              derived headline when the gig is genuinely gone. */}
           <h1 style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>
             {derivedTitle}
           </h1>
@@ -487,37 +467,34 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const selectedTier = tiers.find((t: any) => t.id === selectedTierId) || tiers[0]
   const faq = Array.isArray(gig.faq) ? gig.faq : []
   const images = gig.gallery_images || []
+  const category = gig.category ? getCategoryById(gig.category) : undefined
+  const subcategory = category && gig.subcategory
+    ? getSubcategoryById(category.id, gig.subcategory)
+    : undefined
 
   return (
     <div style={pageShell}>
       <main style={inner}>
         <div style={toolbar}>
-          <div style={breadcrumb}>
-            <Link href="/" style={breadcrumbLink}>
-              Marketplace
-            </Link>
-            <span style={{ color: T.onPaperSoft }}>/</span>
-            <span>{gig.category || 'Service'}</span>
-            <span style={{ color: T.onPaperSoft }}>/</span>
-            <span style={{ color: T.onPaper }}>{gig.title}</span>
-          </div>
+          <nav aria-label="Breadcrumb" style={breadcrumb}>
+            <Link href="/" style={breadcrumbLink}>Marketplace</Link>
+            <span aria-hidden style={{ color: T.onPaperSoft }}>/</span>
+            {category ? (
+              <Link href={`/categories/${category.id}`} style={breadcrumbLink}>{category.name}</Link>
+            ) : (
+              <span>Service</span>
+            )}
+            {subcategory && (
+              <>
+                <span aria-hidden style={{ color: T.onPaperSoft }}>/</span>
+                <Link href={`/categories/${subcategory.id}`} style={breadcrumbLink}>{subcategory.name}</Link>
+              </>
+            )}
+            <span aria-hidden style={{ color: T.onPaperSoft }}>/</span>
+            <span aria-current="page" style={{ color: T.onPaper }}>{gig.title}</span>
+          </nav>
         </div>
 
-        {/* Owner preview banner — visible ONLY when ALL of:
-              1. The API returned viewer_is_owner === true (strict
-                 equality; "truthy" leaked the banner once when an
-                 older response shape returned a non-boolean).
-              2. We're on the portal hostname. The market subdomain is
-                 the buyer surface — sellers manage their gigs from the
-                 portal dashboard, so the banner has no business there
-                 and would only confuse anon visitors who saw it
-                 momentarily during render.
-              3. We're running in the browser (window is defined). On
-                 the server side hostname check returns undefined which
-                 would render the banner — guard against the SSR pass.
-            All three are necessary to keep the Edit gig button out of
-            anon hands.
-        */}
         {gig.viewer_is_owner === true && isPortalHost && (
           <div
             style={{
@@ -623,31 +600,20 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               <div style={{ fontSize: '15px', lineHeight: 1.75, color: T.ink, fontFamily: F.ui }}>
                 {gig.description
                   ? renderBioMarkdown(gig.description)
-                  : (
-                    <p style={gigDescription}>Details are being finalized by the provider.</p>
-                  )}
+                  : <p style={gigDescription}>Details are being finalized by the provider.</p>}
               </div>
               {gig.tags && gig.tags.length > 0 && (
                 <div style={tagsContainer}>
                   {gig.tags.map((tag: string, index: number) => (
-                    <span key={index} style={tagBadge}>
-                      {tag}
-                    </span>
+                    <span key={index} style={tagBadge}>{tag}</span>
                   ))}
                 </div>
               )}
             </Card>
 
             {faq.length > 0 && <FAQSection faq={faq} />}
-
-            <ReviewsSection
-              gigId={gig.id}
-              showFilters={false}
-            />
-
-            {gig.similar_gigs && gig.similar_gigs.length > 0 && (
-              <SimilarGigs gigs={gig.similar_gigs} />
-            )}
+            <ReviewsSection gigId={gig.id} showFilters={false} />
+            {gig.similar_gigs && gig.similar_gigs.length > 0 && <SimilarGigs gigs={gig.similar_gigs} />}
           </div>
 
           <aside style={sidebar} className="ys-sidebar">
@@ -665,20 +631,13 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 headshot_url: gig.provider_headshot_url || null,
               }}
               onViewProfile={() => {
-                // Prefer the SEO-friendly username when the provider has set
-                // one; otherwise fall back to the profile UUID (the page
-                // resolves either token, see app/marketplace/providers/[id]).
                 const token = gig.provider?.username || gig.provider_id
                 window.location.href = `/marketplace/providers/${token}`
               }}
               onMessage={() => gatedChat(() => setMsgOpen(true))}
             />
 
-            <PricingTiers
-              tiers={tiers}
-              selectedTierId={selectedTierId}
-              onSelectTier={setSelectedTierId}
-            />
+            <PricingTiers tiers={tiers} selectedTierId={selectedTierId} onSelectTier={setSelectedTierId} />
 
             {selectedTier && (
               <OrderCTA
@@ -781,9 +740,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         </div>
       )}
 
-      {/* Side-pane chat — sticky drawer with full live thread.
-         Uses counterpartProfileId so it works for both attorney and
-         consultant gigs without having to map provider_id → attorney_id. */}
       <ChatSidePane
         open={msgOpen}
         onClose={() => setMsgOpen(false)}
