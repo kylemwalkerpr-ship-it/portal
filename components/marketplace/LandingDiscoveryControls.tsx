@@ -82,7 +82,11 @@ export function LandingDiscoveryControls({ gigs, country }: Props) {
     .filter((category) => category.count > 0)
     .sort((a, b) => b.count - a.count)
 
-  const link = (query: string) => withCountry(`/marketplace?${query}`, country)
+  // The standalone market domain exposes the root as `/` and category hubs as
+  // `/categories/<id>`. Do not make a user navigate through the internal
+  // `/marketplace` mount or duplicate category identity in a query string.
+  const filterLink = (query: string) => withCountry(`/?${query}`, country)
+  const categoryLink = (categoryId: string) => withCountry(`/categories/${encodeURIComponent(categoryId)}`, country)
 
   return (
     <div className="ys-landing-discovery-controls" aria-label="Browse marketplace filters">
@@ -91,7 +95,7 @@ export function LandingDiscoveryControls({ gigs, country }: Props) {
           <p className="ys-landing-filter-title">Categories</p>
           <div className="ys-landing-filter-list">
             {categories.map((category) => (
-              <a key={category.id} href={link(`category=${encodeURIComponent(category.id)}`)}>
+              <a key={category.id} href={categoryLink(category.id)}>
                 <span>{category.name.replace(' Services', '')}</span>
                 <span className="count">{category.count}</span>
               </a>
@@ -102,42 +106,42 @@ export function LandingDiscoveryControls({ gigs, country }: Props) {
         <Popover id="provider" label="Provider details" openId={openId} setOpenId={setOpenId}>
           <p className="ys-landing-filter-title">Provider type</p>
           <div className="ys-landing-filter-list">
-            <a href={link('provider_type=attorney')}><span>Licensed attorneys</span><span>→</span></a>
-            <a href={link('provider_type=consultant')}><span>Regulated consultants</span><span>→</span></a>
-            <a href={link('min_rating=4.5')}><span>Rated 4.5 and above</span><span>★</span></a>
+            <a href={filterLink('provider_type=attorney')}><span>Licensed attorneys</span><span>→</span></a>
+            <a href={filterLink('provider_type=consultant')}><span>Regulated consultants</span><span>→</span></a>
+            <a href={filterLink('min_rating=4.5')}><span>Rated 4.5 and above</span><span>★</span></a>
           </div>
         </Popover>
 
         <Popover id="budget" label="Budget" openId={openId} setOpenId={setOpenId}>
           <p className="ys-landing-filter-title">Starting price</p>
           <div className="ys-landing-filter-list">
-            <a href={link('max_price=100')}><span>Under 100</span><span>→</span></a>
-            <a href={link('min_price=100&max_price=500')}><span>100 – 500</span><span>→</span></a>
-            <a href={link('min_price=500&max_price=1000')}><span>500 – 1,000</span><span>→</span></a>
-            <a href={link('min_price=1000')}><span>1,000 and above</span><span>→</span></a>
+            <a href={filterLink('max_price=100')}><span>Under 100</span><span>→</span></a>
+            <a href={filterLink('min_price=100&max_price=500')}><span>100 – 500</span><span>→</span></a>
+            <a href={filterLink('min_price=500&max_price=1000')}><span>500 – 1,000</span><span>→</span></a>
+            <a href={filterLink('min_price=1000')}><span>1,000 and above</span><span>→</span></a>
           </div>
         </Popover>
 
         <Popover id="delivery" label="Delivery time" openId={openId} setOpenId={setOpenId}>
           <p className="ys-landing-filter-title">Turnaround</p>
           <div className="ys-landing-filter-list">
-            <a href={link('delivery_days=1')}><span>Within 24 hours</span><span>→</span></a>
-            <a href={link('delivery_days=3')}><span>Within 3 days</span><span>→</span></a>
-            <a href={link('delivery_days=7')}><span>Within 7 days</span><span>→</span></a>
+            <a href={filterLink('delivery_days=1')}><span>Within 24 hours</span><span>→</span></a>
+            <a href={filterLink('delivery_days=3')}><span>Within 3 days</span><span>→</span></a>
+            <a href={filterLink('delivery_days=7')}><span>Within 7 days</span><span>→</span></a>
           </div>
         </Popover>
       </div>
 
       <div className="ys-landing-filter-shortcuts">
-        <a className="ys-landing-filter-switch" href={link('provider_type=attorney')}>
+        <a className="ys-landing-filter-switch" href={filterLink('provider_type=attorney')}>
           <span className="track" aria-hidden="true"><span /></span>
           Attorneys only
         </a>
-        <a className="ys-landing-filter-switch" href={link('delivery_days=3')}>
+        <a className="ys-landing-filter-switch" href={filterLink('delivery_days=3')}>
           <span className="track" aria-hidden="true"><span /></span>
           Delivery ≤ 3 days
         </a>
-        <a className="ys-landing-all-results" href={link('sort=relevance')}>All filters</a>
+        <a className="ys-landing-all-results" href={filterLink('sort=relevance')}>All filters</a>
       </div>
 
       <style jsx global>{`

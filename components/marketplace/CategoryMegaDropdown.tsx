@@ -66,12 +66,12 @@ export function CategoryMegaDropdown({ category, country, anchorRect, anchorElem
   )
   const compact = panelWidth < 340
 
+  // Category identity belongs in the pathname. Keep only true refinements in
+  // the query string so users never land on /marketplace?category=... URLs.
   const buildHref = (subId?: string) => {
-    const params = new URLSearchParams()
-    params.set('category', category.id)
-    if (subId) params.set('subcategory', subId)
-    if (country !== 'all') params.set('country', country)
-    return `/marketplace?${params.toString()}`
+    const path = `/categories/${subId || category.id}`
+    if (country === 'all') return path
+    return `${path}?country=${encodeURIComponent(country)}`
   }
 
   const subs = category.subcategories.slice(0, 12)

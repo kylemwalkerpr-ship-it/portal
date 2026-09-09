@@ -10,6 +10,10 @@ const categoryLayout = read('app/marketplace/categories/[categoryId]/layout.tsx'
 const categoryCss = read('app/marketplace/categories/[categoryId]/category-discovery.module.css')
 const filters = read('components/marketplace/FilterSidebar.tsx')
 const featured = read('components/marketplace/FeaturedBriefsGrid.tsx')
+const categoryMenu = read('components/marketplace/CategoryMegaDropdown.tsx')
+const landingControls = read('components/marketplace/LandingDiscoveryControls.tsx')
+const categoriesIndex = read('components/marketplace/MarketplaceCategoriesIndex.tsx')
+const smartSearch = read('components/marketplace/SmartSearchBox.tsx')
 
 describe('marketplace category URL contract', () => {
   test('keeps the route category in API filtering without duplicating it in the browser URL', () => {
@@ -24,6 +28,17 @@ describe('marketplace category URL contract', () => {
     expect(middleware).toContain("pathname.match(/^\\/categories\\/([^/]+)\\/?$/)")
     expect(middleware).toContain('NextResponse.redirect(dest, { status: 301 })')
   })
+
+  test('emits clean pathname-first category URLs from the visible discovery surfaces', () => {
+    expect(categoryMenu).toContain('const path = `/categories/${subId || category.id}`')
+    expect(categoryMenu).not.toContain("params.set('category', category.id)")
+    expect(landingControls).toContain('const categoryLink = (categoryId: string)')
+    expect(landingControls).toContain('/categories/${encodeURIComponent(categoryId)}')
+    expect(categoriesIndex).toContain('href={`/categories/${category.id}`}')
+    expect(categoriesIndex).not.toContain('href={`/marketplace/categories/${category.id}`}')
+    expect(smartSearch).toContain('window.location.href = `/categories/${s.id}`')
+    expect(smartSearch).not.toContain('window.location.href = `/marketplace/categories/${s.id}`')
+  })
 })
 
 describe('marketplace category discovery presentation', () => {
@@ -32,6 +47,16 @@ describe('marketplace category discovery presentation', () => {
     expect(categoryLayout).toContain('className={styles.cardRail}')
     expect(categoryLayout).toContain('href={`/categories/${item.id}`}')
     expect(categoryLayout).toContain('Vetted specialists')
+  })
+
+  test('upgrades the categories index to roomy marketplace cards rather than dashboard tiles', () => {
+    expect(categoriesIndex).toContain('Popular on YouSafe')
+    expect(categoriesIndex).toContain('ys-category-popular-rail')
+    expect(categoriesIndex).toContain('ys-category-popular-card')
+    expect(categoriesIndex).toContain('ys-category-grid')
+    expect(categoriesIndex).toContain('grid-template-columns: repeat(3, minmax(0,1fr))')
+    expect(categoriesIndex).toContain('const DISCOVERY_FONT = "-apple-system')
+    expect(categoriesIndex).not.toContain('borderLeft: `4px solid')
   })
 
   test('keeps the roomy discovery work that was already shipped', () => {
