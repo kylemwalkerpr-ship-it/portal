@@ -90,7 +90,7 @@ export function SellerProfilePage({
 
   if (loading) {
     return (
-      <div style={pageShell}>
+      <div className="ys-seller-profile-page" style={pageShell}>
         <LoadingState message="Loading seller profile..." />
       </div>
     )
@@ -98,7 +98,7 @@ export function SellerProfilePage({
 
   if (error) {
     return (
-      <div style={pageShell}>
+      <div className="ys-seller-profile-page" style={pageShell}>
         <ErrorState message={error} />
       </div>
     )
@@ -106,16 +106,16 @@ export function SellerProfilePage({
 
   if (!seller) {
     return (
-      <div style={pageShell}>
+      <div className="ys-seller-profile-page" style={pageShell}>
         <EmptyState message="Seller not found" submessage="The seller you're looking for doesn't exist or has been removed." />
       </div>
     )
   }
 
   return (
-    <div style={pageShell}>
+    <div className="ys-seller-profile-page" style={pageShell}>
       {/* Breadcrumb */}
-      <div style={breadcrumb}>
+      <div className="ys-seller-profile-breadcrumb" style={breadcrumb}>
         <Link href="/" style={breadcrumbLink}>Marketplace</Link>
         <span style={breadcrumbSeparator}>/</span>
         <span style={breadcrumbCurrent}>{seller.full_name}</span>
@@ -127,8 +127,9 @@ export function SellerProfilePage({
       {/* Stats */}
       <SellerStats seller={seller} />
 
-      {/* Tabs */}
-      <div style={tabsContainer}>
+      {/* Tabs: explicit class lets the mobile layer make this a touch-scroll
+          rail instead of squeezing/overflowing three labels on 320px phones. */}
+      <div className="ys-seller-profile-tabs" style={tabsContainer}>
         <button
           type="button"
           onClick={() => setActiveTab('about')}
@@ -153,7 +154,7 @@ export function SellerProfilePage({
       </div>
 
       {/* Tab Content — Card wrapper for light paper background */}
-      <div style={{ ...tabContent, background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '14px', padding: '24px' }}>
+      <div className="ys-seller-profile-tab-content" style={{ ...tabContent, background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '14px', padding: '24px' }}>
         {activeTab === 'about' && <SellerAbout seller={seller} />}
         {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
         {activeTab === 'reviews' && <SellerReviews reviews={reviews} />}
