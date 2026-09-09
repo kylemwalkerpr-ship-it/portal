@@ -1,7 +1,7 @@
 /* Conversion-critical mobile polish
    ---------------------------------
    Small-screen refinements for marketplace discovery, gig detail, filters,
-   and messenger controls. Loaded after mobile-hardening.css. */
+   seller profiles, and messenger controls. Loaded after mobile-hardening.css. */
 
 @media (max-width: 600px) {
   /* Finger-sized marketplace controls without altering desktop density. */
@@ -44,6 +44,83 @@
   .cw-market [style*='maxHeight: 90vh'] {
     max-width: calc(100vw - 16px) !important;
     max-height: 92dvh !important;
+  }
+
+  /* ── Seller profile conversion route ────────────────────────────── */
+  .cw-market .ys-seller-profile-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 18px 14px 48px !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-seller-profile-page > * {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  /* SellerProfileComponents has a desktop 280px minimum on the identity
+     column; it is larger than the content box of a 320px phone. */
+  .cw-market .ys-seller-profile-page [style*='min-width: 280px'] {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='padding: 28px 32px'] {
+    padding: 20px 16px !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='minmax(200px, 1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='minmax(140px, 1fr)'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .cw-market .ys-seller-profile-tabs {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .cw-market .ys-seller-profile-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cw-market .ys-seller-profile-tabs > button {
+    flex: 0 0 auto !important;
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+    white-space: nowrap;
+  }
+
+  .cw-market .ys-seller-profile-tab-content {
+    padding: 16px !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .cw-market .ys-seller-profile-tab-content > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-breadcrumb {
+    overflow: hidden;
+  }
+
+  .cw-market .ys-seller-profile-breadcrumb > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Gig detail: preserve the purchasing hierarchy while reclaiming space
@@ -144,6 +221,23 @@
   .cw-market .ys-content-layout [style*='padding: 20px'],
   .cw-market .ys-sidebar [style*='padding: 20px'] {
     padding: 14px !important;
+  }
+
+  .cw-market .ys-seller-profile-page {
+    padding-inline: 10px !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='width: 120px'][style*='height: 120px'] {
+    width: 96px !important;
+    height: 96px !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='font-size: 28px'] {
+    font-size: 24px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content {
+    padding: 12px !important;
   }
 
   .yousafe-messenger .cv-head-name {
