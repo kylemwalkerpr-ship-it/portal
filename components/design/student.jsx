@@ -27,6 +27,7 @@ import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
 import { usePortalTheme } from './usePortalTheme'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
+import { resizeAvatarFile } from '@/lib/imageResize'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -1319,7 +1320,9 @@ function StudentApp({ onLogout, userId, userName }) {
   const [ordersLoading, setOrdersLoading] = React.useState(true);
   const [ordersError, setOrdersError] = React.useState(null);
   const [viewerVertical, setViewerVertical] = React.useState('study_abroad');
-  const [profileData, setProfileData] = React.useState({ name: userName || '', email: '' });
+  const [profileData, setProfileData] = React.useState({ name: userName || '', email: '', avatar_url: '' });
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
+  const avatarInputRef = React.useRef(null);
   const [walletSummary, setWalletSummary] = React.useState({ available: 0, pending: 0 });
   const [orderFiles, setOrderFiles] = React.useState([]);
   const [filesLoading, setFilesLoading] = React.useState(false);
@@ -1341,7 +1344,11 @@ function StudentApp({ onLogout, userId, userName }) {
       })
       .then(data => {
         setOrders(data.orders ?? []);
-        setProfileData({ name: data.profile?.name || userName || '', email: data.profile?.email || '' });
+        setProfileData({
+          name: data.profile?.name || userName || '',
+          email: data.profile?.email || '',
+          avatar_url: data.profile?.avatar_url || '',
+        });
         if (data.profile?.vertical) setViewerVertical(data.profile.vertical);
         setOrdersError(null);
       })
@@ -1725,6 +1732,26 @@ function StudentApp({ onLogout, userId, userName }) {
     }
   };
 
+  const uploadAvatar = React.useCallback(async (file) => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const resized = await resizeAvatarFile(file);
+      const fd = new FormData();
+      fd.append('file', resized);
+      const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setProfileData((prev) => ({ ...prev, avatar_url: data.avatar_url || '' }));
+      setActionNotice('Profile photo updated.');
+    } catch (e) {
+      setActionNotice(e.message || 'Upload failed');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  }, []);
+
   // ── SIDEBAR ──
   // Wraps the sidebar logout button with a loading guard
   function SidebarLogoutBtn() {
@@ -1787,7 +1814,7 @@ function StudentApp({ onLogout, userId, userName }) {
           Wallet: {formatMoney(walletSummary.available, 'usd')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name={profileData.name || 'Client'} size={32} />
+          <Avatar name={profileData.name || 'Client'} src={profileData.avatar_url || undefined} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileData.name || 'Client'}</div>
             <div style={{ fontSize: '11px', color: C.textMuted }}>Client</div>
@@ -1821,10 +1848,12 @@ function StudentApp({ onLogout, userId, userName }) {
           name={profileData.name || 'Client'}
           role="Client"
           email={profileData.email}
+          avatarSrc={profileData.avatar_url || undefined}
           onNavigate={setPage}
           onLogout={onLogout}
           items={[
             { label: 'Profile settings', icon: '⚙️', action: () => setPage('settings') },
+            { label: uploadingAvatar ? 'Uploading photo…' : (profileData.avatar_url ? 'Change photo' : 'Upload profile photo'), icon: '🖼️', action: () => avatarInputRef.current?.click() },
             { label: 'My orders', icon: '📦', action: () => setPage('orders') },
             { label: 'Billing wallet', icon: '💳', action: () => setPage('billing') },
             { label: 'Messages', icon: '💬', action: () => setPage('messages') },
@@ -3418,7 +3447,7 @@ function StudentApp({ onLogout, userId, userName }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Could not save profile.');
-        setProfileData({ name: data.profile?.full_name || '', email: data.profile?.email || profile.email });
+        setProfileData(prev => ({ ...prev, name: data.profile?.full_name || '', email: data.profile?.email || profile.email }));
         setActionNotice('Profile changes saved.');
       } catch (e) {
         setProfileError(e.message);
@@ -3445,11 +3474,13 @@ function StudentApp({ onLogout, userId, userName }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <Avatar name={profileData.name || 'User'} size={60} />
+            <Avatar name={profileData.name || 'User'} src={profileData.avatar_url || undefined} size={60} />
             <div>
               <div style={{ fontWeight: 700 }}>{profileData.name || 'Add your name'}</div>
               <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '2px' }}>{profileData.email || 'Email appears here'}</div>
-              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} onClick={() => setActionNotice('Student avatar upload is ready for profile storage wiring.')}>Change photo</Btn>
+              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} disabled={uploadingAvatar} onClick={() => avatarInputRef.current?.click()}>
+                {uploadingAvatar ? 'Uploading…' : profileData.avatar_url ? 'Change photo' : 'Upload photo'}
+              </Btn>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -3508,6 +3539,7 @@ function StudentApp({ onLogout, userId, userName }) {
   // ── RENDER ──
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+      <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }} onChange={(e) => uploadAvatar(e.target.files?.[0])} />
       <Sidebar />
       {/* WhatsApp-style rule for Messages: the page itself must NOT scroll —
           only the thread list / message list scroll internally. Everywhere
@@ -3569,7 +3601,12 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
           {page === 'templates' && <StudentTemplateFiller paidTemplates={paidTemplates} autoSelectSlug={selectedTemplateSlug} />}
           {page === 'billing' && <BillingWithNmi />}
-          {page === 'settings' && <StudentSettings userName={userName} />}
+          {page === 'settings' && (
+            <StudentSettings
+              userName={userName}
+              onAvatarChange={(url) => setProfileData((prev) => ({ ...prev, avatar_url: url || '' }))}
+            />
+          )}
           {page === 'messages' && (
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <UnifiedInbox

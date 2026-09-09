@@ -22,6 +22,7 @@ import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
 import { LanguageSelector } from '../language-selector'
+import { resizeAvatarFile } from '@/lib/imageResize'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 // Legacy alias kept temporarily; new call sites should use formatPrimary from
@@ -180,6 +181,9 @@ function AdminApp({ onLogout }) {
   const [pendingInvites, setPendingInvites] = React.useState([]);
   const [invitesLoaded, setInvitesLoaded] = React.useState(false);
   const [currentAdminId, setCurrentAdminId] = React.useState(null);
+  const [adminProfile, setAdminProfile] = React.useState({ name: 'Super Admin', email: 'admin@yousafe.com', avatar_url: '' });
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
+  const avatarInputRef = React.useRef(null);
   const [orders, setOrders] = React.useState([]);
   const [services, setServices] = React.useState([]);
   const [templateOrders, setTemplateOrders] = React.useState([]);
@@ -330,6 +334,40 @@ function AdminApp({ onLogout }) {
       .catch(e => setLoadError(e.message))
       .finally(() => setLoading(false));
   }, [normalizeAdminData]);
+
+  React.useEffect(() => {
+    fetch('/api/profile', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.profile) return;
+        setAdminProfile({
+          name: d.profile.full_name || d.profile.email || 'Super Admin',
+          email: d.profile.email || 'admin@yousafe.com',
+          avatar_url: d.profile.avatar_url || '',
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  const uploadAvatar = React.useCallback(async (file) => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const resized = await resizeAvatarFile(file);
+      const fd = new FormData();
+      fd.append('file', resized);
+      const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Upload failed.');
+      setAdminProfile((prev) => ({ ...prev, avatar_url: d.avatar_url || '' }));
+      setActionNotice('Profile photo updated.');
+    } catch (e) {
+      setActionNotice(e.message || 'Upload failed.');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  }, []);
 
   const refreshAttorneyApplications = React.useCallback(() => {
     fetch('/api/admin/attorney-applications')
@@ -590,10 +628,10 @@ function AdminApp({ onLogout }) {
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name="Admin" size={32} color={C.red} />
+          <Avatar name={adminProfile.name || 'Admin'} src={adminProfile.avatar_url || undefined} size={32} color={C.red} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>Super Admin</div>
-            <div style={{ fontSize: '11px', color: C.textMuted }}>admin@yousafe.com</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>{adminProfile.name || 'Super Admin'}</div>
+            <div style={{ fontSize: '11px', color: C.textMuted }}>{adminProfile.email || 'admin@yousafe.com'}</div>
           </div>
           <button
             type="button"
@@ -656,14 +694,16 @@ function AdminApp({ onLogout }) {
           )}
         </div>
         <UserMenu
-          name="Super Admin"
+          name={adminProfile.name || 'Super Admin'}
           role="Admin"
-          email="admin@yousafe.com"
+          email={adminProfile.email}
+          avatarSrc={adminProfile.avatar_url || undefined}
           color={C.red}
           onNavigate={setPage}
           onLogout={onLogout}
           items={[
             { label: 'Admin settings', icon: '⚙️', action: () => setPage('settings') },
+            { label: uploadingAvatar ? 'Uploading photo…' : (adminProfile.avatar_url ? 'Change photo' : 'Upload profile photo'), icon: '🖼️', action: () => avatarInputRef.current?.click() },
             { label: 'User management', icon: '👥', action: () => setPage('users') },
             { label: 'All orders', icon: '📦', action: () => setPage('orders') },
             { label: 'Escrow queue', icon: '🔒', action: () => setPage('escrow') },
@@ -2184,7 +2224,14 @@ const Settings = () => {
       {/* Appearance tab */}
       {tab === 'appearance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <AdminAvatarCard setActionNotice={setActionNotice} />
+          <AdminAvatarCard
+            setActionNotice={setActionNotice}
+            avatarUrl={adminProfile.avatar_url}
+            name={adminProfile.name}
+            busy={uploadingAvatar}
+            onPick={() => avatarInputRef.current?.click()}
+            onRemoved={() => setAdminProfile((prev) => ({ ...prev, avatar_url: '' }))}
+          />
           <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>
             Choose your view — your saved theme follows you on every device.
           </div>
@@ -2540,10 +2587,11 @@ const Settings = () => {
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+      <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }} onChange={(e) => uploadAvatar(e.target.files?.[0])} />
       <Sidebar />
-      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: page === 'master-chats' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', ...(page === 'master-chats' ? { minHeight: 0 } : {}) }}>
         <TopBar title={pages[page] || 'Admin'} />
-        <div style={{ flex: 1 }}>
+        <div className="yousafe-dashboard-body" style={{ flex: 1, ...(page === 'master-chats' ? { minHeight: 0, display: 'flex', flexDirection: 'column' } : {}) }}>
           {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
           {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading live admin data…</div>}
           {actionNotice && (
@@ -2557,7 +2605,11 @@ const Settings = () => {
           {page === 'users' && <Users />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
           {page === 'tickets' && <AdminTickets />}
-          {page === 'master-chats' && <AdminMasterMessenger />}
+          {page === 'master-chats' && (
+            <div className="yousafe-dashboard-content" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <AdminMasterMessenger />
+            </div>
+          )}
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} initialTab={financialsTab} />}
@@ -3057,41 +3109,51 @@ function ApplicationField({ label, value, link, multiline }) {
 // ── Admin profile photo ──────────────────────────────────────────────────
 // Same /api/profile/avatar endpoint students use; writes profiles.avatar_url
 // so the photo shows wherever the admin's profile renders.
-function AdminAvatarCard({ setActionNotice }) {
-  const [avatarUrl, setAvatarUrl] = React.useState(null);
-  const [name, setName] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
+function AdminAvatarCard({ setActionNotice, avatarUrl, name, busy, onPick, onRemoved }) {
+  const [localUrl, setLocalUrl] = React.useState(avatarUrl || null);
+  const [localName, setLocalName] = React.useState(name || '');
+  const [localBusy, setLocalBusy] = React.useState(false);
   const inputRef = React.useRef(null);
+  const uploading = busy || localBusy;
+
+  React.useEffect(() => { setLocalUrl(avatarUrl || null); }, [avatarUrl]);
+  React.useEffect(() => { if (name) setLocalName(name); }, [name]);
 
   React.useEffect(() => {
+    if (avatarUrl !== undefined) return;
     fetch('/api/profile', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.profile) {
-          setAvatarUrl(d.profile.avatar_url || null);
-          setName(d.profile.full_name || d.profile.email || 'Admin');
+          setLocalUrl(d.profile.avatar_url || null);
+          setLocalName(d.profile.full_name || d.profile.email || 'Admin');
         }
       })
       .catch(() => {});
-  }, []);
+  }, [avatarUrl]);
 
   const upload = async (file) => {
-    setBusy(true);
+    if (onPick) {
+      onPick(file);
+      return;
+    }
+    setLocalBusy(true);
     try {
+      const resized = await resizeAvatarFile(file);
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', resized);
       const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || 'Upload failed.');
-      setAvatarUrl(d.avatar_url);
+      setLocalUrl(d.avatar_url);
       setActionNotice?.('Profile photo updated.');
     } catch (e) { setActionNotice?.(e.message); }
-    finally { setBusy(false); }
+    finally { setLocalBusy(false); }
   };
 
   return (
     <Card style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-      <Avatar name={name || 'Admin'} src={avatarUrl || undefined} size={56} color={C.red} />
+      <Avatar name={localName || 'Admin'} src={localUrl || undefined} size={56} color={C.red} />
       <div style={{ flex: 1, minWidth: 180 }}>
         <div style={{ fontWeight: 800, fontSize: 14, color: C.text }}>Profile photo</div>
         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>Shown across the console and to users you message. JPG, PNG, WebP or GIF.</div>
@@ -3099,19 +3161,20 @@ function AdminAvatarCard({ setActionNotice }) {
       <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) upload(f); }} />
       <div style={{ display: 'flex', gap: 8 }}>
-        <Btn variant="secondary" size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>
-          {busy ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+        <Btn variant="secondary" size="sm" disabled={uploading} onClick={() => (onPick ? onPick() : inputRef.current?.click())}>
+          {uploading ? 'Uploading…' : localUrl ? 'Change photo' : 'Upload photo'}
         </Btn>
-        {avatarUrl && (
-          <Btn variant="ghost" size="sm" disabled={busy} onClick={async () => {
-            setBusy(true);
+        {localUrl && (
+          <Btn variant="ghost" size="sm" disabled={uploading} onClick={async () => {
+            setLocalBusy(true);
             try {
               const res = await fetch('/api/profile/avatar', { method: 'DELETE', credentials: 'same-origin' });
               if (!res.ok) throw new Error('Could not remove photo.');
-              setAvatarUrl(null);
+              setLocalUrl(null);
+              onRemoved?.();
               setActionNotice?.('Photo removed.');
             } catch (e) { setActionNotice?.(e.message); }
-            finally { setBusy(false); }
+            finally { setLocalBusy(false); }
           }}>Remove</Btn>
         )}
       </div>

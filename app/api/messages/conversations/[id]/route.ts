@@ -11,6 +11,7 @@ import {
   scheduleAutoReply,
   setConversationAiMode,
 } from '@/lib/messengerAi'
+import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -77,6 +78,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
+  const [counterpartRow] = await fillMissingProfileAvatars(db, [(counterpartRes as any).data].filter(Boolean))
 
   let sharedOrders: any[] = []
   let sharedOffers: any[] = []
@@ -229,7 +231,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   return Response.json({
     conversation: {
       id: conv.id,
-      counterpart: (counterpartRes as any).data || null,
+      counterpart: counterpartRow || (counterpartRes as any).data || null,
       context_kind: conv.context_kind,
       context_id:   conv.context_id,
       status:       conv.status,

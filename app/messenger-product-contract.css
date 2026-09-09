@@ -51,6 +51,20 @@
   }
 
   @media (max-width: 680px) {
+    body .yousafe-messenger:has(.ys-chatscreen[data-mobile-view='list']),
+    body .yousafe-messenger > .ys-inbox-frame,
+    body .yousafe-messenger > :has(> .ys-chatscreen[data-mobile-view='list']),
+    body .yousafe-messenger > .admin-master-shell {
+      display: flex !important;
+      flex-direction: column !important;
+      flex: 1 1 0% !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      height: auto !important;
+      overflow: hidden !important;
+    }
+
     body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] {
       display: flex !important;
       flex-direction: column !important;

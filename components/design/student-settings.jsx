@@ -6,6 +6,7 @@ import { TwoFactorCard } from '../TwoFactorCard'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
 import { COUNTRY_LIST } from '../../lib/countryList'
+import { resizeAvatarFile } from '@/lib/imageResize'
 
 /**
  * Student → Settings (Fiverr-grade).
@@ -80,7 +81,7 @@ function PrefRow({ label, sub, value, onChange }) {
   )
 }
 
-export default function StudentSettings({ userName }) {
+export default function StudentSettings({ userName, onAvatarChange }) {
   // Active tab survives re-renders, remounts, and refreshes (?tab=… in the
   // URL). Picking a theme in Appearance must NOT bounce the user back to
   // Profile — the tab only changes when they click another tab themselves.
@@ -166,7 +167,7 @@ export default function StudentSettings({ userName }) {
       </div>
 
       <div style={{ maxWidth: 760 }}>
-        {tab === 'profile'      && <ProfileTab data={data} setData={setData} userName={userName} flash={flash} />}
+        {tab === 'profile'      && <ProfileTab data={data} setData={setData} userName={userName} flash={flash} onAvatarChange={onAvatarChange} />}
         {tab === 'notifications' && <NotificationsTab data={data} setData={setData} flash={flash} />}
         {tab === 'privacy'      && <PrivacyTab data={data} setData={setData} flash={flash} />}
         {tab === 'security'     && <SecurityTab data={data} flash={flash} />}
@@ -178,7 +179,7 @@ export default function StudentSettings({ userName }) {
 }
 
 // ── Profile tab ─────────────────────────────────────────────────────────
-function ProfileTab({ data, setData, userName, flash }) {
+function ProfileTab({ data, setData, userName, flash, onAvatarChange }) {
   const parsed = React.useMemo(() => splitDisplayName(data.profile.full_name || userName || ''), [data.profile.full_name, userName])
   const [form, setForm] = React.useState({
     salutation:    parsed.salutation,
@@ -253,12 +254,14 @@ function ProfileTab({ data, setData, userName, flash }) {
                   if (!file) return;
                   setAvatarBusy(true);
                   try {
+                    const resized = await resizeAvatarFile(file);
                     const fd = new FormData();
-                    fd.append('file', file);
+                    fd.append('file', resized);
                     const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
                     const d = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(d.error || 'Upload failed.');
                     setData(prev => ({ ...prev, profile: { ...prev.profile, avatar_url: d.avatar_url } }));
+                    onAvatarChange?.(d.avatar_url || '');
                     flash('ok', 'Profile photo updated.');
                   } catch (err) { flash('err', err.message); }
                   finally { setAvatarBusy(false); }
@@ -274,6 +277,7 @@ function ProfileTab({ data, setData, userName, flash }) {
                     const res = await fetch('/api/profile/avatar', { method: 'DELETE', credentials: 'same-origin' });
                     if (!res.ok) throw new Error('Could not remove photo.');
                     setData(prev => ({ ...prev, profile: { ...prev.profile, avatar_url: null } }));
+                    onAvatarChange?.('');
                     flash('ok', 'Photo removed.');
                   } catch (err) { flash('err', err.message); }
                   finally { setAvatarBusy(false); }

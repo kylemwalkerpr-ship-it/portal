@@ -7,6 +7,7 @@
  */
 import { requirePortalUser } from '@/lib/portalAuth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
+import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
 
 export async function GET(req: Request) {
   if (req.signal.aborted) {
@@ -68,7 +69,9 @@ export async function GET(req: Request) {
       .limit(500),
   ])
 
-  const profileById = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]))
+  const profileById = new Map(
+    (await fillMissingProfileAvatars(db, (profilesRes.data ?? []) as any[])).map((p: any) => [p.id, p]),
+  )
   const lastById    = new Map((lastMessagesRes.data ?? []).map((m: any) => [m.id, m]))
   const readMap     = new Map((readsRes.data ?? []).map((r: any) => [r.conversation_id, new Date(r.last_read_at).getTime()]))
 
