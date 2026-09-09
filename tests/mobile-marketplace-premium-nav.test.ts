@@ -34,12 +34,12 @@ describe('premium marketplace mobile navigation', () => {
     expect(css).toContain('env(safe-area-inset-right)')
   })
 
-  test('makes the opened drawer explicitly dismissible above the modal', () => {
+  test('keeps the close control above the drawer and injected floating UI', () => {
+    expect(css).toContain('.cw-market header:has(.ys-shell-drawer)')
+    expect(css).toContain('z-index: 2147483640 !important;')
     expect(css).toContain(".cw-market .ys-shell-menu-toggle[aria-expanded='true']")
-    expect(css).toContain('position: fixed !important;')
-    expect(css).toContain('z-index: 470 !important;')
+    expect(css).toContain('z-index: 2147483646 !important;')
     expect(css).toContain("content: '×';")
-    expect(css).toContain("top: max(10px, env(safe-area-inset-top)) !important;")
   })
 
   test('provides a sticky swipeable marketplace category rail', () => {
@@ -52,44 +52,54 @@ describe('premium marketplace mobile navigation', () => {
     expect(css).toContain('height: 44px !important;')
   })
 
-  test('uses a focused, spacious drawer on current iPhone widths', () => {
-    expect(css).toContain('width: min(390px, 92vw) !important;')
-    expect(css).toContain('border-radius: 18px 0 0 18px !important;')
-    expect(css).toContain('display: flex !important;')
-    expect(css).toContain('flex-direction: column !important;')
+  test('uses a restrained app-style drawer instead of a near-full-width slab', () => {
+    expect(css).toContain('width: min(360px, 88vw) !important;')
+    expect(css).toContain('border-radius: 16px 0 0 16px !important;')
     expect(css).toContain("content: 'Marketplace';")
-    expect(css).toContain('backdrop-filter: blur(6px) saturate(0.88);')
-    expect(css).toContain('width: min(332px, 94vw) !important;')
+    expect(css).toContain('backdrop-filter: blur(5px) saturate(0.88);')
+    expect(css).toContain('width: calc(100vw - 24px) !important;')
+    expect(css).not.toContain('width: min(390px, 92vw) !important;')
   })
 
-  test('keeps every drawer preference full width and pins utilities to the bottom', () => {
+  test('keeps preferences compact and directly below navigation', () => {
     expect(css).toContain('.cw-market .ys-shell-drawer-extras')
-    expect(css).toContain('grid-template-columns: minmax(0, 1fr) !important;')
-    expect(css).toContain('margin-top: auto !important;')
-    expect(css).toContain('grid-column: 1 / -1 !important;')
-    expect(css).not.toContain('.ys-shell-drawer-extras > :first-child')
-    expect(css).toContain("button[aria-label^='Theme:']::before")
+    expect(css).toContain('grid-template-columns: repeat(2, minmax(0, 1fr)) !important;')
+    expect(css).toContain('margin-top: 14px !important;')
+    expect(css).not.toContain('margin-top: auto !important;')
+    expect(css).toContain('> :first-child:nth-last-child(3)')
+    expect(css).toContain("content: 'Preferences';")
     expect(css).toContain("content: 'Appearance';")
   })
 
-  test('gives navigation rows deliberate interaction and keyboard focus states', () => {
-    expect(css).toContain('min-height: 52px !important;')
-    expect(css).toContain(".cw-market .ys-shell-drawer-link[aria-current='page']")
-    expect(css).toContain('.cw-market .ys-shell-drawer-link:focus-visible')
-    expect(css).toContain('transform: scale(0.985);')
+  test('keeps dropdowns inside the drawer and opens them upward on phones', () => {
+    expect(css).toContain(".cw-market .ys-shell-drawer-extras [role='listbox']")
+    expect(css).toContain('top: auto !important;')
+    expect(css).toContain('bottom: calc(100% + 8px) !important;')
+    expect(css).toContain('max-height: min(44dvh, 360px) !important;')
+    expect(css).toContain("button[aria-label^='Language:']")
+    expect(css).toContain("button[aria-label^='Theme:']")
   })
 
-  test('freezes the page and removes floating support controls while navigation is open', () => {
-    expect(css).toContain("body:has(.cw-market .ys-shell-menu-toggle[aria-expanded='true'])")
+  test('gives navigation rows deliberate touch and keyboard states', () => {
+    expect(css).toContain('min-height: 48px !important;')
+    expect(css).toContain('.cw-market .ys-shell-drawer-link::after')
+    expect(css).toContain('.cw-market .ys-shell-drawer-link:focus-visible')
+    expect(css).toContain('transform: scale(0.988);')
+  })
+
+  test('freezes the page and hides the actual injected assistant while navigation is open', () => {
+    expect(css).toContain('body:has(#ys-market-mobile-menu)')
+    expect(css).toContain('.ysa-launcher')
+    expect(css).toContain('.ysa-panel')
     expect(css).toContain('overflow: hidden !important;')
-    expect(css).toContain("button[aria-label='Open chat']")
     expect(css).toContain('visibility: hidden !important;')
     expect(css).toContain('pointer-events: none !important;')
+    expect(css).not.toContain("button[aria-label='Open chat']")
   })
 
-  test('keeps account and preference popovers inside narrow phone viewports', () => {
+  test('keeps account and narrow-phone controls within viewport bounds', () => {
     expect(css).toContain("width: min(240px, calc(100vw - 24px)) !important;")
-    expect(css).toContain("width: min(320px, calc(100vw - 48px)) !important;")
+    expect(css).toContain('max-width: calc(100vw - 56px) !important;')
     expect(css).toContain('.cw-market .ys-shell-brand > div > :not(img)')
   })
 })
