@@ -15,6 +15,7 @@ import {
   type CitationContext,
   type OfficialSource,
 } from './officialSources'
+import { isRetrievalGatedCitationAllowed } from './citationRetrievalGate'
 
 /**
  * Public TLDs we will recover when a sentence word has been glued onto the
@@ -94,16 +95,12 @@ function splitGluedHostname(host: string): { host: string; leftover: string } {
   let h = host
   let leftover = ''
 
-  // A. TLD immediately followed by a capital letter:
-  //    market.yousafeconsultancy.comInthiscase → host + leftover Inthiscase
   const tldThenCap = h.match(TLD_THEN_CAP_RE)
   if (tldThenCap) {
     h = tldThenCap[1]
     leftover = tldThenCap[2]
   }
 
-  // B. Last label is CamelWord + tld with no separating dot:
-  //    market.yousafeconsultancy.Inthiscasecom → .com + leftover Inthiscase
   const lastDot = h.lastIndexOf('.')
   if (lastDot > 0) {
     const last = h.slice(lastDot + 1)
@@ -114,7 +111,6 @@ function splitGluedHostname(host: string): { host: string; leftover: string } {
     }
   }
 
-  // C. Insert a dot before a glued capital word sitting on the registrable name.
   if (!HOST_OK_RE.test(h.toLowerCase())) {
     const insert = h.match(/^([a-z0-9.-]*[a-z0-9])([A-Z][A-Za-z].*)$/)
     if (insert) {
@@ -123,8 +119,6 @@ function splitGluedHostname(host: string): { host: string; leftover: string } {
     }
   }
 
-  // D. Truncate at the real TLD if the host is still invalid after the
-  //    camelCase splits (e.g. leftover junk still attached with no capital).
   if (!HOST_OK_RE.test(h.toLowerCase())) {
     const trunc = h.match(TLD_TRUNC_RE)
     if (trunc && HOST_OK_RE.test(trunc[1])) {
@@ -150,12 +144,6 @@ export function extractHttpUrls(content: string): string[] {
   return out
 }
 
-/**
- * Rewrite glued-host URLs in markdown hrefs and bare tokens back to a real
- * hostname (`yousafeconsultancy.Inthiscasecom` → `yousafeconsultancy.com`).
- * Must run AFTER sentence-rhythm repair, which is what glues the adverbial
- * onto `.com` in the first place.
- */
 export function unglueDocumentUrls(content: string): { content: string; changed: number } {
   const src = String(content || '')
   if (!src) return { content: src, changed: 0 }
@@ -179,7 +167,6 @@ export function unglueDocumentUrls(content: string): { content: string; changed:
   return { content: out, changed }
 }
 
-
 export function buildCitationContext(opts: {
   region?: string | null
   topic?: string | null
@@ -201,7 +188,6 @@ export function buildCitationContext(opts: {
   }
 }
 
-/** Single context builder for brief, gate, remediator, reaudit, and ship. */
 export function citationContextForContent(
   content: string,
   opts?: {
@@ -222,10 +208,14 @@ export function citationContextForContent(
   })
 }
 
-/** True when the draft already cites a live-policy official URL for this brief. */
+/** True when the draft already cites a retrieval-approved official URL for this brief. */
 export function articleHasOfficialCitation(content: string, ctx?: CitationContext | null): boolean {
   for (const url of extractHttpUrls(content)) {
-    if (isCreamSource(url, ctx) && isCitationRelevant(url, ctx)) return true
+    if (
+      isCreamSource(url, ctx) &&
+      isCitationRelevant(url, ctx) &&
+      isRetrievalGatedCitationAllowed(url, ctx)
+    ) return true
   }
   return false
 }
@@ -233,7 +223,11 @@ export function articleHasOfficialCitation(content: string, ctx?: CitationContex
 /** Topic-ranked official pages that are allowed on this brief. Never invents. */
 export function pickOfficialCitations(ctx?: CitationContext | null, limit = 2): OfficialSource[] {
   return sourcesForBrief(ctx)
-    .filter((s) => isCreamSource(s.url, ctx) && isCitationRelevant(s.url, ctx))
+    .filter((s) =>
+      isCreamSource(s.url, ctx) &&
+      isCitationRelevant(s.url, ctx) &&
+      isRetrievalGatedCitationAllowed(s.url, ctx, s.title),
+    )
     .slice(0, Math.max(1, limit))
 }
 
@@ -250,10 +244,6 @@ function injectOfficialSources(content: string, sources: OfficialSource[]): stri
   return `${content.trimEnd()}\n\n## Official sources\n\n${lines}\n`
 }
 
-/**
- * Guarantee the draft has at least one on-topic official citation.
- * Injects at most two topic-ranked allowlist URLs. Never invents a path.
- */
 export function applyCitationPolicy(
   content: string,
   ctx?: CitationContext | null,
