@@ -1,0 +1,274 @@
+/* Marketplace profile + gig-detail mobile hardening
+   -------------------------------------------------
+   Loaded after the general marketplace mobile layers so shared seller
+   profiles, reviews, and gig-detail purchase hierarchy behave like a true
+   mobile layout rather than a compressed desktop canvas. */
+
+/* Keep the long-form gig flow intentional on every viewport:
+   core service content -> similar services -> reviews -> FAQs. The first
+   three children are cover, title/summary, and About This Service. */
+.cw-market .ys-content-layout > div:first-child > :nth-child(4) {
+  order: 30;
+}
+
+.cw-market .ys-content-layout > div:first-child > :nth-child(5) {
+  order: 20;
+}
+
+.cw-market .ys-content-layout > div:first-child > :nth-child(6) {
+  order: 10;
+}
+
+@media (max-width: 1024px) {
+  /* On phones/tablets, surface seller/packages/order controls immediately
+     after the gig hero rather than after every long-form section. display:
+     contents lets those main-column cards participate in the single-column
+     parent grid without cloning any content. */
+  .cw-market .ys-content-layout > div:first-child {
+    display: contents !important;
+  }
+
+  .cw-market .ys-content-layout > div:first-child > :nth-child(1) { order: 1 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(2) { order: 2 !important; }
+  .cw-market .ys-sidebar { order: 3 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(3) { order: 4 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(6) { order: 5 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(5) { order: 6 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(4) { order: 7 !important; }
+
+  .cw-market .ys-sidebar {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 600px) {
+  /* ── Seller identity header ─────────────────────────────────────── */
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) {
+    padding: 18px 16px !important;
+    border-radius: 14px !important;
+    overflow: hidden;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div {
+    display: grid !important;
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+    gap: 14px !important;
+    align-items: start !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:first-child {
+    width: 88px !important;
+    min-width: 88px !important;
+    max-width: 88px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:first-child img,
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:first-child > div:first-child {
+    width: 88px !important;
+    height: 88px !important;
+    max-width: 88px !important;
+    max-height: 88px !important;
+    font-size: 34px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:nth-child(2) {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) h1 {
+    max-width: 100% !important;
+    font-size: clamp(22px, 6.3vw, 27px) !important;
+    line-height: 1.12 !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: none !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) h1 + span,
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) h1 ~ span {
+    flex: 0 0 auto;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) p {
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    hyphens: none !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) [style*='gap: 16px'] {
+    gap: 8px 12px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:last-child {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:last-child a,
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:last-child button {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* A slightly denser stats strip reads more like a marketplace profile and
+     avoids four tall cards dominating the first phone viewport. */
+  .cw-market .ys-seller-profile-page [style*='minmax(140px, 1fr)'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='text-align: center'][style*='padding: 16px'] {
+    padding: 12px 10px !important;
+  }
+
+  /* ── Seller profile tab content ─────────────────────────────────── */
+  .cw-market .ys-seller-profile-tab-content {
+    padding: 12px !important;
+    overflow: hidden !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='minmax(200px, 1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* ReviewComponents uses a fixed 280px desktop sidebar. Stack it above the
+     review list on phones and let both pieces fill the available card. */
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='align-items: flex-start'] {
+    flex-direction: column !important;
+    gap: 16px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='width: 280px'] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='padding: 24px'] {
+    padding: 16px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='padding: 20px'] {
+    padding: 16px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='justify-content: space-between'][style*='margin-bottom: 24px'] {
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content select {
+    width: 100% !important;
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='font-size: 56px'] {
+    font-size: 42px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='padding: 48px 24px'] {
+    padding: 32px 12px !important;
+  }
+
+  /* Review cards need wrapping room for name/date and stars. */
+  .cw-market .ys-seller-profile-tab-content [style*='justify-content: space-between'][style*='align-items: flex-start'] {
+    flex-wrap: wrap !important;
+    gap: 10px 14px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='width: 44px'][style*='height: 44px'] {
+    flex: 0 0 44px !important;
+  }
+
+  /* ── Gig detail phone conversion flow ──────────────────────────── */
+  .cw-market .ys-content-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  .cw-market .ys-content-layout > *,
+  .cw-market .ys-content-layout > div:first-child > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+
+  .cw-market .ys-content-layout [style*='padding: 24px'] {
+    padding: 16px !important;
+  }
+
+  .cw-market .ys-content-layout h1 {
+    font-size: clamp(24px, 7.5vw, 31px) !important;
+    line-height: 1.16 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    hyphens: none !important;
+  }
+
+  .cw-market .ys-content-layout [style*='font-size: 15px'][style*='line-height: 1.75'] {
+    font-size: 15px !important;
+    line-height: 1.68 !important;
+  }
+
+  .cw-market .ys-content-layout img {
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-sidebar > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+
+  .cw-market .ys-sidebar button,
+  .cw-market .ys-sidebar a[role='button'] {
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .cw-market .ys-seller-profile-page {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div {
+    grid-template-columns: 76px minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:first-child,
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:first-child img,
+  .cw-market .ys-seller-profile-page > div:has(> div > div > h1) > div > div:first-child > div:first-child {
+    width: 76px !important;
+    height: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    max-height: 76px !important;
+  }
+
+  .cw-market .ys-seller-profile-tabs > button {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
