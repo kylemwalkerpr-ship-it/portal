@@ -1,5 +1,5 @@
-:global(.ys-category-breadcrumb),
-:global(.ys-category-main) {
+.categoryExperience ~ :global(.ys-category-breadcrumb),
+.categoryExperience ~ :global(.ys-category-main) {
   display: none !important;
 }
 
