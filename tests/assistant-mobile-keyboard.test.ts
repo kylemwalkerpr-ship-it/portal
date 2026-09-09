@@ -16,8 +16,8 @@ describe('system-wide assistant mobile keyboard behavior', () => {
     expect(assistant).toContain('window.visualViewport')
     expect(assistant).toContain("window.visualViewport.addEventListener('resize', syncVisualViewport")
     expect(assistant).toContain("window.visualViewport.addEventListener('scroll', syncVisualViewport")
-    expect(assistant).toContain("panel.style.setProperty('--ysa-vv-height'")
-    expect(assistant).toContain("panel.style.setProperty('--ysa-vv-top'")
+    expect(assistant).toContain("setPanelImportant('top', top + 'px')")
+    expect(assistant).toContain("setPanelImportant('height', height + 'px')")
   })
 
   test('keyboard mode outranks portal-specific fixed-panel CSS', () => {
