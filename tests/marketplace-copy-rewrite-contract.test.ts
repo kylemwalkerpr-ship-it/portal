@@ -8,12 +8,14 @@ describe('Marketplace Fiverr-grade copy rewrite contract', () => {
   const root = process.cwd()
   const scriptPath = path.join(root, 'scripts/rewrite-marketplace-copy.mjs')
   const runnerPath = path.join(root, 'scripts/run-marketplace-copy-rewrite.mjs')
+  const xaiPreloadPath = path.join(root, 'scripts/marketplace-xai-low-preload.mjs')
   const imageGuardPath = path.join(root, 'scripts/verify-marketplace-image-preservation.mjs')
   const workflowPath = path.join(root, '.github/workflows/marketplace-copy-rewrite.yml')
 
   it('is valid JavaScript and keeps published slugs immutable', () => {
     execFileSync(process.execPath, ['--check', scriptPath], { stdio: 'pipe' })
     execFileSync(process.execPath, ['--check', runnerPath], { stdio: 'pipe' })
+    execFileSync(process.execPath, ['--check', xaiPreloadPath], { stdio: 'pipe' })
     const source = fs.readFileSync(scriptPath, 'utf8')
     expect(source).toContain(".eq('slug', gig.slug)")
     expect(source).toContain('if (updated.slug !== gig.slug)')
@@ -53,15 +55,23 @@ describe('Marketplace Fiverr-grade copy rewrite contract', () => {
     expect(source).toContain('FINAL AUDIT PASS')
   })
 
-  it('loads provider credentials from the production vault and resumes across quality providers', () => {
+  it('uses authorized SuperGrok OAuth first and keeps provider fallbacks resumable', () => {
     const runner = fs.readFileSync(runnerPath, 'utf8')
+    const preload = fs.readFileSync(xaiPreloadPath, 'utf8')
+    expect(runner).toContain(".from('ai_settings')")
+    expect(runner).toContain('xai_oauth_access_token')
+    expect(runner).toContain('xai_oauth_refresh_token')
+    expect(runner).toContain("id: 'supergrok-oauth'")
+    expect(runner).toContain("kind: 'xai'")
+    expect(runner).toContain("model: 'grok-4.6'")
+    expect(runner).toContain("MARKETPLACE_XAI_REASONING: 'low'")
+    expect(runner).toContain('marketplace-xai-low-preload.mjs')
+    expect(preload).toContain("body.reasoning_effort")
+    expect(preload).toContain("MARKETPLACE_XAI_REASONING || 'low'")
     expect(runner).toContain(".from('ai_provider_keys')")
     expect(runner).toContain("id: 'entrim-deepseek'")
-    expect(runner).toContain("model: 'deepseek-ai/DeepSeek-V4-Flash'")
     expect(runner).toContain("id: 'entrim-qwen-27b'")
     expect(runner).toContain("id: 'runbios-glm-53'")
-    expect(runner).toContain("model: 'glm-5.3'")
-    expect(runner).toContain("XAI_API_KEY: ''")
     expect(runner).toContain('switching providers and resuming completed rows')
   })
 
