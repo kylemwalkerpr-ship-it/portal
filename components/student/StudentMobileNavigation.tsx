@@ -83,6 +83,7 @@ export default function StudentMobileNavigation() {
     if (typeof window === 'undefined') return
 
     let observer: MutationObserver | null = null
+    let discoveryObserver: MutationObserver | null = null
     let frame = 0
     const mq = window.matchMedia('(max-width: 768px)')
 
@@ -103,19 +104,26 @@ export default function StudentMobileNavigation() {
         const openThread = Boolean(shell.querySelector(".yousafe-messenger .ys-chatscreen[data-mobile-view='chat']"))
         const page = new URLSearchParams(window.location.search).get('page') || 'dashboard'
         const active = nextItems.find(item => item.active)
+        const topbar = shell.querySelector<HTMLElement>('.yousafe-topbar')
+        const originalTitle = topbar?.querySelector('h1')?.textContent?.trim() || ''
+        const correctedTitle = originalTitle && (originalTitle !== 'Dashboard' || page === 'dashboard')
+          ? originalTitle
+          : PAGE_TITLES[page] || active?.label || 'Dashboard'
+
         setMounted(true)
         setItems(nextItems)
         setThreadOpen(openThread)
-        setTitleHost(shell.querySelector<HTMLElement>('.yousafe-topbar'))
-        setPageTitle(PAGE_TITLES[page] || active?.label || 'Dashboard')
+        setTitleHost(topbar)
+        setPageTitle(correctedTitle)
         if (openThread) setMoreOpen(false)
       })
     }
 
     const attach = () => {
       observer?.disconnect()
+      discoveryObserver?.disconnect()
       refresh()
-      const shell = studentShell()
+      const shell = mq.matches ? studentShell() : null
       if (shell) {
         observer = new MutationObserver(refresh)
         observer.observe(shell, {
@@ -124,6 +132,14 @@ export default function StudentMobileNavigation() {
           attributes: true,
           attributeFilter: ['data-nav-active', 'data-mobile-view'],
         })
+      } else if (mq.matches && document.body) {
+        // Dashboard role data can resolve after this global coordinator mounts.
+        // Watch only until the real student shell appears, then narrow the
+        // observer to that shell so public pages do not carry long-lived work.
+        discoveryObserver = new MutationObserver(() => {
+          if (studentShell()) attach()
+        })
+        discoveryObserver.observe(document.body, { childList: true, subtree: true })
       }
     }
 
@@ -134,6 +150,7 @@ export default function StudentMobileNavigation() {
     return () => {
       cancelAnimationFrame(frame)
       observer?.disconnect()
+      discoveryObserver?.disconnect()
       mq.removeEventListener?.('change', attach)
       window.removeEventListener('popstate', refresh)
       window.removeEventListener('resize', refresh)
