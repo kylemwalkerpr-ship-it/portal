@@ -3,6 +3,7 @@ import path from 'path'
 import { rankChunks, type KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 
 const CORE_FILES = [
+  'network-authority.md',
   'brand-identity.md',
   'platform.md',
   'offers-orders-escrow.md',
@@ -63,7 +64,18 @@ export function loadAssistantCoreKnowledge(): KnowledgeChunk[] {
 }
 
 export function rankAssistantCoreKnowledge(query: string, limit = 6): KnowledgeChunk[] {
-  return rankChunks(loadAssistantCoreKnowledge(), query, limit)
+  const all = loadAssistantCoreKnowledge()
+  const authority = all.filter((chunk) => /network-authority/i.test(chunk.id + chunk.source))
+  const ranked = rankChunks(all, query, limit)
+  const merged: KnowledgeChunk[] = []
+  const seen = new Set<string>()
+  for (const chunk of [...authority, ...ranked]) {
+    if (seen.has(chunk.id)) continue
+    seen.add(chunk.id)
+    merged.push(chunk)
+    if (merged.length >= limit) break
+  }
+  return merged
 }
 
 /**
