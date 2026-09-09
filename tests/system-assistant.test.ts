@@ -55,6 +55,21 @@ describe('system-wide assistant origin context', () => {
   })
 })
 
+describe('assistant marketplace intent', () => {
+  it('maps concrete intent to a real canonical marketplace subcategory', async () => {
+    const { matchMarketplaceIntent } = await import('@/lib/assistantMarketplaceIntent')
+    const match = matchMarketplaceIntent('I need help preparing for an F-1 student visa and study permit')
+    expect(match?.subcategoryId).toBe('study-permits')
+    expect(match?.categoryId).toBe('immigration')
+    expect(match?.url).toBe('https://market.yousafeconsultancy.com/categories/study-permits')
+  })
+
+  it('does not force a marketplace funnel on generic conversation', async () => {
+    const { matchMarketplaceIntent } = await import('@/lib/assistantMarketplaceIntent')
+    expect(matchMarketplaceIntent('hello, how are you today?')).toBeNull()
+  })
+})
+
 describe('system-wide assistant model routing', () => {
   const originalFetch = global.fetch
 
@@ -67,17 +82,17 @@ describe('system-wide assistant model routing', () => {
   it('routes through Messenger SuperGrok auth/model without another AI provider', async () => {
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({
-        apiKey: 'supergrok-test-token',
-        baseURL: 'https://supergrok.example/v1',
+        apiKey: 'system-ai-test-token',
+        baseURL: 'https://system-ai.example/v1',
         model: 'grok-test-model',
         authMode: 'supergrok',
       })),
     }))
 
-    const fetchMock = jest.fn(async (url: string) => ({
+    const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ choices: [{ message: { content: 'Context-aware answer' } }] }),
+      text: async () => JSON.stringify({ choices: [{ message: { content: 'Grounded answer' } }] }),
     }))
     global.fetch = fetchMock as any
 
@@ -86,10 +101,42 @@ describe('system-wide assistant model routing', () => {
       { role: 'user', content: 'question' },
     ])
 
-    expect(result.text).toBe('Context-aware answer')
+    expect(result.text).toBe('Grounded answer')
     expect(result.model).toBe('grok-test-model')
     expect(result.authMode).toBe('supergrok')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(String(fetchMock.mock.calls[0][0])).toBe('https://supergrok.example/v1/chat/completions')
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://system-ai.example/v1/chat/completions')
+  })
+
+  it('uses an independent protocol fallback after a primary timeout', async () => {
+    jest.doMock('@/lib/messengerAi', () => ({
+      resolveMessengerGrokAuth: jest.fn(async () => ({
+        apiKey: 'system-ai-test-token',
+        baseURL: 'https://system-ai.example/v1',
+        model: 'grok-test-model',
+        authMode: 'supergrok',
+      })),
+    }))
+
+    const timeout = new Error('timed out')
+    timeout.name = 'AbortError'
+    const fetchMock = jest.fn()
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ output_text: 'Recovered answer' }),
+      })
+    global.fetch = fetchMock as any
+
+    const { callSystemSuperGrok } = await import('@/lib/superGrokAssistant')
+    const result = await callSystemSuperGrok('system context', [
+      { role: 'user', content: 'question' },
+    ])
+
+    expect(result.text).toBe('Recovered answer')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/chat/completions')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/responses')
   })
 })

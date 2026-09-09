@@ -1,8 +1,8 @@
 /**
- * SuperGrok AI closer for provider↔client DMs (Part B).
+ * YQAA engine for provider↔client DMs.
  *
  * - ai_mode on conversations.metadata: auto | paused | off
- * - Auto-reply on inbound client/student messages via Grok / xAI
+ * - Auto-reply on inbound client/student messages via the central Grok path
  * - Disclosure + YMYL safety; escalate when unsure
  * - Optional offer creation via the same shape as quick-offer
  * - Human Take over / human outbound message pauses AI
@@ -30,7 +30,6 @@ const CLIENT_ROLES = new Set(['client', 'student'])
 const DEBOUNCE_MS = 8_000
 const REPLY_COOLDOWN_MS = 4_000
 
-/** In-process debounce locks (per isolate / worker). */
 const pendingLocks = new Map<string, Promise<AiReplyResult | null>>()
 const lastTriggerAt = new Map<string, number>()
 
@@ -45,7 +44,6 @@ export interface AiReplyResult {
 export function normalizeAiMode(raw: unknown): AiMode {
   const v = String(raw || '').trim().toLowerCase()
   if (v === 'paused' || v === 'off' || v === 'auto') return v
-  // Default: AI closer is on until a human pauses / turns it off.
   return 'auto'
 }
 
@@ -61,7 +59,6 @@ export async function getConversationAiState(db: any, conversationId: string) {
     .eq('id', conversationId)
     .maybeSingle()
   if (error) {
-    // Column may not exist until migration is applied — treat as empty metadata.
     if (/metadata|column/i.test(error.message || '')) {
       const { data: fallback } = await db
         .from('conversations')
@@ -100,8 +97,6 @@ export async function setConversationAiMode(
   return mode
 }
 
-
-/** Persist AI skip/error diagnostics on conversation.metadata (no secrets). */
 async function recordAiDiagnostic(
   db: any,
   conversationId: string,
@@ -136,15 +131,6 @@ export type MessengerGrokAuth = {
   authMode: 'supergrok' | 'vault' | 'env'
 }
 
-/**
- * Credential resolution (Content Studio parity):
- * 1. SuperGrok OAuth / vault tokens in ai_settings (device login)
- * 2. AI Key Vault pasted grok key (ai_provider_keys → XAI_API_KEY)
- * 3. Worker / process env XAI_API_KEY or GROK_API_KEY (fallback only)
- *
- * Portal SuperGrok auth is primary — do not require a separate pasted key
- * when Content Studio OAuth already works.
- */
 export async function resolveMessengerGrokAuth(): Promise<MessengerGrokAuth> {
   let vaultOverlay: Record<string, string> = {}
   try {
@@ -168,7 +154,6 @@ export async function resolveMessengerGrokAuth(): Promise<MessengerGrokAuth> {
     XAI_API_BASE_DEFAULT
   ).replace(/\/+$/, '')
 
-  // 1) SuperGrok OAuth (same path as Content Studio refreshAiVault)
   try {
     const oauth = await ensureSuperGrokAccessToken()
     if (oauth?.accessToken) {
@@ -178,13 +163,11 @@ export async function resolveMessengerGrokAuth(): Promise<MessengerGrokAuth> {
     console.warn('[messengerAi] SuperGrok OAuth unavailable', err instanceof Error ? err.message : err)
   }
 
-  // 2) Vault pasted key (Content Studio Configure → grok)
   const vaultKey = vaultOverlay.XAI_API_KEY?.trim() || ''
   if (vaultKey) {
     return { apiKey: vaultKey, baseURL, model, authMode: 'vault' }
   }
 
-  // 3) Env fallback only
   const apiKey =
     process.env.XAI_API_KEY?.trim() ||
     process.env.GROK_API_KEY?.trim() ||
@@ -197,20 +180,20 @@ export async function resolveMessengerGrokAuth(): Promise<MessengerGrokAuth> {
   return { apiKey, baseURL, model, authMode: 'env' }
 }
 
-/** @deprecated use resolveMessengerGrokAuth */
 async function resolveGrokAuth(): Promise<MessengerGrokAuth> {
   return resolveMessengerGrokAuth()
 }
 
-const SYSTEM_PROMPT = `You are **YouSafe Assistant** — the marketplace concierge for YouSafe (Yousafe Consultancy).
+const SYSTEM_PROMPT = `You are **YQAA — the YouSafe Quick Assistance Agent** for YouSafe (Yousafe Consultancy).
 
 IDENTITY (non-negotiable):
-- You are YouSafe's disclosed AI site assistant. You help clients and students connect with a licensed provider (attorney or consultant) on this thread.
+- YQAA stands for **YouSafe Quick Assistance Agent**. You are YouSafe's disclosed AI assistance agent.
+- You help clients and students connect with a licensed provider (attorney or consultant) on this thread.
 - You are NOT the provider, NOT a licensed attorney/consultant, and you never silently impersonate them.
-- Speak as YouSafe Assistant supporting "{provider}" (the live specialist named in context) — warm marketplace host + helpful closer, not a dry bot footer.
+- Speak as YQAA supporting "{provider}" (the live specialist named in context) — warm marketplace host + helpful closer, not a dry bot footer.
 - First reply (and whenever unclear) must include a natural on-brand disclosure, e.g.:
-  "Hey — I'm YouSafe Assistant, the AI concierge on YouSafe helping you connect with {provider}. I'm not a licensed attorney myself — I'll help scope your needs and loop in the human specialist when it matters."
-  Adapt tone to the client's message; keep it human and confident, not a legal disclaimer dump.
+  "Hey — I'm YQAA, the YouSafe Quick Assistance Agent, helping you connect with {provider}. I'm AI-powered and not a licensed attorney myself — I'll help scope your needs and loop in the human specialist when it matters."
+- Never call yourself Yara, YouSafe Assistant, YouSafe AI, SuperGrok, or Grok in visitor-facing copy.
 
 VOICE / BRAND:
 - Professional, warm, immigration & education marketplace confident.
@@ -219,17 +202,17 @@ VOICE / BRAND:
 - Celebrate that YouSafe keeps messaging, documents, offers, and escrow on one trusted platform.
 
 HARD RULES (legal / YMYL):
-1. Always disclose YouSafe Assistant (AI) — never claim you are the licensed provider.
+1. Always disclose YQAA as AI-powered assistance — never claim you are the licensed provider.
 2. No outcome guarantees (visa approvals, case wins, refunds, timelines as promises).
-3. Do not invent jurisdiction-specific legal advice, bar numbers, credentials, or statutes. Scope discovery only; escalate for licensed opinions.
+3. Do not invent jurisdiction-specific legal advice, bar numbers, credentials, statutes, prices, policies, service availability, URLs, or provider facts.
 4. High-risk / uncertain / court deadlines / criminal / asylum / removal / "are you a lawyer?" → say the human provider should take over. Set escalate=true.
 5. Never ask the client to leave the platform, share personal contact info, or pay off-platform.
-6. Prefer SITE KNOWLEDGE + this provider's live profile/gigs for product answers. Do not invent fee math, policies, or gig ids.
+6. Prefer SITE KNOWLEDGE + this provider's live profile/gigs for product answers. If the evidence is insufficient, say so and escalate rather than guessing.
 
 DISCOVERY:
 - Ask order-critical questions (country, case type, deadlines, docs already held, budget/timeline expectations).
 - Use document summaries when present; ask clarifying questions if incomplete.
-- Ground recommendations in THIS provider's live gigs/profile when relevant, while staying in YouSafe Assistant voice.
+- Ground recommendations in THIS provider's live gigs/profile when relevant, while staying in YQAA voice.
 
 OFFERS:
 - Only propose an offer when discovery is enough AND you have a sensible title, price (USD dollars), and delivery_days.
@@ -237,12 +220,13 @@ OFFERS:
 - If not ready, set offer=null and keep gathering requirements warmly.
 
 SITE KNOWLEDGE:
-- A SITE KNOWLEDGE appendix (platform identity, FAQ, escrow/offers, policies/YMYL) plus live provider/gig context is appended below.
-- Prefer those sources. When unsure, disclose limits and set escalate=true.
+- A SITE KNOWLEDGE appendix plus live provider/gig context is appended below.
+- Treat supplied site/provider knowledge as authoritative for YouSafe-specific claims.
+- When unsure, disclose limits and set escalate=true. Never fill gaps with plausible-sounding details.
 
 RESPONSE FORMAT — return ONLY valid JSON (no markdown fences):
 {
-  "reply": "message text shown to the client (on-brand YouSafe Assistant voice; include AI disclosure on first reply or when unclear)",
+  "reply": "message text shown to the client (on-brand YQAA voice; include AI disclosure on first reply or when unclear)",
   "escalate": false,
   "offer": null
 }
@@ -287,8 +271,22 @@ function parseDecision(raw: string): GrokDecision {
     }
     return parsed
   } catch {
-    // Soft fallback: treat whole model output as the reply text.
     return { reply: text.slice(0, 4000) || 'Thanks — a human on our team will follow up shortly.', escalate: true, offer: null }
+  }
+}
+
+async function fetchTextWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = 55_000,
+): Promise<{ response: Response; text: string }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    return { response, text: await response.text() }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -297,76 +295,85 @@ async function callGrokChat(args: {
   user: string
 }): Promise<string> {
   const auth = await resolveGrokAuth()
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 55_000)
+  const headers = {
+    Authorization: `Bearer ${auth.apiKey}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  }
+
+  let chatStatus = 0
+  let chatError = ''
   try {
-    // Prefer chat/completions for short conversational turns; fall back to responses.
-    const chatRes = await fetch(`${auth.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${auth.apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+    const { response: chatRes, text: chatText } = await fetchTextWithTimeout(
+      `${auth.baseURL}/chat/completions`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: auth.model,
+          temperature: 0.35,
+          max_tokens: 1200,
+          messages: [
+            { role: 'system', content: args.system },
+            { role: 'user', content: args.user },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: auth.model,
-        temperature: 0.5,
-        max_tokens: 1200,
-        messages: [
-          { role: 'system', content: args.system },
-          { role: 'user', content: args.user },
-        ],
-      }),
-      signal: controller.signal,
-    })
-    const chatText = await chatRes.text()
+    )
+    chatStatus = chatRes.status
     if (chatRes.ok) {
       const json = JSON.parse(chatText) as any
-      const content =
-        json?.choices?.[0]?.message?.content ||
-        json?.choices?.[0]?.text ||
-        ''
+      const content = json?.choices?.[0]?.message?.content || json?.choices?.[0]?.text || ''
       if (String(content).trim()) return String(content).trim()
     }
-
-    // Fallback: Responses API (SuperGrok / grok-4.6 primary path)
-    const respRes = await fetch(`${auth.baseURL}/responses`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${auth.apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        model: auth.model,
-        input: [
-          { role: 'system', content: args.system },
-          { role: 'user', content: args.user },
-        ],
-        max_output_tokens: 1200,
-      }),
-      signal: controller.signal,
-    })
-    const respText = await respRes.text()
-    if (!respRes.ok) {
-      throw new Error(`Grok failed (${chatRes.status}/${respRes.status}): ${respText.slice(0, 240)}`)
-    }
-    const json = JSON.parse(respText) as any
-    const fromOutput =
-      json?.output_text ||
-      (Array.isArray(json?.output)
-        ? json.output
-            .flatMap((o: any) => o?.content || [])
-            .map((c: any) => c?.text || '')
-            .join('\n')
-        : '') ||
-      json?.choices?.[0]?.message?.content ||
-      ''
-    if (!String(fromOutput).trim()) throw new Error('Grok returned empty content')
-    return String(fromOutput).trim()
-  } finally {
-    clearTimeout(timer)
+    chatError = chatText.slice(0, 240)
+  } catch (err) {
+    chatError = err instanceof Error ? err.message : String(err)
   }
+
+  let respStatus = 0
+  let respError = ''
+  try {
+    const { response: respRes, text: respText } = await fetchTextWithTimeout(
+      `${auth.baseURL}/responses`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: auth.model,
+          input: [
+            { role: 'system', content: args.system },
+            { role: 'user', content: args.user },
+          ],
+          max_output_tokens: 1200,
+        }),
+      },
+    )
+    respStatus = respRes.status
+    if (respRes.ok) {
+      const json = JSON.parse(respText) as any
+      const fromOutput =
+        json?.output_text ||
+        (Array.isArray(json?.output)
+          ? json.output
+              .flatMap((o: any) => o?.content || [])
+              .map((c: any) => c?.text || '')
+              .join('\n')
+          : '') ||
+        json?.choices?.[0]?.message?.content ||
+        ''
+      if (String(fromOutput).trim()) return String(fromOutput).trim()
+      respError = 'empty content'
+    } else {
+      respError = respText.slice(0, 240)
+    }
+  } catch (err) {
+    respError = err instanceof Error ? err.message : String(err)
+  }
+
+  throw new Error(
+    `Messenger model failed (${chatStatus || 'network'}/${respStatus || 'network'}): ${(respError || chatError || 'unknown error').slice(0, 240)}`,
+  )
 }
 
 async function summarizeAttachments(db: any, messages: any[]): Promise<string> {
@@ -388,7 +395,6 @@ async function summarizeAttachments(db: any, messages: any[]): Promise<string> {
           excerpt = t.slice(0, 2500)
         }
       } else if (url && /\.pdf(\?|$)/i.test(name + url)) {
-        // Best-effort: pull raw bytes and keep a short latin1 sniff of extractable text.
         const res = await fetch(url)
         if (res.ok) {
           const ab = await res.arrayBuffer()
@@ -576,17 +582,12 @@ async function createOfferFromDecision(
     })
     .then(() => null, () => null)
 
-  // Touch fee helpers so unused-import lint stays quiet if tree-shaken oddly.
   void computePlatformFeeCents(price, providerType, settings)
   void computeNetPayoutCents(price, providerType, settings)
 
   return offer.id as string
 }
 
-/**
- * Core auto-reply. Safe to call after an inbound client message.
- * Debounced; no double-reply for the same trigger.
- */
 export async function maybeAutoReply(opts: {
   conversationId: string
   triggerMessageId?: string | null
@@ -617,7 +618,7 @@ export async function maybeAutoReply(opts: {
       await recordAiDiagnostic(db, opts.conversationId, {
         ai_last_skip: 'not_provider_client_thread',
         ai_last_skip_at: new Date().toISOString(),
-        ai_last_error: 'Thread is not provider↔client/student — AI closer skipped',
+        ai_last_error: 'Thread is not provider↔client/student — YQAA skipped',
         ai_last_error_at: new Date().toISOString(),
       })
       return { replied: false, skipped: 'not_provider_client_thread', aiMode }
@@ -634,7 +635,6 @@ export async function maybeAutoReply(opts: {
     const lastMsg = msgs[msgs.length - 1]
     if (!lastMsg) return { replied: false, skipped: 'empty_thread', aiMode }
 
-    // Persist default ai_mode=auto so Take over / Resume UI has an explicit value.
     if (aiMode === 'auto' && (conv.metadata as any)?.ai_mode == null) {
       await recordAiDiagnostic(db, opts.conversationId, {
         ai_mode: 'auto',
@@ -643,12 +643,10 @@ export async function maybeAutoReply(opts: {
       conv.metadata = { ...(conv.metadata || {}), ai_mode: 'auto' }
     }
 
-    // Only reply when the latest message is from the client (unless forced).
     if (!opts.force && lastMsg.sender_id !== client.id) {
       return { replied: false, skipped: 'last_not_client', aiMode }
     }
 
-    // Don't double-reply to the same trigger message.
     const meta = conv.metadata || {}
     if (
       opts.triggerMessageId &&
@@ -663,7 +661,6 @@ export async function maybeAutoReply(opts: {
       return { replied: false, skipped: 'cooldown', aiMode }
     }
 
-    // If the last AI message already exists after the client message, skip.
     const lastAi = [...msgs].reverse().find((m) => m?.metadata?.ai_generated)
     if (lastAi && lastMsg.created_at && lastAi.created_at >= lastMsg.created_at) {
       return { replied: false, skipped: 'ai_already_after_client', aiMode }
@@ -675,7 +672,7 @@ export async function maybeAutoReply(opts: {
         const who =
           m.sender_id === provider.id
             ? m?.metadata?.ai_generated
-              ? 'AI_ASSISTANT'
+              ? 'YQAA'
               : 'PROVIDER'
             : m.sender_id === client.id
               ? 'CLIENT'
@@ -713,7 +710,7 @@ export async function maybeAutoReply(opts: {
       `Provider: ${provider.full_name || provider.email} (role=${provider.role})`,
       `Client: ${client.full_name || client.email}`,
       `Context: ${conv.context_kind || 'general'}${conv.context_id ? ` #${conv.context_id}` : ''}`,
-      `AI disclosure already sent in this thread: ${disclosed ? 'yes' : 'no — include a clear disclosure in reply'}`,
+      `YQAA disclosure already sent in this thread: ${disclosed ? 'yes' : 'no — include a clear AI-powered YQAA disclosure in reply'}`,
       '',
       'Recent thread:',
       history || '(no messages)',
@@ -728,7 +725,7 @@ export async function maybeAutoReply(opts: {
       decision = parseDecision(raw)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[messengerAi] grok call failed', msg)
+      console.error('[messengerAi] model call failed', msg)
       await recordAiDiagnostic(db, opts.conversationId, {
         ai_last_skip: 'grok_error',
         ai_last_skip_at: new Date().toISOString(),
@@ -743,10 +740,10 @@ export async function maybeAutoReply(opts: {
     if (!replyText) return { replied: false, skipped: 'empty_reply', aiMode }
     if (
       !disclosed &&
-      !/yousafe assistant|i'?m an ai|artificial intelligence|ai concierge|automated assistant/i.test(replyText)
+      !/\byqaa\b|yousafe quick assistance agent|i'?m an ai|ai-powered|artificial intelligence/i.test(replyText)
     ) {
       replyText =
-        `Hey — I'm **YouSafe Assistant**, the AI concierge on YouSafe helping you connect with ${providerLabel}. I'm not a licensed attorney myself.\n\n` +
+        `Hey — I'm **YQAA**, the **YouSafe Quick Assistance Agent**, helping you connect with ${providerLabel}. I'm AI-powered and not a licensed attorney myself.\n\n` +
         replyText
     }
 
@@ -760,6 +757,7 @@ export async function maybeAutoReply(opts: {
         metadata: {
           ai_generated: true,
           ai_assistant: true,
+          ai_brand: 'YQAA',
           ai_escalate: Boolean(decision.escalate),
           disclosure: true,
         },
@@ -798,6 +796,7 @@ export async function maybeAutoReply(opts: {
       ...(conv.metadata || {}),
       ai_mode: nextMode,
       ai_disclosed: true,
+      ai_brand: 'YQAA',
       ai_last_reply_at: new Date().toISOString(),
       ai_last_trigger_message_id: opts.triggerMessageId || lastMsg.id,
       ai_last_message_id: inserted.id,
@@ -825,14 +824,6 @@ export async function maybeAutoReply(opts: {
   return run
 }
 
-/**
- * Schedule AI auto-reply without blocking the HTTP response.
- *
- * Critical on Cloudflare Workers / OpenNext: bare `void promise` is cancelled
- * as soon as the response is sent. Use getCloudflareContext().ctx.waitUntil()
- * (same pattern as /api/indexnow). next/server after() does NOT keep work alive
- * under this OpenNext setup.
- */
 export function scheduleAutoReply(conversationId: string, triggerMessageId?: string | null) {
   const work = maybeAutoReply({ conversationId, triggerMessageId })
     .then(async (result) => {
@@ -844,7 +835,7 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
           await recordAiDiagnostic(db, conversationId, {
             ai_last_skip: skip,
             ai_last_skip_at: new Date().toISOString(),
-            ai_last_error: `AI closer skipped: ${skip}`,
+            ai_last_error: `YQAA skipped: ${skip}`,
             ai_last_error_at: new Date().toISOString(),
           })
         } catch {
@@ -873,7 +864,6 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
   try {
     getCloudflareContext().ctx.waitUntil(work)
   } catch {
-    // Local / non-Workers runtime — Node keeps the process alive for the promise.
     void work
   }
 }

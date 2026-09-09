@@ -1,5 +1,5 @@
 /**
- * Site-aware context pack for Messenger SuperGrok AI.
+ * Site-aware context pack for Messenger AI.
  *
  * Loads a curated KB from content/messenger-kb/, optionally ranks chunks
  * against the latest client message, and pulls live provider/gig rows from
@@ -304,7 +304,7 @@ export async function buildMessengerSiteKnowledge(opts: {
     providerContext = await loadProviderGigContext(opts.db, opts.provider)
   }
 
-  // Always pin brand-identity so the model keeps YouSafe Assistant persona even on tiny queries.
+  // Always pin brand-identity so the model keeps the YouSafe AI persona even on tiny queries.
   const brand = all.filter((c) => /brand-identity/i.test(c.id) || /brand-identity/i.test(c.source))
   const merged: KnowledgeChunk[] = []
   const seen = new Set<string>()
@@ -316,8 +316,8 @@ export async function buildMessengerSiteKnowledge(opts: {
 
   const parts: string[] = [
     '## YOUSAFE SITE IDENTITY',
-    'You are YouSafe Assistant — the disclosed AI marketplace concierge for YouSafe.',
-    'In this DM you help the client connect with the live provider below. Stay in YouSafe Assistant voice; never impersonate the provider.',
+    'You are YouSafe AI — the disclosed AI marketplace concierge for YouSafe.',
+    'In this DM you help the client connect with the live provider below. Stay in YouSafe AI voice; never impersonate the provider.',
     '',
     '## SITE KNOWLEDGE (authoritative for product / marketplace questions)',
     'Answer from this knowledge when relevant. Do not invent legal outcomes, bar numbers, fee math, or policy exceptions.',
