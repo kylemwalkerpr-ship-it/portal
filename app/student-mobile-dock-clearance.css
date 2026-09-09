@@ -7,6 +7,13 @@
    the dashboard flex tree, so the scroll owner must reserve its *full* visual
    footprint (dock + safe-area offset + breathing room) inside the viewport.
 
+   Padding alone is not a reliable end-of-scroll reserve for these dashboard
+   flex layouts on iOS Safari: the final flex child can still settle beneath a
+   fixed dock and only become visible during rubber-band overscroll. Ordinary
+   dashboard pages therefore get a real flex tail spacer equal to the dock's
+   occluding footprint, plus separate breathing-room padding. Conversation
+   lists use the same contract inside their own scroll owner.
+
    This layer also targets the current system-wide YouSafe Assistant (.ysa-*),
    which replaced the legacy .ys-chat-* widget after the original student
    mobile pass was written.
@@ -15,8 +22,12 @@
 @media (max-width: 768px) {
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] {
     --student-dock-v2-bottom: max(8px, env(safe-area-inset-bottom));
+    --student-dock-v2-gap: 22px;
+    --student-dock-v2-occlusion: calc(
+      var(--student-dock-v2-height, 70px) + var(--student-dock-v2-bottom)
+    );
     --student-dock-v2-clearance: calc(
-      var(--student-dock-v2-height, 70px) + var(--student-dock-v2-bottom) + 18px
+      var(--student-dock-v2-occlusion) + var(--student-dock-v2-gap)
     );
     height: 100dvh !important;
     min-height: 100dvh !important;
@@ -31,15 +42,29 @@
     height: 100% !important;
     min-height: 0 !important;
     max-height: 100% !important;
-    padding-bottom: var(--student-dock-v2-clearance) !important;
     scroll-padding-bottom: var(--student-dock-v2-clearance) !important;
     overflow-x: hidden !important;
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-main:not(:has(.yousafe-messenger)) {
+    padding-bottom: var(--student-dock-v2-gap) !important;
     overflow-y: auto !important;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* A physical tail spacer is intentionally separate from padding. This makes
+     the final card/action stop above the dock after touch release instead of
+     appearing only while Safari is being held in rubber-band overscroll. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .yousafe-dashboard-main:not(:has(.yousafe-messenger))::after {
+    content: '';
+    display: block;
+    flex: 0 0 var(--student-dock-v2-occlusion);
+    width: 100%;
+    height: var(--student-dock-v2-occlusion);
+    min-height: var(--student-dock-v2-occlusion);
+    pointer-events: none;
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-body,
@@ -60,8 +85,18 @@
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
     .ys-chatscreen[data-mobile-view='list'] .cl-scroll {
     box-sizing: border-box !important;
-    padding-bottom: var(--student-dock-v2-clearance) !important;
+    padding-bottom: var(--student-dock-v2-gap) !important;
     scroll-padding-bottom: var(--student-dock-v2-clearance) !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .ys-chatscreen[data-mobile-view='list'] .cl-scroll::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: var(--student-dock-v2-occlusion);
+    min-height: var(--student-dock-v2-occlusion);
+    pointer-events: none;
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
