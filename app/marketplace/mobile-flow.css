@@ -1,0 +1,25 @@
+/* Marketplace mobile document-flow contract
+   ----------------------------------------
+   MarketplaceShell owns the viewport floor. Nested public pages must size to
+   their content instead of adding a second 100vh below the sticky market
+   chrome. The previous SellerProfilePage min-height produced almost one extra
+   phone viewport of blank paper after the last profile card on iOS Safari. */
+
+@media (max-width: 768px) {
+  .cw-market .ys-seller-profile-page {
+    min-height: 0 !important;
+    padding-bottom: 24px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content {
+    min-height: 0 !important;
+  }
+
+  /* Keep the final real marketplace surface close to the footer / viewport
+     floor without inventing a browser-toolbar-sized spacer. */
+  .cw-market main:last-child,
+  .cw-market article:last-child,
+  .cw-market section:last-child {
+    scroll-margin-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
