@@ -11,7 +11,12 @@ import {
   detectRegionFromText,
   filterKeywordsByRegion,
   filterOutlineByRegion,
+  inferOpportunityRegion,
+  isEstateWideRegion,
   keywordRegion,
+  queryBelongsToRegion,
+  REGION_KNOWLEDGE_TOKENS,
+  strategicKeywordBelongsToRegion,
 } from '../lib/seoEngine/researchDemand'
 
 describe('keywordRegion', () => {
@@ -104,5 +109,53 @@ describe('detectRegionFromText', () => {
   it('returns null when nothing points at a region', () => {
     expect(detectRegionFromText('how to write a motivation letter')).toBeNull()
     expect(detectRegionFromText('')).toBeNull()
+  })
+})
+
+describe('Discover country scan (Refresh intel)', () => {
+  it('treats ALL and COMPARE as estate-wide', () => {
+    expect(isEstateWideRegion('ALL')).toBe(true)
+    expect(isEstateWideRegion('COMPARE')).toBe(true)
+    expect(isEstateWideRegion('CA')).toBe(false)
+  })
+
+  it('keeps foreign-country GSC queries off a single-country scan', () => {
+    expect(queryBelongsToRegion('express entry crs calculator', 'US')).toBe(false)
+    expect(queryBelongsToRegion('express entry crs calculator', 'CA')).toBe(true)
+    expect(queryBelongsToRegion('h-1b lottery 2026', 'CA')).toBe(false)
+    expect(queryBelongsToRegion('h-1b lottery 2026', 'US')).toBe(true)
+    expect(queryBelongsToRegion('uk skilled worker salary threshold', 'UK')).toBe(true)
+    expect(queryBelongsToRegion('subclass 189 points test', 'AU')).toBe(true)
+    expect(queryBelongsToRegion('subclass 189 points test', 'UK')).toBe(false)
+  })
+
+  it('keeps generic demand on every country and everything on ALL', () => {
+    expect(queryBelongsToRegion('visa interview tips', 'AU')).toBe(true)
+    expect(queryBelongsToRegion('visa interview tips', 'US')).toBe(true)
+    expect(queryBelongsToRegion('express entry crs calculator', 'ALL')).toBe(true)
+    expect(queryBelongsToRegion('h-1b lottery 2026', 'ALL')).toBe(true)
+  })
+
+  it('stamps confident country onto the opportunity even on an ALL scan', () => {
+    expect(inferOpportunityRegion('Canada study permit cap 2026', 'ALL')).toBe('CA')
+    expect(inferOpportunityRegion('F-1 duration of status', 'ALL')).toBe('US')
+    expect(inferOpportunityRegion('UK skilled worker visa salary', 'CA')).toBe('UK')
+    expect(inferOpportunityRegion('visa interview tips', 'AU')).toBe('AU')
+  })
+
+  it('filters the strategy corpus by cluster country so CA is not US leftovers', () => {
+    expect(strategicKeywordBelongsToRegion('Canada study permit cap 2026 India Nigeria', 'canada-sp-pgwp', 'CA')).toBe(true)
+    expect(strategicKeywordBelongsToRegion('F-1 duration of status proposed change 2026', 'us-f1-opt', 'CA')).toBe(false)
+    expect(strategicKeywordBelongsToRegion('UK skilled worker visa salary threshold 2026', 'uk-work', 'UK')).toBe(true)
+    expect(strategicKeywordBelongsToRegion('F-1 student health insurance USA Canada UK comparison 2026', 'compare', 'CA')).toBe(false)
+    expect(strategicKeywordBelongsToRegion('Canada study permit cap 2026 India Nigeria', 'canada-sp-pgwp', 'ALL')).toBe(true)
+  })
+
+  it('expands 2-letter scan codes into knowledge tokens longer than 3 chars', () => {
+    for (const code of ['US', 'CA', 'UK', 'AU'] as const) {
+      const tokens = REGION_KNOWLEDGE_TOKENS[code].split(/\s+/).filter((t) => t.length > 3)
+      expect(tokens.length).toBeGreaterThan(2)
+    }
+    expect(REGION_KNOWLEDGE_TOKENS.ALL).toBe('')
   })
 })

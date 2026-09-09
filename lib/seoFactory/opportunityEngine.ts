@@ -120,6 +120,8 @@ export interface Opportunity {
   positionDelta?: number
   /** Intent-aware coverage vs shipped owners (spoke ≠ refresh). */
   coverageKind?: CoverageKind
+  /** Estate country this opportunity is written for (US/CA/UK/AU/ALL). */
+  region?: string
 }
 
 export interface OpportunityEngineResult {
@@ -227,12 +229,13 @@ function contentTypeFor(intent: Intent): Opportunity['contentType'] {
   return 'blog_post'
 }
 
-const AUDIENCE_BY_REGION: Record<string, string> = {
+export const AUDIENCE_BY_REGION: Record<string, string> = {
   US: 'international students, H-1B professionals, green card applicants',
   CA: 'international students, Express Entry candidates, PGWP holders',
   AU: 'international students, skilled migrants, 485 visa holders',
   UK: 'international students, Skilled Worker applicants, family visa seekers',
   COMPARE: 'international students comparing immigration pathways, professionals weighing options',
+  ALL: 'international students and skilled migrants across the US, UK, Canada and Australia',
 }
 
 function titleFor(term: string, siblingTitles: string[]): string {

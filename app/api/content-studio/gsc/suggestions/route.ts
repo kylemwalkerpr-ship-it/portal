@@ -7,6 +7,7 @@ import {
   scoreOpportunities,
   mergeSnapshotIntoQueries,
   SNAPSHOT_MERGE_MIN_VIABLE,
+  AUDIENCE_BY_REGION,
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
 import { isJunkQuery, sanitizeDemandTerm } from '@/lib/seoFactory/queryNoise'
@@ -18,6 +19,14 @@ import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/k
 import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
 import { filterRegenerationCandidates, type RegenerationFilters } from '@/lib/seoEngine/intelligence'
 import { leanRanking, rankingForOpportunity } from '@/lib/seoEngine/rankingModel'
+import {
+  inferOpportunityRegion,
+  isEstateWideRegion,
+  normalizeEstateRegion,
+  queryBelongsToRegion,
+  REGION_KNOWLEDGE_TOKENS,
+  strategicKeywordBelongsToRegion,
+} from '@/lib/seoEngine/researchDemand'
 
 export const runtime = 'nodejs'
 
@@ -121,9 +130,10 @@ export async function POST(request: NextRequest) {
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
-    const region = typeof body.region === 'string' ? body.region : 'US'
+    const region = normalizeEstateRegion(typeof body.region === 'string' ? body.region : 'ALL')
+    const estateWide = isEstateWideRegion(region)
     const seedTopic = typeof body.topic === 'string' && body.topic.trim() ? body.topic.trim() : ''
-    const limit = typeof body.limit === 'number' ? Math.min(16, Math.max(3, body.limit)) : 6
+    const limit = typeof body.limit === 'number' ? Math.min(24, Math.max(3, body.limit)) : (estateWide ? 16 : 6)
     const variationSeed = typeof body.nonce === 'string' && body.nonce.trim() ? body.nonce : new Date().toISOString()
     const excludedTopics = new Set(
       Array.isArray(body.excludeTopics)
@@ -136,7 +146,7 @@ export async function POST(request: NextRequest) {
       excludeCannibalization: body.excludeCannibalization !== false,
       minOpportunityScore: typeof body.minOpportunityScore === 'number' ? body.minOpportunityScore : undefined,
       maxDifficultyScore: typeof body.maxDifficultyScore === 'number' ? body.maxDifficultyScore : undefined,
-      region: typeof body.filterRegion === 'string' ? body.filterRegion : undefined,
+      region: typeof body.filterRegion === 'string' ? body.filterRegion : (estateWide ? undefined : region),
       intents: Array.isArray(body.intents) ? body.intents.map(String) : undefined,
       excludeTopics: Array.from(excludedTopics),
     }
@@ -268,6 +278,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Drop GSC rows that belong to a different estate country than the scan.
+    // Generic queries (no country marker) stay — they can be written for CA/UK/AU.
+    if (!estateWide) {
+      const before = queries.length
+      queries = queries.filter((q) => queryBelongsToRegion(q.term, region))
+      if (before !== queries.length) {
+        warnings.push(`Region ${region} · dropped ${before - queries.length} foreign-country GSC rows`)
+      }
+    }
+
     // Radar honesty: when live GSC, a fresh ≤14d snapshot, AND persisted
     // seo_gsc_rows are all empty, there is NO real demand to score. Strategy
     // corpus rows must never be injected into the scored pool with fabricated
@@ -339,7 +359,7 @@ export async function POST(request: NextRequest) {
     // bounded, clearly low-demand knowledge signal pool from the strategy corpus
     // so the radar can surface authority gaps and not repeat the same GSC rows.
     const topicTokens = new Set(
-      `${seedTopic} ${region}`.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3),
+      `${seedTopic} ${REGION_KNOWLEDGE_TOKENS[region] || ''}`.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3),
     )
     const knowledgeSignals = STRATEGIC_KEYWORDS
       .map((keyword, index) => {
@@ -348,6 +368,7 @@ export async function POST(request: NextRequest) {
         return { keyword, relevance, tie: stableHash(`${variationSeed}:${keyword.term}:${index}`) }
       })
       .filter(({ keyword }) => keyword.surface !== 'marketplace' || /service|help|consult|review/i.test(keyword.term))
+      .filter(({ keyword }) => strategicKeywordBelongsToRegion(keyword.term, keyword.cluster, region))
       .sort((a, b) => b.relevance - a.relevance || a.tie - b.tie)
       .slice(0, 160)
       .map(({ keyword, tie }) => ({
@@ -445,7 +466,17 @@ export async function POST(request: NextRequest) {
         }))
       : []
 
-    const rankedOpportunities = playbookRank(result.opportunities as Array<Record<string, any>>)
+    const localize = (o: Record<string, any>) => {
+      const itemRegion = inferOpportunityRegion(String(o.topic || ''), region)
+      const audienceKey = itemRegion === 'ALL' ? 'ALL' : itemRegion
+      return {
+        ...o,
+        region: itemRegion,
+        audience: AUDIENCE_BY_REGION[audienceKey] || AUDIENCE_BY_REGION[region] || o.audience,
+      }
+    }
+
+    const rankedOpportunities = playbookRank(result.opportunities as Array<Record<string, any>>).map(localize)
 
     const variedOpportunities = selectVariedOpportunities(
       rankedOpportunities,
@@ -460,6 +491,7 @@ export async function POST(request: NextRequest) {
       // Console. They are scored with zero demand and flagged so the UI never
       // reads their numbers as real GSC impressions/clicks.
       const synthetic = knowledgeTerms.has(normalizedTopic(o.topic))
+      const itemRegion = String(o.region || region)
       // Deterministic ranking-model enrichment (lean view) — same brain as the
       // command-center radar so Quick Create briefs can show score + forecast.
       const ranking = leanRanking(rankingForOpportunity({
@@ -468,7 +500,7 @@ export async function POST(request: NextRequest) {
         clicks: Number(o.clicks) || 0,
         ctr: Number(o.ctr) || 0,
         position: Number(o.position) || 100,
-        region,
+        region: itemRegion === 'ALL' ? region : itemRegion,
         lifecycleStage: o.stage || undefined,
       }))
       return {
@@ -510,6 +542,7 @@ export async function POST(request: NextRequest) {
       qualityLine: o.qualityLine,
       conversionLine: o.conversionLine,
       ranking,
+      region: itemRegion,
       }
     })
 
@@ -518,7 +551,7 @@ export async function POST(request: NextRequest) {
       suggestions,
       opportunities: selectVariedOpportunities(
         rankedOpportunities,
-        24,
+        estateWide ? 36 : 24,
         `${variationSeed}:insights`,
         excludedTopics,
       ),
