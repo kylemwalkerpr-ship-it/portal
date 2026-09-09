@@ -185,6 +185,10 @@ export function buildGigJsonLd(input: GigJsonLdInput): object {
   }
 
   // ── BreadcrumbList ───────────────────────────────────────────────────
+  // Breadcrumb hierarchy is semantic rather than a literal reflection of the
+  // shallow gig URL: Marketplace → Category → Subcategory → Service. This is
+  // the useful user journey and keeps taxonomy signals explicit without
+  // changing any existing service path.
   const breadcrumbItems: Array<{ '@type': 'ListItem'; position: number; name: string; item: string }> = [
     { '@type': 'ListItem', position: 1, name: 'Marketplace', item: `${marketplaceBaseUrl}/` },
   ]
@@ -194,6 +198,14 @@ export function buildGigJsonLd(input: GigJsonLdInput): object {
       position: breadcrumbItems.length + 1,
       name: categoryLabel,
       item: `${marketplaceBaseUrl}/categories/${gig.category}`,
+    })
+  }
+  if (gig.subcategory && subcategoryLabel) {
+    breadcrumbItems.push({
+      '@type': 'ListItem',
+      position: breadcrumbItems.length + 1,
+      name: subcategoryLabel,
+      item: `${marketplaceBaseUrl}/categories/${gig.subcategory}`,
     })
   }
   breadcrumbItems.push({
