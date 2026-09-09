@@ -48,32 +48,33 @@ export function CategoryBar({ country }: Props) {
     })
   }, [])
 
-  // Page-scroll closes any open dropdown — the anchorRect would otherwise
-  // drift relative to the sticky bar and the panel would float in the
-  // wrong place.
+  // Keep the fixed mega-menu attached to its trigger instead of closing it on
+  // every scroll event. iOS can emit tiny momentum / browser-chrome scrolls
+  // immediately after a tap; closing on any scroll made a freshly-opened menu
+  // disappear at once. Re-measuring in requestAnimationFrame is cheap and
+  // keeps deliberate horizontal swiping + page scrolling visually coherent.
   useEffect(() => {
     if (!openId) return
-    const onScroll = () => closeDropdown()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [openId, closeDropdown])
+    const strip = scrollRef.current
+    let frameId: number | null = null
 
-  useEffect(() => {
-    if (!openId) return
-    let timeoutId: ReturnType<typeof setTimeout>
-    const onResize = () => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(() => {
+    const syncAnchor = () => {
+      if (frameId !== null) return
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null
         const btn = buttonRefs.current[openId]
-        if (btn) {
-          setAnchorRect(btn.getBoundingClientRect())
-        }
-      }, 100)
+        if (btn) setAnchorRect(btn.getBoundingClientRect())
+      })
     }
-    window.addEventListener('resize', onResize)
+
+    window.addEventListener('scroll', syncAnchor, { passive: true })
+    window.addEventListener('resize', syncAnchor)
+    strip?.addEventListener('scroll', syncAnchor, { passive: true })
     return () => {
-      window.removeEventListener('resize', onResize)
-      clearTimeout(timeoutId)
+      window.removeEventListener('scroll', syncAnchor)
+      window.removeEventListener('resize', syncAnchor)
+      strip?.removeEventListener('scroll', syncAnchor)
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
     }
   }, [openId])
 
@@ -94,10 +95,6 @@ export function CategoryBar({ country }: Props) {
     if (!el) return
     updateOverflow()
     el.addEventListener('scroll', updateOverflow, { passive: true })
-    // Strip scrolls horizontally - close any open dropdown because the
-    // anchor button has moved.
-    const onStripScroll = () => closeDropdown()
-    el.addEventListener('scroll', onStripScroll, { passive: true })
     // ResizeObserver catches viewport-driven overflow changes (font load,
     // dropdown insertion, container width).
     let ro: ResizeObserver | undefined
@@ -108,11 +105,10 @@ export function CategoryBar({ country }: Props) {
     window.addEventListener('resize', updateOverflow)
     return () => {
       el.removeEventListener('scroll', updateOverflow)
-      el.removeEventListener('scroll', onStripScroll)
       window.removeEventListener('resize', updateOverflow)
       ro?.disconnect()
     }
-  }, [updateOverflow, closeDropdown])
+  }, [updateOverflow])
 
   // Show circular chevrons only when the viewport has enough room for
   // them to sit comfortably outside the chip strip. On mobile / tablet
@@ -246,9 +242,11 @@ export function CategoryBar({ country }: Props) {
                   <button
                     ref={el => { buttonRefs.current[cat.id] = el }}
                     type="button"
+                    data-category-menu-trigger={cat.id}
                     onClick={(e) => toggleCategory(cat.id, e.currentTarget.getBoundingClientRect())}
                     aria-haspopup="dialog"
                     aria-expanded={isOpen}
+                    aria-controls={`ys-category-menu-${cat.id}`}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -266,6 +264,8 @@ export function CategoryBar({ country }: Props) {
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent',
                       transition: 'all 0.18s cubic-bezier(0.22,1,0.36,1)',
                     }}
                     onMouseEnter={(e) => {
@@ -315,6 +315,7 @@ export function CategoryBar({ country }: Props) {
                       category={cat}
                       country={country}
                       anchorRect={anchorRect}
+                      anchorElement={buttonRefs.current[cat.id]}
                       onClose={closeDropdown}
                       onNavigate={closeDropdown}
                     />
