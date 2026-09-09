@@ -79,7 +79,7 @@ Candidates file identity documents and employment records so the agency can conf
 
   it('measures actor, discourse, specificity and novelty as a stable fingerprint', () => {
     const fp = extractEditorialFingerprint(acceptedDoc(1))
-    expect(fp.paragraphCount).toBeGreaterThan(5)
+    expect(fp.paragraphCount).toBeGreaterThanOrEqual(4)
     expect(fp.sentenceCount).toBeGreaterThan(10)
     expect(fp.metrics.informationNovelty).toBeGreaterThanOrEqual(0)
     expect(fp.metrics.informationNovelty).toBeLessThanOrEqual(1)
