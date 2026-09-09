@@ -27,6 +27,13 @@ describe('messenger mobile back-to-list flow', () => {
     expect(css).toContain('overflow-y: scroll !important')
   })
 
+  test('open chat exposes a left-edge swipe-back hit target', () => {
+    expect(chatScreen).toContain('onMobileBack')
+    expect(chatScreen).toContain('ys-chatscreen-swipeback')
+    expect(css).toContain('.ys-chatscreen-swipeback')
+    expect(css).toContain("[data-swipe-dragging='true']")
+  })
+
   test('back-list hardening loads after the earlier messenger mobile parity layer', () => {
     const parity = layout.indexOf("import './messenger-mobile-parity.css'")
     const backList = layout.indexOf("import './messenger-mobile-back-list.css'")
