@@ -7,6 +7,16 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 describe('mobile Messenger keyboard viewport contract', () => {
   const coordinator = read('components/mobile/MobileVisualViewport.tsx')
   const css = read('app/mobile-visual-viewport.css')
+
+  test('keyboard focus never subtracts a second native toolbar allowance', () => {
+    expect(css).not.toContain('--ys-ios-keyboard-native-occlusion')
+    expect(css).not.toContain('--ys-ios-keyboard-browser-chrome')
+    expect(css).not.toContain('--ys-ios-keyboard-input-assistant')
+    expect(css).not.toContain('100lvh - 100svh')
+    expect(css).toContain('height: var(--ys-visual-viewport-block-size, 100dvh) !important')
+    expect(css).toContain('min-height: var(--ys-visual-viewport-block-size, 100dvh) !important')
+    expect(css).toContain('max-height: var(--ys-visual-viewport-block-size, 100dvh) !important')
+  })
   const chatScreen = read('components/messaging/ChatScreen.tsx')
 
   test.each([
@@ -47,9 +57,8 @@ describe('mobile Messenger keyboard viewport contract', () => {
   test('open mobile chats use the truly usable VisualViewport rectangle', () => {
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat']")
     expect(css).toContain('position: fixed !important')
-    expect(css).toContain('var(--ys-ios-keyboard-native-occlusion, 0px)')
-    expect(css).toContain('height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important')
-    expect(css).toContain('max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important')
+    expect(css).toContain('height: var(--ys-visual-viewport-block-size, 100dvh) !important')
+    expect(css).toContain('max-height: var(--ys-visual-viewport-block-size, 100dvh) !important')
     expect(css).toContain('z-index: 10020 !important')
   })
 
@@ -61,19 +70,13 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(coordinator).toContain('pageTop - layoutScrollTop')
   })
 
-  test('Safari reserves native bottom chrome from real Messenger focus, not a keyboard-height threshold', () => {
+  test('tracks composer focus without reserving guessed browser chrome', () => {
     expect(coordinator).toContain('const publishComposerFocus = (focused: boolean) =>')
     expect(coordinator).toContain("root.dataset.ysMessengerComposerFocused = focused ? 'true' : 'false'")
     expect(coordinator).toContain('target.matches(COMPOSER_INPUT_SELECTOR)')
     expect(coordinator).toContain('publishComposerFocus(true)')
     expect(coordinator).toContain("document.addEventListener('focusin', onFocusIn)")
     expect(coordinator).toContain("document.addEventListener('focusout', onFocusOut)")
-    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true']")
-    expect(css).not.toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
-    expect(css).toContain('--ys-ios-keyboard-browser-chrome: 52px')
-    expect(css).toContain('--ys-ios-keyboard-input-assistant: 44px')
-    expect(css).toContain('--ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px)')
-    expect(css).toContain('--ys-ios-keyboard-native-occlusion: calc(')
   })
 
   test('message history gets leftover space while composer owns an explicit final flex slot', () => {
@@ -88,7 +91,7 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(css).toContain('flex: 0 0 auto !important')
   })
 
-  test('focused composer gets compact web padding inside the already-reserved native rectangle', () => {
+  test('focused composer gets compact web padding inside the measured viewport', () => {
     expect(css).toContain("html[data-ys-messenger-composer-focused='true']")
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] .comp-row")
     expect(css).toContain('padding-bottom: 8px !important')

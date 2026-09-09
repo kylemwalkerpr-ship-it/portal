@@ -18,13 +18,10 @@
    separates browser pan compensation from fixed-position layout and prevents
    the composer from being painted behind Safari's floating URL controls.
 
-   Safari has a second keyboard quirk: with the bottom URL bar enabled,
-   VisualViewport.height can still include native UI that sits above the
-   keyboard. That native stack has TWO pieces while a form control is focused:
-   the bottom browser chrome and Safari's form/input-assistant strip. iOS 26
-   does not always report a large enough VisualViewport delta to make a
-   keyboard-height heuristic reliable, so the native reserve is driven by the
-   Messenger textarea's actual focus state instead.
+   The measured visual viewport already excludes browser-owned keyboard UI.
+   Do not subtract an additional guessed URL-bar/input-assistant allowance:
+   it leaves a large blank strip below the composer once the viewport rules
+   correctly win the cascade. Focus only changes compact composer padding.
 */
 
 @media (max-width: 768px) {
@@ -33,27 +30,6 @@
     --ys-visual-viewport-block-size: 100dvh;
     --ys-visual-viewport-offset-top: 0px;
     --ys-visual-viewport-pan-top: 0px;
-    --ys-ios-keyboard-browser-chrome: 0px;
-    --ys-ios-keyboard-input-assistant: 0px;
-    --ys-ios-keyboard-native-occlusion: calc(
-      var(--ys-ios-keyboard-browser-chrome, 0px) + var(--ys-ios-keyboard-input-assistant, 0px)
-    );
-  }
-
-  html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true'] {
-    /* Bottom URL bar + the native previous/next/done input assistant. Focus is
-       authoritative because iOS can expose both overlays before (or without)
-       a keyboard-height delta large enough for heuristic detection. */
-    --ys-ios-keyboard-browser-chrome: 52px;
-    --ys-ios-keyboard-input-assistant: 44px;
-  }
-
-  @supports (height: 100svh) and (height: 100lvh) {
-    html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true'] {
-      /* The lvh/svh delta tracks Safari's dynamic browser chrome. Keep it
-         bounded because the separate 44px input assistant is added below. */
-      --ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px);
-    }
   }
 
   body .yousafe-dashboard-shell.yousafe-dashboard-shell.yousafe-dashboard-shell {
@@ -83,9 +59,9 @@
     display: flex !important;
     width: 100vw !important;
     max-width: 100vw !important;
-    height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important;
-    min-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important;
-    max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important;
+    height: var(--ys-visual-viewport-block-size, 100dvh) !important;
+    min-height: var(--ys-visual-viewport-block-size, 100dvh) !important;
+    max-height: var(--ys-visual-viewport-block-size, 100dvh) !important;
     margin: 0 !important;
     overflow: hidden !important;
     transform: none !important;
@@ -169,7 +145,7 @@
     .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-row {
     /* Safari owns the home-indicator and native assistant spacing while the
        textarea is focused, so the web composer only needs compact breathing
-       room inside the already-reserved visible rectangle. */
+       room inside the measured visible rectangle. */
     padding-bottom: 8px !important;
   }
 
