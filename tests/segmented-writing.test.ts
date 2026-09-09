@@ -146,6 +146,8 @@ it('a single segment owns both opening and closing material without contradictor
     tone: 'educational', segment, minWords: 900, targetWords: 1000, gscBlock: '',
   })
   expect(prompt).toContain('This is the complete article')
-  expect(prompt).toContain('finish with ## FAQ')
+  expect(prompt).toContain('finish the last H2, add one closer')
+  expect(prompt).toContain('FAQ / FAQPage are not required')
+  expect(prompt).not.toContain('finish with ## FAQ')
   expect(prompt).not.toContain('Do NOT include the final')
 })
