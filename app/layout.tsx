@@ -6,11 +6,13 @@ import './messenger-mobile-parity.css'
 import './messenger-mobile-back-list.css'
 import './mobile-marketplace-premium-nav.css'
 import './student-mobile-premium.css'
+import './student-mobile-ux-v2.css'
 import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
+import StudentMobileNavigation from '@/components/student/StudentMobileNavigation'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
 // HreflangTags removed — portal is noindex sitewide and has no per-locale
 // URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
@@ -142,6 +144,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* Language switcher now docks inside each app's nav bar
                 instead of floating — see dashboard topbars + MarketplaceShell. */}
             {children}
+            <StudentMobileNavigation />
             <ChatWidget />
           </TranslationProvider>
         </ClerkProvider>
