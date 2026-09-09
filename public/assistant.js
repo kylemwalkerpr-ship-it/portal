@@ -1,5 +1,5 @@
 /**
- * YouSafe AI — canonical system-wide assistant embed.
+ * YouSafe Quick Assistance Agent (YQAA) — canonical system-wide assistant embed.
  * Shared across YouSafe and sister sites.
  */
 (function () {
@@ -12,7 +12,7 @@
     supportApiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget',
     primary: '#3C3B6E',
     primaryHover: '#2d2a5e',
-    greeting: "Hi — I'm **YouSafe AI**, your official guide across YouSafe. I can help with the page you're viewing, explain services and processes, point you to verified resources, or connect you with a person when needed.",
+    greeting: "Hi — I'm **YQAA**, the **YouSafe Quick Assistance Agent**. I can help with the page you're viewing, explain YouSafe services and processes, point you to verified resources, match your intent to relevant Marketplace services, or connect you with a person when needed.",
     storageKey: 'yousafe.assistant.history.v3',
     openKey: 'yousafe.assistant.open.v3',
     supportKey: 'yousafe.assistant.support.v3',
@@ -163,25 +163,25 @@
     '.ysa-launcher{position:fixed;right:20px;bottom:max(20px,env(safe-area-inset-bottom));width:58px;height:58px;border:0;border-radius:50%;background:' + cfg.primary + ';color:#fff;box-shadow:0 14px 34px rgba(15,23,42,.28);cursor:pointer;z-index:2147483600;font-size:23px}',
     '.ysa-launcher:hover{background:' + cfg.primaryHover + '}',
     '.ysa-panel{position:fixed;right:20px;bottom:max(90px,calc(70px + env(safe-area-inset-bottom)));width:390px;max-width:calc(100vw - 40px);height:600px;max-height:calc(100dvh - 120px);background:#fff;border:1px solid rgba(60,59,110,.14);border-radius:20px;box-shadow:0 28px 72px rgba(15,23,42,.24);overflow:hidden;display:flex;flex-direction:column;z-index:2147483600;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#111827}',
-    '.ysa-head{padding:14px 16px;background:' + cfg.primary + ';color:#fff;display:flex;align-items:center;gap:11px;flex:0 0 auto}.ysa-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;background:rgba(255,255,255,.17);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:850;letter-spacing:.03em}.ysa-title{flex:1;min-width:0}.ysa-name{font-size:15px;font-weight:850;letter-spacing:-.01em}.ysa-sub{font-size:11px;opacity:.84;margin-top:1px}.ysa-head button{border:0;background:rgba(255,255,255,.13);color:#fff;border-radius:9px;cursor:pointer;padding:7px 10px;min-height:36px;font-weight:650}',
+    '.ysa-head{padding:14px 16px;background:' + cfg.primary + ';color:#fff;display:flex;align-items:center;gap:11px;flex:0 0 auto}.ysa-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;background:rgba(255,255,255,.17);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:850;letter-spacing:.02em}.ysa-title{flex:1;min-width:0}.ysa-name{font-size:15px;font-weight:850;letter-spacing:-.01em;line-height:1.15}.ysa-sub{font-size:11px;opacity:.84;margin-top:2px}.ysa-head button{border:0;background:rgba(255,255,255,.13);color:#fff;border-radius:9px;cursor:pointer;padding:7px 10px;min-height:36px;font-weight:650}',
     '.ysa-stream{flex:1 1 auto;min-height:0;overflow:auto;padding:16px;background:linear-gradient(180deg,#fafbff 0%,#f7f8fb 100%);display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.ysa-row{display:flex;flex-direction:column;align-items:flex-start}.ysa-row.user{align-items:flex-end}.ysa-label{font-size:10px;color:#8b93a7;margin-bottom:4px;font-weight:800;text-transform:uppercase;letter-spacing:.055em}.ysa-bubble{max-width:88%;padding:11px 14px;border-radius:14px;font-size:14px;line-height:1.52;overflow-wrap:anywhere;background:#fff;border:1px solid #e2e5ec;box-shadow:0 1px 2px rgba(15,23,42,.03)}.ysa-bubble p{margin:0 0 10px}.ysa-bubble p:last-child{margin-bottom:0}.ysa-bubble strong{font-weight:800;color:#161a2d}.ysa-bubble em{font-style:italic}.ysa-bubble h3,.ysa-bubble h4,.ysa-bubble h5{margin:10px 0 6px;color:#252657;line-height:1.28}.ysa-bubble h3:first-child,.ysa-bubble h4:first-child,.ysa-bubble h5:first-child{margin-top:0}.ysa-bubble ul,.ysa-bubble ol{margin:6px 0 10px;padding-left:22px}.ysa-bubble li{margin:5px 0}.ysa-link{color:#3736a3;font-weight:750;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}.ysa-accent{color:#38378f;font-weight:800}.ysa-row.user .ysa-bubble{background:' + cfg.primary + ';color:#fff;border-color:' + cfg.primary + ';box-shadow:none;white-space:pre-wrap}.ysa-row.user .ysa-bubble strong{color:#fff}.ysa-row.agent .ysa-bubble{background:#ecfdf3;color:#14532d;border-color:#a7f3d0}.ysa-row.system .ysa-bubble{background:#fff8e7;color:#713f12;border-color:#fde68a}',
     '.ysa-cta{display:block;box-sizing:border-box;width:min(88%,330px);margin-top:7px;padding:12px 13px;border:1px solid rgba(60,59,110,.18);border-radius:13px;background:#fff;color:#1f2340;text-decoration:none;box-shadow:0 6px 18px rgba(60,59,110,.07)}.ysa-cta:hover{border-color:rgba(60,59,110,.38);transform:translateY(-1px)}.ysa-cta-kicker{display:block;font-size:9px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;color:#777fa0;margin-bottom:4px}.ysa-cta strong{display:block;color:' + cfg.primary + ';font-size:14px;margin-bottom:3px}.ysa-cta span:last-child{font-size:11px;color:#697086}',
     '.ysa-error{font-size:12px;color:#8f1d1d;background:#fff1f1;border:1px solid #fecaca;border-radius:12px;padding:10px 11px}.ysa-error-actions{display:flex;gap:7px;margin-top:8px}.ysa-retry,.ysa-error-human{border:0;border-radius:9px;min-height:34px;padding:0 11px;font:700 12px inherit;cursor:pointer}.ysa-retry{background:' + cfg.primary + ';color:#fff}.ysa-error-human{background:#fff;color:' + cfg.primary + ';border:1px solid #d8dbea}.ysa-human{padding:7px 12px;text-align:center;flex:0 0 auto;background:#fff}.ysa-human button{border:1px dashed #cbd5e1;background:#fff;color:' + cfg.primary + ';border-radius:999px;padding:8px 14px;font-weight:750;cursor:pointer;min-height:40px}.ysa-compose{border-top:1px solid #e5e7eb;padding:10px 12px;display:flex;gap:8px;align-items:flex-end;flex:0 0 auto;background:#fff}.ysa-input{box-sizing:border-box;flex:1;min-width:0;min-height:40px;max-height:120px;resize:none;border:1px solid #d1d5db;border-radius:11px;padding:9px 11px;font-family:inherit;font-size:14px;line-height:1.35;color:#111827;background:#fff;-webkit-text-size-adjust:100%}.ysa-send{height:40px;flex:0 0 auto;border:0;border-radius:10px;background:' + cfg.primary + ';color:#fff;padding:0 15px;font-weight:800;cursor:pointer}.ysa-send:disabled{opacity:.5}',
-    '@media(max-width:768px){html.ysa-assistant-open,html.ysa-assistant-open body{overflow:hidden!important;overscroll-behavior:none}.ysa-launcher{right:12px}.ysa-panel{left:8px;right:8px;top:8px;bottom:auto;width:auto;max-width:none;height:calc(100dvh - 16px);max-height:none;border-radius:20px}.ysa-head{padding:12px}.ysa-name{font-size:16px}.ysa-sub{font-size:11px}.ysa-stream{padding:14px}.ysa-bubble{max-width:92%;font-size:15px;line-height:1.48}.ysa-cta{width:92%;max-width:none}.ysa-human{padding:6px 10px}.ysa-compose{padding:8px 10px max(8px,env(safe-area-inset-bottom))}.ysa-input{min-height:44px;font-size:16px;line-height:1.35;padding:10px 12px}.ysa-send{height:44px;min-width:66px}.ysa-panel.ysa-keyboard-open .ysa-head{padding:8px 10px}.ysa-panel.ysa-keyboard-open .ysa-avatar{width:30px;height:30px;flex-basis:30px}.ysa-panel.ysa-keyboard-open .ysa-sub{display:none}.ysa-panel.ysa-keyboard-open .ysa-stream{padding:10px 12px;gap:8px}.ysa-panel.ysa-keyboard-open .ysa-human{padding:4px 10px}.ysa-panel.ysa-keyboard-open .ysa-compose{padding-bottom:8px}}',
+    '@media(max-width:768px){html.ysa-assistant-open,html.ysa-assistant-open body{overflow:hidden!important;overscroll-behavior:none}.ysa-launcher{right:12px}.ysa-panel{left:8px;right:8px;top:8px;bottom:auto;width:auto;max-width:none;height:calc(100dvh - 16px);max-height:none;border-radius:20px}.ysa-head{padding:12px}.ysa-name{font-size:14px}.ysa-sub{font-size:10px}.ysa-stream{padding:14px}.ysa-bubble{max-width:92%;font-size:15px;line-height:1.48}.ysa-cta{width:92%;max-width:none}.ysa-human{padding:6px 10px}.ysa-compose{padding:8px 10px max(8px,env(safe-area-inset-bottom))}.ysa-input{min-height:44px;font-size:16px;line-height:1.35;padding:10px 12px}.ysa-send{height:44px;min-width:66px}.ysa-panel.ysa-keyboard-open .ysa-head{padding:8px 10px}.ysa-panel.ysa-keyboard-open .ysa-avatar{width:30px;height:30px;flex-basis:30px}.ysa-panel.ysa-keyboard-open .ysa-sub{display:none}.ysa-panel.ysa-keyboard-open .ysa-stream{padding:10px 12px;gap:8px}.ysa-panel.ysa-keyboard-open .ysa-human{padding:4px 10px}.ysa-panel.ysa-keyboard-open .ysa-compose{padding-bottom:8px}}',
   ].join('\n')
   document.head.appendChild(style)
 
   var launcher = document.createElement('button')
   launcher.type = 'button'
   launcher.className = 'ysa-launcher'
-  launcher.setAttribute('aria-label', 'Open YouSafe AI')
+  launcher.setAttribute('aria-label', 'Open YQAA')
   launcher.textContent = '✦'
 
   var panel = document.createElement('section')
   panel.className = 'ysa-panel'
   panel.setAttribute('role', 'dialog')
-  panel.setAttribute('aria-label', 'YouSafe AI')
-  panel.innerHTML = '<div class="ysa-head"><div class="ysa-avatar">YS</div><div class="ysa-title"><div class="ysa-name">YouSafe AI</div><div class="ysa-sub">Guidance · Services · Support</div></div><button class="ysa-reset" type="button" title="Start a new conversation">New chat</button><button class="ysa-close" type="button" title="Close">×</button></div><div class="ysa-stream" aria-live="polite"></div><div class="ysa-human"><button type="button">Talk to a human →</button></div><div class="ysa-compose"><textarea class="ysa-input" rows="1" placeholder="Ask YouSafe AI…"></textarea><button class="ysa-send" type="button">Send</button></div>'
+  panel.setAttribute('aria-label', 'YouSafe Quick Assistance Agent')
+  panel.innerHTML = '<div class="ysa-head"><div class="ysa-avatar">YQ</div><div class="ysa-title"><div class="ysa-name">YouSafe Quick Assistance Agent</div><div class="ysa-sub">YQAA · AI-powered support</div></div><button class="ysa-reset" type="button" title="Start a new conversation">New chat</button><button class="ysa-close" type="button" title="Close">×</button></div><div class="ysa-stream" aria-live="polite"></div><div class="ysa-human"><button type="button">Talk to a human →</button></div><div class="ysa-compose"><textarea class="ysa-input" rows="1" placeholder="Ask YQAA…"></textarea><button class="ysa-send" type="button">Send</button></div>'
   document.body.appendChild(launcher)
   document.body.appendChild(panel)
 
@@ -254,11 +254,11 @@
     var html = ''
     for (var i = 0; i < visible.length; i++) {
       var item = visible[i]
-      var label = item.role === 'assistant' ? 'YouSafe AI' : item.role === 'agent' ? (item.senderName || 'Support') : item.role === 'system' ? 'YouSafe' : ''
+      var label = item.role === 'assistant' ? 'YQAA' : item.role === 'agent' ? (item.senderName || 'Support') : item.role === 'system' ? 'YouSafe' : ''
       var body = item.role === 'user' ? esc(item.content) : richText(item.content)
       html += '<div class="ysa-row ' + esc(item.role) + '">' + (label ? '<div class="ysa-label">' + esc(label) + '</div>' : '') + '<div class="ysa-bubble">' + body + '</div>' + marketplaceCard(item.marketplaceRecommendation) + '</div>'
     }
-    if (sending) html += '<div class="ysa-row assistant"><div class="ysa-label">YouSafe AI</div><div class="ysa-bubble"><p>Finding the best verified answer…</p></div></div>'
+    if (sending) html += '<div class="ysa-row assistant"><div class="ysa-label">YQAA</div><div class="ysa-bubble"><p>Finding the best verified answer…</p></div></div>'
     if (failure) {
       html += '<div class="ysa-error"><strong>' + esc(failure.message || 'That response could not be completed.') + '</strong><div class="ysa-error-actions">' + (failure.retryable ? '<button class="ysa-retry" type="button">Retry</button>' : '') + '<button class="ysa-error-human" type="button">Ask a human</button></div></div>'
     }
@@ -344,7 +344,7 @@
         var turns = history.filter(function (m) { return m.role === 'user' || m.role === 'assistant' }).map(function (m) { return { role: m.role, content: m.content } })
         var result = await fetchJsonWithNetworkRecovery(cfg.apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: turns, requestAgent: !!requestAgent, visitor: contact, topic: cfg.topic || location.hostname, origin: originContext() }) })
         var data = result.data
-        if (!result.res.ok) throw Object.assign(new Error(data.error || 'YouSafe AI is temporarily unavailable.'), { retryable: data.retryable !== false, marketplaceRecommendation: data.marketplaceRecommendation || null })
+        if (!result.res.ok) throw Object.assign(new Error(data.error || 'YQAA is temporarily unavailable.'), { retryable: data.retryable !== false, marketplaceRecommendation: data.marketplaceRecommendation || null })
         if (data.handoff && data.handoff.conversationId) {
           support = { conversationId: data.handoff.conversationId, status: data.handoff.status || 'waiting_for_agent', queue: data.handoff.queue || null, topic: location.hostname }
           save(cfg.supportKey, support)
