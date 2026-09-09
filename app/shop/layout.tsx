@@ -4,6 +4,7 @@ import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
 import '../marketplace/marketplace-brand.css'
+import '../marketplace/marketplace-polish.css'
 
 /**
  * File shop uses the same marketplace chrome as /marketplace so signed-in

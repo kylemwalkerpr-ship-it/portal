@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react'
 import { usePalette } from '@/contexts/palette-context'
+import { T } from './tokens'
 
 /**
  * PalettePicker — compact color-theme switcher for the marketplace.
@@ -120,8 +121,8 @@ export function PalettePicker() {
                     gap: 10,
                     padding: '8px 10px',
                     border: 'none',
-                    background: active ? 'rgba(60,59,110,0.10)' : 'transparent',
-                    color: active ? '#2A2A55' : '#1A1F2E',
+                    background: active ? T.indigoSoft : 'transparent',
+                    color: active ? T.indigoDeep : T.ink,
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
@@ -143,7 +144,7 @@ export function PalettePicker() {
                     </span>
                   </span>
                   {active && (
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#3C3B6E', flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: T.indigo, flexShrink: 0 }}>✓</span>
                   )}
                 </button>
               </li>

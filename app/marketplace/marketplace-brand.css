@@ -3,15 +3,15 @@
    Light professional chrome. Action colour is the palette accent (legacy
    names indigo / teal). Do not flood the shell with saturated fills. */
 .cw-market {
-  --ui-primary: var(--ys-indigo, #3C3B6E);
-  --ui-brand: var(--ys-indigoDeep, #2A2A55);
-  --ui-accent: var(--ys-indigo, #3C3B6E);
-  --ui-accent-deep: var(--ys-indigoDeep, #2A2A55);
-  --ui-accent-soft: var(--ys-indigoSoft, rgba(60,59,110,0.12));
+  --ui-primary: var(--ys-indigo, #3948C8);
+  --ui-brand: var(--ys-indigoDeep, #2B36A0);
+  --ui-accent: var(--ys-indigo, #3948C8);
+  --ui-accent-deep: var(--ys-indigoDeep, #2B36A0);
+  --ui-accent-soft: var(--ys-indigoSoft, rgba(57,72,200,0.16));
 }
 
 .cw-market :where(a, button, input, textarea, select):focus-visible {
-  outline: 3px solid var(--ys-indigo, #3C3B6E) !important;
+  outline: 3px solid var(--ys-indigo, #3948C8) !important;
   outline-offset: 3px !important;
 }
 

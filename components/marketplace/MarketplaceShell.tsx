@@ -209,6 +209,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
 
   return (
     <header
+      className="ys-shell-header"
       style={{
         position: 'sticky',
         top: 0,

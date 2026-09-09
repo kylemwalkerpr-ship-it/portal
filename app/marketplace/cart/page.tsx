@@ -12,14 +12,14 @@ const C = {
   surface: '#FFFFFF',
   surface2: '#F4F2EE',
   border: 'rgba(0,0,0,0.08)',
-  cyan: '#3C3B6E',
+  cyan: '#3948C8',
   text: '#1F2937',
   textMuted: '#6B7280',
   textDim: '#6B7280',
   danger: '#8B1A1A',
   dangerBg: '#FAEAEA',
   success: '#1A6B45',
-  purple: '#3C3B6E',
+  purple: '#3948C8',
 }
 
 const SERIF = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
@@ -44,7 +44,7 @@ interface SavedCard {
 
 export default function CartPage() {
   return (
-    <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #F4F6F8)' }} />}>
+    <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #F1F3FB)' }} />}>
       <CartPageInner />
     </Suspense>
   )

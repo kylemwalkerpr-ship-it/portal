@@ -258,7 +258,7 @@ export function CategoryBar({ country }: Props) {
                       borderRadius: '999px',
                       border: `1px solid ${isOpen || isActive ? T.indigo : T.rule}`,
                       background: isOpen || isActive ? T.indigo : T.vellum,
-                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(60,59,110,0.08)',
+                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(57,72,200,0.10)',
                       fontFamily: F.ui,
                       fontSize: '13.5px',
                       fontWeight: isActive || isOpen ? 700 : 600,

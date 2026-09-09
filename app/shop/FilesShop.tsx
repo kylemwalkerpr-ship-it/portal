@@ -14,19 +14,19 @@ type FilterId = 'all' | FileShopCategory
  * paint never floods mahogany or cream-on-cream.
  */
 const V = {
-  paper: 'var(--ys-paper, #F4F6F8)',
-  paper2: 'var(--ys-paper2, #EEF1F4)',
-  paper3: 'var(--ys-paper3, #E6EAEF)',
+  paper: 'var(--ys-paper, #F1F3FB)',
+  paper2: 'var(--ys-paper2, #E8ECF8)',
+  paper3: 'var(--ys-paper3, #DDE3F4)',
   vellum: 'var(--ys-vellum, #FFFFFF)',
-  cream: 'var(--ys-cream, #F7F8FA)',
+  cream: 'var(--ys-cream, #F7F8FD)',
   ink: 'var(--ys-ink, #0F172A)',
   inkMid: 'var(--ys-inkMid, #334155)',
   inkSoft: 'var(--ys-inkSoft, #526072)',
   rule: 'var(--ys-rule, rgba(15,23,42,0.10))',
-  teal: 'var(--ys-teal, #3C3B6E)',
-  tealDeep: 'var(--ys-tealDeep, #2A2A55)',
-  gold: 'var(--ys-gold, #6B5210)',
-  star: 'var(--ys-star, #6B4700)',
+  teal: 'var(--ys-teal, #3948C8)',
+  tealDeep: 'var(--ys-tealDeep, #2B36A0)',
+  gold: 'var(--ys-gold, #7A5000)',
+  star: 'var(--ys-star, #7A5000)',
   cardRule: 'rgba(15,23,42,0.10)',
   cardRuleSoft: 'rgba(15,23,42,0.06)',
 } as const
@@ -431,7 +431,7 @@ const SHOP_CSS = `
     transition: border-color .2s ${EASE}, box-shadow .2s ${EASE};
   }
   .ys-shop-search input::placeholder { color: ${V.inkSoft}; }
-  .ys-shop-search input:focus { outline: none; border-color: ${V.teal}; box-shadow: 0 0 0 3px rgba(60,59,110,0.16); }
+  .ys-shop-search input:focus { outline: none; border-color: ${V.teal}; box-shadow: 0 0 0 3px rgba(57,72,200,0.18); }
   .ys-shop-filters {
     display: flex; flex-wrap: nowrap; gap: 8px; margin: 8px 0 16px;
     overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
