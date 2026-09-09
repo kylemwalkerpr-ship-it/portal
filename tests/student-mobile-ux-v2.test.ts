@@ -81,8 +81,10 @@ describe('student mobile UX v2', () => {
     expect(clearanceCss).toContain('scroll-padding-bottom: 0 !important')
     expect(clearanceCss).toContain('[data-chat-canvas]')
     expect(clearanceCss).toContain('overflow-y: auto !important')
-    expect(clearanceCss).toContain('.comp-row')
-    expect(clearanceCss).toContain('padding-bottom: max(12px, env(safe-area-inset-bottom)) !important')
+    const viewportCss = read('app/mobile-visual-viewport.css')
+    expect(viewportCss).toContain('.comp-row')
+    expect(viewportCss).toContain('padding-bottom: 8px !important')
+    expect(clearanceCss).toContain('flex: 1 1 0% !important')
   })
 
   test('open Messenger thread still fills the parent shell instead of stacking another 100dvh', () => {

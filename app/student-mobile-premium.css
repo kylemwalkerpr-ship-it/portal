@@ -410,13 +410,8 @@
     padding-bottom: 0 !important;
   }
 
-  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-body,
-  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-content,
-  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-messenger,
-  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen {
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-  }
+  /* Open-chat geometry belongs to mobile-visual-viewport.css. A 100dvh
+     override here outranks that contract and hides the composer on iOS. */
 }
 
 @media (max-width: 430px) {
