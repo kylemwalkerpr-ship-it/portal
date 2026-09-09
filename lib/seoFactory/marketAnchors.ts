@@ -55,7 +55,40 @@ export function labelForMarketUrl(raw: string): string | null {
 function isUrlishLabel(label: string): boolean {
   const t = String(label || '').trim()
   if (!t) return true
-  if (/^https?:\/\//i.test(t) return true
+  if (/^https?:\/\//i.test(t)) return true
   if (/market\.yousafeconsultancy\.com/i.test(t)) return true
   return false
+}
+
+/**
+ * Rewrite marketplace mentions so the visible text is a person or service
+ * name and the URL lives only in the markdown href.
+ */
+export function rewriteMarketAnchors(content: string): { content: string; changed: number } {
+  let next = String(content || '')
+  let changed = 0
+
+  next = next.replace(
+    /\[([^\]]+)\]\((https?:\/\/(?:www\.)?market\.yousafeconsultancy\.com\/[^)\s]+)\)/gi,
+    (full, label: string, href: string) => {
+      const want = labelForMarketUrl(href)
+      const parsed = parseMarketUrl(href)
+      if (!want || !parsed) return full
+      if (!isUrlishLabel(label)) return `[${String(label).trim()}](${parsed.url})`
+      changed++
+      return `[${want}](${parsed.url})`
+    },
+  )
+
+  next = next.replace(
+    /([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s*[\u00b7,\u2013-]\s*\((https?:\/\/(?:www\.)?market\.yousafeconsultancy\.com\/(?:marketplace\/)?providers\/[a-z0-9-]+\/?)\)/g,
+    (full, name: string, href: string) => {
+      const parsed = parseMarketUrl(href)
+      if (!parsed) return full
+      changed++
+      return `[${name.trim()}](${parsed.url})`
+    },
+  )
+
+  return { content: next, changed }
 }
