@@ -206,8 +206,8 @@ describe('content quality gate — keyword coverage', () => {
     expect(r.blockers.find((b) => b.code === 'short_keyword_density_violation')).toBeTruthy()
   })
 
-  it('blocks when the brief carries fewer than 5 short keywords', () => {
-    const short = ['f1 visa', 'f-1 documents', 'f 1 requirements', 'f1 eligibility']
+  it('blocks when the brief carries fewer than 3 short keywords', () => {
+    const short = ['f1 visa', 'f-1 documents']
     const longTail = [
       'how to apply f-1 visa',
       'f-1 visa interview requirements',

@@ -13,7 +13,9 @@
 import {
   EDITORIAL_CONTRACT_VERSION,
   EDITORIAL_FORMATTING_CONTRACT,
+  blogEditorialContract,
   editorialBriefPromptBlock,
+  formattingContractFor,
 } from '@/lib/seoFactory/editorialContract'
 import { buildFactorySystemPrompt } from '@/lib/seoFactory/prompts'
 
@@ -120,6 +122,7 @@ describe('editorialContract · guardrail regression', () => {
     expect(brief).toContain('BRIEF FORMAT')
     expect(brief).toContain('READER')
     expect(brief).toContain('KEYWORD COVERAGE')
+    expect(brief).toMatch(/blogs.*essay/i)
   })
 })
 
@@ -185,5 +188,24 @@ describe('prompts.ts · system-prompt guardrail regression', () => {
     expect(prompt).toMatch(/DEMAND short keywords/i)
     expect(prompt).not.toMatch(/missing any one = HARD BLOCK/)
     expect(prompt).not.toMatch(/FAQ question is the cleanest slot/)
+  })
+})
+
+describe('editorialContract · blog vs guide page shape', () => {
+  it('blogEditorialContract / formattingContractFor(blog_post) is an essay, not a kit', () => {
+    const blog = blogEditorialContract()
+    expect(formattingContractFor('blog_post')).toBe(blog)
+    expect(formattingContractFor('blog_summary')).toBe(blog)
+    expect(formattingContractFor('news_summary')).toBe(blog)
+    expect(blog).not.toContain('In 60 seconds')
+    expect(blog).not.toContain('named person')
+    expect(blog).toMatch(/essay/i)
+    expect(blog).toMatch(/3–6 purpose-led H2/)
+  })
+
+  it('keeps the guide contract as the YMYL apparatus', () => {
+    expect(formattingContractFor('legal_guide')).toBe(EDITORIAL_FORMATTING_CONTRACT)
+    expect(formattingContractFor('article')).toContain('In 60 seconds')
+    expect(EDITORIAL_FORMATTING_CONTRACT).toMatch(/Do NOT invent a named person/)
   })
 })

@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import StudioDocEditor from './studio-doc-editor'
-import EditorMetricsStrip from './editor-metrics-strip'
+import EditorMetricsStrip, { type HarperReviewPass } from './editor-metrics-strip'
 import { superviseEditorial } from '@/lib/editorialSupervisor'
 import { runHarperGrammar, fixHarperIssues } from '@/lib/harperBrowser'
 import { editorialReport } from '@/lib/seoFactory/editorialGate'
@@ -56,6 +56,39 @@ async function fetchWithTimeout(url: string, opts: RequestInit & { timeoutMs?: n
     clearTimeout(timer)
     signal?.removeEventListener('abort', onAbort)
   }
+}
+
+function asStringIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.map((entry) => {
+    if (typeof entry === 'string') return entry
+    if (entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') {
+      return (entry as { id: string }).id
+    }
+    return ''
+  }).filter(Boolean)
+}
+
+function remainingHarperDirectives(opts: {
+  pendingIds?: string[]
+  appliedIds?: string[]
+  waivedIds?: string[]
+  unmet?: string[]
+  directives?: Array<{ severity?: string; id?: string; mustApply?: boolean }>
+  itemCount?: number
+}): number {
+  const waived = new Set(opts.waivedIds || [])
+  const applied = new Set(opts.appliedIds || [])
+  const open = (ids: string[] | undefined) => (ids || []).filter((id) => id && !waived.has(id) && !applied.has(id))
+  if (opts.pendingIds) return open(opts.pendingIds).length
+  const required = (opts.directives || []).filter((d) => d.severity !== 'advisory' && !waived.has(String(d.id || '')) && !applied.has(String(d.id || '')))
+  if (opts.directives) {
+    if (required.length) return required.length
+    return open((opts.directives || []).map((d) => String(d.id || '')).filter(Boolean)).length
+  }
+  if (opts.itemCount && opts.itemCount > 0) return opts.itemCount
+  if (opts.unmet && opts.unmet.length) return opts.unmet.length
+  return 0
 }
 
 function fmtElapsed(totalSeconds: number) {
@@ -146,6 +179,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [fixingAll, setFixingAll] = useState(false)
+  const [reviewingHarper, setReviewingHarper] = useState(false)
+  const [harperPass, setHarperPass] = useState<HarperReviewPass | null>(null)
   const [fixingOne, setFixingOne] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -294,6 +329,17 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const autosaveAbortRef = useRef<AbortController | null>(null)
   const fixAbortRef = useRef<AbortController | null>(null)
   const fixSeqRef = useRef(0)
+  const harperPassSeqRef = useRef(0)
+  const lastReviewMetaRef = useRef<{
+    appliedIds?: string[]
+    pendingIds?: string[]
+    waivedIds?: string[]
+    unmet?: string[]
+    directives?: HarperReviewPass['directives']
+    input: string
+    output: string
+    honestError?: string
+  } | null>(null)
 
   // Abort any in-flight AI fix when the editor unmounts.
   useEffect(() => () => {
@@ -402,6 +448,78 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     setLastSaved(new Date().toLocaleTimeString())
   }, [persistDraft])
 
+  const publishHarperPass = useCallback(() => {
+    const meta = lastReviewMetaRef.current
+    harperPassSeqRef.current += 1
+    setHarperPass({
+      seq: harperPassSeqRef.current,
+      appliedIds: meta?.appliedIds,
+      pendingIds: meta?.pendingIds,
+      waivedIds: meta?.waivedIds,
+      unmet: meta?.unmet,
+      directives: meta?.directives,
+    })
+  }, [])
+
+  const runEditorialReview = useCallback(async (
+    md: string,
+    snapshot: { grammar?: { items?: unknown[] } | null },
+    hint: unknown,
+    signal: AbortSignal,
+    supervision?: {
+      unmet?: unknown
+      directives?: HarperReviewPass['directives']
+    },
+  ) => {
+    const response = await fetchWithTimeout('/api/content-studio/editorial-review', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      signal, timeoutMs: 200_000,
+      body: JSON.stringify({ content: md, hint, grammar: snapshot.grammar, reviewModel: reviewModel || DEFAULT_REVIEW_PIN }),
+    })
+    const result = await response.json().catch(() => ({})) as {
+      content?: unknown
+      clean?: unknown
+      error?: string
+      appliedIds?: unknown
+      pendingIds?: unknown
+      waivedIds?: unknown
+      waived?: unknown
+      unmet?: unknown
+      directives?: unknown
+    }
+    if (!response.ok) throw new Error(result.error || 'Editorial model review failed')
+    const next = typeof result.content === 'string' ? result.content : md
+    const appliedIds = asStringIds(result.appliedIds)
+    const pendingIds = asStringIds(result.pendingIds)
+    const waivedIds = asStringIds(result.waivedIds) ?? asStringIds(result.waived)
+    const unmet = Array.isArray(result.unmet)
+      ? result.unmet.map(String)
+      : Array.isArray(supervision?.unmet) ? supervision.unmet.map(String) : undefined
+    const directives = Array.isArray(result.directives)
+      ? result.directives as HarperReviewPass['directives']
+      : supervision?.directives
+    const remaining = remainingHarperDirectives({
+      pendingIds,
+      appliedIds,
+      waivedIds,
+      unmet,
+      directives,
+      itemCount: Array.isArray(snapshot.grammar?.items) ? snapshot.grammar.items.length : 0,
+    })
+    const leftover = remaining > 0 ? remaining : (unmet?.length || 0)
+    const honestError = next === md && leftover > 0
+      ? `Review returned no executable edit; ${leftover} Harper directives remain. This is not a rescore.`
+      : undefined
+    lastReviewMetaRef.current = {
+      appliedIds, pendingIds, waivedIds, unmet, directives, input: md, output: next, honestError,
+    }
+    if (next !== md) {
+      onChange(next)
+      try { await persistFixedContent(next) } catch { /* supervisor still receives the rewritten body */ }
+    }
+    return { content: next, clean: Boolean(result.clean), appliedIds, pendingIds, waivedIds, unmet, directives }
+  }, [reviewModel, onChange, persistFixedContent])
+
   const editorHasNoBody = countBodyWords(content) < 40
 
   // Record the canonical ship-gate snapshot from an audit/fix response and
@@ -497,7 +615,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   // patch → re-audit, repeated server-side until gates clear or the bounded
   // pass budget is exhausted. Clicking again while running cancels.
   const handleFixAll = useCallback(async () => {
-    if (fixingAll) {
+    if (fixingAll || reviewingHarper) {
       fixAbortRef.current?.abort()
       return
     }
@@ -551,9 +669,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       if (seq !== fixSeqRef.current || controller.signal.aborted) return
       let editorialNote = ''
+      let reviewHonestError: string | undefined
+      lastReviewMetaRef.current = null
       // The structural loop runs first. Harper/model supervise its final body;
       // the last server audit must evaluate that exact corrected version.
       let reviewContent = data.fixedContent || contentToFix
+      setReviewingHarper(true)
       for (let boundary = 0; boundary < 2; boundary++) {
         const hint = {
           contentType,
@@ -566,21 +687,21 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         }
         const review = await superviseEditorial({ content: reviewContent, hint, signal: controller.signal }, {
           grammar: md => runHarperGrammar(md, controller.signal, region),
-          autofix: md => fixHarperIssues(md, undefined, region),
-          progress: message => setNotice(message),
-          review: async (md, snapshot) => {
-            const response = await fetchWithTimeout('/api/content-studio/editorial-review', {
-              method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal, timeoutMs: 200_000,
-              body: JSON.stringify({ content: md, hint, grammar: snapshot.grammar, reviewModel: reviewModel || DEFAULT_REVIEW_PIN }),
-            })
-            const result = await response.json()
-            if (!response.ok) throw new Error(result.error || 'Editorial model review failed')
+          autofix: async md => {
+            const result = await fixHarperIssues(md, undefined, region)
+            if (result.content !== md) {
+              onChange(result.content)
+              try { await persistFixedContent(result.content) } catch { /* supervisor continues on the autofixed body */ }
+            }
             return result
           },
+          progress: message => setNotice(message),
+          review: (md, snapshot, supervision) => runEditorialReview(md, snapshot, hint, controller.signal, supervision),
         })
         if (seq !== fixSeqRef.current || controller.signal.aborted) return
         editorialNote = review.reason
+        if (lastReviewMetaRef.current?.honestError) reviewHonestError = lastReviewMetaRef.current.honestError
+        publishHarperPass()
         const finalAudit = await fetchWithTimeout('/api/content-studio/reaudit', {
           method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
           signal: controller.signal, timeoutMs: 200_000,
@@ -632,7 +753,12 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           message += ` (${data.providerError.slice(0, 200)})`
         }
       }
-      setNotice(saveFailed ? 'Audit passed; draft Save failed — retry Save' : message)
+      if (reviewHonestError) {
+        setError(reviewHonestError)
+        setNotice(saveFailed ? 'Audit passed; draft Save failed — retry Save' : null)
+      } else {
+        setNotice(saveFailed ? 'Audit passed; draft Save failed — retry Save' : message)
+      }
     } catch (err) {
       if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Audit & Fix failed')
@@ -641,15 +767,86 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       if (seq === fixSeqRef.current) {
         fixAbortRef.current = null
         setFixingAll(false)
+        setReviewingHarper(false)
         setFixElapsed(0)
       }
     }
-  }, [content, annotations, fixingAll, onChange, onScoreChange, fetchLatestDraft, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel])
+  }, [content, annotations, fixingAll, reviewingHarper, onChange, onScoreChange, fetchLatestDraft, persistFixedContent, contentType, primaryKeyword, indexable, reviewModel, runEditorialReview, publishHarperPass])
 
   // Audit & Fix is explicit. A green ship gate is a terminal approval state,
   // not a trigger for another mutation: silently invoking the fixer here could
   // change text after it passed and invalidate the very audit that enabled
   // Approve. Revisions only happen through an operator action above.
+
+  const handleHarperReview = useCallback(async () => {
+    if (reviewingHarper || fixingAll) {
+      fixAbortRef.current?.abort()
+      return
+    }
+    const seq = ++fixSeqRef.current
+    const controller = new AbortController()
+    fixAbortRef.current = controller
+    lastReviewMetaRef.current = null
+    setReviewingHarper(true); setError(null); setNotice(null)
+    const hint = {
+      contentType,
+      primaryKeyword,
+      region,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+      shortKeywordTerms: asHintTerms(shortKeywordTerms),
+      longTailKeywordTerms: asHintTerms(longTailKeywordTerms),
+    }
+    const inputContent = content
+    try {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      autosaveAbortRef.current?.abort()
+      autosaveAbortRef.current = null
+      setDirty(false)
+      const review = await superviseEditorial({ content: inputContent, hint, signal: controller.signal }, {
+        grammar: md => runHarperGrammar(md, controller.signal, region),
+        autofix: async md => {
+          const result = await fixHarperIssues(md, undefined, region)
+          if (result.content !== md) {
+            onChange(result.content)
+            try { await persistFixedContent(result.content) } catch { /* continue with autofixed body */ }
+          }
+          return result
+        },
+        progress: message => setNotice(message),
+        review: (md, snapshot, supervision) => runEditorialReview(md, snapshot, hint, controller.signal, supervision),
+      })
+      if (seq !== fixSeqRef.current || controller.signal.aborted) return
+      publishHarperPass()
+      if (review.content !== inputContent && review.content !== content) {
+        onChange(review.content)
+        try { await persistFixedContent(review.content) } catch { /* body is already in the pane */ }
+      }
+      const honestError = lastReviewMetaRef.current?.honestError
+      if (honestError) {
+        setError(honestError)
+        setNotice(null)
+        return
+      }
+      if (review.status === 'held') {
+        setError(review.reason)
+        setNotice(null)
+        return
+      }
+      setNotice(review.reason)
+    } catch (err) {
+      if (seq !== fixSeqRef.current) return
+      setError(err instanceof Error ? err.message : 'Editorial review failed')
+    } finally {
+      if (seq === fixSeqRef.current) {
+        fixAbortRef.current = null
+        setReviewingHarper(false)
+      }
+    }
+  }, [content, reviewingHarper, fixingAll, contentType, primaryKeyword, region, requiredShortKeywords, requiredLongTailKeywords, shortKeywordTerms, longTailKeywordTerms, onChange, persistFixedContent, runEditorialReview, publishHarperPass])
 
   // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
@@ -979,7 +1176,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     ...(asHintTerms(longTailKeywordTerms)?.length ? { longTailKeywordTerms: asHintTerms(longTailKeywordTerms) } : {}),
   }
 
-  const allBusy = busy || fixingAll || fixingWarnings || fixingBlockers || disabled
+  const allBusy = busy || fixingAll || reviewingHarper || fixingWarnings || fixingBlockers || disabled
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1376,7 +1573,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   }}
                   reviewModel={reviewModel}
                   busy={allBusy}
-                  onApplied={(md) => { onChange(md); setDirty(true) }}
+                  reviewing={reviewingHarper}
+                  harperPass={harperPass}
+                  onReview={handleHarperReview}
+                  onApplied={(md) => {
+                    onChange(md)
+                    setDirty(true)
+                    void persistFixedContent(md).catch(() => setDirty(true))
+                  }}
                 />
               )}
               {viewMode === 'document' ? (

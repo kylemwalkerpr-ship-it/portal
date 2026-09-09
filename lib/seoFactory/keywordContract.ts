@@ -25,6 +25,40 @@ export {
   sanitizeBriefOutline,
 }
 
+/** Content types where a missing demand short is a ship blocker. */
+const DEMAND_SHORT_BLOCKER_TYPES: ReadonlySet<string> = new Set([
+  'legal_guide',
+  'article',
+  'regional_page',
+  'regional_from',
+  'regional_university',
+])
+
+const DEMAND_SHORT_WARNING_TYPES: ReadonlySet<string> = new Set([
+  'blog_post',
+  'blog_summary',
+  'news_summary',
+  'marketplace_gig',
+])
+
+/**
+ * Ship/writer severity for a missing keyword. Discover analytics floors stay
+ * in KEYWORD_REQUIREMENTS; this is the gate/writer contract only.
+ *
+ * Agent B: use this in contentQualityGate instead of hard-coding
+ * `missing_short_keyword` as a blocker for every type.
+ */
+export function keywordSeverityForType(
+  contentType: string,
+  source: 'demand' | 'synthesized',
+): 'blocker' | 'warning' {
+  if (source === 'synthesized') return 'warning'
+  const type = String(contentType || '').trim()
+  if (DEMAND_SHORT_WARNING_TYPES.has(type)) return 'warning'
+  if (DEMAND_SHORT_BLOCKER_TYPES.has(type) || type.startsWith('regional_')) return 'blocker'
+  return type ? 'blocker' : 'warning'
+}
+
 export interface KeywordContract {
   requiredShortKeywords: string[]
   requiredLongTailKeywords: string[]

@@ -12,6 +12,11 @@ export type OutlineEntry = { heading: string; level?: number; purpose?: string }
 
 export const MISSING_OUTLINE_SECTION_CODE = 'missing_outline_section'
 
+export function isBlogLikeContentType(contentType: string): boolean {
+  const t = (contentType || '').toLowerCase()
+  return t === 'blog_post' || t === 'blog_summary' || t === 'news_summary' || t === 'blog'
+}
+
 export function canonicalOutlineForGate(
   spec?: { outline?: OutlineEntry[] | null } | ContentSpec | null,
   h2Outline?: string[] | null,
@@ -46,6 +51,19 @@ export function insertSectionBeforeFaqOrSources(body: string, section: string): 
   return `${body.trimEnd()}\n\n${sectionBlock}`.trimEnd()
 }
 
+/**
+ * Cheap context window for a section closer: full article up to 12k chars;
+ * otherwise opening thesis (2k) + latest sections (8k) so the closer sees
+ * the argument it must advance, not a truncated mid-page slice.
+ */
+export function articleContextForSection(article: string, maxChars = 12000): string {
+  const a = String(article || '')
+  if (a.length <= maxChars) return a
+  const head = a.slice(0, 2000)
+  const tail = a.slice(-8000)
+  return `${head}\n\n[…article continues…]\n\n${tail}`
+}
+
 export function buildOutlineSectionPrompt(opts: {
   article: string
   heading: string
@@ -53,10 +71,11 @@ export function buildOutlineSectionPrompt(opts: {
   keyword?: string
   region?: string
 }): { system: string; prompt: string } {
-  const system = `You are a legal-content editor completing ONE section of an immigration article. Write natural, practitioner-grade prose for the reader — never a keyword string, never a stub. Respond with ONLY the section body (no heading line).`
-  const prompt = `## Article (first 6000 chars for voice/context)
+  const system = `You are completing ONE section of an existing article. Read the article so far. Do not re-explain what it has already established. Advance the argument. 180-350 words. No invented citations, no personal stories, no outcome promises.`
+  const context = articleContextForSection(opts.article)
+  const prompt = `## Article so far (opening thesis + latest sections)
 
-${opts.article.slice(0, 6000)}
+${context}
 
 ## Section to write
 
@@ -65,7 +84,7 @@ ${opts.purpose ? `\nPurpose (from the brief contract): ${opts.purpose}` : ''}
 ${opts.keyword ? `\nPrimary topic: ${opts.keyword}` : ''}
 ${opts.region ? `Region: ${opts.region}` : ''}
 
-Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Use the article's existing headings/voice. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
+Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Use the article's existing headings/voice. Do not restate the thesis the article has already established — advance it. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
   return { system, prompt }
 }
 
@@ -102,7 +121,14 @@ export async function completeMissingOutlineSections(opts: {
   maxSectionsPerPass?: number
   /** Hard page max — stop inserting once body words are at/over this (P0-GEN-3). */
   maxWords?: number
-}): Promise<{ content: string; inserted: string[]; remaining: string[]; stoppedForBudget: boolean }> {
+}): Promise<{
+  content: string
+  inserted: string[]
+  remaining: string[]
+  stoppedForBudget: boolean
+  /** Set whenever remaining !== 0. Callers must fail closed — do not refine as complete. */
+  error?: string
+}> {
   const outline = opts.outline
   if (!outline?.length) {
     return { content: opts.content, inserted: [], remaining: [], stoppedForBudget: false }
@@ -147,10 +173,28 @@ export async function completeMissingOutlineSections(opts: {
     if (stoppedForBudget || !insertedThisPass) break
   }
   remaining = missingOutlineSections(content, outline)
-  return { content, inserted, remaining, stoppedForBudget }
+  const error = remaining.length
+    ? (stoppedForBudget
+        ? `Outline completion stopped at word budget (${maxWords ?? 'max'}); remaining: ${remaining.join(', ')}`
+        : outlineCompletionErrorMessage(remaining))
+    : undefined
+  return { content, inserted, remaining, stoppedForBudget, error }
 }
 
 export function outlineCompletionErrorMessage(headings: string[]): string {
   const list = headings.filter(Boolean).join('; ')
   return `Could not complete brief outline sections: ${list}. Insert these H2s before FAQ/Sources — EditorPatch cannot add headings.`
+}
+
+/** Fail-closed door: remaining outline headings are a generate error, not a warning. */
+export function outlineCompletionFailClosedError(
+  remaining: string[],
+  opts?: { stoppedForBudget?: boolean; maxWords?: number; error?: string },
+): string | null {
+  if (opts?.error) return opts.error
+  if (!remaining.length) return null
+  if (opts?.stoppedForBudget) {
+    return `Outline completion stopped at word budget (${opts.maxWords ?? 'max'}); remaining: ${remaining.join(', ')}`
+  }
+  return outlineCompletionErrorMessage(remaining)
 }

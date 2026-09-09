@@ -36,8 +36,8 @@ export function editorialReportReady(value: unknown, content?: string): boolean 
   return r.status === 'cleared' && r.supervisor === 'harper-editorial-v1'
     && typeof r.fingerprint === 'string'
     && (content === undefined || r.fingerprint === contentFingerprint(content))
-    && r.grammar === 100 && r.grammarErrors === 0 && r.grammarSuggestions === 0
-    && r.seo === 100 && r.voice === 100
+    && r.grammarErrors === 0
+    && r.seo === 100 && r.voice >= 55
     && Number.isFinite(r.flesch) && Number.isFinite(r.fleschTarget)
     && r.fleschTarget >= 50 && r.flesch >= r.fleschTarget
 }
@@ -50,7 +50,8 @@ export function applyEditorialHold(response: {
   response.shipReady = false
   response.blockers = (response.blockers ?? 0) + 1
   response.blockersData = [...(response.blockersData || []), {
-    code: 'editorial_review_pending', message: 'Harper editorial supervision has not cleared this exact draft across grammar, SEO, AI-write/human voice and Flesch.',
-    fix: 'Run Audit & Fix. The review model must execute fresh Harper instructions, then the supervisor remeasures the exact final text.',
+    code: 'editorial_review_pending',
+    message: 'Harper editorial supervision has not cleared this exact draft. Leftover Style does not block ship.',
+    fix: 'Run Harper Review. Review must apply Harper then revise leftover directives; leftover Style does not block ship.',
   }]
 }

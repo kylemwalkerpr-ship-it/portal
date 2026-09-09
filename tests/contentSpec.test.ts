@@ -13,6 +13,7 @@ import {
 } from '@/lib/seoFactory/contentSpec'
 import { depthSpecForType } from '@/lib/seoFactory/contentDepth'
 import { PLAYBOOK_VERSION } from '@/lib/seoFactory/contentQualityPlaybook'
+import type { AuthorPack, ResearchClaim } from '@/lib/seoFactory/authorPack'
 
 const BASE: CreateContentSpecInput = {
   jobId: 'job-2026-042',
@@ -421,5 +422,58 @@ describe('assertValidContentSpec', () => {
     expect(() =>
       assertValidContentSpec({ ...createContentSpec(BASE), jobId: '', region: 'mars' as never }),
     ).toThrow(/content spec validation failed/)
+  })
+})
+
+describe('ContentSpec optional AuthorPack + research claim map', () => {
+  it('accepts specs that omit author/research/thesis/unresolved', () => {
+    const spec = createContentSpec(BASE)
+    expect(spec.author).toBeUndefined()
+    expect(spec.research).toBeUndefined()
+    expect(validateContentSpec(spec)).toEqual([])
+  })
+
+  it('round-trips author + research when supplied', () => {
+    const author: AuthorPack = {
+      name: 'Alex Harper',
+      credential: 'Solicitor (England & Wales)',
+      experienceScope: 'UK skilled-worker and student visas',
+      reviewedBy: 'Pat Lee',
+      lastReviewed: '2026-09-01',
+      experienceBeats: [
+        { situation: 'Client missing CAS', action: 'Checked sponsor licence status', result: 'CAS reissued', anonymised: true },
+      ],
+    }
+    const research: ResearchClaim[] = [
+      {
+        url: 'https://www.gov.uk/skilled-worker-visa',
+        publisher: 'UK Home Office',
+        supports: 'Skilled Worker eligibility and fees live on GOV.UK',
+      },
+    ]
+    const spec = createContentSpec(specWith({
+      author,
+      research,
+      thesis: 'The Skilled Worker route is points-based and sponsor-led.',
+      unresolved: ['2026 fee schedule not yet published'],
+    }))
+    expect(spec.author).toEqual(author)
+    expect(spec.research).toEqual(research)
+    expect(spec.thesis).toContain('points-based')
+    expect(spec.unresolved).toEqual(['2026 fee schedule not yet published'])
+    expect(validateContentSpec(spec)).toEqual([])
+  })
+
+  it('rejects a present author missing name/credential and non-https research URLs', () => {
+    const spec = createContentSpec(BASE)
+    expect(
+      validateContentSpec({ ...spec, author: { name: '', credential: 'JD', experienceScope: '', experienceBeats: [] } }).join('\n'),
+    ).toContain('author.name')
+    expect(
+      validateContentSpec({
+        ...spec,
+        research: [{ url: 'http://www.gov.uk/visa', publisher: 'HO', supports: 'fees' }],
+      }).join('\n'),
+    ).toMatch(/research: invented, non-https/)
   })
 })

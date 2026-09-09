@@ -6,11 +6,18 @@
 import {
   parseEeatTrustResponse,
   buildEeatActions,
+  eeatActionsToDirectives,
   eeatTrustComposite,
   eeatTrustPersist,
   type EeatTrustResult,
   type EeatLane1,
 } from '@/lib/seoFactory/eeatTrust'
+import { buildEeatJsonLd, eeatAuthorName } from '@/lib/seoFactory/eeat'
+import {
+  validateAuthorPack,
+  experienceBeatsPromptBlock,
+  ymylAuthorRequired,
+} from '@/lib/seoFactory/authorPack'
 import { scoreMaster, computeSignals, type MasterEngineInput } from '@/lib/seoFactory/masterEngine'
 
 function mkResult(over: Partial<EeatTrustResult> = {}): EeatTrustResult {
@@ -155,5 +162,90 @@ describe('scoreMaster — e_eeat_llm signal + eeat_trust_gap recommendation', ()
       eeatTrust: { score: 0.9, confidence: 0.9, missingSignals: [], topCompetitorUrl: null, topCompetitorTrustScore: 0.85 },
     })
     expect(report.recommendations.some((r) => r.code === 'eeat_trust_gap')).toBe(false)
+  })
+})
+
+describe('eeatActionsToDirectives', () => {
+  it('maps actions to stable eeat-${code} revision directives', () => {
+    const result = mkResult({ flags: ['low_trust'] })
+    const actions = buildEeatActions(result, { ymyl: true, disclaimerPresent: false })
+    const directives = eeatActionsToDirectives(actions)
+    expect(directives.length).toBe(actions.length)
+    expect(directives.every((d) => d.id.startsWith('eeat-'))).toBe(true)
+    expect(directives.map((d) => d.id)).toEqual(actions.map((a) => `eeat-${a.code}`))
+    expect(directives.some((d) => d.severity === 'required')).toBe(true)
+    const text = directives.map((d) => d.instruction).join(' | ')
+    expect(text).toMatch(/named reviewer/)
+    expect(text).toMatch(/claim-level citation/)
+    expect(text).toMatch(/research pack|invent anecdotes/i)
+  })
+
+  it('marks sustain as advisory', () => {
+    const result = mkResult({
+      variables: [{ id: 532, name: 'author_expertise_quality', score: 0.9, evidence: 'named expert', confidence: 0.9 }],
+      trust_gap_summary: { missing_signals: [], top_competitor_url: null, top_competitor_trust_score: null },
+      flags: [],
+    })
+    const directives = eeatActionsToDirectives(buildEeatActions(result, { ymyl: true, disclaimerPresent: true }))
+    expect(directives[0].id).toBe('eeat-sustain')
+    expect(directives[0].severity).toBe('advisory')
+  })
+})
+
+describe('AuthorPack + experience beats', () => {
+  it('ymyl missing credential → ymyl_author_required', () => {
+    expect(validateAuthorPack(null, { contentType: 'legal_guide', ymyl: true })).toContain('ymyl_author_required')
+    expect(validateAuthorPack(
+      { name: 'Alex Harper', credential: '', experienceScope: 'UK visas', experienceBeats: [] },
+      { contentType: 'legal_guide', ymyl: true },
+    )).toContain('ymyl_author_required')
+    expect(validateAuthorPack(
+      { name: 'Alex Harper', credential: 'Solicitor (England & Wales)', experienceScope: 'UK visas', experienceBeats: [] },
+      { contentType: 'legal_guide', ymyl: true },
+    )).not.toContain('ymyl_author_required')
+  })
+
+  it('empty beats prompt contains "Do not invent personal stories"', () => {
+    expect(experienceBeatsPromptBlock([])).toContain('Do not invent personal stories')
+    expect(ymylAuthorRequired('legal_guide', true)).toBe(true)
+    expect(ymylAuthorRequired('blog_post', true)).toBe(false)
+    expect(ymylAuthorRequired('legal_guide', false)).toBe(false)
+  })
+})
+
+describe('buildEeatJsonLd — requireRealAuthor / AuthorPack', () => {
+  const baseLd = {
+    title: 'UK Graduate Visa',
+    canonicalUrl: 'https://legal.yousafeconsultancy.com/uk/graduate-route-visa/',
+    datePublished: '2026-09-01',
+  }
+
+  it('requireRealAuthor true + no name does not contain YouSafe Editorial Team', () => {
+    const json = buildEeatJsonLd({ ...baseLd, requireRealAuthor: true })
+    expect(json).not.toContain('YouSafe Editorial Team')
+    expect(eeatAuthorName({ ymyl: true })).toBeNull()
+  })
+
+  it('keeps the Editorial Team default when requireRealAuthor is unset (backward compat)', () => {
+    expect(buildEeatJsonLd(baseLd)).toContain('YouSafe Editorial Team')
+  })
+
+  it('uses AuthorPack.name when present', () => {
+    const json = buildEeatJsonLd({
+      ...baseLd,
+      ymyl: true,
+      authorPack: {
+        name: 'Alex Harper',
+        credential: 'Solicitor',
+        experienceScope: 'UK immigration',
+        experienceBeats: [],
+      },
+    })
+    expect(json).toContain('Alex Harper')
+    expect(json).not.toContain('YouSafe Editorial Team')
+    expect(eeatAuthorName({
+      authorPack: { name: 'Alex Harper', credential: 'Solicitor', experienceScope: '', experienceBeats: [] },
+      ymyl: true,
+    })).toBe('Alex Harper')
   })
 })

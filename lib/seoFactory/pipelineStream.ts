@@ -25,12 +25,12 @@ import {
   minWordsForType,
   planWriteSegments,
 } from './prompts'
-import { countBodyWords, targetWordsForType, enforceBodyWordBudget, clampBriefWordBudget } from './contentDepth'
+import { countBodyWords, targetWordsForType, enforceBodyWordBudget, enforceBodyWordBudgetPreserving, clampBriefWordBudget } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { runDepthRescue, type DepthRescueStats } from './depthRescue'
 import { topicPathMismatch } from './topicPathGuard'
-import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
-import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings } from './outlineCompletion'
+import { evaluateContentQuality, qualityToRefineNotes, missingOutlineSections } from './contentQualityGate'
+import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings, isBlogLikeContentType } from './outlineCompletion'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
 import { isJunkTopic } from './queryNoise'
@@ -152,10 +152,9 @@ export async function* runSeoFactoryPipelineStream(
     // (part 2 re-emitting front matter/H1, or the "saved draft + revision"
     // concatenation that stripDuplicateArticleCopy has to unduplicate), so
     // segmenting is now an EXPLICIT admin opt-in (writeSegments > 1) for
-    // constrained models only — never the default. The single-pass prompt
-    // carries its own one-go contract (buildFactoryUserPrompt) and cut-off
-    // drafts are recovered by the append-only depth rescue, not by a
-    // second brief with a copy of the first part.
+    // constrained models only — never the default. Blogs stay whole-document
+    // even when a two-part token split is opted in: missing H2s are filled
+    // only if missingOutlineSections is already non-empty.
     const segmentCount =
       input.writeSegments != null && Number(input.writeSegments) > 1
         ? Math.min(4, Math.floor(Number(input.writeSegments)))
@@ -848,6 +847,7 @@ export async function* runSeoFactoryPipelineStream(
           aiProvider: g.aiProvider,
           exclusive: Boolean(g.aiProvider) && g.aiProvider !== 'auto',
           cascadeOnCapacity: Boolean(g.aiProvider) && g.aiProvider !== 'auto',
+          contentType,
         }),
     })) {
       if (ev.type === 'done') {
@@ -945,6 +945,7 @@ export async function* runSeoFactoryPipelineStream(
             aiProvider: input.aiProvider,
             exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
             cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            contentType,
           })
           const aiWords = countBodyWords(ai.text)
           // Accept when the revision clears the floor, OR when it materially
@@ -1025,6 +1026,7 @@ export async function* runSeoFactoryPipelineStream(
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          contentType,
         })
         if (countBodyWords(expand.text) > before) {
           // P0-GEN-1: always enforce budget after PASS 3b expand — never hand
@@ -1067,55 +1069,58 @@ export async function* runSeoFactoryPipelineStream(
     })
 
     if (briefOutline?.length) {
-      try {
-        const completed = await completeMissingOutlineSections({
-          content,
-          outline: briefOutline,
-          maxWords,
-          generateSection: async ({ article, heading, purpose }) =>
-            generateOutlineSection({
-              article,
-              heading,
-              purpose,
-              keyword: primaryKeyword,
-              region,
-              generateText: async (systemPrompt, prompt) => {
-                const ai = await generateContentText({
-                  system: systemPrompt,
-                  prompt,
-                  maxTokens: 4096,
-                  temperature: 0.2,
-                  skipQualityContract: true,
-                  signal: input.signal,
-                })
-                return ai.text
-              },
-            }),
-        })
-        if (completed.inserted.length) {
-          content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
-          yield {
-            type: 'progress',
-            stage: 'refine',
-            message: `Outline completion inserted: ${completed.inserted.join(', ')}`,
+      const blogLike = isBlogLikeContentType(contentType)
+      const missingNow = missingOutlineSections(content, briefOutline)
+      if (!blogLike || missingNow.length > 0) {
+        try {
+          const completed = await completeMissingOutlineSections({
+            content,
+            outline: briefOutline,
+            maxWords,
+            generateSection: async ({ article, heading, purpose }) =>
+              generateOutlineSection({
+                article,
+                heading,
+                purpose,
+                keyword: primaryKeyword,
+                region,
+                generateText: async (systemPrompt, prompt) => {
+                  const ai = await generateContentText({
+                    system: systemPrompt,
+                    prompt,
+                    maxTokens: 4096,
+                    temperature: 0.2,
+                    skipQualityContract: true,
+                    signal: input.signal,
+                    contentType,
+                  })
+                  return ai.text
+                },
+              }),
+          })
+          if (completed.inserted.length) {
+            content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
+            yield {
+              type: 'progress',
+              stage: 'refine',
+              message: `Outline completion inserted: ${completed.inserted.join(', ')}`,
+            }
+          } else if (completed.content !== content) {
+            content = completed.content
           }
-        } else if (completed.content !== content) {
-          content = completed.content
-        }
-        // P0-GEN-3: fail closed on remaining outline — surface and leave
-        // missing_outline_section for audit; do not claim outline ready.
-        if (completed.remaining.length) {
-          const why = completed.stoppedForBudget
-            ? `Outline completion stopped at word budget (${maxWords}); remaining: ${completed.remaining.join(', ')}`
-            : outlineCompletionErrorMessage(completed.remaining)
-          yield {
-            type: 'progress',
-            stage: 'refine',
-            message: why,
+          // P0-GEN-3: fail closed on remaining outline — do not continue to
+          // refine as if complete.
+          if (completed.remaining.length) {
+            const why = completed.error
+              || (completed.stoppedForBudget
+                ? `Outline completion stopped at word budget (${maxWords}); remaining: ${completed.remaining.join(', ')}`
+                : outlineCompletionErrorMessage(completed.remaining))
+            yield { type: 'error', error: why }
+            return
           }
+        } catch (err) {
+          console.warn('[seoFactory/pipelineStream] outline completion skipped', err)
         }
-      } catch (err) {
-        console.warn('[seoFactory/pipelineStream] outline completion skipped', err)
       }
     }
 
@@ -1174,6 +1179,7 @@ export async function* runSeoFactoryPipelineStream(
             aiProvider: input.aiProvider,
             exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
             cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            contentType,
           })
           const aiWords = countBodyWords(ai.text)
           const fixedBlockers = runAudit(ai.text)
@@ -1223,6 +1229,14 @@ export async function* runSeoFactoryPipelineStream(
       if (repaired !== content) {
         content = repaired
         yield { type: 'progress', stage: 'refine', message: 'Applied deterministic compliance repair (dashes, disclaimer)…' }
+      }
+      if (countBodyWords(content) > maxWords) {
+        const capped = enforceBodyWordBudgetPreserving(content, contentType, {
+          min: minWords,
+          max: maxWords,
+          preserveHeadings: ['disclaimer', 'sources', 'faq'],
+        })
+        if (capped.removedWords > 0) content = capped.content
       }
       const sanitized = await sanitizeDraftLinksLive(content, {
         region,

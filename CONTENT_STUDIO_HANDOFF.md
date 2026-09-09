@@ -1,9 +1,11 @@
 # Content Studio — Activation Handoff
 
-> **Runtime is Entrim-only as of 2026-09-02:** all live AI runs on
-> `api.entrim.ai/v1` under one `ENTRIM_API_KEY` — lead **Entrim Qwen3.6 27B**
-> (`entrim-qwen-27b`), fallback **Entrim DeepSeek V4 Flash** (`entrim-deepseek`).
-> NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs are out of commission.
+> **Runtime as of 2026-09-09:** Draft / Brief / Review lead is **Grok 4.6**
+> (`grok`, `api.x.ai/v1`). Entrim Qwen3.6 27B (`entrim-qwen-27b`) and
+> Entrim DeepSeek V4 Flash (`entrim-deepseek`) are fallbacks under one
+> `ENTRIM_API_KEY`. NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs
+> are out of commission. Harper Review and author-revise stay exclusive on
+> the operator-selected review pin (`cascadeOnCapacity: false`).
 
 **Status (2026-07-22):** Code deployed to production (`portal` / `market`).  
 GitHub Actions + Cloudflare Workers Builds green after Worker size fix.
@@ -20,7 +22,7 @@ See **`docs/SEO_OPTIMAL_STACK.md`**.
 |-------|--------|
 | Agent GSC | Free MCP `mcp-search-console` (Grok `mcp_servers.gsc`) |
 | Studio planner | `POST /api/seo-factory/optimal-plan` + Auto-Pilot **① Optimal GSC plan** |
-| AI | Entrim Qwen3.6 27B → Entrim DeepSeek V4 Flash (Entrim-only, one key) |
+| AI | Grok 4.6 lead; Entrim Qwen3.6 27B + DeepSeek V4 Flash fallback |
 | Ship | shipGate + Approve → main |
 
 ```bash

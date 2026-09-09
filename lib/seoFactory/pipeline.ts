@@ -27,8 +27,8 @@ import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
 export type { RequestedShipMode } from './resolveShipMode'
 import type { RequestedShipMode } from './resolveShipMode'
-import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
-import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings } from './outlineCompletion'
+import { evaluateContentQuality, qualityToRefineNotes, missingOutlineSections } from './contentQualityGate'
+import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings, isBlogLikeContentType } from './outlineCompletion'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
@@ -601,7 +601,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           signal: input.signal,
         })
         if (countBodyWords(ai.text) > currentWords) {
-          content = ai.text
+          content = enforceBodyWordBudget(ai.text, contentType, { minWords, maxWords }).content
           provider = ai.provider
           model = ai.model
         }
@@ -627,7 +627,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         })
         const merged = mergeAppendedSections(content, ai.text)
         if (countBodyWords(merged) > currentWords) {
-          content = merged
+          content = enforceBodyWordBudget(merged, contentType, { minWords, maxWords }).content
           provider = ai.provider
           model = ai.model
         } else {
@@ -758,8 +758,12 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   })
 
   // After scaffold, complete missing brief-outline H2s (EditorPatch cannot
-  // add headings). Then audit with the same outline the desk uses.
-  if (briefOutline?.length) {
+  // add headings). Blogs are whole-document drafts: skip this insert path
+  // unless missingOutlineSections is already non-empty. Then fail closed —
+  // remaining headings are a generate error, not a refine-as-complete warning.
+  const blogLike = isBlogLikeContentType(contentType)
+  const missingNow = briefOutline?.length ? missingOutlineSections(content, briefOutline) : []
+  if (briefOutline?.length && (!blogLike || missingNow.length > 0)) {
     try {
       const completed = await completeMissingOutlineSections({
         content,
@@ -779,6 +783,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
                 maxTokens: 4096,
                 temperature: 0.2,
                 skipQualityContract: true,
+                contentType,
               })
               return ai.text
             },
@@ -792,12 +797,16 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       }
       // P0-GEN-3: fail closed on remaining outline sections.
       if (completed.remaining.length) {
-        const why = completed.stoppedForBudget
-          ? `Outline completion stopped at word budget (${maxWords}); remaining: ${completed.remaining.join(', ')}`
-          : outlineCompletionErrorMessage(completed.remaining)
-        console.warn(`[seoFactory/pipeline] ${why}`)
+        const why = completed.error
+          || (completed.stoppedForBudget
+            ? `Outline completion stopped at word budget (${maxWords}); remaining: ${completed.remaining.join(', ')}`
+            : outlineCompletionErrorMessage(completed.remaining))
+        throw new Error(why)
       }
     } catch (err) {
+      if (err instanceof Error && /outline|Could not complete brief outline/i.test(err.message)) {
+        throw err
+      }
       console.warn('[seoFactory/pipeline] outline completion skipped', err)
     }
   }

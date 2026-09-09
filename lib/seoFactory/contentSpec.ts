@@ -19,6 +19,7 @@ import {
 } from './contentQualityPlaybook'
 import { depthSpecForType } from './contentDepth'
 import { isCitableSource, isLowValueHost, type CitationContext } from './officialSources'
+import type { AuthorPack, ResearchClaim } from './authorPack'
 
 export type ContentSpecKeyword = {
   phrase: string
@@ -84,6 +85,12 @@ export type ContentSpec = {
   ymyl: { disclaimerRequired: boolean; statutoryAnchors: string[]; freshnessRequired: boolean }
   aeoGeo: { answerFirst: boolean; faqRequired: boolean; quotableEvidenceRequired: boolean }
   provenance: { plannerRunId?: string; generatedAt: string; sourceHashes: Record<string, string> }
+  /** Operator-supplied named author. Optional — omit on legacy specs. */
+  author?: AuthorPack
+  /** Research claim map (url → claim supported). Optional. */
+  research?: ResearchClaim[]
+  thesis?: string
+  unresolved?: string[]
 }
 
 export const CONTENT_SPEC_VERSION = PLAYBOOK_VERSION
@@ -410,6 +417,69 @@ export function validateContentSpec(spec: unknown): string[] {
     }
   }
 
+  if (s.author !== undefined && s.author !== null) {
+    if (typeof s.author !== 'object' || Array.isArray(s.author)) {
+      issues.push('author: malformed AuthorPack')
+    } else {
+      if (!s.author.name || typeof s.author.name !== 'string') {
+        issues.push('author.name: missing or empty')
+      }
+      if (!s.author.credential || typeof s.author.credential !== 'string') {
+        issues.push('author.credential: missing or empty')
+      }
+      if (s.author.experienceScope !== undefined && typeof s.author.experienceScope !== 'string') {
+        issues.push('author.experienceScope: must be a string')
+      }
+      if (s.author.reviewedBy !== undefined && typeof s.author.reviewedBy !== 'string') {
+        issues.push('author.reviewedBy: must be a string')
+      }
+      if (s.author.lastReviewed !== undefined && typeof s.author.lastReviewed !== 'string') {
+        issues.push('author.lastReviewed: must be a string')
+      }
+      if (s.author.experienceBeats !== undefined && !Array.isArray(s.author.experienceBeats)) {
+        issues.push('author.experienceBeats: must be an array')
+      }
+    }
+  }
+
+  if (s.research !== undefined && s.research !== null) {
+    if (!Array.isArray(s.research)) {
+      issues.push('research: must be an array')
+    } else {
+      const seenResearch = new Set<string>()
+      for (const r of s.research) {
+        if (!r || typeof r !== 'object') {
+          issues.push('research: malformed claim record')
+          continue
+        }
+        if (!r.url || !isHttpsUrl(r.url)) {
+          issues.push(`research: invented, non-https, or placeholder URL "${String(r.url)}"`)
+        } else if (seenResearch.has(r.url)) {
+          issues.push(`research: duplicate URL "${r.url}"`)
+        }
+        if (r.url) seenResearch.add(r.url)
+        if (!r.publisher || typeof r.publisher !== 'string') {
+          issues.push(`research: missing publisher for "${String(r.url)}"`)
+        }
+        if (!r.supports || typeof r.supports !== 'string') {
+          issues.push(`research: missing supports for "${String(r.url)}"`)
+        }
+        if (r.excerpt !== undefined && typeof r.excerpt !== 'string') {
+          issues.push(`research: excerpt must be a string for "${String(r.url)}"`)
+        }
+      }
+    }
+  }
+
+  if (s.thesis !== undefined && s.thesis !== null && typeof s.thesis !== 'string') {
+    issues.push('thesis: must be a string')
+  }
+  if (s.unresolved !== undefined && s.unresolved !== null) {
+    if (!Array.isArray(s.unresolved) || s.unresolved.some((u) => typeof u !== 'string')) {
+      issues.push('unresolved: must be an array of strings')
+    }
+  }
+
   return issues
 }
 
@@ -441,6 +511,10 @@ export type CreateContentSpecInput = {
   /** Explicit word budget; derived from contentDepth for the type when omitted. */
   wordBudget?: { min: number; target: number; max: number }
   generatedAt?: string
+  author?: AuthorPack
+  research?: ResearchClaim[]
+  thesis?: string
+  unresolved?: string[]
 }
 
 /**
@@ -484,6 +558,10 @@ export function createContentSpec(input: CreateContentSpecInput): ContentSpec {
       generatedAt: input.generatedAt ?? new Date().toISOString(),
       sourceHashes: input.sourceHashes ?? {},
     },
+    ...(input.author ? { author: input.author } : {}),
+    ...(input.research ? { research: input.research } : {}),
+    ...(input.thesis != null && input.thesis !== '' ? { thesis: input.thesis } : {}),
+    ...(input.unresolved?.length ? { unresolved: input.unresolved } : {}),
   }
   assertValidContentSpec(spec)
   return spec
@@ -545,6 +623,10 @@ export type ResolveContentSpecArgs = {
   targetWords?: number
   maxWords?: number
   plannerRunId?: string
+  author?: AuthorPack
+  research?: ResearchClaim[]
+  thesis?: string
+  unresolved?: string[]
 }
 
 export type ContentSpecResolution =
@@ -657,6 +739,10 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
       aeoGeo: { answerFirst: args.indexable, faqRequired: args.indexable, quotableEvidenceRequired: false },
       plannerRunId: args.plannerRunId,
       generatedAt: now,
+      ...(args.author ? { author: args.author } : {}),
+      ...(args.research ? { research: args.research } : {}),
+      ...(args.thesis ? { thesis: args.thesis } : {}),
+      ...(args.unresolved?.length ? { unresolved: args.unresolved } : {}),
     })
     return { spec }
   } catch (e) {

@@ -29,11 +29,18 @@ import {
  * lodgement, enrolment) never appear as "spelling" noise.
  */
 
+export type HarperLintItem = { kind: string; problem: string; message: string; fix?: string }
+
 export type HarperLintSummary = {
   score: number
   errors: number
   suggestions: number
-  items: Array<{ kind: string; problem: string; message: string; fix?: string }>
+  items: HarperLintItem[]
+  /**
+   * Style + Readability leftovers. Advisory only — must not increment
+   * errors/suggestions used for the grammar score.
+   */
+  styleItems?: HarperLintItem[]
   /** Exact document identity Harper evaluated. Optional only for legacy/test callers. */
   fingerprint?: string
   /** Extra stale-result guard for browser/server hand-off. */
@@ -53,10 +60,30 @@ export const HARPER_AUTOFIX_KINDS = new Set([
   'Repetition', 'Agreement', 'Typo', 'WordChoice', 'RepeatedWords',
 ])
 
+const HARPER_STYLE_LANE_KINDS = new Set(['Style', 'Readability'])
+
 export function harperKindAutofixable(kind: string | null | undefined): boolean {
   const k = String(kind || '').trim()
   if (!k) return false
   return HARPER_AUTOFIX_KINDS.has(k)
+}
+
+export function isHarperStyleLaneKind(kind: string | null | undefined): boolean {
+  const k = String(kind || '').trim()
+  return HARPER_STYLE_LANE_KINDS.has(k) || /^(style|readability)$/i.test(k)
+}
+
+/** Stable id for a leftover span — hash of lane+kind+normalized problem, never a serial 001. */
+export function harperDirectiveId(lane: string, kind: string, problem: string, message?: string): string {
+  const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const payload = `${norm(lane)}|${norm(kind)}|${norm(problem)}`
+  void message
+  let h = 0x811c9dc5
+  for (let i = 0; i < payload.length; i++) {
+    h ^= payload.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return `harper-${norm(lane) || 'item'}-${(h >>> 0).toString(16).padStart(8, '0')}`
 }
 
 export { HARPER_ESTATE_WORDS, harperSafeLines, spliceWords } from '@/lib/harperText'
@@ -122,11 +149,15 @@ function kindOf(l: Lint): string {
 }
 
 /** Noise filter: sentence-case headings are the estate contract, so
- *  Harper's title-case Capitalization findings never surface. */
+ *  Harper's title-case Capitalization findings never surface.
+ *  Style and Readability are kept and split into styleItems — they must
+ *  not be dropped from the linter entirely. */
 function keepLint(l: Lint): boolean {
   try {
     const k = l.lint_kind() || ''
-    if (k === 'Capitalization' || k === 'Readability' || k === 'Style') return false
+    let pretty = ''
+    try { pretty = l.lint_kind_pretty() || '' } catch { /* optional */ }
+    if (/^capitalization$/i.test(k) || /^capitalization$/i.test(pretty)) return false
     return true
   } catch {
     return true
@@ -159,6 +190,15 @@ function suggestionReplacement(
   return null
 }
 
+function compactLintItem(m: { kind: string; problem: string; message: string; fix?: string }): HarperLintItem {
+  return {
+    kind: m.kind,
+    problem: m.problem.slice(0, 120),
+    message: m.message.slice(0, 200),
+    fix: m.fix?.slice(0, 160),
+  }
+}
+
 export async function runHarperGrammar(
   md: string,
   signal?: AbortSignal,
@@ -182,7 +222,8 @@ export async function runHarperGrammar(
     const lints: Lint[] = await lintSource(linter, source)
     if (signal?.aborted) return null
     const kept = lints.filter(keepLint)
-    const mapped = []
+    const grammarMapped: Array<{ kind: string; problem: string; message: string; fix?: string }> = []
+    const styleMapped: Array<{ kind: string; problem: string; message: string; fix?: string }> = []
     for (const l of kept) {
       const problem = l.get_problem_text?.() || ''
       let fix: string | undefined
@@ -193,6 +234,8 @@ export async function runHarperGrammar(
         const repl = suggestionReplacement(s, span || null, source)
         if (repl != null) fix = repl
       } catch { /* suggestion text is optional */ }
+      let rawKind = ''
+      try { rawKind = l.lint_kind() || '' } catch { /* optional */ }
       const item = {
         kind: kindOf(l),
         problem,
@@ -200,24 +243,29 @@ export async function runHarperGrammar(
         span: l.span?.(),
         fix,
       }
+      if (isHarperStyleLaneKind(item.kind) || isHarperStyleLaneKind(rawKind)) {
+        if (!item.problem.trim()) continue
+        styleMapped.push(item)
+        continue
+      }
       if (isHarperNoiseFinding(item)) continue
-      mapped.push(item)
+      grammarMapped.push(item)
     }
-    const { score, errors, suggestions } = scoreHarperLints(mapped)
-    const items = mapped
+    const { score, errors, suggestions } = scoreHarperLints(grammarMapped)
+    const items = grammarMapped
       .filter((m) => m.problem.trim().length > 0)
       .slice(0, 48)
-      .map((m) => ({
-        kind: m.kind,
-        problem: m.problem.slice(0, 120),
-        message: m.message.slice(0, 200),
-        fix: m.fix?.slice(0, 160),
-      }))
+      .map(compactLintItem)
+    const styleItems = styleMapped
+      .filter((m) => m.problem.trim().length > 0)
+      .slice(0, 40)
+      .map(compactLintItem)
     return {
       score,
       errors,
       suggestions,
       items,
+      ...(styleItems.length ? { styleItems } : {}),
       fingerprint: contentFingerprint(document),
       sourceCharacters: document.length,
     }

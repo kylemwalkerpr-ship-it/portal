@@ -427,3 +427,101 @@ describe('auditContent integrates quality', () => {
     expect(audit.blockers.length).toBeGreaterThan(0)
   })
 })
+
+function blogEssay(): string {
+  const developed =
+    'When you start a student visa file you already know the form list will change, so you treat the official page as the source of truth rather than a printout from last year. Passport validity, bank-statement windows, and school letters all sit on that list, and each one has a different expiry logic that you have to check against live instructions. You write the current form numbers into your checklist and you only gather evidence that matches those numbers. A stale PDF from a forum thread is not a substitute for the issuing agency. This paragraph is allowed to run longer than a guide would permit because a blog is an essay, not a kit of 180-character walls.'
+  const pad = Array.from({ length: 42 }, (_, i) => {
+    const openers = [
+      'Confirm',
+      'Gather',
+      'Compare',
+      'File',
+      'Read',
+      'Ask',
+      'Keep',
+      'Note',
+      'Review',
+      'Watch',
+      'Hold',
+      'Match',
+      'Draft',
+      'Store',
+    ]
+    const verb = openers[i % openers.length]
+    return `${verb} item ${i + 1} on your list so the file stays complete when the officer asks.`
+  }).join(' ')
+  return `---
+title: How to build a student visa document file
+description: Practical essay on gathering student visa documents without treating a blog as a mini legal guide for applicants.
+primaryKeyword: student visa documents
+robots: index,follow
+content_type: blog_post
+---
+
+# How to build a student visa document file
+
+**By Harper Lee**
+
+You do not need a mini legal guide to start a student visa file. You need a working method that survives a rule change on [the USCIS official site](https://www.uscis.gov/).
+
+${developed}
+
+## Start with the live instruction, not a template
+
+The first move is boring on purpose. Open the issuing page, write the form numbers you actually see, and ignore last year's checklist. ${pad}
+
+## Treat each document as a dated artefact
+
+A passport, a bank statement, and a school letter expire on different clocks. You record the date on each one so you are not guessing later. Officers compare documents to the instruction, not to a blog memory.
+
+## Close the file when the list matches, not when you feel ready
+
+Stop collecting extras once every named item is current. File when the set matches the official list. Extra letters rarely rescue a missing form.
+
+This page is educational only, not legal advice. Consult an attorney for your situation.
+`
+}
+
+describe('blog family writing shape', () => {
+  it('does not block a narrative blog without FAQ, In 60 seconds, or a worked-example person', () => {
+    const r = evaluateContentQuality({
+      content: blogEssay(),
+      contentType: 'blog_post',
+      primaryKeyword: 'student visa documents',
+      indexable: true,
+    })
+    const codes = r.blockers.map((b) => b.code)
+    expect(codes).not.toContain('missing_faq')
+    expect(codes).not.toContain('missing_tldr')
+    expect(codes).not.toContain('tldr_format_invalid')
+    expect(codes).not.toContain('missing_concrete_example')
+    expect(codes).not.toContain('wall_of_text')
+    expect(codes).not.toContain('structure_h2')
+    expect(r.warnings.some((w) => w.code === 'wall_of_text' || w.code === 'missing_concrete_example' || w.code === 'missing_reader_path')).toBe(false)
+  })
+
+  it('applies the same essay gate to blog_summary and news_summary', () => {
+    for (const contentType of ['blog_summary', 'news_summary'] as const) {
+      const r = evaluateContentQuality({
+        content: blogEssay(),
+        contentType,
+        primaryKeyword: 'student visa documents',
+        indexable: true,
+      })
+      expect(r.blockers.some((b) => b.code === 'missing_faq' || b.code === 'missing_tldr' || b.code === 'tldr_format_invalid')).toBe(false)
+    }
+  })
+
+  it('still blocks a legal_guide without FAQ', () => {
+    const content = guide('You gather the checklist and you confirm each form number.')
+      .replace(/## FAQ[\s\S]*?## Sources/, '## Sources')
+    const r = evaluateContentQuality({
+      content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+      indexable: true,
+    })
+    expect(r.blockers.some((b) => b.code === 'missing_faq')).toBe(true)
+  })
+})

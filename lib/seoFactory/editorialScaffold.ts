@@ -17,6 +17,7 @@ import { sourcesForRegion } from './officialSources'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
 import { sanitizeLeakedMarkup } from './leakedMarkup'
+import { isBlogFamily } from './writingShape'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -1347,9 +1348,10 @@ export function applyDeterministicRepairs(opts: {
   }
 
   {
+    const blogFamily = isBlogFamily(opts.contentType)
     const tldr = b.match(/(?:^|\n)##\s+In 60 seconds\s*[:：-]?\s*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
     const existing = tldr ? (tldr[1].match(/^[-*+]\s+\S/gm) || []).length : 0
-    if (!tldr || existing < 3 || existing > 5) {
+    if (!blogFamily && (!tldr || existing < 3 || existing > 5)) {
       // normalizeEditorDocument + ensureTldrBullets turn paragraphs, numbered
       // lists, and collapsed `a - b - c` lines into 3–5 separate bullets.
       const before = b
@@ -1375,7 +1377,7 @@ export function applyDeterministicRepairs(opts: {
     }
   }
 
-  const withToc = normalizeReaderStructure(b)
+  const withToc = isBlogFamily(opts.contentType) ? b : normalizeReaderStructure(b)
   if (withToc !== b) {
     b = withToc
     applied.push('table_of_contents')
@@ -2137,7 +2139,8 @@ export function applyDeterministicRepairs(opts: {
   // H2 containing bold questions (e.g. '**Is X worth it?**') and no FAQPage
   // JSON-LD yet.  The Admissions Consultant draft has 1 FAQ H2 with 6 bold
   // questions — the old gate required faqH2s >= 3 and silently passed.
-  if (!/"@type"\s*:\s*"FAQPage"/i.test(b)) {
+  // Blogs are essays — do not invent FAQPage JSON-LD to clear a guide gate.
+  if (!/"@type"\s*:\s*"FAQPage"/i.test(b) && !isBlogFamily(opts.contentType)) {
     // --- Path A: 3+ QUESTION-form H2 headings ---
     // A heading qualifies as an FAQ question ONLY when it is phrased as one
     // (ends with '?'). The old rule took the LAST 8 H2 sections of the
@@ -2232,7 +2235,8 @@ export function applyDeterministicRepairs(opts: {
   // JSON-LD so missing_faq AND schema_faq clear on the same repair run.
   if (
     opts.indexable !== false &&
-    String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
+    String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig' &&
+    !isBlogFamily(opts.contentType)
   ) {
     const hasFaqSection =
       /^##\s+.*faq/im.test(b) ||

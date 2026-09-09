@@ -53,12 +53,146 @@ async function fetchStyleReview(init: RequestInit & { timeoutMs?: number } = {})
   }
 }
 
+type HarperFinding = {
+  kind: string
+  problem: string
+  message: string
+  fix?: string
+  id?: string
+}
+
+/** Serial packet ids reshuffle when order changes — never use them as keys. */
+function isSerialHarperId(id: string): boolean {
+  return /^harper-[a-z_]+-\d{3}$/i.test(id)
+}
+
+/** Stable finding identity: real directive id, else kind+problem. */
+export function harperFindingKey(item: { id?: string; kind?: string; problem?: string; evidence?: string }): string {
+  const id = String(item.id || '').trim()
+  if (id && !isSerialHarperId(id)) return id
+  return `${String(item.kind || '').trim()}::${String(item.problem || item.evidence || '').trim()}`
+}
+
+export type HarperReviewPass = {
+  seq: number
+  appliedIds?: string[]
+  pendingIds?: string[]
+  waivedIds?: string[]
+  unmet?: string[]
+  directives?: Array<{
+    id?: string
+    lane?: string
+    evidence?: string
+    instruction?: string
+    severity?: string
+    kind?: string
+    problem?: string
+  }>
+}
+
+function directiveAsFinding(d: NonNullable<HarperReviewPass['directives']>[number]): HarperFinding {
+  return {
+    id: d.id,
+    kind: String(d.kind || d.lane || ''),
+    problem: String(d.problem || d.evidence || ''),
+    message: String(d.instruction || ''),
+  }
+}
+
+function passIdSet(
+  ids: string[] | undefined,
+  directives: HarperReviewPass['directives'],
+): Set<string> | null {
+  if (!ids) return null
+  const set = new Set<string>()
+  const byId = new Map(
+    (directives || []).filter((d) => d.id).map((d) => [String(d.id), d]),
+  )
+  for (const raw of ids) {
+    const id = String(raw || '').trim()
+    if (!id) continue
+    set.add(id)
+    const d = byId.get(id)
+    if (d) {
+      set.add(harperFindingKey(directiveAsFinding(d)))
+      if (d.evidence) set.add(d.evidence)
+      if (d.problem) set.add(d.problem)
+    }
+  }
+  return set
+}
+
+function findingInSet(item: HarperFinding, set: Set<string> | null): boolean {
+  if (!set) return false
+  if (item.id && set.has(item.id)) return true
+  if (set.has(harperFindingKey(item))) return true
+  if (item.problem && set.has(item.problem)) return true
+  return false
+}
+
+function stampDirectiveIds(items: HarperFinding[], directives?: HarperReviewPass['directives']): HarperFinding[] {
+  if (!directives?.length) return items
+  return items.map((it) => {
+    if (it.id && !isSerialHarperId(it.id)) return it
+    const match = directives.find((d) =>
+      (d.problem && d.problem === it.problem)
+      || (d.evidence && d.evidence === it.problem)
+      || (d.id && it.id && d.id === it.id),
+    )
+    return match?.id && !isSerialHarperId(match.id) ? { ...it, id: match.id } : it
+  })
+}
+
+function groupHarperFindings(
+  previous: HarperFinding[],
+  live: HarperFinding[],
+  pass: HarperReviewPass | null,
+): { applied: HarperFinding[]; pending: HarperFinding[]; waived: HarperFinding[] } {
+  const appliedSet = passIdSet(pass?.appliedIds, pass?.directives)
+  const waivedSet = passIdSet(pass?.waivedIds, pass?.directives)
+  const stampedLive = stampDirectiveIds(live, pass?.directives)
+  const stampedPrev = stampDirectiveIds(previous, pass?.directives)
+  const liveByKey = new Map(stampedLive.map((it) => [harperFindingKey(it), it]))
+  const applied: HarperFinding[] = []
+  const pending: HarperFinding[] = []
+  const waived: HarperFinding[] = []
+  const seen = new Set<string>()
+  const take = (bucket: HarperFinding[], item: HarperFinding) => {
+    const key = harperFindingKey(item)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    bucket.push(item)
+  }
+
+  // Live Harper issues stay pending (same key on a second click, not a new list).
+  for (const it of stampedLive) {
+    if (findingInSet(it, waivedSet)) take(waived, it)
+    else take(pending, it)
+  }
+  for (const it of stampedPrev) {
+    const key = harperFindingKey(it)
+    if (liveByKey.has(key)) continue
+    if (findingInSet(it, waivedSet)) take(waived, it)
+    else take(applied, it)
+  }
+  for (const d of pass?.directives || []) {
+    const item = directiveAsFinding(d)
+    if (findingInSet(item, waivedSet)) take(waived, item)
+    else if (findingInSet(item, appliedSet) && !liveByKey.has(harperFindingKey(item))) take(applied, item)
+  }
+  return { applied, pending, waived }
+}
+
 type Props = {
   content: string
   hint?: EditorSeoHint
   reviewModel?: string
   busy?: boolean
   onApplied?: (content: string) => void
+  /** Harper Review: autofix then rewrite leftover issues into the draft. */
+  onReview?: () => void
+  reviewing?: boolean
+  harperPass?: HarperReviewPass | null
 }
 
 const C = {
@@ -115,7 +249,7 @@ function ScorePill({ label, score, sub, busy, onClick, pass }: {
   )
 }
 
-export default function EditorMetricsStrip({ content, hint, reviewModel, busy, onApplied }: Props) {
+export default function EditorMetricsStrip({ content, hint, reviewModel, busy, onApplied, onReview, reviewing, harperPass }: Props) {
   const [metrics, setMetrics] = React.useState<EditorMetrics | null>(null)
   const [harper, setHarper] = React.useState<HarperLintSummary | null>(null)
   const [harperBusy, setHarperBusy] = React.useState(false)
@@ -133,6 +267,8 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
   textRef.current = content
   const hintRef = React.useRef(hint)
   hintRef.current = hint
+  const prevHarperItemsRef = React.useRef<HarperFinding[]>([])
+  const latestHarperItemsRef = React.useRef<HarperFinding[]>([])
 
   // Local metrics (readability + SEO) — cheap, recompute on debounce.
   React.useEffect(() => {
@@ -170,6 +306,14 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     }, 1100)
     return () => { clearTimeout(timer); controller.abort() }
   }, [content, hint?.region])
+
+  if (harper?.items?.length) latestHarperItemsRef.current = harper.items
+  React.useEffect(() => {
+    if (!reviewing) return
+    const snap = (harper?.items?.length ? harper.items : latestHarperItemsRef.current).map((it) => ({ ...it }))
+    if (snap.length) prevHarperItemsRef.current = snap
+    // Snapshot only when Review starts so a second click keeps the same keys.
+  }, [reviewing]) // harper is read at the rising edge on purpose
 
   const styleReviewInFlightRef = React.useRef(false)
   const styleAbortRef = React.useRef<AbortController | null>(null)
@@ -276,10 +420,54 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
     }
   }, [onApplied])
 
+  const renderFinding = (it: HarperFinding, opts?: { hideApply?: boolean }) => (
+    <div key={harperFindingKey(it)} style={{ marginBottom: 5, color: C.text, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+      <span style={{ color: pillColor(80), fontWeight: 600, fontFamily: C.mono }}>[{it.kind}]</span>{' '}
+      <span style={{ background: '#FEF2F2', padding: '0 4px', borderRadius: 3 }}>“{it.problem}”</span>{' '}
+      <span style={{ color: C.muted }}>{it.message}</span>
+      {it.fix ? <span style={{ color: C.green }}> → {it.fix}</span> : null}
+      {opts?.hideApply ? null : it.fix && harperKindAutofixable(it.kind) ? (
+        <button
+          type="button"
+          disabled={fixingHarper || !onApplied}
+          onClick={async () => {
+            setFixingHarper(true)
+            try {
+              const result = await applyHarperProblem(textRef.current, it.problem, hintRef.current?.region)
+              if (result.applied > 0 && result.content && onApplied) {
+                onApplied(result.content)
+                setHarperFixNote(`Applied ${it.kind}: “${it.problem}”.`)
+                setHarper(null)
+              } else {
+                setHarperFixNote('Could not apply that suggestion automatically — use Auto-fix or edit the phrase.')
+              }
+            } catch (err) {
+              setHarperFixNote(err instanceof Error ? err.message : 'Harper apply failed — document unchanged')
+            } finally {
+              setFixingHarper(false)
+            }
+          }}
+          style={{ padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
+        >
+          Apply
+        </button>
+      ) : (
+        <span style={{ fontSize: 10, color: C.muted, fontFamily: C.mono }}>Manual / vocabulary — not auto-applied</span>
+      )}
+    </div>
+  )
+
   const panel = (() => {
     if (!expanded) return null
     if (expanded === 'grammar') {
       const items = harper?.items || []
+      const grouped = groupHarperFindings(prevHarperItemsRef.current, items, harperPass || null)
+      const showGroups = Boolean(harperPass)
+      const pendingItems = showGroups ? grouped.pending : items
+      const noLiveIssues = !harperBusy && !harperEngineError && pendingItems.length === 0 && grouped.applied.length === 0 && grouped.waived.length === 0
+      const groupHead = (label: string, color: string) => (
+        <div style={{ fontWeight: 700, color, margin: '6px 0 3px', fontSize: 10, letterSpacing: '.04em', textTransform: 'uppercase' as const }}>{label}</div>
+      )
       return (
         <div style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', background: '#fff', fontSize: 11, lineHeight: 1.5 }}>
           {harperBusy && <span style={{ color: C.muted }}>Harper.js loading (on-device grammar)...</span>}
@@ -305,47 +493,37 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
               </button>
             </div>
           )}
-          {!harperBusy && !harperEngineError && items.length === 0 && (
+          {!harperBusy && !harperEngineError && noLiveIssues && (
             <span style={{ color: C.green }}>No grammar issues detected.</span>
           )}
           {harperFixNote && <div style={{ color: C.green, marginBottom: 6 }}>{harperFixNote}</div>}
-          {items.map((it, i) => (
-            <div key={i} style={{ marginBottom: 5, color: C.text, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-              <span style={{ color: pillColor(80), fontWeight: 600, fontFamily: C.mono }}>[{it.kind}]</span>{' '}
-              <span style={{ background: '#FEF2F2', padding: '0 4px', borderRadius: 3 }}>“{it.problem}”</span>{' '}
-              <span style={{ color: C.muted }}>{it.message}</span>
-              {it.fix ? <span style={{ color: C.green }}> → {it.fix}</span> : null}
-              {it.fix && harperKindAutofixable(it.kind) ? (
-                <button
-                  type="button"
-                  disabled={fixingHarper || !onApplied}
-                  onClick={async () => {
-                    setFixingHarper(true)
-                    try {
-                      const result = await applyHarperProblem(textRef.current, it.problem, hintRef.current?.region)
-                      if (result.applied > 0 && result.content && onApplied) {
-                        onApplied(result.content)
-                        setHarperFixNote(`Applied ${it.kind}: “${it.problem}”.`)
-                        setHarper(null)
-                      } else {
-                        setHarperFixNote('Could not apply that suggestion automatically — use Auto-fix or edit the phrase.')
-                      }
-                    } catch (err) {
-                      setHarperFixNote(err instanceof Error ? err.message : 'Harper apply failed — document unchanged')
-                    } finally {
-                      setFixingHarper(false)
-                    }
-                  }}
-                  style={{ padding: '1px 7px', fontSize: 10, fontWeight: 700, border: '1px solid rgba(0,0,0,0.12)', background: '#17365D', color: '#fff', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Apply
-                </button>
-              ) : (
-                <span style={{ fontSize: 10, color: C.muted, fontFamily: C.mono }}>Manual / vocabulary — not auto-applied</span>
+          {showGroups ? (
+            <>
+              {grouped.applied.length > 0 && (
+                <>
+                  {groupHead('Applied this pass', C.green)}
+                  {grouped.applied.map((it) => renderFinding(it, { hideApply: true }))}
+                </>
               )}
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+              {(pendingItems.length > 0 || grouped.applied.length > 0 || grouped.waived.length > 0) && (
+                <>
+                  {groupHead('Still pending', C.amber)}
+                  {pendingItems.length === 0
+                    ? <div style={{ color: C.green, marginBottom: 5 }}>None — leftover issues were rewritten or waived.</div>
+                    : pendingItems.map((it) => renderFinding(it))}
+                </>
+              )}
+              {grouped.waived.length > 0 && (
+                <>
+                  {groupHead('Waived', C.muted)}
+                  {grouped.waived.map((it) => renderFinding(it, { hideApply: true }))}
+                </>
+              )}
+            </>
+          ) : (
+            items.map((it) => renderFinding(it))
+          )}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
             <button
               type="button"
               disabled={harperBusy || fixingHarper || !harper || harper.errors + harper.suggestions === 0}
@@ -359,8 +537,29 @@ export default function EditorMetricsStrip({ content, hint, reviewModel, busy, o
             >
               {fixingHarper ? 'Fixing…' : `Auto-fix ${harper ? harper.errors + harper.suggestions : 0} issue${harper && harper.errors + harper.suggestions === 1 ? '' : 's'}`}
             </button>
+            {onReview && (
+              <button
+                type="button"
+                disabled={busy || harperBusy || fixingHarper}
+                onClick={() => {
+                  prevHarperItemsRef.current = (harper?.items || latestHarperItemsRef.current).map((it) => ({ ...it }))
+                  onReview()
+                }}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(0,0,0,0.12)',
+                  background: reviewing ? '#fff' : '#17365D', fontSize: 11, fontWeight: 600,
+                  color: reviewing ? C.text : '#fff',
+                  cursor: reviewing ? 'wait' : 'pointer',
+                  opacity: busy || harperBusy ? 0.5 : 1,
+                }}
+              >
+                {reviewing ? 'Reviewing…' : 'Review'}
+              </button>
+            )}
             <span style={{ fontSize: 10, color: C.muted }}>
-              Harper applies grammar/typo/punctuation on the markdown body (spans from the end). Vocabulary and acronyms stay.
+              {onReview
+                ? 'Review applies Harper fixes then rewrites leftover issues into the draft.'
+                : 'Harper applies grammar/typo/punctuation on the markdown body (spans from the end). Vocabulary and acronyms stay.'}
             </span>
           </div>
         </div>

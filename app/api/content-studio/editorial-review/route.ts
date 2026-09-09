@@ -4,6 +4,7 @@ import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
 import { buildHarperSupervisionPacket, measureEditorial } from '@/lib/editorialSupervisor'
 import { applyEditorialReviewPatch } from '@/lib/seoFactory/editorialReviewPatch'
+import { applyEditorialRevision, parseEditorialRevision } from '@/lib/seoFactory/editorialRevision'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { contentFingerprint } from '@/lib/seoFactory/currentGate'
 import { DRAFT_HARD_MAX_CHARS } from '@/lib/seoFactory/draftIntegrity'
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
     const hint: EditorSeoHint = body.hint || {}
     const snapshot = measureEditorial(content, hint, grammar)
     const supervision = buildHarperSupervisionPacket(snapshot)
+    const mustApplyIds = supervision.directives.filter((d) => d.mustApply).map((d) => d.id)
+    const pendingIds = (supervision.pending || supervision.directives).map((d) => d.id)
     const reviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
       ? body.reviewModel.trim()
       : DEFAULT_REVIEW_PIN
@@ -52,25 +55,29 @@ export async function POST(request: NextRequest) {
       // Entrim (or any unselected host) after a Grok abort produced 401s on
       // proxy tokens the operator never chose as the review model.
       cascadeOnCapacity: false,
-      system: `You are the EXECUTOR beneath the Harper Editorial Supervisor. Harper/deterministic measurements are the authority; you do not override, reinterpret, waive, or self-score them.
+      system: `You are the EXECUTOR beneath the Harper Editorial Supervisor. Harper/deterministic measurements are the authority; you do not override, reinterpret, or self-score them.
 
-You receive HARPER_SUPERVISION with four co-equal gates: GRAMMAR, SEO, AI_WRITE/HUMAN_VOICE, and FLESCH. Treat every required directive as an instruction to implement when a safe prose-only edit can address it. Advisory directives guide naturalness and polish. You may not improve one gate by degrading another.
+You receive HARPER_SUPERVISION (packet version 2) with gates GRAMMAR, SEO, AI_WRITE/HUMAN_VOICE, and FLESCH. Style leftovers are advisory and do not block ship. Treat every mustApply directive as an instruction to implement.
 
-Return ONLY EditorPatch JSON:
-{"version":1,"operations":[{"kind":"replace","findingCode":"editorial_review","anchor":"exact unique full prose line","expectedHash":"server fills this","replacement":"corrected full prose line"}]}.
-Supported operation kind in this lane: replace. At most 12 operations per pass.
+Return ONLY EditorialRevision v2 JSON:
+{"version":2,"mode":"document","document":"<full markdown>","appliedIds":["..."],"waivedIds":[]}
+You MAY return mode "sections" with H2 replacements:
+{"version":2,"mode":"sections","sections":[{"heading":"Eligibility","replacement":"..."}],"appliedIds":["..."],"waivedIds":[]}
 
 EXECUTION RULES — NON-NEGOTIABLE:
-- Read the ENTIRE document and the complete HARPER_SUPERVISION packet before choosing edits.
+- Read the ENTIRE document and the complete HARPER_SUPERVISION packet before rewriting.
+- You MUST cover every mustApply directive id in appliedIds or waivedIds.
+- Full document rewrite of prose is allowed. Preserve facts, URLs, numbers, legal qualifiers (must/not/never/may/cannot/unless), disclaimer, sources, heading topics, schema and frontmatter.
 - Work from the packet, not from your own imagined score. Never say a score passed; the supervisor re-runs Harper + SEO + voice + Flesch on your returned body.
-- Fix Harper grammar/spelling/punctuation findings in context. Use Harper's suggested fix as intent, not as blind string replacement; re-check agreement, articles, punctuation and sentence meaning after the rewrite.
+- Fix Harper grammar/spelling/punctuation findings in context. Use Harper's suggested fix as intent, not as blind string replacement.
 - For Flesch, shorten dense sentences and use plain English without deleting legal/technical qualifications or changing dates, amounts, program names, obligations or exceptions.
 - For SEO, integrate missing wording only where it answers the reader naturally. Never keyword-stuff, paste search phrases into headings, or create unsupported claims.
-- For AI_WRITE/HUMAN_VOICE, remove robotic repetition, generic filler and unnatural phrasing while keeping the author's meaning, factual scope and tone. Never invent personal experience, testimonials, statistics or citations.
-- Preserve facts, citations, URLs, numbers, official names, legal qualifiers (must/not/never/may/cannot/unless), headings, metadata, tables, schema, links, disclaimers and section order. Structural SEO gaps belong to the outer Audit & Fix loop; never fabricate markup here.
-- Every replacement must be the smallest complete-line edit that materially implements one or more supervisor directives.
-- Do NOT return an empty operations array while HARPER_SUPERVISION.unmet is non-empty unless no safe prose-only edit exists. An empty patch does not clear anything; the supervisor will hold the draft.
-- No preamble, markdown fence, explanation, commentary, alternative version, or full-document regeneration.`,
+- For AI_WRITE/HUMAN_VOICE, remove robotic repetition, generic filler and unnatural phrasing while keeping the author's meaning, factual scope and tone.
+- Never invent experience, fees, dates, URLs, testimonials, statistics or citations.
+- Structural SEO gaps belong to the outer Audit & Fix loop; never fabricate markup here.
+- Do NOT return EditorPatch 12-line format as the primary protocol.
+- Do NOT return empty document while pending required directives exist. An empty revision does not clear anything; the supervisor will hold the draft.
+- No preamble, markdown fence, or commentary if possible.`,
       prompt: JSON.stringify({
         HARPER_SUPERVISION: supervision,
         document: content,
@@ -83,12 +90,32 @@ EXECUTION RULES — NON-NEGOTIABLE:
       disableThinking: true,
       reasoningEffort: 'low',
     })
-    const patched = applyEditorialReviewPatch(content, response.text)
+    const parsed = parseEditorialRevision(response.text)
+    if (!parsed.ok) {
+      if ('fallback' in parsed && parsed.fallback === 'v1') {
+        const patched = applyEditorialReviewPatch(content, response.text)
+        return NextResponse.json({
+          ...patched,
+          appliedIds: [],
+          waivedIds: [],
+          supervisionFingerprint: supervision.fingerprint,
+          directiveCount: supervision.directives.length,
+          unmet: supervision.unmet,
+          pendingIds,
+        })
+      }
+      throw new Error(parsed.reason)
+    }
+    const patched = applyEditorialRevision(content, parsed.revision, { mustApplyIds, protectFacts: true })
     return NextResponse.json({
-      ...patched,
+      content: patched.content,
+      clean: patched.clean,
+      appliedIds: patched.appliedIds,
+      waivedIds: patched.waivedIds,
       supervisionFingerprint: supervision.fingerprint,
       directiveCount: supervision.directives.length,
       unmet: supervision.unmet,
+      pendingIds,
     })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Editorial review failed' }, { status: 502 })

@@ -4,7 +4,7 @@
  * AI brief (modelGuidanceBlock) and that buildFactoryUserPrompt renders them
  * only when provided.
  */
-import { buildFactoryUserPrompt, modelGuidanceBlock, type ModelGuidanceInput } from '@/lib/seoFactory/prompts'
+import { buildFactorySystemPrompt, buildFactoryUserPrompt, modelGuidanceBlock, type ModelGuidanceInput } from '@/lib/seoFactory/prompts'
 
 const basePromptOpts = {
   title: 'H-1B visa explained',
@@ -137,5 +137,69 @@ describe('draft source format and editorial contract', () => {
     expect(block).toContain('do not emit JSX, imports, or TypeScript exports')
     expect(block).not.toContain('NOT markdown')
     expect(block).not.toContain('Wrap body prose in <p>')
+  })
+})
+
+describe('buildFactorySystemPrompt · blog vs guide ship gates', () => {
+  const blogPlan = {
+    matched: null as any,
+    matchScore: 0,
+    host: 'apex' as const,
+    repo: 'yousafe-consultancy' as any,
+    filePath: 'content/blog/student-visa-file.md',
+    canonicalUrl: 'https://yousafeconsultancy.com/blog/student-visa-file/',
+    indexable: true,
+    action: 'create',
+    intentClass: 'news_summary',
+    contentType: 'blog_post',
+    warnings: [],
+    blockers: [],
+    ymy: false,
+    routingSource: 'standing_rules' as const,
+  }
+
+  it('writes blogs as one specialist article, not a legal-guide kit', () => {
+    const prompt = buildFactorySystemPrompt({
+      plan: blogPlan,
+      contentType: 'blog_post',
+      minWords: 800,
+      interlinkAllowlist: [],
+    })
+    expect(prompt).toMatch(/senior specialist writing one/)
+    expect(prompt).toMatch(/3–6 purpose-led H2/)
+    expect(prompt).not.toMatch(/STRUCTURE: H1 \+ "## In 60 seconds"/)
+    expect(prompt).not.toMatch(/overview, eligibility\/requirements, application process/)
+    expect(prompt).not.toMatch(/Article JSON-LD AND FAQPage JSON-LD/)
+    const user = buildFactoryUserPrompt({
+      title: 'How to build a student visa document file',
+      topic: 'student visa documents',
+      primaryKeyword: 'student visa documents',
+      region: 'US',
+      contentType: 'blog_post',
+      tone: 'conversational',
+      gscBlock: 'GSC: none',
+    })
+    expect(user).toMatch(/FAQ, FAQPage JSON-LD/)
+    expect(user).toMatch(/are NOT required/)
+  })
+
+  it('keeps the YMYL kit on legal guides', () => {
+    const prompt = buildFactorySystemPrompt({
+      plan: {
+        ...blogPlan,
+        host: 'legal' as const,
+        repo: 'caseworks' as any,
+        filePath: 'app/us/student-visa-documents/page.tsx',
+        canonicalUrl: 'https://legal.yousafeconsultancy.com/us/student-visa-documents/',
+        intentClass: 'legal_guide',
+        contentType: 'article',
+      },
+      contentType: 'legal_guide',
+      minWords: 2200,
+      interlinkAllowlist: [],
+    })
+    expect(prompt).toMatch(/STRUCTURE: H1 \+ "## In 60 seconds"/)
+    expect(prompt).toMatch(/Article JSON-LD AND FAQPage JSON-LD/)
+    expect(prompt).toMatch(/≥4 H2/)
   })
 })

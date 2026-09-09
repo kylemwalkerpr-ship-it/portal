@@ -16,6 +16,7 @@ import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { countEstateLinks } from './linkAudit'
 import { metaDescriptionLength } from './ahrefsIssues'
 import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
+import { isBlogFamily } from './writingShape'
 
 export interface AuditFinding {
   code: string
@@ -313,14 +314,17 @@ export function auditContent(opts: {
     message: hasArticle ? 'Article JSON-LD present' : 'Missing Article JSON-LD',
     fix: 'Add Article schema in application/ld+json',
   }, AUDIT_POINT_WEIGHTS.schemaArticle)
-  // FAQPage JSON-LD is a HARD blocker for indexable long-form — same band as
-  // the quality gate's missing_faq section. A rich-result-ready schema is a
-  // ship requirement, not a nicety; missing it withholds the AI-overview lift.
-  add(hasFaq || opts.contentType === 'marketplace_gig', {
+  // FAQPage JSON-LD is a HARD blocker for indexable guides/regional — same
+  // band as the quality gate's missing_faq section. Blogs are essays and do
+  // not require FAQPage.
+  const blogFamily = isBlogFamily(opts.contentType)
+  add(hasFaq || opts.contentType === 'marketplace_gig' || blogFamily, {
     code: 'schema_faq',
-    severity: wantIndexable && opts.contentType !== 'marketplace_gig' ? 'blocker' : 'warning',
-    message: hasFaq ? 'FAQPage JSON-LD present' : 'Missing FAQPage JSON-LD',
-    fix: 'Add 4–6 FAQs with FAQPage schema for AI overviews',
+    severity: wantIndexable && opts.contentType !== 'marketplace_gig' && !blogFamily ? 'blocker' : 'warning',
+    message: blogFamily
+      ? 'FAQPage JSON-LD is not required for blogs'
+      : hasFaq ? 'FAQPage JSON-LD present' : 'Missing FAQPage JSON-LD',
+    fix: blogFamily ? 'Skip FAQPage on consultancy blogs' : 'Add 4–6 FAQs with FAQPage schema for AI overviews',
   }, AUDIT_POINT_WEIGHTS.schemaFaq)
 
   // Internal links — shared estate counter (legal. / portal. / any estate
