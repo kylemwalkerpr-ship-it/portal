@@ -459,7 +459,7 @@ export function buildFactorySystemPrompt(opts: {
       ? '    - Place each DEMAND long-tail once as meaning coverage in prose — never as an H2. Cap 2 hits.'
       : '    - Place each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',
     '    - Synthesized terms: use only if a grammatical slot already exists. If none, omit them. Harper cannot honestly stuff them later.',
-    '    - The PRIMARY keyword is exempt from coverage checkboxes (it appears in title/H1) — but 12+ hits is still keyword stuffing.',
+    '    - The PRIMARY keyword is exempt from coverage checkboxes (it appears in title/H1) — but 12+ hits overall, or 4+ hits inside the first content H2 body, is keyword stuffing.',
     renderKeywordContractBrief(keywordContract, opts.primaryKeyword || spec?.primaryKeyword),
   ]
     .filter(Boolean)
@@ -625,7 +625,7 @@ export function buildFactoryUserPrompt(opts: {
   const parts = [
     `Title hint: ${opts.title}`,
     `Topic: ${opts.topic}`,
-    `Primary keyword (must appear naturally in title + first H2): ${opts.primaryKeyword}`,
+    `Primary keyword: ${opts.primaryKeyword}. Appear naturally once in the title/H1 and at most once in the first content H2 (heading or opening sentence). After that, use short forms, pronouns, and related entities. Repeating the full phrase in consecutive sentences is keyword stuffing.`,
     `Region: ${opts.region}`,
     `Content type: ${opts.contentType}`,
     `Tone: ${opts.tone}`,

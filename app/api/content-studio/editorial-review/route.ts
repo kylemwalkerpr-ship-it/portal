@@ -72,6 +72,7 @@ EXECUTION RULES — NON-NEGOTIABLE:
 - Fix Harper grammar/spelling/punctuation findings in context. Use Harper's suggested fix as intent, not as blind string replacement.
 - For Flesch, shorten dense sentences and use plain English without deleting legal/technical qualifications or changing dates, amounts, program names, obligations or exceptions.
 - For SEO, integrate missing wording only where it answers the reader naturally. Never keyword-stuff, paste search phrases into headings, or create unsupported claims.
+- If the first content H2 (after In 60 seconds / Table of contents) repeats the primary keyword 4+ times, rewrite that section: keep the phrase once, then use short forms, pronouns, and related entities.
 - For AI_WRITE/HUMAN_VOICE, remove robotic repetition, generic filler and unnatural phrasing while keeping the author's meaning, factual scope and tone.
 - Never invent experience, fees, dates, URLs, testimonials, statistics or citations.
 - Structural SEO gaps belong to the outer Audit & Fix loop; never fabricate markup here.

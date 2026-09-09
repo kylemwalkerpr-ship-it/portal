@@ -107,7 +107,7 @@ describe('buildFactoryUserPrompt · model guidance threading', () => {
     // regenerating from scratch and re-introducing the same blockers.
     expect(prompt).toContain(draft)
     // Sanity: the factory brief is still present alongside the revision contract.
-    expect(prompt).toMatch(/Primary keyword \(must appear naturally in title \+ first H2\)/)
+    expect(prompt).toMatch(/Primary keyword: .+\. Appear naturally once in the title\/H1 and at most once in the first content H2/)
   })
 
   it('omits the draft block when there is no existing draft (first pass)', () => {
