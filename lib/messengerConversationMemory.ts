@@ -1,4 +1,5 @@
 import type { BudgetEvidence, PricingAuthority } from '@/lib/messengerPricingAuthority'
+import { evaluateProviderAttention } from '@/lib/messengerEscalationPolicy'
 
 export type YqaaConversationMemory = {
   version: 1
@@ -67,35 +68,6 @@ function existingMemory(metadata: any): Partial<YqaaConversationMemory> {
   return raw as Partial<YqaaConversationMemory>
 }
 
-function providerAttentionFromThread(metadata: any, messages: any[], clientId: string) {
-  const meta = metadata && typeof metadata === 'object' ? metadata : {}
-  const requestedAt = typeof meta.ai_provider_attention_requested_at === 'string'
-    ? meta.ai_provider_attention_requested_at
-    : typeof meta.ai_escalated_at === 'string'
-      ? meta.ai_escalated_at
-      : null
-  const requestedMs = requestedAt ? new Date(requestedAt).getTime() : 0
-  const humanReplyAfterRequest = requestedMs > 0 && (messages || []).some((m: any) => {
-    if (!m?.sender_id || m.sender_id === clientId) return false
-    if (m?.metadata?.ai_generated || m?.metadata?.ai_assistant || m?.metadata?.ai_typing) return false
-    if (m?.type === 'system') return false
-    const createdMs = m?.created_at ? new Date(m.created_at).getTime() : 0
-    return createdMs > requestedMs
-  })
-
-  const requested = Boolean(
-    meta.ai_provider_attention_requested === true ||
-    requestedAt ||
-    ['model_escalation', 'pricing_provider_review'].includes(String(meta.ai_escalation_reason || ''))
-  )
-
-  return {
-    requested_at: requestedAt,
-    pending: Boolean(requested && !humanReplyAfterRequest),
-    human_reply_after_request: humanReplyAfterRequest,
-  }
-}
-
 /**
  * Grounded memory only: we persist client-authored text highlights and values
  * that were deterministically parsed from the thread. No model-generated
@@ -125,7 +97,21 @@ export function buildGroundedConversationMemory(args: {
   const newHighlights = clientTexts.filter((text) => HIGH_VALUE.test(text))
   const newDeadlines = clientTexts.filter((text) => DEADLINE.test(text))
   const newDocs = clientTexts.filter((text) => DOCUMENT.test(text))
-  const providerAttention = providerAttentionFromThread(args.metadata, args.messages || [], args.clientId)
+
+  // In a provider↔client DM, AI messages use the provider's sender_id. That lets
+  // us identify the provider id without trusting model text, while the shared
+  // authority still excludes AI/system messages when deciding whether a human
+  // provider has actually replied.
+  const providerId = String(
+    [...(args.messages || [])]
+      .reverse()
+      .find((m: any) => m?.sender_id && m.sender_id !== args.clientId)?.sender_id || '',
+  )
+  const attention = evaluateProviderAttention({
+    metadata: args.metadata,
+    messages: args.messages || [],
+    providerId,
+  })
 
   return {
     version: 1,
@@ -142,7 +128,11 @@ export function buildGroundedConversationMemory(args: {
     deadline_highlights: uniqueLatest([...priorDeadlines, ...newDeadlines], 6),
     document_highlights: uniqueLatest([...priorDocs, ...newDocs], 8),
     latest_goal: clean(clientTexts[clientTexts.length - 1] || prior.latest_goal || '', 500) || null,
-    provider_attention: providerAttention,
+    provider_attention: {
+      requested_at: attention.requestedAt,
+      pending: attention.pending,
+      human_reply_after_request: attention.humanRespondedAfterRequest,
+    },
     last_offer: prior.last_offer || null,
   }
 }
