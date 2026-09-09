@@ -11,6 +11,7 @@ import {
   isAllowedAssistantOrigin,
   normalizeAssistantOrigin,
 } from '@/lib/centralAssistantKnowledge'
+import { enforceCanonicalMarketCoverage } from '@/lib/assistantNetworkAuthority'
 import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
 import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
@@ -225,7 +226,15 @@ export async function POST(req: Request) {
     const modelStartedAt = Date.now()
     const result = await callSystemSuperGrok(systemKnowledge + viewer.context, cleaned)
     const modelMs = Date.now() - modelStartedAt
+    const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const totalMs = Date.now() - requestStartedAt
+
+    if (guarded.corrected) {
+      console.warn('[system-assistant] canonical market contradiction blocked', {
+        correctedMarkets: guarded.correctedMarkets,
+        hostname: inquiryOrigin.hostname,
+      })
+    }
 
     console.info('[system-assistant] timing', {
       totalMs,
@@ -239,8 +248,8 @@ export async function POST(req: Request) {
     return withCors(
       req,
       {
-        reply: result.text,
-        provider: 'system-ai',
+        reply: guarded.text,
+        provider: guarded.corrected ? 'system-ai-grounding-guard' : 'system-ai',
         supportApiUrl: SUPPORT_WIDGET_API,
         marketplaceRecommendation,
         retryable: false,
