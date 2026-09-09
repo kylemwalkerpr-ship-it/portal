@@ -1,3 +1,21 @@
+/* Marketplace brand + accessibility contract
+   ------------------------------------------
+   Emerald is the shared Marketplace action colour. Keep the legacy UI token
+   names available so older shared primitives can inherit the same visual
+   language without leaking this theme into the rest of Portal. */
+.cw-market {
+  --ui-primary: var(--ys-indigo, #087A5B);
+  --ui-brand: var(--ys-indigoDeep, #065F46);
+  --ui-accent: var(--ys-indigo, #087A5B);
+  --ui-accent-deep: var(--ys-indigoDeep, #065F46);
+  --ui-accent-soft: var(--ys-indigoSoft, rgba(8,122,91,0.14));
+}
+
+.cw-market :where(a, button, input, textarea, select):focus-visible {
+  outline: 3px solid #34D399 !important;
+  outline-offset: 3px !important;
+}
+
 /* Marketplace mobile brand lockup
    --------------------------------
    Keep the YouSafe mark prominent on phones and surface the company slogan
@@ -41,7 +59,7 @@
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.01em;
-    color: #9fe3d8;
+    color: var(--ys-onPaperEm, #FFF7E8);
     white-space: nowrap;
   }
 
@@ -76,7 +94,7 @@
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.01em;
-    color: #9fe3d8;
+    color: var(--ys-onPaperEm, #FFF7E8);
     white-space: nowrap;
   }
 }
