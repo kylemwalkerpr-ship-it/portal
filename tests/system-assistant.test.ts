@@ -89,7 +89,7 @@ describe('system-wide assistant model routing', () => {
       })),
     }))
 
-    const fetchMock = jest.fn(async () => ({
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ choices: [{ message: { content: 'Grounded answer' } }] }),
