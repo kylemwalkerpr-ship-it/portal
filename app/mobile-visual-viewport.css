@@ -10,6 +10,12 @@
    layout viewport to keep the focused textarea visible. For a WhatsApp-style
    chat, that pan must not become part of the app layout. The chat root is
    therefore fixed to VisualViewport.offsetTop and sized from VisualViewport.height.
+
+   Safari has a second keyboard quirk: with the bottom URL bar enabled,
+   VisualViewport.height can still include the strip occupied by the URL bar
+   after it moves above the keyboard. The coordinator marks that exact state on
+   <html>. We then subtract the browser's dynamic-chrome delta (100lvh-100svh)
+   so the composer ends above Safari UI rather than underneath it.
 */
 
 @media (max-width: 768px) {
@@ -17,11 +23,19 @@
     --ys-visual-viewport-height: 100dvh;
     --ys-visual-viewport-block-size: 100dvh;
     --ys-visual-viewport-offset-top: 0px;
+    --ys-ios-keyboard-browser-chrome: 0px;
   }
 
-  /* All role dashboards share the same normal-flow viewport contract. The
-     repeated class is intentional specificity: older student layers use
-     !important + :has() selectors. */
+  html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true'] {
+    --ys-ios-keyboard-browser-chrome: 52px;
+  }
+
+  @supports (height: 100svh) and (height: 100lvh) {
+    html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true'] {
+      --ys-ios-keyboard-browser-chrome: clamp(52px, calc(100lvh - 100svh), 120px);
+    }
+  }
+
   body .yousafe-dashboard-shell.yousafe-dashboard-shell.yousafe-dashboard-shell {
     box-sizing: border-box !important;
     height: var(--ys-visual-viewport-height, 100dvh) !important;
@@ -37,11 +51,6 @@
     max-height: 100% !important;
   }
 
-  /* Open thread = one real app surface. The root itself owns the live visual
-     viewport instead of relying on a chain of percentage heights inside the
-     dashboard. When iOS pans the layout viewport during keyboard focus, the
-     top follows offsetTop and the height remains the true visible height, so
-     header + canvas + composer always fit in the same visible rectangle. */
   body .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] {
     box-sizing: border-box !important;
     position: fixed !important;
@@ -54,17 +63,14 @@
     display: flex !important;
     width: 100vw !important;
     max-width: 100vw !important;
-    height: var(--ys-visual-viewport-block-size, 100dvh) !important;
-    min-height: var(--ys-visual-viewport-block-size, 100dvh) !important;
-    max-height: var(--ys-visual-viewport-block-size, 100dvh) !important;
+    height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important;
+    min-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important;
+    max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important;
     margin: 0 !important;
     overflow: hidden !important;
     transform: none !important;
   }
 
-  /* Do not let the underlying dashboard become a second scroll owner while a
-     phone conversation is open. The message canvas remains independently
-     scrollable because it owns its own overflow context below. */
   html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']),
   html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) body {
     overflow: hidden !important;
@@ -114,19 +120,11 @@
     margin: 0 !important;
   }
 
-  /* Once the software keyboard is already occupying the bottom safe area,
-     do not reserve the iPhone home-indicator inset a second time. This keeps
-     the composer visually attached to the keyboard like WhatsApp instead of
-     floating above it with a dead strip. */
   html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-input:focus)
     .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-row {
     padding-bottom: 8px !important;
   }
 
-  /* Marketplace Messages has a 60px product header outside Messenger, while
-     the pre-sale side pane owns the whole phone viewport. Keep their outer
-     normal-flow sizing on the visible-bottom contract; an open ChatScreen still
-     promotes itself to the fixed VisualViewport rule above. */
   body .cw-market > .yousafe-messenger {
     height: calc(var(--ys-visual-viewport-height, 100dvh) - 60px) !important;
     min-height: 0 !important;
