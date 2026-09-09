@@ -1,7 +1,8 @@
-import { classifyCoverageIntent, bestOwnerMatch } from '@/lib/seoEngine/coverageIntent'
+import { classifyCoverageIntent, bestOwnerMatch, collapseParaphraseDemand } from '@/lib/seoEngine/coverageIntent'
 import { shippedOverlap, buildShippedStems, type ShippedPage } from '@/lib/seoEngine/shippedCoverage'
 import { ubersuggestSignalsToDiscover } from '@/lib/seoEngine/ubersuggestDiscover'
 import { verdictFor } from '@/lib/seoEngine/authorityPlaybook'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 
 describe('classifyCoverageIntent', () => {
   it('treats a titled paraphrase as the same owner', () => {
@@ -55,6 +56,37 @@ describe('classifyCoverageIntent', () => {
       'canada express entry crs international student graduates',
       'express entry canada',
     ])?.owner).toBe('express entry canada')
+  })
+
+  it('folds UK spelling and student-audience extras onto the same visa intent', () => {
+    expect(classifyCoverageIntent('student dependant visa uk', 'dependent visa uk')).toBe('section_expand')
+    expect(classifyCoverageIntent('uk dependent visa', 'dependent visa uk')).toBe('paraphrase')
+    expect(classifyCoverageIntent('dependant visa uk', 'dependent visa uk')).toBe('paraphrase')
+    expect(classifyCoverageIntent('marriage based green card timeline', 'marriage green card timeline')).toBe('paraphrase')
+    expect(classifyCoverageIntent('child dependant visa uk requirements', 'dependent visa uk')).toBe('spoke')
+  })
+})
+
+describe('collapseParaphraseDemand', () => {
+  it('keeps the highest-impression UK dependent-visa representative and the requirements spoke', () => {
+    const kept = collapseParaphraseDemand([
+      { term: 'student dependent visa uk', impressions: 40 },
+      { term: 'dependant visa uk', impressions: 38 },
+      { term: 'dependent visa uk', impressions: 97 },
+      { term: 'uk dependent visa', impressions: 74 },
+      { term: 'student dependant visa uk', impressions: 73 },
+      { term: 'child dependant visa uk requirements', impressions: 25 },
+      { term: 'marriage green card timeline', impressions: 32 },
+      { term: 'marriage based green card timeline', impressions: 30 },
+    ])
+    const terms = kept.map((r) => r.term)
+    expect(terms).toContain('dependent visa uk')
+    expect(terms).toContain('child dependant visa uk requirements')
+    expect(terms).toContain('marriage green card timeline')
+    expect(terms).not.toContain('uk dependent visa')
+    expect(terms).not.toContain('student dependant visa uk')
+    expect(terms).not.toContain('marriage based green card timeline')
+    expect(terms.filter((t) => /dependent|dependant/.test(t) && !/requirements/.test(t))).toHaveLength(1)
   })
 })
 
@@ -182,5 +214,60 @@ describe('authority playbook ranking', () => {
     expect(bofu.move).toBe('fill_pillar')
     expect(bofu.hideByDefault).toBe(false)
     expect(bofu.conversionLine).toMatch(/never the H1/i)
+  })
+
+  it('hides speculative TOFU campus leftovers but keeps MOFU spokes above remaining TOFU pillars', () => {
+    const housing = verdictFor({
+      topic: 'apartments near portland state university',
+      play: 'content_gap',
+      impressions: 30,
+      clicks: 0,
+      ctr: 0,
+      position: 33,
+      coverageKind: 'unrelated',
+    })
+    const spoke = verdictFor({
+      topic: 'marriage green card timeline',
+      play: 'content_gap',
+      impressions: 32,
+      clicks: 0,
+      position: 53,
+      coverageKind: 'spoke',
+      intent: 'commercial',
+    })
+    const pillar = verdictFor({
+      topic: 'dependent visa uk',
+      play: 'content_gap',
+      impressions: 97,
+      clicks: 0,
+      position: 80,
+      coverageKind: 'unrelated',
+    })
+    expect(housing.hideByDefault).toBe(true)
+    expect(spoke.hideByDefault).toBe(false)
+    expect(spoke.move).toBe('fill_spoke')
+    expect(pillar.hideByDefault).toBe(false)
+    expect(spoke.deskScore).toBeGreaterThan(pillar.deskScore)
+  })
+
+  it('ranks the live persisted-GSC mix with spokes and MOFU above leftover TOFU', () => {
+    const ranked = [
+      { topic: '"fy27 stk housing rates" pacific pdf', play: 'quick_win', impressions: 39, clicks: 0, ctr: 0, position: 1 },
+      { topic: 'apartments near portland state university', play: 'content_gap', impressions: 30, clicks: 0, ctr: 0, position: 33 },
+      { topic: 'student insurance comparison', play: 'content_gap', impressions: 78, clicks: 0, ctr: 0, position: 52, intent: 'commercial' },
+      { topic: 'marriage green card timeline', play: 'content_gap', impressions: 32, clicks: 0, ctr: 0, position: 53, coverageKind: 'spoke' as const, intent: 'commercial' },
+      { topic: 'visa appeal consultant', play: 'content_gap', impressions: 36, clicks: 0, ctr: 0, position: 84, intent: 'transactional' },
+      { topic: 'dependent visa uk', play: 'content_gap', impressions: 97, clicks: 0, ctr: 0, position: 80 },
+    ]
+      .filter((row) => !isJunkQuery(row.topic))
+      .map((row) => ({ ...row, ...verdictFor(row) }))
+      .filter((row) => !row.hideByDefault)
+      .sort((a, b) => b.deskScore - a.deskScore)
+    expect(ranked.map((r) => r.topic)).not.toContain('"fy27 stk housing rates" pacific pdf')
+    expect(ranked.map((r) => r.topic)).not.toContain('apartments near portland state university')
+    expect(ranked[0].topic).not.toBe('dependent visa uk')
+    expect(ranked.some((r) => r.topic === 'marriage green card timeline' && r.move === 'fill_spoke')).toBe(true)
+    expect(ranked.some((r) => r.topic === 'student insurance comparison' && r.funnel === 'mofu')).toBe(true)
+    expect(ranked.some((r) => r.topic === 'visa appeal consultant' && r.funnel === 'bofu')).toBe(true)
   })
 })

@@ -2,6 +2,9 @@
  * Normalized GSC query×page rows — persist so dashboards do not re-hit Google.
  */
 
+import { collapseParaphraseDemand } from '@/lib/seoEngine/coverageIntent'
+import { sanitizeDemandTerm } from './queryNoise'
+
 export type GscMetricRow = {
   query: string
   page: string
@@ -217,7 +220,7 @@ export function queriesFromPersistedGscRows(
 ): PersistedDemandQuery[] {
   const best = new Map<string, PersistedDemandQuery>()
   for (const row of rows) {
-    const term = String(row.query || '').trim()
+    const term = sanitizeDemandTerm(String(row.query || ''))
     if (term.length < 3 || isJunk(term)) continue
     const key = term.toLowerCase()
     const next: PersistedDemandQuery = {
@@ -231,6 +234,6 @@ export function queriesFromPersistedGscRows(
     const prev = best.get(key)
     if (!prev || next.impressions > prev.impressions) best.set(key, next)
   }
-  return [...best.values()].sort((a, b) => b.impressions - a.impressions)
+  return collapseParaphraseDemand([...best.values()])
 }
 

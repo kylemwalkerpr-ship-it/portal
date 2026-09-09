@@ -179,10 +179,18 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
     }
   }
 
-  // Strategy-corpus / deep-tail TOFU with no real demand is not a ranking bet.
-  // Keep BOFU/MOFU (hire, fees, vs) even at low impressions — those convert.
-  // Zero impressions is the live knowledge-corpus case (engine zeros synthetic rows).
-  const thinTofu = play === 'content_gap' && impressions < 20 && funnel === 'tofu'
+  // Speculative TOFU with no clicks and no strike-distance rank is not a
+  // ranking bet. Raise the floor so 20–39 impression campus/housing leftovers
+  // do not crowd MOFU spokes off the radar. Spokes and BOFU/MOFU stay.
+  const clicks = Number(input.clicks) || 0
+  const position = Number(input.position) || 99
+  const thinTofu =
+    (play === 'content_gap' || play === 'gap' || play === 'quick_win') &&
+    funnel === 'tofu' &&
+    kind !== 'spoke' &&
+    clicks === 0 &&
+    impressions < 40 &&
+    position > 20
   if (thinTofu) {
     return {
       move: 'housekeeping',
@@ -197,10 +205,14 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
 
   if (play === 'content_gap' || play === 'gap' || play === 'quick_win') {
     const bofuBoost = funnel === 'bofu' ? 10 : funnel === 'mofu' ? 6 : 0
+    const pos = Number(input.position) || 99
+    const tofuPenalty = funnel === 'tofu' && kind !== 'spoke' ? (pos > 20 ? 16 : 8) : 0
+    const floor = funnel === 'tofu' && kind !== 'spoke' ? 48 : 68
+    const ceiling = funnel === 'tofu' && kind !== 'spoke' ? 72 : 94
     return {
       move: 'fill_pillar',
       funnel,
-      deskScore: Math.max(68, Math.min(94, 70 + bofuBoost + Math.round(base * 0.12))),
+      deskScore: Math.max(floor, Math.min(ceiling, 70 + bofuBoost - tofuPenalty + Math.round(base * 0.12))),
       hideByDefault: false,
       qualityLine: qualityPeopleFirst,
       conversionLine,

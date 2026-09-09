@@ -50,6 +50,21 @@ describe('isJunkQuery — GSC noise filter', () => {
     expect(isJunkQuery('yousafe')).toBe(true)
     expect(isJunkQuery('pacific.edu/sites/default/files/users/user2983')).toBe(true)
   })
+
+  it('flags quoted fiscal-year housing leftovers that drop the .pdf dot', () => {
+    expect(isJunkQuery('"fy27 stk housing rates" pacific pdf')).toBe(true)
+    expect(isJunkQuery('fy27 stk housing rates pacific pdf')).toBe(true)
+    expect(isJunkQuery('"fy27 stk housing rates" pacific')).toBe(true)
+  })
+
+  it('does not treat a real Pacific housing keyword as junk', () => {
+    expect(isJunkQuery('university of the pacific student housing')).toBe(false)
+  })
+
+  it('decodes plus-encoding before classifying', () => {
+    expect(isJunkQuery('international+student+storage+cornell')).toBe(false)
+    expect(isJunkQuery('form+i-765+instructions.pdf')).toBe(true)
+  })
 })
 
 describe('isFileOrUrlLikeTerm — intake guard', () => {
