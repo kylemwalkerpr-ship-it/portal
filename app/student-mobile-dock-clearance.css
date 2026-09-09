@@ -52,7 +52,7 @@
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-messenger,
-  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .ys-chatscreen {
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .ys-chatscreen[data-mobile-view='list'] {
     min-height: 0 !important;
     max-height: 100% !important;
   }
@@ -87,9 +87,6 @@
     ) .yousafe-messenger,
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
       .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
-    ) .ys-chatscreen,
-  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
-      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
     ) .ys-chatscreen-chat {
     flex: 1 1 auto !important;
     width: 100% !important;
@@ -101,20 +98,15 @@
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
       .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
     ) [data-chat-canvas] {
-    flex: 1 1 auto !important;
+    flex: 1 1 0% !important;
     min-height: 0 !important;
     overflow-y: auto !important;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
   }
 
-  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
-      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
-    ) .comp-row {
-    box-sizing: border-box !important;
-    flex: 0 0 auto !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
-  }
+  /* Do not override the open chat's viewport height or focused composer
+     padding here: these high-specificity selectors beat later styles. */
 
   body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ysa-launcher,
   body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ys-chat-launcher,

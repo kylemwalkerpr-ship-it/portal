@@ -359,7 +359,6 @@
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-body,
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-content,
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-messenger,
-  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen,
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen-chat {
     flex: 1 1 auto !important;
     height: 100% !important;
@@ -382,9 +381,7 @@
     min-height: 0 !important;
   }
 
-  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .comp-row {
-    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
-  }
+  /* The viewport contract owns open-chat height and focused composer padding. */
 
   /* The right-pane launcher must never reappear inside a full-screen thread. */
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) button[aria-label='Open article feed'] {

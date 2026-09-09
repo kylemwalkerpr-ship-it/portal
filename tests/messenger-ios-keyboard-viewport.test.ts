@@ -9,6 +9,29 @@ describe('mobile Messenger keyboard viewport contract', () => {
   const css = read('app/mobile-visual-viewport.css')
   const chatScreen = read('components/messaging/ChatScreen.tsx')
 
+  test.each([
+    'app/student-mobile-premium.css',
+    'app/student-mobile-ux-v2.css',
+    'app/student-mobile-dock-clearance.css',
+  ])('%s leaves open-chat sizing to the visual viewport owner', (file) => {
+    // Checking only that the correct height exists in the final stylesheet
+    // missed the bug: earlier !important :has() selectors were more specific.
+    // No student layer may target the open-chat root with its own dimensions.
+    const source = read(file).replace(/\/\*[\s\S]*?\*\//g, '')
+    for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const [, selectors, declarations] = match
+      for (const selector of selectors.split(',')) {
+        const targetsChatRoot = /\.ys-chatscreen(?:\[data-mobile-view='chat'\])?\s*$/.test(selector)
+        if (targetsChatRoot) {
+          expect(declarations).not.toMatch(/(?:^|;)\s*(?:height|min-height|max-height)\s*:/)
+        }
+        if (/\.comp-row\s*$/.test(selector)) {
+          expect(declarations).not.toMatch(/padding-bottom\s*:/)
+        }
+      }
+    }
+  })
+
   test('publishes visual height separately from Safari pan offset', () => {
     expect(coordinator).toContain("const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'")
     expect(coordinator).toContain("const PAN_VAR = '--ys-visual-viewport-pan-top'")
