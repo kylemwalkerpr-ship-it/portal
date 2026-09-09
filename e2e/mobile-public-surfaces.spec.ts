@@ -78,6 +78,30 @@ test.describe('mobile public surfaces', () => {
     await expect(drawer.getByRole('link', { name: 'Dashboard' })).toBeVisible()
     await expect(drawer.getByRole('link', { name: 'File shop' })).toBeVisible()
     await expect(drawer.getByRole('link', { name: 'Home' })).toBeVisible()
+
+    const headerHeightOpen = await header.evaluate((el) => el.getBoundingClientRect().height)
+    expect(headerHeightOpen).toBeLessThanOrEqual(72)
+
+    const geometry = await page.evaluate(() => {
+      const sheet = document.getElementById('ys-market-mobile-menu')
+      const headerEl = document.querySelector('.ys-shell-header')
+      if (!sheet) return null
+      const rect = sheet.getBoundingClientRect()
+      return {
+        top: rect.top,
+        height: rect.height,
+        viewport: window.innerHeight,
+        insideHeader: Boolean(headerEl?.contains(sheet)),
+        position: getComputedStyle(sheet).position,
+      }
+    })
+    expect(geometry).toBeTruthy()
+    expect(geometry!.insideHeader).toBe(false)
+    expect(geometry!.position).toBe('fixed')
+    expect(geometry!.top).toBeGreaterThanOrEqual(-1)
+    expect(geometry!.top).toBeLessThan(80)
+    expect(geometry!.height).toBeLessThanOrEqual(geometry!.viewport + 2)
+    expect(geometry!.height).toBeGreaterThan(geometry!.viewport * 0.7)
   })
 
   test('sign-in: Clerk form is above the fold', async ({ page }) => {

@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -151,6 +152,203 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
   )
 }
 
+// ─── mobile menu (viewport-locked sheet) ─────────────────────────────────────
+//
+// Rendered through a portal on document.body so it is NEVER a descendant of
+// the sticky header. The header still has an inline backdrop-filter; that
+// creates a containing block for position:fixed children on iOS Safari, which
+// is what made the old in-header drawer grow the navbar to 100dvh and "dislodge"
+// it from the top of the screen. The sheet is sized from the visual viewport
+// (see app/mobile-visual-viewport.css) so it stays on-screen regardless of
+// document length or scroll position.
+
+function copyMarketCssVars(dest: HTMLElement) {
+  const src = document.querySelector('.cw-market')
+  if (!(src instanceof HTMLElement)) return
+  const cs = getComputedStyle(src)
+  for (let i = 0; i < cs.length; i += 1) {
+    const key = cs.item(i)
+    if (key.startsWith('--ys-') || key.startsWith('--font-')) {
+      dest.style.setProperty(key, cs.getPropertyValue(key).trim())
+    }
+  }
+}
+
+function useMarketplaceMenuLock(open: boolean, onClose: () => void) {
+  React.useEffect(() => {
+    if (!open) return
+
+    const html = document.documentElement
+    const body = document.body
+    const scrollY = window.scrollY
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyTop: body.style.top,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+      bodyWidth: body.style.width,
+    }
+
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    body.style.position = 'fixed'
+    body.style.top = `-${scrollY}px`
+    body.style.left = '0'
+    body.style.right = '0'
+    body.style.width = '100%'
+    html.classList.add('ys-market-menu-open')
+    body.classList.add('ys-market-menu-open')
+
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+
+    return () => {
+      html.style.overflow = prev.htmlOverflow
+      body.style.overflow = prev.bodyOverflow
+      body.style.position = prev.bodyPosition
+      body.style.top = prev.bodyTop
+      body.style.left = prev.bodyLeft
+      body.style.right = prev.bodyRight
+      body.style.width = prev.bodyWidth
+      html.classList.remove('ys-market-menu-open')
+      body.classList.remove('ys-market-menu-open')
+      document.removeEventListener('keydown', onKey)
+      window.scrollTo(0, scrollY)
+    }
+  }, [open, onClose])
+}
+
+function MarketMobileDrawer({
+  open,
+  onClose,
+  role,
+  links,
+  activeView,
+  shopActive,
+  country,
+  onNav,
+}: {
+  open: boolean
+  onClose: () => void
+  role: Role
+  links: NavLink[]
+  activeView: Section
+  shopActive?: boolean
+  country: 'all' | 'us' | 'uk' | 'ca' | 'au'
+  onNav: (v: Section) => void
+}) {
+  const rootRef = React.useRef<HTMLDivElement | null>(null)
+  const closeRef = React.useRef<HTMLButtonElement | null>(null)
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => { setMounted(true) }, [])
+  useMarketplaceMenuLock(open, onClose)
+
+  React.useLayoutEffect(() => {
+    if (!open) return
+    const dest = rootRef.current
+    if (dest) copyMarketCssVars(dest)
+    closeRef.current?.focus()
+  }, [open])
+
+  const go = React.useCallback((view: Section) => {
+    onClose()
+    onNav(view)
+  }, [onClose, onNav])
+
+  if (!open || !mounted) return null
+
+  const homeCurrent = !shopActive && activeView === 'browse'
+  const shopCurrent = Boolean(shopActive)
+
+  return createPortal(
+    <div
+      ref={rootRef}
+      id="ys-market-mobile-menu"
+      className="ys-shell-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Marketplace menu"
+    >
+      <button
+        type="button"
+        className="ys-shell-drawer-backdrop"
+        aria-label="Close menu"
+        onClick={onClose}
+      />
+      <div className="ys-shell-drawer-panel">
+        <div className="ys-shell-drawer-head">
+          <p id="ys-market-menu-title" className="ys-shell-drawer-title">Marketplace</p>
+          <button
+            ref={closeRef}
+            id="ys-market-menu-close"
+            type="button"
+            className="ys-shell-drawer-close"
+            aria-label="Close menu"
+            onClick={onClose}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+        <nav className="ys-shell-drawer-nav" aria-label="Marketplace">
+          <a
+            href="/marketplace"
+            className="ys-shell-drawer-link"
+            aria-current={homeCurrent ? 'page' : undefined}
+            onClick={(e) => { e.preventDefault(); go('browse') }}
+          >
+            Home
+          </a>
+          <a
+            href="https://portal.yousafeconsultancy.com/dashboard"
+            className="ys-shell-drawer-link"
+            onClick={onClose}
+          >
+            Dashboard
+          </a>
+          <a
+            href="https://market.yousafeconsultancy.com/shop"
+            className="ys-shell-drawer-link"
+            aria-current={shopCurrent ? 'page' : undefined}
+            onClick={onClose}
+          >
+            File shop
+          </a>
+          {links.map((link) => {
+            const current = !shopActive && link.view === activeView
+            return (
+              <button
+                key={link.view}
+                type="button"
+                className="ys-shell-drawer-link"
+                aria-current={current ? 'page' : undefined}
+                onClick={() => go(link.view as Section)}
+              >
+                {link.label}
+              </button>
+            )
+          })}
+        </nav>
+        <div className="ys-shell-drawer-extras">
+          <p className="ys-shell-drawer-kicker">Preferences</p>
+          {role !== null && (
+            <React.Suspense fallback={null}>
+              <JurisdictionDropdown active={country} />
+            </React.Suspense>
+          )}
+          <GlobalLanguageBar />
+          <ThemePicker />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 // ─── top nav bar ─────────────────────────────────────────────────────────────
 
 function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au'; shopActive?: boolean }) {
@@ -163,24 +361,13 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
   // they actually are.
   const navScrollRef = React.useRef<HTMLElement | null>(null)
   const activeNavRef = React.useRef<HTMLButtonElement | null>(null)
+  const closeMenu = React.useCallback(() => setMenuOpen(false), [])
 
   React.useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 4)
     window.addEventListener('scroll', fn, { passive: true })
     return () => window.removeEventListener('scroll', fn)
   }, [])
-
-  React.useEffect(() => {
-    if (!menuOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
-    document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
-    }
-  }, [menuOpen])
 
   // Centre the active tab in the strip whenever activeView changes. Uses
   // `inline: 'center'` so the chosen item sits in the middle of the
@@ -211,8 +398,6 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         top: 0,
         zIndex: 200,
         background: T.vellum,
-        backdropFilter: 'blur(16px) saturate(1.2)',
-        WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
         borderBottom: `1px solid ${T.rule}`,
         boxShadow: scrolled ? '0 8px 24px rgba(15,23,42,0.08), 0 1px 0 rgba(15,23,42,0.04)' : '0 1px 0 rgba(15,23,42,0.04)',
         transition: 'box-shadow 0.22s cubic-bezier(0.22,1,0.36,1)',
@@ -400,35 +585,16 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           {menuOpen ? '×' : '☰'}
         </button>
       </div>
-      {menuOpen && (
-        <div id="ys-market-mobile-menu" className="ys-shell-drawer" role="dialog" aria-modal="true" aria-label="Marketplace menu">
-          <button type="button" className="ys-shell-drawer-backdrop" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
-          <div className="ys-shell-drawer-panel">
-            <a href="/marketplace" className="ys-shell-drawer-link" onClick={() => { setMenuOpen(false); onNav('browse') }}>Home</a>
-            <a href="https://portal.yousafeconsultancy.com/dashboard" className="ys-shell-drawer-link" onClick={() => setMenuOpen(false)}>Dashboard</a>
-            <a href="https://market.yousafeconsultancy.com/shop" className="ys-shell-drawer-link" onClick={() => setMenuOpen(false)}>File shop</a>
-            {links.map((link) => (
-              <button
-                key={link.view}
-                type="button"
-                className="ys-shell-drawer-link"
-                onClick={() => { setMenuOpen(false); onNav(link.view as Section) }}
-              >
-                {link.label}
-              </button>
-            ))}
-            <div className="ys-shell-drawer-extras">
-              {role !== null && (
-                <React.Suspense fallback={null}>
-                  <JurisdictionDropdown active={country} />
-                </React.Suspense>
-              )}
-              <GlobalLanguageBar />
-              <ThemePicker />
-            </div>
-          </div>
-        </div>
-      )}
+      <MarketMobileDrawer
+        open={menuOpen}
+        onClose={closeMenu}
+        role={role}
+        links={links}
+        activeView={activeView}
+        shopActive={shopActive}
+        country={country}
+        onNav={onNav}
+      />
     </header>
   )
 }
@@ -741,21 +907,65 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           align-items: center; justify-content: center; touch-action: manipulation; flex-shrink: 0;
           background: var(--ys-vellum, #FFFFFF);
         }
-        .ys-shell-drawer { position: fixed; inset: 0; z-index: 400; }
-        .ys-shell-drawer-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,0.32); border: 0; cursor: pointer; }
+        .ys-shell-drawer {
+          position: fixed;
+          top: var(--ys-visual-viewport-offset-top, 0px);
+          left: 0;
+          right: 0;
+          width: 100%;
+          height: var(--ys-visual-viewport-block-size, 100dvh);
+          max-height: var(--ys-visual-viewport-block-size, 100dvh);
+          z-index: 2147483642;
+          overflow: hidden;
+          pointer-events: auto;
+        }
+        .ys-shell-drawer-backdrop {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          background: rgba(15,23,42,0.32); border: 0; cursor: pointer;
+          touch-action: none; overscroll-behavior: none;
+        }
         .ys-shell-drawer-panel {
-          position: absolute; top: 0; right: 0; width: min(360px, 88vw); height: 100dvh;
+          position: absolute; top: 0; right: 0; bottom: 0;
+          width: min(360px, 88vw); height: auto; max-height: 100%;
           background: var(--ys-vellum, #FFFFFF); color: var(--ys-onPaper, #0F172A);
-          padding: calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
-          overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+          display: flex; flex-direction: column;
+          overflow: hidden;
           border-left: 1px solid var(--ys-rule, rgba(15,23,42,0.10));
+        }
+        .ys-shell-drawer-head {
+          flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; padding: 14px 16px 8px;
+          padding-top: max(14px, env(safe-area-inset-top));
+        }
+        .ys-shell-drawer-title {
+          margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.2;
+        }
+        .ys-shell-drawer-close {
+          width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 999px;
+          border: 1px solid var(--ys-rule, rgba(15,23,42,0.12));
+          background: var(--ys-vellum, #FFFFFF); color: inherit;
+          display: inline-flex; align-items: center; justify-content: center;
+          cursor: pointer; touch-action: manipulation; flex-shrink: 0;
+        }
+        .ys-shell-drawer-nav {
+          flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch; padding: 4px 16px 8px;
+          display: flex; flex-direction: column; gap: 2px;
         }
         .ys-shell-drawer-link {
           display: flex; align-items: center; min-height: 44px; padding: 10px 12px; border-radius: 10px;
           color: inherit; text-decoration: none; font-size: 16px; font-weight: 600; text-align: left;
           background: transparent; border: 0; cursor: pointer; font-family: inherit; touch-action: manipulation;
         }
-        .ys-shell-drawer-extras { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--ys-rule, rgba(15,23,42,0.10)); }
+        .ys-shell-drawer-extras {
+          flex: 0 0 auto; display: flex; flex-direction: column; gap: 12px;
+          margin: 0 16px 0; padding: 16px 0 calc(18px + env(safe-area-inset-bottom));
+          border-top: 1px solid var(--ys-rule, rgba(15,23,42,0.10));
+        }
+        .ys-shell-drawer-kicker {
+          margin: 0; font-size: 10px; font-weight: 800; letter-spacing: 0.11em;
+          text-transform: uppercase; color: var(--ys-inkSoft, #526072);
+        }
         @media (max-width: 768px) {
           .ys-shell-header-inner { padding: 8px 12px !important; height: 60px !important; min-height: 60px !important; flex-wrap: nowrap !important; }
           .ys-shell-desktop-pill, .ys-market-nav, .ys-shell-jx, .ys-shell-aux:not(.ys-shell-auth) { display: none !important; }

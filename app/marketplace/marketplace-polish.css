@@ -176,15 +176,19 @@
   border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10));
 }
 
-.cw-market .ys-shell-drawer-backdrop {
+.cw-market .ys-shell-drawer-backdrop,
+.ys-shell-drawer-backdrop {
   background: rgba(15, 23, 42, 0.32) !important;
 }
-.cw-market .ys-shell-drawer-panel {
+.cw-market .ys-shell-drawer-panel,
+.ys-shell-drawer-panel {
   box-shadow: -24px 0 56px rgba(15, 23, 42, 0.14);
   background: var(--ys-vellum, #FFFFFF);
 }
 .cw-market .ys-shell-drawer-link:hover,
-.cw-market .ys-shell-drawer-link:focus-visible {
+.cw-market .ys-shell-drawer-link:focus-visible,
+.ys-shell-drawer-link:hover,
+.ys-shell-drawer-link:focus-visible {
   background: var(--ys-indigoSoft, rgba(17, 24, 39, 0.10)) !important;
   color: var(--ys-ink, #0F172A) !important;
 }
