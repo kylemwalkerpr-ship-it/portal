@@ -79,6 +79,48 @@ function normPhrase(value: string): string {
  * explainers, templates, checklists, score tools, and hired services —
  * those must never receive "how to apply for {primary}" mill long-tails.
  */
+export const FABRICATION_MARKERS = [
+  'requirements for a ',
+  'do you need a ',
+  ' in 2026 explained',
+  'checklist and timeline',
+  'requirements explained by an expert',
+] as const
+
+export function isFabricatedSyntheticTerm(term: string): boolean {
+  const lower = String(term || '').toLowerCase()
+  return FABRICATION_MARKERS.some((marker) => lower.includes(marker))
+}
+
+/**
+ * Coverage terms Harper/review cannot honestly place without stuffing.
+ * Briefing must never emit these as required demand — a later prose-only
+ * Harper pass cannot invent a grammatical slot for a broken template.
+ */
+export function isUnplaceableCoverageTerm(term: string): boolean {
+  const t = String(term || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!t) return false
+  if (isFabricatedSyntheticTerm(t)) return true
+  if (/\?$/.test(t)) return true
+  if (/^(is it possible to|do you need(?: a)?)\b/.test(t)) return true
+  if (/\bhow to apply for how to apply for\b/.test(t)) return true
+  if (/\bin 2026 explained\b/.test(t)) return true
+  if (/\bhow to apply for\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b|service|help|editing)\b/.test(t)) return true
+  if (/^(cost of applying for|requirements for(?: a)?)\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b|service|help|editing)\b/.test(t)) return true
+  if (/^how to apply for .+\brequirements and timeline\b/.test(t)) return true
+  if (/^how long does the (green|australia|canada|uk|us)\b/.test(t)) return true
+  if (/^can i work while waiting for (green|australia|canada|uk|us) approval\b/.test(t)) return true
+  return false
+}
+
+export function dropUnplaceableKeywords(terms: string[]): string[] {
+  return terms.filter((term) => !isUnplaceableCoverageTerm(term))
+}
+
+export function dropUnplaceableKeywordTerms<T extends { term: string }>(terms: T[]): T[] {
+  return terms.filter((entry) => !isUnplaceableCoverageTerm(entry.term))
+}
+
 export function isApplyTargetPrimary(primary: string): boolean {
   const p = normPhrase(primary)
   if (!p) return false
@@ -181,7 +223,7 @@ function synthesizedTerms(terms: KeywordTerm[]): string[] {
   return terms.filter((t) => t.source === 'synthesized').map((t) => t.term)
 }
 
-/** Assemble a contract from already-sealed lists — never re-partition. */
+/** Assemble a contract from already-sealed lists — drop mill/unplaceable, never re-partition. */
 export function keywordContractFromLists(input: {
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
@@ -190,30 +232,30 @@ export function keywordContractFromLists(input: {
   primaryKeyword?: string
 }): KeywordContractLists {
   const primary = String(input.primaryKeyword || '').trim()
-  const short = dropFragmentKeywords(
+  const short = dropUnplaceableKeywords(dropFragmentKeywords(
     Array.isArray(input.requiredShortKeywords)
       ? input.requiredShortKeywords.map(String).map((t) => t.trim()).filter(Boolean)
       : [],
     primary,
-  )
-  const longTail = dropFragmentKeywords(
+  ))
+  const longTail = dropUnplaceableKeywords(dropFragmentKeywords(
     Array.isArray(input.requiredLongTailKeywords)
       ? input.requiredLongTailKeywords.map(String).map((t) => t.trim()).filter(Boolean)
       : [],
     primary,
-  )
-  const shortKeywordTerms = dropFragmentKeywordTerms(
+  ))
+  const shortKeywordTerms = dropUnplaceableKeywordTerms(dropFragmentKeywordTerms(
     input.shortKeywordTerms?.length
       ? input.shortKeywordTerms
       : short.map((term) => ({ term, source: 'demand' as KeywordSource })),
     primary,
-  )
-  const longTailKeywordTerms = dropFragmentKeywordTerms(
+  ))
+  const longTailKeywordTerms = dropUnplaceableKeywordTerms(dropFragmentKeywordTerms(
     input.longTailKeywordTerms?.length
       ? input.longTailKeywordTerms
       : longTail.map((term) => ({ term, source: 'demand' as KeywordSource })),
     primary,
-  )
+  ))
   return {
     requiredShortKeywords: shortKeywordTerms.map((entry) => entry.term),
     requiredLongTailKeywords: longTailKeywordTerms.map((entry) => entry.term),

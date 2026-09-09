@@ -44,7 +44,7 @@ import {
 import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
-import { rejectFragmentKeyword, isApplyTargetPrimary } from '@/lib/seoFactory/keywordContractBrief'
+import { rejectFragmentKeyword, isApplyTargetPrimary, isUnplaceableCoverageTerm } from '@/lib/seoFactory/keywordContractBrief'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 import { buildShippedStems, shippedOverlap } from './shippedCoverage'
@@ -341,44 +341,11 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   return { short, longTail, shortTerms, longTailTerms }
 }
 
-/**
- * Strings that only ever existed in the partitioner's FABRICATED templates.
- * Any persisted term containing one of these markers is a legacy synthetic
- * backfill, never a real demand query — used to keep legacy jobs from
- * turning into hard blockers after the templates were tightened.
- */
-export const FABRICATION_MARKERS = [
-  'requirements for a ',
-  'do you need a ',
-  ' in 2026 explained',
-  'checklist and timeline',
-  'requirements explained by an expert',
-] as const
-
-export function isFabricatedSyntheticTerm(term: string): boolean {
-  const lower = String(term || '').toLowerCase()
-  return FABRICATION_MARKERS.some((marker) => lower.includes(marker))
-}
-
-/**
- * Coverage terms Harper/review cannot honestly place without stuffing.
- * Briefing must never emit these as required demand — a later prose-only
- * Harper pass cannot invent a grammatical slot for a broken template.
- */
-export function isUnplaceableCoverageTerm(term: string): boolean {
-  const t = String(term || '').toLowerCase().replace(/\s+/g, ' ').trim()
-  if (!t) return false
-  if (isFabricatedSyntheticTerm(t)) return true
-  if (/\?$/.test(t)) return true
-  if (/^(is it possible to|do you need(?: a)?)\b/.test(t)) return true
-  if (/\bhow to apply for how to apply for\b/.test(t)) return true
-  if (/\bin 2026 explained\b/.test(t)) return true
-  if (/\bhow to apply for\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b|service|help|editing)\b/.test(t)) return true
-  if (/^(cost of applying for|requirements for(?: a)?)\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b|service|help|editing)\b/.test(t)) return true
-  if (/^how long does the (green|australia|canada|uk|us)\b/.test(t)) return true
-  if (/^can i work while waiting for (green|australia|canada|uk|us) approval\b/.test(t)) return true
-  return false
-}
+export {
+  FABRICATION_MARKERS,
+  isFabricatedSyntheticTerm,
+  isUnplaceableCoverageTerm,
+} from '@/lib/seoFactory/keywordContractBrief'
 
 /**
  * Merge a model-generated brief keyword list with the deterministic

@@ -1,5 +1,5 @@
 /** One canonical keyword contract for audit, editor, approval, and shipping. */
-import { KEYWORD_REQUIREMENTS, partitionKeywords, isFabricatedSyntheticTerm, isUnplaceableCoverageTerm } from '@/lib/seoEngine/planner'
+import { KEYWORD_REQUIREMENTS, partitionKeywords } from '@/lib/seoEngine/planner'
 import { coversKeywordIntent } from '@/lib/seoFactory/contentQualityGate'
 import {
   keywordSourceMap,
@@ -18,6 +18,8 @@ import {
   dropFragmentKeywords,
   dropFragmentKeywordTerms,
   isApplyTargetPrimary,
+  isFabricatedSyntheticTerm,
+  isUnplaceableCoverageTerm,
 } from './keywordContractBrief'
 
 export {
@@ -31,6 +33,8 @@ export {
   dropFragmentKeywords,
   dropFragmentKeywordTerms,
   isApplyTargetPrimary,
+  isFabricatedSyntheticTerm,
+  isUnplaceableCoverageTerm,
 }
 
 /** Content types where a missing demand short is a ship blocker. */

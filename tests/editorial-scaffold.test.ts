@@ -1514,6 +1514,37 @@ describe('title_keyword_only_fixed — TitleLab replacement', () => {
     expect(h1.toLowerCase()).toContain('admissions consultant credentials')
     expect(h1).not.toBe('# admissions consultant credentials')
   })
+
+  it('rewrites a raw-keyword H1 even when the job title is already a CTR title', () => {
+    const draft = [
+      '---',
+      'title: Cheapest Personal Statement Editing: What You Get in 2026',
+      'content_type: legal_guide',
+      'region: US',
+      '---',
+      '',
+      '# cheapest personal statement editing service',
+      '',
+      '## In 60 seconds',
+      '- Compare editors on price, turnaround, and revision policy.',
+      '- Confirm the writer will not submit the statement for you.',
+      '',
+      '## Eligibility',
+      'This service is for applicants who already have a draft statement and want a cheaper edit.',
+    ].join('\n')
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Cheapest Personal Statement Editing: What You Get in 2026',
+      primaryKeyword: 'cheapest personal statement editing service',
+      region: 'US',
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    expect(applied).toContain('h1_keyword_only_fixed')
+    const h1 = (content.match(/^#\s+(.+)$/m) || [])[1]?.trim() || ''
+    expect(h1.toLowerCase()).not.toBe('cheapest personal statement editing service')
+    expect(h1).toMatch(/Cheapest Personal Statement Editing/i)
+  })
 })
 
 describe('generic current-info heading rewrite (deterministic fix)', () => {
@@ -1637,5 +1668,41 @@ describe('stripLeakedJsonLdFromProse', () => {
     expect(out.changed).toBeGreaterThan(0)
     expect(out.content).not.toMatch(/"@type"\s*:\s*"Article"/)
     expect(out.content).toContain('Confirm the current Fulbright rules')
+  })
+})
+
+describe('FAQ mill — hired services are not apply-targets', () => {
+  it('does not inject How do I apply for {service} or Can you give an example of {service}', () => {
+    const draft = `# Cheapest Personal Statement Editing: What You Get in 2026
+
+## In 60 seconds
+- Compare editors in writing before you pay.
+- Confirm revision rounds and turnaround.
+- Keep your own voice in the final statement.
+
+## Eligibility
+This editing service is for applicants who already have a complete personal statement draft.
+
+## Documents
+Have the latest statement, the prompt, and any university word limits ready before the editor starts.
+
+## Process
+You send the draft, the editor returns tracked changes, and you accept or reject each suggestion.
+
+## Sources
+- [EducationUSA](https://educationusa.state.gov/)
+`
+    const { content, applied } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Cheapest Personal Statement Editing: What You Get in 2026',
+      primaryKeyword: 'cheapest personal statement editing service',
+      region: 'US',
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    expect(applied.some((a) => a.startsWith('faq_section'))).toBe(true)
+    expect(content).not.toMatch(/How do I apply for cheapest personal statement editing service/i)
+    expect(content).not.toMatch(/Can you give an example of cheapest personal statement editing service/i)
+    expect(content).toMatch(/How does cheapest personal statement editing service work\?/i)
   })
 })

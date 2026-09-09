@@ -151,10 +151,20 @@ describe('mapPipelineJobStatus — one rule for JSON + stream', () => {
     ).toBe('merged')
   })
 
-  it('pr_created stays pr_created even when a shipError is present', () => {
+  it('pr_created without a PR URL is a hold, not a silent pr_created', () => {
     expect(
       mapPipelineJobStatus({
         shipResult: { ...merged, status: 'pr_created' },
+        shipError: 'Ship withheld · audit 40',
+        content: LONG,
+      }),
+    ).toBe('drafting')
+  })
+
+  it('pr_created with a PR URL stays pr_created even when a shipError is present', () => {
+    expect(
+      mapPipelineJobStatus({
+        shipResult: { ...merged, status: 'pr_created', prUrl: 'https://github.com/yousafe/x/pull/7' },
         shipError: 'Ship withheld · audit 40',
         content: LONG,
       }),
@@ -362,6 +372,24 @@ describe('mapPipelineJobRow — pure row builder', () => {
     expect(row.error_message).toBeNull()
     expect((row.audit_json as Record<string, unknown>).gateHoldReason).toBeUndefined()
   })
+
+  it('status pr_created with empty prUrl is drafting + ship_ready_but_no_pr', () => {
+    const row = mapPipelineJobRow(
+      baseInput({
+        shipResult: {
+          ...merged,
+          status: 'pr_created',
+          prUrl: undefined,
+          mergeCommitSha: undefined,
+        },
+        shipMode: 'pr',
+        shipError: null,
+      }),
+    )
+    expect(row.status).toBe('drafting')
+    expect(row.pr_url).toBeNull()
+    expect(row.error_message).toBe(SHIP_READY_BUT_NO_PR)
+  })
 })
 
 describe('persistPipelineJob — one write door, never throws', () => {
@@ -423,5 +451,45 @@ describe('shouldRefuseThinOverwrite', () => {
       previousWordCount: 179,
       nextWordCount: 102,
     })).toBe(false)
+  })
+
+  it('allows a substantial repaired save even when scaffolding trimmed the body', () => {
+    expect(shouldRefuseThinOverwrite({
+      previousWordCount: 4800,
+      nextWordCount: 1910,
+    })).toBe(false)
+  })
+
+  it('does not refuse a same-body save when stored word_count is missing', () => {
+    const body = 'Applicants must confirm the current rule on the official site before filing. '.repeat(80)
+    expect(shouldRefuseThinOverwrite({ previousContent: body, nextContent: body })).toBe(false)
+  })
+})
+
+describe('hop locks — empty-content wipe and jobs save thin guard stay wired', () => {
+  it('pipelineStream early persist never writes content: empty string', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const src = readFileSync(join(__dirname, '../lib/seoFactory/pipelineStream.ts'), 'utf8')
+    expect(src).not.toMatch(/content:\s*['"]{2}/)
+  })
+
+  it('jobs PATCH save refuses a thin overwrite', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const src = readFileSync(join(__dirname, '../app/api/content-studio/jobs/route.ts'), 'utf8')
+    expect(src).toContain('shouldRefuseThinOverwrite')
+    expect(src).toContain('thin_overwrite_refused')
+  })
+
+  it('drafter promptOutline is sanitized headings, never the raw h2Outline array', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const pipeline = readFileSync(join(__dirname, '../lib/seoFactory/pipeline.ts'), 'utf8')
+    const stream = readFileSync(join(__dirname, '../lib/seoFactory/pipelineStream.ts'), 'utf8')
+    expect(pipeline).toContain('const promptOutline = outlineHeadings(briefOutline)')
+    expect(stream).toContain('const promptOutline = outlineHeadings(briefOutline)')
+    expect(pipeline).not.toMatch(/promptOutline = \(input\.h2Outline/)
+    expect(stream).not.toMatch(/promptOutline = \(input\.h2Outline/)
   })
 })

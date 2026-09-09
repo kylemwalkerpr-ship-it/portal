@@ -166,6 +166,30 @@ export function sanitizeOwnerUrl(url: string): string {
   }
 }
 
+/** Country hub roots (`/us/`, `/uk/`, `/`) must never host a specific article. */
+export function isCountryHubCanonical(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, '') || '/'
+    return path === '/' || /^\/(us|uk|au|ca)$/i.test(path)
+  } catch {
+    return false
+  }
+}
+
+export function isCountryHubTopic(keyword: string): boolean {
+  const p = String(keyword || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  return /^(us|uk|au|ca|usa|united states|united kingdom|australia|canada)(\s+immigration(\s+hub)?)?$/.test(p)
+}
+
+/** Ship/plan must never write a specific article onto `/us/` `/uk/` `/au/` `/ca/`. */
+export function assertCanonicalIsNotCountryHub(canonicalUrl: string, keyword: string): void {
+  if (isCountryHubCanonical(canonicalUrl) && !isCountryHubTopic(keyword)) {
+    throw new Error(
+      `Ship refused — canonical ${canonicalUrl} is a country hub. A specific topic must ship to a unique slug, not /us/ /uk/ /au/ /ca/. Re-plan before shipping.`,
+    )
+  }
+}
+
 const HOST_FROM_HOSTNAME: Record<string, OwnerHost> = {
   'legal.yousafeconsultancy.com': 'legal',
   'usa.yousafeconsultancy.com': 'usa',
@@ -1162,6 +1186,15 @@ export async function resolveOwner(opts: {
     } else {
       warnings.push(`ownerUrlHint ${opts.ownerUrlHint} has no known estate host — ignored`)
     }
+  }
+
+  if (isCountryHubCanonical(canonicalUrl) && !isCountryHubTopic(keyword)) {
+    const slug = opts.slug || slugify(keyword)
+    const fb = pathForHostFallback(host, opts.region, slug, contentType)
+    filePath = fb.filePath
+    urlPath = fb.urlPath
+    canonicalUrl = sanitizeOwnerUrl(`${HOST_PUBLIC[host]}${urlPath}`)
+    warnings.push(`Refused country-hub canonical for a specific topic — routed to ${canonicalUrl}`)
   }
 
   return {

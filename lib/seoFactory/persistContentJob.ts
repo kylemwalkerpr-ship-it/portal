@@ -17,6 +17,7 @@ import { meetsShipQuality, type SeoFactoryAudit } from './audit'
 import type { ShipResult } from './ship'
 import type { RequestedShipMode } from './resolveShipMode'
 import type { ContentSpec } from './contentSpec'
+import { countBodyWords } from './contentDepth'
 
 export interface CompetingUrlInput {
   url?: string
@@ -111,12 +112,12 @@ export function shouldRefuseThinOverwrite(opts: {
 }): boolean {
   const prevWords = Number(opts.previousWordCount) > 0
     ? Number(opts.previousWordCount)
-    : String(opts.previousContent || '').trim().split(/\s+/).filter(Boolean).length
+    : countBodyWords(String(opts.previousContent || ''))
   const nextWords = Number(opts.nextWordCount) > 0
     ? Number(opts.nextWordCount)
-    : String(opts.nextContent || '').trim().split(/\s+/).filter(Boolean).length
+    : countBodyWords(String(opts.nextContent || ''))
   if (prevWords < 800) return false
-  if (nextWords >= 400 && nextWords >= prevWords * 0.5) return false
+  if (nextWords >= 800) return false
   return nextWords < 400 || nextWords < prevWords * 0.4
 }
 
@@ -136,7 +137,11 @@ export function mapPipelineJobStatus(input: {
 }): 'merged' | 'pr_created' | 'drafting' | 'failed' {
   const { shipResult, shipError, gateHoldReason, content } = input
   if (shipResult?.status === 'deployed' || shipResult?.status === 'merged') return 'merged'
-  if (shipResult?.status === 'pr_created' || shipResultPrUrl(shipResult)) return 'pr_created'
+  const prUrl = shipResultPrUrl(shipResult)
+  if (prUrl) return 'pr_created'
+  if (shipResult?.status === 'pr_created' && !prUrl) {
+    return content && content.length > 100 ? 'drafting' : 'failed'
+  }
   if (shipError || gateHoldReason) {
     return content && content.length > 100 ? 'drafting' : 'failed'
   }
@@ -176,8 +181,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     shipReady &&
     !prUrl &&
     !shippedMain &&
-    !dryRun &&
-    input.shipResult?.status !== 'pr_created'
+    !dryRun
   ) {
     if (!shipError) shipError = SHIP_READY_BUT_NO_PR
     if (!gateHoldReason) gateHoldReason = SHIP_READY_BUT_NO_PR

@@ -286,7 +286,7 @@ export function ensureMinimumOutline(headings: string[]): string[] {
   if (!has(/sources|official sources/i)) list.push('Sources')
   // Answer-first: the promise must open the document. Guarded by the same
   // containment check as the structural sections, so an existing TOC leads.
-  if (!has(/^in 60 seconds$/i) && !has(/^table of contents$/i)) list.unshift('In 60 seconds')
+  if (!has(/^in 60 seconds\b/i) && !has(/^table of contents\b/i)) list.unshift('In 60 seconds')
   return list.slice(0, 12)
 }
 

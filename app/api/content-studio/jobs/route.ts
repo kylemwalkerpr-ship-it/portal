@@ -8,6 +8,7 @@ import { auditContent } from '@/lib/seoFactory/audit'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { shouldRefuseThinOverwrite } from '@/lib/seoFactory/persistContentJob'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { enqueueAuthorityMultiplexerSignal } from '@/lib/seoFactory/specialistFeeds'
@@ -1194,6 +1195,23 @@ export async function PATCH(request: NextRequest) {
       const content = repaired.content
       const title = body.title != null ? String(body.title).trim() : job.title
       const words = countBodyWords(String(content))
+      if (
+        shouldRefuseThinOverwrite({
+          previousContent: job.content,
+          previousWordCount: job.word_count,
+          nextContent: content,
+          nextWordCount: words,
+        })
+      ) {
+        const prevWords = Number(job.word_count) > 0 ? Number(job.word_count) : countBodyWords(String(job.content || ''))
+        return NextResponse.json(
+          {
+            error: `Refused thin overwrite (${words} words) of a ${prevWords}-word draft. Keep the substantial body; do not save a failed stub over it.`,
+            code: 'thin_overwrite_refused',
+          },
+          { status: 409 },
+        )
+      }
       let audit: any = job.audit_json
       try {
         audit = auditContent({

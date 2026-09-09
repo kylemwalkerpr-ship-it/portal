@@ -37,7 +37,7 @@ import { isJunkTopic } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
-import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
+import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from './contentSpec'
 import { resolveProviderAuthors } from './providerAuthors'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
@@ -216,7 +216,6 @@ export async function* runSeoFactoryPipelineStream(
         canonical_url: plan.canonicalUrl,
         owner_host: plan.host,
         primary_keyword: primaryKeyword,
-        content: '',
         event_log: [
           {
             id: `pipe-start-${Date.now()}`,
@@ -419,6 +418,9 @@ export async function* runSeoFactoryPipelineStream(
         author: providerAuthors.author || undefined,
       })
       contentSpec = specResolution.spec
+      if (contentSpec && primaryKeyword) {
+        contentSpec = bindContentSpecToPrimary(contentSpec, primaryKeyword)
+      }
       if (!contentSpec) {
         console.warn(
           '[seoFactory/pipelineStream] ContentSpec not persisted (pre-spec behavior kept):',
@@ -432,9 +434,7 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     const briefOutline = canonicalOutlineForGate(contentSpec, input.h2Outline as string[] | undefined)
-    const promptOutline = (input.h2Outline as string[] | undefined)?.length
-      ? (input.h2Outline as string[])
-      : outlineHeadings(briefOutline)
+    const promptOutline = outlineHeadings(briefOutline)
 
     const system = buildFactorySystemPrompt({
       plan,

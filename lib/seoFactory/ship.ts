@@ -9,7 +9,7 @@
 
 import { finalizePipelineContentType } from './jobContentType'
 import type { OwnerPlan } from './ownership'
-import { assertPlanRepoConsistency, HOST_REPO } from './ownership'
+import { assertPlanRepoConsistency, HOST_REPO, assertCanonicalIsNotCountryHub } from './ownership'
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile, buildBlogPostEntry, insertBlogPostIntoData } from './renderTarget'
@@ -718,6 +718,7 @@ export async function shipContent(opts: {
     title: opts.title,
     branch: branchMain,
   })
+  assertCanonicalIsNotCountryHub(opts.plan.canonicalUrl, opts.primaryKeyword)
 
   if (opts.dryRun) {
     return {

@@ -18,6 +18,7 @@ import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDes
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
 import { sanitizeLeakedMarkup } from './leakedMarkup'
 import { isBlogFamily } from './writingShape'
+import { isApplyTargetPrimary } from './keywordContractBrief'
 
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
@@ -82,13 +83,20 @@ function plainSentence(text: string): string {
 function faqQuestionFor(sectionTitle: string, primaryKeyword: string): string {
   const t = sectionTitle.toLowerCase()
   const topic = (primaryKeyword || 'this application').trim()
-  if (/\b(eligib|requirement|qualif|who)\b/.test(t)) return `Who qualifies for ${topic}?`
-  if (/\b(document|checklist|evidence|proof)\b/.test(t)) return `What documents do I need for ${topic}?`
-  if (/\b(process|step|how|apply|application)\b/.test(t)) return `How do I apply for ${topic}?`
+  const apply = isApplyTargetPrimary(topic)
+  if (/\b(eligib|requirement|qualif|who)\b/.test(t)) {
+    return apply ? `Who qualifies for ${topic}?` : `Who is ${topic} for?`
+  }
+  if (/\b(document|checklist|evidence|proof)\b/.test(t)) {
+    return apply ? `What documents do I need for ${topic}?` : `What should I have ready for ${topic}?`
+  }
+  if (/\b(process|step|how|apply|application)\b/.test(t)) {
+    return apply ? `How do I apply for ${topic}?` : `How does ${topic} work?`
+  }
   if (/\b(timeline|time|processing|long|wait)\b/.test(t)) return `How long does ${topic} take?`
   if (/\b(cost|fee|price|expense|charges)\b/.test(t)) return `How much does ${topic} cost?`
   if (/\b(risk|refus|denial|reject|mistake|warning|pitfall|common)\b/.test(t)) return `What are the common mistakes with ${topic}?`
-  if (/\b(work|example|scenario|case)\b/.test(t)) return `Can you give an example of ${topic}?`
+  if (/\b(work|example|scenario|case)\b/.test(t)) return `What does ${topic} look like in practice?`
   return `What should I know about ${sectionTitle.trim().toLowerCase()}?`
 }
 
@@ -1340,6 +1348,19 @@ export function applyDeterministicRepairs(opts: {
         unwrapped = unwrapped.replace(/^#\s+(.+)$/m, `# ${synthesized}`)
       }
       applied.push('title_keyword_only_fixed')
+    }
+    // Job title can already be a CTR title while the body H1 is still the
+    // raw lowercase keyword (cheap PS editing live job). Rewrite H1 from
+    // the good title even when opts.title itself is not keyword-only.
+    {
+      const h1Match = unwrapped.match(/^#\s+(.+)$/m)
+      if (kw && h1Match && isKeywordOnlyTitle(h1Match[1], kw)) {
+        const replacement = currentTitle && !isKeywordOnlyTitle(currentTitle, kw)
+          ? currentTitle
+          : `${titleCaseWords(kw)}: ${new Date().getFullYear()} Guide`
+        unwrapped = unwrapped.replace(/^#\s+(.+)$/m, `# ${replacement}`)
+        if (!applied.includes('title_keyword_only_fixed')) applied.push('h1_keyword_only_fixed')
+      }
     }
   }
   let { fm, body } = stripFm(unwrapped)
@@ -3122,6 +3143,13 @@ export function applyDeterministicRepairs(opts: {
   const beforeFinalTldr = preSanitize
   preSanitize = ensureTldrBullets(preSanitize, opts.primaryKeyword || opts.title || 'guide')
   if (preSanitize !== beforeFinalTldr) applied.push('tldr_finalized')
+  {
+    const leaked = stripLeakedJsonLdFromProse(preSanitize)
+    if (leaked.changed > 0) {
+      preSanitize = leaked.content
+      applied.push(`leaked_jsonld_stripped_after_tldr (${leaked.changed})`)
+    }
+  }
 
   // ── Dangling forward references ──────────────────────────────────────
   // "the next section walks through a worked example" with no such section:

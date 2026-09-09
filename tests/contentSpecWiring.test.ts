@@ -8,6 +8,7 @@ import {
   reviveContentSpec,
   serializeContentSpec,
   validateContentSpec,
+  bindContentSpecToPrimary,
 } from '@/lib/seoFactory/contentSpec'
 import { buildFactorySystemPrompt } from '@/lib/seoFactory/prompts'
 import {
@@ -126,6 +127,48 @@ describe('resolveContentSpecForJob — one spec per job', () => {
       'how to apply for a skilled worker visa',
     ])
     expect(validateContentSpec(result.spec)).toEqual([])
+  })
+
+  it('drops unplaceable mill long-tails so a frozen spec cannot hand them to the writer', () => {
+    const result = resolveContentSpecForJob({
+      ...ARGS,
+      primaryKeyword: 'cheapest personal statement editing service',
+      requiredShortKeywords: ['personal statement', 'statement editing', 'editing cost', 'ps editing', 'revision round'],
+      requiredLongTailKeywords: [
+        'how to apply for cheapest personal statement editing service',
+        'how to apply for cheapest personal statement editing service requirements and timeline',
+        'what is the cheapest personal statement editing service',
+      ],
+    })
+    const phrases = (result.spec?.requiredKeywords || []).map((keyword) => keyword.phrase.toLowerCase())
+    expect(phrases.some((phrase) => phrase.includes('how to apply for'))).toBe(false)
+    expect(phrases.some((phrase) => phrase.includes('requirements and timeline'))).toBe(false)
+  })
+
+  it('bindContentSpecToPrimary drops an H-1B outline frozen onto a green-card job', () => {
+    const { spec } = resolveContentSpecForJob({
+      ...ARGS,
+      primaryKeyword: 'h-1b specialty occupation',
+      requiredShortKeywords: ['h1b visa', 'cap registration', 'specialty occupation', 'lca filing', 'h1b cap'],
+      requiredLongTailKeywords: ['how to apply for h-1b specialty occupation'],
+      outline: ['H-1B eligibility', 'Labor condition application', 'Cap registration', 'FAQ'],
+    })
+    expect(spec).toBeTruthy()
+    const bound = bindContentSpecToPrimary(spec!, 'green card timeline 2026 us petition checklist')
+    expect(bound.primaryKeyword).toBe('green card timeline 2026 us petition checklist')
+    expect(bound.outline).toEqual([])
+    expect(bound.requiredSections).toEqual([])
+    expect(bound.requiredKeywords).toEqual([])
+  })
+
+  it('bindContentSpecToPrimary keeps a same-topic outline', () => {
+    const { spec } = resolveContentSpecForJob(ARGS)
+    expect(spec).toBeTruthy()
+    const bound = bindContentSpecToPrimary(spec!, ARGS.primaryKeyword)
+    expect(bound.outline.map((entry) => entry.heading)).toEqual(spec!.outline.map((entry) => entry.heading))
+    expect(bound.requiredKeywords.map((keyword) => keyword.phrase)).toEqual(
+      spec!.requiredKeywords.map((keyword) => keyword.phrase),
+    )
   })
 
   it('keeps spec snapshot identity: serialize → parse → revive round-trips byte-for-byte', () => {

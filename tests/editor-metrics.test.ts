@@ -384,4 +384,28 @@ describe('ensureMinimumOutline', () => {
     expect(prefixed).toContain('Costs')
     expect(prefixed).not.toContain('H2: Costs')
   })
+
+  it('does not unshift a second In 60 seconds when a decorated leftover is present', () => {
+    const out = ensureMinimumOutline([
+      'In 60 seconds (marker only)',
+      'Eligibility',
+      'Worked Example',
+      'FAQ',
+      'Sources',
+    ])
+    expect(out.filter((h) => /^in 60 seconds/i.test(h))).toHaveLength(1)
+    expect(out[0].toLowerCase()).toMatch(/^in 60 seconds/)
+  })
+
+  it('treats Table of contents (marker only) as the existing TOC', () => {
+    const out = ensureMinimumOutline([
+      'Table of contents (marker only)',
+      'Eligibility',
+      'Worked Example',
+      'FAQ',
+      'Sources',
+    ])
+    expect(out.filter((h) => /^in 60 seconds$/i.test(h))).toHaveLength(0)
+    expect(out.some((h) => /^table of contents/i.test(h))).toBe(true)
+  })
 })

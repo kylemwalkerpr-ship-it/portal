@@ -31,7 +31,7 @@ import { evaluateContentQuality, qualityToRefineNotes, missingOutlineSections } 
 import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings, isBlogLikeContentType } from './outlineCompletion'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
-import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
+import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from './contentSpec'
 import { resolveProviderAuthors, mergeMarketplaceServiceLinks } from './providerAuthors'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
@@ -399,6 +399,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       author: providerAuthors.author || undefined,
     })
     contentSpec = specResolution.spec
+    if (contentSpec && primaryKeyword) {
+      contentSpec = bindContentSpecToPrimary(contentSpec, primaryKeyword)
+    }
     if (!contentSpec) {
       console.warn(
         '[seoFactory/pipeline] ContentSpec not persisted (pre-spec behavior kept):',
@@ -412,9 +415,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   }
 
   const briefOutline = canonicalOutlineForGate(contentSpec, input.h2Outline as string[] | undefined)
-  const promptOutline = (input.h2Outline as string[] | undefined)?.length
-    ? (input.h2Outline as string[])
-    : outlineHeadings(briefOutline)
+  const promptOutline = outlineHeadings(briefOutline)
 
   const system = buildFactorySystemPrompt({
     plan,

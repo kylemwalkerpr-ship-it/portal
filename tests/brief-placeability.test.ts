@@ -17,6 +17,7 @@ import {
 import {
   isApplyTargetPrimary,
   keywordContractForDraft,
+  keywordContractFromLists,
   rejectFragmentKeyword,
   resolveKeywordContract,
 } from '@/lib/seoFactory/keywordContract'
@@ -234,5 +235,24 @@ describe('isUnplaceableCoverageTerm flags the live mill strings', () => {
     expect(isUnplaceableCoverageTerm('can i work while waiting for green approval')).toBe(true)
     expect(isUnplaceableCoverageTerm('how to apply for uk spouse visa')).toBe(false)
     expect(isFabricatedSyntheticTerm('requirements for a estimated tax payment help')).toBe(true)
+    expect(isUnplaceableCoverageTerm('how to apply for a green card requirements and timeline')).toBe(true)
+    expect(isUnplaceableCoverageTerm('how to apply for fulbright application help')).toBe(true)
+  })
+})
+
+describe('keywordContractFromLists — drafter hop cannot freeze mill lists', () => {
+  it('drops apply-for service mashups handed in from a frozen ContentSpec', () => {
+    const c = keywordContractFromLists({
+      primaryKeyword: 'fulbright application help',
+      requiredShortKeywords: ['fulbright application', 'application help'],
+      requiredLongTailKeywords: [
+        'how to apply for fulbright application help',
+        'how to apply for fulbright application help requirements and timeline',
+        'what is the fulbright application help',
+      ],
+    })
+    expect(c.requiredLongTailKeywords.some((t) => /how to apply for/.test(t))).toBe(false)
+    expect(c.requiredLongTailKeywords.some((t) => /requirements and timeline/.test(t))).toBe(false)
+    expect(c.requiredShortKeywords).not.toContain('application help')
   })
 })

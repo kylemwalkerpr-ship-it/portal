@@ -15,7 +15,7 @@ import { normalizeEditorDocument, editorResponseContract, sanitizeFrontmatter } 
 import { auditLinksLive, auditLinksSync, fetchLiveEstateUrls, sanitizeDraftLinksLive } from '@/lib/seoFactory/linkAudit'
 import { runAuditEditorLoop, CONTENT_LOOP_BUDGET, type LoopFinding } from '@/lib/seoFactory/auditEditorLoop'
 import { anchorHash, parseEditorPatch } from '@/lib/seoFactory/editorPatch'
-import { resolveContentSpecForJob, type ContentSpec } from '@/lib/seoFactory/contentSpec'
+import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from '@/lib/seoFactory/contentSpec'
 import { normalizeStudioContentType } from '@/lib/seoFactory/ownership'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
@@ -281,11 +281,9 @@ async function resolveCanonicalJobMetadata(
     if (!row.canonical_url && targetUrl) backfill.canonical_url = targetUrl
     if (!row.primary_keyword && primaryKeyword) backfill.primary_keyword = primaryKeyword
     if (recoveredFromH1 && primaryKeyword && !row.topic) backfill.topic = primaryKeyword
-    if (keywordContract.backfilled) {
+    if (keywordContract.requiredShortKeywords.length + keywordContract.requiredLongTailKeywords.length > 0 && primaryKeyword) {
       backfill.required_short_keywords = keywordContract.requiredShortKeywords
       backfill.required_long_tail_keywords = keywordContract.requiredLongTailKeywords
-      // Persist provenance alongside the terms, or the next read re-promotes
-      // synthesized filler to enforceable demand and the blockers return.
       backfill.short_keyword_terms = keywordContract.shortKeywordTerms
       backfill.long_tail_keyword_terms = keywordContract.longTailKeywordTerms
     }
@@ -783,7 +781,11 @@ export async function POST(request: NextRequest) {
         region,
         targetUrl,
         competingUrls,
-        outline: canonicalOutlineForGate(canonicalSpec.spec),
+        outline: canonicalOutlineForGate(
+          canonicalSpec.spec && primaryKeyword
+            ? bindContentSpecToPrimary(canonicalSpec.spec, primaryKeyword)
+            : canonicalSpec.spec,
+        ),
       }),
     }
     // Live HEAD/GET of every URL is a Worker subrequest bomb. The desk auto-gate
@@ -938,7 +940,9 @@ export async function PATCH(request: NextRequest) {
     if (canonicalSpec.mismatch) {
       return NextResponse.json(CONTENT_SPEC_MISMATCH_RESPONSE, { status: 409 })
     }
-    let contentSpec = canonicalSpec.spec
+    const persistedSpec = canonicalSpec.spec
+    let contentSpec = persistedSpec
+    if (contentSpec && primaryKeyword) contentSpec = bindContentSpecToPrimary(contentSpec, primaryKeyword)
     const reauditOutline = canonicalOutlineForGate(contentSpec)
     const { renderReviewerRules, PLAYBOOK_VERSION } = await import('@/lib/seoFactory/contentQualityPlaybook')
     const specReviewerRules = contentSpec
@@ -1022,6 +1026,9 @@ export async function PATCH(request: NextRequest) {
             topic: recoveredKeyword,
           })
           contentSpec = derived.spec
+          if (contentSpec && recoveredKeyword) {
+            contentSpec = bindContentSpecToPrimary(contentSpec, recoveredKeyword)
+          }
           if (!derived.spec) {
             derivedReason = [derived.reason, ...(derived.issues || [])]
               .filter(Boolean)
@@ -1384,7 +1391,7 @@ Return ONLY the JSON EditorPatch.`
               audit_json: {
                 ...baseAudit,
                 score: finalContract.score,
-                contentSpec,
+                contentSpec: canonicalSpec.persisted ? persistedSpec : contentSpec,
                 contentLoop,
                 ...(body.editorialReviewPending ? { editorialReview: { status: 'pending' } } : {}),
                 shipReady: finalShipReady,

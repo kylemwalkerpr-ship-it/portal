@@ -209,6 +209,20 @@ Ask the firm for a written quote.
     expect(repaired.content).toContain('### How do I get an estimated tax payment help estimate?')
     expect(repaired.content).not.toMatch(/a estimated tax payment help/i)
   })
+
+  it('flags How do I apply for a hired-service primary as mill wording', () => {
+    const body = FAQ(`### How do I apply for cheapest personal statement editing service?
+
+You do not file an application. You hire an editor.
+
+### How much does cheapest personal statement editing service cost?
+
+Rates vary by turnaround.
+`)
+    expect(
+      detectForcedFaqWordings(body, 'cheapest personal statement editing service').map((f) => f.question),
+    ).toContain('How do I apply for cheapest personal statement editing service?')
+  })
 })
 
 describe('headings pasted from keyword strings', () => {

@@ -4,6 +4,9 @@ import {
   resolveOwner,
   sanitizeOwnerUrl,
   standingRulesHost,
+  isCountryHubCanonical,
+  isCountryHubTopic,
+  assertCanonicalIsNotCountryHub,
 } from '@/lib/seoFactory/ownership'
 
 /**
@@ -234,6 +237,42 @@ describe('ownership resolver — no double-slash URLs', () => {
     const mapped = filePathFromOwnerUrl('https://legal.yousafeconsultancy.com//uk/foo/', 'legal')
     expect(mapped?.urlPath).toBe('/uk/foo/')
     expect(mapped?.filePath).toBe('app/uk/foo/page.tsx')
+  })
+})
+
+describe('country hub canonical must not host a specific article', () => {
+  it('flags /us/ /uk/ /au/ /ca/ and the estate root, not a leaf slug', () => {
+    expect(isCountryHubCanonical('https://legal.yousafeconsultancy.com/us/')).toBe(true)
+    expect(isCountryHubCanonical('https://legal.yousafeconsultancy.com/uk')).toBe(true)
+    expect(isCountryHubCanonical('https://legal.yousafeconsultancy.com/au/')).toBe(true)
+    expect(isCountryHubCanonical('https://legal.yousafeconsultancy.com/ca/')).toBe(true)
+    expect(isCountryHubCanonical('https://legal.yousafeconsultancy.com/us/embassy-interview-help/')).toBe(false)
+    expect(isCountryHubTopic('embassy interview help')).toBe(false)
+    expect(isCountryHubTopic('us immigration hub')).toBe(true)
+  })
+
+  it('throws at ship time for a specific topic parked on /us/', () => {
+    expect(() =>
+      assertCanonicalIsNotCountryHub('https://legal.yousafeconsultancy.com/us/', 'embassy interview help'),
+    ).toThrow(/country hub/)
+    expect(() =>
+      assertCanonicalIsNotCountryHub(
+        'https://legal.yousafeconsultancy.com/us/embassy-interview-help/',
+        'embassy interview help',
+      ),
+    ).not.toThrow()
+  })
+
+  it('reroutes a registry hub URL away from /us/ for embassy interview help', async () => {
+    const p = await resolveOwner({
+      primaryKeyword: 'embassy interview help',
+      contentType: 'legal_guide',
+      region: 'US',
+      ownerUrlHint: 'https://legal.yousafeconsultancy.com/us/',
+    })
+    expect(p.canonicalUrl).not.toMatch(/\/us\/?$/)
+    expect(p.canonicalUrl.toLowerCase()).toMatch(/embassy/)
+    expect(p.warnings.some((w) => /country-hub/i.test(w))).toBe(true)
   })
 })
 

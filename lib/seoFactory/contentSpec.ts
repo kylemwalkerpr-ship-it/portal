@@ -20,7 +20,7 @@ import {
 import { depthSpecForType } from './contentDepth'
 import { isCitableSource, isLowValueHost, type CitationContext } from './officialSources'
 import type { AuthorPack, ResearchClaim } from './authorPack'
-import { sanitizeBriefOutline, rejectFragmentKeyword } from './keywordContractBrief'
+import { sanitizeBriefOutline, rejectFragmentKeyword, isUnplaceableCoverageTerm } from './keywordContractBrief'
 import { stripOutlineHeadingDecorations } from './contentQualityGate'
 
 export type ContentSpecKeyword = {
@@ -610,6 +610,63 @@ export function reviveContentSpec(snapshot: unknown): ContentSpec | null {
   }
 }
 
+/** Meaningful tokens shared by two phrases (length > 2, not stopwords). */
+function specTopicTokens(value: string): string[] {
+  const stop = new Set(['the', 'and', 'for', 'with', 'from', 'how', 'to', 'apply', 'a', 'an', 'of', 'in', 'on'])
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !stop.has(t))
+}
+
+/**
+ * Frozen mill specs (H-1B outline on a green-card job, apply-for service
+ * long-tails) must not drive Harper or outline-completion. Drop unplaceable
+ * keywords always; if the spec primary does not overlap this job's primary,
+ * drop the outline so Audit cannot insert the wrong H2s.
+ */
+export function bindContentSpecToPrimary(spec: ContentSpec, primary: string): ContentSpec {
+  const pk = String(primary || spec.primaryKeyword || '').trim()
+  const requiredKeywords = (spec.requiredKeywords || []).filter((keyword) => {
+    const phrase = String(keyword.phrase || '').trim()
+    if (!phrase) return false
+    if (rejectFragmentKeyword(phrase, pk)) return false
+    if (isUnplaceableCoverageTerm(phrase)) return false
+    return true
+  })
+  const specTokens = specTopicTokens(spec.primaryKeyword || '')
+  const jobTokens = specTopicTokens(pk)
+  const overlap = specTokens.filter((t) => jobTokens.includes(t)).length
+  const belongs = !specTokens.length || !jobTokens.length
+    || spec.primaryKeyword?.toLowerCase() === pk.toLowerCase()
+    || overlap >= Math.min(2, Math.ceil(Math.min(specTokens.length, jobTokens.length) * 0.4))
+  if (!belongs) {
+    return {
+      ...spec,
+      primaryKeyword: pk,
+      intent: {
+        ...spec.intent,
+        primaryQuery: pk,
+        queryNeed: pk,
+      },
+      requiredKeywords: [],
+      outline: [],
+      requiredSections: [],
+    }
+  }
+  const canonical = sanitizeBriefOutline(
+    (spec.outline || []).map((entry) => String(entry.heading || '').trim()),
+    [pk, ...requiredKeywords.map((keyword) => keyword.phrase)],
+  )
+  return {
+    ...spec,
+    requiredKeywords,
+    outline: canonical.map((heading) => ({ heading, level: 2 as const, purpose: 'planner outline' })),
+    requiredSections: canonical,
+  }
+}
+
 export type ResolveContentSpecArgs = {
   jobId: string
   contentType: string
@@ -682,6 +739,7 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
       const key = keyword.phrase.toLowerCase()
       if (!key || seenKeywords.has(key)) return false
       if (rejectFragmentKeyword(keyword.phrase, args.primaryKeyword || '')) return false
+      if (isUnplaceableCoverageTerm(keyword.phrase)) return false
       seenKeywords.add(key)
       return true
     })
@@ -759,7 +817,7 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
       ...(args.thesis ? { thesis: args.thesis } : {}),
       ...(args.unresolved?.length ? { unresolved: args.unresolved } : {}),
     })
-    return { spec }
+    return { spec: bindContentSpecToPrimary(spec, args.primaryKeyword) }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return { spec: null, reason: 'content spec validation failed', issues: message.split('\n').slice(1) }

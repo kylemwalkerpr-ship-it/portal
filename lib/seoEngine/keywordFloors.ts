@@ -12,7 +12,7 @@
  * undici) so studio seeders can call it.
  */
 
-import { isApplyTargetPrimary, rejectFragmentKeyword } from '@/lib/seoFactory/keywordContractBrief'
+import { isApplyTargetPrimary, rejectFragmentKeyword, isUnplaceableCoverageTerm } from '@/lib/seoFactory/keywordContractBrief'
 
 const SHORT_FLOOR = 5
 const LONG_FLOOR = 4
@@ -58,6 +58,7 @@ export function ensureKeywordFloors(terms: string[], primaryTerm = ''): string[]
     if (!norm || norm.length < 3 || seen.has(norm)) return
     if (norm === primary) return
     if (primary && rejectFragmentKeyword(norm, primary)) return
+    if (isUnplaceableCoverageTerm(norm)) return
     seen.add(norm)
     arr.push(norm)
   }

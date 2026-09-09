@@ -17,6 +17,7 @@ import { isGenericCurrentInfoHeading, topicSpecificCurrentInfoHeading } from '@/
 import { resolveTermSources, type KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { auditLinksSync, extractLinks, isSkippableHref } from './linkAudit'
 import { evaluateAhrefsDraft } from './ahrefsIssues'
+import { isApplyTargetPrimary } from './keywordContractBrief'
 
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
@@ -471,14 +472,24 @@ export function detectForcedFaqWordings(body: string, primaryKeyword: string): A
     questions.push(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
   }
   const out: Array<{ question: string }> = []
+  const applyTarget = isApplyTargetPrimary(primaryKeyword)
   for (const q of questions) {
     if (!q) continue
     const lower = q.toLowerCase()
-    if (!FORCED_WORDING_RE_.test(lower)) continue
     const qTokens = new Set(Array.from(lower.match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? []))
     let overlap = 0
     for (const t of primaryTokens) if (qTokens.has(t)) overlap++
-    if (overlap >= Math.max(2, Math.floor(primaryTokens.size / 2))) {
+    const heavyOverlap = overlap >= Math.max(2, Math.floor(primaryTokens.size / 2))
+    if (FORCED_WORDING_RE_.test(lower) && heavyOverlap) {
+      out.push({ question: q })
+      continue
+    }
+    // Hired-service mill: "How do I apply for cheapest personal statement editing service?"
+    if (!applyTarget && /^how do i apply for\b/.test(lower) && heavyOverlap) {
+      out.push({ question: q })
+      continue
+    }
+    if (/^can you give an example of\b/.test(lower) && heavyOverlap) {
       out.push({ question: q })
     }
   }
