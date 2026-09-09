@@ -500,7 +500,7 @@ export function stripOutlineHeadingDecorations(heading: string): string {
   return String(heading || '')
     .replace(/^#+\s*/, '')
     .replace(
-      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*|\d+\s*[–-]\s*\d+\s+bullets?|\d+\s+[–-]\s*\d+\s+bullets?|\d+\s*[–-]\s*\d+)\s*\)\s*$/i,
+      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*|\d+\s*[–-]\s*\d+\s+bullets?|\d+\s+[–-]\s*\d+\s+bullets?|\d+\s*[–-]\s*\d+|marker only|optional|toc|placeholder|kit)\s*\)\s*$/i,
       '',
     )
     .replace(/\s+\d+\s*[–-]\s*\d+\s+words?\s*$/i, '')
@@ -510,7 +510,10 @@ export function stripOutlineHeadingDecorations(heading: string): string {
 export function isStructuralOutlineHeading(heading: string): boolean {
   const stripped = stripOutlineHeadingDecorations(heading)
   const key = stripped.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-  return STRUCTURAL_H2.test(heading) || STRUCTURAL_H2.test(stripped) || STRUCTURAL_H2.test(key)
+  if (STRUCTURAL_H2.test(heading) || STRUCTURAL_H2.test(stripped) || STRUCTURAL_H2.test(key)) return true
+  // Decorated kit leftovers ("Table of contents (marker only)") must not
+  // look like a missing unique section after the real TOC already exists.
+  return /^(?:in 60 seconds?|table of contents|faq|sources|official sources|related guides?|related reading|further reading|see also|disclaimer|references?|toc)\b/.test(key)
 }
 
 /**

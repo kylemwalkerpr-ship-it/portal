@@ -103,6 +103,48 @@ describe('partitioner does not mill unplaceable long-tails', () => {
     expect(p.longTail.some((t) => t.startsWith('is it possible to '))).toBe(false)
     expect(p.longTail.length).toBeGreaterThanOrEqual(4)
   })
+
+  it('cheapest personal statement editing service: no apply-for mill, no cheapest personal fragment', () => {
+    const pk = 'cheapest personal statement editing service'
+    expect(isApplyTargetPrimary(pk)).toBe(false)
+    expect(rejectFragmentKeyword('cheapest personal', pk)).toBe(true)
+    expect(rejectFragmentKeyword('cheapest personal application', pk)).toBe(true)
+    expect(rejectFragmentKeyword('editing service', pk)).toBe(true)
+    expect(isUnplaceableCoverageTerm(`how to apply for ${pk}`)).toBe(true)
+    expect(isUnplaceableCoverageTerm(`is it possible to ${pk}`)).toBe(true)
+    expect(isUnplaceableCoverageTerm(`cost of applying for ${pk}`)).toBe(true)
+    const p = partitionKeywords([], pk)
+    expect(p.short).not.toContain('cheapest personal')
+    expect(p.short).not.toContain('cheapest personal application')
+    expect(p.longTail.some((t) => t.startsWith('how to apply for '))).toBe(false)
+    expect(p.longTail.some((t) => t.startsWith('is it possible to '))).toBe(false)
+    expect(p.longTail.length).toBeGreaterThanOrEqual(4)
+    expect(p.short.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('fulbright application help: help is not an apply-target and doubled application is dropped', () => {
+    const pk = 'fulbright application help'
+    expect(isApplyTargetPrimary(pk)).toBe(false)
+    expect(rejectFragmentKeyword('fulbright application application', pk)).toBe(true)
+    expect(rejectFragmentKeyword('application help', pk)).toBe(true)
+    expect(isUnplaceableCoverageTerm(`how to apply for ${pk}`)).toBe(true)
+    const p = partitionKeywords([], pk)
+    expect(p.short).not.toContain('fulbright application application')
+    expect(p.short).not.toContain('application help')
+    expect(p.longTail.some((t) => t.startsWith('how to apply for '))).toBe(false)
+    expect(p.longTail.some((t) => t.startsWith('is it possible to '))).toBe(false)
+    expect(p.longTail.length).toBeGreaterThanOrEqual(4)
+    expect(p.short.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('how-to apply primaries do not glue "requirements and timeline" onto the query', () => {
+    const pk = 'how to apply for a green card'
+    expect(isApplyTargetPrimary(pk)).toBe(true)
+    const p = partitionKeywords([], pk)
+    expect(p.longTail).not.toContain(`${pk} requirements and timeline`)
+    expect(p.longTail.some((t) => t === `${pk} step by step` || t === `${pk} in 2026`)).toBe(true)
+    expect(p.longTail.some((t) => t.startsWith('how to apply for how to apply for'))).toBe(false)
+  })
 })
 
 describe('live CRS/AU persisted mill lists are sealed off at resolve', () => {

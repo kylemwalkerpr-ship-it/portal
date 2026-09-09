@@ -98,6 +98,28 @@ export interface PipelineJobPersistInput {
  */
 export const SHIP_READY_BUT_NO_PR = 'ship_ready_but_no_pr'
 
+/**
+ * A failed/stub pass must not wipe a substantial in-flight draft.
+ * Live PhD job 8cc5d523: a 1248-word body was overwritten by a 102-word
+ * generic kit after the provider failed.
+ */
+export function shouldRefuseThinOverwrite(opts: {
+  previousContent?: string | null
+  previousWordCount?: number | null
+  nextContent?: string | null
+  nextWordCount?: number | null
+}): boolean {
+  const prevWords = Number(opts.previousWordCount) > 0
+    ? Number(opts.previousWordCount)
+    : String(opts.previousContent || '').trim().split(/\s+/).filter(Boolean).length
+  const nextWords = Number(opts.nextWordCount) > 0
+    ? Number(opts.nextWordCount)
+    : String(opts.nextContent || '').trim().split(/\s+/).filter(Boolean).length
+  if (prevWords < 800) return false
+  if (nextWords >= 400 && nextWords >= prevWords * 0.5) return false
+  return nextWords < 400 || nextWords < prevWords * 0.4
+}
+
 function shipResultPrUrl(shipResult: ShipResult | null | undefined): string | null {
   if (!shipResult) return null
   const rec = shipResult as ShipResult & { html_url?: string | null }
@@ -282,6 +304,28 @@ export async function persistPipelineJob(
 
     let jobId: string | null = null
     if (existingId) {
+      try {
+        const prior = await supabase
+          .from('content_jobs')
+          .select('content,word_count')
+          .eq('id', existingId)
+          .maybeSingle()
+        const prev = (prior as { data?: { content?: string | null; word_count?: number | null } | null })?.data
+        if (
+          prev
+          && shouldRefuseThinOverwrite({
+            previousContent: prev.content,
+            previousWordCount: prev.word_count,
+            nextContent: input.content,
+            nextWordCount: input.audit.wordCount,
+          })
+        ) {
+          baseRow.content = prev.content
+          baseRow.word_count = prev.word_count
+          const prevWc = Number(prev.word_count) || 0
+          baseRow.error_message = `Refused thin overwrite (${input.audit.wordCount} words) of a ${prevWc}-word draft`
+        }
+      } catch { /* fail open — never block persist on the guard read */ }
       const { error: upErr } = await supabase
         .from('content_jobs')
         .update(baseRow)

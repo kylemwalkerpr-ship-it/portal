@@ -98,6 +98,35 @@ export function pathSlugConflict(
 }
 
 /**
+ * Ship-time slug coverage uses the UNION of primary keyword + title.
+ * A CTR title like "Subclass 500 Processing Time" does not itself name
+ * "student", but the primary "Australia student visa subclass 500…" does —
+ * AND-ing every subject independently false-blocked that ship.
+ *
+ * Title still conflicts when it names a DISJOINT route (spouse title on a
+ * student slug) even if the primary covers the slug.
+ */
+export function pathSlugConflictUnion(
+  primaryKeyword: string,
+  title: string | undefined,
+  filePath: string,
+): RouteSubtypeConflict {
+  const slugSubject = slugSubjectFromFilePath(filePath)
+  const slugRoutes = extractRouteSubtypesForGuard(slugSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  if (!slugRoutes.length) return { conflict: false }
+  const primaryRoutes = extractRouteSubtypesForGuard(primaryKeyword).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const titleRoutes = extractRouteSubtypesForGuard(title || '').filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const union = [...new Set([...primaryRoutes, ...titleRoutes])]
+  if (union.some((r) => slugRoutes.includes(r))) {
+    if (titleRoutes.length && !titleRoutes.some((r) => slugRoutes.includes(r))) {
+      return { conflict: true, article: titleRoutes, existing: slugRoutes }
+    }
+    return { conflict: false }
+  }
+  return { conflict: true, article: union, existing: slugRoutes }
+}
+
+/**
  * Subject vs TARGET PATH geo scope. Unlike geoScopeConflict this also runs for
  * a brand-new file, so a generic draft cannot be committed to a university or
  * city slug before there is existing page content to compare against.
@@ -192,16 +221,19 @@ export async function assertNoRouteSubtypeConflict(opts: {
 }): Promise<void> {
   const branch = opts.branch ?? 'main'
   const subjects = [...new Set([opts.primaryKeyword, opts.title].map((value) => String(value || '').trim()).filter(Boolean))]
+  const slug = pathSlugConflictUnion(opts.primaryKeyword, opts.title, opts.filePath)
+  if (slug.conflict) {
+    const subject = (slug.article && slug.article.length && opts.title && pathSlugConflict(opts.title, opts.filePath).conflict)
+      ? String(opts.title || '').trim()
+      : String(opts.primaryKeyword || opts.title || '').trim()
+    throw new Error(
+      `Ship refused — path/slug conflict: "${subject}" resolves to ${opts.filePath}, ` +
+        `but that slug names route [${(slug.existing || []).join(', ')}] which the subject never mentions` +
+        (slug.article?.length ? ` (subject routes: [${slug.article.join(', ')}])` : '') +
+        `. This would create a subject-mismatch page. Re-plan the keyword/slug before shipping.`,
+    )
+  }
   for (const subject of subjects) {
-    const slug = pathSlugConflict(subject, opts.filePath)
-    if (slug.conflict) {
-      throw new Error(
-        `Ship refused — path/slug conflict: "${subject}" resolves to ${opts.filePath}, ` +
-          `but that slug names route [${(slug.existing || []).join(', ')}] which the subject never mentions` +
-          (slug.article?.length ? ` (subject routes: [${slug.article.join(', ')}])` : '') +
-          `. This would create a subject-mismatch page. Re-plan the keyword/slug before shipping.`,
-      )
-    }
     const pathGeo = pathGeoScopeConflict(subject, opts.filePath)
     if (pathGeo.conflict) {
       throw new Error(

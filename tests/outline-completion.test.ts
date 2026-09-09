@@ -256,6 +256,22 @@ describe('outline heading word-budget decorations (live Canada Spousal job)', ()
     ).toEqual([])
   })
 
+  it('does not treat Table of contents (marker only) as missing when ## Table of contents exists', () => {
+    const article = `## In 60 seconds\n\n- One.\n\n## Table of contents\n\n- [Eligibility](#eligibility)\n\n## Eligibility\n\nEnough body copy about the cheap-edit scope for overlap.\n\n## FAQ\n\n### Q?\n\nA.\n`
+    expect(isStructuralOutlineHeading('Table of contents (marker only)')).toBe(true)
+    expect(stripOutlineHeadingDecorations('Table of contents (marker only)')).toBe('Table of contents')
+    expect(
+      missingOutlineSections(article, [
+        { heading: 'In 60 seconds' },
+        { heading: 'Table of contents' },
+        { heading: 'In 60 seconds (80–110 words)' },
+        { heading: 'Table of contents (marker only)' },
+        { heading: 'Eligibility' },
+        { heading: 'FAQ' },
+      ]),
+    ).toEqual([])
+  })
+
   it('does not insert a second In 60 seconds when the body already has the clean H2', async () => {
     const article = `## In 60 seconds\n\n- One.\n- Two.\n- Three.\n\n## How waits are measured\n\nHome Affairs publishes percentile charts for subclass 500 files in enough detail for the overlap matcher.\n\n## FAQ\n\n### Q?\n\nA.\n`
     const result = await completeMissingOutlineSections({
@@ -311,7 +327,7 @@ describe('outline heading word-budget decorations (live Canada Spousal job)', ()
       generateSection: async ({ heading }) =>
         `This is a generated ${heading} section with enough words to pass the length floor for outline completion so the helper accepts it as real prose rather than a stub. `.repeat(3),
     })
-    expect(result.inserted).toEqual(['Worked Example (180-350 words)'])
+    expect(result.inserted).toEqual(['Worked Example'])
     expect(result.remaining).toEqual([])
     expect(result.content).toContain('## Worked Example\n')
     expect(result.content).not.toContain('## Worked Example (180-350 words)')

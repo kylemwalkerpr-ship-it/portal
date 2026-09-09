@@ -14,7 +14,7 @@ jest.mock('@supabase/supabase-js', () => {
       then: (resolve: (v: object) => void) => Promise.resolve(resolve(onResolve())),
     }
     for (const m of [
-      'update', 'insert', 'select', 'eq', 'in', 'neq', 'single', 'order', 'limit',
+      'update', 'insert', 'select', 'eq', 'in', 'neq', 'single', 'maybeSingle', 'order', 'limit',
     ]) {
       builder[m] = (...args: unknown[]) => {
         if (m === 'update' || m === 'insert') ops.push({ op: m, table, row: args[0] })
@@ -44,6 +44,7 @@ import {
   mapPipelineShipMode,
   mapPipelineJobStatus,
   persistPipelineJob,
+  shouldRefuseThinOverwrite,
   SHIP_READY_BUT_NO_PR,
   type PipelineJobPersistInput,
 } from '@/lib/seoFactory/persistContentJob'
@@ -398,4 +399,29 @@ describe('persistPipelineJob — one write door, never throws', () => {
     expect(siblingClose).toBeDefined()
   })
 
+})
+
+describe('shouldRefuseThinOverwrite', () => {
+  it('refuses a 102-word stub over a 1248-word draft', () => {
+    expect(shouldRefuseThinOverwrite({
+      previousWordCount: 1248,
+      previousContent: 'word '.repeat(1248),
+      nextWordCount: 102,
+      nextContent: 'word '.repeat(102),
+    })).toBe(true)
+  })
+
+  it('allows a normal refine of a long draft', () => {
+    expect(shouldRefuseThinOverwrite({
+      previousWordCount: 2500,
+      nextWordCount: 2400,
+    })).toBe(false)
+  })
+
+  it('does not protect a thin previous body', () => {
+    expect(shouldRefuseThinOverwrite({
+      previousWordCount: 179,
+      nextWordCount: 102,
+    })).toBe(false)
+  })
 })

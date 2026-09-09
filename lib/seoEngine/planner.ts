@@ -304,6 +304,7 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
       for (const head of usableHeads) {
         if (short.length >= KEYWORD_REQUIREMENTS.SHORT_MIN + 2) break
         for (const prefix of ST_PREFIXES) {
+          if (head.split(/\s+/).includes(prefix)) continue
           const candidate = `${head} ${prefix}`
           if (wordCount(candidate) <= 3 && !rejectFragmentKeyword(candidate, pt)) classifyAndAdd(candidate)
         }
@@ -322,7 +323,7 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2 && ptWords.length >= 1) {
     const longTailCandidates: string[] = []
     if (ptStartsWithHowTo) {
-      longTailCandidates.push(`${pt} step by step`, `${pt} in 2026`, `${pt} requirements and timeline`)
+      longTailCandidates.push(`${pt} step by step`, `${pt} in 2026`)
     } else {
       longTailCandidates.push(`what is the ${pt}`, `how the ${pt} works`, `${pt} step by step`, `${pt} in 2026`)
       if (applyTarget) {
@@ -372,8 +373,8 @@ export function isUnplaceableCoverageTerm(term: string): boolean {
   if (/^(is it possible to|do you need(?: a)?)\b/.test(t)) return true
   if (/\bhow to apply for how to apply for\b/.test(t)) return true
   if (/\bin 2026 explained\b/.test(t)) return true
-  if (/\bhow to apply for\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b)\b/.test(t)) return true
-  if (/^(cost of applying for|requirements for(?: a)?)\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b)\b/.test(t)) return true
+  if (/\bhow to apply for\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b|service|help|editing)\b/.test(t)) return true
+  if (/^(cost of applying for|requirements for(?: a)?)\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b|service|help|editing)\b/.test(t)) return true
   if (/^how long does the (green|australia|canada|uk|us)\b/.test(t)) return true
   if (/^can i work while waiting for (green|australia|canada|uk|us) approval\b/.test(t)) return true
   return false

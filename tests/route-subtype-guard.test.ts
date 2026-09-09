@@ -15,6 +15,7 @@ import {
   geoScopeConflict,
   pathGeoScopeConflict,
   pathSlugConflict,
+  pathSlugConflictUnion,
   routeSubtypeConflict,
   slugSubjectFromFilePath,
 } from '@/lib/seoFactory/routeSubtypeGuard'
@@ -460,5 +461,54 @@ describe('assertNoRouteSubtypeConflict', () => {
         title: 'International Student Housing Deposit Dispute Letter Template',
       }),
     ).rejects.toThrow(/path geo-scope conflict/i)
+  })
+
+  it('passes when the primary names the slug route even if the CTR title does not', async () => {
+    mockedGet.mockResolvedValue(undefined)
+    await expect(
+      assertNoRouteSubtypeConflict({
+        owner: 'kylemwalkerpr-ship-it',
+        repo: 'caseworks',
+        filePath: 'landing-page/app/blog/australia-student-visa-subclass-500-processing-time-2026/page.tsx',
+        primaryKeyword: 'Australia student visa subclass 500 processing time 2026',
+        title: 'Subclass 500 Processing Time in 2026: How to Check',
+      }),
+    ).resolves.toBeUndefined()
+  })
+
+  it('still refuses a disjoint title (spouse) on a student slug even when the primary covers student', async () => {
+    mockedGet.mockResolvedValue(undefined)
+    await expect(
+      assertNoRouteSubtypeConflict({
+        owner: 'kylemwalkerpr-ship-it',
+        repo: 'caseworks',
+        filePath: 'landing-page/app/blog/australia-student-visa-subclass-500-processing-time-2026/page.tsx',
+        primaryKeyword: 'Australia student visa subclass 500 processing time 2026',
+        title: 'Australia Spouse Visa Processing Time in 2026',
+      }),
+    ).rejects.toThrow(/path\/slug conflict/i)
+  })
+})
+
+describe('pathSlugConflictUnion', () => {
+  const s500Path = 'landing-page/app/blog/australia-student-visa-subclass-500-processing-time-2026/page.tsx'
+
+  it('covers the slug from the primary when the title has no route token', () => {
+    expect(
+      pathSlugConflictUnion(
+        'Australia student visa subclass 500 processing time 2026',
+        'Subclass 500 Processing Time in 2026: How to Check',
+        s500Path,
+      ).conflict,
+    ).toBe(false)
+  })
+
+  it('still flags a title-only subject that never mentions the slug route', () => {
+    expect(
+      pathSlugConflict(
+        'Subclass 500 Processing Time in 2026: How to Check',
+        s500Path,
+      ).conflict,
+    ).toBe(true)
   })
 })

@@ -779,6 +779,26 @@ const RHYTHM_GLUE_IN_JSON_RE =
   /([.?])(?:In this case|As a result|On review|Typically|Meanwhile|In practice|For applicants|On the ground),\s*/g
 
 /**
+ * Audit/rhythm sometimes dumps a truncated JSON-LD object into a markdown
+ * bullet (live Fulbright job: In 60 seconds ended with
+ * `- {"@context":"[schema.org official guidance](https://schema.org)"…`).
+ * Those lines are not reader copy — drop them.
+ */
+export function stripLeakedJsonLdFromProse(content: string): { content: string; changed: number } {
+  let changed = 0
+  // Only markdown list items — never touch <script type="application/ld+json">
+  // object lines, which also start with `{ "@type"`.
+  const next = String(content || '').replace(
+    /^[ \t]*[-*][ \t]+\{[^\n]*"@(?:context|type)"[^\n]*$/gm,
+    () => {
+      changed++
+      return ''
+    },
+  )
+  return { content: next, changed }
+}
+
+/**
  * Rhythm repair used to treat JSON-LD as prose (it splits on `?` inside FAQ
  * question names) and splice adverbials into the JSON strings. Those blocks
  * still parse, so the schema injector never regenerated them. Strip the
@@ -3065,6 +3085,13 @@ export function applyDeterministicRepairs(opts: {
     if (unglued.changed > 0) {
       preSanitize = unglued.content
       applied.push('glued_hosts_unglued')
+    }
+  }
+  {
+    const leaked = stripLeakedJsonLdFromProse(preSanitize)
+    if (leaked.changed > 0) {
+      preSanitize = leaked.content
+      applied.push(`leaked_jsonld_stripped (${leaked.changed})`)
     }
   }
   {

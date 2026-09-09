@@ -50,4 +50,11 @@ describe('ensureKeywordFloors — UI keyword field never opens below the contrac
     expect(out).not.toContain('writing service')
   })
 
+  it('does not mill apply-for on application-help primaries', () => {
+    const out = ensureKeywordFloors(['fulbright application'], 'fulbright application help')
+    expect(out.some((k) => k.startsWith('how to apply for '))).toBe(false)
+    expect(out).not.toContain('application help')
+    expect(out).not.toContain('fulbright application application')
+  })
+
 })

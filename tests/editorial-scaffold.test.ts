@@ -1,4 +1,4 @@
-import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm, stripDuplicateArticleCopy } from '@/lib/seoFactory/editorialScaffold'
+import { applyDeterministicRepairs, dedupeFaqQuestions, ensureEditorialScaffold, restoreCollapsedBodyLists, rewritePastedHeading, smoothSentenceRhythm, stripDuplicateArticleCopy, stripLeakedJsonLdFromProse } from '@/lib/seoFactory/editorialScaffold'
 import { isFillerTitle } from '@/lib/seoEngine/titleLab'
 import { detectDanglingForwardReferences, detectKeywordPastedHeadings, missingOutlineSections } from '@/lib/seoFactory/contentQualityGate'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -1620,5 +1620,22 @@ describe('applyDeterministicRepairs — disclaimer restore must not lock over-ma
     expect(r.content).toMatch(/not legal advice/i)
     expect(r.applied.some((a) => a === 'disclaimer' || a === 'disclaimer_restored_after_final_trim' || a === 'trim_to_max_words_after_disclaimer_restore')).toBe(true)
     expect(r.applied).not.toContain('disclaimer_restore_skipped_over_max')
+  })
+})
+
+describe('stripLeakedJsonLdFromProse', () => {
+  it('drops a truncated JSON-LD object glued into an In 60 seconds bullet', () => {
+    const raw = [
+      '## In 60 seconds',
+      '- Confirm the current Fulbright rules on the official government site before you file.',
+      '- {"@context":"[schema.org official guidance](https://schema.org)","@type":"Article","headline":"Submission: 2026 Requirements and Documents","description":"Get filing for 2026: eligibility, DS-2019, J-1 steps,…',
+      '',
+      '## Eligibility',
+      'Citizenship and degree stage set who may apply.',
+    ].join('\n')
+    const out = stripLeakedJsonLdFromProse(raw)
+    expect(out.changed).toBeGreaterThan(0)
+    expect(out.content).not.toMatch(/"@type"\s*:\s*"Article"/)
+    expect(out.content).toContain('Confirm the current Fulbright rules')
   })
 })

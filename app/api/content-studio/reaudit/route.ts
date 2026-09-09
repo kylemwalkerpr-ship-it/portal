@@ -1095,10 +1095,7 @@ export async function PATCH(request: NextRequest) {
         contentType,
         // Canonical brief outline — the re-audit gate must verify the body's
         // template sections actually exist (truncated drafts otherwise pass).
-        outline:
-          contentSpec && contentSpec.outline && contentSpec.outline.length
-            ? contentSpec.outline.map((o) => ({ heading: o.heading, level: o.level, purpose: o.purpose }))
-            : null,
+        outline: canonicalOutlineForGate(contentSpec),
         requiredShortKeywords,
         requiredLongTailKeywords,
         shortKeywordTerms,

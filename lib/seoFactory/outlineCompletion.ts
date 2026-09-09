@@ -138,7 +138,7 @@ export async function completeMissingOutlineSections(opts: {
   /** Set whenever remaining !== 0. Callers must fail closed — do not refine as complete. */
   error?: string
 }> {
-  const outline = opts.outline
+  const outline = canonicalOutlineForGate({ outline: opts.outline }) || opts.outline
   if (!outline?.length) {
     return { content: opts.content, inserted: [], remaining: [], stoppedForBudget: false }
   }

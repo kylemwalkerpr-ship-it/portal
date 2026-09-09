@@ -265,6 +265,22 @@ describe('In 60 seconds is one 3–5 bullet block, not a 150–180 word twin', (
     ])
   })
 
+  it('collapses Table of contents (marker only) onto the real TOC', () => {
+    const outline = sanitizeBriefOutline([
+      'In 60 seconds',
+      'Table of contents',
+      'What a cheap personal statement edit should still include',
+      'In 60 seconds (80–110 words)',
+      'Table of contents (marker only)',
+      'Sources',
+      'FAQ',
+    ])
+    expect(outline.filter((h) => /in 60 seconds|table of contents/i.test(h))).toEqual([
+      'In 60 seconds',
+      'Table of contents',
+    ])
+  })
+
   it('stripDuplicateIn60SecondsHeadings drops a second H2 and normalizes parentheticals', () => {
     const raw = [
       '# CRS calculator',

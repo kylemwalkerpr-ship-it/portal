@@ -95,6 +95,26 @@ describe('resolveContentSpecForJob — one spec per job', () => {
     expect(result.spec?.requiredSections).toEqual(['In 60 seconds', 'Eligibility', 'FAQ'])
   })
 
+  it('collapses Table of contents (marker only) instead of requiring a second TOC', () => {
+    const result = resolveContentSpecForJob({
+      ...ARGS,
+      outline: [
+        'In 60 seconds',
+        'Table of contents',
+        'Eligibility',
+        'In 60 seconds (80–110 words)',
+        'Table of contents (marker only)',
+        'FAQ',
+      ],
+    })
+    expect(result.spec?.outline.map((entry) => entry.heading)).toEqual([
+      'In 60 seconds',
+      'Table of contents',
+      'Eligibility',
+      'FAQ',
+    ])
+  })
+
   it('deduplicates keyword phrases crossing legacy short and long-tail arrays', () => {
     const result = resolveContentSpecForJob({
       ...ARGS,

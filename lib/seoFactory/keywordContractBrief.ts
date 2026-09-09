@@ -59,10 +59,12 @@ const GENERIC_WINDOWS = new Set([
   'wait times',
   'writing service',
   'editing service',
+  'application help',
+  'interview help',
 ])
 
 const EXPLAINER_PRIMARY =
-  /\b(calculator|processing time|processing times|timeline|template|checklist|score|points?|service)\b/
+  /\b(calculator|processing time|processing times|timeline|template|checklist|score|points?|service|help|editing)\b/
 
 const APPLY_TARGET =
   /\b(visa|permit|green card|sponsorship|petition|application|work permit|study permit|permanent residence)\b/
@@ -102,6 +104,40 @@ export function rejectFragmentKeyword(term: string, primary: string): boolean {
   if (termTokens.length === 1 && primaryTokens.includes(termTokens[0])) return true
 
   if (termTokens.length === 2 && GENERIC_WINDOWS.has(t) && pk !== t && pk.includes(t)) return true
+
+  // Doubled mill suffix: "fulbright application application".
+  const last = termTokens[termTokens.length - 1]
+  if (MILL_SUFFIXES.has(last) && termTokens.slice(0, -1).includes(last)) return true
+
+  // Leading 2-token fragment of a long hired-service primary
+  // ("cheapest personal" from "cheapest personal statement editing service").
+  // Named programs like "express entry" stay. Do not apply to "help" explainers
+  // ("estimated tax" from "estimated tax payment help") — those shorts are real.
+  if (
+    termTokens.length === 2
+    && primaryTokens.length >= 4
+    && termTokens[0] === primaryTokens[0]
+    && termTokens[1] === primaryTokens[1]
+    && !NAMED_IMMIGRATION_PROGRAMS.includes(t as (typeof NAMED_IMMIGRATION_PROGRAMS)[number])
+    && /\b(service|editing)\b/.test(pk)
+  ) {
+    return true
+  }
+
+  // Mill suffix glued onto a generic window ("editing service guide") or
+  // "… application" on a hired-service primary ("cheapest personal application").
+  if (termTokens.length === 3 && MILL_SUFFIXES.has(last)) {
+    const head = termTokens.slice(0, 2).join(' ')
+    if (GENERIC_WINDOWS.has(head)) return true
+    if (
+      last === 'application'
+      && /\b(service|editing)\b/.test(pk)
+      && termTokens[0] === primaryTokens[0]
+      && termTokens[1] === primaryTokens[1]
+    ) {
+      return true
+    }
+  }
 
   if (termTokens.length === 2 && MILL_SUFFIXES.has(termTokens[1])) {
     for (const program of NAMED_IMMIGRATION_PROGRAMS) {
@@ -247,7 +283,7 @@ function stripBriefHeadingDecorations(heading: string): string {
   return String(heading || '')
     .replace(/^#+\s*/, '')
     .replace(
-      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*|\d+\s*[–-]\s*\d+\s+bullets?|\d+\s*[–-]\s*\d+)\s*\)\s*$/i,
+      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*|\d+\s*[–-]\s*\d+\s+bullets?|\d+\s+[–-]\s*\d+\s+bullets?|\d+\s*[–-]\s*\d+|marker only|optional|toc|placeholder|kit)\s*\)\s*$/i,
       '',
     )
     .replace(/\s+\d+\s*[–-]\s*\d+\s+words?\s*$/i, '')
