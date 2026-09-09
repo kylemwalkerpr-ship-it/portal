@@ -218,6 +218,7 @@
   style.textContent = [
     '.ysa-launcher{position:fixed;right:20px;bottom:max(20px,env(safe-area-inset-bottom));width:58px;height:58px;border:0;border-radius:50%;background:' + cfg.primary + ';color:#fff;box-shadow:0 14px 34px rgba(15,23,42,.28);cursor:pointer;z-index:2147483600;font-size:23px}',
     '.ysa-launcher:hover{background:' + cfg.primaryHover + '}',
+    '.ysa-launcher.ysa-launcher-away,[hidden].ysa-launcher{display:none!important;pointer-events:none!important}',
     '.ysa-panel{position:fixed;right:20px;bottom:max(90px,calc(70px + env(safe-area-inset-bottom)));width:390px;max-width:calc(100vw - 40px);height:600px;max-height:calc(100dvh - 120px);background:#fff;border:1px solid rgba(60,59,110,.14);border-radius:20px;box-shadow:0 28px 72px rgba(15,23,42,.24);overflow:hidden;display:flex;flex-direction:column;z-index:2147483600;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#111827}',
     '.ysa-head{padding:14px 16px;background:' + cfg.primary + ';color:#fff;display:flex;align-items:center;gap:11px;flex:0 0 auto}.ysa-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;background:rgba(255,255,255,.17);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:850;letter-spacing:.02em}.ysa-title{flex:1;min-width:0}.ysa-name{font-size:15px;font-weight:850;letter-spacing:-.01em;line-height:1.15}.ysa-sub{font-size:11px;opacity:.84;margin-top:2px}.ysa-head button{border:0;background:rgba(255,255,255,.13);color:#fff;border-radius:9px;cursor:pointer;padding:7px 10px;min-height:36px;font-weight:650}',
     '.ysa-stream{flex:1 1 auto;min-height:0;overflow:auto;padding:16px;background:linear-gradient(180deg,#fafbff 0%,#f7f8fb 100%);display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.ysa-row{display:flex;flex-direction:column;align-items:flex-start}.ysa-row.user{align-items:flex-end}.ysa-label{font-size:10px;color:#8b93a7;margin-bottom:4px;font-weight:800;text-transform:uppercase;letter-spacing:.055em}.ysa-bubble{max-width:88%;padding:11px 14px;border-radius:14px;font-size:14px;line-height:1.52;overflow-wrap:anywhere;background:#fff;border:1px solid #e2e5ec;box-shadow:0 1px 2px rgba(15,23,42,.03)}.ysa-bubble p{margin:0 0 10px}.ysa-bubble p:last-child{margin-bottom:0}.ysa-bubble strong{font-weight:800;color:#161a2d}.ysa-bubble em{font-style:italic}.ysa-bubble h3,.ysa-bubble h4,.ysa-bubble h5{margin:10px 0 6px;color:#252657;line-height:1.28}.ysa-bubble h3:first-child,.ysa-bubble h4:first-child,.ysa-bubble h5:first-child{margin-top:0}.ysa-bubble ul,.ysa-bubble ol{margin:6px 0 10px;padding-left:22px}.ysa-bubble li{margin:5px 0}.ysa-link{color:#3736a3;font-weight:750;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}.ysa-accent{color:#38378f;font-weight:800}.ysa-row.user .ysa-bubble{background:' + cfg.primary + ';color:#fff;border-color:' + cfg.primary + ';box-shadow:none;white-space:pre-wrap}.ysa-row.user .ysa-bubble strong{color:#fff}.ysa-row.agent .ysa-bubble{background:#ecfdf3;color:#14532d;border-color:#a7f3d0}.ysa-row.system .ysa-bubble{background:#fff8e7;color:#713f12;border-color:#fde68a}',
@@ -249,6 +250,128 @@
 
   function isMobileAssistant() {
     return !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)
+  }
+  function competingAppChrome() {
+    try {
+      return !!(
+        document.querySelector('.ys-market-chat-overlay') ||
+        document.querySelector('.ys-chatscreen[data-mobile-view="chat"]') ||
+        document.querySelector('[data-ysa-hide-launcher="true"]')
+      )
+    } catch (_) { return false }
+  }
+  function rectsOverlap(a, b, pad) {
+    pad = pad || 0
+    return !(a.right < b.left - pad || a.left > b.right + pad || a.bottom < b.top - pad || a.top > b.bottom + pad)
+  }
+  function elementOnScreen(el) {
+    if (!el) return false
+    var r = el.getBoundingClientRect()
+    if (r.width < 12 || r.height < 12) return false
+    var style = window.getComputedStyle ? window.getComputedStyle(el) : null
+    if (style && (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0)) return false
+    var viewH = window.innerHeight || 0
+    var viewW = window.innerWidth || 0
+    return r.bottom > 0 && r.right > 0 && r.top < viewH && r.left < viewW
+  }
+  function hideLauncher(away) {
+    launcher.classList.toggle('ysa-launcher-away', !!away)
+    if (away) {
+      launcher.setAttribute('hidden', '')
+      launcher.setAttribute('aria-hidden', 'true')
+      launcher.tabIndex = -1
+    } else {
+      launcher.removeAttribute('hidden')
+      launcher.setAttribute('aria-hidden', 'false')
+      launcher.tabIndex = 0
+    }
+  }
+  var syncingLauncher = false
+  function launcherFootprint() {
+    var viewH = window.innerHeight || 0
+    var viewW = window.innerWidth || 0
+    var size = 58
+    var inset = isMobileAssistant() ? 12 : 20
+    var box = launcher.getBoundingClientRect()
+    if (box.width >= 12 && box.height >= 12 && !launcher.classList.contains('ysa-launcher-away') && !launcher.hasAttribute('hidden')) {
+      return box
+    }
+    return {
+      left: Math.max(0, viewW - inset - size),
+      right: Math.max(size, viewW - inset),
+      top: Math.max(0, viewH - inset - size),
+      bottom: Math.max(size, viewH - inset),
+      width: size,
+      height: size,
+    }
+  }
+  function syncLauncherChrome() {
+    if (syncingLauncher) return
+    syncingLauncher = true
+    try {
+      if (competingAppChrome()) {
+        if (open) {
+          open = false
+          save(cfg.openKey, false)
+          if (document.activeElement === input) input.blur()
+          panel.style.display = 'none'
+          document.documentElement.classList.remove('ysa-assistant-open')
+        }
+        hideLauncher(true)
+        launcher.style.removeProperty('bottom')
+        return
+      }
+
+      var box = launcherFootprint()
+      var composerHits = document.querySelectorAll('.comp-send, .ys-market-chat-composer, .ys-market-chat-foot a, .comp-row')
+      for (var i = 0; i < composerHits.length; i++) {
+        var el = composerHits[i]
+        if (el === launcher || (panel.contains && panel.contains(el))) continue
+        if (!elementOnScreen(el)) continue
+        if (rectsOverlap(box, el.getBoundingClientRect(), 12)) {
+          hideLauncher(true)
+          launcher.style.removeProperty('bottom')
+          return
+        }
+      }
+
+      hideLauncher(false)
+      if (open) {
+        launcher.style.removeProperty('bottom')
+        return
+      }
+
+      var lift = 0
+      var viewH = window.innerHeight || 0
+      var viewW = window.innerWidth || 0
+      var controls = document.querySelectorAll('button, a[href], [role="button"], input[type="submit"]')
+      for (var j = 0; j < controls.length; j++) {
+        var node = controls[j]
+        if (node === launcher || (panel.contains && panel.contains(node))) continue
+        if (!elementOnScreen(node)) continue
+        var r = node.getBoundingClientRect()
+        if (r.bottom < viewH - 200 || r.left < viewW - 160) continue
+        if (rectsOverlap(box, r, 10)) {
+          lift = Math.max(lift, Math.ceil(box.bottom - r.top + 16))
+        }
+      }
+      if (lift > 0) {
+        var bottom = Math.min(Math.round(viewH * 0.45), 20 + lift)
+        launcher.style.bottom = 'max(' + bottom + 'px, calc(' + bottom + 'px + env(safe-area-inset-bottom)))'
+      } else {
+        launcher.style.removeProperty('bottom')
+      }
+    } finally {
+      syncingLauncher = false
+    }
+  }
+  var launcherFrame = 0
+  function scheduleLauncherChrome() {
+    if (launcherFrame) return
+    launcherFrame = window.requestAnimationFrame(function () {
+      launcherFrame = 0
+      syncLauncherChrome()
+    })
   }
   function setPanelImportant(prop, value) {
     panel.style.setProperty(prop, value, 'important')
@@ -306,6 +429,7 @@
     document.documentElement.classList.toggle('ysa-assistant-open', open && isMobileAssistant())
     if (open) syncVisualViewport()
     else panel.classList.remove('ysa-keyboard-open')
+    scheduleLauncherChrome()
 
     var visible = history.length ? history : [{ role: 'assistant', content: cfg.greeting }]
     var html = ''
@@ -457,13 +581,26 @@
   input.addEventListener('keydown', function (event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } })
 
   window.addEventListener('resize', syncVisualViewport, { passive: true })
+  window.addEventListener('resize', scheduleLauncherChrome, { passive: true })
+  window.addEventListener('scroll', scheduleLauncherChrome, { passive: true, capture: true })
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', syncVisualViewport, { passive: true })
     window.visualViewport.addEventListener('scroll', syncVisualViewport, { passive: true })
+    window.visualViewport.addEventListener('resize', scheduleLauncherChrome, { passive: true })
+  }
+  if (typeof MutationObserver !== 'undefined') {
+    var chromeObserver = new MutationObserver(scheduleLauncherChrome)
+    chromeObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-mobile-view', 'data-ysa-hide-launcher', 'class', 'hidden', 'style'],
+    })
   }
 
   resizeInput()
   render()
   scheduleViewportSync()
+  scheduleLauncherChrome()
   if (open) startPolling()
 })()

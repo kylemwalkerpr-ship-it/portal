@@ -405,3 +405,18 @@
     font-size: 11px;
   }
 }
+
+/* The site-wide YQAA launcher is a 58px FAB at max z-index. While a real
+   conversation composer owns the bottom-right (marketplace ChatSidePane or
+   the mobile messenger thread), hide it so Send / Open in Messages stay
+   tappable. The embed also collision-dodges leftover controls. */
+body:has(.ys-market-chat-overlay) .ysa-launcher,
+body:has(.ys-market-chat-overlay) .ysa-panel,
+body:has(.ys-chatscreen[data-mobile-view='chat']) .ysa-launcher,
+body:has(.ys-chatscreen[data-mobile-view='chat']) .ysa-panel,
+body:has([data-ysa-hide-launcher='true']) .ysa-launcher,
+body:has([data-ysa-hide-launcher='true']) .ysa-panel {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

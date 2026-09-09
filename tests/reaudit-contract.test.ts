@@ -95,16 +95,18 @@ let sentenceCounter = 0
 
 /** Build one paragraph of N globally-unique sentences. */
 function buildParagraph(sentenceCount = 6): string {
-  return Array.from({ length: sentenceCount }, () => {
+  return Array.from({ length: sentenceCount }, (_, i) => {
     const opener = OPENERS[(sentenceCounter * 5) % OPENERS.length]
     const tail = TAILS[(sentenceCounter * 3) % TAILS.length]
     sentenceCounter += 1
-    return `${opener} ${tail}.`
+    if (i % 5 === 0) return `${opener} now.`
+    return `${opener} ${tail}, marked as item ${sentenceCounter} in this file.`
   }).join(' ')
 }
 
 /** Full guide: 8 sections × 4 paragraphs × 5 sentences ≈ 2300 body words
- *  (within the 2200–2500 pillar band). */
+ *  (within the 2200–2500 pillar band). The closing H2 is hand-written so
+ *  mill-geometry cannot mark it as glued to “Risks and refusals”. */
 const SECTIONS: Array<{ h2: string }> = [
   { h2: 'Eligibility' },
   { h2: 'Required documents' },
@@ -112,8 +114,16 @@ const SECTIONS: Array<{ h2: string }> = [
   { h2: 'Processing times' },
   { h2: 'Common mistakes' },
   { h2: 'Risks and refusals' },
-  { h2: 'After you file' },
 ]
+
+const STATUS_AFTER_DECISION = `## Keeping lawful status after a decision
+
+Once an approval lands, the work shifts from filing to remaining lawful. Photocopy the foil, diary the expiry, and tell your employer the exact end date printed on the notice.
+
+For example, if the approval lists 15 January 2027, set a reminder 90 days earlier to start the next DS-160 packet, print a fresh I-94, and restock the fee-receipt folder.
+
+Do not treat this as a second refusals essay. Calendars, I-94 printouts, and travel while the new foil is valid are the only jobs here.
+`
 
 /** Build a legal guide that clears the quality gate AND the Google depth floor
  *  (≥2200 body words). `keep` trims sections for the thin variant, which keeps
@@ -122,9 +132,24 @@ const SECTIONS: Array<{ h2: string }> = [
 function buildPassingArticle(keep = SECTIONS.length): string {
   sentenceCounter = 0
   const sections = SECTIONS.slice(0, keep)
-  const body = sections
+  const generated = sections
     .map((s) => `## ${s.h2}\n\n${[0, 1, 2, 3].map(() => buildParagraph()).join('\n\n')}`)
     .join('\n\n')
+  const procedure = keep >= 3 ? `
+### Worked example: sequencing a DS-160 packet
+
+For example, a renewing worker typically sequences the packet as follows:
+
+1. Confirm the I-94 admission record on the CBP I-94 site
+2. Complete DS-160 online and print the barcode confirmation
+3. Pay the MRV fee and photograph against the 2x2 inch spec
+4. Book the VAC biometrics slot, then the consular interview
+
+Forms, fees, and slot diaries are the procedure — not a case story.
+` : ''
+  const body = keep === SECTIONS.length
+    ? `${generated}${procedure}\n\n${STATUS_AFTER_DECISION}`
+    : generated
   return `---
 title: US visa renewal guide for 2026 applicants
 description: Complete guide to renewing your US visa with eligibility, documents, steps, timelines, and official sources.
@@ -141,7 +166,7 @@ robots: index,follow
 - Gather passport, proof of identity, and supporting documents
 - File before your current visa expires and keep your reference number
 
-Official guidance, forms, and fee schedules are published at [USCIS](https://www.uscis.gov/) for US cases and at the equivalent authority for other jurisdictions, so always verify the current position against the official source before you act.
+Official guidance, forms, and fee schedules are published at [USCIS](https://www.uscis.gov/) for US cases and at the equivalent authority for other jurisdictions, so always verify the current position against the official source before you act. Continue on the [US visa hub](https://legal.yousafeconsultancy.com/us/) and the related [H-1B process](https://legal.yousafeconsultancy.com/us/h1b/) when you need neighbouring estate pages.
 
 ${body}
 
@@ -158,6 +183,9 @@ No, but professional advice can help when your circumstances are complex or a pr
 
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can I renew before my current visa expires?","acceptedAnswer":{"@type":"Answer","text":"Yes, and you should. Most categories allow you to apply before the expiry date, and starting early protects you if processing takes longer than expected."}},{"@type":"Question","name":"What happens if my application is refused?","acceptedAnswer":{"@type":"Answer","text":"The refusal notice explains the reasons for the decision and any right to review or appeal."}},{"@type":"Question","name":"Do I need a lawyer to apply?","acceptedAnswer":{"@type":"Answer","text":"No, but professional advice can help when your circumstances are complex or a previous application was refused."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Article","headline":"US visa renewal guide for 2026 applicants"}
 </script>
 
 ---
