@@ -1,6 +1,7 @@
 import { LocalLinter, Dialect, SuggestionKind, type Lint, type Suggestion } from 'harper.js'
 import { binaryInlined } from 'harper.js/binaryInlined'
 import { scoreHarperLints } from '@/lib/editorMetrics'
+import { contentFingerprint } from '@/lib/seoFactory/currentGate'
 import {
   harperSafeLines,
   HARPER_ESTATE_WORDS,
@@ -33,6 +34,10 @@ export type HarperLintSummary = {
   errors: number
   suggestions: number
   items: Array<{ kind: string; problem: string; message: string; fix?: string }>
+  /** Exact document identity Harper evaluated. Optional only for legacy/test callers. */
+  fingerprint?: string
+  /** Extra stale-result guard for browser/server hand-off. */
+  sourceCharacters?: number
 }
 
 export type HarperAutofixResult = {
@@ -168,8 +173,9 @@ export async function runHarperGrammar(
       } catch { /* vocabulary is best-effort */ }
     }
     if (signal?.aborted) return null
-    const { body } = splitMarkdownFrontmatter(String(md || ''))
-    const source = body.trim().length >= 80 ? maskHarperScaffold(body) : harperSafeLines(String(md || '')).filter((l) => !l.skip).map((l) => l.out).join('\n')
+    const document = String(md || '')
+    const { body } = splitMarkdownFrontmatter(document)
+    const source = body.trim().length >= 80 ? maskHarperScaffold(body) : harperSafeLines(document).filter((l) => !l.skip).map((l) => l.out).join('\n')
     if (source.trim().length < 80) {
       return null // Too little prose to evaluate; never manufacture a perfect score.
     }
@@ -207,7 +213,14 @@ export async function runHarperGrammar(
         message: m.message.slice(0, 200),
         fix: m.fix?.slice(0, 160),
       }))
-    return { score, errors, suggestions, items }
+    return {
+      score,
+      errors,
+      suggestions,
+      items,
+      fingerprint: contentFingerprint(document),
+      sourceCharacters: document.length,
+    }
   } catch (err) {
     console.info('[harper] grammar pass skipped:', String((err as Error)?.message || err).slice(0, 120))
     return null
