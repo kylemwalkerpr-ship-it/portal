@@ -1,6 +1,7 @@
 import './globals.css'
 import './portal-themes.css'
 import './mobile-hardening.css'
+import './mobile-conversion.css'
 import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
