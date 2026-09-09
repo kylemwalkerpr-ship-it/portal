@@ -5,6 +5,7 @@ import React from 'react'
 const HEIGHT_VAR = '--ys-visual-viewport-height'
 const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'
 const OFFSET_VAR = '--ys-visual-viewport-offset-top'
+const PAN_VAR = '--ys-visual-viewport-pan-top'
 const CHAT_CANVAS_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] [data-chat-canvas]"
 const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-input"
 
@@ -22,9 +23,16 @@ const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-v
  *   coordinates. Existing dashboard shells use it while remaining in normal
  *   document flow.
  * - --ys-visual-viewport-block-size is the actual visible height. Full-screen
- *   mobile conversations pair it with --ys-visual-viewport-offset-top and
- *   become fixed to the VisualViewport, which prevents Safari's keyboard pan
- *   from clipping the chat header or composer.
+ *   mobile conversations pair it with a separately published visual pan and
+ *   stay aligned with the on-screen viewport even when WebKit pans the page.
+ *
+ * iOS 26 has an additional fixed-position regression: the browser can visually
+ * pan the page while fixed descendants are anchored against stale layout
+ * geometry. Some builds also under-report VisualViewport.offsetTop while
+ * pageTop reflects the larger pan. We therefore publish a defensive pan value
+ * derived from both signals. CSS keeps the fixed chat anchored at top: 0 and
+ * applies the pan as a compositor transform instead of feeding it back into
+ * fixed-position layout.
  *
  * Safari's native controls above the keyboard are treated separately from the
  * keyboard-height heuristic. iOS 26 can focus the Messenger textarea and show
@@ -80,10 +88,19 @@ export default function MobileVisualViewport() {
       const rawHeight = viewport?.height || window.innerHeight
       const visualHeight = Math.max(1, Math.round(rawHeight))
       const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0))
+      const pageTop = Math.max(0, Math.round(viewport?.pageTop ?? (window.scrollY + offsetTop)))
+      const layoutScrollTop = Math.max(
+        0,
+        Math.round(window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0),
+      )
+      // Under normal VisualViewport semantics pageTop - scrollY === offsetTop.
+      // iOS 26 can under-report offsetTop during keyboard pan, so prefer the
+      // larger equivalent signal and feed that to the compositor transform.
+      const visualPanTop = Math.max(offsetTop, pageTop - layoutScrollTop)
       // Normal-flow dashboard shells need their bottom edge to reach the visual
       // viewport bottom even when Safari pans the layout viewport. Fixed mobile
-      // chats instead consume visualHeight + offsetTop as separate values.
-      const visibleBottom = visualHeight + offsetTop
+      // chats consume visualHeight and visualPanTop as separate values.
+      const visibleBottom = visualHeight + visualPanTop
       const focused = composerIsFocused()
 
       // Keep the focus marker synchronized even if Safari restores a page from
@@ -103,6 +120,7 @@ export default function MobileVisualViewport() {
       root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)
       root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)
       root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)
+      root.style.setProperty(PAN_VAR, `${visualPanTop}px`)
 
       // A keyboard resize reduces the canvas clientHeight without changing its
       // scrollTop. If the reader was already at the conversation tail, keep the
@@ -206,6 +224,7 @@ export default function MobileVisualViewport() {
       root.style.removeProperty(HEIGHT_VAR)
       root.style.removeProperty(BLOCK_SIZE_VAR)
       root.style.removeProperty(OFFSET_VAR)
+      root.style.removeProperty(PAN_VAR)
     }
   }, [])
 

@@ -16,10 +16,13 @@ describe('mobile visual viewport contract', () => {
     expect(coordinator).toContain("document.addEventListener('focusin', onFocusIn)")
     expect(coordinator).toContain("document.addEventListener('focusout', onFocusOut)")
     expect(coordinator).toContain('const visualHeight = Math.max(1, Math.round(rawHeight))')
-    expect(coordinator).toContain('const visibleBottom = visualHeight + offsetTop')
+    expect(coordinator).toContain('const pageTop = Math.max(0, Math.round(viewport?.pageTop')
+    expect(coordinator).toContain('const visualPanTop = Math.max(offsetTop, pageTop - layoutScrollTop)')
+    expect(coordinator).toContain('const visibleBottom = visualHeight + visualPanTop')
     expect(coordinator).toContain("root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)")
     expect(coordinator).toContain("root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)")
     expect(coordinator).toContain("root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)")
+    expect(coordinator).toContain("root.style.setProperty(PAN_VAR, `${visualPanTop}px`)")
     expect(coordinator).not.toContain('MIN_HEIGHT')
   })
 
@@ -66,6 +69,15 @@ describe('mobile visual viewport contract', () => {
     expect(css).toContain('min-height: 58px !important')
     expect(css).toContain('.comp {')
     expect(css).toContain('flex: 0 0 auto !important')
+  })
+
+  test('iOS browser tabs compensate visual pan in the compositor instead of fixed-position layout', () => {
+    expect(coordinator).toContain("const PAN_VAR = '--ys-visual-viewport-pan-top'")
+    expect(coordinator).toContain('pageTop - layoutScrollTop')
+    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false']")
+    expect(css).toContain('top: 0 !important')
+    expect(css).toContain('transform: translate3d(0, var(--ys-visual-viewport-pan-top, 0px), 0) !important')
+    expect(css).toContain('will-change: transform')
   })
 
   test('the same viewport source covers role dashboards and marketplace messenger surfaces', () => {

@@ -11,20 +11,31 @@ describe('mobile Messenger keyboard viewport contract', () => {
 
   test('publishes visual height separately from Safari pan offset', () => {
     expect(coordinator).toContain("const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'")
+    expect(coordinator).toContain("const PAN_VAR = '--ys-visual-viewport-pan-top'")
     expect(coordinator).toContain('const visualHeight = Math.max(1, Math.round(rawHeight))')
-    expect(coordinator).toContain('const visibleBottom = visualHeight + offsetTop')
+    expect(coordinator).toContain('const pageTop = Math.max(0, Math.round(viewport?.pageTop')
+    expect(coordinator).toContain('const visualPanTop = Math.max(offsetTop, pageTop - layoutScrollTop)')
+    expect(coordinator).toContain('const visibleBottom = visualHeight + visualPanTop')
     expect(coordinator).toContain("root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)")
     expect(coordinator).toContain("root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)")
+    expect(coordinator).toContain("root.style.setProperty(PAN_VAR, `${visualPanTop}px`)")
   })
 
-  test('open mobile chats are fixed to the truly usable VisualViewport rectangle', () => {
+  test('open mobile chats use the truly usable VisualViewport rectangle', () => {
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat']")
     expect(css).toContain('position: fixed !important')
-    expect(css).toContain('top: var(--ys-visual-viewport-offset-top, 0px) !important')
     expect(css).toContain('var(--ys-ios-keyboard-native-occlusion, 0px)')
     expect(css).toContain('height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important')
     expect(css).toContain('max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important')
     expect(css).toContain('z-index: 10020 !important')
+  })
+
+  test('iOS 26 browser tabs keep fixed layout at top zero and apply pan as a compositor transform', () => {
+    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false']")
+    expect(css).toContain('top: 0 !important')
+    expect(css).toContain('transform: translate3d(0, var(--ys-visual-viewport-pan-top, 0px), 0) !important')
+    expect(css).toContain('will-change: transform')
+    expect(coordinator).toContain('pageTop - layoutScrollTop')
   })
 
   test('Safari reserves native bottom chrome from real Messenger focus, not a keyboard-height threshold', () => {
