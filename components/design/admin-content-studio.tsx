@@ -298,6 +298,16 @@ const REGION_OPTIONS: { value: Region; label: string; flag: string }[] = [
   { value: 'COMPARE', label: 'Cross-Country Comparison', flag: '🔀' },
 ]
 
+type DiscoverScanRegion = 'ALL' | 'US' | 'CA' | 'UK' | 'AU'
+
+const DISCOVER_SCAN_OPTIONS: { value: DiscoverScanRegion; label: string; flag: string }[] = [
+  { value: 'ALL', label: 'All countries', flag: '🌐' },
+  { value: 'US', label: 'United States', flag: '🇺🇸' },
+  { value: 'CA', label: 'Canada', flag: '🇨🇦' },
+  { value: 'UK', label: 'United Kingdom', flag: '🇬🇧' },
+  { value: 'AU', label: 'Australia', flag: '🇦🇺' },
+]
+
 /**
  * Client-safe mirror of detectRegionFromText's confident policy.
  * researchDemand.ts pulls server modules (planner/supabase) so the studio
@@ -5108,6 +5118,7 @@ interface WorkPlanItem {
   conversionLine?: string
   gscEvidence?: GscWorkPlanEvidence
   sources?: string[]
+  region?: string
 }
 
 const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: string; icon: string }> = {
@@ -5206,6 +5217,7 @@ function buildWorkPlan(
       playbookMove: verdict.move,
       qualityLine: verdict.qualityLine,
       conversionLine: verdict.conversionLine,
+      region: s.region,
     })
   }
   for (const s of uberBriefs) {
@@ -5256,6 +5268,7 @@ function buildWorkPlan(
       playbookMove: verdict.move,
       qualityLine: verdict.qualityLine,
       conversionLine: verdict.conversionLine,
+      region: s.region,
     })
   }
   // Overlay first-party GSC scores onto matching topics, then promote unmatched
@@ -5308,6 +5321,7 @@ function buildWorkPlan(
       : play === 'refresh' || play === 'defend' ? 'refresh'
       : 'gap'
     const priority = blendDeskWithGsc(verdict.deskScore, seed.opportunityScore)
+    const gscRegion = studioHandoffRegion(seed.topic)
     items.push({
       id: `gsc-${seed.topic}`,
       category: cat,
@@ -5320,13 +5334,14 @@ function buildWorkPlan(
       signals: [verdict.whyLine, formatGscEvidenceLine(row.evidence), verdict.qualityLine, ...seed.signals].filter(Boolean),
       keywords: seed.keywords,
       play,
-      suggestion: suggestionFromGscSeed(seed),
+      suggestion: { ...suggestionFromGscSeed(seed), region: gscRegion || undefined },
       competingPages: row.page ? [String(row.page)] : undefined,
       funnel: verdict.funnel,
       playbookMove: verdict.move,
       qualityLine: verdict.qualityLine,
       conversionLine: verdict.conversionLine,
       gscEvidence: row.evidence,
+      region: gscRegion || undefined,
     })
   }
   // Cannibalization from radar meta — hide clusters that already have a
@@ -5627,6 +5642,13 @@ function WorkPlanTable({
                     background: item.priorityTier === 'high' ? E.greenSoft : item.priorityTier === 'medium' ? '#FFF7ED' : E.surface2,
                     color: item.priorityTier === 'high' ? E.green : item.priorityTier === 'medium' ? E.orange : E.inkMuted,
                   }}>{item.priorityTier} value</span>
+                  {item.region && item.region !== 'ALL' && (
+                    <span style={{
+                      display: 'inline-block', padding: '3px 7px', borderRadius: 3,
+                      fontSize: 8, fontWeight: 800, fontFamily: C.mono, textTransform: 'uppercase',
+                      background: E.surface2, color: E.inkSoft,
+                    }}>{item.region}</span>
+                  )}
                   <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
                     <div style={{ fontFamily: C.serif, fontSize: 24, lineHeight: 0.9, fontWeight: 800, color: item.priority >= 70 ? E.green : item.priority >= 40 ? E.orange : E.inkMuted }}>{item.priority}</div>
                     <div style={{ marginTop: 4, fontFamily: C.mono, fontSize: 7.5, color: E.inkDim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>priority</div>
@@ -6012,6 +6034,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // stored as 'article' → wrong word-count floor applied at the ship gate).
   const [contentTypeTouched, setContentTypeTouched] = React.useState(false)
   const [region, setRegion] = React.useState<Region>('US')
+  const [discoverRegion, setDiscoverRegion] = React.useState<DiscoverScanRegion>('ALL')
   const [tone, setTone] = React.useState<Tone>('educational')
   const [aiProvider, setAiProvider] = React.useState(DEFAULT_DRAFT_PIN)
   const [reviewModel, setReviewModel] = React.useState(DEFAULT_REVIEW_PIN)
@@ -6305,6 +6328,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } else {
       setTitle(first.title || first.topic)
     }
+    const fromSuggestion = first.suggestion?.region || first.region
+    const fromTopic = studioHandoffRegion(`${first.topic} ${first.title} ${first.suggestion?.primaryKeyword || ''}`)
+    const nextRegion = (fromSuggestion === 'US' || fromSuggestion === 'CA' || fromSuggestion === 'UK' || fromSuggestion === 'AU' || fromSuggestion === 'COMPARE')
+      ? fromSuggestion
+      : fromTopic
+    if (nextRegion) setRegion(nextRegion)
     // ── Competing URL detection (anti-cannibalization) ──
     // Wire the Discover stage to call checkCompetingPages() when sending
     // topics to research. Competing URLs are stored in state and flow into
@@ -6652,7 +6681,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           region: regionArg,
-          limit: 12,
+          filterRegion: regionArg === 'ALL' || regionArg === 'COMPARE' ? undefined : regionArg,
+          limit: regionArg === 'ALL' || regionArg === 'COMPARE' ? 16 : 12,
           nonce: `${Date.now()}-${radarSeenTopicsRef.current.size}`,
           excludeTopics: Array.from(radarSeenTopicsRef.current).slice(-160),
           plays: regenerationFiltersRef.current.plays,
@@ -6744,10 +6774,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       // token after re-authorization (live false→true) — both flip the radar
       // suggestions to live.
       if ((!prev?.connected && data.connected) || (!prev?.live && data.live)) {
-        fetchSuggestions(region)
+        fetchSuggestions(discoverRegion)
       }
     } catch { /* silent */ }
-  }, [fetchSuggestions, region])
+  }, [fetchSuggestions, discoverRegion])
 
   React.useEffect(() => {
     loadGscStatus()
@@ -6909,10 +6939,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     return () => { cancelled = true }
   }, [openAeoRemediation])
 
+  const discoverRegionRef = React.useRef<DiscoverScanRegion>(discoverRegion)
   React.useEffect(() => {
     if (tab !== 'discover') return
-    fetchSuggestions(region)
-  }, [fetchSuggestions, region, tab])
+    if (discoverRegionRef.current !== discoverRegion) {
+      radarSeenTopicsRef.current = new Set()
+      discoverRegionRef.current = discoverRegion
+    }
+    fetchSuggestions(discoverRegion)
+  }, [fetchSuggestions, discoverRegion, tab])
   React.useEffect(() => { void fetchUberOpps(false) }, [fetchUberOpps])
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
 
@@ -8270,7 +8305,30 @@ const controller = new AbortController()
                     )}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  <div role="group" aria-label="Discover country" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {DISCOVER_SCAN_OPTIONS.map((opt) => {
+                      const active = discoverRegion === opt.value
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setDiscoverRegion(opt.value)}
+                          title={opt.value === 'ALL' ? 'Scan US, Canada, UK and Australia together' : `Scan ${opt.label} demand and strategy corpus`}
+                          style={{
+                            padding: '6px 9px',
+                            border: active ? '1px solid #F8E7B0' : '1px solid rgba(255,255,255,0.22)',
+                            background: active ? 'rgba(248,231,176,0.16)' : 'transparent',
+                            color: active ? '#F8E7B0' : 'rgba(255,255,255,0.78)',
+                            fontFamily: C.mono, fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
+                            borderRadius: E.radiusXs, cursor: 'pointer',
+                          }}
+                        >
+                          {opt.flag} {opt.value === 'ALL' ? 'All' : opt.value}
+                        </button>
+                      )
+                    })}
+                  </div>
                   <button
                     type="button"
                     onClick={() => void intelRef.current?.syncGsc()}
@@ -8287,18 +8345,19 @@ const controller = new AbortController()
                   <button
                     type="button"
                     onClick={() => {
+                      radarSeenTopicsRef.current = new Set()
                       void intelRef.current?.load()
-                      fetchSuggestions(region)
+                      fetchSuggestions(discoverRegion)
                     }}
                     disabled={intelBusy || suggestionsLoading}
-                    title="Reload first-party scores and rescan Master Engine suggestions for this region"
+                    title={discoverRegion === 'ALL' ? 'Rescan Master Engine + first-party scores for every estate country' : `Rescan Master Engine + first-party scores for ${discoverRegion}`}
                     style={{
                       padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
                       fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
                       borderRadius: E.radiusXs, cursor: intelBusy || suggestionsLoading ? 'wait' : 'pointer',
                     }}
                   >
-                    {intelBusy || suggestionsLoading ? 'Refreshing…' : `Refresh intel · ${region}`}
+                    {intelBusy || suggestionsLoading ? 'Refreshing…' : `Refresh intel · ${discoverRegion === 'ALL' ? 'all countries' : discoverRegion}`}
                   </button>
                   <button
                     type="button"

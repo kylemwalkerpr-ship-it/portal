@@ -141,6 +141,88 @@ export function resolveBriefRegion(
   return { region: current, regionAutoSelected: false, detected }
 }
 
+export const ESTATE_REGIONS = ['US', 'CA', 'UK', 'AU'] as const
+export type EstateRegion = (typeof ESTATE_REGIONS)[number]
+
+/** Discover scan can be one country or the full estate. */
+export function isEstateWideRegion(region: string | null | undefined): boolean {
+  const r = String(region || '').toUpperCase()
+  return !r || r === 'ALL' || r === 'COMPARE'
+}
+
+export function normalizeEstateRegion(region: string | null | undefined): string {
+  const r = String(region || '').toUpperCase()
+  if (r === 'ALL' || r === 'COMPARE') return r
+  if (r === 'GB') return 'UK'
+  if ((ESTATE_REGIONS as readonly string[]).includes(r)) return r
+  return 'US'
+}
+
+/**
+ * Expanded tokens so a 2-letter scan code (US/CA/UK/AU) actually matches
+ * strategy-corpus terms. The suggestions route used to split `region` and
+ * drop tokens shorter than 4 chars, so CA/UK/AU/US never biased knowledge.
+ */
+export const REGION_KNOWLEDGE_TOKENS: Record<string, string> = {
+  US: 'united states usa uscis american sevis',
+  CA: 'canada canadian ircc express entry study permit pgwp',
+  UK: 'united kingdom britain ukvi skilled worker graduate route',
+  AU: 'australia australian home affairs subclass',
+  COMPARE: 'compare versus comparison',
+  ALL: '',
+}
+
+function clusterEstateRegion(cluster: string): EstateRegion | 'COMPARE' | null {
+  const c = String(cluster || '').toLowerCase()
+  if (c.startsWith('uk-')) return 'UK'
+  if (c.startsWith('us-')) return 'US'
+  if (c.startsWith('canada-') || c.startsWith('ca-')) return 'CA'
+  if (c.startsWith('au-') || c.startsWith('australia')) return 'AU'
+  if (c === 'compare') return 'COMPARE'
+  return null
+}
+
+/**
+ * Country a query/topic belongs to. Confident detection wins; otherwise the
+ * scan region (or ALL when the operator asked for the whole estate).
+ */
+export function inferOpportunityRegion(term: string, scanRegion?: string | null): string {
+  const detected = detectRegionFromText(term)
+  if (detected?.confident) return detected.region
+  const marked = keywordRegion(term)
+  if (marked) return marked
+  if (isEstateWideRegion(scanRegion)) return detected?.region || 'ALL'
+  return normalizeEstateRegion(scanRegion)
+}
+
+/**
+ * Keep GSC / knowledge rows that can legally live on this country's queue.
+ * Foreign-marked queries are dropped. Generic demand (no country marker)
+ * stays — it can be written for the selected country.
+ */
+export function queryBelongsToRegion(term: string, scanRegion: string | null | undefined): boolean {
+  if (isEstateWideRegion(scanRegion)) return true
+  const rc = normalizeEstateRegion(scanRegion)
+  const owner = inferOpportunityRegion(term, scanRegion)
+  return owner === rc || owner === 'ALL'
+}
+
+/** Strategy-corpus row: cluster prefix plus term markers must match the scan. */
+export function strategicKeywordBelongsToRegion(
+  term: string,
+  cluster: string,
+  scanRegion: string | null | undefined,
+): boolean {
+  if (isEstateWideRegion(scanRegion)) return true
+  const rc = normalizeEstateRegion(scanRegion)
+  const fromCluster = clusterEstateRegion(cluster)
+  if (fromCluster === 'COMPARE') return false
+  if (fromCluster && fromCluster !== rc) return false
+  if (fromCluster === rc) return true
+  return queryBelongsToRegion(term, rc)
+}
+
+
 
 /**
  * Deterministically drop keywords that belong to a DIFFERENT region than the
