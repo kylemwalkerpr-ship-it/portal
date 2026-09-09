@@ -1,43 +1,25 @@
 /**
  * Admin Master Chats — reliability regression suite.
  *
- * Covers the four permanent-fix contracts that shipped for the "Invalid
- * Date + unstyled full-width bubbles + native textarea" report:
- *
- *  1. DATE CONTRACT      — lib/messaging/format.ts never emits "Invalid
- *     Date" / NaN; handles real ISO timestamps with timezone offsets and
- *     invalid or absent values deterministically.
- *  2. SCOPE / STYLE ROOT — messenger-tokens.css scopes bubble + composer
- *     rules to `.yousafe-messenger`; AdminMasterMessenger re-declares that
- *     root and passes RAW created_at to MessageBubble (which formats once).
- *  3. THREAD RACES       — pagination helper + API ordering contract: the
- *     admin GET messages endpoint returns a bounded newest-first page in
- *     ascending order with an older-history cursor (never the old unbounded
- *     oldest-1000 shape) and still enforces admin auth.
- *
- * No live messages / DB writes are involved; everything runs in Jest node.
+ * Covers the permanent reliability contracts for date handling, scoped
+ * messenger styles, race-safe thread pagination, admin auth, and the upgraded
+ * admin composer capability contract.
  */
 import fs from 'fs'
 import path from 'path'
 
 const ROOT = process.cwd()
 
-/* ════════════════════════════════════════════════════════════════════════
-   1. format.ts date contract
-   ════════════════════════════════════════════════════════════════════════ */
 describe('lib/messaging/format date contract', () => {
   const fmt = require('@/lib/messaging/format')
 
   it('parses real ISO timestamps and timezone offsets (no Invalid Date)', () => {
     const isoWithOffset = '2026-09-05T14:30:00.000-04:00'
     const isoUtc = '2026-09-05T18:30:00.000Z'
-    // Both resolve to the same instant → same absolute rendering.
     expect(fmt.toValidDate(isoWithOffset)).not.toBeNull()
     expect(fmt.toValidDate(isoWithOffset)!.getTime()).toBe(fmt.toValidDate(isoUtc)!.getTime())
-    // Compact offset form (common in Postgres-backed APIs).
     expect(fmt.toValidDate('2026-09-05T14:30:00-04:00')!.getTime())
       .toBe(fmt.toValidDate('2026-09-05T18:30:00.000Z')!.getTime())
-    // fmtFullTime renders a real label (no "Invalid Date" substring).
     expect(fmt.fmtFullTime(isoUtc)).not.toMatch(/Invalid/)
     expect(fmt.fmtFullTime(isoUtc)).not.toBe('')
   })
@@ -61,7 +43,6 @@ describe('lib/messaging/format date contract', () => {
     expect(fmt.sameDay(good, null)).toBe(false)
     expect(fmt.sameDay(null, null)).toBe(false)
     expect(fmt.sameDay(good, '2026-09-05T22:00:00Z')).toBe(true)
-    // One invalid, one valid → false (no crashing into NaN year).
     expect(fmt.sameDay('not-a-date', good)).toBe(false)
   })
 
@@ -71,7 +52,6 @@ describe('lib/messaging/format date contract', () => {
     expect(fmt.fmtFullTime(d)).not.toBe('')
     expect(fmt.dateLabel('bad-date')).not.toBe('Today')
     expect(fmt.dateLabel('bad-date')).not.toBe('Yesterday')
-    // Valid date on same day as "now" → Today.
     expect(fmt.dateLabel(new Date().toISOString())).toBe('Today')
   })
 
@@ -81,12 +61,17 @@ describe('lib/messaging/format date contract', () => {
   })
 })
 
-/* ════════════════════════════════════════════════════════════════════════
-   2. Scope / style root + raw-timestamp regression (static contract)
-   ════════════════════════════════════════════════════════════════════════ */
 describe('Admin Master Chats scope + timestamp contract', () => {
   const messengerSrc = fs.readFileSync(
     path.join(ROOT, 'components/messaging/AdminMasterMessenger.tsx'),
+    'utf8',
+  )
+  const composerSrc = fs.readFileSync(
+    path.join(ROOT, 'components/messaging/AdminMasterComposer.tsx'),
+    'utf8',
+  )
+  const attachSrc = fs.readFileSync(
+    path.join(ROOT, 'app/api/admin/messages/conversations/[id]/attach/route.ts'),
     'utf8',
   )
   const bubbleSrc = fs.readFileSync(
@@ -106,9 +91,8 @@ describe('Admin Master Chats scope + timestamp contract', () => {
   })
 
   it('passes raw created_at to MessageBubble (no double formatting)', () => {
-    // MessageBubble formats internally — the admin messenger must NOT pre-format.
     expect(bubbleSrc).toMatch(/fmtFullTime\(timestamp\)/)
-    expect(messengerSrc).toMatch(/timestamp=\{m\.created_at\}/)
+    expect(messengerSrc).toMatch(/timestamp=\{message\.created_at\}/)
     expect(messengerSrc).not.toContain('fmtFullTime')
   })
 
@@ -118,15 +102,15 @@ describe('Admin Master Chats scope + timestamp contract', () => {
     }
   })
 
-  it('omits attachment/voice controls in the admin composer (capability props)', () => {
-    expect(messengerSrc).toContain('allowAttach={false}')
-    expect(messengerSrc).toContain('allowVoice={false}')
+  it('provides an admin-authenticated attachment and voice capability', () => {
+    expect(messengerSrc).toContain('<AdminMasterComposer')
+    expect(composerSrc).toContain('/api/admin/messages/conversations/${conversationId}/attach')
+    expect(composerSrc).toContain('MediaRecorder')
+    expect(attachSrc).toContain('requireAdminUser')
+    expect(attachSrc).toContain('admin_message: true')
   })
 })
 
-/* ════════════════════════════════════════════════════════════════════════
-   3. Thread pagination + API auth (pure helper + route contract)
-   ════════════════════════════════════════════════════════════════════════ */
 describe('lib/adminMessages/threadPage', () => {
   const { buildThreadPage, parseThreadPageLimit, THREAD_PAGE_MAX_LIMIT, keyOf, encodeCursor, parseCursor, olderThanSlot, cursorFilter } =
     require('@/lib/adminMessages/threadPage')
@@ -149,9 +133,8 @@ describe('lib/adminMessages/threadPage', () => {
       { id: 'm1', created_at: '2026-09-05T08:00:00Z' },
     ]
     const r = buildThreadPage(rows, 2, keyOf)
-    expect(r.messages.map((m) => m.id)).toEqual(['m2', 'm3']) // ascending, newest kept
+    expect(r.messages.map((m) => m.id)).toEqual(['m2', 'm3'])
     expect(r.has_older).toBe(true)
-    // Cursor is the composite key of the OLDEST message of the page.
     expect(r.older_cursor).toBe(encodeCursor('2026-09-05T09:00:00Z', 'm2'))
     expect(parseCursor(r.older_cursor)).toEqual({ created_at: '2026-09-05T09:00:00Z', id: 'm2' })
   })
@@ -184,10 +167,6 @@ describe('lib/adminMessages/threadPage', () => {
   })
 
   it('walks a full history WITHOUT skipping equal-boundary-timestamp messages', () => {
-    // Three messages share 09:00 (ids 1,2,3); two share 10:00 (ids 1,2).
-    // A bare `created_at <` cursor would permanently skip the tidier fall of
-    // the 09:00 bucket. The composite (created_at,id) cursor must never
-    // skip or duplicate across page boundaries.
     const all = [
       { id: 'a1', created_at: '2026-09-05T08:00:00Z' },
       { id: 'b1', created_at: '2026-09-05T09:00:00Z' },
@@ -196,7 +175,6 @@ describe('lib/adminMessages/threadPage', () => {
       { id: 'c1', created_at: '2026-09-05T10:00:00Z' },
       { id: 'c2', created_at: '2026-09-05T10:00:00Z' },
     ]
-    // Newest-first order (the DB contract): created_at DESC, id DESC.
     const newestFirst = [...all].sort((x, y) => {
       const ax = new Date(x.created_at).getTime()
       const ay = new Date(y.created_at).getTime()
@@ -220,27 +198,20 @@ describe('lib/adminMessages/threadPage', () => {
       cursor = page.older_cursor
     }
 
-    // Every message exactly once (page-major order by construction; the
-    // multiset must equal the full history — proving zero skips/duplicates).
     expect([...seen].sort()).toEqual(all.map((m) => m.id).sort())
-    expect(new Set(seen).size).toBe(all.length) // no duplicates
+    expect(new Set(seen).size).toBe(all.length)
     expect(guard).toBeLessThan(50)
   })
 
   it('emits the tie-safe PostgREST older-than filter', () => {
     expect(cursorFilter('2026-09-05T09:00:00Z', 'b3'))
       .toBe('created_at.lt.2026-09-05T09:00:00Z,and(created_at.eq.2026-09-05T09:00:00Z,id.lt.b3)')
-    // Equality on timestamp falls through to id comparison (olderThanSlot twin).
     expect(olderThanSlot({ created_at: '2026-09-05T09:00:00Z', id: 'b2' }, { created_at: '2026-09-05T09:00:00Z', id: 'b3' })).toBe(true)
     expect(olderThanSlot({ created_at: '2026-09-05T09:00:00Z', id: 'b3' }, { created_at: '2026-09-05T09:00:00Z', id: 'b3' })).toBe(false)
     expect(olderThanSlot({ created_at: '2026-09-05T08:59:00Z', id: 'zzz' }, { created_at: '2026-09-05T09:00:00Z', id: 'aaa' })).toBe(true)
   })
 })
 
-/* ════════════════════════════════════════════════════════════════════════
-   Admin GET messages route — auth + bounded ordering, via mocked Supabase
-   (no live DB, no message sends).
-   ════════════════════════════════════════════════════════════════════════ */
 describe('admin messages GET route', () => {
   const realAdmin = {
     db: null as any,
@@ -248,8 +219,6 @@ describe('admin messages GET route', () => {
     profile: { id: 'admin-1', full_name: 'Admin', email: 'admin@yousafe.com', avatar_url: null },
   }
 
-  // NOTE: the happy-path auth stub omits the `error` key on purpose — the
-  // route treats `'error' in auth` as an authorization failure.
   const clearAdmin = () => jest.fn(async () => ({
     db: realAdmin.db,
     profileId: realAdmin.profileId,
@@ -285,9 +254,7 @@ describe('admin messages GET route', () => {
     }
     return {
       from: (table: string) => {
-        if (table === 'conversation_messages') {
-          return builder({ data: overrides.messages ?? [], error: null })
-        }
+        if (table === 'conversation_messages') return builder({ data: overrides.messages ?? [], error: null })
         if (table === 'conversations') return builder(conv)
         if (table === 'profiles') {
           return builder({
@@ -341,12 +308,10 @@ describe('admin messages GET route', () => {
     })
     expect(res.status).toBe(200)
     const body = await res.json()
-    // Ascending display order, newest page kept, bounded probe = limit + 1.
     expect(body.messages.map((m: any) => m.id)).toEqual(['m2', 'm3'])
     expect(body.messages.map((m: any) => m.body)).toEqual(['two', 'three'])
     expect(body.total).toBe(2)
     expect(body.has_older).toBe(true)
-    // Composite cursor JSON for the oldest message of the page.
     expect(body.older_cursor).toBe(JSON.stringify({ c: '2026-09-05T09:00:00Z', i: 'm2' }))
     expect(captured.limit).toBe(3)
   })
@@ -372,11 +337,9 @@ describe('admin messages GET route', () => {
       params: Promise.resolve({ id: 'c1' }),
     })
     expect(res.status).toBe(200)
-    // PostgREST `or` filter = tie-safe lexicographic older-than.
     expect(capturedOr).toEqual(['created_at.lt.2026-09-05T09:00:00Z,and(created_at.eq.2026-09-05T09:00:00Z,id.lt.m3)'])
     const body = await res.json()
     expect(body.messages.map((m: any) => m.body)).toEqual(['older-one', 'older-two'])
-    // 2 rows ≤ limit → no further older history.
     expect(body.has_older).toBe(false)
     expect(body.older_cursor).toBeNull()
   })
