@@ -1,17 +1,5 @@
 'use client'
 
-// FeaturedBriefsGrid — the landing's "recommended briefs" grid.
-//
-// Hybrid of the two standard browsing models:
-//  - Upwork-style **Load more**: appends the next page of cards in place,
-//    no reload — cards accumulate.
-//  - Fiverr-style **pager** (← Prev · 1 2 3 … · Next →): jumps the viewport
-//    to the start of that page's window and grows/shrinks the grid to match.
-//
-// The visual treatment deliberately follows a mature marketplace discovery
-// rhythm rather than an editorial card rail: image-first, low chrome, compact
-// metadata, generous gutters, and no empty flex space between title and price.
-
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import {
@@ -32,13 +20,13 @@ import {
   type LandingGig,
 } from '@/lib/marketplaceDisplay'
 import { LEGACY_CATEGORY_MAP, normalizeCategory } from '@/lib/categories'
-import { T, F } from '@/components/marketplace/tokens'
+import { T } from '@/components/marketplace/tokens'
+import { LandingDiscoveryControls } from '@/components/marketplace/LandingDiscoveryControls'
 
 const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
 
 interface Props {
   gigs: LandingGig[]
-  /** Cards visible on first paint — server clamps ?page=N so SSR matches the URL. */
   initialVisible: number
   country: Country
   currency: string
@@ -47,7 +35,6 @@ interface Props {
 export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: Props) {
   const total = gigs.length
   const totalPages = totalPagesFor(total)
-
   const [visibleCount, setVisibleCount] = useState(() =>
     Math.min(Math.max(FEATURED_PAGE_SIZE, initialVisible), total || FEATURED_PAGE_SIZE),
   )
@@ -78,18 +65,18 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
     setScrollToIdx(target === 1 ? 0 : pageStartIndex(target, total))
   }
 
-  const loadMore = () => {
-    setVisibleCount((c) => Math.min(c + FEATURED_PAGE_SIZE, total))
-  }
-
   const shown = gigs.slice(0, visibleCount)
   const hasMore = visibleCount < total
 
   return (
     <>
       <style jsx global>{`
-        /* Landing discovery parity: keep YouSafe branding in the hero, but
-           make the service-browsing section use a calm commerce hierarchy. */
+        /* The server landing still emits its crawlable category-chip row.
+           The richer client discovery controls replace it visually while
+           preserving those links in markup for resilience/SEO. */
+        .cw-market .featured .wrap > .filters {
+          display: none !important;
+        }
         .cw-market .featured {
           padding: 54px 0 64px;
         }
@@ -117,41 +104,6 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
           font-size: 12px;
           line-height: 1.4;
           letter-spacing: .07em;
-        }
-        .cw-market .featured .filters {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          margin: 0 0 28px;
-        }
-        .cw-market .featured .filters a {
-          min-height: 40px;
-          padding: 0 14px;
-          display: inline-flex;
-          align-items: center;
-          border: 1px solid ${T.rule};
-          background: ${T.vellum};
-          border-radius: 10px;
-          font-family: ${DISCOVERY_FONT};
-          font-size: 14px;
-          font-weight: 600;
-          color: ${T.ink};
-          box-shadow: 0 1px 0 rgba(15,23,42,.02);
-        }
-        .cw-market .featured .filters a:hover {
-          border-color: ${T.inkMid};
-          box-shadow: 0 2px 8px rgba(15,23,42,.06);
-        }
-        .cw-market .featured .filters a.on {
-          background: ${T.ink};
-          border-color: ${T.ink};
-          color: #fff;
-        }
-        .cw-market .featured .filters a .ct {
-          font-family: ${DISCOVERY_FONT};
-          font-size: 12px;
-          margin-left: 6px;
-          opacity: .68;
         }
         .cw-market .featured .gig-grid {
           grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -331,16 +283,6 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
           .cw-market .featured { padding: 38px 0 48px; }
           .cw-market .featured .section-head { margin-bottom: 18px; }
           .cw-market .featured .section-head h2 { font-size: 27px; }
-          .cw-market .featured .filters {
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            scrollbar-width: none;
-            margin-left: -2px;
-            margin-right: -2px;
-            padding: 0 2px 4px;
-          }
-          .cw-market .featured .filters::-webkit-scrollbar { display: none; }
-          .cw-market .featured .filters a { flex: 0 0 auto; }
           .cw-market .featured .gig-grid { grid-template-columns: 1fr; gap: 30px; }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -349,15 +291,18 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
         }
       `}</style>
 
+      <LandingDiscoveryControls gigs={gigs} country={country} />
+
       <div className="gig-grid" id="featured-grid" ref={gridRef}>
         {shown.map((g, idx) => {
-          const tag = `${(g.jx ?? country === 'all' ? (g.jx ?? 'us') : country).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
+          const tag = `${(g.jx ?? (country === 'all' ? (g.jx ?? 'us') : country)).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
           const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
           const cardCountry = g.jx ?? (country !== 'all' ? country : 'us')
           const localCurrency = COUNTRY_META[cardCountry as JxCode]?.currency ?? currency
           const href = g.slug
             ? `/marketplace/gigs/${g.slug}`
             : withCountry(`/marketplace?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, country)
+
           return (
             <a
               key={g.id}
@@ -417,7 +362,7 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
         <>
           {hasMore && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '30px 0 4px' }}>
-              <button type="button" onClick={loadMore} style={loadMoreStyle}>
+              <button type="button" onClick={() => setVisibleCount((c) => Math.min(c + FEATURED_PAGE_SIZE, total))} style={loadMoreStyle}>
                 Load more briefs
                 <span style={{ opacity: 0.65, fontWeight: 500 }}>
                   &nbsp;· {Math.min(FEATURED_PAGE_SIZE, total - visibleCount)} more of {total.toLocaleString('en-US')}
@@ -426,28 +371,18 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
             </div>
           )}
 
-          <nav
-            className="pager"
-            aria-label="Featured briefs pagination"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap', padding: '18px 0 8px' }}
-          >
+          <nav className="pager" aria-label="Featured briefs pagination" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap', padding: '18px 0 8px' }}>
             <span className="pg-range" style={{ fontFamily: DISCOVERY_FONT, fontSize: 12, color: T.inkSoft, marginRight: 12 }}>
               Showing {shown.length.toLocaleString('en-US')} of {total.toLocaleString('en-US')} · page {deepestPage}/{totalPages}
             </span>
             {deepestPage > 1 && (
-              <a href={withCountry(`/marketplace?page=${deepestPage - 1}`, country)} aria-label="Previous page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage - 1)}>
-                ← Prev
-              </a>
+              <a href={withCountry(`/marketplace?page=${deepestPage - 1}`, country)} aria-label="Previous page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage - 1)}>← Prev</a>
             )}
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <a key={p} href={withCountry(`/marketplace?page=${p}`, country)} aria-current={p === deepestPage ? 'page' : undefined} style={pagerChipStyle(p === deepestPage)} onClick={jumpToPage(p)}>
-                {p}
-              </a>
+              <a key={p} href={withCountry(`/marketplace?page=${p}`, country)} aria-current={p === deepestPage ? 'page' : undefined} style={pagerChipStyle(p === deepestPage)} onClick={jumpToPage(p)}>{p}</a>
             ))}
             {deepestPage < totalPages && (
-              <a href={withCountry(`/marketplace?page=${deepestPage + 1}`, country)} aria-label="Next page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage + 1)}>
-                Next →
-              </a>
+              <a href={withCountry(`/marketplace?page=${deepestPage + 1}`, country)} aria-label="Next page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage + 1)}>Next →</a>
             )}
           </nav>
         </>
@@ -465,8 +400,6 @@ const loadMoreStyle: CSSProperties = {
   fontFamily: DISCOVERY_FONT,
   fontSize: 14,
   fontWeight: 650,
-  letterSpacing: 0,
-  textTransform: 'none',
   cursor: 'pointer',
   border: `1px solid ${T.ink}`,
   background: T.vellum,
