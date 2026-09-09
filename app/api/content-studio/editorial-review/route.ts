@@ -92,7 +92,7 @@ EXECUTION RULES — NON-NEGOTIABLE:
     })
     const parsed = parseEditorialRevision(response.text)
     if (!parsed.ok) {
-      if ('fallback' in parsed && parsed.fallback === 'v1') {
+      if ('fallback' in parsed) {
         const patched = applyEditorialReviewPatch(content, response.text)
         return NextResponse.json({
           ...patched,
