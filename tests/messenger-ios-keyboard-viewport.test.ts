@@ -7,6 +7,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 describe('mobile Messenger keyboard viewport contract', () => {
   const coordinator = read('components/mobile/MobileVisualViewport.tsx')
   const css = read('app/mobile-visual-viewport.css')
+  const chatScreen = read('components/messaging/ChatScreen.tsx')
 
   test('publishes visual height separately from Safari pan offset', () => {
     expect(coordinator).toContain("const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'")
@@ -16,31 +17,39 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(coordinator).toContain("root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)")
   })
 
-  test('open mobile chats are fixed to the usable VisualViewport rectangle', () => {
+  test('open mobile chats are fixed to the truly usable VisualViewport rectangle', () => {
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat']")
     expect(css).toContain('position: fixed !important')
     expect(css).toContain('top: var(--ys-visual-viewport-offset-top, 0px) !important')
-    expect(css).toContain('height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important')
-    expect(css).toContain('max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important')
+    expect(css).toContain('var(--ys-ios-keyboard-native-occlusion, 0px)')
+    expect(css).toContain('height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important')
+    expect(css).toContain('max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important')
     expect(css).toContain('z-index: 10020 !important')
   })
 
-  test('Safari browser chrome is reserved only for a real iOS software keyboard', () => {
+  test('Safari reserves both bottom browser chrome and the native input assistant', () => {
     expect(coordinator).toContain("root.dataset.ysKeyboardOpen = keyboardOpen ? 'true' : 'false'")
     expect(coordinator).toContain('visualHeight < unfocusedVisualHeight - 80')
     expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
     expect(css).toContain('--ys-ios-keyboard-browser-chrome: 52px')
-    expect(css).toContain('--ys-ios-keyboard-browser-chrome: clamp(52px, calc(100lvh - 100svh), 120px)')
+    expect(css).toContain('--ys-ios-keyboard-input-assistant: 44px')
+    expect(css).toContain('--ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px)')
+    expect(css).toContain('--ys-ios-keyboard-native-occlusion: calc(')
   })
 
-  test('only the message canvas scrolls and the composer remains a final flex child', () => {
+  test('message history gets leftover space while composer owns an explicit final flex slot', () => {
+    expect(chatScreen).toContain("flex: '1 1 0%'")
+    expect(chatScreen).toContain('className="ys-chatscreen-composer"')
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] [data-chat-canvas]")
+    expect(css).toContain('flex: 1 1 0% !important')
     expect(css).toContain('overflow-y: auto !important')
+    expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-composer")
+    expect(css).toContain('min-height: 58px !important')
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] .comp")
     expect(css).toContain('flex: 0 0 auto !important')
   })
 
-  test('focused composer sits above Safari browser chrome and the software keyboard', () => {
+  test('focused composer sits above Safari native chrome and the software keyboard', () => {
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] .comp-input:focus")
     expect(css).toContain('padding-bottom: 8px !important')
   })
