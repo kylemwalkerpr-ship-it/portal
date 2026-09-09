@@ -40,6 +40,7 @@ export default function ChatScreen({
   const [showNewMessagePill, setShowNewMessagePill] = React.useState(false)
   const nearBottomRef = React.useRef(true)
   const lastScrollHeightRef = React.useRef(0)
+  const activatedDeepLinkThreadRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
     const parent = containerRef.current?.parentElement
@@ -90,6 +91,32 @@ export default function ChatScreen({
   }, [])
 
   const isSplit = mode === 'split' && sidebar
+
+  // A dashboard URL such as ?page=messages&thread=<id> already gives
+  // UnifiedInbox the correct active conversation, but its mobile pane state
+  // starts in list mode. On phones, promote the already-selected row through
+  // the inbox's normal click path once it appears. That flips the parent's
+  // mobileShowChat state too, so the ordinary in-chat Back control keeps
+  // working and a later user-initiated Back is not immediately undone.
+  //
+  // This intentionally runs only for a new deep-link thread value. It also
+  // covers the marketplace "Open in Messages" handoff without adding a
+  // second navigation/state protocol between marketplace and dashboard.
+  React.useEffect(() => {
+    if (!isSplit || mobileShowChat || typeof window === 'undefined') return
+    if (!window.matchMedia?.('(max-width: 680px)').matches) return
+
+    const threadId = new URLSearchParams(window.location.search).get('thread')
+    if (!threadId || activatedDeepLinkThreadRef.current === threadId) return
+
+    const activeRow = containerRef.current?.querySelector<HTMLButtonElement>(
+      '.ys-chatscreen-sidebar button.row.on',
+    )
+    if (!activeRow) return
+
+    activatedDeepLinkThreadRef.current = threadId
+    activeRow.click()
+  }, [isSplit, mobileShowChat, sidebar])
 
   const chatRegion = (
     <div
