@@ -558,7 +558,7 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
     // Draft deliberately missing:
     //   - Article JSON-LD → should inject schema_article
     //   - FAQPage JSON-LD (has 3+ FAQ-ish H2s) → should inject schema_faq
-    //   - Dense prose block (>180 chars, no breaks) → should split into smaller paragraphs
+    //   - Dense 7+ sentence wall (>720 chars) → should split into 2–4 sentence units
     //   - Concrete example (≥800 words, no "for example") → should inject worked example
     //   - Internal links (<2 yousafeconsultancy.com refs) → should add Related guides
     //   - Disclaimer → should inject YMYL disclaimer
@@ -595,8 +595,17 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
       if (i % 4 === 3) pad += '\n\n'
     }
 
-    // One deliberately dense block (>180 chars, no breaks) to trigger wall_of_text
-    const denseBlock = 'International students who wish to study in Australia must first obtain a Confirmation of Enrolment from a CRICOS-registered education provider before they can apply for a subclass 500 student visa through the Department of Home Affairs online portal.'
+    // One deliberately 7+ sentence wall (>720 chars) to trigger wall_of_text_split
+    const denseBlock = [
+      'International students who wish to study in Australia must first obtain a Confirmation of Enrolment from a CRICOS-registered education provider.',
+      'They then apply for a subclass 500 student visa through the Department of Home Affairs online portal.',
+      'Genuine temporary entrant statements have to match the course, the funds, and the travel history on the file.',
+      'Police certificates from every country of residence longer than twelve months must be dated within the last year.',
+      'Health insurance evidence has to cover the full enrolment window before the visa decision, not just the first term.',
+      'Biometrics appointments are booked after the lodgement receipt, not before the CoE is issued.',
+      'A stale forum checklist is not a substitute for the live instrument on the Federal Register of Legislation.',
+      'Pause lodgement if any named artefact is missing rather than guessing the requirement at the counter.',
+    ].join(' ')
 
     const draft = [
       '# International Student Visa — Australia',
@@ -683,6 +692,37 @@ describe('applyDeterministicRepairs — warning micro-fixes', () => {
 
     // ── Assert ≥5 repairs total (6 categories minus internal_links gap) ──
     expect(applied.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('does not mill-chop a developed 5-sentence paragraph under the wall threshold', () => {
+    const developed =
+      'When you start a student visa file you already know the form list will change, so you treat the official page as the source of truth. Passport validity, bank-statement windows, and school letters all sit on that list. Each one has a different expiry logic that you check against live instructions. You write the current form numbers into your checklist. A stale PDF from a forum thread is not a substitute for the issuing agency.'
+    const draft = [
+      '# Student visa documents checklist 2026',
+      '',
+      '## Eligibility',
+      developed,
+      '',
+      '## Documents',
+      'Keep identity pages, bank windows, and school letters in one dated folder.',
+      '',
+      '## Process',
+      'Confirm the live form list, gather the named artefacts, then file.',
+      '',
+      '## FAQ',
+      '### What should you prepare first?',
+      'You start with identity documents and the official form list for your category.',
+    ].join('\n')
+    const { applied, content } = applyDeterministicRepairs({
+      content: draft,
+      title: 'Student visa documents checklist 2026',
+      primaryKeyword: 'student visa documents',
+      region: 'US',
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    expect(applied).not.toContain('wall_of_text_split')
+    expect(content).toContain(developed)
   })
 
   it('does not weave missing long-tail keywords into placeholder FAQ questions', () => {

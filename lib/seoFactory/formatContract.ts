@@ -93,7 +93,7 @@ export function formatContractBriefBlock(contentType?: string): string {
       : [
           '- The reader scrolls: every H2 opens with a direct 1–3 sentence answer, then detail.',
           '- Reader-engagement devices required: at least one scannable checklist or table,',
-          '  short paragraphs (1–3 sentences), bolded lead phrases on long list items,',
+          '  short paragraphs (1–6 sentences; a developed 4–6 sentence paragraph is allowed), bolded lead phrases on long list items,',
           '  blockquote callouts for warnings, and self-contained FAQ answers.',
           '- Formatting is graded: broken lists, collapsed bullets, or a keyword-only title',
           '  fail the audit exactly like a missing section.',

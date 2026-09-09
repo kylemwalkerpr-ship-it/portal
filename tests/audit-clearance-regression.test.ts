@@ -63,11 +63,29 @@ function compliantBody(opts: {
   ].join('\n')
 }
 
-/** Two-sentence, >900-char wall blocks (no clause punctuation) — the shape the
- *  old splitter could never break (sentences.length < 3 bailed). */
-const LONG_WALL = [
-  'Every limited liability company that operates in the United States and carries more than a nominal volume of transactions in a given tax year is expected under the governing framework to maintain records that allow an independent reviewer to reconcile reported income against bank activity, and the owner who fails to maintain that separation discovers at audit that reconstructing a year of commingled activity costs far more than the bookkeeping service ever would have.',
-  'The second consideration is timing, because a company that waits until the filing season to organize its accounts discovers that deductions which would have been available under a maintained system are lost simply because the underlying receipts were never categorized in the months when the expenses actually occurred.',
+/** True walls: >720 chars and ≥7 sentences. Distinct copy so cohesion does not
+ *  hold the job for mill-glued adjacent H2s. Two-sentence 900-char blobs are
+ *  legal developed legal-English now — they must not trip wall_of_text. */
+const PROCESS_WALL = [
+  'Every LLC that keeps more than a handful of monthly transactions needs a dated packet before the first close of the books each year.',
+  'Officers compare those dates against the live instruction rather than a printout from last year.',
+  'A bank window that closed last month will not cover a file you submit today at the counter.',
+  'Replace expired letters before the interview rather than hoping they pass a later review.',
+  'Keep the receipt with the form numbers you actually used on the return.',
+  'File only when every named artefact is current and matches the published list.',
+  'Pause the packet if any page is missing instead of guessing the requirement.',
+  'The monthly close date is the control that stops a quarter from slipping past the filing window.',
+].join(' ')
+
+const DOCUMENTS_WALL = [
+  'Articles of organization, the EIN letter, and the operating agreement sit in one folder before onboarding starts.',
+  'Providers use the agreement to confirm who may authorize payments on the company account.',
+  'A prior-year trial balance lets a new provider open the ledger without restating history.',
+  'Payroll summaries complete the file for companies that already have staff on the books.',
+  'Signed engagement letters define the scope of work and the monthly close date in writing.',
+  'Bank statements must cover the same window as the ledger you hand over at kickoff.',
+  'Digital copies satisfy the retention rule when the originals stay with the company.',
+  'Lenders later ask for three years of reconciled statements during a sale or a refinance.',
 ].join(' ')
 
 describe('regression: the four never-clearing audit findings', () => {
@@ -137,11 +155,11 @@ describe('regression: the four never-clearing audit findings', () => {
   })
 
   // ── 2. wall_of_text: a 2-sentence dense block must be splittable ─────────
-  it('splits a >520-char two-sentence block so wall_of_text can clear', () => {
+  it('splits a 7+ sentence wall so wall_of_text can clear, without mill-chopping 2-sentence legal English', () => {
     const gateInput = compliantBody({
       faq: '<details><summary>How much does professional bookkeeping cost?</summary>Costs depend on volume.</details>',
-      processBlock: LONG_WALL,
-      documentsBlock: LONG_WALL,
+      processBlock: PROCESS_WALL,
+      documentsBlock: DOCUMENTS_WALL,
     })
     expect(countBodyWords(gateInput)).toBeGreaterThanOrEqual(650)
     const gate = evaluateContentQuality({

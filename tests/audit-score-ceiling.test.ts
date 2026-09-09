@@ -18,14 +18,20 @@ const DESCRIPTION =
 /**
  * A long-form (pillar-tier) article that clears every audit check with zero
  * blockers and zero warnings. Padding uses a unique per-sentence token so
- * sentence-start repetition never fires, and paragraphs are kept short so the
- * wall_of_text warning never fires.
+ * sentence-start repetition never fires, paragraphs stay under the 7-sentence
+ * wall, and sentence length is mixed so burstiness does not flag mill rhythm.
  */
 function cleanLongForm(): string {
-  const sentences = Array.from({ length: 162 }, (_, i) => {
-    // First 12 chars are unique per index → no sentence_start_repetition.
-    return `Step${i} gives you one more practical point to check against the official source.`
-  })
+  // Unique per-index token so sentence_start_repetition never fires.
+  // Mix short / medium / long so burstiness and trigram variety hold.
+  const templates = [
+    (i: number) => `Step${i} is next.`,
+    (i: number) => `Step${i} keeps the artefact with the form numbers you actually used.`,
+    (i: number) => `Step${i} is compared against the live instruction rather than a printout from last year.`,
+    (i: number) => `Step${i} pauses if any named page is missing.`,
+    (i: number) => `Step${i} on the issuing agency page is the substitute for a stale forum PDF you opened this morning.`,
+  ]
+  const sentences = Array.from({ length: 205 }, (_, i) => templates[i % templates.length](i))
   let pad = ''
   for (let i = 0; i < sentences.length; i++) {
     pad += sentences[i]

@@ -194,14 +194,16 @@ export function buildHarperSupervisionPacket(s: EditorialSnapshot): HarperSuperv
     }
   }
 
+  const qualityCodes = new Set(s.findings.map((f) => f.code))
   for (const finding of s.cohesion?.findings || []) {
+    if (qualityCodes.has(finding.code) || qualityCodes.has(`${finding.code}_severe`)) continue
     add(
       'cohesion',
-      'advisory',
+      finding.code === 'adjacent_section_overlap' ? 'required' : 'advisory',
       finding.message,
       finding.evidence,
       undefined,
-      false,
+      finding.code === 'adjacent_section_overlap',
       finding.code,
     )
   }

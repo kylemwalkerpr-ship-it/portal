@@ -2,7 +2,7 @@
 
 import { writingFamilyFor } from './writingShape'
 
-export const EDITORIAL_CONTRACT_VERSION = '2026.08.reader-engagement.v3'
+export const EDITORIAL_CONTRACT_VERSION = '2026.09.reader-engagement.v4'
 
 /**
  * GUIDE contract (legal_guide / article). Existing imports keep this name.
@@ -15,7 +15,7 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   'Write for a person who needs a clear next step, not for a word-count target or a crawler.',
   '1. Answer first: in the opening 1–2 paragraphs, answer the primary question in plain English. Do not begin with history, hype, or a promise.',
   '2. Build a reading path: one H1, descriptive H2s, nested H3s only when needed, and a short table of contents for long guides. Never skip heading levels for styling.',
-  '3. Make it scannable: use short paragraphs (usually 1–3 sentences), informative lead sentences, bullets for sets, numbered steps for sequences, and tables only for genuine comparisons or structured facts.',
+  '3. Make it scannable: use short paragraphs (usually 1–4 sentences; a developed 4–6 sentence paragraph is allowed), informative lead sentences, bullets for sets, numbered steps for sequences, and tables only for genuine comparisons or structured facts.',
   '4. Add usable detail: explain who a step is for, what to prepare, what can change, common mistakes, and what to do next. Prefer concrete forms, agencies, documents, dates, and examples over abstract advice.',
   '5. Use deliberate visual rhythm: alternate explanatory prose with a checklist, process, comparison, example, or callout when it improves comprehension. Never add decorative lists or tables that repeat the prose.',
   '6. Make sections self-contained for answer engines: define the term, state the qualification or caveat, then explain the action. FAQ answers must answer the question directly and stand alone.',
@@ -29,7 +29,7 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '    - SYNTHESIZED floor-fill exists only to meet the count floors. It is optional: place it only if a grammatical slot already exists. Omitting it is a warning, never a ship blocker. Never stuff an unplaceable phrase.',
   '    Distribute demand keywords across the article. Do not front-load every keyword in the first paragraphs. Do not convert a long-tail into an FAQ question or H2 — Harper cannot rewrite headings or invent a slot for a broken phrase. Outline H2s, the primary keyword, and the owner URL are frozen identity: the outline-completion hop / briefing / a human own those, never Harper.',
   '',
-  '12. ANTI-WALL-OF-TEXT (mandatory on legal guides and regional pages, NOT on narrative blogs): paragraphs of 1-3 sentences, each under 180 characters. No prose block may run longer than 180 chars without a visual break — split with bullets, a numbered step, a table, a callout, or a new paragraph with a bold lead. Avoid creating long blocks: the scanner flags blocks >180 chars that also have either >520 chars or ≥5 sentences. Break sections into 2-4 short paragraphs. Blogs MAY use a 4–6 sentence developed paragraph.',
+  '12. ANTI-WALL-OF-TEXT (mandatory on legal guides and regional pages, NOT on narrative blogs): prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed and is not mill chop. The scanner flags only true walls — blocks over ~720 characters with 7+ sentences. Split those with bullets, a numbered step, a table, a callout, or a new paragraph. Blogs MAY use a 4–6 sentence developed paragraph with no extra cap.',
   '13. CONCRETE WORKED EXAMPLE (mandatory for long-form guides/regional): every page ≥1,000 words MUST include procedural concreteness (forms, documents, sequences). Do NOT invent a named person, testimonial, or personal story. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only. Label a genuine procedure "Example:" or "Worked example:" when it helps the reader. The scanner may look for "for example", "for instance", or "e.g." as a hint — never invent a protagonist to satisfy it.',
   '14. SCHEMA JSON-LD (mandatory for indexable pages): Article JSON-LD `{"@type":"Article","author":{...},"datePublished":"...","description":"..."}` must be present in every page. FAQPage JSON-LD `{"@type":"FAQPage","mainEntity":[...]}` is required when the page has 4+ FAQ sections. These are rendered by the template from the article meta, keywords, and FAQ content — do not write raw schema blocks manually. The scanner will warn (not block) if either schema type is absent. Narrative blogs do not require FAQPage.',
   '',
@@ -75,7 +75,7 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '  answer engines.',
   '',
   '',
-  '- SCANNABILITY: paragraphs of 1–3 sentences; bullets for sets; numbered steps',
+  '- SCANNABILITY: paragraphs of 1–6 sentences; a developed 4–6 sentence paragraph is allowed; never a 7+ sentence wall; bullets for sets; numbered steps',
   '  for sequences; tables only for genuine comparisons; FAQ answers that stand',
   '  alone. Bold the lead phrase of long list items.',
   '',
@@ -112,8 +112,8 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '  and blockquotes. Never leave two consecutive blank lines and never leave',
   '  trailing spaces at the end of a line.',
   '',
-  '- PARAGRAPHS: 1–3 sentences each, under 180 characters, with the lead sentence',
-  '  carrying the point.',
+  '- PARAGRAPHS: 1–6 sentences; a developed 4–6 sentence paragraph is allowed;',
+  '  never a 7+ sentence wall. The lead sentence carries the point.',
   '',
   'FINAL READER TEST: Could a busy reader understand the answer, scan the headings, find the relevant step, verify the source, and know the next safe action without reading every word?',
 ].join('\n')

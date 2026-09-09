@@ -2389,64 +2389,39 @@ export function applyDeterministicRepairs(opts: {
   }
 
   // ── Wall-of-text paragraph splitting ────────────────────────────────
-  // Split any prose block >180 chars that has no visual break (bullets,
-  // headings, tables) into shorter paragraphs at sentence boundaries.
-  // The quality gate flags a block as a wall when it exceeds 520 chars OR
-  // carries ≥5 sentences — so a 2-sentence 700-char block (long legal
-  // sentences, no punctuation) is flagged but was previously UNSPLITTABLE
-  // here (sentences.length < 3 bailed), making wall_of_text permanent.
-  // Dense >520-char blocks now split at clause/sentence boundaries even
-  // with fewer than 3 sentences.
+  // Split only true walls: >720 chars AND ≥7 sentences. Developed 4–6
+  // sentence paragraphs are legal; chopping them at 180 chars recreates
+  // mill rhythm and fights the quality gate. Group remaining sentences
+  // into 2–4 sentence units, not 150-character chips.
+  const WALL_CHARS = 720
+  const WALL_SENTENCES = 7
+  const countSentences = (text: string): number =>
+    (text.match(/[.!?](?:\s|$)/g) || []).length
   const splitProseBlock = (trimmed: string): string[] | null => {
-    const sentences = trimmed.split(/(?<=[.!?])\s+/)
-    if (sentences.length >= 3) {
-      const groups: string[] = []
-      let current = ''
-      for (const s of sentences) {
-        if (current && (current.length + s.length > 150)) {
-          groups.push(current.trim())
-          current = s
-        } else {
-          current = current ? `${current} ${s}` : s
-        }
-      }
-      if (current) groups.push(current.trim())
-      return groups.length > 1 ? groups : null
+    if (trimmed.length <= WALL_CHARS || countSentences(trimmed) < WALL_SENTENCES) {
+      return null
     }
-    // 1–2 very long sentences: break into chunks guaranteed to land under
-    // the gate's 520-char wall threshold — at sentence/clause boundaries
-    // first, then at a word boundary for a single sentence that is itself
-    // longer than the window. A mid-paragraph break at a word boundary is
-    // far better typography than an unsplittable wall.
-    if (trimmed.length > 520) {
-      const chunks: string[] = []
-      let current = ''
-      for (const unit of trimmed.split(/(?<=[.!?;:])\s+/)) {
-        // Hard-split any unit still larger than the target window (~420).
-        const pieces: string[] = []
-        let rest = unit
-        while (rest.length > 420) {
-          const mid = Math.floor(rest.length / 2)
-          let cut = rest.lastIndexOf(' ', mid)
-          if (cut < 120) cut = rest.indexOf(' ', mid)
-          if (cut < 0) break // no space — single unsplittable token
-          pieces.push(rest.slice(0, cut))
-          rest = rest.slice(cut + 1)
-        }
-        pieces.push(rest)
-        for (const piece of pieces) {
-          if (current && current.length + piece.length > 420) {
-            chunks.push(current.trim())
-            current = piece
-          } else {
-            current = current ? `${current} ${piece}` : piece
-          }
-        }
+    const sentences = trimmed.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean)
+    if (sentences.length < WALL_SENTENCES) return null
+    const groups: string[] = []
+    let current: string[] = []
+    for (const s of sentences) {
+      current.push(s)
+      const text = current.join(' ')
+      if (current.length >= 4 || (current.length >= 2 && text.length > 480)) {
+        groups.push(text)
+        current = []
       }
-      if (current) chunks.push(current.trim())
-      return chunks.length > 1 ? chunks : null
     }
-    return null
+    if (current.length) {
+      const text = current.join(' ')
+      if (groups.length && (current.length === 1 || text.length < 120)) {
+        groups[groups.length - 1] = `${groups[groups.length - 1]} ${text}`
+      } else {
+        groups.push(text)
+      }
+    }
+    return groups.length > 1 ? groups : null
   }
   const paragraphs = b.split(/\n\n+/)
   let splitCount = 0
@@ -2471,13 +2446,13 @@ export function applyDeterministicRepairs(opts: {
       if (firstProse < 0) return p
       const head = lines.slice(0, firstProse).join('\n')
       const prose = lines.slice(firstProse).join(' ').replace(/\s+/g, ' ').trim()
-      if (prose.length <= 180) return p
+      if (prose.length <= WALL_CHARS) return p
       const groups = splitProseBlock(prose)
       if (!groups) return p
       splitCount += groups.length - 1
       return [head, groups.join('\n\n')].join('\n\n')
     }
-    if (trimmed.length <= 180) return p
+    if (trimmed.length <= WALL_CHARS) return p
     const groups = splitProseBlock(trimmed)
     if (!groups) return p
     splitCount += groups.length - 1

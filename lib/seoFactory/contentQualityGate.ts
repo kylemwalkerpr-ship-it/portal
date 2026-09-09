@@ -25,6 +25,7 @@ import { articleHasOfficialCitation, buildCitationContext } from './citationPoli
 import { EDITORIAL_FORMATTING_CONTRACT, formattingContractFor } from './editorialContract'
 import { FORMAT_SKELETON, formatSkeletonFor } from './formatContract'
 import { isBlogFamily, usesGuideApparatus, writingFamilyFor } from './writingShape'
+import { evaluateProseGeometry } from './proseGeometry'
 
 export type QualitySeverity = 'blocker' | 'warning'
 
@@ -1365,7 +1366,8 @@ export function evaluateContentQuality(opts: {
 
   // ── 5. Reader engagement and structure ─────────────────────────────────────
   // Warnings keep the format query-led while still catching walls of prose.
-  // Blogs are narrative essays: skip the 180-char wall, TOC, and invented-example floors.
+  // Blogs are narrative essays: skip the wall, TOC, and invented-example floors.
+  // Guides: developed 4–6 sentence paragraphs are legal; only 7+ sentence walls hold.
   if (indexable && contentType !== 'marketplace_gig' && words >= 650) {
     if (!blogFamily) {
       const proseBlocks = body
@@ -1379,14 +1381,15 @@ export function evaluateContentQuality(opts: {
         .filter((block) => block.length > 180)
       const longBlocks = proseBlocks.filter((block) => {
         const sentences = (block.match(/[.!?](?:\s|$)/g) || []).length
-        return block.length > 520 || sentences >= 5
+        // Developed 4–6 sentence paragraphs are legal. Only true walls hold.
+        return block.length > 720 && sentences >= 7
       })
       if (longBlocks.length >= 2) {
         add({
           code: 'wall_of_text',
           severity: 'warning',
           message: `Several prose blocks are too dense (${longBlocks.length} long blocks)`,
-          fix: 'Break dense paragraphs into 1–3 sentence units and add a useful list, step, table, example, or callout where it improves comprehension.',
+          fix: 'Break a 7+ sentence wall into shorter units, a list, step, table, or callout. A developed 4–6 sentence paragraph is allowed.',
         })
       }
     }
@@ -1467,6 +1470,18 @@ export function evaluateContentQuality(opts: {
         fix: 'Give each section a distinct opening that advances the argument instead of restating the previous H2.',
         evidence: echo.slice(0, 120),
       })
+    }
+    const geometry = evaluateProseGeometry(opts.content || '', { contentType, indexable })
+    for (const finding of geometry.findings) {
+      if (
+        finding.code === 'repeated_paragraph_opener' &&
+        findings.some((f) => f.code === 'sentence_start_repetition')
+      ) {
+        continue
+      }
+      if (finding.severity === 'blocker') humanScore -= 12
+      else humanScore -= 6
+      add(finding)
     }
     if (!articleHasOfficialCitation(opts.content || '', buildCitationContext({
       region: opts.region,
@@ -2093,7 +2108,7 @@ export function formattingRequirementsBlock(contentType?: string): string {
     '  Define legal/technical terms on first use, prefer short sentences, keep',
     '  the active voice, and write directly to the reader ("you").',
     '',
-    '- SCANNABILITY: 1–3 sentence paragraphs, bullets for sets, numbered steps',
+    '- SCANNABILITY: 1–6 sentence paragraphs; a developed 4–6 sentence paragraph is allowed; never a 7+ sentence wall. Bullets for sets, numbered steps',
     '  for sequences, one comparison/checklist table only where it earns its',
     '  space, FAQ answers self-contained for answer engines.',
     '',

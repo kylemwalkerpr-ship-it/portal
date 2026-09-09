@@ -47,7 +47,7 @@ export function isBlogFamily(contentType: string | null | undefined): boolean {
   return writingFamilyFor(contentType) === 'blog'
 }
 
-/** True when the YMYL kit (In 60 seconds / FAQ / 180-char / ≥4 H2) still applies. */
+/** True when the YMYL kit (In 60 seconds / FAQ / ≥4 H2) still applies. */
 export function usesGuideApparatus(contentType: string | null | undefined): boolean {
   const family = writingFamilyFor(contentType)
   return family === 'guide' || family === 'regional'
@@ -82,7 +82,7 @@ export function guideShipRequirements(): string[] {
     'CONCRETE PROCEDURES: use procedural concreteness (forms, documents, sequences, official steps). Do NOT invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
     'KEYWORDS: DEMAND short keywords appear ≥1× and ≤4× (floor 3 distinct head terms). DEMAND long-tails ≥1× and ≤2× as meaning coverage in prose, never a forced exact 6-word string. Synthesized floor-fill is optional — never stuff it. Missing a demand short is a HARD blocker on guides.',
     'VOICE: YMYL pages must read like a licensed practitioner: concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections, no AI clichés, no outcome promises. Second person.',
-    'ANTI-WALL-OF-TEXT: paragraphs of 1–3 sentences, each under 180 characters, on guides and regional pages.',
+    'ANTI-WALL-OF-TEXT: prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed. Do not write a 7+ sentence wall.',
   ]
 }
 
@@ -95,6 +95,6 @@ export function regionalShipRequirements(): string[] {
     'CONCRETE PROCEDURES: forms, documents, sequences, local agencies. Do NOT invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
     'KEYWORDS: DEMAND short keywords appear ≥1× and ≤4× (floor 3 distinct head terms). Missing a demand short is a HARD blocker on regional pages. Long-tails: meaning coverage in prose. Synthesized floor-fill is optional.',
     'VOICE: YMYL pages must read like a licensed practitioner: concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections. Informative, practical, second person, no hype, no outcome promises.',
-    'ANTI-WALL-OF-TEXT: paragraphs of 1–3 sentences, each under 180 characters.',
+    'ANTI-WALL-OF-TEXT: prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed. Do not write a 7+ sentence wall.',
   ]
 }
