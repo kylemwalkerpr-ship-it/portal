@@ -41,13 +41,14 @@ export async function GET() {
   if (ordersErr) return Response.json({ error: ordersErr.message }, { status: 500 })
   const orders: any[] = orderRows ?? []
 
-  // Hydrate service titles + consultant names for in-motion preview
+  // Hydrate service titles + consultant names for in-motion preview.
+  // Provider contact fields are intentionally not selected on student routes.
   const inMotion = orders.filter(o => !['completed', 'cancelled', 'refunded'].includes(o.status)).slice(0, 5)
   const inMotionIds = inMotion.map(o => o.id)
   const consultantIds = Array.from(new Set(inMotion.map(o => o.consultant_id).filter(Boolean)))
   const [itemsRes, profilesRes] = await Promise.all([
     inMotionIds.length ? db.from('order_items').select('order_id, service_id').in('order_id', inMotionIds) : Promise.resolve({ data: [] }),
-    consultantIds.length ? db.from('profiles').select('id, full_name, email, avatar_url').in('id', consultantIds) : Promise.resolve({ data: [] }),
+    consultantIds.length ? db.from('profiles').select('id, full_name, avatar_url').in('id', consultantIds) : Promise.resolve({ data: [] }),
   ])
   const items = itemsRes.data ?? []
   const serviceIds = Array.from(new Set(items.map((i: any) => i.service_id).filter(Boolean)))
@@ -66,7 +67,7 @@ export async function GET() {
       id: o.id,
       orderNumber: o.order_number || null,
       title: (svc as any)?.title || o.requirements || 'Order',
-      consultant: consultant?.full_name || consultant?.email || (o.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+      consultant: consultant?.full_name || (o.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
       consultantAvatar: consultant?.avatar_url || null,
       status: o.status === 'queued' ? 'pending'
         : o.status === 'created' ? 'created'
@@ -128,10 +129,6 @@ export async function GET() {
   } catch { /* inquiries schema may be pending */ }
 
   // ── Conversations (unread) ─────────────────────────────────────────────
-  // TRUE unread state, mirroring /api/messages/conversations: a message is
-  // unread only if it arrived AFTER the student's conversation_reads marker.
-  // The previous heuristic ("any consultant message in the last 30 days")
-  // kept showing phantom unread counts after the student had read everything.
   let unreadConversations = 0
   try {
     const { data: convs } = await db
@@ -169,10 +166,6 @@ export async function GET() {
     docStats.total = fl.length
     docStats.last7d = fl.filter(f => new Date(f.created_at).getTime() >= now - 7 * 86_400_000).length
   }
-
-  // ── Wallet (best-effort, never blocks) ─────────────────────────────────
-  // The home tile fetches /api/wallet/balance separately. Just expose the
-  // numeric scaffolding so the UI can show a placeholder until it loads.
 
   return Response.json({
     profile: {
