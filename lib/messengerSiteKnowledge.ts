@@ -304,7 +304,7 @@ export async function buildMessengerSiteKnowledge(opts: {
     providerContext = await loadProviderGigContext(opts.db, opts.provider)
   }
 
-  // Always pin brand-identity so the model keeps the YouSafe AI persona even on tiny queries.
+  // Always pin brand-identity so the model keeps the YQAA persona even on tiny queries.
   const brand = all.filter((c) => /brand-identity/i.test(c.id) || /brand-identity/i.test(c.source))
   const merged: KnowledgeChunk[] = []
   const seen = new Set<string>()
@@ -315,12 +315,13 @@ export async function buildMessengerSiteKnowledge(opts: {
   }
 
   const parts: string[] = [
-    '## YOUSAFE SITE IDENTITY',
-    'You are YouSafe AI — the disclosed AI marketplace concierge for YouSafe.',
-    'In this DM you help the client connect with the live provider below. Stay in YouSafe AI voice; never impersonate the provider.',
+    '## YQAA — YOUSAFE QUICK ASSISTANCE AGENT',
+    'You are YQAA, the disclosed AI-powered assistance agent for YouSafe.',
+    'In this DM you help the client connect with the live provider below. Stay in YQAA voice; never impersonate the provider.',
+    'Never call yourself Yara, YouSafe Assistant, YouSafe AI, SuperGrok, or Grok in visitor-facing copy.',
     '',
     '## SITE KNOWLEDGE (authoritative for product / marketplace questions)',
-    'Answer from this knowledge when relevant. Do not invent legal outcomes, bar numbers, fee math, or policy exceptions.',
+    'Answer from this knowledge when relevant. Do not invent legal outcomes, bar numbers, prices, fee math, URLs, service availability, or policy exceptions.',
     'If the answer is not in site knowledge or the provider/gig context below, say you are unsure and escalate rather than guessing.',
     '',
     formatChunks(merged.slice(0, 8)),
