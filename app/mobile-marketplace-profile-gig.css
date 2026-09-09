@@ -7,6 +7,22 @@
    The selectors are scoped to .cw-market and existing semantic page classes
    so dashboard and messenger layouts are unaffected. */
 
+/* Keep the long-form gig hierarchy consistent on desktop and mobile.
+   MainContent is already a flex column, so these semantic selectors only
+   change visual section order; the mobile rules below still pull packages,
+   order controls, and the seller card up into the buying journey. */
+.cw-market .ys-content-layout > div:first-child > div:has(a[href^='/marketplace/gigs/']) {
+  order: 80;
+}
+
+.cw-market .ys-content-layout > div:first-child > div:has(h2) {
+  order: 90;
+}
+
+.cw-market .ys-content-layout > div:first-child > div:has(> h3 + div > div > button) {
+  order: 100;
+}
+
 @media (max-width: 700px) {
   /* ── Seller profile hero ─────────────────────────────────────────────── */
   .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div {
