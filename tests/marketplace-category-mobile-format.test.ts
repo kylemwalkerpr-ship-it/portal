@@ -26,6 +26,6 @@ describe('marketplace category mobile formatting', () => {
     expect(source).toContain('Before you order')
     expect(source).toContain('Choose the right scope')
     expect(source).toContain('Self-serve or specialist?')
-    expect(source).toContain(`${displayName} guidance`)
+    expect(source).toContain('${displayName} guidance')
   })
 })
