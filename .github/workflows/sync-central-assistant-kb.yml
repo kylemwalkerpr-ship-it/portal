@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: '17 3 * * *'
   # Keep the network corpus fresh whenever assistant knowledge sources change.
-  # The generated snapshot is excluded so the bot's refresh commit cannot
+  # Generated snapshots are excluded so the bot's refresh commit cannot
   # recursively trigger another crawl.
   push:
     branches:
@@ -14,9 +14,11 @@ on:
       - '.github/workflows/sync-central-assistant-kb.yml'
       - 'scripts/sync-central-assistant-kb.mjs'
       - 'lib/centralAssistantKnowledge.ts'
+      - 'lib/assistantNetworkAuthority.ts'
       - 'lib/messengerSiteKnowledge.ts'
       - 'content/messenger-kb/**'
       - '!content/messenger-kb/network-pages.json'
+      - '!content/messenger-kb/network-coverage.json'
 
 permissions:
   contents: write
@@ -44,33 +46,57 @@ jobs:
       - name: Crawl public YouSafe network
         run: node scripts/sync-central-assistant-kb.mjs
 
-      - name: Validate central knowledge
+      - name: Validate central knowledge and sibling coverage
         shell: bash
         run: |
           node - <<'NODE'
           const fs = require('fs')
           const rows = JSON.parse(fs.readFileSync('content/messenger-kb/network-pages.json', 'utf8'))
+          const coverage = JSON.parse(fs.readFileSync('content/messenger-kb/network-coverage.json', 'utf8'))
           if (!Array.isArray(rows) || rows.length < 10) {
             throw new Error(`Central assistant KB is unexpectedly small: ${Array.isArray(rows) ? rows.length : 'invalid'}`)
           }
-          const sites = new Set(rows.map((row) => String(row.id || '').split(':')[1]).filter(Boolean))
-          if (sites.size < 3) {
-            throw new Error(`Central assistant KB covers too few sites: ${sites.size}`)
+          if (coverage.status !== 'healthy') {
+            throw new Error(`Central assistant coverage is not healthy: ${(coverage.problems || []).join('; ')}`)
           }
-          console.log(`Validated ${rows.length} knowledge pages across ${sites.size} YouSafe surfaces.`)
+
+          const requiredSites = ['main', 'usa', 'canada', 'uk', 'australia', 'caseworks', 'market', 'support']
+          const sites = new Set(rows.map((row) => String(row.id || '').split(':')[1]).filter(Boolean))
+          for (const site of requiredSites) {
+            if (!sites.has(site)) throw new Error(`Missing required YQAA knowledge surface: ${site}`)
+          }
+
+          const australia = rows.filter((row) => String(row.id || '').startsWith('network:australia:'))
+          const auText = australia.map((row) => `${row.title || ''}\n${row.body || ''}`).join('\n').toLowerCase()
+          if (australia.length < 3 || !auText.includes('australia') || !auText.includes('subclass 500')) {
+            throw new Error(`Australia coverage failed: ${australia.length} records`)
+          }
+
+          const requiredRepos = [
+            'kylemwalkerpr-ship-it/portal',
+            'kylemwalkerpr-ship-it/yousafe-consultancy',
+            'kylemwalkerpr-ship-it/caseworks',
+            'kylemwalkerpr-ship-it/support-saas',
+          ]
+          const coveredRepos = new Set((coverage.repositories || []).filter((row) => row.records > 0 || row.localCore).map((row) => row.repository))
+          for (const repo of requiredRepos) {
+            if (!coveredRepos.has(repo)) throw new Error(`Missing sibling-repo knowledge coverage: ${repo}`)
+          }
+
+          console.log(`Validated ${rows.length} knowledge pages across ${sites.size} YouSafe surfaces and ${coveredRepos.size} sibling repositories.`)
           NODE
 
       - name: Commit refreshed knowledge when changed
         shell: bash
         run: |
-          if git diff --quiet -- content/messenger-kb/network-pages.json; then
+          if git diff --quiet -- content/messenger-kb/network-pages.json content/messenger-kb/network-coverage.json; then
             echo "Central assistant knowledge is already current."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add content/messenger-kb/network-pages.json
+          git add content/messenger-kb/network-pages.json content/messenger-kb/network-coverage.json
           git commit -m "chore: refresh central assistant network knowledge"
 
           # Main can move while the crawler is running. Rebase and retry rather
