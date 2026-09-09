@@ -68,6 +68,7 @@ EXECUTION RULES — NON-NEGOTIABLE:
 - Read the ENTIRE document and the complete HARPER_SUPERVISION packet before rewriting.
 - You MUST cover every mustApply directive id in appliedIds or waivedIds.
 - Full document rewrite of prose is allowed. Preserve facts, URLs, numbers, legal qualifiers (must/not/never/may/cannot/unless), disclaimer, sources, heading topics, schema and frontmatter.
+- Outline H2s, the H1, primaryKeyword, and owner/canonical URL are FROZEN. Never add, remove, or rename headings. Never change the primary keyword or the owner URL. Deferred packet items are not yours to fix.
 - Work from the packet, not from your own imagined score. Never say a score passed; the supervisor re-runs Harper + SEO + voice + Flesch on your returned body.
 - Fix Harper grammar/spelling/punctuation findings in context. Use Harper's suggested fix as intent, not as blind string replacement.
 - For Flesch, shorten dense sentences and use plain English without deleting legal/technical qualifications or changing dates, amounts, program names, obligations or exceptions.
@@ -102,6 +103,7 @@ EXECUTION RULES — NON-NEGOTIABLE:
           directiveCount: supervision.directives.length,
           unmet: supervision.unmet,
           pendingIds,
+          deferred: supervision.deferred,
         })
       }
       throw new Error('reason' in parsed ? parsed.reason : 'Editorial revision could not be parsed')
@@ -116,6 +118,7 @@ EXECUTION RULES — NON-NEGOTIABLE:
       directiveCount: supervision.directives.length,
       unmet: supervision.unmet,
       pendingIds,
+      deferred: supervision.deferred,
     })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Editorial review failed' }, { status: 502 })
