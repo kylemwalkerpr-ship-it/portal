@@ -83,7 +83,7 @@
      the pre-sale side pane owns the whole phone viewport. Use the same live
      visual measurement so these surfaces cannot regress independently. */
   body .cw-market > .yousafe-messenger {
-    height: max(360px, calc(var(--ys-visual-viewport-height, 100dvh) - 60px)) !important;
+    height: calc(var(--ys-visual-viewport-height, 100dvh) - 60px) !important;
     min-height: 0 !important;
     max-height: calc(var(--ys-visual-viewport-height, 100dvh) - 60px) !important;
     overflow: hidden !important;
