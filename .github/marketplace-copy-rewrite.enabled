@@ -1,5 +1,0 @@
-One-time production enable marker for the 2026-09-09 Fiverr-grade Marketplace copy migration.
-
-While this file exists, the post-deploy Marketplace rewrite workflow may run after a successful push deployment. The migration itself is idempotent, snapshot-gated, slug-immutable, and verifies gig image mappings before and after content writes.
-
-Remove this marker after the final 217-gig / 70-provider rewrite and image audit succeeds.
