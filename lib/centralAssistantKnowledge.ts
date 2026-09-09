@@ -52,9 +52,11 @@ export function isAllowedAssistantOrigin(origin: string): boolean {
 }
 
 /**
- * Normalize client-provided context and corroborate it with HTTP headers.
- * Rendered public page text is treated as reference data, never instructions.
- * Authenticated portal screens keep route/viewer context but do not forward
+ * Normalize client-provided context and bind it to browser request headers.
+ * The trusted HTTP Origin wins over any supplied hostname/URL so a client
+ * cannot claim that a question came from a different YouSafe sister site.
+ * Rendered public page text is reference data, never instructions.
+ * Authenticated portal screens retain route/viewer context but do not forward
  * arbitrary rendered dashboard text into the external model.
  */
 export function normalizeAssistantOrigin(input: unknown, req?: Request): AssistantOrigin {
@@ -66,21 +68,30 @@ export function normalizeAssistantOrigin(input: unknown, req?: Request): Assista
   const suppliedHost = clean(value.hostname, 300)
 
   const trustedHeaderOrigin = headerOrigin && isAllowedAssistantOrigin(headerOrigin) ? headerOrigin : null
-  const trustedUrl = suppliedUrl && isYouSafeHost(suppliedUrl.hostname) ? suppliedUrl : null
-  const trustedReferer = refererUrl && isYouSafeHost(refererUrl.hostname) ? refererUrl : null
-  const hostname =
-    trustedUrl?.hostname ||
-    (trustedHeaderOrigin ? new URL(trustedHeaderOrigin).hostname : null) ||
-    trustedReferer?.hostname ||
-    (suppliedHost && isYouSafeHost(suppliedHost) ? suppliedHost : null)
+  const headerHost = trustedHeaderOrigin ? new URL(trustedHeaderOrigin).hostname.toLowerCase() : null
+  const trustedReferer = refererUrl && isYouSafeHost(refererUrl.hostname) && (!headerHost || refererUrl.hostname.toLowerCase() === headerHost)
+    ? refererUrl
+    : null
+  const trustedUrl = suppliedUrl && isYouSafeHost(suppliedUrl.hostname) && (!headerHost || suppliedUrl.hostname.toLowerCase() === headerHost)
+    ? suppliedUrl
+    : null
+  const trustedSuppliedHost = suppliedHost && isYouSafeHost(suppliedHost) && (!headerHost || suppliedHost.toLowerCase() === headerHost)
+    ? suppliedHost.toLowerCase()
+    : null
+  const hostname = headerHost || trustedReferer?.hostname || trustedUrl?.hostname || trustedSuppliedHost
   const privatePortalSurface = String(hostname || '').toLowerCase() === 'portal.yousafeconsultancy.com'
+
+  // Path comes from the same-host supplied page URL first, then same-host
+  // Referer, then the explicit pathname field used by the canonical embed.
+  const pathname = trustedUrl?.pathname || trustedReferer?.pathname || clean(value.pathname, 700)
+  const pageUrl = trustedUrl?.toString() || trustedReferer?.toString() || null
 
   return {
     surface: clean(value.surface, 80) || 'public-site-chat',
     origin: trustedHeaderOrigin || (suppliedOrigin && isAllowedAssistantOrigin(suppliedOrigin) ? suppliedOrigin : null),
     hostname,
-    pathname: clean(value.pathname, 700) || trustedUrl?.pathname || trustedReferer?.pathname || null,
-    url: trustedUrl?.toString() || trustedReferer?.toString() || null,
+    pathname,
+    url: pageUrl,
     title: clean(value.title, 500),
     referrer: clean(value.referrer, 1000),
     locale: clean(value.locale, 80),
