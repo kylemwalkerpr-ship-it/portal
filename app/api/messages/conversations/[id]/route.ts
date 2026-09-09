@@ -43,7 +43,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const counterpartId = conv.participant_a === profileId ? conv.participant_b : conv.participant_a
 
-  // Brief 47 §6.1: fetch source inquiry archived_at for messenger banner
   let sourceInquiryArchivedAt: string | null = null
   if (conv.context_kind === 'inquiry' && conv.context_id) {
     try {
@@ -53,9 +52,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
         .eq('id', conv.context_id)
         .maybeSingle()
       sourceInquiryArchivedAt = inq?.archived_at || null
-    } catch {
-      // non-fatal
-    }
+    } catch {}
   }
 
   const [messagesRes, counterpartRes, participantRes, readsRes] = await Promise.all([
@@ -64,15 +61,13 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .eq('conversation_id', id)
       .order('created_at', { ascending: true })
       .limit(500),
-    db.from('profiles').select('id, full_name, email, avatar_url, role').eq('id', counterpartId).maybeSingle(),
+    // Direct contact fields are intentionally never returned by Messenger.
+    db.from('profiles').select('id, full_name, avatar_url, role').eq('id', counterpartId).maybeSingle(),
     db.from('conversation_participants')
       .select('starred_message_ids, pinned_at, archived_at, muted_until')
       .eq('conversation_id', id)
       .eq('profile_id', profileId)
       .maybeSingle(),
-    // Counterpart's read cursor. Used to derive a synthetic per-message
-    // read_at so the bubble's blue-tick render in MessageBubble.tsx works
-    // — conversation_messages itself doesn't store per-row read state.
     db.from('conversation_reads')
       .select('last_read_at')
       .eq('conversation_id', id)
@@ -83,7 +78,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
 
-  // Sidebar context: orders, offers, inquiries this pair has in common
   let sharedOrders: any[] = []
   let sharedOffers: any[] = []
   try {
@@ -96,7 +90,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     sharedOrders = orders ?? []
   } catch {}
 
-  // Hydrate offer-type messages with their offers (+ linked gig) in one query.
   const rawMessages: any[] = messagesRes.data || []
   const offerIds = Array.from(new Set(
     rawMessages
@@ -106,21 +99,13 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const offerMap = new Map<string, any>()
   if (offerIds.length) {
-    // STEP 1 — base offer rows (guaranteed to succeed; no embeds).
-    // Earlier versions embedded `gigs(...)` and `offer_files(...)` which
-    // could throw a 400 on missing FK relationships or missing tables and
-    // wipe out the WHOLE enrichment, leaving every offer bubble blank on
-    // the student side. We fetch the base shape first, then attempt the
-    // gig join in a second best-effort pass.
     let offerRows: any[] = []
     try {
       const { data, error } = await db
         .from('offers')
         .select('id, title, description, price, discounted_price, currency, delivery_days, revisions, expires_at, status, gig_id')
         .in('id', offerIds)
-      if (error) {
-        console.error('[conversations] base offer query failed', error)
-      }
+      if (error) console.error('[conversations] base offer query failed', error)
       offerRows = data ?? []
     } catch (e) {
       console.error('[conversations] base offer query threw', e)
@@ -142,8 +127,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       })
     }
 
-    // Link each offer to its order (if one was created), so the messenger can
-    // jump straight to the order from the offer card.
     for (const ord of sharedOrders) {
       if (ord?.offer_id && offerMap.has(ord.offer_id)) {
         const off = offerMap.get(ord.offer_id)
@@ -152,7 +135,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       }
     }
 
-    // STEP 2 — attach linked gig info (best-effort, doesn't touch offer rows).
     const gigIds = offerRows
       .map((r) => r.gig_id)
       .filter((g): g is string => typeof g === 'string' && g.length > 0)
@@ -168,13 +150,11 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
           if (g) offerMap.set(id, { ...offer, linked_gig: { id: g.id, title: g.title, slug: g.slug } })
         }
       } catch (e) {
-        // Non-fatal — leave linked_gig undefined.
         console.warn('[conversations] gig enrichment skipped', e)
       }
     }
   }
 
-  // Hydrate reply previews
   const replyIds = Array.from(new Set(
     rawMessages.map((m) => m?.reply_to_id).filter(Boolean),
   ))
@@ -191,7 +171,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     }
   }
 
-  // Hydrate reactions for all messages in one query
   const messageIds = rawMessages.map((m) => m.id).filter(Boolean)
   const reactionMap = new Map<string, Array<{ emoji: string; count: number; mine: boolean }>>()
   if (messageIds.length) {
@@ -233,14 +212,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       }
     }
     const reactions = reactionMap.get(m.id)
-    if (reactions) {
-      enriched = { ...enriched, reactions }
-    }
-    // Derive read/delivered timestamps from the counterpart's read cursor.
-    // delivered_at is set as soon as the row exists (we don't track per-row
-    // delivery yet, so created_at is a safe proxy). read_at is set only
-    // when the message predates the counterpart's last_read_at — this is
-    // what flips the bubble's tick from grey to blue.
+    if (reactions) enriched = { ...enriched, reactions }
     if (m?.sender_id === profileId) {
       const createdMs = m?.created_at ? new Date(m.created_at).getTime() : 0
       enriched = {
@@ -297,13 +269,11 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (!refMsg) reply_to_id = null
   }
 
-  // Server-side safety gate — mirror of the client check in safety.ts. Hard
-  // violations (emails, phones, off-platform links, payment apps, obfuscations)
-  // block the send so policy is enforced even if the client check is bypassed.
+  // Server-side safety gate. Emails, phones, off-platform links, payment apps
+  // and obfuscations are blocked even if a client-side check is bypassed.
   const safety = safetyGuard(text)
   if (!safety.ok) return Response.json({ error: safety.error, violations: safety.violations }, { status: 422 })
 
-  // Ownership check
   const { data: conv } = await db
     .from('conversations')
     .select('participant_a, participant_b')
@@ -327,10 +297,6 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  // Client/student messages can trigger AI. Provider messages do NOT change
-  // ai_mode: attorneys/consultants can reply normally while AI remains live.
-  // Only the explicit Take over control may pause provider-side AI. Admin
-  // outbound activity remains an intentional intervention and still pauses AI.
   try {
     if (auth.role === 'admin') {
       await setConversationAiMode(db, id, 'paused', {
@@ -355,7 +321,6 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   const body = await req.json().catch(() => ({}))
 
-  // Ownership check
   const { data: conv } = await db
     .from('conversations')
     .select('participant_a, participant_b, status')
