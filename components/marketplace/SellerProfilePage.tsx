@@ -23,9 +23,9 @@ export function SellerProfilePage({
   initialSeller = null,
 }: {
   sellerId: string
-  initialSeller?: Pick<SellerProfile, 'id' | 'full_name'> | null
+  initialSeller?: SellerProfile | null
 }) {
-  const [seller, setSeller] = React.useState<SellerProfile | null>(initialSeller as SellerProfile | null)
+  const [seller, setSeller] = React.useState<SellerProfile | null>(initialSeller)
   const [gigs, setGigs] = React.useState<SellerGig[]>([])
   const [reviews, setReviews] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(!initialSeller)
@@ -42,52 +42,76 @@ export function SellerProfilePage({
     }
   }, [tab])
 
+  // The server already resolved enough seller data to render the real profile.
+  // Collapse the crawler-only SSR duplicate as soon as this island hydrates;
+  // enrichment requests below are not allowed to hold the visible page hostage.
   React.useEffect(() => {
+    if (initialSeller) signalSsrReady('yousafe:provider-ssr-ready')
+  }, [initialSeller])
+
+  React.useEffect(() => {
+    let cancelled = false
+
     async function loadSellerData() {
-      setLoading(!initialSeller)
+      if (!initialSeller) setLoading(true)
       setError('')
 
+      // These endpoints are independent. The previous waterfall waited for
+      // profile → gigs → reviews, keeping the raw SSR article visible for a few
+      // seconds on mobile. Fetch all three at once and progressively enrich the
+      // server-seeded interactive view.
+      const [profileResult, gigsResult, reviewsResult] = await Promise.allSettled([
+        fetch(`/api/sellers/${sellerId}`, { credentials: 'same-origin' }),
+        fetch(`/api/sellers/${sellerId}/gigs`, { credentials: 'same-origin' }),
+        fetch(`/api/sellers/${sellerId}/reviews`, { credentials: 'same-origin' }),
+      ])
+
+      if (cancelled) return
+
       try {
-        // Load seller profile (unwrap {data, error} envelope)
-        const profileRes = await fetch(`/api/sellers/${sellerId}`, { credentials: 'same-origin' })
-        const profileBody = await profileRes.json().catch(() => null)
-        if (!profileRes.ok) {
-          const msg = profileBody?.error?.message || (typeof profileBody?.error === 'string' ? profileBody.error : null) || 'Failed to load seller profile'
-          throw new Error(msg)
-        }
-        const profilePayload = profileBody?.data ?? profileBody ?? {}
-        setSeller(profilePayload.seller || null)
-
-        // Load seller gigs
-        const gigsRes = await fetch(`/api/sellers/${sellerId}/gigs`, { credentials: 'same-origin' })
-        if (gigsRes.ok) {
-          const gBody = await gigsRes.json().catch(() => null)
-          const gPayload = gBody?.data ?? gBody ?? {}
-          setGigs(gPayload.gigs || [])
-        }
-
-        // Load seller reviews for the tab count. ReviewsSection performs its
-        // own seller-scoped fetch when the Reviews tab is opened/rendered.
-        try {
-          const reviewsRes = await fetch(`/api/sellers/${sellerId}/reviews`, { credentials: 'same-origin' })
-          if (reviewsRes.ok) {
-            const rBody = await reviewsRes.json().catch(() => null)
-            const rPayload = rBody?.data ?? rBody ?? {}
-            setReviews(rPayload.reviews || [])
+        if (profileResult.status === 'fulfilled') {
+          const profileRes = profileResult.value
+          const profileBody = await profileRes.json().catch(() => null)
+          if (!profileRes.ok) {
+            const msg = profileBody?.error?.message || (typeof profileBody?.error === 'string' ? profileBody.error : null) || 'Failed to load seller profile'
+            if (!initialSeller) throw new Error(msg)
+          } else {
+            const profilePayload = profileBody?.data ?? profileBody ?? {}
+            if (!cancelled && profilePayload.seller) setSeller(profilePayload.seller)
           }
-        } catch { /* reviews route may not exist yet — non-blocking */ }
+        } else if (!initialSeller) {
+          throw profileResult.reason instanceof Error
+            ? profileResult.reason
+            : new Error('Failed to load seller profile')
+        }
 
-        // Collapse SSR profile overview once the interactive profile is ready.
-        signalSsrReady('yousafe:provider-ssr-ready')
+        if (gigsResult.status === 'fulfilled' && gigsResult.value.ok) {
+          const gBody = await gigsResult.value.json().catch(() => null)
+          const gPayload = gBody?.data ?? gBody ?? {}
+          if (!cancelled) setGigs(gPayload.gigs || [])
+        }
+
+        // ReviewsSection does its own seller-scoped fetch when opened; this
+        // lightweight request only supplies the tab count and must never block.
+        if (reviewsResult.status === 'fulfilled' && reviewsResult.value.ok) {
+          const rBody = await reviewsResult.value.json().catch(() => null)
+          const rPayload = rBody?.data ?? rBody ?? {}
+          if (!cancelled) setReviews(rPayload.reviews || [])
+        }
+
+        if (!initialSeller) signalSsrReady('yousafe:provider-ssr-ready')
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load seller data')
+        if (!initialSeller && !cancelled) {
+          setError(e instanceof Error ? e.message : 'Failed to load seller data')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     loadSellerData()
-  }, [sellerId])
+    return () => { cancelled = true }
+  }, [sellerId, initialSeller])
 
   if (loading) {
     return (
@@ -115,21 +139,15 @@ export function SellerProfilePage({
 
   return (
     <div className="ys-seller-profile-page" style={pageShell}>
-      {/* Breadcrumb */}
       <div className="ys-seller-profile-breadcrumb" style={breadcrumb}>
         <Link href="/" style={breadcrumbLink}>Marketplace</Link>
         <span style={breadcrumbSeparator}>/</span>
         <span style={breadcrumbCurrent}>{seller.full_name}</span>
       </div>
 
-      {/* Header */}
       <SellerProfileHeader seller={seller} onContact={() => setChatOpen(true)} />
-
-      {/* Stats */}
       <SellerStats seller={seller} />
 
-      {/* Tabs: explicit class lets the mobile layer make this a touch-scroll
-          rail instead of squeezing/overflowing three labels on 320px phones. */}
       <div className="ys-seller-profile-tabs" style={tabsContainer}>
         <button
           type="button"
@@ -143,18 +161,17 @@ export function SellerProfilePage({
           onClick={() => setActiveTab('gigs')}
           style={activeTab === 'gigs' ? activeTabStyle : tabStyle}
         >
-          Services ({gigs.length})
+          Services ({gigs.length || seller.total_gigs || 0})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('reviews')}
           style={activeTab === 'reviews' ? activeTabStyle : tabStyle}
         >
-          Reviews ({reviews.length})
+          Reviews ({reviews.length || seller.rating_count || 0})
         </button>
       </div>
 
-      {/* Tab Content — Card wrapper for light paper background */}
       <div className="ys-seller-profile-tab-content" style={{ ...tabContent, background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '14px', padding: '24px' }}>
         {activeTab === 'about' && <SellerAbout seller={seller} />}
         {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
@@ -166,10 +183,6 @@ export function SellerProfilePage({
         )}
       </div>
 
-      {/* Side-pane chat — opens from "Chat now" without leaving the profile.
-          counterpartProfileId routes through the unified messages path, which
-          works for attorneys AND consultants — passing seller.id as an
-          attorney id 404s ("Attorney not found") for consultant sellers. */}
       <ChatSidePane
         open={chatOpen}
         onClose={() => setChatOpen(false)}
@@ -181,12 +194,9 @@ export function SellerProfilePage({
   )
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
-
 const pageShell = {
   minHeight: '100vh',
-  /* transparent — shell owns the paper + pattern */
-  color: T.onPaper, // light text default on the dark paper shell — vellum cards set ink themselves
+  color: T.onPaper,
   padding: '24px 32px',
   maxWidth: '1200px',
   margin: '0 auto',

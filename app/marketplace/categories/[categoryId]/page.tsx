@@ -14,17 +14,6 @@ interface CategoryPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-/**
- * Count active gigs for a category/subcategory using the SAME filter shape
- * the discovery listing applies (lib/categories taxonomy terms, with NULL
- * categories OR'd in — see buildCategoryOrFilter). The old exact
- * `.eq('category', id)` / `.eq('subcategory', id)` counts disagreed with the
- * listing on two axes: gigs stored with taxonomy labels instead of ids, and
- * gigs with an unset category (PostgREST `in`/`eq` never match NULL). That
- * skewed the "(N services)" title and, worse, the empty-shelf noindex
- * policy — a category whose listing renders gigs could still count 0 here
- * and get de-indexed.
- */
 async function countActiveGigsForCategory(filterId: string): Promise<number> {
   try {
     const db = createSupabaseAdminClient()
@@ -37,7 +26,6 @@ async function countActiveGigsForCategory(filterId: string): Promise<number> {
     const { count } = await query
     return count || 0
   } catch {
-    // Count is best-effort; treat as 0 (same as before).
     return 0
   }
 }
@@ -47,21 +35,11 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
   const sp = await searchParams
   const hasUtm = sp && Object.keys(sp).some(k => k.startsWith('utm_'))
   const resolved = resolveCategoryOrSubcategory(categoryId)
-  // notFound() in generateMetadata triggers Next's 404 boundary cleanly.
-  // Returning a thin noindex Metadata + letting the page-level notFound()
-  // handle the response is the canonical approach for app-router.
   if (!resolved) return { title: 'Marketplace | YouSafe', robots: { index: false } }
 
   const { category, subcategory } = resolved
   const display = subcategory ?? category
-
   const count = await countActiveGigsForCategory(subcategory?.id ?? category.id)
-
-  // Empty shelves: keep follow so caseworks inbound equity is not wasted, but
-  // do NOT index pure empty category shells (SEO deep strategy §5.2).
-  // Hub categories with real editorial copy + Caseworks rail still index when
-  // they have ≥1 active gig OR when they are top-level category hubs with a
-  // non-empty description (commercial hub, not a thin filter URL).
   const emptyShelf = count < 1
   const isTopLevelHub = !subcategory && Boolean((display.description || '').trim())
   const allowIndex = !hasUtm && (!emptyShelf || isTopLevelHub)
@@ -85,25 +63,21 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
   }
 }
 
+const cardStyle = {
+  background: 'var(--ys-vellum, #FFFFFF)',
+  border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
+  borderRadius: '16px',
+  boxShadow: '0 10px 30px rgba(15,23,42,0.055)',
+} as const
+
 export default async function CategoryPage({ params }: CategoryPageProps) {
   const { categoryId } = await params
   const resolved = resolveCategoryOrSubcategory(categoryId)
-
-  // Genuinely unknown id → 404. We previously redirected to /marketplace
-  // which, under static export, degraded to a meta-refresh HTML page —
-  // Ahrefs flagged every such URL for "missing H1", "non-canonical", and
-  // "meta refresh redirect" (hundreds of rows from caseworks inbound
-  // links). A proper notFound() returns 404 and lets the noindex page
-  // template render with a real H1.
   if (!resolved) notFound()
 
   const { category, subcategory } = resolved
   const displayName = subcategory?.name ?? category.name
-  // Filter discovery by subcategory when present so the page actually
-  // shows the right gigs for caseworks-linked subcategory URLs.
   const filterId = subcategory?.id ?? category.id
-
-  // Active-gig count for empty-shelf UI + indexing policy (matches generateMetadata).
   const activeCount = await countActiveGigsForCategory(filterId)
 
   const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
@@ -131,24 +105,9 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
     ],
   }
   const caseworksItemList = getCaseworksItemListJsonLd(filterId)
-
-  // Sibling subcategories for the "Browse related" rail. When the
-  // current page is a top-level category, this lists all its
-  // subcategories (so the category page hands inlinks to children).
-  // When the current page IS a subcategory, this lists its siblings
-  // under the same parent (so the subcategory pages stop being
-  // orphans + start having real outlinks instead of just JSON-LD).
-  //
-  // 2026-06-02 audit caught 39 orphan + 32 no-outlinks rows because
-  // subcategory pages emitted only JSON-LD breadcrumbs (script tags)
-  // and a client-rendered GigDiscoveryPage that was empty for low-
-  // gig subcategories. Ahrefs counts HTML anchors, not JSON-LD —
-  // so an empty subcategory page emitted zero internal links.
   const siblingSubcategories = subcategory
     ? category.subcategories.filter((s) => s.id !== subcategory.id)
     : category.subcategories
-
-  // Prefer subcategory-specific editorial; fall back to parent category copy.
   const editorial =
     getCategoryEditorial(filterId) ||
     getCategoryEditorial(category.id) ||
@@ -166,104 +125,131 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(caseworksItemList) }}
         />
       )}
-      {/* HTML breadcrumb — Ahrefs counts these anchors as internal
-          inlinks/outlinks. The JSON-LD breadcrumb above feeds the
-          rich-snippet rail; this nav feeds the link graph. */}
+
       <nav
         aria-label="Breadcrumb"
-        className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-4 text-sm"
+        className="ys-category-breadcrumb mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-4 text-sm"
       >
-        <ol style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', listStyle: 'none', margin: 0, padding: 0 }}>
+        <ol style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', listStyle: 'none', margin: 0, padding: 0, lineHeight: 1.45 }}>
           <li><Link href="/" style={{ color: 'inherit', textDecoration: 'none' }}>Marketplace</Link></li>
           <li aria-hidden>/</li>
-          <li><Link href="/categories" style={{ color: 'inherit', textDecoration: 'underline' }}>Categories</Link></li>
+          <li><Link href="/categories" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>Categories</Link></li>
           {subcategory && (
             <>
               <li aria-hidden>/</li>
-              <li><Link href={`/categories/${category.id}`} style={{ color: 'inherit', textDecoration: 'underline' }}>{category.name}</Link></li>
+              <li><Link href={`/categories/${category.id}`} style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>{category.name}</Link></li>
             </>
           )}
           <li aria-hidden>/</li>
-          <li aria-current="page" style={{ fontWeight: 600 }}>{displayName}</li>
+          <li aria-current="page" style={{ fontWeight: 700 }}>{displayName}</li>
         </ol>
       </nav>
-      {/* Editorial intro in <main> so crawlers attribute body copy as primary content. */}
-      <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-6 pb-2">
-        <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 10px' }}>{displayName}</h1>
-        <p style={{ fontSize: '16px', lineHeight: 1.55, maxWidth: '48rem', margin: 0, opacity: 0.9 }}>
-          {displayDescription}
-        </p>
-        <p style={{ fontSize: '15px', lineHeight: 1.65, maxWidth: '48rem', margin: '12px 0 0', opacity: 0.9 }}>
-          YouSafe Marketplace lists fixed-price briefs from consultants and licensed attorneys. Compare
-          scope, delivery time, and provider role before you request work. For free procedural reading —
-          document order, refusal triggers, and official-source links — use{' '}
-          <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline' }}>
-            MyCaseworks
-          </a>
-          . Marketplace orders are document-preparation and consulting engagements unless your contract
-          states attorney representation.
-        </p>
-        <p style={{ fontSize: '15px', lineHeight: 1.65, maxWidth: '48rem', margin: '10px 0 0', opacity: 0.9 }}>
-          Prefer a self-serve kit first? Browse{' '}
-          <Link href="/templates" style={{ textDecoration: 'underline' }}>
-            template packs
-          </Link>
-          {' '}for structured worksheets. When you need a human review, shortlist providers with relevant
-          jurisdiction tags and clear package descriptions rather than the lowest price alone.
-        </p>
-        {editorial?.body?.map((para) => (
-          <p
-            key={para.slice(0, 48)}
-            style={{ fontSize: '15px', lineHeight: 1.65, maxWidth: '48rem', margin: '12px 0 0', opacity: 0.9 }}
-          >
-            {para}
-          </p>
-        ))}
-        {editorial?.compare && editorial.compare.length > 0 && (
-          <div style={{ marginTop: '14px', maxWidth: '48rem' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>
-              What to compare in {displayName}
-            </h2>
-            <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.6, fontSize: '14px', opacity: 0.9 }}>
-              {editorial.compare.map((c) => (
-                <li key={c} style={{ marginBottom: 4 }}>{c}</li>
-              ))}
-            </ul>
+
+      {/* Keep the first screen conversion-led: a compact category hero followed
+          immediately by real services. The deeper SEO / buying guidance stays
+          crawlable below the listings instead of becoming a wall of prose above
+          the first result on a phone. */}
+      <main className="ys-category-main mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-5 pb-3">
+        <section
+          className="ys-category-hero"
+          aria-labelledby="ys-category-title"
+          style={{
+            ...cardStyle,
+            padding: 'clamp(20px, 4vw, 34px)',
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ys-onPaperSoft, #526072)', marginBottom: 8 }}>
+            YouSafe Marketplace
           </div>
-        )}
-        {editorial?.nextSteps && (
-          <p style={{ fontSize: '14px', lineHeight: 1.6, maxWidth: '48rem', margin: '12px 0 0', opacity: 0.85 }}>
-            {editorial.nextSteps}
+          <h1 id="ys-category-title" style={{ fontSize: 'clamp(28px, 5vw, 42px)', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.025em', margin: '0 0 12px', fontFamily: 'var(--font-display, Georgia, serif)' }}>
+            {displayName}
+          </h1>
+          <p style={{ fontSize: 'clamp(15px, 2.5vw, 18px)', lineHeight: 1.6, maxWidth: '50rem', margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+            {displayDescription}
           </p>
-        )}
-        {activeCount < 1 ? (
-          <p style={{ fontSize: '14px', marginTop: '12px', opacity: 0.75 }}>
-            No active services in this category right now. Browse{' '}
-            <Link href="/categories" style={{ textDecoration: 'underline' }}>
-              all categories
-            </Link>
-            , read free guides on{' '}
-            <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline' }}>
-              MyCaseworks
-            </a>
-            , or check back soon as providers list new briefs.
-          </p>
-        ) : (
-          <p style={{ fontSize: '14px', marginTop: '12px', opacity: 0.75 }}>
-            {activeCount} active service{activeCount === 1 ? '' : 's'} — compare price, turnaround, and
-            provider role before you order.
-          </p>
-        )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 18 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 32, padding: '6px 10px', borderRadius: 999, background: 'var(--ys-indigoSoft, rgba(60,59,110,0.10))', fontSize: 12, fontWeight: 700 }}>
+              {activeCount} active service{activeCount === 1 ? '' : 's'}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--ys-onPaperSoft, #64748B)' }}>
+              Compare scope, turnaround and provider role before ordering.
+            </span>
+          </div>
+        </section>
       </main>
+
       <GigDiscoveryPage categoryId={filterId} categoryName={displayName} />
-      {/* Sibling-subcategories rail — gives this page real outlinks
-          (HTML anchors, not JSON-LD) AND gives every sibling page a
-          fresh inlink from this page. Clears the orphan + no-
-          outlinks flags from the 2026-06-02 audit in one shot. */}
+
+      <section
+        aria-label={`${displayName} buying guidance`}
+        className="ys-category-guidance mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8"
+      >
+        <div style={{ ...cardStyle, padding: 'clamp(18px, 4vw, 30px)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 16 }}>
+            <h2 style={{ fontSize: '22px', lineHeight: 1.2, fontWeight: 700, margin: 0 }}>Before you order</h2>
+            <span style={{ fontSize: 12, color: 'var(--ys-onPaperSoft, #64748B)' }}>Practical scope guidance</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 12 }}>
+            <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Choose the right scope</h3>
+              <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+                YouSafe Marketplace lists fixed-price briefs from consultants and licensed attorneys. Compare scope, delivery time, and provider role before you request work. Marketplace orders are document-preparation and consulting engagements unless your contract states attorney representation.
+              </p>
+            </div>
+            <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Self-serve or specialist?</h3>
+              <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+                For free procedural reading — document order, refusal triggers and official-source links — use{' '}
+                <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>.
+                {' '}Prefer a worksheet first? Browse{' '}
+                <Link href="/templates" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>template packs</Link>.
+              </p>
+            </div>
+          </div>
+
+          {editorial?.body && editorial.body.length > 0 && (
+            <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 8px' }}>{displayName} guidance</h3>
+              {editorial.body.map((para) => (
+                <p key={para.slice(0, 48)} style={{ fontSize: 14, lineHeight: 1.7, maxWidth: '52rem', margin: '8px 0 0', color: 'var(--ys-inkMid, #334155)' }}>
+                  {para}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {editorial?.compare && editorial.compare.length > 0 && (
+            <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 9px' }}>What to compare in {displayName}</h3>
+              <ul style={{ margin: 0, paddingLeft: '1.15rem', lineHeight: 1.65, fontSize: 14, color: 'var(--ys-inkMid, #334155)' }}>
+                {editorial.compare.map((c) => <li key={c} style={{ marginBottom: 5 }}>{c}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {editorial?.nextSteps && (
+            <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: 11, background: 'var(--ys-indigoSoft, rgba(60,59,110,0.08))', fontSize: 14, lineHeight: 1.6 }}>
+              <strong>Next step:</strong> {editorial.nextSteps}
+            </div>
+          )}
+
+          {activeCount < 1 && (
+            <p style={{ fontSize: 14, lineHeight: 1.6, margin: '18px 0 0', color: 'var(--ys-onPaperSoft, #64748B)' }}>
+              No active services in this category right now. Browse{' '}
+              <Link href="/categories" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>all categories</Link>, read free guides on{' '}
+              <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>, or check back soon.
+            </p>
+          )}
+        </div>
+      </section>
+
       {siblingSubcategories.length > 0 && (
         <section
           aria-label={subcategory ? `Related ${category.name} services` : `${category.name} subcategories`}
-          className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-12"
+          className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8"
         >
           <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>
             {subcategory ? `Related ${category.name} services` : `Browse ${category.name} subcategories`}
@@ -284,18 +270,19 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
                   href={`/categories/${s.id}`}
                   style={{
                     display: 'block',
-                    padding: '12px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    background: 'rgba(0,0,0,0.02)',
+                    padding: '13px 14px',
+                    borderRadius: '11px',
+                    border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
+                    background: 'var(--ys-vellum, #FFFFFF)',
                     color: 'inherit',
                     textDecoration: 'none',
-                    fontWeight: 500,
+                    fontWeight: 650,
+                    minHeight: 72,
                   }}
                 >
                   {s.name}
                   {s.description && (
-                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 400, opacity: 0.7, marginTop: '2px' }}>
+                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 400, lineHeight: 1.45, color: 'var(--ys-onPaperSoft, #64748B)', marginTop: '3px' }}>
                       {s.description}
                     </span>
                   )}
@@ -305,7 +292,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           </ul>
         </section>
       )}
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pb-8">
         <CaseworksReadMoreRail categoryId={category.id} />
       </div>
     </>

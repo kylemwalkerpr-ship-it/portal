@@ -8,11 +8,6 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
   const db = auth ? auth.db : createSupabaseAdminClient()
   const { slug } = await context.params
 
-  // Load the gig without filtering by status — we need to know the
-  // requested gig before we can decide whether the viewer is allowed
-  // to see it. Public visitors only see active gigs; signed-in
-  // providers see their own gigs at any status (so they can preview /
-  // edit drafts from the marketplace surface).
   const { data: gig, error } = await db
     .from('gigs')
     .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username, created_at)')
@@ -27,21 +22,36 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     return fail('Gig not found.', 404)
   }
 
-  // Get provider stats + headshot. The headshot lives on the seller-
-  // specific table (attorneys.headshot_url for attorney gigs,
-  // consultants.headshot_url for consultant gigs) because profiles.avatar_url
-  // is almost always NULL for verified sellers — the profile editor writes
-  // the upload to the seller table. Without this look-up the gig detail
-  // sidebar fell through to initials even when the seller had a photo.
   const providerSellerTable = gig.provider_type === 'consultant' ? 'consultants' : 'attorneys'
-  const [{ data: providerGigs }, { data: providerReviews }, providerHeadshotRes] = await Promise.all([
-    db.from('gigs').select('id, avg_rating, review_count, order_count').eq('provider_id', gig.provider_id).eq('status', 'active'),
-    db.from('gig_reviews').select('rating').eq('provider_id', gig.provider_id),
-    db.from(providerSellerTable).select('headshot_url').eq('profile_id', gig.provider_id).maybeSingle(),
-  ])
-  const provider_headshot_url = (providerHeadshotRes?.data as { headshot_url?: string | null } | null)?.headshot_url || null
 
-  // Calculate provider stats
+  // Every enrichment below depends only on the already-loaded gig. Run them in
+  // one fan-out rather than provider stats → similar gigs as two serial network
+  // turns. The old providerReviews query was also dead work: rating totals are
+  // derived from provider gigs and the result was never read.
+  const [providerGigsRes, providerHeadshotRes, similarGigsRes] = await Promise.all([
+    db
+      .from('gigs')
+      .select('id, avg_rating, review_count, order_count')
+      .eq('provider_id', gig.provider_id)
+      .eq('status', 'active'),
+    db
+      .from(providerSellerTable)
+      .select('headshot_url')
+      .eq('profile_id', gig.provider_id)
+      .maybeSingle(),
+    db
+      .from('gigs')
+      .select('id, slug, title, starting_price, avg_rating, gallery_images')
+      .eq('category', gig.category)
+      .eq('status', 'active')
+      .neq('id', gig.id)
+      .limit(6),
+  ])
+
+  const providerGigs = providerGigsRes.data || []
+  const provider_headshot_url = (providerHeadshotRes?.data as { headshot_url?: string | null } | null)?.headshot_url || null
+  const similarGigs = similarGigsRes.data || []
+
   const providerStats = {
     avg_rating: 0,
     review_count: 0,
@@ -50,7 +60,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     is_online: true,
   }
 
-  if (providerGigs && providerGigs.length > 0) {
+  if (providerGigs.length > 0) {
     const totalReviews = providerGigs.reduce((sum: number, g: any) => sum + (g.review_count || 0), 0)
     const totalOrders = providerGigs.reduce((sum: number, g: any) => sum + (g.order_count || 0), 0)
     const weightedRating = providerGigs.reduce((sum: number, g: any) => sum + (g.avg_rating || 0) * (g.review_count || 0), 0)
@@ -60,21 +70,9 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     providerStats.order_count = totalOrders
   }
 
-  // Get similar gigs (same category, different provider)
-  const { data: similarGigs } = await db
-    .from('gigs')
-    .select('id, slug, title, starting_price, avg_rating, gallery_images')
-    .eq('category', gig.category)
-    .eq('status', 'active')
-    .neq('id', gig.id)
-    .limit(6)
-
-  // resolveCoverUrl handles both shapes — `{url}` objects (current) and
-  // bare strings (older builder versions). Without this, gigs created
-  // before the wizard fix never rendered a cover anywhere.
   const cover = resolveCoverUrl(gig)
   const normalizedGallery = normalizeGallery(gig.gallery_images)
-  const normalizedSimilar = (similarGigs || []).map((sg: any) => ({
+  const normalizedSimilar = similarGigs.map((sg: any) => ({
     ...sg,
     gallery_images: normalizeGallery(sg.gallery_images),
     cover_image_url: resolveCoverUrl(sg),
@@ -92,9 +90,6 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       provider_is_online: providerStats.is_online,
       provider_headshot_url,
       similar_gigs: normalizedSimilar,
-      // Owner flag so the client can render edit affordances on the
-      // public marketplace page without leaking the check to anonymous
-      // viewers (they always get false).
       viewer_is_owner: isOwner || isAdmin,
     },
     seo: {
