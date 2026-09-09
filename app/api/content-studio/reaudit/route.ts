@@ -499,12 +499,13 @@ async function callAiFixWithProvider(
     prompt,
     maxTokens,
     temperature: 0.2,
-    aiProvider,
-    exclusive: Boolean(aiProvider),
+    aiProvider: aiProvider || DEFAULT_REVIEW_PIN,
+    exclusive: true,
     // Harper / Audit & Fix must stay on the operator's selected reviewer
     // (Grok by default). Capacity cascade was falling through to Entrim
     // Qwen/DeepSeek after a Grok abort and surfacing 401 proxy-token errors
-    // for models nobody selected.
+    // for models nobody selected. Never fall through, even if the pin is
+    // missing — generateContentText then stays on LIVE_DEFAULT_PROVIDER (Grok).
     cascadeOnCapacity: false,
     // Per-candidate fetch/complete headroom (overrides the 120s global).
     timeoutMs: FIX_CANDIDATE_TIMEOUT_MS,

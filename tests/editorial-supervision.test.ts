@@ -180,11 +180,19 @@ describe('reviewer stays on the selected model', () => {
     expect(source).toContain('DEFAULT_REVIEW_PIN')
   })
 
-  it('Audit & Fix (reaudit) does not cascade to unselected Entrim hosts', () => {
+  it('Audit & Fix (reaudit) stays exclusive on the selected reviewer — no Entrim cascade', () => {
     const source = readFileSync(path.join(process.cwd(), 'app/api/content-studio/reaudit/route.ts'), 'utf8')
     expect(source).toContain('cascadeOnCapacity: false')
     expect(source).not.toContain('cascadeOnCapacity: Boolean(aiProvider)')
-    expect(source).toContain('exclusive: Boolean(aiProvider)')
+    expect(source).not.toContain('exclusive: Boolean(aiProvider)')
+    expect(source).toContain('exclusive: true')
+  })
+
+  it('Harper editorial-review client wait is longer than the Grok abort window', () => {
+    const source = readFileSync(path.join(process.cwd(), 'components/design/admin-inline-editor.tsx'), 'utf8')
+    expect(source).not.toContain('timeoutMs: 80_000')
+    expect(source).toContain('timeoutMs: 200_000')
+    expect(source).toContain('reviewModel: reviewModel || DEFAULT_REVIEW_PIN')
   })
 })
 
