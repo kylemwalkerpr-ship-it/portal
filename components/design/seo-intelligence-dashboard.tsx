@@ -224,10 +224,10 @@ const SeoIntelligenceDashboard = React.forwardRef<SeoIntelHandle, SeoIntelDashbo
 
   const refresh = opps.filter((o) => o.action === 'REFRESH')
   const high = opps.filter((o) => (o.score || 0) >= 60)
-  const gscTotals = (gsc?.rows || []).reduce(
-    (a: { clicks: number; impressions: number }, r) => ({
-      clicks: a.clicks + Number(r.clicks || 0),
-      impressions: a.impressions + Number(r.impressions || 0),
+  const gscTotals = (gsc?.rows || []).reduce<{ clicks: number; impressions: number }>(
+    (a, r) => ({
+      clicks: a.clicks + Number(r.clicks ?? 0),
+      impressions: a.impressions + Number(r.impressions ?? 0),
     }),
     { clicks: 0, impressions: 0 },
   )
