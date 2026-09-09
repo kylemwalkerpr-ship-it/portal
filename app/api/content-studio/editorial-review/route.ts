@@ -10,7 +10,7 @@ import { DRAFT_HARD_MAX_CHARS } from '@/lib/seoFactory/draftIntegrity'
 import type { EditorSeoHint } from '@/lib/editorMetrics'
 import type { HarperLintSummary } from '@/lib/harperBrowser'
 
-export const maxDuration = 90
+export const maxDuration = 180
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdminUser()
@@ -42,8 +42,16 @@ export async function POST(request: NextRequest) {
     const hint: EditorSeoHint = body.hint || {}
     const snapshot = measureEditorial(content, hint, grammar)
     const supervision = buildHarperSupervisionPacket(snapshot)
+    const reviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
+      ? body.reviewModel.trim()
+      : DEFAULT_REVIEW_PIN
     const response = await generateContentText({
-      aiProvider: typeof body.reviewModel === 'string' ? body.reviewModel : DEFAULT_REVIEW_PIN,
+      aiProvider: reviewPin,
+      exclusive: true,
+      // Harper executes the operator's selected reviewer only. Cascading to
+      // Entrim (or any unselected host) after a Grok abort produced 401s on
+      // proxy tokens the operator never chose as the review model.
+      cascadeOnCapacity: false,
       system: `You are the EXECUTOR beneath the Harper Editorial Supervisor. Harper/deterministic measurements are the authority; you do not override, reinterpret, waive, or self-score them.
 
 You receive HARPER_SUPERVISION with four co-equal gates: GRAMMAR, SEO, AI_WRITE/HUMAN_VOICE, and FLESCH. Treat every required directive as an instruction to implement when a safe prose-only edit can address it. Advisory directives guide naturalness and polish. You may not improve one gate by degrading another.
@@ -69,10 +77,11 @@ EXECUTION RULES — NON-NEGOTIABLE:
         brief: hint,
       }),
       maxTokens: 8192,
-      timeoutMs: 65_000,
-      strictTimeout: true,
+      timeoutMs: 180_000,
+      strictTimeout: false,
       skipQualityContract: true,
-      reasoningEffort: 'medium',
+      disableThinking: true,
+      reasoningEffort: 'low',
     })
     const patched = applyEditorialReviewPatch(content, response.text)
     return NextResponse.json({

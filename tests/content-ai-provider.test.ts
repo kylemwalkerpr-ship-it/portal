@@ -322,6 +322,41 @@ describe('content AI · reviewer cascade on transient infra errors (cascadeOnCap
     }
   })
 
+  it('an exclusive Grok reviewer abort never calls Entrim', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    const originalFetch = global.fetch
+    const urls: string[] = []
+    global.fetch = jest.fn(async (input) => {
+      const url = String(input)
+      urls.push(url)
+      if (url.includes('api.x.ai')) {
+        const err = new Error('The operation was aborted')
+        err.name = 'AbortError'
+        throw err
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'SHOULD-NOT-BE-USED' }, finish_reason: 'stop' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+    try {
+      await expect(
+        generateContentText({
+          system: 'Review.',
+          prompt: 'Fix it',
+          maxTokens: 2048,
+          skipQualityContract: true,
+          aiProvider: 'grok',
+          exclusive: true,
+          cascadeOnCapacity: false,
+        }),
+      ).rejects.toThrow(/Explicit AI provider "grok" failed/)
+      expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(false)
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+
   it('without cascadeOnCapacity an exclusive reviewer still hard-fails (owner stays owner)', async () => {
     process.env.XAI_API_KEY = 'test-xai-key'
     const originalFetch = global.fetch

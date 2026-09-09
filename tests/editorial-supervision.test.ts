@@ -172,6 +172,22 @@ describe('admin-inline-editor approval invariant', () => {
   })
 })
 
+describe('reviewer stays on the selected model', () => {
+  it('Harper editorial-review is exclusive Grok-default with no capacity cascade', () => {
+    const source = readFileSync(path.join(process.cwd(), 'app/api/content-studio/editorial-review/route.ts'), 'utf8')
+    expect(source).toContain('exclusive: true')
+    expect(source).toContain('cascadeOnCapacity: false')
+    expect(source).toContain('DEFAULT_REVIEW_PIN')
+  })
+
+  it('Audit & Fix (reaudit) does not cascade to unselected Entrim hosts', () => {
+    const source = readFileSync(path.join(process.cwd(), 'app/api/content-studio/reaudit/route.ts'), 'utf8')
+    expect(source).toContain('cascadeOnCapacity: false')
+    expect(source).not.toContain('cascadeOnCapacity: Boolean(aiProvider)')
+    expect(source).toContain('exclusive: Boolean(aiProvider)')
+  })
+})
+
 function cleanBody(): string {
   return `# Student visa guide\n\n## In 60 seconds\n\nStudents must check the official requirements before applying.\n\n## Eligibility\n\nApplicants must provide the required documents before submitting.`
 }
