@@ -146,9 +146,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
       </nav>
 
       {/* Keep the first screen conversion-led: a compact category hero followed
-          immediately by real services. The deeper SEO / buying guidance stays
-          crawlable below the listings instead of becoming a wall of prose above
-          the first result on a phone. */}
+          immediately by real services. Deeper SEO / buying guidance stays
+          server-rendered below the listings inside a collapsed disclosure card. */}
       <main className="ys-category-main mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-5 pb-3">
         <section
           className="ys-category-hero"
@@ -186,64 +185,95 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         aria-label={`${displayName} buying guidance`}
         className="ys-category-guidance mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8"
       >
-        <div style={{ ...cardStyle, padding: 'clamp(18px, 4vw, 30px)' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 16 }}>
-            <h2 style={{ fontSize: '22px', lineHeight: 1.2, fontWeight: 700, margin: 0 }}>Before you order</h2>
-            <span style={{ fontSize: 12, color: 'var(--ys-onPaperSoft, #64748B)' }}>Practical scope guidance</span>
-          </div>
+        <details
+          className="ys-category-guidance-card"
+          style={{ ...cardStyle, overflow: 'hidden' }}
+        >
+          <summary
+            style={{
+              cursor: 'pointer',
+              padding: 'clamp(18px, 4vw, 24px)',
+              fontSize: '18px',
+              lineHeight: 1.35,
+              fontWeight: 750,
+              color: 'var(--ys-ink, #0F172A)',
+            }}
+          >
+            <span style={{ marginLeft: 6 }}>Before you order: {displayName}</span>
+            <span
+              style={{
+                display: 'block',
+                margin: '5px 0 0 24px',
+                fontSize: 12,
+                lineHeight: 1.5,
+                fontWeight: 500,
+                color: 'var(--ys-onPaperSoft, #64748B)',
+              }}
+            >
+              Open practical scope guidance, comparison points and next steps
+            </span>
+          </summary>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 12 }}>
-            <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Choose the right scope</h3>
-              <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
-                YouSafe Marketplace lists fixed-price briefs from consultants and licensed attorneys. Compare scope, delivery time, and provider role before you request work. Marketplace orders are document-preparation and consulting engagements unless your contract states attorney representation.
-              </p>
-            </div>
-            <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Self-serve or specialist?</h3>
-              <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
-                For free procedural reading — document order, refusal triggers and official-source links — use{' '}
-                <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>.
-                {' '}Prefer a worksheet first? Browse{' '}
-                <Link href="/templates" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>template packs</Link>.
-              </p>
-            </div>
-          </div>
-
-          {editorial?.body && editorial.body.length > 0 && (
-            <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 8px' }}>{displayName} guidance</h3>
-              {editorial.body.map((para) => (
-                <p key={para.slice(0, 48)} style={{ fontSize: 14, lineHeight: 1.7, maxWidth: '52rem', margin: '8px 0 0', color: 'var(--ys-inkMid, #334155)' }}>
-                  {para}
+          <div
+            className="ys-category-guidance-body"
+            style={{
+              padding: '0 clamp(18px, 4vw, 30px) clamp(18px, 4vw, 30px)',
+              borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
+            }}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 12, paddingTop: 18 }}>
+              <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
+                <h2 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Choose the right scope</h2>
+                <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+                  YouSafe Marketplace lists fixed-price briefs from consultants and licensed attorneys. Compare scope, delivery time, and provider role before you request work. Marketplace orders are document-preparation and consulting engagements unless your contract states attorney representation.
                 </p>
-              ))}
+              </div>
+              <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
+                <h2 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Self-serve or specialist?</h2>
+                <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+                  For free procedural reading — document order, refusal triggers and official-source links — use{' '}
+                  <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>.
+                  {' '}Prefer a worksheet first? Browse{' '}
+                  <Link href="/templates" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>template packs</Link>.
+                </p>
+              </div>
             </div>
-          )}
 
-          {editorial?.compare && editorial.compare.length > 0 && (
-            <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 9px' }}>What to compare in {displayName}</h3>
-              <ul style={{ margin: 0, paddingLeft: '1.15rem', lineHeight: 1.65, fontSize: 14, color: 'var(--ys-inkMid, #334155)' }}>
-                {editorial.compare.map((c) => <li key={c} style={{ marginBottom: 5 }}>{c}</li>)}
-              </ul>
-            </div>
-          )}
+            {editorial?.body && editorial.body.length > 0 && (
+              <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
+                <h2 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 8px' }}>{displayName} guidance</h2>
+                {editorial.body.map((para) => (
+                  <p key={para.slice(0, 48)} style={{ fontSize: 14, lineHeight: 1.7, maxWidth: '52rem', margin: '8px 0 0', color: 'var(--ys-inkMid, #334155)' }}>
+                    {para}
+                  </p>
+                ))}
+              </div>
+            )}
 
-          {editorial?.nextSteps && (
-            <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: 11, background: 'var(--ys-indigoSoft, rgba(60,59,110,0.08))', fontSize: 14, lineHeight: 1.6 }}>
-              <strong>Next step:</strong> {editorial.nextSteps}
-            </div>
-          )}
+            {editorial?.compare && editorial.compare.length > 0 && (
+              <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
+                <h2 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 9px' }}>What to compare in {displayName}</h2>
+                <ul style={{ margin: 0, paddingLeft: '1.15rem', lineHeight: 1.65, fontSize: 14, color: 'var(--ys-inkMid, #334155)' }}>
+                  {editorial.compare.map((c) => <li key={c} style={{ marginBottom: 5 }}>{c}</li>)}
+                </ul>
+              </div>
+            )}
 
-          {activeCount < 1 && (
-            <p style={{ fontSize: 14, lineHeight: 1.6, margin: '18px 0 0', color: 'var(--ys-onPaperSoft, #64748B)' }}>
-              No active services in this category right now. Browse{' '}
-              <Link href="/categories" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>all categories</Link>, read free guides on{' '}
-              <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>, or check back soon.
-            </p>
-          )}
-        </div>
+            {editorial?.nextSteps && (
+              <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: 11, background: 'var(--ys-indigoSoft, rgba(60,59,110,0.08))', fontSize: 14, lineHeight: 1.6 }}>
+                <strong>Next step:</strong> {editorial.nextSteps}
+              </div>
+            )}
+
+            {activeCount < 1 && (
+              <p style={{ fontSize: 14, lineHeight: 1.6, margin: '18px 0 0', color: 'var(--ys-onPaperSoft, #64748B)' }}>
+                No active services in this category right now. Browse{' '}
+                <Link href="/categories" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>all categories</Link>, read free guides on{' '}
+                <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>, or check back soon.
+              </p>
+            )}
+          </div>
+        </details>
       </section>
 
       {siblingSubcategories.length > 0 && (
