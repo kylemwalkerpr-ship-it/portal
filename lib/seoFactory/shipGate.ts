@@ -15,6 +15,7 @@ import {
   type OwnerHost,
   type OwnerPlan,
 } from './ownership'
+import { validateCaseworksRenderedStructure } from './contentStructureIntegrity'
 
 export type ShipContentKind =
   | 'legal_guide'
@@ -327,6 +328,12 @@ export function validateRenderedPayload(opts: {
   }
 
   if (plan.repo === 'caseworks' || (filePath.endsWith('page.tsx') && plan.host === 'legal')) {
+    // Structural integrity is part of the ship door, not an advisory audit.
+    // This catches the defects that can still produce a buildable page while
+    // visually mangling the document on mobile (lists/tables/TOC/FAQ/E-E-A-T).
+    const structure = validateCaseworksRenderedStructure(content)
+    errors.push(...structure.errors)
+
     // Must be a valid caseworks ArticleLayout page with correct CTAPanel contract.
     // These checks mirror caseworks scripts/check-ctapanel-contract.mjs so a
     // factory ship never lands on main and red-X's Deploy Caseworks Worker.
