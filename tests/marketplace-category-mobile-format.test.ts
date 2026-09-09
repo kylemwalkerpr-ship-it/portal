@@ -22,10 +22,13 @@ describe('marketplace category mobile formatting', () => {
     expect(discovery).toBeLessThan(guidance)
   })
 
-  it('organizes category copy into scannable guidance instead of an unbroken wall of prose', () => {
+  it('organizes optional category copy in a collapsed, scannable guidance card', () => {
+    expect(source).toContain('<details')
+    expect(source).toContain('className="ys-category-guidance-card"')
+    expect(source).toContain('<summary')
     expect(source).toContain('Before you order')
     expect(source).toContain('Choose the right scope')
     expect(source).toContain('Self-serve or specialist?')
-    expect(source).toContain('{displayName} guidance</h3>')
+    expect(source).toContain('{displayName} guidance</h2>')
   })
 })
