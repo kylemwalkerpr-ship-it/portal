@@ -77,3 +77,8 @@ _watch/
 opencode*.jsonc*
 opencode*.jsonc
 glm*
+
+# Local-only investigation artifacts
+_scratch_student.tok
+scripts/_fix-awkward-gig-titles.mjs
+supabase/.temp/

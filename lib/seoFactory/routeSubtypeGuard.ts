@@ -42,13 +42,28 @@ export interface RouteSubtypeConflict {
  */
 const UMBRELLA_SUBTYPES = new Set(['family'])
 
+/**
+ * The ownership extractor intentionally matches canonical singular route nouns
+ * ("student", "visitor", etc.). Reader-facing titles can naturally inflect
+ * those nouns, however. The guard must compare meaning, not grammatical number:
+ * "US Students" is the same route signal as a slug containing "student".
+ *
+ * Keep this normalization deliberately narrow. It fixes the concrete false
+ * positive that blocked the housing-deposit article without weakening the
+ * guard for unrelated slugs.
+ */
+function extractRouteSubtypesForGuard(subject: string): string[] {
+  const normalized = String(subject || '').replace(/\bstudents\b/gi, 'student')
+  return extractRouteSubtypes(normalized)
+}
+
 /** True when two subjects carry disjoint route subtypes (e.g. graduate vs spouse). */
 export function routeSubtypeConflict(
   articleSubject: string,
   existingSubject: string,
 ): RouteSubtypeConflict {
-  const a = extractRouteSubtypes(articleSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
-  const b = extractRouteSubtypes(existingSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const a = extractRouteSubtypesForGuard(articleSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const b = extractRouteSubtypesForGuard(existingSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
   if (!a.length || !b.length) return { conflict: false }
   const overlap = a.filter((x) => b.includes(x))
   if (overlap.length === 0) return { conflict: true, article: a, existing: b }
@@ -75,8 +90,8 @@ export function pathSlugConflict(
   filePath: string,
 ): RouteSubtypeConflict {
   const slugSubject = slugSubjectFromFilePath(filePath)
-  const slugRoutes = extractRouteSubtypes(slugSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
-  const kwRoutes = extractRouteSubtypes(articleSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const slugRoutes = extractRouteSubtypesForGuard(slugSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
+  const kwRoutes = extractRouteSubtypesForGuard(articleSubject).filter((x) => !UMBRELLA_SUBTYPES.has(x))
   if (!slugRoutes.length) return { conflict: false }
   if (kwRoutes.some((r) => slugRoutes.includes(r))) return { conflict: false }
   return { conflict: true, article: kwRoutes, existing: slugRoutes }
