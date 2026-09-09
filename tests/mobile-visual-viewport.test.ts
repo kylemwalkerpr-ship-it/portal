@@ -23,6 +23,20 @@ describe('mobile visual viewport contract', () => {
     expect(coordinator).not.toContain('MIN_HEIGHT')
   })
 
+  test('marks real iOS software-keyboard state instead of treating every focused textarea as a keyboard', () => {
+    expect(coordinator).toContain("root.dataset.ysIosWebkit = isIOSWebKit ? 'true' : 'false'")
+    expect(coordinator).toContain("root.dataset.ysStandalone = standalone ? 'true' : 'false'")
+    expect(coordinator).toContain('visualHeight < unfocusedVisualHeight - 80')
+    expect(coordinator).toContain("root.dataset.ysKeyboardOpen = keyboardOpen ? 'true' : 'false'")
+    expect(coordinator).toContain('focusTimers = [80, 180, 360, 650]')
+  })
+
+  test('reserves Safari bottom URL-bar chrome only while the iOS software keyboard is open', () => {
+    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
+    expect(css).toContain('--ys-ios-keyboard-browser-chrome: clamp(52px, calc(100lvh - 100svh), 120px)')
+    expect(css).toContain('calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))')
+  })
+
   test('the final mobile cascade overrides legacy 100vh/100dvh dashboard heights', () => {
     expect(css).toContain('body .yousafe-dashboard-shell.yousafe-dashboard-shell.yousafe-dashboard-shell')
     expect(css).toContain('height: var(--ys-visual-viewport-height, 100dvh) !important')
@@ -34,7 +48,7 @@ describe('mobile visual viewport contract', () => {
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat']")
     expect(css).toContain('position: fixed !important')
     expect(css).toContain('top: var(--ys-visual-viewport-offset-top, 0px) !important')
-    expect(css).toContain('height: var(--ys-visual-viewport-block-size, 100dvh) !important')
+    expect(css).toContain('height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important')
     expect(css).toContain('[data-chat-canvas]')
     expect(css).toContain('overflow-y: auto !important')
     expect(css).toContain('.comp {')
