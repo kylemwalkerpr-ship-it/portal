@@ -137,3 +137,11 @@ Default answer: **do not change the live slug**.
 ## 10. Design principle borrowed from mature marketplaces
 
 Copy the durable pattern, not another company's exact route syntax: a small number of stable descriptive taxonomy URLs, shallow permanent service URLs, readable breadcrumbs, canonical consistency, strong internal linking, and selective sitemap inclusion based on real inventory.
+
+## 11. One-time Marketplace copy-quality migration
+
+The 2026 Marketplace copy-quality reset is intentionally separated from URL identity. It may rewrite public titles, taglines, pitches, descriptions, FAQs, tags, SEO titles, SEO descriptions, and provider About copy, but it must not write published gig slugs or gallery-image mappings.
+
+The production migration is allowed to run only after the normal Portal deployment workflow succeeds. Before the first content write and after the final content audit, the migration verifies all active gig `gallery_images` against the pre-rewrite version snapshots. Any image mismatch fails the migration rather than silently reassigning or replacing gig imagery.
+
+This preserves the original gig-to-image relationship while allowing the copy itself to be rewritten around the same stable service identity.
