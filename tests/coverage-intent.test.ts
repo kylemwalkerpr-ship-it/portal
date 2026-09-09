@@ -28,6 +28,34 @@ describe('classifyCoverageIntent', () => {
   it('does not let a one-token owner swallow the whole estate', () => {
     expect(classifyCoverageIntent('express entry canada calculator', 'visa')).toBe('unrelated')
   })
+
+  it('collapses fee/price/charges/increase onto the same commercial owner', () => {
+    expect(classifyCoverageIntent('australia student visa price', 'australia student visa fee increase')).toBe('paraphrase')
+    expect(classifyCoverageIntent('australia student visa charges', 'australia student visa fee')).toBe('paraphrase')
+    expect(classifyCoverageIntent('australia student visa fee', 'australia student visa')).toBe('spoke')
+  })
+
+  it('collapses rules onto restrictions rather than shipping a sibling', () => {
+    expect(classifyCoverageIntent('australia student visa rules', 'australia student visa restrictions')).toBe('paraphrase')
+    expect(classifyCoverageIntent('australia student visa', 'australia student visa restrictions')).not.toBe('paraphrase')
+  })
+
+  it('attaches a requirements spoke to the pillar, not a sibling calculator', () => {
+    const match = bestOwnerMatch('requirements express entry canada', [
+      'express entry canada calculator',
+      'express entry canada',
+    ])
+    expect(match?.kind).toBe('spoke')
+    expect(match?.owner).toBe('express entry canada')
+  })
+
+  it('treats agency-name extras as the pillar, not a CIC spoke', () => {
+    expect(classifyCoverageIntent('express entry canada cic', 'express entry canada')).toBe('paraphrase')
+    expect(bestOwnerMatch('express entry canada cic', [
+      'canada express entry crs international student graduates',
+      'express entry canada',
+    ])?.owner).toBe('express entry canada')
+  })
 })
 
 describe('shippedOverlap — same intent only', () => {
@@ -109,6 +137,17 @@ describe('authority playbook ranking', () => {
     expect(house.hideByDefault).toBe(true)
     expect(harvest.deskScore).toBeGreaterThan(house.deskScore)
     expect(spoke.deskScore).toBeGreaterThan(house.deskScore)
+  })
+
+  it('promotes high-demand Express Entry owners as YMYL freshness, not hidden housekeeping', () => {
+    const v = verdictFor({
+      topic: 'express entry canada calculator',
+      play: 'refresh',
+      impressions: 2715,
+      coverageKind: 'exact',
+    })
+    expect(v.move).toBe('ymyl_freshness')
+    expect(v.hideByDefault).toBe(false)
   })
 
   it('never recommends a doorway conversion', () => {

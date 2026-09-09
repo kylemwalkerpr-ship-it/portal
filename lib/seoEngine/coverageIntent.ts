@@ -28,24 +28,34 @@ const FILLER = new Set([
   'help', 'tips', 'overview', 'explained', 'ultimate', 'full',
   'application', 'apply', 'applying',
   'prep', 'questions', 'answers', 'faqs', 'faq',
+  // Agency names are not a distinct SERP job — "express entry canada cic"
+  // is the Express Entry pillar, not a new CIC spoke.
+  'cic', 'ircc', 'uscis', 'ukvi',
 ])
 
 /** Tokens that change the SERP job-to-be-done. Extra ones = a spoke, not a refresh. */
 const SPOKE_MODIFIERS = new Set([
   'calculator', 'crs', 'tool', 'score',
-  'fee', 'fees', 'cost', 'costs', 'price', 'pricing', 'increase',
+  'fee', 'fees', 'cost', 'costs', 'price', 'pricing', 'increase', 'charges', 'charge',
   'vs', 'versus', 'compared', 'comparison', 'or',
   'interview', 'appointment', 'biometrics',
   'checklist', 'documents', 'document', 'forms', 'form',
   'timeline', 'processing', 'times', 'duration',
   'eligibility', 'eligible', 'requirements', 'requirement', 'rules', 'restrictions',
   'refusal', 'refused', 'rejected', 'denied', 'reapply',
-  'cic', 'ircc', 'uscis', 'ukvi',
   'diy', 'attorney', 'lawyer', 'consultant', 'consultants', 'service',
   'editing', 'editor', 'writing', 'writer',
   'salary', 'threshold', 'cap', 'lottery',
   'extension', 'renewal', 'switch', 'change',
 ])
+
+/** Cost-language variants of the same commercial SERP (fee ≈ price ≈ charges ≈ fee increase). */
+const MONEY_MODIFIERS = new Set([
+  'fee', 'fees', 'cost', 'costs', 'price', 'pricing', 'charges', 'charge', 'increase',
+])
+
+/** Policy-language variants of the same SERP (rules ≈ restrictions ≈ regulations). */
+const RULE_MODIFIERS = new Set(['rules', 'restrictions', 'restriction', 'regulations', 'regulation'])
 
 /** Audience / geo extras — cover on the owner with a section, never a thin doorway. */
 const AUDIENCE_GEO = new Set([
@@ -69,6 +79,33 @@ function isSpokeToken(t: string): boolean {
 
 function isAudienceToken(t: string): boolean {
   return AUDIENCE_GEO.has(t)
+}
+
+function isMoneyToken(t: string): boolean {
+  return MONEY_MODIFIERS.has(t)
+}
+
+function isRuleToken(t: string): boolean {
+  return RULE_MODIFIERS.has(t)
+}
+
+function sameModifierFamily(
+  cand: string[],
+  own: string[],
+  candExtra: string[],
+  ownExtra: string[],
+  family: (t: string) => boolean,
+): boolean {
+  if (!cand.some(family) || !own.some(family)) return false
+  return candExtra.every(family) && ownExtra.every(family)
+}
+
+function sharedCount(candidate: string, owner: string): number {
+  const cand = contentTokens(candidate)
+  const ownSet = new Set(contentTokens(owner))
+  let n = 0
+  for (const t of cand) if (ownSet.has(t)) n += 1
+  return n
 }
 
 /**
@@ -101,6 +138,17 @@ export function classifyCoverageIntent(candidate: string, owner: string): Covera
 
   const extrasAreFiller = candExtra.length === 0 && ownExtra.length === 0
   if (extrasAreFiller) return 'paraphrase'
+
+  // Fee / price / charges / fee-increase are one commercial SERP. A second
+  // URL here is a doorway, not a spoke. Same for rules ≈ restrictions.
+  const candMoney = cand.filter(isMoneyToken)
+  const ownMoney = own.filter(isMoneyToken)
+  if (shared >= 2 && candMoney.length > 0 && ownMoney.length > 0) {
+    const candRest = candExtra.filter((t) => !isMoneyToken(t))
+    const ownRest = ownExtra.filter((t) => !isMoneyToken(t))
+    if (candRest.length === 0 && ownRest.length === 0) return 'paraphrase'
+  }
+  if (shared >= 2 && sameModifierFamily(cand, own, candExtra, ownExtra, isRuleToken)) return 'paraphrase'
 
   const candSpokes = candExtra.filter(isSpokeToken)
   const ownSpokes = ownExtra.filter(isSpokeToken)
@@ -141,14 +189,26 @@ export function bestOwnerMatch(
   candidate: string,
   owners: Iterable<string>,
 ): { owner: string; kind: CoverageKind } | null {
-  let best: { owner: string; kind: CoverageKind; rank: number } | null = null
+  let best: { owner: string; kind: CoverageKind; rank: number; shared: number; lengthGap: number; ownerLen: number } | null = null
   const rankOf = (k: CoverageKind): number =>
     k === 'exact' ? 0 : k === 'paraphrase' ? 1 : k === 'section_expand' ? 2 : k === 'spoke' ? 3 : 9
+  const candLen = contentTokens(candidate).length
   for (const owner of owners) {
     const kind = classifyCoverageIntent(candidate, owner)
     const rank = rankOf(kind)
     if (rank >= 9) continue
-    if (!best || rank < best.rank) best = { owner, kind, rank }
+    const shared = sharedCount(candidate, owner)
+    const ownerLen = contentTokens(owner).length
+    const lengthGap = Math.abs(candLen - ownerLen)
+    const better =
+      !best
+      || rank < best.rank
+      || (rank === best.rank && shared > best.shared)
+      || (rank === best.rank && shared === best.shared && (
+        // Spokes attach to the parent pillar (shorter owner), not a sibling tool.
+        rank === 3 ? ownerLen < best.ownerLen : lengthGap < best.lengthGap
+      ))
+    if (better) best = { owner, kind, rank, shared, lengthGap, ownerLen }
   }
   return best ? { owner: best.owner, kind: best.kind } : null
 }

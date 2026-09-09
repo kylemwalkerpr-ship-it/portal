@@ -114,7 +114,7 @@ function isCtrGoldmine(input: PlaybookInput): boolean {
 function isYmylFreshness(input: PlaybookInput): boolean {
   const stage = String(input.stage || '')
   const topic = String(input.topic || '')
-  const ymyl = isFunnelStage(stage) || /\b(visa|permit|green card|citizenship|sponsorship|opt|sevis|ircc|uscis|ukvi)\b/i.test(topic)
+  const ymyl = isFunnelStage(stage) || /\b(visa|permit|green card|citizenship|sponsorship|opt|sevis|ircc|uscis|ukvi|express entry|immigration|permanent residence|crs|skilled)\b/i.test(topic)
   const impressions = Number(input.impressions) || 0
   return ymyl && impressions >= 120 && isSameIntentOwner(input.coverageKind || 'paraphrase')
 }
@@ -154,7 +154,7 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
     }
   }
 
-  if (kind === 'spoke' || (play === 'content_gap' && kind === 'spoke')) {
+  if (kind === 'spoke') {
     const bofuBoost = funnel === 'bofu' ? 12 : funnel === 'mofu' ? 8 : 0
     return {
       move: 'fill_spoke',
