@@ -21,11 +21,13 @@ describe('run-in heading split (formatContract.normalizeEditorDocument)', () => 
     expect(out.fixed).toContain('run_in_headings_split')
   })
 
-  it('leaves standalone headings and fenced code untouched', () => {
+  it('leaves standalone headings intact and removes reader-facing code/schema fences', () => {
     const doc = '## FAQ\n\n### A real question?\n\nYes.\n\n```json\n{"note": " ### not a heading"}\n```\n'
     const out = normalizeEditorDocument(doc)
     expect(out.fixed).not.toContain('run_in_headings_split')
-    expect(out.content).toBe(doc.trim())
+    expect(out.fixed.some((x) => x.startsWith('reader_code_fences_removed'))).toBe(true)
+    expect(out.content).toBe('## FAQ\n\n### A real question?\n\nYes.')
+    expect(out.content).not.toContain('```')
   })
 })
 

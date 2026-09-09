@@ -17,6 +17,8 @@
 
 import { sanitizeLeakedMarkup } from './leakedMarkup'
 import { writingFamilyFor } from './writingShape'
+import { stripReaderFacingCodeFences } from './readerFacingMarkdown'
+import { rewriteMarketAnchors } from './marketAnchors'
 
 /** The canonical reader-facing skeleton every article follows. */
 export const FORMAT_SKELETON = [
@@ -126,27 +128,10 @@ function isValidSchemaScript(block: string): boolean {
   }
 }
 
-/**
- * Deterministic normalizer for ANY AI-returned document (editor fixes,
- * reviewer sweeps, refine passes). Reverses the mechanical mangling models
- * introduce when they return "the complete article":
- *   - whole-reply code fences,
- *   - chatter lines before the document starts,
- *   - YAML frontmatter embedded mid-body (moved to top; duplicate copies dropped),
- *   - invalid/empty-context JSON-LD scripts dropped,
- *   - "In 60 seconds" bullets collapsed onto one line re-split,
- *   - Sources sections with duplicated entries deduplicated,
- *   - 3+ blank lines collapsed.
- */
 export function normalizeEditorDocument(raw: string): NormalizeResult {
   const fixed: string[] = []
   let s = String(raw || '')
 
-  // 0. Models / TipTap glue prompt verb "KEEP" onto chrome:
-  //   KEEP---  → ---          (prod 8cc5d523 YAML leak)
-  //   KEEP<script → <script   (TipTap data-keep serialize fallback)
-  //   KEEP&lt;script → &lt;script then unescape below (prod a80c077c)
-  // Peel KEEP first so frontmatter/schema parsers see real fences.
   {
     let keepFixed = false
     if (/\bKEEP---+/i.test(s)) {
@@ -164,21 +149,15 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     if (keepFixed) fixed.push('editor_keep_fence_normalized')
   }
 
-  // 0b. HTML-escaped / double-escaped JSON-LD scripts print as visible garbage
-  // in Document view (prod a80c077c: KEEP&lt;script … &amp;lt;/script&amp;gt;).
-  // Unescape ONLY script-tag entities so schema becomes a real <script> block
-  // (healthy drafts store raw tags). Orphan double-escaped closers are dropped.
   {
     const before = s
     s = s
       .replace(/&amp;lt;script\b/gi, '&lt;script')
       .replace(/&amp;lt;\/script&amp;gt;/gi, '&lt;/script&gt;')
       .replace(/&amp;lt;\/script&gt;/gi, '&lt;/script&gt;')
-      // Decode &gt; only on entity-encoded script open tags: &lt;script …&gt;
       .replace(/&lt;script\b([^&]*?)&amp;gt;/gi, '&lt;script$1&gt;')
       .replace(/&lt;script\b([^&]*?)&gt;/gi, '<script$1>')
       .replace(/&lt;\/script&gt;/gi, '</script>')
-    // Residual orphan closers with no escaped open left.
     if (!/&lt;script\b/i.test(s)) {
       s = s.replace(/[ \t]*&amp;lt;\/script&amp;gt;/gi, '').replace(/[ \t]*&lt;\/script&gt;/gi, '')
     }
@@ -188,25 +167,21 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     }
   }
 
-  // 1. Whole-reply code fence (```markdown ... ``` / ```md ... ```)
   const fenced = s.trim().match(/^```(?:markdown|md|mdx)?[ \t]*\r?\n([\s\S]*?)\r?\n?```[ \t]*$/i)
   if (fenced && fenced[1].trim()) {
     s = fenced[1]
     fixed.push('editor_fence_unwrapped')
   }
 
-  // 2. Chatter before the document starts ("Here is the corrected article:")
   const docStart = s.search(/^(---|\#\s|<script\b)/m)
   if (docStart > 0) {
     const preamble = s.slice(0, docStart).trim()
-    // Only strip when the preamble is short chatter, not real content.
     if (preamble.length < 400 && !/^#/m.test(preamble)) {
       s = s.slice(docStart)
       fixed.push('editor_preamble_stripped')
     }
   }
 
-  // 3. Frontmatter: keep the FIRST block at position 0; drop embedded copies.
   const fmBlocks: Array<{ start: number; end: number; body: string }> = []
   const fmRe = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*$/gm
   let m: RegExpExecArray | null
@@ -214,13 +189,11 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     fmBlocks.push({ start: m.index, end: m.index + m[0].length, body: m[1] })
   }
   if (fmBlocks.length > 0 && !s.startsWith('---')) {
-    // Frontmatter exists but not at the top → move the first block to the top.
     const first = fmBlocks[0]
     const rest = (s.slice(0, first.start) + s.slice(first.end)).replace(/^\s*\n/, '')
     s = `---\n${first.body.trim()}\n---\n\n${rest.trimStart()}`
     fixed.push('editor_frontmatter_moved_to_top')
   } else if (fmBlocks.length > 1) {
-    // Top block + embedded duplicates → drop the embedded copies.
     let out = s
     for (let i = fmBlocks.length - 1; i >= 1; i--) {
       const blk = fmBlocks[i]
@@ -230,25 +203,11 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     fixed.push('editor_embedded_frontmatter_dropped')
   }
 
-  // 3b. Remove renderer-leak metadata. Editors sometimes return a complete
-  // YAML/schema fragment as a paragraph (`--- title: ...`) after the TOC.
-  // Only remove the bounded metadata run, stopping at the next real heading
-  // or at the first prose line after the schema fragment; never consume the
-  // article body.
-  // Only strip INLINE metadata fragments where `--- title:` appears on the
-  // same line. A real top-of-document frontmatter block uses `---` on its own
-  // line followed by `title:` on the next line, and must NOT be swallowed here.
   const inlineFm = /(?:^|\n)\s*--- title:\s+[\s\S]*?(?=\n\s*(?:##?\s|Cross[‑-]border|[A-Z][^\n]{0,80}\n))/i
   if (inlineFm.test(s)) {
     s = s.replace(inlineFm, '\n')
     fixed.push('editor_inline_frontmatter_dropped')
   }
-  // 3c. Unterminated <script> blocks. An editor that truncates mid-schema
-  // leaves `<script …>` with no `</script>`. The complete-block passes below
-  // all require a closing tag, and the quality gate's stripForScan likewise
-  // only masks complete blocks — so the JSON body stays VISIBLE and
-  // `renderable_metadata_leak` fires with no repair able to clear it.
-  // Drop the unterminated fragment; the scaffold re-emits valid JSON-LD.
   {
     const lines = s.split('\n')
     let openAt = -1
@@ -264,7 +223,6 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
       }
     }
     if (openAt >= 0) {
-      // Consume the tag plus its trailing JSON-ish run only — never body prose.
       let end = openAt + 1
       while (end < lines.length) {
         const t = lines[end].trim()
@@ -283,16 +241,11 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
   for (let i = 0; i < inlineSchemaLines.length; i++) {
     const line = inlineSchemaLines[i]
     const trimmed = line.trim()
-    // Track nesting instead of latching a boolean: a single unclosed tag used
-    // to pin `inScript` true for the rest of the document, so every later
-    // leaked fragment was skipped and never repaired.
     if (/<script\b/i.test(line)) scriptDepth++
     if (scriptDepth > 0) {
       if (/<\/script>/i.test(line)) scriptDepth = Math.max(0, scriptDepth - 1)
       continue
     }
-    // Only remove a single-line JSON object clearly identified as schema.
-    // Multiline JSON-LD is handled by the complete <script> block pass below.
     if (/^\{.*["']?@context["']?\s*:\s*["']?.*schema\.org.*["']?@type["']?\s*:/i.test(trimmed)) {
       inlineSchemaLines[i] = ''
       inlineSchemaRemoved++
@@ -303,7 +256,6 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     fixed.push(`editor_inline_schema_dropped (${inlineSchemaRemoved})`)
   }
 
-  // 4. Invalid JSON-LD scripts (unparseable, empty context, no @type).
   const badScripts = s.match(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || []
   let removedScripts = 0
   for (const blk of badScripts) {
@@ -317,15 +269,9 @@ export function normalizeEditorDocument(raw: string): NormalizeResult {
     fixed.push(`editor_invalid_schema_dropped (${removedScripts})`)
   }
 
-  // 4c. Run-in headings — "#" markers that the model glued onto the end of a
-  // prose line ("…apply. ### H-1B workers"). Markdown needs the heading on its
-  // OWN line, otherwise renderers print the literal "### …" inside the
-  // paragraph (the "###1" mangling seen on live pages). Split each run-in
-  // marker onto a fresh line with blank-line separation. Fenced blocks are
-  // skipped so ```json content is never misparsed.
   {
-const splitRunInHeadings = (input: string): string => {
-  const fenceRe = /^```/m
+    const splitRunInHeadings = (input: string): string => {
+      const fenceRe = /^```/m
       const lines = input.split('\n')
       const out: string[] = []
       let inFence = false
@@ -345,8 +291,6 @@ const splitRunInHeadings = (input: string): string => {
           out.push(line)
           continue
         }
-        // A run-in heading: heading marker preceded by at least one
-        // non-whitespace character on the same line (not line-start).
         const m = line.match(/^(.{1,400}?)(\s)(#{2,4})\s+(.+)$/)
         if (m && m[1] && /[^\s]/.test(m[1])) {
           out.push(m[1].replace(/\s+$/, ''), '', `${m[3]} ${m[4].trim()}`)
@@ -364,12 +308,6 @@ const splitRunInHeadings = (input: string): string => {
     }
   }
 
-  // 4d. Mangled markdown tables — the model glues whole tables onto ONE line
-  // ("| Fee model | Typical range | What you get | | --- | --- | --- | | …").
-  // Nothing rendered them: MDX preprocessors and the published renderer show
-  // the literal pipe soup. Rebuild rows deterministically: a pipe-run that
-  // contains the separator row (`|---|`) is a table; split its cells by the
-  // header's column count so every row lands on its own line.
   {
     const splitRunInTables = (input: string): string => {
       const lines = input.split('\n')
@@ -392,17 +330,12 @@ const splitRunInHeadings = (input: string): string => {
           continue
         }
         const trimmed = line.trim()
-        // Single-row or already-multiline tables pass through untouched.
         const cells = trimmed.split('|').map((c) => c.trim())
         const isTableLine = trimmed.startsWith('|') && trimmed.endsWith('|') && cells.length >= 5
         if (!isTableLine || cells.length <= 4) {
           out.push(line)
           continue
         }
-        // The glued stream has EMPTY seam cells between rows ("…What you get |
-        // | --- | --- |"). Drop the seams, find the `---` separator block, and
-        // re-group the flat stream by the header's column count. If the shape
-        // is not a clean header+separator+body, leave the line untouched.
         const contentCells = cells.slice(1, -1).filter(Boolean)
         const dashIdx = contentCells.findIndex((c) => /^-{2,}$/.test(c))
         if (dashIdx <= 0) {
@@ -451,7 +384,6 @@ const splitRunInHeadings = (input: string): string => {
     }
   }
 
-  // 5. "In 60 seconds" bullets collapsed onto one line ("a. - b. - c.").
   const tldrRe = /(## In 60 seconds\s*\n)([\s\S]*?)(?=\n## |\n$|$)/i
   const tldrMatch = s.match(tldrRe)
   if (tldrMatch) {
@@ -472,7 +404,6 @@ const splitRunInHeadings = (input: string): string => {
     }
   }
 
-  // 6. Sources sections: dedupe repeated entries (linked or plain) by label text.
   const sourcesRe = /(## (?:Official )?[Ss]ources\s*\n)([\s\S]*?)(?=\n## |\n$|$)/
   const sourcesMatch = s.match(sourcesRe)
   if (sourcesMatch) {
@@ -502,19 +433,26 @@ const splitRunInHeadings = (input: string): string => {
     }
   }
 
-  // 7. Whitespace hygiene.
   const cleaned = s.replace(/\n{3,}/g, '\n\n').trim()
   if (cleaned !== s.trim()) fixed.push('whitespace_normalized')
   s = cleaned
 
+  // Reader-facing articles are never code samples. Unwrap prose that a model
+  // fenced as markdown and drop leaked code/schema fences. This deliberately
+  // leaves valid <script type="application/ld+json"> blocks alone.
+  const reader = stripReaderFacingCodeFences(s)
+  if (reader.changed) fixed.push(`reader_code_fences_removed (${reader.changed})`)
+  s = reader.content.trim()
+
+  // Marketplace URLs cite people/services, not addresses. Keep the href but
+  // replace URL-as-anchor / parenthetical URL output with a readable name.
+  const market = rewriteMarketAnchors(s)
+  if (market.changed) fixed.push(`marketplace_anchors_named (${market.changed})`)
+  s = market.content.trim()
+
   return { content: s, fixed }
 }
 
-/**
- * True when the title carries no more information than the primary keyword
- * (case/punctuation-insensitive). "admissions consultant credentials" for the
- * keyword "admissions consultant credentials" → keyword-only title.
- */
 export function isKeywordOnlyTitle(title: string, primaryKeyword: string): boolean {
   const norm = (v: string) =>
     v
@@ -530,11 +468,6 @@ export function isKeywordOnlyTitle(title: string, primaryKeyword: string): boole
   return stripYear(t) === stripYear(k)
 }
 
-/**
- * Collapse a duplicated em-dash title ("opt application — opt application")
- * to one phrase. Live regression: the merged OPT page shipped with an H1 that
- * repeated the same phrase on both sides of an em dash.
- */
 export function collapseDuplicatedTitle(title: string): string {
   const raw = String(title || '')
   const parts = raw.split(/\s+[—–]\s+/)
@@ -547,7 +480,6 @@ export function collapseDuplicatedTitle(title: string): string {
   return raw.trim()
 }
 
-/** Title Case helper for synthesized titles. */
 export function titleCaseWords(phrase: string): string {
   const small = new Set(['a', 'an', 'the', 'for', 'and', 'or', 'of', 'to', 'in', 'on', 'at', 'by', 'with', 'from'])
   return phrase
@@ -593,7 +525,6 @@ function canonicalizeFmKey(key: string): string {
   return k
 }
 
-/** Split `title: Foo description: Bar primaryKeyword: baz ---` into YAML fields. */
 export function splitCollapsedYamlLine(line: string): Record<string, string> | null {
   const trimmed = String(line || '')
     .trim()
@@ -620,12 +551,6 @@ export function splitCollapsedYamlLine(line: string): Record<string, string> | n
   return Object.keys(out).length >= 2 ? out : null
 }
 
-/**
- * Models often dump the YAML header as one prose paragraph (no newlines,
- * optional missing opening fence, closing `---` at the end of the same line).
- * Document view then renders it as the first body paragraph. Reflow into a
- * real `---\\n...\\n---` block so sanitizer + editor can hide it.
- */
 export function peelCollapsedFrontmatter(content: string): string {
   const raw = String(content || '')
   const start = raw.match(/^\s*/)?.[0] ?? ''
@@ -693,9 +618,7 @@ function deriveDescription(body: string, title: string, primaryKeyword: string):
 }
 
 function cleanLeakedYaml(body: string): string {
-  // Drop any complete frontmatter-like blocks that leaked into the body.
   body = body.replace(/\n?---\r?\n[\s\S]*?\r?\n---\r?\n?/g, '\n\n')
-  // Drop leading lines that look like known frontmatter keys (and any stray ---).
   const lines = body.split(/\r?\n/)
   let i = 0
   while (i < lines.length) {
@@ -719,16 +642,7 @@ function cleanLeakedYaml(body: string): string {
   return body.replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/**
- * Canonical frontmatter sanitizer. Guarantees exactly one `---\n...\n---`
- * block at the top of the document, a single-line description between 70 and
- * 160 characters, and a body with no leaked YAML tokens.
- *
- * Call this at the end of every deterministic repair and every AI fix pass
- * so the renderer never ships a mangled nested-YAML header.
- */
 export function sanitizeFrontmatter(content: string): string {
-  // Same KEEP chrome peel as normalizeEditorDocument — peel/split expect `---`.
   const raw = peelCollapsedFrontmatter(
     String(content || '')
       .replace(/\bKEEP---+/gi, '---')
@@ -756,7 +670,6 @@ export function sanitizeFrontmatter(content: string): string {
     fields.description = deriveDescription(body, title, pk)
   }
 
-  // Final description hardening: single line, bounded.
   fields.description = fields.description
     .replace(/[\n\r]/g, ' ')
     .replace(/\s+/g, ' ')

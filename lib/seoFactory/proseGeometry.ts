@@ -20,6 +20,7 @@ export type ProseGeometryFinding = {
     | 'repeated_paragraph_opener'
     | 'low_sentence_burstiness'
     | 'low_trigram_variety'
+    | 'stuffed_primary_opener'
   severity: ProseGeometrySeverity
   message: string
   fix?: string
@@ -119,6 +120,75 @@ function jaccardFromEvidence(evidence?: string): number {
   return m ? Number(m[1]) : 0
 }
 
+const TOPIC_STOP = new Set([
+  'the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'in', 'on', 'with', 'your', 'you',
+  'how', 'what', 'why', 'who', 'when', 'where', 'works', 'work', 'guide', 'complete', '2026',
+])
+
+function topicWords(text: string): string[] {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.replace(/^-+|-+$/g, ''))
+    .filter((w) => w.length >= 2 && !TOPIC_STOP.has(w))
+}
+
+function primaryTopic(content: string): string {
+  const raw = String(content || '')
+  const fm = raw.match(/^primaryKeyword:\s*["']?(.+?)["']?\s*$/mi)
+  if (fm?.[1]) return fm[1].trim()
+  const h1 = stripYamlAndFences(raw).match(/^#\s+(.+)$/m)
+  return h1?.[1]?.replace(/[*_`]/g, '').trim() || ''
+}
+
+function longestOrderedRun(needle: string[], haystack: string[]): number {
+  if (!needle.length || !haystack.length) return 0
+  let best = 0
+  for (let i = 0; i < needle.length; i++) {
+    for (let j = 0; j < haystack.length; j++) {
+      let run = 0
+      while (needle[i + run] && haystack[j + run] && needle[i + run] === haystack[j + run]) run++
+      if (run > best) best = run
+    }
+  }
+  return best
+}
+
+function stuffedPrimaryOpeners(content: string): Array<{ heading: string; opener: string }> {
+  const primary = topicWords(primaryTopic(content))
+  if (primary.length < 3) return []
+  const body = stripYamlAndFences(content)
+  const re = /^##\s+(.+)$/gm
+  const marks: Array<{ index: number; heading: string; end: number }> = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body)) !== null) {
+    marks.push({ index: m.index, heading: m[1].trim(), end: re.lastIndex })
+  }
+  const out: Array<{ heading: string; opener: string }> = []
+  for (let i = 0; i < marks.length; i++) {
+    const mark = marks[i]
+    if (STRUCTURAL_H2.test(mark.heading.replace(/[#*_`]/g, '').trim())) continue
+    const end = i + 1 < marks.length ? marks[i + 1].index : body.length
+    const section = body.slice(mark.end, end).trim()
+    const para = section
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .find((p) => p && !/^#{1,6}\s/.test(p) && !/^(?:[-*+]\s+|\d+[.)]\s+)/.test(p))
+    if (!para) continue
+    const opener = (para.split(/(?<=[.!?])\s+/)[0] || '').replace(/\s+/g, ' ').trim()
+    if (!/^(?:the|this)\b/i.test(opener)) continue
+    const firstWords = topicWords(opener).slice(0, 14)
+    const run = longestOrderedRun(primary, firstWords)
+    const overlap = primary.filter((w) => firstWords.includes(w)).length / primary.length
+    const weakVerb = /\b(?:is|are|means|restates|covers|explains|provides|shows|helps|offers|gives|summari[sz]es)\b/i.test(opener)
+    if (weakVerb && (run >= 4 || (primary.length <= 6 && overlap >= 0.8))) {
+      out.push({ heading: mark.heading, opener })
+    }
+  }
+  return out
+}
+
 /**
  * Geometry floors: blogs must vary more; guides may be flatter YMYL English.
  * Severe adjacent-section overlap is the only ship hold — that is mill glue.
@@ -189,6 +259,16 @@ export function evaluateProseGeometry(
         evidence: finding.evidence,
       })
     }
+  }
+
+  for (const stuffed of stuffedPrimaryOpeners(content)) {
+    findings.push({
+      code: 'stuffed_primary_opener',
+      severity: 'warning',
+      message: `The first sentence under “${stuffed.heading}” mechanically restates the primary topic instead of answering the section.`,
+      fix: 'Open with the reader decision, constraint, or concrete fact. Use the full primary phrase only where it reads naturally.',
+      evidence: `heading=${encodeURIComponent(stuffed.heading)};opener=${encodeURIComponent(stuffed.opener.slice(0, 180))}`,
+    })
   }
 
   if (counts.length >= 12) {
