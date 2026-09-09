@@ -86,17 +86,33 @@
 
   /* Conversation list bounded scroll owner
      --------------------------------------
-     iOS Safari can treat an auto-basis flex child as content-sized through a
-     nested 100% height chain. The rows then extend beyond the visible list but
-     the fixed student dock clips that excess before .cl-scroll ever becomes a
-     real scroller. In list mode only, make every wrapper a bounded flex column
-     and give .cl-scroll a zero basis/zero explicit height so it owns exactly
-     the space left after .cl-head. Open chat/composer geometry is intentionally
-     untouched below. */
+     The first list-scroll repair still left two iOS-sensitive assumptions in
+     the sizing chain: an anonymous flex frame was never made a bounded flex
+     child, and .cl-scroll used the classic flexbox `height: 0` trick. Real
+     iPhone validation showed that WebKit can paint the clipped rows yet fail to
+     create a usable touch scrollport in that arrangement.
+
+     List mode now uses one explicit bounded frame plus a two-row grid:
+     intrinsic header + minmax(0, 1fr) conversation rail. This gives WebKit a
+     concrete non-zero scroll track, while the rail alone owns vertical touch
+     scrolling. The physical dock tail remains inside the rail so the final row
+     can settle above the fixed navigation. Open chat/composer geometry is
+     intentionally untouched below. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .yousafe-messenger > :has(> .ys-chatscreen[data-mobile-view='list']) {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
     .ys-chatscreen[data-mobile-view='list'] {
     flex: 1 1 0% !important;
-    height: 100% !important;
+    height: auto !important;
     min-height: 0 !important;
     max-height: 100% !important;
     overflow: hidden !important;
@@ -116,11 +132,12 @@
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
     .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar > .cl {
-    display: flex !important;
-    flex-direction: column !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
     flex: 1 1 0% !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
     max-height: 100% !important;
     overflow: hidden !important;
@@ -128,19 +145,21 @@
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
     .ys-chatscreen[data-mobile-view='list'] .cl-head {
-    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
     .ys-chatscreen[data-mobile-view='list'] .cl-scroll {
     box-sizing: border-box !important;
-    flex: 1 1 0% !important;
-    height: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
     min-height: 0 !important;
     max-height: none !important;
     padding-bottom: var(--student-dock-v2-gap) !important;
     scroll-padding-bottom: var(--student-dock-v2-clearance) !important;
-    overflow-y: auto !important;
+    overflow-y: scroll !important;
     overflow-x: hidden !important;
     overscroll-behavior-y: contain;
     touch-action: pan-y;
