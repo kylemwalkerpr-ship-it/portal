@@ -44,7 +44,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   ] = await Promise.allSettled([
     db.from('order_items').select('order_id, service_id, quantity, unit_price').eq('order_id', id),
     order.consultant_id
-      ? db.from('profiles').select('id, full_name, email, avatar_url, role').eq('id', order.consultant_id).single()
+      ? db.from('profiles').select('id, full_name, avatar_url, role').eq('id', order.consultant_id).single()
       : Promise.resolve({ data: null }),
     db.from('order_files').select('id, name, size_bytes, uploader_role, uploader_id, mime_type, created_at, storage_path, is_sensitive, is_deleted').eq('order_id', id).order('created_at', { ascending: false }),
     db.from('order_messages').select('id, sender_id, sender_role, body, created_at, attachment_url, attachment_name').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
@@ -165,9 +165,8 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       requirements: order.requirements || '',
       consultant: isTemplate
         ? 'Digital delivery'
-        : consultant?.full_name || consultant?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+        : consultant?.full_name || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
       consultantId: order.consultant_id ?? null,
-      consultantEmail: consultant?.email || null,
       consultantAvatarUrl: consultant?.avatar_url || null,
       status: friendlyStatus,
       rawStatus: order.status,
