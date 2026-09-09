@@ -158,8 +158,13 @@ describe('author-revise route contract', () => {
     expect(source).toContain('cascadeOnCapacity: false')
     expect(source).toContain('DEFAULT_REVIEW_PIN')
     expect(source).toContain('skipQualityContract: false')
-    expect(source).toContain('factsWerePreserved')
+    expect(source).toContain('runThroughline')
     expect(source).toContain('rejected: true')
     expect(source).toContain('maxDuration = 180')
+    const throughline = readFileSync(
+      path.join(process.cwd(), 'lib/seoFactory/throughline.ts'),
+      'utf8',
+    )
+    expect(throughline).toContain('factsWerePreserved')
   })
 })

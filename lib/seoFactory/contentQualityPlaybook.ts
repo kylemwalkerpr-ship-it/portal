@@ -432,6 +432,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/prose-geometry.test.ts',
   }),
   def({
+    code: 'register_drift', title: 'Draft drifts from house register',
+    severity: 'warning', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
+    requirement: 'Involvement, artefact density, and sentence rhythm stay near the house register card.',
+    promptInstruction: 'Rewrite toward the house register: mix sentence length, name forms and agencies, address the reader. Do not invent experience.',
+    evidence: 'registerCard.registerDrift vs houseRegisterFor',
+    shipEffect: 'allow_with_flag', evaluator: 'contentQualityGate.evaluateContentQuality',
+    testFixture: 'tests/register-card.test.ts',
+  }),
+  def({
     code: 'missing_official_sources', title: 'Missing official source URLs',
     severity: 'blocker', owner: 'reviewer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
     requirement: 'Indexable content cites a live, on-topic official source (citation policy).',
@@ -1335,6 +1344,7 @@ interface SpecLike {
   ymyl: { disclaimerRequired: boolean }
   aeoGeo: { answerFirst: boolean; faqRequired: boolean }
   author?: { name?: string; credential?: string; marketplaceUrl?: string } | null
+  thesis?: string
 }
 
 function keywordLines(spec: SpecLike): string[] {
@@ -1363,6 +1373,7 @@ function coreRequirements(spec: SpecLike): string[] {
     spec.author?.name
       ? `- Named YMYL author (use this person only; never invent YouSafe Editorial Team): ${spec.author.name}${spec.author.credential ? ` · ${spec.author.credential}` : ''}${spec.author.marketplaceUrl ? ` · ${spec.author.marketplaceUrl}` : ''}`
       : '',
+    spec.thesis ? `- Thesis (every H2 advances this; do not restate it under each heading): ${spec.thesis}` : '',
     spec.ymyl.disclaimerRequired ? '- YMYL: educational disclaimer required; no outcome promises; official jurisdiction-appropriate sources.' : '',
     spec.aeoGeo.answerFirst ? '- AEO/GEO: answer first in the opening block; self-contained FAQ answers when required.' : '',
   ].filter(Boolean)

@@ -26,6 +26,7 @@ import { EDITORIAL_FORMATTING_CONTRACT, formattingContractFor } from './editoria
 import { FORMAT_SKELETON, formatSkeletonFor } from './formatContract'
 import { isBlogFamily, usesGuideApparatus, writingFamilyFor } from './writingShape'
 import { evaluateProseGeometry } from './proseGeometry'
+import { extractRegisterCard, houseRegisterFor, registerDrift } from './registerCard'
 
 export type QualitySeverity = 'blocker' | 'warning'
 
@@ -1483,6 +1484,18 @@ export function evaluateContentQuality(opts: {
       else humanScore -= 6
       add(finding)
     }
+    const house = houseRegisterFor(contentType)
+    const drift = registerDrift(extractRegisterCard(opts.content || ''), house, { contentType })
+    if (drift) {
+      humanScore -= 6
+      add({
+        code: 'register_drift',
+        severity: 'warning',
+        message: drift.message,
+        fix: 'Rewrite toward the house register: mix sentence length, name forms and agencies, address the reader. Do not invent experience.',
+        evidence: drift.dimensions.join(','),
+      })
+    }
     if (!articleHasOfficialCitation(opts.content || '', buildCitationContext({
       region: opts.region,
       topic: opts.primaryKeyword,
@@ -2013,7 +2026,8 @@ export function qualityPromptBlock(contentType?: string): string {
     '',
     'Q4. PRACTITIONER VOICE. Write like a calm immigration specialist briefing a',
     '    client. Second person ("you"). Concrete nouns (agency, form, document).',
-    '    One idea per sentence. Explain procedures, not aspirations.',
+    '    Mix short and medium sentences. A developed 4–6 sentence paragraph is allowed.',
+    '    Explain procedures, not aspirations. Do not write one idea per sentence as a metronome.',
     '',
     '━━━ IMPORTANT (warnings — degrade the score) ━━━',
     '',

@@ -42,6 +42,7 @@ import { resolveProviderAuthors } from './providerAuthors'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
 import { keywordContractForDraft } from './keywordContract'
+import { runFactoryThroughline, shouldRunThroughline } from './throughline'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -1346,6 +1347,73 @@ export async function* runSeoFactoryPipelineStream(
           wordCount: audit.wordCount,
           goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
           draft: content,
+        }
+      }
+    }
+
+    // ── Throughline desk hop (after kit inserts, before withhold) ────────
+    {
+      if (shouldRunThroughline({
+        contentType,
+        indexable: plan.indexable,
+        words: countBodyWords(content),
+      })) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: 'Throughline desk hop — one argument, house register…',
+        }
+      }
+      const desk = await runFactoryThroughline({
+        content,
+        contentType,
+        indexable: plan.indexable,
+        thesis: contentSpec?.thesis,
+        primaryKeyword,
+        reader: contentSpec?.intent?.reader,
+        queryNeed: contentSpec?.intent?.queryNeed,
+        minWords,
+        maxWords,
+        generateText: async (systemPrompt, prompt) => {
+          const ai = await generateContentText({
+            system: systemPrompt,
+            prompt,
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
+            temperature: 0.25,
+            aiProvider: input.aiProvider,
+            exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            signal: input.signal,
+            contentType,
+            skipQualityContract: false,
+            timeoutMs: 120_000,
+          })
+          provider = ai.provider
+          model = ai.model
+          return ai.text
+        },
+      })
+      if (desk.applied) {
+        content = desk.content
+        audit = runAudit(content)
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: 'Throughline applied — facts frozen, register rewritten',
+        }
+        yield {
+          type: 'attempt',
+          attempt: attempts + 1,
+          score: audit.score,
+          wordCount: audit.wordCount,
+          goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+          draft: content,
+        }
+      } else if (desk.reason && desk.reason !== 'throughline not applicable') {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Throughline skipped: ${desk.reason}`,
         }
       }
     }

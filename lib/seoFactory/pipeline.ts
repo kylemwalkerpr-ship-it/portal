@@ -42,6 +42,7 @@ import { persistPipelineJob } from './persistContentJob'
 import { finalizePipelineContentType } from './jobContentType'
 import { keywordContractForDraft } from './keywordContract'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+import { runFactoryThroughline } from './throughline'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -938,6 +939,48 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     if (capped.removedWords > 0) content = capped.content
     if (repaired.applied.length || sanitized.stripped || sanitized.injected || capped.removedWords > 0) {
       audit = runAudit(content)
+    }
+  }
+
+  // ── Throughline desk hop (after kit inserts, before withhold) ──────────
+  // Cycle loss = facts/URLs/qualifiers. Do not re-scaffold after this hop.
+  {
+    throwIfAborted(input.signal, 'throughline')
+    const desk = await runFactoryThroughline({
+      content,
+      contentType,
+      indexable: plan.indexable,
+      thesis: contentSpec?.thesis,
+      primaryKeyword,
+      reader: contentSpec?.intent?.reader,
+      queryNeed: contentSpec?.intent?.queryNeed,
+      minWords,
+      maxWords,
+      generateText: async (systemPrompt, prompt) => {
+        const ai = await generateWithRetry(generateContentText, {
+          system: systemPrompt,
+          prompt,
+          maxTokens: tokensForType(contentType, 'draft'),
+          temperature: 0.25,
+          aiProvider: input.aiProvider,
+          exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+          signal: input.signal,
+          contentType,
+          skipQualityContract: false,
+          timeoutMs: 120_000,
+        })
+        provider = ai.provider
+        model = ai.model
+        return ai.text
+      },
+    })
+    if (desk.applied) {
+      content = desk.content
+      audit = runAudit(content)
+      console.info('[seoFactory/pipeline] throughline applied')
+    } else if (desk.rejected && desk.reason) {
+      console.warn('[seoFactory/pipeline] throughline rejected:', desk.reason)
     }
   }
 

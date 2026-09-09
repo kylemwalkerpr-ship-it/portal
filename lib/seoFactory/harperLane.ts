@@ -51,6 +51,7 @@ export const HARPER_PROSE_CODES: ReadonlySet<string> = new Set([
   'repeated_paragraph_opener',
   'low_sentence_burstiness',
   'low_trigram_variety',
+  'register_drift',
   'missing_short_keyword',
   'missing_long_tail_keyword',
   'missing_synthesized_short_keyword',

@@ -28,6 +28,7 @@ import {
 } from './writingShape'
 import { experienceBeatsPromptBlock, ymylAuthorRequired, type AuthorPack, type ExperienceBeat } from './authorPack'
 import { citedProvidersPromptBlock, type CitedProvider } from './providerAuthors'
+import { houseRegisterFor, registerCardPromptBlock } from './registerCard'
 
 function authorCitationPromptBlock(opts: {
   contentType: string
@@ -253,7 +254,7 @@ function factoryBodyStructureLines(contentType: string): string[] {
       '   - Opening paragraph: answer the query in ≤40 words before expanding',
       '   - Procedural H2s: who, what to prepare, steps, what can change, local context',
       '   - ### only nested under ##, never skip heading levels, never use ####+',
-      '   - ## FAQ (3–5 Q&A) — each answer 40–80 words, self-contained for LLM citation',
+      '   - ## FAQ (3–5 Q&A) — each answer 2–5 sentences, a reader question the H2s did not already settle',
       '   - ## Sources (bullet list of official URLs only)',
       '   - Article JSON-LD; FAQPage JSON-LD when FAQ is present',
       '   - Short disclaimer: educational only, not legal advice',
@@ -274,7 +275,7 @@ function factoryBodyStructureLines(contentType: string): string[] {
     '     <details><summary>…</summary>…</details> — never inside code fences',
     '   - Prefer sentences under 28 words, mix short and medium length, active voice, address the reader as "you"',
     '   - Prefer one comparison or checklist table where it helps skimmers',
-    '   - ## FAQ (4–6 Q&A) — each answer 40–80 words, self-contained for LLM citation',
+    '   - ## FAQ (4–6 Q&A) — each answer 2–5 sentences, a reader question the H2s did not already settle',
     '   - ## Sources (bullet list of official URLs only)',
     '   - Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks',
     '   - Short disclaimer: educational only, not legal advice',
@@ -362,15 +363,16 @@ export function buildFactorySystemPrompt(opts: {
     author: spec?.author || null,
   })
   return [
-    blog
-      ? 'You are a senior specialist writing one YouSafe / MyCaseworks article, not an SEO content factory filling a kit.'
-      : 'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
+    'You are a senior specialist writing one YouSafe / MyCaseworks article, not an SEO content factory filling a kit.',
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
     'ZERO outcome promises. No guarantees of visas, approvals, timelines, or results.',
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
     'Cite official sources with full https URLs: immigration departments, government departments, official school pages, named intergovernmental bodies, AND the issuing body for the article’s claim (exam boards, licensing councils — e.g. NCSBN for NCLEX, IELTS.org for IELTS, NMC/GMC for UK professional registration). A host is valid because it issues that rule or exam, not because it is on a generic .gov list.',
     '',
     ...factoryShipGatesBlock(contentType, minWords, maxWords, target, spec?.author?.experienceBeats),
+    '',
+    registerCardPromptBlock(houseRegisterFor(contentType)),
+    spec?.thesis ? `THESIS (the article argues this once; every H2 advances it): ${spec.thesis}` : '',
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
@@ -1330,7 +1332,7 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
     : '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening answer + ## In 60 seconds (3-5 direct bullets) + the sections listed above. ' + (isLast ? 'This is the complete article: include the closing sections specified in rule 6 exactly once.' : 'Do NOT include the final ## Sources / JSON-LD / disclaimer — the final part writes those.')
   const lastRule = blog
     ? '6) This part closes the article: finish the last H2, add one closer, cite official sources in-body or as a short ## Sources list, and a short educational disclaimer if YMYL-adjacent. FAQ / FAQPage are not required. Do not invent a protagonist.'
-    : '6) This part closes the article: finish with ## FAQ (4-6 Q&A, each answer 40-80 words, self-contained for LLM citation), ## Sources (bullet list of official URLs only), Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks, and a short educational disclaimer.'
+    : '6) This part closes the article: finish with ## FAQ (4-6 Q&A, each answer 2-5 sentences, a reader question the H2s did not already settle), ## Sources (bullet list of official URLs only), Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks, and a short educational disclaimer.'
   const continueRule = blog
     ? '6) Stop cleanly at the end of this part\'s sections. Do not write the closer yet — a later part owns it.'
     : '6) Stop cleanly at the end of this part\'s sections. Do not write the FAQ/Sources/JSON-LD — a later part owns them.'

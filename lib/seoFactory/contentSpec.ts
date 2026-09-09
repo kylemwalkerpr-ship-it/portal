@@ -22,6 +22,7 @@ import { isCitableSource, isLowValueHost, type CitationContext } from './officia
 import type { AuthorPack, ResearchClaim } from './authorPack'
 import { sanitizeBriefOutline, rejectFragmentKeyword, isUnplaceableCoverageTerm } from './keywordContractBrief'
 import { stripOutlineHeadingDecorations } from './contentQualityGate'
+import { resolveSectionPurpose, synthesizeThesis } from './registerCard'
 
 export type ContentSpecKeyword = {
   phrase: string
@@ -546,7 +547,11 @@ export function createContentSpec(input: CreateContentSpecInput): ContentSpec {
       target: depth.targetWords,
       max: depth.maxWords,
     },
-    outline: input.outline ?? [],
+    outline: (input.outline ?? []).map((o) => ({
+      heading: o.heading,
+      level: o.level,
+      purpose: resolveSectionPurpose(o.heading, o.purpose),
+    })),
     requiredSections: input.requiredSections ?? [],
     verifiedEstateLinks: input.verifiedEstateLinks ?? [],
     approvedSources: input.approvedSources ?? [],
@@ -567,7 +572,13 @@ export function createContentSpec(input: CreateContentSpecInput): ContentSpec {
     },
     ...(input.author ? { author: input.author } : {}),
     ...(input.research ? { research: input.research } : {}),
-    ...(input.thesis != null && input.thesis !== '' ? { thesis: input.thesis } : {}),
+    thesis: synthesizeThesis({
+      thesis: input.thesis,
+      primaryKeyword: input.primaryKeyword,
+      reader: input.intent?.reader,
+      queryNeed: input.intent?.queryNeed,
+      primaryQuery: input.intent?.primaryQuery,
+    }),
     ...(input.unresolved?.length ? { unresolved: input.unresolved } : {}),
   }
   assertValidContentSpec(spec)

@@ -2,7 +2,7 @@
 
 import { writingFamilyFor } from './writingShape'
 
-export const EDITORIAL_CONTRACT_VERSION = '2026.09.reader-engagement.v4'
+export const EDITORIAL_CONTRACT_VERSION = '2026.09.reader-engagement.v5'
 
 /**
  * GUIDE contract (legal_guide / article). Existing imports keep this name.
@@ -29,7 +29,7 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '    - SYNTHESIZED floor-fill exists only to meet the count floors. It is optional: place it only if a grammatical slot already exists. Omitting it is a warning, never a ship blocker. Never stuff an unplaceable phrase.',
   '    Distribute demand keywords across the article. Do not front-load every keyword in the first paragraphs. Do not convert a long-tail into an FAQ question or H2 — Harper cannot rewrite headings or invent a slot for a broken phrase. Outline H2s, the primary keyword, and the owner URL are frozen identity: the outline-completion hop / briefing / a human own those, never Harper.',
   '',
-  '12. ANTI-WALL-OF-TEXT (mandatory on legal guides and regional pages, NOT on narrative blogs): prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed and is not mill chop. The scanner flags only true walls — blocks over ~720 characters with 7+ sentences. Split those with bullets, a numbered step, a table, a callout, or a new paragraph. Blogs MAY use a 4–6 sentence developed paragraph with no extra cap.',
+  '12. ANTI-WALL-OF-TEXT (mandatory on legal guides and regional pages, NOT on narrative blogs): prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed and is not mill chop. The scanner flags only true walls — blocks over ~720 characters with 7+ sentences. Split those with bullets, a numbered step, a table, a callout, or a new paragraph. Blogs MAY use a 4–6 sentence developed paragraph with no extra cap. After scaffold and outline inserts, a throughline rewrite unifies the argument; it must not move facts, URLs, or legal qualifiers.',
   '13. CONCRETE WORKED EXAMPLE (mandatory for long-form guides/regional): every page ≥1,000 words MUST include procedural concreteness (forms, documents, sequences). Do NOT invent a named person, testimonial, or personal story. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only. Label a genuine procedure "Example:" or "Worked example:" when it helps the reader. The scanner may look for "for example", "for instance", or "e.g." as a hint — never invent a protagonist to satisfy it.',
   '14. SCHEMA JSON-LD (mandatory for indexable pages): Article JSON-LD `{"@type":"Article","author":{...},"datePublished":"...","description":"..."}` must be present in every page. FAQPage JSON-LD `{"@type":"FAQPage","mainEntity":[...]}` is required when the page has 4+ FAQ sections. These are rendered by the template from the article meta, keywords, and FAQ content — do not write raw schema blocks manually. The scanner will warn (not block) if either schema type is absent. Narrative blogs do not require FAQPage.',
   '',

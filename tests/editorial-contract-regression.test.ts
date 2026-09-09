@@ -24,7 +24,7 @@ describe('editorialContract · guardrail regression', () => {
   const brief = editorialBriefPromptBlock()
 
   it('publishes the expected contract version', () => {
-    expect(EDITORIAL_CONTRACT_VERSION).toBe('2026.09.reader-engagement.v4')
+    expect(EDITORIAL_CONTRACT_VERSION).toBe('2026.09.reader-engagement.v5')
   })
 
   // ── DEAD_INTERNAL_LINK prevention ──────────────────────────────────────
