@@ -20,10 +20,11 @@ describe('messenger mobile back-to-list flow', () => {
     expect(css).toContain("data-mobile-view='list'")
     expect(css).toContain('.ys-chatscreen-sidebar > .cl')
     expect(css).toContain('position: relative !important')
-    expect(css).toContain('height: 100% !important')
+    expect(css).toContain('flex: 1 1 0% !important')
     expect(css).toContain('min-height: 0 !important')
+    expect(css).toContain('grid-template-areas: "head" "rail" !important')
     expect(css).toContain('.cl-scroll')
-    expect(css).toContain('overflow-y: auto !important')
+    expect(css).toContain('overflow-y: scroll !important')
   })
 
   test('back-list hardening loads after the earlier messenger mobile parity layer', () => {

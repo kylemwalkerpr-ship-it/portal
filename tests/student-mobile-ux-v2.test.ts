@@ -76,7 +76,7 @@ describe('student mobile UX v2', () => {
   })
 
   test('conversation list has a real iOS scroll track and keeps the dock tail reachable', () => {
-    const marker = '/* Conversation list bounded scroll owner'
+    const marker = '/* Conversation list: one real iOS scroll owner'
     const start = clearanceCss.indexOf(marker)
     expect(start).toBeGreaterThanOrEqual(0)
     const end = clearanceCss.indexOf(".yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(", start)
@@ -87,7 +87,7 @@ describe('student mobile UX v2', () => {
     const scrollEnd = listCss.indexOf('\n  }', scrollStart)
     const scrollCss = listCss.slice(scrollStart, scrollEnd > scrollStart ? scrollEnd : undefined)
 
-    expect(listCss).toContain(".yousafe-messenger > :has(> .ys-chatscreen[data-mobile-view='list'])")
+    expect(listCss).toContain('.ys-inbox-frame')
     expect(listCss).toContain(".ys-chatscreen[data-mobile-view='list']")
     expect(listCss).toContain('.ys-chatscreen-sidebar')
     expect(listCss).toContain('.ys-chatscreen-sidebar > .cl')
@@ -96,9 +96,13 @@ describe('student mobile UX v2', () => {
     expect(listCss).toContain('.cl-scroll::after')
     expect(listCss).toContain('display: grid !important')
     expect(listCss).toContain('grid-template-columns: minmax(0, 1fr) !important')
-    expect(listCss).toContain('grid-template-rows: auto minmax(0, 1fr) !important')
+    expect(listCss).toContain('grid-template-rows: max-content minmax(0, 1fr) !important')
+    expect(listCss).toContain('grid-template-areas: "head" "rail" !important')
     expect(listCss).toContain('flex: 1 1 0% !important')
-    expect(scrollCss).toContain('height: auto !important')
+    expect(listCss).toContain('min-height: min-content !important')
+    expect(scrollCss).toContain('height: 100% !important')
+    expect(scrollCss).toContain('max-height: 100% !important')
+    expect(scrollCss).not.toMatch(/^\s*height:\s*auto\s*!important;/m)
     expect(scrollCss).not.toMatch(/^\s*height:\s*0\s*!important;/m)
     expect(scrollCss).toContain('min-height: 0 !important')
     expect(scrollCss).toContain('overflow-y: scroll !important')

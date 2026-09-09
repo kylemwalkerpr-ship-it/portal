@@ -8,6 +8,7 @@ import StudentSettings from './student-settings'
 import StudentDashboardHome from './student-dashboard-home'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import { writeMessengerThreadParam } from '@/lib/messaging/threadUrl'
 import { openOrderInMessenger } from '@/lib/openOrderMessenger'
 import OrderDeliverables from '../orders/OrderDeliverables'
 import OrderRatingPrompt from './order-rating-prompt'
@@ -3573,12 +3574,7 @@ function StudentApp({ onLogout, userId, userName }) {
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <UnifiedInbox
                 defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
-                onThreadChange={(id) => {
-                  if (typeof window === 'undefined') return;
-                  const url = new URL(window.location.href);
-                  if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread');
-                  window.history.replaceState({}, '', url.toString());
-                }}
+                onThreadChange={(id) => writeMessengerThreadParam(id)}
               />
             </div>
           )}

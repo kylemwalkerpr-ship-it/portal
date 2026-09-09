@@ -6,6 +6,7 @@ import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import { writeMessengerThreadParam } from '@/lib/messaging/threadUrl'
 import ConsultantOverview from './consultant-overview'
 import ConsultantOrders, { OrderDetail } from './consultant-orders'
 import ConsultantEarnings from './consultant-earnings'
@@ -864,12 +865,7 @@ function ConsultantApp({ onLogout }) {
                 <UnifiedInbox
                   canSendOffer
                   defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
-                  onThreadChange={(id) => {
-                    if (typeof window === 'undefined') return
-                    const url = new URL(window.location.href)
-                    if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
-                    window.history.replaceState({}, '', url.toString())
-                  }}
+                  onThreadChange={(id) => writeMessengerThreadParam(id)}
                 />
               </div>
             )}

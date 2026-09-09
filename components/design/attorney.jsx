@@ -15,6 +15,7 @@ import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
 import { usePortalTheme } from './usePortalTheme'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import { writeMessengerThreadParam } from '@/lib/messaging/threadUrl'
 import { openOrderInMessenger } from '@/lib/openOrderMessenger'
 import OrderDeliverables from '../orders/OrderDeliverables'
 import ChatScreen from '../messaging/ChatScreen'
@@ -369,12 +370,7 @@ export default function AttorneyApp({ onLogout, userName }) {
                   <UnifiedInbox
                     canSendOffer
                     defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
-                    onThreadChange={(id) => {
-                      if (typeof window === 'undefined') return
-                      const url = new URL(window.location.href)
-                      if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
-                      window.history.replaceState({}, '', url.toString())
-                    }}
+                    onThreadChange={(id) => writeMessengerThreadParam(id)}
                   />
                 </div>
               )}
