@@ -550,8 +550,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           review: async (md, snapshot) => {
             const response = await fetchWithTimeout('/api/content-studio/editorial-review', {
               method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal, timeoutMs: 80_000,
-              body: JSON.stringify({ content: md, hint, grammar: snapshot.grammar, reviewModel }),
+              signal: controller.signal, timeoutMs: 200_000,
+              body: JSON.stringify({ content: md, hint, grammar: snapshot.grammar, reviewModel: reviewModel || DEFAULT_REVIEW_PIN }),
             })
             const result = await response.json()
             if (!response.ok) throw new Error(result.error || 'Editorial model review failed')
@@ -562,7 +562,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         editorialNote = review.reason
         const finalAudit = await fetchWithTimeout('/api/content-studio/reaudit', {
           method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal, timeoutMs: 80_000,
+          signal: controller.signal, timeoutMs: 200_000,
           body: JSON.stringify({ content: review.content, jobId, ...briefMeta, editorialReview: editorialReport(review) }),
         })
         const finalData = await finalAudit.json()
