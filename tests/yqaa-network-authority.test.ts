@@ -52,6 +52,29 @@ describe('YQAA canonical network authority', () => {
     expect(prompt).toContain('https://au.yousafeconsultancy.com')
   })
 
+  it('blocks the exact false Australia exclusion shown in production', async () => {
+    const { enforceCanonicalMarketCoverage } = await import('@/lib/assistantNetworkAuthority')
+    const guarded = enforceCanonicalMarketCoverage(
+      'Tell me about moving to Australia',
+      "Australia isn't a YouSafe destination we cover, so I can't give you verified YouSafe-specific steps.",
+    )
+
+    expect(guarded.corrected).toBe(true)
+    expect(guarded.correctedMarkets).toContain('AU')
+    expect(guarded.text).toContain('Australia is a supported YouSafe market')
+    expect(guarded.text).toContain('https://au.yousafeconsultancy.com')
+    expect(guarded.text).toContain('Subclass 500')
+  })
+
+  it('does not rewrite a valid Australia answer', async () => {
+    const { enforceCanonicalMarketCoverage } = await import('@/lib/assistantNetworkAuthority')
+    const reply = 'Australia is one of YouSafe’s supported markets. I can help you find the relevant document-preparation path.'
+    const guarded = enforceCanonicalMarketCoverage('I am moving to Australia', reply)
+
+    expect(guarded.corrected).toBe(false)
+    expect(guarded.text).toBe(reply)
+  })
+
   it('does not allow the Yara-era static knowledge base back into central fallback', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'lib', 'centralAssistantKnowledge.ts'),
