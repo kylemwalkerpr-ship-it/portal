@@ -91,21 +91,20 @@ EXECUTION RULES — NON-NEGOTIABLE:
       reasoningEffort: 'low',
     })
     const parsed = parseEditorialRevision(response.text)
-    if (!parsed.ok) {
-      if ('fallback' in parsed) {
-        const patched = applyEditorialReviewPatch(content, response.text)
-        return NextResponse.json({
-          ...patched,
-          appliedIds: [],
-          waivedIds: [],
-          supervisionFingerprint: supervision.fingerprint,
-          directiveCount: supervision.directives.length,
-          unmet: supervision.unmet,
-          pendingIds,
-        })
-      }
-      throw new Error(parsed.reason)
+    if ('fallback' in parsed) {
+      const patched = applyEditorialReviewPatch(content, response.text)
+      return NextResponse.json({
+        ...patched,
+        appliedIds: [],
+        waivedIds: [],
+        supervisionFingerprint: supervision.fingerprint,
+        directiveCount: supervision.directives.length,
+        unmet: supervision.unmet,
+        pendingIds,
+      })
     }
+    if ('reason' in parsed) throw new Error(parsed.reason)
+
     const patched = applyEditorialRevision(content, parsed.revision, { mustApplyIds, protectFacts: true })
     return NextResponse.json({
       content: patched.content,
