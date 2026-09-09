@@ -10,6 +10,9 @@ describe('messenger mobile parity', () => {
   const chatScreen = read('components/messaging/ChatScreen.tsx')
   const css = read('app/messenger-mobile-parity.css')
   const layout = read('app/layout.tsx')
+  const conversationRoute = read('app/api/messages/conversations/[id]/route.ts')
+  const attachRoute = read('app/api/messages/conversations/[id]/attach/route.ts')
+  const aiModeRoute = read('app/api/messages/conversations/[id]/ai-mode/route.ts')
 
   test('marketplace chat treats the unified conversation as the live source of truth', () => {
     expect(pane).toContain("fetch(`/api/messages/conversations/${id}`")
@@ -55,6 +58,25 @@ describe('messenger mobile parity', () => {
     expect(css).toContain('overscroll-behavior-x: contain')
     expect(css).toContain('.yousafe-dashboard-shell .yousafe-nav-item')
     expect(css).toContain('min-height: 46px !important')
+  })
+
+  test('provider participation never silently pauses AI', () => {
+    // Attorney/consultant text and attachments must leave ai_mode untouched.
+    // Only the explicit provider Take over / Resume API may change it.
+    expect(conversationRoute).not.toContain("isProviderRole(auth.role) || auth.role === 'admin'")
+    expect(attachRoute).not.toContain("isProviderRole(auth.role) || auth.role === 'admin'")
+    expect(conversationRoute).not.toContain("ai_paused_reason: 'human_message'")
+    expect(attachRoute).not.toContain("ai_paused_reason: 'human_attachment'")
+    expect(conversationRoute).toContain("if (auth.role === 'admin')")
+    expect(attachRoute).toContain("if (auth.role === 'admin')")
+    expect(conversationRoute).toContain('Only the explicit Take over control may pause provider-side AI')
+    expect(attachRoute).toContain('Only the explicit Take over control may')
+
+    // Explicit provider controls still support pause/resume and remain the
+    // authoritative route for provider AI-mode transitions.
+    expect(aiModeRoute).toContain("requested !== 'auto' && requested !== 'paused' && requested !== 'off'")
+    expect(aiModeRoute).toContain('isProviderRole(auth.role)')
+    expect(aiModeRoute).toContain('setConversationAiMode')
   })
 
   test('focused parity layer loads after the general mobile layers', () => {
