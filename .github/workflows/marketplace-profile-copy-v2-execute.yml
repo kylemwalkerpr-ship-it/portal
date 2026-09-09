@@ -1,0 +1,63 @@
+name: Execute Marketplace Legal Profile V2 Rewrite
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/marketplace-profile-copy-v2.run'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-profile-copy-v2-production
+  cancel-in-progress: false
+
+jobs:
+  rewrite_profiles:
+    name: Rewrite and audit 70 legal Marketplace profiles
+    if: contains(github.event.head_commit.message, '[run-marketplace-profile-v2]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout trigger commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify Marketplace migration enable marker
+        shell: bash
+        run: |
+          test -f .github/marketplace-copy-rewrite.enabled
+          echo "Marketplace migration guard is enabled."
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Verify gig images before profile rewrite
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+        run: node scripts/verify-marketplace-image-preservation.mjs
+
+      - name: Rewrite and audit legal Marketplace profiles
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+        run: node scripts/run-marketplace-profile-copy-v2.mjs
+
+      - name: Verify gig images after profile rewrite
+        if: always()
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+        run: node scripts/verify-marketplace-image-preservation.mjs
