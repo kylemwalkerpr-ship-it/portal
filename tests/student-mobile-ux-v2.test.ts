@@ -57,21 +57,28 @@ describe('student mobile UX v2', () => {
     expect(clearanceCss).toContain('display: none !important')
   })
 
-  test('fixed dock clearance is part of the mobile scrollport rather than extra height outside 100dvh', () => {
+  test('fixed dock clearance has a physical scroll tail so the final card stays visible after touch release', () => {
+    expect(clearanceCss).toContain('--student-dock-v2-gap: 22px')
+    expect(clearanceCss).toContain('--student-dock-v2-occlusion: calc(')
     expect(clearanceCss).toContain('--student-dock-v2-clearance: calc(')
     expect(clearanceCss).toContain('box-sizing: border-box !important')
     expect(clearanceCss).toContain('height: 100% !important')
     expect(clearanceCss).toContain('max-height: 100% !important')
-    expect(clearanceCss).toContain('padding-bottom: var(--student-dock-v2-clearance) !important')
-    expect(clearanceCss).toContain('scroll-padding-bottom: var(--student-dock-v2-clearance) !important')
     expect(clearanceCss).toContain('.yousafe-dashboard-main:not(:has(.yousafe-messenger))')
+    expect(clearanceCss).toContain('padding-bottom: var(--student-dock-v2-gap) !important')
+    expect(clearanceCss).toContain('scroll-padding-bottom: var(--student-dock-v2-clearance) !important')
+    expect(clearanceCss).toContain('.yousafe-dashboard-main:not(:has(.yousafe-messenger))::after')
+    expect(clearanceCss).toContain('flex: 0 0 var(--student-dock-v2-occlusion)')
+    expect(clearanceCss).toContain('min-height: var(--student-dock-v2-occlusion)')
     expect(clearanceCss).toContain('overflow-y: auto !important')
   })
 
-  test('conversation list reserves dock clearance so its final row remains reachable', () => {
+  test('conversation list reserves the same physical dock tail so its final row remains reachable', () => {
     expect(clearanceCss).toContain(".ys-chatscreen[data-mobile-view='list'] .cl-scroll")
-    expect(clearanceCss).toContain('padding-bottom: var(--student-dock-v2-clearance) !important')
+    expect(clearanceCss).toContain(".ys-chatscreen[data-mobile-view='list'] .cl-scroll::after")
+    expect(clearanceCss).toContain('padding-bottom: var(--student-dock-v2-gap) !important')
     expect(clearanceCss).toContain('scroll-padding-bottom: var(--student-dock-v2-clearance) !important')
+    expect(clearanceCss).toContain('height: var(--student-dock-v2-occlusion)')
   })
 
   test('open Messenger thread reclaims dock space and keeps the composer inside one viewport', () => {
