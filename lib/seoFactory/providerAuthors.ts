@@ -16,7 +16,7 @@
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
-import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
+import { resolveAttorneyCredential, type CredentialPair } from '@/lib/attorneyCredential'
 import { CATEGORIES } from '@/lib/categories'
 import { LIFECYCLE_STAGES } from '@/lib/seoEngine/ontology'
 import { ymylAuthorRequired, type AuthorPack } from './authorPack'
@@ -895,7 +895,7 @@ export async function loadCitableProviders(db: SupaLike): Promise<CitableProvide
     const profileId = String(row.profile_id || '')
     const profile = profileById.get(profileId)
     if (!profile?.full_name) continue
-    let cred = {
+    let cred: CredentialPair = {
       credential_type: (row.credential_type as string | null) ?? null,
       bar_number: (row.bar_number as string | null) ?? null,
       show_bar_number: (row.show_bar_number as boolean | null) ?? true,

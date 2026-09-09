@@ -92,19 +92,19 @@ EXECUTION RULES — NON-NEGOTIABLE:
     })
     const parsed = parseEditorialRevision(response.text)
     if (!parsed.ok) {
-      if ('fallback' in parsed && parsed.fallback === 'v1') {
-        const patched = applyEditorialReviewPatch(content, response.text)
-        return NextResponse.json({
-          ...patched,
-          appliedIds: [],
-          waivedIds: [],
-          supervisionFingerprint: supervision.fingerprint,
-          directiveCount: supervision.directives.length,
-          unmet: supervision.unmet,
-          pendingIds,
-        })
+      if ('reason' in parsed) {
+        throw new Error(parsed.reason)
       }
-      throw new Error(parsed.reason)
+      const patched = applyEditorialReviewPatch(content, response.text)
+      return NextResponse.json({
+        ...patched,
+        appliedIds: [],
+        waivedIds: [],
+        supervisionFingerprint: supervision.fingerprint,
+        directiveCount: supervision.directives.length,
+        unmet: supervision.unmet,
+        pendingIds,
+      })
     }
     const patched = applyEditorialRevision(content, parsed.revision, { mustApplyIds, protectFacts: true })
     return NextResponse.json({
