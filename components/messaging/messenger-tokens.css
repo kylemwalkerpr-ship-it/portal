@@ -5,7 +5,7 @@
    [data-density] on the .yousafe-messenger root.
 
    Surfaces use a SELF-CONTAINED neutral palette. Do NOT inherit marketplace
-   --ys-* (mahogany/sepia) or portal theme --portal-* vars for chat chrome —
+   --ys-* marketplace tokens or portal theme --portal-* vars for chat chrome —
    parent themes wash into the slideover / Messages panel and kill contrast.
    Accent stays sparingly on Send / chips; everything else is slate neutrals.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1274,7 +1274,7 @@
    .cw-market sets color: var(--ys-onPaper) on the page and forces
    .chat-side-pane { color: var(--ys-ink) }. When the messenger lives
    inside marketplace chrome (Messages panel OR ChatSidePane slideover),
-   re-assert neutrals so mahogany/sepia cannot leak onto chat surfaces.
+   re-assert neutrals so marketplace chrome cannot leak onto chat surfaces.
    Scope is .yousafe-messenger only — marketplace pages outside it keep
    their theme. */
 .cw-market .yousafe-messenger,

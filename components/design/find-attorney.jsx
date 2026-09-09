@@ -91,24 +91,24 @@ export default function FindAttorney() {
 
   return (
     <div style={{ padding: '24px 28px' }}>
-      {/* Legibility box: when rendered inside MarketplaceShell this intro
-          sits on dark walnut paper + pattern, so the text must live on a
-          light surface. Falls back to portal ink tokens outside the market. */}
+      {/* Legibility box: MarketplaceShell is light professional chrome, so
+          this intro is a white card with charcoal type. Falls back to portal
+          ink tokens outside the market. */}
       <div
         style={{
           marginBottom: '20px',
-          background: 'var(--ys-vellum, #FFF9F2)',
-          border: '1px solid var(--ys-rule, rgba(28,20,16,0.14))',
+          background: 'var(--ys-vellum, #FFFFFF)',
+          border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
           borderRadius: '12px',
           padding: '18px 22px',
-          color: 'var(--ys-ink, var(--portal-ink, #1C1410))',
+          color: 'var(--ys-ink, var(--portal-ink, #0F172A))',
         }}
       >
-        <div style={{ ...eyebrow, color: 'var(--ys-inkMid, var(--portal-ink-mid, #4A3C34))' }}>Verified panel</div>
-        <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: 'var(--ys-ink, var(--portal-ink, #1C1410))', margin: '4px 0', letterSpacing: '-0.012em' }}>
+        <div style={{ ...eyebrow, color: 'var(--ys-inkMid, var(--portal-ink-mid, #334155))' }}>Verified panel</div>
+        <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: 'var(--ys-ink, var(--portal-ink, #0F172A))', margin: '4px 0', letterSpacing: '-0.012em' }}>
           Find Your Specialist.
         </h2>
-        <p style={{ color: 'var(--ys-inkMid, var(--portal-ink-mid, #4A3C34))', fontSize: '14px', margin: 0, maxWidth: '640px' }}>
+        <p style={{ color: 'var(--ys-inkMid, var(--portal-ink-mid, #334155))', fontSize: '14px', margin: 0, maxWidth: '640px' }}>
           Verified panel of consultants and licensed attorneys. Pick the tab that matches your need —
           consultants for academic, career, business, and settlement guidance; attorneys for legal
           and immigration matters.

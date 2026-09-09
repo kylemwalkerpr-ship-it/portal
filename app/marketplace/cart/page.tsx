@@ -44,7 +44,7 @@ interface SavedCard {
 
 export default function CartPage() {
   return (
-    <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #4A2A1A)' }} />}>
+    <Suspense fallback={<div style={{ minHeight: 240, background: 'var(--ys-paper, #F4F6F8)' }} />}>
       <CartPageInner />
     </Suspense>
   )

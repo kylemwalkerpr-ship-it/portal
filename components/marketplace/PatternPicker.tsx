@@ -21,39 +21,41 @@ interface PatternDef {
   /** Max strength of the texture layer — keeps patterns subtle behind vellum
    *  cards on every palette. Denser textures get lower caps. */
   opacity: number
-}const PATTERNS: PatternDef[] = [
+}
+
+const PATTERNS: PatternDef[] = [
   { id: 'none', label: 'Solid', emoji: '◼️', css: 'none', opacity: 0 },
   {
-    id: 'linen', label: 'Linen', emoji: '🧵', opacity: 0.4,
-    css: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 4px)',
+    id: 'linen', label: 'Linen', emoji: '🧵', opacity: 0.18,
+    css: 'repeating-linear-gradient(0deg, rgba(15,23,42,0.028) 0px, rgba(15,23,42,0.028) 1px, transparent 1px, transparent 6px)',
   },
   {
-    id: 'dots', label: 'Dots', emoji: '🔲', opacity: 0.6,
-    css: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)',
+    id: 'dots', label: 'Dots', emoji: '🔲', opacity: 0.4,
+    css: 'radial-gradient(circle, rgba(0,0,0,0.045) 1px, transparent 1px)',
   },
   {
-    id: 'diagonal', label: 'Diagonal', emoji: '📐', opacity: 0.45,
-    css: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
+    id: 'diagonal', label: 'Diagonal', emoji: '📐', opacity: 0.28,
+    css: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 10px)',
   },
   {
-    id: 'woodgrain', label: 'Wood grain', emoji: '🪵', opacity: 0.4,
+    id: 'woodgrain', label: 'Wood grain', emoji: '🪵', opacity: 0.26,
     css: [
-      'repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 3px)',
-      'repeating-linear-gradient(2deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 6px)',
+      'repeating-linear-gradient(0deg, rgba(0,0,0,0.022) 0px, rgba(0,0,0,0.022) 1px, transparent 1px, transparent 4px)',
+      'repeating-linear-gradient(2deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 8px)',
     ].join(', '),
   },
   {
-    id: 'crosshatch', label: 'Crosshatch', emoji: '🔺', opacity: 0.4,
+    id: 'crosshatch', label: 'Crosshatch', emoji: '🔺', opacity: 0.26,
     css: [
-      'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
-      'repeating-linear-gradient(-45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 8px)',
+      'repeating-linear-gradient(45deg, rgba(0,0,0,0.028) 0px, rgba(0,0,0,0.028) 1px, transparent 1px, transparent 10px)',
+      'repeating-linear-gradient(-45deg, rgba(0,0,0,0.028) 0px, rgba(0,0,0,0.028) 1px, transparent 1px, transparent 10px)',
     ].join(', '),
   },
   {
-    id: 'diamonds', label: 'Diamonds', emoji: '💎', opacity: 0.5,
+    id: 'diamonds', label: 'Diamonds', emoji: '💎', opacity: 0.32,
     css: [
-      'linear-gradient(45deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 75%)',
-      'linear-gradient(45deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 75%)',
+      'linear-gradient(45deg, rgba(0,0,0,0.03) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.03) 75%)',
+      'linear-gradient(45deg, rgba(0,0,0,0.03) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.03) 75%)',
     ].join(', '),
   },
 ]
@@ -67,17 +69,14 @@ export function getPatternOpacity(id: PatternId): number {
 }
 
 /**
- * Palette-adaptive variant of a pattern's CSS: the fixed black strokes are
- * swapped for the ACTIVE PALETTE's onPaper tint via color-mix, so the same
- * texture is a faint cream weave on dark mahogany and a faint ink weave on
- * light vellum — visible-but-subtle on every palette. Browsers without
- * color-mix keep the original black-stroke fallback (declared first in the
- * injected rule).
+ * Palette-adaptive variant of a pattern's CSS: ink strokes mix with
+ * --ys-onPaper so the texture stays a faint charcoal weave on light Studio
+ * chrome. Browsers without color-mix keep the original ink-stroke fallback.
  */
 export function getPatternCssAdaptive(id: PatternId): string {
   return getPatternCss(id).replace(
     /rgba\(0,\s*0,\s*0,\s*([\d.]+)\)/g,
-    (_m, a: string) => `color-mix(in srgb, var(--ys-onPaper, #F7EDE0) ${Math.round(parseFloat(a) * 100)}%, transparent)`,
+    (_m, a: string) => `color-mix(in srgb, var(--ys-onPaper, #0F172A) ${Math.round(parseFloat(a) * 100)}%, transparent)`,
   )
 }
 
@@ -102,12 +101,12 @@ export function getPatternPosition(id: PatternId): string {
  */
 export function PatternPicker() {
   const [selected, setSelected] = useState<PatternId>(() => {
-    if (typeof window === 'undefined') return 'none'
+    if (typeof window === 'undefined') return 'linen'
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored && PATTERNS.some(p => p.id === stored)) return stored as PatternId
     } catch {}
-    return 'none'
+    return 'linen'
   })
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -240,8 +239,8 @@ export function PatternPicker() {
                     gap: 10,
                     padding: '8px 10px',
                     border: 'none',
-                    background: active ? 'rgba(14,124,116,0.10)' : 'transparent',
-                    color: active ? '#0E7C74' : '#1A1F2E',
+                    background: active ? 'rgba(60,59,110,0.10)' : 'transparent',
+                    color: active ? '#2A2A55' : '#1A1F2E',
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
@@ -270,7 +269,7 @@ export function PatternPicker() {
                     </span>
                   </span>
                   {active && (
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#0E7C74', flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#3C3B6E', flexShrink: 0 }}>✓</span>
                   )}
                 </button>
               </li>

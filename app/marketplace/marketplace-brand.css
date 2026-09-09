@@ -1,18 +1,17 @@
 /* Marketplace brand + accessibility contract
    ------------------------------------------
-   Emerald is the shared Marketplace action colour. Keep the legacy UI token
-   names available so older shared primitives can inherit the same visual
-   language without leaking this theme into the rest of Portal. */
+   Light professional chrome. Action colour is the palette accent (legacy
+   names indigo / teal). Do not flood the shell with saturated fills. */
 .cw-market {
-  --ui-primary: var(--ys-indigo, #087A5B);
-  --ui-brand: var(--ys-indigoDeep, #065F46);
-  --ui-accent: var(--ys-indigo, #087A5B);
-  --ui-accent-deep: var(--ys-indigoDeep, #065F46);
-  --ui-accent-soft: var(--ys-indigoSoft, rgba(8,122,91,0.14));
+  --ui-primary: var(--ys-indigo, #3C3B6E);
+  --ui-brand: var(--ys-indigoDeep, #2A2A55);
+  --ui-accent: var(--ys-indigo, #3C3B6E);
+  --ui-accent-deep: var(--ys-indigoDeep, #2A2A55);
+  --ui-accent-soft: var(--ys-indigoSoft, rgba(60,59,110,0.12));
 }
 
 .cw-market :where(a, button, input, textarea, select):focus-visible {
-  outline: 3px solid #34D399 !important;
+  outline: 3px solid var(--ys-indigo, #3C3B6E) !important;
   outline-offset: 3px !important;
 }
 
@@ -59,7 +58,7 @@
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.01em;
-    color: var(--ys-onPaperEm, #FFF7E8);
+    color: var(--ys-inkSoft, #526072);
     white-space: nowrap;
   }
 
@@ -94,7 +93,7 @@
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.01em;
-    color: var(--ys-onPaperEm, #FFF7E8);
+    color: var(--ys-inkSoft, #526072);
     white-space: nowrap;
   }
 }

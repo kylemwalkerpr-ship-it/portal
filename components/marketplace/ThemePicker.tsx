@@ -20,12 +20,12 @@ const PATTERNS: Array<{ id: PatternId; label: string; emoji: string }> = [
 export function ThemePicker() {
   const { palettes, palette, setPaletteName } = usePalette()
   const [selectedPattern, setSelectedPattern] = useState<PatternId>(() => {
-    if (typeof window === 'undefined') return 'none'
+    if (typeof window === 'undefined') return 'linen'
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored && PATTERNS.some(p => p.id === stored)) return stored as PatternId
     } catch {}
-    return 'none'
+    return 'linen'
   })
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -169,8 +169,8 @@ export function ThemePicker() {
                   gap: 10,
                   padding: '7px 10px',
                   border: 'none',
-                  background: active ? 'rgba(14,124,116,0.10)' : 'transparent',
-                  color: active ? '#0E7C74' : '#1A1F2E',
+                  background: active ? 'rgba(60,59,110,0.10)' : 'transparent',
+                  color: active ? '#2A2A55' : '#1A1F2E',
                   cursor: 'pointer',
                   fontSize: 13,
                   fontWeight: active ? 700 : 500,
@@ -188,7 +188,7 @@ export function ThemePicker() {
                   <span style={{ display: 'block', lineHeight: 1.3 }}>{p.emoji} {p.label}</span>
                 </span>
                 {active && (
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#0E7C74', flexShrink: 0 }}>✓</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#3C3B6E', flexShrink: 0 }}>✓</span>
                 )}
               </button>
             )
@@ -215,13 +215,13 @@ export function ThemePicker() {
                     alignItems: 'center',
                     gap: 3,
                     padding: '6px 2px',
-                    border: active ? '2px solid #0E7C74' : '1px solid rgba(148,163,184,0.25)',
+                    border: active ? '2px solid #3C3B6E' : '1px solid rgba(148,163,184,0.25)',
                     borderRadius: 6,
-                    background: active ? 'rgba(14,124,116,0.08)' : '#FAFAF8',
+                    background: active ? 'rgba(60,59,110,0.08)' : '#FAFAF8',
                     cursor: 'pointer',
                     fontSize: 10,
                     fontWeight: active ? 700 : 500,
-                    color: active ? '#0E7C74' : '#1A1F2E',
+                    color: active ? '#2A2A55' : '#1A1F2E',
                     fontFamily: 'inherit',
                     transition: 'border-color 120ms, background 120ms',
                   }}

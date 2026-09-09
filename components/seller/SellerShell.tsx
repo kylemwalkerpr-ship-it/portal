@@ -26,12 +26,12 @@ const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter'
 const sellerPalette = getPalette(DEFAULT_PALETTE_NAME).tokens
 const sellerTheme = {
   ...paletteCssVars(sellerPalette),
-  '--portal-bg': '#F7FAF9',
+  '--portal-bg': '#F4F6F8',
   '--portal-surface': '#FFFFFF',
-  '--portal-surface-2': '#F7FAF9',
-  '--portal-surface-3': '#EEF6F3',
-  '--portal-rule': '#D5E5DF',
-  '--portal-rule-soft': '#E5EEEA',
+  '--portal-surface-2': '#F7F8FA',
+  '--portal-surface-3': '#EEF1F4',
+  '--portal-rule': 'rgba(15,23,42,0.10)',
+  '--portal-rule-soft': 'rgba(15,23,42,0.06)',
   '--portal-accent': sellerPalette.indigo,
   '--portal-accent-deep': sellerPalette.indigoDeep,
   '--portal-accent-soft': sellerPalette.indigoSoft,
@@ -62,46 +62,44 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
       }}
     >
       {/*
-        Seller Marketplace UI uses the same emerald/neutral contract as the
-        public Marketplace. The !important declarations intentionally beat
-        legacy inline wizard styles that used dark paper fills behind dark
-        text; form controls stay white, readable, and keyboard-visible.
+        Seller Marketplace UI uses the same light-professional contract as the
+        public Marketplace. Form controls stay white, readable, and keyboard-visible.
       */}
       <style>{`
         .ys-seller-marketplace input:not([type='checkbox']):not([type='radio']),
         .ys-seller-marketplace textarea,
         .ys-seller-marketplace select {
           background: var(--ys-vellum, #FFFFFF) !important;
-          color: var(--ys-ink, #17201D) !important;
-          border-color: #D5E5DF !important;
+          color: var(--ys-ink, #0F172A) !important;
+          border-color: var(--ys-rule, rgba(15,23,42,0.12)) !important;
         }
         .ys-seller-marketplace input:not([type='checkbox']):not([type='radio']):focus,
         .ys-seller-marketplace textarea:focus,
         .ys-seller-marketplace select:focus {
-          border-color: var(--ys-indigo, #087A5B) !important;
-          box-shadow: 0 0 0 3px var(--ys-indigoSoft, rgba(8,122,91,0.14)) !important;
+          border-color: var(--ys-indigo, #3C3B6E) !important;
+          box-shadow: 0 0 0 3px var(--ys-indigoSoft, rgba(60,59,110,0.12)) !important;
           outline: none !important;
         }
         .ys-seller-marketplace input::placeholder,
         .ys-seller-marketplace textarea::placeholder {
-          color: var(--ys-inkSoft, #5E6F68) !important;
+          color: var(--ys-inkSoft, #526072) !important;
           opacity: 0.82;
         }
         .ys-seller-marketplace button:focus-visible,
         .ys-seller-marketplace a:focus-visible {
-          outline: 3px solid #34D399;
+          outline: 3px solid var(--ys-indigo, #3C3B6E);
           outline-offset: 3px;
         }
       `}</style>
 
-      {/* Bright emerald accent line */}
-      <div style={{ height: '3px', background: 'linear-gradient(90deg, #087A5B 0%, #34D399 50%, #087A5B 100%)' }} />
+      {/* Studio accent line */}
+      <div style={{ height: '3px', background: `linear-gradient(90deg, ${sellerPalette.indigo} 0%, ${sellerPalette.indigoDeep} 100%)` }} />
 
       {/* Top navigation */}
-      <nav style={{ background: T.paper3, boxShadow: '0 2px 12px rgba(5,76,57,0.18)' }}>
+      <nav style={{ background: T.vellum, borderBottom: `1px solid ${T.rule}`, boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '8px' }}>
           {/* Brand mark */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '16px', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.12)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '16px', marginRight: '4px', borderRight: `1px solid ${T.rule}`, flexShrink: 0 }}>
             <img
               src="/logo.png"
               alt="YouSafe Consultancy"
@@ -113,7 +111,7 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
               <div style={{ fontFamily: serif, fontSize: '17px', fontWeight: 600, color: T.onPaper, letterSpacing: '0.01em', lineHeight: 1.1 }}>
                 YouSafe
               </div>
-              <div style={{ fontSize: '10px', color: '#D6F5E9', marginTop: '2px', whiteSpace: 'nowrap', fontWeight: 700 }}>
+              <div style={{ fontSize: '10px', color: T.inkSoft, marginTop: '2px', whiteSpace: 'nowrap', fontWeight: 700 }}>
                 Your Safe Path to Success.
               </div>
             </div>
@@ -135,9 +133,9 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
                     padding: '0 16px',
                     fontSize: '13px',
                     fontWeight: isActive ? 700 : 500,
-                    color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)',
+                    color: isActive ? T.indigo : T.inkMid,
                     textDecoration: 'none',
-                    borderBottom: isActive ? '3px solid #34D399' : '3px solid transparent',
+                    borderBottom: isActive ? `3px solid ${T.indigo}` : '3px solid transparent',
                     height: '56px',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
@@ -158,8 +156,8 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
               href="/dashboard"
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px',
-                borderRadius: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.82)',
-                border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.07)',
+                borderRadius: '8px', fontSize: '12px', color: T.inkMid,
+                border: `1px solid ${T.rule}`, background: T.cream,
                 textDecoration: 'none', letterSpacing: '0.01em', whiteSpace: 'nowrap',
               }}
             >
@@ -170,7 +168,7 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
       </nav>
 
       {/* Page header */}
-      <div style={{ background: T.vellum, borderBottom: '1px solid #D5E5DF', boxShadow: '0 1px 0 rgba(8,122,91,0.04)' }}>
+      <div style={{ background: T.vellum, borderBottom: `1px solid ${T.rule}`, boxShadow: '0 1px 0 rgba(15,23,42,0.03)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: 'clamp(20px, 4vw, 28px) clamp(16px, 4vw, 32px) clamp(18px, 3vw, 24px)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 240px' }}>
