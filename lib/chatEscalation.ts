@@ -1,11 +1,10 @@
 /**
- * Live-agent escalation helpers for Yara.
+ * Live-agent escalation helpers for the system-wide YouSafe AI Assistant.
  *
- * When a user wants to talk to a real person (or types something that signals
- * they need one), Yara hands off to the support-saas chat queue at
- * support.yousafeconsultancy.com. From that point the support team handles
- * the conversation in their dashboard, and the widget polls support-saas
- * directly for new messages.
+ * When a user wants to talk to a real person, the assistant hands off to the
+ * support-saas chat queue at support.yousafeconsultancy.com. From that point
+ * the support team handles the conversation in their dashboard, and the
+ * widget polls support-saas directly for new messages.
  */
 
 export const SUPPORT_WIDGET_API =
@@ -52,11 +51,6 @@ export type SupportHandoffResult = {
   apiUrl: string
 }
 
-/**
- * Create or continue a live-support conversation in the support-saas.
- * Returns the conversation id + queue info so the widget can keep polling
- * the support backend directly.
- */
 export async function escalateToSupport(opts: {
   message: string
   visitor: SupportVisitor | null
