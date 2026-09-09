@@ -12,6 +12,7 @@ describe('YQAA launcher does not cover chat send controls', () => {
   test('hides the launcher while a marketplace or messenger composer owns the screen', () => {
     expect(assistant).toContain('function competingAppChrome()')
     expect(assistant).toContain(".ys-market-chat-overlay")
+    expect(assistant).toContain('.ys-market-chat-composer')
     expect(assistant).toContain('.ys-chatscreen[data-mobile-view="chat"]')
     expect(assistant).toContain('[data-ysa-hide-launcher="true"]')
     expect(assistant).toContain('.ysa-launcher.ysa-launcher-away')
@@ -34,8 +35,19 @@ describe('YQAA launcher does not cover chat send controls', () => {
   test('marketplace chat overlay opts the site launcher out', () => {
     expect(pane).toContain('data-ysa-hide-launcher="true"')
     expect(css).toContain("body:has(.ys-market-chat-overlay) .ysa-launcher")
+    expect(css).toContain("body:has(.ys-market-chat-composer) .ysa-launcher")
     expect(css).toContain("body:has(.ys-chatscreen[data-mobile-view='chat']) .ysa-launcher")
     expect(css).toContain("body:has([data-ysa-hide-launcher='true']) .ysa-launcher")
+    expect(css).toContain('display: none !important;')
     expect(css).toContain('pointer-events: none !important;')
+    expect(assistant).toContain('body:has(.ys-market-chat-overlay) .ysa-launcher')
+    expect(assistant).toContain('display:none!important')
+  })
+
+  test('cache-busts assistant.js so phones do not keep the overlapping FAB', () => {
+    const widget = read('components/ChatWidget.tsx')
+    const yara = read('public/yara.js')
+    expect(widget).toContain("script.src = '/assistant.js?v=ysa-composer-hide-2'")
+    expect(yara).toContain('assistant.js?v=ysa-composer-hide-2')
   })
 })

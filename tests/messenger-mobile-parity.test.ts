@@ -92,6 +92,8 @@ describe('messenger mobile parity', () => {
     expect(pane).toContain('data-ysa-hide-launcher="true"')
     expect(css).toContain("body:has(.ys-market-chat-overlay) .ysa-launcher")
     expect(css).toContain("body:has(.ys-market-chat-overlay) .ysa-panel")
+    expect(css).toContain("body:has(.ys-market-chat-composer) .ysa-launcher")
+    expect(css).toContain('display: none !important;')
     expect(css).toContain('visibility: hidden !important;')
   })
 })

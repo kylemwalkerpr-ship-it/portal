@@ -408,14 +408,22 @@
 
 /* The site-wide YQAA launcher is a 58px FAB at max z-index. While a real
    conversation composer owns the bottom-right (marketplace ChatSidePane or
-   the mobile messenger thread), hide it so Send / Open in Messages stay
-   tappable. The embed also collision-dodges leftover controls. */
+   the mobile messenger thread), remove it from the tree so Send / Open in
+   Messages / attach stay tappable. display:none beats iOS compositing of
+   opacity:0 overlays. The embed also collision-dodges leftover controls. */
 body:has(.ys-market-chat-overlay) .ysa-launcher,
 body:has(.ys-market-chat-overlay) .ysa-panel,
+body:has(.ys-market-chat-overlay) .ys-chat-launcher,
+body:has(.ys-market-chat-composer) .ysa-launcher,
+body:has(.ys-market-chat-composer) .ysa-panel,
+body:has(.ys-market-chat-composer) .ys-chat-launcher,
 body:has(.ys-chatscreen[data-mobile-view='chat']) .ysa-launcher,
 body:has(.ys-chatscreen[data-mobile-view='chat']) .ysa-panel,
+body:has(.ys-chatscreen[data-mobile-view='chat']) .ys-chat-launcher,
 body:has([data-ysa-hide-launcher='true']) .ysa-launcher,
-body:has([data-ysa-hide-launcher='true']) .ysa-panel {
+body:has([data-ysa-hide-launcher='true']) .ysa-panel,
+body:has([data-ysa-hide-launcher='true']) .ys-chat-launcher {
+  display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

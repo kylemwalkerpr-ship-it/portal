@@ -482,7 +482,12 @@ body:has(#ys-market-mobile-menu) {
 }
 
 body:has(#ys-market-mobile-menu) .ysa-launcher,
-body:has(#ys-market-mobile-menu) .ysa-panel {
+body:has(#ys-market-mobile-menu) .ysa-panel,
+body:has(.ys-market-chat-overlay) .ysa-launcher,
+body:has(.ys-market-chat-overlay) .ysa-panel,
+body:has(.ys-market-chat-composer) .ysa-launcher,
+body:has(.ys-market-chat-composer) .ysa-panel {
+  display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
