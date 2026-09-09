@@ -30,11 +30,19 @@ describe('premium marketplace mobile navigation', () => {
   test('keeps the primary mobile header compact and non-wrapping', () => {
     expect(css).toContain('height: 60px !important;')
     expect(css).toContain('flex-wrap: nowrap !important;')
-    expect(css).toContain("env(safe-area-inset-left)")
-    expect(css).toContain("env(safe-area-inset-right)")
+    expect(css).toContain('env(safe-area-inset-left)')
+    expect(css).toContain('env(safe-area-inset-right)')
   })
 
-  test('provides a sticky swipeable Fiverr-style category rail', () => {
+  test('makes the opened drawer explicitly dismissible above the modal', () => {
+    expect(css).toContain(".cw-market .ys-shell-menu-toggle[aria-expanded='true']")
+    expect(css).toContain('position: fixed !important;')
+    expect(css).toContain('z-index: 470 !important;')
+    expect(css).toContain("content: '×';")
+    expect(css).toContain("top: max(8px, env(safe-area-inset-top)) !important;")
+  })
+
+  test('provides a sticky swipeable marketplace category rail', () => {
     expect(css).toContain('.cw-market .ys-cat-bar')
     expect(css).toContain('position: sticky !important;')
     expect(css).toContain('top: 60px !important;')
@@ -44,10 +52,26 @@ describe('premium marketplace mobile navigation', () => {
     expect(css).toContain('height: 44px !important;')
   })
 
-  test('keeps menu and account surfaces inside narrow phone viewports', () => {
-    expect(css).toContain("width: min(240px, calc(100vw - 24px)) !important;")
-    expect(css).toContain('width: min(340px, 92vw) !important;')
+  test('keeps the drawer contextual instead of swallowing the whole phone', () => {
+    expect(css).toContain('width: min(312px, 86vw) !important;')
+    expect(css).toContain("content: 'Marketplace';")
+    expect(css).toContain('.cw-market .ys-shell-drawer-extras')
+    expect(css).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;')
+    expect(css).toContain("button[aria-label^='Theme:']::before")
+    expect(css).toContain("content: 'Appearance';")
     expect(css).toContain('@media (max-width: 360px)')
+  })
+
+  test('removes floating support controls while modal navigation is open', () => {
+    expect(css).toContain("body:has(.cw-market .ys-shell-menu-toggle[aria-expanded='true'])")
+    expect(css).toContain("button[aria-label='Open chat']")
+    expect(css).toContain('visibility: hidden !important;')
+    expect(css).toContain('pointer-events: none !important;')
+  })
+
+  test('keeps account and preference popovers inside narrow phone viewports', () => {
+    expect(css).toContain("width: min(240px, calc(100vw - 24px)) !important;")
+    expect(css).toContain("width: min(260px, calc(100vw - 40px)) !important;")
     expect(css).toContain('.cw-market .ys-shell-brand > div > :not(img)')
   })
 })
