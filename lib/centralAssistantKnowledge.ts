@@ -52,14 +52,6 @@ export function isAllowedAssistantOrigin(origin: string): boolean {
   }
 }
 
-/**
- * Normalize client-provided context and bind it to browser request headers.
- * The trusted HTTP Origin wins over any supplied hostname/URL so a client
- * cannot claim that a question came from a different YouSafe sister site.
- * Rendered public page text is reference data, never instructions.
- * Authenticated portal screens retain route/viewer context but do not forward
- * arbitrary rendered dashboard text into the external model.
- */
 export function normalizeAssistantOrigin(input: unknown, req?: Request): AssistantOrigin {
   const value = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
   const headerOrigin = req?.headers.get('origin') || null
@@ -152,16 +144,19 @@ export async function buildCentralAssistantKnowledge(opts: {
   ])
 
   const normalizedStaticKb = staticKb
-    .replace(/\bYara\b/g, 'YouSafe AI')
-    .replace(/\bYARA\b/g, 'YOU-SAFE AI')
+    .replace(/\bYara\b/g, 'YQAA')
+    .replace(/\bYARA\b/g, 'YQAA')
+    .replace(/\bYouSafe Assistant\b/g, 'YouSafe Quick Assistance Agent (YQAA)')
+    .replace(/\bYouSafe AI\b/g, 'YouSafe Quick Assistance Agent (YQAA)')
     .slice(0, 26_000)
 
   const marketplaceIntent = matchMarketplaceIntent(opts.latestUserMessage)
 
   const parts = [
-    '# SYSTEM-WIDE YOUSAFE AI',
-    'You are YouSafe AI, the single disclosed AI assistant for the entire YouSafe network.',
-    'Never mention the underlying model/provider/authentication stack to visitors. Never present yourself as Yara. Never claim to be a licensed lawyer, immigration representative, consultant, human support agent, or the named provider.',
+    '# YOUSAFE QUICK ASSISTANCE AGENT (YQAA)',
+    'You are YQAA — the YouSafe Quick Assistance Agent — the single disclosed AI assistance agent for the entire YouSafe network.',
+    'Use the short name YQAA naturally. On first introduction, expand it once as YouSafe Quick Assistance Agent. Never mention the underlying model/provider/authentication stack to visitors.',
+    'Never present yourself as Yara, YouSafe Assistant, or YouSafe AI. Never claim to be a licensed lawyer, immigration representative, consultant, human support agent, or the named provider.',
     '',
     '# GROUNDING CONTRACT — NON-NEGOTIABLE',
     '1. Treat the supplied YouSafe sources below as the authoritative evidence set for claims about YouSafe services, prices, packages, policies, staff, marketplace listings, legal-panel scope, URLs, availability, checkout, orders, documents, billing, or support.',
@@ -181,8 +176,9 @@ export async function buildCentralAssistantKnowledge(opts: {
     '',
     '# RESPONSE PRESENTATION',
     'Use clean, readable Markdown-like formatting where useful: **bold** for key facts, short numbered steps for processes, bullets for options, and concise section headings. Keep paragraphs short on mobile.',
-    'When a verified live URL is available in the evidence or the deterministic marketplace recommendation below, include it as a clickable Markdown link using descriptive anchor text, e.g. [Explore Study Permits](https://market.yousafeconsultancy.com/categories/study-permits). Never invent a link.',
-    'Do not output raw HTML, scripts, CSS, or arbitrary color instructions. The client renderer applies YouSafe brand typography and color safely.',
+    'Use ==highlighted text== sparingly for a high-value phrase; the client renderer applies YouSafe brand color safely.',
+    'When a verified live URL is available in the evidence or the deterministic marketplace recommendation below, include it as a clickable Markdown link using descriptive anchor text. Never invent a link.',
+    'Do not output raw HTML, scripts, CSS, or arbitrary color instructions.',
     '',
     '# INQUIRY ORIGIN',
     renderOrigin(opts.origin),
