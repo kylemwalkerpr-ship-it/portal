@@ -1,10 +1,10 @@
 /**
- * Marketplace color palettes — lighter, more vibrant, ultra-modern luxury.
+ * Marketplace colour palettes — professional, restrained, and legibility-first.
  *
- * Every palette uses the `paper`/`paper2`/`paper3` layers for the background
- * shell (body, header, cards) and the text tokens (`cream`, `ink`) for
- * foreground.  CSS custom properties on `:root` + `.cw-market` apply the
- * chosen palette globally, with a 0.3s transition for smooth switching.
+ * The persisted palette ids are intentionally unchanged so existing user
+ * preferences survive this visual refresh. Every shipped token is covered by
+ * tests/marketplace-palette-contrast.test.ts and must meet WCAG AA (4.5:1)
+ * for every text/surface role used by the marketplace UI.
  */
 
 export interface PaletteTokens {
@@ -19,10 +19,6 @@ export interface PaletteTokens {
   inkSoft: string
   onPaper: string
   onPaperSoft: string
-  /** Bright cream-gold for italic headline halves + kickers on dark paper
-   *  and on solid accent fills. Verified ≥ 4.5:1 vs paper/paper2/paper3/
-   *  footer AND indigo/indigoDeep/tealDeep for every palette — see
-   *  tests/marketplace-palette-contrast.test.ts. */
   onPaperEm: string
   rule: string
   ruleSoft: string
@@ -46,240 +42,211 @@ export interface PaletteDef {
   tokens: PaletteTokens
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Palette 0 — Polished Walnut  (lighter, luxurious mahogany)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// NOTE on AA legibility: every token below has been verified against the
-// contrast gate in tests/marketplace-palette-contrast.test.ts. Dual-role
-// accents (indigo/teal/brick/moss) pass BOTH white-text-on-fill AND
-// token-as-text-on-light; `gold` is the light-on-dark accent (eyebrows,
-// hero italics) while `star` is the dark-on-light accent (ratings on cards).
-const MAHOGANY: PaletteTokens = {
-  paper:       '#4A2A1A',
-  paper2:      '#553222',
-  paper3:      '#603A28',
-  vellum:      '#FFF9F2',
-  cream:       '#F7EDE0',
-  ink:         '#1C1410',
-  inkMid:      '#4A3C34',
-  inkSoft:     '#766860',
-  onPaper:     '#F7EDE0',
-  onPaperSoft: 'rgba(247,237,224,0.72)',
-  onPaperEm:   '#F9EED9',
-  rule:        'rgba(247,237,224,0.16)',
-  ruleSoft:    'rgba(247,237,224,0.08)',
-  indigo:      '#0B786C',
-  indigoDeep:  '#086356',
-  indigoSoft:  'rgba(11,120,108,0.18)',
-  brick:       '#BF3E1F',
-  gold:        '#DFAB40',
-  moss:        '#3F774A',
-  star:        '#896417',
-  teal:        '#0B786C',
-  tealDeep:    '#086356',
-  footer:      '#3A1E14',
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Palette 1 — Luxury Classic
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const LUXURY_CLASSIC: PaletteTokens = {
-  paper:       '#5C3220',
-  paper2:      '#6A3C28',
-  paper3:      '#784634',
-  vellum:      '#F7F1E5',
-  cream:       '#EFE6D2',
-  ink:         '#211A17',
-  inkMid:      '#3D3330',
-  inkSoft:     '#6B5E58',
-  onPaper:     '#EFE6D2',
-  onPaperSoft: 'rgba(239,230,210,0.8)',
-  onPaperEm:   '#F5EBD9',
-  rule:        'rgba(212,175,106,0.18)',
-  ruleSoft:    'rgba(212,175,106,0.09)',
-  indigo:      '#845E1B',
-  indigoDeep:  '#7C5816',
-  indigoSoft:  'rgba(132,94,27,0.18)',
-  brick:       '#AE432C',
-  gold:        '#E2C793',
-  moss:        '#4A6F3B',
-  star:        '#806023',
-  teal:        '#835F22',
-  tealDeep:    '#835F22',
-  footer:      '#4A2418',
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Palette 2 — Executive
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const EXECUTIVE: PaletteTokens = {
-  paper:       '#5A3422',
-  paper2:      '#683E2C',
-  paper3:      '#764836',
-  vellum:      '#FAF8F3',
-  cream:       '#F2ECDE',
-  ink:         '#0F1923',
-  inkMid:      '#2D3540',
-  inkSoft:     '#5C6673',
-  onPaper:     '#F2ECDE',
-  onPaperSoft: 'rgba(242,236,222,0.78)',
-  onPaperEm:   '#F4ECDD',
-  rule:        'rgba(16,42,67,0.14)',
-  ruleSoft:    'rgba(16,42,67,0.08)',
-  indigo:      '#153D5E',
-  indigoDeep:  '#0F2D46',
-  indigoSoft:  'rgba(21,61,94,0.16)',
-  brick:       '#B4462B',
-  gold:        '#DFC99D',
-  moss:        '#446A42',
-  star:        '#82652A',
-  teal:        '#153D5E',
-  tealDeep:    '#0F2D46',
-  footer:      '#0F1923',
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Palette 3 — Rich Heritage
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const RICH_HERITAGE: PaletteTokens = {
-  paper:       '#3E1F12',
-  paper2:      '#482718',
-  paper3:      '#54301E',
-  vellum:      '#F3E6C8',
-  cream:       '#E8D8AE',
-  ink:         '#1A0E0A',
-  inkMid:      '#3A2822',
-  inkSoft:     '#6B5148',
-  onPaper:     '#E8D8AE',
-  onPaperSoft: 'rgba(232,216,174,0.74)',
-  onPaperEm:   '#EADFC9',
-  rule:        'rgba(184,149,85,0.18)',
-  ruleSoft:    'rgba(184,149,85,0.09)',
-  indigo:      '#6F5B2E',
-  indigoDeep:  '#715A29',
-  indigoSoft:  'rgba(111,91,46,0.18)',
-  brick:       '#A13C28',
-  gold:        '#C3A164',
-  moss:        '#42603C',
-  star:        '#71592C',
-  teal:        '#6F5B2E',
-  tealDeep:    '#715A29',
-  footer:      '#160A06',
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Palette 4 — Modern Luxury
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const MODERN_LUXURY: PaletteTokens = {
-  paper:       '#64402C',
-  paper2:      '#724A36',
-  paper3:      '#805440',
-  vellum:      '#EAE0D4',
-  cream:       '#DED0BE',
-  ink:         '#24272D',
-  inkMid:      '#3D4148',
-  inkSoft:     '#55595F',
-  onPaper:     '#F4EDE2',
-  onPaperSoft: 'rgba(244,237,226,0.87)',
-  onPaperEm:   '#F7F2EB',
-  rule:        'rgba(197,164,109,0.16)',
-  ruleSoft:    'rgba(197,164,109,0.08)',
-  indigo:      '#3A4248',
-  indigoDeep:  '#2A3036',
-  indigoSoft:  'rgba(58,66,72,0.16)',
-  brick:       '#973D27',
-  gold:        '#E8DBC5',
-  moss:        '#40623A',
-  star:        '#6D552A',
-  teal:        '#3A4248',
-  tealDeep:    '#2A3036',
-  footer:      '#26140C',
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Palette 5 — Santorini
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const SANTORINI: PaletteTokens = {
-  paper:       '#006A80',
-  paper2:      '#005D71',
-  paper3:      '#005164',
+// Storage key `mahogany` retained for backwards compatibility. The visual
+// treatment is now a neutral executive teal rather than a brown wood theme.
+const EXECUTIVE_TEAL: PaletteTokens = {
+  paper:       '#0F1F22',
+  paper2:      '#13282C',
+  paper3:      '#183236',
   vellum:      '#FFFFFF',
-  cream:       '#F0FAFD',
-  ink:         '#081F2D',
-  inkMid:      '#1A3D52',
-  inkSoft:     '#4A6D82',
-  onPaper:     '#F0FAFD',
-  onPaperSoft: 'rgba(240,250,253,0.85)',
-  onPaperEm:   '#F9F4E7',
-  rule:        'rgba(240,250,253,0.14)',
-  ruleSoft:    'rgba(240,250,253,0.07)',
-  indigo:      '#08709A',
-  indigoDeep:  '#065D82',
-  indigoSoft:  'rgba(8,112,154,0.18)',
-  brick:       '#CC3E2A',
-  gold:        '#EEDFBB',
-  moss:        '#2D7A5E',
-  star:        '#8A6C22',
-  teal:        '#08709A',
-  tealDeep:    '#065D82',
-  footer:      '#054D5E',
+  cream:       '#F3F7F6',
+  ink:         '#111827',
+  inkMid:      '#374151',
+  inkSoft:     '#5B6472',
+  onPaper:     '#F8FAFC',
+  onPaperSoft: 'rgba(248,250,252,0.78)',
+  onPaperEm:   '#DFF7F1',
+  rule:        'rgba(248,250,252,0.16)',
+  ruleSoft:    'rgba(248,250,252,0.08)',
+  indigo:      '#0B625C',
+  indigoDeep:  '#084B47',
+  indigoSoft:  'rgba(11,98,92,0.16)',
+  brick:       '#A32F22',
+  gold:        '#E7D8A6',
+  moss:        '#2F6A48',
+  star:        '#7A5A12',
+  teal:        '#0B625C',
+  tealDeep:    '#084B47',
+  footer:      '#0B1719',
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════════════════════
+const GRAPHITE_CHAMPAGNE: PaletteTokens = {
+  paper:       '#171A1D',
+  paper2:      '#1E2226',
+  paper3:      '#272C31',
+  vellum:      '#FFFFFF',
+  cream:       '#F5F5F4',
+  ink:         '#171A1D',
+  inkMid:      '#3D444B',
+  inkSoft:     '#606972',
+  onPaper:     '#FAFAF9',
+  onPaperSoft: 'rgba(250,250,249,0.78)',
+  onPaperEm:   '#EFE7D2',
+  rule:        'rgba(250,250,249,0.15)',
+  ruleSoft:    'rgba(250,250,249,0.08)',
+  indigo:      '#46515A',
+  indigoDeep:  '#303940',
+  indigoSoft:  'rgba(70,81,90,0.16)',
+  brick:       '#9E3428',
+  gold:        '#E8DAB8',
+  moss:        '#456C4B',
+  star:        '#73591C',
+  teal:        '#315F62',
+  tealDeep:    '#24484A',
+  footer:      '#111315',
+}
+
+const EXECUTIVE_NAVY: PaletteTokens = {
+  paper:       '#101A2A',
+  paper2:      '#142237',
+  paper3:      '#192B44',
+  vellum:      '#FFFFFF',
+  cream:       '#F5F7FA',
+  ink:         '#111827',
+  inkMid:      '#374151',
+  inkSoft:     '#5B6472',
+  onPaper:     '#F8FAFC',
+  onPaperSoft: 'rgba(248,250,252,0.78)',
+  onPaperEm:   '#E7EEF8',
+  rule:        'rgba(248,250,252,0.15)',
+  ruleSoft:    'rgba(248,250,252,0.08)',
+  indigo:      '#1B4F72',
+  indigoDeep:  '#123B57',
+  indigoSoft:  'rgba(27,79,114,0.16)',
+  brick:       '#A52E2E',
+  gold:        '#E4D1A0',
+  moss:        '#356B45',
+  star:        '#765817',
+  teal:        '#1B5C69',
+  tealDeep:    '#124550',
+  footer:      '#0B1220',
+}
+
+const DEEP_BURGUNDY: PaletteTokens = {
+  paper:       '#24171D',
+  paper2:      '#2D1B23',
+  paper3:      '#37212B',
+  vellum:      '#FFFDFB',
+  cream:       '#F8F1F3',
+  ink:         '#21161A',
+  inkMid:      '#463740',
+  inkSoft:     '#685963',
+  onPaper:     '#FFF9FA',
+  onPaperSoft: 'rgba(255,249,250,0.80)',
+  onPaperEm:   '#F6E6EA',
+  rule:        'rgba(255,249,250,0.15)',
+  ruleSoft:    'rgba(255,249,250,0.08)',
+  indigo:      '#684052',
+  indigoDeep:  '#4F2F3D',
+  indigoSoft:  'rgba(104,64,82,0.16)',
+  brick:       '#8D2E36',
+  gold:        '#E7CFAD',
+  moss:        '#456744',
+  star:        '#71541A',
+  teal:        '#356268',
+  tealDeep:    '#284B50',
+  footer:      '#190F14',
+}
+
+const SLATE_SILVER: PaletteTokens = {
+  paper:       '#1A222B',
+  paper2:      '#202B36',
+  paper3:      '#273641',
+  vellum:      '#FFFFFF',
+  cream:       '#F5F7F8',
+  ink:         '#151A20',
+  inkMid:      '#3B4651',
+  inkSoft:     '#606B75',
+  onPaper:     '#F8FAFC',
+  onPaperSoft: 'rgba(248,250,252,0.80)',
+  onPaperEm:   '#E5EDF3',
+  rule:        'rgba(248,250,252,0.15)',
+  ruleSoft:    'rgba(248,250,252,0.08)',
+  indigo:      '#42586D',
+  indigoDeep:  '#304456',
+  indigoSoft:  'rgba(66,88,109,0.16)',
+  brick:       '#9B3428',
+  gold:        '#E3D5B5',
+  moss:        '#42684A',
+  star:        '#73591E',
+  teal:        '#315F62',
+  tealDeep:    '#24484A',
+  footer:      '#111820',
+}
+
+const COASTAL_BLUE: PaletteTokens = {
+  paper:       '#0B2A35',
+  paper2:      '#0E3441',
+  paper3:      '#123E4D',
+  vellum:      '#FFFFFF',
+  cream:       '#F2F8FA',
+  ink:         '#10202A',
+  inkMid:      '#344B58',
+  inkSoft:     '#5A6D78',
+  onPaper:     '#F7FBFC',
+  onPaperSoft: 'rgba(247,251,252,0.80)',
+  onPaperEm:   '#E0F2F5',
+  rule:        'rgba(247,251,252,0.15)',
+  ruleSoft:    'rgba(247,251,252,0.08)',
+  indigo:      '#135C72',
+  indigoDeep:  '#0D4557',
+  indigoSoft:  'rgba(19,92,114,0.16)',
+  brick:       '#9E382A',
+  gold:        '#E5D5A8',
+  moss:        '#356A4B',
+  star:        '#76591A',
+  teal:        '#0F6170',
+  tealDeep:    '#0B4954',
+  footer:      '#071D25',
+}
 
 export const PALETTES: PaletteDef[] = [
   {
     name: 'mahogany',
-    label: 'Polished Walnut',
-    emoji: '🪵',
-    description: 'Warm walnut wood, cream parchment, teal inlay. Refined & luxurious.',
-    tokens: MAHOGANY,
+    label: 'Executive Teal',
+    emoji: '●',
+    description: 'Deep teal-black, crisp white, restrained aqua accents. Calm and premium.',
+    tokens: EXECUTIVE_TEAL,
   },
   {
     name: 'luxury-classic',
-    label: 'Luxury Classic',
-    emoji: '🥇',
-    description: 'Rich mahogany + ivory + champagne gold + charcoal.',
-    tokens: LUXURY_CLASSIC,
+    label: 'Graphite & Champagne',
+    emoji: '◆',
+    description: 'Graphite shell, white cards, subtle champagne highlights. Formal and understated.',
+    tokens: GRAPHITE_CHAMPAGNE,
   },
   {
     name: 'executive',
-    label: 'Executive',
-    emoji: '🏛️',
-    description: 'Warm wood + crisp white + deep navy + gold. Boardroom ready.',
-    tokens: EXECUTIVE,
+    label: 'Executive Navy',
+    emoji: '■',
+    description: 'Midnight navy, clean white surfaces, disciplined blue accents. Boardroom ready.',
+    tokens: EXECUTIVE_NAVY,
   },
   {
     name: 'rich-heritage',
-    label: 'Rich Heritage',
-    emoji: '🌰',
-    description: 'Dark chestnut + cream + antique gold + espresso.',
-    tokens: RICH_HERITAGE,
+    label: 'Deep Burgundy',
+    emoji: '◈',
+    description: 'Near-black burgundy with ivory surfaces and muted wine accents. Sophisticated, not ornate.',
+    tokens: DEEP_BURGUNDY,
   },
   {
     name: 'modern-luxury',
-    label: 'Modern Luxury',
-    emoji: '✨',
-    description: 'Warm oak + soft beige + muted gold + slate grey.',
-    tokens: MODERN_LUXURY,
+    label: 'Slate & Silver',
+    emoji: '◇',
+    description: 'Cool slate, bright white cards, and quiet silver-blue accents. Modern professional.',
+    tokens: SLATE_SILVER,
   },
   {
     name: 'santorini',
-    label: 'Santorini',
-    emoji: '🇬🇷',
-    description: 'Aegean turquoise + crisp white + sun gold + coral.',
-    tokens: SANTORINI,
+    label: 'Coastal Blue',
+    emoji: '○',
+    description: 'Deep ocean blue with white cards and measured teal accents. Fresh without feeling playful.',
+    tokens: COASTAL_BLUE,
   },
 ]
 
+// Keep the storage id stable so existing users on the former default migrate
+// automatically to the refreshed Executive Teal colours without losing prefs.
 export const DEFAULT_PALETTE_NAME = 'mahogany'
 
 export function getPalette(name: string): PaletteDef {
