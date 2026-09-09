@@ -10,6 +10,9 @@
 
 const FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|jpg|jpe?g|png|gif|webp|svg|csv|zip|rar|mp3|mp4|txt)(?:[^a-z0-9]|$)/i
 
+/** Bare `pdf` / `docx` tokens (GSC often drops the dot: `"fy27 …" pacific pdf`). */
+const BARE_FILETYPE_RE = /(?:^|[\s"'])(?:pdf|docx?|xlsx?|pptx?|csv)(?:[\s"']|$)/i
+
 // A pasted URL/domain or a filesystem path fragment is never a search keyword.
 // TLD match does not require a trailing slash — GSC often wraps the host in quotes
 // (`"iamhome@pacific.edu"`) which used to leak through.
@@ -36,8 +39,27 @@ const QUOTED_DATE_RE = /["']\d{4}(?:-\d{2,4})["']/
 /** Campus housing PDF leftovers — never an immigration keyword. */
 const MEAL_PLAN_RE = /\broom and meal plan\b/i
 
+/** Fiscal-year filename leftovers (`fy27 stk housing rates`). */
+const FISCAL_HOUSING_RE = /\bfy\d{2,4}\b/i
+
+/** Quoted document-title leftovers (`"fy27 stk housing rates"`). */
+const QUOTED_HOUSING_DOC_RE =
+  /["'][^"']*\b(?:fy\d{2,4}|stk|stockton|housing rates|meal plan|room and)\b[^"']*["']/i
+
 /** Max word count for a plausible keyword phrase; longer strings are pasted text. */
 const MAX_KEYWORD_WORDS = 8
+
+/**
+ * Decode GSC plus-encoding and collapse whitespace so junk heuristics and
+ * paraphrase collapse see the same term the human typed.
+ */
+export function sanitizeDemandTerm(term: string): string {
+  return String(term || '')
+    .replace(/\+/g, ' ')
+    .replace(/%20/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 /**
  * True when a term is a file path, URL, email, or CMS path fragment rather
@@ -46,10 +68,11 @@ const MAX_KEYWORD_WORDS = 8
  * safe to apply to free-form topics and long-but-legitimate queries too.
  */
 export function isFileOrUrlLikeTerm(term: string): boolean {
-  const t = (term || '').trim()
+  const t = sanitizeDemandTerm(term)
   if (!t) return false
   return (
     FILE_EXT_RE.test(t) ||
+    BARE_FILETYPE_RE.test(t) ||
     URL_FRAGMENT_RE.test(t) ||
     EMAIL_RE.test(t) ||
     CMS_USER_RE.test(t)
@@ -61,7 +84,7 @@ export function isFileOrUrlLikeTerm(term: string): boolean {
  * keyword. Empty strings are also considered junk.
  */
 export function isJunkQuery(term: string): boolean {
-  const t = (term || '').trim()
+  const t = sanitizeDemandTerm(term)
   if (!t) return true
   const words = t.split(/\s+/).filter(Boolean)
   if (words.length > MAX_KEYWORD_WORDS) return true
@@ -71,6 +94,8 @@ export function isJunkQuery(term: string): boolean {
   if (ISSUED_BY_RE.test(t)) return true
   if (QUOTED_DATE_RE.test(t)) return true
   if (MEAL_PLAN_RE.test(t)) return true
+  if (FISCAL_HOUSING_RE.test(t) && /\b(?:stk|stockton|pacific|housing|rates|meal)\b/i.test(t)) return true
+  if (QUOTED_HOUSING_DOC_RE.test(t)) return true
   // Two or more quoted fragments is a leaked document title + metadata, not a keyword.
   const quoted = t.match(/"[^"]+"/g) || []
   if (quoted.length >= 2) return true
@@ -85,7 +110,7 @@ export function isJunkQuery(term: string): boolean {
  * stamps, brand/numeric pastes) is refused before a job is generated.
  */
 export function isJunkTopic(term: string): boolean {
-  const t = (term || '').trim()
+  const t = sanitizeDemandTerm(term)
   if (!t) return true
   if (isFileOrUrlLikeTerm(t)) return true
   if (BRAND_RE.test(t)) return true
@@ -93,6 +118,8 @@ export function isJunkTopic(term: string): boolean {
   if (ISSUED_BY_RE.test(t)) return true
   if (QUOTED_DATE_RE.test(t)) return true
   if (MEAL_PLAN_RE.test(t)) return true
+  if (FISCAL_HOUSING_RE.test(t) && /\b(?:stk|stockton|pacific|housing|rates|meal)\b/i.test(t)) return true
+  if (QUOTED_HOUSING_DOC_RE.test(t)) return true
   const quoted = t.match(/"[^"]+"/g) || []
   if (quoted.length >= 2) return true
   return false
@@ -116,7 +143,7 @@ export function classifyGscQuery(
   term: string,
   row: { impressions: number; position: number; clicks: number },
 ): GscQueryClass {
-  const t = (term || '').trim()
+  const t = sanitizeDemandTerm(term)
   if (!t) return 'junk'
   if (isJunkQuery(t) || isFileOrUrlLikeTerm(t)) return 'junk'
   const impressions = Math.max(0, row.impressions || 0)

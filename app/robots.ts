@@ -16,9 +16,8 @@ const MARKET_HOST = 'market.yousafeconsultancy.com'
  * signal flowing in from the marketing tier.
  *
  * Host-aware: the same app serves market.yousafeconsultancy.com. Never
- * emit a non-standard `host:` field (Bing can misread it; Google ignores
- * it). Sitemap must match the request host. Portal emits an empty
- * sitemap; only market lists commercial URLs (2026-08-27 crawl).
+ * emit a non-standard `host:` field. Only the public marketplace owns
+ * commercial sitemap URLs; portal intentionally advertises no sitemap.
  *
  * /api/ stays disallowed — JSON endpoints with no SEO value.
  */
@@ -32,14 +31,17 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     // Build-time / static generation fallback — portal is the default app host.
   }
 
-  const base = `https://${host}`
-
-  return {
+  const result: MetadataRoute.Robots = {
     rules: {
       userAgent: '*',
       allow: '/',
       disallow: ['/api/', '/_next/static/'],
     },
-    sitemap: `${base}/sitemap.xml`,
   }
+
+  if (host === MARKET_HOST) {
+    result.sitemap = `https://${MARKET_HOST}/sitemap.xml`
+  }
+
+  return result
 }

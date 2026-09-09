@@ -1,4 +1,5 @@
 import { getClerkUserId } from '@/lib/auth'
+import { buildSlug } from '@/lib/fiverr'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeVertical } from '@/lib/platformConfig'
 
@@ -30,8 +31,10 @@ function servicePayload(body: Record<string, unknown>) {
     ? String(body.status).toLowerCase()
     : Boolean(body.is_active) ? 'active' : 'draft'
   const price = Number(body.price_usd ?? body.price ?? 0)
+  const title = String(body.title ?? '').trim()
+  const requestedSlug = String(body.slug ?? '').trim()
   return {
-    title: String(body.title ?? '').trim(),
+    title,
     category: productType === TEMPLATE_PRODUCT_TYPE ? 'Templates' : (String(body.category ?? '').trim() || 'General'),
     price,
     usd_price: Number(body.usd_price ?? body.price_usd ?? price),
@@ -40,7 +43,10 @@ function servicePayload(body: Record<string, unknown>) {
     is_active: status === 'active',
     vertical: normalizeVertical(body.vertical),
     product_type: productType,
-    slug: String(body.slug ?? '').trim() || null,
+    // Public service slugs are normalized before they can enter storage.
+    // This is intentionally creation-time only: once a service is published,
+    // its URL is treated as an immutable identifier by the update route.
+    slug: buildSlug(requestedSlug || title),
     short_description: String(body.short_description ?? '').trim() || null,
     full_description: String(body.full_description ?? '').trim() || null,
     region: String(body.region ?? '').trim() || null,

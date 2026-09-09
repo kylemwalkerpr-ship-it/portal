@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
+import { fetchSiteSearchAnalytics, resolveGscDayWindow } from '@/lib/gscAnalytics'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { buildGscContentBrief, buildKeywordPortfolio } from '@/lib/gscContentBrief'
 import {
@@ -9,9 +9,11 @@ import {
   SNAPSHOT_MERGE_MIN_VIABLE,
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isJunkQuery, sanitizeDemandTerm } from '@/lib/seoFactory/queryNoise'
+import { loadPersistedGscWindow, queriesFromPersistedGscRows } from '@/lib/seoFactory/gscRows'
 import { loadShippedCoverage } from '@/lib/seoEngine/shippedCoverage'
 import { verdictFor } from '@/lib/seoEngine/authorityPlaybook'
+import { classifyCoverageIntent } from '@/lib/seoEngine/coverageIntent'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
 import { filterRegenerationCandidates, type RegenerationFilters } from '@/lib/seoEngine/intelligence'
@@ -20,7 +22,7 @@ import { leanRanking, rankingForOpportunity } from '@/lib/seoEngine/rankingModel
 export const runtime = 'nodejs'
 
 function normalizedTopic(value: unknown): string {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return sanitizeDemandTerm(String(value || '')).toLowerCase()
 }
 
 function stableHash(value: string): number {
@@ -59,7 +61,13 @@ function selectVariedOpportunities(
   }
   for (const item of rotated.filter((candidate) => eligible.includes(candidate))) {
     if (selected.length >= limit) break
-    if (selected.some((chosen) => normalizedTopic(chosen.topic) === normalizedTopic(item.topic))) continue
+    const topic = normalizedTopic(item.topic)
+    if (selected.some((chosen) => normalizedTopic(chosen.topic) === topic)) continue
+    const paraphraseOfKept = selected.some((chosen) => {
+      const kind = classifyCoverageIntent(String(item.topic || ''), String(chosen.topic || ''))
+      return kind === 'exact' || kind === 'paraphrase' || kind === 'section_expand'
+    })
+    if (paraphraseOfKept) continue
     selected.push(item)
   }
   return selected
@@ -143,7 +151,7 @@ export async function POST(request: NextRequest) {
     if (live.configured && live.topQueries.length > 0) {
       source = 'live'
       queries = live.topQueries.map((q) => ({
-        term: q.key,
+        term: sanitizeDemandTerm(q.key),
         impressions: q.impressions,
         clicks: q.clicks,
         ctr: q.ctr,
@@ -162,7 +170,7 @@ export async function POST(request: NextRequest) {
       const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
       snapshotMeta = { generatedAt: snap.generatedAt }
       const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
-        term: q.term || q.url || '',
+        term: sanitizeDemandTerm(q.term || q.url || ''),
         impressions: q.impressions,
         clicks: q.clicks,
         ctr: q.ctr,
@@ -198,7 +206,7 @@ export async function POST(request: NextRequest) {
         const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
         snapshotMeta = snapshotMeta || { generatedAt: snap.generatedAt }
         const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
-          term: q.term || q.url || '',
+          term: sanitizeDemandTerm(q.term || q.url || ''),
           impressions: q.impressions,
           clicks: q.clicks,
           ctr: q.ctr,
@@ -224,10 +232,46 @@ export async function POST(request: NextRequest) {
       queries = viableLive
     }
 
-    // Radar honesty: when BOTH live GSC and a fresh ≤14d snapshot are absent,
-    // there is NO real demand to score. Strategy-corpus rows must never be
-    // injected into the scored pool with fabricated impressions:1 as if they
-    // were Search Console demand.
+    // Same persisted-window fallback performance/score already use. Live GSC
+    // on this estate is junk-dominated and the CSV snapshot is often stale,
+    // so without seo_gsc_rows the radar returns 0 opportunities even while
+    // CTR-harvest rows sit in the latest stored window.
+    let usedFallback = false
+    let persistedRange: { startDate: string; endDate: string } | null = null
+    if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
+      try {
+        const range = resolveGscDayWindow(90)
+        const persisted = await loadPersistedGscWindow(auth.db, {
+          siteUrl: process.env.GSC_SITE_URL || null,
+          startDate: range.startDate,
+          endDate: range.endDate,
+          limit: 200,
+          select: 'query, page, clicks, impressions, ctr, position',
+        })
+        const persistedQueries = queriesFromPersistedGscRows(persisted.rows, isJunkQuery)
+        const merged = mergeSnapshotIntoQueries(queries, persistedQueries)
+        if (merged.length > queries.length) {
+          const added = merged.length - queries.length
+          queries = merged
+          usedFallback = persisted.usedFallback
+          persistedRange = persisted.range
+          source = viableLive.length > 0
+            ? (source === 'live+snapshot' ? 'live+snapshot+persisted' : 'live+persisted')
+            : 'persisted'
+          warnings.push(
+            `Persisted GSC fallback · ${added} stored demand rows · ${persisted.range.startDate}–${persisted.range.endDate}` +
+              (persisted.usedFallback ? ' (latest stored window)' : ''),
+          )
+        }
+      } catch (err) {
+        console.warn('[content-studio/gsc/suggestions] persisted GSC fallback failed', err)
+      }
+    }
+
+    // Radar honesty: when live GSC, a fresh ≤14d snapshot, AND persisted
+    // seo_gsc_rows are all empty, there is NO real demand to score. Strategy
+    // corpus rows must never be injected into the scored pool with fabricated
+    // impressions:1 as if they were Search Console demand.
     const snapshotRefused = queries.length === 0
 
     // ── 2. Existing content inventory (coverage + cannibalization) ─────────
@@ -460,6 +504,8 @@ export async function POST(request: NextRequest) {
       source,
       snapshot: snapshotMeta,
       snapshotRefused,
+      usedFallback,
+      persistedRange,
       syntheticSignals,
       coverageStats: result.coverageStats,
       cannibalization: result.cannibalization.slice(0, 8),

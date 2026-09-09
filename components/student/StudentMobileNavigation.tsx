@@ -184,7 +184,20 @@ export default function StudentMobileNavigation() {
 
   const openSupport = () => {
     setMoreOpen(false)
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>('.ys-chat-launcher')?.click(), 0)
+
+    // ChatWidget injects the canonical .ysa-* assistant asynchronously. Keep a
+    // short legacy fallback for cached pre-unification bundles and retry while
+    // the script is still mounting so the More action is always dependable.
+    const clickLauncher = (attempt = 0) => {
+      const launcher = document.querySelector<HTMLButtonElement>('.ysa-launcher, .ys-chat-launcher')
+      if (launcher) {
+        launcher.click()
+        return
+      }
+      if (attempt < 10) window.setTimeout(() => clickLauncher(attempt + 1), 100)
+    }
+
+    window.setTimeout(() => clickLauncher(), 0)
   }
 
   const openArticles = () => {
@@ -257,7 +270,7 @@ export default function StudentMobileNavigation() {
               <div className="ys-student-mobile-more-grid">
                 <button type="button" onClick={openSupport}>
                   <span aria-hidden="true">💬</span>
-                  <strong>Yara support</strong>
+                  <strong>YouSafe AI Assistant</strong>
                   <small>Ask for portal help</small>
                 </button>
                 <button type="button" onClick={openArticles}>

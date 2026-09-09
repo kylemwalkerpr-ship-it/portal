@@ -9,37 +9,32 @@ interface ProfilePreviewDrawerProps {
   onClose: () => void
 }
 
-const INDIGO = '#3C3B6E'
-const STAR = '#C68B27'
-const TEXT_SOFT = '#64748B'
-const TEXT_MID = '#334155'
-const TEXT = '#0F172A'
-const BORDER = '#E2E8F0'
-const PANEL = '#FFFFFF'
-const MOSS = '#5F6B3A'
-
-function Star({ filled }: { filled: boolean }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? STAR : 'none'} stroke={STAR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  )
+const ROLE_LABELS: Record<string, string> = {
+  attorney: 'Licensed attorney',
+  consultant: 'Regulated consultant',
+  client: 'YouSafe client',
 }
 
 function Stars({ avg, count }: { avg: number | null; count: number }) {
-  const rounded = Math.round((avg || 0))
+  if (!count) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <div style={{ display: 'flex', gap: 2 }}>
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Star key={i} filled={i <= rounded} />
-        ))}
+    <div className="ys-contact-rating" aria-label={`${avg?.toFixed(1) || '0.0'} out of 5 from ${count} reviews`}>
+      <span aria-hidden="true">★</span>
+      <strong>{avg?.toFixed(1) || '0.0'}</strong>
+      <span>{count} review{count === 1 ? '' : 's'}</span>
+    </div>
+  )
+}
+
+function DetailRow({ icon, label, value, muted }: { icon: string; label: string; value: React.ReactNode; muted?: boolean }) {
+  if (!value) return null
+  return (
+    <div className="ys-contact-row">
+      <span className="ys-contact-row-icon" aria-hidden="true">{icon}</span>
+      <div className="ys-contact-row-copy">
+        <span className="ys-contact-row-label">{label}</span>
+        <span className={`ys-contact-row-value ${muted ? 'is-muted' : ''}`}>{value}</span>
       </div>
-      {count > 0 && (
-        <span style={{ fontSize: 12, color: TEXT_SOFT }}>
-          {avg?.toFixed(1) ?? '0.0'} · {count} review{count === 1 ? '' : 's'}
-        </span>
-      )}
     </div>
   )
 }
@@ -50,256 +45,220 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
 
-  // Suppress when viewing self
   const suppressed = !!sellerId && !!viewerId && sellerId === viewerId
 
   React.useEffect(() => {
     if (!open || !sellerId || suppressed) return
+    let cancelled = false
     setLoading(true)
     setError('')
+
     Promise.all([
       fetch(`/api/sellers/${sellerId}`, { credentials: 'same-origin' }).then(r => r.json().catch(() => ({}))),
       fetch(`/api/sellers/${sellerId}/gigs`, { credentials: 'same-origin' }).then(r => r.json().catch(() => ({}))),
     ])
       .then(([sellerRes, gigsRes]) => {
+        if (cancelled) return
         setSeller(sellerRes?.data?.seller || null)
         setGigs(gigsRes?.data?.gigs || [])
       })
-      .catch(() => setError('Could not load profile.'))
-      .finally(() => setLoading(false))
+      .catch(() => {
+        if (!cancelled) setError('Could not load profile.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => { cancelled = true }
   }, [open, sellerId, suppressed])
+
+  React.useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  React.useEffect(() => {
+    if (!open || typeof document === 'undefined') return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [open])
 
   if (!open || suppressed) return null
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
+  const role = seller?.role || 'client'
+  const roleLabel = ROLE_LABELS[role] || 'YouSafe member'
+  const specialties =
+    Array.isArray(seller?.specialties) && seller.specialties.length
+      ? seller.specialties
+      : Array.isArray(seller?.practice_areas)
+        ? seller.practice_areas
+        : []
+
+  const memberSince = seller?.member_since
+    ? new Date(seller.member_since).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    : null
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 250,
-        background: 'rgba(15,23,42,0.35)',
-        display: 'flex', justifyContent: 'flex-end',
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: isMobile ? '100%' : 380,
-          height: '100%',
-          background: PANEL,
-          boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}
+    <div className="ys-contact-info-layer" role="presentation" onClick={onClose}>
+      <section
+        className="ys-contact-info"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Contact info"
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 18px', borderBottom: `1px solid ${BORDER}`,
-          flexShrink: 0,
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT_MID }}>Profile</div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: TEXT_MID }}
-            aria-label="Close"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+        <header className="ys-contact-info-head">
+          <button type="button" className="ys-contact-back" onClick={onClose} aria-label="Back to conversation">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-        </div>
+          <strong>Contact info</strong>
+          <span className="ys-contact-head-spacer" />
+        </header>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px' }}>
+        <div className="ys-contact-info-scroll">
           {loading && (
-            <div style={{ textAlign: 'center', padding: 40, color: TEXT_SOFT, fontSize: 13 }}>Loading…</div>
-          )}
-          {error && (
-            <div style={{ textAlign: 'center', padding: 40, color: '#B22234', fontSize: 13 }}>{error}</div>
-          )}
-          {!loading && !error && !seller && (
-            <div style={{ textAlign: 'center', padding: 40, color: TEXT_SOFT, fontSize: 13 }}>
-              <div style={{ marginBottom: 6 }}>Profile details aren&apos;t available right now.</div>
-              <div style={{ fontSize: 12, color: TEXT_SOFT, opacity: 0.8 }}>
-                You can still message this person from the chat — no action needed.
-              </div>
+            <div className="ys-contact-state">
+              <span className="ys-contact-spinner" aria-hidden="true" />
+              <span>Loading profile…</span>
             </div>
           )}
+
+          {error && (
+            <div className="ys-contact-state is-error">
+              <strong>Profile unavailable</strong>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {!loading && !error && !seller && (
+            <div className="ys-contact-state">
+              <strong>Profile details are unavailable</strong>
+              <span>You can continue this conversation normally.</span>
+            </div>
+          )}
+
           {!loading && !error && seller && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {/* Avatar + Name + Role */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 96, height: 96, borderRadius: '50%',
-                  background: seller.headshot_url ? 'transparent' : INDIGO,
-                  overflow: 'hidden',
-                  display: 'grid', placeItems: 'center',
-                }}>
-                  {seller.headshot_url ? (
-                    <img src={seller.headshot_url} alt={seller.full_name || ''} style={{ width: 96, height: 96, objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontSize: 36, color: '#fff', fontWeight: 600 }}>
-                      {(seller.full_name || '?').charAt(0).toUpperCase()}
-                    </span>
-                  )}
+            <>
+              <section className="ys-contact-hero">
+                <div className="ys-contact-avatar-ring">
+                  <div className="ys-contact-avatar">
+                    {seller.headshot_url ? (
+                      <img src={seller.headshot_url} alt={seller.full_name || ''} />
+                    ) : (
+                      <span>{(seller.full_name || '?').charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
                 </div>
-                <div style={{
-                  fontFamily: "var(--font-lora), 'Lora', Georgia, serif",
-                  fontSize: 22, fontWeight: 600, color: TEXT, textAlign: 'center',
-                }}>
-                  {seller.full_name || 'Seller'}
-                </div>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
-                  padding: '3px 10px', borderRadius: 999,
-                  background: `${INDIGO}10`, color: INDIGO,
-                }}>
-                  {seller.role === 'attorney' ? 'Attorney' : seller.role === 'consultant' ? 'Consultant' : 'Client'}
-                </span>
-              </div>
 
-              {seller.role === 'client' ? (
-                <>
-                  {/* Country */}
-                  {seller.country && (
-                    <div style={{ textAlign: 'center', fontSize: 12, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'SF Mono', Menlo, Consolas, monospace" }}>
-                      {seller.country}
-                    </div>
-                  )}
+                <h2>{seller.full_name || 'YouSafe member'}</h2>
+                <p className="ys-contact-role">{roleLabel}</p>
+                {seller.tagline && <p className="ys-contact-tagline">{seller.tagline}</p>}
+                <Stars avg={seller.rating_avg} count={seller.rating_count || 0} />
 
-                  {/* Member since */}
-                  {seller.member_since && (
-                    <div style={{ textAlign: 'center', fontSize: 13, color: TEXT_MID }}>
-                      Member since {new Date(seller.member_since).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </div>
-                  )}
-
-                  {/* Inquiry count */}
-                  {typeof seller.inquiry_count === 'number' && (
-                    <div style={{ textAlign: 'center', fontSize: 13, color: TEXT_MID }}>
-                      Has posted {seller.inquiry_count} inquiry{seller.inquiry_count === 1 ? '' : 's'} on YouSafe
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* Tagline */}
-                  {seller.tagline && (
-                    <div style={{ fontSize: 13, color: TEXT_MID, textAlign: 'center', lineHeight: 1.5 }}>
-                      {seller.tagline}
-                    </div>
-                  )}
-
-                  {/* Rating */}
-                  <Stars avg={seller.rating_avg} count={seller.rating_count} />
-
-                  {/* Jurisdictions (attorney only) */}
-                  {seller.role === 'attorney' && Array.isArray(seller.jurisdictions) && seller.jurisdictions.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {seller.jurisdictions.map((j: string) => (
-                        <span key={j} style={{
-                          fontSize: 11, fontWeight: 500,
-                          padding: '3px 8px', borderRadius: 6,
-                          background: `${MOSS}10`, color: MOSS,
-                        }}>{j}</span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Specialties / practice areas */}
-                  {Array.isArray(seller.specialties) && seller.specialties.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                        Specialties
-                      </div>
-                      <div style={{ fontSize: 13, color: TEXT_MID }}>
-                        {seller.specialties.slice(0, 6).join(', ')}
-                      </div>
-                    </div>
-                  )}
-                  {(!Array.isArray(seller.specialties) || seller.specialties.length === 0) &&
-                    Array.isArray(seller.practice_areas) && seller.practice_areas.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                        Practice areas
-                      </div>
-                      <div style={{ fontSize: 13, color: TEXT_MID }}>
-                        {seller.practice_areas.slice(0, 6).join(', ')}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Languages */}
-                  {Array.isArray(seller.languages) && seller.languages.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                        Languages
-                      </div>
-                      <div style={{ fontSize: 13, color: TEXT_MID }}>
-                        {seller.languages.join(', ')}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Years of experience */}
-                  {seller.years_experience && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                        Experience
-                      </div>
-                      <div style={{ fontSize: 13, color: TEXT_MID }}>
-                        {seller.years_experience} year{seller.years_experience === 1 ? '' : 's'}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Top 3 gigs */}
-                  {gigs.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 8 }}>
-                        Top services
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {gigs.slice(0, 3).map((gig: any) => (
-                          <div key={gig.id} style={{
-                            padding: 10, borderRadius: 8,
-                            border: `1px solid ${BORDER}`,
-                            display: 'flex', flexDirection: 'column', gap: 2,
-                          }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{gig.title}</div>
-                            <div style={{ fontSize: 12, color: TEXT_SOFT }}>
-                              {gig.starting_price ? `From $${Number(gig.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : ''}
-                              {gig.order_count ? ` · ${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : ''}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Footer link */}
+                {role !== 'client' && seller.profile_id && (
                   <a
+                    className="ys-contact-primary-action"
                     href={`https://market.yousafeconsultancy.com/providers/${seller.profile_id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      fontSize: 13, fontWeight: 600, color: INDIGO,
-                      textDecoration: 'none', marginTop: 4,
-                    }}
                   >
-                    View full profile →
+                    View marketplace profile
+                    <span aria-hidden="true">↗</span>
                   </a>
-                </>
+                )}
+              </section>
+
+              <section className="ys-contact-card" aria-label="Profile details">
+                {seller.country && <DetailRow icon="◎" label="Country" value={seller.country} />}
+                {memberSince && <DetailRow icon="◷" label="Member since" value={memberSince} />}
+                {seller.years_experience && (
+                  <DetailRow icon="◇" label="Experience" value={`${seller.years_experience} year${seller.years_experience === 1 ? '' : 's'}`} />
+                )}
+                {Array.isArray(seller.languages) && seller.languages.length > 0 && (
+                  <DetailRow icon="文" label="Languages" value={seller.languages.join(', ')} />
+                )}
+                {role === 'client' && typeof seller.inquiry_count === 'number' && (
+                  <DetailRow
+                    icon="◫"
+                    label="Marketplace activity"
+                    value={`${seller.inquiry_count} inquir${seller.inquiry_count === 1 ? 'y' : 'ies'} posted`}
+                    muted
+                  />
+                )}
+              </section>
+
+              {role === 'attorney' && Array.isArray(seller.jurisdictions) && seller.jurisdictions.length > 0 && (
+                <section className="ys-contact-card">
+                  <h3>Jurisdictions</h3>
+                  <div className="ys-contact-chip-row">
+                    {seller.jurisdictions.map((item: string) => (
+                      <span key={item} className="ys-contact-chip">{item}</span>
+                    ))}
+                  </div>
+                </section>
               )}
-            </div>
+
+              {specialties.length > 0 && (
+                <section className="ys-contact-card">
+                  <h3>{role === 'attorney' ? 'Practice areas' : 'Specialties'}</h3>
+                  <div className="ys-contact-chip-row">
+                    {specialties.slice(0, 8).map((item: string) => (
+                      <span key={item} className="ys-contact-chip">{item}</span>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {gigs.length > 0 && (
+                <section className="ys-contact-card">
+                  <div className="ys-contact-card-title-row">
+                    <h3>Services</h3>
+                    <span>{Math.min(gigs.length, 3)} shown</span>
+                  </div>
+                  <div className="ys-contact-services">
+                    {gigs.slice(0, 3).map((gig: any) => (
+                      <div key={gig.id} className="ys-contact-service">
+                        <div>
+                          <strong>{gig.title}</strong>
+                          <span>
+                            {gig.order_count ? `${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : 'Available on YouSafe'}
+                          </span>
+                        </div>
+                        {gig.starting_price ? (
+                          <b>${Number(gig.starting_price / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</b>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section className="ys-contact-card ys-contact-safety">
+                <h3>Messaging on YouSafe</h3>
+                <DetailRow
+                  icon="⌁"
+                  label="Conversation context"
+                  value="Messages, files and service activity stay attached to this YouSafe conversation."
+                  muted
+                />
+                <DetailRow
+                  icon="✓"
+                  label="Platform protections"
+                  value="Use YouSafe messaging and checkout for the clearest service record and support trail."
+                  muted
+                />
+              </section>
+            </>
           )}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

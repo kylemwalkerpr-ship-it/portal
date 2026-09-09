@@ -2,12 +2,40 @@
 
 import React from 'react'
 import { useUser, useClerk } from '@clerk/nextjs'
-import { T, F } from './tokens'
+import { F } from './tokens'
+import styles from './MarketplaceAuthNav.module.css'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
 interface MarketplaceAuthNavProps {
   signUpHref: string
+}
+
+type AccountIconKind = 'dashboard' | 'shop' | 'orders' | 'messages' | 'profile' | 'signout'
+
+function AccountIcon({ kind }: { kind: AccountIconKind }) {
+  const paths: Record<AccountIconKind, React.ReactNode> = {
+    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    shop: <><path d="M6 9V7a6 6 0 0 1 12 0v2" /><path d="M4.5 9.5h15l-1 11h-13z" /></>,
+    orders: <><path d="m4 7 8-4 8 4-8 4z" /><path d="M4 7v10l8 4 8-4V7" /><path d="M12 11v10" /></>,
+    messages: <><path d="M21 12a8.5 8.5 0 0 1-9 8.5 10 10 0 0 1-4.1-.9L3 21l1.4-4.4A8.3 8.3 0 0 1 3 12a8.5 8.5 0 0 1 9-8.5A8.5 8.5 0 0 1 21 12Z" /><path d="M8 12h.01M12 12h.01M16 12h.01" /></>,
+    profile: <><circle cx="12" cy="8" r="4" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></>,
+    signout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[kind]}
+    </svg>
+  )
+}
+
+function Chevron() {
+  return (
+    <svg className={styles.chevron} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m7.5 4.5 5 5-5 5" />
+    </svg>
+  )
 }
 
 export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavProps) {
@@ -16,26 +44,60 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
   const [open, setOpen] = React.useState(false)
   const btnRef = React.useRef<HTMLButtonElement>(null)
   const menuRef = React.useRef<HTMLDivElement>(null)
+  const menuId = React.useId()
 
   React.useEffect(() => {
     if (!open) return
-    const onDoc = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node)) {
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (!menuRef.current?.contains(target) && !btnRef.current?.contains(target)) {
+        setOpen(false)
+      }
+    }
+    const onFocusIn = (e: FocusEvent) => {
+      const target = e.target as Node
+      if (!menuRef.current?.contains(target) && !btnRef.current?.contains(target)) {
         setOpen(false)
       }
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      window.requestAnimationFrame(() => btnRef.current?.focus())
     }
-    document.addEventListener('mousedown', onDoc)
+
+    // Pointer Events are reliable on touch Safari; relying only on mousedown
+    // allowed the avatar popover to survive long enough to collide with the
+    // mobile drawer during fast taps.
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('focusin', onFocusIn)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('focusin', onFocusIn)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
 
+  React.useEffect(() => {
+    // MarketplaceShell owns the hamburger drawer state. Keep this account
+    // component decoupled while making the two overlays mutually exclusive:
+    // whenever the shell toggle enters aria-expanded=true, close this popover.
+    const drawerToggle = document.querySelector<HTMLButtonElement>('.ys-shell-menu-toggle')
+    if (!drawerToggle) return
+
+    const syncWithDrawer = () => {
+      if (drawerToggle.getAttribute('aria-expanded') === 'true') setOpen(false)
+    }
+    const observer = new MutationObserver(syncWithDrawer)
+    observer.observe(drawerToggle, { attributes: true, attributeFilter: ['aria-expanded'] })
+    syncWithDrawer()
+    return () => observer.disconnect()
+  }, [])
+
   // signUpHref is preserved for backward compat; modal flow uses Clerk methods directly.
+  void signUpHref
 
   // SSR / signed-out fallback
   if (!isSignedIn) {
@@ -49,9 +111,9 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
           })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 600,
-            color: T.ink, background: 'transparent',
+            color: 'var(--ys-ink, #1C1410)', background: 'transparent',
             padding: '8px 14px', borderRadius: 999,
-            border: `1px solid ${T.rule}`, cursor: 'pointer',
+            border: '1px solid var(--ys-rule, rgba(247,237,224,0.16))', cursor: 'pointer',
             minHeight: 44,
           }}
         >Sign in</button>
@@ -65,7 +127,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
           })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 700,
-            color: '#fff', background: T.ink,
+            color: '#fff', background: 'var(--ys-ink, #1C1410)',
             padding: '9px 18px', borderRadius: 999,
             border: 'none', cursor: 'pointer',
             minHeight: 44,
@@ -80,99 +142,99 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
   const email = user?.emailAddresses?.[0]?.emailAddress || ''
   const imageUrl = user?.imageUrl
 
+  const closeMenu = () => setOpen(false)
+
   return (
-    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }} suppressHydrationWarning>
+    <div className={styles.root} suppressHydrationWarning>
       <button
         ref={btnRef}
+        type="button"
+        className={styles.trigger}
         onClick={() => setOpen(v => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
         aria-label="Account menu"
-        style={{
-          width: 44, height: 44, borderRadius: '50%',
-          background: imageUrl ? undefined : T.indigoSoft,
-          border: `1px solid ${T.rule}`,
-          cursor: 'pointer', padding: 0, overflow: 'hidden',
-          display: 'grid', placeItems: 'center',
-          flexShrink: 0,
-          minWidth: 44, minHeight: 44,
-        }}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt={fullName} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
+          <img src={imageUrl} alt="" />
         ) : (
-          <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 600, color: T.indigo }}>
-            {initials}
-          </span>
+          <span className={styles.triggerInitials}>{initials}</span>
         )}
       </button>
 
       {open && (
         <div
+          id={menuId}
           ref={menuRef}
+          className={styles.menu}
           role="menu"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
-            width: 220,
-            background: T.vellum,
-            border: `1px solid ${T.rule}`,
-            borderRadius: 12,
-            boxShadow: '0 12px 32px -16px rgba(29,36,51,0.4)',
-            zIndex: 300,
-            overflow: 'hidden',
-          }}
+          aria-label="Account"
         >
-          {/* Header */}
-          <div style={{ padding: '12px 14px 10px' }}>
-            <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 14, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {fullName}
+          <div className={styles.accent} aria-hidden="true" />
+          <div className={styles.profile}>
+            <div className={styles.profileAvatar} aria-hidden="true">
+              {imageUrl ? <img src={imageUrl} alt="" /> : <span>{initials}</span>}
             </div>
-            <div style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.inkSoft, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {email}
+            <div className={styles.profileCopy}>
+              <div className={styles.profileMeta}>
+                <span className={styles.kicker}>Your account</span>
+                <span className={styles.signedIn}><i aria-hidden="true" />Signed in</span>
+              </div>
+              <strong className={styles.name}>{fullName}</strong>
+              {email && <span className={styles.email}>{email}</span>}
             </div>
           </div>
-          <div style={{ height: 1, background: T.ruleSoft, margin: '0 14px' }} />
 
-          {/* Links */}
-          <a role="menuitem" href={`${PORTAL_URL}/dashboard`} style={linkStyle}>Go to Dashboard</a>
-          <a role="menuitem" href="/shop" style={linkStyle}>File shop</a>
-          <a role="menuitem" href="/marketplace?view=orders" style={linkStyle}>My Orders</a>
-          <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=messages`} style={linkStyle}>Messages</a>
-          <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=settings`} style={linkStyle}>Profile settings</a>
+          <div className={styles.items}>
+            <a role="menuitem" href={`${PORTAL_URL}/dashboard`} className={`${styles.item} ${styles.itemPrimary}`} onClick={closeMenu}>
+              <span className={styles.itemIcon}><AccountIcon kind="dashboard" /></span>
+              <span className={styles.itemLabel}>Dashboard</span>
+              <Chevron />
+            </a>
+            <a role="menuitem" href="/shop" className={styles.item} onClick={closeMenu}>
+              <span className={styles.itemIcon}><AccountIcon kind="shop" /></span>
+              <span className={styles.itemLabel}>File shop</span>
+              <Chevron />
+            </a>
+            <a role="menuitem" href="/marketplace?view=orders" className={styles.item} onClick={closeMenu}>
+              <span className={styles.itemIcon}><AccountIcon kind="orders" /></span>
+              <span className={styles.itemLabel}>My Orders</span>
+              <Chevron />
+            </a>
+            <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=messages`} className={styles.item} onClick={closeMenu}>
+              <span className={styles.itemIcon}><AccountIcon kind="messages" /></span>
+              <span className={styles.itemLabel}>Messages</span>
+              <Chevron />
+            </a>
 
-          <div style={{ height: 1, background: T.ruleSoft, margin: '4px 14px' }} />
+            <div className={styles.divider} aria-hidden="true" />
 
-          <button
-            role="menuitem"
-            onClick={() => {
-              // Let Clerk handle cookie-clear → navigation in order. Fire
-              // and forget races with middleware: the session cookie is
-              // still live when `/` loads, so middleware bounces the user
-              // straight back to /dashboard and logout appears broken.
-              clerk.signOut({ redirectUrl: PORTAL_URL }).catch(() => {
-                window.location.replace(PORTAL_URL)
-              })
-            }}
-            style={{ ...linkStyle, color: T.brick, width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = T.paper2 }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            Sign out
-          </button>
+            <a role="menuitem" href={`${PORTAL_URL}/dashboard?page=settings`} className={styles.item} onClick={closeMenu}>
+              <span className={styles.itemIcon}><AccountIcon kind="profile" /></span>
+              <span className={styles.itemLabel}>Profile settings</span>
+              <Chevron />
+            </a>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${styles.item} ${styles.signout}`}
+              onClick={() => {
+                setOpen(false)
+                // Let Clerk clear the session before redirecting. Navigating
+                // first races middleware and can make logout appear broken.
+                clerk.signOut({ redirectUrl: PORTAL_URL }).catch(() => {
+                  window.location.replace(PORTAL_URL)
+                })
+              }}
+            >
+              <span className={styles.itemIcon}><AccountIcon kind="signout" /></span>
+              <span className={styles.itemLabel}>Sign out</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-const linkStyle: React.CSSProperties = {
-  display: 'block',
-  padding: '10px 14px',
-  fontFamily: F.ui,
-  fontSize: 14,
-  color: T.ink,
-  textDecoration: 'none',
-  transition: 'background 0.08s',
-}
