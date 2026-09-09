@@ -2,6 +2,7 @@ import {
   authorPackFromProvider,
   citedProvidersPromptBlock,
   citedProvidersPublic,
+  classifyTopicFields,
   credentialLineFor,
   experienceScopeFor,
   isMarketplaceServiceUrl,
@@ -11,6 +12,7 @@ import {
   overlappingTokens,
   providerGigUrl,
   providerProfileUrl,
+  regionFromPlace,
   tokenize,
   type CitableProvider,
 } from '@/lib/seoFactory/providerAuthors'
@@ -174,7 +176,115 @@ describe('provider author matching', () => {
       contentType: 'legal_guide',
     })
     expect(cited[0]?.name).toBe('Jordan Hale')
-    expect(cited[0]?.matchReasons.join(' ')).toMatch(/YMYL fallback|practises in US/)
+    expect(cited[0]?.matchReasons.join(' ')).toMatch(/YMYL fallback|practises in US|triangulat|nearest related|same field|same specialty/)
+  })
+})
+
+describe('jurisdiction and field triangulation', () => {
+  it('maps bar-state jurisdictions like NY/NJ onto the US region', () => {
+    expect(regionFromPlace('NY')).toBe('us')
+    expect(regionFromPlace('New Jersey')).toBe('us')
+    expect(regionFromPlace('England & Wales')).toBe('uk')
+    expect(regionFromPlace('Ontario')).toBe('ca')
+    expect(regionFromPlace('CA', { barState: true })).toBe('us')
+    expect(regionFromPlace('CA', { siblings: ['NY', 'NJ'] })).toBe('us')
+    expect(regionFromPlace('ca')).toBe('ca')
+    expect(classifyTopicFields('I-130 affidavit of support')[0]?.subcategoryId).toBe('family-sponsorship')
+    expect(classifyTopicFields('H-1B visa requirements')[0]?.subcategoryId).toBe('work-permits')
+  })
+
+  it('cites a NY immigration attorney on an I-130 blog even without a 1:1 form match', () => {
+    const ny = attorney({
+      profileId: 'a-ny',
+      name: 'Jordan Hale',
+      username: 'jordan-hale',
+      practiceAreas: ['immigration'],
+      specialties: ['family petitions'],
+      jurisdictions: ['NY', 'NJ'],
+      tagline: 'Family-based immigration',
+      gigs: [{ slug: 'family-petition-review', title: 'Family petition review', category: 'immigration', jurisdiction: 'us' }],
+    })
+    const cited = matchProvidersToTopic([ny], {
+      region: 'US',
+      topic: 'I-130 affidavit of support',
+      primaryKeyword: 'i-130 affidavit',
+      contentType: 'blog_post',
+    })
+    expect(cited).toHaveLength(1)
+    expect(cited[0]?.name).toBe('Jordan Hale')
+    expect(cited[0]?.matchReasons.join(' ')).toMatch(/US|same field|same specialty|family|immigration/i)
+  })
+
+  it('prefers a settlement consultant over a tax attorney for a newcomer banking blog', () => {
+    const tax = attorney({
+      profileId: 'a-tax',
+      name: 'Sam Tax',
+      username: 'sam-tax',
+      practiceAreas: ['tax'],
+      specialties: ['corporate tax'],
+      jurisdictions: ['DE'],
+      tagline: 'Delaware corporate tax',
+      gigs: [],
+    })
+    const banker = consultant({
+      profileId: 'c-settle',
+      name: 'Priya Shah',
+      username: 'priya-shah',
+      practiceAreas: ['settlement'],
+      specialties: ['banking', 'newcomer setup'],
+      jurisdictions: ['US'],
+      tagline: 'Newcomer banking and SIN/SSN setup',
+      gigs: [{ slug: 'newcomer-bank-setup', title: 'Open a US bank account as a newcomer', category: 'settlement', jurisdiction: 'us' }],
+    })
+    const cited = matchProvidersToTopic([tax, banker], {
+      region: 'US',
+      topic: 'how to open a bank account in the US as a newcomer',
+      primaryKeyword: 'open bank account usa immigrant',
+      contentType: 'blog_post',
+    })
+    expect(cited[0]?.name).toBe('Priya Shah')
+    expect(cited[0]?.role).toBe('consultant')
+  })
+
+  it('triangulates a work-permit attorney onto an H-1B guide when no H-1B specialist exists', () => {
+    const work = attorney({
+      profileId: 'a-work',
+      name: 'Jordan Hale',
+      username: 'jordan-hale',
+      practiceAreas: ['immigration'],
+      specialties: ['work permits'],
+      jurisdictions: ['NY'],
+      tagline: 'Employment-based immigration',
+      gigs: [{ slug: 'work-permit-review', title: 'Work permit document review', category: 'work-permits', jurisdiction: 'us' }],
+    })
+    const cited = matchProvidersToTopic([work], {
+      region: 'US',
+      topic: 'H-1B specialty occupation petition timeline',
+      primaryKeyword: 'h-1b petition timeline',
+      contentType: 'legal_guide',
+    })
+    expect(cited[0]?.name).toBe('Jordan Hale')
+    expect(cited.some((p) => p.name === 'Jordan Hale')).toBe(true)
+  })
+
+  it('still returns a provider when the only panel member is adjacent, not 1:1', () => {
+    const education = consultant({
+      profileId: 'c-edu',
+      name: 'Priya Shah',
+      username: 'priya-shah',
+      practiceAreas: ['admissions'],
+      specialties: ['university'],
+      jurisdictions: ['UK'],
+      tagline: 'UK university admissions',
+    })
+    const cited = matchProvidersToTopic([education], {
+      region: 'UK',
+      topic: 'UK student visa CAS letter checklist',
+      primaryKeyword: 'uk student visa cas',
+      contentType: 'blog_post',
+    })
+    expect(cited[0]?.name).toBe('Priya Shah')
+    expect(cited[0]?.matchReasons.join(' ')).toMatch(/related|same field|study|admissions|triangulat|UK/i)
   })
 })
 

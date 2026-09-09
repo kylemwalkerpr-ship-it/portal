@@ -2864,6 +2864,14 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
                 {briefIntel.citedAuthor.name}
                 {briefIntel.citedAuthor.credential ? ` · ${briefIntel.citedAuthor.credential}` : ''}
               </div>
+              {(briefIntel.citedProviders || [])[0]?.matchReasons?.length ? (
+                <div style={{ marginTop: 4, fontFamily: C.serif, fontSize: 11.5, color: 'rgba(255,255,255,.62)', lineHeight: 1.45 }}>
+                  {(briefIntel.citedProviders || [])[0]!.matchReasons
+                    .filter((reason) => !/credential on file|attorney for YMYL|admissions consultant for study/i.test(reason))
+                    .slice(0, 3)
+                    .join(' · ') || 'Marketplace provider matched to this brief'}
+                </div>
+              ) : null}
               {briefIntel.citedAuthor.marketplaceUrl && (
                 <a
                   href={briefIntel.citedAuthor.marketplaceUrl}
