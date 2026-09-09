@@ -30,7 +30,7 @@
   outline-offset: 2px;
 }
 *:focus-visible {
-  outline: 2px solid #0E7C8E;
+  outline: 2px solid #3C3B6E;
   outline-offset: 2px;
 }
 
@@ -1047,10 +1047,10 @@ section[id] {
 }
 .ys-nav-drawer-link:hover,
 .ys-nav-drawer-link:focus-visible {
-  background: rgba(14, 124, 116, 0.08);
+  background: rgba(60, 59, 110, 0.08);
 }
 .ys-nav-drawer-cta {
-  background: #0E7C74;
+  background: #3C3B6E;
   color: #fff !important;
   justify-content: center;
   margin-top: 8px;
@@ -1127,24 +1127,22 @@ section[id] {
 /* ═══════════════════════════════════════════════════════════════════════
    MARKETPLACE LEGIBILITY — forced paper + ink
 
-   Every marketplace page must have:
-   - A light, paper-like background
-   - Dark, ink-like text
-   The palette picker can still change accent colors (indigo, gold, teal,
-   brick, moss) but the base must always be high-contrast legible.
+   Light professional chrome. The palette picker can still change the
+   action accent (legacy names indigo / teal) but paper stays a cool gray
+   sheet and type stays charcoal. Do not flood the shell with saturated fills.
    ═══════════════════════════════════════════════════════════════════════ */
 .cw-market {
-  --ys-paper: #FAFAF7;
-  --ys-paper2: #F0EDE6;
-  --ys-paper3: #E6E1D6;
+  --ys-paper: #F4F6F8;
+  --ys-paper2: #EEF1F4;
+  --ys-paper3: #E6EAEF;
   --ys-vellum: #FFFFFF;
-  --ys-cream: #FAFAF7;
-  --ys-ink: #1A120E;
-  --ys-inkMid: #3D3530;
-  --ys-inkSoft: #6B6058;
-  --ys-onPaper: #1A120E;
-  --ys-onPaperSoft: rgba(26,18,14,0.72);
-  --ys-onPaperEm: #1A120E;
+  --ys-cream: #F7F8FA;
+  --ys-ink: #0F172A;
+  --ys-inkMid: #334155;
+  --ys-inkSoft: #526072;
+  --ys-onPaper: #0F172A;
+  --ys-onPaperSoft: rgba(15,23,42,0.72);
+  --ys-onPaperEm: #0F172A;
   background: var(--ys-paper);
   color: var(--ys-onPaper);
 }
@@ -1162,8 +1160,7 @@ section[id] {
   color: #FFFFFF;
 }
 
-/* Accent cards with dark backgrounds get light text */
-.cw-market .seller-card,
+/* Accent fills carry white labels. Seller cards are light vellum sheets. */
 .cw-market [style*="background: var(--ys-indigo)"],
 .cw-market [style*="background:var(--ys-indigo)"] {
   color: #FFFFFF;
@@ -1231,10 +1228,9 @@ section[id] {
   color: var(--ys-ink);
 }
 
-/* Section headings on the dark paper background — light, never ink.
-   Split headlines ("This week's <em>…</em>") keep BOTH halves light:
-   plain text = onPaper, italic em = onPaperEm (bright cream-gold,
-   verified ≥ 4.5:1 vs paper/paper2/paper3/footer per palette). */
+/* Section headings on LIGHT paper — charcoal, never cream-on-paper.
+   Split headlines keep BOTH halves dark: plain text = onPaper,
+   italic em = onPaperEm (verified ≥ 4.5:1 vs paper/paper2/paper3/footer). */
 .cw-market .section-head h2,
 .cw-market .faq-heading,
 .cw-market .cw-files-rail-head h2 {
@@ -1247,7 +1243,7 @@ section[id] {
   color: var(--ys-onPaperEm, var(--ys-onPaper));
 }
 
-/* Section meta text — readable light secondary on dark paper */
+/* Section meta text — readable secondary ink on light paper */
 .cw-market .section-head .meta,
 .cw-market .section-head .meta a {
   color: var(--ys-onPaperSoft);
@@ -1280,7 +1276,7 @@ section[id] {
   border-bottom-color: var(--ys-ink);
 }
 
-/* Trust bar — light text on dark paper */
+/* Trust bar — dark ink on light paper */
 .cw-market .trust-inner .label {
   color: var(--ys-onPaperSoft);
 }
@@ -1328,7 +1324,7 @@ section[id] {
 }
 
 /* Seller directory, providers index, categories index — paper fills carry
-   light text (the palette contract), never ink-on-dark-paper. */
+   dark ink (the light-professional contract). */
 .cw-market [style*="background: var(--ys-paper)"],
 .cw-market [style*="background:var(--ys-paper)"] {
   background: var(--ys-paper);

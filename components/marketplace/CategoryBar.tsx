@@ -196,7 +196,7 @@ export function CategoryBar({ country }: Props) {
           display: flex;
           align-items: center;
           justify-content: center;
-          color: ${T.cream};
+          color: ${T.ink};
           cursor: pointer;
           z-index: 3;
           transition: background 0.12s, transform 0.12s, opacity 0.12s;
@@ -258,7 +258,7 @@ export function CategoryBar({ country }: Props) {
                       borderRadius: '999px',
                       border: `1px solid ${isOpen || isActive ? T.indigo : T.rule}`,
                       background: isOpen || isActive ? T.indigo : T.vellum,
-                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(14,124,116,0.08)',
+                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(60,59,110,0.08)',
                       fontFamily: F.ui,
                       fontSize: '13.5px',
                       fontWeight: isActive || isOpen ? 700 : 600,

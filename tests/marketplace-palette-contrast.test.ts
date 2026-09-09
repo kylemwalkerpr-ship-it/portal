@@ -1,32 +1,22 @@
 /**
  * Marketplace palette contrast gate (WCAG AA).
  *
- * Role matrix — every token pair actually used in the market UI:
+ * Role matrix — light-professional chrome matching Portal Messages:
  *
- *   DARK surfaces  (paper / paper2 / paper3 / footer)
- *     → onPaper            (body copy, headings, nav)
- *     → onPaperSoft        (secondary copy; alpha-blended over the surface,
- *                           tested at the exact shipped alpha)
- *     → gold               (light accent: eyebrows, hero italics, prices)
- *     → #FFFFFF            (labels on solid accent fills that sit on dark
- *                           paper, e.g. seller CTA card)
+ *   LIGHT chrome   (paper / paper2 / paper3 / footer)
+ *     → onPaper / ink     (body copy, headings, nav)
+ *     → onPaperSoft       (secondary copy; alpha-blended over the surface)
+ *     → onPaperEm / gold  (emphasis, eyebrows)
+ *     → inkMid / inkSoft  (meta)
+ *     → indigo / teal / brick / moss / star  (links, badges, ratings)
  *
- *   LIGHT surfaces (vellum / cream)
- *     → ink / inkMid / inkSoft          (body / meta / muted copy)
- *     → star                            (ratings)
- *     → indigo / teal / brick / moss    (links, badges, accent text)
+ *   LIGHT cards    (vellum / cream)
+ *     → same dark-ink set as chrome
  *
- *   ACCENT fills   (indigo / indigoDeep / teal / tealDeep / brick / moss /
- *                   ink / inkSoft — dual-role tokens)
- *     → #FFFFFF and onPaper labels (buttons, chips, disabled upload CTAs)
+ *   ACCENT fills   (indigo / indigoDeep / teal / tealDeep / brick / moss / ink)
+ *     → #FFFFFF labels (buttons, selected chips)
  *
- * Floor: 4.5:1 for all normal-size text. No large-text (3:1) exceptions are
- * relied on: the smallest accent copy in the UI is 9–11px bold, which is
- * normal-size text under WCAG.
- *
- * `gold` is intentionally NOT required to pass on light surfaces (its role
- * is dark-surface-only) and `star` NOT on dark surfaces (light-surface-only)
- * — components that violated that split were migrated to the correct token.
+ * Floor: 4.5:1 for all normal-size text. No large-text (3:1) exceptions.
  */
 import { PALETTES } from '../components/marketplace/palettes'
 
@@ -87,10 +77,11 @@ export function contrastRatio(fg: string, bg: string): number {
 
 const AA = 4.5
 
-const DARK_SURFACES = ['paper', 'paper2', 'paper3', 'footer'] as const
-const LIGHT_SURFACES = ['vellum', 'cream'] as const
-const ACCENT_FILLS = ['indigo', 'indigoDeep', 'teal', 'tealDeep', 'brick', 'moss', 'ink', 'inkSoft'] as const
+const LIGHT_CHROME = ['paper', 'paper2', 'paper3', 'footer'] as const
+const LIGHT_CARDS = ['vellum', 'cream'] as const
+const DARK_TEXT = ['onPaper', 'onPaperEm', 'ink', 'inkMid', 'inkSoft', 'gold', 'star'] as const
 const ACCENT_TEXT = ['indigo', 'teal', 'brick', 'moss'] as const
+const ACCENT_FILLS = ['indigo', 'indigoDeep', 'teal', 'tealDeep', 'brick', 'moss', 'ink'] as const
 
 describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
   it('has palettes to test', () => {
@@ -101,60 +92,16 @@ describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
     describe(palette.label, () => {
       const t = palette.tokens
 
-      // ── DARK surfaces ──────────────────────────────────────────────────
+      it('keeps chrome and cards light (no saturated shell flood)', () => {
+        for (const surface of [...LIGHT_CHROME, ...LIGHT_CARDS]) {
+          const [r, g, b] = parseHex(t[surface])
+          const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+          expect(luma).toBeGreaterThan(0.78)
+        }
+      })
 
-      for (const surface of DARK_SURFACES) {
-        it(`onPaper on ${surface} ≥ 4.5:1`, () => {
-          const ratio = contrastRatio(t.onPaper, t[surface])
-          if (ratio < AA) {
-            console.warn(`${palette.label}: onPaper ${t.onPaper} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
-          }
-          expect(ratio).toBeGreaterThanOrEqual(AA)
-        })
-
-        it(`white on ${surface} ≥ 4.5:1 (hardcoded labels on dark)`, () => {
-          expect(contrastRatio('#FFFFFF', t[surface])).toBeGreaterThanOrEqual(AA)
-        })
-
-        // gold is the light-on-dark accent (eyebrows, hero italics, prices)
-        it(`gold on ${surface} ≥ 4.5:1`, () => {
-          const ratio = contrastRatio(t.gold, t[surface])
-          if (ratio < AA) {
-            console.warn(`${palette.label}: gold ${t.gold} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
-          }
-          expect(ratio).toBeGreaterThanOrEqual(AA)
-        })
-
-        // onPaperEm is the italic-em accent in split headings
-        // ("This week's <em>…</em>") on dark paper
-        it(`onPaperEm on ${surface} ≥ 4.5:1`, () => {
-          const ratio = contrastRatio(t.onPaperEm, t[surface])
-          if (ratio < AA) {
-            console.warn(`${palette.label}: onPaperEm ${t.onPaperEm} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
-          }
-          expect(ratio).toBeGreaterThanOrEqual(AA)
-        })
-      }
-
-      // onPaperSoft is secondary text — it is alpha-blended over the paper
-      // surface, so test the BLENDED result at the exact alpha shipped,
-      // against every dark surface it appears on.
-      for (const surface of DARK_SURFACES) {
-        it(`onPaperSoft blended over ${surface} ≥ 4.5:1`, () => {
-          const soft = parseRgba(t.onPaperSoft)
-          const blended = toHex(blendOver(soft, parseHex(t[surface])))
-          const ratio = contrastRatio(blended, t[surface])
-          if (ratio < AA) {
-            console.warn(`${palette.label}: onPaperSoft ${t.onPaperSoft} (→ ${blended}) on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
-          }
-          expect(ratio).toBeGreaterThanOrEqual(AA)
-        })
-      }
-
-      // ── LIGHT surfaces ─────────────────────────────────────────────────
-
-      for (const surface of LIGHT_SURFACES) {
-        for (const text of ['ink', 'inkMid', 'inkSoft'] as const) {
+      for (const surface of [...LIGHT_CHROME, ...LIGHT_CARDS]) {
+        for (const text of DARK_TEXT) {
           it(`${text} on ${surface} ≥ 4.5:1`, () => {
             const ratio = contrastRatio(t[text], t[surface])
             if (ratio < AA) {
@@ -164,16 +111,6 @@ describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
           })
         }
 
-        // star is the dark-on-light accent (ratings on cards)
-        it(`star on ${surface} ≥ 4.5:1`, () => {
-          const ratio = contrastRatio(t.star, t[surface])
-          if (ratio < AA) {
-            console.warn(`${palette.label}: star ${t.star} on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
-          }
-          expect(ratio).toBeGreaterThanOrEqual(AA)
-        })
-
-        // accent tokens are used as link/badge text on light cards
         for (const text of ACCENT_TEXT) {
           it(`${text} on ${surface} ≥ 4.5:1`, () => {
             const ratio = contrastRatio(t[text], t[surface])
@@ -185,21 +122,23 @@ describe('marketplace palette contrast (WCAG AA ≥ 4.5:1)', () => {
         }
       }
 
-      // ── ACCENT fills carry white AND onPaper labels (buttons, chips) ───
+      for (const surface of LIGHT_CHROME) {
+        it(`onPaperSoft blended over ${surface} ≥ 4.5:1`, () => {
+          const soft = parseRgba(t.onPaperSoft)
+          const blended = toHex(blendOver(soft, parseHex(t[surface])))
+          const ratio = contrastRatio(blended, t[surface])
+          if (ratio < AA) {
+            console.warn(`${palette.label}: onPaperSoft ${t.onPaperSoft} (→ ${blended}) on ${surface} ${t[surface]} = ${ratio.toFixed(2)}:1`)
+          }
+          expect(ratio).toBeGreaterThanOrEqual(AA)
+        })
+      }
 
       for (const fill of ACCENT_FILLS) {
         it(`white on ${fill} ≥ 4.5:1 (button labels)`, () => {
           const ratio = contrastRatio('#FFFFFF', t[fill])
           if (ratio < AA) {
             console.warn(`${palette.label}: white on ${fill} ${t[fill]} = ${ratio.toFixed(2)}:1`)
-          }
-          expect(ratio).toBeGreaterThanOrEqual(AA)
-        })
-
-        it(`onPaper on ${fill} ≥ 4.5:1`, () => {
-          const ratio = contrastRatio(t.onPaper, t[fill])
-          if (ratio < AA) {
-            console.warn(`${palette.label}: onPaper ${t.onPaper} on ${fill} ${t[fill]} = ${ratio.toFixed(2)}:1`)
           }
           expect(ratio).toBeGreaterThanOrEqual(AA)
         })

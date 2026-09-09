@@ -2,41 +2,40 @@
  * Marketplace design tokens.
  *
  * Every value is a CSS custom-property reference with a fallback to the
- * default Bright Emerald palette. This lets the Marketplace palette layer
- * swap shell colours while keeping one professional emerald action colour.
- * The fallbacks also make provider/seller surfaces that consume Marketplace
- * components render correctly during SSR before any client palette code runs.
+ * default Studio (light professional) palette. Paper is a LIGHT chrome
+ * surface; onPaper is dark ink. Accent tokens (legacy names indigo / teal)
+ * are action colour only — never the page fill.
  */
 
 export const T = {
-  paper:       'var(--ys-paper, #087A5B)',
-  paper2:      'var(--ys-paper2, #076E52)',
-  paper3:      'var(--ys-paper3, #065F46)',
+  paper:       'var(--ys-paper, #F4F6F8)',
+  paper2:      'var(--ys-paper2, #EEF1F4)',
+  paper3:      'var(--ys-paper3, #E6EAEF)',
   vellum:      'var(--ys-vellum, #FFFFFF)',
-  cream:       'var(--ys-cream, #F7FAF9)',
-  ink:         'var(--ys-ink, #17201D)',
-  inkMid:      'var(--ys-inkMid, #43534D)',
-  inkSoft:     'var(--ys-inkSoft, #5E6F68)',
-  /** Light text for DARK surfaces (header, nav, footer, page background). */
-  onPaper:     'var(--ys-onPaper, #FFFFFF)',
-  /** Secondary light text on dark surfaces (labels, meta). */
-  onPaperSoft: 'var(--ys-onPaperSoft, rgba(255,255,255,0.90))',
-  /** Warm light accent for split headings / kickers on dark surfaces. */
-  onPaperEm:   'var(--ys-onPaperEm, #FFF7E8)',
-  rule:        'var(--ys-rule, rgba(255,255,255,0.22))',
-  ruleSoft:    'var(--ys-ruleSoft, rgba(255,255,255,0.11))',
-  /** Legacy token name; semantic role is Marketplace brand/action emerald. */
-  indigo:      'var(--ys-indigo, #087A5B)',
-  indigoDeep:  'var(--ys-indigoDeep, #065F46)',
-  indigoSoft:  'var(--ys-indigoSoft, rgba(8,122,91,0.14))',
+  cream:       'var(--ys-cream, #F7F8FA)',
+  ink:         'var(--ys-ink, #0F172A)',
+  inkMid:      'var(--ys-inkMid, #334155)',
+  inkSoft:     'var(--ys-inkSoft, #526072)',
+  /** Primary text on LIGHT chrome (header, page, footer, rails). */
+  onPaper:     'var(--ys-onPaper, #0F172A)',
+  /** Secondary text on light chrome. */
+  onPaperSoft: 'var(--ys-onPaperSoft, rgba(15,23,42,0.72))',
+  /** Emphasis on light chrome (same family as ink — not a cream highlight). */
+  onPaperEm:   'var(--ys-onPaperEm, #0F172A)',
+  rule:        'var(--ys-rule, rgba(15,23,42,0.10))',
+  ruleSoft:    'var(--ys-ruleSoft, rgba(15,23,42,0.06))',
+  /** Legacy token name; semantic role is Marketplace action accent. */
+  indigo:      'var(--ys-indigo, #3C3B6E)',
+  indigoDeep:  'var(--ys-indigoDeep, #2A2A55)',
+  indigoSoft:  'var(--ys-indigoSoft, rgba(60,59,110,0.12))',
   brick:       'var(--ys-brick, #B42318)',
-  gold:        'var(--ys-gold, #FFF4D6)',
-  moss:        'var(--ys-moss, #3F6212)',
-  star:        'var(--ys-star, #8A5A00)',
-  /** Legacy token name; kept as an alias to the same emerald brand colour. */
-  teal:        'var(--ys-teal, #087A5B)',
-  tealDeep:    'var(--ys-tealDeep, #065F46)',
-  footer:      'var(--ys-footer, #054C39)',
+  gold:        'var(--ys-gold, #6B5210)',
+  moss:        'var(--ys-moss, #3F5A28)',
+  star:        'var(--ys-star, #6B4700)',
+  /** Legacy token name; alias of the same action accent. */
+  teal:        'var(--ys-teal, #3C3B6E)',
+  tealDeep:    'var(--ys-tealDeep, #2A2A55)',
+  footer:      'var(--ys-footer, #E8ECF1)',
 } as const
 
 export const F = {

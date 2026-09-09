@@ -213,11 +213,11 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         position: 'sticky',
         top: 0,
         zIndex: 200,
-        background: T.paper2,
+        background: T.vellum,
         backdropFilter: 'blur(16px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
         borderBottom: `1px solid ${T.rule}`,
-        boxShadow: scrolled ? '0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)' : 'inset 0 1px 0 rgba(255,255,255,0.05)',
+        boxShadow: scrolled ? '0 8px 24px rgba(15,23,42,0.08), 0 1px 0 rgba(15,23,42,0.04)' : '0 1px 0 rgba(15,23,42,0.04)',
         transition: 'box-shadow 0.22s cubic-bezier(0.22,1,0.36,1)',
         fontFamily: F.ui,
       }}
@@ -287,7 +287,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           }
           const hoverIn = (e: React.MouseEvent) => {
             const el = e.currentTarget as HTMLElement
-            if (!isActive) { el.style.background = 'rgba(255,255,255,0.10)'; el.style.borderColor = 'rgba(255,255,255,0.32)'; el.style.color = '#FFFFFF' }
+            if (!isActive) { el.style.background = 'rgba(15,23,42,0.045)'; el.style.borderColor = 'rgba(15,23,42,0.14)'; el.style.color = '#0F172A' }
           }
           const hoverOut = (e: React.MouseEvent) => {
             const el = e.currentTarget as HTMLElement
@@ -342,9 +342,9 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
                 onMouseEnter={(e) => {
                   if (active) return
                   const el = e.currentTarget as HTMLElement
-                  el.style.background = 'rgba(255,255,255,0.10)'
-                  el.style.borderColor = 'rgba(255,255,255,0.32)'
-                  el.style.color = '#FFFFFF'
+                  el.style.background = 'rgba(15,23,42,0.045)'
+                  el.style.borderColor = 'rgba(15,23,42,0.14)'
+                  el.style.color = '#0F172A'
                 }}
                 onMouseLeave={(e) => {
                   if (active) return
@@ -633,7 +633,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
            raised to z-index: 1). pointer-events: none keeps it inert.
            PatternPicker / ThemePicker inject background-image here — nothing
            may zero it except the picker's "Solid" option. */
-        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.5; }
+        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.22; }
         .cw-market::after { content: none; }
         .cw-market > * { position: relative; z-index: 1; }
         .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
@@ -675,62 +675,54 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         }
 
         /* ══════════ PALETTE / LEGIBILITY CONTRACT ══════════
-           The marketplace has exactly two surface classes and each owns
-           its ink colour. Every page and subpage inherits this contract
-           from the shell — no component may fight it.
+           Light professional chrome matching Portal Messages.
 
-             DARK surface  (paper / paper2 / paper3 — page bg, header,
-             footer)        → light text: var(--ys-onPaper)
-             LIGHT surface (vellum / cream — cards, sheets, modals)
-                            → dark text:  var(--ys-ink)
+             LIGHT chrome (paper / paper2 / paper3 / footer — page bg,
+             header, rails)     → dark text: var(--ys-onPaper)
+             LIGHT cards  (vellum / cream — sheets, modals)
+                                → dark text:  var(--ys-ink)
 
-           Solid accent fills (indigo / indigoDeep / tealDeep) always
-           carry white labels. */
+           Solid accent fills (indigo / indigoDeep) always carry white labels. */
 
-        /* 1. The page owns the palette: text sitting directly on the dark
-              paper background defaults to light. Pages that set their own
-              cream color still work — this is the inherited fallback. */
-        .cw-market { color: var(--ys-onPaper, #F7EDE0); }
+        /* 1. The page owns the palette: text sitting directly on light
+              paper defaults to charcoal. */
+        .cw-market { color: var(--ys-onPaper, #0F172A); }
 
-        /* 1b. Split headlines ("This week's <em>…</em>") keep BOTH halves
-              light on dark paper: plain text = onPaper, italic em =
-              onPaperEm (bright cream-gold, ≥ 4.5:1 vs paper* — verified in
-              tests/marketplace-palette-contrast.test.ts). Kickers on dark
-              paper use the same em token. Applies to every market route. */
+        /* 1b. Split headlines keep BOTH halves dark on light paper. */
         .cw-market .section-head h2,
         .cw-market .faq-heading,
         .cw-market .cw-files-rail-head h2 {
-          color: var(--ys-onPaper, #F7EDE0);
+          color: var(--ys-onPaper, #0F172A);
         }
         .cw-market .section-head h2 em,
         .cw-market .seller-card h2 em,
         .cw-market .cw-files-rail-head h2 em {
           font-style: italic;
-          color: var(--ys-onPaperEm, var(--ys-onPaper, #F7EDE0));
+          color: var(--ys-onPaperEm, var(--ys-onPaper, #0F172A));
         }
         .cw-market .section-head .meta,
         .cw-market .section-head .meta a {
-          color: var(--ys-onPaperSoft, rgba(247,237,224,0.72));
+          color: var(--ys-onPaperSoft, rgba(15,23,42,0.72));
         }
 
-        /* 2. Dark paper surfaces always carry light text (fixes any
-              component that hardcodes ink on a paper background). */
+        /* 2. Light paper surfaces always carry dark text. */
         .cw-market [style*="background: var(--ys-paper)"],
         .cw-market [style*="background-color: var(--ys-paper)"],
         .cw-market [style*="background: var(--ys-paper2)"],
         .cw-market [style*="background-color: var(--ys-paper2)"],
         .cw-market [style*="background: var(--ys-paper3)"],
-        .cw-market [style*="background-color: var(--ys-paper3)"] {
-          color: var(--ys-onPaper, #F7EDE0) !important;
+        .cw-market [style*="background-color: var(--ys-paper3)"],
+        .cw-market [style*="background: var(--ys-footer)"],
+        .cw-market [style*="background-color: var(--ys-footer)"] {
+          color: var(--ys-onPaper, #0F172A) !important;
         }
 
-        /* 3. Light card surfaces always carry dark ink — palette switching
-              can never create cream-on-white or gold-on-white. */
+        /* 3. Light card surfaces always carry dark ink. */
         .cw-market [style*="background: var(--ys-vellum"],
         .cw-market [style*="background-color: var(--ys-vellum"],
         .cw-market [style*="background: var(--ys-cream"],
         .cw-market [style*="background-color: var(--ys-cream"] {
-          color: var(--ys-ink, #1C1410) !important;
+          color: var(--ys-ink, #0F172A) !important;
         }
 
         /* 4. Solid accent fills always carry white labels (exact-match so
@@ -747,24 +739,26 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         .ys-shell-menu-toggle { display: none; }
         .ys-shell-menu-toggle {
           width: 44px; height: 44px; min-width: 44px; min-height: 44px;
-          margin-left: 8px; border-radius: 999px; border: 1px solid var(--ys-rule, rgba(255,255,255,0.28));
-          color: var(--ys-onPaper, #fff); font-size: 20px; line-height: 1; cursor: pointer;
+          margin-left: 8px; border-radius: 999px; border: 1px solid var(--ys-rule, rgba(15,23,42,0.10));
+          color: var(--ys-onPaper, #0F172A); font-size: 20px; line-height: 1; cursor: pointer;
           align-items: center; justify-content: center; touch-action: manipulation; flex-shrink: 0;
+          background: var(--ys-vellum, #FFFFFF);
         }
         .ys-shell-drawer { position: fixed; inset: 0; z-index: 400; }
-        .ys-shell-drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.45); border: 0; cursor: pointer; }
+        .ys-shell-drawer-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,0.32); border: 0; cursor: pointer; }
         .ys-shell-drawer-panel {
           position: absolute; top: 0; right: 0; width: min(360px, 88vw); height: 100dvh;
-          background: var(--ys-paper2, #2A1C16); color: var(--ys-onPaper, #F7EDE0);
+          background: var(--ys-vellum, #FFFFFF); color: var(--ys-onPaper, #0F172A);
           padding: calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
           overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+          border-left: 1px solid var(--ys-rule, rgba(15,23,42,0.10));
         }
         .ys-shell-drawer-link {
           display: flex; align-items: center; min-height: 44px; padding: 10px 12px; border-radius: 10px;
           color: inherit; text-decoration: none; font-size: 16px; font-weight: 600; text-align: left;
           background: transparent; border: 0; cursor: pointer; font-family: inherit; touch-action: manipulation;
         }
-        .ys-shell-drawer-extras { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.12); }
+        .ys-shell-drawer-extras { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--ys-rule, rgba(15,23,42,0.10)); }
         @media (max-width: 768px) {
           .ys-shell-header-inner { padding: 8px 12px !important; height: 60px !important; min-height: 60px !important; flex-wrap: nowrap !important; }
           .ys-shell-desktop-pill, .ys-market-nav, .ys-shell-jx, .ys-shell-aux:not(.ys-shell-auth) { display: none !important; }

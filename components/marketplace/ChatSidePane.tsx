@@ -11,11 +11,11 @@ import '../messaging/messenger-tokens.css'
 import { F } from './tokens'
 
 /* Messenger shell stays on a self-contained NEUTRAL palette so marketplace
-   mahogany / sepia (--ys-paper) cannot wash into the slide-over. */
+   chrome (--ys-paper) cannot wash into the slide-over. */
 
 const GREEN = '#3F774A'
 const RED = '#B22234'
-const CYAN = '#0B786C'
+const CYAN = '#3C3B6E'
 const BG = 'var(--chat-bg, #F0F2F5)'
 const SURFACE = 'var(--panel, #FFFFFF)'
 const PANEL2 = 'var(--panel-2, #F1F5F9)'

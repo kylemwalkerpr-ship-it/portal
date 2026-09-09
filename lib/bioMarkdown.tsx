@@ -17,26 +17,26 @@ const H2: React.CSSProperties = {
   fontSize: 17,
   fontWeight: 600,
   lineHeight: 1.3,
-  color: '#1C1410',
+  color: '#0F172A',
 }
 const H3: React.CSSProperties = {
   margin: '16px 0 6px',
   fontSize: 15,
   fontWeight: 600,
   lineHeight: 1.3,
-  color: '#1C1410',
+  color: '#0F172A',
 }
 const P: React.CSSProperties = {
   margin: '0 0 12px',
   lineHeight: 1.7,
   whiteSpace: 'pre-line',
-  color: '#1C1410',
+  color: '#0F172A',
 }
 const UL: React.CSSProperties = {
   margin: '8px 0 12px',
   paddingLeft: 22,
   lineHeight: 1.7,
-  color: '#1C1410',
+  color: '#0F172A',
 }
 
 /**

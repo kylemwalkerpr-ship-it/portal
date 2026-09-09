@@ -13,28 +13,25 @@ describe('marketplace professional palette set', () => {
     expect(DEFAULT_PALETTE_NAME).toBe('mahogany')
   })
 
-  test('ships bright professional non-blue palette labels', () => {
+  test('ships light professional palette labels', () => {
     expect(PALETTES.map((p) => p.label)).toEqual([
-      'Bright Emerald',
-      'Royal Aubergine',
-      'Burnished Amber',
-      'Raspberry Wine',
-      'Forest Jade',
-      'Warm Terracotta',
+      'Studio',
+      'Parchment',
+      'Graphite',
+      'Claret',
+      'Olive',
+      'Stone',
     ])
   })
 
-  test('uses saturated non-blue shell surfaces instead of near-black or blue defaults', () => {
-    expect(PALETTES.map((p) => p.tokens.paper)).toEqual([
+  test('uses light chrome instead of mahogany / teal / emerald / blue floods', () => {
+    const retiredSurfaces = new Set([
       '#087A5B',
       '#7C2D6F',
       '#9A4E00',
       '#9F1239',
       '#166534',
       '#B54708',
-    ])
-
-    const retiredSurfaces = new Set([
       '#0F1F22',
       '#171A1D',
       '#101A2A',
@@ -47,19 +44,25 @@ describe('marketplace professional palette set', () => {
     ])
     for (const palette of PALETTES) {
       expect(retiredSurfaces.has(palette.tokens.paper)).toBe(false)
-      // Legacy token names remain API-stable, but brand/action emphasis is
-      // always emerald so public Marketplace + seller tools stay coherent.
-      expect(palette.tokens.indigo).toBe('#087A5B')
-      expect(palette.tokens.indigoDeep).toBe('#065F46')
-      expect(palette.tokens.teal).toBe('#087A5B')
-      expect(palette.tokens.tealDeep).toBe('#065F46')
+      expect(palette.tokens.paper.toUpperCase()).toMatch(/^#F[0-9A-F]{5}$/)
+      expect(palette.tokens.onPaper).toBe('#0F172A')
+      expect(palette.tokens.vellum.toUpperCase()).toBe('#FFFFFF')
     }
   })
 
-  test('retains white or near-white conversion surfaces for maximum legibility', () => {
+  test('keeps action accent off the page fill and identical on indigo/teal aliases', () => {
     for (const palette of PALETTES) {
-      expect(palette.tokens.vellum.toUpperCase()).toMatch(/^#(FFF|FFFF|FFFFF|FFFFFF|FFFDFB)/)
-      expect(palette.tokens.onPaperSoft).toBe('rgba(255,255,255,0.90)')
+      expect(palette.tokens.indigo).toBe(palette.tokens.teal)
+      expect(palette.tokens.indigoDeep).toBe(palette.tokens.tealDeep)
+      expect(palette.tokens.indigo).not.toBe(palette.tokens.paper)
+      expect(palette.tokens.onPaperSoft).toBe('rgba(15,23,42,0.72)')
     }
+  })
+
+  test('default Studio accent is landing slate-navy, not emerald or teal', () => {
+    const studio = PALETTES.find((p) => p.name === DEFAULT_PALETTE_NAME)!
+    expect(studio.tokens.indigo).toBe('#3C3B6E')
+    expect(studio.tokens.indigoDeep).toBe('#2A2A55')
+    expect(studio.tokens.paper).toBe('#F4F6F8')
   })
 })

@@ -111,9 +111,9 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
           })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 600,
-            color: 'var(--ys-ink, #1C1410)', background: 'transparent',
+            color: 'var(--ys-ink, #0F172A)', background: 'transparent',
             padding: '8px 14px', borderRadius: 999,
-            border: '1px solid var(--ys-rule, rgba(247,237,224,0.16))', cursor: 'pointer',
+            border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))', cursor: 'pointer',
             minHeight: 44,
           }}
         >Sign in</button>
@@ -127,7 +127,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
           })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 700,
-            color: '#fff', background: 'var(--ys-ink, #1C1410)',
+            color: '#fff', background: 'var(--ys-ink, #0F172A)',
             padding: '9px 18px', borderRadius: 999,
             border: 'none', cursor: 'pointer',
             minHeight: 44,

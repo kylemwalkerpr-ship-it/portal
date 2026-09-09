@@ -121,14 +121,14 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
           <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.onPaperEm, marginBottom: 6 }}>
             For {role === 'attorney' ? 'attorneys' : 'consultants'} only
           </div>
-          <h1 style={{ fontFamily: F.display, fontSize: 34, fontWeight: 600, color: '#FFFFFF', margin: 0, letterSpacing: '-0.015em' }}>
+          <h1 style={{ fontFamily: F.display, fontSize: 34, fontWeight: 600, color: T.ink, margin: 0, letterSpacing: '-0.015em' }}>
             Trending opportunities
           </h1>
           <p style={{ fontSize: 14, color: T.onPaperSoft, margin: '8px 0 0', maxWidth: 560, lineHeight: 1.6 }}>
             Live inquiries filed by students. Fixed fees, escrowed, refundable — respond first and win the brief.
           </p>
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: F.mono, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: F.mono, fontSize: 12, color: T.inkSoft }}>
           <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: T.moss, animation: 'oppPulse 1.8s ease-out infinite' }} />
           Live · {opps.length} open
         </div>
@@ -200,12 +200,12 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {o.country && (
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.cream, background: T.paper }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.inkMid, background: T.paper }}>
                       {o.country}
                     </span>
                   )}
                   {o.tier && (
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.cream, background: T.paper }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, border: `1px solid ${T.rule}`, color: T.inkMid, background: T.paper }}>
                       {String(o.tier).replace(/_/g, ' ')}
                     </span>
                   )}

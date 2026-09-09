@@ -120,8 +120,8 @@ export function PalettePicker() {
                     gap: 10,
                     padding: '8px 10px',
                     border: 'none',
-                    background: active ? 'rgba(14,124,116,0.10)' : 'transparent',
-                    color: active ? '#0E7C74' : '#1A1F2E',
+                    background: active ? 'rgba(60,59,110,0.10)' : 'transparent',
+                    color: active ? '#2A2A55' : '#1A1F2E',
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
@@ -143,7 +143,7 @@ export function PalettePicker() {
                     </span>
                   </span>
                   {active && (
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#0E7C74', flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#3C3B6E', flexShrink: 0 }}>✓</span>
                   )}
                 </button>
               </li>
