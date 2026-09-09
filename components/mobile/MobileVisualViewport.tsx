@@ -4,7 +4,6 @@ import React from 'react'
 
 const HEIGHT_VAR = '--ys-visual-viewport-height'
 const OFFSET_VAR = '--ys-visual-viewport-offset-top'
-const MIN_HEIGHT = 320
 
 /**
  * Keep full-screen Portal surfaces tied to what the user can actually see.
@@ -38,8 +37,9 @@ export default function MobileVisualViewport() {
       // visualViewport.height is the visible block size. During keyboard-driven
       // viewport panning Safari may also move offsetTop; adding that offset keeps
       // the shell's bottom edge aligned with the visible bottom edge instead of
-      // leaving a dead strip beneath the composer.
-      const visibleBottom = Math.max(MIN_HEIGHT, Math.round(rawHeight) + offsetTop)
+      // leaving a dead strip beneath the composer. Do not impose a minimum:
+      // landscape keyboards can legitimately leave less than 320px visible.
+      const visibleBottom = Math.max(1, Math.round(rawHeight) + offsetTop)
 
       root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)
       root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)
