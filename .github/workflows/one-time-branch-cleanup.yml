@@ -26,6 +26,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event_name != 'push' }}
+          CURRENT_PR_HEAD: ${{ github.head_ref }}
         shell: bash
         run: |
           node <<'NODE'
@@ -35,6 +36,7 @@ jobs:
           const [owner] = repository.split('/')
           const token = process.env.GH_TOKEN
           const dryRun = process.env.DRY_RUN === 'true'
+          const currentPrHead = process.env.CURRENT_PR_HEAD || ''
           if (!repository || !owner || !token) throw new Error('Missing GitHub workflow context')
 
           const headers = {
@@ -101,6 +103,12 @@ jobs:
             for (const branch of branches) {
               const name = branch.name
               if (name === 'main') continue
+
+              // During the PR dry-run, the branch executing this workflow is not
+              // merged yet by definition. Skip only that one transient head. On the
+              // main/push run it is no longer exempt and must satisfy the normal
+              // ancestry or exact-merged-PR checks before deletion.
+              if (dryRun && currentPrHead && name === currentPrHead) continue
 
               let reason = null
               let compare = null
