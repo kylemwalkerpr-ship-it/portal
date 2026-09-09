@@ -2,13 +2,15 @@
 'use client'
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { Card, Btn, Badge } from '../design/shared'
+import { Btn, Badge } from '../design/shared'
 import { T } from './tokens'
+
+const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
 
 const drawerOverlay: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0,0,0,0.5)',
+  background: 'rgba(15,23,42,0.46)',
   zIndex: 1000,
   display: 'flex',
   alignItems: 'flex-end',
@@ -16,48 +18,52 @@ const drawerOverlay: CSSProperties = {
 
 const drawerContent: CSSProperties = {
   width: '100%',
-  maxWidth: '480px',
+  maxWidth: '520px',
   margin: '0 auto',
   background: T.vellum,
-  borderTopLeftRadius: '20px',
-  borderTopRightRadius: '20px',
-  maxHeight: '90vh',
+  borderTopLeftRadius: 20,
+  borderTopRightRadius: 20,
+  maxHeight: '92dvh',
   overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
+  fontFamily: DISCOVERY_FONT,
 }
 
 const drawerHeader: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '20px',
+  padding: '20px 22px',
   borderBottom: `1px solid ${T.rule}`,
 }
 
 const drawerTitle: CSSProperties = {
-  fontSize: '18px',
-  fontWeight: 700,
+  fontSize: 19,
+  fontWeight: 720,
+  letterSpacing: '-0.015em',
   margin: 0,
   color: T.ink,
 }
 
 const drawerBody: CSSProperties = {
   flex: 1,
+  minHeight: 0,
   overflow: 'auto',
-  padding: '20px',
+  padding: 22,
 }
 
 const drawerFooter: CSSProperties = {
-  padding: '20px',
+  padding: 18,
   borderTop: `1px solid ${T.rule}`,
   display: 'flex',
-  gap: '12px',
+  gap: 12,
+  background: T.vellum,
 }
 
 const closeButton: CSSProperties = {
-  width: '32px',
-  height: '32px',
+  width: 36,
+  height: 36,
   borderRadius: '50%',
   border: `1px solid ${T.rule}`,
   background: T.paper2,
@@ -66,7 +72,7 @@ const closeButton: CSSProperties = {
   justifyContent: 'center',
   cursor: 'pointer',
   color: T.ink,
-  fontSize: '18px',
+  fontSize: 20,
 }
 
 interface FilterDrawerProps {
@@ -79,27 +85,28 @@ interface FilterDrawerProps {
 }
 
 export function FilterDrawer({ isOpen, onClose, children, onApply, onClear, hasActiveFilters }: FilterDrawerProps) {
+  React.useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   return (
-    <div style={drawerOverlay} onClick={onClose}>
-      <div style={drawerContent} onClick={e => e.stopPropagation()}>
+    <div className="ys-filter-drawer" style={drawerOverlay} onClick={onClose} role="presentation">
+      <div style={drawerContent} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Marketplace filters">
         <div style={drawerHeader}>
-          <h2 style={drawerTitle}>Filters</h2>
-          <button onClick={onClose} style={closeButton} aria-label="Close">
-            ×
-          </button>
+          <h2 style={drawerTitle}>All filters</h2>
+          <button onClick={onClose} style={closeButton} aria-label="Close filters">×</button>
         </div>
         <div style={drawerBody}>{children}</div>
         <div style={drawerFooter}>
-          {hasActiveFilters && (
-            <Btn variant="secondary" onClick={onClear}>
-              Clear all
-            </Btn>
-          )}
-          <Btn variant="primary" onClick={onApply} style={{ flex: 1 }}>
-            Apply Filters
-          </Btn>
+          {hasActiveFilters && <Btn variant="secondary" onClick={onClear}>Clear all</Btn>}
+          <Btn variant="primary" onClick={onApply} style={{ flex: 1 }}>Show results</Btn>
         </div>
       </div>
     </div>
@@ -115,83 +122,88 @@ interface SortDropdownProps {
 export function SortDropdown({ value, onChange, options }: SortDropdownProps) {
   const [open, setOpen] = React.useState(false)
   const dropdownRef = React.useRef<HTMLDivElement>(null)
-
-  const selectedOption = options.find(opt => opt.value === value)
+  const selectedOption = options.find((opt) => opt.value === value)
 
   React.useEffect(() => {
+    if (!open) return
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setOpen(false)
     }
-
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside)
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
     }
-
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKey)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKey)
     }
   }, [open])
 
   return (
-    <div ref={dropdownRef} style={{ position: 'relative' }}>
+    <div ref={dropdownRef} className="ys-sort-dropdown" style={{ position: 'relative', fontFamily: DISCOVERY_FONT }}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          padding: '10px 16px',
-          background: T.vellum,
-          border: `1px solid ${T.rule}`,
-          borderRadius: '10px',
+          gap: 7,
+          minHeight: 42,
+          padding: '0 4px',
+          background: 'transparent',
+          border: 0,
           color: T.ink,
-          fontSize: '14px',
-          fontWeight: 600,
+          fontFamily: DISCOVERY_FONT,
+          fontSize: 14,
           cursor: 'pointer',
-          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
         }}
       >
-        <span>Sort:</span>
-        <span>{selectedOption?.label || 'Relevance'}</span>
-        <span style={{ fontSize: '10px', opacity: 0.6 }}>▼</span>
+        <span style={{ color: T.inkSoft, fontWeight: 500 }}>Sort by:</span>
+        <strong style={{ fontWeight: 720 }}>{selectedOption?.label || 'Recommended'}</strong>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       {open && (
         <div
+          role="listbox"
           style={{
             position: 'absolute',
             top: '100%',
             right: 0,
-            marginTop: '8px',
+            marginTop: 8,
             background: T.vellum,
             border: `1px solid ${T.rule}`,
-            borderRadius: '12px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            zIndex: 100,
-            minWidth: '200px',
-            overflow: 'hidden',
+            borderRadius: 12,
+            boxShadow: '0 18px 42px rgba(15,23,42,.14)',
+            zIndex: 180,
+            minWidth: 220,
+            padding: 6,
           }}
         >
-          {options.map(option => (
+          {options.map((option) => (
             <button
               key={option.value}
               type="button"
-              onClick={() => {
-                onChange(option.value)
-                setOpen(false)
-              }}
+              role="option"
+              aria-selected={value === option.value}
+              onClick={() => { onChange(option.value); setOpen(false) }}
               style={{
                 width: '100%',
-                padding: '12px 16px',
-                background: value === option.value ? `${T.indigo}10` : 'transparent',
-                border: 'none',
+                minHeight: 42,
+                padding: '0 11px',
+                background: value === option.value ? T.paper2 : 'transparent',
+                border: 0,
+                borderRadius: 8,
                 color: T.ink,
-                fontSize: '14px',
+                fontFamily: DISCOVERY_FONT,
+                fontSize: 14,
                 cursor: 'pointer',
-                fontFamily: 'inherit',
                 textAlign: 'left',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -199,9 +211,7 @@ export function SortDropdown({ value, onChange, options }: SortDropdownProps) {
               }}
             >
               <span>{option.label}</span>
-              {value === option.value && (
-                <span style={{ color: T.indigo, fontSize: '12px' }}>✓</span>
-              )}
+              {value === option.value && <span style={{ color: T.ink, fontSize: 12 }}>✓</span>}
             </button>
           ))}
         </div>
@@ -217,49 +227,9 @@ interface ViewToggleProps {
 
 export function ViewToggle({ view, onChange }: ViewToggleProps) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        background: T.vellum,
-        borderRadius: '10px',
-        padding: '4px',
-        border: `1px solid ${T.rule}`,
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => onChange('grid')}
-        style={{
-          padding: '8px 12px',
-          background: view === 'grid' ? T.vellum : 'transparent',
-          border: 'none',
-          borderRadius: '8px',
-          color: T.ink,
-          fontSize: '16px',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}
-        aria-label="Grid view"
-      >
-        ⊞
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('list')}
-        style={{
-          padding: '8px 12px',
-          background: view === 'list' ? T.vellum : 'transparent',
-          border: 'none',
-          borderRadius: '8px',
-          color: T.ink,
-          fontSize: '16px',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}
-        aria-label="List view"
-      >
-        ☰
-      </button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 2, border: `1px solid ${T.rule}`, borderRadius: 9, background: T.vellum }}>
+      <button type="button" onClick={() => onChange('grid')} style={{ width: 36, height: 34, display: 'grid', placeItems: 'center', background: view === 'grid' ? T.paper2 : 'transparent', border: 0, borderRadius: 7, color: T.ink, fontSize: 18, cursor: 'pointer' }} aria-label="Grid view" aria-pressed={view === 'grid'}>⊞</button>
+      <button type="button" onClick={() => onChange('list')} style={{ width: 36, height: 34, display: 'grid', placeItems: 'center', background: view === 'list' ? T.paper2 : 'transparent', border: 0, borderRadius: 7, color: T.ink, fontSize: 17, cursor: 'pointer' }} aria-label="List view" aria-pressed={view === 'list'}>☰</button>
     </div>
   )
 }
@@ -274,48 +244,33 @@ export function ActiveFilters({ filters, onRemove, onClearAll }: ActiveFiltersPr
   if (filters.length === 0) return null
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '8px',
-        alignItems: 'center',
-        padding: '12px 16px',
-        background: `${T.indigo}08`,
-        borderRadius: '12px',
-        marginBottom: '20px',
-      }}
-    >
-      <span style={{ fontSize: '13px', color: T.inkMid, fontWeight: 600 }}>Active filters:</span>
-      {filters.map(filter => (
-        <Badge
+    <div className="ys-active-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', margin: '-4px 0 16px', fontFamily: DISCOVERY_FONT }}>
+      {filters.map((filter) => (
+        <button
+          type="button"
           key={filter.id}
-          color="indigo"
+          onClick={() => onRemove(filter.id)}
+          aria-label={`Remove ${filter.label} filter`}
           style={{
-            display: 'flex',
+            minHeight: 34,
+            display: 'inline-flex',
             alignItems: 'center',
-            gap: '6px',
-            padding: '6px 10px',
+            gap: 7,
+            padding: '0 11px',
+            border: `1px solid ${T.rule}`,
+            borderRadius: 999,
+            background: T.vellum,
+            color: T.inkMid,
+            fontFamily: DISCOVERY_FONT,
+            fontSize: 12.5,
+            fontWeight: 600,
             cursor: 'pointer',
           }}
-          onClick={() => onRemove(filter.id)}
         >
-          {filter.label}
-          <span style={{ fontSize: '10px' }}>×</span>
-        </Badge>
+          {filter.label}<span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>×</span>
+        </button>
       ))}
-      <button
-        onClick={onClearAll}
-        style={{
-          fontSize: '13px',
-          color: T.indigo,
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          fontWeight: 600,
-          padding: '4px 8px',
-        }}
-      >
+      <button type="button" onClick={onClearAll} style={{ minHeight: 34, padding: '0 6px', border: 0, background: 'transparent', color: T.inkMid, fontFamily: DISCOVERY_FONT, fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
         Clear all
       </button>
     </div>
@@ -329,9 +284,9 @@ interface ResultsCountProps {
 
 export function ResultsCount({ total, showing }: ResultsCountProps) {
   return (
-    <div style={{ fontSize: '14px', color: T.inkMid }}>
-      <span style={{ fontWeight: 700, color: T.ink }}>{total}</span> services found
-      {showing < total && ` (showing ${showing})`}
+    <div className="ys-results-count" style={{ marginTop: 7, fontFamily: DISCOVERY_FONT, fontSize: 14, lineHeight: 1.4, color: T.inkSoft }}>
+      <span style={{ fontWeight: 520 }}>{total.toLocaleString('en-US')} result{total === 1 ? '' : 's'}</span>
+      {showing < total && <span style={{ opacity: .76 }}> · showing {showing.toLocaleString('en-US')}</span>}
     </div>
   )
 }
