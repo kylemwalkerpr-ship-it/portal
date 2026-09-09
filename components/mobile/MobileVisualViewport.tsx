@@ -34,13 +34,9 @@ const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-v
  * applies the pan as a compositor transform instead of feeding it back into
  * fixed-position layout.
  *
- * Safari's native controls above the keyboard are treated separately from the
- * keyboard-height heuristic. iOS 26 can focus the Messenger textarea and show
- * the bottom URL bar + input-assistant strip without reporting a VisualViewport
- * delta large enough to satisfy a software-keyboard threshold. The exact
- * Messenger composer focus state is therefore published synchronously on
- * <html>. CSS uses that focus signal to reserve native chrome; VisualViewport
- * still remains the source of truth for the app rectangle itself.
+ * Composer focus controls compact padding, not a guessed browser-chrome
+ * reserve. VisualViewport supplies the visible rectangle; subtracting another
+ * URL-bar/input-assistant allowance double-counts native UI and leaves a gap.
  */
 export default function MobileVisualViewport() {
   React.useLayoutEffect(() => {
@@ -109,7 +105,7 @@ export default function MobileVisualViewport() {
 
       // Preserve the keyboard-open marker for diagnostics and any consumers
       // that genuinely need keyboard-height evidence. Crucially, Messenger's
-      // native-chrome reserve no longer depends on this heuristic.
+      // compact composer padding no longer depends on this heuristic.
       if (!focused) unfocusedVisualHeight = visualHeight
       const keyboardOpen = isIOSWebKit
         && !standalone
@@ -162,10 +158,9 @@ export default function MobileVisualViewport() {
     window.addEventListener('pageshow', schedule)
     document.addEventListener('scroll', onChatScroll, true)
 
-    // Focus is the authoritative signal for Safari's native form chrome. Set it
-    // synchronously on focusin so CSS reserves the URL/input-assistant stack
-    // before iOS starts panning/animating the keyboard. On focusout, defer one
-    // frame so moving focus between Messenger controls cannot briefly collapse
+    // Publish focus synchronously so CSS uses compact composer padding during
+    // keyboard animation, without subtracting guessed native UI heights.
+    // On focusout, defer one frame so moving focus between Messenger controls cannot briefly collapse
     // the app rectangle.
     const onFocusIn = (event: FocusEvent) => {
       const target = event.target
