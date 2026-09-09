@@ -20,7 +20,7 @@ export default function ChatWidget() {
     }
 
     const script = document.createElement('script')
-    script.src = '/assistant.js?v=ysa-composer-hide-2'
+    script.src = '/assistant.js?v=ysa-launcher-pin-1'
     script.async = true
     script.defer = true
     script.dataset.yousafeAssistant = '1'
