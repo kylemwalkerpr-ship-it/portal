@@ -21,7 +21,7 @@ describe('mobile visual viewport contract', () => {
   })
 
   test('the final mobile cascade overrides legacy 100vh/100dvh dashboard heights', () => {
-    expect(css).toContain('body .yousafe-dashboard-shell')
+    expect(css).toContain('body .yousafe-dashboard-shell.yousafe-dashboard-shell.yousafe-dashboard-shell')
     expect(css).toContain('height: var(--ys-visual-viewport-height, 100dvh) !important')
     expect(css).toContain('min-height: var(--ys-visual-viewport-height, 100dvh) !important')
     expect(css).toContain('max-height: var(--ys-visual-viewport-height, 100dvh) !important')
