@@ -1,0 +1,286 @@
+/* Marketplace profile + gig mobile composition
+   ---------------------------------------------
+   This layer intentionally loads after the older marketplace mobile rules.
+   It fixes the shared seller-profile hero, review layouts, and the order in
+   which gig purchase/content sections are presented on phones.
+
+   The selectors are scoped to .cw-market and existing semantic page classes
+   so dashboard and messenger layouts are unaffected. */
+
+@media (max-width: 700px) {
+  /* ── Seller profile hero ─────────────────────────────────────────────── */
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 18px 16px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  /* The shared header is authored as a wrapping desktop flex row. Make its
+     identity area a deterministic two-column phone grid so the name never
+     gets squeezed into the 1–2-character column visible in the iPhone bug. */
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div {
+    display: grid !important;
+    grid-template-columns: 96px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 14px 16px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:first-child {
+    grid-column: 1 !important;
+    min-width: 0 !important;
+    width: 96px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:first-child > img,
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:first-child > div:first-child {
+    width: 96px !important;
+    height: 96px !important;
+    max-width: 96px !important;
+    max-height: 96px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(2) {
+    grid-column: 2 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(2) > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div h1 {
+    max-width: 100% !important;
+    font-size: clamp(23px, 6.5vw, 28px) !important;
+    line-height: 1.08 !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    hyphens: auto;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div p {
+    max-width: 100% !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(2) > div {
+    flex-wrap: wrap !important;
+    max-width: 100% !important;
+    gap: 8px 10px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(3) {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(3) > a,
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(3) > button {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:nth-child(3) button {
+    width: 100% !important;
+  }
+
+  /* Keep all seller-profile cards and service cards inside the phone box. */
+  .cw-market .ys-seller-profile-page [style*='minmax(280px, 1fr)'],
+  .cw-market .ys-seller-profile-page [style*='minmax(280px,1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cw-market .ys-seller-profile-page [style*='minmax(200px, 1fr)'],
+  .cw-market .ys-seller-profile-page [style*='minmax(200px,1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content,
+  .cw-market .ys-seller-profile-tab-content > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word;
+  }
+
+  /* ── Reviews tab ───────────────────────────────────────────────────── */
+  /* ReviewComponents uses a desktop 280px filter sidebar plus a flexible
+     review column. Hide the dense desktop filter rail on phones and give the
+     review stream the full viewport width; sorting remains available. */
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='align-items: flex-start'],
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='alignItems: flex-start'] {
+    flex-direction: column !important;
+    gap: 14px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='align-items: flex-start'] > [style*='width: 280px'],
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='alignItems: flex-start'] > [style*='width: 280px'] {
+    display: none !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='align-items: flex-start'] > [style*='flex: 1'],
+  .cw-market .ys-seller-profile-tab-content [style*='gap: 32px'][style*='alignItems: flex-start'] > [style*='flex: 1'] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='justify-content: space-between'][style*='margin-bottom: 24px'] {
+    align-items: stretch !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content select {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='padding: 48px 24px'] {
+    padding: 32px 12px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content [style*='padding: 24px'] {
+    padding: 16px !important;
+  }
+
+  /* ── Gig detail mobile reading + purchase hierarchy ───────────────── */
+  /* Flatten the two desktop columns into one phone flow. display:contents is
+     used only at phone width so pricing/order cards can sit near the top of
+     the buying journey instead of falling below FAQ/reviews. */
+  .cw-market .ys-content-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-content-layout > div:first-child,
+  .cw-market .ys-content-layout > .ys-sidebar {
+    display: contents !important;
+  }
+
+  .cw-market .ys-content-layout > div:first-child > *,
+  .cw-market .ys-content-layout > .ys-sidebar > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Base service sequence: gallery → title/pitch → package → order → seller
+     → description → related services → reviews → FAQ. Related services are a
+     discovery footer; FAQ remains the last substantive service section. */
+  .cw-market .ys-content-layout > div:first-child > :nth-child(1) { order: 10; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(2) { order: 20; }
+  .cw-market .ys-sidebar > :nth-child(2) { order: 30; }
+  .cw-market .ys-sidebar > :nth-child(3) { order: 31; }
+  .cw-market .ys-sidebar > :nth-child(1) { order: 40; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(3) { order: 50; }
+
+  /* Similar Services is the card containing marketplace gig links. */
+  .cw-market .ys-content-layout > div:first-child > div:has(a[href^='/marketplace/gigs/']) {
+    order: 80;
+  }
+
+  /* ReviewsSection is the only main-flow card with an h2 descendant. */
+  .cw-market .ys-content-layout > div:first-child > div:has(h2) {
+    order: 90;
+  }
+
+  /* FAQSection has a direct h3 followed by rows whose direct child is a
+     button. Keep it at the bottom of substantive gig content. */
+  .cw-market .ys-content-layout > div:first-child > div:has(> h3 + div > div > button) {
+    order: 100;
+  }
+
+  .cw-market .ys-content-layout h1,
+  .cw-market .ys-content-layout h2,
+  .cw-market .ys-content-layout h3,
+  .cw-market .ys-content-layout p,
+  .cw-market .ys-content-layout li,
+  .cw-market .ys-content-layout td,
+  .cw-market .ys-content-layout th {
+    max-width: 100% !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .cw-market .ys-content-layout [style*='minmax(220px, 1fr)'],
+  .cw-market .ys-content-layout [style*='minmax(220px,1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cw-market .ys-content-layout [style*='overflow-x: auto'],
+  .cw-market .ys-content-layout [style*='overflowX: auto'] {
+    width: 100% !important;
+    max-width: 100% !important;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Reviews on gig pages already hide filters; make header/card geometry
+     robust at narrow widths as well. */
+  .cw-market .ys-content-layout [style*='gap: 32px'][style*='align-items: flex-start'],
+  .cw-market .ys-content-layout [style*='gap: 32px'][style*='alignItems: flex-start'] {
+    flex-direction: column !important;
+    gap: 14px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-content-layout [style*='gap: 32px'][style*='align-items: flex-start'] > *,
+  .cw-market .ys-content-layout [style*='gap: 32px'][style*='alignItems: flex-start'] > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-content-layout select {
+    max-width: 100% !important;
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div {
+    grid-template-columns: 82px minmax(0, 1fr) !important;
+    gap: 12px 14px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:first-child {
+    width: 82px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:first-child > img,
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div > div > div:first-child > div:first-child {
+    width: 82px !important;
+    height: 82px !important;
+    max-width: 82px !important;
+    max-height: 82px !important;
+  }
+
+  .cw-market .ys-seller-profile-page > .ys-seller-profile-breadcrumb + div h1 {
+    font-size: clamp(22px, 6.6vw, 25px) !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content {
+    padding: 10px !important;
+  }
+
+  .cw-market .ys-content-layout [style*='padding: 24px'],
+  .cw-market .ys-content-layout [style*='padding: 20px'] {
+    padding: 14px !important;
+  }
+}
