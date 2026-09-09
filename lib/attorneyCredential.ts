@@ -23,6 +23,13 @@ export type CredentialPair = {
   bar_state?: string | null
 }
 
+export type ResolvedCredentialPair = {
+  credential_type: string | null
+  bar_number: string | null
+  show_bar_number: boolean
+  bar_state: string | null
+}
+
 // Reads the editable columns off the attorneys row. Returns nulls (not an
 // error) if the columns don't exist yet — i.e. before the migration has run
 // — so callers degrade to the application fallback instead of 500ing.
@@ -96,18 +103,26 @@ export async function fetchAttorneyCredentialColumnsBatch(
 
 // Editable attorneys value wins per-field; falls back to the approved
 // application. Skips the fallback query entirely once both editable values
-// are present (the common post-migration case).
+// are present (the common post-migration case). The resolved shape is fully
+// normalized so callers never have to handle an optional display flag.
 export async function resolveAttorneyCredential(
   db: SupabaseClient,
   profileId: string,
-): Promise<CredentialPair> {
+): Promise<ResolvedCredentialPair> {
   const editable = await fetchAttorneyCredentialColumns(db, profileId)
-  if (editable.credential_type && editable.bar_number) return editable
+  if (editable.credential_type && editable.bar_number) {
+    return {
+      credential_type: editable.credential_type,
+      bar_number: editable.bar_number,
+      show_bar_number: editable.show_bar_number !== false,
+      bar_state: editable.bar_state ?? null,
+    }
+  }
   const approved = await fetchApprovedApplicationCredential(db, profileId)
   return {
     credential_type: editable.credential_type ?? approved.credential_type,
     bar_number: editable.bar_number ?? approved.bar_number,
-    show_bar_number: editable.show_bar_number ?? true,
+    show_bar_number: editable.show_bar_number !== false,
     bar_state: editable.bar_state ?? null,
   }
 }
