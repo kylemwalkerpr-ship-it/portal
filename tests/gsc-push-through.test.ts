@@ -35,6 +35,7 @@ describe('classifyGscQuery — locked snapshot cases', () => {
     ['"stockton room and meal plan rates final" pacific', { impressions: 22, clicks: 0, position: 6 }],
     ['"issued by yale university" weekly new haven', { impressions: 15, clicks: 0, position: 5 }],
     ['pacific.edu/sites/default/files/rates.pdf', { impressions: 11, clicks: 0, position: 3 }],
+    ['"fy27 stk housing rates" pacific pdf', { impressions: 39, clicks: 0, position: 1 }],
   ]
 
   it.each(junkCases)('flags %s as junk even at top positions', (term, row) => {

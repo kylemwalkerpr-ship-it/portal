@@ -9,10 +9,11 @@ import {
   SNAPSHOT_MERGE_MIN_VIABLE,
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isJunkQuery, sanitizeDemandTerm } from '@/lib/seoFactory/queryNoise'
 import { loadPersistedGscWindow, queriesFromPersistedGscRows } from '@/lib/seoFactory/gscRows'
 import { loadShippedCoverage } from '@/lib/seoEngine/shippedCoverage'
 import { verdictFor } from '@/lib/seoEngine/authorityPlaybook'
+import { classifyCoverageIntent } from '@/lib/seoEngine/coverageIntent'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
 import { filterRegenerationCandidates, type RegenerationFilters } from '@/lib/seoEngine/intelligence'
@@ -21,7 +22,7 @@ import { leanRanking, rankingForOpportunity } from '@/lib/seoEngine/rankingModel
 export const runtime = 'nodejs'
 
 function normalizedTopic(value: unknown): string {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return sanitizeDemandTerm(String(value || '')).toLowerCase()
 }
 
 function stableHash(value: string): number {
@@ -60,7 +61,13 @@ function selectVariedOpportunities(
   }
   for (const item of rotated.filter((candidate) => eligible.includes(candidate))) {
     if (selected.length >= limit) break
-    if (selected.some((chosen) => normalizedTopic(chosen.topic) === normalizedTopic(item.topic))) continue
+    const topic = normalizedTopic(item.topic)
+    if (selected.some((chosen) => normalizedTopic(chosen.topic) === topic)) continue
+    const paraphraseOfKept = selected.some((chosen) => {
+      const kind = classifyCoverageIntent(String(item.topic || ''), String(chosen.topic || ''))
+      return kind === 'exact' || kind === 'paraphrase' || kind === 'section_expand'
+    })
+    if (paraphraseOfKept) continue
     selected.push(item)
   }
   return selected
@@ -144,7 +151,7 @@ export async function POST(request: NextRequest) {
     if (live.configured && live.topQueries.length > 0) {
       source = 'live'
       queries = live.topQueries.map((q) => ({
-        term: q.key,
+        term: sanitizeDemandTerm(q.key),
         impressions: q.impressions,
         clicks: q.clicks,
         ctr: q.ctr,
@@ -163,7 +170,7 @@ export async function POST(request: NextRequest) {
       const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
       snapshotMeta = { generatedAt: snap.generatedAt }
       const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
-        term: q.term || q.url || '',
+        term: sanitizeDemandTerm(q.term || q.url || ''),
         impressions: q.impressions,
         clicks: q.clicks,
         ctr: q.ctr,
@@ -199,7 +206,7 @@ export async function POST(request: NextRequest) {
         const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
         snapshotMeta = snapshotMeta || { generatedAt: snap.generatedAt }
         const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
-          term: q.term || q.url || '',
+          term: sanitizeDemandTerm(q.term || q.url || ''),
           impressions: q.impressions,
           clicks: q.clicks,
           ctr: q.ctr,

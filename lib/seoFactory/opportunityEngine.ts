@@ -21,10 +21,10 @@
  *   cannibalization 2+ pages already target it — do NOT create another
  */
 
-import { isJunkQuery, classifyGscQuery } from './queryNoise'
+import { classifyCoverageIntent, collapseParaphraseDemand, isSameIntentOwner, type CoverageKind } from '@/lib/seoEngine/coverageIntent'
+import { isJunkQuery, classifyGscQuery, sanitizeDemandTerm } from './queryNoise'
 import { matchStrikeSeed } from './strikeSeeds'
 import { discoverCardTitle, isFillerTitle } from '@/lib/seoEngine/titleLab'
-import { classifyCoverageIntent, isSameIntentOwner, type CoverageKind } from '@/lib/seoEngine/coverageIntent'
 
 /**
  * Seed strike-distance targets from the locked 2026-08-18 GSC snapshot.
@@ -260,14 +260,17 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
   // queries, just low-signal, and count toward the mix (Phase B scoring).
   const byTerm = new Map<string, OpportunityQuery>()
   for (const q of queries) {
-    const term = (q.term || '').trim().toLowerCase()
+    const term = sanitizeDemandTerm(q.term || '').toLowerCase()
     if (!term || term.length < 3) continue
     if (/\byousafe\b/i.test(term)) continue
     if (classifyGscQuery(term, { impressions: q.impressions, clicks: q.clicks, position: q.position }) === 'junk') continue
     const existing = byTerm.get(term)
-    if (!existing || q.impressions > existing.impressions) byTerm.set(term, q)
+    const next = { ...q, term }
+    if (!existing || q.impressions > existing.impressions) byTerm.set(term, next)
   }
-  const pool = [...byTerm.values()].sort((a, b) => b.impressions - a.impressions).slice(0, limit * 3)
+  const pool = collapseParaphraseDemand(
+    [...byTerm.values()].sort((a, b) => b.impressions - a.impressions),
+  ).slice(0, limit * 3)
 
   // Coverage fingerprint from the existing content inventory
   const coverageTokens: Array<{ raw: string; url: string; toks: Set<string> }> = coverage

@@ -30,7 +30,9 @@ const FILLER = new Set([
   'prep', 'questions', 'answers', 'faqs', 'faq',
   // Agency names are not a distinct SERP job — "express entry canada cic"
   // is the Express Entry pillar, not a new CIC spoke.
-  'cic', 'ircc', 'uscis', 'ukvi',
+  'cic', 'ircc', 'uscis', 'ukvi', 'dibp', 'dha',
+  // Weak extras that do not change the SERP job ("marriage based green card").
+  'based',
 ])
 
 /** Tokens that change the SERP job-to-be-done. Extra ones = a spoke, not a refresh. */
@@ -62,14 +64,21 @@ const AUDIENCE_GEO = new Set([
   'nigerians', 'nigeria', 'indians', 'india', 'filipinos', 'philippines',
   'kenyans', 'kenya', 'pakistan', 'pakistani', 'ghana', 'ghanaians',
   'bangladesh', 'bangladeshi', 'nepal', 'nepali', 'china', 'chinese',
-  'students', 'graduates', 'founders', 'nurses', 'doctors',
+  'students', 'student', 'graduates', 'founders', 'nurses', 'doctors',
   'from',
 ])
+
+function foldSpelling(token: string): string {
+  if (token === 'dependant') return 'dependent'
+  if (token === 'dependants') return 'dependents'
+  return token
+}
 
 function contentTokens(term: string): string[] {
   return normalizePlannerTopic(term)
     .replace(/-/g, '')
     .split(/\s+/)
+    .map(foldSpelling)
     .filter((t) => t.length >= 2 && !FILLER.has(t))
 }
 
@@ -211,4 +220,32 @@ export function bestOwnerMatch(
     if (better) best = { owner, kind, rank, shared, lengthGap, ownerLen }
   }
   return best ? { owner: best.owner, kind: best.kind } : null
+}
+
+const SAME_INTENT_FOR_DEMAND: CoverageKind[] = ['exact', 'paraphrase', 'section_expand']
+
+/**
+ * Collapse GSC/Ubersuggest demand variants that share one SERP intent
+ * (dependent ≈ dependant, "uk dependent visa" ≈ "student dependent visa uk")
+ * into the highest-impression representative. Spokes (requirements, fee, vs)
+ * stay — those are distinct URLs under the playbook.
+ */
+export function collapseParaphraseDemand<T extends { term?: string; impressions?: number }>(
+  rows: T[],
+): T[] {
+  const sorted = [...rows].sort(
+    (a, b) => (Number(b.impressions) || 0) - (Number(a.impressions) || 0),
+  )
+  const kept: T[] = []
+  for (const row of sorted) {
+    const term = String(row.term || '').trim()
+    if (!term) continue
+    const dup = kept.some((existing) => {
+      const kind = classifyCoverageIntent(term, String(existing.term || ''))
+      return SAME_INTENT_FOR_DEMAND.includes(kind)
+    })
+    if (dup) continue
+    kept.push(row)
+  }
+  return kept
 }

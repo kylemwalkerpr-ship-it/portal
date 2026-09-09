@@ -10,7 +10,7 @@
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { normalizePlannerTopic } from './planner'
 import { discoverCardTitle, isFillerTitle } from './titleLab'
-import { bestOwnerMatch, isSameIntentOwner, type CoverageKind } from './coverageIntent'
+import { bestOwnerMatch, classifyCoverageIntent, isSameIntentOwner, type CoverageKind } from './coverageIntent'
 
 export interface UbersuggestSignalRow {
   term: string
@@ -92,6 +92,15 @@ export function ubersuggestSignalsToDiscover(
       const ownerKey = normalizePlannerTopic(match.owner)
       if (seenOwnerRefresh.has(ownerKey)) continue
       seenOwnerRefresh.add(ownerKey)
+    }
+    // Collapse uncovered demand variants that share one SERP intent
+    // (dependent ≈ dependant visa uk) — spokes still pass.
+    if (!spoke) {
+      const paraphraseOfKept = out.some((existing) => {
+        const rel = classifyCoverageIntent(row.term, existing.topic)
+        return rel === 'exact' || rel === 'paraphrase' || rel === 'section_expand'
+      })
+      if (paraphraseOfKept) continue
     }
     const covered = sameOwner || expandOwner
     const play: 'content_gap' | 'refresh' = spoke || !covered ? 'content_gap' : 'refresh'

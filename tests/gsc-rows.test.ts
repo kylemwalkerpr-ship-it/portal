@@ -210,6 +210,25 @@ describe('queriesFromPersistedGscRows', () => {
     expect(out[1].page).toContain('breaking-a-lease-international-student-us')
     expect(out[1].impressions).toBe(76)
   })
+
+  it('decodes plus-encoding, drops fy27 PDF leftovers, and collapses visa paraphrases', () => {
+    const out = queriesFromPersistedGscRows(
+      [
+        { query: 'dependent visa uk', page: '/a', impressions: 97, clicks: 0, ctr: 0, position: 80 },
+        { query: 'uk dependent visa', page: '/b', impressions: 74, clicks: 0, ctr: 0, position: 76 },
+        { query: 'student dependant visa uk', page: '/c', impressions: 73, clicks: 0, ctr: 0, position: 91 },
+        { query: 'child dependant visa uk requirements', page: '/d', impressions: 25, clicks: 0, ctr: 0, position: 84 },
+        { query: '"fy27 stk housing rates" pacific pdf', page: '/e', impressions: 39, clicks: 0, ctr: 0, position: 1 },
+        { query: 'international+student+storage+cornell', page: '/f', impressions: 52, clicks: 0, ctr: 0, position: 27 },
+      ],
+      isJunkQuery,
+    )
+    expect(out.every((q) => !/fy27|pdf/i.test(q.term))).toBe(true)
+    expect(out.some((q) => q.term === 'international student storage cornell')).toBe(true)
+    expect(out.filter((q) => /dependent|dependant/.test(q.term) && !/requirements/.test(q.term))).toHaveLength(1)
+    expect(out.some((q) => q.term === 'dependent visa uk')).toBe(true)
+    expect(out.some((q) => q.term === 'child dependant visa uk requirements')).toBe(true)
+  })
 })
 
 describe('loadPersistedGscWindow', () => {
