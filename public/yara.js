@@ -8,7 +8,7 @@
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   if (window.__youSafeAssistantMounted) return
   var script = document.createElement('script')
-  script.src = 'https://portal.yousafeconsultancy.com/assistant.js'
+  script.src = 'https://portal.yousafeconsultancy.com/assistant.js?v=ysa-composer-hide-2'
   script.async = true
   script.defer = true
   script.dataset.yousafeAssistant = '1'

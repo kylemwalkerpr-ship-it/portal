@@ -106,9 +106,12 @@ describe('premium marketplace mobile navigation', () => {
 
   test('freezes the page and hides the actual injected assistant while navigation is open', () => {
     expect(css).toContain('body:has(#ys-market-mobile-menu)')
+    expect(css).toContain('body:has(.ys-market-chat-overlay)')
+    expect(css).toContain('body:has(.ys-market-chat-composer)')
     expect(css).toContain('.ysa-launcher')
     expect(css).toContain('.ysa-panel')
     expect(css).toContain('overflow: hidden !important;')
+    expect(css).toContain('display: none !important;')
     expect(css).toContain('visibility: hidden !important;')
     expect(css).toContain('pointer-events: none !important;')
     expect(css).not.toContain("button[aria-label='Open chat']")
