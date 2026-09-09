@@ -7,11 +7,13 @@ import path from 'node:path'
 describe('Marketplace Fiverr-grade copy rewrite contract', () => {
   const root = process.cwd()
   const scriptPath = path.join(root, 'scripts/rewrite-marketplace-copy.mjs')
+  const runnerPath = path.join(root, 'scripts/run-marketplace-copy-rewrite.mjs')
   const imageGuardPath = path.join(root, 'scripts/verify-marketplace-image-preservation.mjs')
   const workflowPath = path.join(root, '.github/workflows/marketplace-copy-rewrite.yml')
 
   it('is valid JavaScript and keeps published slugs immutable', () => {
     execFileSync(process.execPath, ['--check', scriptPath], { stdio: 'pipe' })
+    execFileSync(process.execPath, ['--check', runnerPath], { stdio: 'pipe' })
     const source = fs.readFileSync(scriptPath, 'utf8')
     expect(source).toContain(".eq('slug', gig.slug)")
     expect(source).toContain('if (updated.slug !== gig.slug)')
@@ -51,6 +53,18 @@ describe('Marketplace Fiverr-grade copy rewrite contract', () => {
     expect(source).toContain('FINAL AUDIT PASS')
   })
 
+  it('loads provider credentials from the production vault and resumes across quality providers', () => {
+    const runner = fs.readFileSync(runnerPath, 'utf8')
+    expect(runner).toContain(".from('ai_provider_keys')")
+    expect(runner).toContain("id: 'entrim-deepseek'")
+    expect(runner).toContain("model: 'deepseek-ai/DeepSeek-V4-Flash'")
+    expect(runner).toContain("id: 'entrim-qwen-27b'")
+    expect(runner).toContain("id: 'runbios-glm-53'")
+    expect(runner).toContain("model: 'glm-5.3'")
+    expect(runner).toContain("XAI_API_KEY: ''")
+    expect(runner).toContain('switching providers and resuming completed rows')
+  })
+
   it('runs only after a successful production deploy with the durable one-time marker enabled', () => {
     const workflow = fs.readFileSync(workflowPath, 'utf8')
     expect(workflow).toContain('workflow_run:')
@@ -60,6 +74,7 @@ describe('Marketplace Fiverr-grade copy rewrite contract', () => {
     expect(workflow).toContain('.github/marketplace-copy-rewrite.enabled')
     expect(workflow).toContain("steps.marker.outputs.enabled == 'true'")
     expect(workflow).toContain('MARKETPLACE_COPY_REWRITE')
+    expect(workflow).toContain('node scripts/run-marketplace-copy-rewrite.mjs')
     const imageChecks = workflow.match(/node scripts\/verify-marketplace-image-preservation\.mjs/g) || []
     expect(imageChecks).toHaveLength(2)
     expect(workflow).toContain('Verify gig images before copy rewrite')
