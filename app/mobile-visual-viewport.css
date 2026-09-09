@@ -12,10 +12,11 @@
    therefore fixed to VisualViewport.offsetTop and sized from VisualViewport.height.
 
    Safari has a second keyboard quirk: with the bottom URL bar enabled,
-   VisualViewport.height can still include the strip occupied by the URL bar
-   after it moves above the keyboard. The coordinator marks that exact state on
-   <html>. We then subtract the browser's dynamic-chrome delta (100lvh-100svh)
-   so the composer ends above Safari UI rather than underneath it.
+   VisualViewport.height can still include native UI that sits above the
+   keyboard. That native stack has TWO pieces while a form control is focused:
+   the bottom browser chrome and Safari's form/input-assistant strip. The
+   coordinator marks that exact state on <html>. We reserve both pieces so the
+   Messenger composer is always inside the actually visible web-content area.
 */
 
 @media (max-width: 768px) {
@@ -24,15 +25,23 @@
     --ys-visual-viewport-block-size: 100dvh;
     --ys-visual-viewport-offset-top: 0px;
     --ys-ios-keyboard-browser-chrome: 0px;
+    --ys-ios-keyboard-input-assistant: 0px;
+    --ys-ios-keyboard-native-occlusion: calc(
+      var(--ys-ios-keyboard-browser-chrome, 0px) + var(--ys-ios-keyboard-input-assistant, 0px)
+    );
   }
 
   html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true'] {
+    /* Bottom URL bar + the native previous/next/done input assistant. */
     --ys-ios-keyboard-browser-chrome: 52px;
+    --ys-ios-keyboard-input-assistant: 44px;
   }
 
   @supports (height: 100svh) and (height: 100lvh) {
     html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true'] {
-      --ys-ios-keyboard-browser-chrome: clamp(52px, calc(100lvh - 100svh), 120px);
+      /* The lvh/svh delta tracks Safari's dynamic browser chrome. Keep it
+         bounded because the separate 44px input assistant is added below. */
+      --ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px);
     }
   }
 
@@ -63,9 +72,9 @@
     display: flex !important;
     width: 100vw !important;
     max-width: 100vw !important;
-    height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important;
-    min-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important;
-    max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-browser-chrome, 0px))) !important;
+    height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important;
+    min-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important;
+    max-height: max(1px, calc(var(--ys-visual-viewport-block-size, 100dvh) - var(--ys-ios-keyboard-native-occlusion, 0px))) !important;
     margin: 0 !important;
     overflow: hidden !important;
     transform: none !important;
@@ -102,12 +111,25 @@
   }
 
   body .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] [data-chat-canvas] {
-    flex: 1 1 auto !important;
+    /* Zero flex-basis is deliberate: header + composer get their intrinsic
+       height first, and only the remaining pixels belong to message history. */
+    flex: 1 1 0% !important;
     min-height: 0 !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  body .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-composer {
+    box-sizing: border-box !important;
+    position: relative !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 58px !important;
+    overflow: visible !important;
+    z-index: 40 !important;
   }
 
   body .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp {
@@ -116,12 +138,15 @@
     inset: auto !important;
     flex: 0 0 auto !important;
     width: 100% !important;
-    min-height: 0 !important;
+    min-height: 58px !important;
     margin: 0 !important;
+    overflow: visible !important;
   }
 
   html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-input:focus)
     .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-row {
+    /* Keyboard is open: Safari owns the home-indicator and native assistant
+       spacing, so the web composer only needs its own compact breathing room. */
     padding-bottom: 8px !important;
   }
 
