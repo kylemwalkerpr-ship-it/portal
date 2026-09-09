@@ -1,0 +1,172 @@
+name: One-time stale branch cleanup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/one-time-branch-cleanup-trigger'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete only audited stale branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+
+          const repository = process.env.GITHUB_REPOSITORY
+          const [owner] = repository.split('/')
+          const token = process.env.GH_TOKEN
+          if (!repository || !owner || !token) throw new Error('Missing GitHub workflow context')
+
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${token}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'yousafe-one-time-branch-cleanup',
+          }
+
+          async function api(path, options = {}) {
+            const response = await fetch(`https://api.github.com${path}`, {
+              ...options,
+              headers: { ...headers, ...(options.headers || {}) },
+            })
+            const text = await response.text()
+            let body = null
+            if (text) {
+              try { body = JSON.parse(text) } catch { body = text }
+            }
+            if (!response.ok) {
+              const error = new Error(`${options.method || 'GET'} ${path} -> ${response.status}`)
+              error.status = response.status
+              error.body = body
+              throw error
+            }
+            return body
+          }
+
+          // These branches were manually audited before this cleanup. They either
+          // contain superseded implementations, were folded into a later merged PR,
+          // or contain stale generated repair commits that must not be revived.
+          const auditedSuperseded = new Set([
+            'fix/final-main-typecheck',
+            'fix/final-main-typecheck-v2',
+            'fix/main-typecheck-deploy',
+            'fix/post-merge-tsci',
+            'fix/ios-messenger-browser-chrome-clearance',
+            'fix/ios-messenger-keyboard-viewport',
+            'fix/marketplace-mobile-profiles-gig-flow',
+            'harden-yousafe-ai',
+            'harden-yousafe-ai-reliability',
+            'marketplace/fiverr-grade-copy-rewrite',
+            'release/marketplace-url-cleanup-final',
+            'seo/legacy-marketplace-slug-migration',
+            'seo/orphan-repair-1786100606342',
+            'seo/orphan-repair-1786809705788',
+            'seo/orphan-repair-1786868733463',
+            'seo/orphan-repair-1788800577704',
+            'fix/marketplace-mobile-bottom-gap',
+            'perf/marketplace-first-paint',
+            'fix/marketplace-category-copy',
+            'fix/marketplace-footer-coverage',
+          ])
+
+          async function main() {
+            const mainBranch = await api(`/repos/${repository}/branches/main`)
+            const mainSha = mainBranch.commit.sha
+            const branches = await api(`/repos/${repository}/branches?per_page=100`)
+
+            const deleted = []
+            const preserved = []
+
+            for (const branch of branches) {
+              const name = branch.name
+              if (name === 'main') continue
+
+              let reason = null
+              let compare = null
+              try {
+                compare = await api(`/repos/${repository}/compare/${mainSha}...${branch.commit.sha}`)
+              } catch (error) {
+                preserved.push(`${name} — compare failed (${error.status || 'unknown'})`)
+                continue
+              }
+
+              // If the branch has no commits outside main, it is fully integrated.
+              if (compare.ahead_by === 0) {
+                reason = 'fully contained in main'
+              }
+
+              // Squash merges are not ancestors of main. For those, require a merged
+              // PR whose recorded head SHA is exactly the current branch tip.
+              if (!reason) {
+                const query = new URLSearchParams({
+                  head: `${owner}:${name}`,
+                  state: 'all',
+                  per_page: '100',
+                })
+                const prs = await api(`/repos/${repository}/pulls?${query}`)
+                const exactMerged = prs.find((pr) => pr.merged_at && pr.head?.sha === branch.commit.sha)
+                if (exactMerged) reason = `merged in PR #${exactMerged.number}`
+              }
+
+              // Only branches explicitly reviewed during this cleanup may bypass the
+              // ancestry/exact-merged checks.
+              if (!reason && auditedSuperseded.has(name)) {
+                reason = 'manually audited as superseded/stale'
+              }
+
+              if (!reason) {
+                preserved.push(`${name} — ${compare.ahead_by} unexplained commit(s) ahead of main`)
+                continue
+              }
+
+              const refPath = name.split('/').map(encodeURIComponent).join('/')
+              try {
+                await api(`/repos/${repository}/git/refs/heads/${refPath}`, { method: 'DELETE' })
+                deleted.push(`${name} — ${reason}`)
+              } catch (error) {
+                preserved.push(`${name} — deletion failed (${error.status || 'unknown'})`)
+              }
+            }
+
+            const summary = [
+              '# One-time branch cleanup',
+              '',
+              `Deleted: ${deleted.length}`,
+              `Preserved for manual review: ${preserved.length}`,
+              '',
+              '## Deleted',
+              ...(deleted.length ? deleted.map((x) => `- ${x}`) : ['- None']),
+              '',
+              '## Preserved',
+              ...(preserved.length ? preserved.map((x) => `- ${x}`) : ['- None']),
+              '',
+            ].join('\n')
+
+            console.log(summary)
+            if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
+
+            // Fail closed if anything remains unexplained. The job still records what
+            // it safely deleted, but we will inspect preserved refs before claiming a
+            // fully clean repository.
+            if (preserved.length) {
+              throw new Error(`${preserved.length} branch(es) preserved for manual review`)
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error)
+            process.exit(1)
+          })
+          NODE
