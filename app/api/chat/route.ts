@@ -12,10 +12,18 @@ import {
   normalizeAssistantOrigin,
 } from '@/lib/centralAssistantKnowledge'
 import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
+import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
 import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
+const VIEWER_CONTEXT_BUDGET_MS = 1_500
+
+type ViewerSnapshot = {
+  context: string
+  visitor: SupportVisitor | null
+  role: string | null
+}
 
 function corsHeaders(req: Request) {
   const origin = req.headers.get('origin') || ''
@@ -24,6 +32,7 @@ function corsHeaders(req: Request) {
     headers['Access-Control-Allow-Origin'] = origin
     headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
     headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    headers['Access-Control-Expose-Headers'] = 'Server-Timing'
     headers['Access-Control-Max-Age'] = '86400'
   }
   return headers
@@ -61,7 +70,61 @@ function asVisitor(input: unknown): SupportVisitor | null {
   }
 }
 
+async function loadViewerSnapshot(): Promise<ViewerSnapshot> {
+  try {
+    const clerkUserId = await getClerkUserId()
+    if (!clerkUserId) return { context: '', visitor: null, role: null }
+
+    const db = createSupabaseAdminClient()
+    const { data: profile } = await db
+      .from('profiles')
+      .select('full_name, email, role, status')
+      .eq('clerk_user_id', clerkUserId)
+      .maybeSingle()
+    if (!profile) return { context: '', visitor: null, role: null }
+
+    const name = profile.full_name?.trim() || null
+    const email = profile.email?.trim() || null
+    const role = profile.role === 'client' ? 'student' : profile.role
+    const bits = [
+      name ? `Name: ${name}` : null,
+      role ? `Role: ${role}` : null,
+      profile.status ? `Account status: ${profile.status}` : null,
+    ].filter(Boolean)
+
+    return {
+      context: bits.length > 0 ? `\n\n# CURRENT VIEWER\n${bits.join('\n')}` : '',
+      visitor: { name, email, phone: null },
+      role: role || null,
+    }
+  } catch {
+    return { context: '', visitor: null, role: null }
+  }
+}
+
+async function boundedViewerSnapshot(): Promise<ViewerSnapshot> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      loadViewerSnapshot(),
+      new Promise<ViewerSnapshot>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ context: '', visitor: null, role: null }),
+          VIEWER_CONTEXT_BUDGET_MS,
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+function timingHeader(parts: Array<[string, number]>): string {
+  return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
+}
+
 export async function POST(req: Request) {
+  const requestStartedAt = Date.now()
   let body: {
     messages?: unknown
     requestAgent?: unknown
@@ -90,47 +153,42 @@ export async function POST(req: Request) {
     )
   }
 
-  let viewerContext = ''
-  let viewerVisitor: SupportVisitor | null = null
-  let viewerRole: string | null = null
-  let db: any = null
-  try {
-    const clerkUserId = await getClerkUserId()
-    if (clerkUserId) {
-      db = createSupabaseAdminClient()
-      const { data: profile } = await db
-        .from('profiles')
-        .select('full_name, email, role, status')
-        .eq('clerk_user_id', clerkUserId)
-        .maybeSingle()
-      if (profile) {
-        const name = profile.full_name?.trim() || null
-        const email = profile.email?.trim() || null
-        viewerRole = profile.role === 'client' ? 'student' : profile.role
-        viewerVisitor = { name, email, phone: null }
-        const bits = [
-          name ? `Name: ${name}` : null,
-          viewerRole ? `Role: ${viewerRole}` : null,
-          profile.status ? `Account status: ${profile.status}` : null,
-        ].filter(Boolean)
-        if (bits.length > 0) viewerContext = `\n\n# CURRENT VIEWER\n${bits.join('\n')}`
-      }
-    }
-  } catch {
-    /* Anonymous viewers are valid. */
-  }
-
   const inquiryOrigin = normalizeAssistantOrigin(body.origin ?? body.pageContext, req)
   const marketplaceRecommendation = matchMarketplaceIntent(lastUser.content)
+  const wantsAgent = body.requestAgent === true || shouldEscalateToLiveAgent(lastUser.content)
 
-  const wantsAgent =
-    body.requestAgent === true || shouldEscalateToLiveAgent(lastUser.content)
+  if (!wantsAgent) {
+    const fastReply = getDeterministicYqaaReply(cleaned)
+    if (fastReply) {
+      const total = Date.now() - requestStartedAt
+      return withCors(
+        req,
+        {
+          reply: fastReply,
+          provider: 'system-fast-path',
+          supportApiUrl: SUPPORT_WIDGET_API,
+          marketplaceRecommendation,
+          retryable: false,
+          origin: {
+            surface: inquiryOrigin.surface,
+            hostname: inquiryOrigin.hostname,
+            pathname: inquiryOrigin.pathname,
+          },
+        },
+        { headers: { 'Server-Timing': timingHeader([['total', total]]) } },
+      )
+    }
+  }
+
+  const viewerPromise = boundedViewerSnapshot()
+
   if (wantsAgent) {
+    const viewer = await viewerPromise
     const incomingVisitor = asVisitor(body.visitor)
     const topic = typeof body.topic === 'string' && body.topic.trim()
       ? body.topic.trim()
-      : (viewerRole ? `portal-${viewerRole}` : inquiryOrigin.hostname || 'portal')
-    const visitor: SupportVisitor | null = viewerVisitor || incomingVisitor || null
+      : (viewer.role ? `portal-${viewer.role}` : inquiryOrigin.hostname || 'portal')
+    const visitor: SupportVisitor | null = viewer.visitor || incomingVisitor || null
 
     try {
       const handoff = await escalateToSupport({
@@ -156,27 +214,56 @@ export async function POST(req: Request) {
   }
 
   try {
-    const systemKnowledge = await buildCentralAssistantKnowledge({
+    const knowledgeStartedAt = Date.now()
+    const knowledgePromise = buildCentralAssistantKnowledge({
       latestUserMessage: lastUser.content,
       origin: inquiryOrigin,
-      db,
     })
-    const result = await callSystemSuperGrok(systemKnowledge + viewerContext, cleaned)
-    return withCors(req, {
-      reply: result.text,
-      provider: 'system-ai',
-      supportApiUrl: SUPPORT_WIDGET_API,
-      marketplaceRecommendation,
-      retryable: false,
-      origin: {
-        surface: inquiryOrigin.surface,
-        hostname: inquiryOrigin.hostname,
-        pathname: inquiryOrigin.pathname,
+    const [systemKnowledge, viewer] = await Promise.all([knowledgePromise, viewerPromise])
+    const knowledgeMs = Date.now() - knowledgeStartedAt
+
+    const modelStartedAt = Date.now()
+    const result = await callSystemSuperGrok(systemKnowledge + viewer.context, cleaned)
+    const modelMs = Date.now() - modelStartedAt
+    const totalMs = Date.now() - requestStartedAt
+
+    console.info('[system-assistant] timing', {
+      totalMs,
+      knowledgeMs,
+      modelMs,
+      modelReportedMs: result.latencyMs,
+      promptChars: systemKnowledge.length,
+      hostname: inquiryOrigin.hostname,
+    })
+
+    return withCors(
+      req,
+      {
+        reply: result.text,
+        provider: 'system-ai',
+        supportApiUrl: SUPPORT_WIDGET_API,
+        marketplaceRecommendation,
+        retryable: false,
+        origin: {
+          surface: inquiryOrigin.surface,
+          hostname: inquiryOrigin.hostname,
+          pathname: inquiryOrigin.pathname,
+        },
       },
-    })
+      {
+        headers: {
+          'Server-Timing': timingHeader([
+            ['knowledge', knowledgeMs],
+            ['model', modelMs],
+            ['total', totalMs],
+          ]),
+        },
+      },
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[system-assistant] model error', message)
+    const totalMs = Date.now() - requestStartedAt
+    console.error('[system-assistant] model error', message, { totalMs })
     return withCors(
       req,
       {
@@ -185,7 +272,10 @@ export async function POST(req: Request) {
         retryable: true,
         marketplaceRecommendation,
       },
-      { status: 502 },
+      {
+        status: 502,
+        headers: { 'Server-Timing': timingHeader([['total', totalMs]]) },
+      },
     )
   }
 }
