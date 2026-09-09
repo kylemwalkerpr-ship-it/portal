@@ -8,11 +8,11 @@
  */
 
 export const T = {
-  paper:       'var(--ys-paper, #F4F6F8)',
-  paper2:      'var(--ys-paper2, #EEF1F4)',
-  paper3:      'var(--ys-paper3, #E6EAEF)',
+  paper:       'var(--ys-paper, #F1F3FB)',
+  paper2:      'var(--ys-paper2, #E8ECF8)',
+  paper3:      'var(--ys-paper3, #DDE3F4)',
   vellum:      'var(--ys-vellum, #FFFFFF)',
-  cream:       'var(--ys-cream, #F7F8FA)',
+  cream:       'var(--ys-cream, #F7F8FD)',
   ink:         'var(--ys-ink, #0F172A)',
   inkMid:      'var(--ys-inkMid, #334155)',
   inkSoft:     'var(--ys-inkSoft, #526072)',
@@ -25,17 +25,17 @@ export const T = {
   rule:        'var(--ys-rule, rgba(15,23,42,0.10))',
   ruleSoft:    'var(--ys-ruleSoft, rgba(15,23,42,0.06))',
   /** Legacy token name; semantic role is Marketplace action accent. */
-  indigo:      'var(--ys-indigo, #3C3B6E)',
-  indigoDeep:  'var(--ys-indigoDeep, #2A2A55)',
-  indigoSoft:  'var(--ys-indigoSoft, rgba(60,59,110,0.12))',
+  indigo:      'var(--ys-indigo, #3948C8)',
+  indigoDeep:  'var(--ys-indigoDeep, #2B36A0)',
+  indigoSoft:  'var(--ys-indigoSoft, rgba(57,72,200,0.16))',
   brick:       'var(--ys-brick, #B42318)',
-  gold:        'var(--ys-gold, #6B5210)',
+  gold:        'var(--ys-gold, #7A5000)',
   moss:        'var(--ys-moss, #3F5A28)',
-  star:        'var(--ys-star, #6B4700)',
+  star:        'var(--ys-star, #7A5000)',
   /** Legacy token name; alias of the same action accent. */
-  teal:        'var(--ys-teal, #3C3B6E)',
-  tealDeep:    'var(--ys-tealDeep, #2A2A55)',
-  footer:      'var(--ys-footer, #E8ECF1)',
+  teal:        'var(--ys-teal, #3948C8)',
+  tealDeep:    'var(--ys-tealDeep, #2B36A0)',
+  footer:      'var(--ys-footer, #E4E8F4)',
 } as const
 
 export const F = {

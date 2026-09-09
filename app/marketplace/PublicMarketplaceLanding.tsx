@@ -550,25 +550,25 @@ const CSS = `
 
 .cw-market .hero { position: relative; padding: 64px 0 68px; border-bottom: 0; background: transparent; overflow: hidden; }
 .cw-market .hero-media { position: absolute; inset: 0; pointer-events: none; }
-.cw-market .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; filter: saturate(0.7) contrast(1.08) brightness(0.72) sepia(0.18); }
-.cw-market .hero-media-overlay { position: absolute; inset: 0; background: rgba(26,18,14,0.7); }
+.cw-market .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; filter: saturate(0.92) contrast(1.1) brightness(0.62) hue-rotate(-8deg); }
+.cw-market .hero-media-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(18,22,64,0.42) 0%, rgba(18,22,64,0.58) 46%, rgba(18,22,64,0.78) 100%); }
 .cw-market .hero h1, .cw-market .hero p.lede { text-shadow: 0 1px 12px rgba(8,11,26,0.45); }
 .cw-market .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
 @keyframes slideFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 6px 14px; }
 .cw-market .flagbar { display: none; }
 .cw-market .hero h1 { font-family: ${F.display}; font-size: clamp(34px, 4vw, 50px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 800; margin: 16px 0 14px; color: #FFFFFF; text-wrap: balance; }
-.cw-market .hero h1 em { font-style: italic; font-weight: 700; color: ${T.onPaperEm}; }
+.cw-market .hero h1 em { font-style: italic; font-weight: 700; color: #F0D078; }
 .cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.84); margin: 0 0 24px; }
 .cw-market .hero-search { display: flex; align-items: center; background: #fff; border: 0; border-radius: 12px; padding: 6px 6px 6px 18px; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,0.32); transition: box-shadow .18s cubic-bezier(0.22,1,0.36,1); }
-.cw-market .hero-search:focus-within { box-shadow: 0 18px 50px rgba(15,23,42,0.16), 0 0 0 3px rgba(60,59,110,0.28); }
+.cw-market .hero-search:focus-within { box-shadow: 0 18px 50px rgba(15,23,42,0.16), 0 0 0 3px rgba(57,72,200,0.28); }
 .cw-market .hero-search svg { color: ${T.inkSoft}; flex: 0 0 18px; width: 18px; height: 18px; }
 .cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 15px; height: 46px; color: ${T.ink}; min-width: 0; }
 .cw-market .hero-search input::placeholder { color: ${T.inkSoft}; }
 .cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 46px; border-left: 1px solid ${T.ruleSoft}; color: ${T.inkSoft}; font-size: 13px; white-space: nowrap; }
 .cw-market .hero-search .pick b { color: ${T.ink}; font-weight: 600; }
-.cw-market .hero-search button.search-go { height: 48px; padding: 0 28px; background: ${T.indigo}; color: #FFFFFF; border-radius: 10px; font-weight: 800; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 10px 22px rgba(60,59,110,0.28); transition: background .15s, transform .12s, box-shadow .15s; }
-.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); box-shadow: 0 14px 26px rgba(60,59,110,0.36); }
+.cw-market .hero-search button.search-go { height: 48px; padding: 0 28px; background: ${T.indigo}; color: #FFFFFF; border-radius: 10px; font-weight: 800; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 10px 22px rgba(57,72,200,0.28); transition: background .15s, transform .12s, box-shadow .15s; }
+.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); box-shadow: 0 14px 26px rgba(57,72,200,0.36); }
 .cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
 .cw-market .suggest span.lbl { font-family: ${F.ui}; color: ${T.onPaperSoft}; letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
 .cw-market .suggest a { display: inline-flex; align-items: center; padding: 7px 14px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; color: #FFFFFF; font-weight: 600; transition: background .15s, color .15s, border-color .15s, transform .15s; }
@@ -619,7 +619,7 @@ const CSS = `
 .cw-files-rail-head a { font-size: 13px; font-weight: 700; color: ${T.onPaper}; }
 .cw-files-scroller-wrap { position: relative; }
 .cw-files-scroller { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 12px; }
-.cw-files-scroller-wrap::after { content: ""; pointer-events: none; position: absolute; top: 4px; right: 0; bottom: 12px; width: 56px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ys-paper, #F4F6F8) 88%, transparent)); }
+.cw-files-scroller-wrap::after { content: ""; pointer-events: none; position: absolute; top: 4px; right: 0; bottom: 12px; width: 56px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ys-paper, #F1F3FB) 88%, transparent)); }
 .cw-files-scroller-next { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 999px; border: 1px solid ${T.rule}; background: ${T.vellum}; color: ${T.ink}; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(0,0,0,0.14); cursor: pointer; }
 .cw-files-scroller-next:hover { background: #fff; }
 .cw-files-scroller::-webkit-scrollbar { display: none; }
@@ -686,7 +686,7 @@ const CSS = `
 .cw-market .gig[data-c="uk"] .plate::after { background: #012169; }
 .cw-market .gig[data-c="ca"] .plate::after { background: #C8102E; }
 .cw-market .gig .plate-tag { position: absolute; left: 12px; bottom: 12px; padding: 5px 10px; background: ${T.indigo}; color: #FFFFFF; font-family: ${F.ui}; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; border-radius: 999px; }
-.cw-market .gig .plate-glyph { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-family: ${F.display}; font-style: italic; font-size: 56px; color: rgba(14,124,116,0.22); letter-spacing: -0.02em; font-weight: 700; pointer-events: none; }
+.cw-market .gig .plate-glyph { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-family: ${F.display}; font-style: italic; font-size: 56px; color: color-mix(in srgb, ${T.indigo} 22%, transparent); letter-spacing: -0.02em; font-weight: 700; pointer-events: none; }
 .cw-market .gig .plate-img { position: static; width: 100%; height: auto; aspect-ratio: 1280/769; object-fit: contain; object-position: center top; display: block; }
 .cw-market .gig .plate.has-cover { background: ${T.ink}; }
 .cw-market .gig .plate.has-cover::before { content: ""; background: rgba(8,10,14,0.4); }

@@ -59,10 +59,10 @@ describe('marketplace professional palette set', () => {
     }
   })
 
-  test('default Studio accent is landing slate-navy, not emerald or teal', () => {
+  test('default Studio accent is vivid navy-violet, not emerald or teal', () => {
     const studio = PALETTES.find((p) => p.name === DEFAULT_PALETTE_NAME)!
-    expect(studio.tokens.indigo).toBe('#3C3B6E')
-    expect(studio.tokens.indigoDeep).toBe('#2A2A55')
-    expect(studio.tokens.paper).toBe('#F4F6F8')
+    expect(studio.tokens.indigo).toBe('#3948C8')
+    expect(studio.tokens.indigoDeep).toBe('#2B36A0')
+    expect(studio.tokens.paper).toBe('#F1F3FB')
   })
 })

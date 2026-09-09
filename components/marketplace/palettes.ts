@@ -64,9 +64,9 @@ const STUDIO_INK = {
   rule:        'rgba(15,23,42,0.10)',
   ruleSoft:    'rgba(15,23,42,0.06)',
   brick:       '#B42318',
-  gold:        '#6B5210',
+  gold:        '#7A5000',
   moss:        '#3F5A28',
-  star:        '#6B4700',
+  star:        '#7A5000',
 } as const
 
 function lightPalette(opts: {
@@ -94,16 +94,16 @@ function lightPalette(opts: {
   }
 }
 
-/** Default — Messages-grade cool gray + landing slate-navy actions. */
+/** Default — indigo-tinted paper + vivid navy-violet actions. */
 const STUDIO: PaletteTokens = lightPalette({
-  paper:      '#F4F6F8',
-  paper2:     '#EEF1F4',
-  paper3:     '#E6EAEF',
-  cream:      '#F7F8FA',
-  footer:     '#E8ECF1',
-  accent:     '#3C3B6E',
-  accentDeep: '#2A2A55',
-  accentSoft: 'rgba(60,59,110,0.12)',
+  paper:      '#F1F3FB',
+  paper2:     '#E8ECF8',
+  paper3:     '#DDE3F4',
+  cream:      '#F7F8FD',
+  footer:     '#E4E8F4',
+  accent:     '#3948C8',
+  accentDeep: '#2B36A0',
+  accentSoft: 'rgba(57,72,200,0.16)',
 })
 
 const PARCHMENT: PaletteTokens = lightPalette({
@@ -112,9 +112,9 @@ const PARCHMENT: PaletteTokens = lightPalette({
   paper3:     '#E6DFD2',
   cream:      '#FAF8F3',
   footer:     '#E8E2D6',
-  accent:     '#7A2E32',
-  accentDeep: '#5C1F24',
-  accentSoft: 'rgba(122,46,50,0.12)',
+  accent:     '#9B2430',
+  accentDeep: '#6E1520',
+  accentSoft: 'rgba(155,36,48,0.14)',
 })
 
 const GRAPHITE: PaletteTokens = lightPalette({
@@ -123,9 +123,9 @@ const GRAPHITE: PaletteTokens = lightPalette({
   paper3:     '#E2E5EB',
   cream:      '#F8F9FB',
   footer:     '#E4E7EC',
-  accent:     '#3F3F46',
-  accentDeep: '#27272A',
-  accentSoft: 'rgba(63,63,70,0.12)',
+  accent:     '#3F3F8C',
+  accentDeep: '#27276A',
+  accentSoft: 'rgba(63,63,140,0.14)',
 })
 
 const CLARET: PaletteTokens = lightPalette({
@@ -134,9 +134,9 @@ const CLARET: PaletteTokens = lightPalette({
   paper3:     '#E6DDD8',
   cream:      '#FBF8F6',
   footer:     '#E9E2DE',
-  accent:     '#7C2D3A',
-  accentDeep: '#5C1D28',
-  accentSoft: 'rgba(124,45,58,0.12)',
+  accent:     '#8E2438',
+  accentDeep: '#5C1224',
+  accentSoft: 'rgba(142,36,56,0.14)',
 })
 
 /** Quiet olive actions — the Messages selected-pill, never a green flood. */
@@ -146,9 +146,9 @@ const OLIVE: PaletteTokens = lightPalette({
   paper3:     '#E2E8E4',
   cream:      '#F7F9F8',
   footer:     '#E6EBE8',
-  accent:     '#2F5D46',
-  accentDeep: '#214536',
-  accentSoft: 'rgba(47,93,70,0.12)',
+  accent:     '#1B6B48',
+  accentDeep: '#134D34',
+  accentSoft: 'rgba(27,107,72,0.14)',
 })
 
 const STONE: PaletteTokens = lightPalette({
@@ -157,9 +157,9 @@ const STONE: PaletteTokens = lightPalette({
   paper3:     '#E5E1DA',
   cream:      '#FAF9F6',
   footer:     '#E8E5DF',
-  accent:     '#8A3D1C',
-  accentDeep: '#6B2E14',
-  accentSoft: 'rgba(138,61,28,0.12)',
+  accent:     '#9A3F07',
+  accentDeep: '#7C2D12',
+  accentSoft: 'rgba(154,63,7,0.14)',
 })
 
 export const PALETTES: PaletteDef[] = [
@@ -167,7 +167,7 @@ export const PALETTES: PaletteDef[] = [
     name: 'mahogany',
     label: 'Studio',
     emoji: '●',
-    description: 'Cool gray paper, charcoal type, slate-navy actions. The Messages-grade professional default.',
+    description: 'Indigo-tinted paper, charcoal type, vivid navy-violet actions. Professional default with more life.',
     tokens: STUDIO,
   },
   {

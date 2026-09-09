@@ -1125,24 +1125,33 @@ section[id] {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   MARKETPLACE LEGIBILITY — forced paper + ink
+   MARKETPLACE LEGIBILITY — first-paint paper + ink
 
    Light professional chrome. The palette picker can still change the
-   action accent (legacy names indigo / teal) but paper stays a cool gray
-   sheet and type stays charcoal. Do not flood the shell with saturated fills.
+   action accent (legacy names indigo / teal) but paper stays a cool,
+   indigo-tinted sheet and type stays charcoal. Do not flood the shell
+   with saturated fills.
    ═══════════════════════════════════════════════════════════════════════ */
 .cw-market {
-  --ys-paper: #F4F6F8;
-  --ys-paper2: #EEF1F4;
-  --ys-paper3: #E6EAEF;
+  --ys-paper: #F1F3FB;
+  --ys-paper2: #E8ECF8;
+  --ys-paper3: #DDE3F4;
   --ys-vellum: #FFFFFF;
-  --ys-cream: #F7F8FA;
+  --ys-cream: #F7F8FD;
   --ys-ink: #0F172A;
   --ys-inkMid: #334155;
   --ys-inkSoft: #526072;
   --ys-onPaper: #0F172A;
   --ys-onPaperSoft: rgba(15,23,42,0.72);
   --ys-onPaperEm: #0F172A;
+  --ys-indigo: #3948C8;
+  --ys-indigoDeep: #2B36A0;
+  --ys-indigoSoft: rgba(57,72,200,0.16);
+  --ys-teal: #3948C8;
+  --ys-tealDeep: #2B36A0;
+  --ys-gold: #7A5000;
+  --ys-star: #7A5000;
+  --ys-footer: #E4E8F4;
   background: var(--ys-paper);
   color: var(--ys-onPaper);
 }
@@ -1181,8 +1190,8 @@ section[id] {
   color: #FFFFFF !important;
 }
 
-/* Price badges on dark pill backgrounds */
-.cw-market .gig .price b,
+/* Price badges on dark pill backgrounds. Gig card prices are accent type
+   on light vellum — do not force those white. */
 .cw-market .cw-files-card .price,
 .cw-market .gig .plate-tag {
   color: #FFFFFF !important;

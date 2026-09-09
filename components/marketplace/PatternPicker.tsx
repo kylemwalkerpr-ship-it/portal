@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { T } from './tokens'
 
 const STORAGE_KEY = 'ys-marketplace-pattern'
 
@@ -239,8 +240,8 @@ export function PatternPicker() {
                     gap: 10,
                     padding: '8px 10px',
                     border: 'none',
-                    background: active ? 'rgba(60,59,110,0.10)' : 'transparent',
-                    color: active ? '#2A2A55' : '#1A1F2E',
+                    background: active ? T.indigoSoft : 'transparent',
+                    color: active ? T.indigoDeep : T.ink,
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
@@ -269,7 +270,7 @@ export function PatternPicker() {
                     </span>
                   </span>
                   {active && (
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#3C3B6E', flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: T.indigo, flexShrink: 0 }}>✓</span>
                   )}
                 </button>
               </li>

@@ -30,7 +30,7 @@ const C = {
   surface: '#FFFFFF',
   surface2: '#F4F2EE',
   border: 'rgba(0,0,0,0.08)',
-  cyan: '#3C3B6E',
+  cyan: '#3948C8',
   text: '#1F2937',
   textMuted: '#6B7280',
   textDim: '#6B7280',
