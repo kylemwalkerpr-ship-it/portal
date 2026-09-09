@@ -93,6 +93,14 @@ describe('unverified_internal_link — deterministic repair path', () => {
     expect(out.unwrapped).toBe(0)
     expect(out.content).toBe(draft)
   })
+
+  it('does not rewrite a marketplace reviewer profile to a same-slug legal URL', () => {
+    const draft = 'See the [Reviewer Profile](https://market.yousafeconsultancy.com/marketplace/providers/charlotte-sullivan/).'
+    const out = repairUnverifiedInternalLinks(draft, live)
+    expect(out.rewritten).toBe(0)
+    expect(out.unwrapped).toBe(0)
+    expect(out.content).toContain('https://market.yousafeconsultancy.com/marketplace/providers/charlotte-sullivan/')
+  })
 })
 
 describe('sentence_start_repetition — mechanical smoothing stays available post-AI', () => {

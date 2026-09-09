@@ -4,7 +4,7 @@
  * add headings — missing_outline_section must use this insert path.
  */
 
-import { missingOutlineSections } from './contentQualityGate'
+import { missingOutlineSections, stripOutlineHeadingDecorations } from './contentQualityGate'
 import type { ContentSpec } from './contentSpec'
 import { countBodyWords } from './contentDepth'
 
@@ -153,14 +153,18 @@ export async function completeMissingOutlineSections(opts: {
         stoppedForBudget = true
         break
       }
-      const entry = outline.find((o) => o.heading === heading)
+      const entry = outline.find((o) => {
+        const raw = String(o.heading || '').trim()
+        return raw === heading || stripOutlineHeadingDecorations(raw) === stripOutlineHeadingDecorations(heading)
+      })
       const section = await opts.generateSection({
         article: content,
-        heading,
+        heading: stripOutlineHeadingDecorations(heading) || heading,
         purpose: entry?.purpose,
       })
       if (!section) continue
-      content = insertSectionBeforeFaqOrSources(content, `## ${heading}\n\n${section}`)
+      const publishedHeading = stripOutlineHeadingDecorations(heading) || heading
+      content = insertSectionBeforeFaqOrSources(content, `## ${publishedHeading}\n\n${section}`)
       inserted.push(heading)
       insertedThisPass++
       if (maxWords != null && countBodyWords(content) >= maxWords) {

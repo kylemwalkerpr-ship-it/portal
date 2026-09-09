@@ -284,6 +284,32 @@ export function isEstateUrl(url: string): boolean {
   return false
 }
 
+const MARKET_HOST = 'market.yousafeconsultancy.com'
+
+/**
+ * Marketplace provider / gig URLs are YMYL citations (reviewer profile,
+ * service page). They are not legal-estate sitemap entries, so Audit & Fix
+ * must never treat them as unverified internals and swap them for a
+ * same-slug legal page or an official .gov fallback.
+ */
+export function isProtectedMarketplaceUrl(url: string): boolean {
+  const raw = String(url || '').trim()
+  if (!raw) return false
+  try {
+    const href = /^https?:\/\//i.test(raw)
+      ? raw
+      : raw.startsWith('/')
+        ? `https://${MARKET_HOST}${raw}`
+        : ''
+    if (!href) return false
+    const parsed = new URL(href)
+    if (parsed.hostname.toLowerCase() !== MARKET_HOST) return false
+    return /^\/(?:marketplace\/)?(?:providers|gigs)\//i.test(parsed.pathname)
+  } catch {
+    return false
+  }
+}
+
 /** Extract markdown + HTML + bare http(s) links from a draft body. */
 export function extractLinks(content: string): LinkRef[] {
   const out: LinkRef[] = []
@@ -633,7 +659,8 @@ export function auditLinksSync(
           message: 'Internal link uses http:// — upgrade to https://.',
         })
       }
-      if (live && !live.has(normalized)) {
+      // Marketplace reviewer/service URLs are not on the legal sitemap.
+      if (!isProtectedMarketplaceUrl(url) && live && !live.has(normalized)) {
         findings.push({
           code: 'unverified_internal_link',
           severity: 'warning',
@@ -846,6 +873,7 @@ export async function auditLinksLive(
     if (SKIP_PREFIXES.some((p) => url.trim().startsWith(p)) || isSkippableHref(url)) continue
     if (isPlaceholderUrl(url).hit || isMalformedUrl(url)) continue
     if (isEstateUrl(url)) {
+      if (isProtectedMarketplaceUrl(url)) continue
       const normalized = resolveEstateUrl(url)
       if (!liveSet.has(normalized) && !verifiedUrls.has(normalized)) {
         verifiedUrls.add(normalized)
@@ -1193,6 +1221,7 @@ export async function remediateDeadLinksInContext(
   })
 
   for (const f of dead) {
+    if (isProtectedMarketplaceUrl(f.url)) continue
     let around = contextAround(next, f.url)
     // Reverse TLD lookup: if the finding URL was cleaned by auditLinksSync
     // (e.g. https://www.canada.ca) but the content still has the malformed
@@ -1314,8 +1343,10 @@ export function repairUnverifiedInternalLinks(
   const markdown = new RegExp(MARKDOWN_LINK_RE.source, 'g')
   next = next.replace(markdown, (full, text: string, href: string) => {
     if (!isEstateUrl(href)) return full
+    if (isProtectedMarketplaceUrl(href)) return full
     const resolved = resolveEstateUrl(href)
     if (liveUrls.has(resolved)) return full
+    if (isProtectedMarketplaceUrl(resolved)) return full
     // 2) same-slug live page
     const seg = resolved.replace(/\/$/, '').split('/').pop()?.toLowerCase()
     const moved = seg ? bySegment.get(seg) : null

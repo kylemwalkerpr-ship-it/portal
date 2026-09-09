@@ -21,7 +21,7 @@ import {
   minWordsForType,
   type ModelGuidanceInput,
 } from './prompts'
-import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget, clampBriefWordBudget } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType, enforceBodyWordBudget, enforceBodyWordBudgetPreserving, clampBriefWordBudget } from './contentDepth'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
@@ -807,7 +807,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
       })
       if (completed.inserted.length) {
-        content = enforceBodyWordBudget(completed.content, contentType, { minWords, maxWords }).content
+        content = enforceBodyWordBudgetPreserving(completed.content, contentType, { min: minWords, max: maxWords, preserveHeadings: ['disclaimer', 'sources', 'faq'] }).content
         console.info(`[seoFactory/pipeline] outline completion inserted: ${completed.inserted.join(', ')}`)
       } else if (completed.content !== content) {
         content = completed.content

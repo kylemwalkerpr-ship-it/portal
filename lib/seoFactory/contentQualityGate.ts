@@ -474,6 +474,30 @@ const STRUCTURAL_H2 =
   /^(?:in 60 seconds?|table of contents|faq|sources|official sources|related guides?|related reading|further reading|see also|disclaimer|references?|toc)$/i
 
 /**
+ * Briefs often bake section budgets into the H2 itself
+ * (`FAQ (320–380 words)`, `Eligibility (400-600 words)`). Those decorations
+ * are not part of the published heading — strip them before matching so a
+ * real `## FAQ` satisfies the outline and outline-completion does not try
+ * to insert a second kit section at the word ceiling.
+ */
+export function stripOutlineHeadingDecorations(heading: string): string {
+  return String(heading || '')
+    .replace(/^#+\s*/, '')
+    .replace(
+      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*)\)\s*$/i,
+      '',
+    )
+    .replace(/\s+\d+\s*[–-]\s*\d+\s+words?\s*$/i, '')
+    .trim()
+}
+
+export function isStructuralOutlineHeading(heading: string): boolean {
+  const stripped = stripOutlineHeadingDecorations(heading)
+  const key = stripped.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  return STRUCTURAL_H2.test(heading) || STRUCTURAL_H2.test(stripped) || STRUCTURAL_H2.test(key)
+}
+
+/**
  * Outline-completeness check: the canonical brief lists every section the
  * article must contain; anything absent is a structural defect — a truncated
  * draft that "cleared the gates" because nothing verified the templated
@@ -485,14 +509,14 @@ export function missingOutlineSections(
   outline?: Array<{ heading: string; level?: number; purpose?: string }> | null,
 ): string[] {
   if (!outline || !outline.length) return []
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const norm = (s: string) => stripOutlineHeadingDecorations(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   const present = new Set(
     Array.from(String(content || '').matchAll(/^##\s+(.+)$/gm)).map((m) => norm(m[1])),
   )
   const missing: string[] = []
   for (const entry of outline) {
     const heading = String(entry.heading || '').trim()
-    if (!heading || STRUCTURAL_H2.test(heading)) continue
+    if (!heading || isStructuralOutlineHeading(heading)) continue
     const key = norm(heading)
     if (!key || present.has(key)) continue
     // Partial-word matches ("Top 7 alternatives" vs "Top 7 Rapidvisa
