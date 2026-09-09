@@ -17,7 +17,7 @@ import {
 } from './registerCard'
 import { isBlogFamily } from './writingShape'
 
-export const THROUGHLINE_SYSTEM = `You are a senior specialist revising ONE article so it is a coherent argument. Full markdown document in, full markdown document out. Preserve facts, URLs, numbers, legal qualifiers, disclaimer, sources, JSON-LD, H1, and H2 heading text. Merge overlapping section BODIES; never add, remove, or rename headings. Do not invent experience, fees, dates, or citations. FAQ questions must not paste an H2. Mix short and medium sentences. Named forms and agencies. Second person. Return ONLY the markdown document (no JSON wrapper, no fences).`
+export const THROUGHLINE_SYSTEM = `You are a senior specialist revising ONE article so it is a coherent argument. Full markdown document in, full markdown document out. Preserve facts, numbers, legal qualifiers, disclaimer, sources that support the article, claim-specific/protected URLs, H1, and H2 heading text. A generic UNHCR/IOM/ILO/OECD/WHO homepage is a citation candidate, not a fact: remove it when it is unrelated to the article. Never invent or modify a URL. Merge overlapping section BODIES; never add, remove, or rename headings. Do not invent experience, fees, dates, or citations. FAQ questions must not paste an H2. Mix short and medium sentences. Named forms and agencies. Second person. Return ONLY the markdown document (no JSON wrapper, no fences).`
 
 export type ThroughlineResult = {
   content: string
@@ -80,6 +80,7 @@ export async function runThroughline(opts: {
     houseRegister: registerCardPromptBlock(house, current),
     cohesionFindings: findings.slice(0, 12),
     eeatDirectives: (opts.eeatDirectives || []).slice(0, 8),
+    citationRule: 'Preserve claim-specific/protected URLs. Irrelevant generic intergovernmental homepages may be removed. Do not invent or alter URLs.',
     blog: isBlogFamily(opts.contentType),
     document: original,
   })
@@ -166,4 +167,3 @@ export async function runFactoryThroughline(opts: {
     }
   }
 }
-
