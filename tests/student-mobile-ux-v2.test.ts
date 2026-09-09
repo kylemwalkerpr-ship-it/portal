@@ -99,7 +99,7 @@ describe('student mobile UX v2', () => {
     expect(listCss).toContain('grid-template-rows: auto minmax(0, 1fr) !important')
     expect(listCss).toContain('flex: 1 1 0% !important')
     expect(scrollCss).toContain('height: auto !important')
-    expect(scrollCss).not.toContain('height: 0 !important')
+    expect(scrollCss).not.toMatch(/^\s*height:\s*0\s*!important;/m)
     expect(scrollCss).toContain('min-height: 0 !important')
     expect(scrollCss).toContain('overflow-y: scroll !important')
     expect(scrollCss).toContain('touch-action: pan-y')
