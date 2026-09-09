@@ -39,7 +39,7 @@ describe('premium marketplace mobile navigation', () => {
     expect(css).toContain('position: fixed !important;')
     expect(css).toContain('z-index: 470 !important;')
     expect(css).toContain("content: '×';")
-    expect(css).toContain("top: max(8px, env(safe-area-inset-top)) !important;")
+    expect(css).toContain("top: max(10px, env(safe-area-inset-top)) !important;")
   })
 
   test('provides a sticky swipeable marketplace category rail', () => {
@@ -52,18 +52,36 @@ describe('premium marketplace mobile navigation', () => {
     expect(css).toContain('height: 44px !important;')
   })
 
-  test('keeps the drawer contextual instead of swallowing the whole phone', () => {
-    expect(css).toContain('width: min(312px, 86vw) !important;')
+  test('uses a focused, spacious drawer on current iPhone widths', () => {
+    expect(css).toContain('width: min(390px, 92vw) !important;')
+    expect(css).toContain('border-radius: 18px 0 0 18px !important;')
+    expect(css).toContain('display: flex !important;')
+    expect(css).toContain('flex-direction: column !important;')
     expect(css).toContain("content: 'Marketplace';")
-    expect(css).toContain('.cw-market .ys-shell-drawer-extras')
-    expect(css).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;')
-    expect(css).toContain("button[aria-label^='Theme:']::before")
-    expect(css).toContain("content: 'Appearance';")
-    expect(css).toContain('@media (max-width: 360px)')
+    expect(css).toContain('backdrop-filter: blur(6px) saturate(0.88);')
+    expect(css).toContain('width: min(332px, 94vw) !important;')
   })
 
-  test('removes floating support controls while modal navigation is open', () => {
+  test('keeps every drawer preference full width and pins utilities to the bottom', () => {
+    expect(css).toContain('.cw-market .ys-shell-drawer-extras')
+    expect(css).toContain('grid-template-columns: minmax(0, 1fr) !important;')
+    expect(css).toContain('margin-top: auto !important;')
+    expect(css).toContain('grid-column: 1 / -1 !important;')
+    expect(css).not.toContain('.ys-shell-drawer-extras > :first-child')
+    expect(css).toContain("button[aria-label^='Theme:']::before")
+    expect(css).toContain("content: 'Appearance';")
+  })
+
+  test('gives navigation rows deliberate interaction and keyboard focus states', () => {
+    expect(css).toContain('min-height: 52px !important;')
+    expect(css).toContain(".cw-market .ys-shell-drawer-link[aria-current='page']")
+    expect(css).toContain('.cw-market .ys-shell-drawer-link:focus-visible')
+    expect(css).toContain('transform: scale(0.985);')
+  })
+
+  test('freezes the page and removes floating support controls while navigation is open', () => {
     expect(css).toContain("body:has(.cw-market .ys-shell-menu-toggle[aria-expanded='true'])")
+    expect(css).toContain('overflow: hidden !important;')
     expect(css).toContain("button[aria-label='Open chat']")
     expect(css).toContain('visibility: hidden !important;')
     expect(css).toContain('pointer-events: none !important;')
@@ -71,7 +89,7 @@ describe('premium marketplace mobile navigation', () => {
 
   test('keeps account and preference popovers inside narrow phone viewports', () => {
     expect(css).toContain("width: min(240px, calc(100vw - 24px)) !important;")
-    expect(css).toContain("width: min(260px, calc(100vw - 40px)) !important;")
+    expect(css).toContain("width: min(320px, calc(100vw - 48px)) !important;")
     expect(css).toContain('.cw-market .ys-shell-brand > div > :not(img)')
   })
 })
