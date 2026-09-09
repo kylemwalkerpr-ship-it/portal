@@ -15,8 +15,11 @@ describe('mobile visual viewport contract', () => {
     expect(coordinator).toContain("viewport?.addEventListener('scroll', schedule)")
     expect(coordinator).toContain("document.addEventListener('focusin', onFocusChange)")
     expect(coordinator).toContain("document.addEventListener('focusout', onFocusChange)")
+    expect(coordinator).toContain('const visualHeight = Math.max(1, Math.round(rawHeight))')
+    expect(coordinator).toContain('const visibleBottom = visualHeight + offsetTop')
     expect(coordinator).toContain("root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)")
-    expect(coordinator).toContain("const visibleBottom = Math.max(1, Math.round(rawHeight) + offsetTop)")
+    expect(coordinator).toContain("root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)")
+    expect(coordinator).toContain("root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)")
     expect(coordinator).not.toContain('MIN_HEIGHT')
   })
 
@@ -29,12 +32,13 @@ describe('mobile visual viewport contract', () => {
 
   test('an open chat has one viewport owner and keeps the composer as a flex child', () => {
     expect(css).toContain(".ys-chatscreen[data-mobile-view='chat']")
+    expect(css).toContain('position: fixed !important')
+    expect(css).toContain('top: var(--ys-visual-viewport-offset-top, 0px) !important')
+    expect(css).toContain('height: var(--ys-visual-viewport-block-size, 100dvh) !important')
     expect(css).toContain('[data-chat-canvas]')
     expect(css).toContain('overflow-y: auto !important')
     expect(css).toContain('.comp {')
     expect(css).toContain('flex: 0 0 auto !important')
-    expect(css).toContain('height: 100% !important')
-    expect(css).toContain('max-height: 100% !important')
   })
 
   test('the same viewport source covers role dashboards and marketplace messenger surfaces', () => {
