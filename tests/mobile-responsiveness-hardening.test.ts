@@ -31,6 +31,16 @@ describe('mobile responsiveness hardening', () => {
     expect(conversionCss).toContain('min-height: 44px')
   })
 
+  test('keeps cart and checkout controls usable on narrow phones', () => {
+    expect(conversionCss).toContain("main:has(button[aria-label='Decrease quantity'])")
+    expect(conversionCss).toContain("button[aria-label='Increase quantity']")
+    expect(conversionCss).toContain("button[aria-label='Remove item']")
+    expect(conversionCss).toContain('flex-wrap: wrap !important')
+    expect(conversionCss).toContain('padding: 28px 14px max(64px, env(safe-area-inset-bottom)) !important')
+    expect(conversionCss).toContain('#nmi-card-expiry')
+    expect(conversionCss).toContain('#nmi-card-cvv')
+  })
+
   test('keeps seller profile conversion surfaces inside narrow phones', () => {
     expect(sellerProfile).toContain('ys-seller-profile-page')
     expect(sellerProfile).toContain('ys-seller-profile-tabs')
