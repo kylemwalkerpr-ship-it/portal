@@ -375,13 +375,27 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     sort,
   ])
 
+  // Category routes already encode their base category in the pathname. Keep
+  // that category in API requests, but do not duplicate it as
+  // `?category=<same-id>` in the address bar. Additional category filters
+  // remain shareable query parameters.
+  const buildBrowserQuery = React.useCallback(() => {
+    const params = buildQuery()
+    if (!categoryId) return params
+
+    const remainingCategories = params.getAll('category').filter((cat) => cat !== categoryId)
+    params.delete('category')
+    remainingCategories.forEach((cat) => params.append('category', cat))
+    return params
+  }, [buildQuery, categoryId])
+
   // Reflect the current filter state in the URL whenever it changes, so
   // refresh / share / browser back-forward preserve filters.
   React.useEffect(() => {
-    const qs = buildQuery().toString()
+    const qs = buildBrowserQuery().toString()
     const target = qs ? `${pathname}?${qs}` : pathname
     router.replace(target, { scroll: false })
-  }, [buildQuery, pathname, router])
+  }, [buildBrowserQuery, pathname, router])
 
   // External URL → state hydration.
   //

@@ -236,6 +236,21 @@ function stripTrackingParams(url: URL): string | null {
   return changed ? url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') : null
 }
 
+/** Remove a category query value that merely repeats the clean route slug. */
+function stripRedundantCategoryParam(url: URL): string | null {
+  const match = url.pathname.match(/^\/categories\/([^/]+)\/?$/)
+  if (!match) return null
+
+  const routeCategory = decodeURIComponent(match[1])
+  const categories = url.searchParams.getAll('category')
+  if (!categories.includes(routeCategory)) return null
+
+  const remaining = categories.filter((category) => category !== routeCategory)
+  url.searchParams.delete('category')
+  remaining.forEach((category) => url.searchParams.append('category', category))
+  return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '')
+}
+
 export default clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
@@ -276,6 +291,17 @@ export default clerkMiddleware(
       const cleaned = stripTrackingParams(new URL(req.url))
       if (cleaned !== null) {
         const dest = new URL(cleaned, req.url)
+        return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+      }
+    }
+
+    // Category identity belongs in the path, not in a duplicate query param.
+    // Example: /categories/immigration?category=immigration ->
+    // /categories/immigration. Preserve genuinely additional filters.
+    if (hostname === MARKET_HOST && req.nextUrl.searchParams.has('category')) {
+      const cleanedCategoryUrl = stripRedundantCategoryParam(new URL(req.url))
+      if (cleanedCategoryUrl !== null) {
+        const dest = new URL(cleanedCategoryUrl, req.url)
         return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
       }
     }
