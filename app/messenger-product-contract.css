@@ -50,29 +50,72 @@
     background: var(--panel) !important;
   }
 
-  body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar {
-    display: block !important;
-    position: relative !important;
-    inset: auto !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 100% !important;
-    overflow: hidden !important;
-    border: 0 !important;
-    background: var(--panel) !important;
-  }
+  @media (max-width: 680px) {
+    body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] {
+      display: flex !important;
+      flex-direction: column !important;
+      flex: 1 1 0% !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: hidden !important;
+      background: var(--panel) !important;
+    }
 
-  body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar > .cl {
-    position: relative !important;
-    inset: auto !important;
-    z-index: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 100% !important;
-    border: 0 !important;
-    background: var(--panel) !important;
+    body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar {
+      display: flex !important;
+      flex-direction: column !important;
+      position: relative !important;
+      inset: auto !important;
+      flex: 1 1 0% !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: hidden !important;
+      border: 0 !important;
+      background: var(--panel) !important;
+    }
+
+    body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar > .cl {
+      position: relative !important;
+      inset: auto !important;
+      z-index: 1 !important;
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      grid-template-rows: max-content minmax(0, 1fr) !important;
+      grid-template-areas: "head" "rail" !important;
+      flex: 1 1 0% !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: hidden !important;
+      border: 0 !important;
+      background: var(--panel) !important;
+    }
+
+    body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .cl-head {
+      grid-area: head !important;
+      min-height: min-content !important;
+    }
+
+    body .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .cl-scroll {
+      grid-area: rail !important;
+      align-self: stretch !important;
+      justify-self: stretch !important;
+      flex: 1 1 0% !important;
+      min-height: 0 !important;
+      height: 100% !important;
+      max-height: 100% !important;
+      padding: 0 !important;
+      overflow-y: scroll !important;
+      overflow-x: hidden !important;
+      background: var(--panel) !important;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
+    }
   }
 
   body .yousafe-messenger .cl-head {

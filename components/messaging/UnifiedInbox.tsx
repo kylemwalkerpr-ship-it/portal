@@ -1446,7 +1446,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   return (
     <div className="yousafe-messenger" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div className="ys-inbox-frame" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <ChatScreen
           mode="split"
           sidebar={sidebar}

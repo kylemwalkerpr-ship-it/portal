@@ -241,9 +241,7 @@ export default function ChatScreen({
             width: 340,
             flexShrink: 0,
             borderRight: '1px solid #DDD8CE',
-            overflowY: 'auto',
-            overscrollBehaviorY: 'contain',
-            WebkitOverflowScrolling: 'touch',
+            overflow: 'hidden',
             background: '#fff',
           }}
         >

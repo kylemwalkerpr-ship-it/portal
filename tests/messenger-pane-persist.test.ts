@@ -44,4 +44,13 @@ describe('messenger pane persistence', () => {
     expect(chatScreen).toContain('activeRow.click()')
     expect(chatScreen).toContain("url.searchParams.delete('thread')")
   })
+
+  test('the conversation list frame is a flex column and the sidebar is not a nested scroller', () => {
+    expect(inbox).toContain('className="ys-inbox-frame"')
+    expect(inbox).toContain("display: 'flex'")
+    expect(inbox).toContain("flexDirection: 'column'")
+    expect(chatScreen).toContain("overflow: 'hidden'")
+    expect(chatScreen).toContain("className=\"ys-chatscreen-sidebar\"")
+    expect(chatScreen).not.toMatch(/className="ys-chatscreen-sidebar"[\s\S]*?overflowY: 'auto'/)
+  })
 })
