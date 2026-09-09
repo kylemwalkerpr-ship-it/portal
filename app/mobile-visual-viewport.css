@@ -9,7 +9,14 @@
    bottom edge. An OPEN mobile conversation is different: Safari may pan the
    layout viewport to keep the focused textarea visible. For a WhatsApp-style
    chat, that pan must not become part of the app layout. The chat root is
-   therefore fixed to VisualViewport.offsetTop and sized from VisualViewport.height.
+   therefore fixed and sized from VisualViewport.height.
+
+   iOS 26 also has a WebKit fixed-position regression where feeding the live
+   viewport pan back into fixed top/bottom layout can paint the layer against
+   stale browser geometry. On real iOS browser tabs we therefore keep the fixed
+   anchor at top: 0 and apply the measured pan as a compositor translateY. This
+   separates browser pan compensation from fixed-position layout and prevents
+   the composer from being painted behind Safari's floating URL controls.
 
    Safari has a second keyboard quirk: with the bottom URL bar enabled,
    VisualViewport.height can still include native UI that sits above the
@@ -25,6 +32,7 @@
     --ys-visual-viewport-height: 100dvh;
     --ys-visual-viewport-block-size: 100dvh;
     --ys-visual-viewport-offset-top: 0px;
+    --ys-visual-viewport-pan-top: 0px;
     --ys-ios-keyboard-browser-chrome: 0px;
     --ys-ios-keyboard-input-assistant: 0px;
     --ys-ios-keyboard-native-occlusion: calc(
@@ -81,6 +89,17 @@
     margin: 0 !important;
     overflow: hidden !important;
     transform: none !important;
+  }
+
+  /* iOS 26 can paint a fixed layer using stale viewport anchoring even while
+     CSSOM reports correct geometry. Keep fixed layout at top:0 and compensate
+     the visual pan only in the compositor. The coordinator also defends
+     against builds where offsetTop is smaller than pageTop - scrollY. */
+  html[data-ys-ios-webkit='true'][data-ys-standalone='false']
+    body .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] {
+    top: 0 !important;
+    transform: translate3d(0, var(--ys-visual-viewport-pan-top, 0px), 0) !important;
+    will-change: transform;
   }
 
   html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']),
