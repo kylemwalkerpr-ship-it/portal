@@ -13,10 +13,17 @@ export async function getCurrentStudent(): Promise<StudentAuth> {
   const db = createSupabaseAdminClient()
   let profileRes: any = await db
     .from('profiles')
-    .select('id, role, status, email, full_name, vertical')
+    .select('id, role, status, email, full_name, vertical, avatar_url')
     .eq('clerk_user_id', clerkUserId)
     .single()
-  if (profileRes.error && /column .*vertical/i.test(profileRes.error.message)) {
+  if (profileRes.error && /column .*(vertical|avatar_url)/i.test(profileRes.error.message || '')) {
+    profileRes = await db
+      .from('profiles')
+      .select('id, role, status, email, full_name, vertical')
+      .eq('clerk_user_id', clerkUserId)
+      .single()
+  }
+  if (profileRes.error && /column .*vertical/i.test(profileRes.error.message || '')) {
     profileRes = await db
       .from('profiles')
       .select('id, role, status, email, full_name')

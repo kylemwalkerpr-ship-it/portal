@@ -13,6 +13,7 @@
  */
 import { requireAdminUser } from '@/lib/portalAuth'
 import { readAiMode } from '@/lib/messengerAi'
+import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
 
 const PROVIDER_ROLES = new Set(['attorney', 'consultant'])
 const CLIENT_ROLES = new Set(['client', 'student'])
@@ -89,7 +90,9 @@ export async function GET(req: Request) {
       : Promise.resolve({ data: [] as any[] }),
   ])
 
-  const profileById = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]))
+  const profileById = new Map(
+    (await fillMissingProfileAvatars(db, (profilesRes.data ?? []) as any[])).map((p: any) => [p.id, p]),
+  )
   const lastById = new Map((lastMessagesRes.data ?? []).map((m: any) => [m.id, m]))
   const readsByConv = new Map<string, Map<string, number>>()
   for (const r of readsRes.data ?? []) {

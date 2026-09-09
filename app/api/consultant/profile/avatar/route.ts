@@ -1,4 +1,5 @@
 import { getCurrentConsultant } from '@/lib/consultant'
+import { syncProfileAvatar } from '@/lib/messaging/profileAvatars'
 
 const BUCKET = 'consultant-avatars'
 // Phone photos from modern cameras are often 8–12 MB raw. 5 MB rejected
@@ -61,6 +62,8 @@ export async function POST(req: Request) {
     await auth.db.storage.from(BUCKET).remove([path])
     return Response.json({ error: updateErr.message }, { status: 500 })
   }
+
+  await syncProfileAvatar(auth.db, auth.profile.id, avatarUrl)
 
   return Response.json({ avatar_url: avatarUrl, avatar_path: path })
 }

@@ -1,4 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { syncProfileAvatar } from '@/lib/messaging/profileAvatars'
 
 const BUCKET = 'attorney-headshots'
 const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
@@ -57,6 +58,8 @@ export async function POST(req: Request) {
     return Response.json({ error: updErr.message }, { status: 500 })
   }
 
+  await syncProfileAvatar(ctx.db, ctx.profileId, headshotUrl)
+
   if (existing?.headshot_path && existing.headshot_path !== path) {
     await ctx.db.storage.from(BUCKET).remove([existing.headshot_path])
   }
@@ -82,6 +85,8 @@ export async function DELETE() {
     .from('attorneys')
     .update({ headshot_url: null, headshot_path: null })
     .eq('id', ctx.attorneyId)
+
+  await syncProfileAvatar(ctx.db, ctx.profileId, null)
 
   return Response.json({ ok: true })
 }

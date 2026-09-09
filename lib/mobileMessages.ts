@@ -1,6 +1,7 @@
 import { verifyMobileBearer } from './mobileAuth'
 import { createSupabaseAdminClient } from './supabase'
 import { safetyGuard, type SafetyViolation } from './safety'
+import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
 
 /**
  * Shared logic for /api/mobile/messages* — Bearer-verified conversations.
@@ -106,7 +107,9 @@ export async function listMobileConversations(
       .limit(500),
   ])
 
-  const profileById = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]))
+  const profileById = new Map(
+    (await fillMissingProfileAvatars(db, (profilesRes.data ?? []) as any[])).map((p: any) => [p.id, p]),
+  )
   const lastById = new Map((lastMessagesRes.data ?? []).map((m: any) => [m.id, m]))
   const readMap = new Map<string, number>((readsRes.data ?? []).map((r: any) => [r.conversation_id, new Date(r.last_read_at).getTime()]))
 
@@ -231,7 +234,8 @@ export async function getMobileThread(
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
 
-  const counterpartRow: any = (counterpartRes as any)?.data || null
+  const [filledCounterpart] = await fillMissingProfileAvatars(db, [(counterpartRes as any)?.data].filter(Boolean))
+  const counterpartRow: any = filledCounterpart || (counterpartRes as any)?.data || null
   const counterpart = counterpartRow
     ? {
         id: counterpartRow.id,

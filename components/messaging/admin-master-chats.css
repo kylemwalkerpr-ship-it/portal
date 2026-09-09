@@ -685,11 +685,45 @@
   .admin-master-shell .ys-chatscreen-sidebar {
     width: 100% !important;
     max-width: 100vw !important;
-    height: 100% !important;
     min-height: 0 !important;
   }
 
-  .admin-master-shell .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar { display: block !important; }
+  .admin-master-shell .ys-chatscreen[data-mobile-view='list'] {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    height: auto !important;
+    overflow: hidden !important;
+  }
+
+  .admin-master-shell .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .admin-master-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .admin-master-list {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow-y: scroll !important;
+    overflow-x: hidden !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .admin-master-shell .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-chat { display: none !important; }
   .admin-master-shell .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-sidebar { display: none !important; }
   .admin-master-shell .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-chat { display: flex !important; }
