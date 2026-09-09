@@ -44,6 +44,7 @@ import {
   mapPipelineShipMode,
   mapPipelineJobStatus,
   persistPipelineJob,
+  SHIP_READY_BUT_NO_PR,
   type PipelineJobPersistInput,
 } from '@/lib/seoFactory/persistContentJob'
 import type { SeoFactoryAudit } from '@/lib/seoFactory/audit'
@@ -320,6 +321,45 @@ describe('mapPipelineJobRow — pure row builder', () => {
     ).audit_json as Record<string, unknown>
     expect(aj.shipReady).toBe(false)
     expect(aj.blockersCount).toBe(0)
+  })
+
+  it('shipReady + requested pr + no PR URL → drafting with ship_ready_but_no_pr', () => {
+    const row = mapPipelineJobRow(
+      baseInput({
+        shipResult: null,
+        shipError: null,
+        gateHoldReason: null,
+        shipMode: 'pr',
+        audit: audit({ humanScore: 88, contentType: 'article' }),
+      }),
+    )
+    expect(row.status).toBe('drafting')
+    expect(row.pr_url).toBeNull()
+    expect(row.error_message).toBe(SHIP_READY_BUT_NO_PR)
+    const aj = row.audit_json as Record<string, unknown>
+    expect(aj.shipReady).toBe(true)
+    expect(aj.gateHoldReason).toBe(SHIP_READY_BUT_NO_PR)
+    expect(aj.shipError).toBe(SHIP_READY_BUT_NO_PR)
+  })
+
+  it('shipSuccess with pr/html_url stays pr_created and does not invent a hold', () => {
+    const row = mapPipelineJobRow(
+      baseInput({
+        shipResult: {
+          ...merged,
+          status: 'pr_created',
+          prUrl: undefined,
+          html_url: 'https://github.com/yousafe/x/pull/9',
+          mergeCommitSha: undefined,
+        } as typeof merged & { html_url: string },
+        shipMode: 'pr',
+        shipError: null,
+      }),
+    )
+    expect(row.status).toBe('pr_created')
+    expect(row.pr_url).toBe('https://github.com/yousafe/x/pull/9')
+    expect(row.error_message).toBeNull()
+    expect((row.audit_json as Record<string, unknown>).gateHoldReason).toBeUndefined()
   })
 })
 

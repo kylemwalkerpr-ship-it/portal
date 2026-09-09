@@ -25,6 +25,7 @@ import { classifyCoverageIntent, collapseParaphraseDemand, isSameIntentOwner, ty
 import { isJunkQuery, classifyGscQuery, sanitizeDemandTerm } from './queryNoise'
 import { matchStrikeSeed } from './strikeSeeds'
 import { discoverCardTitle, isFillerTitle } from '@/lib/seoEngine/titleLab'
+import { collapseOpportunityAgainstJobs, type OccupyingJob } from './cannibalDetect'
 
 /**
  * Seed strike-distance targets from the locked 2026-08-18 GSC snapshot.
@@ -130,6 +131,8 @@ export interface OpportunityEngineResult {
 export interface OpportunityEngineInput {
   queries: OpportunityQuery[]
   coverage?: CoverageItem[]
+  /** In-flight + shipped jobs — Drafting/PR/merged occupy the cluster. */
+  jobs?: OccupyingJob[]
   interlinks?: InterlinkOption[]
   region?: string
   relatedByTerm?: Record<string, string[]>
@@ -248,6 +251,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
   const {
     queries,
     coverage = [],
+    jobs = [],
     interlinks = [],
     region = 'US',
     relatedByTerm = {},
@@ -340,6 +344,24 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       play = position <= 5 && clicks >= Math.max(1, impressions * 0.03) ? 'defend' : 'refresh'
     } else {
       play = position <= 20 && impressions >= 20 ? 'quick_win' : 'content_gap'
+    }
+
+    // In-flight Drafting / PR / merged titles occupy the cluster — never
+    // mint another GAP while identical jobs are already on the desk.
+    if (!seed && (play === 'content_gap' || play === 'quick_win') && jobs.length) {
+      const collapse = collapseOpportunityAgainstJobs(term, jobs)
+      if (collapse === 'hide') continue
+      if (collapse === 'refresh') {
+        play = 'refresh'
+        if (!coverageKind || coverageKind === 'unrelated' || coverageKind === 'spoke') {
+          coverageKind = 'paraphrase'
+        }
+        if (matches.length === 0) {
+          const occupier = jobs.find((j) => collapseOpportunityAgainstJobs(term, [j]) !== 'gap')
+          const label = String(occupier?.title || occupier?.h1 || occupier?.slug || 'in-flight job')
+          matches.push(label)
+        }
+      }
     }
 
     // ── Scores ──

@@ -89,11 +89,23 @@ export interface PipelineJobPersistInput {
 /**
  * Status mapping — single rule for both pipelines.
  * - shipped to main (deployed/merged) → 'merged'
- * - review PR open → 'pr_created'
+ * - review PR open (status pr_created OR a real pr/html_url) → 'pr_created'
+ * - shipReady && requested pr && no PR URL → drafting WITH ship_ready_but_no_pr
+ *   (never a silent GATE PASS)
  * - withheld / failed ship with a real draft (>100 chars) → 'drafting' so the
  *   editor can fix it; no content at all → 'failed'
  * - everything else → 'drafting'
  */
+export const SHIP_READY_BUT_NO_PR = 'ship_ready_but_no_pr'
+
+function shipResultPrUrl(shipResult: ShipResult | null | undefined): string | null {
+  if (!shipResult) return null
+  const rec = shipResult as ShipResult & { html_url?: string | null }
+  const raw = rec.prUrl || rec.html_url
+  const url = String(raw || '').trim()
+  return /^https?:\/\//i.test(url) ? url : null
+}
+
 export function mapPipelineJobStatus(input: {
   shipResult: ShipResult | null
   shipError: string | null
@@ -102,7 +114,7 @@ export function mapPipelineJobStatus(input: {
 }): 'merged' | 'pr_created' | 'drafting' | 'failed' {
   const { shipResult, shipError, gateHoldReason, content } = input
   if (shipResult?.status === 'deployed' || shipResult?.status === 'merged') return 'merged'
-  if (shipResult?.status === 'pr_created') return 'pr_created'
+  if (shipResult?.status === 'pr_created' || shipResultPrUrl(shipResult)) return 'pr_created'
   if (shipError || gateHoldReason) {
     return content && content.length > 100 ? 'drafting' : 'failed'
   }
@@ -123,13 +135,39 @@ export function mapCompetingUrls(competingUrls?: CompetingUrlInput[] | null): st
 
 /** Pure row builder — all status / ship_mode / competing_urls decisions live here. */
 export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string, unknown> {
-  const status = mapPipelineJobStatus(input)
-  const shipped =
-    input.shipResult?.status === 'deployed' || input.shipResult?.status === 'merged'
   // Canonical ship gate (jobShipGate.jobPassesShipGate demands this boolean):
   // true only when the pipeline's own ship-quality definition passes AND
   // ownership is not blocked — never implied by score alone.
   const shipReady = input.plan.blockers.length === 0 && meetsShipQuality(input.audit)
+  const prUrl = shipResultPrUrl(input.shipResult)
+  const shippedMain =
+    input.shipResult?.status === 'deployed' || input.shipResult?.status === 'merged'
+  const dryRun = input.shipResult?.status === 'dry_run'
+
+  let shipError = input.shipError
+  let gateHoldReason = input.gateHoldReason ?? null
+
+  // Requested PR + GATE PASS without a PR URL is a hold, never silent success.
+  // Do not auto-merge.
+  if (
+    input.shipMode === 'pr' &&
+    shipReady &&
+    !prUrl &&
+    !shippedMain &&
+    !dryRun &&
+    input.shipResult?.status !== 'pr_created'
+  ) {
+    if (!shipError) shipError = SHIP_READY_BUT_NO_PR
+    if (!gateHoldReason) gateHoldReason = SHIP_READY_BUT_NO_PR
+  }
+
+  const status = mapPipelineJobStatus({
+    shipResult: input.shipResult,
+    shipError,
+    gateHoldReason,
+    content: input.content,
+  })
+  const shipped = shippedMain
   const ownerPin = resolveOwnerProviderPin(input.ownerProvider, input.provider)
   const baseRow: Record<string, unknown> = {
     user_id: input.userId || 'admin',
@@ -154,7 +192,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     content: input.content,
     branch_name: input.shipResult?.branch || null,
     content_path: input.shipResult?.path || input.plan.filePath,
-    pr_url: input.shipResult?.prUrl || null,
+    pr_url: prUrl || input.shipResult?.prUrl || null,
     pr_number: input.shipResult?.prNumber || null,
     ai_provider: ownerPin,
     word_count: input.audit.wordCount,
@@ -174,6 +212,8 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
       minAudit: input.minAudit,
       ownerProvider: ownerPin,
       runtimeProvider: input.provider || null,
+      ...(gateHoldReason ? { gateHoldReason } : {}),
+      ...(shipError ? { shipError } : {}),
       // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
       // reviewer, re-audit, and ship all read this same JSON snapshot.
       ...(input.contentSpec ? { contentSpec: input.contentSpec } : {}),
@@ -218,7 +258,7 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     deployed_at: shipped ? new Date().toISOString() : null,
     merged_at: shipped ? new Date().toISOString() : null,
     llms_included: input.audit.llmsRecommended,
-    error_message: input.shipError,
+    error_message: shipError,
   }
   if (input.eventLog && input.eventLog.length) baseRow.event_log = input.eventLog
   return baseRow

@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
 import { loadPersistedGscWindow } from '@/lib/seoFactory/gscRows'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 
 /**
  * GET /api/content-studio/gsc/performance
  * Reads persisted seo_gsc_rows only — never calls Google.
  * Falls back to the latest stored window when the rolling UTC window is empty
  * so CTR-harvest jobs are not starved between syncs.
+ * Junk (PDF filenames, brand navigational) is dropped at the read boundary.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -32,14 +34,17 @@ export async function GET(request: NextRequest) {
       select: 'site_url, query, page, clicks, impressions, ctr, position, country, device, start_date, end_date, synced_at',
     })
 
+    // Belt-and-suspenders: never surface Pacific-PDF / yousafe brand rows.
+    const rows = persisted.rows.filter((row) => !isJunkQuery(String(row.query || '')))
+
     return NextResponse.json({
       ok: true,
       range: { ...range, startDate: persisted.range.startDate, endDate: persisted.range.endDate },
       requestedRange: range,
       usedFallback: persisted.usedFallback,
       siteUrl,
-      rows: persisted.rows,
-      rowCount: persisted.rowCount,
+      rows,
+      rowCount: rows.length,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'GSC performance read failed'

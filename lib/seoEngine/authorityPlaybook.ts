@@ -156,6 +156,7 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
 
   if (kind === 'spoke') {
     const bofuBoost = funnel === 'bofu' ? 12 : funnel === 'mofu' ? 8 : 0
+    const topicBit = String(input.topic || '').trim().replace(/\s+/g, ' ').slice(0, 56)
     return {
       move: 'fill_spoke',
       funnel,
@@ -163,7 +164,9 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
       hideByDefault: false,
       qualityLine: qualityPeopleFirst,
       conversionLine,
-      whyLine: 'Distinct search intent — a spoke under the pillar, not a refresh of the parent.',
+      whyLine: topicBit
+        ? `Distinct intent for “${topicBit}” — a spoke, not a refresh of the parent.`
+        : 'Distinct search intent — a spoke under the pillar, not a refresh of the parent.',
     }
   }
 

@@ -5,9 +5,9 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveBriefAiProvider, generateBriefText, parseBriefJson } from '@/lib/seoFactory/briefModel'
 import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 import { assembleDraftSourceAllowlist, ensureBriefInterlinks, filterLiveInternalUrls, ESTATE_ANCHOR_LINKS } from '@/lib/seoFactory/linkAudit'
-import { applyEvidenceRegionFloor, collectDiscoverCitationUrls, mergeCitationUrlLists } from '@/lib/seoFactory/officialSources'
+import { applyEvidenceRegionFloor, collectDiscoverCitationUrls, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { mergeBriefKeywords } from '@/lib/seoEngine/planner'
-import { detectRegionFromText, ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords } from '@/lib/seoEngine/researchDemand'
+import { ensureMinimumOutline, filterKeywordsByRegion, filterOutlineByRegion, formatResearchPromptBlock, loadResearchDemandContext, pickResearchKeywords, resolveBriefRegion } from '@/lib/seoEngine/researchDemand'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { formatContractBriefBlock } from '@/lib/seoFactory/formatContract'
 import { keywordContractForDraft, renderKeywordContractBrief, sanitizeBriefOutline } from '@/lib/seoFactory/keywordContract'
@@ -58,16 +58,12 @@ export async function POST(req: NextRequest) {
     const primaryKeyword = String(body.primaryKeyword || topic)
 
     // ── REGION AUTO-SELECT ──────────────────────────────────────────────
-    // Same policy as suggest-keywords: when the topic text confidently names
-    // a different country than the picker's (default-US) value, the topic
-    // wins. Every downstream input (demand context, engine feed, source
-    // allowlist, interlink anchors) is keyed off this ONE region value.
-    const detected = detectRegionFromText(`${topic} ${primaryKeyword}`)
-    let regionAutoSelected = false
-    if (detected && detected.region !== region.toUpperCase().slice(0, 2)) {
-      region = detected.region
-      regionAutoSelected = true
-    }
+    // if detected.confident, ALWAYS use detected.region (even if body is the
+    // default US). If body.region is explicit AND detected is not confident,
+    // keep body. If they conflict and both are confident, topic wins.
+    const resolvedRegion = resolveBriefRegion(typeof body.region === 'string' ? body.region : null, `${topic} ${primaryKeyword}`)
+    region = resolvedRegion.region
+    const regionAutoSelected = resolvedRegion.regionAutoSelected
     // Claude Opus 5 via Run BiOS is the PRIMARY brief model (see
     // lib/seoFactory/briefModel). Grok and DeepSeek V4 Flash (Run BiOS +
     // Baseten) are the other two Brief families; every other value —
@@ -190,7 +186,7 @@ export async function POST(req: NextRequest) {
       '  "shortTail": ["kw", ...]                   // echo KEYWORD CONTRACT demand shorts (1–3 words). Do not invent replacements.',
       '  "longTail": ["longer phrase", ...]          // echo KEYWORD CONTRACT demand long-tails (4+ words). These are COVERAGE terms, never literal FAQ questions or H2s. The drafter uses them naturally in prose/FAQ answers.',
       '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
-      '  "sources": ["https://www.uscis.gov/working-in-the-united-states"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — never invent a path; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
+      '  "sources": ["<verbatim URL from VERIFIED SOURCE ALLOWLIST>"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — cite these verbatim allowlist URLs; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
       '  "targetSlug": "kebab-case-slug-for-this-page",',
       '  "metaDescription": "140–160 character SEO meta description (compelling benefit + primary keyword, no clickbait)",',
@@ -256,6 +252,10 @@ export async function POST(req: NextRequest) {
       ],
     })
     const seedOfficialSources = await assembleDraftSourceAllowlist(region, discoverSources, citationCtx)
+    const officialBankUrls = sourcesForBrief(citationCtx).map((s) => s.url)
+    // Never tell the writer not to invent government paths without also
+    // injecting the required official URLs into the allowlist.
+    const verifiedAllowlist = seedOfficialSources.length ? seedOfficialSources : officialBankUrls
     const providerAuthors = await resolveProviderAuthors({
       region,
       topic,
@@ -310,9 +310,9 @@ export async function POST(req: NextRequest) {
       interlinks.length > 0
         ? `CANONICAL ESTATE INTERLINK SHORTLIST (only these live/indexable URLs may be used):\n${interlinks.map((l) => `  - [${l.label}] ${l.url}\n    role=${l.role || 'topical-guide'}; relevance=${l.score || 'ranked'}; recommended placement=${l.placement || 'contextual section'}; reason=${l.reason || 'estate relevance match'}`).join('\n')}\nChoose 2–4 links that form a cohesive reader journey. Preserve each URL verbatim and use the recommended placement unless a more exact H2 exists.`
         : 'VERIFIED INTERNAL LINK ALLOWLIST: none provided — rely exclusively on sitemap-verified estate URLs.',
-      seedOfficialSources.length
-        ? `VERIFIED SOURCE ALLOWLIST (live-checked authorities for this topic — copy URLs VERBATIM into "sources"; government/edu/intergov preferred, on-topic institutional pages allowed; no blogs/Wikipedia/social):\n${seedOfficialSources.map((s) => `  - ${s}`).join('\n')}`
-        : 'VERIFIED SOURCE ALLOWLIST: empty after live check — return an empty sources array or cite only institutional pages you are certain exist and are on-topic. Never invent a path.',
+      verifiedAllowlist.length
+        ? `VERIFIED SOURCE ALLOWLIST (cite these verbatim allowlist URLs — copy URLs VERBATIM into "sources"; government/edu/intergov preferred, on-topic institutional pages allowed; no blogs/Wikipedia/social):\n${verifiedAllowlist.map((s) => `  - ${s}`).join('\n')}`
+        : 'VERIFIED SOURCE ALLOWLIST: cite these verbatim allowlist URLs from the regional official bank.',
       citedProvidersPromptBlock(providerAuthors.cited),
       sitemapCount > 0
         ? `ESTATE SITEMAP SIZE: ${sitemapCount} pages live — find adjacency opportunities.`

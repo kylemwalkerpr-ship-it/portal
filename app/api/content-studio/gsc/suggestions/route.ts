@@ -291,6 +291,26 @@ export async function POST(request: NextRequest) {
       console.warn('[content-studio/gsc/suggestions] coverage load failed', err)
     }
 
+    // In-flight Drafting / PR / merged jobs occupy the cluster even without a
+    // live URL — otherwise radar keeps offering GAP cards for the same title.
+    let occupyingJobs: NonNullable<OpportunityEngineInput['jobs']> = []
+    try {
+      const { data: jobRows } = await auth.db
+        .from('content_jobs')
+        .select('title, topic, primary_keyword, content_path, canonical_url, status')
+        .in('status', ['drafting', 'pending', 'publishing', 'pr_created', 'merged', 'deployed'])
+        .order('updated_at', { ascending: false })
+        .limit(400)
+      occupyingJobs = ((jobRows || []) as Array<Record<string, unknown>>).map((row) => ({
+        title: String(row.title || row.topic || row.primary_keyword || ''),
+        h1: String(row.title || row.topic || ''),
+        slug: String(row.content_path || row.canonical_url || row.primary_keyword || ''),
+        status: String(row.status || ''),
+      }))
+    } catch (err) {
+      console.warn('[content-studio/gsc/suggestions] occupying jobs load failed', err)
+    }
+
     // ── 3. Internal-link registry ──────────────────────────────────────────
     let interlinks: OpportunityEngineInput['interlinks'] = []
     try {
@@ -377,6 +397,7 @@ export async function POST(request: NextRequest) {
     const result = scoreOpportunities({
       queries,
       coverage,
+      jobs: occupyingJobs,
       interlinks,
       region,
       relatedByTerm: clusterResult.relatedByTerm,

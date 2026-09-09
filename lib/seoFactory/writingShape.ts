@@ -76,12 +76,12 @@ export function blogShipRequirements(): string[] {
  */
 export function guideShipRequirements(): string[] {
   return [
-    'STRUCTURE: H1 + "## In 60 seconds" TL;DR (3–5 direct bullets) + opening answer ≤40 words + ≥4 H2 sections + FAQ (4–6 Q&A) + ## Sources + short educational disclaimer.',
+    'STRUCTURE: H1 + "## In 60 seconds" TL;DR (3–5 direct bullets, exactly once) + opening answer ≤40 words + ≥4 H2 sections + FAQ (4–6 Q&A) + ## Sources + short educational disclaimer.',
     'SCHEMA: Article JSON-LD AND FAQPage JSON-LD in <script type="application/ld+json"> blocks.',
     'LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
     'CONCRETE PROCEDURES: use procedural concreteness (forms, documents, sequences, official steps). Do NOT invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
     'KEYWORDS: DEMAND short keywords appear ≥1× and ≤4× (floor 3 distinct head terms). DEMAND long-tails ≥1× and ≤2× as meaning coverage in prose, never a forced exact 6-word string. Synthesized floor-fill is optional — never stuff it. Missing a demand short is a HARD blocker on guides.',
-    'VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
+    'VOICE: YMYL pages must read like a licensed practitioner: concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections, no AI clichés, no outcome promises. Second person.',
     'ANTI-WALL-OF-TEXT: paragraphs of 1–3 sentences, each under 180 characters, on guides and regional pages.',
   ]
 }
@@ -89,12 +89,12 @@ export function guideShipRequirements(): string[] {
 /** Regional pages keep In 60 seconds / procedural H2s / FAQ 3–5 / sources / disclaimer. */
 export function regionalShipRequirements(): string[] {
   return [
-    'STRUCTURE: H1 + "## In 60 seconds" TL;DR (3–5 direct bullets) + opening answer + procedural H2s (who, what to prepare, steps, what changes, next action) + FAQ (3–5 Q&A) + ## Sources + short educational disclaimer.',
+    'STRUCTURE: H1 + "## In 60 seconds" TL;DR (3–5 direct bullets, exactly once) + opening answer + procedural H2s (who, what to prepare, steps, what changes, next action) + FAQ (3–5 Q&A) + ## Sources + short educational disclaimer.',
     'SCHEMA: Article JSON-LD; FAQPage JSON-LD when the page has an FAQ section.',
     'LINKS: use INTERNAL LINK ALLOWLIST URLs verbatim when linking internally. ZERO invented URLs.',
     'CONCRETE PROCEDURES: forms, documents, sequences, local agencies. Do NOT invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
     'KEYWORDS: DEMAND short keywords appear ≥1× and ≤4× (floor 3 distinct head terms). Missing a demand short is a HARD blocker on regional pages. Long-tails: meaning coverage in prose. Synthesized floor-fill is optional.',
-    'VOICE: informative, practical, second person, no hype, no outcome promises.',
+    'VOICE: YMYL pages must read like a licensed practitioner: concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections. Informative, practical, second person, no hype, no outcome promises.',
     'ANTI-WALL-OF-TEXT: paragraphs of 1–3 sentences, each under 180 characters.',
   ]
 }

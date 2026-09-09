@@ -44,6 +44,7 @@ import {
 import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
+import { rejectFragmentKeyword } from '@/lib/seoFactory/keywordContractBrief'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 import { buildShippedStems, shippedOverlap } from './shippedCoverage'
@@ -235,6 +236,7 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   // bucket if the term passes the dedupe gate. `source` records whether the
   // candidate is real demand or count-floor filler.
   const classifyAndAdd = (candidate: string, source: KeywordSource = 'synthesized') => {
+    if (pt && rejectFragmentKeyword(candidate, pt)) return
     const beforeLen = out.length
     pushUniq(candidate)
     if (out.length === beforeLen) return
@@ -289,16 +291,17 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
       // even if it contains stopwords in the middle.
       const headWords = head.split(/\s+/).filter(Boolean)
       if (head !== stripped && (STOP.test(headWords[0] || '') || STOP.test(headWords[headWords.length - 1] || ''))) continue
+      if (rejectFragmentKeyword(head, pt)) continue
       // The head itself may already be a valid short keyword ("statement of
       // purpose" = 3 words). The unmodified primary is real demand; a trimmed
       // window of it is only an approximation, so it stays synthesized.
       classifyAndAdd(head, head === stripped ? 'demand' : 'synthesized')
       for (const prefix of ST_PREFIXES) {
         const candidate = `${head} ${prefix}`
-        if (wordCount(candidate) <= 3) classifyAndAdd(candidate)
+        if (wordCount(candidate) <= 3 && !rejectFragmentKeyword(candidate, pt)) classifyAndAdd(candidate)
       }
       if (wordCount(`${head} 2026`) <= 3) classifyAndAdd(`${head} 2026`)
-      if (wordCount(`${head} guide`) <= 3) classifyAndAdd(`${head} guide`)
+      if (wordCount(`${head} guide`) <= 3 && !rejectFragmentKeyword(`${head} guide`, pt)) classifyAndAdd(`${head} guide`)
     }
   }
 
@@ -412,6 +415,7 @@ export function mergeBriefKeywords(opts: {
   const pushUnique = (arr: KeywordTerm[], t: string, source: KeywordSource) => {
     const norm = t.toLowerCase()
     if (!norm || norm === primaryL) return
+    if (rejectFragmentKeyword(t, opts.primaryTerm || '')) return
     if (arr.some((x) => x.term.toLowerCase() === norm)) return
     arr.push({ term: t, source })
   }

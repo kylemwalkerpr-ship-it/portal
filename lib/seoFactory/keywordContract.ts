@@ -14,6 +14,9 @@ import {
   parseKeywordTerms,
   renderKeywordContractBrief,
   sanitizeBriefOutline,
+  rejectFragmentKeyword,
+  dropFragmentKeywords,
+  dropFragmentKeywordTerms,
 } from './keywordContractBrief'
 
 export {
@@ -23,6 +26,9 @@ export {
   parseKeywordTerms,
   renderKeywordContractBrief,
   sanitizeBriefOutline,
+  rejectFragmentKeyword,
+  dropFragmentKeywords,
+  dropFragmentKeywordTerms,
 }
 
 /** Content types where a missing demand short is a ship blocker. */
@@ -82,9 +88,9 @@ function demoteUnplaceableTerms(terms: KeywordTerm[]): KeywordTerm[] {
   ))
 }
 
-function sealContract(contract: KeywordContract): KeywordContract {
-  const shortKeywordTerms = demoteUnplaceableTerms(contract.shortKeywordTerms)
-  const longTailKeywordTerms = demoteUnplaceableTerms(contract.longTailKeywordTerms)
+function sealContract(contract: KeywordContract, primary = ''): KeywordContract {
+  const shortKeywordTerms = dropFragmentKeywordTerms(demoteUnplaceableTerms(contract.shortKeywordTerms), primary)
+  const longTailKeywordTerms = dropFragmentKeywordTerms(demoteUnplaceableTerms(contract.longTailKeywordTerms), primary)
   return {
     ...contract,
     requiredShortKeywords: shortKeywordTerms.map((entry) => entry.term),
@@ -262,8 +268,8 @@ export function resolveKeywordContract(input: {
     })
   }
 
-  const short = asTerms(input.requiredShortKeywords, input.shortKeywordTerms)
-  const longTail = asTerms(input.requiredLongTailKeywords, input.longTailKeywordTerms)
+  const short = dropFragmentKeywordTerms(asTerms(input.requiredShortKeywords, input.shortKeywordTerms), primary)
+  const longTail = dropFragmentKeywordTerms(asTerms(input.requiredLongTailKeywords, input.longTailKeywordTerms), primary)
   if (short.length >= KEYWORD_REQUIREMENTS.SHORT_MIN && longTail.length >= KEYWORD_REQUIREMENTS.LONG_TAIL_MIN) {
     return sealContract({
       requiredShortKeywords: short.map((entry) => entry.term),
@@ -271,7 +277,7 @@ export function resolveKeywordContract(input: {
       shortKeywordTerms: short,
       longTailKeywordTerms: longTail,
       backfilled: false,
-    })
+    }, primary)
   }
 
   const partition = partitionKeywords(
@@ -290,8 +296,8 @@ export function resolveKeywordContract(input: {
       ? ('synthesized' as KeywordSource)
       : (supplied.get(term.toLowerCase()) ?? source),
   }))
-  const shortTerms = withProvenance(partition.shortTerms)
-  const longTailTerms = withProvenance(partition.longTailTerms)
+  const shortTerms = dropFragmentKeywordTerms(withProvenance(partition.shortTerms), primary)
+  const longTailTerms = dropFragmentKeywordTerms(withProvenance(partition.longTailTerms), primary)
 
   return sealContract({
     requiredShortKeywords: shortTerms.map((entry) => entry.term),
@@ -299,7 +305,7 @@ export function resolveKeywordContract(input: {
     shortKeywordTerms: shortTerms,
     longTailKeywordTerms: longTailTerms,
     backfilled: true,
-  })
+  }, primary)
 }
 
 /**
@@ -325,11 +331,12 @@ export function keywordContractForDraft(input: {
   const bag = (!providedShort.length && !providedLong.length)
     ? splitKeywordBag(input.keywords)
     : { short: providedShort, long: providedLong }
+  const primary = String(input.primaryKeyword || input.topic || '').trim()
   return resolveKeywordContract({
     primaryKeyword: input.primaryKeyword,
     topic: input.topic,
-    requiredShortKeywords: bag.short,
-    requiredLongTailKeywords: bag.long,
+    requiredShortKeywords: dropFragmentKeywords(bag.short, primary),
+    requiredLongTailKeywords: dropFragmentKeywords(bag.long, primary),
     shortKeywordTerms: input.shortKeywordTerms,
     longTailKeywordTerms: input.longTailKeywordTerms,
   })

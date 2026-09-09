@@ -147,3 +147,69 @@ export function detectCannibalization(opts: {
   out.sort((x, y) => y.overlapScore - x.overlapScore)
   return out
 }
+
+export type OccupyingJob = {
+  title?: string | null
+  h1?: string | null
+  slug?: string | null
+  status?: string | null
+}
+
+export type CollapseAgainstJobs = 'gap' | 'refresh' | 'hide'
+
+const OCCUPYING_STATUS_RE = /drafting|pending|publishing|\bpr\b|pr_created|pr_ready|merged|deployed|shipped/i
+
+/** Jaccard floor — same band as title/H1 overlap in detectCannibalization. */
+const OCCUPY_JACCARD = 0.34
+
+function occupiesCluster(status: string | null | undefined): boolean {
+  const s = String(status || '').trim()
+  if (!s) return false
+  return OCCUPYING_STATUS_RE.test(s)
+}
+
+function fieldTokens(value: string | null | undefined): string[] {
+  const raw = String(value || '').trim()
+  if (!raw) return []
+  const asWords = raw.replace(/[/_]+/g, ' ')
+  return tokens(asWords)
+}
+
+function bestOverlap(titleTokens: string[], job: OccupyingJob): number {
+  let best = 0
+  for (const field of [job.title, job.h1, job.slug]) {
+    const other = fieldTokens(field)
+    if (!other.length) continue
+    const score = jaccard(titleTokens, other)
+    if (score > best) best = score
+  }
+  return best
+}
+
+/**
+ * Collapse a radar GAP when in-flight or shipped jobs already occupy the
+ * cluster (Drafting / PR / merged). Identical Canada Spousal Sponsorship
+ * drafts must not spawn another GAP card.
+ *
+ *   gap     — no occupying overlap; a new page is still legitimate
+ *   refresh — one occupier; expand that job, do not create a sibling
+ *   hide    — two+ occupiers already fighting the cluster
+ */
+export function collapseOpportunityAgainstJobs(
+  opportunityTitle: string,
+  jobs: OccupyingJob[],
+): CollapseAgainstJobs {
+  const titleTokens = tokens(opportunityTitle)
+  if (!titleTokens.length || !jobs.length) return 'gap'
+
+  let occupyingHits = 0
+  for (const job of jobs) {
+    if (!occupiesCluster(job.status)) continue
+    const score = bestOverlap(titleTokens, job)
+    if (score >= OCCUPY_JACCARD) occupyingHits += 1
+  }
+
+  if (occupyingHits === 0) return 'gap'
+  if (occupyingHits >= 2) return 'hide'
+  return 'refresh'
+}

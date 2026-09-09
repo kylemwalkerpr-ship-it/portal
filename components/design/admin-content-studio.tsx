@@ -227,6 +227,7 @@ interface AISuggestion {
   playbookMove?: PlaybookMove
   qualityLine?: string
   conversionLine?: string
+  region?: string
 }
 
 // ── Options ──
@@ -237,6 +238,24 @@ const REGION_OPTIONS: { value: Region; label: string; flag: string }[] = [
   { value: 'UK', label: 'United Kingdom', flag: '🇬🇧' },
   { value: 'COMPARE', label: 'Cross-Country Comparison', flag: '🔀' },
 ]
+
+/**
+ * Client-safe mirror of detectRegionFromText's confident policy.
+ * researchDemand.ts pulls server modules (planner/supabase) so the studio
+ * cannot import it directly; keep this in lockstep with the strong markers.
+ */
+function studioHandoffRegion(text: string): Region | null {
+  const t = String(text || '')
+  if (!t.trim()) return null
+  if (/\b(canada|canadian)\b/i.test(t)) return 'CA'
+  if (/\b(united kingdom|\buk\b|britain|england|scotland|wales)\b/i.test(t)) return 'UK'
+  if (/\b(australia|australian|aussie)\b/i.test(t)) return 'AU'
+  if (/\b(united states|\busa\b|u\.s\.a|uscis)\b/i.test(t)) return 'US'
+  if (/\b(express entry|ircc|study permit|pgwp)\b/i.test(t)) return 'CA'
+  if (/\bukvi\b/i.test(t)) return 'UK'
+  if (/\b(home affairs|485 visa|subclass 189)\b/i.test(t)) return 'AU'
+  return null
+}
 
 const TONE_OPTIONS: { value: Tone; label: string }[] = [
   { value: 'professional', label: 'Professional' },
@@ -2358,12 +2377,31 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   }))
   React.useEffect(() => {
     const aeo = selectedBrief?.aeoRemediation
-    if (!aeo?.actions?.length) return
-    const heads = actionHeadings(aeo.actions)
-    if (heads.length) setH2s(heads)
-    if (aeo.url) {
-      setSources((prev) => (prev.includes(aeo.url!) ? prev : [aeo.url!, ...prev].slice(0, 8)))
+    if (aeo?.actions?.length) {
+      const heads = actionHeadings(aeo.actions)
+      if (heads.length) setH2s(heads)
     }
+    // Research/brief handoff: rebuild the official-source bank for the picker
+    // region so a Canada Express Entry topic is not left sitting on USCIS.
+    if (!selectedBrief?.topic) {
+      if (aeo?.url) {
+        setSources((prev) => (prev.includes(aeo.url!) ? prev : [aeo.url!, ...prev].slice(0, 8)))
+      }
+      return
+    }
+    setSources(collectDiscoverCitationUrls({
+      region,
+      topic: selectedBrief.topic || topic || title,
+      keywords: [
+        selectedBrief.primaryKeyword,
+        ...String(keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
+      ].filter(Boolean) as string[],
+      signals: selectedBrief.signals,
+      extraUrls: [
+        aeo?.url || '',
+        selectedBrief.cluster?.targetUrl || '',
+      ].filter(Boolean),
+    }))
   }, [selectedBrief])
   const [minWords, setMinWords] = React.useState<number>(() => clampBriefWordBudget(contentType).minWords)
   const [maxWords, setMaxWords] = React.useState<number>(() => clampBriefWordBudget(contentType).maxWords)
@@ -2509,13 +2547,16 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       setAiProvider(briefModel)
       onOwnerModelChange?.(briefModel)
       // Region auto-select: when the topic named a different country than the
-      // picker (e.g. "Australia student visa fee" while picker said US), the
-      // server re-keyed the whole brief to the detected region. Sync the UI
-      // so downstream drafting + audits use the SAME region.
+      // picker (e.g. "Express Entry Canada CRS Calculator" while picker said US),
+      // the server re-keyed the whole brief to the detected region. Always apply
+      // data.region / regionAutoSelected so the picker is not stuck on US.
       let regionNote = ''
-      if (data.regionAutoSelected && typeof data.region === 'string') {
-        setRegion(data.region as Region)
-        regionNote = ` · Region auto-selected: ${data.region}`
+      const nextRegion = typeof data.region === 'string' ? String(data.region).toUpperCase().slice(0, 2) : ''
+      if (nextRegion && (data.regionAutoSelected || nextRegion !== region)) {
+        if (nextRegion === 'US' || nextRegion === 'UK' || nextRegion === 'CA' || nextRegion === 'AU') {
+          setRegion(nextRegion as Region)
+          if (data.regionAutoSelected) regionNote = ` · Region auto-selected: ${nextRegion}`
+        }
       }
       const dropped = Array.isArray(data.droppedOffRegion) ? (data.droppedOffRegion as string[]) : []
       if (dropped.length) {
@@ -6555,6 +6596,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     if (s.audience) setAudience(s.audience)
     if (s.contentType && !contentTypeTouched) setContentType(s.contentType as ContentType)
     if (s.intent) setTone(TONE_FOR_INTENT[s.intent] ?? 'educational')
+    // Research/brief handoff region: country names and strong markers (express
+    // entry, IRCC, UKVI, Home Affairs…) win over the default US picker so
+    // Generate Full Brief is not the only way to get CA.
+    const handoffRegion = studioHandoffRegion(`${s.topic} ${s.primaryKeyword || ''} ${s.title || ''}`)
+    if (handoffRegion) setRegion(handoffRegion)
+    else if (s.region === 'US' || s.region === 'UK' || s.region === 'CA' || s.region === 'AU') {
+      setRegion(s.region)
+    }
     setSelectedBrief(s)
     setBriefInterlinks(s.interlinks ?? [])
     setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])

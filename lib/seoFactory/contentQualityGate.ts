@@ -44,6 +44,17 @@ export interface QualityGateResult {
   summary: string
 }
 
+/**
+ * Human-voice floor for ship quality.
+ * YMYL long-form (article, legal_guide, regional_*) must clear 80 to match
+ * ranking/indexable standards. Everything else stays at the historic 55.
+ */
+export function ymylHumanFloor(contentType?: string | null): number {
+  const t = String(contentType || '').toLowerCase().trim()
+  if (t === 'article' || t === 'legal_guide' || t.startsWith('regional_')) return 80
+  return 55
+}
+
 /** Multi-word AI tells — always blockers when present. */
 const AI_SLOP_PHRASES: string[] = [
   ...BANNED_AI_TELLS.filter((p) => p.includes(' ') || p.includes("'")),
@@ -1613,12 +1624,13 @@ export function evaluateContentQuality(opts: {
 
   humanScore = Math.max(0, Math.min(100, humanScore))
 
-  // If humanScore collapses, escalate to blocker
-  if (humanScore < 55 && !findings.some((f) => f.code === 'ai_slop' && f.severity === 'blocker')) {
+  // If humanScore collapses, escalate to blocker. YMYL long-form uses 80.
+  const voiceFloor = ymylHumanFloor(contentType)
+  if (humanScore < voiceFloor && !findings.some((f) => f.code === 'ai_slop' && f.severity === 'blocker')) {
     add({
       code: 'inhuman_voice',
       severity: 'blocker',
-      message: `Human-voice score too low (${humanScore}/100) — cadence/filler patterns fail practitioner standard`,
+      message: `Human-voice score too low (${humanScore}/100, need ≥${voiceFloor}) — cadence/filler patterns fail practitioner standard`,
       fix: 'Full rewrite: second person, varied sentence length, concrete procedures, no AI clichés.',
     })
   }

@@ -164,7 +164,7 @@ function factoryShipGatesBlock(
   const depth = `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`
   const shared = [
     '- META: description 140–160 chars containing the primary keyword and a concrete next step.',
-    '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
+    '- VOICE: YMYL pages must read like a licensed practitioner — concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections, no AI clichés, no outcome promises. Second person ("you").',
     '- SOURCES: prefer URLs VERBATIM from SOURCES TO CITE / SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are always valid. On-topic institutional pages (.org / .edu / official boards) that directly support a claim are also valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
     '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
     experienceBeatsPromptBlock(beats || []),
@@ -186,7 +186,7 @@ function factoryShipGatesBlock(
   ]
 }
 
-function factoryHeadingFallback(contentType: string): string[] {
+export function factoryHeadingFallback(contentType: string, topicHint = ''): string[] {
   const family = writingFamilyFor(contentType)
   if (family === 'blog' || family === 'short') {
     return [
@@ -195,22 +195,41 @@ function factoryHeadingFallback(contentType: string): string[] {
       '',
     ]
   }
+  const hay = String(topicHint || '').toLowerCase()
+  const isCalculator = /\b(crs|calculator|score tool|points? (test|score)|comprehensive ranking)\b/.test(hay)
+  const isTimeline = /\b(processing time|wait time|how long (does|is|will)|timeline)\b/.test(hay)
+    && !isCalculator
   if (family === 'regional') {
     return [
       'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
-      'Cover procedural topics as H2 sections (##): who this is for, what to prepare, steps, what can change, local agencies/forms, FAQ (3-5 Q&A), risks/warnings. Use procedural concreteness (forms, documents, sequences). Do not invent a personal story.',
+      'Cover procedural topics as H2 sections (##): who this is for, what to prepare, steps, what can change, local agencies/forms, FAQ (3-5 Q&A), risks/warnings. Use procedural concreteness (forms, documents, sequences). Do not invent a personal story. Do not force the six-item legal kit (overview / eligibility / application process / documents / timeline / FAQ).',
+      '',
+    ]
+  }
+  if (isCalculator) {
+    return [
+      'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
+      'This is a scoring / calculator page. Cover these H2s (##): how scoring works, inputs and proof, factor groups, a labelled hypothetical, draws versus approval, FAQ (4-6 Q&A). Do NOT force the generic legal-kit headings — this is a scoring tool, not a filing walkthrough.',
+      '',
+    ]
+  }
+  if (isTimeline) {
+    return [
+      'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
+      'This is a processing-time page. Cover these H2s (##): stages of the process, current ranges with "check official tool", what delays a file, FAQ (4-6 Q&A). Do NOT force the generic legal-kit headings.',
       '',
     ]
   }
   return [
     'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
-    'Cover these topics as H2 sections (##): overview, eligibility/requirements, application process, required documents, timeline/costs, FAQ (4-6 Q&A), procedural example (forms/documents/sequences — never an invented protagonist), risks/warnings.',
+    'Write a shorter procedural set as H2s (##): who this is for, what to prepare, steps and sequences, what can change, FAQ (4-6 Q&A), risks/warnings. Do NOT force all six legal-kit headings (overview / eligibility / application process / documents / timeline / FAQ). Choose only the sections this topic actually needs.',
     '',
   ]
 }
 
 function factoryBodyStructureLines(contentType: string): string[] {
   const family = writingFamilyFor(contentType)
+  const in60 = '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser). Emit this heading exactly once. Never a second In 60 seconds block and never a long prose capsule for it.'
   if (family === 'blog' || family === 'short') {
     return [
       '5) Body structure (narrative essay — not a legal-guide kit):',
@@ -230,7 +249,7 @@ function factoryBodyStructureLines(contentType: string): string[] {
     return [
       '5) Body structure (SEO + AEO + GEO):',
       '   - H1 (matches title; primary keyword once, natural)',
-      '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser)',
+      in60,
       '   - Opening paragraph: answer the query in ≤40 words before expanding',
       '   - Procedural H2s: who, what to prepare, steps, what can change, local context',
       '   - ### only nested under ##, never skip heading levels, never use ####+',
@@ -243,7 +262,7 @@ function factoryBodyStructureLines(contentType: string): string[] {
   return [
     '5) Body structure (SEO + AEO + GEO):',
     '   - H1 (matches title; primary keyword once, natural)',
-    '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser)',
+    in60,
     '   - Opening paragraph: answer the query in ≤40 words before expanding',
     '   - For guides with 4+ H2 sections: ## Table of contents immediately after the opening,',
     '     as `- [Section](#section-slug)` links where the slug EXACTLY matches each H2',
@@ -320,12 +339,14 @@ export function buildFactorySystemPrompt(opts: {
         longTailKeywordTerms: spec.requiredKeywords
           .filter((k) => k.kind === 'long_tail')
           .map((k) => ({ term: k.phrase, source: k.optional ? 'synthesized' as const : 'demand' as const })),
+        primaryKeyword: opts.primaryKeyword || spec.primaryKeyword,
       })
     : keywordContractFromLists({
         requiredShortKeywords,
         requiredLongTailKeywords,
         shortKeywordTerms: opts.shortKeywordTerms,
         longTailKeywordTerms: opts.longTailKeywordTerms,
+        primaryKeyword: opts.primaryKeyword || spec?.primaryKeyword,
       })
   const sourceList = spec && spec.approvedSources.length ? spec.approvedSources.map((s) => s.url) : sources
   const specInterlinks = spec && spec.verifiedEstateLinks.length
@@ -407,7 +428,10 @@ export function buildFactorySystemPrompt(opts: {
       '- Long-tail coverage belongs INSIDE paragraphs and FAQ answers, where it reads naturally. If a term has no clean slot, omit it — a natural article without the term beats a stuffed one.',
       '- Scannability is substance: a table or checklist must add structure a reader uses; never pad a section to hit depth.',
       '',
-    ] : factoryHeadingFallback(contentType)),
+    ] : factoryHeadingFallback(
+      contentType,
+      [opts.primaryKeyword, spec?.primaryKeyword, spec?.intent?.primaryQuery].filter(Boolean).join(' '),
+    )),
     ...(sourceList && sourceList.length ? [
       'SOURCES TO CITE / SOURCE ALLOWLIST (cite these VERBATIM; on-topic live institutional pages may be added):',
       ...sourceList.map((s, i) => `${i + 1}. ${s}`),
@@ -969,7 +993,7 @@ export function buildDepthExpandPrompt(opts: {
     '3) Do NOT write a fresh article from scratch. The draft below is your base — build on it. A full rewrite that ignores the draft is a hard failure.',
     '3) Each H2 body (not the heading) should be ~180–350 words with concrete steps, documents, risks, or examples. Stub sections are rejected.',
     '4) Required sections if missing or thin:',
-    '   - ## In 60 seconds (3–5 direct bullets)',
+    '   - ## In 60 seconds (3–5 direct bullets) — exactly one heading, bullets only',
     '   - Opening answer paragraph',
     '   - ## Who this is for / who it is not for',
     '   - ## Eligibility / requirements (numbered steps)',
@@ -1349,6 +1373,30 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
 }
 
 /**
+ * Keep a single `## In 60 seconds` H2. Collapse word-count parentheticals
+ * (`## In 60 seconds (150-180 words)`) and drop a second copy of the section.
+ */
+export function stripDuplicateIn60SecondsHeadings(markdown: string): string {
+  const raw = String(markdown || '')
+  if (!raw) return raw
+  const normalized = raw.replace(
+    /^##\s+In 60 seconds\b[^\n]*/gim,
+    '## In 60 seconds',
+  )
+  const chunks = normalized.split(/(?=^##\s+)/m)
+  let seen = false
+  const kept: string[] = []
+  for (const chunk of chunks) {
+    if (/^##\s+In 60 seconds\b/i.test(chunk)) {
+      if (seen) continue
+      seen = true
+    }
+    kept.push(chunk)
+  }
+  return kept.join('')
+}
+
+/**
  * Join sequentially generated parts into one document. Part 1 keeps its front
  * matter; later parts must not repeat YAML/H1/opening — strip any that slip in.
  */
@@ -1357,15 +1405,16 @@ export function mergeSegmentParts(parts: string[]): string {
     .map((raw) => String(raw || '').trim())
     .filter(Boolean)
     .map((part, i) => {
-      if (i === 0) return part
+      if (i === 0) return stripDuplicateIn60SecondsHeadings(part)
       // Strip YAML front matter if a continuation part accidentally re-emitted it
       let p = part.replace(/^---[\s\S]*?---\r?\n/, '')
       // Strip a leading H1 if the model re-announced the title (tolerant of the
       // blank line the front-matter strip can leave behind)
       p = p.replace(/^\s*#\s+[^\n]+\n+/, '')
-      // Strip a repeated 'In 60 seconds' opener only if it immediately follows the H1 strip
-      return p.trim()
+      // Strip a repeated 'In 60 seconds' opener (H1 strip can leave it at the top)
+      p = p.replace(/^\s*##\s+In 60 seconds\b[^\n]*\n(?:(?!##\s)[^\n]*\n?)*/i, '')
+      return stripDuplicateIn60SecondsHeadings(p.trim())
     })
     .filter(Boolean)
-  return cleaned.join('\n\n')
+  return stripDuplicateIn60SecondsHeadings(cleaned.join('\n\n'))
 }

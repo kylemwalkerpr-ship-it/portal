@@ -8,6 +8,7 @@ import { scoreOpportunities, mergeSnapshotIntoQueries, SNAPSHOT_MERGE_MIN_VIABLE
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { scoreCrucible } from '@/lib/seoEngine/crucible'
 import { bestCellForTerm } from '@/lib/seoEngine/planner'
+import { detectRegionFromText } from '@/lib/seoEngine/researchDemand'
 
 export type OpportunityAction =
   | 'title_rewrite'
@@ -57,10 +58,7 @@ const PLAY_ACTION_MAP: Record<string, OpportunityAction> = {
 }
 
 function inferRegion(term: string): string {
-  if (/uk|british|graduate route|ukvi/i.test(term)) return 'UK'
-  if (/canada|canadian|pgwp|express entry|ircc/i.test(term)) return 'CA'
-  if (/485|pte|australia|home affairs/i.test(term)) return 'AU'
-  return 'US'
+  return detectRegionFromText(term)?.region || 'US'
 }
 
 function contentTypeForTerm(term: string): string {

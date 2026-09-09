@@ -11,7 +11,7 @@ import {
   targetThresholdForType,
   targetWordsForType,
 } from './contentDepth'
-import { evaluateContentQuality, DISCLAIMER_RE } from './contentQualityGate'
+import { evaluateContentQuality, DISCLAIMER_RE, ymylHumanFloor } from './contentQualityGate'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { countEstateLinks } from './linkAudit'
 import { metaDescriptionLength } from './ahrefsIssues'
@@ -38,6 +38,8 @@ export interface SeoFactoryAudit {
   /** 0–100 human-voice score from quality gate */
   humanScore?: number
   qualitySummary?: string
+  /** Editorial content type used for YMYL human-voice floors. */
+  contentType?: string
 }
 
 function grade(score: number): SeoFactoryAudit['grade'] {
@@ -557,6 +559,7 @@ export function auditContent(opts: {
     primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
     humanScore: quality.humanScore,
     qualitySummary: quality.summary,
+    contentType: opts.contentType,
   }
 }
 
@@ -576,10 +579,14 @@ export function meetsDepthFloor(audit: SeoFactoryAudit): boolean {
 /**
  * Full unattended publish readiness: depth + voice/tone/compliance + no blockers.
  * Use this for auto-run / merge — not depth alone.
+ * YMYL long-form (article / legal_guide / regional_*) requires humanScore ≥ 80.
  */
 export function meetsShipQuality(audit: SeoFactoryAudit): boolean {
   if (audit.blockers.length > 0) return false
   if (!meetsDepthFloor(audit)) return false
-  if (audit.humanScore != null && audit.humanScore < 55) return false
+  const floor = ymylHumanFloor(audit.contentType)
+  if (audit.humanScore != null && audit.humanScore < floor) return false
   return true
 }
+
+export { ymylHumanFloor }

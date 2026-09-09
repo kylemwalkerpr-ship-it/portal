@@ -303,6 +303,81 @@ export function overlappingTokens(queryTokens: string[], fieldTokens: string[]):
   return hits
 }
 
+/**
+ * Named immigration programs and form codes that count as expertise overlap.
+ * Single tokens like "express" / "entry" / "canada" must never score a match.
+ */
+const KNOWN_EXPERTISE_PROGRAMS = [
+  'express entry',
+  'study permit',
+  'skilled worker',
+  'comprehensive ranking',
+  'green card',
+  'work permit',
+  'visitor visa',
+  'student visa',
+  'permanent residence',
+  'crs',
+  'pgwp',
+  'lmia',
+  'pnp',
+  'h-1b',
+  'h1b',
+  'f-1',
+  'f1',
+  'i-130',
+  'i-485',
+  'i-20',
+  'cas',
+  'opt',
+  'ielts',
+  'toefl',
+  'sop',
+]
+
+const GENERIC_SINGLETONS = new Set([
+  'express', 'entry', 'canada', 'canadian', 'uk', 'us', 'usa', 'australia',
+  'australian', 'america', 'american', 'britain', 'british', 'visa', 'permit',
+  'immigration', 'guide', 'page', 'help',
+])
+
+function phraseTokens(text: string): string[] {
+  return String(text || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 2 && !STOP.has(t))
+}
+
+/**
+ * Expertise overlap requires a phrase of ≥2 tokens OR a known program/form
+ * code. Token-smashed singles ("express", "entry", "canada") do not match.
+ */
+export function expertiseOverlapPhrases(queryText: string, fieldText: string): string[] {
+  const q = String(queryText || '').toLowerCase()
+  const f = String(fieldText || '').toLowerCase()
+  if (!q.trim() || !f.trim()) return []
+  const hits: string[] = []
+
+  for (const program of KNOWN_EXPERTISE_PROGRAMS) {
+    if (q.includes(program) && f.includes(program)) hits.push(program)
+  }
+
+  const qTokens = phraseTokens(q)
+  for (let n = 3; n >= 2; n--) {
+    for (let i = 0; i <= qTokens.length - n; i++) {
+      const phrase = qTokens.slice(i, i + n).join(' ')
+      if (f.includes(phrase)) hits.push(phrase)
+    }
+  }
+
+  return [...new Set(hits)].filter((h) => {
+    const tokens = h.split(/\s+/).filter(Boolean)
+    if (tokens.length >= 2) return true
+    if (GENERIC_SINGLETONS.has(h)) return false
+    return KNOWN_EXPERTISE_PROGRAMS.includes(h)
+  })
+}
+
 function regionKey(region: string | null | undefined): string {
   return String(region || '').trim().toLowerCase().slice(0, 2)
 }
@@ -753,16 +828,16 @@ export function matchProvidersToTopic(
       score -= 4
     }
 
-    const fieldTokens = tokenize(
+    const fieldBlob = [
       ...provider.practiceAreas,
       ...provider.specialties,
-      provider.tagline,
+      provider.tagline || '',
       ...provider.gigs.map((g) => `${g.title} ${g.category || ''}`),
-    )
-    const overlap = overlappingTokens(queryTokens, fieldTokens)
+    ].join(' · ')
+    const overlap = expertiseOverlapPhrases(`${topic} ${keyword}`, fieldBlob)
     if (overlap.length) {
       expertiseHit = true
-      score += Math.min(12, overlap.length * 3)
+      score += Math.min(12, overlap.length * 4)
       reasons.push(`expertise overlap: ${overlap.slice(0, 6).join(', ')}`)
     }
 
@@ -771,6 +846,9 @@ export function matchProvidersToTopic(
     if (related.score) {
       score += related.score
       reasons.push(related.reason)
+    }
+    if (jurisdictionHit && (related.direct || related.related)) {
+      score += 3
     }
 
     if (provider.credentialType || provider.role === 'attorney') {

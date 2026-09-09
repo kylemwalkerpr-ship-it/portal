@@ -89,8 +89,14 @@ describe('detectRegionFromText', () => {
     expect(d?.confident).toBe(true)
   })
 
-  it('is weak (not confident) on a single generic marker', () => {
+  it('is confident on a strong single programme marker', () => {
     const d = detectRegionFromText('study permit')
+    expect(d?.region).toBe('CA')
+    expect(d?.confident).toBe(true)
+  })
+
+  it('is weak (not confident) on a single generic marker', () => {
+    const d = detectRegionFromText('work permit')
     expect(d?.region).toBe('CA')
     expect(d?.confident).toBe(false)
   })

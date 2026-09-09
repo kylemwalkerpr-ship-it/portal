@@ -98,6 +98,8 @@ export const CURATED_OFFICIAL_SOURCES: OfficialSource[] = [
   { title: 'IRCC — Visit', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada.html', regions: ['CA'], topics: ['immigration', 'travel'] },
   { title: 'IRCC — Family sponsorship', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/family-sponsorship.html', regions: ['CA'], topics: ['immigration', 'family'] },
   { title: 'IRCC — Express Entry', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry.html', regions: ['CA'], topics: ['immigration', 'work'] },
+  { title: 'IRCC — Express Entry rounds of invitations', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/submit-profile/rounds-invitations.html', regions: ['CA'], topics: ['immigration', 'work'] },
+  { title: 'IRCC — Comprehensive Ranking System (CRS)', url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/eligibility/comprehensive-ranking-system.html', regions: ['CA'], topics: ['immigration', 'work'] },
   { title: 'IRCC home', url: 'https://www.canada.ca/en/immigration-refugees-citizenship.html', regions: ['CA'], topics: ['immigration'] },
   { title: 'Educanada — Study in Canada', url: 'https://www.educanada.ca/', regions: ['CA'], topics: ['study', 'education'] },
   { title: 'WES Canada — credential evaluation', url: 'https://www.wes.org/', regions: ['CA'], topics: ['education', 'study'] },
@@ -181,12 +183,59 @@ export function contextTopics(ctx?: CitationContext | null): SourceTopic[] {
 }
 
 function regionOfUrl(url: string): SourceRegion[] {
+  const exclusive = exclusiveImmigrationRegion(url)
+  if (exclusive) return [exclusive]
   const u = url.toLowerCase()
   if (/gov\.uk|ukcisa\.org\.uk|officeforstudents\.org\.uk|britishcouncil/.test(u)) return ['UK']
   if (/canada\.ca|gc\.ca|educanada\.ca|cmhc-schl/.test(u)) return ['CA']
   if (/homeaffairs|gov\.au|studyaustralia|teqsa|fairwork|ato\.gov/.test(u)) return ['AU']
   if (/uscis|state\.gov|dhs\.gov|ice\.gov|cbp\.gov|hud\.gov|irs\.gov|ed\.gov|dol\.gov|studentaid|consumerfinance|ssa\.gov|cdc\.gov/.test(u)) return ['US']
   return ['ALL']
+}
+
+/** Immigration-department hosts are exclusive to one country — never ALL. */
+const EXCLUSIVE_IMMIGRATION_HOSTS: Array<{ suffix: string; region: SourceRegion }> = [
+  { suffix: 'uscis.gov', region: 'US' },
+  { suffix: 'dhs.gov', region: 'US' },
+  { suffix: 'studyinthestates.dhs.gov', region: 'US' },
+  { suffix: 'state.gov', region: 'US' },
+  { suffix: 'travel.state.gov', region: 'US' },
+  { suffix: 'educationusa.state.gov', region: 'US' },
+  { suffix: 'ice.gov', region: 'US' },
+  { suffix: 'cbp.gov', region: 'US' },
+  { suffix: 'gov.uk', region: 'UK' },
+  { suffix: 'canada.ca', region: 'CA' },
+  { suffix: 'ircc.canada.ca', region: 'CA' },
+  { suffix: 'gc.ca', region: 'CA' },
+  { suffix: 'homeaffairs.gov.au', region: 'AU' },
+  { suffix: 'immi.homeaffairs.gov.au', region: 'AU' },
+]
+
+function hostOfUrl(url: string): string {
+  try {
+    if (!/^https?:\/\//i.test(String(url || '').trim())) return ''
+    return new URL(String(url).trim()).hostname.toLowerCase().replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+export function exclusiveImmigrationRegion(url: string): SourceRegion | null {
+  const host = hostOfUrl(url)
+  if (!host) return null
+  for (const row of EXCLUSIVE_IMMIGRATION_HOSTS) {
+    if (host === row.suffix || host.endsWith(`.${row.suffix}`)) return row.region
+  }
+  return null
+}
+
+/** Regions implied by the URL host. Immigration department hosts are exclusive. */
+export function hostRegions(url: string): SourceRegion[] {
+  const exclusive = exclusiveImmigrationRegion(url)
+  if (exclusive) return [exclusive]
+  const curated = findCuratedSource(url)
+  if (curated?.regions?.length) return curated.regions
+  return regionOfUrl(url)
 }
 
 function topicsOfUrl(url: string, title?: string): SourceTopic[] {
@@ -276,8 +325,8 @@ const PRIMARY_DISCIPLINE_HOSTS = new Set([
 export function citationRegionMatch(url: string, ctx?: CitationContext | null): boolean {
   if (!ctx?.region) return true
   const want = normalizeRegion(ctx.region)
-  const curated = findCuratedSource(url)
-  const regions = curated?.regions || regionOfUrl(url)
+  const regions = hostRegions(url)
+  if (exclusiveImmigrationRegion(url)) return regions.includes(want)
   return regions.includes(want) || regions.includes('ALL')
 }
 
@@ -354,15 +403,14 @@ export function isCitationRelevant(url: string, ctx?: CitationContext | null, ti
 export const EVIDENCE_SOURCE_FLOOR = 3
 
 export function citationRegionsOf(url: string): SourceRegion[] {
-  const curated = findCuratedSource(url)
-  if (curated?.regions?.length) return curated.regions
-  return regionOfUrl(url)
+  return hostRegions(url)
 }
 
 export function isInRegionCitation(url: string, region?: string | null): boolean {
   if (!region) return true
   const want = normalizeRegion(region)
-  const regions = citationRegionsOf(url)
+  const regions = hostRegions(url)
+  if (exclusiveImmigrationRegion(url)) return regions.includes(want)
   return regions.includes(want) || regions.includes('ALL')
 }
 
@@ -404,6 +452,10 @@ export function applyEvidenceRegionFloor(
   if (inRegion.length < floor) {
     for (const line of offRegion) {
       if (inRegion.length + fallback.length >= floor) break
+      const url = extractCitationUrl(line)
+      // Never pad a CA/UK/AU brief with USCIS / state.gov / DHS (or any other
+      // country's exclusive immigration-department host).
+      if (url && exclusiveImmigrationRegion(url)) continue
       fallback.push(line)
     }
   }

@@ -40,6 +40,23 @@ const COUNTRY_NAMES: Record<string, RegExp> = {
   AU: /\b(australia|australian|aussie)\b/i,
 }
 
+/**
+ * Programme markers that are confident even on a single hit. A lone
+ * "express entry" / "ukvi" / "subclass 189" is enough to re-key a default-US
+ * brief; generic one-off terms still need ≥2 hits.
+ */
+const STRONG_SINGLE_MARKERS: Array<{ region: string; re: RegExp }> = [
+  { region: 'CA', re: /\bexpress entry\b/i },
+  { region: 'CA', re: /\bircc\b/i },
+  { region: 'CA', re: /\bstudy permit\b/i },
+  { region: 'CA', re: /\bpgwp\b/i },
+  { region: 'UK', re: /\bukvi\b/i },
+  { region: 'AU', re: /\bhome affairs\b/i },
+  { region: 'AU', re: /\b485 visa\b/i },
+  { region: 'AU', re: /\bsubclass 189\b/i },
+]
+
+
 /** Check if a keyword is clearly from a specific region. */
 export function keywordRegion(term: string): string | null {
   for (const [region, re] of Object.entries(REGION_MARKERS)) {
@@ -53,10 +70,14 @@ export function keywordRegion(term: string): string | null {
  *
  * Confidence rules:
  *  - An explicit country name ("Australia", "Canada", "UK", "United States")
- *    is ALWAYS confident — return that region immediately.
+ *    is ALWAYS confident — return that region immediately. Country names beat
+ *    programme markers, so "Express Entry Canada CRS Calculator" is CA.
+ *  - Strong single markers (`express entry`, `ircc`, `study permit`, `pgwp`,
+ *    `ukvi`, `home affairs`, `485 visa`, `subclass 189`) are confident even
+ *    with hits === 1.
  *  - Otherwise count visa-programme marker hits per region; the region with
  *    the most hits wins, but only when it has ≥2 hits (a single generic term
- *    like "study permit" is not enough to override the user's pick).
+ *    like "work permit" is not enough to override the user's pick).
  *
  * Returns null when nothing points at a region.
  */
@@ -69,7 +90,19 @@ export function detectRegionFromText(text: string): { region: string; confident:
     if (re.test(t)) return { region, confident: true, hits: 99 }
   }
 
-  // 2) Marker-hit count, needs ≥2 to be actionable.
+  // 2) Strong programme markers are confident on a single hit.
+  const strongHits: Record<string, number> = { US: 0, CA: 0, UK: 0, AU: 0 }
+  for (const { region, re } of STRONG_SINGLE_MARKERS) {
+    if (re.test(t)) strongHits[region] += 1
+  }
+  let bestStrong: string | null = null
+  let bestStrongN = 0
+  for (const [region, n] of Object.entries(strongHits)) {
+    if (n > bestStrongN) { bestStrong = region; bestStrongN = n }
+  }
+  if (bestStrong && bestStrongN >= 1) return { region: bestStrong, confident: true, hits: bestStrongN }
+
+  // 3) Marker-hit count, needs ≥2 to be actionable.
   const counts: Record<string, number> = { US: 0, CA: 0, UK: 0, AU: 0 }
   for (const [region, re] of Object.entries(REGION_MARKERS)) {
     const matches = t.match(new RegExp(re.source, 'gi'))
@@ -84,6 +117,30 @@ export function detectRegionFromText(text: string): { region: string; confident:
   if (best && bestHits === 1) return { region: best, confident: false, hits: 1 }
   return null
 }
+
+/**
+ * Brief/keyword region policy:
+ *  - if detected.confident, ALWAYS use detected.region (even if body is US)
+ *  - if body.region is explicit AND detected is not confident, keep body
+ *  - if they conflict and both are "confident", topic/detected wins
+ */
+export function resolveBriefRegion(
+  bodyRegion: string | null | undefined,
+  text: string,
+): { region: string; regionAutoSelected: boolean; detected: ReturnType<typeof detectRegionFromText> } {
+  const raw = String(bodyRegion || '').trim()
+  const current = (raw ? raw.toUpperCase().slice(0, 2) : 'US') || 'US'
+  const detected = detectRegionFromText(text)
+  if (detected?.confident) {
+    return {
+      region: detected.region,
+      regionAutoSelected: detected.region !== current,
+      detected,
+    }
+  }
+  return { region: current, regionAutoSelected: false, detected }
+}
+
 
 /**
  * Deterministically drop keywords that belong to a DIFFERENT region than the

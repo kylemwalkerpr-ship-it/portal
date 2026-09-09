@@ -46,7 +46,7 @@ import {
   applyEvidenceRegionFloor,
   type CitationContext,
 } from './officialSources'
-import { applyCitationPolicy, citationContextForContent } from './citationPolicy'
+import { applyCitationPolicy, citationContextForContent, sanitizeExtractedUrl } from './citationPolicy'
 
 export const ESTATE_BASE = 'https://legal.yousafeconsultancy.com'
 
@@ -319,7 +319,8 @@ export function extractLinks(content: string): LinkRef[] {
   // beside the full href that the repair had already fixed.
   const occupied: Array<{ start: number; end: number }> = []
   const push = (raw: string, url: string) => {
-    const clean = stripTrailingPunct(url.trim())
+    const sanitized = sanitizeExtractedUrl(url)
+    const clean = stripTrailingPunct((sanitized.url || url).trim())
     if (!clean || seen.has(clean) || isSkippableHref(clean)) return
     seen.add(clean)
     out.push({ raw, url: clean })
@@ -621,13 +622,17 @@ export function auditLinksSync(
 
   for (const { url: rawUrl } of links) {
     if (SKIP_PREFIXES.some((p) => rawUrl.trim().startsWith(p)) || isSkippableHref(rawUrl)) continue
-    // Clean corrupted URLs before checking: double-protocol, TLD sentence words
+    // Clean corrupted URLs before checking: double-protocol, glued TLD prose,
+    // TLD sentence words. Always audit the sanitized form so a factory-glued
+    // marketplace host (…Inthiscasecom) is never held as unreachable_external.
     let url = rawUrl
     // Fix double-protocol: https://https://example.com → https://example.com
     url = url.replace(/(https?:\/\/)+/gi, (match) => {
       const schemes = match.match(/https?:\/\//gi) || []
       return schemes[schemes.length - 1] || match
     })
+    const sanitized = sanitizeExtractedUrl(url)
+    if (sanitized.url) url = sanitized.url
     // Fix TLD sentence words: immi.homeaffairs.gov.Typically → immi.homeaffairs.gov.au
     url = cleanTldSentenceWords(url)
     const placeholder = isPlaceholderUrl(url)
@@ -851,9 +856,11 @@ function stripDoubleScheme(s: string): string {
   })
 }
 
-/** Clean a raw URL the same way auditLinksSync does: strip double-scheme + TLD sentence words. */
+/** Clean a raw URL the same way auditLinksSync does: strip double-scheme, glued TLD prose, TLD sentence words. */
 function cleanRawUrl(rawUrl: string): string {
-  return cleanTldSentenceWords(stripDoubleScheme(rawUrl))
+  const stripped = stripDoubleScheme(rawUrl)
+  const sanitized = sanitizeExtractedUrl(stripped)
+  return cleanTldSentenceWords(sanitized.url || stripped)
 }
 
 export async function auditLinksLive(

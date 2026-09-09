@@ -7,7 +7,7 @@ import {
   assertRhythmWithinRepairRange,
 } from '@/lib/seoFactory/contentQualityGate'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
-import { auditContent, meetsShipQuality } from '@/lib/seoFactory/audit'
+import { auditContent, meetsShipQuality, ymylHumanFloor, type SeoFactoryAudit } from '@/lib/seoFactory/audit'
 
 const solidBody = Array.from({ length: 1900 }, (_, i) => `detail${i}`).join(' ')
 
@@ -137,7 +137,8 @@ describe('evaluateContentQuality', () => {
       primaryKeyword: 'student visa documents',
     })
     expect(r.ok).toBe(true)
-    expect(r.humanScore).toBeGreaterThanOrEqual(60)
+    expect(r.humanScore).toBeGreaterThanOrEqual(80)
+    expect(r.blockers.some((b) => b.code === 'inhuman_voice')).toBe(false)
   })
 
   it('flags robotic rhythm across TL;DR list items (bullets count as prose)', () => {
@@ -425,6 +426,42 @@ describe('auditContent integrates quality', () => {
     })
     expect(meetsShipQuality(audit)).toBe(false)
     expect(audit.blockers.length).toBeGreaterThan(0)
+  })
+
+  it('meetsShipQuality false when humanScore 60 on article', () => {
+    expect(ymylHumanFloor('article')).toBe(80)
+    expect(ymylHumanFloor('legal_guide')).toBe(80)
+    expect(ymylHumanFloor('regional_page')).toBe(80)
+    expect(ymylHumanFloor('blog_post')).toBe(55)
+    const audit: SeoFactoryAudit = {
+      score: 92,
+      grade: 'A',
+      blockers: [],
+      warnings: [],
+      passes: [],
+      indexableRecommended: true,
+      llmsRecommended: true,
+      wordCount: 2200,
+      humanScore: 60,
+      contentType: 'article',
+    }
+    expect(meetsShipQuality(audit)).toBe(false)
+  })
+
+  it('meetsShipQuality true when humanScore 85, no blockers, depth ok', () => {
+    const audit: SeoFactoryAudit = {
+      score: 92,
+      grade: 'A',
+      blockers: [],
+      warnings: [],
+      passes: [],
+      indexableRecommended: true,
+      llmsRecommended: true,
+      wordCount: 2200,
+      humanScore: 85,
+      contentType: 'article',
+    }
+    expect(meetsShipQuality(audit)).toBe(true)
   })
 })
 

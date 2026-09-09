@@ -19,6 +19,73 @@ export interface KeywordContractLists {
   backfilled: boolean
 }
 
+/** 2–3 token named immigration programs that must stay intact as phrases. */
+export const NAMED_IMMIGRATION_PROGRAMS = [
+  'express entry',
+  'study permit',
+  'skilled worker',
+  'comprehensive ranking',
+  'green card',
+  'work permit',
+  'visitor visa',
+  'student visa',
+  'permanent residence',
+] as const
+
+const MILL_SUFFIXES = new Set([
+  'requirements',
+  'eligibility',
+  'application',
+  'documents',
+  'timeline',
+  'guide',
+  'rules',
+  'process',
+  'checklist',
+  'fees',
+  'cost',
+  'costs',
+])
+
+function normPhrase(value: string): string {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Drop mill fragments: a 1-token term that is a subset of a multi-word
+ * primary, or `{program-first-token} {mill-suffix}` when the primary contains
+ * a named 2–3 token immigration program (express entry → "express" /
+ * "express requirements").
+ */
+export function rejectFragmentKeyword(term: string, primary: string): boolean {
+  const t = normPhrase(term)
+  const pk = normPhrase(primary)
+  if (!t || !pk) return false
+  const termTokens = t.split(/\s+/).filter(Boolean)
+  const primaryTokens = pk.split(/\s+/).filter(Boolean)
+  if (primaryTokens.length < 2) return false
+
+  if (termTokens.length === 1 && primaryTokens.includes(termTokens[0])) return true
+
+  if (termTokens.length === 2 && MILL_SUFFIXES.has(termTokens[1])) {
+    for (const program of NAMED_IMMIGRATION_PROGRAMS) {
+      if (!pk.includes(program)) continue
+      const progTokens = program.split(/\s+/).filter(Boolean)
+      if (progTokens.length < 2) continue
+      if (termTokens[0] === progTokens[0] && !t.includes(program)) return true
+    }
+  }
+  return false
+}
+
+export function dropFragmentKeywordTerms<T extends { term: string }>(terms: T[], primary: string): T[] {
+  return terms.filter((entry) => !rejectFragmentKeyword(entry.term, primary))
+}
+
+export function dropFragmentKeywords(terms: string[], primary: string): string[] {
+  return terms.filter((term) => !rejectFragmentKeyword(term, primary))
+}
+
 function demandTerms(terms: KeywordTerm[]): string[] {
   return terms.filter((t) => t.source === 'demand').map((t) => t.term)
 }
@@ -33,19 +100,33 @@ export function keywordContractFromLists(input: {
   requiredLongTailKeywords?: string[]
   shortKeywordTerms?: KeywordTerm[]
   longTailKeywordTerms?: KeywordTerm[]
+  primaryKeyword?: string
 }): KeywordContractLists {
-  const short = Array.isArray(input.requiredShortKeywords)
-    ? input.requiredShortKeywords.map(String).map((t) => t.trim()).filter(Boolean)
-    : []
-  const longTail = Array.isArray(input.requiredLongTailKeywords)
-    ? input.requiredLongTailKeywords.map(String).map((t) => t.trim()).filter(Boolean)
-    : []
-  const shortKeywordTerms = input.shortKeywordTerms?.length
-    ? input.shortKeywordTerms
-    : short.map((term) => ({ term, source: 'demand' as KeywordSource }))
-  const longTailKeywordTerms = input.longTailKeywordTerms?.length
-    ? input.longTailKeywordTerms
-    : longTail.map((term) => ({ term, source: 'demand' as KeywordSource }))
+  const primary = String(input.primaryKeyword || '').trim()
+  const short = dropFragmentKeywords(
+    Array.isArray(input.requiredShortKeywords)
+      ? input.requiredShortKeywords.map(String).map((t) => t.trim()).filter(Boolean)
+      : [],
+    primary,
+  )
+  const longTail = dropFragmentKeywords(
+    Array.isArray(input.requiredLongTailKeywords)
+      ? input.requiredLongTailKeywords.map(String).map((t) => t.trim()).filter(Boolean)
+      : [],
+    primary,
+  )
+  const shortKeywordTerms = dropFragmentKeywordTerms(
+    input.shortKeywordTerms?.length
+      ? input.shortKeywordTerms
+      : short.map((term) => ({ term, source: 'demand' as KeywordSource })),
+    primary,
+  )
+  const longTailKeywordTerms = dropFragmentKeywordTerms(
+    input.longTailKeywordTerms?.length
+      ? input.longTailKeywordTerms
+      : longTail.map((term) => ({ term, source: 'demand' as KeywordSource })),
+    primary,
+  )
   return {
     requiredShortKeywords: shortKeywordTerms.map((entry) => entry.term),
     requiredLongTailKeywords: longTailKeywordTerms.map((entry) => entry.term),
@@ -114,6 +195,8 @@ export function parseKeywordTerms(raw: unknown): KeywordTerm[] | undefined {
  * Strip briefing H2s Harper cannot honestly rewrite: verbatim keyword pastes
  * and question-mark FAQ items listed as sibling sections. Structural headings
  * (In 60 seconds / FAQ / Sources / Worked Example / TOC) are kept.
+ * Any In 60 seconds variant (word-count parentheticals, a second copy) collapses
+ * to a single `In 60 seconds` heading.
  */
 export function sanitizeBriefOutline(headings: string[], keywords: string[] = []): string[] {
   const keywordNorms = new Set(
@@ -125,8 +208,11 @@ export function sanitizeBriefOutline(headings: string[], keywords: string[] = []
   const seen = new Set<string>()
   const out: string[] = []
   for (const raw of headings || []) {
-    const heading = String(raw || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
+    let heading = String(raw || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
     if (!heading) continue
+    if (/^in 60 seconds\b/i.test(heading) || /^tl;?dr\b/i.test(heading)) {
+      heading = 'In 60 seconds'
+    }
     const key = heading.toLowerCase()
     if (seen.has(key)) continue
     if (!structural.test(heading)) {

@@ -3,7 +3,7 @@
  */
 
 import { collapseParaphraseDemand } from '@/lib/seoEngine/coverageIntent'
-import { sanitizeDemandTerm } from './queryNoise'
+import { isJunkQuery, sanitizeDemandTerm } from './queryNoise'
 
 export type GscMetricRow = {
   query: string
@@ -128,6 +128,19 @@ type GscDb = {
   }
 }
 
+/** Over-fetch so `limit` is eligible rows after junk drop, not raw GSC rows. */
+const JUNK_OVERFETCH = 8
+const JUNK_OVERFETCH_CAP = 5_000
+
+export function dropJunkGscRows<T extends { query?: unknown }>(rows: T[]): T[] {
+  return rows.filter((row) => !isJunkQuery(String(row.query || '')))
+}
+
+function overFetchLimit(limit: number): number {
+  const n = Math.max(1, limit)
+  return Math.min(JUNK_OVERFETCH_CAP, Math.max(n, n * JUNK_OVERFETCH))
+}
+
 /**
  * Read persisted seo_gsc_rows for a window. When the rolling UTC window has
  * not been synced yet (0 rows), fall back to the latest stored window so
@@ -150,19 +163,21 @@ export async function loadPersistedGscWindow(
 }> {
   const select = opts.select || 'query, page, clicks, impressions, ctr, position, start_date, end_date'
   const applySite = (q: any) => (opts.siteUrl ? q.eq('site_url', opts.siteUrl) : q)
+  const fetchLimit = overFetchLimit(opts.limit)
 
   let q = applySite(
     db.from('seo_gsc_rows').select(select).eq('start_date', opts.startDate).eq('end_date', opts.endDate),
   )
     .order('impressions', { ascending: false })
-    .limit(opts.limit)
+    .limit(fetchLimit)
   const first = await q
   if (first.error) throw new Error(first.error.message)
-  const rows = (first.data || []) as Array<Record<string, unknown>>
-  if (rows.length > 0) {
+  const firstRaw = (first.data || []) as Array<Record<string, unknown>>
+  if (firstRaw.length > 0) {
+    const eligible = dropJunkGscRows(firstRaw).slice(0, opts.limit)
     return {
-      rows,
-      rowCount: rows.length,
+      rows: eligible,
+      rowCount: eligible.length,
       range: { startDate: opts.startDate, endDate: opts.endDate },
       usedFallback: false,
     }
@@ -180,10 +195,10 @@ export async function loadPersistedGscWindow(
     db.from('seo_gsc_rows').select(select).eq('start_date', latestRow.start_date).eq('end_date', latestRow.end_date),
   )
     .order('impressions', { ascending: false })
-    .limit(opts.limit)
+    .limit(fetchLimit)
   const second = await q2
   if (second.error) throw new Error(second.error.message)
-  const fallbackRows = (second.data || []) as Array<Record<string, unknown>>
+  const fallbackRows = dropJunkGscRows((second.data || []) as Array<Record<string, unknown>>).slice(0, opts.limit)
   return {
     rows: fallbackRows,
     rowCount: fallbackRows.length,
@@ -204,8 +219,9 @@ export type PersistedDemandQuery = {
 
 /**
  * Collapse seo_gsc_rows (query×page) into one query per term, keeping the
- * highest-impression page. Optional `isJunk` drops PDF/URL/brand noise so
- * Discover does not score leaked filenames as demand.
+ * highest-impression page. Drops PDF/URL/brand noise by default so Discover
+ * does not score leaked filenames as demand. Pass a custom `isJunk` only to
+ * tighten or relax the read-boundary filter.
  */
 export function queriesFromPersistedGscRows(
   rows: Array<{
@@ -216,7 +232,7 @@ export function queriesFromPersistedGscRows(
     ctr?: unknown
     position?: unknown
   }>,
-  isJunk: (term: string) => boolean = () => false,
+  isJunk: (term: string) => boolean = isJunkQuery,
 ): PersistedDemandQuery[] {
   const best = new Map<string, PersistedDemandQuery>()
   for (const row of rows) {

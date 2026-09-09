@@ -16,13 +16,133 @@ import {
   type OfficialSource,
 } from './officialSources'
 
+/**
+ * Public TLDs we will recover when a sentence word has been glued onto the
+ * host (`yousafeconsultancy.Inthiscasecom` → `yousafeconsultancy.com`).
+ * Longer compound TLDs MUST precede their suffixes so `co.uk` wins over `co`.
+ */
+const GLUED_TLD_ALT =
+  'co\\.uk|com\\.au|gov\\.uk|gov\\.au|gc\\.ca|co\\.nz|gov\\.sg|gov\\.ca|co\\.za|gov\\.us|com|org|net|edu|gov|io|co|us|uk|au|ca|info|biz|me|app|dev|int|mil'
+
+const HOST_OK_RE = /^[a-z0-9.-]+\.[a-z]{2,}$/i
+const TLD_THEN_CAP_RE = new RegExp(`^(.*\\.(?:${GLUED_TLD_ALT}))([A-Z][A-Za-z].*)$`)
+const LABEL_GLUED_TLD_RE = new RegExp(`^([A-Z][A-Za-z]*?)(${GLUED_TLD_ALT})$`, 'i')
+const TLD_TRUNC_RE = new RegExp(`^([a-z0-9.-]+\\.(?:${GLUED_TLD_ALT}))(.*)$`, 'i')
+
+export interface SanitizedExtractedUrl {
+  url: string | null
+  leftover: string
+}
+
+/**
+ * Recover a real URL when markdown/prose was glued onto the hostname.
+ *
+ * Live defect: `https://market.yousafeconsultancy.Inthiscasecom/gigs/…`
+ * was extracted as one token because `/https?:\/\/[^\s)<>\]"'`]+/` swallows
+ * camelCase words after `.com`. Split the host when a TLD is immediately
+ * followed by a capital letter (Inthiscase / Asaresult / Onreview), require
+ * the recovered hostname to match `/^[a-z0-9.-]+\.[a-z]{2,}$/i`, and otherwise
+ * insert a dot before the glued word or truncate at the real TLD.
+ */
+export function sanitizeExtractedUrl(raw: string): SanitizedExtractedUrl {
+  const original = String(raw || '').trim()
+  if (!original) return { url: null, leftover: '' }
+  const stripped = original.replace(/[.,);]+$/, '')
+  const schemeMatch = stripped.match(/^(https?:\/\/)(.+)$/i)
+  if (!schemeMatch) return { url: null, leftover: original }
+
+  const scheme = schemeMatch[1]
+  const rest = schemeMatch[2]
+  const pathAt = rest.search(/[/?#]/)
+  const authorityEnd = pathAt >= 0 ? pathAt : rest.length
+  let authority = rest.slice(0, authorityEnd)
+  const path = rest.slice(authorityEnd)
+
+  let userinfo = ''
+  const at = authority.lastIndexOf('@')
+  if (at >= 0) {
+    userinfo = authority.slice(0, at + 1)
+    authority = authority.slice(at + 1)
+  }
+
+  let port = ''
+  if (!authority.startsWith('[')) {
+    const colon = authority.lastIndexOf(':')
+    if (colon > 0 && /^\d+$/.test(authority.slice(colon + 1))) {
+      port = authority.slice(colon)
+      authority = authority.slice(0, colon)
+    }
+  }
+
+  const split = splitGluedHostname(authority)
+  let host = split.host
+  const leftover = split.leftover
+
+  host = host.replace(/\.+$/, '')
+  const hostLower = host.toLowerCase()
+  if (!HOST_OK_RE.test(hostLower)) {
+    return { url: null, leftover: leftover || original }
+  }
+
+  return {
+    url: `${scheme}${userinfo}${hostLower}${port}${path}`,
+    leftover,
+  }
+}
+
+function splitGluedHostname(host: string): { host: string; leftover: string } {
+  let h = host
+  let leftover = ''
+
+  // A. TLD immediately followed by a capital letter:
+  //    market.yousafeconsultancy.comInthiscase → host + leftover Inthiscase
+  const tldThenCap = h.match(TLD_THEN_CAP_RE)
+  if (tldThenCap) {
+    h = tldThenCap[1]
+    leftover = tldThenCap[2]
+  }
+
+  // B. Last label is CamelWord + tld with no separating dot:
+  //    market.yousafeconsultancy.Inthiscasecom → .com + leftover Inthiscase
+  const lastDot = h.lastIndexOf('.')
+  if (lastDot > 0) {
+    const last = h.slice(lastDot + 1)
+    const glued = last.match(LABEL_GLUED_TLD_RE)
+    if (glued && glued[1]) {
+      h = `${h.slice(0, lastDot)}.${glued[2].toLowerCase()}`
+      leftover = leftover || glued[1]
+    }
+  }
+
+  // C. Insert a dot before a glued capital word sitting on the registrable name.
+  if (!HOST_OK_RE.test(h.toLowerCase())) {
+    const insert = h.match(/^([a-z0-9.-]*[a-z0-9])([A-Z][A-Za-z].*)$/)
+    if (insert) {
+      leftover = leftover || insert[2]
+      h = insert[1]
+    }
+  }
+
+  // D. Truncate at the real TLD if the host is still invalid after the
+  //    camelCase splits (e.g. leftover junk still attached with no capital).
+  if (!HOST_OK_RE.test(h.toLowerCase())) {
+    const trunc = h.match(TLD_TRUNC_RE)
+    if (trunc && HOST_OK_RE.test(trunc[1])) {
+      leftover = leftover || trunc[2] || h.slice(trunc[1].length)
+      h = trunc[1]
+    }
+  }
+
+  return { host: h, leftover }
+}
+
 export function extractHttpUrls(content: string): string[] {
   const out: string[] = []
   const seen = new Set<string>()
   const re = /https?:\/\/[^\s)<>\]"'`]+/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(String(content || ''))) !== null) {
-    const url = m[0].replace(/[.,);]+$/, '')
+    const { url } = sanitizeExtractedUrl(m[0])
     if (!url || seen.has(url)) continue
     seen.add(url)
     out.push(url)

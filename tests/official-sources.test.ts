@@ -59,15 +59,15 @@ describe('applyEvidenceRegionFloor', () => {
     expect(out.lines.join(' ')).not.toMatch(/uscis/i)
   })
 
-  it('documents off-region fallback only when in-region alternatives are missing', () => {
+  it('never pads a foreign brief with exclusive immigration-department hosts', () => {
     const out = applyEvidenceRegionFloor([
       'USCIS — https://www.uscis.gov/',
       'State Dept — https://travel.state.gov/content/travel/en/us-visas/study.html',
       'SEVP — https://studyinthestates.dhs.gov/',
     ], 'AU')
-    expect(out.fallbackUsed).toBe(true)
-    expect(out.fallbackNote).toMatch(/Off-region official fallback/)
-    expect(out.counted).toBe(3)
+    expect(out.lines.join(' ')).not.toMatch(/uscis|state\.gov|dhs\.gov/i)
+    expect(out.fallbackUsed).toBe(false)
+    expect(out.counted).toBe(0)
   })
 })
 
