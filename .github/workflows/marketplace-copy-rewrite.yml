@@ -1,0 +1,64 @@
+name: Rewrite Marketplace Copy
+
+on:
+  workflow_run:
+    workflows: ["Deploy YouSafe Portal"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-copy-rewrite-production
+  cancel-in-progress: false
+
+jobs:
+  rewrite:
+    name: Rewrite active gigs and provider profiles
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      contains(github.event.workflow_run.head_commit.message, '[marketplace-copy-rewrite]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Verify gig images before copy rewrite
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+        run: node scripts/verify-marketplace-image-preservation.mjs
+
+      - name: Rewrite and audit Marketplace copy
+        env:
+          MARKETPLACE_COPY_REWRITE: '1'
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ secrets.XAI_MODEL }}
+          ENTRIM_API_KEY: ${{ secrets.ENTRIM_API_KEY }}
+          ENTRIM_BASE_URL: ${{ secrets.ENTRIM_BASE_URL }}
+        run: node scripts/rewrite-marketplace-copy.mjs
+
+      - name: Verify gig images after copy rewrite
+        if: always()
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+        run: node scripts/verify-marketplace-image-preservation.mjs
