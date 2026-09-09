@@ -10,11 +10,12 @@ interface Props {
   category: Category
   country: 'all' | 'us' | 'uk' | 'ca' | 'au'
   anchorRect: DOMRect | null
+  anchorElement: HTMLElement | null
   onClose: () => void
   onNavigate: () => void
 }
 
-export function CategoryMegaDropdown({ category, country, anchorRect, onClose, onNavigate }: Props) {
+export function CategoryMegaDropdown({ category, country, anchorRect, anchorElement, onClose, onNavigate }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [portalNode, setPortalNode] = useState<HTMLDivElement | null>(null)
 
@@ -27,23 +28,30 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
     }
   }, [])
 
+  // Use one pointer event path for touch, pen, and mouse. The active trigger
+  // is intentionally part of the menu interaction boundary: without this,
+  // pressing the already-open category closes on document mousedown and the
+  // following click immediately re-opens it, which feels "stuck" on mobile.
   useEffect(() => {
-    if (!anchorRect) return
-    const onDocClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose()
-      }
+    const onDocPointerDown = (e: PointerEvent) => {
+      const target = e.target
+      if (!(target instanceof Node)) return
+      const panel = panelRef.current
+      if (!panel) return
+      if (panel.contains(target)) return
+      if (anchorElement?.contains(target)) return
+      onClose()
     }
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('pointerdown', onDocPointerDown, true)
     document.addEventListener('keydown', onEsc)
     return () => {
-      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('pointerdown', onDocPointerDown, true)
       document.removeEventListener('keydown', onEsc)
     }
-  }, [anchorRect, onClose])
+  }, [anchorElement, onClose])
 
   if (!anchorRect || !portalNode) return null
 
@@ -70,6 +78,7 @@ export function CategoryMegaDropdown({ category, country, anchorRect, onClose, o
 
   const node = (
     <div
+      id={`ys-category-menu-${category.id}`}
       ref={panelRef}
       role="dialog"
       aria-label={`${category.name} subcategories`}
