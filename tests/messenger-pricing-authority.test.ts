@@ -77,6 +77,52 @@ describe('YQAA marketplace pricing authority', () => {
     expect(extractClientBudget(rows, 'client')).toMatchObject({ maxCents: 75_000, confidence: 'reply-to-budget-question' })
   })
 
+  test.each([
+    ['2000', 200_000],
+    ['2,000', 200_000],
+    ['2k', 200_000],
+    ['around 2000', 200_000],
+  ])('accepts bare numeric budget reply %s after YQAA asks for USD budget', (body, maxCents) => {
+    const rows = [
+      { id: 'a1', sender_id: 'provider', body: 'Before I price this, what budget range are you working with in USD?', metadata: { ai_generated: true } },
+      { id: 'm2', sender_id: 'client', body },
+    ]
+    expect(extractClientBudget(rows, 'client')).toMatchObject({
+      maxCents,
+      currency: 'usd',
+      confidence: 'reply-to-budget-question',
+    })
+  })
+
+  test('accepts a bare numeric range after a budget question', () => {
+    const rows = [
+      { id: 'a1', sender_id: 'provider', body: 'What budget range are you working with in USD?', metadata: { ai_generated: true } },
+      { id: 'm2', sender_id: 'client', body: '1500-2000' },
+    ]
+    expect(extractClientBudget(rows, 'client')).toMatchObject({
+      minCents: 150_000,
+      maxCents: 200_000,
+      currency: 'usd',
+      confidence: 'reply-to-budget-question',
+    })
+  })
+
+  test('infers CAD from YQAA budget question for a bare numeric reply', () => {
+    const rows = [
+      { id: 'a1', sender_id: 'provider', body: 'What budget range are you working with in CAD?', metadata: { ai_generated: true } },
+      { id: 'm2', sender_id: 'client', body: '2000' },
+    ]
+    expect(extractClientBudget(rows, 'client')).toMatchObject({ maxCents: 200_000, currency: 'cad' })
+  })
+
+  test('does not treat an unrelated bare number as budget evidence', () => {
+    const rows = [
+      { id: 'a1', sender_id: 'provider', body: 'How many documents do you have?', metadata: { ai_generated: true } },
+      { id: 'm2', sender_id: 'client', body: '2000' },
+    ]
+    expect(extractClientBudget(rows, 'client')).toBeNull()
+  })
+
   test('blocks any offer before a client budget exists', () => {
     const result = guardMessengerOffer({ pricing: pricing({ status: 'need_budget', budget: null }), proposedPriceUsd: 900 })
     expect(result.ok).toBe(false)

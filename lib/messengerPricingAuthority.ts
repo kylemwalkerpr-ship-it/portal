@@ -200,6 +200,19 @@ function askedForBudget(text: string) {
   return /\b(budget|what\s+(?:range|amount).*comfortable|how\s+much.*(?:spend|budget)|rough\s+number.*currency)\b/i.test(text)
 }
 
+function extractBareBudgetReply(text: string, questionText: string) {
+  const source = String(text || '').trim()
+  const match = /^(?:about|around|roughly|approximately|approx\.?|maybe)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k)?(?:\s*(?:-|–|—|to)\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k)?)?\s*(?:max(?:imum)?|tops?)?\s*[.!]?\s*$/i.exec(source)
+  if (!match) return [] as Array<{ cents: number; currency: string }>
+
+  const currency = /\bcad\b/i.test(questionText) ? 'cad' : 'usd'
+  const first = parseNumeric(match[1], match[2])
+  const second = match[3] ? parseNumeric(match[3], match[4]) : null
+  return [first, second]
+    .filter((cents): cents is number => Boolean(cents))
+    .map((cents) => ({ cents, currency }))
+}
+
 /**
  * Extract only client-stated budget evidence. Random fees or dollar amounts in
  * the thread do not become a budget unless budget language is present, or the
@@ -214,10 +227,14 @@ export function extractClientBudget(messages: any[], clientId: string): BudgetEv
     if (!text) continue
 
     const previous = rows[i - 1]
-    const directBudgetReply = Boolean(previous?.metadata?.ai_generated && askedForBudget(String(previous?.body || '')))
+    const previousText = String(previous?.body || '')
+    const directBudgetReply = Boolean(previous?.metadata?.ai_generated && askedForBudget(previousText))
     if (!hasBudgetCue(text) && !directBudgetReply) continue
 
-    const values = extractMoneyValues(text)
+    let values = extractMoneyValues(text)
+    if (!values.length && directBudgetReply) {
+      values = extractBareBudgetReply(text, previousText)
+    }
     if (!values.length) continue
 
     // Use a single currency per budget statement. If mixed, prefer the final
