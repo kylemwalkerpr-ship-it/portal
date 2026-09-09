@@ -237,7 +237,7 @@ function RecentOrdersWidget() {
   return (
     <WidgetCard
       title={`Recent Orders${suffix}`}
-      viewAllHref="/dashboard?page=orders"
+      viewAllHref="/marketplace?view=orders"
       viewAllLabel="View all orders"
     >
       {loading ? (

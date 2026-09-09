@@ -312,6 +312,7 @@ function OrderRow({ order, onClick }) {
 
   return (
     <Card
+      className="ys-order-row"
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}

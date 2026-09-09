@@ -68,6 +68,10 @@ export type CancellationVerdict =
       reason: string
     }
 
+export type CancelEligibilityPayload =
+  | { cancellable: true; refundCents: number; refundMethod: 'wallet' }
+  | { cancellable: false; code: string; reason: string }
+
 const deny = (code: string, reason: string): CancellationVerdict => ({
   cancellable: false,
   code,
@@ -168,6 +172,14 @@ export function getClientCancellationEligibility(
   return { cancellable: true, refundCents, refundMethod: 'wallet' }
 }
 
+/** JSON shape the order-detail APIs expose to the UI. */
+export function serializeCancelEligibility(verdict: CancellationVerdict): CancelEligibilityPayload {
+  if (verdict.cancellable === true) {
+    return { cancellable: true, refundCents: verdict.refundCents, refundMethod: verdict.refundMethod }
+  }
+  return { cancellable: false, code: verdict.code, reason: verdict.reason }
+}
+
 /** Map a cancellation denial code to an HTTP status the API can return. */
 export function cancellationHttpStatus(code: string): number {
   switch (code) {
@@ -187,5 +199,56 @@ export function cancellationHttpStatus(code: string): number {
       return 422
     default:
       return 409 // already_cancelled / not_unstarted / work_started / escrow/refund states
+  }
+}
+
+export type ClientCancelRpcResult =
+  | {
+      kind: 'ok'
+      refund_cents: number
+      refund_method: string
+      wallet_balance_cents: number | null
+      from_status: string | null
+    }
+  | { kind: 'deploy_required'; message: string }
+  | { kind: 'rpc_error'; message: string }
+  | { kind: 'denied'; code: string; message: string }
+
+/**
+ * Invoke the atomic `client_cancel_order` RPC. Shared by cookie and Bearer
+ * cancel routes so they never diverge on mapping / 501-on-missing-migration.
+ */
+export async function runClientCancelRpc(
+  db: { rpc: (fn: string, args: Record<string, unknown>) => any },
+  args: { orderId: string; callerId: string; reason: string | null },
+): Promise<ClientCancelRpcResult> {
+  const { data, error: rpcErr } = await db.rpc('client_cancel_order', {
+    p_order_id: args.orderId,
+    p_caller_id: args.callerId,
+    p_reason: args.reason,
+  })
+
+  if (rpcErr) {
+    if (/function\s+(public\.)?client_cancel_order\s*\(/i.test(rpcErr.message || '')) {
+      return {
+        kind: 'deploy_required',
+        message:
+          'Client cancellation is not enabled yet — the database migration has not been applied on this environment.',
+      }
+    }
+    return { kind: 'rpc_error', message: rpcErr.message || 'Cancellation failed.' }
+  }
+
+  if (!data || data.ok !== true) {
+    const code = String(data?.code || 'bad_request')
+    return { kind: 'denied', code, message: data?.message || 'Order cannot be cancelled.' }
+  }
+
+  return {
+    kind: 'ok',
+    refund_cents: data.refund_cents,
+    refund_method: data.refund_method,
+    wallet_balance_cents: data.wallet_balance_cents ?? null,
+    from_status: data.from_status ?? null,
   }
 }

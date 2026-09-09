@@ -1181,6 +1181,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const pageFromUrl = () => {
     if (typeof window === 'undefined') return 'dashboard';
     const params = new URLSearchParams(window.location.search);
+    if (params.get('order')) return 'order-detail';
     const goto = params.get('page') || params.get('goto');
     return ALLOWED_PAGES.includes(goto) ? goto : 'dashboard';
   };
@@ -1189,8 +1190,9 @@ function StudentApp({ onLogout, userId, userName }) {
     setPageState(next);
     try {
       const url = new URL(window.location.href);
-      url.searchParams.set('page', next);
+      url.searchParams.set('page', next === 'order-detail' ? 'orders' : next);
       url.searchParams.delete('goto');
+      if (next !== 'order-detail') url.searchParams.delete('order');
       window.history.pushState({}, '', url);
     } catch { /* SSR / older browsers — state still updates */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1226,7 +1228,13 @@ function StudentApp({ onLogout, userId, userName }) {
       if (e.detail?.orderId) {
         const known = ordersRef.current?.find?.(o => o.id === e.detail.orderId)
         setSelectedOrder(known || { id: e.detail.orderId })
-        if (known) setPage('order-detail')
+        setPageState('order-detail')
+        try {
+          const url = new URL(window.location.href)
+          url.searchParams.set('page', 'orders')
+          url.searchParams.set('order', e.detail.orderId)
+          window.history.pushState({}, '', url)
+        } catch { /* ignore */ }
       }
     }
     window.addEventListener('yousafe-navigate', handler)
@@ -1247,7 +1255,12 @@ function StudentApp({ onLogout, userId, userName }) {
     window.addEventListener('yousafe-open-messages', handler);
     return () => window.removeEventListener('yousafe-open-messages', handler);
   }, []);
-  const [selectedOrder, setSelectedOrder] = React.useState(null);
+  const [selectedOrder, setSelectedOrder] = React.useState(() => {
+    try {
+      const id = new URLSearchParams(window.location.search).get('order');
+      return id ? { id } : null;
+    } catch { return null; }
+  });
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
   const [consultantOffers, setConsultantOffers] = React.useState([]);
@@ -1290,8 +1303,14 @@ function StudentApp({ onLogout, userId, userName }) {
       const orderId = e?.detail?.orderId;
       if (!orderId) return;
       const found = orders.find(o => o.id === orderId);
-      if (found) { setSelectedOrder(found); setPage('order-detail'); }
-      else { setSelectedOrder({ id: orderId }); setPage('order-detail'); }
+      if (found) { setSelectedOrder(found); setPageState('order-detail'); }
+      else { setSelectedOrder({ id: orderId }); setPageState('order-detail'); }
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', 'orders');
+        url.searchParams.set('order', orderId);
+        window.history.pushState({}, '', url);
+      } catch { /* ignore */ }
     };
     window.addEventListener('yousafe-open-order', handler);
     return () => window.removeEventListener('yousafe-open-order', handler);
@@ -3510,14 +3529,14 @@ function StudentApp({ onLogout, userId, userName }) {
             <StudentDashboardHome
               userName={userName}
               onNavigate={(p) => setPage(p)}
-              onOpenOrder={(order) => { setSelectedOrder(order); setPage('order-detail'); }}
+              onOpenOrder={(order) => { setSelectedOrder(order); setPageState('order-detail'); try { const url = new URL(window.location.href); url.searchParams.set('page', 'orders'); url.searchParams.set('order', order.id); window.history.pushState({}, '', url); } catch {} }}
               marketplaceWidgets={<BuyerDashboardWidgets />}
             />
           )}
           {page === 'orders' && (
             <StudentOrders
               currency={(typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency.v2')) || 'usd'}
-              onOpenOrder={order => { setSelectedOrder(order); setPage('order-detail'); }}
+              onOpenOrder={order => { setSelectedOrder(order); setPageState('order-detail'); try { const url = new URL(window.location.href); url.searchParams.set('page', 'orders'); url.searchParams.set('order', order.id); window.history.pushState({}, '', url); } catch {} }}
               onCreateOrder={() => setPage('services')}
             />
           )}
@@ -3535,8 +3554,15 @@ function StudentApp({ onLogout, userId, userName }) {
             <StudentDocuments
               onOpenOrder={orderId => {
                 const found = orders.find(o => o.id === orderId)
-                if (found) { setSelectedOrder(found); setPage('order-detail'); }
-                else { setSelectedOrder({ id: orderId }); setPage('order-detail'); }
+                const id = found?.id || orderId
+                setSelectedOrder(found || { id })
+                setPageState('order-detail')
+                try {
+                  const url = new URL(window.location.href)
+                  url.searchParams.set('page', 'orders')
+                  url.searchParams.set('order', id)
+                  window.history.pushState({}, '', url)
+                } catch {}
               }}
             />
           )}

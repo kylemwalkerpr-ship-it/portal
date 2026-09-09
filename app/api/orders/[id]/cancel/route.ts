@@ -18,8 +18,8 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import {
   getClientCancellationEligibility,
   cancellationHttpStatus,
+  runClientCancelRpc,
   UNSTARTED_STATUSES,
-  type CancellationOrder,
 } from '@/lib/orderCancellation'
 
 async function authClient() {
@@ -39,36 +39,29 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const body = await req.json().catch(() => ({}))
   const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : null
 
-  const { data, error: rpcErr } = await auth!.db.rpc('client_cancel_order', {
-    p_order_id: id,
-    p_caller_id: auth!.profileId,
-    p_reason: reason,
+  const result = await runClientCancelRpc(auth!.db, {
+    orderId: id,
+    callerId: auth!.profileId,
+    reason,
   })
 
-  // Migration not present on this environment — never silently degrade.
-  if (rpcErr) {
-    if (/function\s+(public\.)?client_cancel_order\s*\(/i.test(rpcErr.message || '')) {
-      return fail(
-        'Client cancellation is not enabled yet — the database migration has not been applied on this environment.',
-        501,
-        { deploy_required: true },
-      )
-    }
-    console.error('[orders/cancel] client_cancel_order RPC failed:', rpcErr)
-    return fail(rpcErr.message || 'Cancellation failed.', 500, { atomic_refund: true })
+  if (result.kind === 'deploy_required') {
+    return fail(result.message, 501, { deploy_required: true })
   }
-
-  if (!data || data.ok !== true) {
-    const code = String(data?.code || 'bad_request')
-    return fail(data?.message || 'Order cannot be cancelled.', cancellationHttpStatus(code), { code })
+  if (result.kind === 'rpc_error') {
+    console.error('[orders/cancel] client_cancel_order RPC failed:', result.message)
+    return fail(result.message, 500, { atomic_refund: true })
+  }
+  if (result.kind === 'denied') {
+    return fail(result.message, cancellationHttpStatus(result.code), { code: result.code })
   }
 
   return ok({
     order: { id, status: 'cancelled' },
-    refund_cents: data.refund_cents,
-    refund_method: data.refund_method,
-    wallet_balance_cents: data.wallet_balance_cents,
-    from_status: data.from_status,
+    refund_cents: result.refund_cents,
+    refund_method: result.refund_method,
+    wallet_balance_cents: result.wallet_balance_cents,
+    from_status: result.from_status,
   })
 }
 

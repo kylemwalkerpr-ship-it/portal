@@ -6,6 +6,7 @@ import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
 import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { listCards } from '@/lib/payment-methods'
+import { marketplaceOrdersHref } from '@/lib/orderLinks'
 
 async function handler(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -147,6 +148,8 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     return ok({
       // createPaidOrder ran markSourcePaid, so the offer is now 'paid'.
       offer: { ...updated, status: 'paid' },
+      orderId: order.id,
+      url: marketplaceOrdersHref(order.id),
       breakdown: buildBreakdown(amount, platformFee, total),
       balanceCents: debitTx.balance_after_cents,
     })
@@ -247,6 +250,8 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
 
     return ok({
       offer: { ...updated, status: 'paid' },
+      orderId: order.id,
+      url: marketplaceOrdersHref(order.id),
       breakdown: buildBreakdown(amount, platformFee, total),
       balanceCents: null,
     })
@@ -342,6 +347,8 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
 
     return ok({
       offer: { ...updated, status: 'paid' },
+      orderId: order.id,
+      url: marketplaceOrdersHref(order.id),
       breakdown: buildBreakdown(amount, platformFee, total),
       balanceCents: null,
     })
