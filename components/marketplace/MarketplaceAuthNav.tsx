@@ -52,6 +52,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
             color: T.ink, background: 'transparent',
             padding: '8px 14px', borderRadius: 999,
             border: `1px solid ${T.rule}`, cursor: 'pointer',
+            minHeight: 44,
           }}
         >Sign in</button>
         <button
@@ -67,6 +68,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
             color: '#fff', background: T.ink,
             padding: '9px 18px', borderRadius: 999,
             border: 'none', cursor: 'pointer',
+            minHeight: 44,
           }}
         >Join</button>
       </nav>
@@ -87,16 +89,17 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
         aria-expanded={open}
         aria-label="Account menu"
         style={{
-          width: 36, height: 36, borderRadius: '50%',
+          width: 44, height: 44, borderRadius: '50%',
           background: imageUrl ? undefined : T.indigoSoft,
           border: `1px solid ${T.rule}`,
           cursor: 'pointer', padding: 0, overflow: 'hidden',
           display: 'grid', placeItems: 'center',
           flexShrink: 0,
+          minWidth: 44, minHeight: 44,
         }}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt={fullName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+          <img src={imageUrl} alt={fullName} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
         ) : (
           <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 600, color: T.indigo }}>
             {initials}

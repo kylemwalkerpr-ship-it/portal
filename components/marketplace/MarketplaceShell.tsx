@@ -142,7 +142,7 @@ function MessagesPanel({ role }: { role: Role }) {
     <div
       className="yousafe-messenger"
       style={{
-        height: 'calc(100vh - 60px)',
+        height: 'calc(100dvh - 60px)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -231,6 +231,7 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
 
 function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au'; shopActive?: boolean }) {
   const [scrolled, setScrolled] = React.useState(false)
+  const [menuOpen, setMenuOpen] = React.useState(false)
   // Refs for the scrollable nav strip + the currently-active button so we
   // can auto-scroll the active tab into view on mobile. Without this, when
   // the user is at the rightmost tab and the strip wraps to a second mount
@@ -244,6 +245,18 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
     window.addEventListener('scroll', fn, { passive: true })
     return () => window.removeEventListener('scroll', fn)
   }, [])
+
+  React.useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [menuOpen])
 
   // Centre the active tab in the strip whenever activeView changes. Uses
   // `inline: 'center'` so the chosen item sits in the middle of the
@@ -354,7 +367,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           }
           if (btn.external) {
             return (
-              <a key={btn.label} href={btn.href} target="_blank" rel="noopener" style={sharedStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+              <a key={btn.label} href={btn.href} target="_blank" rel="noopener" className="ys-shell-desktop-pill" style={sharedStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
                 {btn.label}
               </a>
             )
@@ -363,6 +376,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
             <Link
               key={btn.label}
               href={btn.href}
+              className="ys-shell-desktop-pill"
               style={sharedStyle}
               onMouseEnter={hoverIn}
               onMouseLeave={hoverOut}
@@ -447,10 +461,49 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '6px', flexShrink: 0 }}>
           <ThemePicker />
         </div>
-        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
+        <div className="ys-shell-aux ys-shell-auth" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
         </div>
+        <button
+          type="button"
+          className="ys-shell-menu-toggle"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          aria-controls="ys-market-mobile-menu"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? '×' : '☰'}
+        </button>
       </div>
+      {menuOpen && (
+        <div id="ys-market-mobile-menu" className="ys-shell-drawer" role="dialog" aria-modal="true" aria-label="Marketplace menu">
+          <button type="button" className="ys-shell-drawer-backdrop" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+          <div className="ys-shell-drawer-panel">
+            <a href="/marketplace" className="ys-shell-drawer-link" onClick={() => { setMenuOpen(false); onNav('browse') }}>Home</a>
+            <a href="https://portal.yousafeconsultancy.com/dashboard" className="ys-shell-drawer-link" onClick={() => setMenuOpen(false)}>Dashboard</a>
+            <a href="https://market.yousafeconsultancy.com/shop" className="ys-shell-drawer-link" onClick={() => setMenuOpen(false)}>File shop</a>
+            {links.map((link) => (
+              <button
+                key={link.view}
+                type="button"
+                className="ys-shell-drawer-link"
+                onClick={() => { setMenuOpen(false); onNav(link.view as Section) }}
+              >
+                {link.label}
+              </button>
+            ))}
+            <div className="ys-shell-drawer-extras">
+              {role !== null && (
+                <React.Suspense fallback={null}>
+                  <JurisdictionDropdown active={country} />
+                </React.Suspense>
+              )}
+              <GlobalLanguageBar />
+              <ThemePicker />
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
@@ -589,7 +642,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   }, [section, role])
 
   return (
-    <div className="cw-market" style={{ minHeight: '100vh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
+    <div className="cw-market" style={{ minHeight: '100dvh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
       {/* Base CSS for the pattern picker ::before pseudo-element and
           consistent marketplace styling across ALL pages (landing + siblings). */}
       <style>{`
@@ -710,18 +763,34 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           color: #FFFFFF !important;
         }
 
-        @media (max-width: 720px) {
-          .ys-shell-header-inner { padding: 0 12px !important; height: 60px !important; }
-          .ys-market-nav { scrollbar-width: none; }
-          .ys-market-nav::-webkit-scrollbar { display: none; }
-          .ys-shell-brand { padding-right: 10px !important; }
-          .ys-shell-brand-sub { display: none !important; }
-          .ys-shell-aux { padding-left: 6px !important; }
-          .ys-shell-jx { padding-left: 6px !important; }
-          .ys-cat-bar-inner { padding: 0 12px !important; height: 46px !important; }
+        .ys-shell-menu-toggle { display: none; }
+        .ys-shell-menu-toggle {
+          width: 44px; height: 44px; min-width: 44px; min-height: 44px;
+          margin-left: 8px; border-radius: 999px; border: 1px solid var(--ys-rule, rgba(255,255,255,0.28));
+          color: var(--ys-onPaper, #fff); font-size: 20px; line-height: 1; cursor: pointer;
+          align-items: center; justify-content: center; touch-action: manipulation; flex-shrink: 0;
         }
-        @media (max-width: 480px) {
-          .ys-shell-jx { display: none !important; }
+        .ys-shell-drawer { position: fixed; inset: 0; z-index: 400; }
+        .ys-shell-drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.45); border: 0; cursor: pointer; }
+        .ys-shell-drawer-panel {
+          position: absolute; top: 0; right: 0; width: min(360px, 88vw); height: 100dvh;
+          background: var(--ys-paper2, #2A1C16); color: var(--ys-onPaper, #F7EDE0);
+          padding: calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+          overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+        }
+        .ys-shell-drawer-link {
+          display: flex; align-items: center; min-height: 44px; padding: 10px 12px; border-radius: 10px;
+          color: inherit; text-decoration: none; font-size: 16px; font-weight: 600; text-align: left;
+          background: transparent; border: 0; cursor: pointer; font-family: inherit; touch-action: manipulation;
+        }
+        .ys-shell-drawer-extras { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.12); }
+        @media (max-width: 768px) {
+          .ys-shell-header-inner { padding: 8px 12px !important; height: 60px !important; min-height: 60px !important; flex-wrap: nowrap !important; }
+          .ys-shell-desktop-pill, .ys-market-nav, .ys-shell-jx, .ys-shell-aux:not(.ys-shell-auth) { display: none !important; }
+          .ys-shell-menu-toggle { display: inline-flex !important; }
+          .ys-shell-brand { padding-right: 8px !important; }
+          .ys-shell-brand-sub { display: none !important; }
+          .ys-cat-bar-inner { padding: 0 12px !important; height: 46px !important; }
         }
       `}</style>
       {/* Top nav — renders immediately on every navigation; auth-only links

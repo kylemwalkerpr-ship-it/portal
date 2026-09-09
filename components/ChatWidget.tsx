@@ -436,6 +436,7 @@ export default function ChatWidget() {
     <>
       <button
         type="button"
+        className="ys-chat-launcher"
         onClick={() => setOpen(o => !o)}
         aria-label={open ? 'Close chat' : 'Open chat'}
         style={{
@@ -444,6 +445,8 @@ export default function ChatWidget() {
           bottom: '20px',
           width: '56px',
           height: '56px',
+          minWidth: '44px',
+          minHeight: '44px',
           borderRadius: '50%',
           background: styles.bubbleBg,
           color: styles.bubbleText,
@@ -467,12 +470,13 @@ export default function ChatWidget() {
         <div
           role="dialog"
           aria-label="YouSafe assistant"
+          className="ys-chat-panel"
           style={{
             position: 'fixed',
             right: maximized ? '20px' : '20px',
             bottom: maximized ? '20px' : '88px',
             width: maximized ? 'min(760px, calc(100vw - 40px))' : 'min(380px, calc(100vw - 40px))',
-            height: maximized ? 'min(760px, calc(100vh - 40px))' : 'min(540px, calc(100vh - 120px))',
+            height: maximized ? 'min(760px, calc(100dvh - 40px))' : 'min(540px, calc(100dvh - 120px))',
             background: styles.panelBg,
             border: `1px solid ${styles.panelBorder}`,
             borderRadius: '16px',
