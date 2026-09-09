@@ -4,6 +4,11 @@ import { headers } from 'next/headers'
 const PORTAL_HOST = 'portal.yousafeconsultancy.com'
 const MARKET_HOST = 'market.yousafeconsultancy.com'
 
+function firstHost(value: string | null): string {
+  if (!value) return ''
+  return value.split(',')[0].trim().split(':')[0].toLowerCase()
+}
+
 /**
  * Portal is the authenticated members area. Everything except /api/ is
  * already `noindex` via per-page or layout-level metadata, so Googlebot
@@ -25,8 +30,20 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   let host = PORTAL_HOST
   try {
     const h = await headers()
-    const raw = h.get('host')?.split(':')[0]?.toLowerCase()
-    if (raw === MARKET_HOST || raw === PORTAL_HOST) host = raw
+    const candidates = [
+      firstHost(h.get('x-forwarded-host')),
+      firstHost(h.get('x-original-host')),
+      firstHost(h.get('host')),
+    ].filter(Boolean)
+
+    // Cloudflare/OpenNext may preserve the public host in a forwarded header
+    // while `host` points at the Worker. Prefer any explicit Marketplace host
+    // signal so robots.txt reliably advertises the gig sitemap to crawlers.
+    if (candidates.some((candidate) => candidate === MARKET_HOST)) {
+      host = MARKET_HOST
+    } else if (candidates.some((candidate) => candidate === PORTAL_HOST || candidate.startsWith('portal.'))) {
+      host = PORTAL_HOST
+    }
   } catch {
     // Build-time / static generation fallback — portal is the default app host.
   }
