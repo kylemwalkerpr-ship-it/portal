@@ -26,10 +26,14 @@ describe('YQAA launcher does not cover chat send controls', () => {
     expect(assistant).toContain('scheduleLauncherChrome()')
   })
 
-  test('lifts the launcher off leftover bottom-right buttons when no chat is open', () => {
-    expect(assistant).toContain("document.querySelectorAll('button, a[href], [role=\"button\"], input[type=\"submit\"]')")
-    expect(assistant).toContain("launcher.style.bottom = 'max(' + bottom + 'px")
-    expect(assistant).toContain('new MutationObserver(scheduleLauncherChrome)')
+  test('pins the launcher so page-end rubber-band cannot bounce it', () => {
+    const viewportCss = read('app/mobile-visual-viewport.css')
+    expect(viewportCss).toContain('button.ysa-launcher')
+    expect(viewportCss).toContain('bottom: max(16px, calc(12px + env(safe-area-inset-bottom))) !important')
+    expect(viewportCss).toContain('calc(-1 * var(--ys-visual-viewport-pan-top, 0px))')
+    expect(viewportCss).toContain('html:has(.cw-market)')
+    expect(viewportCss).toContain('overscroll-behavior-y: none')
+    expect(viewportCss).toContain('position: fixed !important')
   })
 
   test('marketplace chat overlay opts the site launcher out', () => {
@@ -44,10 +48,10 @@ describe('YQAA launcher does not cover chat send controls', () => {
     expect(assistant).toContain('display:none!important')
   })
 
-  test('cache-busts assistant.js so phones do not keep the overlapping FAB', () => {
+  test('cache-busts assistant.js so phones pick up the pinned launcher', () => {
     const widget = read('components/ChatWidget.tsx')
     const yara = read('public/yara.js')
-    expect(widget).toContain("script.src = '/assistant.js?v=ysa-composer-hide-2'")
-    expect(yara).toContain('assistant.js?v=ysa-composer-hide-2')
+    expect(widget).toContain("script.src = '/assistant.js?v=ysa-launcher-pin-1'")
+    expect(yara).toContain('assistant.js?v=ysa-launcher-pin-1')
   })
 })
