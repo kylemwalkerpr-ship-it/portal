@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { latestGateReviewSnapshot, latestReviewSnapshot, listReviewSnapshots, persistReviewSnapshot } from '@/lib/seoFactory/reviewSnapshots'
+import { inspectDraftIntegrity } from '@/lib/seoFactory/draftIntegrity'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser()
@@ -51,10 +52,33 @@ export async function POST(request: NextRequest) {
       blockers?: unknown; warnings?: unknown; appliedRepairs?: string[]
       title?: string; topic?: string; contentType?: string; region?: string
     }
-    const content = String(body.content || '')
-    if (!content.trim()) {
+    const submitted = String(body.content || '')
+    if (!submitted.trim()) {
       return NextResponse.json({ error: 'content required' }, { status: 400 })
     }
+
+    // Do not create/update a job row from a provider/editor payload that is
+    // enormous but contains almost no reader-facing prose. First attempt the
+    // same deterministic recovery used when old snapshots are loaded. This is
+    // the write-door guard that prevents a 60k-char / 19-word incident from
+    // becoming the newest autosave and then freezing Document view forever.
+    const integrity = inspectDraftIntegrity(submitted)
+    const content = integrity.recovered ? integrity.content : submitted
+    if (integrity.hardOversize || (integrity.pathological && !integrity.recovered)) {
+      return NextResponse.json({
+        error: integrity.hardOversize
+          ? `Draft is still ${integrity.chars.toLocaleString()} characters after normalization and is too large to persist safely.`
+          : `Draft has ${integrity.rawChars.toLocaleString()} characters but only ${integrity.bodyWords} countable body words after normalization. The malformed payload was quarantined instead of overwriting the last good draft.`,
+        draftIntegrity: {
+          rawChars: integrity.rawChars,
+          chars: integrity.chars,
+          rawBodyWords: integrity.rawBodyWords,
+          bodyWords: integrity.bodyWords,
+          repairs: integrity.repairs,
+        },
+      }, { status: 409 })
+    }
+
     let jobId = String(body.jobId || '').trim()
     if (!jobId) {
       const { createSupabaseAdminClient } = await import('@/lib/supabase')
@@ -105,7 +129,7 @@ export async function POST(request: NextRequest) {
     const origin = source === 'manual' || source === 'restore' || source === 'fix' || source === 'reaudit'
       ? source
       : 'autosave'
-    const { snapshot, persisted, error } = await persistReviewSnapshot({
+    const { snapshot, persisted, error, recovered } = await persistReviewSnapshot({
       jobId,
       content,
       source: origin,
@@ -147,7 +171,7 @@ export async function POST(request: NextRequest) {
         /* snapshot already persisted; gate stamp best-effort */
       }
     }
-    return NextResponse.json({ draft: snapshot, persisted: true, jobId })
+    return NextResponse.json({ draft: snapshot, persisted: true, recovered: Boolean(recovered || integrity.recovered), jobId })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Save failed' }, { status: 500 })

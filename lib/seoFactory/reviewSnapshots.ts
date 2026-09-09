@@ -7,6 +7,7 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { countBodyWords } from './contentDepth'
 import { contentFingerprint } from './currentGate'
+import { inspectDraftIntegrity, recoverDraftContent } from './draftIntegrity'
 
 export type ReviewSource = 'autosave' | 'reaudit' | 'fix' | 'manual' | 'restore'
 
@@ -97,6 +98,39 @@ export function reviewSnapshotContentMatchesJob(
   return hits >= 1 && hits / bodyWords.length >= 0.3
 }
 
+function persistenceError(integrity: ReturnType<typeof inspectDraftIntegrity>): string | null {
+  if (integrity.hardOversize) {
+    return `Draft integrity check refused ${integrity.chars.toLocaleString()} normalized characters. Restore a prior draft or run Audit & Fix; this payload is too large to become the autosave source of truth.`
+  }
+  if (integrity.pathological && !integrity.recovered) {
+    return `Draft integrity check found ${integrity.rawChars.toLocaleString()} characters but only ${integrity.bodyWords} countable body words after normalization. It looks like fenced metadata/schema/provider output and was not persisted over the last good draft.`
+  }
+  return null
+}
+
+function snapshotFromRow(row: Record<string, unknown>): ReviewSnapshot {
+  const raw = String(row.content || '')
+  // Old rows can predate the integrity gate. Recover a mechanically wrapped
+  // article in memory so opening the job self-heals instead of freezing the
+  // document editor. Never mark the recovered body ship-ready implicitly —
+  // its fingerprint changes and therefore requires a fresh audit.
+  const content = recoverDraftContent(raw)
+  return {
+    id: String(row.id),
+    jobId: String(row.job_id),
+    content,
+    createdAt: String(row.created_at || ''),
+    wordCount: countBodyWords(content),
+    qualityOk: (row.quality_ok as boolean | null) ?? null,
+    shipReady: (row.ship_ready as boolean | null) ?? null,
+    blockers: Array.isArray(row.blockers) ? row.blockers.length : Number(row.blockers) || 0,
+    warnings: Array.isArray(row.warnings) ? row.warnings.length : Number(row.warnings) || 0,
+    contentFingerprint: contentFingerprint(content),
+    appliedRepairs: Array.isArray(row.applied_repairs) ? (row.applied_repairs as string[]) : [],
+    source: (row.source as ReviewSource) || 'autosave',
+  }
+}
+
 export async function persistReviewSnapshot(opts: {
   jobId: string
   content: string
@@ -107,21 +141,37 @@ export async function persistReviewSnapshot(opts: {
   warnings?: unknown
   appliedRepairs?: string[]
   updateJob?: boolean
-}): Promise<{ snapshot: ReviewSnapshot; persisted: boolean; error?: string }> {
-  const words = countBodyWords(opts.content)
+}): Promise<{ snapshot: ReviewSnapshot; persisted: boolean; error?: string; recovered?: boolean }> {
+  const integrity = inspectDraftIntegrity(opts.content)
+  // A recoverable whole-document fence/editor-chrome incident is converted to
+  // real prose before storage. A huge payload that is STILL only metadata is
+  // quarantined and cannot overwrite the latest healthy review snapshot.
+  const content = integrity.recovered ? integrity.content : String(opts.content || '')
+  const words = countBodyWords(content)
+  const appliedRepairs = [
+    ...(opts.appliedRepairs || []),
+    ...(integrity.recovered
+      ? [`draft_integrity_recovered (${integrity.rawChars}→${integrity.chars} chars)`, ...integrity.repairs]
+      : []),
+  ]
   const snapshot: ReviewSnapshot = {
     id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     jobId: opts.jobId,
-    content: opts.content,
+    content,
     createdAt: new Date().toISOString(),
     wordCount: words,
     qualityOk: opts.qualityOk ?? null,
     shipReady: opts.shipReady ?? null,
     blockers: Array.isArray(opts.blockers) ? opts.blockers.length : Number(opts.blockers) || 0,
     warnings: Array.isArray(opts.warnings) ? opts.warnings.length : Number(opts.warnings) || 0,
-    contentFingerprint: contentFingerprint(opts.content),
-    appliedRepairs: opts.appliedRepairs || [],
+    contentFingerprint: contentFingerprint(content),
+    appliedRepairs,
     source: opts.source,
+  }
+  const integrityError = persistenceError(integrity)
+  if (integrityError) {
+    console.warn(`[reviewSnapshots] ${integrityError}`)
+    return { snapshot, persisted: false, error: integrityError, recovered: false }
   }
   try {
     const db = createSupabaseAdminClient()
@@ -129,20 +179,20 @@ export async function persistReviewSnapshot(opts: {
       .from('content_job_reviews')
       .insert({
         job_id: opts.jobId,
-        content: opts.content,
+        content,
         word_count: words,
         quality_ok: opts.qualityOk ?? null,
         ship_ready: opts.shipReady ?? null,
         blockers: opts.blockers ?? [],
         warnings: opts.warnings ?? [],
-        applied_repairs: opts.appliedRepairs || [],
+        applied_repairs: appliedRepairs,
         source: opts.source,
       })
       .select('id, created_at')
       .maybeSingle()
     if (error) {
       console.warn('[reviewSnapshots] insert', error.message)
-      return { snapshot, persisted: false, error: error.message }
+      return { snapshot, persisted: false, error: error.message, recovered: integrity.recovered }
     }
     if (data?.id) snapshot.id = String(data.id)
     if (data?.created_at) snapshot.createdAt = String(data.created_at)
@@ -159,21 +209,21 @@ export async function persistReviewSnapshot(opts: {
         .eq('id', opts.jobId)
         .maybeSingle()
       const terminal = jobRow && (jobRow.status === 'merged' || jobRow.status === 'closed')
-      const matches = reviewSnapshotContentMatchesJob(opts.content, jobRow as Record<string, unknown>)
+      const matches = reviewSnapshotContentMatchesJob(content, jobRow as Record<string, unknown>)
       if (jobRow && (terminal || !matches)) {
         console.warn(
           `[reviewSnapshots] refusing content_jobs.content write for ${opts.jobId}: ${
             terminal ? `terminal status ${jobRow.status}` : `content does not match job title/topic (${words} words)`
           } — review snapshot still saved`,
         )
-        return { snapshot, persisted: true }
+        return { snapshot, persisted: true, recovered: integrity.recovered }
       }
-      const patch: Record<string, unknown> = { content: opts.content, word_count: words }
+      const patch: Record<string, unknown> = { content, word_count: words }
       if (opts.qualityOk) patch.error_message = null
       const { data: updated, error: upErr } = await db.from('content_jobs').update(patch).eq('id', opts.jobId).select('id').maybeSingle()
       if (upErr) {
         console.warn('[reviewSnapshots] job update', upErr.message)
-        return { snapshot, persisted: false, error: upErr.message }
+        return { snapshot, persisted: false, error: upErr.message, recovered: integrity.recovered }
       }
       if (!updated?.id) {
         const { defaultJobTargetRepo } = await import('./jobContentType')
@@ -184,22 +234,22 @@ export async function persistReviewSnapshot(opts: {
           topic: 'Untitled draft',
           content_type: 'article',
           status: 'drafting',
-          content: opts.content,
+          content,
           word_count: words,
           region: 'US',
           target_repo: defaultJobTargetRepo('article') || 'caseworks',
         })
         if (insErr && !/duplicate|already exists/i.test(insErr.message || '')) {
           console.warn('[reviewSnapshots] job insert', insErr.message)
-          return { snapshot, persisted: false, error: insErr.message }
+          return { snapshot, persisted: false, error: insErr.message, recovered: integrity.recovered }
         }
       }
     }
-    return { snapshot, persisted: true }
+    return { snapshot, persisted: true, recovered: integrity.recovered }
   } catch (e) {
     const error = e instanceof Error ? e.message : 'persist failed'
     console.warn('[reviewSnapshots]', error)
-    return { snapshot, persisted: false, error }
+    return { snapshot, persisted: false, error, recovered: integrity.recovered }
   }
 }
 
@@ -216,20 +266,7 @@ export async function listReviewSnapshots(jobId: string, limit = 20): Promise<Re
       console.warn('[reviewSnapshots] list', error.message)
       return []
     }
-    return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
-      id: String(row.id),
-      jobId: String(row.job_id),
-      content: String(row.content || ''),
-      createdAt: String(row.created_at || ''),
-      wordCount: Number(row.word_count) || 0,
-      qualityOk: (row.quality_ok as boolean | null) ?? null,
-      shipReady: (row.ship_ready as boolean | null) ?? null,
-      blockers: Array.isArray(row.blockers) ? row.blockers.length : Number(row.blockers) || 0,
-      warnings: Array.isArray(row.warnings) ? row.warnings.length : Number(row.warnings) || 0,
-      contentFingerprint: contentFingerprint(String(row.content || '')),
-      appliedRepairs: Array.isArray(row.applied_repairs) ? (row.applied_repairs as string[]) : [],
-      source: (row.source as ReviewSource) || 'autosave',
-    }))
+    return ((data || []) as Array<Record<string, unknown>>).map(snapshotFromRow)
   } catch {
     return []
   }
@@ -246,21 +283,7 @@ export async function latestReviewSnapshot(jobId: string): Promise<ReviewSnapsho
       .limit(1)
       .maybeSingle()
     if (error || !data) return null
-    const row = data as Record<string, unknown>
-    return {
-      id: String(row.id),
-      jobId: String(row.job_id),
-      content: String(row.content || ''),
-      createdAt: String(row.created_at || ''),
-      wordCount: Number(row.word_count) || 0,
-      qualityOk: (row.quality_ok as boolean | null) ?? null,
-      shipReady: (row.ship_ready as boolean | null) ?? null,
-      blockers: Array.isArray(row.blockers) ? row.blockers.length : Number(row.blockers) || 0,
-      warnings: Array.isArray(row.warnings) ? row.warnings.length : Number(row.warnings) || 0,
-      contentFingerprint: contentFingerprint(String(row.content || '')),
-      appliedRepairs: Array.isArray(row.applied_repairs) ? (row.applied_repairs as string[]) : [],
-      source: (row.source as ReviewSource) || 'autosave',
-    }
+    return snapshotFromRow(data as Record<string, unknown>)
   } catch {
     return null
   }
