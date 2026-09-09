@@ -496,7 +496,7 @@ export default function ChatSidePane({
   if (!open) return null
 
   return (
-    <div className="ys-market-chat-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
+    <div className="ys-market-chat-overlay" data-ysa-hide-launcher="true" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       <button onClick={onClose} aria-label="Close chat" style={{ flex: 1, background: 'rgba(15,18,32,0.45)', border: 'none', cursor: 'pointer' }} />
       <aside
         className="yousafe-messenger chat-side-pane"
