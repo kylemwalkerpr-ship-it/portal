@@ -5,12 +5,14 @@ export type SystemAssistantTurn = {
   content: string
 }
 
-const CHAT_TIMEOUT_MS = 11_000
-const RESPONSES_TIMEOUT_MS = 8_000
-const AUTH_TIMEOUT_MS = 4_000
-const AUTH_CACHE_TTL_MS = 30_000
+const RESPONSES_TIMEOUT_MS = 18_000
+const CHAT_TIMEOUT_MS = 10_000
+const AUTH_TIMEOUT_MS = 7_000
+const AUTH_CACHE_TTL_MS = 120_000
 const MAX_OUTPUT_TOKENS = 1200
 const TRANSIENT_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504])
+const AUTH_FAILURE_STATUS = new Set([401, 403])
+const CACHE_KEY = 'yqaa-public-assistant-v2'
 
 let authCache: { value: MessengerGrokAuth; expiresAt: number } | null = null
 
@@ -36,11 +38,20 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
-async function resolveCachedAuth(): Promise<MessengerGrokAuth> {
-  if (authCache && authCache.expiresAt > Date.now()) return authCache.value
+async function resolveCachedAuth(force = false): Promise<MessengerGrokAuth> {
+  if (!force && authCache && authCache.expiresAt > Date.now()) return authCache.value
   const value = await withTimeout(resolveMessengerGrokAuth(), AUTH_TIMEOUT_MS, 'Assistant auth resolution')
   authCache = { value, expiresAt: Date.now() + AUTH_CACHE_TTL_MS }
   return value
+}
+
+function headersFor(auth: MessengerGrokAuth): Record<string, string> {
+  return {
+    Authorization: `Bearer ${auth.apiKey}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'x-grok-conv-id': CACHE_KEY,
+  }
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
@@ -107,47 +118,103 @@ function parseResponsesContent(text: string): string {
   }
 }
 
+async function callResponses(
+  auth: MessengerGrokAuth,
+  messages: Array<{ role: string; content: string }>,
+) {
+  return postJsonWithRetry(
+    `${auth.baseURL}/responses`,
+    {
+      method: 'POST',
+      headers: headersFor(auth),
+      body: JSON.stringify({
+        model: auth.model,
+        input: messages,
+        reasoning: { effort: 'low' },
+        max_output_tokens: MAX_OUTPUT_TOKENS,
+        prompt_cache_key: CACHE_KEY,
+        store: false,
+      }),
+    },
+    RESPONSES_TIMEOUT_MS,
+    2,
+  )
+}
+
+async function callChatCompletions(
+  auth: MessengerGrokAuth,
+  messages: Array<{ role: string; content: string }>,
+) {
+  return postJsonWithRetry(
+    `${auth.baseURL}/chat/completions`,
+    {
+      method: 'POST',
+      headers: headersFor(auth),
+      body: JSON.stringify({
+        model: auth.model,
+        temperature: 0.2,
+        reasoning_effort: 'low',
+        max_tokens: MAX_OUTPUT_TOKENS,
+        messages,
+      }),
+    },
+    CHAT_TIMEOUT_MS,
+    1,
+  )
+}
+
 /**
  * System-wide YouSafe assistant transport.
  *
- * The primary protocol gets a short bounded window, then an independent
- * protocol fallback. Combined model wait is therefore measured in seconds,
- * not a minute-plus chain of nested retries.
+ * YQAA is a latency-sensitive support workload, so Grok 4.6 is explicitly
+ * run at low reasoning effort. The current xAI Responses API is primary;
+ * legacy Chat Completions remains an independent bounded recovery path.
+ * Authentication is cached briefly and refreshed once on 401/403.
  */
 export async function callSystemSuperGrok(
   system: string,
   turns: SystemAssistantTurn[],
 ): Promise<{ text: string; model: string; authMode: string; latencyMs: number }> {
   const startedAt = Date.now()
-  const auth = await resolveCachedAuth()
+  let auth = await resolveCachedAuth()
   const messages = [
     { role: 'system', content: system },
     ...turns.map((turn) => ({ role: turn.role, content: turn.content })),
   ]
-  const headers = {
-    Authorization: `Bearer ${auth.apiKey}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
+
+  let responsesStatus = 0
+  let responsesDiagnostic = ''
+  try {
+    let response = await callResponses(auth, messages)
+    responsesStatus = response.response.status
+
+    if (AUTH_FAILURE_STATUS.has(response.response.status)) {
+      authCache = null
+      auth = await resolveCachedAuth(true)
+      response = await callResponses(auth, messages)
+      responsesStatus = response.response.status
+    }
+
+    responsesDiagnostic = response.text.slice(0, 240)
+    if (response.response.ok) {
+      const content = parseResponsesContent(response.text)
+      if (content) {
+        return {
+          text: content,
+          model: auth.model,
+          authMode: auth.authMode,
+          latencyMs: Date.now() - startedAt,
+        }
+      }
+    }
+  } catch (err) {
+    responsesDiagnostic = err instanceof Error ? err.message : String(err)
   }
 
   let chatStatus = 0
   let chatDiagnostic = ''
   try {
-    const chat = await postJsonWithRetry(
-      `${auth.baseURL}/chat/completions`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: auth.model,
-          temperature: 0.2,
-          max_tokens: MAX_OUTPUT_TOKENS,
-          messages,
-        }),
-      },
-      CHAT_TIMEOUT_MS,
-      2,
-    )
+    const chat = await callChatCompletions(auth, messages)
     chatStatus = chat.response.status
     chatDiagnostic = chat.text.slice(0, 240)
     if (chat.response.ok) {
@@ -165,38 +232,9 @@ export async function callSystemSuperGrok(
     chatDiagnostic = err instanceof Error ? err.message : String(err)
   }
 
-  // Fresh controller/timer: a timeout above cannot pre-abort this fallback.
-  try {
-    const response = await postJsonWithRetry(
-      `${auth.baseURL}/responses`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: auth.model,
-          input: messages,
-          max_output_tokens: MAX_OUTPUT_TOKENS,
-        }),
-      },
-      RESPONSES_TIMEOUT_MS,
-      1,
-    )
-    const content = response.response.ok ? parseResponsesContent(response.text) : ''
-    if (content) {
-      return {
-        text: content,
-        model: auth.model,
-        authMode: auth.authMode,
-        latencyMs: Date.now() - startedAt,
-      }
-    }
-    throw new Error(`responses protocol returned ${response.response.status}: ${response.text.slice(0, 240)}`)
-  } catch (err) {
-    const fallbackDiagnostic = err instanceof Error ? err.message : String(err)
-    throw new Error(
-      `Assistant model unavailable after bounded recovery (chat=${chatStatus || 'network'} ${chatDiagnostic}; responses=${fallbackDiagnostic})`,
-    )
-  }
+  throw new Error(
+    `Assistant model unavailable after bounded recovery (responses=${responsesStatus || 'network'} ${responsesDiagnostic}; chat=${chatStatus || 'network'} ${chatDiagnostic})`,
+  )
 }
 
 export function resetSystemAssistantAuthCache(): void {
