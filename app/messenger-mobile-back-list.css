@@ -1,0 +1,60 @@
+/* Mobile Messenger back/list transition hardening
+   ===============================================
+   The split messenger must have exactly one authoritative in-flow pane on
+   phones. In list mode the sidebar owns the full available height and the
+   conversation list remains a normal flex column. This avoids the legacy
+   absolute-positioned .cl layout collapsing/clipping after returning from a
+   thread via the in-app Back button. */
+
+@media (max-width: 680px) {
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] {
+    align-items: stretch !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar {
+    display: block !important;
+    position: relative !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    border-right: 0 !important;
+    background: var(--panel, #fff) !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar > .cl {
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    border-right: 0 !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .cl-head {
+    flex: 0 0 auto !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .cl-scroll {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-chat {
+    display: none !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-sidebar {
+    display: none !important;
+  }
+}

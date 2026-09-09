@@ -41,6 +41,7 @@ export default function ChatScreen({
   const nearBottomRef = React.useRef(true)
   const lastScrollHeightRef = React.useRef(0)
   const activatedDeepLinkThreadRef = React.useRef<string | null>(null)
+  const previousMobileShowChatRef = React.useRef(mobileShowChat)
 
   React.useEffect(() => {
     const parent = containerRef.current?.parentElement
@@ -117,6 +118,36 @@ export default function ChatScreen({
     activatedDeepLinkThreadRef.current = threadId
     activeRow.click()
   }, [isSplit, mobileShowChat, sidebar])
+
+  // Keep URL + visual state aligned when the in-app mobile Back button moves
+  // from a thread to the conversation list. UnifiedInbox intentionally keeps
+  // activeId so the selected row can remain highlighted on desktop, but on a
+  // phone a stale ?thread= deep-link should not survive once the list is the
+  // visible pane. Clearing it prevents a remount or browser restore from
+  // immediately promoting the same thread again and keeps list mode stable.
+  React.useEffect(() => {
+    const wasShowingChat = previousMobileShowChatRef.current
+    previousMobileShowChatRef.current = mobileShowChat
+
+    if (!isSplit || typeof window === 'undefined') return
+    if (!wasShowingChat || mobileShowChat) return
+    if (!window.matchMedia?.('(max-width: 680px)').matches) return
+
+    try {
+      const url = new URL(window.location.href)
+      if (url.searchParams.has('thread')) {
+        url.searchParams.delete('thread')
+        window.history.replaceState({}, '', url)
+      }
+    } catch {
+      // The pane state is still authoritative even if URL cleanup fails.
+    }
+
+    // A list restored from a long thread should start from a deterministic
+    // position rather than inheriting any browser scroll restoration artifact.
+    const sidebarEl = containerRef.current?.querySelector<HTMLElement>('.ys-chatscreen-sidebar')
+    if (sidebarEl) sidebarEl.scrollTop = 0
+  }, [isSplit, mobileShowChat])
 
   const chatRegion = (
     <div
