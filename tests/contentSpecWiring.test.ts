@@ -82,6 +82,19 @@ describe('resolveContentSpecForJob — one spec per job', () => {
     expect(validateContentSpec(result.spec)).toEqual([])
   })
 
+  it('collapses In 60 seconds (120-150) onto a single In 60 seconds heading', () => {
+    const result = resolveContentSpecForJob({
+      ...ARGS,
+      outline: ['In 60 seconds', 'In 60 seconds (120-150)', 'Eligibility', 'FAQ'],
+    })
+    expect(result.spec?.outline.map((entry) => entry.heading)).toEqual([
+      'In 60 seconds',
+      'Eligibility',
+      'FAQ',
+    ])
+    expect(result.spec?.requiredSections).toEqual(['In 60 seconds', 'Eligibility', 'FAQ'])
+  })
+
   it('deduplicates keyword phrases crossing legacy short and long-tail arrays', () => {
     const result = resolveContentSpecForJob({
       ...ARGS,

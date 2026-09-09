@@ -47,8 +47,38 @@ const MILL_SUFFIXES = new Set([
   'costs',
 ])
 
+/** Trailing 2-word windows that are not a topic by themselves. */
+const GENERIC_WINDOWS = new Set([
+  'processing time',
+  'processing times',
+  'letter template',
+  'card timeline',
+  'wait time',
+  'wait times',
+])
+
+const EXPLAINER_PRIMARY =
+  /\b(calculator|processing time|processing times|timeline|template|checklist|score|points?)\b/
+
+const APPLY_TARGET =
+  /\b(visa|permit|green card|sponsorship|petition|application|work permit|study permit|permanent residence)\b/
+
 function normPhrase(value: string): string {
   return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * True when the primary is something a reader actually applies for
+ * (visa / permit / petition). False for calculators, processing-time
+ * explainers, templates, checklists, and score tools — those must never
+ * receive "how to apply for {primary}" mill long-tails.
+ */
+export function isApplyTargetPrimary(primary: string): boolean {
+  const p = normPhrase(primary)
+  if (!p) return false
+  if (EXPLAINER_PRIMARY.test(p)) return false
+  if (/\bhow\b.{0,40}\bworks\b/.test(p)) return false
+  return APPLY_TARGET.test(p)
 }
 
 /**
@@ -67,6 +97,8 @@ export function rejectFragmentKeyword(term: string, primary: string): boolean {
 
   if (termTokens.length === 1 && primaryTokens.includes(termTokens[0])) return true
 
+  if (termTokens.length === 2 && GENERIC_WINDOWS.has(t) && pk !== t && pk.includes(t)) return true
+
   if (termTokens.length === 2 && MILL_SUFFIXES.has(termTokens[1])) {
     for (const program of NAMED_IMMIGRATION_PROGRAMS) {
       if (!pk.includes(program)) continue
@@ -75,8 +107,23 @@ export function rejectFragmentKeyword(term: string, primary: string): boolean {
       if (termTokens[0] === progTokens[0] && !t.includes(program)) return true
     }
   }
+
+  // Incomplete named-program shorts: "australia student" when the primary
+  // contains "student visa"; "green requirements" is already handled above.
+  if (termTokens.length >= 2) {
+    for (const program of NAMED_IMMIGRATION_PROGRAMS) {
+      if (!pk.includes(program)) continue
+      const progTokens = program.split(/\s+/).filter(Boolean)
+      if (progTokens.length < 2) continue
+      if (t.includes(program)) continue
+      if (!termTokens.includes(progTokens[0])) continue
+      // Country / qualifier + program-first-token, missing the rest of the program.
+      return true
+    }
+  }
   return false
 }
+
 
 export function dropFragmentKeywordTerms<T extends { term: string }>(terms: T[], primary: string): T[] {
   return terms.filter((entry) => !rejectFragmentKeyword(entry.term, primary))

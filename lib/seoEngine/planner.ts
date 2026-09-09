@@ -44,7 +44,7 @@ import {
 import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
-import { rejectFragmentKeyword } from '@/lib/seoFactory/keywordContractBrief'
+import { rejectFragmentKeyword, isApplyTargetPrimary } from '@/lib/seoFactory/keywordContractBrief'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 import { buildShippedStems, shippedOverlap } from './shippedCoverage'
@@ -237,6 +237,7 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   // candidate is real demand or count-floor filler.
   const classifyAndAdd = (candidate: string, source: KeywordSource = 'synthesized') => {
     if (pt && rejectFragmentKeyword(candidate, pt)) return
+    if (isUnplaceableCoverageTerm(candidate)) return
     const beforeLen = out.length
     pushUniq(candidate)
     if (out.length === beforeLen) return
@@ -275,66 +276,61 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
     const stripped = pt.replace(/-/g, ' ')
     // Stopwords that would produce awkward heads ("of purpose", "for study")
     const STOP = /\b(of|for|in|to|a|an|the|and|or|at|on|by|with|from)\b/
-    // Candidate short heads — every contiguous window that can carry a
-    // modifier while staying ≤3 words. Deduped via classifyAndAdd below.
+    // Candidate short heads — every contiguous 2–3 word window. Deduped via
+    // classifyAndAdd. Prefixes are applied in a second pass so distinctive
+    // trailing windows ("crs calculator") are not crowded out by mill
+    // suffixes on the first named program ("express entry guide" × 8).
     const headCandidates: string[] = [stripped]
     if (ptWords.length >= 2) {
-      headCandidates.push(ptWords.slice(0, 2).join(' '), ptWords.slice(-2).join(' '))
+      for (let n = 2; n <= 3; n++) {
+        for (let i = 0; i + n <= ptWords.length; i++) {
+          headCandidates.push(ptWords.slice(i, i + n).join(' '))
+        }
+      }
     }
-    if (ptWords.length >= 3) {
-      headCandidates.push(ptWords.slice(-3).join(' '))
-    }
+    const usableHeads: string[] = []
     for (const head of headCandidates) {
       if (!head.trim()) continue
-      // Skip heads that start or end with a stopword — they read as sentence
-      // fragments, not keyword phrases ("of purpose"). Keep the full primary
-      // even if it contains stopwords in the middle.
       const headWords = head.split(/\s+/).filter(Boolean)
       if (head !== stripped && (STOP.test(headWords[0] || '') || STOP.test(headWords[headWords.length - 1] || ''))) continue
       if (rejectFragmentKeyword(head, pt)) continue
-      // The head itself may already be a valid short keyword ("statement of
-      // purpose" = 3 words). The unmodified primary is real demand; a trimmed
-      // window of it is only an approximation, so it stays synthesized.
+      usableHeads.push(head)
       classifyAndAdd(head, head === stripped ? 'demand' : 'synthesized')
-      for (const prefix of ST_PREFIXES) {
-        const candidate = `${head} ${prefix}`
-        if (wordCount(candidate) <= 3 && !rejectFragmentKeyword(candidate, pt)) classifyAndAdd(candidate)
+    }
+    if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 2) {
+      for (const head of usableHeads) {
+        if (short.length >= KEYWORD_REQUIREMENTS.SHORT_MIN + 2) break
+        for (const prefix of ST_PREFIXES) {
+          const candidate = `${head} ${prefix}`
+          if (wordCount(candidate) <= 3 && !rejectFragmentKeyword(candidate, pt)) classifyAndAdd(candidate)
+        }
+        if (wordCount(`${head} 2026`) <= 3) classifyAndAdd(`${head} 2026`)
+        if (wordCount(`${head} guide`) <= 3 && !rejectFragmentKeyword(`${head} guide`, pt)) classifyAndAdd(`${head} guide`)
       }
-      if (wordCount(`${head} 2026`) <= 3) classifyAndAdd(`${head} 2026`)
-      if (wordCount(`${head} guide`) <= 3 && !rejectFragmentKeyword(`${head} guide`, pt)) classifyAndAdd(`${head} guide`)
     }
   }
 
   // Then synthesize LONG-TAIL (≥4) query phrases.
-  // 2026-09-01: templates tightened so every synthesized phrase is a phrase a
-  // human writer would actually type. The old templates produced unplaceable
-  // filler ("requirements for a estimated tax payment help" — broken article;
-  // "...checklist and timeline" / "...in 2026 explained" — machine-only
-  // suffixes) that could never appear in natural prose, so the advisory
-  // missing_synthesized_* warnings were permanent by construction.
-  const LT_PREFIXES = ['how to apply for', 'what is the', 'is it possible to', 'do you need', 'requirements for', 'cost of applying for']
-  const LT_SUFFIXES = ['for international students', 'step by step', 'in 2026: complete guide', 'requirements checklist', 'eligibility and costs']
+  // Grammatical templates only. Calculators / processing-time explainers
+  // never receive "how to apply for {primary}" — that mashup is what shipped
+  // as stuffed bold labels on the CRS calculator and AU processing-time jobs.
+  const applyTarget = isApplyTargetPrimary(pt)
+  const ptStartsWithHowTo = /^(how to apply for|what is the)\b/.test(pt)
   if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2 && ptWords.length >= 1) {
-    // Duplicate-phrase guard: when the primary ALREADY carries the template
-    // cadence (e.g. "how to apply for a green card"), prepending the same
-    // prefix would synthesize "how to apply for how to apply for a green
-    // card" — the exact garbage that shipped as FAQ questions. When the
-    // primary starts with a prefix, append a suffix form instead so the
-    // phrase stays grammatical and non-duplicating.
-    const ptStartsWithTemplate = LT_PREFIXES.some((p) => pt.startsWith(p))
-    for (const prefix of LT_PREFIXES) {
-      if (ptStartsWithTemplate) {
-        if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2) classifyAndAdd(`${pt} requirements and timeline`)
-        continue
+    const longTailCandidates: string[] = []
+    if (ptStartsWithHowTo) {
+      longTailCandidates.push(`${pt} step by step`, `${pt} in 2026`, `${pt} requirements and timeline`)
+    } else {
+      longTailCandidates.push(`what is the ${pt}`, `how the ${pt} works`, `${pt} step by step`, `${pt} in 2026`)
+      if (applyTarget) {
+        longTailCandidates.unshift(`how to apply for ${pt}`)
+        longTailCandidates.push(`documents required for ${pt}`)
+        longTailCandidates.push(`${pt} for international students`)
       }
-      classifyAndAdd(`${prefix} ${pt}`)
     }
-    for (const suffix of LT_SUFFIXES) {
-      if (ptStartsWithTemplate) {
-        if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2) classifyAndAdd(`${pt}: requirements, fees and timeline`)
-        continue
-      }
-      classifyAndAdd(`${pt} ${suffix}`)
+    for (const candidate of longTailCandidates) {
+      if (longTail.length >= KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2) break
+      classifyAndAdd(candidate)
     }
   }
 
@@ -370,9 +366,13 @@ export function isUnplaceableCoverageTerm(term: string): boolean {
   if (!t) return false
   if (isFabricatedSyntheticTerm(t)) return true
   if (/\?$/.test(t)) return true
-  if (/^(is it possible to|do you need a|requirements for a)\b/.test(t)) return true
+  if (/^(is it possible to|do you need(?: a)?)\b/.test(t)) return true
   if (/\bhow to apply for how to apply for\b/.test(t)) return true
   if (/\bin 2026 explained\b/.test(t)) return true
+  if (/\bhow to apply for\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b)\b/.test(t)) return true
+  if (/^(cost of applying for|requirements for(?: a)?)\b/.test(t) && /\b(calculator|processing time|timeline|template|checklist|\bscore\b)\b/.test(t)) return true
+  if (/^how long does the (green|australia|canada|uk|us)\b/.test(t)) return true
+  if (/^can i work while waiting for (green|australia|canada|uk|us) approval\b/.test(t)) return true
   return false
 }
 
@@ -441,24 +441,21 @@ export function mergeBriefKeywords(opts: {
     pushUnique(longTailTerms, t, researchLongKeys.has(t.toLowerCase()) ? 'demand' : 'synthesized')
   }
   // Partitioner fill — synthesized unless the research pool already owns it.
+  // Unplaceable mashups never enter the brief, even to meet a count floor.
   for (const t of partitioned.short) {
     if (shortTerms.length >= maxShort) break
-    if (isUnplaceableCoverageTerm(t) && shortTerms.length >= KEYWORD_REQUIREMENTS.SHORT_MIN) continue
-    const source = isUnplaceableCoverageTerm(t)
-      ? 'synthesized'
-      : researchShortKeys.has(t.toLowerCase())
-        ? 'demand'
-        : (partitionSource.get(t.toLowerCase()) ?? 'synthesized')
+    if (isUnplaceableCoverageTerm(t)) continue
+    const source = researchShortKeys.has(t.toLowerCase())
+      ? 'demand'
+      : (partitionSource.get(t.toLowerCase()) ?? 'synthesized')
     pushUnique(shortTerms, t, source)
   }
   for (const t of partitioned.longTail) {
     if (longTailTerms.length >= maxLong) break
-    if (isUnplaceableCoverageTerm(t) && longTailTerms.length >= KEYWORD_REQUIREMENTS.LONG_TAIL_MIN) continue
-    const source = isUnplaceableCoverageTerm(t)
-      ? 'synthesized'
-      : researchLongKeys.has(t.toLowerCase())
-        ? 'demand'
-        : (partitionSource.get(t.toLowerCase()) ?? 'synthesized')
+    if (isUnplaceableCoverageTerm(t)) continue
+    const source = researchLongKeys.has(t.toLowerCase())
+      ? 'demand'
+      : (partitionSource.get(t.toLowerCase()) ?? 'synthesized')
     pushUnique(longTailTerms, t, source)
   }
   return {

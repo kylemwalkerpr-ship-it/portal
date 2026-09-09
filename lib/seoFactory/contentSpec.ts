@@ -20,6 +20,8 @@ import {
 import { depthSpecForType } from './contentDepth'
 import { isCitableSource, isLowValueHost, type CitationContext } from './officialSources'
 import type { AuthorPack, ResearchClaim } from './authorPack'
+import { sanitizeBriefOutline, rejectFragmentKeyword } from './keywordContractBrief'
+import { stripOutlineHeadingDecorations } from './contentQualityGate'
 
 export type ContentSpecKeyword = {
   phrase: string
@@ -679,6 +681,7 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
     .filter((keyword) => {
       const key = keyword.phrase.toLowerCase()
       if (!key || seenKeywords.has(key)) return false
+      if (rejectFragmentKeyword(keyword.phrase, args.primaryKeyword || '')) return false
       seenKeywords.add(key)
       return true
     })
@@ -687,14 +690,21 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
   // let the deterministic editor merge/remove later duplicate sections. A
   // damaged draft must never deadlock before that repair can run.
   const seenSections = new Set<string>()
-  const canonicalOutline = (args.outline || [])
-    .map((heading) => String(heading || '').trim().replace(/\s+/g, ' '))
-    .filter((heading) => {
-      const key = heading.toLowerCase()
-      if (!key || seenSections.has(key)) return false
-      seenSections.add(key)
-      return true
-    })
+  const canonicalOutline = sanitizeBriefOutline(
+    (args.outline || [])
+      .map((heading) => stripOutlineHeadingDecorations(String(heading || '').trim().replace(/\s+/g, ' ')))
+      .filter(Boolean),
+    [
+      args.primaryKeyword,
+      ...(args.requiredShortKeywords || []),
+      ...(args.requiredLongTailKeywords || []),
+    ].map(String),
+  ).filter((heading) => {
+    const key = heading.toLowerCase()
+    if (!key || seenSections.has(key)) return false
+    seenSections.add(key)
+    return true
+  })
   const now = new Date().toISOString()
   const approvedSources: ContentSpecApprovedSource[] = (args.verifiedSourceUrls || []).map((url) => ({
     url,

@@ -21,16 +21,25 @@ export function canonicalOutlineForGate(
   spec?: { outline?: OutlineEntry[] | null } | ContentSpec | null,
   h2Outline?: string[] | null,
 ): OutlineEntry[] | null {
-  if (spec?.outline && spec.outline.length) {
-    return spec.outline.map((o) => ({
-      heading: String(o.heading || '').trim(),
-      level: o.level,
-      purpose: o.purpose,
-    })).filter((o) => o.heading)
+  const raw: OutlineEntry[] = spec?.outline && spec.outline.length
+    ? spec.outline.map((o) => ({
+        heading: String(o.heading || '').trim(),
+        level: o.level,
+        purpose: o.purpose,
+      })).filter((o) => o.heading)
+    : (h2Outline || []).map((heading) => ({ heading: String(heading || '').trim(), level: 2, purpose: 'brief outline' })).filter((o) => o.heading)
+  if (!raw.length) return null
+  const seen = new Set<string>()
+  const out: OutlineEntry[] = []
+  for (const entry of raw) {
+    let heading = stripOutlineHeadingDecorations(entry.heading)
+    if (/^in 60 seconds\b/i.test(heading) || /^tl;?dr\b/i.test(heading)) heading = 'In 60 seconds'
+    const key = heading.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!heading || !key || seen.has(key)) continue
+    seen.add(key)
+    out.push({ heading, level: entry.level, purpose: entry.purpose })
   }
-  const headings = (h2Outline || []).map((h) => String(h || '').trim()).filter(Boolean)
-  if (!headings.length) return null
-  return headings.map((heading) => ({ heading, level: 2, purpose: 'brief outline' }))
+  return out.length ? out : null
 }
 
 export function outlineHeadings(outline: OutlineEntry[] | null | undefined): string[] {

@@ -8,8 +8,11 @@
  * contract floors (≥5 short ≤3 words, ≥4 long-tail ≥4 words) using
  * deterministic, grammatical templates derived from the primary keyword's
  * own word windows — the same strategy the pipeline partitioner uses.
- * Pure + dependency-free so any client seeder can use it.
+ * Imports only the client-safe keywordContractBrief helpers (no planner /
+ * undici) so studio seeders can call it.
  */
+
+import { isApplyTargetPrimary, rejectFragmentKeyword } from '@/lib/seoFactory/keywordContractBrief'
 
 const SHORT_FLOOR = 5
 const LONG_FLOOR = 4
@@ -28,9 +31,13 @@ function shortHeadCandidates(primaryWords: string[]): string[] {
     if (w && w.split(/\s+/).length <= 3) out.push(w)
   }
   push(primaryWords.slice(0, 1))
-  push(primaryWords.slice(0, 2))
-  push(primaryWords.slice(-3))
-  push(primaryWords.slice(-2))
+  if (primaryWords.length >= 2) {
+    for (let n = 2; n <= 3; n++) {
+      for (let i = 0; i + n <= primaryWords.length; i++) {
+        push(primaryWords.slice(i, i + n))
+      }
+    }
+  }
   for (const mod of MODIFIERS) {
     push([primaryWords[0], mod])
   }
@@ -46,10 +53,11 @@ export function ensureKeywordFloors(terms: string[], primaryTerm = ''): string[]
   const seen = new Set<string>()
   const shorts: string[] = []
   const longs: string[] = []
-  const add = (t: string, floor: number, arr: string[], cap: number) => {
+  const add = (t: string, _floor: number, arr: string[], _cap: number) => {
     const norm = t.trim().toLowerCase().replace(/\s+/g, ' ')
     if (!norm || norm.length < 3 || seen.has(norm)) return
     if (norm === primary) return
+    if (primary && rejectFragmentKeyword(norm, primary)) return
     seen.add(norm)
     arr.push(norm)
   }
@@ -78,15 +86,24 @@ export function ensureKeywordFloors(terms: string[], primaryTerm = ''): string[]
   }
 
   // Long-tail floor fill — natural reader questions/phrases, never mashups.
+  // Calculators / processing-time explainers do not get "how to apply for".
   if (longs.length < LONG_FLOOR) {
     const bases = [shorts[0] || primary, primary].filter(Boolean)
-    const templates = [
-      (b: string) => `how to apply for ${b}`,
-      (b: string) => `how long does the ${b} take`,
-      (b: string) => `documents required for ${b}`,
-      (b: string) => `can i work while waiting for ${b} approval`,
-      (b: string) => `difference between types of ${b}`,
-    ]
+    const apply = isApplyTargetPrimary(primary)
+    const templates = apply
+      ? [
+          (b: string) => `how to apply for ${b}`,
+          (b: string) => `how long does the ${b} take`,
+          (b: string) => `documents required for ${b}`,
+          (b: string) => `can i work while waiting for ${b} approval`,
+          (b: string) => `difference between types of ${b}`,
+        ]
+      : [
+          (b: string) => `what is the ${b}`,
+          (b: string) => `how the ${b} works`,
+          (b: string) => `${b} step by step`,
+          (b: string) => `${b} in 2026`,
+        ]
     for (const base of bases) {
       for (const tpl of templates) {
         if (longs.length >= LONG_FLOOR) break

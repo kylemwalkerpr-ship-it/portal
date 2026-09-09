@@ -43,6 +43,23 @@ describe('canonicalOutlineForGate', () => {
     const out = canonicalOutlineForGate(null, ['Eligibility', 'FAQ'])
     expect(out?.map((o) => o.heading)).toEqual(['Eligibility', 'FAQ'])
   })
+
+  it('collapses In 60 seconds (120-150) onto In 60 seconds so audit does not insert a twin', () => {
+    const spec = {
+      outline: [
+        { heading: 'In 60 seconds', level: 2 as const },
+        { heading: 'In 60 seconds (120-150)', level: 2 as const },
+        { heading: 'How waits are measured', level: 2 as const },
+        { heading: 'FAQ', level: 2 as const },
+      ],
+    }
+    const out = canonicalOutlineForGate(spec)
+    expect(out?.map((o) => o.heading)).toEqual([
+      'In 60 seconds',
+      'How waits are measured',
+      'FAQ',
+    ])
+  })
 })
 
 describe('completeMissingOutlineSections', () => {
@@ -210,6 +227,13 @@ describe('outline heading word-budget decorations (live Canada Spousal job)', ()
     expect(isStructuralOutlineHeading('Eligibility (400-600 words)')).toBe(false)
   })
 
+  it('strips bare number-range parentheticals used as section budgets', () => {
+    expect(stripOutlineHeadingDecorations('In 60 seconds (120-150)')).toBe('In 60 seconds')
+    expect(stripOutlineHeadingDecorations('In 60 seconds (120–150)')).toBe('In 60 seconds')
+    expect(stripOutlineHeadingDecorations('In 60 seconds (3–5 bullets)')).toBe('In 60 seconds')
+    expect(isStructuralOutlineHeading('In 60 seconds (120-150)')).toBe(true)
+  })
+
   it('does not treat a budget-decorated FAQ as a missing content H2', () => {
     const article = `## Eligibility\n\nEnough body copy about inland vs overseas sponsorship.\n\n## FAQ\n\n### How long does it take?\n\nIRCC's clock starts after a complete package.\n`
     expect(
@@ -218,6 +242,38 @@ describe('outline heading word-budget decorations (live Canada Spousal job)', ()
         { heading: 'FAQ (320–380 words)' },
       ]),
     ).toEqual([])
+  })
+
+  it('does not treat In 60 seconds (120-150) as missing when ## In 60 seconds exists (live AU job)', () => {
+    const article = `## In 60 seconds\n\n- Clock starts after a valid lodgement.\n- Percentile charts are not a grant date.\n\n## How waits are measured\n\nHome Affairs publishes percentile charts.\n\n## FAQ\n\n### When does the wait start?\n\nAfter a valid lodgement.\n`
+    expect(
+      missingOutlineSections(article, [
+        { heading: 'In 60 seconds' },
+        { heading: 'In 60 seconds (120-150)' },
+        { heading: 'How waits are measured' },
+        { heading: 'FAQ' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('does not insert a second In 60 seconds when the body already has the clean H2', async () => {
+    const article = `## In 60 seconds\n\n- One.\n- Two.\n- Three.\n\n## How waits are measured\n\nHome Affairs publishes percentile charts for subclass 500 files in enough detail for the overlap matcher.\n\n## FAQ\n\n### Q?\n\nA.\n`
+    const result = await completeMissingOutlineSections({
+      content: article,
+      outline: [
+        { heading: 'In 60 seconds' },
+        { heading: 'In 60 seconds (120-150)' },
+        { heading: 'How waits are measured' },
+        { heading: 'FAQ' },
+      ],
+      generateSection: async () => {
+        throw new Error('In 60 seconds kit must not be generated when ## In 60 seconds already exists')
+      },
+    })
+    expect(result.remaining).toEqual([])
+    expect(result.inserted).toEqual([])
+    expect(result.content.match(/^## In 60 seconds/gim) || []).toHaveLength(1)
+    expect(result.content).not.toContain('## In 60 seconds (120-150)')
   })
 
   it('does not fail-closed at the word ceiling when remaining is only FAQ (320–380 words)', async () => {

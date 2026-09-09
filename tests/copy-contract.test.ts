@@ -84,6 +84,14 @@ describe('rejectFragmentKeyword — named-program mill fragments', () => {
     expect(rejectFragmentKeyword('express requirements', PRIMARY)).toBe(true)
     expect(rejectFragmentKeyword('express entry requirements', PRIMARY)).toBe(false)
   })
+
+  it('drops generic windows and incomplete named-program shorts', () => {
+    expect(rejectFragmentKeyword('processing time', 'australia student visa processing time')).toBe(true)
+    expect(rejectFragmentKeyword('australia student', 'australia student visa processing time')).toBe(true)
+    expect(rejectFragmentKeyword('student visa', 'australia student visa processing time')).toBe(false)
+    expect(rejectFragmentKeyword('card timeline', 'green card timeline')).toBe(true)
+    expect(rejectFragmentKeyword('green card', 'green card timeline')).toBe(false)
+  })
 })
 
 describe('keyword contract drops mill fragments', () => {

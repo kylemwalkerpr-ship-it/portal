@@ -500,7 +500,7 @@ export function stripOutlineHeadingDecorations(heading: string): string {
   return String(heading || '')
     .replace(/^#+\s*/, '')
     .replace(
-      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*)\)\s*$/i,
+      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*|\d+\s*[–-]\s*\d+\s+bullets?|\d+\s+[–-]\s*\d+\s+bullets?|\d+\s*[–-]\s*\d+)\s*\)\s*$/i,
       '',
     )
     .replace(/\s+\d+\s*[–-]\s*\d+\s+words?\s*$/i, '')

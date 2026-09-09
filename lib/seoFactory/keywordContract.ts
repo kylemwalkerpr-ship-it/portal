@@ -17,6 +17,7 @@ import {
   rejectFragmentKeyword,
   dropFragmentKeywords,
   dropFragmentKeywordTerms,
+  isApplyTargetPrimary,
 } from './keywordContractBrief'
 
 export {
@@ -29,6 +30,7 @@ export {
   rejectFragmentKeyword,
   dropFragmentKeywords,
   dropFragmentKeywordTerms,
+  isApplyTargetPrimary,
 }
 
 /** Content types where a missing demand short is a ship blocker. */
@@ -80,17 +82,47 @@ export interface KeywordContract {
   backfilled: boolean
 }
 
-function demoteUnplaceableTerms(terms: KeywordTerm[]): KeywordTerm[] {
-  return terms.map((entry) => (
-    isUnplaceableCoverageTerm(entry.term)
-      ? { term: entry.term, source: 'synthesized' as KeywordSource }
-      : entry
-  ))
+function dropUnplaceableTerms(terms: KeywordTerm[]): KeywordTerm[] {
+  return terms.filter((entry) => !isUnplaceableCoverageTerm(entry.term))
+}
+
+function refillKeywordFloor(
+  terms: KeywordTerm[],
+  kind: 'short' | 'long',
+  primary: string,
+): KeywordTerm[] {
+  const min = kind === 'short' ? KEYWORD_REQUIREMENTS.SHORT_MIN : KEYWORD_REQUIREMENTS.LONG_TAIL_MIN
+  if (terms.length >= min || !String(primary || '').trim()) return terms
+  const partitioned = partitionKeywords(terms.map((entry) => entry.term), primary)
+  const extras = kind === 'short' ? partitioned.shortTerms : partitioned.longTailTerms
+  const seen = new Set(terms.map((entry) => entry.term.toLowerCase()))
+  const out = [...terms]
+  for (const extra of extras) {
+    if (out.length >= min) break
+    const key = extra.term.toLowerCase()
+    if (seen.has(key)) continue
+    if (isUnplaceableCoverageTerm(extra.term)) continue
+    if (rejectFragmentKeyword(extra.term, primary)) continue
+    seen.add(key)
+    out.push({
+      term: extra.term,
+      source: extra.source === 'demand' ? extra.source : 'synthesized',
+    })
+  }
+  return out
 }
 
 function sealContract(contract: KeywordContract, primary = ''): KeywordContract {
-  const shortKeywordTerms = dropFragmentKeywordTerms(demoteUnplaceableTerms(contract.shortKeywordTerms), primary)
-  const longTailKeywordTerms = dropFragmentKeywordTerms(demoteUnplaceableTerms(contract.longTailKeywordTerms), primary)
+  const shortKeywordTerms = refillKeywordFloor(
+    dropFragmentKeywordTerms(dropUnplaceableTerms(contract.shortKeywordTerms), primary),
+    'short',
+    primary,
+  )
+  const longTailKeywordTerms = refillKeywordFloor(
+    dropFragmentKeywordTerms(dropUnplaceableTerms(contract.longTailKeywordTerms), primary),
+    'long',
+    primary,
+  )
   return {
     ...contract,
     requiredShortKeywords: shortKeywordTerms.map((entry) => entry.term),
@@ -199,7 +231,7 @@ export function pruneUnplaceableSynthesizedKeywords(input: {
     const candidates = [...freshTemplates.values()]
     let cursor = 0
     list = list.map((entry) => {
-      if (entry.source !== 'synthesized' || !isFabricatedSyntheticTerm(entry.term)) return entry
+      if (entry.source !== 'synthesized' || !(isFabricatedSyntheticTerm(entry.term) || isUnplaceableCoverageTerm(entry.term))) return entry
       while (cursor < candidates.length) {
         const candidate = candidates[cursor++]
         if (list.some((k) => k.term.toLowerCase() === candidate.term.toLowerCase())) continue
@@ -255,7 +287,16 @@ export function resolveKeywordContract(input: {
       const persistedSource = known.get(lower)
       if (persistedSource) return { term, source: persistedSource }
       const legacySyntheticSource = legacySynthetic.get(lower)
-      if (legacySyntheticSource) return { term, source: legacySyntheticSource }
+      // Recover mill long-tails and unplaceable/fabricated strings so old
+      // queue rows do not become demand blockers. Do NOT recover short
+      // windows of the primary ("visa fee") — those are often real
+      // caller-supplied demand that happens to equal a contiguous slice.
+      if (
+        legacySyntheticSource
+        && (isFabricatedSyntheticTerm(term) || isUnplaceableCoverageTerm(term) || term.split(/\s+/).length >= 4)
+      ) {
+        return { term, source: legacySyntheticSource }
+      }
       // Legacy jobs persisted flat keyword arrays BEFORE provenance existed.
       // Terms that match the partitioner's FABRICATED template markers were
       // machine backfill, never real demand — typing them 'demand' would turn

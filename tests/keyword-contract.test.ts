@@ -80,11 +80,7 @@ describe('canonical job keyword contract', () => {
     expect(all.some((t) => t.source === 'synthesized')).toBe(true)
   })
 
-  it('legacy rows carrying old fabrication-template strings stay synthesized (no blocker revival)', () => {
-    // 2026-09-01: the partitioner templates were tightened (natural phrases).
-    // Legacy briefs persisted the OLD fabricated strings, which no longer
-    // round-trip through the current templates — without marker recovery they
-    // would be typed 'demand' and every old queue draft would hard-block.
+  it('legacy fabricated strings are dropped and the long-tail floor is refilled', () => {
     const contract = resolveKeywordContract({
       primaryKeyword: 'estimated tax payment help',
       requiredShortKeywords: ['estimated tax requirements', 'estimated tax eligibility', 'tax payment help', 'irs payment plan', 'tax deadline help'],
@@ -100,16 +96,12 @@ describe('canonical job keyword contract', () => {
       'estimated tax payment help in 2026 explained',
       'estimated tax payment help checklist and timeline',
     ]
-    // The fabricated legacy strings stay warnings-grade synthesized (legacy
-    // rows predate provenance, and the old templates are gone); the natural
-    // caller-supplied phrase has no provenance and stays demand.
     for (const term of markerTerms) {
-      expect(contract.longTailKeywordTerms.find((t) => t.term === term)?.source).toBe('synthesized')
+      expect(contract.requiredLongTailKeywords).not.toContain(term)
+      expect(contract.longTailKeywordTerms.find((t) => t.term === term)).toBeUndefined()
     }
-    // "for international students" is ALSO a partitioner template suffix
-    // (kept in the tightened templates), so legacy recovery types it
-    // synthesized too — only real authored queries stay demand.
-    expect(contract.longTailKeywordTerms.find((t) => t.term === 'estimated tax payment help for international students')?.source).toBe('synthesized')
+    expect(contract.requiredLongTailKeywords.length).toBeGreaterThanOrEqual(4)
+    expect(contract.requiredLongTailKeywords).toContain('estimated tax payment help for international students')
     expect(contract.backfilled).toBe(false)
   })
 })
@@ -219,7 +211,7 @@ describe('keywordContractForDraft — briefing and pipeline share one sealed lis
     expect(contract.shortKeywordTerms.every((t) => t.source === 'demand')).toBe(true)
   })
 
-  it('demotes unplaceable FAQ-question strings so Harper never hard-blocks them', () => {
+  it('drops unplaceable FAQ-question strings so Harper never hard-blocks them', () => {
     const contract = keywordContractForDraft({
       primaryKeyword: 'student visa',
       requiredShortKeywords: ['student visa', 'visa fee', 'visa cost', 'visa rules', 'visa help'],
@@ -237,8 +229,10 @@ describe('keywordContractForDraft — briefing and pipeline share one sealed lis
         { term: 'student visa documents checklist 2026', source: 'demand' },
       ],
     })
-    expect(contract.longTailKeywordTerms.find((t) => t.term === 'how much is a student visa?')?.source).toBe('synthesized')
-    expect(contract.longTailKeywordTerms.find((t) => t.term === 'requirements for a student visa')?.source).toBe('synthesized')
+    expect(contract.requiredLongTailKeywords).not.toContain('how much is a student visa?')
+    expect(contract.requiredLongTailKeywords).not.toContain('requirements for a student visa')
+    expect(contract.requiredLongTailKeywords).toContain('student visa processing time australia')
+    expect(contract.requiredLongTailKeywords.length).toBeGreaterThanOrEqual(4)
     expect(contract.longTailKeywordTerms.find((t) => t.term === 'student visa processing time australia')?.source).toBe('demand')
   })
 })

@@ -27,8 +27,19 @@ describe('ensureKeywordFloors — UI keyword field never opens below the contrac
     for (const k of complete) expect(out).toContain(k)
   })
 
-  it('degrades safely with an unusable primary', () => {
-    const out = ensureKeywordFloors(['visa', 'apply', 'fees'], '')
-    expect(out.length).toBeGreaterThanOrEqual(5)
+  it('does not mill apply-for long-tails onto a calculator or processing-time primary', () => {
+    const crs = ensureKeywordFloors(['express entry', 'crs calculator'], 'express entry canada crs calculator')
+    const au = ensureKeywordFloors(['student visa', 'visa processing time'], 'australia student visa processing time')
+    for (const list of [crs, au]) {
+      const longs = list.filter((k) => k.split(/\s+/).length >= 4)
+      expect(longs.length).toBeGreaterThanOrEqual(4)
+      expect(longs.some((k) => /^how to apply for /.test(k))).toBe(false)
+      expect(longs.some((k) => /^is it possible to /.test(k))).toBe(false)
+      expect(longs.some((k) => /^can i work while waiting for /.test(k))).toBe(false)
+    }
+    expect(crs).not.toContain('express')
+    expect(crs).not.toContain('express requirements')
+    expect(au).not.toContain('australia student')
+    expect(au).not.toContain('processing time')
   })
 })
