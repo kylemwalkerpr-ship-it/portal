@@ -2,8 +2,8 @@
    ----------------------------------------
    MarketplaceShell owns the viewport floor. Nested public pages must size to
    their content instead of adding a second 100vh below the sticky market
-   chrome. The previous SellerProfilePage min-height produced almost one extra
-   phone viewport of blank paper after the last profile card on iOS Safari. */
+   chrome. The previous SellerProfilePage / GigDetailPage viewport minimums
+   could produce nearly an extra phone viewport of blank paper on iOS Safari. */
 
 @media (max-width: 768px) {
   .cw-market .ys-seller-profile-page {
@@ -12,6 +12,14 @@
   }
 
   .cw-market .ys-seller-profile-tab-content {
+    min-height: 0 !important;
+  }
+
+  /* GigDetailPage does not currently expose a root class, but its real loaded
+     branch has the stable `.ys-content-layout` child. Remove that nested 100vh
+     without touching Marketplace message/order surfaces that genuinely own a
+     full-screen viewport. */
+  .cw-market > div:has(> main .ys-content-layout) {
     min-height: 0 !important;
   }
 
