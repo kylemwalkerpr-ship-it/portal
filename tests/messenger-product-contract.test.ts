@@ -45,10 +45,14 @@ describe('Messenger product UI contract', () => {
     expect(profile).toContain('Messaging on YouSafe')
   })
 
-  test('status viewing has story depth and mobile safe-area ownership', () => {
+  test('status viewing has story depth and pause resumes without resetting progress', () => {
     expect(statusViewer).toContain('const STORY_MS = 6500')
+    expect(statusViewer).toContain('const pausedRef = React.useRef(false)')
+    expect(statusViewer).toContain('pausedRef.current = paused')
+    expect(statusViewer).toContain("document.visibilityState !== 'hidden'")
     expect(statusViewer).toContain('className="ys-status-progress"')
     expect(statusViewer).toContain('onPointerDown={() => setPaused(true)}')
+    expect(statusViewer).not.toContain('statuses.length, onClose, paused])')
     expect(statusContract).toContain('.yousafe-messenger .ys-status-stage {')
     expect(statusContract).toContain('height: 100dvh')
     expect(statusContract).toContain('env(safe-area-inset-bottom)')
