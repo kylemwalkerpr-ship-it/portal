@@ -6,6 +6,7 @@ const HEIGHT_VAR = '--ys-visual-viewport-height'
 const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'
 const OFFSET_VAR = '--ys-visual-viewport-offset-top'
 const CHAT_CANVAS_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] [data-chat-canvas]"
+const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-input"
 
 /**
  * Keep full-screen Portal surfaces tied to what the user can actually see.
@@ -24,16 +25,36 @@ const CHAT_CANVAS_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view
  *   mobile conversations pair it with --ys-visual-viewport-offset-top and
  *   become fixed to the VisualViewport, which prevents Safari's keyboard pan
  *   from clipping the chat header or composer.
+ *
+ * iOS browser chrome needs one additional signal. When Safari keeps its URL
+ * bar immediately above the software keyboard, VisualViewport.height can still
+ * include the pixels covered by that browser UI. We therefore publish
+ * data-ys-ios-webkit / data-ys-keyboard-open on <html>; CSS uses those flags to
+ * reserve only the dynamic browser-chrome delta while the composer is focused.
  */
 export default function MobileVisualViewport() {
   React.useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
 
     const root = document.documentElement
+    const nav = navigator as Navigator & { standalone?: boolean }
+    const isIOSWebKit = /iPad|iPhone|iPod/.test(nav.userAgent)
+      || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1)
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true
+
+    root.dataset.ysIosWebkit = isIOSWebKit ? 'true' : 'false'
+    root.dataset.ysStandalone = standalone ? 'true' : 'false'
+
     let frame = 0
     let tailFrame = 0
-    let focusTimer = 0
+    let focusTimers: number[] = []
     let chatNearBottom = true
+    let unfocusedVisualHeight = Math.max(1, Math.round(window.visualViewport?.height || window.innerHeight))
+
+    const composerIsFocused = () => {
+      const active = document.activeElement
+      return active instanceof HTMLElement && active.matches(COMPOSER_INPUT_SELECTOR)
+    }
 
     const pinChatTailIfNeeded = () => {
       if (!chatNearBottom) return
@@ -56,7 +77,18 @@ export default function MobileVisualViewport() {
       // viewport bottom even when Safari pans the layout viewport. Fixed mobile
       // chats instead consume visualHeight + offsetTop as separate values.
       const visibleBottom = visualHeight + offsetTop
+      const focused = composerIsFocused()
 
+      // Remember the current keyboard-closed height rather than the historical
+      // maximum so rotating portrait -> landscape cannot make a hardware
+      // keyboard look like a software-keyboard shrink.
+      if (!focused) unfocusedVisualHeight = visualHeight
+      const keyboardOpen = isIOSWebKit
+        && !standalone
+        && focused
+        && visualHeight < unfocusedVisualHeight - 80
+
+      root.dataset.ysKeyboardOpen = keyboardOpen ? 'true' : 'false'
       root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)
       root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)
       root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)
@@ -72,6 +104,14 @@ export default function MobileVisualViewport() {
     const schedule = () => {
       if (frame) window.cancelAnimationFrame(frame)
       frame = window.requestAnimationFrame(apply)
+    }
+
+    const scheduleSettledMeasurements = () => {
+      focusTimers.forEach((timer) => window.clearTimeout(timer))
+      // Safari with the bottom URL bar can report its final VisualViewport late
+      // in the keyboard animation. Sample the settled geometry several times so
+      // the composer never gets stranded under stale browser-chrome metrics.
+      focusTimers = [80, 180, 360, 650].map((delay) => window.setTimeout(schedule, delay))
     }
 
     const onChatScroll = (event: Event) => {
@@ -92,26 +132,28 @@ export default function MobileVisualViewport() {
     window.addEventListener('pageshow', schedule)
     document.addEventListener('scroll', onChatScroll, true)
 
-    // VisualViewport resize is the primary keyboard signal. The focus hooks
-    // are a small Safari fallback for versions that report the final keyboard
-    // geometry one task later than focus.
+    // VisualViewport resize is the primary keyboard signal. Focus changes also
+    // trigger a short set of delayed measurements because iOS can expose the
+    // final URL-bar/keyboard geometry only after its animation has settled.
     const onFocusChange = () => {
       schedule()
-      if (focusTimer) window.clearTimeout(focusTimer)
-      focusTimer = window.setTimeout(schedule, 250)
+      scheduleSettledMeasurements()
     }
     document.addEventListener('focusin', onFocusChange)
     document.addEventListener('focusout', onFocusChange)
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') schedule()
+      if (document.visibilityState === 'visible') {
+        schedule()
+        scheduleSettledMeasurements()
+      }
     }
     document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame)
       if (tailFrame) window.cancelAnimationFrame(tailFrame)
-      if (focusTimer) window.clearTimeout(focusTimer)
+      focusTimers.forEach((timer) => window.clearTimeout(timer))
       viewport?.removeEventListener('resize', schedule)
       viewport?.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
@@ -121,6 +163,9 @@ export default function MobileVisualViewport() {
       document.removeEventListener('focusin', onFocusChange)
       document.removeEventListener('focusout', onFocusChange)
       document.removeEventListener('visibilitychange', onVisibility)
+      delete root.dataset.ysIosWebkit
+      delete root.dataset.ysStandalone
+      delete root.dataset.ysKeyboardOpen
       root.style.removeProperty(HEIGHT_VAR)
       root.style.removeProperty(BLOCK_SIZE_VAR)
       root.style.removeProperty(OFFSET_VAR)
