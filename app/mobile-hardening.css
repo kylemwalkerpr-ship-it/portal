@@ -54,50 +54,48 @@
   }
 
   /* ── Marketplace navigation/chrome ──────────────────────────────── */
-  /* MarketplaceShell has a component-local 60px mobile height rule while
-     globals.css makes the same row wrap. Let the row grow naturally so the
-     second nav row is never clipped. */
+  /* Compact single-row header. Home/Dashboard/File shop + role links live
+     in the hamburger drawer — never wrap this row or hide Dashboard. */
   .cw-market .ys-shell-header-inner {
-    height: auto !important;
+    height: 60px !important;
     min-height: 60px !important;
     padding: 8px 12px !important;
-    flex-wrap: wrap !important;
-    row-gap: 6px !important;
+    flex-wrap: nowrap !important;
+    row-gap: 0 !important;
     max-width: 100% !important;
+    gap: 6px !important;
   }
 
   .cw-market .ys-shell-header-inner > * {
     min-width: 0;
   }
 
-  .cw-market .ys-market-nav {
-    order: 99 !important;
-    flex: 1 1 100% !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-top: 2px !important;
-    padding-top: 4px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+  .cw-market .ys-shell-desktop-pill,
+  .cw-market .ys-market-nav,
+  .cw-market .ys-shell-jx,
+  .cw-market .ys-shell-aux:not(.ys-shell-auth) {
+    display: none !important;
   }
 
-  .cw-market .ys-market-nav::-webkit-scrollbar,
+  .cw-market .ys-shell-menu-toggle {
+    display: inline-flex !important;
+  }
+
+  .cw-market .ys-shell-auth button {
+    min-height: 44px !important;
+    touch-action: manipulation;
+  }
+
   .cw-market .ys-cat-strip::-webkit-scrollbar {
     display: none;
   }
 
-  .cw-market .ys-market-nav > button,
   .cw-market .ys-cat-strip button {
     min-height: 44px !important;
     touch-action: manipulation;
   }
 
-  /* A fixed sticky top offset cannot be correct when the top bar wraps from
-     one to two rows. On phones the category rail remains directly below the
-     sticky top nav in document flow instead of overlapping it. */
+  /* Category rail sits in document flow under the 60px sticky header. */
   .cw-market .ys-cat-bar {
     position: relative !important;
     top: auto !important;
@@ -108,17 +106,19 @@
     padding-inline: 12px !important;
   }
 
-  /* Keep conversion-critical auth; remove low-priority chrome first when
-     horizontal room is scarce (language + theme are still available elsewhere). */
-  .cw-market .ys-shell-header-inner > .ys-shell-aux:nth-last-child(3),
-  .cw-market .ys-shell-header-inner > .ys-shell-aux:nth-last-child(2) {
-    display: none !important;
+  /* Support/Yara launcher: keep clear of the home indicator on all phones,
+     not only 480px-class devices. */
+  button.ys-chat-launcher,
+  button[aria-label='Open chat'],
+  button[aria-label='Close chat'] {
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: max(16px, calc(10px + env(safe-area-inset-bottom))) !important;
   }
 
-  /* Browse is already represented by the role nav directly below; remove the
-     duplicate Home pill on mobile to preserve space for Dashboard/File shop. */
-  .cw-market .ys-shell-header-inner > a[href='/marketplace'] {
-    display: none !important;
+  .ys-chat-panel,
+  [aria-label='YouSafe assistant'] {
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 112px) !important;
   }
 
   /* Marketplace editable controls: iOS will zoom inputs below 16px. */
@@ -156,13 +156,21 @@
     height: 44px !important;
   }
 
-  /* Marketplace Messages is a full app surface. Use the visible viewport,
-     accounting for the wrapped marketplace topbar instead of 100vh. */
+  /* Marketplace Messages is a full app surface. Compact 60px header. */
   @supports (height: 100dvh) {
     .cw-market > .yousafe-messenger {
-      height: calc(100dvh - 112px) !important;
+      height: calc(100dvh - 60px) !important;
       min-height: 420px !important;
     }
+  }
+
+  /* iOS will zoom focused inputs below 16px — cover auth + landing too. */
+  .ys-auth-page input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .ys-auth-page select,
+  .ys-auth-page textarea,
+  .ys-portal-nav input,
+  .ys-hero input {
+    font-size: 16px !important;
   }
 
   /* ── Messenger family ────────────────────────────────────────────── */
@@ -431,10 +439,7 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  .cw-market .ys-shell-header-inner > a[href^='https://portal.yousafeconsultancy.com/dashboard'] {
-    display: none !important;
-  }
-
+  /* Dashboard stays reachable via the hamburger drawer — do not hide it. */
   .cw-market .ys-shell-brand-sub {
     display: none !important;
   }

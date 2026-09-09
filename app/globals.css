@@ -100,7 +100,9 @@ h1, h2, .yousafe-serif {
 .ys-auth-page {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #f3eee5;
   color: #1d2433;
 }
@@ -489,6 +491,7 @@ h1, h2, .yousafe-serif {
   border-color: #d8cdb6 !important;
   background: #f7f3ea !important;
   color: #1d2433 !important;
+  font-size: 16px !important;
 }
 
 .ys-clerk-label {
@@ -502,9 +505,15 @@ h1, h2, .yousafe-serif {
 
 @media (max-width: 980px) {
   .ys-auth-shell {
+    display: flex;
+    flex-direction: column;
     grid-template-columns: 1fr;
     padding: 16px;
     gap: 18px;
+  }
+
+  .ys-auth-form-panel {
+    order: -1;
   }
 
   .ys-auth-brand-panel {
@@ -516,11 +525,15 @@ h1, h2, .yousafe-serif {
   }
 
   .ys-auth-copy {
-    padding: 40px 0;
+    padding: 16px 0 0;
   }
 
   .ys-auth-copy h1 {
-    font-size: clamp(36px, 10vw, 54px);
+    font-size: clamp(28px, 8vw, 40px);
+  }
+
+  .ys-auth-detail-list {
+    display: none;
   }
 }
 
@@ -858,6 +871,15 @@ section[id] {
   .ys-hero__media {
     max-width: 100%;
   }
+  .ys-hero__media [style*="min-height: 520"] {
+    min-height: 240px !important;
+  }
+  .ys-hero__cta {
+    width: 100%;
+  }
+  .ys-hero__cta > * {
+    min-height: 44px;
+  }
 
   /* Stack-section padding is desktop-sized — pull it in so cards don't
      bleed past the viewport. */
@@ -888,40 +910,50 @@ section[id] {
   }
 }
 
-/* ── Marketplace shell — mobile collapse ─────────────────────────────────
-   At <=768px the TopNav strip wraps the brand/home/nav-tabs/jurisdiction
-   /lang/auth into a tight 2-row arrangement so nothing overflows. The
-   nav-tabs row gets full horizontal scroll; the active tab auto-scrolls
-   into view via the JS hook in MarketplaceShell.tsx.
+/* ── Marketplace shell — compact hamburger header ─────────────────────
+   At <=768px the TopNav is a single row (brand + auth + menu). Role
+   links, Home/Dashboard/File shop, language, theme, and jurisdiction
+   live in the drawer. Do not wrap this row or hide Dashboard.
    ---------------------------------------------------------------------- */
 @media (max-width: 768px) {
-  /* Container row */
+  .cw-market .ys-shell-header-inner,
   header[style*="position: sticky"][style*="top: 0"] > div[style*="max-width: 1280px"],
   header[style*="position:sticky"][style*="top:0"] > div[style*="max-width:1280px"] {
-    height: auto !important;
-    min-height: 56px !important;
-    padding: 8px 14px !important;
-    flex-wrap: wrap !important;
-    row-gap: 4px !important;
+    height: 60px !important;
+    min-height: 60px !important;
+    padding: 8px 12px !important;
+    flex-wrap: nowrap !important;
+    row-gap: 0 !important;
   }
 
-  /* Nav tabs strip — full width, scrollable */
-  .ys-market-nav {
-    order: 99 !important;            /* push to second row */
-    flex: 1 1 100% !important;
-    width: 100% !important;
-    margin-top: 4px !important;
-    border-top: 1px solid rgba(0,0,0,0.05) !important;
-    padding-top: 4px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    -webkit-overflow-scrolling: touch !important;
+  .ys-shell-desktop-pill,
+  .ys-market-nav,
+  .ys-shell-jx,
+  .ys-shell-aux:not(.ys-shell-auth) {
+    display: none !important;
   }
-  .ys-market-nav::-webkit-scrollbar { display: none; }
-  .ys-market-nav > button {
-    height: 40px;
-    padding: 0 14px !important;
-    font-size: 13px !important;
+
+  .ys-shell-menu-toggle {
+    display: inline-flex !important;
+  }
+
+  .ys-shell-auth button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 420px) {
+  .ys-hero__cta > * {
+    width: 100%;
+    justify-content: center;
+  }
+  .ys-shell-auth .nav-links {
+    gap: 4px !important;
+  }
+  .ys-shell-auth button {
+    padding-inline: 10px !important;
+    font-size: 12px !important;
   }
 }
 
@@ -947,56 +979,120 @@ section[id] {
   }
 }
 
-/* ── Portal landing top nav — mobile-scroll behaviour ────────────────
-   At <=900px the WHOLE nav row (brand + center links + Start-inquiry
-   CTA) becomes one horizontally-scrollable strip so no element is
-   anchored while the others squeeze. User reported the brand + CTA
-   staying pinned and leaving a too-narrow window for the middle
-   items. The component sets justify-content: space-between for
-   desktop; we override to flex-start here so items pack from the
-   left and scroll together. */
+/* ── Portal landing top nav — phone hamburger, desktop row ─────────── */
 .ys-nav-links { scrollbar-width: none; }
 .ys-nav-links::-webkit-scrollbar { display: none; }
-.ys-portal-nav { scrollbar-width: none; }
-.ys-portal-nav::-webkit-scrollbar { display: none; }
+.ys-nav-menu-toggle,
+.ys-nav-drawer { display: none; }
+
+.ys-nav-menu-toggle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: #fff;
+  color: #0F172A;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  padding: 0;
+}
+
+.ys-nav-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+.ys-nav-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.42);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.ys-nav-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(360px, 88vw);
+  height: 100dvh;
+  background: #FAFAF8;
+  padding: calc(18px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: -16px 0 40px rgba(15, 23, 42, 0.16);
+  overflow-y: auto;
+}
+.ys-nav-drawer-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #0F172A;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+.ys-nav-drawer-link:hover,
+.ys-nav-drawer-link:focus-visible {
+  background: rgba(14, 124, 116, 0.08);
+}
+.ys-nav-drawer-cta {
+  background: #0E7C74;
+  color: #fff !important;
+  justify-content: center;
+  margin-top: 8px;
+}
+.ys-nav-drawer-lang {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
 
 @media (max-width: 900px) {
-  /* Turn the entire nav row into a single horizontal scroll strip. */
   .ys-portal-nav {
-    justify-content: flex-start !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
+    justify-content: space-between !important;
+    overflow: visible !important;
     flex-wrap: nowrap !important;
-    -webkit-overflow-scrolling: touch !important;
-    gap: 12px !important;
-    padding: 12px 16px !important;
-    /* Keep the brand visible at scroll position 0 */
-    scroll-padding-inline-start: 16px !important;
+    gap: 8px !important;
+    padding: max(10px, env(safe-area-inset-top)) 14px 10px !important;
   }
-  .ys-portal-nav > * {
-    flex: 0 0 auto !important;          /* no item shrinks */
+  .ys-nav-links,
+  .ys-nav-cta-inquiry,
+  .ys-nav-right-extras {
+    display: none !important;
   }
-  /* Center-links no longer needs its own overflow — parent scrolls. */
-  .ys-nav-links {
-    overflow-x: visible !important;
-    overflow-y: visible !important;
-    flex: 0 0 auto !important;
-    min-width: 0 !important;
+  .ys-nav-brand-tagline { display: none !important; }
+  .ys-nav-menu-toggle { display: inline-flex !important; }
+  .ys-nav-drawer { display: block; }
+  .ys-nav-cta-account button,
+  .ys-nav-cta-account .ys-btn {
+    min-height: 44px;
+    white-space: nowrap;
   }
-  /* Right-side extras (language picker + ghost Sign-in) stay hidden;
-     auth surfaces are reachable via the "Start an inquiry" page. */
-  .ys-nav-right-extras { display: none !important; }
+  .ys-hero__cta > button,
+  .ys-hero__cta > a {
+    touch-action: manipulation;
+  }
 }
 
 @media (max-width: 600px) {
-  /* Compact link sizing so several pills fit per viewport-width. */
-  .ys-nav-link {
-    padding: 6px 10px !important;
-    font-size: 12.5px !important;
+  .ys-nav-brand img {
+    width: 36px !important;
+    height: 36px !important;
   }
-  /* Hide the "Home" external-arrow icon on phones to save ~12px —
-     the link itself remains. */
-  .ys-nav-home svg:last-child { display: none; }
 }
 
 /* Generic spinner keyframe used by the gig wizard's gallery upload

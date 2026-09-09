@@ -1,7 +1,7 @@
 'use client'
 import React from 'react'
 import { T } from './tokens'
-import { Arrow, ArrowUR, Home, Globe, ChevronDown } from './icons'
+import { Arrow, ArrowUR, Home } from './icons'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { Btn } from '../shared'
 
@@ -11,6 +11,7 @@ interface NavProps {
 
 export default function Nav({ onOpenSignIn }: NavProps) {
   const [scrolled, setScrolled] = React.useState(false)
+  const [menuOpen, setMenuOpen] = React.useState(false)
 
   React.useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -19,18 +20,36 @@ export default function Nav({ onOpenSignIn }: NavProps) {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  React.useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [menuOpen])
+
+  const closeMenu = () => setMenuOpen(false)
+
+  const links = [
+    { href: 'https://yousafeconsultancy.com/', label: 'Home' },
+    { href: '/marketplace', label: 'Browse services' },
+    { href: '#practices', label: 'Practices' },
+    { href: '#how', label: 'How it works' },
+    { href: '#faq', label: 'FAQ' },
+  ]
+
   return (
     <nav
       className="ys-portal-nav"
       style={{
         display: 'flex',
         alignItems: 'center',
-        // Desktop: spread items out across the width. Mobile (≤900px) gets
-        // an override in app/globals.css that turns the whole nav into a
-        // single horizontally scrollable strip — brand at the start, CTA
-        // at the end, no fixed elements eating the middle. Justify-start
-        // is correct for the scrollable variant; the desktop view restores
-        // space-between via the media query.
         justifyContent: 'space-between',
         padding: '16px 40px',
         borderBottom: scrolled ? `1px solid ${T.rule}` : '1px solid transparent',
@@ -44,10 +63,10 @@ export default function Nav({ onOpenSignIn }: NavProps) {
         gap: '20px',
       }}
     >
-      {/* Brand */}
       <a
         href="https://yousafeconsultancy.com/"
         aria-label="YouSafe Consultancy"
+        className="ys-nav-brand"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -80,6 +99,7 @@ export default function Nav({ onOpenSignIn }: NavProps) {
             YouSafe
           </span>
           <span
+            className="ys-nav-brand-tagline"
             style={{
               fontFamily: T.sans,
               fontSize: 11,
@@ -93,10 +113,6 @@ export default function Nav({ onOpenSignIn }: NavProps) {
         </span>
       </a>
 
-      {/* Center links — horizontally scrollable on mobile so a narrow
-          phone never truncates the link strip. Scrollbar is hidden via
-          .ys-nav-links::-webkit-scrollbar in app/globals.css; the row
-          still scrolls with touch/swipe + arrow keys. */}
       <div
         className="ys-nav-links"
         style={{
@@ -120,8 +136,6 @@ export default function Nav({ onOpenSignIn }: NavProps) {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
-            paddingLeft: 12,
-            paddingRight: 12,
             color: T.inkMid,
             textDecoration: 'none',
             fontSize: 13,
@@ -129,6 +143,7 @@ export default function Nav({ onOpenSignIn }: NavProps) {
             padding: '8px 14px',
             borderRadius: 8,
             whiteSpace: 'nowrap',
+            minHeight: 44,
             transition: 'color 140ms ease, background 140ms ease',
           }}
         >
@@ -137,46 +152,107 @@ export default function Nav({ onOpenSignIn }: NavProps) {
           <ArrowUR size={10} stroke={2} style={{ color: T.inkDim, marginLeft: 1 }} />
         </a>
         <span aria-hidden="true" style={{ width: 1, height: 18, background: T.rule, margin: '0 4px' }} />
-        {/* Categories goes to the real marketplace browse page — the
-            #categories anchor pointed at PopularCategories.tsx which
-            isn't rendered in the trimmed 7-section landing. */}
         <a href="/marketplace" className="ys-nav-link" style={navLinkStyle}>Browse services</a>
         <a href="#practices" className="ys-nav-link" style={navLinkStyle}>Practices</a>
         <a href="#how" className="ys-nav-link" style={navLinkStyle}>How it works</a>
         <a href="#faq" className="ys-nav-link" style={navLinkStyle}>FAQ</a>
       </div>
 
-      {/* Right side. On mobile we collapse to just the brand CTA so the
-          row never overflows. The scrollable .ys-nav-links handles
-          discovery of the rest of the page. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+      <div className="ys-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
         <div className="ys-nav-right-extras">
           <GlobalLanguageBar />
         </div>
 
-        {/* Sign-in promoted from a tertiary ghost button to a primary "My
-            Account" CTA — matches the "members area" framing the rest of
-            the landing uses and gives returning users a single dominant
-            action on the nav. The Clerk modal still opens via the same
-            onOpenSignIn handler; only the label + variant changed. */}
-        <Btn
-          variant="brand"
-          size="sm"
-          onClick={onOpenSignIn}
+        <span className="ys-nav-cta-account">
+          <Btn
+            variant="brand"
+            size="sm"
+            onClick={onOpenSignIn}
+          >
+            My Account
+            <Arrow size={14} stroke={2} />
+          </Btn>
+        </span>
+        <span className="ys-nav-cta-inquiry">
+          <Btn
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student'
+            }}
+          >
+            Start an inquiry
+          </Btn>
+        </span>
+
+        <button
+          type="button"
+          className="ys-nav-menu-toggle"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          aria-controls="ys-portal-mobile-menu"
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          My Account
-          <Arrow size={14} stroke={2} />
-        </Btn>
-        <Btn
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student'
-          }}
-        >
-          Start an inquiry
-        </Btn>
+          {menuOpen ? (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          )}
+        </button>
       </div>
+
+      {menuOpen && (
+        <div
+          id="ys-portal-mobile-menu"
+          className="ys-nav-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+        >
+          <button
+            type="button"
+            className="ys-nav-drawer-backdrop"
+            aria-label="Close menu"
+            onClick={closeMenu}
+          />
+          <div className="ys-nav-drawer-panel">
+            {links.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="ys-nav-drawer-link"
+                onClick={closeMenu}
+              >
+                {link.label}
+              </a>
+            ))}
+            <button
+              type="button"
+              className="ys-nav-drawer-link"
+              onClick={() => {
+                closeMenu()
+                onOpenSignIn()
+              }}
+            >
+              My Account
+            </button>
+            <a
+              href="https://portal.yousafeconsultancy.com/sign-up/student"
+              className="ys-nav-drawer-link ys-nav-drawer-cta"
+              onClick={closeMenu}
+            >
+              Start an inquiry
+            </a>
+            <div className="ys-nav-drawer-lang">
+              <GlobalLanguageBar />
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }
@@ -189,5 +265,8 @@ const navLinkStyle: React.CSSProperties = {
   padding: '8px 14px',
   borderRadius: 8,
   whiteSpace: 'nowrap',
+  minHeight: 44,
+  display: 'inline-flex',
+  alignItems: 'center',
   transition: 'color 140ms ease, background 140ms ease',
 }
