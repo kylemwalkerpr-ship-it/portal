@@ -12,7 +12,6 @@
 import React from 'react'
 import dynamic from 'next/dynamic'
 import { useClerk } from '@clerk/nextjs'
-import AdminSidebarFooterPolish from '@/components/design/AdminSidebarFooterPolish'
 
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
 
@@ -33,10 +32,5 @@ export default function AdminSectionClient() {
       .finally(() => window.clearTimeout(watchdog))
   }, [signOut])
 
-  return (
-    <>
-      <AdminSidebarFooterPolish />
-      <AdminApp onLogout={handleLogout} />
-    </>
-  )
+  return <AdminApp onLogout={handleLogout} />
 }
