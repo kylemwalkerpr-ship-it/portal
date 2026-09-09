@@ -1,4 +1,5 @@
 import { getClerkUserId } from '@/lib/auth'
+import { buildSlug } from '@/lib/fiverr'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeVertical } from '@/lib/platformConfig'
 
@@ -40,7 +41,7 @@ function servicePayload(body: Record<string, unknown>) {
     is_active: status === 'active',
     vertical: normalizeVertical(body.vertical),
     product_type: productType,
-    slug: String(body.slug ?? '').trim() || null,
+    slug: null as string | null,
     short_description: String(body.short_description ?? '').trim() || null,
     full_description: String(body.full_description ?? '').trim() || null,
     region: String(body.region ?? '').trim() || null,
@@ -59,9 +60,59 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const { id } = await context.params
-  const payload = servicePayload(await req.json())
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>
+
+  // Slugs are public identifiers, not presentation fields. Read the stored
+  // value before building the update so an omitted slug can never become NULL
+  // and a title edit can never silently rewrite an indexed URL.
+  const { data: existing, error: existingError } = await auth.db
+    .from('services')
+    .select('id, slug, title, status, is_active')
+    .eq('id', id)
+    .single()
+  if (existingError || !existing) {
+    return Response.json({ error: existingError?.message || 'Service not found' }, { status: 404 })
+  }
+
+  const payload = servicePayload(body)
   if (!payload.title || !Number.isFinite(payload.price) || payload.price < 0) {
     return Response.json({ error: 'Invalid service payload' }, { status: 400 })
+  }
+
+  const currentSlug = typeof existing.slug === 'string' ? existing.slug.trim() : ''
+  const requestedSlug = typeof body.slug === 'string' ? body.slug.trim() : ''
+  const isPublished = existing.status === 'active' || existing.is_active === true
+
+  let nextSlug = currentSlug
+  if (!nextSlug) {
+    // Legacy rows without a slug get one clean identifier without changing any
+    // existing public URL because there is no old slug to invalidate.
+    nextSlug = buildSlug(requestedSlug || payload.title || String(existing.title || 'service'))
+  } else if (requestedSlug && requestedSlug !== currentSlug) {
+    const normalized = buildSlug(requestedSlug)
+    if (isPublished && normalized !== currentSlug) {
+      return Response.json(
+        { error: 'Published service URLs are permanent. Keep the current slug and update the title or SEO fields instead.' },
+        { status: 409 },
+      )
+    }
+    nextSlug = normalized
+  }
+  payload.slug = nextSlug || null
+
+  // Draft slug edits may be normalized, but never allow them to collide with
+  // another service URL. Older schemas without a slug column simply skip this
+  // guard and retain the existing legacy fallback below.
+  if (nextSlug && nextSlug !== currentSlug) {
+    const { data: collision, error: collisionError } = await auth.db
+      .from('services')
+      .select('id')
+      .eq('slug', nextSlug)
+      .neq('id', id)
+      .maybeSingle()
+    if (!collisionError && collision) {
+      return Response.json({ error: 'That service URL is already in use. Choose a different slug.' }, { status: 409 })
+    }
   }
 
   let result = await auth.db.from('services').update(payload).eq('id', id).select('*').single()

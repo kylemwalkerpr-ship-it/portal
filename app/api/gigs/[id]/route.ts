@@ -108,7 +108,39 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     // don't render a stale image that no longer exists.
     payload.cover_image_url = resolveCoverUrl({ gallery_images: normalized })
   }
-  if ('slug' in body) payload.slug = buildSlug(String(body.slug || existing.title))
+
+  // Treat a public slug like a permanent resource identifier. Drafts may be
+  // cleaned before publication; once a gig has ever been published, title and
+  // SEO edits must not create a new URL, redirect chain, or accidental 404.
+  if ('slug' in body) {
+    const currentSlug = typeof existing.slug === 'string' ? existing.slug.trim() : ''
+    const requestedSlug = typeof body.slug === 'string' ? body.slug.trim() : ''
+    let nextSlug = currentSlug
+
+    if (!nextSlug) {
+      nextSlug = buildSlug(requestedSlug || String(existing.title || 'service'))
+    } else if (requestedSlug && requestedSlug !== currentSlug) {
+      const normalized = buildSlug(requestedSlug)
+      const hasBeenPublished = Boolean(existing.published_at) || existing.status === 'active'
+      if (hasBeenPublished && normalized !== currentSlug) {
+        return fail('Published service URLs are permanent. Keep the current slug and update the title or SEO fields instead.', 409)
+      }
+      nextSlug = normalized
+    }
+
+    if (nextSlug && nextSlug !== currentSlug) {
+      const { data: collision, error: collisionError } = await auth.db
+        .from('gigs')
+        .select('id')
+        .eq('slug', nextSlug)
+        .neq('id', id)
+        .maybeSingle()
+      if (!collisionError && collision) {
+        return fail('That service URL is already in use. Choose a different slug.', 409)
+      }
+    }
+    if (nextSlug) payload.slug = nextSlug
+  }
 
   let updateResult = await auth.db.from('gigs').update(payload).eq('id', id).select('*, tiers:gig_tiers(*)').single()
   // Self-heal: if the cover_image_url column doesn't exist on this
