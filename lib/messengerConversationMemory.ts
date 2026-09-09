@@ -1,4 +1,5 @@
 import type { BudgetEvidence, PricingAuthority } from '@/lib/messengerPricingAuthority'
+import { buildOfferIntakeAssessment, type OfferIntakeAssessment } from '@/lib/messengerOfferIntake'
 
 export type YqaaConversationMemory = {
   version: 1
@@ -15,6 +16,11 @@ export type YqaaConversationMemory = {
   deadline_highlights: string[]
   document_highlights: string[]
   latest_goal: string | null
+  offer_intake?: {
+    status: OfferIntakeAssessment['status']
+    missing: OfferIntakeAssessment['missing']
+    summary: string
+  } | null
   last_offer: {
     offer_id: string
     title: string
@@ -66,6 +72,12 @@ function existingMemory(metadata: any): Partial<YqaaConversationMemory> {
  * Grounded memory only: we persist client-authored text highlights and values
  * that were deterministically parsed from the thread. No model-generated
  * summary is allowed to become a fact source.
+ *
+ * This function also runs the deterministic pre-offer intake gate. Because the
+ * same mutable PricingAuthority instance is later consumed by the model prompt
+ * and by guardMessengerOffer(), an incomplete scope is downgraded to
+ * `insufficient_scope` here. That makes clarification a server-enforced rule on
+ * every Messenger surface, not merely a prompt suggestion.
  */
 export function buildGroundedConversationMemory(args: {
   messages: any[]
@@ -92,7 +104,7 @@ export function buildGroundedConversationMemory(args: {
   const newDeadlines = clientTexts.filter((text) => DEADLINE.test(text))
   const newDocs = clientTexts.filter((text) => DOCUMENT.test(text))
 
-  return {
+  const memory: YqaaConversationMemory = {
     version: 1,
     updated_at: new Date().toISOString(),
     budget: args.pricing.budget || (prior.budget as BudgetEvidence | null) || null,
@@ -107,8 +119,31 @@ export function buildGroundedConversationMemory(args: {
     deadline_highlights: uniqueLatest([...priorDeadlines, ...newDeadlines], 6),
     document_highlights: uniqueLatest([...priorDocs, ...newDocs], 8),
     latest_goal: clean(clientTexts[clientTexts.length - 1] || prior.latest_goal || '', 500) || null,
+    offer_intake: prior.offer_intake || null,
     last_offer: prior.last_offer || null,
   }
+
+  const intake = buildOfferIntakeAssessment({
+    messages: args.messages || [],
+    clientId: args.clientId,
+    pricing: args.pricing,
+    memory,
+  })
+  memory.offer_intake = {
+    status: intake.status,
+    missing: intake.missing,
+    summary: intake.summary,
+  }
+
+  const missingBeyondBudget = intake.missing.filter((field) => field !== 'budget')
+  if (missingBeyondBudget.length && args.pricing.status !== 'insufficient_market_data') {
+    args.pricing.status = 'insufficient_scope'
+    args.pricing.rationale.push(
+      `Offer intake is incomplete. Client clarification required before an offer: ${missingBeyondBudget.join(', ')}.`,
+    )
+  }
+
+  return memory
 }
 
 export function withOfferInMemory(
@@ -136,6 +171,9 @@ export function renderConversationMemory(memory: YqaaConversationMemory) {
     memory.marketplace_scope ? `Current Marketplace scope: ${memory.marketplace_scope.subcategory_name || memory.marketplace_scope.category_name}` : null,
     memory.budget ? `Known client budget: ${memory.budget.minCents ? `${memory.budget.minCents / 100}–` : ''}${memory.budget.maxCents / 100} ${memory.budget.currency.toUpperCase()}` : 'Known client budget: not yet supplied',
     memory.latest_goal ? `Latest client goal/message: ${memory.latest_goal}` : null,
+    memory.offer_intake ? `Order-intake readiness: ${memory.offer_intake.status}` : null,
+    memory.offer_intake?.missing?.length ? `Still needed before an offer: ${memory.offer_intake.missing.join(', ')}` : null,
+    memory.offer_intake?.summary ? `Grounded order-intake summary:\n${memory.offer_intake.summary}` : null,
     memory.deadline_highlights.length ? `Deadline/urgency statements:\n${memory.deadline_highlights.map((x) => `- ${x}`).join('\n')}` : null,
     memory.document_highlights.length ? `Document statements:\n${memory.document_highlights.map((x) => `- ${x}`).join('\n')}` : null,
     memory.client_highlights.length ? `Important prior client statements:\n${memory.client_highlights.map((x) => `- ${x}`).join('\n')}` : null,
@@ -145,6 +183,7 @@ export function renderConversationMemory(memory: YqaaConversationMemory) {
     '- Do not ask again for a fact that is already clearly present above unless the client has contradicted or changed it.',
     '- Do not repeat obvious platform explanations or your AI disclosure once already established in the thread unless clarification genuinely requires it.',
     '- Refer back naturally (for example, “with the budget you mentioned…”), but do not mechanically recap the whole conversation.',
+    '- If Order-intake readiness is needs_clarification, you MUST keep offer=null and ask only the missing material details naturally. Never infer the missing client facts from a gig description.',
   ].filter((x): x is string => typeof x === 'string')
   return lines.join('\n')
 }
