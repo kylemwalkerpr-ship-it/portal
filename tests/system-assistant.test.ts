@@ -89,7 +89,7 @@ describe('system-wide assistant model routing', () => {
       })),
     }))
 
-    const fetchMock = jest.fn(async () => ({
+    const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit): Promise<any> => ({
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ choices: [{ message: { content: 'Grounded answer' } }] }),
@@ -120,7 +120,12 @@ describe('system-wide assistant model routing', () => {
 
     const timeout = new Error('timed out')
     timeout.name = 'AbortError'
-    const fetchMock = jest.fn()
+    const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit): Promise<any> => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ output_text: 'Recovered answer' }),
+    }))
+    fetchMock
       .mockRejectedValueOnce(timeout)
       .mockResolvedValueOnce({
         ok: true,
