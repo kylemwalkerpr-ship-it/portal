@@ -1,14 +1,24 @@
 /**
  * Masked denoise — diffusion infill without a diffusion model.
  *
- * Geometry findings are the mask. Frozen remainder never goes to the writer.
- * Cycle loss = factsWerePreserved + no invented URLs + H1/H2 identity.
- * CFG: facts high, house register low. Max two steps. Not a humanizer.
+ * Geometry + editorial-naturalness findings are the mask. Frozen remainder
+ * never goes to the writer. Cycle loss = factsWerePreserved + no invented
+ * URLs + H1/H2 identity. CFG: facts high, house register low. Max two rewrite
+ * steps; the factory may add one gated blind-critic read before the first step.
+ * Not a generic "humanizer".
  */
 
 import { factsWerePreserved } from './cohesionCritique'
 import { countBodyWords, unwrapWholeDocumentFence } from './contentDepth'
 import { evaluateProseGeometry, type ProseGeometryFinding } from './proseGeometry'
+import {
+  editorialFragmentScore,
+  evaluateEditorialNaturalness,
+  type EditorialCorpusProfile,
+  type EditorialRepairSpan,
+} from './editorialNaturalness'
+import { loadEditorialCorpusProfile } from './editorialCorpus'
+import { runBlindEditorCritique, type BlindEditorFinding } from './blindEditor'
 import {
   extractRegisterCard,
   houseRegisterFor,
@@ -16,7 +26,17 @@ import {
   synthesizeThesis,
 } from './registerCard'
 
-export const DENOISE_SYSTEM = `You rewrite ONLY the marked mill spans of an immigration/education article. Return replacements for those spans and nothing else. Preserve facts, numbers, legal qualifiers, and claim-specific/protected URLs. A generic UNHCR/IOM/ILO/OECD/WHO homepage is a citation candidate, not a fact: if it does not support the span, you may remove it. Do not add URLs or numbers that were not in the span. Do not invent experience, fees, dates, or citations. Do not add, remove, or rename headings. Mix short and medium sentences. Second person. Named forms and agencies. FAQ questions must not paste an H2.`
+export const DENOISE_SYSTEM = `You rewrite ONLY the marked mill spans of an immigration/education article. For each marked span, produce up to THREE meaning-preserving alternatives so the deterministic editor can select the best one. Return replacements and nothing else. Preserve facts, numbers, legal qualifiers, and claim-specific/protected URLs. A generic UNHCR/IOM/ILO/OECD/WHO homepage is a citation candidate, not a fact: if it does not support the span, you may remove it. Do not add URLs or numbers that were not in the span. Do not invent experience, fees, dates, entities, forms, rules, or citations. Do not add, remove, or rename headings. Mix short and medium sentences. Second person where useful. Named forms and agencies only when already supported by the span. FAQ questions must not paste an H2.
+
+Preferred output for each span:
+===SPAN_1_A===
+first alternative
+===SPAN_1_B===
+second alternative
+===SPAN_1_C===
+third alternative
+
+Legacy ===SPAN_1=== output is accepted when only one safe alternative exists.`
 
 export type DenoiseStrength = 'high' | 'mid'
 
@@ -225,7 +245,39 @@ function fillOriginals(content: string, spans: DenoiseSpan[]): DenoiseSpan[] {
     .filter((s) => s.original.trim().length >= 12)
 }
 
-export function collectDenoiseSpans(content: string, findings: ProseGeometryFinding[]): DenoiseSpan[] {
+type ExtraDenoiseSpan = {
+  code: string
+  t: DenoiseStrength
+  start: number
+  end: number
+  instruction: string
+}
+
+function naturalnessExtraSpans(spans: EditorialRepairSpan[]): ExtraDenoiseSpan[] {
+  return spans.map((s) => ({
+    code: s.code,
+    t: s.strength,
+    start: s.start,
+    end: s.end,
+    instruction: s.instruction,
+  }))
+}
+
+function blindExtraSpans(findings: BlindEditorFinding[]): ExtraDenoiseSpan[] {
+  return findings.map((f) => ({
+    code: 'blind_editor_rewrite',
+    t: 'mid',
+    start: f.start,
+    end: f.end,
+    instruction: `${f.issue} Rewrite objective: ${f.instruction}`,
+  }))
+}
+
+export function collectDenoiseSpans(
+  content: string,
+  findings: ProseGeometryFinding[],
+  extraSpans: ExtraDenoiseSpan[] = [],
+): DenoiseSpan[] {
   const raw: DenoiseSpan[] = []
   const used = new Set<string>()
   const push = (span: Omit<DenoiseSpan, 'id' | 'original'>) => {
@@ -271,20 +323,34 @@ export function collectDenoiseSpans(content: string, findings: ProseGeometryFind
     for (const x of scored) push({ code: 'low_sentence_burstiness', t: 'mid', start: x.p.start, end: x.p.end, instruction: 'Rewrite this paragraph so sentence length varies. Follow a longer explanatory sentence with a short one. Keep every protected URL, number, and qualifier; remove a generic global homepage only when it is irrelevant.' })
   }
 
+  for (const s of extraSpans) push(s)
+
   const high = raw.filter((s) => s.t === 'high')
   const mid = raw.filter((s) => s.t !== 'high')
   return fillOriginals(content, mergeSpans([...high, ...mid]).slice(0, 4))
 }
 
-export function parseSpanReplacements(raw: string): Map<string, string> {
+export function parseSpanCandidates(raw: string): Map<string, string[]> {
   const text = unwrapWholeDocumentFence(String(raw || '')).trim()
-  const map = new Map<string, string>()
-  const re = /===SPAN_(\d+)===\s*([\s\S]*?)(?====SPAN_\d+===|$)/g
+  const map = new Map<string, string[]>()
+  const re = /===SPAN_(\d+)(?:_([A-C]))?===\s*([\s\S]*?)(?====SPAN_\d+(?:_[A-C])?===|$)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
-    const body = m[2].replace(/^\s*```(?:markdown|md)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
-    if (body) map.set(`SPAN_${m[1]}`, body)
+    const body = m[3].replace(/^\s*```(?:markdown|md)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+    if (!body) continue
+    const key = `SPAN_${m[1]}`
+    const arr = map.get(key) || []
+    if (!arr.includes(body)) arr.push(body)
+    map.set(key, arr.slice(0, 3))
   }
+  return map
+}
+
+/** Backwards-compatible first-candidate parser used by older tests/callers. */
+export function parseSpanReplacements(raw: string): Map<string, string> {
+  const candidates = parseSpanCandidates(raw)
+  const map = new Map<string, string>()
+  for (const [id, rows] of candidates) if (rows[0]) map.set(id, rows[0])
   return map
 }
 
@@ -298,6 +364,50 @@ export function replacementAllowed(span: DenoiseSpan, next: string, wholeOrigina
   const prevWords = span.original.split(/\s+/).filter(Boolean).length
   const nextWords = revised.split(/\s+/).filter(Boolean).length
   return !(prevWords >= 80 && nextWords < prevWords * 0.4)
+}
+
+function replaceOne(content: string, span: DenoiseSpan, candidate: string): string {
+  return content.slice(0, span.start) + candidate.trim() + content.slice(span.end)
+}
+
+function requiresMeasuredImprovement(code: string): boolean {
+  return /semantic_repetition|low_information_gain|entity_grid_break|actor_monotony|uniform_paragraph_shape|discourse_monotony|section_semantic_overlap|low_specificity|under_compressed_prose|missing_qualification|predictable_boilerplate|corpus_style_drift|rejected_style_proximity|corpus_template_repetition|blind_editor_rewrite|low_sentence_burstiness|low_trigram_variety|repeated_paragraph_opener|stuffed_primary_opener/.test(code)
+}
+
+/**
+ * Contrastive selection: the model proposes; deterministic preservation and
+ * editorial measurements decide.  Structural repairs keep legacy behavior,
+ * while style/naturalness repairs must actually improve the measured draft.
+ */
+export function selectBestSpanReplacements(
+  content: string,
+  spans: DenoiseSpan[],
+  candidates: Map<string, string[]>,
+  corpusProfile?: EditorialCorpusProfile | null,
+): Map<string, string> {
+  const selected = new Map<string, string>()
+  const baselineGlobal = evaluateEditorialNaturalness(content, { corpusProfile }).score
+  for (const span of spans) {
+    const rows = (candidates.get(span.id) || []).filter((row) => replacementAllowed(span, row, content))
+    if (!rows.length) continue
+    const baselineLocal = editorialFragmentScore(span.original)
+    let best: { text: string; score: number } | null = null
+    for (const row of rows) {
+      const trial = replaceOne(content, span, row)
+      const global = evaluateEditorialNaturalness(trial, { corpusProfile }).score
+      const local = editorialFragmentScore(row)
+      const beforeWords = Math.max(1, span.original.split(/\s+/).filter(Boolean).length)
+      const afterWords = row.split(/\s+/).filter(Boolean).length
+      const lengthDrift = Math.abs(afterWords - beforeWords) / beforeWords
+      const score = global * 0.62 + local * 0.38 - Math.max(0, lengthDrift - 0.35) * 8
+      if (!best || score > best.score) best = { text: row, score }
+    }
+    if (!best) continue
+    const baseline = baselineGlobal * 0.62 + baselineLocal * 0.38
+    if (requiresMeasuredImprovement(span.code) && best.score <= baseline + 0.15) continue
+    selected.set(span.id, best.text)
+  }
+  return selected
 }
 
 export function applySpanReplacements(content: string, spans: DenoiseSpan[], replacements: Map<string, string>): { content: string; applied: number } {
@@ -323,7 +433,16 @@ function annotateForPrompt(content: string, spans: DenoiseSpan[]): string {
   return out
 }
 
-function buildDenoisePrompt(opts: { content: string; spans: DenoiseSpan[]; contentType?: string | null; thesis?: string | null; primaryKeyword?: string | null; reader?: string | null; queryNeed?: string | null }): string {
+function buildDenoisePrompt(opts: {
+  content: string
+  spans: DenoiseSpan[]
+  contentType?: string | null
+  thesis?: string | null
+  primaryKeyword?: string | null
+  reader?: string | null
+  queryNeed?: string | null
+  diagnostics?: string[]
+}): string {
   const house = houseRegisterFor(opts.contentType)
   const current = extractRegisterCard(opts.content)
   const thesis = synthesizeThesis({ thesis: opts.thesis, primaryKeyword: opts.primaryKeyword, reader: opts.reader, queryNeed: opts.queryNeed })
@@ -331,22 +450,28 @@ function buildDenoisePrompt(opts: { content: string; spans: DenoiseSpan[]; conte
     'CFG — high on facts, low on cadence:',
     '- Keep every number, legal qualifier, and claim-specific/protected URL that appears inside a span.',
     '- Generic UNHCR/IOM/ILO/OECD/WHO homepages are not facts. If one is irrelevant to the span, remove it.',
-    '- Do not add a URL or number that was not in that span.',
-    '- Mix short and medium sentences. Second person. Named forms.',
+    '- Do not add a URL, number, form, agency, rule, date or claim that was not supported in that span.',
+    '- Generate genuinely different sentence structures, not synonym swaps.',
+    '- Mix short and medium sentences. Second person where useful. Named forms only when already present/supported.',
     registerCardPromptBlock(house, current),
     `THESIS (do not restate; advance it in the later span if you touch a section body): ${thesis}`,
+    ...(opts.diagnostics?.length ? ['', 'EDITORIAL DIAGNOSTICS (diagnose the marked span only):', ...opts.diagnostics.slice(0, 5).map((d) => `- ${d}`)] : []),
     '',
     'SPANS TO REWRITE:',
     opts.spans.map((s) => `${s.id} [${s.t}/${s.code}]: ${s.instruction}`).join('\n'),
     '',
-    'Return ONLY blocks in the ===SPAN_N=== form and no other prose.',
+    'Return ONLY candidate blocks in ===SPAN_N_A=== / _B / _C form (or legacy ===SPAN_N=== for one candidate). No other prose.',
     '',
     'ARTICLE (spans marked; rewrite only the marked regions):',
     annotateForPrompt(opts.content, opts.spans),
   ].join('\n')
 }
 
-function acceptPass(original: string, next: string): { ok: boolean; reason?: string } {
+function acceptPass(
+  original: string,
+  next: string,
+  corpusProfile?: EditorialCorpusProfile | null,
+): { ok: boolean; reason?: string } {
   if (next === original) return { ok: false, reason: 'unchanged' }
   const preserved = factsWerePreserved(original, next)
   if (!preserved.ok) return preserved
@@ -357,29 +482,72 @@ function acceptPass(original: string, next: string): { ok: boolean; reason?: str
   const prevWords = countBodyWords(original)
   const nextWords = countBodyWords(next)
   if (prevWords >= 800 && nextWords < 800 && (nextWords < 400 || nextWords < prevWords * 0.4)) return { ok: false, reason: 'Denoise thinned the body' }
+  if (prevWords >= 650) {
+    const beforeNatural = evaluateEditorialNaturalness(original, { corpusProfile }).score
+    const afterNatural = evaluateEditorialNaturalness(next, { corpusProfile }).score
+    if (afterNatural + 2 < beforeNatural) return { ok: false, reason: `Editorial naturalness regressed (${beforeNatural}→${afterNatural})` }
+  }
   return { ok: true }
 }
 
-export async function runMaskedDenoise(opts: { content: string; contentType?: string | null; thesis?: string | null; primaryKeyword?: string | null; reader?: string | null; queryNeed?: string | null; generateText: (system: string, prompt: string) => Promise<string>; maxPasses?: number }): Promise<MaskedDenoiseResult> {
+export async function runMaskedDenoise(opts: {
+  content: string
+  contentType?: string | null
+  thesis?: string | null
+  primaryKeyword?: string | null
+  reader?: string | null
+  queryNeed?: string | null
+  generateText: (system: string, prompt: string) => Promise<string>
+  maxPasses?: number
+  enableCorpus?: boolean
+  enableBlindEditor?: boolean
+}): Promise<MaskedDenoiseResult> {
   let current = String(opts.content || '')
   const maxPasses = opts.maxPasses ?? 2
   let passes = 0
   let spanCount = 0
   let appliedAny = false
+  let corpusProfile: EditorialCorpusProfile | null = null
+  if (opts.enableCorpus && opts.contentType) {
+    try { corpusProfile = await loadEditorialCorpusProfile(opts.contentType) } catch { corpusProfile = null }
+  }
+
   for (let i = 0; i < maxPasses; i++) {
     const geometry = evaluateProseGeometry(current, { contentType: opts.contentType, indexable: true })
-    const spans = collectDenoiseSpans(current, geometry.findings)
-    if (!spans.length) return { content: current, applied: appliedAny, rejected: false, passes, spans: spanCount, reason: appliedAny ? undefined : 'no mill spans' }
+    const naturalness = evaluateEditorialNaturalness(current, { corpusProfile })
+    let blind: BlindEditorFinding[] = []
+    if (i === 0 && opts.enableBlindEditor) {
+      blind = await runBlindEditorCritique({ content: current, report: naturalness, generateText: opts.generateText })
+    }
+    const extras = [
+      ...naturalnessExtraSpans(naturalness.repairSpans),
+      ...blindExtraSpans(blind),
+    ]
+    const spans = collectDenoiseSpans(current, geometry.findings, extras)
+    if (!spans.length) {
+      return { content: current, applied: appliedAny, rejected: false, passes, spans: spanCount, reason: appliedAny ? undefined : 'no mill or editorial-naturalness spans' }
+    }
     spanCount += spans.length
     let raw = ''
     try {
-      raw = await opts.generateText(DENOISE_SYSTEM, buildDenoisePrompt({ content: current, spans, contentType: opts.contentType, thesis: opts.thesis, primaryKeyword: opts.primaryKeyword, reader: opts.reader, queryNeed: opts.queryNeed }))
+      raw = await opts.generateText(DENOISE_SYSTEM, buildDenoisePrompt({
+        content: current,
+        spans,
+        contentType: opts.contentType,
+        thesis: opts.thesis,
+        primaryKeyword: opts.primaryKeyword,
+        reader: opts.reader,
+        queryNeed: opts.queryNeed,
+        diagnostics: naturalness.findings.map((f) => `${f.code}: ${f.message}`),
+      }))
     } catch (err) {
       return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: err instanceof Error ? err.message : 'Denoise generate failed' }
     }
-    const spliced = applySpanReplacements(current, spans, parseSpanReplacements(raw))
-    if (!spliced.applied) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: 'Denoise replacements rejected' }
-    const check = acceptPass(current, spliced.content)
+    const candidates = parseSpanCandidates(raw)
+    const chosen = selectBestSpanReplacements(current, spans, candidates, corpusProfile)
+    const spliced = applySpanReplacements(current, spans, chosen)
+    if (!spliced.applied) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: 'Denoise candidates failed preservation/reranking' }
+    const check = acceptPass(current, spliced.content, corpusProfile)
     if (!check.ok) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: check.reason }
     current = spliced.content
     appliedAny = true
@@ -388,11 +556,20 @@ export async function runMaskedDenoise(opts: { content: string; contentType?: st
   return { content: current, applied: appliedAny, rejected: false, passes, spans: spanCount }
 }
 
-export async function runFactoryMaskedDenoise(opts: { content: string; contentType: string; indexable: boolean; thesis?: string | null; primaryKeyword?: string | null; reader?: string | null; queryNeed?: string | null; generateText: (system: string, prompt: string) => Promise<string> }): Promise<MaskedDenoiseResult> {
+export async function runFactoryMaskedDenoise(opts: {
+  content: string
+  contentType: string
+  indexable: boolean
+  thesis?: string | null
+  primaryKeyword?: string | null
+  reader?: string | null
+  queryNeed?: string | null
+  generateText: (system: string, prompt: string) => Promise<string>
+}): Promise<MaskedDenoiseResult> {
   const words = countBodyWords(opts.content)
   if (!shouldRunMaskedDenoise({ contentType: opts.contentType, indexable: opts.indexable, words })) return { content: opts.content, applied: false, rejected: false, passes: 0, spans: 0, reason: 'denoise not applicable' }
   try {
-    return await runMaskedDenoise({ ...opts })
+    return await runMaskedDenoise({ ...opts, enableCorpus: true, enableBlindEditor: true })
   } catch (err) {
     return { content: opts.content, applied: false, rejected: true, passes: 0, spans: 0, reason: err instanceof Error ? err.message : 'Denoise failed' }
   }
