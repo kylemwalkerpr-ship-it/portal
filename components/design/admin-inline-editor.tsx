@@ -1012,11 +1012,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   ? `${depthGate.message}${depthMediation && depthMediation.currentWords > 0 ? ` — ${depthMediation.currentWords}/${depthMediation.minWords} words` : ''}`
                   : 'Quality blockers remain — use Fix blockers below or the issues list.')}
           </span>
-          {/* Depth-mediation button — whenever the plan says there is depth to
-              add: below the floor (hard gate) OR meeting the floor but under
-              the word-count target (word_count_target warning). GPT Sol
-              (senior editor) writes the new sections by default; Terra is the
-              fast alternative. */}
           {(depthMediation?.overMax || blockerItems.some((b) => b.code === 'word_count_over_max')) && (
             <button
               type="button"
@@ -1060,9 +1055,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
-      {/* Blockers block — every hard gate is listed with a Fix path. Live-link
-          blockers used to increment the count without annotations, so the
-          editor showed "1 blocker" and no way to resolve it. */}
       {auditResult && !auditResult.ok && (blockerItems.length > 0 || auditResult.blockers > 0) && (
         <div data-testid="studio-blockers-block" style={{
           display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px',
@@ -1092,9 +1084,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
-      {/* Warnings block — every warning is listed with an AI fix path. Before,
-          evidence-less warnings produced no annotation and no button, so the
-          admin saw "2 warnings" with no way to resolve them. */}
       {auditResult && auditResult.warnings > 0 && warningsData.length > 0 && (
         <div data-testid="studio-warnings-block" style={{
           display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px',
@@ -1122,12 +1111,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
-      {/* Repeated-content warning — the #1 cause of fix-all not clearing
-          issues in one sweep.  sentence_start_repetition and toc_duplicates
-          are triggered by AI models padding word count with duplicated text.
-          The deterministic repair now strips these, but if the admin sees this
-          banner they know the content has structural duplication that may
-          require a manual pass if Fix All doesn't fully clear it. */}
       {warningsData.some((w) => w.code === 'sentence_start_repetition' || w.code === 'toc_duplicates' || w.code === 'insufficient_short_keywords' || w.code === 'insufficient_long_tail_keywords') && (
         <div data-testid="studio-repetition-warning" style={{
           display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 14px',
@@ -1145,7 +1128,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
-      {/* Engine gaps targeted — prioritized checklist from the last Fix-all / warnings sweep */}
       {enginePlan && enginePlan.length > 0 && (
         <div data-testid="studio-engine-plan" style={{
           display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px',
@@ -1188,9 +1170,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
-      {/* Primary Toolbar */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* View mode — read as a Word-style document, or edit the raw markdown */}
         <div style={{ display: 'inline-flex', borderRadius: 6, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
           {(['document', 'source'] as const).map((m) => (
             <button
@@ -1210,7 +1190,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           ))}
         </div>
 
-        {/* One canonical audit/editor loop — no separate one-shot audit and fix. */}
         <button type="button" disabled={busy || disabled} onClick={handleFixAll}
           style={btnStyle({
             bg: fixingAll ? '#FEE2E2' : '#F3E8FF',
@@ -1225,7 +1204,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 : '✨ Audit & Fix'}
           </button>
 
-        {/* Toggle annotations */}
         {annotations.length > 0 && (
           <button type="button" disabled={allBusy} onClick={() => setShowAnnotations(!showAnnotations)}
             style={btnStyle({ bg: showAnnotations ? C.surface2 : C.surface, border: C.border, color: C.textMuted, disabled: allBusy })}>
@@ -1233,13 +1211,11 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           </button>
         )}
 
-        {/* Draft history */}
         <button type="button" disabled={allBusy} onClick={handleLoadHistory}
           style={btnStyle({ bg: showHistory ? C.surface2 : C.surface, border: C.border, color: C.textMuted, disabled: allBusy })}>
           {showHistory ? 'Hide history' : 'Draft history'}
         </button>
 
-        {/* Explicit Save */}
         <button type="button" disabled={saving || allBusy} onClick={handleSave}
           style={btnStyle({ bg: '#FFFBEB', border: C.gold, color: C.gold, disabled: saving || allBusy })}>
           {saving ? 'Saving...' : 'Save'}
@@ -1251,9 +1227,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
             data-testid="studio-editor-approve"
             disabled={approving || allBusy}
             onClick={() => {
-              // Open in-DOM confirm synchronously in the click turn. Native
-              // window.confirm is suppressed after awaits and invisible to
-              // desktop automation.
               setApproveConfirmOpen(true)
             }}
             style={btnStyle({ bg: '#166534', border: '#166534', color: '#fff', disabled: approving || allBusy })}
@@ -1286,7 +1259,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 onApprove(id)
               } catch (err) {
                 const msg = err instanceof Error ? err.message : 'Save before approve failed'
-                // Job already exists — do not block Approve on a draft Save timeout.
                 if (boundJobId) {
                   setError(`Save failed — approving anyway: ${msg}`)
                   onApprove(boundJobId)
@@ -1298,9 +1270,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           }}
         />
 
-
-        {/* Review model selector — hosts/selectors come from the lane config;
-            the fallback is the live-policy review lead Entrim Qwen3.6 27B. */}
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
@@ -1319,7 +1288,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           />
         )}
 
-        {/* Status indicators */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {dirty && (
             <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono, fontWeight: 600 }}>
@@ -1334,7 +1302,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       </div>
 
-      {/* Error / Notice */}
       {error && (
         <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: C.red, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{error}</span>
@@ -1348,9 +1315,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         </div>
       )}
 
-      {/* Editor + Sidebars */}
       <div style={{ display: 'flex', gap: 12, minHeight: 320 }}>
-        {/* Editor */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           {content.length > DRAFT_RENDERER_SAFE_CHARS && viewMode === 'document' ? (
             <div style={{
@@ -1415,7 +1380,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     onFocus={(e) => { e.currentTarget.style.borderColor = C.blue }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = C.border }}
                   />
-                  {/* Gutter markers */}
                   {annotations.length > 0 && (
                     <div style={{ position: 'absolute', top: 0, left: 4, width: 6, height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
                       {annotations.map((a) => (
@@ -1435,7 +1399,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           )}
         </div>
 
-        {/* Annotation sidebar */}
         {showAnnotations && annotations.length > 0 && (
           <div style={{ width: 300, maxHeight: 420, overflow: 'auto', background: C.surface,
             border: `1px solid ${C.border}`, borderRadius: 8, flexShrink: 0 }}>
@@ -1451,7 +1414,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                 background: activeAnnotationId === a.id ? '#F0F7FF' : 'transparent',
                 transition: 'background 0.15s',
               }}>
-                {/* Header row */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
                   <span style={{
                     display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 9,
@@ -1461,9 +1423,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                   <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>L{a.line}</span>
                   <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, flex: 1 }}>{a.code}</span>
                 </div>
-                {/* Message */}
                 <div style={{ fontSize: 11, color: C.text, lineHeight: 1.45, marginBottom: 4 }}>{a.message}</div>
-                {/* Highlighted text */}
                 {a.highlightedText && (
                   <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 6, fontFamily: C.mono,
                     background: C.surface2, borderRadius: 4, padding: '4px 8px',
@@ -1472,7 +1432,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     &ldquo;{a.highlightedText.slice(0, 80)}{a.highlightedText.length > 80 ? '...' : ''}&rdquo;
                   </div>
                 )}
-                {/* Actions */}
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => jumpToAnnotation(a)}
                     style={smallBtnStyle({ bg: C.blue, color: '#FFF' })}>
@@ -1484,7 +1443,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           </div>
         )}
 
-        {/* Draft history */}
         {showHistory && (
           <div style={{ width: 280, maxHeight: 420, overflow: 'auto', background: C.surface,
             border: `1px solid ${C.border}`, borderRadius: 8, flexShrink: 0 }}>
@@ -1520,7 +1478,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     Restore
                   </button>
                 </div>
-              )))
+              ))
             )}
           </div>
         )}
@@ -1529,8 +1487,6 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   )
 }
 
-/** Collapse warning annotations to one entry per code (evidence-less warnings
- *  now synthesize a document-level annotation, so this never returns empty). */
 function dedupeWarnings(anns: InlineAnnotation[]): Array<{ code: string; message: string; fix: string }> {
   const seen = new Set<string>()
   const out: Array<{ code: string; message: string; fix: string }> = []
