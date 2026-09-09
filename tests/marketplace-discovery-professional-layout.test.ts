@@ -24,13 +24,15 @@ describe('Marketplace professional discovery layout', () => {
     expect(filters).toContain('.ys-filter-popover')
   })
 
-  test('landing exposes real filter destinations rather than decorative controls', () => {
+  test('landing exposes real filter destinations and clean category routes', () => {
     expect(landingFilters).toContain('provider_type=attorney')
     expect(landingFilters).toContain('provider_type=consultant')
     expect(landingFilters).toContain('delivery_days=3')
     expect(landingFilters).toContain('min_price=100')
     expect(landingFilters).toContain('max_price=100')
-    expect(landingFilters).toContain('category=${encodeURIComponent(category.id)}')
+    expect(landingFilters).toContain('const categoryLink = (categoryId: string)')
+    expect(landingFilters).toContain('/categories/${encodeURIComponent(categoryId)}')
+    expect(landingFilters).not.toContain('category=${encodeURIComponent(category.id)}')
     expect(route).toContain("url.searchParams.getAll('provider_type')")
     expect(route).toContain("url.searchParams.getAll('delivery_days')")
     expect(route).toContain("url.searchParams.get('min_price')")
