@@ -10,6 +10,7 @@ describe('mobile responsiveness hardening', () => {
   const layout = read('app/layout.tsx')
   const messengerCss = read('components/messaging/messenger-tokens.css')
   const megaMenu = read('components/marketplace/CategoryMegaDropdown.tsx')
+  const sellerProfile = read('components/marketplace/SellerProfilePage.tsx')
 
   test('loads both shared mobile layers after the portal base styles', () => {
     const hardening = layout.indexOf("import './mobile-hardening.css'")
@@ -28,6 +29,17 @@ describe('mobile responsiveness hardening', () => {
     expect(conversionCss).toContain('.cw-market .ys-content-layout')
     expect(conversionCss).toContain('.cw-market button')
     expect(conversionCss).toContain('min-height: 44px')
+  })
+
+  test('keeps seller profile conversion surfaces inside narrow phones', () => {
+    expect(sellerProfile).toContain('ys-seller-profile-page')
+    expect(sellerProfile).toContain('ys-seller-profile-tabs')
+    expect(sellerProfile).toContain('ys-seller-profile-tab-content')
+    expect(conversionCss).toContain('.cw-market .ys-seller-profile-page')
+    expect(conversionCss).toContain("[style*='min-width: 280px']")
+    expect(conversionCss).toContain('.cw-market .ys-seller-profile-tabs')
+    expect(conversionCss).toContain('overflow-x: auto !important')
+    expect(conversionCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr)) !important")
   })
 
   test('uses touch-safe and dynamic-viewport messenger behavior', () => {
