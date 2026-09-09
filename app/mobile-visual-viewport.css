@@ -14,9 +14,10 @@
    Safari has a second keyboard quirk: with the bottom URL bar enabled,
    VisualViewport.height can still include native UI that sits above the
    keyboard. That native stack has TWO pieces while a form control is focused:
-   the bottom browser chrome and Safari's form/input-assistant strip. The
-   coordinator marks that exact state on <html>. We reserve both pieces so the
-   Messenger composer is always inside the actually visible web-content area.
+   the bottom browser chrome and Safari's form/input-assistant strip. iOS 26
+   does not always report a large enough VisualViewport delta to make a
+   keyboard-height heuristic reliable, so the native reserve is driven by the
+   Messenger textarea's actual focus state instead.
 */
 
 @media (max-width: 768px) {
@@ -31,14 +32,16 @@
     );
   }
 
-  html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true'] {
-    /* Bottom URL bar + the native previous/next/done input assistant. */
+  html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true'] {
+    /* Bottom URL bar + the native previous/next/done input assistant. Focus is
+       authoritative because iOS can expose both overlays before (or without)
+       a keyboard-height delta large enough for heuristic detection. */
     --ys-ios-keyboard-browser-chrome: 52px;
     --ys-ios-keyboard-input-assistant: 44px;
   }
 
   @supports (height: 100svh) and (height: 100lvh) {
-    html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true'] {
+    html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true'] {
       /* The lvh/svh delta tracks Safari's dynamic browser chrome. Keep it
          bounded because the separate 44px input assistant is added below. */
       --ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px);
@@ -143,10 +146,11 @@
     overflow: visible !important;
   }
 
-  html:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-input:focus)
+  html[data-ys-messenger-composer-focused='true']
     .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-row {
-    /* Keyboard is open: Safari owns the home-indicator and native assistant
-       spacing, so the web composer only needs its own compact breathing room. */
+    /* Safari owns the home-indicator and native assistant spacing while the
+       textarea is focused, so the web composer only needs compact breathing
+       room inside the already-reserved visible rectangle. */
     padding-bottom: 8px !important;
   }
 

@@ -27,10 +27,15 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(css).toContain('z-index: 10020 !important')
   })
 
-  test('Safari reserves both bottom browser chrome and the native input assistant', () => {
-    expect(coordinator).toContain("root.dataset.ysKeyboardOpen = keyboardOpen ? 'true' : 'false'")
-    expect(coordinator).toContain('visualHeight < unfocusedVisualHeight - 80')
-    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
+  test('Safari reserves native bottom chrome from real Messenger focus, not a keyboard-height threshold', () => {
+    expect(coordinator).toContain('const publishComposerFocus = (focused: boolean) =>')
+    expect(coordinator).toContain("root.dataset.ysMessengerComposerFocused = focused ? 'true' : 'false'")
+    expect(coordinator).toContain('target.matches(COMPOSER_INPUT_SELECTOR)')
+    expect(coordinator).toContain('publishComposerFocus(true)')
+    expect(coordinator).toContain("document.addEventListener('focusin', onFocusIn)")
+    expect(coordinator).toContain("document.addEventListener('focusout', onFocusOut)")
+    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true']")
+    expect(css).not.toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
     expect(css).toContain('--ys-ios-keyboard-browser-chrome: 52px')
     expect(css).toContain('--ys-ios-keyboard-input-assistant: 44px')
     expect(css).toContain('--ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px)')
@@ -49,8 +54,9 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(css).toContain('flex: 0 0 auto !important')
   })
 
-  test('focused composer sits above Safari native chrome and the software keyboard', () => {
-    expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] .comp-input:focus")
+  test('focused composer gets compact web padding inside the already-reserved native rectangle', () => {
+    expect(css).toContain("html[data-ys-messenger-composer-focused='true']")
+    expect(css).toContain(".ys-chatscreen[data-mobile-view='chat'] .comp-row")
     expect(css).toContain('padding-bottom: 8px !important')
   })
 

@@ -9,12 +9,12 @@ describe('mobile visual viewport contract', () => {
   const css = read('app/mobile-visual-viewport.css')
   const layout = read('app/layout.tsx')
 
-  test('measures Safari visual viewport and tracks browser chrome plus keyboard changes', () => {
+  test('measures Safari visual viewport and tracks browser chrome plus focus changes', () => {
     expect(coordinator).toContain('window.visualViewport')
     expect(coordinator).toContain("viewport?.addEventListener('resize', schedule)")
     expect(coordinator).toContain("viewport?.addEventListener('scroll', schedule)")
-    expect(coordinator).toContain("document.addEventListener('focusin', onFocusChange)")
-    expect(coordinator).toContain("document.addEventListener('focusout', onFocusChange)")
+    expect(coordinator).toContain("document.addEventListener('focusin', onFocusIn)")
+    expect(coordinator).toContain("document.addEventListener('focusout', onFocusOut)")
     expect(coordinator).toContain('const visualHeight = Math.max(1, Math.round(rawHeight))')
     expect(coordinator).toContain('const visibleBottom = visualHeight + offsetTop')
     expect(coordinator).toContain("root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)")
@@ -23,16 +23,22 @@ describe('mobile visual viewport contract', () => {
     expect(coordinator).not.toContain('MIN_HEIGHT')
   })
 
-  test('marks real iOS software-keyboard state instead of treating every focused textarea as a keyboard', () => {
+  test('publishes actual Messenger composer focus synchronously instead of relying on keyboard-height heuristics', () => {
     expect(coordinator).toContain("root.dataset.ysIosWebkit = isIOSWebKit ? 'true' : 'false'")
     expect(coordinator).toContain("root.dataset.ysStandalone = standalone ? 'true' : 'false'")
+    expect(coordinator).toContain('const publishComposerFocus = (focused: boolean) =>')
+    expect(coordinator).toContain("root.dataset.ysMessengerComposerFocused = focused ? 'true' : 'false'")
+    expect(coordinator).toContain('target.matches(COMPOSER_INPUT_SELECTOR)')
+    expect(coordinator).toContain('publishComposerFocus(true)')
+    expect(coordinator).toContain('publishComposerFocus(composerIsFocused())')
     expect(coordinator).toContain('visualHeight < unfocusedVisualHeight - 80')
     expect(coordinator).toContain("root.dataset.ysKeyboardOpen = keyboardOpen ? 'true' : 'false'")
     expect(coordinator).toContain('focusTimers = [80, 180, 360, 650]')
   })
 
-  test('reserves Safari bottom chrome plus input assistant only while the iOS software keyboard is open', () => {
-    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
+  test('reserves Safari bottom chrome plus input assistant whenever the real iOS Messenger composer is focused', () => {
+    expect(css).toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-messenger-composer-focused='true']")
+    expect(css).not.toContain("html[data-ys-ios-webkit='true'][data-ys-standalone='false'][data-ys-keyboard-open='true']")
     expect(css).toContain('--ys-ios-keyboard-browser-chrome: 52px')
     expect(css).toContain('--ys-ios-keyboard-input-assistant: 44px')
     expect(css).toContain('--ys-ios-keyboard-browser-chrome: clamp(48px, calc(100lvh - 100svh), 72px)')
