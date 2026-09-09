@@ -118,3 +118,74 @@ export async function upsertSeoGscRows(
   if (error) throw new Error(error.message)
   return { upserted: payload.length }
 }
+
+type GscDb = {
+  from: (table: string) => {
+    select: (cols: string, opts?: { count?: 'exact'; head?: boolean }) => any
+  }
+}
+
+/**
+ * Read persisted seo_gsc_rows for a window. When the rolling UTC window has
+ * not been synced yet (0 rows), fall back to the latest stored window so
+ * Discover/CTR harvest is not starved of real impressions.
+ */
+export async function loadPersistedGscWindow(
+  db: GscDb,
+  opts: {
+    siteUrl: string | null
+    startDate: string
+    endDate: string
+    limit: number
+    select?: string
+  },
+): Promise<{
+  rows: Array<Record<string, unknown>>
+  rowCount: number
+  range: { startDate: string; endDate: string }
+  usedFallback: boolean
+}> {
+  const select = opts.select || 'query, page, clicks, impressions, ctr, position, start_date, end_date'
+  const applySite = (q: any) => (opts.siteUrl ? q.eq('site_url', opts.siteUrl) : q)
+
+  let q = applySite(
+    db.from('seo_gsc_rows').select(select).eq('start_date', opts.startDate).eq('end_date', opts.endDate),
+  )
+    .order('impressions', { ascending: false })
+    .limit(opts.limit)
+  const first = await q
+  if (first.error) throw new Error(first.error.message)
+  const rows = (first.data || []) as Array<Record<string, unknown>>
+  if (rows.length > 0) {
+    return {
+      rows,
+      rowCount: rows.length,
+      range: { startDate: opts.startDate, endDate: opts.endDate },
+      usedFallback: false,
+    }
+  }
+
+  let latestQ = applySite(db.from('seo_gsc_rows').select('start_date, end_date')).order('end_date', { ascending: false }).limit(1)
+  const latest = await latestQ
+  if (latest.error) throw new Error(latest.error.message)
+  const latestRow = latest.data?.[0] as { start_date?: string; end_date?: string } | undefined
+  if (!latestRow?.start_date || !latestRow?.end_date) {
+    return { rows: [], rowCount: 0, range: { startDate: opts.startDate, endDate: opts.endDate }, usedFallback: false }
+  }
+
+  let q2 = applySite(
+    db.from('seo_gsc_rows').select(select).eq('start_date', latestRow.start_date).eq('end_date', latestRow.end_date),
+  )
+    .order('impressions', { ascending: false })
+    .limit(opts.limit)
+  const second = await q2
+  if (second.error) throw new Error(second.error.message)
+  const fallbackRows = (second.data || []) as Array<Record<string, unknown>>
+  return {
+    rows: fallbackRows,
+    rowCount: fallbackRows.length,
+    range: { startDate: latestRow.start_date, endDate: latestRow.end_date },
+    usedFallback: fallbackRows.length > 0,
+  }
+}
+

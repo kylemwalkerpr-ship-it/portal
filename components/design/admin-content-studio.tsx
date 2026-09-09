@@ -24,6 +24,7 @@ import { AeoRemediationQueue } from './studio-aeo-remediation'
 import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/seoEngine/citationRemediation'
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { verdictFor, coverageKindFromPlay, PLAYBOOK_MOVE_LABEL, type FunnelStage, type PlaybookMove } from '@/lib/seoEngine/authorityPlaybook'
 import { autoMapKeywordsToH2s } from '@/lib/seoFactory/keywordPlacement'
 import {
   buildSeoIntelLockSeed,
@@ -220,6 +221,11 @@ interface AISuggestion {
     mode: 'expand' | 'new'
     actions: Array<{ priority: number; action: string; evidence: string }>
   }
+  coverageKind?: 'exact' | 'paraphrase' | 'section_expand' | 'spoke' | 'unrelated'
+  funnel?: FunnelStage
+  playbookMove?: PlaybookMove
+  qualityLine?: string
+  conversionLine?: string
 }
 
 // ── Options ──
@@ -4841,7 +4847,7 @@ function JobDetail({
 // ── UNIFIED WORK PLAN TABLE ──
 // Aggregates all signal sources (radar, cannibal, merges, backlinks, visibility)
 // into one sortable, filterable table. Multi-select sends items to Research.
-type WorkPlanCategory = 'gap' | 'refresh' | 'expansion' | 'cannibal' | 'merge' | 'backlink' | 'visibility' | 'ubersuggest'
+type WorkPlanCategory = 'gap' | 'refresh' | 'expansion' | 'harvest' | 'cannibal' | 'merge' | 'backlink' | 'visibility' | 'ubersuggest'
 interface WorkPlanItem {
   id: string
   category: WorkPlanCategory
@@ -4860,12 +4866,17 @@ interface WorkPlanItem {
   suggestion?: AISuggestion
   mergeRecord?: CannibalMergeRecord
   competingPages?: string[]
+  funnel?: FunnelStage
+  playbookMove?: PlaybookMove
+  qualityLine?: string
+  conversionLine?: string
 }
 
 const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: string; icon: string }> = {
   gap: { label: 'GAP', bg: '#DBEAFE', fg: '#1E40AF', icon: '🧩' },
   refresh: { label: 'REFRESH', bg: '#FEF3C7', fg: '#92400E', icon: '🔄' },
   expansion: { label: 'EXPAND', bg: '#D1FAE5', fg: '#065F46', icon: '📈' },
+  harvest: { label: 'CTR', bg: '#CFFAFE', fg: '#155E75', icon: '◎' },
   cannibal: { label: 'CANNIBAL', bg: '#FEE2E2', fg: '#991B1B', icon: '⚠️' },
   merge: { label: 'MERGE', bg: '#F3E8FF', fg: '#6B21A8', icon: '🔀' },
   backlink: { label: 'BACKLINK', bg: '#FFF7ED', fg: '#9A3412', icon: '🔗' },
@@ -4911,14 +4922,25 @@ function buildWorkPlan(
     const clusterId = s.cluster?.clusterId || `topic:${cannibalTermStem(s.topic)}`
     if (seenClusters.has(clusterId)) continue
     seenClusters.add(clusterId)
-    const cat: WorkPlanCategory = s.play === 'refresh' || s.play === 'defend' ? 'refresh'
-      : s.play === 'cannibalization' ? 'cannibal'
-      : 'gap'
-    const engineValue = s.valueScore ?? s.opportunityScore ?? s.demandScore ?? 0
-    const rankingValue = Number(s.ranking?.total)
-    const priority = Number.isFinite(rankingValue)
-      ? Math.round(engineValue * 0.65 + rankingValue * 0.35)
-      : engineValue
+    const coverageKind = s.coverageKind || coverageKindFromPlay(s.play, s.topic, s.coverage?.matches || [])
+    const verdict = verdictFor({
+      topic: s.topic,
+      play: s.play,
+      impressions: s.impressions,
+      clicks: s.clicks,
+      ctr: s.ctr,
+      position: s.position,
+      intent: s.intent,
+      valueScore: s.valueScore,
+      opportunityScore: s.opportunityScore,
+      coverageKind,
+    })
+    const cat: WorkPlanCategory = verdict.move === 'protect_cluster' ? 'cannibal'
+      : verdict.move === 'harvest_impressions' ? 'harvest'
+      : verdict.move === 'fill_spoke' || verdict.move === 'fill_pillar' ? 'gap'
+      : verdict.move === 'expand_section' ? 'expansion'
+      : 'refresh'
+    const priority = verdict.deskScore
     items.push({
       id: `radar-${s.topic}`,
       category: cat,
@@ -4930,36 +4952,68 @@ function buildWorkPlan(
       clusterId,
       clusterSize: Math.max(1, s.cluster?.keywords?.length || s.keywords?.length || 1),
       signals: [
+        verdict.whyLine,
+        verdict.qualityLine,
+        verdict.conversionLine,
         ...(s.signals ?? [s.reason]),
-        ...(Number.isFinite(rankingValue) ? [`Contract score blends portfolio value ${engineValue}/100 with ranking-model confidence ${rankingValue}/100`] : []),
-        ...(s.cluster?.reason ? [`Cluster: ${s.cluster.reason}`] : []),
       ],
       keywords: s.cluster?.keywords?.length ? s.cluster.keywords : s.keywords,
       audience: s.audience,
       play: s.play,
+      shipped: verdict.hideByDefault,
       suggestion: s,
+      funnel: verdict.funnel,
+      playbookMove: verdict.move,
+      qualityLine: verdict.qualityLine,
+      conversionLine: verdict.conversionLine,
     })
   }
   for (const s of uberBriefs) {
     const topicKey = String(s.topic || '').toLowerCase()
     if (!topicKey || radarTopics.has(topicKey) || isJunkQuery(s.topic)) continue
-    // play === 'refresh' means the server already matched this against shipped content
-    const isShipped = s.play === 'refresh'
-    const priority = isShipped ? 10 : (s.valueScore ?? ((s.opportunityScore ?? s.demandScore ?? 0) + 8))
+    const coverageKind = s.coverageKind
+      || coverageKindFromPlay(s.play, s.topic, [])
+    const verdict = verdictFor({
+      topic: s.topic,
+      play: s.play,
+      impressions: s.impressions,
+      clicks: s.clicks,
+      ctr: s.ctr,
+      position: s.position,
+      intent: s.intent,
+      valueScore: s.valueScore,
+      opportunityScore: s.opportunityScore,
+      coverageKind,
+    })
+    const cat: WorkPlanCategory = verdict.move === 'harvest_impressions' ? 'harvest'
+      : verdict.move === 'fill_spoke' || verdict.move === 'fill_pillar' ? 'gap'
+      : verdict.move === 'expand_section' ? 'expansion'
+      : verdict.hideByDefault ? 'ubersuggest'
+      : 'gap'
+    const priority = verdict.deskScore
     items.push({
       id: `uber-${s.topic}`,
-      category: 'ubersuggest',
+      category: cat,
       title: s.title || s.topic,
       topic: s.topic,
       source: 'Ubersuggest',
       priority,
       priorityTier: priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low',
-      signals: s.signals ?? [s.reason],
+      signals: [
+        verdict.whyLine,
+        verdict.qualityLine,
+        verdict.conversionLine,
+        ...(s.signals ?? [s.reason]),
+      ],
       keywords: s.keywords,
       audience: s.audience,
       play: s.play,
-      shipped: isShipped,
+      shipped: verdict.hideByDefault,
       suggestion: s,
+      funnel: verdict.funnel,
+      playbookMove: verdict.move,
+      qualityLine: verdict.qualityLine,
+      conversionLine: verdict.conversionLine,
     })
   }
   // Cannibalization from radar meta — hide clusters that already have a
@@ -5027,6 +5081,7 @@ function WorkPlanTable({
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
   const [priorityFilter, setPriorityFilter] = React.useState<'all' | 'high' | 'medium' | 'low'>('all')
+  const [funnelFilter, setFunnelFilter] = React.useState<'all' | FunnelStage>('all')
   const [showShipped, setShowShipped] = React.useState(false)
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
   const shippedCount = items.filter((i) => i.shipped).length
@@ -5043,6 +5098,7 @@ function WorkPlanTable({
       ? withoutLedger
       : withoutLedger.filter((i) => i.category === filterCat)
   const filtered = [...(priorityFilter === 'all' ? categoryFiltered : categoryFiltered.filter((i) => i.priorityTier === priorityFilter))]
+    .filter((i) => funnelFilter === 'all' || i.funnel === funnelFilter)
     .sort((a, b) => (b.priority - a.priority) || a.title.localeCompare(b.title))
   const smartCandidates = filtered.filter((i) => !i.shipped && i.category !== 'merge' && i.category !== 'cannibal' && i.priorityTier !== 'low').slice(0, 6)
   const allSelected = smartCandidates.length > 0 && smartCandidates.every((i) => selectedIds.has(i.id))
@@ -5059,9 +5115,10 @@ function WorkPlanTable({
 
   const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
+    { key: 'harvest', label: '◎ CTR harvest' },
     { key: 'gap', label: '🧩 Gaps' },
-    { key: 'refresh', label: '🔄 Refresh' },
     { key: 'expansion', label: '📈 Expand' },
+    { key: 'refresh', label: '🔄 Refresh' },
     { key: 'cannibal', label: '⚠️ Cannibal' },
     { key: 'merge', label: '🔀 Merges' },
     { key: 'backlink', label: '🔗 Backlinks' },
@@ -5095,8 +5152,8 @@ function WorkPlanTable({
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontFamily: C.mono, fontSize: 9, color: E.goldDeep, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Engine recommendation stack</div>
-          <div style={{ marginTop: 3, fontFamily: C.serif, fontSize: 14, color: E.inkSoft }}>Ranked by opportunity strength. Open a card to inspect the evidence behind the recommendation.</div>
+          <div style={{ fontFamily: C.mono, fontSize: 9, color: E.goldDeep, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Authority studio · conversion-safe stack</div>
+          <div style={{ marginTop: 3, fontFamily: C.serif, fontSize: 14, color: E.inkSoft }}>Playbook order: protect clusters → harvest CTR (pos 4–20) → fill distinct-intent spokes → missing pillars. Marketplace next-step after the answer, never the H1. Housekeeping refreshes stay hidden.</div>
         </div>
         <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim }}>{filtered.length} shown · {items.length} total</div>
       </div>
@@ -5124,6 +5181,23 @@ function WorkPlanTable({
               fontSize: 9, fontWeight: 800, cursor: 'pointer', fontFamily: C.mono, textTransform: 'uppercase',
             }}
           >{tier === 'all' ? 'All value tiers' : `${tier} value`}</button>
+        ))}
+        <span style={{ width: 1, height: 22, background: E.hairline, margin: '0 3px' }} />
+        {([
+          { key: 'all' as const, label: 'All funnel' },
+          { key: 'tofu' as const, label: 'TOFU' },
+          { key: 'mofu' as const, label: 'MOFU' },
+          { key: 'bofu' as const, label: 'BOFU' },
+        ]).map((f) => (
+          <button key={f.key} type="button" onClick={() => setFunnelFilter(f.key)}
+            style={{
+              padding: '6px 10px', borderRadius: 999,
+              border: funnelFilter === f.key ? `1px solid ${E.inkBlack}` : `1px solid ${E.hairline}`,
+              background: funnelFilter === f.key ? E.inkBlack : E.paper,
+              color: funnelFilter === f.key ? E.ivory : E.inkMuted,
+              fontSize: 9, fontWeight: 800, cursor: 'pointer', fontFamily: C.mono, textTransform: 'uppercase',
+            }}
+          >{f.label}</button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
@@ -5211,9 +5285,12 @@ function WorkPlanTable({
                     {item.title}
                   </div>
                   <div style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono, marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {item.source} · {item.play || item.category}{item.clusterSize ? ` · ${item.clusterSize} clustered queries` : ''}
+                    {item.funnel ? `${item.funnel} · ` : ''}{item.source} · {item.playbookMove ? PLAYBOOK_MOVE_LABEL[item.playbookMove] : (item.play || item.category)}{item.clusterSize ? ` · ${item.clusterSize} clustered queries` : ''}
                   </div>
                   <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.45, color: E.inkSoft }}>{item.signals[0] || 'Engine-ranked opportunity.'}</div>
+                  {item.conversionLine && (
+                    <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.4, color: E.inkMuted }}>{item.conversionLine}</div>
+                  )}
                   {expanded && item.signals.slice(1).map((signal, signalIndex) => (
                     <div key={`${item.id}-signal-${signalIndex}`} style={{ marginTop: 5, paddingLeft: 11, borderLeft: `2px solid ${E.goldSoft}`, fontSize: 10.5, lineHeight: 1.4, color: E.inkMuted }}>↳ {signal}</div>
                   ))}
@@ -5839,7 +5916,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (keywords.length) setKeywords(ensureKeywordFloors(keywords, first.topic).join(', '))
       if (first.suggestion.audience) setAudience(first.suggestion.audience)
       if (first.suggestion.contentType && !contentTypeTouched) setContentType(first.suggestion.contentType as ContentType)
-      setSelectedBrief({ ...first.suggestion, keywords: keywords.length ? keywords : first.suggestion.keywords })
+      setSelectedBrief({
+        ...first.suggestion,
+        keywords: keywords.length ? keywords : first.suggestion.keywords,
+        reason: [first.qualityLine, first.conversionLine, first.suggestion.reason].filter(Boolean).join(' · '),
+        signals: [first.qualityLine, first.conversionLine, ...(first.suggestion.signals || [])].filter((s): s is string => Boolean(s)),
+      })
       setBriefInterlinks(first.suggestion.interlinks ?? [])
     } else {
       setTitle(first.title || first.topic)

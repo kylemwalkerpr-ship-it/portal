@@ -24,6 +24,7 @@
 import { isJunkQuery, classifyGscQuery } from './queryNoise'
 import { matchStrikeSeed } from './strikeSeeds'
 import { discoverCardTitle, isFillerTitle } from '@/lib/seoEngine/titleLab'
+import { classifyCoverageIntent, isSameIntentOwner, type CoverageKind } from '@/lib/seoEngine/coverageIntent'
 
 /**
  * Seed strike-distance targets from the locked 2026-08-18 GSC snapshot.
@@ -116,6 +117,8 @@ export interface Opportunity {
   history?: Array<{ date?: string; position: number; impressions: number }>
   /** last - first position (negative = improving, lower rank number). */
   positionDelta?: number
+  /** Intent-aware coverage vs shipped owners (spoke ≠ refresh). */
+  coverageKind?: CoverageKind
 }
 
 export interface OpportunityEngineResult {
@@ -290,6 +293,12 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     // ── Coverage & play classification ──
     const termSet = uniqueTokens([term])
     const matches: string[] = []
+    let coverageKind: CoverageKind | undefined
+    const rankOf = (k: CoverageKind): number =>
+      k === 'exact' ? 0 : k === 'paraphrase' ? 1 : k === 'section_expand' ? 2 : k === 'spoke' ? 3 : 9
+    const rememberKind = (kind: CoverageKind) => {
+      if (!coverageKind || rankOf(kind) < rankOf(coverageKind)) coverageKind = kind
+    }
     const pushMatch = (c: { raw: string; url: string }) => {
       const page = /^https?:\/\//i.test(c.url) ? c.url : c.raw
       if (page && !matches.includes(page)) matches.push(page)
@@ -297,16 +306,19 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     for (const c of coverageTokens) {
       if (c.raw.toLowerCase() === term) {
         pushMatch(c)
+        rememberKind('exact')
         continue
       }
-      const tSet = c.toks
-      let shared = 0
-      for (const t of termSet) if (tSet.has(t)) shared += 1
-      const jac = shared / Math.max(1, termSet.size + tSet.size - shared)
-      // Two shared tokens ("room"+"plan", "university"+"new") used to flag
-      // unrelated campus-PDF leftovers as cannibal clusters. Require a real
-      // Jaccard hit or three overlapping content words.
-      if (jac >= 0.45 || (shared >= 3 && jac >= 0.3)) pushMatch(c)
+      // Intent-aware owner test: paraphrases AND geo/audience extras stay on
+      // the live URL (section expand, never a doorway). Calculator/fee/vs
+      // spokes are NOT owners — those are topical-authority gaps.
+      const kind = classifyCoverageIntent(term, c.raw)
+      if (isSameIntentOwner(kind) || kind === 'section_expand') {
+        pushMatch(c)
+        rememberKind(kind)
+      } else if (kind === 'spoke') {
+        rememberKind(kind)
+      }
     }
 
     // ── Strike-seed routing (Phase C): the five locked pages always EXPAND
@@ -439,7 +451,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
 
     const keywords = (relatedByTerm[term] || []).slice(0, 5)
     if (intent === 'transactional' || intent === 'commercial') {
-      signals.unshift('Purchase funnel: pair this page with a marketplace gig CTA')
+      signals.unshift('Purchase funnel: after the query is fully answered, one marketplace next-step (review / filing pack) — never the H1')
     }
     if (revenue > 0) {
       signals.unshift(`GA4 revenue $${Math.round(revenue).toLocaleString()} · protect the purchase path`)
@@ -490,6 +502,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
         if (pos.length < 2) return undefined
         return Math.round((pos[pos.length - 1] - pos[0]) * 10) / 10
       })(),
+      coverageKind,
     })
 
     if (play === 'cannibalization' && !isJunkQuery(term)) {

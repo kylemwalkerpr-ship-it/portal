@@ -22,6 +22,7 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { normalizePlannerTopic } from './normalizeTopic'
 import {
   accumulatePairRollup,
   emptyPairRollup,
@@ -419,13 +420,7 @@ function stemTerm(term: string): string {
 }
 
 /** Strip punctuation but keep spaces so "UK Graduate Visa (2026)" matches intel. */
-export function normalizePlannerTopic(term: string): string {
-  return String(term || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+export { normalizePlannerTopic }
 
 /**
  * Persist key for a cluster plan. Must include country + stage — otherwise

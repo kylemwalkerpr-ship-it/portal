@@ -3,11 +3,15 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { buildGscContentBrief, buildKeywordPortfolio } from '@/lib/gscContentBrief'
-import { createClient } from '@supabase/supabase-js'
 import {
   scoreOpportunities,
+  mergeSnapshotIntoQueries,
+  SNAPSHOT_MERGE_MIN_VIABLE,
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { loadShippedCoverage } from '@/lib/seoEngine/shippedCoverage'
+import { verdictFor } from '@/lib/seoEngine/authorityPlaybook'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
 import { filterRegenerationCandidates, type RegenerationFilters } from '@/lib/seoEngine/intelligence'
@@ -59,6 +63,35 @@ function selectVariedOpportunities(
     selected.push(item)
   }
   return selected
+}
+
+function playbookRank(items: Array<Record<string, any>>): Array<Record<string, any>> {
+  return items
+    .map((o) => {
+      const v = verdictFor({
+        topic: String(o.topic || ''),
+        play: String(o.play || ''),
+        impressions: Number(o.impressions) || 0,
+        clicks: Number(o.clicks) || 0,
+        ctr: Number(o.ctr) || 0,
+        position: o.position,
+        intent: typeof o.intent === 'string' ? o.intent : undefined,
+        valueScore: o.valueScore,
+        opportunityScore: o.opportunityScore,
+        coverageKind: o.coverageKind,
+      })
+      return {
+        ...o,
+        playbookMove: v.move,
+        funnel: v.funnel,
+        qualityLine: v.qualityLine,
+        conversionLine: v.conversionLine,
+        hideByDefault: v.hideByDefault,
+        deskScore: v.deskScore,
+      }
+    })
+    .filter((o) => !o.hideByDefault)
+    .sort((a, b) => (Number(b.deskScore) || 0) - (Number(a.deskScore) || 0))
 }
 
 /**
@@ -141,10 +174,6 @@ export async function POST(request: NextRequest) {
         ...((snap.opportunities?.highImpressionDeepRank as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
       ]
       if (queries.length === 0) {
-        // The 14-day stale guard refused the snapshot (older than 14 days or
-        // missing) — never score dated demand as live. Keep the raw snapshot
-        // date so the UI's stale banner can fire even though we refuse to
-        // score it.
         warnings.push(
           'GSC snapshot is stale or unavailable (older than 14 days or missing). ' +
             'Refusing snapshot demand — regenerate the snapshot (re-export from Search Console) or fix live GSC credentials.',
@@ -159,6 +188,42 @@ export async function POST(request: NextRequest) {
         warnings.push('Opportunity scoring on CSV snapshot — connect live Search Console for fresher data')
       }
     }
+
+    // Live GSC on this estate is junk-dominated (PDF filenames, meal-plan
+    // rates). Scoring only the 1–2 survivors starved Discover of CTR goldmines
+    // already sitting in the committed snapshot.
+    const viableLive = queries.filter((q) => q.term && !isJunkQuery(q.term))
+    if (viableLive.length < SNAPSHOT_MERGE_MIN_VIABLE) {
+      try {
+        const snap = await loadGscSnapshot({ allowStale: false, maxAgeDays: 14 })
+        snapshotMeta = snapshotMeta || { generatedAt: snap.generatedAt }
+        const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
+          term: q.term || q.url || '',
+          impressions: q.impressions,
+          clicks: q.clicks,
+          ctr: q.ctr,
+          position: q.position,
+        })
+        const snapshotRows = [
+          ...(snap.topQueries ?? []).map(shape),
+          ...((snap.opportunities?.highImpressionLowCtr as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
+          ...((snap.opportunities?.highImpressionDeepRank as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
+        ]
+        const merged = mergeSnapshotIntoQueries(viableLive, snapshotRows)
+        if (merged.length > viableLive.length) {
+          queries = merged
+          source = source === 'live' ? 'live+snapshot' : 'snapshot'
+          warnings.push(`Snapshot merge · ${viableLive.length} viable live rows + ${merged.length - viableLive.length} snapshot fills (min viable ${SNAPSHOT_MERGE_MIN_VIABLE})`)
+        } else {
+          queries = viableLive
+        }
+      } catch {
+        queries = viableLive
+      }
+    } else {
+      queries = viableLive
+    }
+
     // Radar honesty: when BOTH live GSC and a fresh ≤14d snapshot are absent,
     // there is NO real demand to score. Strategy-corpus rows must never be
     // injected into the scored pool with fabricated impressions:1 as if they
@@ -166,23 +231,18 @@ export async function POST(request: NextRequest) {
     const snapshotRefused = queries.length === 0
 
     // ── 2. Existing content inventory (coverage + cannibalization) ─────────
+    // Only MERGED/DEPLOYED pages count. Draft / pr_created jobs are 404s and
+    // treating them as coverage starved Discover of real gaps.
     let coverage: OpportunityEngineInput['coverage'] = []
     try {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-      const { data } = await supabase
-        .from('content_jobs')
-        .select('title, topic, primary_keyword, status, content_path, canonical_url')
-        .order('created_at', { ascending: false })
-        .limit(300)
-      coverage = ((data ?? []) as Array<Record<string, unknown>>)
-        .filter((j) => j && (j.title || j.topic || j.primary_keyword))
-        .map((j) => ({
-          title: String(j.title || j.topic || j.primary_keyword || ''),
-          topic: j.topic ? String(j.topic) : null,
-          primaryKeyword: j.primary_keyword ? String(j.primary_keyword) : null,
-          status: j.status ? String(j.status) : null,
-          url: String(j.canonical_url || j.content_path || '').trim() || null,
-        }))
+      const shipped = await loadShippedCoverage(300)
+      coverage = shipped.map((p) => ({
+        title: p.title,
+        topic: p.title,
+        primaryKeyword: p.primaryKeyword,
+        status: p.status,
+        url: p.url || null,
+      }))
     } catch (err) {
       console.warn('[content-studio/gsc/suggestions] coverage load failed', err)
     }
@@ -320,8 +380,10 @@ export async function POST(request: NextRequest) {
         }))
       : []
 
+    const rankedOpportunities = playbookRank(result.opportunities as Array<Record<string, any>>)
+
     const variedOpportunities = selectVariedOpportunities(
-      result.opportunities as Array<Record<string, any>>,
+      rankedOpportunities,
       limit,
       variationSeed,
       excludedTopics,
@@ -377,6 +439,11 @@ export async function POST(request: NextRequest) {
       interlinks: o.interlinks,
       coverage: o.coverage,
       sourcePage: o.sourcePage,
+      coverageKind: o.coverageKind,
+      funnel: o.funnel,
+      playbookMove: o.playbookMove,
+      qualityLine: o.qualityLine,
+      conversionLine: o.conversionLine,
       ranking,
       }
     })
@@ -385,7 +452,7 @@ export async function POST(request: NextRequest) {
       region,
       suggestions,
       opportunities: selectVariedOpportunities(
-        result.opportunities as Array<Record<string, any>>,
+        rankedOpportunities,
         24,
         `${variationSeed}:insights`,
         excludedTopics,
