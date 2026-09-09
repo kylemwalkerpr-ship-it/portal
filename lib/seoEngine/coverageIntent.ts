@@ -16,7 +16,7 @@
  *   spoke           distinct SERP intent (tool, cost, vs, interview, …)
  *   unrelated       new cluster / pillar
  */
-import { normalizePlannerTopic } from './planner'
+import { normalizePlannerTopic } from './normalizeTopic'
 
 export type CoverageKind = 'exact' | 'paraphrase' | 'section_expand' | 'spoke' | 'unrelated'
 
