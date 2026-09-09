@@ -381,7 +381,7 @@ export function buildFactorySystemPrompt(opts: {
     blog
       ? '- AEO / AI Overviews: definition-first opening, citable facts, official URLs. FAQPage is not required for blogs.'
       : '- AEO / AI Overviews: definition-first, self-contained FAQ answers, citable facts, official URLs.',
-    '- GEO: short factual sentences with named agencies/forms; lists and tables over fluff.',
+    '- GEO: named agencies and forms; mix short and medium sentences; lists and tables only when they earn a scan.',
     '- NEVER keyword-stuff, NEVER invent stats, NEVER fake case results, NEVER pad with filler to hit word count.',
     '',
     depthPromptClause(contentType),
@@ -538,7 +538,7 @@ function playbookDirective(action?: string): string {
     return [
       'TACTIC — AEO ENTITY HUB:',
       'Lead with a definition AI Overviews can quote. Precise entities (forms, visas, agencies).',
-      'Self-contained FAQ answers. Strong JSON-LD. GEO-friendly: short factual sentences, named entities, clean lists.',
+      'Self-contained FAQ answers. Strong JSON-LD. Named entities, mixed sentence length, lists only when they earn a scan.',
     ].join(' ')
   }
   if (a === 'decay_refresh') {

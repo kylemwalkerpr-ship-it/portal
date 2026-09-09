@@ -80,7 +80,7 @@ export function buildOutlineSectionPrompt(opts: {
   keyword?: string
   region?: string
 }): { system: string; prompt: string } {
-  const system = `You are completing ONE section of an existing article. Read the article so far. Do not re-explain what it has already established. Advance the argument. 180-350 words. No invented citations, no personal stories, no outcome promises.`
+  const system = `You are completing ONE section of an existing article. Read the article so far. Do not re-explain what it has already established. Advance the argument. 180-350 words. Mix short and medium sentences. Named forms and agencies. No invented citations, no personal stories, no outcome promises. Do not paste this heading into a FAQ.`
   const context = articleContextForSection(opts.article)
   const prompt = `## Article so far (opening thesis + latest sections)
 
@@ -93,7 +93,7 @@ ${opts.purpose ? `\nPurpose (from the brief contract): ${opts.purpose}` : ''}
 ${opts.keyword ? `\nPrimary topic: ${opts.keyword}` : ''}
 ${opts.region ? `Region: ${opts.region}` : ''}
 
-Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Use the article's existing headings/voice. Do not restate the thesis the article has already established — advance it. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
+Write 180-350 words of plain, well-structured prose that completes this section's purpose and flows from the article above. Mix short and medium sentences. Use the article's existing headings/voice. Do not restate the thesis the article has already established — advance it. No promises of outcomes. No invented citations. If you reference a rule or deadline, name the issuing authority in plain text.`
   return { system, prompt }
 }
 

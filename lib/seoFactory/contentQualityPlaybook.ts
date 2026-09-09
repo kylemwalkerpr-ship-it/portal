@@ -1103,7 +1103,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     code: 'ahrefs_og_incomplete', title: 'Open Graph incomplete (Ahrefs)',
     severity: 'warning', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
     requirement: 'og:image present.',
-    promptInstruction: 'Set ogImage: /og-image.png. renderTarget injects it on ship if missing.',
+    promptInstruction: 'Set a per-page OG card (colocated opengraph-image), not a shared stock PNG. renderTarget emits it on ship.',
     evidence: 'ahrefsIssues.evaluateAhrefsDraft og check',
     shipEffect: 'allow_with_flag', evaluator: 'ahrefsIssues.evaluateAhrefsDraft',
     testFixture: 'tests/contentQualityPlaybook.test.ts#ahrefs fixtures',

@@ -13,6 +13,7 @@ import { assertPlanRepoConsistency, HOST_REPO, assertCanonicalIsNotCountryHub } 
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile, buildBlogPostEntry, insertBlogPostIntoData } from './renderTarget'
+import { renderOgImageFile } from './ogCard'
 import { assertShipAllowed } from './shipGate'
 import { assertNoRouteSubtypeConflict } from './routeSubtypeGuard'
 import { assertContentDepth } from './contentDepth'
@@ -441,12 +442,38 @@ async function maybeAppendBlogIndex(opts: {
     })
     return { path: dataPath, appended: true, note: `entry added (${put.attempts} attempt(s))`, commitSha: put.commitSha }
   } catch (e) {
-    return {
-      path: dataPath,
-      appended: false,
-      note: `append failed (non-fatal): ${e instanceof Error ? e.message : 'unknown'}`,
-    }
+    return { path: dataPath, appended: false, note: `append failed (non-fatal): ${e instanceof Error ? e.message : 'unknown'}` }
   }
+}
+
+async function writeOgImageOrThrow(opts: {
+  owner: string
+  repo: string
+  branch: string
+  plan: OwnerPlan
+  content: string
+  title: string
+  region: string
+  contentType: string
+  primaryKeyword: string
+}): Promise<void> {
+  const og = renderOgImageFile({
+    planFilePath: opts.plan.filePath,
+    title: opts.title,
+    region: opts.region,
+    contentType: opts.contentType,
+    primaryKeyword: opts.primaryKeyword,
+    content: opts.content,
+  })
+  if (!og) return
+  await putRepoFile({
+    owner: opts.owner,
+    repo: opts.repo,
+    path: og.filePath,
+    branch: opts.branch,
+    content: og.fileContent,
+    message: `seo-factory: OG card for "${opts.title}"`,
+  })
 }
 
 async function ensureCanonicalOnSitemap(opts: {
@@ -751,6 +778,17 @@ export async function shipContent(opts: {
       content: fileContent,
       message: `seo-factory: approve & deploy "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
     })
+    await writeOgImageOrThrow({
+      owner,
+      repo,
+      branch: branchMain,
+      plan: opts.plan,
+      content: shipContent_,
+      title: opts.title,
+      region: opts.region,
+      contentType,
+      primaryKeyword: opts.primaryKeyword,
+    })
 
     // Blog ships also append an index entry to blog-data.ts (index + [slug] fallback)
     const blogIdx = await maybeAppendBlogIndex({
@@ -818,6 +856,17 @@ export async function shipContent(opts: {
     branch: branchName,
     content: fileContent,
     message: `seo-factory: add "${opts.title}"`,
+  })
+  await writeOgImageOrThrow({
+    owner,
+    repo,
+    branch: branchName,
+    plan: opts.plan,
+    content: shipContent_,
+    title: opts.title,
+    region: opts.region,
+    contentType,
+    primaryKeyword: opts.primaryKeyword,
   })
 
   // Blog ships also append an index entry to blog-data.ts on the same branch

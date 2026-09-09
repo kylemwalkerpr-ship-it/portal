@@ -15,6 +15,7 @@ import {
   pickCaseworksRelatedSlugs,
   pickCaseworksSources,
 } from './caseworksRelated'
+import { ogImagePublicPath } from './ogCard'
 
 function escapeTs(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
@@ -641,12 +642,12 @@ export const metadata: Metadata = {
     publishedTime: ${JSON.stringify(today)},
     modifiedTime: ${JSON.stringify(today)},
     images: [
-      { url: "/og-image.png", width: 1200, height: 630, alt: "MyCaseworks legal guide" },
+      { url: ${JSON.stringify(ogImagePublicPath(opts.plan.filePath) || '/og-image.png')}, width: 1200, height: 630, alt: ${JSON.stringify(title)} },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    images: ["/og-image.png"],
+    images: [${JSON.stringify(ogImagePublicPath(opts.plan.filePath) || '/og-image.png')}],
   },
 };
 
@@ -777,14 +778,14 @@ export const metadata: Metadata = {
     publishedTime: ${JSON.stringify(today)},
     authors: ["MyCaseworks Editorial"],
     images: [
-      { url: "/og-image.png", width: 1200, height: 630, alt: "YouSafe consultancy blog" },
+      { url: ${JSON.stringify(ogImagePublicPath(opts.plan.filePath) || '/og-image.png')}, width: 1200, height: 630, alt: ${JSON.stringify(title)} },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: ${JSON.stringify(title)},
     description: ${JSON.stringify(description.slice(0, 160))},
-    images: ["/og-image.png"],
+    images: [${JSON.stringify(ogImagePublicPath(opts.plan.filePath) || '/og-image.png')}],
   },
 };
 

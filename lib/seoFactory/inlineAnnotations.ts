@@ -211,7 +211,7 @@ export function buildBlockersFixPrompt(
     '',
     'RULES:',
     '1. Title must be 30–60 characters. Meta description must be 70–160 characters.',
-    '2. Keep a single H1. Set robots to index,follow. Add ogImage: /og-image.png if missing.',
+    '2. Keep a single H1. Set robots to index,follow. Per-page OG is generated on ship — do not paste a stock /og-image.png over a unique card.',
     '3. Collapse any // in URLs. Article JSON-LD needs headline, image, datePublished, author.',
     '4. REPETITION ELIMINATION — the #1 recurring failure:',
     '   a) No sentence may appear more than once (even reworded). If two sentences say the same thing, DELETE the weaker one.',

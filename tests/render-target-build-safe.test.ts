@@ -85,9 +85,9 @@ describe('renderTargetFile build-safety', () => {
     expect(fileContent).not.toMatch(/```/)
     expect(fileContent).not.toMatch(/href=\{undefined\}/)
     expect(fileContent).not.toMatch(/<script/i)
-    expect(fileContent).toMatch(/images:\s*\[\s*\{\s*url:\s*"\/og-image\.png"/)
+    expect(fileContent).toMatch(/images:\s*\[\s*\{\s*url:\s*"\/us\/student-visas\/opt-90-day-unemployment-cap\/opengraph-image"/)
     expect(fileContent).toContain('card: "summary_large_image"')
-    expect(fileContent).toContain('images: ["/og-image.png"]')
+    expect(fileContent).toContain('images: ["/us/student-visas/opt-90-day-unemployment-cap/opengraph-image"]')
     // caseworks article-quality: no SEO Factory kicker, non-empty related/sources,
     // and no mirrored OG/Twitter title+description (Next.js derives those).
     expect(fileContent).not.toMatch(/kicker:\s*"SEO Factory"/)
