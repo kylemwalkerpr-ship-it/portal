@@ -57,7 +57,7 @@ describe('student mobile UX v2', () => {
     expect(clearanceCss).toContain('display: none !important')
   })
 
-  test('fixed dock clearance has a physical scroll tail so the final card stays visible after touch release', () => {
+  test('fixed dock clearance is appended to real dashboard content so the final card stays visible after touch release', () => {
     expect(clearanceCss).toContain('--student-dock-v2-gap: 22px')
     expect(clearanceCss).toContain('--student-dock-v2-occlusion: calc(')
     expect(clearanceCss).toContain('--student-dock-v2-clearance: calc(')
@@ -65,11 +65,13 @@ describe('student mobile UX v2', () => {
     expect(clearanceCss).toContain('height: 100% !important')
     expect(clearanceCss).toContain('max-height: 100% !important')
     expect(clearanceCss).toContain('.yousafe-dashboard-main:not(:has(.yousafe-messenger))')
-    expect(clearanceCss).toContain('padding-bottom: var(--student-dock-v2-gap) !important')
+    expect(clearanceCss).toContain('padding-bottom: 0 !important')
     expect(clearanceCss).toContain('scroll-padding-bottom: var(--student-dock-v2-clearance) !important')
-    expect(clearanceCss).toContain('.yousafe-dashboard-main:not(:has(.yousafe-messenger))::after')
-    expect(clearanceCss).toContain('flex: 0 0 var(--student-dock-v2-occlusion)')
-    expect(clearanceCss).toContain('min-height: var(--student-dock-v2-occlusion)')
+    expect(clearanceCss).toContain('.yousafe-dashboard-content::after')
+    expect(clearanceCss).toContain('height: var(--student-dock-v2-clearance)')
+    expect(clearanceCss).toContain('min-height: var(--student-dock-v2-clearance)')
+    expect(clearanceCss).not.toContain('.yousafe-dashboard-main:not(:has(.yousafe-messenger))::after')
+    expect(clearanceCss).not.toContain('flex: 0 0 var(--student-dock-v2-occlusion)')
     expect(clearanceCss).toContain('overflow-y: auto !important')
   })
 
