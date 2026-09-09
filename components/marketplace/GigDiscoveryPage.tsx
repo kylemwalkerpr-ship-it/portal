@@ -51,7 +51,7 @@ const titleStyle: CSSProperties = {
   fontWeight: 500,
   letterSpacing: '-0.012em',
   margin: 0,
-  color: '#fff',
+  color: T.ink,
 }
 
 const contentLayout: CSSProperties = {

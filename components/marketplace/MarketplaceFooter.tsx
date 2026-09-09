@@ -36,7 +36,7 @@ export function MarketplaceFooter() {
           font-family: ${F.ui};
           font-size: 13px;
           border-top: 1px solid ${T.rule};
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+          box-shadow: inset 0 1px 0 rgba(15,23,42,0.03);
         }
         .cw-mkt-footer-inner {
           width: min(1280px, calc(100vw - 32px));
@@ -72,9 +72,9 @@ export function MarketplaceFooter() {
           padding: 4px 0;
           transition: color .15s cubic-bezier(0.22,1,0.36,1);
         }
-        .cw-mkt-footer-nav a:hover { color: #FFFFFF; }
+        .cw-mkt-footer-nav a:hover { color: ${T.ink}; }
         .cw-mkt-footer-legal {
-          border-top: 1px solid rgba(255,255,255,0.10);
+          border-top: 1px solid ${T.rule};
         }
         .cw-mkt-footer-legal-inner {
           width: min(1280px, calc(100vw - 32px));
@@ -91,10 +91,10 @@ export function MarketplaceFooter() {
           color: ${T.onPaperSoft};
           text-decoration: none;
         }
-        .cw-mkt-footer-legal-inner a:hover { color: #FFFFFF; }
+        .cw-mkt-footer-legal-inner a:hover { color: ${T.ink}; }
         .cw-mkt-footer-legal-inner .dot {
           width: 3px; height: 3px; border-radius: 50%;
-          background: rgba(255,255,255,0.28);
+          background: rgba(15,23,42,0.22);
         }
         @media (max-width: 720px) {
           .cw-mkt-footer-inner { padding: 14px 0 12px; }

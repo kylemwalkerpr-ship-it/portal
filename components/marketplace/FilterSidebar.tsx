@@ -21,7 +21,7 @@ const sectionStyle: CSSProperties = {
 const sectionTitle: CSSProperties = {
   fontSize: '11px',
   fontWeight: 700,
-  color: T.cream,
+  color: T.inkSoft,
   margin: '0 0 12px',
   textTransform: 'uppercase',
   letterSpacing: '0.12em',
@@ -35,7 +35,7 @@ const checkboxStyle: CSSProperties = {
   padding: '8px 0',
   cursor: 'pointer',
   fontSize: '14px',
-  color: T.cream,
+  color: T.ink,
 }
 
 const checkboxInput: CSSProperties = {
@@ -278,7 +278,7 @@ export function FilterSidebar({
   return (
     <aside style={sidebarStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#fff' }}>Filters</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: T.ink }}>Filters</h2>
         {hasActiveFilters && (
           <button onClick={onClear} style={clearButton}>
             Clear all

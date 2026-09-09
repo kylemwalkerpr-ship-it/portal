@@ -478,7 +478,7 @@ const FAQ_JSONLD = {
 
 const CSS = `
 .cw-market { color: ${T.onPaper}; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
-.cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.5; }
+.cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.22; }
 .cw-market::after { content: none; }
 /* Pattern contract (matches MarketplaceShell): the fixed ::before texture
    sits ABOVE the shell's solid paper fill and BELOW all page content. */
@@ -502,7 +502,7 @@ const CSS = `
 .cw-market header.nav { position: sticky; top: 0; z-index: 50; background: ${T.vellum}; backdrop-filter: blur(10px); border-bottom: 1px solid ${T.rule}; }
 .cw-market .nav-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; height: 60px; }
 .cw-market .brand { display: inline-flex; align-items: center; gap: 12px; }
-.cw-market .brand-mark { width: 38px; height: 38px; border-radius: 8px; background: ${T.indigo}; color: #FFFFFF; display: inline-grid; place-items: center; font-family: ${F.display}; font-size: 22px; font-weight: 700; box-shadow: 0 10px 22px -10px rgba(14,124,116,0.55); position: relative; overflow: hidden; }
+.cw-market .brand-mark { width: 38px; height: 38px; border-radius: 8px; background: ${T.indigo}; color: #FFFFFF; display: inline-grid; place-items: center; font-family: ${F.display}; font-size: 22px; font-weight: 700; box-shadow: 0 10px 22px -10px rgba(60,59,110,0.45); position: relative; overflow: hidden; }
 .cw-market .brand-mark::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: ${T.gold}; }
 .cw-market .brand-name { line-height: 1.1; }
 .cw-market .brand-name b { display: block; font-family: ${F.display}; font-weight: 600; font-size: 20px; letter-spacing: -0.01em; }
@@ -513,7 +513,7 @@ const CSS = `
 .cw-market .nav-search svg { color: ${T.inkSoft}; flex: 0 0 18px; }
 .cw-market .nav-search input { flex: 1; height: 100%; border: 0; background: transparent; font: inherit; font-size: 14px; color: ${T.ink}; outline: none; }
 .cw-market .nav-search input::placeholder { color: ${T.inkSoft}; }
-.cw-market .nav-search button.go { height: 32px; padding: 0 14px; border-radius: 999px; background: #1A120E; color: #FFFFFF; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; }
+.cw-market .nav-search button.go { height: 32px; padding: 0 14px; border-radius: 999px; background: ${T.ink}; color: #FFFFFF; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; }
 .cw-market nav.nav-links { display: flex; align-items: center; gap: 6px; }
 .cw-market nav.nav-links a { padding: 8px 12px; font-size: 14px; font-weight: 500; color: ${T.inkMid}; border-radius: 8px; }
 .cw-market nav.nav-links a:hover { color: ${T.ink}; background: ${T.paper2}; }
@@ -524,7 +524,7 @@ const CSS = `
 .cw-market .country-bar-inner { display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
 .cw-market .country-bar .label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-right: 4px; }
 .cw-market .country-bar a { padding: 6px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.onPaper}; transition: all .12s; cursor: pointer; }
-.cw-market .country-bar a:hover { color: #FFFFFF; border-color: ${T.onPaperSoft}; }
+.cw-market .country-bar a:hover { color: ${T.ink}; background: ${T.paper2}; border-color: ${T.rule}; }
 .cw-market .country-bar a.active { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; font-weight: 600; }
 .cw-market .country-bar .divider { height: 18px; width: 1px; background: ${T.rule}; margin: 0 6px; }
 
@@ -534,7 +534,7 @@ const CSS = `
 @media (max-width: 720px) { .cw-cat-panel { grid-template-columns: 1fr; min-width: min(360px, calc(100vw - 32px)); } .cw-cat-detail { display: none; } }
 .cw-cat-list { list-style: none; margin: 0; padding: 10px 0; border-right: 1px solid ${T.ruleSoft}; background: ${T.paper2}; max-height: 440px; overflow-y: auto; }
 .cw-cat-list li a { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 16px; font-size: 13.5px; color: ${T.onPaper}; }
-.cw-cat-list li a:hover, .cw-cat-list li a.is-focus { background: ${T.paper3}; color: #FFFFFF; }
+.cw-cat-list li a:hover, .cw-cat-list li a.is-focus { background: ${T.paper3}; color: ${T.ink}; }
 .cw-cat-icon { font-size: 14px; line-height: 1; }
 .cw-cat-name { font-weight: 500; }
 .cw-cat-count { font-family: ${F.mono}; font-size: 10.5px; color: ${T.onPaperSoft}; letter-spacing: 0.04em; }
@@ -561,14 +561,14 @@ const CSS = `
 .cw-market .hero h1 em { font-style: italic; font-weight: 700; color: ${T.onPaperEm}; }
 .cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.84); margin: 0 0 24px; }
 .cw-market .hero-search { display: flex; align-items: center; background: #fff; border: 0; border-radius: 12px; padding: 6px 6px 6px 18px; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,0.32); transition: box-shadow .18s cubic-bezier(0.22,1,0.36,1); }
-.cw-market .hero-search:focus-within { box-shadow: 0 18px 50px rgba(0,0,0,0.38), 0 0 0 3px rgba(14,124,116,0.35); }
+.cw-market .hero-search:focus-within { box-shadow: 0 18px 50px rgba(15,23,42,0.16), 0 0 0 3px rgba(60,59,110,0.28); }
 .cw-market .hero-search svg { color: ${T.inkSoft}; flex: 0 0 18px; width: 18px; height: 18px; }
 .cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 15px; height: 46px; color: ${T.ink}; min-width: 0; }
 .cw-market .hero-search input::placeholder { color: ${T.inkSoft}; }
 .cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 46px; border-left: 1px solid ${T.ruleSoft}; color: ${T.inkSoft}; font-size: 13px; white-space: nowrap; }
 .cw-market .hero-search .pick b { color: ${T.ink}; font-weight: 600; }
-.cw-market .hero-search button.search-go { height: 48px; padding: 0 28px; background: ${T.indigo}; color: #FFFFFF; border-radius: 10px; font-weight: 800; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 10px 22px rgba(14,124,116,0.38); transition: background .15s, transform .12s, box-shadow .15s; }
-.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); box-shadow: 0 14px 26px rgba(14,124,116,0.48); }
+.cw-market .hero-search button.search-go { height: 48px; padding: 0 28px; background: ${T.indigo}; color: #FFFFFF; border-radius: 10px; font-weight: 800; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 10px 22px rgba(60,59,110,0.28); transition: background .15s, transform .12s, box-shadow .15s; }
+.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); box-shadow: 0 14px 26px rgba(60,59,110,0.36); }
 .cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
 .cw-market .suggest span.lbl { font-family: ${F.ui}; color: ${T.onPaperSoft}; letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
 .cw-market .suggest a { display: inline-flex; align-items: center; padding: 7px 14px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; color: #FFFFFF; font-weight: 600; transition: background .15s, color .15s, border-color .15s, transform .15s; }
@@ -605,12 +605,12 @@ const CSS = `
 .cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
 .cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: #16a34a; }
 
-.cw-files-band { padding: 22px 0; background: ${T.indigo}; border-bottom: 1px solid ${T.rule}; }
+.cw-files-band { padding: 22px 0; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; }
 .cw-files-band-inner { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
-.cw-files-band .kicker { margin: 0; font-family: ${F.ui}; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.78); }
-.cw-files-band h2 { margin: 6px 0 0; font-family: ${F.display}; font-size: clamp(22px, 3vw, 32px); font-weight: 700; letter-spacing: -0.02em; color: #FFFFFF; }
-.cw-files-band p.lede { margin: 6px 0 0; max-width: 52ch; color: rgba(255,255,255,0.9); font-size: 15px; line-height: 1.45; }
-.cw-files-band-cta { display: inline-flex; align-items: center; background: #FFFFFF; color: ${T.indigoDeep}; font-family: ${F.ui}; font-weight: 800; font-size: 15px; padding: 12px 22px; border-radius: 10px; box-shadow: 0 8px 18px rgba(4,31,30,0.22); }
+.cw-files-band .kicker { margin: 0; font-family: ${F.ui}; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${T.indigo}; }
+.cw-files-band h2 { margin: 6px 0 0; font-family: ${F.display}; font-size: clamp(22px, 3vw, 32px); font-weight: 700; letter-spacing: -0.02em; color: ${T.ink}; }
+.cw-files-band p.lede { margin: 6px 0 0; max-width: 52ch; color: ${T.inkMid}; font-size: 15px; line-height: 1.45; }
+.cw-files-band-cta { display: inline-flex; align-items: center; background: ${T.indigo}; color: #FFFFFF; font-family: ${F.ui}; font-weight: 800; font-size: 15px; padding: 12px 22px; border-radius: 10px; box-shadow: 0 8px 18px rgba(15,23,42,0.12); }
 .cw-files-band-cta:hover { transform: translateY(-1px); }
 
 .cw-files-rail { padding: 28px 0 16px; background: transparent; border-bottom: 1px solid ${T.rule}; }
@@ -619,7 +619,7 @@ const CSS = `
 .cw-files-rail-head a { font-size: 13px; font-weight: 700; color: ${T.onPaper}; }
 .cw-files-scroller-wrap { position: relative; }
 .cw-files-scroller { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 12px; }
-.cw-files-scroller-wrap::after { content: ""; pointer-events: none; position: absolute; top: 4px; right: 0; bottom: 12px; width: 56px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ys-paper, #4A2A1A) 88%, transparent)); }
+.cw-files-scroller-wrap::after { content: ""; pointer-events: none; position: absolute; top: 4px; right: 0; bottom: 12px; width: 56px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ys-paper, #F4F6F8) 88%, transparent)); }
 .cw-files-scroller-next { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 999px; border: 1px solid ${T.rule}; background: ${T.vellum}; color: ${T.ink}; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(0,0,0,0.14); cursor: pointer; }
 .cw-files-scroller-next:hover { background: #fff; }
 .cw-files-scroller::-webkit-scrollbar { display: none; }
@@ -640,7 +640,7 @@ const CSS = `
 
 .cw-market .featured { padding: 36px 0 40px; border-top: 0; background: transparent; }
 .cw-market .filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
-.cw-market .filters a { padding: 5px 12px; border: 1px solid rgba(0,0,0,0.12); background: #FFFFFF; border-radius: 999px; font-size: 12px; font-weight: 500; color: #1A120E; transition: all .15s; }
+.cw-market .filters a { padding: 5px 12px; border: 1px solid ${T.rule}; background: #FFFFFF; border-radius: 999px; font-size: 12px; font-weight: 500; color: ${T.ink}; transition: all .15s; }
 .cw-market .filters a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
 .cw-market .filters a.on { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; }
 .cw-market .filters a .ct { font-family: ${F.mono}; font-size: 10.5px; margin-left: 6px; color: currentColor; opacity: 0.7; }
@@ -735,24 +735,24 @@ const CSS = `
 .cw-market .quote cite .av { width: 36px; height: 36px; border-radius: 50%; background: ${T.indigo}; color: #FFFFFF; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; }
 
 .cw-market .seller-cta { padding: 28px 0 32px; border-top: 1px solid ${T.rule}; }
-.cw-market .seller-card { position: relative; overflow: hidden; border-radius: 14px; background: ${T.indigo}; color: #FFFFFF; padding: 32px 36px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; box-shadow: 0 1px 0 rgba(29,36,51,0.05), 0 24px 48px -28px rgba(29,36,51,0.22); }
+.cw-market .seller-card { position: relative; overflow: hidden; border-radius: 14px; background: ${T.vellum}; color: ${T.ink}; padding: 32px 36px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; border: 1px solid ${T.rule}; box-shadow: 0 1px 0 rgba(15,23,42,0.04), 0 24px 48px -28px rgba(15,23,42,0.16); }
 @media (max-width: 800px) { .cw-market .seller-card { grid-template-columns: 1fr; padding: 24px 22px; } }
-.cw-market .seller-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: ${T.gold}; }
-.cw-market .seller-card::after { content: "§"; position: absolute; right: 32px; bottom: -50px; font-family: ${F.display}; font-style: italic; font-weight: 500; font-size: 240px; color: rgba(255,255,255,0.05); pointer-events: none; line-height: 1; }
-.cw-market .seller-card .mono-eyebrow { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
-.cw-market .seller-card h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(22px, 2.8vw, 32px); line-height: 1.1; letter-spacing: -0.014em; margin: 8px 0 10px; color: #FFFFFF; max-width: 20ch; }
-.cw-market .seller-card h2 em { font-style: italic; color: ${T.onPaperEm}; }
-.cw-market .seller-card p { margin: 0 0 14px; max-width: 56ch; font-size: 13.5px; line-height: 1.55; color: rgba(255,255,255,0.78); }
+.cw-market .seller-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: ${T.indigo}; }
+.cw-market .seller-card::after { content: "§"; position: absolute; right: 32px; bottom: -50px; font-family: ${F.display}; font-style: italic; font-weight: 500; font-size: 240px; color: rgba(15,23,42,0.04); pointer-events: none; line-height: 1; }
+.cw-market .seller-card .mono-eyebrow { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${T.inkSoft}; }
+.cw-market .seller-card h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(22px, 2.8vw, 32px); line-height: 1.1; letter-spacing: -0.014em; margin: 8px 0 10px; color: ${T.ink}; max-width: 20ch; }
+.cw-market .seller-card h2 em { font-style: italic; color: ${T.indigo}; }
+.cw-market .seller-card p { margin: 0 0 14px; max-width: 56ch; font-size: 13.5px; line-height: 1.55; color: ${T.inkMid}; }
 .cw-market .seller-card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .cw-market .seller-card .btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 999px; font-weight: 600; font-size: 13px; transition: transform .12s, background .12s; }
-.cw-market .seller-card .btn.primary { background: ${T.indigoDeep}; color: #FFFFFF; border: 1px solid ${T.indigoDeep}; }
-.cw-market .seller-card .btn.primary:hover { transform: translateY(-1px); background: ${T.indigo}; }
-.cw-market .seller-card .btn.ghost { border: 1px solid rgba(255,255,255,0.5); color: #FFFFFF; background: rgba(255,255,255,0.08); }
-.cw-market .seller-card .btn.ghost:hover { background: rgba(255,255,255,0.18); }
+.cw-market .seller-card .btn.primary { background: ${T.indigo}; color: #FFFFFF; border: 1px solid ${T.indigo}; }
+.cw-market .seller-card .btn.primary:hover { transform: translateY(-1px); background: ${T.indigoDeep}; }
+.cw-market .seller-card .btn.ghost { border: 1px solid ${T.rule}; color: ${T.ink}; background: transparent; }
+.cw-market .seller-card .btn.ghost:hover { background: ${T.paper2}; }
 .cw-market .seller-card .stats { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 0 4px; position: relative; z-index: 1; }
-.cw-market .seller-card .stat { border-left: 2px solid rgba(255,255,255,0.3); padding-left: 12px; }
-.cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1; color: #FFFFFF; letter-spacing: -0.01em; }
-.cw-market .seller-card .stat span { display: block; margin-top: 4px; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.72); }
+.cw-market .seller-card .stat { border-left: 2px solid ${T.indigo}; padding-left: 12px; }
+.cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1; color: ${T.ink}; letter-spacing: -0.01em; }
+.cw-market .seller-card .stat span { display: block; margin-top: 4px; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; }
 
 .cw-market .hero-card-link { display: block; transition: transform .25s ease; }
 .cw-market .hero-fallback-hint { margin-top: 10px; padding: 8px 10px; background: ${T.paper2}; border: 1px dashed ${T.rule}; border-radius: 8px; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.06em; color: ${T.inkMid}; text-transform: none; }

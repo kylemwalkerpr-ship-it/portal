@@ -5,137 +5,137 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Mountain View (default) — slate granite with an indigo accent. */
-  --portal-bg:           #F2F4F8;
+  /* Mountain View (default) — Messages-grade cool gray, slate-navy accent. */
+  --portal-bg:           #F4F6F8;
   --portal-surface:      #FFFFFF;
-  --portal-surface-2:    #E4E9F1;
-  --portal-surface-3:    #CFD8E6;
-  --portal-ink:          #0D1426;
-  --portal-ink-mid:      #2E3C55;
-  --portal-ink-soft:     #5B6B89;
-  --portal-rule:         #D6DEEA;
-  --portal-rule-soft:    #EBF0F6;
-  --portal-accent:       #41408A;
-  --portal-accent-deep:  #2B2A63;
-  --portal-accent-soft:  rgba(65,64,138,0.12);
+  --portal-surface-2:    #EEF1F4;
+  --portal-surface-3:    #E2E8F0;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E2E8F0;
+  --portal-rule-soft:    #F1F5F9;
+  --portal-accent:       #3C3B6E;
+  --portal-accent-deep:  #2A2A55;
+  --portal-accent-soft:  rgba(60,59,110,0.12);
 
   /* Semantics — constant across every theme */
   --portal-brick:        #B22234;
-  --portal-gold:         #C4A45A;
-  --portal-star:         #C68B27;
-  --portal-moss:         #5F6B3A;
+  --portal-gold:         #6B5210;
+  --portal-star:         #6B4700;
+  --portal-moss:         #3F5A28;
 }
 
 [data-portal-theme="lake-view"] {
-  /* Glacial blue — cool, saturated lake water against white paper. */
-  --portal-bg:           #E7F0F9;
-  --portal-surface:      #FDFEFF;
-  --portal-surface-2:    #D4E4F2;
-  --portal-surface-3:    #B4CFE8;
-  --portal-ink:          #0B1E33;
-  --portal-ink-mid:      #29476B;
-  --portal-ink-soft:     #56729B;
-  --portal-rule:         #C3D7EA;
-  --portal-rule-soft:    #E1ECF6;
-  --portal-accent:       #1D6AB0;
-  --portal-accent-deep:  #11497E;
-  --portal-accent-soft:  rgba(29,106,176,0.12);
+  /* Steel — cool gray paper, steel accent. No lake-blue wash. */
+  --portal-bg:           #F4F6F8;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #EEF2F5;
+  --portal-surface-3:    #E3E9EE;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E2E8F0;
+  --portal-rule-soft:    #F1F5F9;
+  --portal-accent:       #3D5A73;
+  --portal-accent-deep:  #2A4156;
+  --portal-accent-soft:  rgba(61,90,115,0.12);
 }
 
 [data-portal-theme="ocean-view"] {
-  /* Deep teal — tropical shallows over dark sea ink. */
-  --portal-bg:           #E2F2F4;
-  --portal-surface:      #FCFFFF;
-  --portal-surface-2:    #CBE9EE;
-  --portal-surface-3:    #A4D8E1;
-  --portal-ink:          #061A26;
-  --portal-ink-mid:      #1F4654;
-  --portal-ink-soft:     #4E7A8C;
-  --portal-rule:         #BCDEE6;
-  --portal-rule-soft:    #DCEFF3;
-  --portal-accent:       #0A8DA3;
-  --portal-accent-deep:  #056275;
-  --portal-accent-soft:  rgba(10,141,163,0.12);
+  /* Slate — cool paper, deep slate actions. No teal flood. */
+  --portal-bg:           #F3F5F6;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #ECEFF1;
+  --portal-surface-3:    #E2E6E9;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E2E8F0;
+  --portal-rule-soft:    #F1F5F9;
+  --portal-accent:       #334155;
+  --portal-accent-deep:  #1E293B;
+  --portal-accent-soft:  rgba(51,65,85,0.12);
 }
 
 [data-portal-theme="forest-view"] {
-  /* Evergreen — moss and pine over warm parchment. */
-  --portal-bg:           #EDEBDD;
-  --portal-surface:      #FDFDF8;
-  --portal-surface-2:    #DEDCC2;
-  --portal-surface-3:    #C8C5A0;
-  --portal-ink:          #18200F;
-  --portal-ink-mid:      #35452A;
-  --portal-ink-soft:     #5E7250;
-  --portal-rule:         #D2CFB1;
-  --portal-rule-soft:    #E8E6D2;
-  --portal-accent:       #3E6B2A;
-  --portal-accent-deep:  #274A15;
-  --portal-accent-soft:  rgba(62,107,42,0.12);
+  /* Olive — pale linen paper, olive actions used like Messages chips. */
+  --portal-bg:           #F5F6F3;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #EEF0EA;
+  --portal-surface-3:    #E4E7DE;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E4E7DE;
+  --portal-rule-soft:    #F3F4F0;
+  --portal-accent:       #2F5D46;
+  --portal-accent-deep:  #214536;
+  --portal-accent-soft:  rgba(47,93,70,0.12);
 }
 
 [data-portal-theme="desert-view"] {
-  /* Canyon — terracotta and sandstone over sun-bleached cream. */
-  --portal-bg:           #F8EFDF;
-  --portal-surface:      #FFFDF8;
-  --portal-surface-2:    #F1E2C6;
-  --portal-surface-3:    #E6CFA4;
-  --portal-ink:          #261A0D;
-  --portal-ink-mid:      #4A351E;
-  --portal-ink-soft:     #7E6346;
-  --portal-rule:         #E5D5B6;
-  --portal-rule-soft:    #F2E9D4;
-  --portal-accent:       #C05A2E;
-  --portal-accent-deep:  #933D17;
-  --portal-accent-soft:  rgba(192,90,46,0.12);
+  /* Stone — warm paper, terracotta actions. No canyon wash. */
+  --portal-bg:           #F7F5F2;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #F0ECE6;
+  --portal-surface-3:    #E6E0D7;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E6E0D7;
+  --portal-rule-soft:    #F4F1EC;
+  --portal-accent:       #8A3D1C;
+  --portal-accent-deep:  #6B2E14;
+  --portal-accent-soft:  rgba(138,61,28,0.12);
 }
 
 [data-portal-theme="sunset-view"] {
-  /* Dusk canyon — warm rose wash with coral-ember accent over soft cream paper. */
-  --portal-bg:           #FBF1ED;
-  --portal-surface:      #FFFCFB;
-  --portal-surface-2:    #F5E0D9;
-  --portal-surface-3:    #EBC8BC;
-  --portal-ink:          #281710;
-  --portal-ink-mid:      #5C3426;
-  --portal-ink-soft:     #8C5948;
-  --portal-rule:         #EAD3C9;
-  --portal-rule-soft:    #F5E8E0;
-  --portal-accent:       #C64532;
-  --portal-accent-deep:  #8F271A;
-  --portal-accent-soft:  rgba(198,69,50,0.12);
+  /* Claret — warm paper, oxblood actions. */
+  --portal-bg:           #F7F4F2;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #F1EBE8;
+  --portal-surface-3:    #E7DFDB;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E7DFDB;
+  --portal-rule-soft:    #F5F0ED;
+  --portal-accent:       #7A2E32;
+  --portal-accent-deep:  #5C1F24;
+  --portal-accent-soft:  rgba(122,46,50,0.12);
 }
 
 [data-portal-theme="arctic-view"] {
-  /* Polar ice — crystalline blue over crisp white, anchored by deep navy. */
-  --portal-bg:           #EDF4FC;
-  --portal-surface:      #FDFEFF;
-  --portal-surface-2:    #D6E7F6;
-  --portal-surface-3:    #B2D1EC;
-  --portal-ink:          #0A182A;
-  --portal-ink-mid:      #234165;
-  --portal-ink-soft:     #4B719C;
-  --portal-rule:         #C1D8EB;
-  --portal-rule-soft:    #E0EDF7;
-  --portal-accent:       #3578BC;
-  --portal-accent-deep:  #1F4F82;
-  --portal-accent-soft:  rgba(53,120,188,0.12);
+  /* Graphite — crisp gray paper, graphite actions. */
+  --portal-bg:           #F5F6F8;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #ECEEF2;
+  --portal-surface-3:    #E2E5EB;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E2E8F0;
+  --portal-rule-soft:    #F1F5F9;
+  --portal-accent:       #3F3F46;
+  --portal-accent-deep:  #27272A;
+  --portal-accent-soft:  rgba(63,63,70,0.12);
 }
 
 [data-portal-theme="meadow-view"] {
-  /* Wildflower field — soft sage green with lavender bloom over pale linen. */
-  --portal-bg:           #EEF0E4;
-  --portal-surface:      #FDFDFA;
-  --portal-surface-2:    #DEE1CD;
-  --portal-surface-3:    #C5CAAE;
-  --portal-ink:          #151C0E;
-  --portal-ink-mid:      #3A4630;
-  --portal-ink-soft:     #65755A;
-  --portal-rule:         #D3D7C0;
-  --portal-rule-soft:    #E6E9D6;
-  --portal-accent:       #7060A8;
-  --portal-accent-deep:  #4C3E82;
-  --portal-accent-soft:  rgba(112,96,168,0.12);
+  /* Parchment — warm ivory paper, oxblood-adjacent claret. */
+  --portal-bg:           #F6F3EC;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #EFEAE0;
+  --portal-surface-3:    #E6DFD2;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E6DFD2;
+  --portal-rule-soft:    #F4F1EA;
+  --portal-accent:       #7C2D3A;
+  --portal-accent-deep:  #5C1D28;
+  --portal-accent-soft:  rgba(124,45,58,0.12);
 }
 
 [data-portal-theme="midnight-view"] {
@@ -155,19 +155,19 @@
 }
 
 [data-portal-theme="harvest-view"] {
-  /* Autumn field — warm amber gold with deep burgundy accent over wheaten paper. */
-  --portal-bg:           #F8F3E4;
-  --portal-surface:      #FFFEFA;
-  --portal-surface-2:    #EFE6C8;
-  --portal-surface-3:    #E2D3A0;
-  --portal-ink:          #1F170A;
-  --portal-ink-mid:      #4C3820;
-  --portal-ink-soft:     #7D6240;
-  --portal-rule:         #E4D7B4;
-  --portal-rule-soft:    #F0E8D0;
-  --portal-accent:       #8B3030;
-  --portal-accent-deep:  #631D1D;
-  --portal-accent-soft:  rgba(139,48,48,0.12);
+  /* Harvest — warm paper, claret actions. Gold stays decorative, not a wash. */
+  --portal-bg:           #F7F4EE;
+  --portal-surface:      #FFFFFF;
+  --portal-surface-2:    #F0EBE1;
+  --portal-surface-3:    #E6DFD2;
+  --portal-ink:          #0F172A;
+  --portal-ink-mid:      #334155;
+  --portal-ink-soft:     #526072;
+  --portal-rule:         #E6DFD2;
+  --portal-rule-soft:    #F4F0E8;
+  --portal-accent:       #7A2E32;
+  --portal-accent-deep:  #5C1F24;
+  --portal-accent-soft:  rgba(122,46,50,0.12);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

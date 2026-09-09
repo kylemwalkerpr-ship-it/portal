@@ -9,28 +9,26 @@ import { FILE_SHOP_FILTERS, FILE_SHOP_PRODUCTS, type FileShopCategory, type File
 type FilterId = 'all' | FileShopCategory
 
 /**
- * Shop palette — every colour is a CSS custom-property reference driven by the
- * marketplace palette picker (see contexts/palette-context.tsx). Fallbacks match
- * the default "Polished Walnut" palette so the page renders correctly on SSR /
- * first paint before the provider applies the selected colourway.
+ * Shop palette — CSS custom-property references driven by the marketplace
+ * palette picker. Fallbacks match Studio (light professional) so SSR / first
+ * paint never floods mahogany or cream-on-cream.
  */
 const V = {
-  paper: 'var(--ys-paper, #4A2A1A)',
-  paper2: 'var(--ys-paper2, #553222)',
-  paper3: 'var(--ys-paper3, #603A28)',
-  vellum: 'var(--ys-vellum, #FFF9F2)',
-  cream: 'var(--ys-cream, #F7EDE0)',
-  ink: 'var(--ys-ink, #1C1410)',
-  inkMid: 'var(--ys-inkMid, #4A3C34)',
-  inkSoft: 'var(--ys-inkSoft, #7A6C64)',
-  rule: 'var(--ys-rule, rgba(247,237,224,0.16))',
-  teal: 'var(--ys-teal, #0B7A6E)',
-  tealDeep: 'var(--ys-tealDeep, #086356)',
-  gold: 'var(--ys-gold, #8E6818)',
-  star: 'var(--ys-star, #8E6818)',
-  // Neutral, palette-independent borders for light cards (works on cream across every colourway)
-  cardRule: 'rgba(24,20,16,0.10)',
-  cardRuleSoft: 'rgba(24,20,16,0.06)',
+  paper: 'var(--ys-paper, #F4F6F8)',
+  paper2: 'var(--ys-paper2, #EEF1F4)',
+  paper3: 'var(--ys-paper3, #E6EAEF)',
+  vellum: 'var(--ys-vellum, #FFFFFF)',
+  cream: 'var(--ys-cream, #F7F8FA)',
+  ink: 'var(--ys-ink, #0F172A)',
+  inkMid: 'var(--ys-inkMid, #334155)',
+  inkSoft: 'var(--ys-inkSoft, #526072)',
+  rule: 'var(--ys-rule, rgba(15,23,42,0.10))',
+  teal: 'var(--ys-teal, #3C3B6E)',
+  tealDeep: 'var(--ys-tealDeep, #2A2A55)',
+  gold: 'var(--ys-gold, #6B5210)',
+  star: 'var(--ys-star, #6B4700)',
+  cardRule: 'rgba(15,23,42,0.10)',
+  cardRuleSoft: 'rgba(15,23,42,0.06)',
 } as const
 
 const DISPLAY = F.display.includes('fraunces') ? F.display : "var(--font-fraunces), 'Fraunces', Georgia, serif"
@@ -279,21 +277,21 @@ function FeaturedCard({ product: p }: { product: FileShopProduct }) {
 const SHOP_CSS = `
   .ys-files-shop {
     background: ${V.paper};
-    color: ${V.cream};
+    color: ${V.ink};
     font-family: ${UI};
     font-weight: 500;
   }
   .ys-shop-wrap { width: min(1180px, calc(100vw - 40px)); margin: 0 auto; }
   .ys-shop-kicker {
     font-family: ${UI}; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
-    color: ${V.cream}; font-weight: 800; margin: 0 0 10px; opacity: 0.9;
+    color: ${V.teal}; font-weight: 800; margin: 0 0 10px;
   }
   .ys-shop-crumbs {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 500; color: ${V.cream}; opacity: 0.72; margin-bottom: 28px;
+    font-size: 13px; font-weight: 500; color: ${V.inkMid}; margin-bottom: 28px;
   }
-  .ys-shop-crumbs a { color: ${V.cream}; text-decoration: none; transition: color .2s ${EASE}, opacity .2s ${EASE}; }
-  .ys-shop-crumbs a:hover { color: ${V.cream}; opacity: 1; }
+  .ys-shop-crumbs a { color: ${V.ink}; text-decoration: none; transition: color .2s ${EASE}, opacity .2s ${EASE}; }
+  .ys-shop-crumbs a:hover { color: ${V.teal}; }
 
   /* Announcement strip */
   .ys-shop-bar {
@@ -302,7 +300,7 @@ const SHOP_CSS = `
   }
   .ys-shop-bar .ys-shop-wrap {
     display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center;
-    padding: 9px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; color: ${V.cream};
+    padding: 9px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; color: ${V.inkMid};
   }
   .ys-shop-bar span { opacity: 0.9; white-space: nowrap; }
 
@@ -315,9 +313,9 @@ const SHOP_CSS = `
   .ys-shop-hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.65fr); gap: 40px; align-items: center; }
   .ys-shop-hero h1 {
     font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(36px, 5vw, 58px);
-    line-height: 1.06; letter-spacing: -0.03em; margin: 0 0 16px; max-width: 16ch; color: ${V.cream};
+    line-height: 1.06; letter-spacing: -0.03em; margin: 0 0 16px; max-width: 16ch; color: ${V.ink};
   }
-  .ys-shop-lede { font-size: 16px; line-height: 1.6; color: ${V.cream}; opacity: 0.85; max-width: 54ch; margin: 0 0 28px; font-weight: 500; }
+  .ys-shop-lede { font-size: 16px; line-height: 1.6; color: ${V.inkMid}; opacity: 1; max-width: 54ch; margin: 0 0 28px; font-weight: 500; }
   .ys-shop-cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
   .ys-shop-btn {
     display: inline-flex; align-items: center; justify-content: center;
@@ -327,14 +325,14 @@ const SHOP_CSS = `
   }
   .ys-shop-btn.primary { background: ${V.teal}; color: #fff; }
   .ys-shop-btn.primary:hover { background: ${V.tealDeep}; transform: translateY(-1px); }
-  .ys-shop-btn.ghost { background: transparent; color: ${V.cream}; border: 1px solid ${V.rule}; }
-  .ys-shop-btn.ghost:hover { border-color: ${V.cream}; color: ${V.cream}; }
+  .ys-shop-btn.ghost { background: transparent; color: ${V.ink}; border: 1px solid ${V.rule}; }
+  .ys-shop-btn.ghost:hover { border-color: ${V.ink}; color: ${V.ink}; }
 
   /* Stats — light cards that pop against the wood */
   .ys-shop-stats {
     display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: ${V.cardRule};
     border: 1px solid ${V.cardRule}; border-radius: 16px; overflow: hidden;
-    box-shadow: 0 18px 40px -24px rgba(0,0,0,0.55);
+    box-shadow: 0 18px 40px -24px rgba(15,23,42,0.18);
   }
   .ys-shop-stat { background: ${V.vellum}; padding: 20px 18px; }
   .ys-shop-stat strong { display: block; font-family: ${DISPLAY}; font-size: 24px; font-weight: 800; color: ${V.ink}; letter-spacing: -0.02em; }
@@ -344,7 +342,7 @@ const SHOP_CSS = `
   .ys-shop-featured { padding: 52px 0 12px; background: ${V.paper}; }
   .ys-shop-section-head { margin-bottom: 22px; }
   .ys-shop-section-head h2, .ys-shop-trust h2, .ys-shop-catalog h2 {
-    font-family: ${DISPLAY}; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: ${V.cream};
+    font-family: ${DISPLAY}; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: ${V.ink};
   }
   .ys-shop-section-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
   .ys-shop-featured-rail {
@@ -368,7 +366,7 @@ const SHOP_CSS = `
   }
   .ys-shop-featured-card:hover, .ys-shop-card:hover {
     transform: translateY(-5px); border-color: transparent;
-    box-shadow: 0 26px 50px rgba(0,0,0,0.30);
+    box-shadow: 0 18px 40px -24px rgba(15,23,42,0.14);
   }
   .ys-shop-card-media { display: block; color: inherit; text-decoration: none; }
   .ys-shop-cover {
@@ -433,7 +431,7 @@ const SHOP_CSS = `
     transition: border-color .2s ${EASE}, box-shadow .2s ${EASE};
   }
   .ys-shop-search input::placeholder { color: ${V.inkSoft}; }
-  .ys-shop-search input:focus { outline: none; border-color: ${V.teal}; box-shadow: 0 0 0 3px rgba(11,122,110,0.22); }
+  .ys-shop-search input:focus { outline: none; border-color: ${V.teal}; box-shadow: 0 0 0 3px rgba(60,59,110,0.16); }
   .ys-shop-filters {
     display: flex; flex-wrap: nowrap; gap: 8px; margin: 8px 0 16px;
     overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
@@ -442,15 +440,15 @@ const SHOP_CSS = `
   .ys-shop-filters::-webkit-scrollbar { display: none; }
   .ys-shop-filters button {
     flex: 0 0 auto; scroll-snap-align: start;
-    border: 1px solid ${V.rule}; background: transparent; color: ${V.cream}; border-radius: 999px;
+    border: 1px solid ${V.rule}; background: ${V.vellum}; color: ${V.ink}; border-radius: 999px;
     padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: ${UI};
     transition: background .2s ${EASE}, color .2s ${EASE}, border-color .2s ${EASE}, transform .2s ${EASE};
   }
-  .ys-shop-filters button:hover { border-color: ${V.cream}; }
+  .ys-shop-filters button:hover { border-color: ${V.ink}; background: ${V.paper2}; }
   .ys-shop-filters button.on, .ys-shop-filters button.on:hover {
     background: ${V.teal}; color: #fff; border-color: ${V.teal};
   }
-  .ys-shop-count { font-size: 13px; color: ${V.cream}; opacity: 0.72; margin: 0 0 18px; font-weight: 500; }
+  .ys-shop-count { font-size: 13px; color: ${V.inkSoft}; margin: 0 0 18px; font-weight: 500; }
   .ys-shop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   .ys-shop-empty { background: ${V.vellum}; border: 1px dashed ${V.cardRule}; border-radius: 18px; padding: 40px; text-align: center; color: ${V.inkSoft}; }
   .ys-shop-empty button {
@@ -465,8 +463,8 @@ const SHOP_CSS = `
   .ys-shop-trust article span { font-family: ${UI}; font-size: 24px; font-weight: 800; letter-spacing: -0.04em; color: ${V.teal}; display: block; line-height: 1; }
   .ys-shop-trust article h3 { font-family: ${UI}; font-size: 16px; font-weight: 800; margin: 10px 0 6px; color: ${V.ink}; }
   .ys-shop-trust article p { margin: 0; color: ${V.inkMid}; font-size: 13px; line-height: 1.5; font-weight: 500; }
-  .ys-shop-return { font-size: 14px; color: ${V.cream}; opacity: 0.8; font-weight: 500; }
-  .ys-shop-return a { color: ${V.cream}; font-weight: 700; text-decoration: none; }
+  .ys-shop-return { font-size: 14px; color: ${V.inkMid}; font-weight: 500; }
+  .ys-shop-return a { color: ${V.teal}; font-weight: 700; text-decoration: none; }
   .ys-shop-return a:hover { text-decoration: underline; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 

@@ -145,14 +145,14 @@ export function MarketplaceProvidersIndex() {
         <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.onPaperSoft, fontFamily: F.mono }}>
           <Link href="/" style={{ color: T.onPaper, textDecoration: 'none' }}>Marketplace</Link>
           <span style={{ color: T.onPaperSoft }}>›</span>
-          <span style={{ color: '#FFFFFF' }}>Providers</span>
+          <span style={{ color: T.ink }}>Providers</span>
         </div>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.onPaperEm, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Verified panel</div>
-            <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: '#FFFFFF', margin: 0, letterSpacing: '-.012em' }}>All providers.</h1>
+            <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: T.ink, margin: 0, letterSpacing: '-.012em' }}>All providers.</h1>
             <div style={{ fontSize: 14, color: T.onPaperSoft, marginTop: 6 }}>
               {loading ? 'Searching the panel…' : <>{fmtN(total)} {total === 1 ? 'provider matches' : 'providers match'} your filters.</>}
             </div>

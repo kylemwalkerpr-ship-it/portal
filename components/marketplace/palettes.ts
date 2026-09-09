@@ -1,11 +1,20 @@
 /**
- * Marketplace colour palettes — bright, premium, welcoming, and legibility-first.
+ * Marketplace colour palettes — light, professional, Messages-grade.
  *
- * Emerald is the Marketplace brand/action colour. Persisted palette ids stay
- * unchanged so existing preferences survive visual refreshes, but legacy blue
- * and cyan colourways are intentionally repurposed to professional non-blue
- * alternatives. Every shipped text/surface role remains covered by
- * tests/marketplace-palette-contrast.test.ts at WCAG AA (4.5:1).
+ * The public market used to flood the shell with mahogany / emerald / teal /
+ * blue. That fails as a professional services surface: low-legibility chrome,
+ * competing hues, and a visual language that does not match Portal Messages
+ * (cool gray paper, white cards, charcoal type, one quiet accent).
+ *
+ * Contract:
+ *   - paper / paper2 / paper3 / footer are LIGHT chrome (page, header, rails)
+ *   - vellum / cream are white / off-white cards
+ *   - onPaper / onPaperSoft / onPaperEm are DARK ink on that chrome
+ *   - indigo / teal are legacy token names whose role is the action accent,
+ *     used on buttons, selected chips and links — never as the page fill
+ *
+ * Persisted palette ids stay stable so existing preferences survive.
+ * Contrast is gated by tests/marketplace-palette-contrast.test.ts (WCAG AA).
  */
 
 export interface PaletteTokens {
@@ -43,143 +52,162 @@ export interface PaletteDef {
   tokens: PaletteTokens
 }
 
-/**
- * `indigo` and `teal` are legacy token names used throughout Marketplace.
- * Their semantic role is now brand/action accent, so both resolve to emerald.
- */
-const SHARED_LIGHT = {
+/** Shared ink + status tokens. Matches Portal Messages / landing type. */
+const STUDIO_INK = {
   vellum:      '#FFFFFF',
-  ink:         '#17201D',
-  inkMid:      '#43534D',
-  inkSoft:     '#5E6F68',
-  onPaper:     '#FFFFFF',
-  onPaperSoft: 'rgba(255,255,255,0.90)',
-  onPaperEm:   '#FFF7E8',
-  indigo:      '#087A5B',
-  indigoDeep:  '#065F46',
-  indigoSoft:  'rgba(8,122,91,0.14)',
+  ink:         '#0F172A',
+  inkMid:      '#334155',
+  inkSoft:     '#526072',
+  onPaper:     '#0F172A',
+  onPaperSoft: 'rgba(15,23,42,0.72)',
+  onPaperEm:   '#0F172A',
+  rule:        'rgba(15,23,42,0.10)',
+  ruleSoft:    'rgba(15,23,42,0.06)',
   brick:       '#B42318',
-  gold:        '#FFF4D6',
-  moss:        '#3F6212',
-  star:        '#8A5A00',
-  teal:        '#087A5B',
-  tealDeep:    '#065F46',
+  gold:        '#6B5210',
+  moss:        '#3F5A28',
+  star:        '#6B4700',
+} as const
+
+function lightPalette(opts: {
+  paper: string
+  paper2: string
+  paper3: string
+  cream: string
+  footer: string
+  accent: string
+  accentDeep: string
+  accentSoft: string
+}): PaletteTokens {
+  return {
+    ...STUDIO_INK,
+    paper:       opts.paper,
+    paper2:      opts.paper2,
+    paper3:      opts.paper3,
+    cream:       opts.cream,
+    footer:      opts.footer,
+    indigo:      opts.accent,
+    indigoDeep:  opts.accentDeep,
+    indigoSoft:  opts.accentSoft,
+    teal:        opts.accent,
+    tealDeep:    opts.accentDeep,
+  }
 }
 
-// Storage key `mahogany` retained for backwards compatibility.
-const BRIGHT_EMERALD: PaletteTokens = {
-  ...SHARED_LIGHT,
-  paper:       '#087A5B',
-  paper2:      '#076E52',
-  paper3:      '#065F46',
-  cream:       '#F7FAF9',
-  rule:        'rgba(255,255,255,0.22)',
-  ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#054C39',
-}
+/** Default — Messages-grade cool gray + landing slate-navy actions. */
+const STUDIO: PaletteTokens = lightPalette({
+  paper:      '#F4F6F8',
+  paper2:     '#EEF1F4',
+  paper3:     '#E6EAEF',
+  cream:      '#F7F8FA',
+  footer:     '#E8ECF1',
+  accent:     '#3C3B6E',
+  accentDeep: '#2A2A55',
+  accentSoft: 'rgba(60,59,110,0.12)',
+})
 
-const ROYAL_AUBERGINE: PaletteTokens = {
-  ...SHARED_LIGHT,
-  paper:       '#7C2D6F',
-  paper2:      '#6D285F',
-  paper3:      '#5B214F',
-  cream:       '#FFF7FB',
-  rule:        'rgba(255,255,255,0.22)',
-  ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#45183D',
-}
+const PARCHMENT: PaletteTokens = lightPalette({
+  paper:      '#F6F3EC',
+  paper2:     '#EFEAE0',
+  paper3:     '#E6DFD2',
+  cream:      '#FAF8F3',
+  footer:     '#E8E2D6',
+  accent:     '#7A2E32',
+  accentDeep: '#5C1F24',
+  accentSoft: 'rgba(122,46,50,0.12)',
+})
 
-const BURNISHED_AMBER: PaletteTokens = {
-  ...SHARED_LIGHT,
-  paper:       '#9A4E00',
-  paper2:      '#884300',
-  paper3:      '#743900',
-  cream:       '#FFF8EF',
-  rule:        'rgba(255,255,255,0.22)',
-  ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#5E2E00',
-}
+const GRAPHITE: PaletteTokens = lightPalette({
+  paper:      '#F5F6F8',
+  paper2:     '#ECEEF2',
+  paper3:     '#E2E5EB',
+  cream:      '#F8F9FB',
+  footer:     '#E4E7EC',
+  accent:     '#3F3F46',
+  accentDeep: '#27272A',
+  accentSoft: 'rgba(63,63,70,0.12)',
+})
 
-const RASPBERRY_WINE: PaletteTokens = {
-  ...SHARED_LIGHT,
-  paper:       '#9F1239',
-  paper2:      '#881337',
-  paper3:      '#701A36',
-  cream:       '#FFF6F8',
-  rule:        'rgba(255,255,255,0.22)',
-  ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#500724',
-}
+const CLARET: PaletteTokens = lightPalette({
+  paper:      '#F7F4F2',
+  paper2:     '#F0EAE7',
+  paper3:     '#E6DDD8',
+  cream:      '#FBF8F6',
+  footer:     '#E9E2DE',
+  accent:     '#7C2D3A',
+  accentDeep: '#5C1D28',
+  accentSoft: 'rgba(124,45,58,0.12)',
+})
 
-const FOREST_JADE: PaletteTokens = {
-  ...SHARED_LIGHT,
-  paper:       '#166534',
-  paper2:      '#14532D',
-  paper3:      '#124628',
-  cream:       '#F5FBF7',
-  rule:        'rgba(255,255,255,0.22)',
-  ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#0B3922',
-}
+/** Quiet olive actions — the Messages selected-pill, never a green flood. */
+const OLIVE: PaletteTokens = lightPalette({
+  paper:      '#F4F6F5',
+  paper2:     '#EBEFEC',
+  paper3:     '#E2E8E4',
+  cream:      '#F7F9F8',
+  footer:     '#E6EBE8',
+  accent:     '#2F5D46',
+  accentDeep: '#214536',
+  accentSoft: 'rgba(47,93,70,0.12)',
+})
 
-const WARM_TERRACOTTA: PaletteTokens = {
-  ...SHARED_LIGHT,
-  paper:       '#B54708',
-  paper2:      '#9A3C07',
-  paper3:      '#7F3107',
-  cream:       '#FFF7F2',
-  rule:        'rgba(255,255,255,0.22)',
-  ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#612406',
-}
+const STONE: PaletteTokens = lightPalette({
+  paper:      '#F6F5F2',
+  paper2:     '#EEECE7',
+  paper3:     '#E5E1DA',
+  cream:      '#FAF9F6',
+  footer:     '#E8E5DF',
+  accent:     '#8A3D1C',
+  accentDeep: '#6B2E14',
+  accentSoft: 'rgba(138,61,28,0.12)',
+})
 
 export const PALETTES: PaletteDef[] = [
   {
     name: 'mahogany',
-    label: 'Bright Emerald',
+    label: 'Studio',
     emoji: '●',
-    description: 'Clean emerald with crisp white surfaces and charcoal text. Fresh, trustworthy, and highly legible.',
-    tokens: BRIGHT_EMERALD,
+    description: 'Cool gray paper, charcoal type, slate-navy actions. The Messages-grade professional default.',
+    tokens: STUDIO,
   },
   {
     name: 'luxury-classic',
-    label: 'Royal Aubergine',
+    label: 'Parchment',
     emoji: '◆',
-    description: 'Saturated aubergine with white conversion surfaces and emerald actions. Polished, distinctive, and professional.',
-    tokens: ROYAL_AUBERGINE,
+    description: 'Warm ivory paper with oxblood actions. Quiet, editorial, and highly legible.',
+    tokens: PARCHMENT,
   },
   {
     name: 'executive',
-    label: 'Burnished Amber',
+    label: 'Graphite',
     emoji: '■',
-    description: 'Warm burnished amber with bright neutral surfaces and emerald actions. Energetic without sacrificing readability.',
-    tokens: BURNISHED_AMBER,
+    description: 'Neutral gray paper with graphite actions. Precise, modern, no decorative hue.',
+    tokens: GRAPHITE,
   },
   {
     name: 'rich-heritage',
-    label: 'Raspberry Wine',
+    label: 'Claret',
     emoji: '◈',
-    description: 'Rich raspberry-wine with bright ivory surfaces and emerald actions. Sophisticated, warm, and confident.',
-    tokens: RASPBERRY_WINE,
+    description: 'Warm stone paper with claret actions. Restrained heritage without a colour wash.',
+    tokens: CLARET,
   },
   {
     name: 'modern-luxury',
-    label: 'Forest Jade',
+    label: 'Olive',
     emoji: '◇',
-    description: 'Deep jade-green with white cards and restrained emerald accents. Calm, credible, and premium.',
-    tokens: FOREST_JADE,
+    description: 'Cool linen paper with olive actions used like Messages selected chips — never a green shell.',
+    tokens: OLIVE,
   },
   {
     name: 'santorini',
-    label: 'Warm Terracotta',
+    label: 'Stone',
     emoji: '○',
-    description: 'Bright terracotta with airy white surfaces and emerald actions. Human, modern, and visually warm.',
-    tokens: WARM_TERRACOTTA,
+    description: 'Warm stone paper with terracotta actions. Human, calm, and professional.',
+    tokens: STONE,
   },
 ]
 
-// Keep the storage id stable so existing users on the former default migrate
-// automatically to Bright Emerald without losing preferences.
+// Storage id stays `mahogany` so existing preferences migrate onto Studio.
 export const DEFAULT_PALETTE_NAME = 'mahogany'
 
 export function getPalette(name: string): PaletteDef {

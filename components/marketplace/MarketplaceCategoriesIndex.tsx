@@ -48,13 +48,13 @@ export function MarketplaceCategoriesIndex() {
         <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.onPaperSoft, fontFamily: F.mono }}>
           <Link href="/" style={{ color: T.onPaper, textDecoration: 'none' }}>Marketplace</Link>
           <span style={{ color: T.onPaperSoft }}>›</span>
-          <span style={{ color: '#FFFFFF' }}>Categories</span>
+          <span style={{ color: T.ink }}>Categories</span>
         </div>
 
         {/* Header */}
         <div style={{ marginBottom: 22 }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.onPaperEm, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Browse</div>
-          <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: '#FFFFFF', margin: 0, letterSpacing: '-.012em' }}>All categories.</h1>
+          <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: T.ink, margin: 0, letterSpacing: '-.012em' }}>All categories.</h1>
           <div style={{ fontSize: 14, color: T.onPaperSoft, marginTop: 6, maxWidth: 720 }}>
             {CATEGORIES.length} categories spanning {CATEGORIES.reduce((s, c) => s + (c.subcategories?.length || 0), 0)} subcategories. Each tile opens curated gigs and templates.
           </div>

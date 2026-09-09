@@ -195,7 +195,7 @@ const breadcrumb = {
 }
 
 const breadcrumbLink = {
-  color: '#FFFFFF',
+  color: T.ink,
   textDecoration: 'none',
   transition: 'color 150ms',
 }
@@ -205,7 +205,7 @@ const breadcrumbSeparator = {
 }
 
 const breadcrumbCurrent = {
-  color: '#FFFFFF',
+  color: T.ink,
   fontWeight: 500,
 }
 
@@ -230,7 +230,7 @@ const tabStyle = {
 
 const activeTabStyle = {
   ...tabStyle,
-  color: '#FFFFFF',
+  color: T.ink,
   borderBottomColor: T.indigo,
 }
 
