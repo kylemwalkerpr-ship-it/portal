@@ -1,0 +1,25 @@
+name: YQAA Client Follow-ups
+
+on:
+  schedule:
+    - cron: '17 * * * *'   # hourly; per-conversation policy enforces 24h/72h delays
+  workflow_dispatch: {}
+
+jobs:
+  follow-up:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger guarded YQAA follow-ups
+        run: |
+          set -euo pipefail
+          URL="${PORTAL_URL:-https://portal.yousafeconsultancy.com}/api/cron/yqaa-followups"
+          echo "POST $URL"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{"limit":50}')
+          echo "HTTP $code"; cat /tmp/resp.json || true
+          test "$code" = "200"
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PORTAL_URL: ${{ vars.PORTAL_URL }}
