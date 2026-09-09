@@ -22,6 +22,11 @@
    Do not subtract an additional guessed URL-bar/input-assistant allowance:
    it leaves a large blank strip below the composer once the viewport rules
    correctly win the cascade. Focus only changes compact composer padding.
+
+   This file is the FINAL mobile Messenger height owner for every shared chat
+   surface: student, attorney, consultant, admin, Marketplace Messages, and the
+   direct Marketplace provider drawer. Surface-specific CSS may style chrome,
+   but must not re-introduce its own 100vh/100dvh keyboard geometry.
 */
 
 @media (max-width: 768px) {
@@ -149,18 +154,38 @@
     padding-bottom: 8px !important;
   }
 
-  body .cw-market > .yousafe-messenger {
+  /* Marketplace's in-page Messages host contains the actual UnifiedInbox as a
+     direct nested .yousafe-messenger. Match by structure instead of assuming it
+     is a direct child of .cw-market; this remains correct if the shell gains an
+     intermediate content wrapper. The 60px mobile Marketplace header remains
+     outside the list view. Once a thread opens, the ChatScreen rule above owns
+     the full visual viewport exactly like the dashboard Messenger. */
+  body .cw-market .yousafe-messenger:has(> .yousafe-messenger .ys-chatscreen) {
     height: calc(var(--ys-visual-viewport-height, 100dvh) - 60px) !important;
     min-height: 0 !important;
     max-height: calc(var(--ys-visual-viewport-height, 100dvh) - 60px) !important;
     overflow: hidden !important;
   }
 
+  /* Direct provider contact from Marketplace uses ChatSidePane rather than the
+     dashboard inbox, but it is still the same Messenger product. Its host must
+     follow the measured viewport and never own a separate 100dvh geometry. */
   body .chat-side-pane.yousafe-messenger,
   body .cw-market .chat-side-pane.yousafe-messenger {
     height: var(--ys-visual-viewport-height, 100dvh) !important;
     min-height: 0 !important;
     max-height: var(--ys-visual-viewport-height, 100dvh) !important;
+    overflow: hidden !important;
+  }
+
+  /* Admin Master Chats historically declared its own 100dvh shell. Inside the
+     dashboard that creates a second viewport owner. Keep the admin chrome and
+     controls, but size its host to the already-measured dashboard rectangle;
+     the shared ChatScreen rule above still takes over when a thread opens. */
+  body .yousafe-dashboard-shell .yousafe-messenger .admin-master-shell {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
     overflow: hidden !important;
   }
 }
