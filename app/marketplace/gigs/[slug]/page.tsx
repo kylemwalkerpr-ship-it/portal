@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { cache } from 'react'
-import { notFound, redirect } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -120,9 +120,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     // Check for slug redirect before attempting to load the gig
     const redirected = await checkSlugRedirect(slug)
     if (redirected) {
-      // Return metadata for the canonical location — the actual 301
-      // redirect happens in the Page component below, but crawlers that
-      // only follow og:url will end up at the right place.
+      // Return metadata for the canonical location — the actual permanent
+      // redirect happens in the Page component below.
       const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${redirected}/`)
       return {
         title: 'Gig | YouSafe',
@@ -182,12 +181,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
 
-  // Server-side 301 redirect for old slugs that were cleaned up.
-  // This runs before the client component renders, so crawlers and
-  // browser visitors both get a proper HTTP 301 to the new URL.
+  // Old slugs are permanent aliases of the canonical service URL. Next.js
+  // permanentRedirect emits HTTP 308, preserving SEO signals without treating
+  // this migration like a temporary route change.
   const redirected = await checkSlugRedirect(slug)
   if (redirected) {
-    redirect(`/marketplace/gigs/${redirected}`)
+    permanentRedirect(`/marketplace/gigs/${redirected}`)
   }
 
   // Single load for JSON-LD + SSR body (React cache() also dedupes with metadata).
@@ -196,7 +195,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   // Missing / inactive / draft gigs must not soft-200 with a client loading
   // shell + noindex meta — that pattern inflates GSC "Excluded by noindex".
   // Real 404 (not-found) is the correct signal for unknown slugs; renamed
-  // slugs are handled by the 301 above.
+  // slugs are handled by the permanent redirect above.
   if (!gig) notFound()
 
   // Build the JSON-LD graph for this gig. Failure here must never break the
