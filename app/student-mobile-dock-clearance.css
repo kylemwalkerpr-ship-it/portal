@@ -7,12 +7,14 @@
    the dashboard flex tree, so the scroll owner must reserve its *full* visual
    footprint (dock + safe-area offset + breathing room) inside the viewport.
 
-   Padding alone is not a reliable end-of-scroll reserve for these dashboard
-   flex layouts on iOS Safari: the final flex child can still settle beneath a
-   fixed dock and only become visible during rubber-band overscroll. Ordinary
-   dashboard pages therefore get a real flex tail spacer equal to the dock's
-   occluding footprint, plus separate breathing-room padding. Conversation
-   lists use the same contract inside their own scroll owner.
+   The dock reserve must live after the real dashboard content, not as a flex
+   sibling of .yousafe-dashboard-body. The body is flex:1/min-height:0, so a
+   sibling spacer can be absorbed by shrinking that body instead of extending
+   the document's scrollable content on iOS Safari. Ordinary dashboard pages
+   therefore append the reserve to .yousafe-dashboard-content itself. The last
+   card then has a real content-flow tail beneath it and can settle above the
+   dock after touch release. Conversation lists keep the same contract inside
+   their own scroll owner.
 
    This layer also targets the current system-wide YouSafe Assistant (.ysa-*),
    which replaced the legacy .ys-chat-* widget after the original student
@@ -47,23 +49,23 @@
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-main:not(:has(.yousafe-messenger)) {
-    padding-bottom: var(--student-dock-v2-gap) !important;
+    padding-bottom: 0 !important;
     overflow-y: auto !important;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* A physical tail spacer is intentionally separate from padding. This makes
-     the final card/action stop above the dock after touch release instead of
-     appearing only while Safari is being held in rubber-band overscroll. */
+  /* Put the reserve after the actual page content. Unlike a pseudo-element on
+     .yousafe-dashboard-main, this cannot be consumed by the flexible body and
+     therefore contributes deterministically to scrollHeight on iOS Safari. */
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
-    .yousafe-dashboard-main:not(:has(.yousafe-messenger))::after {
+    .yousafe-dashboard-main:not(:has(.yousafe-messenger))
+    .yousafe-dashboard-content::after {
     content: '';
     display: block;
-    flex: 0 0 var(--student-dock-v2-occlusion);
     width: 100%;
-    height: var(--student-dock-v2-occlusion);
-    min-height: var(--student-dock-v2-occlusion);
+    height: var(--student-dock-v2-clearance);
+    min-height: var(--student-dock-v2-clearance);
     pointer-events: none;
   }
 
