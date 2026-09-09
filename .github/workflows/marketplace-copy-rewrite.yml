@@ -17,8 +17,7 @@ jobs:
     name: Rewrite active gigs and provider profiles
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      contains(github.event.workflow_run.head_commit.message, '[marketplace-copy-rewrite]')
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -27,16 +26,31 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Check one-time Marketplace rewrite marker
+        id: marker
+        shell: bash
+        run: |
+          if [ -f .github/marketplace-copy-rewrite.enabled ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Marketplace copy rewrite marker is enabled for this deployed commit."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Marketplace copy rewrite marker is absent; no-op."
+          fi
+
       - name: Set up Node
+        if: steps.marker.outputs.enabled == 'true'
         uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
 
       - name: Install dependencies
+        if: steps.marker.outputs.enabled == 'true'
         run: npm ci --legacy-peer-deps
 
       - name: Verify gig images before copy rewrite
+        if: steps.marker.outputs.enabled == 'true'
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -44,6 +58,7 @@ jobs:
         run: node scripts/verify-marketplace-image-preservation.mjs
 
       - name: Rewrite and audit Marketplace copy
+        if: steps.marker.outputs.enabled == 'true'
         env:
           MARKETPLACE_COPY_REWRITE: '1'
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
@@ -56,7 +71,7 @@ jobs:
         run: node scripts/rewrite-marketplace-copy.mjs
 
       - name: Verify gig images after copy rewrite
-        if: always()
+        if: always() && steps.marker.outputs.enabled == 'true'
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
