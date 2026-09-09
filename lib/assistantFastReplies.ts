@@ -16,6 +16,18 @@ function asksCompanyOverview(text: string): boolean {
   )
 }
 
+function asksServicesOverview(text: string): boolean {
+  const q = normalize(text).replace(/[?.!]+$/g, '')
+  const specificMatter = /\b(visa|immigration|study permit|student visa|f-?1|pgwp|work permit|sponsorship|green card|permanent residence|citizenship|admission|university|college|essay|sop|credential|resume|cv|job search|housing|tenant|legal|lawyer|attorney|canada|australia|united kingdom|uk|united states|usa|price|pricing|cost|package)\b/.test(q)
+  if (specificMatter) return false
+  return (
+    /^(what|which) services? (do you|does yousafe|does this company) (sell|offer|provide|have)$/.test(q) ||
+    /^(what|which) (do you|does yousafe) (sell|offer|provide)$/.test(q) ||
+    /^(tell me|show me) (about )?(your|yousafe'?s) services?$/.test(q) ||
+    /^(what are|list) (your|yousafe'?s|the) services?$/.test(q)
+  )
+}
+
 /**
  * Resolve only facts that are stable, curated and do not need a model turn.
  * If there is an unanswered substantive user message in the current tail,
@@ -50,7 +62,25 @@ export function getDeterministicYqaaReply(turns: SystemAssistantTurn[]): string 
     ].join('\n')
   }
 
+  if (asksServicesOverview(last)) {
+    return [
+      'YouSafe offers services through **verified attorneys and credentialed consultants** across these Marketplace areas:',
+      '',
+      '- **Immigration Services** — study permits, work permits, permanent-residence pathways, family sponsorship, visitor visas, and citizenship support.',
+      '- **Education & Admissions** — university and graduate admissions, scholarships, test preparation, and academic mentoring.',
+      '- **Academic Writing & Application Support** — application essays, statements of purpose, scholarship essays, research writing, proofreading, and editing.',
+      '- **Legal Services** — document preparation, attorney review, legal consultations, business formation, and compliance work handled by appropriately licensed professionals where required.',
+      '- **Settlement & Integration** — housing, banking, healthcare navigation, daily-life setup, and cultural integration.',
+      '- **Career Development** — resumes/CVs, LinkedIn, job-search help, interview preparation, career coaching, and internship support.',
+      '- **Business Services** — consulting, marketing/branding, finance/accounting, grant writing, and tax advisory.',
+      '- **Credentials & Assessment** — foreign credential assessment, licensing/certification, and education verification.',
+      '- **Mentorship & Coaching** — student mentorship, professional coaching, and ongoing guidance.',
+      '',
+      'Browse current listings and providers in the [YouSafe Marketplace](https://market.yousafeconsultancy.com/). If you tell me **what you need help with and which country it concerns**, I can point you to the most relevant category.',
+    ].join('\n')
+  }
+
   return null
 }
 
-export const assistantFastReplyInternals = { isGreeting, asksCompanyOverview }
+export const assistantFastReplyInternals = { isGreeting, asksCompanyOverview, asksServicesOverview }

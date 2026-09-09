@@ -70,6 +70,28 @@ describe('assistant marketplace intent', () => {
   })
 })
 
+describe('assistant deterministic fast replies', () => {
+  it('answers the generic services question from the verified taxonomy without a model call', async () => {
+    const { getDeterministicYqaaReply } = await import('@/lib/assistantFastReplies')
+    const reply = getDeterministicYqaaReply([
+      { role: 'user', content: 'What services do you sell?' },
+    ])
+
+    expect(reply).toContain('Immigration Services')
+    expect(reply).toContain('Education & Admissions')
+    expect(reply).toContain('Legal Services')
+    expect(reply).toContain('Career Development')
+    expect(reply).toContain('https://market.yousafeconsultancy.com/')
+  })
+
+  it('keeps specific service questions on the grounded AI path', async () => {
+    const { getDeterministicYqaaReply } = await import('@/lib/assistantFastReplies')
+    expect(getDeterministicYqaaReply([
+      { role: 'user', content: 'What services do you have for an F-1 visa?' },
+    ])).toBeNull()
+  })
+})
+
 describe('system-wide assistant model routing', () => {
   const originalFetch = global.fetch
 
@@ -79,7 +101,7 @@ describe('system-wide assistant model routing', () => {
     jest.clearAllMocks()
   })
 
-  it('routes through Messenger SuperGrok auth/model without another AI provider', async () => {
+  it('uses the current Responses API with low reasoning through Messenger SuperGrok auth', async () => {
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({
         apiKey: 'system-ai-test-token',
@@ -92,7 +114,7 @@ describe('system-wide assistant model routing', () => {
     const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit): Promise<any> => ({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ choices: [{ message: { content: 'Grounded answer' } }] }),
+      text: async () => JSON.stringify({ output_text: 'Grounded answer' }),
     }))
     global.fetch = fetchMock as any
 
@@ -105,10 +127,14 @@ describe('system-wide assistant model routing', () => {
     expect(result.model).toBe('grok-test-model')
     expect(result.authMode).toBe('supergrok')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(String(fetchMock.mock.calls[0][0])).toBe('https://system-ai.example/v1/chat/completions')
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://system-ai.example/v1/responses')
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit)?.body))
+    expect(body.reasoning).toEqual({ effort: 'low' })
+    expect(body.prompt_cache_key).toBe('yqaa-public-assistant-v2')
+    expect(body.store).toBe(false)
   })
 
-  it('uses an independent protocol fallback after a primary timeout', async () => {
+  it('uses Chat Completions as an independent low-reasoning fallback after a Responses timeout', async () => {
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({
         apiKey: 'system-ai-test-token',
@@ -120,17 +146,12 @@ describe('system-wide assistant model routing', () => {
 
     const timeout = new Error('timed out')
     timeout.name = 'AbortError'
-    const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit): Promise<any> => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ output_text: 'Recovered answer' }),
-    }))
-    fetchMock
+    const fetchMock = jest.fn()
       .mockRejectedValueOnce(timeout)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        text: async () => JSON.stringify({ output_text: 'Recovered answer' }),
+        text: async () => JSON.stringify({ choices: [{ message: { content: 'Recovered answer' } }] }),
       })
     global.fetch = fetchMock as any
 
@@ -141,7 +162,9 @@ describe('system-wide assistant model routing', () => {
 
     expect(result.text).toBe('Recovered answer')
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/chat/completions')
-    expect(String(fetchMock.mock.calls[1][0])).toContain('/responses')
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/responses')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/chat/completions')
+    const fallbackBody = JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit)?.body))
+    expect(fallbackBody.reasoning_effort).toBe('low')
   })
 })
