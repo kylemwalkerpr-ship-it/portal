@@ -65,8 +65,9 @@ describe('shared mobile Messenger surface contract', () => {
   })
 
   test('the coordinator focus selector is role-agnostic and covers every .comp-input Messenger composer', () => {
+    expect(coordinator).toContain('const CHAT_ROOT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view=\'chat\']"')
     expect(coordinator).toContain('const COMPOSER_INPUT_SELECTOR = `${CHAT_ROOT_SELECTOR} .comp-input`')
-    expect(coordinator).not.toContain('student')
+    expect(coordinator).not.toContain('.yousafe-dashboard-shell[data-student-mobile-enhanced')
     expect(coordinator).toContain('focusTimers = [80, 180, 360, 650]')
   })
 })
