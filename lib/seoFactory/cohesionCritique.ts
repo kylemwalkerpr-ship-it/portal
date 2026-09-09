@@ -3,6 +3,8 @@
  * author-revise pass consume these findings as directives.
  */
 
+import { cycleProtectedUrls } from './citationRetrievalGate'
+
 export type CohesionFinding = { code: string; message: string; evidence?: string }
 
 const TLDR_HEADING = /^(in 60 seconds|tldr|tl;dr|key takeaways)$/i
@@ -171,14 +173,14 @@ export function critiqueCohesion(content: string): { score: number; findings: Co
 }
 
 /**
- * Factual fingerprint tokens that must survive a full-document author rewrite:
- * URLs, numbers, and legal qualifiers.
+ * Factual fingerprint tokens that must survive a full-document author rewrite.
+ * Numbers and legal qualifiers are facts. URLs are split: claim-specific /
+ * estate / government URLs remain frozen, while generic global homepages may
+ * be removed when retrieval or review proves they do not support the article.
  */
 export function factTokens(text: string): string[] {
   const raw = String(text || '')
-  const urls = (raw.match(/https?:\/\/[^\s)\]>'"`]+/gi) || []).map((u) =>
-    u.replace(/[.,;:]+$/, '').toLowerCase(),
-  )
+  const urls = cycleProtectedUrls(raw)
   const numbers = raw.match(/\b\d+(?:[.,]\d+)*\b/g) || []
   const legal = (raw.match(LEGAL_WORD_RE) || []).map((s) => s.toLowerCase().replace(/\s+/g, ' '))
   return [...urls, ...numbers, ...legal]
