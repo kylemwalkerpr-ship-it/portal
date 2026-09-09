@@ -55,7 +55,7 @@ describe('marketplace category discovery presentation', () => {
     expect(categoriesIndex).toContain('ys-category-popular-card')
     expect(categoriesIndex).toContain('ys-category-grid')
     expect(categoriesIndex).toContain('grid-template-columns: repeat(3, minmax(0,1fr))')
-    expect(categoriesIndex).toContain('font-family: -apple-system')
+    expect(categoriesIndex).toContain('const DISCOVERY_FONT = "-apple-system')
     expect(categoriesIndex).not.toContain('borderLeft: `4px solid')
   })
 
