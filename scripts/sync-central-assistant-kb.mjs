@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Builds the public-network portion of the system-wide YouSafe Assistant KB.
+ * Builds the public-network portion of the system-wide YQAA knowledge base.
  *
- * Source of truth is the published YouSafe sister-site network. We crawl each
- * public sitemap, extract readable page text, and write ranked-KB-compatible
- * JSON into content/messenger-kb/network-pages.json. Messenger and every site
- * assistant therefore consume the same centrally refreshed content.
+ * The approved knowledge estate is the deployed public surface of each sibling
+ * repository, not raw private source code. We crawl every public sister-site
+ * sitemap, attach repository provenance, validate required country/repo
+ * coverage, and only then atomically replace the shared network snapshot.
  *
  * Private/authenticated portal pages are intentionally excluded. Live private
  * provider/gig context continues to come from Messenger's existing DB loader.
@@ -17,21 +17,37 @@ import path from 'node:path'
 
 const ROOT = process.cwd()
 const OUTPUT = path.join(ROOT, 'content', 'messenger-kb', 'network-pages.json')
+const COVERAGE_OUTPUT = path.join(ROOT, 'content', 'messenger-kb', 'network-coverage.json')
 const MAX_PAGES_PER_SITE = Number(process.env.ASSISTANT_KB_MAX_PAGES_PER_SITE || 1200)
 const MAX_PAGE_TEXT = Number(process.env.ASSISTANT_KB_MAX_PAGE_TEXT || 3200)
 const CONCURRENCY = Math.max(1, Number(process.env.ASSISTANT_KB_CONCURRENCY || 6))
 const TIMEOUT_MS = 20_000
 
 const SITES = [
-  { id: 'main', base: 'https://yousafeconsultancy.com' },
-  { id: 'usa', base: 'https://usa.yousafeconsultancy.com' },
-  { id: 'canada', base: 'https://ca.yousafeconsultancy.com' },
-  { id: 'uk', base: 'https://uk.yousafeconsultancy.com' },
-  { id: 'australia', base: 'https://au.yousafeconsultancy.com' },
-  { id: 'caseworks', base: 'https://legal.yousafeconsultancy.com' },
-  { id: 'market', base: 'https://market.yousafeconsultancy.com' },
-  { id: 'checkout', base: 'https://checkout.yousafeconsultancy.com' },
-  { id: 'support', base: 'https://support.yousafeconsultancy.com' },
+  { id: 'main', base: 'https://yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/yousafe-consultancy', minPages: 1 },
+  { id: 'usa', base: 'https://usa.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/yousafe-consultancy', minPages: 2 },
+  { id: 'canada', base: 'https://ca.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/yousafe-consultancy', minPages: 2 },
+  { id: 'uk', base: 'https://uk.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/yousafe-consultancy', minPages: 2 },
+  {
+    id: 'australia',
+    base: 'https://au.yousafeconsultancy.com',
+    repo: 'kylemwalkerpr-ship-it/yousafe-consultancy',
+    minPages: 3,
+    requiredTerms: ['australia', 'subclass 500'],
+  },
+  { id: 'caseworks', base: 'https://legal.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/caseworks', minPages: 1 },
+  { id: 'market', base: 'https://market.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/portal', minPages: 1 },
+  // checkout is legacy/deprecated and therefore useful when reachable but not a
+  // required coverage gate for publishing the current estate snapshot.
+  { id: 'checkout', base: 'https://checkout.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/yousafe-consultancy', minPages: 0 },
+  { id: 'support', base: 'https://support.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/support-saas', minPages: 1 },
+]
+
+const REQUIRED_REPOS = [
+  'kylemwalkerpr-ship-it/portal',
+  'kylemwalkerpr-ship-it/yousafe-consultancy',
+  'kylemwalkerpr-ship-it/caseworks',
+  'kylemwalkerpr-ship-it/support-saas',
 ]
 
 function decodeEntities(text) {
@@ -77,7 +93,7 @@ async function fetchText(url) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'YouSafeCentralAssistantKB/1.0', Accept: 'text/html,application/xml,text/xml;q=0.9,*/*;q=0.5' },
+      headers: { 'User-Agent': 'YouSafeCentralAssistantKB/2.0', Accept: 'text/html,application/xml,text/xml;q=0.9,*/*;q=0.5' },
       redirect: 'follow',
       signal: controller.signal,
     })
@@ -159,7 +175,10 @@ async function crawlSite(site) {
     return {
       id: `network:${site.id}:${parsed.pathname}${parsed.search}`,
       title: pageTitle(html, parsed.pathname || site.id),
-      body: `Source site: ${site.base}\nSource URL: ${url}\n\n${body}`,
+      repository: site.repo,
+      site: site.id,
+      sourceUrl: url,
+      body: `Source repository: ${site.repo}\nSource site: ${site.base}\nSource URL: ${url}\n\n${body}`,
     }
   })
   const rows = []
@@ -170,16 +189,79 @@ async function crawlSite(site) {
   return rows
 }
 
-const all = []
-for (const site of SITES) {
-  try {
-    all.push(...await crawlSite(site))
-  } catch (err) {
-    console.warn(`[assistant-kb] ${site.id} crawl failed: ${err.message}`)
+function validateSiteCoverage(site, rows) {
+  const problems = []
+  if (rows.length < site.minPages) {
+    problems.push(`expected at least ${site.minPages} pages, got ${rows.length}`)
   }
+  const haystack = rows.map((row) => `${row.title}\n${row.body}`).join('\n').toLowerCase()
+  for (const term of site.requiredTerms || []) {
+    if (!haystack.includes(String(term).toLowerCase())) {
+      problems.push(`missing required evidence term: ${term}`)
+    }
+  }
+  return problems
 }
 
-all.sort((a, b) => a.id.localeCompare(b.id))
+const all = []
+const siteCoverage = []
+const fatalProblems = []
+
+for (const site of SITES) {
+  let rows = []
+  let crawlError = null
+  try {
+    rows = await crawlSite(site)
+  } catch (err) {
+    crawlError = err instanceof Error ? err.message : String(err)
+    console.warn(`[assistant-kb] ${site.id} crawl failed: ${crawlError}`)
+  }
+
+  const problems = validateSiteCoverage(site, rows)
+  if (crawlError && site.minPages > 0) problems.push(`crawl failed: ${crawlError}`)
+  if (problems.length && site.minPages > 0) {
+    for (const problem of problems) fatalProblems.push(`${site.id}: ${problem}`)
+  }
+
+  all.push(...rows)
+  siteCoverage.push({
+    id: site.id,
+    repository: site.repo,
+    base: site.base,
+    records: rows.length,
+    required: site.minPages > 0,
+    problems,
+  })
+}
+
+const repoCoverage = REQUIRED_REPOS.map((repository) => {
+  const records = all.filter((row) => row.repository === repository).length
+  const localCore = repository === 'kylemwalkerpr-ship-it/portal'
+  if (records < 1 && !localCore) fatalProblems.push(`${repository}: no public knowledge records`)
+  return { repository, records, localCore }
+})
+
+const coverageReport = {
+  generatedAt: new Date().toISOString(),
+  status: fatalProblems.length ? 'rejected' : 'healthy',
+  requiredMarkets: ['United States', 'United Kingdom', 'Canada', 'Australia'],
+  sites: siteCoverage,
+  repositories: repoCoverage,
+  problems: fatalProblems,
+}
+
 await fs.mkdir(path.dirname(OUTPUT), { recursive: true })
-await fs.writeFile(OUTPUT, `${JSON.stringify(all, null, 2)}\n`, 'utf8')
-console.log(`[assistant-kb] wrote ${all.length} page records to ${path.relative(ROOT, OUTPUT)}`)
+await fs.writeFile(COVERAGE_OUTPUT, `${JSON.stringify(coverageReport, null, 2)}\n`, 'utf8')
+
+if (fatalProblems.length) {
+  console.error('[assistant-kb] refusing to replace healthy snapshot because coverage validation failed:')
+  for (const problem of fatalProblems) console.error(`- ${problem}`)
+  process.exitCode = 1
+} else {
+  all.sort((a, b) => a.id.localeCompare(b.id))
+  const tempOutput = `${OUTPUT}.tmp`
+  await fs.writeFile(tempOutput, `${JSON.stringify(all, null, 2)}\n`, 'utf8')
+  await fs.rename(tempOutput, OUTPUT)
+  console.log(`[assistant-kb] wrote ${all.length} page records to ${path.relative(ROOT, OUTPUT)}`)
+  console.log(`[assistant-kb] sibling-repo coverage healthy across ${REQUIRED_REPOS.length} repositories`)
+}
