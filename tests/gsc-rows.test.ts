@@ -147,21 +147,26 @@ describe('resolveGscDayWindow stable window (GSC lag)', () => {
 })
 
 function thenable(result: { data: unknown; error: { message: string } | null }) {
-  const api: Record<string, unknown> = {}
-  const self = () => api
-  api.select = self
-  api.eq = self
-  api.order = self
-  api.limit = self
-  api.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject)
+  const api: {
+    select: (cols: string, opts?: { count?: 'exact'; head?: boolean }) => typeof api
+    eq: (col: string, val: unknown) => typeof api
+    order: (col: string, opts?: { ascending?: boolean }) => typeof api
+    limit: (n: number) => typeof api
+    then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => Promise<unknown>
+  } = {
+    select: () => api,
+    eq: () => api,
+    order: () => api,
+    limit: () => api,
+    then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+  }
   return api
 }
 
 function dbSequence(results: Array<{ data: unknown; error: { message: string } | null }>) {
   let i = 0
   return {
-    from: () => thenable(results[Math.min(i++, results.length - 1)]),
+    from: (_table: string) => thenable(results[Math.min(i++, results.length - 1)]),
   }
 }
 
