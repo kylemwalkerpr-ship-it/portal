@@ -1,11 +1,17 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { validateCaseworksRenderedStructure } from '@/lib/seoFactory/contentStructureIntegrity'
 
-function page(body: string, meta = 'reviewStatus: "editorial-only",'): string {
-  return `
-const meta = {
+const editorialProvenance = `
   author: { name: "MyCaseworks Editorial", firm: "MyCaseworks" },
   reviewer: { name: "MyCaseworks Editorial", firm: "MyCaseworks" },
-  ${meta}
+  reviewStatus: "editorial-only",
+`
+
+function page(body: string, provenance = editorialProvenance): string {
+  return `
+const meta = {
+  ${provenance}
 }
 export default function Page() {
   return <article><div className="prose">
@@ -32,13 +38,12 @@ describe('Content Studio → Caseworks rendered document integrity', () => {
     expect(result).toEqual({ ok: true, errors: [] })
   })
 
-  it('rejects a manual TOC because Caseworks SectionTracker owns the canonical TOC', () => {
+  it('allows a legacy manual TOC because Caseworks suppresses it and renders the canonical TOC centrally', () => {
     const result = validateCaseworksRenderedStructure(page(`
       <h2 id="table-of-contents">Table of contents</h2>
       <ul><li><a href="#steps">Steps</a></li></ul>
     `))
-    expect(result.ok).toBe(false)
-    expect(result.errors.join('\n')).toMatch(/manual Table of contents/i)
+    expect(result.ok).toBe(true)
   })
 
   it('rejects duplicate heading ids that would make TOC anchors ambiguous', () => {
@@ -81,17 +86,32 @@ describe('Content Studio → Caseworks rendered document integrity', () => {
   it('never lets editorial/generic metadata claim attorney-reviewed provenance', () => {
     const result = validateCaseworksRenderedStructure(page(
       '<h2 id="documents">Documents</h2><ul><li>Passport</li></ul>',
-      'reviewStatus: "attorney-reviewed",',
+      `
+        author: { name: "MyCaseworks Editorial", firm: "MyCaseworks" },
+        reviewer: { name: "MyCaseworks Editorial", firm: "MyCaseworks" },
+        reviewStatus: "attorney-reviewed",
+      `,
     ))
     expect(result.ok).toBe(false)
     expect(result.errors.join('\n')).toMatch(/specific named reviewer plus credential metadata/i)
   })
 
   it('accepts attorney-reviewed only with a specific credentialed reviewer', () => {
-    const source = page('<h2 id="documents">Documents</h2><ul><li>Passport</li></ul>', [
-      'reviewStatus: "attorney-reviewed",',
-      'reviewer: { name: "Jane Example", role: "Attorney", state: "New York" },',
-    ].join('\n'))
+    const source = page(
+      '<h2 id="documents">Documents</h2><ul><li>Passport</li></ul>',
+      `
+        author: { name: "MyCaseworks Editorial", firm: "MyCaseworks" },
+        reviewer: { name: "Jane Example", role: "Attorney", state: "New York" },
+        reviewStatus: "attorney-reviewed",
+      `,
+    )
     expect(validateCaseworksRenderedStructure(source).ok).toBe(true)
+  })
+
+  it('is wired into the non-bypassable rendered-payload ship gate', () => {
+    const shipGateSource = readFileSync(join(process.cwd(), 'lib/seoFactory/shipGate.ts'), 'utf8')
+    expect(shipGateSource).toContain("import { validateCaseworksRenderedStructure } from './contentStructureIntegrity'")
+    expect(shipGateSource).toContain('const structure = validateCaseworksRenderedStructure(content)')
+    expect(shipGateSource).toContain('errors.push(...structure.errors)')
   })
 })
