@@ -16,6 +16,7 @@
  */
 
 import { sanitizeLeakedMarkup } from './leakedMarkup'
+import { writingFamilyFor } from './writingShape'
 
 /** The canonical reader-facing skeleton every article follows. */
 export const FORMAT_SKELETON = [
@@ -30,6 +31,36 @@ export const FORMAT_SKELETON = [
   '9. `## Related guides` — 2–3 verified estate links, EVERY entry a clickable `- [Guide title](URL)`. A guide named as bare text is unreachable and is rejected.',
   '10. Short educational disclaimer.',
 ].join('\n')
+
+/** Narrative-essay skeleton for consultancy blogs. Not a legal-guide kit. */
+export const BLOG_FORMAT_SKELETON = [
+  '1. YAML frontmatter (title, content_type, region, description, canonicalUrl, robots, ogImage, author) — top of document ONLY.',
+  '2. `# H1` — Title Case, thesis-led, differs from the raw keyword.',
+  '3. Byline line (`**By Name**` + credentials italic) where supplied by the brief.',
+  '4. Opening 1–2 paragraphs that answer the thesis. No TL;DR kit, no table of contents.',
+  '5. 3–6 purpose-led H2 sections that each advance the argument. Do not restate the intro. Do not force eligibility / process / documents / FAQ / worked-example headings.',
+  '6. Official citations in-body where facts are asserted. A ## Sources dump is optional when the citations already live in prose.',
+  '7. One closer. FAQ / FAQPage are not required.',
+  '8. Short educational disclaimer on YMYL-adjacent topics.',
+].join('\n')
+
+/** Regional pages: In 60 seconds, procedural H2s, FAQ 3–5, sources, disclaimer. */
+export const REGIONAL_FORMAT_SKELETON = [
+  '1. YAML frontmatter (title, content_type, region, description, canonicalUrl, robots, ogImage) — top of document ONLY.',
+  '2. `# H1` — Title Case, geo-specific.',
+  '3. `## In 60 seconds` — 3–5 bullets, one `- ` per line.',
+  '4. Content H2 sections — procedural (who it is for, what to prepare, steps, what can change, next action).',
+  '5. `## FAQ` — 3–5 `### Question?` headings, each answer self-contained.',
+  '6. `## Sources` — deduplicated official citations, one `- [Name](URL)` per line.',
+  '7. Short educational disclaimer.',
+].join('\n')
+
+export function formatSkeletonFor(contentType: string): string {
+  const family = writingFamilyFor(contentType)
+  if (family === 'blog' || family === 'short') return BLOG_FORMAT_SKELETON
+  if (family === 'regional') return REGIONAL_FORMAT_SKELETON
+  return FORMAT_SKELETON
+}
 
 /** Response-format rules appended to every editor/reviewer fix prompt. */
 export function editorResponseContract(): string {
@@ -49,17 +80,29 @@ export function editorResponseContract(): string {
 }
 
 /** Full contract text for the briefing + drafting stages. */
-export function formatContractBriefBlock(): string {
+export function formatContractBriefBlock(contentType?: string): string {
+  const skeleton = contentType ? formatSkeletonFor(contentType) : FORMAT_SKELETON
+  const family = contentType ? writingFamilyFor(contentType) : 'guide'
+  const engagement =
+    family === 'blog' || family === 'short'
+      ? [
+          '- The reader scrolls: every H2 advances the thesis, then supporting detail.',
+          '- Blogs are essays: developed paragraphs are allowed; do not force a FAQ, TOC, or TL;DR kit.',
+          '- Formatting is graded: a keyword-only title still fails. Kit sections are not required.',
+        ]
+      : [
+          '- The reader scrolls: every H2 opens with a direct 1–3 sentence answer, then detail.',
+          '- Reader-engagement devices required: at least one scannable checklist or table,',
+          '  short paragraphs (1–3 sentences), bolded lead phrases on long list items,',
+          '  blockquote callouts for warnings, and self-contained FAQ answers.',
+          '- Formatting is graded: broken lists, collapsed bullets, or a keyword-only title',
+          '  fail the audit exactly like a missing section.',
+        ]
   return [
     '## DOCUMENT FORMAT CONTRACT (the layout below is the product — write INTO it)',
-    FORMAT_SKELETON,
+    skeleton,
     '',
-    '- The reader scrolls: every H2 opens with a direct 1–3 sentence answer, then detail.',
-    '- Reader-engagement devices required: at least one scannable checklist or table,',
-    '  short paragraphs (1–3 sentences), bolded lead phrases on long list items,',
-    '  blockquote callouts for warnings, and self-contained FAQ answers.',
-    '- Formatting is graded: broken lists, collapsed bullets, or a keyword-only title',
-    '  fail the audit exactly like a missing section.',
+    ...engagement,
   ].join('\n')
 }
 

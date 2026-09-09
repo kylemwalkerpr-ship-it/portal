@@ -331,6 +331,88 @@ export function openingFrontmatterClosed(content: string): boolean {
   return /^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)/.test(t)
 }
 
+const REPEATABLE_SCAFFOLD_H2 = /^(in 60 seconds|tldr|tl;dr|key takeaways)$/i
+
+function normalizeScaffoldHeading(heading: string): string {
+  return String(heading || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Prefer dropping duplicate In-60-seconds / TL;DR blocks and extra FAQ
+ * questions before the sentence trimmer cuts unique connective tissue.
+ * Never removes a Disclaimer / Sources heading.
+ */
+function preferDropDuplicateScaffold(content: string, maxWords: number, minWords: number): string {
+  const original = String(content || '')
+  if (countBodyWords(original) <= maxWords) return original
+
+  const h2Re = /^##\s+(.+)$/gm
+  const marks: { index: number; heading: string }[] = []
+  let m: RegExpExecArray | null
+  while ((m = h2Re.exec(original)) !== null) {
+    marks.push({ index: m.index, heading: m[1].trim() })
+  }
+
+  const seenScaffold = new Set<string>()
+  const dropRanges: Array<[number, number]> = []
+  for (let i = 0; i < marks.length; i++) {
+    const key = normalizeScaffoldHeading(marks[i].heading)
+    let end = i + 1 < marks.length ? marks[i + 1].index : original.length
+    if (!REPEATABLE_SCAFFOLD_H2.test(key)) continue
+    if (seenScaffold.has(key)) {
+      const range = original.slice(marks[i].index, end)
+      const protectedAt = range.search(
+        /\n(?:---\s*\n+)?(?:\*{0,2}Disclaimer\*{0,2}\s*:|^##\s+(?:Disclaimer|Sources|Official sources)\b)/im,
+      )
+      if (protectedAt >= 0) end = marks[i].index + protectedAt
+      if (end > marks[i].index) dropRanges.push([marks[i].index, end])
+    } else {
+      seenScaffold.add(key)
+    }
+  }
+
+  let next = original
+  for (let i = dropRanges.length - 1; i >= 0; i--) {
+    const [start, end] = dropRanges[i]
+    const candidate = `${next.slice(0, start)}${next.slice(end)}`.replace(/\n{3,}/g, '\n\n')
+    if (countBodyWords(candidate) >= minWords) next = candidate
+  }
+
+  if (countBodyWords(next) <= maxWords) return next
+  return dropTrailingFaqQuestions(next, maxWords, minWords)
+}
+
+function dropTrailingFaqQuestions(content: string, maxWords: number, minWords: number): string {
+  if (countBodyWords(content) <= maxWords) return content
+  const faqRe = /^##\s+(?:FAQ|Frequently asked questions)\b[^\n]*\n/im
+  const m = content.match(faqRe)
+  if (!m || m.index == null) return content
+  const start = m.index + m[0].length
+  const rest = content.slice(start)
+  const nextH2 = rest.search(/\n##\s+/)
+  const end = nextH2 >= 0 ? start + nextH2 : content.length
+  const faqBody = content.slice(start, end)
+  const parts = faqBody.split(/(?=^### )/m)
+  const preamble = parts.filter((p) => !/^###\s+/m.test(p)).join('')
+  const questions = parts.filter((p) => /^###\s+/m.test(p))
+  if (questions.length <= 3) return content
+  const prefix = content.slice(0, start)
+  const suffix = content.slice(end)
+  let keep = questions.length
+  let candidate = content
+  while (keep > 3 && countBodyWords(candidate) > maxWords) {
+    keep--
+    const next = `${prefix}${preamble}${questions.slice(0, keep).join('')}`.replace(/\n{3,}/g, '\n\n') + suffix
+    if (countBodyWords(next) < minWords) break
+    candidate = next
+  }
+  return candidate
+}
+
 /**
  * Reduce runaway prose without touching document structure. Only complete
  * trailing sentences from ordinary paragraphs may be removed: headings,
@@ -498,7 +580,29 @@ export function enforceBodyWordBudget(
 ): { content: string; removedWords: number } {
   const maxWords = bounds?.maxWords ?? maxWordsForType(contentType)
   const minWords = bounds?.minWords ?? minWordsForType(contentType)
-  return trimMarkdownProseToWordBudget(content, maxWords, Math.min(minWords, maxWords))
+  const floor = Math.min(minWords, maxWords)
+  const preferred = preferDropDuplicateScaffold(content, maxWords, floor)
+  return trimMarkdownProseToWordBudget(preferred, maxWords, floor)
+}
+
+/**
+ * Same ceiling as enforceBodyWordBudget, preferring duplicate In-60-seconds /
+ * extra FAQ cuts before unique body paragraphs. Disclaimer / Sources / FAQ
+ * headings stay protected inside the prose trimmer.
+ */
+export function enforceBodyWordBudgetPreserving(
+  content: string,
+  contentType: string,
+  opts?: { min?: number; max?: number; preserveHeadings?: string[] },
+): { content: string; removedWords: number } {
+  // preserveHeadings is documented for callers (disclaimer/sources/faq). The
+  // sentence trimmer already hard-protects those blocks; the duplicate-scaffold
+  // pass never drops Disclaimer or Sources.
+  void opts?.preserveHeadings
+  return enforceBodyWordBudget(content, contentType, {
+    minWords: opts?.min,
+    maxWords: opts?.max,
+  })
 }
 
 export interface DepthCheckResult {
@@ -580,7 +684,27 @@ export function checkContentDepth(opts: {
   }
 }
 
-/** Throw before any GitHub write when depth fails (approve cannot bypass). */
+/**
+ * Usable prose budget after reserving YMYL end-matter the trimmer must keep.
+ * Disclaimer ~80, sources ~60, FAQ 0 for blogs / ~200 for guides.
+ */
+export function usableBodyBudget(
+  maxWords: number,
+  opts?: {
+    reserveDisclaimer?: number
+    reserveFaq?: number
+    reserveSources?: number
+    contentType?: string
+  },
+): number {
+  const cap = Number.isFinite(maxWords) ? Math.max(0, Math.round(maxWords)) : 0
+  const isBlog = opts?.contentType ? depthTierForType(opts.contentType) === 'blog' : false
+  const reserveDisclaimer = opts?.reserveDisclaimer ?? 80
+  const reserveSources = opts?.reserveSources ?? 60
+  const reserveFaq = opts?.reserveFaq ?? (isBlog ? 0 : 200)
+  return Math.max(0, cap - reserveDisclaimer - reserveSources - reserveFaq)
+}
+
 export function assertContentDepth(opts: {
   content: string
   contentType: string

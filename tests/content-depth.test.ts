@@ -6,12 +6,14 @@ import {
   clampBriefWordBudget,
   countBodyWords,
   enforceBodyWordBudget,
+  enforceBodyWordBudgetPreserving,
   formatBodyWordDisplay,
   maxWordsForType,
   minWordsForType,
   openingFrontmatterClosed,
   targetWordsForType,
   unwrapWholeDocumentFence,
+  usableBodyBudget,
 } from '@/lib/seoFactory/contentDepth'
 import { auditContent } from '@/lib/seoFactory/audit'
 
@@ -329,5 +331,31 @@ describe('enforceBodyWordBudget — PASS 3b expand must be budget-capped (P0-GEN
     expect(removedWords).toBeGreaterThan(0)
     expect(countBodyWords(content)).toBeLessThanOrEqual(maxWordsForType('blog_post'))
     expect(countBodyWords(content)).toBeGreaterThanOrEqual(minWordsForType('blog_post'))
+  })
+})
+
+describe('usableBodyBudget + disclaimer-preserving trim', () => {
+  it('reserves disclaimer/sources and zero FAQ for blogs', () => {
+    expect(usableBodyBudget(1200, { contentType: 'blog_post' })).toBe(1200 - 80 - 60)
+    expect(usableBodyBudget(2500, { contentType: 'legal_guide' })).toBe(2500 - 80 - 60 - 200)
+    expect(usableBodyBudget(1000, { reserveDisclaimer: 80, reserveSources: 60, reserveFaq: 0 })).toBe(860)
+  })
+
+  it('keeps the word disclaimer after an over-max restore', () => {
+    const filler = Array.from({ length: 80 }, (_, i) =>
+      `Body paragraph ${i} covers eligibility documents fees timelines pitfalls and interview preparation for applicants navigating the 2026 filing window with concrete next steps.`,
+    ).join('\n\n')
+    const over = `# Title\n\n## Eligibility\n\n${filler}\n\n## In 60 seconds\n\n- First takeaway about the process.\n\n## In 60 seconds\n\n- Duplicate takeaway that should be dropped first.\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**.\n`
+    expect(countBodyWords(over)).toBeGreaterThan(maxWordsForType('blog_post'))
+    const { content } = enforceBodyWordBudgetPreserving(over, 'blog_post', {
+      min: minWordsForType('blog_post'),
+      max: maxWordsForType('blog_post'),
+      preserveHeadings: ['disclaimer', 'sources', 'faq'],
+    })
+    expect(content.toLowerCase()).toContain('disclaimer')
+    expect(content).toMatch(/not legal advice/i)
+    expect(countBodyWords(content)).toBeLessThanOrEqual(maxWordsForType('blog_post'))
+    const tldrBlocks = content.match(/^##\s+In 60 seconds\b/gim) || []
+    expect(tldrBlocks.length).toBe(1)
   })
 })

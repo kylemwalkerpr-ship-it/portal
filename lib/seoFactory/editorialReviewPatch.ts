@@ -1,7 +1,10 @@
 import { anchorHash, applyEditorPatch, parseEditorPatch } from './editorPatch'
 import { maskHarperScaffold, splitMarkdownFrontmatter } from '../harperText'
 
-/** Editorial model edits prose only. Facts and publishing structure belong to the brief/gate. */
+export { applyEditorialRevision } from './editorialRevision'
+
+/** Editorial model edits prose only. Facts and publishing structure belong to the brief/gate.
+ *  Line-level token freeze stays on the Audit & Fix / EditorPatch v1 fallback path. */
 export function applyEditorialReviewPatch(content: string, raw: string): { content: string; clean: boolean } {
   const parsed = parseEditorPatch(raw)
   if (!parsed.ok) throw new Error('reason' in parsed ? parsed.reason : 'Editorial patch is invalid')

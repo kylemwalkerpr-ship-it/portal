@@ -28,7 +28,7 @@ import {
 } from '@/lib/seoFactory/masterEngineLearn'
 import { buildOutcomeHistoryFromLiveGsc } from '@/lib/seoFactory/outcomeHistory'
 import { scoreContentQuality, contentQualityComposite, buildContentLane1, type ContentQualityResult } from '@/lib/seoFactory/contentQuality'
-import { scoreEeatTrust, eeatTrustComposite, buildEeatLane1, type EeatTrustResult } from '@/lib/seoFactory/eeatTrust'
+import { scoreEeatTrust, eeatTrustComposite, buildEeatLane1, eeatTrustPersist, buildEeatActions, eeatActionsToDirectives, type EeatTrustResult } from '@/lib/seoFactory/eeatTrust'
 import { scoreSemanticNlp, semanticNlpComposite, buildSemanticLane1, type SemanticNlpResult } from '@/lib/seoFactory/semanticNlp'
 import { buildSpecialistPromptBlock, loadOpenSignalsForTopic, type SpecialistSignal } from '@/lib/seoFactory/specialistFeeds'
 import { buildPortablePlaybookPromptBlock, PLAYBOOK_VERSION } from '@/lib/seoFactory/portableSeoPlaybook'
@@ -56,8 +56,13 @@ export interface MasterEngineFeedRequest {
   competingUrls?: string[]
   /** Optional draft content — when set AND CONTENT_AI_LLM_QUALITY=1 the three
    *  paid LLM judgment lanes (content quality · E-E-A-T · semantic/NLP) run
-   *  against it and fold their scores into the prompt block. */
+   *  against it and fold their scores into the prompt block. Review phase
+   *  runs scoreEeatTrust even when the flag is off (one call, not three). */
   content?: string
+  /** `review` runs E-E-A-T even if CONTENT_AI_LLM_QUALITY is not '1'. */
+  phase?: 'plan' | 'page' | 'review' | 'generate'
+  /** Competitor snippets from the job — never invent an empty SERP when present. */
+  competingSnippets?: string[]
 }
 
 /** Optional LLM quality lane — the ONLY Entrim-spend path in the feed.
@@ -67,6 +72,10 @@ export type MasterEngineLlmQuality = null | {
   contentQuality: ContentQualityResult | null
   eeatTrust: EeatTrustResult | null
   semanticNlp: SemanticNlpResult | null
+  /** Persist columns from eeatTrustPersist — Review callers write these. */
+  eeatPersist?: ReturnType<typeof eeatTrustPersist> | null
+  /** Concrete Harper/review revision instructions from buildEeatActions. */
+  eeatActions?: Array<{ id: string; instruction: string; severity: 'required' | 'advisory' }>
 }
 
 export interface MasterEngineFeed {
@@ -304,41 +313,85 @@ export function renderMasterEnginePromptBlock(
 /**
  * Optional LLM quality lane — THREE paid Entrim judgment calls per feed.
  * CONTENT_AI_LLM_QUALITY=1 opts in; any other value (or absence) returns null
- * so production stays fail-closed with zero extra Entrim spend. When enabled
- * but the request carries no draft content there is nothing to judge → null.
- * Every scorer never-throws, so this whole lane degrades to null, never a
- * failed feed.
+ * so production stays fail-closed with zero extra Entrim spend — EXCEPT on
+ * Review phase, which runs scoreEeatTrust alone (one call, not three).
+ * When enabled but the request carries no draft content there is nothing
+ * to judge → null. Every scorer never-throws, so this whole lane degrades
+ * to null, never a failed feed.
  */
+function ymylContentType(contentType?: string): boolean {
+  const t = String(contentType || '')
+  return t === 'legal_guide' || t === 'article' || t.startsWith('regional_')
+}
+
+function competitorTextsOf(req: MasterEngineFeedRequest): string[] {
+  return Array.isArray(req.competingSnippets) ? req.competingSnippets.map(String).filter(Boolean) : []
+}
+
+function eeatExtras(result: EeatTrustResult | null, lane1: ReturnType<typeof buildEeatLane1>): {
+  eeatPersist: ReturnType<typeof eeatTrustPersist> | null
+  eeatActions: Array<{ id: string; instruction: string; severity: 'required' | 'advisory' }>
+} {
+  if (!result) return { eeatPersist: null, eeatActions: [] }
+  try {
+    const actions = buildEeatActions(result, lane1)
+    return {
+      eeatPersist: eeatTrustPersist(result),
+      eeatActions: eeatActionsToDirectives(actions),
+    }
+  } catch {
+    return { eeatPersist: null, eeatActions: [] }
+  }
+}
+
 export async function maybeRunLlmQuality(
   req: MasterEngineFeedRequest,
 ): Promise<MasterEngineLlmQuality> {
-  if (process.env.CONTENT_AI_LLM_QUALITY !== '1') return null
+  const flagOn = process.env.CONTENT_AI_LLM_QUALITY === '1'
+  const reviewPhase = req.phase === 'review'
+  if (!flagOn && !reviewPhase) return null
   const content = String(req.content || '').trim()
   if (!content) return null
   const slug = String(req.primaryKeyword || req.topic || 'guide').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
   const pageUrl = String(req.canonicalUrl || `https://yousafeconsultancy.com/${slug}/`)
-  const ymyl = req.contentType === 'legal_guide'
+  const ymyl = ymylContentType(req.contentType)
+  const competitorTexts = competitorTextsOf(req)
+  const lane1 = buildEeatLane1({ targetText: content, ymyl })
+
+  if (!flagOn && reviewPhase) {
+    // Review: E-E-A-T only. Do not spend the other two LLM lanes.
+    const eeatTrust = await scoreEeatTrust({
+      pageUrl,
+      targetText: content,
+      competitorTexts,
+      lane1,
+    }).catch(() => null)
+    const extras = eeatExtras(eeatTrust, lane1)
+    return { enabled: true, contentQuality: null, eeatTrust, semanticNlp: null, ...extras }
+  }
+
   const [contentQuality, eeatTrust, semanticNlp] = await Promise.all([
     scoreContentQuality({
       pageUrl,
       targetText: content,
-      competitorTexts: [],
-      lane1: buildContentLane1({ targetText: content, competitorTexts: [], detectedIntent: req.region }),
+      competitorTexts,
+      lane1: buildContentLane1({ targetText: content, competitorTexts, detectedIntent: req.region }),
     }).catch(() => null),
     scoreEeatTrust({
       pageUrl,
       targetText: content,
-      competitorTexts: [],
-      lane1: buildEeatLane1({ targetText: content, ymyl }),
+      competitorTexts,
+      lane1,
     }).catch(() => null),
     scoreSemanticNlp({
       pageUrl,
       targetText: content,
-      competitorTexts: [],
+      competitorTexts,
       lane1: buildSemanticLane1({ questionIntent: true }),
     }).catch(() => null),
   ])
-  return { enabled: true, contentQuality, eeatTrust, semanticNlp }
+  const extras = eeatExtras(eeatTrust, lane1)
+  return { enabled: true, contentQuality, eeatTrust, semanticNlp, ...extras }
 }
 
 /** Compact, truthful prompt-line rendering of the optional LLM quality lane. */
@@ -354,7 +407,16 @@ export function renderLlmQualityBlock(q: Exclude<MasterEngineLlmQuality, null>):
     ...(q.eeatTrust?.flags || []),
     ...(q.semanticNlp?.flags || []),
   ]
-  return `- LLM quality lane (CONTENT_AI_LLM_QUALITY=1): ${bits}${flags.length ? ` · flags: ${flags.slice(0, 6).join(', ')}` : ''}`
+  const header = (q.contentQuality || q.semanticNlp || process.env.CONTENT_AI_LLM_QUALITY === '1')
+    ? 'LLM quality lane (CONTENT_AI_LLM_QUALITY=1)'
+    : 'E-E-A-T review lane'
+  const actionLines = (q.eeatActions || []).slice(0, 8).map(
+    (a) => `  · [${a.severity}] ${a.id}: ${a.instruction}`,
+  )
+  return [
+    `- ${header}: ${bits}${flags.length ? ` · flags: ${flags.slice(0, 6).join(', ')}` : ''}`,
+    ...(actionLines.length ? ['- E-E-A-T revision actions (apply before ship):', ...actionLines] : []),
+  ].join('\n')
 }
 
 /**
@@ -466,6 +528,7 @@ export async function assembleMasterEngineFeed(
       liveUrl: req.canonicalUrl,
       gsc,
       competingUrls: req.competingUrls,
+      competingSnippets: req.competingSnippets,
     }
     const [withHealth, llmV, knowledge, cluster, ahrefs, learned, llmQuality, specialistSignals] = await Promise.all([
       attachSiteHealthFacts(input, req.canonicalUrl).catch(() => input),

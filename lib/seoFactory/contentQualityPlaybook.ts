@@ -63,6 +63,15 @@ const INDEXABLE_FORM: ContentType[] = [
   'regional_university',
 ]
 
+/** Legal/article/regional kit — FAQ, In 60 seconds, FAQPage. Blogs are essays. */
+const GUIDE_FORM: ContentType[] = [
+  'legal_guide',
+  'article',
+  'regional_page',
+  'regional_from',
+  'regional_university',
+]
+
 function def(g: GateDefinition): GateDefinition {
   return g
 }
@@ -126,7 +135,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   def({
     code: 'tldr_format_invalid', title: 'In 60 seconds section missing or malformed',
     severity: 'format_blocker', owner: 'deterministic', repairClass: 'deterministic',
-    appliesTo: INDEXABLE_FORM,
+    appliesTo: GUIDE_FORM,
     requirement: '## In 60 seconds exists with 3–5 separate bullet lines, one `- ` item per line.',
     promptInstruction: 'Add ## In 60 seconds with 3–5 direct takeaway bullets, one `- ` item per line.',
     evidence: 'contentQualityGate.evaluateContentQuality TL;DR block scan',
@@ -332,7 +341,8 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   // ── Required structure blockers (indexable long-form) ─────────────────────
   def({
     code: 'missing_tldr', title: 'Missing "In 60 seconds" / TL;DR answer block',
-    severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
+    severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai',
+    appliesTo: GUIDE_FORM,
     requirement: 'An answer block ("In 60 seconds" / TL;DR / quick answer / key takeaways) exists.',
     promptInstruction: 'Add ## In 60 seconds with 3–5 direct bullets.',
     evidence: 'contentQualityGate.evaluateContentQuality answer-block regex',
@@ -342,7 +352,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   def({
     code: 'structure_h2', title: 'Fewer than 4 H2 sections',
     severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
-    requirement: 'At least 4 H2 sections covering procedure, documents, risks, FAQ.',
+    requirement: 'At least 4 H2 sections for guides/regional (procedure, documents, risks, FAQ); at least 3 purpose-led H2s for blogs.',
     promptInstruction: 'Add procedure, documents, risks/timelines, FAQ sections.',
     evidence: 'contentQualityGate.evaluateContentQuality H2 counter',
     shipEffect: 'block', evaluator: 'contentQualityGate.evaluateContentQuality',
@@ -350,12 +360,22 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   }),
   def({
     code: 'missing_faq', title: 'Missing FAQ section',
-    severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
+    severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai',
+    appliesTo: GUIDE_FORM,
     requirement: 'FAQ section with 4–6 self-contained Q&A pairs.',
     promptInstruction: 'Add ## FAQ with 4–6 Q&A pairs (self-contained answers, plain or collapsible <details>).',
     evidence: 'contentQualityGate.evaluateContentQuality FAQ detection',
     shipEffect: 'block', evaluator: 'contentQualityGate.evaluateContentQuality',
     testFixture: 'tests/contentQualityPlaybook.test.ts#structure fixtures',
+  }),
+  def({
+    code: 'adjacent_h2_echo', title: 'Adjacent H2s open with the same first sentence',
+    severity: 'warning', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
+    requirement: 'Consecutive H2 sections should advance the argument, not restate the previous section’s opening.',
+    promptInstruction: 'Rewrite the later section so it starts from a new claim or next step. Do not repeat the previous H2’s first sentence.',
+    evidence: 'contentQualityGate.evaluateContentQuality adjacent H2 opener scan',
+    shipEffect: 'allow_with_flag', evaluator: 'contentQualityGate.evaluateContentQuality',
+    testFixture: 'tests/content-quality-gate.test.ts',
   }),
   def({
     code: 'missing_official_sources', title: 'Missing official source URLs',
@@ -380,7 +400,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   def({
     code: 'insufficient_short_keywords', title: 'Brief supplied fewer than the required short keywords',
     severity: 'blocker', owner: 'brief', repairClass: 'deterministic', appliesTo: INDEXABLE_FORM,
-    requirement: 'The brief supplies ≥5 distinct short keywords (≤3 words each).',
+    requirement: 'The brief supplies ≥3 distinct short keywords (≤3 words each). Discover analytics may still backfill to 5.',
     promptInstruction: 'Re-run the planner / brief builder to synthesize the missing short keywords.',
     evidence: 'contentQualityGate.evaluateContentQuality keyword-array floor',
     shipEffect: 'block', evaluator: 'contentQualityGate.evaluateContentQuality',
@@ -398,7 +418,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   def({
     code: 'missing_short_keyword', title: 'Required short keyword absent',
     severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
-    requirement: 'Every required short keyword appears at least once, in context, ≤4 hits.',
+    requirement: 'Every required demand short keyword appears at least once in context. Hard blocker on legal_guide/article/regional_*; warning on blogs. Synthesized floor-fill is never a ship blocker.',
     promptInstruction: 'Use each short keyword at least once in context, naturally — title, first H2, In 60 seconds, or as a checklist item.',
     evidence: 'contentQualityGate.evaluateContentQuality keyword presence',
     shipEffect: 'block', evaluator: 'contentQualityGate.evaluateContentQuality',
@@ -407,7 +427,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   def({
     code: 'missing_long_tail_keyword', title: 'Required long-tail keyword absent',
     severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: INDEXABLE_FORM,
-    requirement: 'Every required long-tail keyword appears at least once, naturally, ≤2 hits.',
+    requirement: 'Every required long-tail is covered by meaning in prose or an FAQ answer (not as an H2). Hard blocker on legal_guide/article/regional_*; warning on blogs.',
     promptInstruction: 'Use each long-tail keyword at least once, naturally — in FAQ, a heading, an answer block, or a step description.',
     evidence: 'contentQualityGate.evaluateContentQuality keyword presence',
     shipEffect: 'block', evaluator: 'contentQualityGate.evaluateContentQuality',
@@ -644,7 +664,8 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
   }),
   def({
     code: 'schema_faq', title: 'FAQPage JSON-LD',
-    severity: 'warning', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
+    severity: 'warning', owner: 'deterministic', repairClass: 'deterministic',
+    appliesTo: GUIDE_FORM,
     requirement: 'FAQPage JSON-LD present when FAQ content exists (scaffold-generated).',
     promptInstruction: 'Add 4–6 FAQs with FAQPage schema for AI overviews.',
     evidence: 'audit.auditContent FAQPage schema detection',
@@ -1259,6 +1280,7 @@ interface SpecLike {
   approvedSources: Array<{ url: string; publisher: string; purpose: string }>
   ymyl: { disclaimerRequired: boolean }
   aeoGeo: { answerFirst: boolean; faqRequired: boolean }
+  author?: { name?: string; credential?: string; marketplaceUrl?: string } | null
 }
 
 function keywordLines(spec: SpecLike): string[] {
@@ -1284,6 +1306,9 @@ function coreRequirements(spec: SpecLike): string[] {
     `- Canonical outline (single source of truth — do NOT restructure or add sections; every H2/H3 and its purpose comes from the brief): ${outline.join(' ')}`,
     `- Verified estate links (use ONLY these URLs for internal links): ${spec.verifiedEstateLinks.map((l) => l.url).join(', ') || '(none — do not create internal links)'}`,
     `- Approved sources: ${spec.approvedSources.map((s) => s.url).join(', ') || '(none — prefer agency names as plain text)'}`,
+    spec.author?.name
+      ? `- Named YMYL author (use this person only; never invent YouSafe Editorial Team): ${spec.author.name}${spec.author.credential ? ` · ${spec.author.credential}` : ''}${spec.author.marketplaceUrl ? ` · ${spec.author.marketplaceUrl}` : ''}`
+      : '',
     spec.ymyl.disclaimerRequired ? '- YMYL: educational disclaimer required; no outcome promises; official jurisdiction-appropriate sources.' : '',
     spec.aeoGeo.answerFirst ? '- AEO/GEO: answer first in the opening block; self-contained FAQ answers when required.' : '',
   ].filter(Boolean)

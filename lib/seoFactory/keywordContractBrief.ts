@@ -57,8 +57,10 @@ export function keywordContractFromLists(input: {
 
 /**
  * The one keyword brief injected into briefing, drafting, and Harper.
- * Demand terms are required coverage. Synthesized floor-fill is optional —
- * never a heading, never an FAQ question, never a ship blocker.
+ *
+ * Demand shorts: coverage, not stuffing — recommended ≤3 natural placements.
+ * Long-tails: meaning coverage (the question is answered), not a 6-word echo.
+ * Synthesized floor-fill: discover-only. NEVER instruct the model to place it.
  */
 export function renderKeywordContractBrief(
   contract: KeywordContractLists,
@@ -75,13 +77,16 @@ export function renderKeywordContractBrief(
   return [
     '## KEYWORD CONTRACT (single source of truth — brief, drafter, Harper, audit)',
     primary ? `- Primary keyword (title/H1 only; not a coverage checkbox): "${primary}"` : '',
-    '- DEMAND short keywords (required, 1–4 natural uses, never as an H2 or FAQ question):',
+    '- DEMAND short keywords (recommended ≤3 natural placements, 1–4 uses each, never as an H2 or FAQ question):',
     bullet(demandShort),
-    '- DEMAND long-tail keywords (required, 1–2 natural uses in prose or an FAQ ANSWER — never as the question text):',
+    '- Place demand shorts naturally. Missing a demand short is a HARD blocker for legal_guide/article/regional_*; for blog_post/blog_summary/news_summary it is a WARNING.',
+    '- DEMAND long-tail keywords (meaning coverage, not exact 6-word string; 1–2 natural uses in prose or an FAQ ANSWER — never as the question text):',
     bullet(demandLong),
-    '- SYNTHESIZED floor-fill (optional; place only if natural; never stuff; never a ship blocker):',
+    '- A long-tail is satisfied if the meaning is answered, not only if the 6-word string appears.',
+    '- SYNTHESIZED floor-fill (discover-only; do NOT place these phrases; never a ship blocker):',
     bullet(synth),
-    '- Echo these exact phrases. Do not invent replacements or extra required keywords.',
+    '- Never instruct yourself to weave synthesized floor-fill. Those phrases are analytics-only — omitting them is not a defect.',
+    '- Echo demand short phrases naturally. Do not invent replacements or extra required keywords.',
     '- If a term has no clean slot, omit it. Harper cannot honestly stuff it later.',
   ].filter(Boolean).join('\n')
 }

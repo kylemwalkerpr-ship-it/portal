@@ -65,7 +65,7 @@ deploys stay green.
 | I2 | **Host ↔ repo** from `HOST_REPO` only (`legal→caseworks`, regional→consultancy, `market→portal`). |
 | I3 | **Rendered payload** must pass `assertShipAllowed` before any commit (CTAPanel, FM, path patterns). |
 | I4 | **Unattended ships never direct-push `main`.** They open a PR, wait for CI when possible, then merge. Human **Approve → main** may direct-commit. |
-| I5 | **AI order:** Entrim Qwen3.6 27B (`entrim-qwen-27b`) → Entrim DeepSeek V4 Flash (`entrim-deepseek`) — both served by `api.entrim.ai/v1` under one `ENTRIM_API_KEY`. No NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs in the live policy. |
+| I5 | **AI order:** Draft / Brief / Review lead is Grok 4.6 (`grok`, `api.x.ai/v1`). Entrim Qwen3.6 27B (`entrim-qwen-27b`) and Entrim DeepSeek V4 Flash (`entrim-deepseek`) are fallbacks under `ENTRIM_API_KEY`. No NVIDIA / Cloudflare / Groq / Gemini / OpenRouter legs in the live policy. Author and Harper-revise passes use the operator's review pin (Grok default) with `cascadeOnCapacity: false`. |
 | I6 | **Content type follows path/host** (`reconcileContentTypeWithPath`) — never `legal_guide` on `usa/content/universities/*`. |
 
 ---

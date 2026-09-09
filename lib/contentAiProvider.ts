@@ -373,6 +373,8 @@ export interface ContentAiOptions {
    * the full article into memory after the consumer is gone.
    */
   signal?: AbortSignal
+  /** Content type so the quality contract can pick blog vs guide shape. */
+  contentType?: string
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -3075,7 +3077,7 @@ function withUniversalQualityContract(opts: ContentAiOptions): ContentAiOptions 
   const system = opts.system.trim()
   return {
     ...opts,
-    system: system ? `${system}\n\n${qualityPromptBlock()}` : qualityPromptBlock(),
+    system: system ? `${system}\n\n${qualityPromptBlock(opts.contentType)}` : qualityPromptBlock(opts.contentType),
   }
 }
 

@@ -1,7 +1,14 @@
 /** Shared reader-engagement contract for every generated page and brief. */
 
+import { writingFamilyFor } from './writingShape'
+
 export const EDITORIAL_CONTRACT_VERSION = '2026.08.reader-engagement.v3'
 
+/**
+ * GUIDE contract (legal_guide / article). Existing imports keep this name.
+ * Blogs use `blogEditorialContract()`; regional pages use the regional variant
+ * via `formattingContractFor`.
+ */
 export const EDITORIAL_FORMATTING_CONTRACT = [
   `## READER-ENGAGEMENT AND EDITORIAL FORMAT CONTRACT (${EDITORIAL_CONTRACT_VERSION})`,
   '',
@@ -17,14 +24,14 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '9. Use calm, precise, inclusive language. No clickbait, keyword stuffing, fake urgency, invented statistics, unsupported testimonials, outcome guarantees, or manipulative “keep reading” teasers.',
   '10. Keep variation topic-led: blogs may be lighter and more narrative; procedural guides may use steps and checklists; comparisons may use a table. Apply the principles without forcing identical headings.',
   '11. KEYWORD CONTRACT (mandatory on every draft). The brief supplies a sealed list with provenance:',
-  '    - DEMAND short keywords — ≥5 distinct head terms, each ≤3 words. Each must appear at least once in the body, in context, and at most 4 times (no stuffing). Missing a demand short is a HARD blocker named missing_short_keyword.',
-  '    - DEMAND long-tail keywords — ≥4 distinct long-tail terms, each ≥4 words. Each must appear at least once in prose or an FAQ ANSWER (never as the question text, never as an H2), and at most 2 times. Missing a demand long-tail is a HARD blocker named missing_long_tail_keyword.',
+  '    - DEMAND short keywords — ≥3 distinct head terms, each ≤3 words. Each must appear at least once in the body, in context, and at most 4 times (no stuffing). Missing a demand short is a HARD blocker named missing_short_keyword on guides and regional pages; on blogs it is a WARNING, never a reason to stuff the phrase.',
+  '    - DEMAND long-tail keywords — ≥4 distinct long-tail terms, each ≥4 words. Coverage is meaning in prose (the query intent lands in a bounded passage), not a forced exact 6-word string. Never paste a long-tail as the question text or as an H2. Missing a demand long-tail is a HARD blocker named missing_long_tail_keyword on guides/regional.',
   '    - SYNTHESIZED floor-fill exists only to meet the count floors. It is optional: place it only if a grammatical slot already exists. Omitting it is a warning, never a ship blocker. Never stuff an unplaceable phrase.',
   '    Distribute demand keywords across the article. Do not front-load every keyword in the first paragraphs. Do not convert a long-tail into an FAQ question or H2 — Harper cannot rewrite headings or invent a slot for a broken phrase.',
   '',
-  '12. ANTI-WALL-OF-TEXT (mandatory): paragraphs of 1-3 sentences, each under 180 characters. No prose block may run longer than 180 chars without a visual break — split with bullets, a numbered step, a table, a callout, or a new paragraph with a bold lead. Avoid creating long blocks: the scanner flags blocks >180 chars that also have either >520 chars or ≥5 sentences. Break sections into 2-4 short paragraphs.',
-  '13. CONCRETE WORKED EXAMPLE (mandatory for long-form): every page ≥1,000 words MUST include at least one concrete example with a named person, their situation, the step they took, and the result. Label it "Example:" or "Worked Example:" in its own H2 or H3. The scanner checks body text for "for example", "for instance", or "e.g." — ensure at least one such marker exists.',
-  '14. SCHEMA JSON-LD (mandatory for indexable pages): Article JSON-LD `{"@type":"Article","author":{...},"datePublished":"...","description":"..."}` must be present in every page. FAQPage JSON-LD `{"@type":"FAQPage","mainEntity":[...]}` is required when the page has 4+ FAQ sections. These are rendered by the template from the article meta, keywords, and FAQ content — do not write raw schema blocks manually. The scanner will warn (not block) if either schema type is absent.',
+  '12. ANTI-WALL-OF-TEXT (mandatory on legal guides and regional pages, NOT on narrative blogs): paragraphs of 1-3 sentences, each under 180 characters. No prose block may run longer than 180 chars without a visual break — split with bullets, a numbered step, a table, a callout, or a new paragraph with a bold lead. Avoid creating long blocks: the scanner flags blocks >180 chars that also have either >520 chars or ≥5 sentences. Break sections into 2-4 short paragraphs. Blogs MAY use a 4–6 sentence developed paragraph.',
+  '13. CONCRETE WORKED EXAMPLE (mandatory for long-form guides/regional): every page ≥1,000 words MUST include procedural concreteness (forms, documents, sequences). Do NOT invent a named person, testimonial, or personal story. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only. Label a genuine procedure "Example:" or "Worked example:" when it helps the reader. The scanner may look for "for example", "for instance", or "e.g." as a hint — never invent a protagonist to satisfy it.',
+  '14. SCHEMA JSON-LD (mandatory for indexable pages): Article JSON-LD `{"@type":"Article","author":{...},"datePublished":"...","description":"..."}` must be present in every page. FAQPage JSON-LD `{"@type":"FAQPage","mainEntity":[...]}` is required when the page has 4+ FAQ sections. These are rendered by the template from the article meta, keywords, and FAQ content — do not write raw schema blocks manually. The scanner will warn (not block) if either schema type is absent. Narrative blogs do not require FAQPage.',
   '',
   '## READER-ENGAGEMENT ARTEFACTS (mandatory — these keep the reader on the page)',
   '',
@@ -111,6 +118,56 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   'FINAL READER TEST: Could a busy reader understand the answer, scan the headings, find the relevant step, verify the source, and know the next safe action without reading every word?',
 ].join('\n')
 
+const BLOG_EDITORIAL_CONTRACT = [
+  `## BLOG EDITORIAL CONTRACT (${EDITORIAL_CONTRACT_VERSION} — narrative essay)`,
+  '',
+  'Write one specialist article. This is an essay, not a mini legal guide and not an SEO kit.',
+  '',
+  '1. Answer first: the opening 1–2 paragraphs state the thesis in plain English. No history lesson, no hype, no promise.',
+  '2. One H1. Then 3–6 purpose-led H2s. Each H2 must advance the argument; never restate the intro.',
+  '3. Paragraph rhythm MAY include a 4–6 sentence developed paragraph. Short paragraphs are welcome; a 180-character cap is NOT in force.',
+  '4. Cite primary sources in the body where a fact is asserted (full HTTPS URLs). Do not dump a sources kit if the citations already live in prose. Factual blogs need at least one official citation.',
+  '5. Short educational disclaimer on YMYL-adjacent topics (educational only, not legal advice). Author byline if the brief supplies one.',
+  '6. One closer. Do not append a FAQ block, FAQPage JSON-LD, table of contents, or a TL;DR / answer-capsule kit unless the brief explicitly asks for it.',
+  '7. Do not invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied, use those anonymised beats only.',
+  '8. Calm, precise, inclusive language. No clickbait, keyword stuffing, fake urgency, invented statistics, outcome guarantees, invented fees, dates, or URLs.',
+  '9. KEYWORD CONTRACT: demand shorts appear naturally in prose (meaning coverage). Missing a demand short is a WARNING on blogs — never stuff the phrase to clear a checkbox. Long-tails: meaning in prose, not a forced exact string. Synthesized floor-fill is optional, never a ship blocker.',
+  '10. Link with meaning when an allowlisted URL actually helps. Interlinks are not a ship gate for blogs. Never invent a URL.',
+  '',
+  'E1. HOOK (first 40 words): the reader\'s exact problem, then the answer in the same breath.',
+  'E3. SO-WHAT TEST: every section earns its place by moving the thesis forward.',
+  'E4. SENTENCE RHYTHM: vary sentence length. Active voice, second person ("you"). No robotic repeated openers.',
+  'E8. READER TRUST: distinguish official rules from practical guidance; keep the educational disclaimer visible on YMYL-adjacent topics.',
+  '',
+  'HEADING HIERARCHY: exactly one H1. ## for major sections. ### only nested under a ##.',
+  '',
+  'FINAL READER TEST: Could a busy reader grasp the thesis, follow the argument through the H2s, verify a source, and know what to do next without reading a kit of FAQ/TOC/TL;DR blocks?',
+].join('\n')
+
+const REGIONAL_EDITORIAL_CONTRACT = [
+  EDITORIAL_FORMATTING_CONTRACT,
+  '',
+  '## REGIONAL PAGE SHAPE (overrides FAQ count only)',
+  '',
+  'Regional / university / from-country pages keep the YMYL apparatus: ## In 60 seconds, procedural H2s, FAQ (3–5 Q&A, not 4–6), ## Sources, and a short educational disclaimer.',
+  'Geo-specific: agencies, forms, timelines, and local context. Procedural concreteness — not an invented protagonist.',
+].join('\n')
+
+export function blogEditorialContract(): string {
+  return BLOG_EDITORIAL_CONTRACT
+}
+
+export function regionalEditorialContract(): string {
+  return REGIONAL_EDITORIAL_CONTRACT
+}
+
+export function formattingContractFor(contentType: string): string {
+  const family = writingFamilyFor(contentType)
+  if (family === 'blog' || family === 'short') return blogEditorialContract()
+  if (family === 'regional') return regionalEditorialContract()
+  return EDITORIAL_FORMATTING_CONTRACT
+}
+
 export function editorialBriefPromptBlock(): string {
   return [
     EDITORIAL_FORMATTING_CONTRACT,
@@ -119,12 +176,12 @@ export function editorialBriefPromptBlock(): string {
     'Return a compact, skimmable brief with these labeled sections:',
     '- READER / INTENT: who is asking, what they need answered, and the safe next action.',
     '- PROMISE OF VALUE: one accurate sentence describing what the page will help the reader do; never promise an outcome.',
-    '- PAGE SHAPE: recommended content type and a logical H2/H3 outline.',
+    '- PAGE SHAPE: recommended content type and a logical H2/H3 outline. Page shape depends on content type: blogs (blog_post, blog_summary, news_summary) are narrative essays — answer-first opening, 3–6 purpose-led H2s, no mandatory FAQ / TOC / In 60 seconds / worked-example person. Legal guides and articles keep the YMYL apparatus. Regional pages use In 60 seconds, procedural H2s, FAQ 3–5, sources, and a disclaimer.',
     '- ANSWER-FIRST: the answer the opening should deliver in 1–2 sentences.',
     '- EVIDENCE / SOURCES: official authorities, facts to verify, and freshness risks.',
-    '- ENGAGEMENT DEVICES: only the useful checklist, steps, table, example, callout, FAQ, and internal-link opportunities for this query.',
+    '- ENGAGEMENT DEVICES: only the useful checklist, steps, table, example, callout, FAQ, and internal-link opportunities for this query. Blogs skip kit devices that do not serve the thesis.',
     '- COMPLIANCE NOTES: YMYL boundaries, disclaimer, uncertainty, and claims to avoid.',
-    '- KEYWORD COVERAGE: echo the sealed KEYWORD CONTRACT. Demand shorts (≤3 words) and demand long-tails (≥4 words) are required coverage. Synthesized floor-fill is optional. Long-tails belong in FAQ ANSWERS or prose — never as the question text and never as an H2. Note any term with no clean slot so the writer can omit it rather than force-fit. Harper cannot later invent a grammatical slot for a broken phrase.',
+    '- KEYWORD COVERAGE: echo the sealed KEYWORD CONTRACT. Demand shorts (≤3 words, floor 3 distinct terms) and demand long-tails (≥4 words) are required coverage on guides/regional; on blogs a missing demand short is a warning. Synthesized floor-fill is optional. Long-tails belong in prose (meaning coverage), never as the question text and never as an H2. Note any term with no clean slot so the writer can omit it rather than force-fit. Harper cannot later invent a grammatical slot for a broken phrase.',
     'Use short labeled bullets rather than a wall of prose. Do not invent search data, fees, timelines, sources, or credentials.',
   ].join('\n')
 }

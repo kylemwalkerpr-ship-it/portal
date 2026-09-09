@@ -81,6 +81,8 @@ export interface EeatAction {
   priority: number
   action: string
   evidence: string
+  /** Stable code for `eeat-${code}` directive ids. */
+  code: string
 }
 
 function clamp01(v: number): number {
@@ -217,11 +219,14 @@ export function buildEeatActions(result: EeatTrustResult, lane1?: EeatLane1): Ee
   const sourcing = varScore(result, 540)
   const citationAuthority = varScore(result, 541)
   const factCheck = varScore(result, 539)
+  const originalInsight = varScore(result, 542)
+  const expertQuote = varScore(result, 564)
 
   if (missing.length || flags.has('low_trust')) {
     out.push({
       priority: 4,
-      action: `Add the missing trust signals competitors already demonstrate: ${missing.slice(0, 6).join(' · ')}${missing.length > 6 ? ` (+${missing.length - 6} more)` : ''}`,
+      code: 'trust_signals',
+      action: `Add the missing trust signals competitors already demonstrate: ${missing.slice(0, 6).join(' · ')}${missing.length > 6 ? ` (+${missing.length - 6} more)` : ''}. Include a named reviewer line and original analysis from the research pack; never invent anecdotes.`,
       evidence: top ? `Trust gap vs ${top}` : `${missing.length} trust signal(s) missing vs the SERP`,
     })
   }
@@ -229,7 +234,8 @@ export function buildEeatActions(result: EeatTrustResult, lane1?: EeatLane1): Ee
   if (expertise != null && expertise < 0.5) {
     out.push({
       priority: 3,
-      action: 'Strengthen the author byline with topic-relevant credentials (named person, qualification, experience)',
+      code: 'author_byline',
+      action: 'Strengthen the author byline with topic-relevant credentials (named person, qualification, experience). Use the AuthorPack name/credential; never invent a reviewer.',
       evidence: `Author expertise ${Math.round(expertise * 100)}/100 — presence is not enough for YMYL trust`,
     })
   }
@@ -237,7 +243,8 @@ export function buildEeatActions(result: EeatTrustResult, lane1?: EeatLane1): Ee
   if (sourcing != null && sourcing < 0.5) {
     out.push({
       priority: 3,
-      action: 'Back each factual claim with a cited primary source it actually supports',
+      code: 'claim_citations',
+      action: 'Back each factual claim with a claim-level citation to a cited primary source it actually supports',
       evidence: `Sourcing adequacy ${Math.round(sourcing * 100)}/100 — claims exceed the cited evidence`,
     })
   }
@@ -245,6 +252,7 @@ export function buildEeatActions(result: EeatTrustResult, lane1?: EeatLane1): Ee
   if (citationAuthority != null && citationAuthority < 0.5) {
     out.push({
       priority: 2,
+      code: 'citation_authority',
       action: 'Upgrade citations to authoritative first-party sources (agency/statute), not secondary summaries',
       evidence: `Citation authority ${Math.round(citationAuthority * 100)}/100 — sources are not authoritative for this topic`,
     })
@@ -253,23 +261,62 @@ export function buildEeatActions(result: EeatTrustResult, lane1?: EeatLane1): Ee
   if (factCheck != null && factCheck < 0.5) {
     out.push({
       priority: 2,
-      action: 'Disclose a visible review/accuracy process (named reviewer + "last reviewed" date)',
+      code: 'named_reviewer',
+      action: 'Disclose a visible review/accuracy process (named reviewer line + "last reviewed" date from the AuthorPack)',
       evidence: `Fact-check transparency ${Math.round(factCheck * 100)}/100`,
+    })
+  }
+
+  if (originalInsight != null && originalInsight < 0.5) {
+    out.push({
+      priority: 2,
+      code: 'original_analysis',
+      action: 'Add original analysis from the research pack (claim → supporting URL). Do not invent anecdotes or named people.',
+      evidence: `Original insight ${Math.round(originalInsight * 100)}/100 — generic template content`,
+    })
+  }
+
+  if (expertQuote != null && expertQuote < 0.5) {
+    out.push({
+      priority: 2,
+      code: 'no_invented_anecdotes',
+      action: 'Do not invent personal stories, named people, or testimonials. Use only operator-supplied experience beats from the AuthorPack.',
+      evidence: `Expert-quote depth ${Math.round(expertQuote * 100)}/100`,
     })
   }
 
   if (lane1?.ymyl && lane1.disclaimerPresent === false) {
     out.push({
       priority: 2,
+      code: 'ymyl_disclaimer',
       action: 'Add an educational disclaimer ("not legal advice") — YMYL page without one',
       evidence: 'Deterministic crawl: disclaimer absent on a YMYL page',
     })
   }
 
   if (!out.length) {
-    out.push({ priority: 1, action: 'Sustain — the trust stack clears the SERP consensus', evidence: `Trust ${varScore(result, 532) == null ? '—' : Math.round((varScore(result, 532) as number) * 100)}/100` })
+    out.push({
+      priority: 1,
+      code: 'sustain',
+      action: 'Sustain — the trust stack clears the SERP consensus',
+      evidence: `Trust ${varScore(result, 532) == null ? '—' : Math.round((varScore(result, 532) as number) * 100)}/100`,
+    })
   }
   return out.sort((a, b) => b.priority - a.priority)
+}
+
+/**
+ * Map scored E-E-A-T actions to Harper/review revision directives.
+ * Stable ids: `eeat-${code}`. Sustain is advisory; everything else required.
+ */
+export function eeatActionsToDirectives(
+  actions: ReturnType<typeof buildEeatActions>,
+): Array<{ id: string; instruction: string; severity: 'required' | 'advisory' }> {
+  return (actions || []).map((a) => ({
+    id: `eeat-${a.code || 'action'}`,
+    instruction: a.action,
+    severity: a.code === 'sustain' || a.priority < 2 ? 'advisory' : 'required',
+  }))
 }
 
 /** Merge deterministic Lane-1 flags into the model's flags (never removed). */

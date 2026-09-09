@@ -21,8 +21,9 @@ import { evaluateAhrefsDraft } from './ahrefsIssues'
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
 import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
-import { EDITORIAL_FORMATTING_CONTRACT } from './editorialContract'
-import { FORMAT_SKELETON } from './formatContract'
+import { EDITORIAL_FORMATTING_CONTRACT, formattingContractFor } from './editorialContract'
+import { FORMAT_SKELETON, formatSkeletonFor } from './formatContract'
+import { isBlogFamily, usesGuideApparatus, writingFamilyFor } from './writingShape'
 
 export type QualitySeverity = 'blocker' | 'warning'
 
@@ -799,6 +800,37 @@ function wordBoundaryHit(text: string, word: string): boolean {
 }
 
 /**
+ * Cohesion-light: adjacent H2 bodies that open with nearly the same first
+ * sentence. Warning only — never a ship blocker.
+ */
+function adjacentH2Echoes(body: string): string[] {
+  const parts = String(body || '').split(/^##\s+/m).slice(1)
+  if (parts.length < 2) return []
+  const firsts: string[] = []
+  for (const part of parts) {
+    const afterHeading = part.replace(/^[^\n]*\n/, '')
+    const line = afterHeading
+      .split('\n')
+      .map((l) => l.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '').replace(/[#*_`]/g, '').trim())
+      .find((l) => l.length >= 24 && !/^https?:\/\//i.test(l))
+    const sentence = (line || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .slice(0, 48)
+    firsts.push(sentence)
+  }
+  const out: string[] = []
+  for (let i = 0; i < firsts.length - 1; i++) {
+    const a = firsts[i]
+    const b = firsts[i + 1]
+    if (a.length < 24 || b.length < 24) continue
+    if (a === b || (a.slice(0, 32) === b.slice(0, 32))) out.push(a)
+  }
+  return out
+}
+
+/**
  * Run the full quality gate on markdown (or pre-render body).
  */
 export interface CompetingPage {
@@ -846,6 +878,9 @@ export function evaluateContentQuality(opts: {
 }): QualityGateResult {
   const contentType = (opts.contentType || 'legal_guide').toLowerCase()
   const indexable = opts.indexable !== false
+  const blogFamily = isBlogFamily(contentType)
+  const guideApparatus = usesGuideApparatus(contentType)
+  const family = writingFamilyFor(contentType)
   const body = stripForScan(opts.content)
   const words = countBodyWords(opts.content)
   const findings: QualityFinding[] = []
@@ -909,23 +944,25 @@ export function evaluateContentQuality(opts: {
     // Do not use the `m` flag with `$` — `$` would match the end of the first
     // bullet line and truncate the section to one item.
     const tldr = raw.match(/(?:^|\n)##\s+In 60 seconds\s*[:：-]?\s*\r?\n([\s\S]*?)(?=\n##\s|$)/i)
-    if (!tldr) {
-      add({
-        code: 'tldr_format_invalid',
-        severity: 'blocker',
-        message: 'Missing required In 60 seconds section',
-        fix: 'Add ## In 60 seconds with 3–5 direct takeaway bullets, one `- ` item per line.',
-      })
-    } else {
-      const tldrBody = tldr[1].trim()
-      const bulletCount = (tldrBody.match(/^[-*+]\s+\S/gm) || []).length
-      if (bulletCount < 3) {
+    if (guideApparatus) {
+      if (!tldr) {
         add({
           code: 'tldr_format_invalid',
           severity: 'blocker',
-          message: 'In 60 seconds must contain 3–5 separate bullet lines',
-          fix: 'Write 3–5 direct takeaways, one `- ` bullet per line; never join bullets with inline hyphens.',
+          message: 'Missing required In 60 seconds section',
+          fix: 'Add ## In 60 seconds with 3–5 direct takeaway bullets, one `- ` item per line.',
         })
+      } else {
+        const tldrBody = tldr[1].trim()
+        const bulletCount = (tldrBody.match(/^[-*+]\s+\S/gm) || []).length
+        if (bulletCount < 3) {
+          add({
+            code: 'tldr_format_invalid',
+            severity: 'blocker',
+            message: 'In 60 seconds must contain 3–5 separate bullet lines',
+            fix: 'Write 3–5 direct takeaways, one `- ` bullet per line; never join bullets with inline hyphens.',
+          })
+        }
       }
     }
     const sectionNames = [...raw.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1].trim().toLowerCase())
@@ -1232,31 +1269,34 @@ export function evaluateContentQuality(opts: {
 
   // ── 5. Reader engagement and structure ─────────────────────────────────────
   // Warnings keep the format query-led while still catching walls of prose.
+  // Blogs are narrative essays: skip the 180-char wall, TOC, and invented-example floors.
   if (indexable && contentType !== 'marketplace_gig' && words >= 650) {
-    const proseBlocks = body
-      .split(/\n\s*\n/)
-      .map((block) => block
-        .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+).*$/gm, '')
-        .replace(/\|[^\n]*\|/g, '')
-        .replace(/\s+/g, ' ')
-        .trim(),
-      )
-      .filter((block) => block.length > 180)
-    const longBlocks = proseBlocks.filter((block) => {
-      const sentences = (block.match(/[.!?](?:\s|$)/g) || []).length
-      return block.length > 520 || sentences >= 5
-    })
-    if (longBlocks.length >= 2) {
-      add({
-        code: 'wall_of_text',
-        severity: 'warning',
-        message: `Several prose blocks are too dense (${longBlocks.length} long blocks)`,
-        fix: 'Break dense paragraphs into 1–3 sentence units and add a useful list, step, table, example, or callout where it improves comprehension.',
+    if (!blogFamily) {
+      const proseBlocks = body
+        .split(/\n\s*\n/)
+        .map((block) => block
+          .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+).*$/gm, '')
+          .replace(/\|[^\n]*\|/g, '')
+          .replace(/\s+/g, ' ')
+          .trim(),
+        )
+        .filter((block) => block.length > 180)
+      const longBlocks = proseBlocks.filter((block) => {
+        const sentences = (block.match(/[.!?](?:\s|$)/g) || []).length
+        return block.length > 520 || sentences >= 5
       })
+      if (longBlocks.length >= 2) {
+        add({
+          code: 'wall_of_text',
+          severity: 'warning',
+          message: `Several prose blocks are too dense (${longBlocks.length} long blocks)`,
+          fix: 'Break dense paragraphs into 1–3 sentence units and add a useful list, step, table, example, or callout where it improves comprehension.',
+        })
+      }
     }
     const hasList = /(?:^|\n)\s*(?:[-*+]\s+|\d+[.)]\s+)/m.test(body)
     const hasTable = /\|[^\n]+\|\n\|\s*:?-{2,}/.test(body)
-    if (!hasList && !hasTable) {
+    if (!blogFamily && !hasList && !hasTable) {
       add({
         code: 'missing_visual_break',
         severity: 'warning',
@@ -1264,7 +1304,7 @@ export function evaluateContentQuality(opts: {
         fix: 'Add a genuine checklist, numbered process, or comparison table only where it makes the information easier to scan.',
       })
     }
-    if (words >= 1100 && !/table of contents|contents|on this page/i.test(body)) {
+    if (!blogFamily && words >= 1100 && !/table of contents|contents|on this page/i.test(body)) {
       add({
         code: 'missing_reader_path',
         severity: 'warning',
@@ -1272,19 +1312,19 @@ export function evaluateContentQuality(opts: {
         fix: 'Add a concise table of contents or “On this page” list linked to the major sections.',
       })
     }
-    if (words >= 800 && !/(?:\bfor example\b|\bfor instance\b|\be\.g\.|\bworked example\b|\bscenario:)/i.test(body)) {
+    if (!blogFamily && words >= 800 && !/(?:\bfor example\b|\bfor instance\b|\be\.g\.|\bworked example\b|\bscenario:)/i.test(body)) {
       add({
         code: 'missing_concrete_example',
         severity: 'warning',
-        message: 'Long-form page has no concrete example marker',
-        fix: 'Add one accurate, clearly labeled example or scenario; do not invent a case outcome.',
+        message: 'Long-form page has no procedural concreteness marker',
+        fix: 'Add one accurate, clearly labeled procedure (forms, documents, sequences). Do not invent a case outcome, a named person, or a personal story.',
       })
     }
   }
 
   // ── 6. Structure for indexable long-form ─────────────────────────────────
   if (indexable && contentType !== 'marketplace_gig') {
-    if (!/in 60 seconds|tldr|key takeaways|quick answer/i.test(body)) {
+    if (guideApparatus && !/in 60 seconds|tldr|key takeaways|quick answer/i.test(body)) {
       add({
         code: 'missing_tldr',
         severity: 'blocker',
@@ -1293,15 +1333,21 @@ export function evaluateContentQuality(opts: {
       })
     }
     const h2s = (body.match(/^##\s+/gm) || []).length
-    if (h2s < 4) {
+    const minH2 = blogFamily ? 3 : 4
+    if (h2s < minH2) {
       add({
         code: 'structure_h2',
         severity: 'blocker',
-        message: `Need ≥4 H2 sections (found ${h2s})`,
-        fix: 'Add procedure, documents, risks/timelines, FAQ sections.',
+        message: blogFamily
+          ? `Need ≥3 purpose-led H2 sections (found ${h2s})`
+          : `Need ≥4 H2 sections (found ${h2s})`,
+        fix: blogFamily
+          ? 'Add 3–6 H2s that each advance the thesis. Do not force FAQ or worked-example headings.'
+          : 'Add procedure, documents, risks/timelines, FAQ sections.',
       })
     }
     if (
+      guideApparatus &&
       !/^##\s+.*faq/im.test(body) &&
       !/^###\s+.+\?/m.test(body) &&
       // Collapsible FAQ: <details><summary>Question?</summary>…
@@ -1311,7 +1357,19 @@ export function evaluateContentQuality(opts: {
         code: 'missing_faq',
         severity: 'blocker',
         message: 'Missing FAQ section',
-        fix: 'Add ## FAQ with 4–6 Q&A pairs (self-contained answers, plain or collapsible <details>).',
+        fix: family === 'regional'
+          ? 'Add ## FAQ with 3–5 Q&A pairs (self-contained answers, plain or collapsible <details>).'
+          : 'Add ## FAQ with 4–6 Q&A pairs (self-contained answers, plain or collapsible <details>).',
+      })
+    }
+    // Cohesion-light: adjacent H2s that open with nearly the same sentence.
+    for (const echo of adjacentH2Echoes(body)) {
+      add({
+        code: 'adjacent_h2_echo',
+        severity: 'warning',
+        message: `Adjacent H2s open with nearly the same sentence ("${echo.slice(0, 72)}")`,
+        fix: 'Give each section a distinct opening that advances the argument instead of restating the previous H2.',
+        evidence: echo.slice(0, 120),
       })
     }
     if (!articleHasOfficialCitation(opts.content || '', buildCitationContext({
@@ -1359,7 +1417,7 @@ export function evaluateContentQuality(opts: {
       // Skip the keyword coverage gate entirely — legacy pipeline / reaudit
       // calls without the arrays continue to behave as before.
     } else {
-      const minShort = Math.max(0, opts.minShortKeywords ?? 5)
+      const minShort = Math.max(0, opts.minShortKeywords ?? 3)
       const minLongTail = Math.max(0, opts.minLongTailKeywords ?? 4)
       const shortArr = (opts.requiredShortKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
       const longArr = (opts.requiredLongTailKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
@@ -1404,7 +1462,7 @@ export function evaluateContentQuality(opts: {
     if (missingShort.demand.length) {
       add({
         code: 'missing_short_keyword',
-        severity: 'blocker',
+        severity: blogFamily ? 'warning' : 'blocker',
         message: `Required short keyword(s) absent: ${preview(missingShort.demand)}`,
         fix: SHORT_FIX,
         evidence: missingShort.demand.slice(0, 8).join(' | '),
@@ -1750,7 +1808,50 @@ export function assertRhythmWithinRepairRange(opts: {
 }
 
 /** Inject into system prompts for every generation. */
-export function qualityPromptBlock(): string {
+export function qualityPromptBlock(contentType?: string): string {
+  const family = writingFamilyFor(contentType)
+  const blog = family === 'blog' || family === 'short'
+  const contract = contentType ? formattingContractFor(contentType) : EDITORIAL_FORMATTING_CONTRACT
+  const formatRules = blog
+    ? [
+        '━━━ FORMAT (reader legibility — essay, not a kit) ━━━',
+        '',
+        'Q8. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for 3–6',
+        '    purpose-led sections that each advance the thesis. ### only nested',
+        '    under a ##. Never skip levels. Do not force FAQ, TOC, or a TL;DR kit.',
+        '',
+        'Q9. PARAGRAPH RHYTHM. Developed 4–6 sentence paragraphs are allowed.',
+        '    Do not pad. Do not restate the intro under every H2. Close once.',
+        '',
+      ]
+    : [
+        '━━━ FORMAT (reader legibility — required structure) ━━━',
+        '',
+        'Q8. TABLE OF CONTENTS. For guides with 4+ H2 sections, open with exactly:',
+        '    ## Table of contents',
+        '    - [First section](#first-section)',
+        '    - [Second section](#second-section)',
+        '    The anchor must be the heading\'s slug: lowercase, spaces and punctuation',
+        '    become hyphens ("Eligibility requirements" → #eligibility-requirements).',
+        '    The slug MUST equal the heading you write below it, or the scanner will',
+        '    flag a broken reader path.',
+        '',
+        'Q9. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for major',
+        '    sections, ### only nested under a ##, never skip levels (no H1→H3), and',
+        '    never use #### or deeper. Every ## and ### needs a plain text id that',
+        '    matches its TOC slug.',
+        '',
+        'Q10. COLLAPSIBLE SECTIONS. For long optional reading (full fee tables,',
+        '    lengthy checklists, deep FAQ answers) use HTML <details> blocks so the',
+        '    page stays scannable:',
+        '    <details>',
+        '    <summary>Full fee breakdown</summary>',
+        '    - Item one',
+        '    - Item two',
+        '    </details>',
+        '    The renderer passes these through — never wrap them in code fences.',
+        '',
+      ]
   return [
     '## MANDATORY QUALITY RULES — YOUR OUTPUT IS MACHINE-AUDITED BEFORE SHIPPING',
     '',
@@ -1762,9 +1863,11 @@ export function qualityPromptBlock(): string {
     '- Language and tone: address the reader directly, use concrete verbs, and keep the regional spelling consistent. Define technical terms on first use without changing official names or legal meaning.',
     '- Readability: use familiar words and a natural mix of short and medium sentences. Preserve qualifications, exceptions and necessary technical terms; do not chase Flesch 100 with fragments or missing facts. The audience-specific editor target is advisory.',
     '- Grammar: check subject–verb agreement, articles, tense, pronoun references, punctuation and parallel list items. Read each sentence in context after revising it.',
-    '- Depth: budget the full article across the supplied outline, including FAQ and closing material. Answer each section’s reader question with supported steps, documents, constraints or a clearly labelled hypothetical example. Remove repetition; never invent facts or pad to meet a word count.',
+    blog
+      ? '- Depth: budget the article across 3–6 thesis-advancing sections. Answer the question the reader brought. Remove repetition; never invent facts or pad to meet a word count.'
+      : '- Depth: budget the full article across the supplied outline, including FAQ and closing material. Answer each section’s reader question with supported steps, documents, constraints or a clearly labelled hypothetical example. Remove repetition; never invent facts or pad to meet a word count.',
     '- SEO: satisfy the search intent first, integrate required keywords into grammatical sentences, and connect claims to supplied evidence. Never turn a search phrase into an awkward FAQ question or fabricate first-hand experience, credentials or statistics.',
-    '- Formatting: return one complete draft in the requested source format. Keep headings, TOC anchors, metadata, links and visible FAQ/schema answers consistent. Do not leak instructions into the article.',
+    '- Formatting: return one complete draft in the requested source format. Keep headings, metadata, and links consistent. Do not leak instructions into the article.',
     '- Final review: check the word window, factual support, sentence openings and grammar together after every edit. Fix the affected passage while preserving correct sections. A self-review is not a measured audit or proof of human authorship; shipping still requires the actual gate verdict.',
     '',
     '━━━ CRITICAL (hard blockers — article WILL be rejected) ━━━',
@@ -1810,35 +1913,10 @@ export function qualityPromptBlock(): string {
     '',
     'Q7. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
     '',
-    '━━━ FORMAT (reader legibility — required structure) ━━━',
-    '',
-    'Q8. TABLE OF CONTENTS. For guides with 4+ H2 sections, open with exactly:',
-    '    ## Table of contents',
-    '    - [First section](#first-section)',
-    '    - [Second section](#second-section)',
-    '    The anchor must be the heading\'s slug: lowercase, spaces and punctuation',
-    '    become hyphens ("Eligibility requirements" → #eligibility-requirements).',
-    '    The slug MUST equal the heading you write below it, or the scanner will',
-    '    flag a broken reader path.',
-    '',
-    'Q9. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for major',
-    '    sections, ### only nested under a ##, never skip levels (no H1→H3), and',
-    '    never use #### or deeper. Every ## and ### needs a plain text id that',
-    '    matches its TOC slug.',
-    '',
-    'Q10. COLLAPSIBLE SECTIONS. For long optional reading (full fee tables,',
-    '    lengthy checklists, deep FAQ answers) use HTML <details> blocks so the',
-    '    page stays scannable:',
-    '    <details>',
-    '    <summary>Full fee breakdown</summary>',
-    '    - Item one',
-    '    - Item two',
-    '    </details>',
-    '    The renderer passes these through — never wrap them in code fences.',
-    '',
+    ...formatRules,
     VOICE_PLAYBOOK,
     '',
-    EDITORIAL_FORMATTING_CONTRACT,
+    contract,
   ].join('\n')
 }
 
@@ -1876,10 +1954,25 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
  * Formatting requirements shared by every remediation path — the exact same
  * contract the model sees at generation, so fixes and first passes agree.
  */
-export function formattingRequirementsBlock(): string {
+export function formattingRequirementsBlock(contentType?: string): string {
+  const family = writingFamilyFor(contentType)
+  const blog = family === 'blog' || family === 'short'
+  const skeleton = contentType ? formatSkeletonFor(contentType) : FORMAT_SKELETON
+  if (blog) {
+    return [
+      'CANONICAL READER FORMAT (essay — not a legal-guide kit):',
+      skeleton,
+      '## FORMATTING REQUIREMENTS (blogs)',
+      '',
+      '- HEADINGS: one H1 only; ## for 3–6 purpose-led sections; ### nested under ## only.',
+      '- Do not force a table of contents, a TL;DR kit, FAQ, FAQPage, or a 180-character paragraph cap.',
+      '- LANGUAGE LEVEL: plain English, active voice, address the reader as "you".',
+      '- SPACING: exactly ONE blank line between blocks; no trailing spaces.',
+    ].join('\n')
+  }
   return [
     'CANONICAL READER FORMAT (also enforced after every AI return):',
-    FORMAT_SKELETON,
+    skeleton,
     '## FORMATTING REQUIREMENTS (all jobs, all models)',
     '',
     '- TABLE OF CONTENTS: for guides with 4+ H2 sections, emit exactly:',

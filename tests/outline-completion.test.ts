@@ -1,9 +1,15 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   canonicalOutlineForGate,
   completeMissingOutlineSections,
   insertSectionBeforeFaqOrSources,
   parseGeneratedOutlineSection,
   outlineCompletionErrorMessage,
+  outlineCompletionFailClosedError,
+  buildOutlineSectionPrompt,
+  articleContextForSection,
+  isBlogLikeContentType,
 } from '@/lib/seoFactory/outlineCompletion'
 
 describe('insertSectionBeforeFaqOrSources', () => {
@@ -50,6 +56,7 @@ describe('completeMissingOutlineSections', () => {
     expect(result.inserted).toEqual(['Worked Example'])
     expect(result.remaining).toEqual([])
     expect(result.stoppedForBudget).toBe(false)
+    expect(result.error).toBeUndefined()
     expect(result.content).toContain('## Worked Example')
     expect(result.content.indexOf('## Worked Example')).toBeLessThan(result.content.indexOf('## FAQ'))
   })
@@ -67,11 +74,51 @@ describe('completeMissingOutlineSections', () => {
     expect(outlineCompletionErrorMessage(result.remaining)).toContain('Worked Example')
     expect(outlineCompletionErrorMessage(result.remaining)).toMatch(/EditorPatch cannot add headings/)
   })
+
+  it('fail-closed: generateOutlineSection returning null surfaces remaining as error', async () => {
+    const article = `## Eligibility\n\nProse.\n`
+    const result = await completeMissingOutlineSections({
+      content: article,
+      outline: [{ heading: 'Worked Example' }, { heading: 'Costs' }],
+      generateSection: async () => null,
+    })
+    expect(result.remaining).toEqual(expect.arrayContaining(['Worked Example', 'Costs']))
+    expect(result.error).toBeTruthy()
+    expect(result.error).toContain('Worked Example')
+    expect(result.error).toContain('Costs')
+    expect(outlineCompletionFailClosedError(result.remaining, { error: result.error })).toBe(result.error)
+  })
 })
 
 describe('parseGeneratedOutlineSection', () => {
   it('rejects stubs under 120 chars', () => {
     expect(parseGeneratedOutlineSection('Too short.')).toBeNull()
+  })
+})
+
+describe('buildOutlineSectionPrompt — cohesion-aware closer', () => {
+  it('does not use the legal-only one-section identity', () => {
+    const { system, prompt } = buildOutlineSectionPrompt({
+      article: `# Opening thesis about skilled migration.\n\n${'Body. '.repeat(50)}`,
+      heading: 'Worked Example',
+      purpose: 'Show a realistic case',
+    })
+    expect(system).toMatch(/completing ONE section of an existing article/)
+    expect(system).toMatch(/Do not re-explain what it has already established/)
+    expect(system).not.toMatch(/You are a legal-content editor completing ONE section of an immigration article/)
+    expect(prompt).toMatch(/Opening thesis/)
+    expect(prompt).toMatch(/Worked Example/)
+  })
+
+  it('passes opening thesis + latest sections when the article is long', () => {
+    const article = `${'OPENING_THESIS_MARKER '.repeat(200)}\n${'x'.repeat(9000)}\nCLOSING_SECTION_MARKER the end`
+    const window = articleContextForSection(article)
+    expect(window).toContain('OPENING_THESIS_MARKER')
+    expect(window).toContain('CLOSING_SECTION_MARKER')
+    expect(window).toMatch(/article continues/)
+    const { prompt } = buildOutlineSectionPrompt({ article, heading: 'Costs' })
+    expect(prompt).toContain('OPENING_THESIS_MARKER')
+    expect(prompt).toContain('CLOSING_SECTION_MARKER')
   })
 })
 
@@ -96,6 +143,7 @@ describe('completeMissingOutlineSections — word budget fail-closed (P0-GEN-3)'
     expect(result.stoppedForBudget).toBe(true)
     expect(result.inserted).toEqual([])
     expect(result.remaining).toEqual(expect.arrayContaining(['Worked Example', 'Costs']))
+    expect(result.error).toMatch(/word budget/)
   })
 
   it('stops further inserts once an insert pushes the body to maxWords', async () => {
@@ -122,6 +170,27 @@ describe('completeMissingOutlineSections — word budget fail-closed (P0-GEN-3)'
     expect(result.stoppedForBudget).toBe(true)
     expect(result.inserted.length).toBeGreaterThanOrEqual(1)
     expect(result.remaining.length).toBeGreaterThan(0)
+    expect(result.error).toBeTruthy()
     expect(calls).toBeLessThan(3)
+  })
+})
+
+describe('pipeline fail-closed + blog whole-document drafting', () => {
+  it('JSON and stream pipelines error on remaining outline instead of continuing refine', () => {
+    const json = readFileSync(path.join(process.cwd(), 'lib/seoFactory/pipeline.ts'), 'utf8')
+    const stream = readFileSync(path.join(process.cwd(), 'lib/seoFactory/pipelineStream.ts'), 'utf8')
+    expect(json).toContain('throw new Error(why)')
+    expect(json).toContain('isBlogLikeContentType')
+    expect(json).toContain('missingOutlineSections')
+    expect(stream).toContain("type: 'error', error: why")
+    expect(stream).toContain('isBlogLikeContentType')
+    expect(stream).toContain('missingNow.length > 0')
+  })
+
+  it('identifies blog-like types for the whole-doc skip', () => {
+    expect(isBlogLikeContentType('blog_post')).toBe(true)
+    expect(isBlogLikeContentType('blog_summary')).toBe(true)
+    expect(isBlogLikeContentType('news_summary')).toBe(true)
+    expect(isBlogLikeContentType('legal_guide')).toBe(false)
   })
 })

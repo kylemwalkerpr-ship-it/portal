@@ -19,6 +19,40 @@ import { renderBriefRules, renderWriterRules } from './contentQualityPlaybook'
 import type { ContentSpec } from './contentSpec'
 import { keywordContractFromLists, renderKeywordContractBrief } from './keywordContractBrief'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+import {
+  blogShipRequirements,
+  guideShipRequirements,
+  isBlogFamily,
+  regionalShipRequirements,
+  writingFamilyFor,
+} from './writingShape'
+import { experienceBeatsPromptBlock, ymylAuthorRequired, type AuthorPack, type ExperienceBeat } from './authorPack'
+import { citedProvidersPromptBlock, type CitedProvider } from './providerAuthors'
+
+function authorCitationPromptBlock(opts: {
+  contentType: string
+  indexable: boolean
+  cited?: CitedProvider[]
+  author?: AuthorPack | null
+}): string {
+  if (opts.cited && opts.cited.length) return citedProvidersPromptBlock(opts.cited)
+  if (opts.author?.name) {
+    return [
+      'YMYL AUTHOR / MARKETPLACE CITATION (mandatory — this person consented at signup to be cited).',
+      `Named author/reviewer: ${opts.author.name} — ${opts.author.credential}`,
+      opts.author.experienceScope ? `Field: ${opts.author.experienceScope}` : '',
+      opts.author.marketplaceUrl ? `Profile: ${opts.author.marketplaceUrl}` : '',
+      ...(opts.author.servicePages || []).map((page) => `Service: [${page.title}](${page.url})`),
+      'YAML `author` MUST be this person\'s name — never invent YouSafe Editorial Team.',
+      'Include each marketplace URL verbatim as a markdown link in the byline or “Need professional help”.',
+      'Do not invent additional people, bar numbers, case results, or service pages.',
+    ].filter(Boolean).join('\n')
+  }
+  if (ymylAuthorRequired(opts.contentType, opts.indexable)) {
+    return citedProvidersPromptBlock([])
+  }
+  return ''
+}
 
 /**
  * Destination format contract — deterministic instructions per host+repo+contentType.
@@ -29,9 +63,9 @@ export function destinationFormatBlock(plan: OwnerPlan, contentType: string): st
   const repo = plan.repo
   const host = plan.host
   const spec = depthSpecForType(contentType)
-  const isBlog = contentType === 'blog_summary' || contentType === 'blog_post'
-  const isRegional = contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university'
-  const isLegal = contentType === 'legal_guide' || contentType === 'article'
+  const isBlog = isBlogFamily(contentType)
+  const isRegional = writingFamilyFor(contentType) === 'regional'
+  const isLegal = writingFamilyFor(contentType) === 'guide'
   const fileExt = repo === 'caseworks' ? '.tsx' : '.md'
 
   const lines: string[] = [
@@ -71,9 +105,10 @@ export function destinationFormatBlock(plan: OwnerPlan, contentType: string): st
       `- Blog tier: ${spec.minWords}–${spec.maxWords} words. Blogs are scannable, narrative, and helpful — shorter than legal guides.`,
       '- Images: reference as ![Alt text](/images/blog/slug-description.jpg). The build pipeline supplies actual images.',
       '- Use ## for sections, ### for sub-sections only under a ##.',
-      '- Opening paragraph must hook the reader with a concrete problem or question.',
-      '- Include a ## Key takeaways section (3–5 bullets) after the intro.',
-      '- Blog posts may include a ## About the author snippet at the bottom.',
+      '- Opening paragraph must hook the reader with a concrete problem or question, then answer the thesis in the same breath.',
+      '- 3–6 purpose-led H2s that each advance the argument. Do not restate the intro. Do not force eligibility / process / documents / FAQ / worked-example headings.',
+      '- A short takeaways list is optional, never mandatory. Do not add a table of contents or FAQPage unless the brief asks.',
+      '- Blog posts may include a ## About the author snippet at the bottom when the brief supplies a byline.',
       '- Internal links naturally connect to related blog posts and deeper guides on legal.yousafeconsultancy.com.',
       '- Marketplace CTA: where relevant, link readers to market.yousafeconsultancy.com for services — do not promise outcomes.',
       '- Tone: conversational yet authoritative, plain English (~8th grade), no jargon without definition.',
@@ -118,6 +153,116 @@ export function destinationFormatBlock(plan: OwnerPlan, contentType: string): st
   return lines.join('\n')
 }
 
+function factoryShipGatesBlock(
+  contentType: string,
+  minWords: number,
+  maxWords: number,
+  target: number,
+  beats?: ExperienceBeat[],
+): string[] {
+  const family = writingFamilyFor(contentType)
+  const depth = `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`
+  const shared = [
+    '- META: description 140–160 chars containing the primary keyword and a concrete next step.',
+    '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
+    '- SOURCES: prefer URLs VERBATIM from SOURCES TO CITE / SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are always valid. On-topic institutional pages (.org / .edu / official boards) that directly support a claim are also valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
+    '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
+    experienceBeatsPromptBlock(beats || []),
+  ]
+  if (family === 'blog' || family === 'short') {
+    return [
+      'SHIP GATES — pass ALL of these before you submit; the audit re-checks every one and blocks the ship on any failure:',
+      depth,
+      ...blogShipRequirements().map((line) => (line.startsWith('- ') || line.startsWith('You are') ? (line.startsWith('You are') ? `- ROLE: ${line}` : line) : `- ${line}`)),
+      ...shared,
+    ]
+  }
+  const shape = family === 'regional' ? regionalShipRequirements() : guideShipRequirements()
+  return [
+    'SHIP GATES — pass ALL of these before you submit; the audit re-checks every one and blocks the ship on any failure:',
+    depth,
+    ...shape.map((line) => (line.startsWith('- ') ? line : `- ${line}`)),
+    ...shared,
+  ]
+}
+
+function factoryHeadingFallback(contentType: string): string[] {
+  const family = writingFamilyFor(contentType)
+  if (family === 'blog' || family === 'short') {
+    return [
+      'HEADING REQUIREMENT (no brief template provided — write 3–6 purpose-led H2 sections):',
+      'Each H2 must advance the thesis. Do NOT force the legal-guide kit (overview / eligibility / process / documents / timeline / FAQ / worked example / risks). Choose headings the reader would actually scan for this topic.',
+      '',
+    ]
+  }
+  if (family === 'regional') {
+    return [
+      'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
+      'Cover procedural topics as H2 sections (##): who this is for, what to prepare, steps, what can change, local agencies/forms, FAQ (3-5 Q&A), risks/warnings. Use procedural concreteness (forms, documents, sequences). Do not invent a personal story.',
+      '',
+    ]
+  }
+  return [
+    'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
+    'Cover these topics as H2 sections (##): overview, eligibility/requirements, application process, required documents, timeline/costs, FAQ (4-6 Q&A), procedural example (forms/documents/sequences — never an invented protagonist), risks/warnings.',
+    '',
+  ]
+}
+
+function factoryBodyStructureLines(contentType: string): string[] {
+  const family = writingFamilyFor(contentType)
+  if (family === 'blog' || family === 'short') {
+    return [
+      '5) Body structure (narrative essay — not a legal-guide kit):',
+      '   - H1 (matches title; primary keyword once, natural)',
+      '   - Opening paragraphs: answer the thesis before expanding. No TL;DR kit.',
+      '   - 3–6 purpose-led H2s that each advance the argument. Do not restate the intro.',
+      '   - ### only nested under ##, never skip heading levels, never use ####+',
+      '   - Cite primary sources in-body (full https URLs). A ## Sources dump is optional when citations already live in prose.',
+      '   - Plain English: define legal/technical terms on first use, active voice, address the reader as "you"',
+      '   - Developed 4–6 sentence paragraphs are allowed. No 180-character cap.',
+      '   - FAQ / FAQPage / table of contents are NOT required.',
+      '   - Short disclaimer if YMYL-adjacent: educational only, not legal advice',
+      '   - Author byline if the brief supplies one',
+    ]
+  }
+  if (family === 'regional') {
+    return [
+      '5) Body structure (SEO + AEO + GEO):',
+      '   - H1 (matches title; primary keyword once, natural)',
+      '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser)',
+      '   - Opening paragraph: answer the query in ≤40 words before expanding',
+      '   - Procedural H2s: who, what to prepare, steps, what can change, local context',
+      '   - ### only nested under ##, never skip heading levels, never use ####+',
+      '   - ## FAQ (3–5 Q&A) — each answer 40–80 words, self-contained for LLM citation',
+      '   - ## Sources (bullet list of official URLs only)',
+      '   - Article JSON-LD; FAQPage JSON-LD when FAQ is present',
+      '   - Short disclaimer: educational only, not legal advice',
+    ]
+  }
+  return [
+    '5) Body structure (SEO + AEO + GEO):',
+    '   - H1 (matches title; primary keyword once, natural)',
+    '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser)',
+    '   - Opening paragraph: answer the query in ≤40 words before expanding',
+    '   - For guides with 4+ H2 sections: ## Table of contents immediately after the opening,',
+    '     as `- [Section](#section-slug)` links where the slug EXACTLY matches each H2',
+    '     (lowercase, spaces/punctuation → hyphens). Never emit anchors that differ from',
+    '     the headings.',
+    '   - ≥4 H2 sections with concrete procedures, documents, risks, eligibility',
+    '   - ### only nested under ##, never skip heading levels, never use ####+',
+    '   - Wrap long optional reading (fee tables, big checklists, deep FAQ answers) in',
+    '     <details><summary>…</summary>…</details> — never inside code fences',
+    '   - Plain English (~8th-grade): define legal/technical terms on first use,',
+    '     prefer sentences under 20 words, active voice, address the reader as "you"',
+    '   - Prefer one comparison or checklist table where it helps skimmers',
+    '   - ## FAQ (4–6 Q&A) — each answer 40–80 words, self-contained for LLM citation',
+    '   - ## Sources (bullet list of official URLs only)',
+    '   - Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks',
+    '   - Short disclaimer: educational only, not legal advice',
+  ]
+}
+
 export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
   contentType: string
@@ -147,9 +292,11 @@ export function buildFactorySystemPrompt(opts: {
    * the keyword/link/source allowlists are rendered from the registry
    * projections and the spec snapshot — never from duplicated arrays.
    */
-  spec?: ContentSpec
+   spec?: ContentSpec
+  /** Marketplace attorneys/consultants matched to this topic for YMYL citation. */
+  citedProviders?: CitedProvider[]
 }): string {
-  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist, spec } = opts
+  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist, spec, citedProviders } = opts
   const target = targetWordsForType(contentType)
   const maxWords = opts.maxWords ?? depthMaxWords(contentType)
   // Registry/spec-derived allowlists. A spec only ever NARROWS these lists to
@@ -186,35 +333,38 @@ export function buildFactorySystemPrompt(opts: {
     : undefined
   const interlinkList = specInterlinks ?? interlinkAllowlist
   const briefOutline = spec && spec.outline.length ? spec.outline.map((o) => o.heading) : h2Outline
+  const family = writingFamilyFor(contentType)
+  const blog = family === 'blog' || family === 'short'
+  const authorBlock = authorCitationPromptBlock({
+    contentType,
+    indexable: plan.indexable,
+    cited: citedProviders,
+    author: spec?.author || null,
+  })
   return [
-    'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
+    blog
+      ? 'You are a senior specialist writing one YouSafe / MyCaseworks article, not an SEO content factory filling a kit.'
+      : 'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
     'ZERO outcome promises. No guarantees of visas, approvals, timelines, or results.',
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
     'Cite official sources with full https URLs: immigration departments, government departments, official school pages, named intergovernmental bodies, AND the issuing body for the article’s claim (exam boards, licensing councils — e.g. NCSBN for NCLEX, IELTS.org for IELTS, NMC/GMC for UK professional registration). A host is valid because it issues that rule or exam, not because it is on a generic .gov list.',
     '',
-    'SHIP GATES — pass ALL of these before you submit; the audit re-checks every one and blocks the ship on any failure:',
-    `- DEPTH: ${minWords}–${maxWords} body words (target ~${target}). Under the minimum = thin (rejected); over the maximum = bloated (rejected).`,
-    '- STRUCTURE: H1 + "## In 60 seconds" TL;DR (3–5 direct bullets) + opening answer ≤40 words + ≥4 H2 sections + FAQ (4–6 Q&A) + ## Sources + short educational disclaimer.',
-    '- SCHEMA: Article JSON-LD AND FAQPage JSON-LD in <script type="application/ld+json"> blocks.',
-    '- META: description 140–160 chars containing the primary keyword and a concrete next step.',
-    '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
-    '- KEYWORDS: DEMAND short keywords appear ≥1× and ≤4×; DEMAND long-tails ≥1× and ≤2×. Synthesized floor-fill is optional — never stuff it (details in KEYWORD CONTRACT).',
-    '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
-    '- SOURCES: prefer URLs VERBATIM from SOURCES TO CITE / SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are always valid. On-topic institutional pages (.org / .edu / official boards) that directly support a claim are also valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
-    '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
+    ...factoryShipGatesBlock(contentType, minWords, maxWords, target, spec?.author?.experienceBeats),
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
     '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
     '- Google: clear primary intent match, entity coverage, helpful depth, crawlable structure, E-E-A-T signals (who this is for, what steps, which official rules).',
     '- CTR: title + meta must earn the click honestly (concrete action, year when accurate, audience/region).',
-    '- AEO / AI Overviews: definition-first, self-contained FAQ answers, citable facts, official URLs.',
+    blog
+      ? '- AEO / AI Overviews: definition-first opening, citable facts, official URLs. FAQPage is not required for blogs.'
+      : '- AEO / AI Overviews: definition-first, self-contained FAQ answers, citable facts, official URLs.',
     '- GEO: short factual sentences with named agencies/forms; lists and tables over fluff.',
     '- NEVER keyword-stuff, NEVER invent stats, NEVER fake case results, NEVER pad with filler to hit word count.',
     '',
     depthPromptClause(contentType),
     '',
-    qualityPromptBlock(),
+    qualityPromptBlock(contentType),
     '',
     ...(spec
       ? [
@@ -224,10 +374,8 @@ export function buildFactorySystemPrompt(opts: {
           '',
         ]
       : []),
-    formattingRequirementsBlock(),
-    '',
-    formatContractBriefBlock(),
-    '',
+    ...(blog ? [] : [formattingRequirementsBlock(contentType), '']),
+    ...(blog ? [] : [formatContractBriefBlock(contentType), '']),
     'OWNERSHIP (must follow):',
     `- Host: ${plan.host} → repo ${plan.repo}`,
     `- Canonical: ${plan.canonicalUrl}`,
@@ -259,11 +407,7 @@ export function buildFactorySystemPrompt(opts: {
       '- Long-tail coverage belongs INSIDE paragraphs and FAQ answers, where it reads naturally. If a term has no clean slot, omit it — a natural article without the term beats a stuffed one.',
       '- Scannability is substance: a table or checklist must add structure a reader uses; never pad a section to hit depth.',
       '',
-    ] : [
-      'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
-      'Cover these topics as H2 sections (##): overview, eligibility/requirements, application process, required documents, timeline/costs, FAQ (4-6 Q&A), worked example, risks/warnings.',
-      '',
-    ]),
+    ] : factoryHeadingFallback(contentType)),
     ...(sourceList && sourceList.length ? [
       'SOURCES TO CITE / SOURCE ALLOWLIST (cite these VERBATIM; on-topic live institutional pages may be added):',
       ...sourceList.map((s, i) => `${i + 1}. ${s}`),
@@ -282,6 +426,7 @@ export function buildFactorySystemPrompt(opts: {
       'INTERNAL LINKS: the verified allowlist is EMPTY — do NOT create ANY internal links to legal.yousafeconsultancy.com or any yousafe domain. Disable internal linking entirely for this draft. Only link externally to .gov / .edu sources if they appear in the SOURCES list above, using their EXACT URLs. Creating an invented or guessed internal URL is a hard error.',
       '',
     ]),
+    ...(authorBlock ? [authorBlock, ''] : []),
     ...(targetSlug ? [
       `TARGET SLUG: ${targetSlug}`,
       '',
@@ -294,35 +439,25 @@ export function buildFactorySystemPrompt(opts: {
       : '2) robots: noindex,follow',
     `3) Canonical intent: ${plan.canonicalUrl}`,
     `4) Owner host: ${plan.host} — do not cannibalize other estate hosts.`,
-    '5) Body structure (SEO + AEO + GEO):',
-    '   - H1 (matches title; primary keyword once, natural)',
-    '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser)',
-    '   - Opening paragraph: answer the query in ≤40 words before expanding',
-    '   - For guides with 4+ H2 sections: ## Table of contents immediately after the opening,',
-    '     as `- [Section](#section-slug)` links where the slug EXACTLY matches each H2',
-    '     (lowercase, spaces/punctuation → hyphens). Never emit anchors that differ from',
-    '     the headings.',
-    '   - ≥4 H2 sections with concrete procedures, documents, risks, eligibility',
-    '   - ### only nested under ##, never skip heading levels, never use ####+',
-    '   - Wrap long optional reading (fee tables, big checklists, deep FAQ answers) in',
-    '     <details><summary>…</summary>…</details> — never inside code fences',
-    '   - Plain English (~8th-grade): define legal/technical terms on first use,',
-    '     prefer sentences under 20 words, active voice, address the reader as "you"',
-    '   - Prefer one comparison or checklist table where it helps skimmers',
-    '   - ## FAQ (4–6 Q&A) — each answer 40–80 words, self-contained for LLM citation',
-    '   - ## Sources (bullet list of official URLs only)',
-    '   - Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks',
-    '   - Short disclaimer: educational only, not legal advice',
+    ...factoryBodyStructureLines(contentType),
     '6) Authority: use precise immigration entities (forms, visas, agencies, subclasses). No fluff.',
     '7) Professional voice: calm, accurate, no outcome guarantees, no salesy bait.',
     `8) WORD COUNT GATE: ${minWords}–${maxWords} body words (not counting YAML, JSON-LD, or code fences). Target ~${target} words. BOTH under ${minWords} AND over ${maxWords} are hard failures — the audit rejects the page. Under-delivering is missing depth; over-delivering wastes tokens and creates reader fatigue. If you exceed ${maxWords}, stop writing immediately and truncate to the last complete sentence that keeps you within ${maxWords}.`,
     `9) Content type: ${contentType}`,
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
-    '12) If you are under the word minimum, keep expanding with real procedures/documents/FAQs until you clear it — short drafts are discarded.',
-    '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND keyword is a hard block. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.',
-    '    - Place each DEMAND short keyword once, naturally (title/H1, In 60 seconds, a checklist item, or one body sentence). Cap 4 hits.',
-    '    - Place each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',
+    blog
+      ? '12) If you are under the word minimum, keep expanding the argument with real evidence until you clear it — short drafts are discarded. Do not pad with a FAQ kit.'
+      : '12) If you are under the word minimum, keep expanding with real procedures/documents/FAQs until you clear it — short drafts are discarded.',
+    blog
+      ? '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND short on a blog is a warning, never a reason to stuff. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.'
+      : '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND keyword is a hard block. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.',
+    blog
+      ? '    - Place each DEMAND short keyword once, naturally, in a body sentence. Cap 4 hits. Meaning coverage beats a forced phrase.'
+      : '    - Place each DEMAND short keyword once, naturally (title/H1, In 60 seconds, a checklist item, or one body sentence). Cap 4 hits.',
+    blog
+      ? '    - Place each DEMAND long-tail once as meaning coverage in prose — never as an H2. Cap 2 hits.'
+      : '    - Place each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',
     '    - Synthesized terms: use only if a grammatical slot already exists. If none, omit them. Harper cannot honestly stuff them later.',
     '    - The PRIMARY keyword is exempt from coverage checkboxes (it appears in title/H1) — but 12+ hits is still keyword stuffing.',
     renderKeywordContractBrief(keywordContract, opts.primaryKeyword || spec?.primaryKeyword),
@@ -533,6 +668,13 @@ export function buildFactoryUserPrompt(opts: {
       '- The REFERENCE DRAFT is read-only context. Your response is the COMPLETE revised article — emitted EXACTLY ONCE, in full, never preceded by a quote of the reference.',
       '- Make the smallest edits that clear every listed issue; keep everything else byte-for-byte. Do NOT add new sections beyond the fixes; do NOT restructure.',
       '- Total body words must stay inside the LENGTH gate above. If the reference is over the gate, that is a listed fix: trim it — never append more.',
+    ] : isBlogFamily(opts.contentType) ? [
+      'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
+      '- Opening that answers the thesis, 3–6 purpose-led H2s, in-body official citations, one closer, and a short educational disclaimer if YMYL-adjacent. All of it, in this one response.',
+      '- FAQ, FAQPage JSON-LD, table of contents, and a TL;DR kit are NOT required. Do not invent a protagonist to illustrate a point.',
+      '- There is NO part 2, no continuation run. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
+      '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
+      '- IMPORTANT: do NOT start a new article. If you have a reference draft below, expand and revise IT — do not write a fresh article from scratch. A fresh article that ignores the reference is a hard failure.',
     ] : [
       'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
       '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
@@ -1136,6 +1278,13 @@ export function buildSegmentWritePrompt(opts: {
   const { segment } = opts
   const isFirst = segment.index === 1
   const isLast = segment.index === segment.total
+  const blog = isBlogFamily(opts.contentType)
+  const firstDefault = blog
+    ? '- H1 + opening that answers the thesis, then 3–6 purpose-led H2s that each advance the argument. No TL;DR kit. Do not force eligibility / process / documents / FAQ headings.'
+    : '- H1 + opening answer + ## In 60 seconds, then the main body: eligibility, documents, step-by-step process, timeline, risks, costs (concrete and detailed).'
+  const laterDefault = blog
+    ? '- The remaining body depth: any sections not yet written, then one closer and a short educational disclaimer if YMYL-adjacent. FAQ / FAQPage are not required.'
+    : '- The remaining body depth: any sections not yet written, then ## FAQ (4-6 Q&A, self-contained), ## Sources (official https URLs only), JSON-LD, and the educational disclaimer.'
   const sectionBlock =
     segment.sections.length > 0
       ? `
@@ -1144,9 +1293,7 @@ ${segment.sections.map((h, i) => `${i + 1}. ## ${h}`).join('\n')}
 `
       : `
 SECTIONS TO WRITE IN THIS PART:
-${isFirst
-  ? '- H1 + opening answer + ## In 60 seconds, then the main body: eligibility, documents, step-by-step process, timeline, risks, costs (concrete and detailed).'
-  : '- The remaining body depth: any sections not yet written, then ## FAQ (4-6 Q&A, self-contained), ## Sources (official https URLs only), JSON-LD, and the educational disclaimer.'}
+${isFirst ? firstDefault : laterDefault}
 `
   const priorBlock =
     segment.priorSections.length > 0
@@ -1155,6 +1302,15 @@ ALREADY WRITTEN IN EARLIER PARTS — DO NOT REPEAT ANY OF THESE SECTIONS OR THE 
 ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
 `
       : ''
+  const firstRule = blog
+    ? '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening that answers the thesis + the sections listed above. ' + (isLast ? 'This is the complete article: include the closing specified in rule 6 exactly once.' : 'Do NOT include the closer / disclaimer — the final part writes those.')
+    : '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening answer + ## In 60 seconds (3-5 direct bullets) + the sections listed above. ' + (isLast ? 'This is the complete article: include the closing sections specified in rule 6 exactly once.' : 'Do NOT include the final ## Sources / JSON-LD / disclaimer — the final part writes those.')
+  const lastRule = blog
+    ? '6) This part closes the article: finish the last H2, add one closer, cite official sources in-body or as a short ## Sources list, and a short educational disclaimer if YMYL-adjacent. FAQ / FAQPage are not required. Do not invent a protagonist.'
+    : '6) This part closes the article: finish with ## FAQ (4-6 Q&A, each answer 40-80 words, self-contained for LLM citation), ## Sources (bullet list of official URLs only), Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks, and a short educational disclaimer.'
+  const continueRule = blog
+    ? '6) Stop cleanly at the end of this part\'s sections. Do not write the closer yet — a later part owns it.'
+    : '6) Stop cleanly at the end of this part\'s sections. Do not write the FAQ/Sources/JSON-LD — a later part owns them.'
   return [
     `## SEGMENTED WRITE — PART ${segment.index} OF ${segment.total} (${isFirst ? 'first part' : isLast ? 'final part' : 'continuation'})`,
     `Topic: ${opts.topic}`,
@@ -1172,17 +1328,14 @@ ${segment.priorSections.map((h) => `- ${h}`).join('\n')}
         ? 'RULES FOR THE FINAL PART:'
         : 'RULES FOR CONTINUATION PARTS:',
     isFirst
-      ? '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening answer + ## In 60 seconds (3-5 direct bullets) + the sections listed above. ' + (isLast ? 'This is the complete article: include the closing sections specified in rule 6 exactly once.' : 'Do NOT include the final ## Sources / JSON-LD / disclaimer — the final part writes those.')
+      ? firstRule
       : '1) Do NOT emit YAML front matter, do NOT repeat the H1/title/intro, and do NOT wrap in code fences. Start directly with the first section heading of THIS part.'
     ,
     '2) Practitioner voice: second person, plain English (~8th grade), define legal terms on first use, sentences under ~20 words.',
     '3) ZERO outcome promises — no guarantees of visas, approvals, success rates, or results. Educational only.',
     '4) Use the brief keywords naturally (short + long-tail). Never stuff.',
     '5) Cite official sources with full https URLs where they support a claim — immigration departments AND the issuing body for this topic (exam/licensing board). Use exact allowlist URLs only.',
-    isLast
-      ? '6) This part closes the article: finish with ## FAQ (4-6 Q&A, each answer 40-80 words, self-contained for LLM citation), ## Sources (bullet list of official URLs only), Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks, and a short educational disclaimer.'
-      : '6) Stop cleanly at the end of this part\'s sections. Do not write the FAQ/Sources/JSON-LD — a later part owns them.'
-    ,
+    isLast ? lastRule : continueRule,
     '7) Raw markdown only, no code fences around the whole output, no AI clichés, no filler.',
     '',
     opts.gscBlock,

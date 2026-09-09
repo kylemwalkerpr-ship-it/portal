@@ -1,5 +1,6 @@
 import {
   keywordContractForDraft,
+  keywordSeverityForType,
   pruneUnplaceableSynthesizedKeywords,
   renderKeywordContractBrief,
   resolveKeywordContract,
@@ -243,7 +244,7 @@ describe('keywordContractForDraft — briefing and pipeline share one sealed lis
 })
 
 describe('renderKeywordContractBrief', () => {
-  it('labels demand as required and synthesized as optional', () => {
+  it('labels demand as required coverage and synthesized as discover-only (never stuff)', () => {
     const brief = renderKeywordContractBrief({
       requiredShortKeywords: ['student visa', 'visa fee'],
       requiredLongTailKeywords: ['how to apply student visa', 'student visa in 2026 explained'],
@@ -263,6 +264,42 @@ describe('renderKeywordContractBrief', () => {
     expect(brief).toContain('SYNTHESIZED floor-fill')
     expect(brief).toContain('"visa fee"')
     expect(brief).toContain('never a ship blocker')
+    expect(brief).toContain('recommended ≤3 natural placements')
+    expect(brief).toContain('A long-tail is satisfied if the meaning is answered')
+    expect(brief).toMatch(/discover-only/i)
+    expect(brief).not.toMatch(/place only if natural/i)
+    expect(brief).not.toMatch(/Echo these exact phrases/i)
+    expect(brief).toContain('do NOT place these phrases')
+  })
+
+  it('does not tell the writer to stuff synthesized floor-fill', () => {
+    const brief = renderKeywordContractBrief({
+      requiredShortKeywords: ['visa fee'],
+      requiredLongTailKeywords: ['student visa in 2026 explained'],
+      shortKeywordTerms: [{ term: 'visa fee', source: 'synthesized' }],
+      longTailKeywordTerms: [{ term: 'student visa in 2026 explained', source: 'synthesized' }],
+      backfilled: true,
+    })
+    expect(brief.toLowerCase()).not.toMatch(/place (only if natural|synthesized)/)
+    expect(brief).toContain('do NOT place these phrases')
+    expect(brief).toContain('analytics-only')
+  })
+})
+
+describe('keywordSeverityForType — coverage not stuffing', () => {
+  it('synthesized is always a warning', () => {
+    expect(keywordSeverityForType('legal_guide', 'synthesized')).toBe('warning')
+    expect(keywordSeverityForType('blog_post', 'synthesized')).toBe('warning')
+  })
+
+  it('demand shorts are blockers on legal/article/regional, warnings on blogs/news', () => {
+    expect(keywordSeverityForType('legal_guide', 'demand')).toBe('blocker')
+    expect(keywordSeverityForType('article', 'demand')).toBe('blocker')
+    expect(keywordSeverityForType('regional_page', 'demand')).toBe('blocker')
+    expect(keywordSeverityForType('regional_university', 'demand')).toBe('blocker')
+    expect(keywordSeverityForType('blog_post', 'demand')).toBe('warning')
+    expect(keywordSeverityForType('blog_summary', 'demand')).toBe('warning')
+    expect(keywordSeverityForType('news_summary', 'demand')).toBe('warning')
   })
 })
 

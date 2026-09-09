@@ -66,6 +66,22 @@ jest.mock('@/lib/seoFactory/contentQuality', () => ({
 jest.mock('@/lib/seoFactory/eeatTrust', () => ({
   eeatTrustComposite: () => 0.81,
   buildEeatLane1: () => ({ ymyl: true }),
+  eeatTrustPersist: (result: { model_used?: string }) => ({
+    eeat_trust_score: 0.81,
+    eeat_author_expertise_score: null,
+    eeat_missing_signals: [],
+    eeat_top_competitor: null,
+    eeat_top_competitor_trust: null,
+    eeat_confidence_avg: null,
+    eeat_flags: [],
+    eeat_model_used: result?.model_used || 'mock:eeat_trust',
+  }),
+  buildEeatActions: () => [
+    { priority: 3, code: 'author_byline', action: 'Strengthen the author byline', evidence: 'low expertise' },
+  ],
+  eeatActionsToDirectives: () => [
+    { id: 'eeat-author_byline', instruction: 'Strengthen the author byline', severity: 'required' as const },
+  ],
   scoreEeatTrust: jest.fn(async () => ({
     page_url: 'https://legal.yousafeconsultancy.com/us/f1/',
     subsystem: 'eeat_trust',
@@ -179,6 +195,43 @@ describe('assembleMasterEngineFeed — LLM quality lane, CONTENT_AI_LLM_QUALITY=
       eeatTrust: 'mock:eeat_trust',
       semanticNlp: 'mock:semantic_nlp',
     })
+  })
+
+  it('passes competingSnippets through to scoreEeatTrust instead of always []', async () => {
+    process.env.CONTENT_AI_LLM_QUALITY = '1'
+    await assembleMasterEngineFeed({
+      ...BASE_REQ,
+      content: DRAFT,
+      competingSnippets: ['Competitor names a solicitor and cites GOV.UK.'],
+    })
+    expect(eeatTrustMock.scoreEeatTrust).toHaveBeenCalledWith(
+      expect.objectContaining({ competitorTexts: ['Competitor names a solicitor and cites GOV.UK.'] }),
+    )
+  })
+})
+
+describe('assembleMasterEngineFeed — Review phase runs E-E-A-T without the flag', () => {
+  it('calls scoreEeatTrust on phase=review even when CONTENT_AI_LLM_QUALITY is unset', async () => {
+    const feed = await assembleMasterEngineFeed({ ...BASE_REQ, content: DRAFT, phase: 'review' })
+    expect(feed.ok).toBe(true)
+    expect(eeatTrustMock.scoreEeatTrust).toHaveBeenCalledTimes(1)
+    expect(contentQualityMock.scoreContentQuality).not.toHaveBeenCalled()
+    expect(semanticNlpMock.scoreSemanticNlp).not.toHaveBeenCalled()
+    expect(feed.llmQuality).not.toBeNull()
+    expect(feed.llmQuality!.eeatTrust!.model_used).toBe('mock:eeat_trust')
+    expect(feed.llmQuality!.contentQuality).toBeNull()
+    expect(feed.llmQuality!.semanticNlp).toBeNull()
+    expect(feed.llmQuality!.eeatPersist?.eeat_model_used).toBe('mock:eeat_trust')
+    expect(feed.promptBlock).toContain('E-E-A-T review lane')
+    expect(feed.promptBlock).not.toContain('LLM quality lane (CONTENT_AI_LLM_QUALITY=1)')
+  })
+
+  it('generate path stays fail-closed — no eeat call unless flag or review phase', async () => {
+    const feed = await assembleMasterEngineFeed({ ...BASE_REQ, content: DRAFT, phase: 'generate' })
+    expect(feed.llmQuality).toBeNull()
+    expect(eeatTrustMock.scoreEeatTrust).not.toHaveBeenCalled()
+    expect(contentQualityMock.scoreContentQuality).not.toHaveBeenCalled()
+    expect(semanticNlpMock.scoreSemanticNlp).not.toHaveBeenCalled()
   })
 })
 
