@@ -216,7 +216,7 @@
 
   var style = document.createElement('style')
   style.textContent = [
-    '.ysa-launcher{position:fixed;right:20px;bottom:max(20px,env(safe-area-inset-bottom));width:58px;height:58px;border:0;border-radius:50%;background:' + cfg.primary + ';color:#fff;box-shadow:0 14px 34px rgba(15,23,42,.28);cursor:pointer;z-index:2147483600;font-size:23px}',
+    '.ysa-launcher{position:fixed;right:20px;bottom:max(20px,env(safe-area-inset-bottom));width:58px;height:58px;border:0;border-radius:50%;background:' + cfg.primary + ';color:#fff;box-shadow:0 14px 34px rgba(15,23,42,.28);cursor:pointer;z-index:2147483600;font-size:23px;transition:none;transform:none}',
     '.ysa-launcher:hover{background:' + cfg.primaryHover + '}',
     '.ysa-launcher.ysa-launcher-away,[hidden].ysa-launcher{display:none!important;pointer-events:none!important}',
     'body:has(.ys-market-chat-overlay) .ysa-launcher,body:has(.ys-market-chat-overlay) .ysa-panel,body:has(.ys-market-chat-composer) .ysa-launcher,body:has(.ys-market-chat-composer) .ysa-panel,body:has(.ys-chatscreen[data-mobile-view="chat"]) .ysa-launcher,body:has(.ys-chatscreen[data-mobile-view="chat"]) .ysa-panel,body:has([data-ysa-hide-launcher="true"]) .ysa-launcher,body:has([data-ysa-hide-launcher="true"]) .ysa-panel{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}',
@@ -262,20 +262,6 @@
       )
     } catch (_) { return false }
   }
-  function rectsOverlap(a, b, pad) {
-    pad = pad || 0
-    return !(a.right < b.left - pad || a.left > b.right + pad || a.bottom < b.top - pad || a.top > b.bottom + pad)
-  }
-  function elementOnScreen(el) {
-    if (!el) return false
-    var r = el.getBoundingClientRect()
-    if (r.width < 12 || r.height < 12) return false
-    var style = window.getComputedStyle ? window.getComputedStyle(el) : null
-    if (style && (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0)) return false
-    var viewH = window.innerHeight || 0
-    var viewW = window.innerWidth || 0
-    return r.bottom > 0 && r.right > 0 && r.top < viewH && r.left < viewW
-  }
   function hideLauncher(away) {
     launcher.classList.toggle('ysa-launcher-away', !!away)
     if (away) {
@@ -289,28 +275,16 @@
     }
   }
   var syncingLauncher = false
-  function launcherFootprint() {
-    var viewH = window.innerHeight || 0
-    var viewW = window.innerWidth || 0
-    var size = 58
-    var inset = isMobileAssistant() ? 12 : 20
-    var box = launcher.getBoundingClientRect()
-    if (box.width >= 12 && box.height >= 12 && !launcher.classList.contains('ysa-launcher-away') && !launcher.hasAttribute('hidden')) {
-      return box
-    }
-    return {
-      left: Math.max(0, viewW - inset - size),
-      right: Math.max(size, viewW - inset),
-      top: Math.max(0, viewH - inset - size),
-      bottom: Math.max(size, viewH - inset),
-      width: size,
-      height: size,
-    }
-  }
   function syncLauncherChrome() {
     if (syncingLauncher) return
     syncingLauncher = true
     try {
+      // Park the site FAB only while a real conversation owns the screen.
+      // Do not measure page links/buttons and rewrite `bottom` — every
+      // marketplace section break has a right-edge CTA, and lifting the
+      // bubble off those controls is what made it bounce while scrolling.
+      launcher.style.removeProperty('bottom')
+      launcher.style.removeProperty('transform')
       if (competingAppChrome()) {
         if (open) {
           open = false
@@ -320,49 +294,9 @@
           document.documentElement.classList.remove('ysa-assistant-open')
         }
         hideLauncher(true)
-        launcher.style.removeProperty('bottom')
         return
       }
-
-      var box = launcherFootprint()
-      var composerHits = document.querySelectorAll('.comp-send, .ys-market-chat-composer, .ys-market-chat-foot a, .comp-row')
-      for (var i = 0; i < composerHits.length; i++) {
-        var el = composerHits[i]
-        if (el === launcher || (panel.contains && panel.contains(el))) continue
-        if (!elementOnScreen(el)) continue
-        if (rectsOverlap(box, el.getBoundingClientRect(), 12)) {
-          hideLauncher(true)
-          launcher.style.removeProperty('bottom')
-          return
-        }
-      }
-
       hideLauncher(false)
-      if (open) {
-        launcher.style.removeProperty('bottom')
-        return
-      }
-
-      var lift = 0
-      var viewH = window.innerHeight || 0
-      var viewW = window.innerWidth || 0
-      var controls = document.querySelectorAll('button, a[href], [role="button"], input[type="submit"]')
-      for (var j = 0; j < controls.length; j++) {
-        var node = controls[j]
-        if (node === launcher || (panel.contains && panel.contains(node))) continue
-        if (!elementOnScreen(node)) continue
-        var r = node.getBoundingClientRect()
-        if (r.bottom < viewH - 200 || r.left < viewW - 160) continue
-        if (rectsOverlap(box, r, 10)) {
-          lift = Math.max(lift, Math.ceil(box.bottom - r.top + 16))
-        }
-      }
-      if (lift > 0) {
-        var bottom = Math.min(Math.round(viewH * 0.45), 20 + lift)
-        launcher.style.bottom = 'max(' + bottom + 'px, calc(' + bottom + 'px + env(safe-area-inset-bottom)))'
-      } else {
-        launcher.style.removeProperty('bottom')
-      }
     } finally {
       syncingLauncher = false
     }
@@ -584,7 +518,6 @@
 
   window.addEventListener('resize', syncVisualViewport, { passive: true })
   window.addEventListener('resize', scheduleLauncherChrome, { passive: true })
-  window.addEventListener('scroll', scheduleLauncherChrome, { passive: true, capture: true })
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', syncVisualViewport, { passive: true })
     window.visualViewport.addEventListener('scroll', syncVisualViewport, { passive: true })
@@ -596,7 +529,7 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-mobile-view', 'data-ysa-hide-launcher', 'class', 'hidden', 'style'],
+      attributeFilter: ['data-mobile-view', 'data-ysa-hide-launcher'],
     })
   }
 

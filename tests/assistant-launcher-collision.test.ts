@@ -20,17 +20,31 @@ describe('YQAA launcher does not cover chat send controls', () => {
   })
 
   test('keeps Send and Open in Messages tappable by hiding over composer chrome', () => {
-    expect(assistant).toContain('.comp-send, .ys-market-chat-composer, .ys-market-chat-foot a, .comp-row')
-    expect(assistant).toContain('function launcherFootprint()')
+    expect(assistant).toContain('function competingAppChrome()')
     expect(assistant).toContain('function syncLauncherChrome()')
     expect(assistant).toContain('scheduleLauncherChrome()')
+    expect(assistant).toContain('.ys-market-chat-composer')
+    expect(assistant).toContain('.ys-chatscreen[data-mobile-view="chat"]')
   })
 
-  test('pins the launcher so page-end rubber-band cannot bounce it', () => {
+  test('does not lift the bubble off every section CTA while the page scrolls', () => {
+    expect(assistant).not.toContain("document.querySelectorAll('button, a[href], [role=\"button\"], input[type=\"submit\"]')")
+    expect(assistant).not.toContain('launcher.style.bottom =')
+    expect(assistant).not.toContain('function launcherFootprint()')
+    expect(assistant).not.toContain("addEventListener('scroll', scheduleLauncherChrome")
+    expect(assistant).toContain("attributeFilter: ['data-mobile-view', 'data-ysa-hide-launcher']")
+    expect(assistant).toContain("launcher.style.removeProperty('bottom')")
+    expect(assistant).toContain("launcher.style.removeProperty('transform')")
+    expect(assistant).toContain('transition:none;transform:none')
+  })
+
+  test('pins the launcher still — no visual-pan compensation, no rubber-band lift', () => {
     const viewportCss = read('app/mobile-visual-viewport.css')
     expect(viewportCss).toContain('button.ysa-launcher')
     expect(viewportCss).toContain('bottom: max(16px, calc(12px + env(safe-area-inset-bottom))) !important')
-    expect(viewportCss).toContain('calc(-1 * var(--ys-visual-viewport-pan-top, 0px))')
+    expect(viewportCss).toContain('transform: none !important')
+    expect(viewportCss).toContain('transition: none !important')
+    expect(viewportCss).not.toContain('calc(-1 * var(--ys-visual-viewport-pan-top, 0px))')
     expect(viewportCss).toContain('html:has(.cw-market)')
     expect(viewportCss).toContain('overscroll-behavior-y: none')
     expect(viewportCss).toContain('position: fixed !important')
@@ -48,10 +62,10 @@ describe('YQAA launcher does not cover chat send controls', () => {
     expect(assistant).toContain('display:none!important')
   })
 
-  test('cache-busts assistant.js so phones pick up the pinned launcher', () => {
+  test('cache-busts assistant.js so phones pick up the still launcher', () => {
     const widget = read('components/ChatWidget.tsx')
     const yara = read('public/yara.js')
-    expect(widget).toContain("script.src = '/assistant.js?v=ysa-launcher-pin-1'")
-    expect(yara).toContain('assistant.js?v=ysa-launcher-pin-1')
+    expect(widget).toContain("script.src = '/assistant.js?v=ysa-launcher-still-2'")
+    expect(yara).toContain('assistant.js?v=ysa-launcher-still-2')
   })
 })
