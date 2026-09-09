@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
+import { fetchSiteSearchAnalytics, resolveGscDayWindow } from '@/lib/gscAnalytics'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { buildGscContentBrief, buildKeywordPortfolio } from '@/lib/gscContentBrief'
 import {
@@ -10,6 +10,7 @@ import {
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { loadPersistedGscWindow, queriesFromPersistedGscRows } from '@/lib/seoFactory/gscRows'
 import { loadShippedCoverage } from '@/lib/seoEngine/shippedCoverage'
 import { verdictFor } from '@/lib/seoEngine/authorityPlaybook'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
@@ -224,10 +225,46 @@ export async function POST(request: NextRequest) {
       queries = viableLive
     }
 
-    // Radar honesty: when BOTH live GSC and a fresh ≤14d snapshot are absent,
-    // there is NO real demand to score. Strategy-corpus rows must never be
-    // injected into the scored pool with fabricated impressions:1 as if they
-    // were Search Console demand.
+    // Same persisted-window fallback performance/score already use. Live GSC
+    // on this estate is junk-dominated and the CSV snapshot is often stale,
+    // so without seo_gsc_rows the radar returns 0 opportunities even while
+    // CTR-harvest rows sit in the latest stored window.
+    let usedFallback = false
+    let persistedRange: { startDate: string; endDate: string } | null = null
+    if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
+      try {
+        const range = resolveGscDayWindow(90)
+        const persisted = await loadPersistedGscWindow(auth.db, {
+          siteUrl: process.env.GSC_SITE_URL || null,
+          startDate: range.startDate,
+          endDate: range.endDate,
+          limit: 200,
+          select: 'query, page, clicks, impressions, ctr, position',
+        })
+        const persistedQueries = queriesFromPersistedGscRows(persisted.rows, isJunkQuery)
+        const merged = mergeSnapshotIntoQueries(queries, persistedQueries)
+        if (merged.length > queries.length) {
+          const added = merged.length - queries.length
+          queries = merged
+          usedFallback = persisted.usedFallback
+          persistedRange = persisted.range
+          source = viableLive.length > 0
+            ? (source === 'live+snapshot' ? 'live+snapshot+persisted' : 'live+persisted')
+            : 'persisted'
+          warnings.push(
+            `Persisted GSC fallback · ${added} stored demand rows · ${persisted.range.startDate}–${persisted.range.endDate}` +
+              (persisted.usedFallback ? ' (latest stored window)' : ''),
+          )
+        }
+      } catch (err) {
+        console.warn('[content-studio/gsc/suggestions] persisted GSC fallback failed', err)
+      }
+    }
+
+    // Radar honesty: when live GSC, a fresh ≤14d snapshot, AND persisted
+    // seo_gsc_rows are all empty, there is NO real demand to score. Strategy
+    // corpus rows must never be injected into the scored pool with fabricated
+    // impressions:1 as if they were Search Console demand.
     const snapshotRefused = queries.length === 0
 
     // ── 2. Existing content inventory (coverage + cannibalization) ─────────
@@ -460,6 +497,8 @@ export async function POST(request: NextRequest) {
       source,
       snapshot: snapshotMeta,
       snapshotRefused,
+      usedFallback,
+      persistedRange,
       syntheticSignals,
       coverageStats: result.coverageStats,
       cannibalization: result.cannibalization.slice(0, 8),
