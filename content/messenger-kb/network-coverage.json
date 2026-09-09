@@ -1,0 +1,107 @@
+{
+  "generatedAt": "2026-09-09T13:28:21.139Z",
+  "status": "healthy",
+  "requiredMarkets": [
+    "United States",
+    "United Kingdom",
+    "Canada",
+    "Australia"
+  ],
+  "sites": [
+    {
+      "id": "main",
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "base": "https://yousafeconsultancy.com",
+      "records": 63,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "usa",
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "base": "https://usa.yousafeconsultancy.com",
+      "records": 433,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "canada",
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "base": "https://ca.yousafeconsultancy.com",
+      "records": 318,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "uk",
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "base": "https://uk.yousafeconsultancy.com",
+      "records": 134,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "australia",
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "base": "https://au.yousafeconsultancy.com",
+      "records": 18,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "caseworks",
+      "repository": "kylemwalkerpr-ship-it/caseworks",
+      "base": "https://legal.yousafeconsultancy.com",
+      "records": 482,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "market",
+      "repository": "kylemwalkerpr-ship-it/portal",
+      "base": "https://market.yousafeconsultancy.com",
+      "records": 330,
+      "required": true,
+      "problems": []
+    },
+    {
+      "id": "checkout",
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "base": "https://checkout.yousafeconsultancy.com",
+      "records": 1,
+      "required": false,
+      "problems": []
+    },
+    {
+      "id": "support",
+      "repository": "kylemwalkerpr-ship-it/support-saas",
+      "base": "https://support.yousafeconsultancy.com",
+      "records": 3,
+      "required": true,
+      "problems": []
+    }
+  ],
+  "repositories": [
+    {
+      "repository": "kylemwalkerpr-ship-it/portal",
+      "records": 330,
+      "localCore": true
+    },
+    {
+      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
+      "records": 967,
+      "localCore": false
+    },
+    {
+      "repository": "kylemwalkerpr-ship-it/caseworks",
+      "records": 482,
+      "localCore": false
+    },
+    {
+      "repository": "kylemwalkerpr-ship-it/support-saas",
+      "records": 3,
+      "localCore": false
+    }
+  ],
+  "problems": []
+}
