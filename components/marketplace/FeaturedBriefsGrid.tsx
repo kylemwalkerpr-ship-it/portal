@@ -6,6 +6,7 @@ import {
   avatarBgFor,
   clampPage,
   COUNTRY_META,
+  deepLinkVisibleCount,
   deliveryLabel,
   FEATURED_PAGE_SIZE,
   formatPrice,
@@ -35,8 +36,14 @@ interface Props {
 export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: Props) {
   const total = gigs.length
   const totalPages = totalPagesFor(total)
+  // The server passes the cumulative visible count for ?page=N. Resolve that
+  // back to the shared paging contract rather than duplicating pagination math
+  // here, so deep links and the redesigned client grid stay in lockstep.
+  const initialPage = total > 0
+    ? clampPage(Math.max(1, Math.ceil(initialVisible / FEATURED_PAGE_SIZE)), total)
+    : 1
   const [visibleCount, setVisibleCount] = useState(() =>
-    Math.min(Math.max(FEATURED_PAGE_SIZE, initialVisible), total || FEATURED_PAGE_SIZE),
+    total > 0 ? deepLinkVisibleCount(initialPage, total) : 0,
   )
   const [scrollToIdx, setScrollToIdx] = useState<number | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
@@ -45,9 +52,9 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
   useEffect(() => {
     if (didMountRef.current) return
     didMountRef.current = true
-    const targetIdx = pageStartIndex(Math.round(initialVisible / FEATURED_PAGE_SIZE), total)
+    const targetIdx = pageStartIndex(initialPage, total)
     if (targetIdx > 0 && initialVisible > 0) setScrollToIdx(targetIdx)
-  }, [initialVisible, total])
+  }, [initialPage, initialVisible, total])
 
   const deepestPage = clampPage(Math.floor((visibleCount - 1) / FEATURED_PAGE_SIZE) + 1, total)
 
@@ -61,7 +68,7 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
   const jumpToPage = (p: number) => (e: MouseEvent) => {
     e.preventDefault()
     const target = clampPage(p, total)
-    setVisibleCount(Math.min(target * FEATURED_PAGE_SIZE, total))
+    setVisibleCount(deepLinkVisibleCount(target, total))
     setScrollToIdx(target === 1 ? 0 : pageStartIndex(target, total))
   }
 
