@@ -71,4 +71,55 @@
   .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-sidebar {
     display: none !important;
   }
+
+  /* WhatsApp-style interactive back: park the list under the open chat
+     while a left-edge swipe is in progress so the pane can slide off. */
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'][data-swipe-dragging='true'] {
+    position: relative !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'][data-swipe-dragging='true'] .ys-chatscreen-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    z-index: 0 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    border-right: 0 !important;
+  }
+
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'][data-swipe-dragging='true'] .ys-chatscreen-chat {
+    position: relative !important;
+    z-index: 2 !important;
+    box-shadow: -16px 0 40px rgba(15, 23, 42, .18);
+  }
+}
+
+/* Always out of flow so desktop split view is not affected. Visible only
+   on phones, where it owns a 56px left-edge pan-x hit target. */
+.yousafe-messenger .ys-chatscreen-swipeback {
+  display: none;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 56px;
+  z-index: 6;
+  touch-action: pan-x;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (max-width: 680px) {
+  .yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .ys-chatscreen-swipeback {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yousafe-messenger .ys-chatscreen-chat {
+    transition: none !important;
+  }
 }

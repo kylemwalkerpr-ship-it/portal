@@ -750,6 +750,7 @@ export default function AdminMasterMessenger() {
           messages={messageNodes}
           composer={composer}
           mobileShowChat={mobileShowChat && Boolean(activeId)}
+          onMobileBack={closeThread}
           banner={
             <div className="admin-master-banner">
               <span aria-hidden="true">🛡</span>

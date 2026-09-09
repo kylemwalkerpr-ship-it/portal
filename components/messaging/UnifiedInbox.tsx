@@ -1455,6 +1455,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           messages={messages}
           composer={composer}
           mobileShowChat={mobileShowChat && !!activeId}
+          onMobileBack={() => setMobileShowChat(false)}
         />
       </div>
       <OfferPaymentModal
