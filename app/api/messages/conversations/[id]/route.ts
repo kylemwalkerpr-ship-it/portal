@@ -8,9 +8,9 @@ import { safetyGuard } from '@/lib/safety'
 import {
   isClientRole,
   readAiMode,
-  scheduleAutoReply,
   setConversationAiMode,
 } from '@/lib/messengerAi'
+import { scheduleClientAutoReply } from '@/lib/messengerClientAutoReply'
 import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
@@ -310,7 +310,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
         ai_mode_set_by: profileId,
       })
     } else if (isClientRole(auth.role)) {
-      scheduleAutoReply(id, data?.id)
+      await scheduleClientAutoReply(db, id, data?.id)
     }
   } catch (e) {
     console.warn('[messages] ai hook failed', e instanceof Error ? e.message : e)
