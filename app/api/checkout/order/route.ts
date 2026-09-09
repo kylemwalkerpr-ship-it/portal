@@ -5,6 +5,7 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { marketplaceOrdersHref } from '@/lib/orderLinks'
 import {
   claimIdempotencyKey,
   completeIdempotencyKey,
@@ -190,7 +191,7 @@ export async function POST(req: Request) {
       }
 
       await creditEarningSafe(auth.db, resolved, order.id, 'gig')
-      return respond({ success: true, orderId: order.id, transactionId: result.transactionId }, 200, order.id)
+      return respond({ success: true, orderId: order.id, url: marketplaceOrdersHref(order.id), transactionId: result.transactionId }, 200, order.id)
     }
 
     // ── Default wallet payment flow ─────────────────────────────────────────
@@ -239,7 +240,7 @@ export async function POST(req: Request) {
     }
 
     await creditEarningSafe(auth.db, resolved, order.id, resolved.sourceType === 'gig' ? 'gig' : 'offer')
-    return respond({ success: true, orderId: order.id, ledgerId: tx.id }, 200, order.id)
+    return respond({ success: true, orderId: order.id, url: marketplaceOrdersHref(order.id), ledgerId: tx.id }, 200, order.id)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Checkout failed.'
     console.error('[checkout/order]', message)

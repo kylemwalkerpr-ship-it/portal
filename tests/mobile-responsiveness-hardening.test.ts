@@ -28,6 +28,8 @@ describe('mobile responsiveness hardening', () => {
     expect(css).toContain('.cw-market .ys-shell-menu-toggle')
     expect(css).not.toContain("href^='https://portal.yousafeconsultancy.com/dashboard'")
     expect(css).toContain('.cw-market .ys-cat-bar')
+    expect(css).toContain('.cw-market .ys-orders-panel')
+    expect(css).toContain('.ys-order-row')
     expect(layout).toContain("viewportFit: 'cover'")
     expect(conversionCss).toContain('.cw-market .ys-content-layout')
     expect(conversionCss).toContain('.cw-market button')

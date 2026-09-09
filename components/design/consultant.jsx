@@ -33,6 +33,7 @@ function ConsultantApp({ onLogout }) {
   const pageFromUrl = () => {
     if (typeof window === 'undefined') return 'overview';
     const params = new URLSearchParams(window.location.search);
+    if (params.get('order')) return 'order-detail';
     const goto = params.get('page') || params.get('goto');
     return ALLOWED_PAGES.includes(goto) ? goto : 'overview';
   };
@@ -41,8 +42,9 @@ function ConsultantApp({ onLogout }) {
     setPageState(next);
     try {
       const url = new URL(window.location.href);
-      url.searchParams.set('page', next);
+      url.searchParams.set('page', next === 'order-detail' ? 'orders' : next);
       url.searchParams.delete('goto');
+      if (next !== 'order-detail' && next !== 'orders') url.searchParams.delete('order');
       window.history.pushState({}, '', url);
     } catch { /* SSR / older browsers — state still updates */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,7 +81,12 @@ function ConsultantApp({ onLogout }) {
     window.addEventListener('yousafe-open-messages', handler);
     return () => window.removeEventListener('yousafe-open-messages', handler);
   }, []);
-  const [selectedOrder, setSelectedOrder] = React.useState(null);
+  const [selectedOrder, setSelectedOrder] = React.useState(() => {
+    try {
+      const id = new URLSearchParams(window.location.search).get('order');
+      return id ? { id } : null;
+    } catch { return null; }
+  });
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
   const [consultantOffers, setConsultantOffers] = React.useState([]);
@@ -92,8 +99,14 @@ function ConsultantApp({ onLogout }) {
       const orderId = e?.detail?.orderId;
       if (!orderId) return;
       const found = orders.find(o => o.id === orderId);
-      if (found) { setSelectedOrder(found); setPage('order-detail'); }
-      else { setPage('orders'); }
+      if (found) { setSelectedOrder(found); setPageState('order-detail'); }
+      else { setSelectedOrder({ id: orderId }); setPageState('order-detail'); }
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', 'orders');
+        url.searchParams.set('order', orderId);
+        window.history.pushState({}, '', url);
+      } catch { /* ignore */ }
     };
     window.addEventListener('yousafe-open-order', handler);
     return () => window.removeEventListener('yousafe-open-order', handler);
@@ -135,6 +148,11 @@ function ConsultantApp({ onLogout }) {
   React.useEffect(() => {
     if (selectedOrder) setOrderDetailProgress(Number(selectedOrder.progress) || 0);
   }, [selectedOrder?.id, selectedOrder?.progress]);
+  React.useEffect(() => {
+    if (!selectedOrder?.id || selectedOrder.service) return;
+    const found = orders.find(o => o.id === selectedOrder.id);
+    if (found) setSelectedOrder(found);
+  }, [orders, selectedOrder]);
 
   const activeOrders = orders.filter(o => o.status === 'active' || o.status === 'review').length;
   const newOrders = orders.filter(o => o.status === 'new').length;
@@ -798,7 +816,17 @@ function ConsultantApp({ onLogout }) {
                 orders={orders}
                 orderFilter={orderFilter}
                 setOrderFilter={setOrderFilter}
-                setSelectedOrder={setSelectedOrder}
+                setSelectedOrder={(order) => {
+                  setSelectedOrder(order)
+                  if (order?.id) {
+                    try {
+                      const url = new URL(window.location.href)
+                      url.searchParams.set('page', 'orders')
+                      url.searchParams.set('order', order.id)
+                      window.history.replaceState({}, '', url)
+                    } catch { /* ignore */ }
+                  }
+                }}
                 setPage={setPage}
                 onAcceptOrder={acceptOrder}
                 onDeclineOrder={declineOrder}

@@ -45,6 +45,7 @@ export default function AttorneyApp({ onLogout, userName }) {
   const pageFromUrl = () => {
     if (typeof window === 'undefined') return 'overview';
     const params = new URLSearchParams(window.location.search);
+    if (params.get('order')) return 'orders';
     const goto = params.get('page') || params.get('goto');
     return ALLOWED_PAGES.includes(goto) ? goto : 'overview';
   };
@@ -92,13 +93,21 @@ export default function AttorneyApp({ onLogout, userName }) {
     return () => window.removeEventListener('yousafe-open-messages', handler)
   }, [])
   // Deep-link to a specific order from the messenger offer card.
-  const [pendingOrderId, setPendingOrderId] = React.useState(null)
+  const [pendingOrderId, setPendingOrderId] = React.useState(() => {
+    try { return new URLSearchParams(window.location.search).get('order') } catch { return null }
+  })
   React.useEffect(() => {
     const handler = (e) => {
       const orderId = e?.detail?.orderId
       if (!orderId) return
       setPendingOrderId(orderId)
-      setPage('orders')
+      setPageState('orders')
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.set('page', 'orders')
+        url.searchParams.set('order', orderId)
+        window.history.pushState({}, '', url)
+      } catch { /* ignore */ }
     }
     window.addEventListener('yousafe-open-order', handler)
     return () => window.removeEventListener('yousafe-open-order', handler)

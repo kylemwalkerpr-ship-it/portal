@@ -1,6 +1,7 @@
 import { verifyMobileBearer } from './mobileAuth'
 import { createSupabaseAdminClient } from './supabase'
 import { mintSignedDocumentUrl } from './documentStorage'
+import { getClientCancellationEligibility, serializeCancelEligibility, UNSTARTED_STATUSES } from './orderCancellation'
 
 /**
  * Shared logic for /api/mobile/orders* — Bearer-verified student orders.
@@ -251,7 +252,7 @@ export async function getMobileOrderDetail(
 
   let { data: order, error } = await db
     .from('orders')
-    .select('id, order_number, client_id, consultant_id, attorney_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, payout_status, escrow_status, escrow_amount, escrow_released_amount, escrow_refunded_amount, auto_release_eligible_at, terms_accepted_at, refund_policy_accepted_at')
+    .select('id, order_number, client_id, consultant_id, attorney_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, amount_paid, currency, payout_status, escrow_status, escrow_amount, escrow_released_amount, escrow_refunded_amount, escrow_disputed_at, escrow_frozen_at, auto_release_eligible_at, terms_accepted_at, refund_policy_accepted_at, refunded_amount, refund_status, cancelled_at')
     .eq('id', id)
     .single()
   if (error && /column .* does not exist/i.test(error.message || '')) {
@@ -334,6 +335,45 @@ export async function getMobileOrderDetail(
     : order.status || 'pending'
   const fallbackProgress = friendlyStatus === 'completed' ? 100 : friendlyStatus === 'review' ? 90 : friendlyStatus === 'active' ? 50 : 0
 
+  let cancelEligibility: Record<string, unknown> | null = null
+  if ((UNSTARTED_STATUSES as readonly string[]).includes(String(order.status || ''))) {
+    let earningReleased = false
+    try {
+      const { data: earnings } = await db.from('provider_earnings').select('status').eq('order_id', id)
+      earningReleased = ((earnings ?? []) as Array<{ status: string }>).some((e) =>
+        ['releasable', 'paid'].includes(e.status),
+      )
+    } catch { /* optional evidence — the RPC re-checks authoritatively */ }
+    const verdict = getClientCancellationEligibility(
+      {
+        id: order.id,
+        client_id: order.client_id,
+        status: order.status,
+        progress: order.progress,
+        currency: order.currency,
+        amount_paid: order.amount_paid,
+        total_amount: order.total_amount,
+        escrow_status: order.escrow_status,
+        escrow_amount: order.escrow_amount,
+        escrow_released_amount: order.escrow_released_amount,
+        escrow_refunded_amount: order.escrow_refunded_amount,
+        escrow_disputed_at: order.escrow_disputed_at,
+        escrow_frozen_at: order.escrow_frozen_at,
+        auto_release_eligible_at: order.auto_release_eligible_at,
+        cancelled_at: order.cancelled_at,
+        refunded_amount: order.refunded_amount,
+        refund_status: order.refund_status,
+        payout_status: order.payout_status,
+      },
+      {
+        callerId: profile.id,
+        milestoneWork: (milestones as any[]).some((m: any) => m.status !== 'pending' && m.status !== 'cancelled'),
+        earningReleased,
+      },
+    )
+    cancelEligibility = serializeCancelEligibility(verdict)
+  }
+
   return {
     kind: 'ok',
     payload: {
@@ -370,6 +410,8 @@ export async function getMobileOrderDetail(
         payoutStatus: order.payout_status || 'pending',
         termsAcceptedAt: order.terms_accepted_at || null,
         refundPolicyAcceptedAt: order.refund_policy_accepted_at || null,
+        canCancel: !!cancelEligibility && (cancelEligibility as any).cancellable === true,
+        cancelEligibility,
       },
       items,
       services,

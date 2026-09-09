@@ -226,8 +226,7 @@ resurrected (or double-refunded) order.
 
 ## 7. Deployment
 
-1. Apply `supabase/client_order_cancellation.sql` in the Supabase SQL editor
-   (or via the project's migration-apply script). Idempotent.
+1. Apply `supabase/migrations/20260909_client_order_cancellation.sql` (copied from `supabase/client_order_cancellation.sql`) via the project's migration-apply script. Idempotent. Until this file lived only outside `supabase/migrations/`, `POST /api/orders/[id]/cancel` returned `501 { deploy_required: true }` in production.
 2. Environment needs `student_wallets`/`wallet_credit`, `provider_earnings`,
    `order_milestones`, `order_scope_changes`, `escrow_events`,
    `order_status_history`, `canonical_ledger` — all already present in

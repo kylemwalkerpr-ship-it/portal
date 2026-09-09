@@ -6,7 +6,7 @@
  */
 import { getCurrentStudent } from '@/lib/student'
 import { mintSignedDocumentUrl } from '@/lib/documentStorage'
-import { getClientCancellationEligibility, UNSTARTED_STATUSES } from '@/lib/orderCancellation'
+import { getClientCancellationEligibility, serializeCancelEligibility, UNSTARTED_STATUSES } from '@/lib/orderCancellation'
 
 function dollarsFromCents(cents: unknown) { return Number(cents || 0) / 100 }
 
@@ -140,11 +140,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
         earningReleased,
       },
     )
-    if (verdict.cancellable === true) {
-      cancelEligibility = { cancellable: true, refundCents: verdict.refundCents, refundMethod: verdict.refundMethod }
-    } else {
-      cancelEligibility = { cancellable: false, code: verdict.code, reason: verdict.reason }
-    }
+    cancelEligibility = serializeCancelEligibility(verdict)
   }
 
   const totalCents = Math.round(Number(order.total_amount || 0) * 100)

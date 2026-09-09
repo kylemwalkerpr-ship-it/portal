@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import CardFields, { type CardFieldsHandle, type CardTokenResult } from '@/components/payments/CardFields'
+import { openOrderInApp } from '@/lib/orderLinks'
 
 const NAVY = '#0F172A'
 const GOLD = '#9A7B3B'
@@ -33,7 +34,7 @@ export interface OfferPaymentModalProps {
   offerId: string
   open: boolean
   onClose: () => void
-  onPaid?: () => void
+  onPaid?: (orderId?: string) => void
 }
 
 interface Breakdown {
@@ -209,8 +210,11 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
         setSubmitting(false)
         return
       }
-      onPaid?.()
+      const payload = json?.data ?? json
+      const orderId = payload?.orderId || payload?.order?.id || null
+      onPaid?.(orderId || undefined)
       onClose()
+      if (orderId) openOrderInApp(orderId)
     } catch (e: any) {
       setError(e instanceof Error ? e.message : 'Payment failed.')
       setSubmitting(false)

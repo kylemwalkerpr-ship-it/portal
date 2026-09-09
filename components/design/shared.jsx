@@ -104,13 +104,21 @@ export function Badge({ children, color = 'cyan', style = {}, ...props }) {
   )
 }
 
-export function Card({ children, style = {}, onClick = undefined, hover = false, className = undefined }) {
+export function Card({ children, style = {}, onClick = undefined, hover = false, className = undefined, ...rest }) {
   const [hovered, setHovered] = React.useState(false)
   const isHover = hover || Boolean(onClick)
   return (
     <div
       className={className}
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick(e)
+        }
+      } : undefined}
       onMouseEnter={() => isHover && setHovered(true)}
       onMouseLeave={() => isHover && setHovered(false)}
       style={{
@@ -126,6 +134,7 @@ export function Card({ children, style = {}, onClick = undefined, hover = false,
           : '0 1px 3px rgba(15,23,42,0.04)',
         ...style,
       }}
+      {...rest}
     >
       {children}
     </div>

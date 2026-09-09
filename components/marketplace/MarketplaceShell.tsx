@@ -10,6 +10,7 @@ import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
 import { CategoryBar } from './CategoryBar'
+import { marketplaceOrdersHref, readOrderIdFromSearch } from '@/lib/orderLinks'
 
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
@@ -23,6 +24,7 @@ const UnifiedInbox  = dynamic(() => import('@/components/messaging/UnifiedInbox'
 // Provider-only (attorney / consultant) Handshake-style feed of open student
 // inquiries. Replaces the public "Live case briefs" strip on the landing.
 const TrendingOpportunities = dynamic(() => import('@/components/marketplace/TrendingOpportunities'), { ssr: false })
+const MarketplaceOrdersPanel = dynamic(() => import('@/components/marketplace/MarketplaceOrdersPanel'), { ssr: false })
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -68,61 +70,6 @@ function navLinksForRole(role: Role | null): NavLink[] {
 }
 
 // ─── Embedded section panels ──────────────────────────────────────────────────
-
-function OrdersPanel({ role }: { role: Role }) {
-  const [orders, setOrders]   = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError]     = React.useState('')
-
-  React.useEffect(() => {
-    const endpoint = role === 'attorney'   ? '/api/attorney/data'
-                   : role === 'consultant' ? '/api/consultant/data'
-                   : '/api/student/data'
-    fetch(endpoint, { credentials: 'same-origin' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        setOrders(data?.orders ?? data?.data?.orders ?? [])
-      })
-      .catch(() => setError('Could not load orders.'))
-      .finally(() => setLoading(false))
-  }, [role])
-
-  const statusColor: Record<string, string> = {
-    active:     '#1A6B45', in_progress: '#1A6B45', review: '#3D2B6B',
-    completed:  T.ink,     new:         '#8B5E0A', pending: '#8B5E0A',
-    cancelled:  '#8B1A1A', refunded:    '#8B1A1A',
-  }
-
-  return (
-    <PanelShell title="My Orders" icon="📦">
-      {loading && <LoadingRows />}
-      {error   && <ErrorCard msg={error} />}
-      {!loading && !error && orders.length === 0 && (
-        <EmptyCard
-          icon="📦"
-          title="No orders yet"
-          body="Browse the marketplace and place your first order to see it here."
-          cta={{ label: 'Browse Marketplace', view: 'browse' }}
-        />
-      )}
-      {!loading && !error && orders.map((o: any) => (
-        <div key={o.id} style={{ background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '8px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxShadow: '0 1px 3px rgba(29,36,51,0.05)' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: '16px', color: T.ink, lineHeight: 1.2, marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {o.service || o.title || 'Service order'}
-            </div>
-            <div style={{ fontSize: '12px', color: T.inkSoft, lineHeight: 1.4 }}>
-              {o.consultant || o.provider || ''}{o.created_at ? ` · ${new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-            </div>
-          </div>
-          <span style={{ flexShrink: 0, display: 'inline-block', padding: '3px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' as const, background: `${statusColor[o.status] ?? T.inkSoft}15`, color: statusColor[o.status] ?? T.inkSoft, border: `1px solid ${statusColor[o.status] ?? T.inkSoft}30` }}>
-            {o.status?.replace(/_/g, ' ') ?? 'Unknown'}
-          </span>
-        </div>
-      ))}
-    </PanelShell>
-  )
-}
 
 function MessagesPanel({ role }: { role: Role }) {
   if (!role) {
@@ -177,25 +124,6 @@ function PanelShell({ title, icon, children }: { title: string; icon: string; ch
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '10px' }}>{children}</div>
     </div>
-  )
-}
-
-function LoadingRows() {
-  return (
-    <>
-      {[1, 2, 3].map(i => (
-        <div key={i} style={{ background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '8px', padding: '14px 18px', display: 'flex', gap: '12px' }}>
-          <div style={{ flex: 1, height: '16px', background: T.paper2, borderRadius: '3px' }} />
-          <div style={{ width: '60px', height: '22px', background: T.paper, borderRadius: '4px' }} />
-        </div>
-      ))}
-    </>
-  )
-}
-
-function ErrorCard({ msg }: { msg: string }) {
-  return (
-    <div style={{ background: 'rgba(178,34,52,0.06)', border: '1px solid rgba(178,34,52,0.20)', borderRadius: '8px', padding: '16px 20px', fontSize: '13px', color: T.brick }}>{msg}</div>
   )
 }
 
@@ -535,6 +463,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   const [role, setRole] = React.useState<Role>(() => readCachedRole().role)
   const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca'>('all')
   const [section, setSection] = React.useState<Section>('browse')
+  const [openOrderId, setOpenOrderId] = React.useState<string | null>(null)
 
   // Resolve role on mount AND whenever the tab regains focus or the
   // pathname changes. Without revalidation the shell kept whichever
@@ -592,6 +521,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     if (onShop) setSection('shop')
     else if (view) setSection(view as Section)
     else setSection('browse')
+    setOpenOrderId(view === 'orders' ? readOrderIdFromSearch(window.location.search) : null)
   }, [pathname, onShop])
 
   // Palette transitions must read as instant token application, not a 350ms
@@ -611,12 +541,55 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       return
     }
     setSection(view)
+    setOpenOrderId(null)
     if (view === 'browse') {
       router.push('/marketplace')
+    } else if (view === 'orders') {
+      router.push(marketplaceOrdersHref())
     } else {
       router.push(`/marketplace?view=${view}`)
     }
   }, [router])
+
+  const openOrder = React.useCallback((id: string) => {
+    setSection('orders')
+    setOpenOrderId(id)
+    router.push(marketplaceOrdersHref(id))
+  }, [router])
+
+  const closeOrder = React.useCallback(() => {
+    setOpenOrderId(null)
+    setSection('orders')
+    router.push(marketplaceOrdersHref())
+  }, [router])
+
+  React.useEffect(() => {
+    const onOpen = (e: Event) => {
+      const orderId = (e as CustomEvent)?.detail?.orderId
+      if (!orderId) return
+      openOrder(String(orderId))
+    }
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {}
+      if (detail.page === 'orders' || detail.page === 'order-detail') {
+        if (detail.orderId) openOrder(String(detail.orderId))
+        else handleNav('orders')
+        return
+      }
+      if (detail.page === 'messages') handleNav('messages')
+      if (detail.page === 'inquiries') handleNav('inquiries')
+      if (detail.page === 'attorneys') handleNav('attorneys')
+      if (detail.page === 'billing') {
+        window.location.href = '/dashboard?page=billing'
+      }
+    }
+    window.addEventListener('yousafe-open-order', onOpen as EventListener)
+    window.addEventListener('yousafe-navigate', onNav as EventListener)
+    return () => {
+      window.removeEventListener('yousafe-open-order', onOpen as EventListener)
+      window.removeEventListener('yousafe-navigate', onNav as EventListener)
+    }
+  }, [handleNav, openOrder])
 
   // Render section content. Attorneys see the attorney-side inquiry
   // queue / "mine" tab; clients see /api/client/inquiries. Routing both
@@ -624,7 +597,15 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   // "Client account not active." on the attorney marketplace.
   const sectionContent = React.useMemo(() => {
     if (section === 'browse')     return null                      // render children
-    if (section === 'orders')     return <OrdersPanel role={role} />
+    if (section === 'orders')     return (
+      <MarketplaceOrdersPanel
+        role={role}
+        orderId={openOrderId}
+        onOpenOrder={openOrder}
+        onBack={closeOrder}
+        onBrowse={() => handleNav('browse')}
+      />
+    )
     if (section === 'messages')   return <MessagesPanel role={role} />
     if (section === 'attorneys')  return <FindAttorney />
     if (section === 'inquiries')  {
@@ -639,7 +620,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       return null
     }
     return null // unknown view → fall through to children
-  }, [section, role])
+  }, [section, role, openOrderId, openOrder, closeOrder, handleNav])
 
   return (
     <div className="cw-market" style={{ minHeight: '100dvh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
