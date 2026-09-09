@@ -17,9 +17,11 @@
     --ys-visual-viewport-offset-top: 0px;
   }
 
-  /* All role dashboards share the same viewport contract. This deliberately
-     overrides legacy inline height:100vh as well as student 100dvh rules. */
-  body .yousafe-dashboard-shell {
+  /* All role dashboards share the same viewport contract. The repeated class
+     is intentional specificity: older student layers use !important + :has()
+     selectors, so source order alone cannot override their hard 100dvh shell.
+     This final contract must win without changing the role components. */
+  body .yousafe-dashboard-shell.yousafe-dashboard-shell.yousafe-dashboard-shell {
     box-sizing: border-box !important;
     height: var(--ys-visual-viewport-height, 100dvh) !important;
     min-height: var(--ys-visual-viewport-height, 100dvh) !important;
