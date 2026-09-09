@@ -53,7 +53,9 @@ export function isAllowedAssistantOrigin(origin: string): boolean {
 
 /**
  * Normalize client-provided context and corroborate it with HTTP headers.
- * Rendered page text is treated as reference data, never as model instructions.
+ * Rendered public page text is treated as reference data, never instructions.
+ * Authenticated portal screens keep route/viewer context but do not forward
+ * arbitrary rendered dashboard text into the external model.
  */
 export function normalizeAssistantOrigin(input: unknown, req?: Request): AssistantOrigin {
   const value = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
@@ -71,6 +73,7 @@ export function normalizeAssistantOrigin(input: unknown, req?: Request): Assista
     (trustedHeaderOrigin ? new URL(trustedHeaderOrigin).hostname : null) ||
     trustedReferer?.hostname ||
     (suppliedHost && isYouSafeHost(suppliedHost) ? suppliedHost : null)
+  const privatePortalSurface = String(hostname || '').toLowerCase() === 'portal.yousafeconsultancy.com'
 
   return {
     surface: clean(value.surface, 80) || 'public-site-chat',
@@ -81,8 +84,8 @@ export function normalizeAssistantOrigin(input: unknown, req?: Request): Assista
     title: clean(value.title, 500),
     referrer: clean(value.referrer, 1000),
     locale: clean(value.locale, 80),
-    headings: clean(value.headings, 2500),
-    pageText: clean(value.pageText, 7000),
+    headings: privatePortalSurface ? null : clean(value.headings, 2500),
+    pageText: privatePortalSurface ? null : clean(value.pageText, 7000),
   }
 }
 
@@ -151,7 +154,7 @@ export async function buildCentralAssistantKnowledge(opts: {
     'Never present yourself as Yara. Never claim to be a licensed lawyer, immigration representative, consultant, human support agent, or the named provider.',
     '',
     '# CONTEXT PRIORITY — NON-NEGOTIABLE',
-    '1. The exact current page/path and rendered page content below are highest priority for questions about what the visitor is viewing.',
+    '1. The exact current page/path and rendered public page content below are highest priority for questions about what the visitor is viewing.',
     '2. Live central knowledge overrides older static knowledge when they conflict.',
     '3. Curated central knowledge and network-page knowledge provide cross-site context.',
     '4. If facts conflict or remain uncertain, say so and route the visitor to the appropriate human/team rather than guessing.',
@@ -161,7 +164,7 @@ export async function buildCentralAssistantKnowledge(opts: {
     '# INQUIRY ORIGIN',
     renderOrigin(opts.origin),
     '',
-    '# CURRENT RENDERED PAGE CONTENT',
+    '# CURRENT RENDERED PUBLIC PAGE CONTENT',
     opts.origin.pageText || '(not supplied — rely on origin/path plus central knowledge)',
   ]
 
