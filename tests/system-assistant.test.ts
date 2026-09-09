@@ -105,7 +105,7 @@ describe('system-wide assistant model routing', () => {
     expect(result.model).toBe('grok-test-model')
     expect(result.authMode).toBe('supergrok')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(String(fetchMock.mock.calls.at(0)?.[0])).toBe('https://system-ai.example/v1/chat/completions')
+    expect(String((fetchMock.mock.calls as unknown as unknown[][])[0]?.[0])).toBe('https://system-ai.example/v1/chat/completions')
   })
 
   it('uses an independent protocol fallback after a primary timeout', async () => {
@@ -136,7 +136,8 @@ describe('system-wide assistant model routing', () => {
 
     expect(result.text).toBe('Recovered answer')
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(String(fetchMock.mock.calls.at(0)?.[0])).toContain('/chat/completions')
-    expect(String(fetchMock.mock.calls.at(1)?.[0])).toContain('/responses')
+    const urls = fetchMock.mock.calls as unknown as unknown[][]
+    expect(String(urls[0]?.[0])).toContain('/chat/completions')
+    expect(String(urls[1]?.[0])).toContain('/responses')
   })
 })
