@@ -5,6 +5,7 @@ import React from 'react'
 const HEIGHT_VAR = '--ys-visual-viewport-height'
 const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'
 const OFFSET_VAR = '--ys-visual-viewport-offset-top'
+const CHAT_CANVAS_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] [data-chat-canvas]"
 
 /**
  * Keep full-screen Portal surfaces tied to what the user can actually see.
@@ -30,7 +31,20 @@ export default function MobileVisualViewport() {
 
     const root = document.documentElement
     let frame = 0
+    let tailFrame = 0
     let focusTimer = 0
+    let chatNearBottom = true
+
+    const pinChatTailIfNeeded = () => {
+      if (!chatNearBottom) return
+      if (tailFrame) window.cancelAnimationFrame(tailFrame)
+      tailFrame = window.requestAnimationFrame(() => {
+        tailFrame = 0
+        const canvas = document.querySelector<HTMLElement>(CHAT_CANVAS_SELECTOR)
+        if (!canvas) return
+        canvas.scrollTop = canvas.scrollHeight
+      })
+    }
 
     const apply = () => {
       frame = 0
@@ -46,11 +60,24 @@ export default function MobileVisualViewport() {
       root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)
       root.style.setProperty(BLOCK_SIZE_VAR, `${visualHeight}px`)
       root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)
+
+      // A keyboard resize reduces the canvas clientHeight without changing its
+      // scrollTop. If the reader was already at the conversation tail, keep the
+      // newest message immediately above the composer just like WhatsApp. If
+      // they intentionally scrolled up, chatNearBottom is false and we do not
+      // yank their reading position.
+      pinChatTailIfNeeded()
     }
 
     const schedule = () => {
       if (frame) window.cancelAnimationFrame(frame)
       frame = window.requestAnimationFrame(apply)
+    }
+
+    const onChatScroll = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement) || !target.matches('[data-chat-canvas]')) return
+      chatNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 120
     }
 
     // Do the first measurement synchronously during layout so an open thread
@@ -63,6 +90,7 @@ export default function MobileVisualViewport() {
     window.addEventListener('resize', schedule)
     window.addEventListener('orientationchange', schedule)
     window.addEventListener('pageshow', schedule)
+    document.addEventListener('scroll', onChatScroll, true)
 
     // VisualViewport resize is the primary keyboard signal. The focus hooks
     // are a small Safari fallback for versions that report the final keyboard
@@ -82,12 +110,14 @@ export default function MobileVisualViewport() {
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame)
+      if (tailFrame) window.cancelAnimationFrame(tailFrame)
       if (focusTimer) window.clearTimeout(focusTimer)
       viewport?.removeEventListener('resize', schedule)
       viewport?.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
       window.removeEventListener('orientationchange', schedule)
       window.removeEventListener('pageshow', schedule)
+      document.removeEventListener('scroll', onChatScroll, true)
       document.removeEventListener('focusin', onFocusChange)
       document.removeEventListener('focusout', onFocusChange)
       document.removeEventListener('visibilitychange', onVisibility)
