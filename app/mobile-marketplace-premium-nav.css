@@ -151,7 +151,7 @@
     scroll-snap-type: x proximity;
     scroll-padding-inline: 12px;
     overscroll-behavior-x: contain;
-    touch-action: pan-x;
+    touch-action: pan-x pan-y;
   }
 
   .cw-market .ys-cat-strip > div {
