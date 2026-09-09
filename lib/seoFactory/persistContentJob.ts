@@ -334,6 +334,23 @@ export async function persistPipelineJob(
         .in('status', ['drafting', 'pending', 'failed'])
         .neq('id', jobId)
     }
+    const pk = String(input.primaryKeyword || '').trim()
+    const region = String(input.region || '').trim()
+    const substantial = Number(input.audit?.wordCount || 0) >= 400
+      || String(input.content || '').length > 2000
+    if (jobId && pk && substantial) {
+      await supabase
+        .from('content_jobs')
+        .update({
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          error_message: `Superseded by in-flight sibling ${jobId}`,
+        })
+        .eq('primary_keyword', pk)
+        .eq('region', region)
+        .in('status', ['drafting', 'pending', 'failed'])
+        .neq('id', jobId)
+    }
     if (jobId) {
       try {
         const { recordJobQualityGate } = await import('@/lib/seoEngine/gate')

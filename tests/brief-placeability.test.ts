@@ -77,6 +77,32 @@ describe('partitioner does not mill unplaceable long-tails', () => {
     expect(p.longTail.some((t) => t.startsWith('how to apply for uk spouse visa'))).toBe(true)
     expect(p.longTail.some((t) => t.startsWith('is it possible to '))).toBe(false)
   })
+
+  it('Canada spousal processing time: no canada spousal fragment, no apply-for mashup', () => {
+    const pk = 'canada spousal sponsorship processing time'
+    expect(isApplyTargetPrimary(pk)).toBe(false)
+    expect(rejectFragmentKeyword('canada spousal', pk)).toBe(true)
+    expect(rejectFragmentKeyword('processing time', pk)).toBe(true)
+    const p = partitionKeywords([], pk)
+    expect(p.short).not.toContain('canada spousal')
+    expect(p.short).not.toContain('processing time')
+    expect(p.longTail.some((t) => t.startsWith('how to apply for '))).toBe(false)
+    expect(p.longTail.some((t) => t.startsWith('is it possible to '))).toBe(false)
+    expect(p.short.length).toBeGreaterThanOrEqual(5)
+    expect(p.longTail.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('business plan writing service: hired services are not apply-targets', () => {
+    const pk = 'business plan writing service'
+    expect(isApplyTargetPrimary(pk)).toBe(false)
+    expect(rejectFragmentKeyword('writing service', pk)).toBe(true)
+    const p = partitionKeywords([], pk)
+    expect(p.short).not.toContain('writing service')
+    expect(p.short).not.toContain('business plan application')
+    expect(p.longTail.some((t) => t.startsWith('how to apply for '))).toBe(false)
+    expect(p.longTail.some((t) => t.startsWith('is it possible to '))).toBe(false)
+    expect(p.longTail.length).toBeGreaterThanOrEqual(4)
+  })
 })
 
 describe('live CRS/AU persisted mill lists are sealed off at resolve', () => {

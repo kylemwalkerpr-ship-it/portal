@@ -42,4 +42,12 @@ describe('ensureKeywordFloors — UI keyword field never opens below the contrac
     expect(au).not.toContain('australia student')
     expect(au).not.toContain('processing time')
   })
+
+  it('does not mill apply-for on a hired writing service', () => {
+    const out = ensureKeywordFloors(['business plan'], 'business plan writing service')
+    const longs = out.filter((k) => k.split(/\s+/).length >= 4)
+    expect(longs.some((l) => l.startsWith('how to apply for '))).toBe(false)
+    expect(out).not.toContain('writing service')
+  })
+
 })

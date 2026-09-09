@@ -30,6 +30,8 @@ export const NAMED_IMMIGRATION_PROGRAMS = [
   'visitor visa',
   'student visa',
   'permanent residence',
+  'spousal sponsorship',
+  'family class',
 ] as const
 
 const MILL_SUFFIXES = new Set([
@@ -55,10 +57,12 @@ const GENERIC_WINDOWS = new Set([
   'card timeline',
   'wait time',
   'wait times',
+  'writing service',
+  'editing service',
 ])
 
 const EXPLAINER_PRIMARY =
-  /\b(calculator|processing time|processing times|timeline|template|checklist|score|points?)\b/
+  /\b(calculator|processing time|processing times|timeline|template|checklist|score|points?|service)\b/
 
 const APPLY_TARGET =
   /\b(visa|permit|green card|sponsorship|petition|application|work permit|study permit|permanent residence)\b/
@@ -70,8 +74,8 @@ function normPhrase(value: string): string {
 /**
  * True when the primary is something a reader actually applies for
  * (visa / permit / petition). False for calculators, processing-time
- * explainers, templates, checklists, and score tools — those must never
- * receive "how to apply for {primary}" mill long-tails.
+ * explainers, templates, checklists, score tools, and hired services —
+ * those must never receive "how to apply for {primary}" mill long-tails.
  */
 export function isApplyTargetPrimary(primary: string): boolean {
   const p = normPhrase(primary)
@@ -109,7 +113,8 @@ export function rejectFragmentKeyword(term: string, primary: string): boolean {
   }
 
   // Incomplete named-program shorts: "australia student" when the primary
-  // contains "student visa"; "green requirements" is already handled above.
+  // contains "student visa"; "canada spousal" when it contains "spousal
+  // sponsorship".
   if (termTokens.length >= 2) {
     for (const program of NAMED_IMMIGRATION_PROGRAMS) {
       if (!pk.includes(program)) continue
@@ -123,7 +128,6 @@ export function rejectFragmentKeyword(term: string, primary: string): boolean {
   }
   return false
 }
-
 
 export function dropFragmentKeywordTerms<T extends { term: string }>(terms: T[], primary: string): T[] {
   return terms.filter((entry) => !rejectFragmentKeyword(entry.term, primary))
@@ -238,12 +242,25 @@ export function parseKeywordTerms(raw: unknown): KeywordTerm[] | undefined {
   return list.length ? list : undefined
 }
 
+/** Local twin of gate stripOutlineHeadingDecorations — this file stays client-safe. */
+function stripBriefHeadingDecorations(heading: string): string {
+  return String(heading || '')
+    .replace(/^#+\s*/, '')
+    .replace(
+      /\s*\((?:\d+\s*[–-]\s*\d+\s+words?|\d+\s+words?|\d+\s*[–-]\s*\d+\s*q\s*&\s*a|[^)]*q\s*&\s*a[^)]*|\d+\s*[–-]\s*\d+\s+bullets?|\d+\s*[–-]\s*\d+)\s*\)\s*$/i,
+      '',
+    )
+    .replace(/\s+\d+\s*[–-]\s*\d+\s+words?\s*$/i, '')
+    .trim()
+}
+
 /**
  * Strip briefing H2s Harper cannot honestly rewrite: verbatim keyword pastes
  * and question-mark FAQ items listed as sibling sections. Structural headings
  * (In 60 seconds / FAQ / Sources / Worked Example / TOC) are kept.
  * Any In 60 seconds variant (word-count parentheticals, a second copy) collapses
- * to a single `In 60 seconds` heading.
+ * to a single `In 60 seconds` heading. Marketplace CTA headings are dropped —
+ * they are not outline sections.
  */
 export function sanitizeBriefOutline(headings: string[], keywords: string[] = []): string[] {
   const keywordNorms = new Set(
@@ -255,11 +272,15 @@ export function sanitizeBriefOutline(headings: string[], keywords: string[] = []
   const seen = new Set<string>()
   const out: string[] = []
   for (const raw of headings || []) {
-    let heading = String(raw || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
+    let heading = stripBriefHeadingDecorations(
+      String(raw || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim(),
+    )
     if (!heading) continue
+    if (/^need professional help\b/i.test(heading)) continue
     if (/^in 60 seconds\b/i.test(heading) || /^tl;?dr\b/i.test(heading)) {
       heading = 'In 60 seconds'
     }
+    if (/^table of contents\b/i.test(heading)) heading = 'Table of contents'
     const key = heading.toLowerCase()
     if (seen.has(key)) continue
     if (!structural.test(heading)) {

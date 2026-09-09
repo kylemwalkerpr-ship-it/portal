@@ -380,4 +380,22 @@ describe('persistPipelineJob — one write door, never throws', () => {
     const ops = mockModule.__getOps()
     expect(ops.some((o) => o.op === 'insert' && o.table === 'content_jobs')).toBe(true)
   })
+
+  it('closes in-flight siblings that share primary+region after a substantial persist', async () => {
+    await persistPipelineJob(baseInput({
+      existingJobId: 'keeper',
+      primaryKeyword: 'canada spousal sponsorship processing time',
+      region: 'CA',
+      content: 'x'.repeat(2500),
+    }))
+    const ops = mockModule.__getOps()
+    const siblingClose = ops.find((o) =>
+      o.op === 'update'
+      && o.table === 'content_jobs'
+      && (o.row as Record<string, unknown> | undefined)?.status === 'closed'
+      && String((o.row as Record<string, unknown>).error_message || '').includes('in-flight sibling'),
+    )
+    expect(siblingClose).toBeDefined()
+  })
+
 })

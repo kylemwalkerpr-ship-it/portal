@@ -271,7 +271,10 @@ export function partitionKeywords(terms: string[], primaryTerm?: string): {
   // at least 5". Now we derive SHORT heads from the primary's own contiguous
   // word windows (leading 1-2 words, trailing 2-3 words) and attach the
   // modifiers to those heads instead of the full phrase.
-  const ST_PREFIXES = ['guide', 'requirements', 'application', 'eligibility', 'documents', 'timeline', 'rules', 'process']
+  const applyTargetEarly = isApplyTargetPrimary(pt)
+  const ST_PREFIXES = applyTargetEarly
+    ? ['guide', 'requirements', 'application', 'eligibility', 'documents', 'timeline', 'rules', 'process']
+    : ['guide', 'requirements', 'process', 'cost']
   if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 2 && ptWords.length >= 1) {
     const stripped = pt.replace(/-/g, ' ')
     // Stopwords that would produce awkward heads ("of purpose", "for study")

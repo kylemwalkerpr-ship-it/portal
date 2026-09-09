@@ -235,6 +235,26 @@ export async function* runSeoFactoryPipelineStream(
         }
         yield { type: 'job', jobId: earlyJobId }
       } else {
+      const { claimDraftingJob } = await import('./claimDraftingJob')
+      const reused = await claimDraftingJob({
+        title,
+        topic,
+        contentType,
+        region,
+        primaryKeyword,
+        userId: input.userId,
+      })
+      if (reused) {
+        earlyJobId = reused
+        const { error: earlyUp } = await earlySb.from('content_jobs').update(earlyRow).eq('id', earlyJobId)
+        if (earlyUp && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(earlyUp.message || '')) {
+          const { lineage: _l, regeneration_reason: _r, regeneration_mode: _m, event_log: _e, ...minimalRow } = earlyRow
+          await earlySb.from('content_jobs').update(minimalRow).eq('id', earlyJobId)
+        }
+        yield { type: 'job', jobId: earlyJobId }
+      }
+      }
+      if (!earlyJobId) {
       const early = await earlySb.from('content_jobs').insert(earlyRow).select('id').single()
       if (early.data?.id) {
         earlyJobId = early.data.id

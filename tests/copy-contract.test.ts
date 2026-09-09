@@ -249,6 +249,22 @@ describe('In 60 seconds is one 3–5 bullet block, not a 150–180 word twin', (
     expect(sixties).toEqual(['In 60 seconds'])
   })
 
+  it('strips TOC word-count decorations and drops marketplace CTA H2s', () => {
+    const outline = sanitizeBriefOutline([
+      'In 60 seconds (120-160 words)',
+      'Table of contents (40-60 words)',
+      'What IRCC processing time means for spouses',
+      'Need professional help with your sponsorship file',
+      'FAQ',
+    ])
+    expect(outline).toEqual([
+      'In 60 seconds',
+      'Table of contents',
+      'What IRCC processing time means for spouses',
+      'FAQ',
+    ])
+  })
+
   it('stripDuplicateIn60SecondsHeadings drops a second H2 and normalizes parentheticals', () => {
     const raw = [
       '# CRS calculator',
