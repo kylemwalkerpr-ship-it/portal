@@ -19,6 +19,24 @@ function norm(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// Gig covers are public Marketplace media. getPublicUrl() does not make a
+// private bucket public; it only constructs the public URL. The original
+// fiverr_gig_system.sql created gig-gallery with public:false, so the bulk
+// cover job could successfully upload every image and then save URLs that
+// browsers could never fetch. Make the bucket invariant explicit before any
+// future bulk catalog upload.
+const { data: gigGalleryBucket, error: gigGalleryBucketError } = await sb.storage.getBucket("gig-gallery");
+if (gigGalleryBucketError && !/not found/i.test(gigGalleryBucketError.message || "")) {
+  throw new Error(`Could not inspect gig-gallery bucket: ${gigGalleryBucketError.message}`);
+}
+if (!gigGalleryBucket) {
+  const { error } = await sb.storage.createBucket("gig-gallery", { public: true });
+  if (error) throw new Error(`Could not create public gig-gallery bucket: ${error.message}`);
+} else if (!gigGalleryBucket.public) {
+  const { error } = await sb.storage.updateBucket("gig-gallery", { public: true });
+  if (error) throw new Error(`Could not make gig-gallery public: ${error.message}`);
+}
+
 let uploaded = 0, db_updated = 0, failures = [];
 const rows = [];
 
