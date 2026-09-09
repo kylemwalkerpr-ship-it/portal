@@ -2,77 +2,127 @@ import {
   buildSegmentWritePrompt,
   mergeSegmentParts,
   planWriteSegments,
-} from '@/lib/seoFactory/segmentedWriting'
+} from '@/lib/seoFactory/prompts'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
-describe('segmented writing', () => {
-  it('plans a coherent first, middle, and final segment', () => {
-    const segments = planWriteSegments({ minWords: 3200, segmentCount: 3 })
-    expect(segments).toHaveLength(3)
-    expect(segments[0].position).toBe('first')
-    expect(segments[1].position).toBe('middle')
-    expect(segments[2].position).toBe('final')
-    expect(segments[0].includeFrontmatter).toBe(true)
-    expect(segments[2].includeClosing).toBe(true)
+describe('segmented writing helpers', () => {
+  it('single-pass is the default: no split unless segmentCount > 1 is explicit', () => {
+    // The pipeline now defaults every draft to ONE part — segmented writing
+    // is an opt-in only (writeSegments > 1). A default '2' was the source of
+    // the echo/second-copy defect (part 2 re-emitting front matter/H1).
+    const single = planWriteSegments({
+      h2Outline: ['Eligibility', 'Process', 'Documents', 'Costs', 'FAQ', 'Sources'],
+      minWords: 2200,
+      segmentCount: 1,
+    })
+    expect(single).toHaveLength(1)
+    expect(single[0].sections).toEqual(['Eligibility', 'Process', 'Documents', 'Costs', 'FAQ', 'Sources'])
+    expect(single[0].wordFloor).toBe(2200)
+    expect(single[0].priorSections).toEqual([])
   })
 
-  it('gives every part an explicit measured word window', () => {
-    const segments = planWriteSegments({ minWords: 3600, segmentCount: 3 })
-    for (const segment of segments) {
-      expect(segment.minWords).toBeGreaterThan(0)
-      expect(segment.targetWords).toBeGreaterThanOrEqual(segment.minWords)
-      expect(segment.maxWords).toBeGreaterThanOrEqual(segment.targetWords)
-    }
-    expect(segments.reduce((sum, s) => sum + s.minWords, 0)).toBeGreaterThanOrEqual(3600)
+  it('planWriteSegments splits the outline into 2 contiguous chunks', () => {
+    const segments = planWriteSegments({
+      h2Outline: ['Eligibility', 'Process', 'Documents', 'Costs', 'FAQ', 'Sources'],
+      minWords: 2200,
+      segmentCount: 2,
+    })
+    expect(segments).toHaveLength(2)
+    expect(segments[0].index).toBe(1)
+    expect(segments[1].index).toBe(2)
+    // Contiguous — first part owns the first half of the outline
+    expect(segments[0].sections).toEqual(['Eligibility', 'Process', 'Documents'])
+    expect(segments[1].sections).toEqual(['Costs', 'FAQ', 'Sources'])
+    // Word floors sum to at least the full minWords
+    const totalFloor = segments.reduce((a, s) => a + s.wordFloor, 0)
+    expect(totalFloor).toBeGreaterThanOrEqual(2200)
+    // Part 2 knows what part 1 already wrote (no repetition)
+    expect(segments[1].priorSections).toEqual(['Eligibility', 'Process', 'Documents'])
   })
 
-  it('builds prompts that prohibit cross-segment duplication', () => {
-    const [first, middle, final] = planWriteSegments({ minWords: 3600, segmentCount: 3 })
-    const base = {
-      title: 'F-1 checklist', topic: 'F-1 checklist', primaryKeyword: 'f1 checklist',
-      region: 'US', contentType: 'blog_post', tone: 'educational', minWords: 3600,
-      targetWords: 4000, gscBlock: '',
-    }
-    const firstPrompt = buildSegmentWritePrompt({ ...base, segment: first })
-    const middlePrompt = buildSegmentWritePrompt({ ...base, segment: middle })
-    const finalPrompt = buildSegmentWritePrompt({ ...base, segment: final })
-
-    expect(firstPrompt).toContain('Do not write sections assigned to other parts')
-    expect(firstPrompt).toContain('MEASURED WORD WINDOW FOR THIS PART')
-    expect(middlePrompt).not.toContain('Emit YAML front matter')
-    expect(finalPrompt).toContain('This part closes the article')
+  it('planWriteSegments returns a single part for short content', () => {
+    const segments = planWriteSegments({ h2Outline: ['A'], minWords: 900, segmentCount: 2 })
+    expect(segments).toHaveLength(1)
+    expect(segments[0].wordFloor).toBe(900)
   })
 
-  it('mergeSegmentParts removes repeated front matter and H1 while preserving section bodies', () => {
-    const first = `---
-title: Test
----
-# Test title
+  it('planWriteSegments falls back to a generic split without an outline', () => {
+    const segments = planWriteSegments({ minWords: 2200, segmentCount: 2 })
+    expect(segments).toHaveLength(2)
+    const totalFloor = segments.reduce((a, s) => a + s.wordFloor, 0)
+    expect(totalFloor).toBeGreaterThanOrEqual(2200)
+  })
 
-Intro.
+  it('buildSegmentWritePrompt scopes part 1 to its sections and word floor', () => {
+    const segments = planWriteSegments({
+      h2Outline: ['Eligibility', 'Process', 'Documents', 'Costs'],
+      minWords: 2000,
+      segmentCount: 2,
+    })
+    // First half of the outline belongs to part 1, second half to part 2
+    expect(segments[0].sections).toEqual(['Eligibility', 'Process'])
+    expect(segments[1].sections).toEqual(['Documents', 'Costs'])
+    const p = buildSegmentWritePrompt({
+      title: 'Skilled Migration 189',
+      topic: 'skilled migration',
+      primaryKeyword: 'skilled independent visa 189',
+      region: 'AU',
+      contentType: 'legal_guide',
+      tone: 'educational',
+      segment: segments[0],
+      minWords: 2000,
+      targetWords: 2200,
+      gscBlock: 'GSC block',
+    })
+    expect(p).toMatch(/PART 1 OF 2/)
+    expect(p).toMatch(/Eligibility/)
+    expect(p).toMatch(/Process/)
+    expect(p).toMatch(new RegExp(`${segments[0].wordFloor} body words`))
+    // Part 1 owns front matter; must NOT write the final FAQ/Sources
+    expect(p).toMatch(/YAML front matter/)
+    expect(p).toMatch(/final part writes those/)
+  })
 
-## Eligibility
+  it('buildSegmentWritePrompt continuation parts never repeat prior sections', () => {
+    const segments = planWriteSegments({
+      h2Outline: ['Eligibility', 'Process', 'Costs'],
+      minWords: 2200,
+      segmentCount: 2,
+    })
+    const p = buildSegmentWritePrompt({
+      title: 'Test',
+      topic: 'test topic',
+      primaryKeyword: 'test keyword',
+      region: 'US',
+      contentType: 'legal_guide',
+      tone: 'educational',
+      segment: segments[1],
+      minWords: 2200,
+      targetWords: 2500,
+      gscBlock: 'GSC block',
+    })
+    expect(p).toMatch(/PART 2 OF 2/)
+    // Explicitly told what is already written and not to repeat it
+    expect(p).toMatch(/ALREADY WRITTEN IN EARLIER PARTS/)
+    expect(p).toMatch(/Eligibility/)
+    expect(p).toMatch(/Process/)
+    // Continuation parts must NOT emit front matter
+    expect(p).toMatch(/Do NOT emit YAML front matter/)
+    // Final part closes the article with FAQ/Sources/JSON-LD/disclaimer
+    expect(p).toMatch(/## FAQ/)
+    expect(p).toMatch(/## Sources/)
+    expect(p).toMatch(/JSON-LD/)
+  })
 
-First body.`
-    const second = `---
-title: Duplicate
----
-# Duplicate title
-
-## Eligibility
-
-Repeated heading body.
-
-## Costs
-
-Second body.`
-    const merged = mergeSegmentParts([first, second])
-
-    expect((merged.match(/^---$/gm) || []).length).toBe(2)
-    expect((merged.match(/^# /gm) || []).length).toBe(1)
-    expect(merged).toContain('First body.')
-    expect(merged).toContain('Repeated heading body.')
-    expect(merged).toContain('Second body.')
+  it('mergeSegmentParts joins parts and strips stray front matter/H1 from continuations', () => {
+    const part1 = '---\ntitle: T\n---\n\n# Skilled Migration\n\n## Eligibility\n\nBody one.'
+    const part2 = '---\ntitle: T\n---\n\n# Skilled Migration\n\n## Costs\n\nBody two.'
+    const merged = mergeSegmentParts([part1, part2])
+    // Only one H1 survives
+    expect((merged.match(/# Skilled Migration/g) || []).length).toBe(1)
+    // Only one YAML front matter survives (part 2's is stripped)
+    expect((merged.match(/title: T/g) || []).length).toBe(1)
+    // Both sections survive
     expect(merged).toMatch(/## Eligibility/)
     expect(merged).toMatch(/## Costs/)
   })
