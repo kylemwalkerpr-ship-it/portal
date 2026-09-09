@@ -6,8 +6,9 @@ const HEIGHT_VAR = '--ys-visual-viewport-height'
 const BLOCK_SIZE_VAR = '--ys-visual-viewport-block-size'
 const OFFSET_VAR = '--ys-visual-viewport-offset-top'
 const PAN_VAR = '--ys-visual-viewport-pan-top'
-const CHAT_CANVAS_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] [data-chat-canvas]"
-const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat'] .comp-input"
+const CHAT_ROOT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-view='chat']"
+const CHAT_CANVAS_SELECTOR = `${CHAT_ROOT_SELECTOR} [data-chat-canvas]`
+const COMPOSER_INPUT_SELECTOR = `${CHAT_ROOT_SELECTOR} .comp-input`
 
 /**
  * Keep full-screen Portal surfaces tied to what the user can actually see.
@@ -37,6 +38,13 @@ const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-v
  * Composer focus controls compact padding, not a guessed browser-chrome
  * reserve. VisualViewport supplies the visible rectangle; subtracting another
  * URL-bar/input-assistant allowance double-counts native UI and leaves a gap.
+ *
+ * This coordinator is intentionally surface-agnostic. Student, attorney,
+ * consultant, admin, Marketplace Messages, and the direct Marketplace provider
+ * drawer all use the same .yousafe-messenger + ChatScreen contract. When more
+ * than one Messenger exists in the DOM, tail pinning is scoped to the focused
+ * (or otherwise visible) chat so a keyboard resize cannot scroll a hidden or
+ * background conversation by mistake.
  */
 export default function MobileVisualViewport() {
   React.useLayoutEffect(() => {
@@ -55,7 +63,7 @@ export default function MobileVisualViewport() {
     let tailFrame = 0
     let focusFrame = 0
     let focusTimers: number[] = []
-    let chatNearBottom = true
+    const nearBottomByCanvas = new WeakMap<HTMLElement, boolean>()
     let unfocusedVisualHeight = Math.max(1, Math.round(window.visualViewport?.height || window.innerHeight))
 
     const composerIsFocused = () => {
@@ -67,14 +75,33 @@ export default function MobileVisualViewport() {
       root.dataset.ysMessengerComposerFocused = focused ? 'true' : 'false'
     }
 
+    const activeChatRoot = () => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement) {
+        const focusedRoot = active.closest<HTMLElement>(CHAT_ROOT_SELECTOR)
+        if (focusedRoot) return focusedRoot
+      }
+
+      const roots = Array.from(document.querySelectorAll<HTMLElement>(CHAT_ROOT_SELECTOR))
+      return roots.find((candidate) => {
+        const style = window.getComputedStyle(candidate)
+        return style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && candidate.getClientRects().length > 0
+      }) || roots[0] || null
+    }
+
+    const activeChatCanvas = () => activeChatRoot()?.querySelector<HTMLElement>('[data-chat-canvas]') || null
+
     const pinChatTailIfNeeded = () => {
-      if (!chatNearBottom) return
+      const canvas = activeChatCanvas()
+      if (!canvas || nearBottomByCanvas.get(canvas) === false) return
       if (tailFrame) window.cancelAnimationFrame(tailFrame)
       tailFrame = window.requestAnimationFrame(() => {
         tailFrame = 0
-        const canvas = document.querySelector<HTMLElement>(CHAT_CANVAS_SELECTOR)
-        if (!canvas) return
-        canvas.scrollTop = canvas.scrollHeight
+        const currentCanvas = activeChatCanvas()
+        if (!currentCanvas || nearBottomByCanvas.get(currentCanvas) === false) return
+        currentCanvas.scrollTop = currentCanvas.scrollHeight
       })
     }
 
@@ -119,10 +146,9 @@ export default function MobileVisualViewport() {
       root.style.setProperty(PAN_VAR, `${visualPanTop}px`)
 
       // A keyboard resize reduces the canvas clientHeight without changing its
-      // scrollTop. If the reader was already at the conversation tail, keep the
-      // newest message immediately above the composer just like WhatsApp. If
-      // they intentionally scrolled up, chatNearBottom is false and we do not
-      // yank their reading position.
+      // scrollTop. Each Messenger canvas keeps its own pre-resize near-bottom
+      // state so the active thread follows the newest message like WhatsApp,
+      // while any background/hidden Messenger remains untouched.
       pinChatTailIfNeeded()
     }
 
@@ -141,8 +167,11 @@ export default function MobileVisualViewport() {
 
     const onChatScroll = (event: Event) => {
       const target = event.target
-      if (!(target instanceof HTMLElement) || !target.matches('[data-chat-canvas]')) return
-      chatNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 120
+      if (!(target instanceof HTMLElement) || !target.matches(CHAT_CANVAS_SELECTOR)) return
+      nearBottomByCanvas.set(
+        target,
+        target.scrollHeight - target.scrollTop - target.clientHeight < 120,
+      )
     }
 
     // Do the first measurement synchronously during layout so an open thread
@@ -160,12 +189,16 @@ export default function MobileVisualViewport() {
 
     // Publish focus synchronously so CSS uses compact composer padding during
     // keyboard animation, without subtracting guessed native UI heights.
-    // On focusout, defer one frame so moving focus between Messenger controls cannot briefly collapse
-    // the app rectangle.
+    // On focusout, defer one frame so moving focus between Messenger controls
+    // cannot briefly collapse the app rectangle.
     const onFocusIn = (event: FocusEvent) => {
       const target = event.target
       if (target instanceof HTMLElement && target.matches(COMPOSER_INPUT_SELECTOR)) {
         publishComposerFocus(true)
+        const canvas = target.closest<HTMLElement>(CHAT_ROOT_SELECTOR)?.querySelector<HTMLElement>('[data-chat-canvas]')
+        if (canvas && !nearBottomByCanvas.has(canvas)) {
+          nearBottomByCanvas.set(canvas, canvas.scrollHeight - canvas.scrollTop - canvas.clientHeight < 120)
+        }
       }
       schedule()
       scheduleSettledMeasurements()

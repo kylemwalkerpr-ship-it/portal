@@ -97,12 +97,14 @@ describe('mobile Messenger keyboard viewport contract', () => {
     expect(css).toContain('padding-bottom: 8px !important')
   })
 
-  test('keyboard resizing keeps the newest message visible only when the reader was at the tail', () => {
-    expect(coordinator).toContain('let chatNearBottom = true')
+  test('keyboard resizing keeps the newest message visible only for the active chat when its reader was at the tail', () => {
+    expect(coordinator).toContain('const nearBottomByCanvas = new WeakMap<HTMLElement, boolean>()')
+    expect(coordinator).toContain('const activeChatRoot = () =>')
+    expect(coordinator).toContain('active.closest<HTMLElement>(CHAT_ROOT_SELECTOR)')
     expect(coordinator).toContain("document.addEventListener('scroll', onChatScroll, true)")
     expect(coordinator).toContain('target.scrollHeight - target.scrollTop - target.clientHeight < 120')
-    expect(coordinator).toContain('if (!chatNearBottom) return')
-    expect(coordinator).toContain('canvas.scrollTop = canvas.scrollHeight')
+    expect(coordinator).toContain('if (!canvas || nearBottomByCanvas.get(canvas) === false) return')
+    expect(coordinator).toContain('currentCanvas.scrollTop = currentCanvas.scrollHeight')
     expect(coordinator).toContain('pinChatTailIfNeeded()')
   })
 

@@ -79,10 +79,12 @@ describe('mobile visual viewport contract', () => {
     expect(css).toContain('will-change: transform')
   })
 
-  test('the same viewport source covers role dashboards and marketplace messenger surfaces', () => {
+  test('the same viewport source covers role dashboards, Marketplace Messages, direct provider chat, and admin', () => {
     expect(css).toContain('body .yousafe-dashboard-shell')
-    expect(css).toContain('body .cw-market > .yousafe-messenger')
+    expect(css).toContain('body .cw-market .yousafe-messenger:has(> .yousafe-messenger .ys-chatscreen)')
     expect(css).toContain('body .chat-side-pane.yousafe-messenger')
+    expect(css).toContain('body .cw-market .chat-side-pane.yousafe-messenger')
+    expect(css).toContain('body .yousafe-dashboard-shell .yousafe-messenger .admin-master-shell')
   })
 
   test('viewport coordinator is mounted globally and its CSS is the last mobile cascade layer', () => {
