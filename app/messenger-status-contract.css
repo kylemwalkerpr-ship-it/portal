@@ -1,0 +1,332 @@
+/* YouSafe Messenger status/story contract
+   ========================================
+   Full-screen mobile status viewer with segmented progress, profile access,
+   pause-on-hold, swipe/tap-sized navigation zones and safe-area footer.
+*/
+
+.yousafe-messenger .ys-status-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10080;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 12, .9);
+  color: #fff;
+}
+
+.yousafe-messenger .ys-status-stage {
+  position: relative;
+  width: min(430px, 100vw);
+  height: min(820px, 100dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(0, 168, 132, .22), transparent 42%),
+    linear-gradient(180deg, #0c1418 0%, #111b21 58%, #091015 100%);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .45);
+}
+
+.yousafe-messenger .ys-status-progress {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  padding: max(10px, env(safe-area-inset-top)) 10px 0;
+}
+
+.yousafe-messenger .ys-status-progress > span {
+  flex: 1 1 0;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .26);
+}
+
+.yousafe-messenger .ys-status-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #fff;
+}
+
+.yousafe-messenger .ys-status-head {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+  min-height: 62px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(180deg, rgba(0,0,0,.24), transparent);
+}
+
+.yousafe-messenger .ys-status-back {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  cursor: pointer;
+}
+
+.yousafe-messenger .ys-status-person {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yousafe-messenger .ys-status-person > span:last-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yousafe-messenger .ys-status-person strong,
+.yousafe-messenger .ys-status-person small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yousafe-messenger .ys-status-person strong {
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.yousafe-messenger .ys-status-person small {
+  color: rgba(255,255,255,.7);
+  font-size: 10.5px;
+}
+
+.yousafe-messenger .ys-status-paused {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  color: rgba(255,255,255,.8);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.yousafe-messenger .ys-status-head-spacer {
+  width: 34px;
+  height: 34px;
+}
+
+.yousafe-messenger .ys-status-content {
+  position: relative;
+  z-index: 3;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yousafe-messenger .ys-status-card {
+  width: min(100%, 350px);
+  padding: 22px 20px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 24px;
+  background: rgba(255,255,255,.96);
+  color: #0f172a;
+  box-shadow: 0 24px 70px rgba(0,0,0,.3);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.yousafe-messenger .ys-status-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.yousafe-messenger .ys-status-card h2 {
+  margin: 10px 0 0;
+  color: #0f172a;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 25px;
+  font-weight: 780;
+  line-height: 1.08;
+  letter-spacing: -.025em;
+}
+
+.yousafe-messenger .ys-status-card p {
+  margin: 12px 0 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.yousafe-messenger .ys-status-tags {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.yousafe-messenger .ys-status-tags > span {
+  min-height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 10.5px;
+  font-weight: 760;
+}
+
+.yousafe-messenger .ys-status-tags > span.is-now {
+  background: rgba(178,34,52,.11);
+  color: #a11f31;
+}
+
+.yousafe-messenger .ys-status-tags > span.is-soon {
+  background: rgba(60,59,110,.11);
+  color: #3c3b6e;
+}
+
+.yousafe-messenger .ys-status-detail {
+  margin-top: 16px;
+  padding-top: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.yousafe-messenger .ys-status-detail small {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.yousafe-messenger .ys-status-detail strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.yousafe-messenger .ys-status-foot {
+  position: relative;
+  z-index: 7;
+  flex: 0 0 auto;
+  min-height: 66px;
+  padding: 8px 14px max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(0deg, rgba(0,0,0,.34), transparent);
+}
+
+.yousafe-messenger .ys-status-reply {
+  width: min(100%, 330px);
+  min-height: 46px;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.yousafe-messenger .ys-status-delete {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255,255,255,.78);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.yousafe-messenger .ys-status-tap {
+  position: absolute;
+  top: 76px;
+  bottom: 70px;
+  z-index: 4;
+  width: 24%;
+  border: 0;
+  background: transparent;
+}
+
+.yousafe-messenger .ys-status-tap-prev {
+  left: 0;
+}
+
+.yousafe-messenger .ys-status-tap-next {
+  right: 0;
+}
+
+@media (max-width: 640px) {
+  .yousafe-messenger .ys-status-viewer {
+    display: block;
+    background: #071015;
+  }
+
+  .yousafe-messenger .ys-status-stage {
+    width: 100vw;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100dvh;
+    box-shadow: none;
+  }
+
+  .yousafe-messenger .ys-status-content {
+    padding-inline: 18px;
+  }
+
+  .yousafe-messenger .ys-status-card {
+    width: 100%;
+    max-width: 360px;
+    border-radius: 22px;
+  }
+}
+
+@media (max-width: 360px) {
+  .yousafe-messenger .ys-status-content {
+    padding-inline: 12px;
+  }
+
+  .yousafe-messenger .ys-status-card {
+    padding: 18px 16px;
+  }
+
+  .yousafe-messenger .ys-status-card h2 {
+    font-size: 22px;
+  }
+}
