@@ -191,10 +191,10 @@
 }
 
 /* Pin the YQAA launcher to the visible viewport.
-   iOS rubber-band at the end of a long marketplace page used to bounce the
-   bubble: assistant.js measured footer links in the bottom-right corner and
-   rewrote `bottom` on every scroll. Keep the FAB glued to the visual
-   viewport and stop document overscroll from dragging the fixed layer. */
+   Do not rewrite `bottom` from page links, and do not feed iOS visual-pan
+   into the FAB. The pan variable is for the open chat shell. Compensating
+   it here made the bubble jump at every URL-bar twitch and at marketplace
+   section breaks, where right-edge CTAs enter and leave the corner. */
 @media (max-width: 768px) {
   html:has(.cw-market),
   html:has(.cw-market) body {
@@ -208,6 +208,7 @@
     bottom: max(16px, calc(12px + env(safe-area-inset-bottom))) !important;
     top: auto !important;
     left: auto !important;
-    transform: translate3d(0, calc(-1 * var(--ys-visual-viewport-pan-top, 0px)), 0) !important;
+    transform: none !important;
+    transition: none !important;
   }
 }
