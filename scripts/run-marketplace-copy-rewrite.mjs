@@ -9,6 +9,12 @@ const db = createClient(supabaseUrl, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
+const XAI_API_BASE = 'https://api.x.ai/v1'
+const XAI_AUTH_BASE = 'https://auth.x.ai'
+const XAI_OAUTH_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
+const XAI_MODEL = 'grok-4.6'
+const OAUTH_REFRESH_SKEW_MS = 10 * 60 * 1000
+
 const preferred = [
   {
     id: 'entrim-deepseek',
@@ -34,7 +40,88 @@ const preferred = [
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+async function setAiSetting(key, value) {
+  const { error } = await db.from('ai_settings').upsert({
+    key,
+    value: String(value),
+    updated_by: 'marketplace-copy-supergrok-refresh',
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'key' })
+  if (error) throw new Error(`Unable to persist ${key}: ${error.message}`)
+}
+
+async function refreshSuperGrok(refreshToken) {
+  const response = await fetch(`${XAI_AUTH_BASE}/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+      'User-Agent': 'YouSafe-MarketplaceRewrite/1.0 (SuperGrok OAuth)',
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: XAI_OAUTH_CLIENT_ID,
+    }).toString(),
+  })
+  const text = await response.text()
+  let payload = {}
+  try { payload = text ? JSON.parse(text) : {} } catch {}
+  if (!response.ok || !String(payload?.access_token || '').trim()) {
+    console.warn(`[marketplace-copy] SuperGrok refresh unavailable: HTTP ${response.status} ${String(payload?.error_description || payload?.error || text).slice(0, 180)}`)
+    return null
+  }
+
+  const accessToken = String(payload.access_token).trim()
+  const nextRefresh = String(payload.refresh_token || refreshToken).trim()
+  const expiresIn = Math.max(30, Number(payload.expires_in || 3600))
+  const expiresAt = Date.now() + expiresIn * 1000
+  await Promise.all([
+    setAiSetting('xai_oauth_access_token', accessToken),
+    setAiSetting('xai_oauth_refresh_token', nextRefresh),
+    setAiSetting('xai_oauth_expires_at', String(expiresAt)),
+    setAiSetting('xai_oauth_token_type', String(payload.token_type || 'Bearer')),
+  ])
+  return {
+    id: 'supergrok-oauth',
+    kind: 'xai',
+    key: accessToken,
+    baseUrl: XAI_API_BASE,
+    model: XAI_MODEL,
+  }
+}
+
+async function loadSuperGrokCandidate() {
+  const keys = [
+    'xai_oauth_access_token',
+    'xai_oauth_refresh_token',
+    'xai_oauth_expires_at',
+  ]
+  const { data, error } = await db.from('ai_settings').select('key,value').in('key', keys)
+  if (error) throw new Error(`Unable to read SuperGrok OAuth settings: ${error.message}`)
+  const settings = new Map((data || []).map((row) => [row.key, String(row.value || '').trim()]))
+  const access = settings.get('xai_oauth_access_token') || ''
+  const refresh = settings.get('xai_oauth_refresh_token') || ''
+  const expiresAt = Number(settings.get('xai_oauth_expires_at') || 0)
+
+  if (access && Number.isFinite(expiresAt) && expiresAt > Date.now() + OAUTH_REFRESH_SKEW_MS) {
+    return {
+      id: 'supergrok-oauth',
+      kind: 'xai',
+      key: access,
+      baseUrl: XAI_API_BASE,
+      model: XAI_MODEL,
+    }
+  }
+  if (refresh) return refreshSuperGrok(refresh)
+  return null
+}
+
 async function loadCandidates() {
+  const candidates = []
+  const superGrok = await loadSuperGrokCandidate()
+  if (superGrok) candidates.push(superGrok)
+
   const ids = preferred.map((item) => item.id)
   const { data, error } = await db
     .from('ai_provider_keys')
@@ -44,7 +131,6 @@ async function loadCandidates() {
 
   if (error) throw new Error(`Unable to read AI vault: ${error.message}`)
   const byId = new Map((data || []).map((row) => [row.provider, row]))
-  const candidates = []
 
   for (const spec of preferred) {
     const row = byId.get(spec.id)
@@ -52,18 +138,18 @@ async function loadCandidates() {
     if (!key) continue
     candidates.push({
       id: spec.id,
+      kind: 'openai-compat',
       key,
       baseUrl: String(row?.base_url || spec.baseUrl).replace(/\/$/, ''),
       model: String(row?.model || spec.model).trim(),
     })
   }
 
-  // A deployment env key is still usable as a final Entrim fallback, but the
-  // Supabase vault remains authoritative when both are present.
   const envEntrim = String(process.env.ENTRIM_API_KEY || '').trim()
   if (envEntrim && !candidates.some((candidate) => candidate.id === 'entrim-env')) {
     candidates.push({
       id: 'entrim-env',
+      kind: 'openai-compat',
       key: envEntrim,
       baseUrl: String(process.env.ENTRIM_BASE_URL || 'https://api.entrim.ai/v1').replace(/\/$/, ''),
       model: String(process.env.ENTRIM_MARKETPLACE_MODEL || process.env.ENTRIM_MODEL || 'deepseek-ai/DeepSeek-V4-Flash').trim(),
@@ -77,21 +163,24 @@ async function probe(candidate) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 45_000)
   try {
+    const body = {
+      model: candidate.model,
+      messages: [
+        { role: 'system', content: 'Return valid JSON only.' },
+        { role: 'user', content: 'Return {"ok":true}.' },
+      ],
+      temperature: 0,
+      max_tokens: 64,
+    }
+    if (candidate.kind === 'xai') body.reasoning_effort = 'low'
+
     const response = await fetch(`${candidate.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${candidate.key}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: candidate.model,
-        messages: [
-          { role: 'system', content: 'Return valid JSON only.' },
-          { role: 'user', content: 'Return {"ok":true}.' },
-        ],
-        temperature: 0,
-        max_tokens: 64,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     })
     if (!response.ok) {
@@ -111,16 +200,21 @@ async function probe(candidate) {
 
 function runRewrite(candidate) {
   return new Promise((resolve) => {
+    const xai = candidate.kind === 'xai'
+    const preload = '--import=./scripts/marketplace-xai-low-preload.mjs'
+    const existingNodeOptions = String(process.env.NODE_OPTIONS || '').trim()
     const child = spawn(process.execPath, ['scripts/rewrite-marketplace-copy.mjs'], {
       stdio: 'inherit',
       env: {
         ...process.env,
-        // xAI API billing is deliberately excluded from this bulk migration.
-        // The live Marketplace assistant may still use SuperGrok separately.
-        XAI_API_KEY: '',
-        ENTRIM_API_KEY: candidate.key,
-        ENTRIM_BASE_URL: candidate.baseUrl,
-        ENTRIM_MARKETPLACE_MODEL: candidate.model,
+        XAI_API_KEY: xai ? candidate.key : '',
+        XAI_MODEL: xai ? candidate.model : XAI_MODEL,
+        XAI_AUTH_MODE: xai ? 'supergrok' : '',
+        MARKETPLACE_XAI_REASONING: 'low',
+        NODE_OPTIONS: xai ? `${existingNodeOptions} ${preload}`.trim() : existingNodeOptions,
+        ENTRIM_API_KEY: xai ? '' : candidate.key,
+        ENTRIM_BASE_URL: xai ? '' : candidate.baseUrl,
+        ENTRIM_MARKETPLACE_MODEL: xai ? '' : candidate.model,
         MARKETPLACE_REWRITE_PROVIDER: candidate.id,
       },
     })
@@ -136,7 +230,7 @@ async function main() {
   }
 
   const candidates = await loadCandidates()
-  if (!candidates.length) throw new Error('No usable Marketplace rewrite provider found in the AI vault')
+  if (!candidates.length) throw new Error('No usable Marketplace rewrite provider found in the AI vault or SuperGrok OAuth')
 
   let attempted = 0
   for (const candidate of candidates) {
