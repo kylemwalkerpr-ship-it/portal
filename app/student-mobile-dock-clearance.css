@@ -82,11 +82,67 @@
     max-height: 100% !important;
   }
 
+  /* Conversation list bounded scroll owner
+     --------------------------------------
+     iOS Safari can treat an auto-basis flex child as content-sized through a
+     nested 100% height chain. The rows then extend beyond the visible list but
+     the fixed student dock clips that excess before .cl-scroll ever becomes a
+     real scroller. In list mode only, make every wrapper a bounded flex column
+     and give .cl-scroll a zero basis/zero explicit height so it owns exactly
+     the space left after .cl-head. Open chat/composer geometry is intentionally
+     untouched below. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .ys-chatscreen[data-mobile-view='list'] {
+    flex: 1 1 0% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .ys-chatscreen[data-mobile-view='list'] .ys-chatscreen-sidebar > .cl {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .ys-chatscreen[data-mobile-view='list'] .cl-head {
+    flex: 0 0 auto !important;
+  }
+
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
     .ys-chatscreen[data-mobile-view='list'] .cl-scroll {
     box-sizing: border-box !important;
+    flex: 1 1 0% !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: none !important;
     padding-bottom: var(--student-dock-v2-gap) !important;
     scroll-padding-bottom: var(--student-dock-v2-clearance) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 
   .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
