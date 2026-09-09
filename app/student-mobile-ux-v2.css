@@ -1,0 +1,423 @@
+/* Student mobile UX v2
+   ====================
+   Screenshot-driven corrections layered after student-mobile-premium.css.
+
+   The first premium pass made every sidebar destination horizontally
+   scrollable. That preserved reachability but created poor discoverability,
+   clipped labels and collisions with the fixed Yara + Articles launchers.
+   This layer is activated only when StudentMobileNavigation marks the genuine
+   student dashboard shell with data-student-mobile-enhanced="true".
+*/
+
+@media (max-width: 768px) {
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] {
+    --student-dock-v2-height: 70px;
+  }
+
+  /* The React mobile dock becomes the single navigation owner. Keep the
+     desktop sidebar in the DOM so its existing click handlers remain the
+     source of truth, but remove its visual/touch plane on phones. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] > .yousafe-sidebar {
+    display: none !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-main {
+    padding-bottom: calc(var(--student-dock-v2-height) + max(8px, env(safe-area-inset-bottom))) !important;
+  }
+
+  /* ── Fixed five-slot dock ──────────────────────────────────────── */
+  .ys-student-mobile-dock {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    z-index: 210;
+    height: var(--student-dock-v2-height, 70px);
+    padding: 6px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+    border: 1px solid color-mix(in oklab, var(--portal-rule) 78%, transparent);
+    border-radius: 23px;
+    background: color-mix(in oklab, var(--portal-surface) 93%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(155%);
+    backdrop-filter: blur(24px) saturate(155%);
+    box-shadow: 0 16px 42px rgba(15, 23, 42, .18), 0 2px 8px rgba(15, 23, 42, .08);
+  }
+
+  .ys-student-mobile-dock > button {
+    position: relative;
+    min-width: 0;
+    min-height: 56px;
+    padding: 5px 2px 4px;
+    border: 0;
+    border-radius: 16px;
+    background: transparent;
+    color: var(--portal-ink-soft);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 720;
+    line-height: 1.08;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 130ms ease, background 130ms ease, color 130ms ease, box-shadow 130ms ease;
+  }
+
+  .ys-student-mobile-dock > button:active {
+    transform: scale(.96);
+  }
+
+  .ys-student-mobile-dock > button.is-active {
+    color: var(--portal-accent-deep);
+    background: color-mix(in oklab, var(--portal-accent) 11%, var(--portal-surface));
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--portal-accent) 23%, transparent);
+  }
+
+  .ys-student-mobile-dock > button.is-active::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    width: 4px;
+    height: 4px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: var(--portal-accent);
+  }
+
+  .ys-student-mobile-dock-icon {
+    height: 27px;
+    min-width: 28px;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .ys-student-mobile-dock-label {
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    letter-spacing: -.01em;
+  }
+
+  .ys-student-mobile-dock-badge {
+    position: absolute;
+    top: 2px;
+    right: max(3px, calc(50% - 28px));
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--portal-accent);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 850;
+    line-height: 1;
+    box-shadow: 0 0 0 2px var(--portal-surface);
+  }
+
+  .ys-student-mobile-dock > button:focus-visible,
+  .ys-student-mobile-more-sheet button:focus-visible {
+    outline: 2px solid var(--portal-accent);
+    outline-offset: 2px;
+  }
+
+  /* ── Correct mobile page title ─────────────────────────────────── */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-topbar > h1 {
+    display: none !important;
+  }
+
+  .ys-student-mobile-page-title {
+    order: -1;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--portal-ink);
+    font-family: var(--portal-font-display, Georgia, serif);
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -.015em;
+    line-height: 1.1;
+  }
+
+  /* ── More sheet: every secondary destination is obvious ───────── */
+  .ys-student-mobile-more-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .ys-student-mobile-more-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(15, 23, 42, .42);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .ys-student-mobile-more-sheet {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-height: min(82dvh, 680px);
+    padding: 16px 16px max(20px, calc(14px + env(safe-area-inset-bottom)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid color-mix(in oklab, var(--portal-rule) 72%, transparent);
+    border-bottom: 0;
+    border-radius: 26px 26px 0 0;
+    background: var(--portal-surface);
+    box-shadow: 0 -18px 60px rgba(15, 23, 42, .2);
+  }
+
+  .ys-student-mobile-more-head {
+    position: sticky;
+    top: -16px;
+    z-index: 2;
+    margin: -16px -16px 12px;
+    padding: 16px 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: color-mix(in oklab, var(--portal-surface) 96%, transparent);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid color-mix(in oklab, var(--portal-rule) 60%, transparent);
+  }
+
+  .ys-student-mobile-more-eyebrow,
+  .ys-student-mobile-more-section-title {
+    color: var(--portal-ink-soft);
+    font-size: 10px;
+    font-weight: 820;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .ys-student-mobile-more-head h2 {
+    margin: 3px 0 0;
+    color: var(--portal-ink);
+    font-family: var(--portal-font-display, Georgia, serif);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .ys-student-mobile-more-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border: 1px solid var(--portal-rule);
+    border-radius: 14px;
+    background: var(--portal-surface-2);
+    color: var(--portal-ink);
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .ys-student-mobile-more-section {
+    margin-top: 14px;
+  }
+
+  .ys-student-mobile-more-section-title {
+    margin: 0 4px 7px;
+  }
+
+  .ys-student-mobile-more-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .ys-student-mobile-more-grid > button {
+    min-width: 0;
+    min-height: 78px;
+    padding: 12px;
+    border: 1px solid var(--portal-rule);
+    border-radius: 17px;
+    background: var(--portal-surface-2);
+    color: var(--portal-ink);
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    align-items: center;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .ys-student-mobile-more-grid > button > span:first-child {
+    grid-row: 1 / span 2;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    background: var(--portal-surface);
+    font-size: 19px;
+  }
+
+  .ys-student-mobile-more-grid > button > strong {
+    min-width: 0;
+    align-self: end;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    line-height: 1.2;
+  }
+
+  .ys-student-mobile-more-grid > button > small {
+    align-self: start;
+    margin-top: 2px;
+    color: var(--portal-ink-soft);
+    font-size: 10px;
+    line-height: 1.25;
+  }
+
+  .ys-student-mobile-more-grid > button.is-active {
+    border-color: color-mix(in oklab, var(--portal-accent) 42%, var(--portal-rule));
+    background: color-mix(in oklab, var(--portal-accent) 9%, var(--portal-surface));
+    color: var(--portal-accent-deep);
+  }
+
+  /* ── Remove competing floating controls ────────────────────────── */
+  /* Yara and Articles remain available from More. Removing their launchers
+     prevents them from covering Billing/Settings/Messages and card CTAs. */
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ys-chat-launcher,
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) button[aria-label='Open article feed'] {
+    display: none !important;
+  }
+
+  /* When Yara is intentionally opened from More, make it a real app sheet
+     instead of a small panel hovering over dashboard navigation. */
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ys-chat-panel {
+    left: 8px !important;
+    right: 8px !important;
+    top: max(8px, env(safe-area-inset-top)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 20px !important;
+    z-index: 10020 !important;
+  }
+
+  /* Article drawer must sit above topbar; hide our dock while the drawer is
+     open so the drawer has one unambiguous interaction layer. */
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-right-pane) .ys-student-mobile-dock {
+    display: none !important;
+  }
+
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .yousafe-right-pane {
+    z-index: 10020 !important;
+    width: min(390px, 100vw) !important;
+    max-width: 100vw !important;
+    padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+  }
+
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) button[aria-label='Close article feed'][style*='position: fixed'] {
+    z-index: 10019 !important;
+  }
+
+  /* ── Messenger: one viewport owner, not nested 100dvh surfaces ─── */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-main {
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-body,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-content,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-messenger,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen-chat {
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-body {
+    align-items: stretch !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-content {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .cv-canvas,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .cv-canvas-inner {
+    min-height: 0 !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .comp-row {
+    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* The right-pane launcher must never reappear inside a full-screen thread. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) button[aria-label='Open article feed'] {
+    display: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .ys-student-mobile-dock {
+    left: 6px;
+    right: 6px;
+    padding-inline: 4px;
+    gap: 1px;
+  }
+
+  .ys-student-mobile-dock > button {
+    font-size: 9.5px;
+  }
+
+  .ys-student-mobile-more-sheet {
+    padding-inline: 12px;
+  }
+
+  .ys-student-mobile-more-grid > button {
+    padding: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ys-student-mobile-dock > button,
+  .ys-student-mobile-more-layer,
+  .ys-student-mobile-more-sheet {
+    transition: none !important;
+    animation: none !important;
+  }
+}
