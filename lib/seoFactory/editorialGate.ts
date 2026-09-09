@@ -1,4 +1,5 @@
 import { contentFingerprint } from './currentGate'
+import { harperSeoScore } from './harperLane'
 import type { EditorialResult } from '../editorialSupervisor'
 
 export type EditorialReport = {
@@ -9,6 +10,8 @@ export type EditorialReport = {
   grammarErrors: number | null
   grammarSuggestions: number | null
   seo: number
+  /** Harper-actionable SEO only (outline / H1 / FAQ / meta / URL-count excluded). */
+  harperSeo?: number
   voice: number
   flesch: number
   fleschTarget: number
@@ -24,6 +27,7 @@ export function editorialReport(result: EditorialResult): EditorialReport {
     grammarErrors: s.grammar?.errors ?? null,
     grammarSuggestions: s.grammar?.suggestions ?? null,
     seo: s.metrics.seo.score,
+    harperSeo: harperSeoScore(s.metrics.seo),
     voice: s.voice,
     flesch: s.metrics.readability.score,
     fleschTarget: s.metrics.readability.target,
@@ -33,11 +37,12 @@ export function editorialReport(result: EditorialResult): EditorialReport {
 export function editorialReportReady(value: unknown, content?: string): boolean {
   if (!value || typeof value !== 'object') return false
   const r = value as EditorialReport
+  const seoCleared = typeof r.harperSeo === 'number' ? r.harperSeo === 100 : r.seo === 100
   return r.status === 'cleared' && r.supervisor === 'harper-editorial-v1'
     && typeof r.fingerprint === 'string'
     && (content === undefined || r.fingerprint === contentFingerprint(content))
     && r.grammarErrors === 0
-    && r.seo === 100 && r.voice >= 55
+    && seoCleared && r.voice >= 55
     && Number.isFinite(r.flesch) && Number.isFinite(r.fleschTarget)
     && r.fleschTarget >= 50 && r.flesch >= r.fleschTarget
 }

@@ -188,6 +188,44 @@ function splitH2Blocks(body: string): { preamble: string; blocks: H2Block[] } {
   return { preamble: preambleLines.join('\n'), blocks }
 }
 
+export function editorialOutlineSignature(md: string): { h1: string; h2s: string[] } {
+  const { body } = splitMarkdownFrontmatter(md)
+  const h1Match = String(body || '').match(/^#\s+(.+)$/m)
+  const h2s = [...String(body || '').matchAll(/^##\s+(.+)$/gm)].map((m) => normalizeHeading(m[1]))
+  return { h1: normalizeHeading(h1Match?.[1] || ''), h2s }
+}
+
+function assertOutlinePreserved(before: string, after: string): void {
+  const original = editorialOutlineSignature(before)
+  const next = editorialOutlineSignature(after)
+  if (original.h1 && next.h1 && original.h1 !== next.h1) {
+    throw new Error('Editorial revision cannot change the H1 — outline is frozen by the brief')
+  }
+  if (original.h2s.join('\0') !== next.h2s.join('\0')) {
+    throw new Error('Editorial revision cannot add, remove, or rename outline H2s — outline is frozen by the brief')
+  }
+}
+
+function yamlIdentityValue(md: string, key: string): string {
+  const block = String(md || '').match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!block) return ''
+  const line = block[1].match(new RegExp(`^${key}:\\s*(.*)$`, 'm'))
+  return String(line?.[1] || '').trim().replace(/^['"]|['"]$/g, '')
+}
+
+function assertIdentityPreserved(before: string, after: string): void {
+  for (const key of ['primaryKeyword', 'canonicalUrl', 'ownerUrl'] as const) {
+    const original = yamlIdentityValue(before, key)
+    if (!original) continue
+    const next = yamlIdentityValue(after, key)
+    // Frontmatter is restored from the original document; this guard still
+    // catches a leaked body rewrite that smuggles a new identity key.
+    if (next && next !== original) {
+      throw new Error(`Editorial revision cannot change ${key} — identity is frozen by the brief`)
+    }
+  }
+}
+
 function applySectionReplacements(body: string, sections: Array<{ heading: string; replacement: string }>): string {
   const { preamble, blocks } = splitH2Blocks(body)
   const next = blocks.map((b) => ({ ...b }))
@@ -195,13 +233,14 @@ function applySectionReplacements(body: string, sections: Array<{ heading: strin
     const want = normalizeHeading(section.heading)
     const idx = next.findIndex((b) => normalizeHeading(b.heading) === want)
     if (idx < 0) throw new Error(`Editorial revision section not found: ${section.heading}`)
-    const replacement = String(section.replacement || '')
-    if (/^##\s+/.test(replacement.trim())) {
-      next[idx] = { heading: section.heading, block: replacement.replace(/\s+$/, '') }
-    } else {
-      const headingLine = next[idx].block.split('\n')[0] || `## ${next[idx].heading}`
-      next[idx] = { heading: next[idx].heading, block: `${headingLine}\n\n${replacement}`.replace(/\s+$/, '') }
-    }
+    const replacement = String(section.replacement || '').replace(/\s+$/, '')
+    const headingLine = next[idx].block.split('\n')[0] || `## ${next[idx].heading}`
+    // Heading text is frozen. A replacement that opens with ## is body-only
+    // after that line — Harper cannot rename the H2.
+    const bodyText = /^##\s+/.test(replacement.trim())
+      ? replacement.replace(/^\s*##\s+.*\n?/, '').trim()
+      : replacement.trim()
+    next[idx] = { heading: next[idx].heading, block: `${headingLine}\n\n${bodyText}` }
   }
   const parts = [preamble, ...next.map((b) => b.block)].filter((p, i) => i === 0 || p.length > 0)
   return parts.join('\n').replace(/\n{3,}/g, '\n\n')
@@ -261,10 +300,15 @@ export function applyEditorialRevision(
     nextBody = applySectionReplacements(body, sections)
   } else {
     if (!document.trim()) throw new Error('Editorial revision document is empty')
+    if (protectFacts) assertIdentityPreserved(original, document)
     const { body: rewritten } = splitMarkdownFrontmatter(document)
     nextBody = rewritten
   }
   const next = fm ? `${fm}${nextBody}` : nextBody
-  if (protectFacts) assertFactsPreserved(original, next)
+  if (protectFacts) {
+    assertFactsPreserved(original, next)
+    assertOutlinePreserved(original, next)
+    assertIdentityPreserved(original, next)
+  }
   return { content: next, clean: false, appliedIds, waivedIds }
 }

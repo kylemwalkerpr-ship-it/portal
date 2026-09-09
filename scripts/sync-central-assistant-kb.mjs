@@ -18,7 +18,7 @@ import path from 'node:path'
 const ROOT = process.cwd()
 const OUTPUT = path.join(ROOT, 'content', 'messenger-kb', 'network-pages.json')
 const MAX_PAGES_PER_SITE = Number(process.env.ASSISTANT_KB_MAX_PAGES_PER_SITE || 1200)
-const MAX_PAGE_TEXT = Number(process.env.ASSISTANT_KB_MAX_PAGE_TEXT || 6000)
+const MAX_PAGE_TEXT = Number(process.env.ASSISTANT_KB_MAX_PAGE_TEXT || 3200)
 const CONCURRENCY = Math.max(1, Number(process.env.ASSISTANT_KB_CONCURRENCY || 6))
 const TIMEOUT_MS = 20_000
 

@@ -3,6 +3,14 @@ import { evaluateContentQuality } from './seoFactory/contentQualityGate'
 import { contentFingerprint } from './seoFactory/currentGate'
 import { editorialFactsShrank } from './seoFactory/editorialRevision'
 import { critiqueCohesion } from './seoFactory/cohesionCritique'
+import {
+  HARPER_IDENTITY_NON_NEGOTIABLE,
+  harperActionableBlockers,
+  harperSeoFails,
+  harperSeoScore,
+  partitionHarperFindings,
+  type HarperDeferredFinding,
+} from './seoFactory/harperLane'
 import type { HarperLintSummary } from './harperBrowser'
 
 export const EDITORIAL_MAX_PASSES = 5
@@ -41,6 +49,12 @@ export type HarperSupervisionPacket = {
   directives: EditorialDirective[]
   /** Alias of required + advisory directives still open for this body. */
   pending: EditorialDirective[]
+  /**
+   * Findings Harper is forbidden to attempt (outline / primary identity /
+   * owner URL / brief floors / human cannibalization). Desk + Audit & Fix
+   * own these; they must never appear as mustApply directives.
+   */
+  deferred: HarperDeferredFinding[]
   nonNegotiables: string[]
 }
 
@@ -126,17 +140,19 @@ export function buildHarperSupervisionPacket(s: EditorialSnapshot): HarperSuperv
     )
   }
 
-  for (const fail of s.metrics.seo.fail || []) {
+  for (const fail of harperSeoFails(s.metrics.seo.fail || [])) {
     add('seo', 'required', fail, fail, undefined, true)
   }
   for (const warn of (s.metrics.seo.warn || []).slice(0, 12)) {
     add('seo', 'advisory', warn, warn, undefined, false)
   }
 
-  // Quality findings are the human/AI-write supervisor's concrete evidence.
-  // Blockers are never truncated; warnings stay advisory.
-  const qualityBlockers = s.findings.filter((f) => f.severity === 'blocker')
-  const qualityWarnings = s.findings.filter((f) => f.severity !== 'blocker').slice(0, 24)
+  // Quality findings Harper can honestly rewrite in existing prose. Outline
+  // gaps, keyword-list floors, owner URL and cannibalization are deferred —
+  // they are not Harper "fix me" items.
+  const partitioned = partitionHarperFindings(s.findings)
+  const qualityBlockers = partitioned.prose.filter((f) => f.severity === 'blocker')
+  const qualityWarnings = partitioned.prose.filter((f) => f.severity !== 'blocker').slice(0, 24)
   for (const finding of qualityBlockers) {
     add(
       'ai_write',
@@ -190,10 +206,12 @@ export function buildHarperSupervisionPacket(s: EditorialSnapshot): HarperSuperv
     )
   }
 
+  const harperSeo = harperSeoScore(s.metrics.seo)
+  const proseBlockers = harperActionableBlockers(s.blockers)
   const unmet: EditorialLane[] = []
   if (!s.grammar || s.grammar.errors > 0) unmet.push('grammar')
-  if (s.metrics.seo.score !== 100) unmet.push('seo')
-  if (s.blockers.length > 0 || s.voice < 55) unmet.push('ai_write')
+  if (harperSeo !== 100) unmet.push('seo')
+  if (proseBlockers.length > 0 || s.voice < 55) unmet.push('ai_write')
   if (!s.metrics.readability.pass) unmet.push('flesch')
 
   const pending = [...directives]
@@ -210,18 +228,20 @@ export function buildHarperSupervisionPacket(s: EditorialSnapshot): HarperSuperv
       grammar: s.grammar?.score ?? null,
       grammarErrors: s.grammar?.errors ?? null,
       grammarSuggestions: s.grammar?.suggestions ?? null,
-      seo: s.metrics.seo.score,
+      seo: harperSeo,
       aiWrite: s.voice,
       flesch: s.metrics.readability.score,
     },
     unmet,
     directives,
     pending,
+    deferred: partitioned.deferred,
     nonNegotiables: [
       'Harper/deterministic findings are instructions to act on, not optional suggestions or text to debate.',
       'Do not introduce new quality blockers or additional Harper grammar errors. Small Flesch or voice movement is acceptable when grammar errors fall. Leftover Style does not block ship.',
       'Fix the prose that causes a finding; never claim, estimate or self-report a score. The supervisor remeasures the exact returned draft.',
       'Preserve facts, citations, URLs, numbers, official names, legal qualifications, metadata and document structure unless the outer structural audit explicitly authorizes a change.',
+      HARPER_IDENTITY_NON_NEGOTIABLE,
       'Never stuff keywords, invent personal experience, add unsupported facts, or simplify away legal/technical meaning to chase a metric.',
       'SEO hard-fails only DEMAND keywords from the sealed brief. Synthesized floor-fill is advisory — never stuff an unplaceable phrase to chase a warning.',
       'Cover every mustApply directive id in appliedIds or waivedIds. Full-document prose rewrite is allowed; empty document is not success.',
@@ -230,9 +250,11 @@ export function buildHarperSupervisionPacket(s: EditorialSnapshot): HarperSuperv
 }
 
 export function editorialTargetsMet(s: EditorialSnapshot): boolean {
+  const harperSeo = harperSeoScore(s.metrics.seo)
+  const proseBlockers = harperActionableBlockers(s.blockers)
   return s.grammar !== null && s.grammar.errors === 0
-    && s.metrics.seo.score === 100
-    && s.metrics.readability.pass && s.voice >= 55 && s.blockers.length === 0
+    && harperSeo === 100
+    && s.metrics.readability.pass && s.voice >= 55 && proseBlockers.length === 0
 }
 
 /** Hold only for real safety regressions — not Flesch/voice/SEO score wobble. */
@@ -303,7 +325,10 @@ export async function superviseEditorial(input: {
     }
 
     if (editorialTargetsMet(snapshot)) {
-      return result('cleared', 'Harper supervision cleared grammar, SEO, AI-write/human voice and Flesch; final ship audit required.')
+      const leftover = supervision.deferred.length
+        ? ` Structural leftovers deferred to Audit & Fix / brief / human: ${supervision.deferred.map((d) => d.code).join(', ')}.`
+        : ''
+      return result('cleared', `Harper supervision cleared grammar, Harper-actionable SEO, AI-write/human voice and Flesch; final ship audit required.${leftover}`)
     }
 
     if (reviews >= EDITORIAL_MAX_REVIEWS) {
