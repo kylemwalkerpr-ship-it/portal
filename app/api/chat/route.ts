@@ -1,34 +1,25 @@
-import { getChatProvider, type ChatTurn } from '@/lib/chatProvider'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { fetchLiveKnowledge } from '@/lib/liveKnowledge'
 import {
   SUPPORT_WIDGET_API,
   escalateToSupport,
   shouldEscalateToLiveAgent,
   type SupportVisitor,
 } from '@/lib/chatEscalation'
+import {
+  buildCentralAssistantKnowledge,
+  isAllowedAssistantOrigin,
+  normalizeAssistantOrigin,
+} from '@/lib/centralAssistantKnowledge'
+import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
 
-const ALLOWED_ORIGINS = new Set([
-  'https://yousafeconsultancy.com',
-  'https://www.yousafeconsultancy.com',
-  'https://ca.yousafeconsultancy.com',
-  'https://usa.yousafeconsultancy.com',
-  'https://uk.yousafeconsultancy.com',
-  'https://portal.yousafeconsultancy.com',
-  'https://support.yousafeconsultancy.com',
-  'https://legal.yousafeconsultancy.com',
-])
-
 function corsHeaders(req: Request) {
   const origin = req.headers.get('origin') || ''
-  const headers: Record<string, string> = {
-    'Vary': 'Origin',
-  }
-  if (ALLOWED_ORIGINS.has(origin)) {
+  const headers: Record<string, string> = { Vary: 'Origin' }
+  if (isAllowedAssistantOrigin(origin)) {
     headers['Access-Control-Allow-Origin'] = origin
     headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
     headers['Access-Control-Allow-Headers'] = 'Content-Type'
@@ -48,7 +39,7 @@ export function OPTIONS(req: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(req) })
 }
 
-function isValidTurn(t: unknown): t is ChatTurn {
+function isValidTurn(t: unknown): t is SystemAssistantTurn {
   if (!t || typeof t !== 'object') return false
   const turn = t as { role?: unknown; content?: unknown }
   return (
@@ -69,31 +60,13 @@ function asVisitor(input: unknown): SupportVisitor | null {
   }
 }
 
-function asPageContext(input: unknown) {
-  if (!input || typeof input !== 'object') return ''
-  const value = input as Record<string, unknown>
-  const clean = (key: string) => {
-    const raw = value[key]
-    if (typeof raw !== 'string') return null
-    const trimmed = raw.trim()
-    return trimmed ? trimmed.slice(0, 300) : null
-  }
-  const bits = [
-    clean('surface') ? `Surface: ${clean('surface')}` : null,
-    clean('hostname') || clean('origin') ? `Site: ${clean('hostname') || clean('origin')}` : null,
-    clean('pathname') ? `Path: ${clean('pathname')}` : null,
-    clean('title') ? `Page title: ${clean('title')}` : null,
-    clean('referrer') ? `Referrer: ${clean('referrer')}` : null,
-  ].filter(Boolean)
-  return bits.length > 0 ? `\n\n# Current page context\n${bits.join('\n')}` : ''
-}
-
 export async function POST(req: Request) {
   let body: {
     messages?: unknown
     requestAgent?: unknown
     visitor?: unknown
     topic?: unknown
+    origin?: unknown
     pageContext?: unknown
   }
   try {
@@ -103,7 +76,7 @@ export async function POST(req: Request) {
   }
 
   const rawMessages = Array.isArray(body.messages) ? body.messages : []
-  const cleaned: ChatTurn[] = rawMessages.filter(isValidTurn).slice(-MAX_HISTORY_TURNS)
+  const cleaned: SystemAssistantTurn[] = rawMessages.filter(isValidTurn).slice(-MAX_HISTORY_TURNS)
   if (cleaned.length === 0 || cleaned[cleaned.length - 1].role !== 'user') {
     return withCors(req, { error: 'Send at least one user message' }, { status: 400 })
   }
@@ -116,16 +89,14 @@ export async function POST(req: Request) {
     )
   }
 
-  // Resolve viewer context from Clerk if signed in. Used both to enrich the
-  // AI system prompt AND to pre-fill visitor identity for support-saas
-  // handoff so the agent knows who they're talking to.
   let viewerContext = ''
   let viewerVisitor: SupportVisitor | null = null
   let viewerRole: string | null = null
+  let db: any = null
   try {
     const clerkUserId = await getClerkUserId()
     if (clerkUserId) {
-      const db = createSupabaseAdminClient()
+      db = createSupabaseAdminClient()
       const { data: profile } = await db
         .from('profiles')
         .select('full_name, email, role, status')
@@ -141,25 +112,22 @@ export async function POST(req: Request) {
           viewerRole ? `Role: ${viewerRole}` : null,
           profile.status ? `Account status: ${profile.status}` : null,
         ].filter(Boolean)
-        if (bits.length > 0) viewerContext = `\n\n# Current viewer\n${bits.join('\n')}`
+        if (bits.length > 0) viewerContext = `\n\n# CURRENT VIEWER\n${bits.join('\n')}`
       }
     }
   } catch {
-    /* anonymous viewers are fine */
+    /* Anonymous viewers are valid. */
   }
-  const pageContext = asPageContext(body.pageContext)
 
-  // ── LIVE-AGENT ESCALATION ────────────────────────────────────────────────
-  // Triggered either by an explicit `requestAgent: true` from the widget
-  // (e.g. the "Talk to a human" button) or when the user's message contains
-  // intent keywords ("real human", "live agent", etc.).
+  const inquiryOrigin = normalizeAssistantOrigin(body.origin ?? body.pageContext, req)
+
   const wantsAgent =
     body.requestAgent === true || shouldEscalateToLiveAgent(lastUser.content)
   if (wantsAgent) {
     const incomingVisitor = asVisitor(body.visitor)
     const topic = typeof body.topic === 'string' && body.topic.trim()
       ? body.topic.trim()
-      : (viewerRole ? `portal-${viewerRole}` : 'portal')
+      : (viewerRole ? `portal-${viewerRole}` : inquiryOrigin.hostname || 'portal')
     const visitor: SupportVisitor | null = viewerVisitor || incomingVisitor || null
 
     try {
@@ -180,44 +148,37 @@ export async function POST(req: Request) {
         provider: 'handoff',
       })
     } catch (err) {
-      console.error('[chat] escalation failed', err instanceof Error ? err.message : err)
-      // Fall through to AI reply so the user isn't left stranded if support
-      // is unreachable. We'll surface a hint that they can email instead.
+      console.error('[system-assistant] escalation failed', err instanceof Error ? err.message : err)
     }
   }
 
-  const provider = getChatProvider()
-  if (!provider) {
+  try {
+    const systemKnowledge = await buildCentralAssistantKnowledge({
+      latestUserMessage: lastUser.content,
+      origin: inquiryOrigin,
+      db,
+    })
+    const result = await callSystemSuperGrok(systemKnowledge + viewerContext, cleaned)
+    return withCors(req, {
+      reply: result.text,
+      provider: 'supergrok',
+      model: result.model,
+      supportApiUrl: SUPPORT_WIDGET_API,
+      origin: {
+        surface: inquiryOrigin.surface,
+        hostname: inquiryOrigin.hostname,
+        pathname: inquiryOrigin.pathname,
+      },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[system-assistant] SuperGrok error', message)
     return withCors(
       req,
       {
         error:
-          "I'm not configured yet — the platform owner needs to set GROQ_API_KEY or GEMINI_API_KEY before I can chat.",
+          "Sorry — the YouSafe Assistant couldn't reach SuperGrok right now. Please try again in a moment or ask for a human support agent.",
       },
-      { status: 503 },
-    )
-  }
-
-  // Fetch the live knowledge supplement maintained on the marketing site so
-  // edits to yara-knowledge.json roll out without a portal redeploy. Edge-
-  // cached for ~5 minutes; falls back to null if the marketing site is down.
-  const liveKnowledge = await fetchLiveKnowledge()
-  const liveSection = liveKnowledge
-    ? `\n\n# Live updates from the marketing site\nThese override anything conflicting in the static knowledge base above.\n\n${liveKnowledge}`
-    : ''
-
-  try {
-    // Lazy-load the ~580-line static knowledge base so its module evaluation
-    // cost stays off the worker cold-start path (CPU-limit mitigation).
-    const { CHAT_SYSTEM_PROMPT } = await import('@/lib/chatKnowledgeBase')
-    const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext + pageContext + liveSection, cleaned)
-    return withCors(req, { reply, provider: provider.name, supportApiUrl: SUPPORT_WIDGET_API })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[chat] provider error', message)
-    return withCors(
-      req,
-      { error: "Sorry — I couldn't reach the assistant right now. Please try again in a moment." },
       { status: 502 },
     )
   }
