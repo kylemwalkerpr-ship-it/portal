@@ -8,6 +8,7 @@ import MessageBubble from './MessageBubble'
 import Avatar from './Avatar'
 import AdminMasterComposer from './AdminMasterComposer'
 import { fmtRelative, sameDay, dateLabel } from '@/lib/messaging/format'
+import { writeMessengerThreadParam, isMessengerMobileViewport } from '@/lib/messaging/threadUrl'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import {
   applyFullMeta,
@@ -92,12 +93,18 @@ export default function AdminMasterMessenger() {
   const [listLoading, setListLoading] = React.useState(true)
   const [listError, setListError] = React.useState('')
 
-  const [activeId, setActiveId] = React.useState<string | null>(null)
+  const [activeId, setActiveId] = React.useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('thread')
+  })
   const [activeConv, setActiveConv] = React.useState<any>(null)
   const [activeMsgs, setActiveMsgs] = React.useState<any[]>([])
   const [threadLoading, setThreadLoading] = React.useState(false)
   const [threadError, setThreadError] = React.useState('')
-  const [mobileShowChat, setMobileShowChat] = React.useState(false)
+  const [mobileShowChat, setMobileShowChat] = React.useState(() => {
+    if (typeof window === 'undefined') return false
+    return Boolean(new URLSearchParams(window.location.search).get('thread'))
+  })
   const [aiModeBusy, setAiModeBusy] = React.useState(false)
 
   const [myProfileId, setMyProfileId] = React.useState<string | null>(null)
@@ -257,6 +264,21 @@ export default function AdminMasterMessenger() {
     setThreadMeta(initialThreadPageMeta)
     setThreadError('')
   }, [draft])
+
+  React.useEffect(() => {
+    if (isMessengerMobileViewport() && !mobileShowChat) {
+      writeMessengerThreadParam(null)
+      return
+    }
+    writeMessengerThreadParam(activeId)
+  }, [activeId, mobileShowChat])
+
+  React.useEffect(() => {
+    const thread = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('thread')
+    if (thread) openThread(thread)
+    // Restore once on mount from ?thread= the same way UnifiedInbox does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadOlder = React.useCallback(async () => {
     const id = activeIdRef.current
@@ -718,8 +740,8 @@ export default function AdminMasterMessenger() {
   )
 
   return (
-    <div className="yousafe-messenger" data-theme="light" data-density="compact" style={{ height: '100%', minHeight: 0 }}>
-      <div className="admin-master-shell">
+    <div className="yousafe-messenger" data-theme="light" data-density="compact" style={{ height: '100%', minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="admin-master-shell ys-inbox-frame">
         <ChatScreen
           mode="split"
           className="admin-master-chatscreen"

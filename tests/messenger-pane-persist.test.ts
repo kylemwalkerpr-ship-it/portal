@@ -10,6 +10,7 @@ describe('messenger pane persistence', () => {
   const attorney = read('components/design/attorney.jsx')
   const consultant = read('components/design/consultant.jsx')
   const marketplace = read('components/marketplace/MarketplaceShell.tsx')
+  const admin = read('components/messaging/AdminMasterMessenger.tsx')
   const chatScreen = read('components/messaging/ChatScreen.tsx')
 
   test('mobile chat pane restores from ?thread= and starts on the list without it', () => {
@@ -32,8 +33,8 @@ describe('messenger pane persistence', () => {
     expect(inbox).toContain('setActiveId(d.conversations[0].id)')
   })
 
-  test('student, attorney, consultant and marketplace share the URL writer', () => {
-    for (const source of [student, attorney, consultant, marketplace]) {
+  test('student, attorney, consultant, marketplace and admin share the URL writer', () => {
+    for (const source of [student, attorney, consultant, marketplace, admin]) {
       expect(source).toContain("from '@/lib/messaging/threadUrl'")
       expect(source).toContain('writeMessengerThreadParam')
     }
