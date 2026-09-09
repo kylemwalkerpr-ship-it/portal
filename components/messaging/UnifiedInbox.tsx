@@ -18,6 +18,7 @@ import InquiryComposer from './InquiryComposer'
 import ProfilePreviewDrawer from './ProfilePreviewDrawer'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
+import { isMessengerMobileViewport } from '@/lib/messaging/threadUrl'
 
 /**
  * UnifiedInbox
@@ -73,7 +74,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [aiModeBusy, setAiModeBusy] = React.useState(false)
   const [offerBusyId, setOfferBusyId] = React.useState(null)
   const [payingOfferId, setPayingOfferId] = React.useState(null)
-  const [mobileShowChat, setMobileShowChat] = React.useState(false)
+  const [mobileShowChat, setMobileShowChat] = React.useState(() => Boolean(defaultThreadId))
   const [menuFor, setMenuFor] = React.useState(null)
   const [menuPos, setMenuPos] = React.useState({ x: 0, y: 0 })
 
@@ -194,8 +195,31 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     return () => document.removeEventListener('mousedown', onDoc)
   }, [menuFor])
 
-  // Notify parent when thread changes
-  React.useEffect(() => { onThreadChange?.(activeId) }, [activeId, onThreadChange])
+  // Notify parent when the OPEN messenger pane changes.
+  // On phones, `?thread=` means the chat is actually showing. The list pane
+  // must clear it even if a row stays highlighted, otherwise refresh/back
+  // re-opens the last conversation. Callback identity is ignored so inline
+  // parent lambdas cannot rewrite the URL on every dashboard render.
+  const onThreadChangeRef = React.useRef(onThreadChange)
+  onThreadChangeRef.current = onThreadChange
+
+  React.useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    const urlThread = new URLSearchParams(window.location.search).get('thread')
+    if (!urlThread) return
+    setActiveId(urlThread)
+    setMobileShowChat(true)
+  }, [defaultThreadId])
+
+  React.useEffect(() => {
+    const sync = onThreadChangeRef.current
+    if (!sync) return
+    if (isMessengerMobileViewport() && !mobileShowChat) {
+      sync(null)
+      return
+    }
+    sync(activeId)
+  }, [activeId, mobileShowChat])
 
   // Fetch status broadcasts for 24h ring
   React.useEffect(() => {
@@ -238,7 +262,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       setConversations(d.conversations || [])
       setCounts(d.counts || {})
       setHasMore(!!d.has_more)
-      if (!activeId && (d.conversations || []).length > 0) {
+      if (!activeId && (d.conversations || []).length > 0 && !isMessengerMobileViewport()) {
         setActiveId(d.conversations[0].id)
       }
     } catch (e) {

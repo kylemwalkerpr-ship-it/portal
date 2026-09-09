@@ -94,15 +94,13 @@ export default function ChatScreen({
   const isSplit = mode === 'split' && sidebar
 
   // A dashboard URL such as ?page=messages&thread=<id> already gives
-  // UnifiedInbox the correct active conversation, but its mobile pane state
-  // starts in list mode. On phones, promote the already-selected row through
-  // the inbox's normal click path once it appears. That flips the parent's
-  // mobileShowChat state too, so the ordinary in-chat Back control keeps
-  // working and a later user-initiated Back is not immediately undone.
+  // UnifiedInbox the correct active conversation. The inbox now opens the
+  // mobile chat pane from that param on mount, but a thread can also appear
+  // after mount (marketplace "Open in Messages" while already on Messages).
+  // Promote the already-selected row through the inbox's normal click path
+  // once it appears so the in-chat Back control keeps working.
   //
-  // This intentionally runs only for a new deep-link thread value. It also
-  // covers the marketplace "Open in Messages" handoff without adding a
-  // second navigation/state protocol between marketplace and dashboard.
+  // This intentionally runs only for a new deep-link thread value.
   React.useEffect(() => {
     if (!isSplit || mobileShowChat || typeof window === 'undefined') return
     if (!window.matchMedia?.('(max-width: 680px)').matches) return

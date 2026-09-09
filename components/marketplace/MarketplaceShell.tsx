@@ -11,6 +11,7 @@ import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
 import { CategoryBar } from './CategoryBar'
 import { marketplaceOrdersHref, readOrderIdFromSearch } from '@/lib/orderLinks'
+import { writeMessengerThreadParam } from '@/lib/messaging/threadUrl'
 
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
@@ -102,12 +103,7 @@ function MessagesPanel({ role }: { role: Role }) {
       <UnifiedInbox
         canSendOffer={role === 'attorney' || role === 'consultant'}
         defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
-        onThreadChange={(id: string | null) => {
-          if (typeof window === 'undefined') return
-          const url = new URL(window.location.href)
-          if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
-          window.history.replaceState({}, '', url.toString())
-        }}
+        onThreadChange={(id: string | null) => writeMessengerThreadParam(id)}
       />
     </div>
   )
