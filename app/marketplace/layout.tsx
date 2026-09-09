@@ -3,6 +3,7 @@ import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
+import './marketplace-brand.css'
 
 /**
  * Default market surface is indexable. Pages that must stay out of the index
