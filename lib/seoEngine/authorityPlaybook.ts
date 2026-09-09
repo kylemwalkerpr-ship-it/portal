@@ -187,7 +187,6 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
   const thinTofu =
     (play === 'content_gap' || play === 'gap' || play === 'quick_win') &&
     funnel === 'tofu' &&
-    kind !== 'spoke' &&
     clicks === 0 &&
     impressions < 40 &&
     position > 20
@@ -206,9 +205,9 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
   if (play === 'content_gap' || play === 'gap' || play === 'quick_win') {
     const bofuBoost = funnel === 'bofu' ? 10 : funnel === 'mofu' ? 6 : 0
     const pos = Number(input.position) || 99
-    const tofuPenalty = funnel === 'tofu' && kind !== 'spoke' ? (pos > 20 ? 16 : 8) : 0
-    const floor = funnel === 'tofu' && kind !== 'spoke' ? 48 : 68
-    const ceiling = funnel === 'tofu' && kind !== 'spoke' ? 72 : 94
+    const tofuPenalty = funnel === 'tofu' ? (pos > 20 ? 16 : 8) : 0
+    const floor = funnel === 'tofu' ? 48 : 68
+    const ceiling = funnel === 'tofu' ? 72 : 94
     return {
       move: 'fill_pillar',
       funnel,
