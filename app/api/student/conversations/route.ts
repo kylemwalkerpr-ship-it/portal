@@ -6,13 +6,8 @@
  *   • Every attorney profile chat the student has opened
  * Each row carries last-message preview, unread count, presence, last activity.
  *
- * Filterable + paginated so the list scales to hundreds of conversations.
- *
- * Query params:
- *   kind       — order | attorney | all
- *   filter     — unread | offers | archived | all
- *   q          — search by counterpart name / order title / last message snippet
- *   page, page_size  — default 50, max 200
+ * Provider contact details are deliberately excluded: students communicate
+ * through YouSafe Messenger and never receive provider email/phone fields.
  */
 import { getCurrentStudent } from '@/lib/student'
 
@@ -65,10 +60,10 @@ export async function GET(req: Request) {
     const orderIds = orderRows.map(o => o.id)
     const consultantIds = Array.from(new Set(orderRows.map(o => o.consultant_id).filter(Boolean)))
 
-    const [itemsRes, servicesRes, profilesRes, msgsRes] = await Promise.all([
+    const [itemsRes, _servicesRes, profilesRes, msgsRes] = await Promise.all([
       orderIds.length ? db.from('order_items').select('order_id, service_id').in('order_id', orderIds) : Promise.resolve({ data: [] }),
-      Promise.resolve({ data: [] }), // placeholder — we'll fetch after items
-      consultantIds.length ? db.from('profiles').select('id, full_name, email, avatar_url').in('id', consultantIds) : Promise.resolve({ data: [] }),
+      Promise.resolve({ data: [] }),
+      consultantIds.length ? db.from('profiles').select('id, full_name, avatar_url').in('id', consultantIds) : Promise.resolve({ data: [] }),
       orderIds.length ? db.from('order_messages').select('order_id, sender_role, body, created_at').in('order_id', orderIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
     ])
 
@@ -81,7 +76,6 @@ export async function GET(req: Request) {
     const itemByOrder = new Map(items.map((i: any) => [i.order_id, i]))
     const profileById = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]))
 
-    // Last message + unread per order
     const lastByOrder = new Map<string, { body: string; from: string; at: string }>()
     const unreadByOrder = new Map<string, number>()
     for (const m of msgsRes.data ?? []) {
@@ -93,9 +87,6 @@ export async function GET(req: Request) {
           at: (m as any).created_at,
         })
       }
-      // Treat unread as messages from non-client roles within the last 30 days
-      // (no per-message read receipts exist; this is a useful approximation
-      // until we track read_at).
       if ((m as any).sender_role !== 'client') {
         const age = Date.now() - new Date((m as any).created_at).getTime()
         if (age < 30 * 86_400_000) unreadByOrder.set(oid, (unreadByOrder.get(oid) || 0) + 1)
@@ -110,7 +101,7 @@ export async function GET(req: Request) {
       conversations.push({
         type: 'order',
         id: o.id,
-        name: consultant?.full_name || consultant?.email || (o.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+        name: consultant?.full_name || (o.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
         sub: (svc as any)?.title || o.requirements || 'Order',
         avatar: consultant?.avatar_url || null,
         presence: null,
@@ -127,8 +118,6 @@ export async function GET(req: Request) {
 
   // ── Attorney profile chats ─────────────────────────────────────────────
   if (kind === 'all' || kind === 'attorney') {
-    // Try the existing endpoint's source table. If schema isn't present yet,
-    // gracefully degrade to an empty list.
     try {
       const { data, error } = await db
         .from('attorney_chats')
@@ -141,11 +130,11 @@ export async function GET(req: Request) {
         if (attorneyIds.length) {
           const { data: atts } = await db.from('attorneys').select('id, profile_id, headshot_url').in('id', attorneyIds)
           const pIds = Array.from(new Set((atts ?? []).map((a: any) => a.profile_id).filter(Boolean)))
-          const { data: pfs } = pIds.length ? await db.from('profiles').select('id, full_name, email').in('id', pIds) : { data: [] }
+          const { data: pfs } = pIds.length ? await db.from('profiles').select('id, full_name').in('id', pIds) : { data: [] }
           const pById = new Map((pfs ?? []).map((p: any) => [p.id, p]))
           for (const a of atts ?? []) {
             const p = pById.get((a as any).profile_id) as any
-            attMap.set((a as any).id, { name: p?.full_name || p?.email || 'Attorney', avatar: (a as any).headshot_url })
+            attMap.set((a as any).id, { name: p?.full_name || 'Attorney', avatar: (a as any).headshot_url })
           }
         }
         for (const c of data ?? []) {
@@ -172,22 +161,17 @@ export async function GET(req: Request) {
     }
   }
 
-  // Sort by last activity (recency)
   conversations.sort((a, b) => {
     const ta = a.lastAt ? new Date(a.lastAt).getTime() : 0
     const tb = b.lastAt ? new Date(b.lastAt).getTime() : 0
     return tb - ta
   })
 
-  // Filters
   let filtered = conversations
   if (filter === 'unread')   filtered = filtered.filter(c => c.unread > 0)
   if (filter === 'offers')   filtered = filtered.filter(c => (c.pending || 0) > 0)
   if (filter === 'archived') filtered = filtered.filter(c => c.archived)
-  else if (filter === 'all') {
-    // 'all' excludes archived by default; pass filter=archived explicitly to see them
-    filtered = filtered.filter(c => !c.archived)
-  }
+  else if (filter === 'all') filtered = filtered.filter(c => !c.archived)
   if (q) {
     filtered = filtered.filter(c =>
       (c.name || '').toLowerCase().includes(q) ||
@@ -199,7 +183,6 @@ export async function GET(req: Request) {
   const total = filtered.length
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
-  // Headline counts for the tab badges (independent of current filter)
   const counts = {
     all:      conversations.filter(c => !c.archived).length,
     order:    conversations.filter(c => c.type === 'order' && !c.archived).length,
