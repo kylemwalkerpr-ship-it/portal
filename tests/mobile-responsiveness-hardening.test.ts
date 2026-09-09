@@ -19,16 +19,31 @@ describe('mobile responsiveness hardening', () => {
     expect(conversion).toBeGreaterThan(hardening)
   })
 
-  test('guards marketplace cards and wrapped navigation on narrow screens', () => {
+  test('guards marketplace cards and compact hamburger header on narrow screens', () => {
     expect(css).toContain(".cw-market [style*='minmax(320px, 1fr)']")
     expect(css).toContain(".cw-market [style*='minmax(280px, 1fr)']")
     expect(css).toContain('.cw-market .ys-shell-header-inner')
-    expect(css).toContain('height: auto !important')
-    expect(css).toContain('.cw-market .ys-market-nav')
+    expect(css).toContain('flex-wrap: nowrap !important')
+    expect(css).toContain('height: 60px !important')
+    expect(css).toContain('.cw-market .ys-shell-menu-toggle')
+    expect(css).not.toContain("href^='https://portal.yousafeconsultancy.com/dashboard'")
     expect(css).toContain('.cw-market .ys-cat-bar')
+    expect(layout).toContain("viewportFit: 'cover'")
     expect(conversionCss).toContain('.cw-market .ys-content-layout')
     expect(conversionCss).toContain('.cw-market button')
     expect(conversionCss).toContain('min-height: 44px')
+  })
+
+  test('landing nav uses a hamburger drawer instead of a clipped row', () => {
+    const globals = read('app/globals.css')
+    const nav = read('components/design/landing/Nav.tsx')
+    expect(nav).toContain('ys-nav-menu-toggle')
+    expect(nav).toContain('ys-nav-drawer')
+    expect(nav).toContain('My Account')
+    expect(globals).toContain('.ys-nav-menu-toggle')
+    expect(globals).toContain('.ys-nav-drawer-panel')
+    expect(globals).toContain('.ys-auth-form-panel')
+    expect(globals).toContain('order: -1')
   })
 
   test('keeps cart and checkout controls usable on narrow phones', () => {
