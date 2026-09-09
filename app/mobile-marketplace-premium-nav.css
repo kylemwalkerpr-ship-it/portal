@@ -1,12 +1,18 @@
 /* Premium marketplace mobile navigation
    ------------------------------------
    Conversion-first phone chrome: compact header, swipeable category rail,
-   and a calm app-style drawer. Desktop behavior is intentionally untouched. */
+   and a viewport-locked app sheet. Desktop behavior is intentionally untouched.
+
+   The sheet is portaled onto document.body (see MarketplaceShell). It must NOT
+   live inside the sticky header: iOS Safari treats backdrop-filter / filter as
+   a containing block for position:fixed, which previously stretched the navbar
+   to 100dvh and made the pane as tall as the document. */
 
 @media (max-width: 768px) {
   .cw-market .ys-shell-header-inner {
     height: 60px !important;
     min-height: 60px !important;
+    max-height: 60px !important;
     max-width: 100% !important;
     padding-top: 8px !important;
     padding-bottom: 8px !important;
@@ -14,6 +20,12 @@
     padding-right: max(10px, env(safe-area-inset-right)) !important;
     gap: 8px !important;
     flex-wrap: nowrap !important;
+  }
+
+  .cw-market header.ys-shell-header {
+    overflow: visible;
+    height: auto !important;
+    max-height: none;
   }
 
   .cw-market .ys-shell-brand {
@@ -44,6 +56,9 @@
 
   .cw-market .ys-shell-menu-toggle {
     order: 2;
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
     margin-left: auto !important;
     margin-right: 0 !important;
     width: 44px !important;
@@ -72,32 +87,15 @@
     font-weight: 400;
   }
 
-  /* The toggle becomes the drawer close button. Elevating the containing
-     header prevents third-party floating UI from sitting above the menu. */
-  .cw-market header:has(.ys-shell-drawer) {
-    z-index: 2147483640 !important;
-  }
-
-  .cw-market .ys-shell-menu-toggle[aria-expanded='true'] {
-    position: fixed !important;
-    top: max(12px, env(safe-area-inset-top)) !important;
-    right: max(14px, env(safe-area-inset-right)) !important;
-    z-index: 2147483646 !important;
-    margin: 0 !important;
-    color: var(--ys-onPaper, #0F172A) !important;
-    background: var(--ys-vellum, #FFFFFF) !important;
-    border-color: var(--ys-rule, rgba(15, 23, 42, 0.12)) !important;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-  }
-
   .cw-market .ys-shell-menu-toggle:active {
     transform: scale(0.96);
     background: var(--ys-paper3, #E6EAEF) !important;
   }
 
   .cw-market .ys-shell-menu-toggle:focus-visible,
-  .cw-market .ys-shell-drawer-link:focus-visible,
-  .cw-market .ys-shell-drawer-extras button:focus-visible {
+  .ys-shell-drawer-link:focus-visible,
+  .ys-shell-drawer-close:focus-visible,
+  .ys-shell-drawer-extras button:focus-visible {
     outline: 2px solid var(--ys-indigo, #111827) !important;
     outline-offset: 2px !important;
   }
@@ -148,8 +146,8 @@
     z-index: 190 !important;
     border-bottom: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
     box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-    backdrop-filter: blur(14px) saturate(1.08);
-    -webkit-backdrop-filter: blur(14px) saturate(1.08);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .cw-market .ys-cat-bar-wrap {
@@ -186,226 +184,308 @@
   .cw-market .ys-cat-fade {
     width: 34px !important;
   }
+}
 
-  /* Drawer v3: narrower than the previous 92vw slab, visually grouped, and
-     intentionally content-led. Preferences sit directly beneath navigation
-     instead of being forced to the bottom of a mostly empty viewport. */
-  .cw-market .ys-shell-drawer {
-    z-index: 2147483642 !important;
-  }
+/* Drawer lives on document.body. Pin it to the visual viewport so it cannot
+   grow with the page or follow a sticky header. */
+.ys-shell-drawer {
+  position: fixed !important;
+  top: var(--ys-visual-viewport-offset-top, 0px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: auto !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: var(--ys-visual-viewport-block-size, 100dvh) !important;
+  min-height: var(--ys-visual-viewport-block-size, 100dvh) !important;
+  max-height: var(--ys-visual-viewport-block-size, 100dvh) !important;
+  margin: 0 !important;
+  z-index: 2147483642 !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  box-sizing: border-box;
+  font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--ys-onPaper, #0F172A);
+}
 
-  .cw-market .ys-shell-drawer-backdrop {
-    background: rgba(3, 10, 12, 0.56) !important;
-    backdrop-filter: blur(5px) saturate(0.88);
-    -webkit-backdrop-filter: blur(5px) saturate(0.88);
-  }
+.ys-shell-drawer *,
+.ys-shell-drawer *::before,
+.ys-shell-drawer *::after {
+  box-sizing: border-box;
+}
 
-  .cw-market .ys-shell-drawer-panel {
-    width: min(360px, 88vw) !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    padding-top: calc(68px + env(safe-area-inset-top)) !important;
-    padding-left: 18px !important;
-    padding-right: 18px !important;
-    padding-bottom: calc(18px + env(safe-area-inset-bottom)) !important;
-    background-color: var(--ys-vellum, #FFFFFF) !important;
-    background-image: none !important;
-    border-left: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
-    border-radius: 16px 0 0 16px !important;
-    box-shadow: -18px 0 48px rgba(15, 23, 42, 0.12) !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 2px !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    scroll-padding-top: calc(68px + env(safe-area-inset-top));
-    scroll-padding-bottom: calc(18px + env(safe-area-inset-bottom));
-  }
+html[data-ys-ios-webkit='true'][data-ys-standalone='false'] .ys-shell-drawer {
+  top: 0 !important;
+  transform: translateY(var(--ys-visual-viewport-pan-top, 0px)) !important;
+}
 
-  .cw-market .ys-shell-drawer-panel::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
+.ys-shell-drawer-backdrop {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: rgba(3, 10, 12, 0.56) !important;
+  backdrop-filter: blur(5px) saturate(0.88);
+  -webkit-backdrop-filter: blur(5px) saturate(0.88);
+  border: 0 !important;
+  padding: 0 !important;
+  cursor: pointer;
+  touch-action: none;
+  overscroll-behavior: none;
+}
 
-  .cw-market .ys-shell-drawer-panel::before {
-    content: 'Marketplace';
-    position: absolute;
-    top: calc(26px + env(safe-area-inset-top));
-    left: 18px;
-    color: var(--ys-onPaper, #0F172A);
-    font-size: 15px;
-    line-height: 1;
-    font-weight: 800;
-    letter-spacing: -0.015em;
-  }
+.ys-shell-drawer-panel {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  width: min(360px, 88vw) !important;
+  height: auto !important;
+  max-height: 100% !important;
+  padding: 0 !important;
+  background-color: var(--ys-vellum, #FFFFFF) !important;
+  background-image: none !important;
+  border-left: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
+  border-radius: 16px 0 0 16px !important;
+  box-shadow: -18px 0 48px rgba(15, 23, 42, 0.12) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  overscroll-behavior: contain;
+}
 
-  .cw-market .ys-shell-drawer-link {
-    width: 100% !important;
-    min-height: 48px !important;
-    padding: 11px 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    border: 1px solid transparent !important;
-    border-radius: 10px !important;
-    font-size: 15px !important;
-    line-height: 1.25 !important;
-    font-weight: 650 !important;
-    color: var(--ys-onPaper, #0F172A) !important;
-    text-align: left !important;
-    transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .cw-market .ys-shell-drawer-link::after {
-    content: '›';
-    margin-left: 14px;
-    color: var(--ys-inkSoft, #526072);
-    font-size: 20px;
-    line-height: 1;
-    font-weight: 400;
-  }
-
-  .cw-market .ys-shell-drawer-link:hover,
-  .cw-market .ys-shell-drawer-link[aria-current='page'] {
-    background: var(--ys-indigoSoft, rgba(60, 59, 110, 0.10)) !important;
-    border-color: var(--ys-indigoSoft, rgba(60, 59, 110, 0.18)) !important;
-  }
-
-  .cw-market .ys-shell-drawer-link:active {
-    transform: scale(0.988);
-    background: var(--ys-paper3, #E6EAEF) !important;
-  }
-
-  .cw-market .ys-shell-drawer-panel > a[href*='/shop'] {
-    margin-bottom: 8px !important;
-  }
-
-  /* Compact preferences. Anonymous users get Language + Appearance side by
-     side; signed-in users get Jurisdiction full-width above those two. */
-  .cw-market .ys-shell-drawer-extras {
-    position: relative;
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-    margin-top: 14px !important;
-    padding-top: 28px !important;
-    border-top: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras::before {
-    content: 'Preferences';
-    position: absolute;
-    top: 10px;
-    left: 0;
-    color: var(--ys-inkSoft, #526072);
-    font-size: 10px;
-    line-height: 1;
-    font-weight: 800;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-  }
-
-  .cw-market .ys-shell-drawer-extras > * {
-    min-width: 0 !important;
-    width: 100% !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > :first-child:nth-last-child(3) {
-    grid-column: 1 / -1 !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > div,
-  .cw-market .ys-shell-drawer-extras > div > button,
-  .cw-market .ys-shell-drawer-extras > button {
-    min-width: 0 !important;
-    width: 100% !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > div > button,
-  .cw-market .ys-shell-drawer-extras > button {
-    height: 44px !important;
-    min-height: 44px !important;
-    padding: 0 11px !important;
-    justify-content: flex-start !important;
-    border-radius: 10px !important;
-    border: 1px solid rgba(15, 23, 42, 0.12) !important;
-    background: rgba(255,255,255,0.96) !important;
-    color: var(--ys-ink, #111827) !important;
-    box-shadow: none !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > div > button[aria-expanded='true'],
-  .cw-market .ys-shell-drawer-extras > button[aria-expanded='true'] {
-    box-shadow: 0 0 0 2px var(--ys-indigoSoft, rgba(60, 59, 110, 0.35)) !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras button[aria-label^='Theme:'] > span:nth-child(1),
-  .cw-market .ys-shell-drawer-extras button[aria-label^='Theme:'] > span:nth-child(2) {
-    display: none !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras button[aria-label^='Theme:']::before {
-    content: 'Appearance';
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0;
-  }
-
-  /* Popovers open upward so Safari never scrolls the entire drawer merely to
-     keep a long palette/language menu visible. They remain inside the sheet. */
-  .cw-market .ys-shell-drawer-extras [role='listbox'] {
-    top: auto !important;
-    bottom: calc(100% + 8px) !important;
-    max-height: min(44dvh, 360px) !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    border-radius: 12px !important;
-    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.22) !important;
-    z-index: 2147483645 !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > div:has(> button[aria-label^='Language:']) [role='listbox'] {
-    left: 0 !important;
-    right: auto !important;
-    width: min(250px, calc(88vw - 36px)) !important;
-    max-width: calc(88vw - 36px) !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > div:has(> button[aria-label^='Theme:']) [role='listbox'] {
-    left: auto !important;
-    right: 0 !important;
-    width: min(320px, calc(88vw - 36px)) !important;
-    max-width: calc(88vw - 36px) !important;
-  }
-
-  .cw-market .ys-shell-drawer-extras > :first-child:nth-last-child(3) [role='listbox'] {
-    left: 0 !important;
-    right: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
+@media (prefers-reduced-motion: no-preference) {
+  .ys-shell-drawer-panel {
+    animation: ys-market-drawer-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 }
 
-/* The assistant is injected outside the marketplace root and uses .ysa-*.
-   Hide the real launcher/panel while mobile navigation is open, and freeze
-   the document so the page behind the drawer cannot drift. */
-@media (max-width: 768px) {
-  body:has(#ys-market-mobile-menu) {
-    overflow: hidden !important;
-    overscroll-behavior: none;
-  }
+@keyframes ys-market-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
 
-  body:has(#ys-market-mobile-menu) .ysa-launcher,
-  body:has(#ys-market-mobile-menu) .ysa-panel {
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-  }
+.ys-shell-drawer-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 8px;
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+.ys-shell-drawer-title {
+  margin: 0;
+  color: var(--ys-onPaper, #0F172A);
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.ys-shell-drawer-close {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.12)) !important;
+  background: var(--ys-vellum, #FFFFFF) !important;
+  color: var(--ys-onPaper, #0F172A) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ys-shell-drawer-close:active {
+  transform: scale(0.96);
+  background: var(--ys-paper3, #E6EAEF) !important;
+}
+
+.ys-shell-drawer-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 18px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scroll-padding-bottom: 12px;
+}
+
+.ys-shell-drawer-nav::-webkit-scrollbar,
+.ys-shell-drawer-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.ys-shell-drawer-link {
+  width: 100% !important;
+  min-height: 48px !important;
+  padding: 11px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  font-size: 15px !important;
+  line-height: 1.25 !important;
+  font-weight: 650 !important;
+  color: var(--ys-onPaper, #0F172A) !important;
+  text-align: left !important;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ys-shell-drawer-link::after {
+  content: '›';
+  margin-left: 14px;
+  color: var(--ys-inkSoft, #526072);
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.ys-shell-drawer-link:hover,
+.ys-shell-drawer-link[aria-current='page'] {
+  background: var(--ys-indigoSoft, rgba(60, 59, 110, 0.10)) !important;
+  border-color: var(--ys-indigoSoft, rgba(60, 59, 110, 0.18)) !important;
+}
+
+.ys-shell-drawer-link:active {
+  transform: scale(0.988);
+  background: var(--ys-paper3, #E6EAEF) !important;
+}
+
+.ys-shell-drawer-nav > a[href*='/shop'] {
+  margin-bottom: 8px !important;
+}
+
+.ys-shell-drawer-extras {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin: 0 18px !important;
+  padding: 12px 0 calc(16px + env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
+}
+
+.ys-shell-drawer-kicker {
+  grid-column: 1 / -1 !important;
+  margin: 0 0 2px !important;
+  color: var(--ys-inkSoft, #526072);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.ys-shell-drawer-extras > * {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.ys-shell-drawer-extras > :nth-child(2):nth-last-child(3) {
+  grid-column: 1 / -1 !important;
+}
+
+.ys-shell-drawer-extras > div,
+.ys-shell-drawer-extras > div > button,
+.ys-shell-drawer-extras > button {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.ys-shell-drawer-extras > div > button,
+.ys-shell-drawer-extras > button {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 11px !important;
+  justify-content: flex-start !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  background: rgba(255,255,255,0.96) !important;
+  color: var(--ys-ink, #111827) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.ys-shell-drawer-extras > div > button[aria-expanded='true'],
+.ys-shell-drawer-extras > button[aria-expanded='true'] {
+  box-shadow: 0 0 0 2px var(--ys-indigoSoft, rgba(60, 59, 110, 0.35)) !important;
+}
+
+.ys-shell-drawer-extras button[aria-label^='Theme:'] > span:nth-child(1),
+.ys-shell-drawer-extras button[aria-label^='Theme:'] > span:nth-child(2) {
+  display: none !important;
+}
+
+.ys-shell-drawer-extras button[aria-label^='Theme:']::before {
+  content: 'Appearance';
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.ys-shell-drawer-extras [role='listbox'] {
+  top: auto !important;
+  bottom: calc(100% + 8px) !important;
+  max-height: min(44dvh, 360px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  border-radius: 12px !important;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.22) !important;
+  z-index: 2147483645 !important;
+}
+
+.ys-shell-drawer-extras > div:has(> button[aria-label^='Language:']) [role='listbox'] {
+  left: 0 !important;
+  right: auto !important;
+  width: min(250px, calc(88vw - 36px)) !important;
+  max-width: calc(88vw - 36px) !important;
+}
+
+.ys-shell-drawer-extras > div:has(> button[aria-label^='Theme:']) [role='listbox'] {
+  left: auto !important;
+  right: 0 !important;
+  width: min(320px, calc(88vw - 36px)) !important;
+  max-width: calc(88vw - 36px) !important;
+}
+
+.ys-shell-drawer-extras > :nth-child(2):nth-last-child(3) [role='listbox'] {
+  left: 0 !important;
+  right: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+body.ys-market-menu-open,
+html.ys-market-menu-open,
+body:has(#ys-market-mobile-menu) {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+body:has(#ys-market-mobile-menu) .ysa-launcher,
+body:has(#ys-market-mobile-menu) .ysa-panel {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 @media (max-width: 360px) {
@@ -439,19 +519,35 @@
     font-size: 12px !important;
   }
 
-  .cw-market .ys-shell-drawer-panel {
+  .ys-shell-drawer-panel {
     width: calc(100vw - 24px) !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
     border-radius: 14px 0 0 14px !important;
   }
 
-  .cw-market .ys-shell-drawer-panel::before {
-    left: 16px;
+  .ys-shell-drawer-nav,
+  .ys-shell-drawer-extras {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
-  .cw-market .ys-shell-drawer-extras > div:has(> button[aria-label^='Language:']) [role='listbox'],
-  .cw-market .ys-shell-drawer-extras > div:has(> button[aria-label^='Theme:']) [role='listbox'] {
+  .ys-shell-drawer-extras {
+    margin-left: 16px !important;
+    margin-right: 16px !important;
+  }
+
+  .ys-shell-drawer-extras > div:has(> button[aria-label^='Language:']) [role='listbox'],
+  .ys-shell-drawer-extras > div:has(> button[aria-label^='Theme:']) [role='listbox'] {
     max-width: calc(100vw - 56px) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ys-shell-drawer-panel {
+    animation: none !important;
+  }
+  .ys-shell-drawer-link,
+  .ys-shell-drawer-close,
+  .cw-market .ys-shell-menu-toggle {
+    transition: none !important;
   }
 }
