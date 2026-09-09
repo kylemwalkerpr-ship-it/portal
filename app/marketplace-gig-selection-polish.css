@@ -77,32 +77,32 @@
   text-wrap: balance;
 }
 
-/* Fill incomplete final browse rows. Breakpoints mirror the existing
-   5/4/3/2/1 card contract, while flex-grow lets the last row use all width. */
+/* Keep Marketplace browse rows predictable: four equal cards on desktop.
+   The previous flex-grow rule stretched incomplete rows and overrode the
+   four-column Featured Briefs grid. */
 .cw-market .gig-grid {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  align-items: stretch !important;
-  gap: 16px !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: start !important;
+  gap: 34px 24px !important;
 }
 
 .cw-market .gig-grid > .gig-link {
-  flex: 1 1 calc((100% - 64px) / 5) !important;
   min-width: 0 !important;
   max-width: none !important;
   box-sizing: border-box !important;
 }
 
-@media (max-width: 1400px) {
-  .cw-market .gig-grid > .gig-link { flex-basis: calc((100% - 48px) / 4) !important; }
-}
-
 @media (max-width: 1180px) {
-  .cw-market .gig-grid > .gig-link { flex-basis: calc((100% - 32px) / 3) !important; }
+  .cw-market .gig-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
 }
 
 @media (max-width: 900px) {
-  .cw-market .gig-grid > .gig-link { flex-basis: calc((100% - 16px) / 2) !important; }
+  .cw-market .gig-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
 
 @media (max-width: 700px) {
@@ -124,5 +124,7 @@
     line-height: 1.12 !important;
   }
 
-  .cw-market .gig-grid > .gig-link { flex-basis: 100% !important; }
+  .cw-market .gig-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }

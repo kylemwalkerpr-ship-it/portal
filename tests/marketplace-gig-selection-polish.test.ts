@@ -32,15 +32,14 @@ describe('Marketplace selected gig and browse-grid polish', () => {
     expect(css).toContain('text-wrap: balance')
   })
 
-  test('stretches incomplete final rows instead of leaving empty grid slots', () => {
+  test('keeps marketplace browse grids four-up on desktop without stretching incomplete rows', () => {
     expect(css).toContain('.cw-market .gig-grid {')
-    expect(css).toContain('display: flex !important')
-    expect(css).toContain('flex-wrap: wrap !important')
-    expect(css).toContain('.cw-market .gig-grid > .gig-link')
-    expect(css).toContain('flex: 1 1 calc((100% - 64px) / 5) !important')
-    expect(css).toContain('flex-basis: calc((100% - 48px) / 4) !important')
-    expect(css).toContain('flex-basis: calc((100% - 32px) / 3) !important')
-    expect(css).toContain('flex-basis: calc((100% - 16px) / 2) !important')
-    expect(css).toContain('flex-basis: 100% !important')
+    expect(css).toContain('display: grid !important')
+    expect(css).toContain('grid-template-columns: repeat(4, minmax(0, 1fr)) !important')
+    expect(css).toContain('grid-template-columns: repeat(3, minmax(0, 1fr)) !important')
+    expect(css).toContain('grid-template-columns: repeat(2, minmax(0, 1fr)) !important')
+    expect(css).toContain('grid-template-columns: minmax(0, 1fr) !important')
+    expect(css).not.toContain('flex: 1 1 calc(')
+    expect(css).not.toContain('flex-wrap: wrap !important')
   })
 })
