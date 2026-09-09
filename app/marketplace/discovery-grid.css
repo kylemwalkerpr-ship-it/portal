@@ -1,0 +1,35 @@
+/* Marketplace discovery grid contract
+   -----------------------------------
+   GigDiscoveryPage historically used auto-fill + minmax(280px), while its
+   desktop filter rail consumed 312px of the 1280px shell. That combination
+   mathematically capped category/search pages at three cards per row even
+   though the Marketplace card design was changed to a four-up desktop shelf.
+
+   Keep the discovery grid explicit so future card-width tweaks cannot silently
+   collapse desktop inventory back to three columns. */
+
+.cw-market .ys-gig-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+}
+
+/* With the 280px filter rail still present, three columns remain comfortable
+   through laptop widths. The rail disappears in GigDiscoveryPage at 1024px. */
+@media (max-width: 1359px) {
+  .cw-market .ys-gig-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Once the rail is gone, retain two useful cards across compact tablets. */
+@media (max-width: 768px) {
+  .cw-market .ys-gig-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 559px) {
+  .cw-market .ys-gig-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
