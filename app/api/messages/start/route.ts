@@ -14,7 +14,7 @@
  */
 import { requirePortalUser } from '@/lib/portalAuth'
 import { getOrCreateConversation } from '@/lib/conversations'
-import { scheduleAutoReply } from '@/lib/messengerAi'
+import { scheduleContextAwareAutoReply } from '@/lib/messengerCommerceOrchestrator'
 
 export async function POST(req: Request) {
   const auth = await requirePortalUser()
@@ -76,8 +76,9 @@ export async function POST(req: Request) {
       .single()
     if (error) return Response.json({ error: error.message }, { status: 500 })
     firstMessageId = (data as any).id
-    // Client→provider first message must schedule SuperGrok (same as POST /conversations/[id])
-    scheduleAutoReply(conversationId, firstMessageId)
+    // Client→provider first message goes through deterministic order-intake
+    // gating before the normal YQAA model pipeline can create an offer.
+    scheduleContextAwareAutoReply(conversationId, firstMessageId)
   }
 
   return Response.json({ conversation_id: conversationId, message_id: firstMessageId })
