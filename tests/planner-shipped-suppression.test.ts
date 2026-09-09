@@ -55,6 +55,20 @@ describe('shippedOverlap', () => {
     expect(shippedOverlap('f1 visa interview prep', stems)).toBeTruthy()
   })
 
+  it('does not treat a distinct SERP-intent spoke as shipped coverage', () => {
+    const extra = buildShippedStems([
+      ...pages,
+      {
+        url: 'https://legal.yousafeconsultancy.com/ca/express-entry/',
+        title: 'Express Entry Canada',
+        primaryKeyword: 'express entry canada',
+        status: 'merged',
+      },
+    ])
+    expect(shippedOverlap('express entry canada calculator', extra)).toBeNull()
+    expect(shippedOverlap('canada study permit cost', stems)).toBeNull()
+  })
+
   it('returns null for fresh, unrelated topics', () => {
     expect(shippedOverlap('australia student visa fee', stems)).toBeNull()
     expect(shippedOverlap('uk graduate route timeline', stems)).toBeNull()

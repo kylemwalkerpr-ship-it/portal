@@ -8,6 +8,7 @@
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizePlannerTopic } from './planner'
+import { bestOwnerMatch } from './coverageIntent'
 
 export interface ShippedPage {
   url: string
@@ -82,37 +83,15 @@ export function buildShippedStems(pages: ShippedPage[]): Set<string> {
 
 /**
  * Token-overlap match between a candidate term and the shipped stems.
- * Returns the best matching shipped stem when ≥70% of the candidate's
- * meaningful tokens appear in a shipped stem (or vice versa) — the same
- * three-tier strategy the Ubersuggest work plan uses, so "F1 visa interview
- * prep" matches shipped "F-1 Visa Interview" while unrelated terms pass.
+ * Returns the best matching shipped stem when the candidate is the SAME
+ * search intent (exact, paraphrase, or a geo/audience section on the owner).
+ * Distinct SERP-intent spokes (calculator, fees, vs-attorney, …) return null
+ * so the planner can still queue them as new cluster members.
  */
 export function shippedOverlap(term: string, shippedStems: Set<string>): string | null {
-  const norm = normalizePlannerTopic(term)
-  if (!norm) return null
-  if (shippedStems.has(norm)) return norm
-  // Substring: a shipped stem fully contained in the term (or the reverse).
-  for (const s of shippedStems) {
-    if (!s) continue
-    if (s.includes(norm) || norm.includes(s)) return s
-  }
-  // Token overlap ≥70% of the smaller token set. Tokens of length ≥2 so
-  // meaningful short codes like "f1" / "uk" / "485" participate.
-  const tokens = new Set(norm.split(' ').filter((t) => t.length >= 2))
-  if (tokens.size === 0) return null
-  let best: string | null = null
-  let bestRatio = 0
-  for (const s of shippedStems) {
-    if (!s) continue
-    const sTokens = s.split(' ').filter((t) => t.length >= 2)
-    if (sTokens.length === 0) continue
-    let hits = 0
-    for (const t of sTokens) if (tokens.has(t)) hits++
-    const ratio = hits / Math.min(tokens.size, sTokens.length)
-    if (ratio >= 0.7 && ratio > bestRatio) {
-      best = s
-      bestRatio = ratio
-    }
-  }
-  return best
+  const match = bestOwnerMatch(term, shippedStems)
+  if (!match) return null
+  if (match.kind === 'spoke' || match.kind === 'unrelated') return null
+  return match.owner
 }
+

@@ -65,6 +65,7 @@ describe('opportunity engine — monetary ranking', () => {
     expect(result.opportunities[0].profitability).toBe('high')
     expect(result.opportunities[0].contentType).toBe('blog_post')
     expect(result.opportunities[0].signals.join(' ')).toMatch(/purchase funnel/i)
+    expect(result.opportunities[0].signals.join(' ')).toMatch(/never the H1/i)
   })
 
   it('GA4 revenue outranks a high-traffic zero-revenue guide', () => {
@@ -132,5 +133,33 @@ describe('opportunity engine — editorial value discipline', () => {
     const thin = result.opportunities.find((item) => item.topic === 'obscure visa phrase')!
     expect(thin.priorityTier).toBe('low')
     expect(result.opportunities[0].topic).toBe('uk graduate visa requirements')
+  })
+})
+
+describe('opportunity engine — intent-aware coverage', () => {
+  it('treats a calculator/fee spoke as a content gap, not a refresh of the pillar', () => {
+    const result = scoreOpportunities({
+      queries: [{ term: 'express entry canada calculator', impressions: 2715, clicks: 40, ctr: 0.015, position: 22 }],
+      coverage: [{ title: 'Express Entry Canada', primaryKeyword: 'express entry canada', url: 'https://legal.yousafeconsultancy.com/ca/express-entry/' }],
+      limit: 5,
+    })
+    expect(result.opportunities[0].play).toBe('content_gap')
+    expect(result.opportunities[0].coverage.matched).toBe(false)
+    expect(result.opportunities[0].coverageKind).toBe('spoke')
+  })
+
+  it('treats an audience/geo extra as a refresh of the owner, not a sibling URL', () => {
+    const result = scoreOpportunities({
+      queries: [{ term: 'f-1 visa interview questions for Nigerians', impressions: 400, clicks: 8, ctr: 0.02, position: 18 }],
+      coverage: [{
+        title: 'F-1 Visa Interview Questions (2026)',
+        primaryKeyword: 'f-1 visa interview questions',
+        url: 'https://legal.yousafeconsultancy.com/us/student-visas/f1-visa-interview-questions-2026/',
+      }],
+      limit: 5,
+    })
+    expect(result.opportunities[0].coverage.matched).toBe(true)
+    expect(result.opportunities[0].coverageKind).toBe('section_expand')
+    expect(result.opportunities[0].play).not.toBe('content_gap')
   })
 })

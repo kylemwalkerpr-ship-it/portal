@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
+import { loadPersistedGscWindow } from '@/lib/seoFactory/gscRows'
 
 /**
  * GET /api/content-studio/gsc/performance
  * Reads persisted seo_gsc_rows only — never calls Google.
+ * Falls back to the latest stored window when the rolling UTC window is empty
+ * so CTR-harvest jobs are not starved between syncs.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,30 +24,23 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(500, Math.max(1, Number(sp.get('limit') || '100') || 100))
     const range = resolveGscDayWindow(daysRaw, startOverride, endOverride)
 
-    let q = auth.db
-      .from('seo_gsc_rows')
-      .select('site_url, query, page, clicks, impressions, ctr, position, country, device, start_date, end_date, synced_at')
-      .eq('start_date', range.startDate)
-      .eq('end_date', range.endDate)
-      .order('impressions', { ascending: false })
-      .limit(limit)
-    if (siteUrl) q = q.eq('site_url', siteUrl)
+    const persisted = await loadPersistedGscWindow(auth.db, {
+      siteUrl,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      limit,
+      select: 'site_url, query, page, clicks, impressions, ctr, position, country, device, start_date, end_date, synced_at',
+    })
 
-    let countQ = auth.db
-      .from('seo_gsc_rows')
-      .select('id', { count: 'exact', head: true })
-      .eq('start_date', range.startDate)
-      .eq('end_date', range.endDate)
-    if (siteUrl) countQ = countQ.eq('site_url', siteUrl)
-
-    const [{ data, error }, { count, error: countError }] = await Promise.all([q, countQ])
-    if (error) {
-      return NextResponse.json({ error: error.message.slice(0, 240) }, { status: 502 })
-    }
-    if (countError) {
-      return NextResponse.json({ error: countError.message.slice(0, 240) }, { status: 502 })
-    }
-    return NextResponse.json({ ok: true, range, siteUrl, rows: data || [], rowCount: count ?? 0 })
+    return NextResponse.json({
+      ok: true,
+      range: { ...range, startDate: persisted.range.startDate, endDate: persisted.range.endDate },
+      requestedRange: range,
+      usedFallback: persisted.usedFallback,
+      siteUrl,
+      rows: persisted.rows,
+      rowCount: persisted.rowCount,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'GSC performance read failed'
     return NextResponse.json({ error: message.slice(0, 240) }, { status: 502 })

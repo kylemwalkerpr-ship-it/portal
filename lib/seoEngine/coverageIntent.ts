@@ -1,0 +1,151 @@
+/**
+ * Coverage vs distinct search intent.
+ *
+ * Google's quality systems (helpful content, one-intent-one-URL) require us
+ * to treat a *paraphrase of an existing page* as the same owner, and a
+ * *different job-to-be-done* as a spoke that deserves its own URL.
+ *
+ * The old matcher used substring + 70% token overlap, so "express entry
+ * canada calculator" was classed as a refresh of "express entry canada".
+ * That starves topical authority and fills Discover with jobs already done.
+ *
+ * Kinds:
+ *   exact           same normalized stem
+ *   paraphrase      same intent after stripping years/guide filler
+ *   section_expand  same intent + audience/geo — add an H2, do NOT ship a sibling
+ *   spoke           distinct SERP intent (tool, cost, vs, interview, …)
+ *   unrelated       new cluster / pillar
+ */
+import { normalizePlannerTopic } from './planner'
+
+export type CoverageKind = 'exact' | 'paraphrase' | 'section_expand' | 'spoke' | 'unrelated'
+
+const FILLER = new Set([
+  '2024', '2025', '2026', '2027', '2028',
+  'guide', 'guides', 'complete', 'updated', 'new', 'official',
+  'step', 'steps', 'by', 'the', 'and', 'for', 'in', 'to', 'of', 'a', 'an',
+  'your', 'you', 'with', 'from', 'how', 'what', 'is', 'are', 'can',
+  'help', 'tips', 'overview', 'explained', 'ultimate', 'full',
+  'application', 'apply', 'applying',
+  'prep', 'questions', 'answers', 'faqs', 'faq',
+])
+
+/** Tokens that change the SERP job-to-be-done. Extra ones = a spoke, not a refresh. */
+const SPOKE_MODIFIERS = new Set([
+  'calculator', 'crs', 'tool', 'score',
+  'fee', 'fees', 'cost', 'costs', 'price', 'pricing', 'increase',
+  'vs', 'versus', 'compared', 'comparison', 'or',
+  'interview', 'appointment', 'biometrics',
+  'checklist', 'documents', 'document', 'forms', 'form',
+  'timeline', 'processing', 'times', 'duration',
+  'eligibility', 'eligible', 'requirements', 'requirement', 'rules', 'restrictions',
+  'refusal', 'refused', 'rejected', 'denied', 'reapply',
+  'cic', 'ircc', 'uscis', 'ukvi',
+  'diy', 'attorney', 'lawyer', 'consultant', 'consultants', 'service',
+  'editing', 'editor', 'writing', 'writer',
+  'salary', 'threshold', 'cap', 'lottery',
+  'extension', 'renewal', 'switch', 'change',
+])
+
+/** Audience / geo extras — cover on the owner with a section, never a thin doorway. */
+const AUDIENCE_GEO = new Set([
+  'nigerians', 'nigeria', 'indians', 'india', 'filipinos', 'philippines',
+  'kenyans', 'kenya', 'pakistan', 'pakistani', 'ghana', 'ghanaians',
+  'bangladesh', 'bangladeshi', 'nepal', 'nepali', 'china', 'chinese',
+  'students', 'graduates', 'founders', 'nurses', 'doctors',
+  'from',
+])
+
+function contentTokens(term: string): string[] {
+  return normalizePlannerTopic(term)
+    .replace(/-/g, '')
+    .split(/\s+/)
+    .filter((t) => t.length >= 2 && !FILLER.has(t))
+}
+
+function isSpokeToken(t: string): boolean {
+  return SPOKE_MODIFIERS.has(t)
+}
+
+function isAudienceToken(t: string): boolean {
+  return AUDIENCE_GEO.has(t)
+}
+
+/**
+ * Classify how a candidate query relates to an already-shipped owner string
+ * (primary keyword, title, or slug words).
+ */
+export function classifyCoverageIntent(candidate: string, owner: string): CoverageKind {
+  const candNorm = normalizePlannerTopic(candidate)
+  const ownNorm = normalizePlannerTopic(owner)
+  if (!candNorm || !ownNorm) return 'unrelated'
+  if (candNorm === ownNorm) return 'exact'
+
+  const cand = contentTokens(candidate)
+  const own = contentTokens(owner)
+  if (cand.length === 0 || own.length === 0) return 'unrelated'
+
+  // A one-token owner ("visa", "rates") is only an owner on exact match —
+  // otherwise every visa query would refresh a single page.
+  if (own.length < 2) return 'unrelated'
+
+  const candSet = new Set(cand)
+  const ownSet = new Set(own)
+  let shared = 0
+  for (const t of cand) if (ownSet.has(t)) shared += 1
+  const union = new Set([...cand, ...own]).size
+  const jaccard = shared / Math.max(1, union)
+
+  const candExtra = cand.filter((t) => !ownSet.has(t))
+  const ownExtra = own.filter((t) => !candSet.has(t))
+
+  const extrasAreFiller = candExtra.length === 0 && ownExtra.length === 0
+  if (extrasAreFiller) return 'paraphrase'
+
+  const candSpokes = candExtra.filter(isSpokeToken)
+  const ownSpokes = ownExtra.filter(isSpokeToken)
+  const candAudience = candExtra.filter(isAudienceToken)
+  const ownAudience = ownExtra.filter(isAudienceToken)
+  const candOther = candExtra.filter((t) => !isSpokeToken(t) && !isAudienceToken(t))
+  const ownOther = ownExtra.filter((t) => !isSpokeToken(t) && !isAudienceToken(t))
+
+  // Shared entity + a modifier only one side has → distinct SERP intent.
+  if (shared >= 2 && (candSpokes.length > 0 || ownSpokes.length > 0) && candSpokes.join() !== ownSpokes.join()) {
+    return 'spoke'
+  }
+
+  // Same entity, only audience/geo differs → expand the owner, don't doorway.
+  if (shared >= 2 && candOther.length === 0 && ownOther.length === 0 && candSpokes.length === 0 && ownSpokes.length === 0
+    && (candAudience.length > 0 || ownAudience.length > 0)) {
+    return 'section_expand'
+  }
+
+  // High overlap, leftover tokens are weak (prep/questions/help) → paraphrase.
+  if (jaccard >= 0.72 && candSpokes.length === 0 && ownSpokes.length === 0) return 'paraphrase'
+  if (shared >= Math.min(cand.length, own.length) && candSpokes.length === 0 && ownSpokes.length === 0 && jaccard >= 0.55) {
+    return 'paraphrase'
+  }
+
+  return 'unrelated'
+}
+
+export function isSameIntentOwner(kind: CoverageKind): boolean {
+  return kind === 'exact' || kind === 'paraphrase'
+}
+
+/** Best owner among shipped strings for this candidate, if any. */
+export function bestOwnerMatch(
+  candidate: string,
+  owners: Iterable<string>,
+): { owner: string; kind: CoverageKind } | null {
+  let best: { owner: string; kind: CoverageKind; rank: number } | null = null
+  const rankOf = (k: CoverageKind): number =>
+    k === 'exact' ? 0 : k === 'paraphrase' ? 1 : k === 'section_expand' ? 2 : k === 'spoke' ? 3 : 9
+  for (const owner of owners) {
+    const kind = classifyCoverageIntent(candidate, owner)
+    const rank = rankOf(kind)
+    if (rank >= 9) continue
+    if (!best || rank < best.rank) best = { owner, kind, rank }
+  }
+  return best ? { owner: best.owner, kind: best.kind } : null
+}

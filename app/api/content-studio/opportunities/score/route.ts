@@ -7,23 +7,26 @@ import {
 } from '@/lib/seoFactory/opportunityScore'
 import { scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
+import { loadPersistedGscWindow } from '@/lib/seoFactory/gscRows'
 
 /**
  * GET/POST /api/content-studio/opportunities/score
  * First-party scores from seo_gsc_rows. No invented volume/KD/CPC.
+ * Falls back to the latest stored window when the rolling UTC window is empty.
  */
 async function loadRows(db: { from: (t: string) => any }, siteUrl: string | null, range: { startDate: string; endDate: string }, limit: number) {
-  let q = db
-    .from('seo_gsc_rows')
-    .select('query, page, clicks, impressions, ctr, position')
-    .eq('start_date', range.startDate)
-    .eq('end_date', range.endDate)
-    .order('impressions', { ascending: false })
-    .limit(limit)
-  if (siteUrl) q = q.eq('site_url', siteUrl)
-  const { data, error } = await q
-  if (error) throw new Error(error.message)
-  return (data || []) as Array<{ query: string; page: string; clicks: number; impressions: number; ctr: number; position: number }>
+  const persisted = await loadPersistedGscWindow(db, {
+    siteUrl,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    limit,
+    select: 'query, page, clicks, impressions, ctr, position',
+  })
+  return {
+    rows: persisted.rows as Array<{ query: string; page: string; clicks: number; impressions: number; ctr: number; position: number }>,
+    range: persisted.range,
+    usedFallback: persisted.usedFallback,
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -37,8 +40,8 @@ export async function GET(request: NextRequest) {
     const range = resolveGscDayWindow(days)
     const siteUrl = sp.get('siteUrl') || process.env.GSC_SITE_URL || null
     const limit = Math.min(200, Math.max(10, Number(sp.get('limit') || '50')))
-    const raw = await loadRows(auth.db, siteUrl, range, limit)
-    const evidence: OpportunityEvidence[] = raw.map((r) => ({
+    const loaded = await loadRows(auth.db, siteUrl, range, limit)
+    const evidence: OpportunityEvidence[] = loaded.rows.map((r) => ({
       query: r.query,
       page: r.page,
       impressions: r.impressions,
@@ -50,7 +53,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       weights: DEFAULT_OPPORTUNITY_WEIGHTS,
-      range,
+      range: { ...range, ...loaded.range },
+      usedFallback: loaded.usedFallback,
       count: opportunities.length,
       opportunities,
     })

@@ -2,10 +2,15 @@
  * Map Ubersuggest last-good demand into Discover briefs.
  * These are market opportunities independent of the Master Engine planner —
  * they still hand off to Research → Plan → Draft like radar items.
+ *
+ * Coverage uses intent classification (lib/seoEngine/coverageIntent.ts):
+ * paraphrases of a live owner → refresh; distinct SERP intents → content_gap
+ * spokes. That is what builds topical authority instead of re-listing shipped work.
  */
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { normalizePlannerTopic } from './planner'
 import { discoverCardTitle, isFillerTitle } from './titleLab'
+import { bestOwnerMatch, isSameIntentOwner, type CoverageKind } from './coverageIntent'
 
 export interface UbersuggestSignalRow {
   term: string
@@ -34,6 +39,8 @@ export interface UbersuggestDiscoverBrief {
   reason: string
   signals: string[]
   source: 'ubersuggest'
+  coverageKind?: CoverageKind
+  ownerHint?: string
 }
 
 export function titleizeKeyword(term: string): string {
@@ -53,49 +60,16 @@ function stem(term: string): string {
   return normalizePlannerTopic(term).split(/\s+/).slice(0, 4).join(' ')
 }
 
-/** Tokenise a keyword into meaningful lowercase words (>= 3 chars, no junk). */
-function tokens(term: string): string[] {
-  return String(term || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .split(/[\s-]+/)
-    .filter((t) => t.length >= 3 && !STOP.has(t))
-}
-const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'that', 'this', 'how', 'what', 'are', 'can', 'not', 'has', 'was', 'but', 'its', 'you', 'all', 'any', 'our', 'who', 'why', 'when', 'where'])
-
-/** Check whether a Ubersuggest term is already covered by shipped content.
- * Uses three strategies in order:
- *   1. Exact stem match (f-1 visa interview == f-1 visa interview)
- *   2. Substring containment (f-1 visa interview tips contains f-1 visa interview)
- *   3. Token overlap — 70%+ of the signal's meaningful tokens appear in a shipped title/keyword
- *      (catches paraphrases like "F1 visa interview prep" vs "F-1 Visa Interview")
- */
-function isCovered(term: string, shippedStems: Set<string>, shippedTokens: string[][]): boolean {
-  const s = stem(term)
-  if (shippedStems.has(s)) return true
-  const key = normalizePlannerTopic(term)
-  for (const ss of shippedStems) {
-    if (key.includes(ss) || ss.includes(key)) return true
-  }
-  const termTokens = tokens(term)
-  if (termTokens.length < 2) return false
-  for (const st of shippedTokens) {
-    if (st.length === 0) continue
-    const overlap = termTokens.filter((t) => st.includes(t)).length
-    if (overlap / termTokens.length >= 0.7) return true
-  }
-  return false
-}
-
 export function ubersuggestSignalsToDiscover(
   signals: UbersuggestSignalRow[],
   opts: { shippedKeywords?: string[]; excludeTopics?: string[]; limit?: number } = {},
 ): UbersuggestDiscoverBrief[] {
-  const shippedStems = new Set((opts.shippedKeywords || []).map(stem).filter(Boolean))
-  const shippedTokensList = (opts.shippedKeywords || []).map(tokens).filter((t) => t.length > 0)
+  const shippedOwners = (opts.shippedKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
+  const shippedStems = new Set(shippedOwners.map(stem).filter(Boolean))
   const excluded = new Set((opts.excludeTopics || []).map((t) => normalizePlannerTopic(t)).filter(Boolean))
   const cap = Math.max(1, Math.min(40, opts.limit ?? 24))
   const seen = new Set<string>()
+  const seenOwnerRefresh = new Set<string>()
   const out: UbersuggestDiscoverBrief[] = []
 
   const ranked = [...signals]
@@ -108,10 +82,29 @@ export function ubersuggestSignalsToDiscover(
     const key = normalizePlannerTopic(row.term)
     if (!key || seen.has(key) || excluded.has(key)) continue
     seen.add(key)
-    const covered = isCovered(row.term, shippedStems, shippedTokensList)
+    const match = bestOwnerMatch(row.term, [...shippedOwners, ...shippedStems])
+    const kind = match?.kind
+    const sameOwner = kind ? isSameIntentOwner(kind) : false
+    const expandOwner = kind === 'section_expand'
+    const spoke = kind === 'spoke'
+    // Collapse paraphrase refreshes of the SAME owner into one card.
+    if (sameOwner && match) {
+      const ownerKey = normalizePlannerTopic(match.owner)
+      if (seenOwnerRefresh.has(ownerKey)) continue
+      seenOwnerRefresh.add(ownerKey)
+    }
+    const covered = sameOwner || expandOwner
+    const play: 'content_gap' | 'refresh' = spoke || !covered ? 'content_gap' : 'refresh'
     const score = ubersuggestOpportunityScore(row.impressions)
     const title = discoverCardTitle(row.term, { siblingTitles: out.map((o) => o.title) })
     if (isFillerTitle(title)) continue
+    const reason = spoke
+      ? `Distinct search intent vs “${match?.owner}” (${row.impressions} est. monthly) — ship a spoke, not a refresh.`
+      : expandOwner
+        ? `Same intent as “${match?.owner}” with an audience/geo extra (${row.impressions} est. monthly) — add a section, do not ship a sibling.`
+        : sameOwner
+          ? `Ubersuggest market demand on an existing estate topic (${row.impressions} est. monthly) — refresh the canonical, do not ship a sibling.`
+          : `Ubersuggest market opportunity (${row.impressions} est. monthly demand) — no shipped canonical on this intent.`
     out.push({
       topic: row.term,
       title,
@@ -121,25 +114,25 @@ export function ubersuggestSignalsToDiscover(
       impressions: row.impressions,
       clicks: 0,
       ctr: 0,
-      position: covered ? 28 : 55,
+      position: covered && !spoke ? 28 : 55,
       demandScore: score,
       opportunityScore: score,
-      difficultyScore: covered ? 42 : 58,
+      difficultyScore: play === 'refresh' ? 42 : 58,
       trend: 'flat',
-      play: covered ? 'refresh' : 'content_gap',
+      play,
       intent: 'informational',
       contentType: 'article',
       intentCategory: 'informational',
       profitability: score >= 70 ? 'high' : score >= 50 ? 'medium' : 'low',
-      reason: covered
-        ? `Ubersuggest market demand on an existing estate topic (${row.impressions} est. monthly) — refresh the canonical, do not ship a sibling.`
-        : `Ubersuggest market opportunity (${row.impressions} est. monthly demand) — independent of Master Engine cluster plans.`,
+      reason,
       signals: [
         'Ubersuggest',
         `${row.impressions} est. monthly demand`,
-        covered ? 'estate already covers this topic' : 'no shipped canonical on this stem',
+        spoke ? 'spoke — distinct SERP intent' : expandOwner ? 'expand owner section' : sameOwner ? 'estate already covers this intent' : 'no shipped canonical on this stem',
       ],
       source: 'ubersuggest',
+      coverageKind: kind,
+      ownerHint: match?.owner,
     })
   }
   return out
