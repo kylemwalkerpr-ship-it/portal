@@ -110,11 +110,10 @@ export function validateCaseworksRenderedStructure(content: string): ContentStru
   const errors: string[] = []
   const source = String(content || '')
 
-  // Caseworks now owns TOC generation in shared SectionTracker. A generated
-  ///manual TOC can diverge from repaired IDs and create duplicate navigation.
-  if (/<h2\b[^>]*>\s*(?:Table of contents|TOC)\s*<\/h2>/i.test(source)) {
-    errors.push('manual Table of contents must not ship to Caseworks; shared SectionTracker generates the canonical TOC')
-  }
+  // Older Studio drafts can still contain a manual "Table of contents" H2.
+  // Caseworks' shared SectionTracker now suppresses that legacy block and owns
+  // the canonical rendered TOC. Do not make those legacy drafts unshippable;
+  // validate the meaningful document headings/structure below instead.
 
   const headingIds = collectHeadingIds(source)
   const seen = new Set<string>()
