@@ -15,11 +15,12 @@ const MIN_HEIGHT = 320
  * layouts: the final flex child (Messenger's composer) can sit underneath
  * browser chrome even though the document itself is not scrollable.
  *
- * This coordinator publishes the live VisualViewport height as a CSS custom
- * property. The mobile viewport contract consumes it for every role dashboard
- * and full-screen Messenger surface, while retaining 100dvh as the no-JS
- * fallback. It is intentionally mounted once at the root instead of inside a
- * student-only component so clients, attorneys and consultants behave alike.
+ * This coordinator publishes the live VisualViewport geometry as CSS custom
+ * properties. The mobile viewport contract consumes them for every role
+ * dashboard and full-screen Messenger surface, while retaining 100dvh as the
+ * no-JS fallback. It is intentionally mounted once at the root instead of
+ * inside a student-only component so clients, attorneys and consultants behave
+ * alike.
  */
 export default function MobileVisualViewport() {
   React.useLayoutEffect(() => {
@@ -33,10 +34,14 @@ export default function MobileVisualViewport() {
       frame = 0
       const viewport = window.visualViewport
       const rawHeight = viewport?.height || window.innerHeight
-      const height = Math.max(MIN_HEIGHT, Math.round(rawHeight))
       const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0))
+      // visualViewport.height is the visible block size. During keyboard-driven
+      // viewport panning Safari may also move offsetTop; adding that offset keeps
+      // the shell's bottom edge aligned with the visible bottom edge instead of
+      // leaving a dead strip beneath the composer.
+      const visibleBottom = Math.max(MIN_HEIGHT, Math.round(rawHeight) + offsetTop)
 
-      root.style.setProperty(HEIGHT_VAR, `${height}px`)
+      root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)
       root.style.setProperty(OFFSET_VAR, `${offsetTop}px`)
     }
 
