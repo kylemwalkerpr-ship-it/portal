@@ -1,0 +1,45 @@
+name: Sync central assistant knowledge
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: central-assistant-kb-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Crawl public YouSafe network
+        run: node scripts/sync-central-assistant-kb.mjs
+
+      - name: Commit refreshed knowledge when changed
+        shell: bash
+        run: |
+          if git diff --quiet -- content/messenger-kb/network-pages.json; then
+            echo "Central assistant knowledge is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/messenger-kb/network-pages.json
+          git commit -m "chore: refresh central assistant network knowledge"
+          git push origin HEAD:main
