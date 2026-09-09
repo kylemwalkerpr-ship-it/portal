@@ -24,6 +24,18 @@ import { AeoRemediationQueue } from './studio-aeo-remediation'
 import { actionHeadings, countryFromUrl, type CitationRemediation } from '@/lib/seoEngine/citationRemediation'
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import {
+  blendDeskWithGsc,
+  formatGscEvidenceLine,
+  gscActionToPlay,
+  gscEvidenceFromRow,
+  gscRowToSuggestionSeed,
+  gscTopicKey,
+  mergeGscIntoTopics,
+  type GscScoredRow,
+  type GscSuggestionSeed,
+  type GscWorkPlanEvidence,
+} from '@/lib/seoFactory/workPlanGscMerge'
 import { verdictFor, coverageKindFromPlay, PLAYBOOK_MOVE_LABEL, type FunnelStage, type PlaybookMove } from '@/lib/seoEngine/authorityPlaybook'
 import { autoMapKeywordsToH2s } from '@/lib/seoFactory/keywordPlacement'
 import {
@@ -36,7 +48,7 @@ import { mergeInterlinkLists, preferRegionInterlinks, type StudioInterlink } fro
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
-import SeoIntelligenceDashboard from './seo-intelligence-dashboard'
+import SeoIntelligenceDashboard, { type OppRow, type SeoIntelCluster, type SeoIntelHandle, type SeoIntelStats } from './seo-intelligence-dashboard'
 import EditorSeoIntelPanel from './editor-seo-intel-panel'
 import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
 import { applyEvidenceRegionFloor, collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
@@ -228,6 +240,53 @@ interface AISuggestion {
   qualityLine?: string
   conversionLine?: string
   region?: string
+}
+
+function suggestionFromGscSeed(seed: GscSuggestionSeed): AISuggestion {
+  return {
+    topic: seed.topic,
+    title: seed.title,
+    primaryKeyword: seed.primaryKeyword,
+    keywords: seed.keywords,
+    audience: 'immigrants and their families',
+    impressions: seed.impressions,
+    clicks: seed.clicks,
+    ctr: seed.ctr,
+    position: seed.position,
+    demandScore: seed.opportunityScore,
+    opportunityScore: seed.opportunityScore,
+    trend: 'flat',
+    play: seed.play,
+    intent: 'informational',
+    intentCategory: 'informational',
+    profitability: seed.opportunityScore >= 70 ? 'high' : seed.opportunityScore >= 45 ? 'medium' : 'low',
+    reason: seed.reason,
+    signals: seed.signals,
+    sourcePage: seed.sourcePage,
+  }
+}
+
+function clusterToSuggestion(cluster: SeoIntelCluster): AISuggestion | null {
+  const topic = String(cluster.label || '').trim()
+  if (!topic || isJunkQuery(topic)) return null
+  const keywords = cluster.keywords.map((k) => k.keyword).filter((k) => k && !isJunkQuery(k)).slice(0, 8)
+  return {
+    topic,
+    title: `Cluster: ${topic}`,
+    primaryKeyword: topic,
+    keywords: keywords.length ? keywords : [topic],
+    audience: 'immigrants and their families',
+    impressions: 0,
+    demandScore: Math.min(70, 40 + cluster.size * 4),
+    opportunityScore: Math.min(70, 40 + cluster.size * 4),
+    trend: 'flat',
+    play: 'content_gap',
+    intent: 'informational',
+    intentCategory: 'informational',
+    profitability: cluster.size >= 6 ? 'high' : 'medium',
+    reason: `Keyword explorer cluster · ${cluster.size} related terms`,
+    signals: [`First-party keyword explorer · ${cluster.size} clustered terms`],
+  }
 }
 
 // ── Options ──
@@ -5047,6 +5106,8 @@ interface WorkPlanItem {
   playbookMove?: PlaybookMove
   qualityLine?: string
   conversionLine?: string
+  gscEvidence?: GscWorkPlanEvidence
+  sources?: string[]
 }
 
 const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: string; icon: string }> = {
@@ -5089,6 +5150,7 @@ function buildWorkPlan(
   merges: CannibalMergeRecord[],
   clearedTopics: Set<string> = new Set(),
   uberBriefs: AISuggestion[] = [],
+  gscOpps: GscScoredRow[] = [],
 ): WorkPlanItem[] {
   const items: WorkPlanItem[] = []
   const radarTopics = new Set(radar.map((s) => String(s.topic || '').toLowerCase()).filter(Boolean))
@@ -5123,7 +5185,8 @@ function buildWorkPlan(
       category: cat,
       title: s.title,
       topic: s.topic,
-      source: 'Radar',
+      source: 'Master Engine',
+      sources: ['Master Engine'],
       priority,
       priorityTier: priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low',
       clusterId,
@@ -5168,12 +5231,14 @@ function buildWorkPlan(
       : verdict.hideByDefault ? 'ubersuggest'
       : 'gap'
     const priority = verdict.deskScore
+    const sourceLabel = s.reason?.includes('Keyword explorer') ? 'Keyword explorer' : 'Ubersuggest'
     items.push({
       id: `uber-${s.topic}`,
       category: cat,
       title: s.title || s.topic,
       topic: s.topic,
-      source: 'Ubersuggest',
+      source: sourceLabel,
+      sources: [sourceLabel],
       priority,
       priorityTier: priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low',
       signals: [
@@ -5191,6 +5256,77 @@ function buildWorkPlan(
       playbookMove: verdict.move,
       qualityLine: verdict.qualityLine,
       conversionLine: verdict.conversionLine,
+    })
+  }
+  // Overlay first-party GSC scores onto matching topics, then promote unmatched
+  // CREATE/REFRESH/CONSOLIDATE rows that the engine should actually act on.
+  const { matched, unmatched } = mergeGscIntoTopics(items, gscOpps)
+  for (const item of items) {
+    const evidence = matched.get(gscTopicKey(item.topic))
+    if (!evidence) continue
+    item.gscEvidence = evidence
+    item.sources = Array.from(new Set([...(item.sources || [item.source]), 'GSC']))
+    item.source = item.sources.join(' · ')
+    item.priority = blendDeskWithGsc(item.priority, evidence.score)
+    item.priorityTier = item.priority >= 75 ? 'high' : item.priority >= 50 ? 'medium' : 'low'
+    const line = formatGscEvidenceLine(evidence)
+    if (!item.signals.includes(line)) item.signals = [item.signals[0], line, ...item.signals.slice(1)].filter(Boolean)
+    if (item.suggestion) {
+      item.suggestion = {
+        ...item.suggestion,
+        impressions: item.suggestion.impressions || evidence.impressions,
+        clicks: item.suggestion.clicks || evidence.clicks,
+        ctr: item.suggestion.ctr || evidence.ctr,
+        position: item.suggestion.position || evidence.position,
+        sourcePage: item.suggestion.sourcePage || evidence.page,
+      }
+    }
+  }
+  const existingKeys = new Set(items.map((item) => gscTopicKey(item.topic)))
+  for (const row of unmatched) {
+    const seed = gscRowToSuggestionSeed(row)
+    if (!seed) continue
+    const key = gscTopicKey(seed.topic)
+    if (!key || existingKeys.has(key)) continue
+    existingKeys.add(key)
+    const play = seed.play || gscActionToPlay(seed.action)
+    const coverageKind = play === 'content_gap' ? 'unrelated' : play === 'cannibalization' ? 'exact' : 'paraphrase'
+    const verdict = verdictFor({
+      topic: seed.topic,
+      play,
+      impressions: seed.impressions,
+      clicks: seed.clicks,
+      ctr: seed.ctr,
+      position: seed.position,
+      opportunityScore: seed.opportunityScore,
+      coverageKind,
+    })
+    const cat: WorkPlanCategory = play === 'cannibalization' || verdict.move === 'protect_cluster' ? 'cannibal'
+      : verdict.move === 'harvest_impressions' ? 'harvest'
+      : verdict.move === 'fill_spoke' || verdict.move === 'fill_pillar' ? 'gap'
+      : verdict.move === 'expand_section' ? 'expansion'
+      : play === 'refresh' || play === 'defend' ? 'refresh'
+      : 'gap'
+    const priority = blendDeskWithGsc(verdict.deskScore, seed.opportunityScore)
+    items.push({
+      id: `gsc-${seed.topic}`,
+      category: cat,
+      title: seed.title,
+      topic: seed.topic,
+      source: 'GSC',
+      sources: ['GSC'],
+      priority,
+      priorityTier: priority >= 75 ? 'high' : priority >= 50 ? 'medium' : 'low',
+      signals: [verdict.whyLine, formatGscEvidenceLine(row.evidence), verdict.qualityLine, ...seed.signals].filter(Boolean),
+      keywords: seed.keywords,
+      play,
+      suggestion: suggestionFromGscSeed(seed),
+      competingPages: row.page ? [String(row.page)] : undefined,
+      funnel: verdict.funnel,
+      playbookMove: verdict.move,
+      qualityLine: verdict.qualityLine,
+      conversionLine: verdict.conversionLine,
+      gscEvidence: row.evidence,
     })
   }
   // Cannibalization from radar meta — hide clusters that already have a
@@ -5216,6 +5352,7 @@ function buildWorkPlan(
       title: `Consolidate: ${c.term}`,
       topic: c.term,
       source: 'Cannibal Watch',
+      sources: ['Cannibal Watch'],
       priority: 70,
       priorityTier: 'medium',
       signals: [`${(c.pages || []).length} competing pages target this term`],
@@ -5231,6 +5368,7 @@ function buildWorkPlan(
       title: `Merged cluster: ${m.stem}`,
       topic: m.stem,
       source: 'Merge History',
+      sources: ['Merge History'],
       priority: m.status === 'merged' ? 40 : 25,
       priorityTier: 'low',
       shipped: true,
@@ -5241,8 +5379,43 @@ function buildWorkPlan(
   return items.sort((a, b) => b.priority - a.priority)
 }
 
+function DiscoverDrawer({
+  id, kicker, title, summary, defaultOpen = false, children,
+}: {
+  id: string
+  kicker: string
+  title: string
+  summary?: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = React.useState(Boolean(defaultOpen))
+  return (
+    <section style={{ background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((current) => !current)}
+        style={{
+          width: '100%', textAlign: 'left', padding: '14px 18px', border: 'none', background: 'transparent',
+          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ ...E.kicker, fontSize: 9 }}>{kicker}</div>
+          <div style={{ marginTop: 4, fontFamily: C.serif, fontSize: 18, color: E.ink, fontWeight: 700 }}>{title}</div>
+          {summary && <div style={{ marginTop: 4, fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>{summary}</div>}
+        </div>
+        <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkDim, paddingTop: 8 }}>{open ? '▲ Hide' : '▼ Open'}</span>
+      </button>
+      {open && <div id={id}>{children}</div>}
+    </section>
+  )
+}
+
 function WorkPlanTable({
-  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, onResolveAllCannibal, resolvingIds, resolvingAll, resolvedIds,
+  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, onResolveAllCannibal, resolvingIds, resolvingAll, resolvedIds, gscSummary,
 }: {
   items: WorkPlanItem[]
   selectedIds: Set<string>
@@ -5255,6 +5428,7 @@ function WorkPlanTable({
   resolvingIds?: Set<string>
   resolvingAll?: boolean
   resolvedIds?: Set<string>
+  gscSummary?: { clicks: number; impressions: number; high: number; refresh: number } | null
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
   const [priorityFilter, setPriorityFilter] = React.useState<'all' | 'high' | 'medium' | 'low'>('all')
@@ -5312,16 +5486,17 @@ function WorkPlanTable({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Executive readout: answer "what did the engine find?" before showing rows. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', border: `1px solid ${E.hairline}`, background: E.inkBlack }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', border: `1px solid ${E.hairline}`, background: E.inkBlack }}>
         {[
           { label: 'Open opportunities', value: actionableItems.length, detail: `${sourceCount} signal sources`, color: '#F8E7B0' },
           { label: 'High priority', value: highPriority, detail: `${mediumPriority} medium · ${lowPriority} low`, color: '#86EFAC' },
           { label: 'Cannibal risks', value: cannibalItems.length, detail: cannibalItems.length ? 'needs consolidation' : 'estate is clear', color: cannibalItems.length ? '#FCA5A5' : '#86EFAC' },
-          { label: 'Portfolio score', value: actionableItems.length ? `${averagePriority}/100` : '—', detail: 'mean value score (not a count)', color: '#93C5FD' },
-        ].map((metric, index) => (
-          <div key={metric.label} style={{ padding: '16px 18px', borderRight: index < 3 ? '1px solid rgba(255,255,255,0.12)' : 'none' }}>
+          { label: 'GSC demand', value: gscSummary ? `${gscSummary.clicks.toLocaleString()} / ${gscSummary.impressions.toLocaleString()}` : '—', detail: gscSummary ? `${gscSummary.high} high · ${gscSummary.refresh} refresh` : 'sync first-party GSC', color: '#93C5FD' },
+          { label: 'Portfolio score', value: actionableItems.length ? `${averagePriority}/100` : '—', detail: 'mean blended value', color: '#F8E7B0' },
+        ].map((metric, index, list) => (
+          <div key={metric.label} style={{ padding: '16px 18px', borderRight: index < list.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none' }}>
             <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.52)' }}>{metric.label}</div>
-            <div style={{ marginTop: 5, fontFamily: C.serif, fontSize: 28, lineHeight: 1, fontWeight: 700, color: metric.color }}>{metric.value}</div>
+            <div style={{ marginTop: 5, fontFamily: C.serif, fontSize: 24, lineHeight: 1, fontWeight: 700, color: metric.color }}>{metric.value}</div>
             <div style={{ marginTop: 5, fontFamily: C.mono, fontSize: 8.5, color: 'rgba(255,255,255,0.58)' }}>{metric.detail}</div>
           </div>
         ))}
@@ -5462,9 +5637,24 @@ function WorkPlanTable({
                     {item.title}
                   </div>
                   <div style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono, marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {item.funnel ? `${item.funnel} · ` : ''}{item.source} · {item.playbookMove ? PLAYBOOK_MOVE_LABEL[item.playbookMove] : (item.play || item.category)}{item.clusterSize ? ` · ${item.clusterSize} clustered queries` : ''}
+                    {item.funnel ? `${item.funnel} · ` : ''}{(item.sources || [item.source]).join(' · ')} · {item.playbookMove ? PLAYBOOK_MOVE_LABEL[item.playbookMove] : (item.play || item.category)}{item.clusterSize ? ` · ${item.clusterSize} clustered queries` : ''}
                   </div>
                   <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.45, color: E.inkSoft }}>{item.signals[0] || 'Engine-ranked opportunity.'}</div>
+                  {item.gscEvidence && (
+                    <div style={{ marginTop: 7, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[
+                        { label: 'Imp', value: item.gscEvidence.impressions.toLocaleString() },
+                        { label: 'Clicks', value: item.gscEvidence.clicks.toLocaleString() },
+                        { label: 'Pos', value: item.gscEvidence.position > 0 ? item.gscEvidence.position.toFixed(item.gscEvidence.position >= 10 ? 0 : 1) : '—' },
+                        { label: 'CTR', value: `${((item.gscEvidence.ctr > 1 ? item.gscEvidence.ctr : item.gscEvidence.ctr * 100)).toFixed(1)}%` },
+                        { label: 'GSC', value: item.gscEvidence.action },
+                      ].map((chip) => (
+                        <span key={chip.label} style={{ padding: '2px 6px', background: E.surface2, border: `1px solid ${E.hairlineSoft}`, fontFamily: C.mono, fontSize: 8, color: E.inkMuted, letterSpacing: '0.04em' }}>
+                          {chip.label} {chip.value}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {item.conversionLine && (
                     <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.4, color: E.inkMuted }}>{item.conversionLine}</div>
                   )}
@@ -6075,11 +6265,23 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     lastError?: string | null
     lastIntel?: { keywordCount?: number; toolsUsed?: string[]; layers?: string[]; pulledAt?: string }
   }>({})
+  const intelRef = React.useRef<SeoIntelHandle>(null)
+  const [gscIntelOpps, setGscIntelOpps] = React.useState<GscScoredRow[]>([])
+  const [promotedIntel, setPromotedIntel] = React.useState<AISuggestion[]>([])
+  const [intelBusy, setIntelBusy] = React.useState(false)
+  const [intelStats, setIntelStats] = React.useState<SeoIntelStats | null>(null)
 
   const workPlanItems = React.useMemo(
-    () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics, uberOpps),
-    [radar, radarMeta, merges, clearedCannibalTopics, uberOpps],
+    () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics, [...uberOpps, ...promotedIntel], gscIntelOpps),
+    [radar, radarMeta, merges, clearedCannibalTopics, uberOpps, promotedIntel, gscIntelOpps],
   )
+
+  const handleIntelOpps = React.useCallback((rows: OppRow[]) => {
+    setGscIntelOpps(rows)
+  }, [])
+  const handleIntelStats = React.useCallback((stats: SeoIntelStats) => {
+    setIntelStats(stats)
+  }, [])
 
   const handleSendToResearch = React.useCallback((selected: WorkPlanItem[]) => {
     if (selected.length === 0) return
@@ -6143,6 +6345,45 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setSelectedWorkPlanIds(new Set())
     selectTab('research')
   }, [selectTab, setActionNotice, radarMeta, contentTypeTouched])
+
+  const handlePromoteIntelRow = React.useCallback((row: OppRow) => {
+    const seed = gscRowToSuggestionSeed(row)
+    if (!seed) {
+      setActionNotice('That query is noise or below the act-on threshold — it stays out of Research.')
+      return
+    }
+    const evidence = gscEvidenceFromRow(row)
+    const play = seed.play
+    handleSendToResearch([{
+      id: `gsc-${seed.topic}`,
+      category: play === 'cannibalization' ? 'cannibal' : play === 'refresh' || play === 'defend' ? 'refresh' : 'gap',
+      title: seed.title,
+      topic: seed.topic,
+      source: 'GSC',
+      sources: ['GSC'],
+      priority: seed.opportunityScore,
+      priorityTier: seed.opportunityScore >= 75 ? 'high' : seed.opportunityScore >= 50 ? 'medium' : 'low',
+      signals: seed.signals,
+      keywords: seed.keywords,
+      play,
+      suggestion: suggestionFromGscSeed(seed),
+      competingPages: row.page ? [String(row.page)] : undefined,
+      gscEvidence: evidence || undefined,
+    }])
+  }, [handleSendToResearch, setActionNotice])
+
+  const handlePromoteCluster = React.useCallback((cluster: SeoIntelCluster) => {
+    const suggestion = clusterToSuggestion(cluster)
+    if (!suggestion) {
+      setActionNotice('That cluster is noise — not queued.')
+      return
+    }
+    setPromotedIntel((prev) => {
+      if (prev.some((item) => item.topic.toLowerCase() === suggestion.topic.toLowerCase())) return prev
+      return [suggestion, ...prev]
+    })
+    setActionNotice(`Queued cluster “${suggestion.topic}” on the work plan`)
+  }, [setActionNotice])
 
   React.useEffect(() => {
     const requested = resolveStudioStage(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('tab'))
@@ -6668,7 +6909,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     return () => { cancelled = true }
   }, [openAeoRemediation])
 
-  React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
+  React.useEffect(() => {
+    if (tab !== 'discover') return
+    fetchSuggestions(region)
+  }, [fetchSuggestions, region, tab])
   React.useEffect(() => { void fetchUberOpps(false) }, [fetchUberOpps])
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
 
@@ -7984,56 +8228,92 @@ const controller = new AbortController()
 
 
       {/* ══════════ I · DISCOVER ══════════ */}
-      {/* Stage I — scan all signals. GSC, radar, insights, LLM/AEO visibility,
-          engine knowledge, systems health, and ownership constraints all enter
-          before any research question is formed. */}
+      {/* Stage I — one ranked queue. First-party GSC evidence overlays Master
+          Engine plays; unmatched CREATE/REFRESH rows can still become a brief. */}
       {tab === 'discover' && (
         <>
           <ChapterIntro
             numeral="I"
             title="Discover"
-            subtitle="No research starts until the signals are assembled. Read the live search landscape, engine knowledge, topical gaps, ownership constraints, and visibility signals before committing to a direction."
+            subtitle="One ranked queue. First-party Search Console evidence is merged onto Master Engine plays before any research brief is opened."
             chapterKey="discover"
             scope={[
-              { chip: 'Signals', text: 'Live GSC, committed snapshots, engine knowledge, LLM/AEO visibility, and site-health signals.' },
-              { chip: 'Opportunity', text: 'Radar, Ubersuggest market demand (no planner required), reward forecasts, weak families, and cannibalization risk.' },
-              { chip: 'Constraints', text: 'Ownership registry, destination repo, format rules, and canonical supply are known before research begins.' },
+              { chip: 'First-party', text: 'GSC scores (CREATE / REFRESH / DEFEND / CONSOLIDATE) overlay matching topics and promote unmatched demand.' },
+              { chip: 'Decision', text: 'The playbook deskScore stays the scorer — harvest CTR, fill spokes, protect clusters, then refresh.' },
+              { chip: 'Brief', text: 'Select only the opportunities worth turning into a research brief. Junk queries never enter the queue.' },
             ]}
             next="II · Research"
             onJump={selectTab}
           />
-          <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <SeoIntelligenceDashboard />
-            {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
-            <div style={{ position: 'relative', background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.panelShadow, overflow: 'hidden' }}>
+          <div id="studio-panel-discover" data-testid="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div data-testid="studio-discover-board" style={{ position: 'relative', background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.panelShadow, overflow: 'hidden' }}>
               <GoldRule offset={18} />
               <div style={{ padding: '22px 22px 18px', background: `linear-gradient(120deg, ${E.inkBlack} 0%, #202A3A 72%, #473B25 100%)`, color: E.ivory, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
                 <div style={{ maxWidth: 780 }}>
-                  <div style={{ ...kickerStyleSm, color: '#E8C979', fontSize: 9, letterSpacing: '0.18em' }}>SEO Master Engine · decision output</div>
+                  <div style={{ ...kickerStyleSm, color: '#E8C979', fontSize: 9, letterSpacing: '0.18em' }}>Discover · first-party GSC × Master Engine</div>
                   <h3 style={{ margin: '7px 0 0', fontFamily: C.serif, fontSize: 26, lineHeight: 1.08, color: '#FFFFFF' }}>What the search landscape says to do next</h3>
                   <p style={{ margin: '8px 0 0', maxWidth: 690, color: 'rgba(255,255,255,0.68)', fontFamily: C.serif, fontSize: 13.5, lineHeight: 1.5 }}>
-                    One ranked view of demand, topical gaps, estate conflicts and answer-engine visibility. Select only the opportunities worth turning into a research brief.
+                    Sync Search Console, read the playbook queue, and send only the rows worth a brief. First-party impressions, position and CTR sit on every matching card.
                   </p>
                   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 13 }}>
-                    {['GSC demand', 'Master Engine', 'Ubersuggest', 'Estate graph', 'AEO visibility'].map((source) => (
+                    {[
+                      gscIntelOpps.length || intelStats?.impressions ? 'GSC demand' : null,
+                      radar.length ? 'Master Engine' : null,
+                      uberOpps.length ? 'Ubersuggest' : null,
+                      promotedIntel.length ? 'Keyword explorer' : null,
+                      ga4Status?.connected ? 'GA4 landings' : null,
+                    ].filter((source): source is string => Boolean(source)).map((source) => (
                       <span key={source} style={{ padding: '4px 7px', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.72)', fontFamily: C.mono, fontSize: 8, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{source}</span>
                     ))}
+                    {!(gscIntelOpps.length || radar.length || uberOpps.length) && (
+                      <span style={{ padding: '4px 7px', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.55)', fontFamily: C.mono, fontSize: 8, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Waiting for signals</span>
+                    )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void fetchUberOpps(true)}
-                  disabled={uberOppsLoading}
-                  title={uberOppsMeta.connected === false ? 'Connect Ubersuggest in Configure first' : 'Pull fresh Ubersuggest market opportunities (uses MCP credits)'}
-                  style={{
-                    padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
-                    fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                    borderRadius: E.radiusXs,
-                    cursor: uberOppsLoading ? 'wait' : 'pointer',
-                  }}
-                >
-                  {uberOppsLoading ? '◇ Loading Ubersuggest…' : `◇ Refresh Ubersuggest (${uberOpps.length})`}
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => void intelRef.current?.syncGsc()}
+                    disabled={intelBusy}
+                    title="Pull 90 days of Search Analytics into seo_gsc_rows, then rescore"
+                    style={{
+                      padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
+                      fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      borderRadius: E.radiusXs, cursor: intelBusy ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {intelBusy ? 'Syncing GSC…' : 'Sync GSC (90d)'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void intelRef.current?.load()
+                      fetchSuggestions(region)
+                    }}
+                    disabled={intelBusy || suggestionsLoading}
+                    title="Reload first-party scores and rescan Master Engine suggestions for this region"
+                    style={{
+                      padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
+                      fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      borderRadius: E.radiusXs, cursor: intelBusy || suggestionsLoading ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {intelBusy || suggestionsLoading ? 'Refreshing…' : `Refresh intel · ${region}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void fetchUberOpps(true)}
+                    disabled={uberOppsLoading}
+                    title={uberOppsMeta.connected === false ? 'Connect Ubersuggest in Configure first' : 'Pull fresh Ubersuggest market opportunities (uses MCP credits)'}
+                    style={{
+                      padding: '8px 12px', border: '1px solid rgba(255,255,255,0.38)', background: 'rgba(255,255,255,0.08)', color: '#FFFFFF',
+                      fontFamily: C.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      borderRadius: E.radiusXs, cursor: uberOppsLoading ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {uberOppsLoading ? '◇ Loading Ubersuggest…' : `◇ Refresh Ubersuggest (${uberOpps.length})`}
+                  </button>
+                </div>
               </div>
               <div style={{ padding: 18 }}>
               {uberOppsMeta.lastError && !uberOpps.length && (
@@ -8057,24 +8337,48 @@ const controller = new AbortController()
                 resolvingIds={resolvingCannibalIds}
                 resolvingAll={resolvingAllCannibal}
                 resolvedIds={resolvedCannibalIds}
+                gscSummary={intelStats ? { clicks: intelStats.clicks, impressions: intelStats.impressions, high: intelStats.high, refresh: intelStats.refresh } : null}
               />
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <GscMini />
-                <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
+            <DiscoverDrawer
+              id="studio-discover-evidence"
+              kicker="SEO intelligence · $0 first-party"
+              title="Evidence drawer"
+              summary={intelStats
+                ? `${intelStats.rowCount.toLocaleString()} GSC rows · ${intelStats.promoted} act-on · ${intelStats.clicks.toLocaleString()} clicks / ${intelStats.impressions.toLocaleString()} impressions`
+                : 'Opportunities table, topic map, keyword explorer, and raw GSC performance'}
+              defaultOpen
+            >
+              <SeoIntelligenceDashboard
+                ref={intelRef}
+                variant="evidence"
+                onOpps={handleIntelOpps}
+                onStats={handleIntelStats}
+                onBusy={setIntelBusy}
+                onPromote={handlePromoteIntelRow}
+                onPromoteCluster={handlePromoteCluster}
+              />
+            </DiscoverDrawer>
+            <DiscoverDrawer
+              id="studio-discover-estate"
+              kicker="Estate operations"
+              title="Radar snapshot, merges, orphans, interlinks"
+              summary="Raw 28-day GSC snapshot and Opportunity Radar live here so they no longer duplicate the ranked queue."
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start', padding: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <GscMini />
+                  <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <MergeHistory />
+                  <OrphanWatch setActionNotice={setActionNotice} />
+                  <InterlinksMini topic={topic} keywords={keywords} />
+                  <ResearchLiveOperations />
+                </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <MergeHistory />
-                <OrphanWatch setActionNotice={setActionNotice} />
-                <InterlinksMini topic={topic} keywords={keywords} />
-                <ResearchLiveOperations />
-              </div>
-            </div>
-            <div style={{ padding: '12px 14px', background: E.cream, border: `1px dashed ${E.hairline}`, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
-              The evidence room is complete here: engine status and ingestion controls are in the masthead; GSC, radar, ownership, interlinks, and site health remain attached to this dossier. No second command-center navigation is required.
-            </div>
+            </DiscoverDrawer>
           </div>
         </>
       )}

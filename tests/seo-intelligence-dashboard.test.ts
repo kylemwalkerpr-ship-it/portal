@@ -10,4 +10,9 @@ describe('Phase 10 SEO intelligence dashboard contract', () => {
       expect(OPPORTUNITY_TABLE_COLUMNS as readonly string[]).not.toContain(banned)
     }
   })
+
+  it('keeps the scored-opportunity table first-party (no paid metrics) when a Brief CTA is added beside it', () => {
+    expect(OPPORTUNITY_TABLE_COLUMNS).not.toContain('Brief')
+    expect(OPPORTUNITY_TABLE_COLUMNS).not.toContain('Volume')
+  })
 })

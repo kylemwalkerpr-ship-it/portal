@@ -2,10 +2,14 @@
 /**
  * $0 SEO Intelligence dashboard — lives inside Content Studio Discover.
  * No Volume / KD / CPC columns. No paid SEO APIs required.
+ *
+ * Standalone: original chrome (header + Sync/Refresh).
+ * Evidence: compact tab surface that feeds the Master Engine work plan.
  */
 
 import * as React from 'react'
 import { studioTokens as E } from './studio-tokens'
+import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
 
 export const SEO_INTEL_NAV = [
   'overview',
@@ -32,8 +36,6 @@ export const OPPORTUNITY_TABLE_COLUMNS = [
 
 export const FORBIDDEN_SEO_COLUMNS = ['Volume', 'KD', 'CPC', 'Keyword Difficulty'] as const
 
-// Single source of truth: the Content Studio design tokens (ivory/parchment/
-// ink/gold editorial palette). Local `C` is only an alias for read ergonomics.
 const C = {
   ink: E.inkBlack,
   muted: E.inkMuted,
@@ -46,16 +48,51 @@ const C = {
   serif: E.serif,
 }
 
-type OppRow = {
+export type OppRow = {
   query?: string
   page?: string
   action?: string
   score?: number
   confidence?: number
   impressions?: number
+  clicks?: number
   position?: number
   ctr?: number
+  actionReasons?: string[]
   signals?: { topicalGap?: number }
+}
+
+export type SeoIntelCluster = {
+  id: string
+  label: string
+  size: number
+  keywords: Array<{ keyword: string; source: string; sources: string[] }>
+}
+
+export type SeoIntelStats = {
+  high: number
+  refresh: number
+  cannibals: number
+  linkCandidates: number
+  thinClusters: number
+  clicks: number
+  impressions: number
+  rowCount: number
+  promoted: number
+}
+
+export type SeoIntelHandle = {
+  load: () => Promise<void>
+  syncGsc: () => Promise<void>
+}
+
+export type SeoIntelDashboardProps = {
+  variant?: 'standalone' | 'evidence'
+  onOpps?: (opps: OppRow[]) => void
+  onStats?: (stats: SeoIntelStats) => void
+  onBusy?: (busy: boolean) => void
+  onPromote?: (row: OppRow) => void
+  onPromoteCluster?: (cluster: SeoIntelCluster) => void
 }
 
 const firstError = (responses: unknown[]): string | null => {
@@ -65,8 +102,12 @@ const firstError = (responses: unknown[]): string | null => {
   return null
 }
 
-export default function SeoIntelligenceDashboard() {
-  const [nav, setNav] = React.useState<SeoIntelNav>('overview')
+const SeoIntelligenceDashboard = React.forwardRef<SeoIntelHandle, SeoIntelDashboardProps>(function SeoIntelligenceDashboard(
+  { variant = 'standalone', onOpps, onStats, onBusy, onPromote, onPromoteCluster },
+  ref,
+) {
+  const evidence = variant === 'evidence'
+  const [nav, setNav] = React.useState<SeoIntelNav>(evidence ? 'opportunities' : 'overview')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [syncResult, setSyncResult] = React.useState<{
@@ -81,10 +122,15 @@ export default function SeoIntelligenceDashboard() {
   const [topics, setTopics] = React.useState<{ query?: { strongTopics?: Array<{ label: string; pages: number }>; thinClusters?: Array<{ label: string; pages: number }>; linkCandidates?: Array<{ from: string; to: string; via: string }> }; pages?: number } | null>(null)
   const [seed, setSeed] = React.useState('canada study permit')
   const [keywords, setKeywords] = React.useState<Array<{ keyword: string; source: string; sources: string[] }>>([])
-  const [clusters, setClusters] = React.useState<Array<{ id: string; label: string; size: number; keywords: Array<{ keyword: string; source: string; sources: string[] }> }>>([])
+  const [clusters, setClusters] = React.useState<SeoIntelCluster[]>([])
+
+  const setBusyBoth = React.useCallback((next: boolean) => {
+    setBusy(next)
+    onBusy?.(next)
+  }, [onBusy])
 
   const load = React.useCallback(async () => {
-    setBusy(true)
+    setBusyBoth(true)
     setError(null)
     try {
       const [o, p, c, t] = await Promise.all([
@@ -95,19 +141,20 @@ export default function SeoIntelligenceDashboard() {
       ])
       const first = firstError([o, p, c, t])
       if (first) setError(first)
-      setOpps(Array.isArray(o?.opportunities) ? o.opportunities : [])
+      const nextOpps = (Array.isArray(o?.opportunities) ? o.opportunities : []).filter((row: OppRow) => !isJunkQuery(String(row.query || '')))
+      setOpps(nextOpps)
       setGsc(p?.ok ? p : null)
       setCannibals(Array.isArray(c?.candidates) ? c.candidates : [])
       setTopics(t?.ok ? t : null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'SEO intelligence failed to load')
     } finally {
-      setBusy(false)
+      setBusyBoth(false)
     }
-  }, [])
+  }, [setBusyBoth])
 
   const syncGsc = React.useCallback(async () => {
-    setBusy(true)
+    setBusyBoth(true)
     setError(null)
     setSyncResult(null)
     try {
@@ -128,14 +175,16 @@ export default function SeoIntelligenceDashboard() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'GSC sync failed')
     } finally {
-      setBusy(false)
+      setBusyBoth(false)
     }
-  }, [load])
+  }, [load, setBusyBoth])
+
+  React.useImperativeHandle(ref, () => ({ load, syncGsc }), [load, syncGsc])
 
   React.useEffect(() => { void load() }, [load])
 
   const explore = async () => {
-    setBusy(true)
+    setBusyBoth(true)
     setError(null)
     try {
       const res = await fetch('/api/content-studio/keywords/discover', {
@@ -151,7 +200,8 @@ export default function SeoIntelligenceDashboard() {
         setClusters([])
         return
       }
-      const candidates = Array.isArray(data.candidates) ? (data.candidates as Array<{ keyword: string; source: string; sources: string[] }>) : []
+      const candidates = (Array.isArray(data.candidates) ? (data.candidates as Array<{ keyword: string; source: string; sources: string[] }>) : [])
+        .filter((k) => !isJunkQuery(k.keyword))
       setKeywords(candidates)
       const clusterRes = await fetch('/api/content-studio/keywords/cluster', {
         method: 'POST',
@@ -163,11 +213,12 @@ export default function SeoIntelligenceDashboard() {
       if (!clusterRes.ok || (clusterData as { error?: unknown }).error) {
         setError(String((clusterData as { error?: unknown }).error || `Cluster failed (${clusterRes.status})`))
       }
-      setClusters(Array.isArray(clusterData.clusters) ? clusterData.clusters : [])
+      const nextClusters = (Array.isArray(clusterData.clusters) ? clusterData.clusters : []) as SeoIntelCluster[]
+      setClusters(nextClusters.filter((cl) => !isJunkQuery(cl.label)))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Keyword explorer failed')
     } finally {
-      setBusy(false)
+      setBusyBoth(false)
     }
   }
 
@@ -180,6 +231,22 @@ export default function SeoIntelligenceDashboard() {
     }),
     { clicks: 0, impressions: 0 },
   )
+  const promoted = opps.filter((o) => (o.score || 0) >= 22 && String(o.action || '').toUpperCase() !== 'WATCH').length
+
+  React.useEffect(() => { onOpps?.(opps) }, [opps, onOpps])
+  React.useEffect(() => {
+    onStats?.({
+      high: high.length,
+      refresh: refresh.length,
+      cannibals: cannibals.length,
+      linkCandidates: topics?.query?.linkCandidates?.length || 0,
+      thinClusters: topics?.query?.thinClusters?.length || 0,
+      clicks: gscTotals.clicks,
+      impressions: gscTotals.impressions,
+      rowCount: typeof gsc?.rowCount === 'number' ? gsc.rowCount : (gsc?.rows || []).length,
+      promoted,
+    })
+  }, [high.length, refresh.length, cannibals.length, topics, gscTotals.clicks, gscTotals.impressions, gsc, promoted, onStats])
 
   const card = (label: string, value: string, sub: string) => (
     <div style={{ padding: '12px 14px', background: C.tile, border: `1px solid ${E.hairlineSoft}`, boxShadow: '0 1px 0 rgba(17,21,28,0.04)' }}>
@@ -202,7 +269,18 @@ export default function SeoIntelligenceDashboard() {
         <tbody>
           {opps.slice(0, 40).map((o, i) => (
             <tr key={i}>
-              <td style={{ padding: '7px 8px', maxWidth: 240 }}>{o.query}</td>
+              <td style={{ padding: '7px 8px', maxWidth: 280 }}>
+                <div>{o.query}</div>
+                {onPromote && (
+                  <button
+                    type="button"
+                    onClick={() => onPromote(o)}
+                    style={{ marginTop: 4, padding: '2px 7px', border: `1px solid ${E.gold}`, background: 'transparent', color: E.goldDeep, cursor: 'pointer', fontFamily: C.mono, fontSize: 8.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+                  >
+                    Build brief →
+                  </button>
+                )}
+              </td>
               <td style={{ padding: '7px 8px', fontFamily: C.mono, fontSize: 10 }}>{o.action || '—'}</td>
               <td style={{ padding: '7px 8px' }}>{o.score ?? '—'}</td>
               <td style={{ padding: '7px 8px' }}>{o.confidence ?? '—'}</td>
@@ -214,35 +292,43 @@ export default function SeoIntelligenceDashboard() {
           ))}
         </tbody>
       </table>
-      {!opps.length && <div style={{ padding: 12, color: C.muted, fontSize: 12 }}>No scored opportunities yet — click Sync GSC (90d) in the header first.</div>}
+      {!opps.length && <div style={{ padding: 12, color: C.muted, fontSize: 12 }}>No scored opportunities yet — click Sync GSC (90d) first.</div>}
     </div>
   )
 
   return (
-    <div style={{ background: C.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow, marginBottom: 14, position: 'relative' }}>
-      <div
-        aria-hidden="true"
-        style={{ position: 'absolute', top: 0, left: 18, right: 18, height: 2, borderRadius: 999, background: E.goldRule, opacity: 0.85 }}
-      />
-      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ ...E.kicker, fontSize: 9 }}>SEO INTELLIGENCE · $0 FIRST-PARTY</div>
-          <div style={{ fontFamily: C.serif, fontSize: 20, color: C.ink, marginTop: 4 }}>Opportunities, topics, links, GSC</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => void syncGsc()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.paper, color: C.ink, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, borderRadius: E.radiusXs }}>
-            {busy ? 'Syncing…' : 'Sync GSC (90d)'}
-          </button>
-          <button type="button" onClick={() => void load()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${E.inkBlack}`, background: E.inkBlack, color: E.ivory, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, borderRadius: E.radiusXs }}>
-            {busy ? 'Loading…' : 'Refresh intel'}
-          </button>
-        </div>
-      </div>
+    <div
+      data-testid={evidence ? 'studio-discover-evidence' : 'seo-intelligence-dashboard'}
+      style={{ background: C.paper, border: evidence ? 'none' : `1px solid ${E.hairline}`, boxShadow: evidence ? 'none' : E.paperShadow, marginBottom: evidence ? 0 : 14, position: 'relative' }}
+    >
+      {!evidence && (
+        <>
+          <div
+            aria-hidden="true"
+            style={{ position: 'absolute', top: 0, left: 18, right: 18, height: 2, borderRadius: 999, background: E.goldRule, opacity: 0.85 }}
+          />
+          <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ ...E.kicker, fontSize: 9 }}>SEO INTELLIGENCE · $0 FIRST-PARTY</div>
+              <div style={{ fontFamily: C.serif, fontSize: 20, color: C.ink, marginTop: 4 }}>Opportunities, topics, links, GSC</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => void syncGsc()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${C.line}`, background: C.paper, color: C.ink, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, borderRadius: E.radiusXs }}>
+                {busy ? 'Syncing…' : 'Sync GSC (90d)'}
+              </button>
+              <button type="button" onClick={() => void load()} disabled={busy} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, border: `1px solid ${E.inkBlack}`, background: E.inkBlack, color: E.ivory, cursor: busy ? 'wait' : 'pointer', fontFamily: C.mono, borderRadius: E.radiusXs }}>
+                {busy ? 'Loading…' : 'Refresh intel'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       <div style={{ padding: '6px 16px', borderBottom: `1px solid ${C.line}`, fontSize: 11, color: C.ink, fontFamily: C.mono, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <span>
           seo_gsc_rows: {typeof gsc?.rowCount === 'number' ? gsc.rowCount.toLocaleString() : '—'} persisted
           {gsc?.range ? ` · window ${gsc.range.startDate} → ${gsc.range.endDate}` : ''}
           {(gsc?.rows || []).length ? ` · showing top ${(gsc?.rows || []).length}` : ''}
+          {evidence ? ` · ${promoted} act-on rows merged into the work plan` : ''}
         </span>
         {typeof gsc?.rowCount === 'number' && gsc.rowCount === 0 && (
           <span style={{ color: C.muted }}>· empty — click Sync GSC (90d) to pull Search Analytics into from-intel / score</span>
@@ -317,9 +403,20 @@ export default function SeoIntelligenceDashboard() {
               <div style={{ marginTop: 16 }}>
                 <div style={{ fontSize: 9, fontFamily: C.mono, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted, marginBottom: 8 }}>Jaccard clusters ({clusters.length})</div>
                 {clusters.map((cl) => (
-                  <div key={cl.id} style={{ border: `1px solid ${C.line}`, padding: '8px 10px', marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{cl.label} <span style={{ color: C.muted, fontWeight: 400 }}>· {cl.size}</span></div>
-                    <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{cl.keywords.map((k) => k.keyword).join(' · ')}</div>
+                  <div key={cl.id} style={{ border: `1px solid ${C.line}`, padding: '8px 10px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{cl.label} <span style={{ color: C.muted, fontWeight: 400 }}>· {cl.size}</span></div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{cl.keywords.map((k) => k.keyword).join(' · ')}</div>
+                    </div>
+                    {onPromoteCluster && (
+                      <button
+                        type="button"
+                        onClick={() => onPromoteCluster(cl)}
+                        style={{ padding: '4px 8px', border: `1px solid ${E.inkBlack}`, background: E.inkBlack, color: E.ivory, cursor: 'pointer', fontFamily: C.mono, fontSize: 8.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+                      >
+                        Queue cluster
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -337,7 +434,7 @@ export default function SeoIntelligenceDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(gsc?.rows || []).map((r, i) => (
+                {(gsc?.rows || []).filter((r) => !isJunkQuery(String(r.query || ''))).map((r, i) => (
                   <tr key={i}>
                     <td style={{ padding: '6px 8px' }}>{String(r.query || '')}</td>
                     <td style={{ padding: '6px 8px', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(r.page || '')}</td>
@@ -363,4 +460,6 @@ export default function SeoIntelligenceDashboard() {
       </div>
     </div>
   )
-}
+})
+
+export default SeoIntelligenceDashboard
