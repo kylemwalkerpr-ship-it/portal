@@ -97,7 +97,7 @@ Yes. Check the official source before relying on a date or fee.`
     const snapshot = {
       ...base,
       voice: 88,
-      findings: [{ code: 'robotic_voice', severity: 'warning' as const, message: 'Repeated generic openings.', fix: 'Vary sentence openings.' }],
+      findings: [{ code: 'ai_slop', severity: 'warning' as const, message: 'Repeated generic openings.', fix: 'Vary sentence openings.' }],
       metrics: {
         ...base.metrics,
         seo: { ...base.metrics.seo, score: 90, fail: ['Use the primary phrase naturally in reader-facing prose.'] },
@@ -111,6 +111,8 @@ Yes. Check the official source before relying on a date or fee.`
     expect(packet.pending.map((d) => d.id)).toEqual(packet.directives.map((d) => d.id))
     expect(again.directives.map((d) => d.id)).toEqual(packet.directives.map((d) => d.id))
     expect(packet.nonNegotiables.some((rule) => /DEMAND keywords/i.test(rule))).toBe(true)
+    expect(packet.nonNegotiables.some((rule) => /owner\/canonical URL are frozen/i.test(rule))).toBe(true)
+    expect(Array.isArray(packet.deferred)).toBe(true)
     const lanes = new Set(packet.directives.map((d) => d.lane))
     for (const need of ['grammar', 'seo', 'ai_write', 'flesch'] as const) {
       expect(lanes.has(need)).toBe(true)
@@ -209,6 +211,7 @@ describe('editorialGate', () => {
     expect(report.fingerprint).toBe(contentFingerprint(body))
     expect(report.supervisor).toBe('harper-editorial-v1')
     expect(report.grammarErrors).toBe(0)
+    expect(typeof report.harperSeo).toBe('number')
     expect(editorialReportReady(report, body)).toBe(true)
     expect(editorialReportReady(report, `${body} changed`)).toBe(false)
     expect(editorialReportReady({ ...report, grammarSuggestions: 1, voice: 80 }, body)).toBe(true)
@@ -318,6 +321,8 @@ describe('reviewer stays on the selected model', () => {
     expect(source).toContain('exclusive: true')
     expect(source).toContain('cascadeOnCapacity: false')
     expect(source).toContain('DEFAULT_REVIEW_PIN')
+    expect(source).toContain('primaryKeyword, and owner/canonical URL are FROZEN')
+    expect(source).toContain('deferred: supervision.deferred')
   })
 
   it('Audit & Fix (reaudit) stays exclusive on the selected reviewer — no Entrim cascade', () => {
