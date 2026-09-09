@@ -1,4 +1,5 @@
 import type { BudgetEvidence, PricingAuthority } from '@/lib/messengerPricingAuthority'
+import { evaluateProviderAttention } from '@/lib/messengerEscalationPolicy'
 
 export type YqaaConversationMemory = {
   version: 1
@@ -15,6 +16,11 @@ export type YqaaConversationMemory = {
   deadline_highlights: string[]
   document_highlights: string[]
   latest_goal: string | null
+  provider_attention: {
+    requested_at: string | null
+    pending: boolean
+    human_reply_after_request: boolean
+  }
   last_offer: {
     offer_id: string
     title: string
@@ -31,7 +37,7 @@ const MARKET_PATTERNS: Array<[string, RegExp]> = [
   ['Australia', /\b(australia|australian|subclass\s*500|subclass\s*485|temporary graduate|genuine student|coe|oshc)\b/i],
 ]
 
-const HIGH_VALUE = /\b(budget|price|quote|offer|order|need|want|looking for|help with|apply|application|visa|permit|immigration|admission|school|university|legal|lawyer|attorney|resume|cv|sop|essay|housing|settlement|family|sponsor|deadline|urgent|document|passport|transcript|refusal|appeal)\b/i
+const HIGH_VALUE = /\b(budget|price|quote|offer|order|need|want|looking for|help with|apply|application|visa|permit|immigration|admission|school|university|legal|lawyer|attorney|resume|cv|sop|essay|housing|settlement|family|sponsor|deadline|urgent|document|passport|transcript|refusal|appeal|feedback|update|follow up|follow-up)\b/i
 const DEADLINE = /\b(deadline|due|urgent|urgently|asap|appointment|interview|hearing|filing|by\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|next\s+week|next\s+month|\w+\s+\d{1,2}))\b/i
 const DOCUMENT = /\b(document|documents|passport|transcript|i-?20|cas|coe|oshc|letter|statement|sop|resume|cv|certificate|degree|bank statement|evidence|form|application)\b/i
 
@@ -92,6 +98,21 @@ export function buildGroundedConversationMemory(args: {
   const newDeadlines = clientTexts.filter((text) => DEADLINE.test(text))
   const newDocs = clientTexts.filter((text) => DOCUMENT.test(text))
 
+  // In a provider↔client DM, AI messages use the provider's sender_id. That lets
+  // us identify the provider id without trusting model text, while the shared
+  // authority still excludes AI/system messages when deciding whether a human
+  // provider has actually replied.
+  const providerId = String(
+    [...(args.messages || [])]
+      .reverse()
+      .find((m: any) => m?.sender_id && m.sender_id !== args.clientId)?.sender_id || '',
+  )
+  const attention = evaluateProviderAttention({
+    metadata: args.metadata,
+    messages: args.messages || [],
+    providerId,
+  })
+
   return {
     version: 1,
     updated_at: new Date().toISOString(),
@@ -107,6 +128,11 @@ export function buildGroundedConversationMemory(args: {
     deadline_highlights: uniqueLatest([...priorDeadlines, ...newDeadlines], 6),
     document_highlights: uniqueLatest([...priorDocs, ...newDocs], 8),
     latest_goal: clean(clientTexts[clientTexts.length - 1] || prior.latest_goal || '', 500) || null,
+    provider_attention: {
+      requested_at: attention.requestedAt,
+      pending: attention.pending,
+      human_reply_after_request: attention.humanRespondedAfterRequest,
+    },
     last_offer: prior.last_offer || null,
   }
 }
@@ -136,6 +162,11 @@ export function renderConversationMemory(memory: YqaaConversationMemory) {
     memory.marketplace_scope ? `Current Marketplace scope: ${memory.marketplace_scope.subcategory_name || memory.marketplace_scope.category_name}` : null,
     memory.budget ? `Known client budget: ${memory.budget.minCents ? `${memory.budget.minCents / 100}–` : ''}${memory.budget.maxCents / 100} ${memory.budget.currency.toUpperCase()}` : 'Known client budget: not yet supplied',
     memory.latest_goal ? `Latest client goal/message: ${memory.latest_goal}` : null,
+    memory.provider_attention.pending
+      ? `Provider attention status: REQUESTED and still pending. There is NO human-provider reply in the thread after the request${memory.provider_attention.requested_at ? ` at ${memory.provider_attention.requested_at}` : ''}.`
+      : memory.provider_attention.human_reply_after_request
+        ? 'Provider attention status: the human provider HAS replied in the thread after the request. Only use the actual provider-authored message as provider feedback.'
+        : 'Provider attention status: no pending provider-attention request is established.',
     memory.deadline_highlights.length ? `Deadline/urgency statements:\n${memory.deadline_highlights.map((x) => `- ${x}`).join('\n')}` : null,
     memory.document_highlights.length ? `Document statements:\n${memory.document_highlights.map((x) => `- ${x}`).join('\n')}` : null,
     memory.client_highlights.length ? `Important prior client statements:\n${memory.client_highlights.map((x) => `- ${x}`).join('\n')}` : null,
@@ -145,6 +176,8 @@ export function renderConversationMemory(memory: YqaaConversationMemory) {
     '- Do not ask again for a fact that is already clearly present above unless the client has contradicted or changed it.',
     '- Do not repeat obvious platform explanations or your AI disclosure once already established in the thread unless clarification genuinely requires it.',
     '- Refer back naturally (for example, “with the budget you mentioned…”), but do not mechanically recap the whole conversation.',
+    '- If provider attention is pending and the client asks for feedback, an update, or sends another hello, answer promptly. State that there is no new human-provider reply yet, do not invent one, and remain helpful while the provider is pending.',
+    '- A provider-attention request is not a reason for YQAA to disappear. Only an explicit provider/admin AI pause or off mode is a true takeover.',
   ].filter((x): x is string => typeof x === 'string')
   return lines.join('\n')
 }

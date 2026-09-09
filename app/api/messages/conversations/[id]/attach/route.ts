@@ -17,9 +17,9 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import {
   isClientRole,
-  scheduleAutoReply,
   setConversationAiMode,
 } from '@/lib/messengerAi'
+import { scheduleClientAutoReply } from '@/lib/messengerClientAutoReply'
 
 const BUCKET = 'message-attachments'
 const MAX_BYTES = 25 * 1024 * 1024 // 25 MB
@@ -157,7 +157,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
         ai_mode_set_by: profileId,
       })
     } else if (isClientRole(auth.role)) {
-      scheduleAutoReply(id, message?.id)
+      await scheduleClientAutoReply(db, id, message?.id)
     }
   } catch (e) {
     console.warn('[attach] ai hook failed', e instanceof Error ? e.message : e)
