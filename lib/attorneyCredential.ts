@@ -19,8 +19,8 @@ export type CredentialPair = {
   credential_type: string | null
   bar_number: string | null
   /** Public display preference; only meaningful on attorneys row. */
-  show_bar_number?: boolean | null
-  bar_state?: string | null
+  show_bar_number: boolean | null
+  bar_state: string | null
 }
 
 // Reads the editable columns off the attorneys row. Returns nulls (not an
@@ -65,6 +65,8 @@ export async function fetchApprovedApplicationCredential(
   return {
     credential_type: (data?.credential_type as string | null) ?? null,
     bar_number: (data?.bar_number as string | null) ?? null,
+    show_bar_number: null,
+    bar_state: null,
   }
 }
 
