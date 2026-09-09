@@ -112,3 +112,56 @@ export function buildAuthoritativeNetworkContext(query = ''): string {
 
   return parts.join('\n')
 }
+
+function replyDeniesNetworkCoverage(reply: string, market: YouSafeMarketAuthority): boolean {
+  const text = String(reply || '').replace(/[’]/g, "'")
+  const escapedName = market.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const name = market.code === 'AU'
+    ? '(?:Australia|Australian)'
+    : market.code === 'UK'
+      ? '(?:United Kingdom|UK|Britain)'
+      : market.code === 'CA'
+        ? '(?:Canada|Canadian)'
+        : '(?:United States|USA|US)'
+
+  const patterns = [
+    new RegExp(`${name}\\s+(?:isn't|is not|isn't an?|is not an?)\\s+(?:a\\s+)?(?:supported|covered|YouSafe)\\s*(?:destination|jurisdiction|market|country|service area)?`, 'i'),
+    new RegExp(`(?:we|YouSafe|YouSafe Consultancy)\\s+(?:don't|do not|doesn't|does not)\\s+(?:cover|support|serve|operate in)\\s+${name}`, 'i'),
+    new RegExp(`${name}\\s+(?:is|falls)\\s+outside\\s+(?:our|YouSafe(?:'s)?)\\s+(?:coverage|jurisdiction|service area|supported markets?)`, 'i'),
+    new RegExp(`${escapedName}\\s+isn't\\s+a\\s+YouSafe\\s+destination`, 'i'),
+  ]
+  return patterns.some((pattern) => pattern.test(text))
+}
+
+function marketCorrection(market: YouSafeMarketAuthority): string {
+  return [
+    `**${market.name} is a supported YouSafe market.**`,
+    '',
+    market.scope,
+    '',
+    `For verified ${market.name}-specific information, start with [YouSafe ${market.name}](${market.regionalHost}).`,
+    'If your question needs individualized legal or regulated immigration advice, YQAA should route you to an appropriately licensed professional rather than guess.',
+  ].join('\n')
+}
+
+/**
+ * Final safety net for canonical coverage facts. This runs after the model so a
+ * provider/model regression cannot send a known-false market exclusion to the
+ * visitor even if it ignored the prompt hierarchy.
+ */
+export function enforceCanonicalMarketCoverage(
+  query: string,
+  reply: string,
+): { text: string; corrected: boolean; correctedMarkets: string[] } {
+  const relevant = relevantMarketAuthority(query)
+  const contradicted = relevant.filter((market) => replyDeniesNetworkCoverage(reply, market))
+  if (!contradicted.length) {
+    return { text: reply, corrected: false, correctedMarkets: [] }
+  }
+
+  return {
+    text: contradicted.map(marketCorrection).join('\n\n'),
+    corrected: true,
+    correctedMarkets: contradicted.map((market) => market.code),
+  }
+}
