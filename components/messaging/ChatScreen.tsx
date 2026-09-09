@@ -171,7 +171,7 @@ export default function ChatScreen({
         className="cv-body-bg"
         data-chat-canvas
         style={{
-          flex: '1 1 auto',
+          flex: '1 1 0%',
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
@@ -215,7 +215,7 @@ export default function ChatScreen({
         </span>
       </div>
 
-      <div style={{ flexShrink: 0 }}>{composer}</div>
+      <div className="ys-chatscreen-composer" style={{ flexShrink: 0 }}>{composer}</div>
     </div>
   )
 
