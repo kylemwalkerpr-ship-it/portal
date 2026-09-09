@@ -2,44 +2,41 @@
  * Marketplace design tokens.
  *
  * Every value is a CSS custom-property reference with a fallback to the
- * default Mahogany + Epoxy palette.  This lets a palette picker swap the
- * whole colourway by setting a handful of CSS variables on `.cw-market`
- * — no React re-render needed, and none of the 35 marketplace components
- * need to change their import.
- *
- * The fallback ensures that the original look renders even if the CSS
- * vars aren't set (e.g. during SSR / initial paint).
+ * default Bright Emerald palette. This lets the Marketplace palette layer
+ * swap shell colours while keeping one professional emerald action colour.
+ * The fallbacks also make provider/seller surfaces that consume Marketplace
+ * components render correctly during SSR before any client palette code runs.
  */
 
 export const T = {
-  paper:       'var(--ys-paper, #4A2A1A)',
-  paper2:      'var(--ys-paper2, #553222)',
-  paper3:      'var(--ys-paper3, #603A28)',
-  vellum:      'var(--ys-vellum, #FFF9F2)',
-  cream:       'var(--ys-cream, #F7EDE0)',
-  ink:         'var(--ys-ink, #1C1410)',
-  inkMid:      'var(--ys-inkMid, #4A3C34)',
-  inkSoft:     'var(--ys-inkSoft, #766860)',
-  /** Light text for DARK surfaces (header, nav, footer, page background).
-   *  Every palette guarantees strong contrast of onPaper against paper*. */
-  onPaper:     'var(--ys-onPaper, #F7EDE0)',
+  paper:       'var(--ys-paper, #087A5B)',
+  paper2:      'var(--ys-paper2, #076E52)',
+  paper3:      'var(--ys-paper3, #065F46)',
+  vellum:      'var(--ys-vellum, #FFFFFF)',
+  cream:       'var(--ys-cream, #F7FAF9)',
+  ink:         'var(--ys-ink, #17201D)',
+  inkMid:      'var(--ys-inkMid, #43534D)',
+  inkSoft:     'var(--ys-inkSoft, #5E6F68)',
+  /** Light text for DARK surfaces (header, nav, footer, page background). */
+  onPaper:     'var(--ys-onPaper, #FFFFFF)',
   /** Secondary light text on dark surfaces (labels, meta). */
-  onPaperSoft: 'var(--ys-onPaperSoft, rgba(247,237,224,0.72))',
-  /** Bright cream-gold for the italic half of split headlines (h2 em) and
-   *  kickers on dark paper / accent fills. Always ≥ 4.5:1 vs paper*. */
-  onPaperEm:   'var(--ys-onPaperEm, #F9EED9)',
-  rule:        'var(--ys-rule, rgba(247,237,224,0.16))',
-  ruleSoft:    'var(--ys-ruleSoft, rgba(247,237,224,0.08))',
-  indigo:      'var(--ys-indigo, #0B786C)',
-  indigoDeep:  'var(--ys-indigoDeep, #086356)',
-  indigoSoft:  'var(--ys-indigoSoft, rgba(11,120,108,0.18))',
-  brick:       'var(--ys-brick, #BF3E1F)',
-  gold:        'var(--ys-gold, #DFAB40)',
-  moss:        'var(--ys-moss, #3F774A)',
-  star:        'var(--ys-star, #896417)',
-  teal:        'var(--ys-teal, #0B786C)',
-  tealDeep:    'var(--ys-tealDeep, #086356)',
-  footer:      'var(--ys-footer, #3A1E14)',
+  onPaperSoft: 'var(--ys-onPaperSoft, rgba(255,255,255,0.90))',
+  /** Warm light accent for split headings / kickers on dark surfaces. */
+  onPaperEm:   'var(--ys-onPaperEm, #FFF7E8)',
+  rule:        'var(--ys-rule, rgba(255,255,255,0.22))',
+  ruleSoft:    'var(--ys-ruleSoft, rgba(255,255,255,0.11))',
+  /** Legacy token name; semantic role is Marketplace brand/action emerald. */
+  indigo:      'var(--ys-indigo, #087A5B)',
+  indigoDeep:  'var(--ys-indigoDeep, #065F46)',
+  indigoSoft:  'var(--ys-indigoSoft, rgba(8,122,91,0.14))',
+  brick:       'var(--ys-brick, #B42318)',
+  gold:        'var(--ys-gold, #FFF4D6)',
+  moss:        'var(--ys-moss, #3F6212)',
+  star:        'var(--ys-star, #8A5A00)',
+  /** Legacy token name; kept as an alias to the same emerald brand colour. */
+  teal:        'var(--ys-teal, #087A5B)',
+  tealDeep:    'var(--ys-tealDeep, #065F46)',
+  footer:      'var(--ys-footer, #054C39)',
 } as const
 
 export const F = {
@@ -49,15 +46,12 @@ export const F = {
 } as const
 
 /**
- * Apply a palette's tokens as CSS custom properties on a DOM element.
- * Also sets them on `document.documentElement` so `body` and other
- * full-page elements outside `.cw-market` follow the same colourway.
- * Call this from a `useEffect` after the palette name changes.
+ * Convert a palette token object into inheritable --ys-* custom properties.
+ * This is intentionally DOM-free so provider/seller shells can reuse the same
+ * Marketplace contract without mounting the public palette picker.
  */
-export function applyPaletteCssVars(
-  el: HTMLElement,
-  tokens: Record<string, string>,
-) {  const map: Record<string, string> = {
+export function paletteCssVars(tokens: Record<string, string>): Record<string, string> {
+  return {
     '--ys-paper':       tokens.paper,
     '--ys-paper2':      tokens.paper2,
     '--ys-paper3':      tokens.paper3,
@@ -82,6 +76,18 @@ export function applyPaletteCssVars(
     '--ys-tealDeep':    tokens.tealDeep,
     '--ys-footer':      tokens.footer,
   }
+}
+
+/**
+ * Apply a palette's tokens as CSS custom properties on a DOM element.
+ * Also sets them on `document.documentElement` so `body` and other
+ * full-page elements outside `.cw-market` follow the same colourway.
+ */
+export function applyPaletteCssVars(
+  el: HTMLElement,
+  tokens: Record<string, string>,
+) {
+  const map = paletteCssVars(tokens)
   const root = document.documentElement
   for (const [prop, value] of Object.entries(map)) {
     el.style.setProperty(prop, value)
