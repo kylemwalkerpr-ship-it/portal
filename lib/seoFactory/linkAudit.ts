@@ -208,8 +208,10 @@ export type LinkSeverity = 'blocker' | 'warning'
 export interface LinkRef {
   /** Raw match (anchor text for markdown, href attr for HTML). */
   raw: string
-  /** The URL as written. */
+  /** The URL as written (sanitized when a glued host was recovered). */
   url: string
+  /** True when the URL came from a markdown `](…)` or HTML `href` — not bare text. */
+  fromHref?: boolean
 }
 
 export interface LinkAuditFinding {
@@ -318,12 +320,12 @@ export function extractLinks(content: string): LinkRef[] {
   // markdown/HTML href. That prefix used to create a second, false blocker
   // beside the full href that the repair had already fixed.
   const occupied: Array<{ start: number; end: number }> = []
-  const push = (raw: string, url: string) => {
+  const push = (raw: string, url: string, fromHref = false) => {
     const sanitized = sanitizeExtractedUrl(url)
     const clean = stripTrailingPunct((sanitized.url || url).trim())
     if (!clean || seen.has(clean) || isSkippableHref(clean)) return
     seen.add(clean)
-    out.push({ raw, url: clean })
+    out.push({ raw, url: clean, fromHref })
   }
   let m: RegExpExecArray | null
   const markdown = new RegExp(MARKDOWN_LINK_RE.source, 'g')
@@ -332,18 +334,18 @@ export function extractLinks(content: string): LinkRef[] {
     if (m.index > 0 && content[m.index - 1] === '!') continue
     const urlStart = m.index + m[0].indexOf(m[2] || '')
     occupied.push({ start: urlStart, end: urlStart + (m[2] || '').length })
-    push(m[1] || '', m[2] || '')
+    push(m[1] || '', m[2] || '', true)
   }
   const html = new RegExp(HTML_HREF_RE.source, 'gi')
   while ((m = html.exec(content)) !== null) {
     const urlStart = m.index + m[0].indexOf(m[1] || '')
     occupied.push({ start: urlStart, end: urlStart + (m[1] || '').length })
-    push('', m[1] || '')
+    push('', m[1] || '', true)
   }
   const bare = /https?:\/\/[^\s)<>\]"'`]+/gi
   while ((m = bare.exec(content)) !== null) {
     if (occupied.some((r) => m!.index >= r.start && m!.index < r.end)) continue
-    push('', m[0] || '')
+    push('', m[0] || '', false)
   }
   return out
 }
@@ -493,6 +495,11 @@ export function repairMalformedUrlSpan(url: string): string {
 function cleanTldSentenceWordsNonRecursive(url: string): string {
   const u = url.trim()
   if (!/^https?:\/\//i.test(u)) return url
+  // Glued adverbial inside the TLD (`yousafeconsultancy.Inthiscasecom`) is a
+  // recovered host, not a sentence word after `.com`. Prefer the citation
+  // sanitizer before the older `.TLD.Word` patterns.
+  const recovered = sanitizeExtractedUrl(u)
+  if (recovered.url && recovered.leftover) return recovered.url
   try {
     const parsed = new URL(u)
     // Extract hostname preserving case — URL.hostname lowercases, which

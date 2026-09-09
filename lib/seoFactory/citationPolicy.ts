@@ -150,6 +150,36 @@ export function extractHttpUrls(content: string): string[] {
   return out
 }
 
+/**
+ * Rewrite glued-host URLs in markdown hrefs and bare tokens back to a real
+ * hostname (`yousafeconsultancy.Inthiscasecom` → `yousafeconsultancy.com`).
+ * Must run AFTER sentence-rhythm repair, which is what glues the adverbial
+ * onto `.com` in the first place.
+ */
+export function unglueDocumentUrls(content: string): { content: string; changed: number } {
+  const src = String(content || '')
+  if (!src) return { content: src, changed: 0 }
+  let changed = 0
+  const rewrite = (raw: string): string => {
+    const recovered = sanitizeExtractedUrl(raw)
+    if (recovered.url && recovered.url !== raw) {
+      changed++
+      return recovered.url
+    }
+    return raw
+  }
+  let out = src.replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, (whole, text: string, url: string) => {
+    const next = rewrite(url)
+    return next === url ? whole : `[${text}](${next})`
+  })
+  out = out.replace(/https?:\/\/[^\s)<>\]"'`]+/g, (url: string, offset: number) => {
+    if (offset >= 2 && out.slice(offset - 2, offset) === '](') return url
+    return rewrite(url)
+  })
+  return { content: out, changed }
+}
+
+
 export function buildCitationContext(opts: {
   region?: string | null
   topic?: string | null

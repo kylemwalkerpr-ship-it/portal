@@ -7,7 +7,7 @@
  *   https://market.yousafeconsultancy.Onreviewcom/gigs/…
  * Ship then held on unreachable_external_link of a hostname the extractor invented.
  */
-import { extractHttpUrls, sanitizeExtractedUrl } from '@/lib/seoFactory/citationPolicy'
+import { extractHttpUrls, sanitizeExtractedUrl, unglueDocumentUrls } from '@/lib/seoFactory/citationPolicy'
 import { auditLinksSync, extractLinks, isProtectedMarketplaceUrl } from '@/lib/seoFactory/linkAudit'
 
 const GLUED = {
@@ -58,6 +58,18 @@ describe('extractHttpUrls glued hosts', () => {
       expect(new URL(u).hostname).toBe('market.yousafeconsultancy.com')
       expect(u).toMatch(/^https:\/\/market\.yousafeconsultancy\.com\/gigs\//)
     }
+  })
+})
+
+describe('unglueDocumentUrls', () => {
+  it('rewrites glued hosts inside markdown hrefs', () => {
+    const md = Object.values(GLUED)
+      .map((u, i) => `- [Gig ${i}](${u})`)
+      .join('\n')
+    const { content, changed } = unglueDocumentUrls(md)
+    expect(changed).toBe(3)
+    expect(content).not.toMatch(/Inthiscasecom|Asaresultcom|Onreviewcom/)
+    expect(content).toContain('https://market.yousafeconsultancy.com/gigs/')
   })
 })
 

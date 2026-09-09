@@ -12,7 +12,7 @@ import type { CompetingPage } from './contentQualityGate'
 import { countBodyWords, maxWordsForType, minWordsForType, enforceBodyWordBudget, unwrapWholeDocumentFence } from './contentDepth'
 import { countEstateLinks, ESTATE_ANCHOR_LINKS, cleanTldSentenceWords, cleanLinkTextSentenceWord, isMalformedUrl, needsUrlSpanRepair, repairMalformedUrlSpan } from './linkAudit'
 import { relinkPlainTextRelatedGuides, resolveVerifiedEstateAnchors, type VerifiedRelatedGuideAnchor } from './relatedGuideLinks'
-import { applyCitationPolicy, buildCitationContext } from './citationPolicy'
+import { applyCitationPolicy, buildCitationContext, unglueDocumentUrls } from './citationPolicy'
 import { sourcesForRegion } from './officialSources'
 import { applyAhrefsDraftRepairs, clampMetaToAhrefs, clampTitleToAhrefs, metaDescriptionLength } from './ahrefsIssues'
 import { normalizeEditorDocument, isKeywordOnlyTitle, titleCaseWords, collapseDuplicatedTitle, sanitizeFrontmatter } from './formatContract'
@@ -775,6 +775,37 @@ export function hyperlinkBareUrls(body: string): { content: string; changed: num
   return { content: out, changed }
 }
 
+const RHYTHM_GLUE_IN_JSON_RE =
+  /([.?])(?:In this case|As a result|On review|Typically|Meanwhile|In practice|For applicants|On the ground),\s*/g
+
+/**
+ * Rhythm repair used to treat JSON-LD as prose (it splits on `?` inside FAQ
+ * question names) and splice adverbials into the JSON strings. Those blocks
+ * still parse, so the schema injector never regenerated them. Strip the
+ * known glue tokens from ld+json string values when the result stays valid JSON.
+ */
+export function stripRhythmGlueFromJsonLd(content: string): { content: string; changed: number } {
+  let changed = 0
+  const next = String(content || '').replace(
+    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi,
+    (block) => {
+      const m = block.match(/>([\s\S]*?)<\/script>/i)
+      if (!m) return block
+      const raw = m[1]
+      const cleaned = raw.replace(RHYTHM_GLUE_IN_JSON_RE, '$1')
+      if (cleaned === raw) return block
+      try {
+        JSON.parse(cleaned)
+      } catch {
+        return block
+      }
+      changed++
+      return block.replace(raw, cleaned)
+    },
+  )
+  return { content: next, changed }
+}
+
 export function smoothSentenceRhythm(body: string): { content: string; replaced: number } {
   const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'our', 'your', 'their', 'its', 'my', 'his', 'her', 'no', 'any', 'some', 'each', 'every'])
   const SINGULAR_OPENERS = ['It', 'This', 'That']
@@ -863,6 +894,25 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
   // opener at 4 uses across the whole document.
   const openerUsage = new Map<string, number>()
 
+  // JSON-LD, hrefs, and raw URLs are not prose. Splitting them on `.` / `?`
+  // glued adverbials onto marketplace hosts (`…Inthiscasecom`) and into FAQ
+  // JSON strings. Mask those spans so they never enter the opener tally.
+  const maskRanges: Array<[number, number]> = []
+  const addMask = (re: RegExp) => {
+    const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)
+    let mm: RegExpExecArray | null
+    while ((mm = r.exec(body)) !== null) maskRanges.push([mm.index, mm.index + mm[0].length])
+  }
+  addMask(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/)
+  addMask(/```[\s\S]*?```/)
+  addMask(/`[^`\n]*`/)
+  addMask(/<script\b[^>]*>[\s\S]*?<\/script>/gi)
+  addMask(/\]\([^)]*\)/)
+  addMask(/https?:\/\/[^\s)<>\]"'`]+/gi)
+  addMask(/<[a-zA-Z][^>]*>/g)
+  const spanMasked = (start: number, end: number) =>
+    maskRanges.some(([a, z]) => start < z && end > a)
+
   // First pass: collect every prose sentence span across ALL paragraphs and
   // count repeated openings GLOBALLY — the gate counts across the whole body
   // (it splits the full text on `(?<=[.!?])\s+`, which crosses paragraph
@@ -870,8 +920,12 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
   // fires. Only rewrite when the whole-document count is ≥5.
   const allSpans: Array<{ partIdx: number; spanIdx: number; text: string; clean: string; key: string; keep: boolean }> = []
   const freq = new Map<string, number>()
+  let absOffset = 0
   parts.forEach((part, i) => {
-    if (i % 2 === 1) return // separator
+    if (i % 2 === 1) {
+      absOffset += part.length
+      return // separator
+    }
     // Note: `$` in JS only matches at the very end of a string — a paragraph
     // that ends with a newline (common for the last part of a split, or an
     // appended section) would yield ZERO spans from the fallback alternative
@@ -893,7 +947,9 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
         // span is often truncated mid-link ("- [Label](https://legal."). Match
         // on the link OPENING only — requiring a complete `](…)` never fired.
         const isLinkOnlyItem = /^\s*(?:[-*+]|\d+[.)])\s*(?:\*\*)?\s*(?:\[|<a\b)/i.test(text)
+        const inMask = spanMasked(absOffset + m.index, absOffset + m.index + text.length)
         const keep =
+          !inMask &&
           text.trim().length > 20 &&
           !isHeading(text) &&
           !isLinkOnlyItem &&
@@ -908,6 +964,7 @@ export function smoothSentenceRhythm(body: string): { content: string; replaced:
       }
       spanIdx++
     }
+    absOffset += part.length
   })
   const totalProse = allSpans.filter((s) => s.keep).length
   const repeated = new Set<string>()
@@ -2393,9 +2450,16 @@ export function applyDeterministicRepairs(opts: {
   // ── Missing concrete example injection ──────────────────────────────
   // If the body is ≥800 words and has no example marker, inject a short
   // worked example at the end before the disclaimer.
+  // MUST match the quality-gate detector (`worked example` / `scenario:` /
+  // `for example`). The previous injector only looked for `for example`, so a
+  // draft that already had `## Worked Example` still received a second Maria
+  // template — duplicate_h2 that Fix all could never clear (H2 dedupe ran
+  // before this injection).
+  const HAS_CONCRETE_EXAMPLE_RE =
+    /(?:\bfor example\b|\bfor instance\b|\be\.g\.|\bworked example\b|\bscenario:)/i
   if (
     countBodyWords(b) >= 800 &&
-    !/\b(?:for example|for instance|e\.g\.|example:)\b/i.test(b)
+    !HAS_CONCRETE_EXAMPLE_RE.test(b)
   ) {
     // The scenario references the topic generically — injecting the FULL
     // primary keyword here inflated the exact-match count and could push a
@@ -2992,6 +3056,24 @@ export function applyDeterministicRepairs(opts: {
   })
   const post = smoothSentenceRhythm(ahrefs.content)
   let preSanitize = post.replaced > 0 ? post.content : ahrefs.content
+
+  // Unglue hosts AFTER the last rhythm pass. Rhythm splits on `.` inside
+  // `.com` and splices "In this case" into the hostname; the earlier TLD
+  // cleaner never sees the damage.
+  {
+    const unglued = unglueDocumentUrls(preSanitize)
+    if (unglued.changed > 0) {
+      preSanitize = unglued.content
+      applied.push('glued_hosts_unglued')
+    }
+  }
+  {
+    const json = stripRhythmGlueFromJsonLd(preSanitize)
+    if (json.changed > 0) {
+      preSanitize = json.content
+      applied.push('jsonld_rhythm_glue_stripped')
+    }
+  }
 
   // Final href safety net. URL-specific cleanup above repairs known model
   // corruptions, but arbitrary prose placed in a Markdown destination must

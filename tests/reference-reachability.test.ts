@@ -105,6 +105,18 @@ describe('auditReferenceReachability — URLs must be hyperlinked', () => {
     ].join('\n')
     expect(codes(md)).not.toContain('bare_url_not_hyperlinked')
   })
+
+  it('does not treat a glued-host markdown href as a bare URL', () => {
+    const md = [
+      '# G',
+      '',
+      '## Sources',
+      '',
+      '- [Petition risk memo](https://market.yousafeconsultancy.Asaresultcom/gigs/review-us-immigration-petition-review-risk-memo)',
+      '',
+    ].join('\n')
+    expect(codes(md)).not.toContain('bare_url_not_hyperlinked')
+  })
 })
 
 describe('hyperlinkBareUrls — deterministic repair', () => {

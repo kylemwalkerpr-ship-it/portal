@@ -364,6 +364,11 @@ export function auditReferenceReachability(raw: string): QualityFinding[] {
   for (const link of extractLinks(scrubbed)) {
     if (!/^https?:\/\//i.test(link.url)) continue
     if (isSkippableHref(link.url)) continue
+    // A markdown/HTML href whose host was glued (`…Inthiscasecom`) sanitizes
+    // to the real URL. That recovered URL is NOT bare — the reader already
+    // has an anchor. Flagging it as bare_url_not_hyperlinked made Fix all
+    // loop forever (the href text never equals the sanitized URL).
+    if (link.fromHref) continue
     // extractLinks records markdown/HTML hrefs with their span occupied, so a
     // URL that still matches BARE_URL_IN_TEXT_RE outside any href is bare.
     const linkedMd = new RegExp(`\\]\\(\\s*${escapeRegExp(link.url)}`, 'i').test(scrubbed)
