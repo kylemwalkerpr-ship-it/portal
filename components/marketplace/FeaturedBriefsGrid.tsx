@@ -6,13 +6,11 @@
 //  - Upwork-style **Load more**: appends the next page of cards in place,
 //    no reload — cards accumulate.
 //  - Fiverr-style **pager** (← Prev · 1 2 3 … · Next →): jumps the viewport
-//    to the start of that page's window and grows/shrinks the grid to match,
-//    so "page 3" always looks like Fiverr's page 3.
+//    to the start of that page's window and grows/shrinks the grid to match.
 //
-// All data arrives via props (the server already fetched the full ranked
-// slice), so paging is pure client state — zero extra fetches. Pager chips
-// keep real `href`s (crawlable, middle-clickable) but intercept clicks to
-// avoid a full reload, then smooth-scroll to the grid.
+// The visual treatment deliberately follows a mature marketplace discovery
+// rhythm rather than an editorial card rail: image-first, low chrome, compact
+// metadata, generous gutters, and no empty flex space between title and price.
 
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
@@ -20,7 +18,6 @@ import {
   avatarBgFor,
   clampPage,
   COUNTRY_META,
-  deepLinkVisibleCount,
   deliveryLabel,
   FEATURED_PAGE_SIZE,
   formatPrice,
@@ -37,6 +34,8 @@ import {
 import { LEGACY_CATEGORY_MAP, normalizeCategory } from '@/lib/categories'
 import { T, F } from '@/components/marketplace/tokens'
 
+const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
+
 interface Props {
   gigs: LandingGig[]
   /** Cards visible on first paint — server clamps ?page=N so SSR matches the URL. */
@@ -49,19 +48,12 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
   const total = gigs.length
   const totalPages = totalPagesFor(total)
 
-  // visibleCount is always a multiple of PAGE_SIZE (clamped to total).
   const [visibleCount, setVisibleCount] = useState(() =>
     Math.min(Math.max(FEATURED_PAGE_SIZE, initialVisible), total || FEATURED_PAGE_SIZE),
   )
-  // First card index (0-based) to scroll to after the next render.
   const [scrollToIdx, setScrollToIdx] = useState<number | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
 
-  // Deep-linked ?page=N: the server SSRs pages 1..N cumulatively, so on
-  // first paint the client scrolls straight to the first card of page N
-  // (clearing the sticky shell header via scroll-margin-top). In-app page
-  // changes scroll via jumpToPage instead — this effect must not re-fire
-  // for those, hence the null-once reset in the effect below.
   const didMountRef = useRef(false)
   useEffect(() => {
     if (didMountRef.current) return
@@ -83,7 +75,6 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
     e.preventDefault()
     const target = clampPage(p, total)
     setVisibleCount(Math.min(target * FEATURED_PAGE_SIZE, total))
-    // Page 1 → top of the grid itself; deeper pages → first card of the page.
     setScrollToIdx(target === 1 ? 0 : pageStartIndex(target, total))
   }
 
@@ -96,6 +87,268 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
 
   return (
     <>
+      <style jsx global>{`
+        /* Landing discovery parity: keep YouSafe branding in the hero, but
+           make the service-browsing section use a calm commerce hierarchy. */
+        .cw-market .featured {
+          padding: 54px 0 64px;
+        }
+        .cw-market .featured .section-head {
+          align-items: flex-start;
+          margin-bottom: 24px;
+        }
+        .cw-market .featured .section-head h2 {
+          max-width: none;
+          font-family: ${DISCOVERY_FONT};
+          font-size: clamp(28px, 2.35vw, 36px);
+          line-height: 1.18;
+          letter-spacing: -0.025em;
+          font-weight: 720;
+        }
+        .cw-market .featured .section-head h2 em {
+          font-style: normal;
+          color: inherit;
+          font-weight: inherit;
+        }
+        .cw-market .featured .section-head .meta {
+          padding-top: 3px;
+          gap: 8px;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 12px;
+          line-height: 1.4;
+          letter-spacing: .07em;
+        }
+        .cw-market .featured .filters {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin: 0 0 28px;
+        }
+        .cw-market .featured .filters a {
+          min-height: 40px;
+          padding: 0 14px;
+          display: inline-flex;
+          align-items: center;
+          border: 1px solid ${T.rule};
+          background: ${T.vellum};
+          border-radius: 10px;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 14px;
+          font-weight: 600;
+          color: ${T.ink};
+          box-shadow: 0 1px 0 rgba(15,23,42,.02);
+        }
+        .cw-market .featured .filters a:hover {
+          border-color: ${T.inkMid};
+          box-shadow: 0 2px 8px rgba(15,23,42,.06);
+        }
+        .cw-market .featured .filters a.on {
+          background: ${T.ink};
+          border-color: ${T.ink};
+          color: #fff;
+        }
+        .cw-market .featured .filters a .ct {
+          font-family: ${DISCOVERY_FONT};
+          font-size: 12px;
+          margin-left: 6px;
+          opacity: .68;
+        }
+        .cw-market .featured .gig-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 34px 24px;
+          align-items: start;
+        }
+        .cw-market .featured .gig-link {
+          display: block !important;
+          min-width: 0;
+        }
+        .cw-market .featured .gig {
+          display: block;
+          min-width: 0;
+          color: ${T.ink};
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          overflow: visible;
+          box-shadow: none;
+          transition: transform .18s ease;
+        }
+        .cw-market .featured .gig:hover {
+          transform: translateY(-2px);
+          box-shadow: none;
+        }
+        .cw-market .featured .gig .plate {
+          position: relative;
+          overflow: hidden;
+          border: 0;
+          border-radius: 12px;
+          background: ${T.paper2};
+          box-shadow: inset 0 0 0 1px ${T.ruleSoft};
+        }
+        .cw-market .featured .gig .plate::after { display: none; }
+        .cw-market .featured .gig .plate-img {
+          width: 100%;
+          height: auto;
+          aspect-ratio: 16 / 10;
+          object-fit: cover;
+          object-position: center;
+          border-radius: 12px;
+          transition: transform .32s cubic-bezier(.2,.7,.2,1);
+        }
+        .cw-market .featured .gig:hover .plate-img { transform: scale(1.025); }
+        .cw-market .featured .gig .plate-tag {
+          left: 10px;
+          bottom: 10px;
+          padding: 5px 9px;
+          border-radius: 7px;
+          background: rgba(15,23,42,.82) !important;
+          color: #fff;
+          box-shadow: 0 2px 8px rgba(15,23,42,.16);
+          font-family: ${DISCOVERY_FONT};
+          font-size: 10px;
+          font-weight: 720;
+          letter-spacing: .035em;
+        }
+        .cw-market .featured .gig .body {
+          padding: 11px 2px 2px;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+          flex: none;
+          min-width: 0;
+          font-family: ${DISCOVERY_FONT};
+        }
+        .cw-market .featured .gig .seller {
+          min-height: 28px;
+          gap: 8px;
+        }
+        .cw-market .featured .gig .seller .av {
+          width: 26px;
+          height: 26px;
+          flex: 0 0 26px;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 10px;
+        }
+        .cw-market .featured .gig .seller .info {
+          min-width: 0;
+          line-height: 1.15;
+        }
+        .cw-market .featured .gig .seller .info b {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 13px;
+          font-weight: 680;
+          letter-spacing: -.006em;
+        }
+        .cw-market .featured .gig .seller .info span {
+          margin-top: 2px;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0;
+        }
+        .cw-market .featured .gig .seller .pro {
+          padding: 3px 7px;
+          border-radius: 7px;
+          background: ${T.paper2};
+          border: 1px solid ${T.rule};
+          color: ${T.inkMid};
+          font-family: ${DISCOVERY_FONT};
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: .035em;
+        }
+        .cw-market .featured .gig h4 {
+          min-height: 2.84em;
+          margin: 0;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 15px;
+          font-weight: 450;
+          line-height: 1.42;
+          letter-spacing: -.006em;
+          color: ${T.inkMid};
+          -webkit-line-clamp: 2;
+        }
+        .cw-market .featured .gig .stars {
+          min-height: 20px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 13px;
+          font-weight: 700;
+          color: ${T.ink};
+        }
+        .cw-market .featured .gig .stars svg { width: 14px; height: 14px; color: ${T.ink}; }
+        .cw-market .featured .gig .stars .rev { color: ${T.inkSoft}; font-weight: 500; }
+        .cw-market .featured .gig .gig-foot {
+          margin-top: 1px;
+          padding-top: 0;
+          border-top: 0;
+          min-height: 27px;
+        }
+        .cw-market .featured .gig .delivery {
+          font-family: ${DISCOVERY_FONT};
+          font-size: 12px;
+          font-weight: 520;
+          letter-spacing: 0;
+          color: ${T.inkSoft};
+        }
+        .cw-market .featured .gig .price {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 4px;
+          font-family: ${DISCOVERY_FONT};
+          white-space: nowrap;
+        }
+        .cw-market .featured .gig .price .from {
+          font-family: ${DISCOVERY_FONT};
+          font-size: 15px;
+          font-weight: 600;
+          letter-spacing: 0;
+          text-transform: none;
+          color: ${T.ink};
+        }
+        .cw-market .featured .gig .price b {
+          display: inline;
+          margin: 0;
+          font-family: ${DISCOVERY_FONT};
+          font-size: 16px;
+          font-weight: 760;
+          color: ${T.ink};
+          line-height: 1.1;
+        }
+        @media (max-width: 1180px) {
+          .cw-market .featured .gig-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 900px) {
+          .cw-market .featured .gig-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 18px; }
+        }
+        @media (max-width: 700px) {
+          .cw-market .featured { padding: 38px 0 48px; }
+          .cw-market .featured .section-head { margin-bottom: 18px; }
+          .cw-market .featured .section-head h2 { font-size: 27px; }
+          .cw-market .featured .filters {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scrollbar-width: none;
+            margin-left: -2px;
+            margin-right: -2px;
+            padding: 0 2px 4px;
+          }
+          .cw-market .featured .filters::-webkit-scrollbar { display: none; }
+          .cw-market .featured .filters a { flex: 0 0 auto; }
+          .cw-market .featured .gig-grid { grid-template-columns: 1fr; gap: 30px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cw-market .featured .gig,
+          .cw-market .featured .gig .plate-img { transition: none !important; transform: none !important; }
+        }
+      `}</style>
+
       <div className="gig-grid" id="featured-grid" ref={gridRef}>
         {shown.map((g, idx) => {
           const tag = `${(g.jx ?? country === 'all' ? (g.jx ?? 'us') : country).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
@@ -111,7 +364,7 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
               href={href}
               data-idx={idx}
               className="gig-link"
-              style={{ display: 'flex', textDecoration: 'none', color: 'inherit', scrollMarginTop: '84px' }}
+              style={{ display: 'block', textDecoration: 'none', color: 'inherit', scrollMarginTop: '84px' }}
             >
               <article className="gig" data-c={cardCountry}>
                 <div className={`plate${g.cover_image_url ? ' has-cover' : ''}`}>
@@ -126,16 +379,8 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
                 <div className="body">
                   <div className="seller">
                     {g.providerHeadshot ? (
-                      // Real headshot. Plain <img> for consistency with the
-                      // rest of this surface (see landing notes).
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        className="av"
-                        src={g.providerHeadshot}
-                        alt={g.providerName}
-                        loading="lazy"
-                        style={{ objectFit: 'cover' }}
-                      />
+                      <img className="av" src={g.providerHeadshot} alt={g.providerName} loading="lazy" style={{ objectFit: 'cover' }} />
                     ) : (
                       <span className="av" style={{ background: avatarBgFor(g.provider_type) }}>{initialsOf(g.providerName)}</span>
                     )}
@@ -146,11 +391,13 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
                     <span className="pro">{proLabel}</span>
                   </div>
                   <h4>{g.title}</h4>
-                  {g.review_count > 0 && (
+                  {g.review_count > 0 ? (
                     <div className="stars">
                       <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>
-                      {g.avg_rating.toFixed(2)} <span className="rev">· ({g.review_count})</span>
+                      {g.avg_rating.toFixed(1)} <span className="rev">({g.review_count})</span>
                     </div>
+                  ) : (
+                    <div className="stars"><span className="rev">New service</span></div>
                   )}
                   <div className="gig-foot">
                     <span className="delivery">{deliveryLabel(g.delivery_days)}</span>
@@ -169,12 +416,8 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
       {total > FEATURED_PAGE_SIZE && (
         <>
           {hasMore && (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '26px 0 4px' }}>
-              <button
-                type="button"
-                onClick={loadMore}
-                style={loadMoreStyle}
-              >
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '30px 0 4px' }}>
+              <button type="button" onClick={loadMore} style={loadMoreStyle}>
                 Load more briefs
                 <span style={{ opacity: 0.65, fontWeight: 500 }}>
                   &nbsp;· {Math.min(FEATURED_PAGE_SIZE, total - visibleCount)} more of {total.toLocaleString('en-US')}
@@ -188,40 +431,21 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
             aria-label="Featured briefs pagination"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap', padding: '18px 0 8px' }}
           >
-            <span
-              className="pg-range"
-              style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.inkSoft, marginRight: 12 }}
-            >
+            <span className="pg-range" style={{ fontFamily: DISCOVERY_FONT, fontSize: 12, color: T.inkSoft, marginRight: 12 }}>
               Showing {shown.length.toLocaleString('en-US')} of {total.toLocaleString('en-US')} · page {deepestPage}/{totalPages}
             </span>
             {deepestPage > 1 && (
-              <a
-                href={withCountry(`/marketplace?page=${deepestPage - 1}`, country)}
-                aria-label="Previous page"
-                style={pagerChipStyle(true)}
-                onClick={jumpToPage(deepestPage - 1)}
-              >
+              <a href={withCountry(`/marketplace?page=${deepestPage - 1}`, country)} aria-label="Previous page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage - 1)}>
                 ← Prev
               </a>
             )}
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <a
-                key={p}
-                href={withCountry(`/marketplace?page=${p}`, country)}
-                aria-current={p === deepestPage ? 'page' : undefined}
-                style={pagerChipStyle(p === deepestPage)}
-                onClick={jumpToPage(p)}
-              >
+              <a key={p} href={withCountry(`/marketplace?page=${p}`, country)} aria-current={p === deepestPage ? 'page' : undefined} style={pagerChipStyle(p === deepestPage)} onClick={jumpToPage(p)}>
                 {p}
               </a>
             ))}
             {deepestPage < totalPages && (
-              <a
-                href={withCountry(`/marketplace?page=${deepestPage + 1}`, country)}
-                aria-label="Next page"
-                style={pagerChipStyle(true)}
-                onClick={jumpToPage(deepestPage + 1)}
-              >
+              <a href={withCountry(`/marketplace?page=${deepestPage + 1}`, country)} aria-label="Next page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage + 1)}>
                 Next →
               </a>
             )}
@@ -236,15 +460,15 @@ const loadMoreStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
-  padding: '12px 26px',
-  borderRadius: 999,
-  fontFamily: F.mono,
-  fontSize: 13,
-  fontWeight: 700,
-  letterSpacing: '0.05em',
-  textTransform: 'uppercase',
+  padding: '12px 24px',
+  borderRadius: 10,
+  fontFamily: DISCOVERY_FONT,
+  fontSize: 14,
+  fontWeight: 650,
+  letterSpacing: 0,
+  textTransform: 'none',
   cursor: 'pointer',
   border: `1px solid ${T.ink}`,
-  background: 'transparent',
+  background: T.vellum,
   color: T.ink,
 }
