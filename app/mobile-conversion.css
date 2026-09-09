@@ -1,0 +1,160 @@
+/* Conversion-critical mobile polish
+   ---------------------------------
+   Small-screen refinements for marketplace discovery, gig detail, filters,
+   and messenger controls. Loaded after mobile-hardening.css. */
+
+@media (max-width: 600px) {
+  /* Finger-sized marketplace controls without altering desktop density. */
+  .cw-market button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .cw-market button[aria-label='Close'],
+  .cw-market button[aria-label^='Close '] {
+    min-width: 44px !important;
+    width: 44px !important;
+    min-height: 44px !important;
+    height: 44px !important;
+  }
+
+  /* Search inputs authored at width:100% plus a desktop left margin can
+     exceed the phone content box after parent padding is deducted. */
+  .cw-market input[style*='margin-left: 12px'],
+  .cw-market input[style*='margin-left: 12'] {
+    margin-left: 0 !important;
+  }
+
+  /* Discovery toolbar and paginator can wrap instead of pushing the page
+     wider than the viewport. */
+  .cw-market [style*='justify-content: center'][style*='margin-top: 32px'],
+  .cw-market [style*='justifyContent'][style*='marginTop'] {
+    flex-wrap: wrap !important;
+  }
+
+  .cw-market button[style*='min-width: 40px'][style*='height: 40px'] {
+    min-width: 44px !important;
+    width: auto !important;
+    height: 44px !important;
+  }
+
+  /* Filter/sort menus and bottom sheets stay inside the visible viewport. */
+  .cw-market [role='dialog'],
+  .cw-market [style*='max-height: 90vh'],
+  .cw-market [style*='maxHeight: 90vh'] {
+    max-width: calc(100vw - 16px) !important;
+    max-height: 92dvh !important;
+  }
+
+  /* Gig detail: preserve the purchasing hierarchy while reclaiming space
+     from desktop card padding. */
+  .cw-market .ys-content-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  .cw-market .ys-content-layout > * {
+    min-width: 0 !important;
+  }
+
+  .cw-market .ys-content-layout [style*='padding: 24px'] {
+    padding: 16px !important;
+  }
+
+  .cw-market .ys-content-layout h1 {
+    font-size: clamp(25px, 8vw, 32px) !important;
+    overflow-wrap: anywhere;
+  }
+
+  .cw-market .ys-content-layout h1 + div {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .cw-market .ys-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .cw-market .ys-sidebar table {
+    max-width: 100%;
+  }
+
+  /* Package comparison intentionally scrolls horizontally, but the scroll
+     belongs to its wrapper—not the whole page. */
+  .cw-market .ys-sidebar [style*='overflow-x: auto'],
+  .cw-market .ys-sidebar [style*='overflowX: auto'] {
+    max-width: 100% !important;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The AutoGrowInput already supplies its own mobile send button. The
+     marketplace pre-sale ChatSidePane additionally renders a desktop Send
+     button beside it; hide that duplicate only on phone drawers. */
+  .chat-side-pane div:has(> div > .comp-row) > button:last-child {
+    display: none !important;
+  }
+
+  .chat-side-pane div:has(> div > .comp-row) > div:first-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Keyboard shortcut copy is desktop-only noise inside a touch drawer. */
+  .chat-side-pane div:has(> span > kbd) > span:first-child {
+    display: none !important;
+  }
+
+  .chat-side-pane div:has(> span > kbd) {
+    justify-content: flex-end !important;
+  }
+
+  /* Inline composer emoji picker: 320px fixed width plus composer inset
+     clipped on 320px phones. */
+  .yousafe-messenger [role='dialog'][aria-label='Pick an emoji'] {
+    width: min(320px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: min(320px, 55dvh) !important;
+    left: 0 !important;
+    overscroll-behavior: contain;
+  }
+
+  /* Recording state buttons and in-chat transient controls remain tappable. */
+  .yousafe-messenger .comp-row button,
+  .yousafe-messenger button[aria-label='Cancel reply'] {
+    min-height: 44px;
+  }
+
+  /* Sign-in/archived/error banners should wrap rather than squeeze their CTA. */
+  .chat-side-pane [style*='justify-content: space-between'],
+  .yousafe-messenger [style*='justify-content: space-between'] {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 420px) {
+  /* Keep the marketplace content gutter useful on very small phones. */
+  .cw-market main[style*='calc(100vw - 32px)'],
+  .cw-market > div[style*='calc(100vw - 32px)'] {
+    width: calc(100vw - 20px) !important;
+  }
+
+  .cw-market .ys-content-layout [style*='padding: 20px'],
+  .cw-market .ys-sidebar [style*='padding: 20px'] {
+    padding: 14px !important;
+  }
+
+  .yousafe-messenger .cv-head-name {
+    font-size: 14.5px !important;
+  }
+
+  .yousafe-messenger .cv-head-status {
+    font-size: 11px !important;
+  }
+
+  .yousafe-messenger .cv-scroll {
+    padding-inline: 6px !important;
+  }
+}
