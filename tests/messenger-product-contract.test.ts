@@ -6,10 +6,14 @@ const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8')
 
 describe('Messenger product UI contract', () => {
   const contract = read('app/messenger-product-contract.css')
+  const statusContract = read('app/messenger-status-contract.css')
   const clearance = read('app/student-mobile-dock-clearance.css')
+  const profile = read('components/messaging/ProfilePreviewDrawer.tsx')
+  const statusViewer = read('components/messaging/StatusViewer.tsx')
 
-  test('loads the final Messenger contract from the last mobile layer', () => {
-    expect(clearance.trimStart().startsWith("@import './messenger-product-contract.css';")).toBe(true)
+  test('loads protected Messenger contracts from the final mobile layer', () => {
+    const normalized = clearance.trimStart()
+    expect(normalized.startsWith("@import './messenger-product-contract.css';\n@import './messenger-status-contract.css';")).toBe(true)
   })
 
   test('mobile conversation list stays flat, dense, and messenger-like', () => {
@@ -31,17 +35,30 @@ describe('Messenger product UI contract', () => {
     expect(contract).toContain('env(safe-area-inset-bottom)')
   })
 
-  test('touch menus and settings remain full-depth mobile surfaces', () => {
+  test('touch menus, settings and contact info are first-class mobile surfaces', () => {
     expect(contract).toContain('body .yousafe-messenger .ctxmenu,')
     expect(contract).toContain('bottom: max(10px, env(safe-area-inset-bottom)) !important')
     expect(contract).toContain('body .yousafe-messenger .settings-modal {')
     expect(contract).toContain('height: min(88dvh, 760px) !important')
+    expect(contract).toContain('.yousafe-messenger .ys-contact-info-layer {')
+    expect(profile).toContain('className="ys-contact-info"')
+    expect(profile).toContain('Messaging on YouSafe')
   })
 
-  test('the contract is scoped so dashboard and marketplace skins cannot inherit chat primitives', () => {
+  test('status viewing has story depth and mobile safe-area ownership', () => {
+    expect(statusViewer).toContain('const STORY_MS = 6500')
+    expect(statusViewer).toContain('className="ys-status-progress"')
+    expect(statusViewer).toContain('onPointerDown={() => setPaused(true)}')
+    expect(statusContract).toContain('.yousafe-messenger .ys-status-stage {')
+    expect(statusContract).toContain('height: 100dvh')
+    expect(statusContract).toContain('env(safe-area-inset-bottom)')
+  })
+
+  test('contracts are scoped so dashboard and marketplace skins cannot inherit chat primitives', () => {
     expect(contract).not.toMatch(/(^|\n)\s*\.row\s*\{/)
     expect(contract).not.toMatch(/(^|\n)\s*\.bub\s*\{/)
     expect(contract).toContain('body .yousafe-messenger .row {')
     expect(contract).toContain('body .yousafe-messenger .bub {')
+    expect(statusContract).not.toMatch(/(^|\n)\s*\.ys-status-stage\s*\{/)
   })
 })
