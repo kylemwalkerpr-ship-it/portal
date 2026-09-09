@@ -43,6 +43,7 @@ import { finalizePipelineContentType, normalizeJobContentType } from './jobConte
 import { persistPipelineJob } from './persistContentJob'
 import { keywordContractForDraft } from './keywordContract'
 import { runFactoryThroughline, shouldRunThroughline } from './throughline'
+import { runFactoryMaskedDenoise, shouldRunMaskedDenoise } from './maskedDenoise'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -1414,6 +1415,70 @@ export async function* runSeoFactoryPipelineStream(
           type: 'progress',
           stage: 'refine',
           message: `Throughline skipped: ${desk.reason}`,
+        }
+      }
+    }
+
+    {
+      if (shouldRunMaskedDenoise({
+        contentType,
+        indexable: plan.indexable,
+        words: countBodyWords(content),
+      })) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: 'Masked denoise — inpaint mill spans, freeze the rest…',
+        }
+      }
+      const denoise = await runFactoryMaskedDenoise({
+        content,
+        contentType,
+        indexable: plan.indexable,
+        thesis: contentSpec?.thesis,
+        primaryKeyword,
+        reader: contentSpec?.intent?.reader,
+        queryNeed: contentSpec?.intent?.queryNeed,
+        generateText: async (systemPrompt, prompt) => {
+          const ai = await generateContentText({
+            system: systemPrompt,
+            prompt,
+            maxTokens: 4096,
+            temperature: 0.28,
+            aiProvider: input.aiProvider,
+            exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            signal: input.signal,
+            contentType,
+            skipQualityContract: true,
+            timeoutMs: 90_000,
+          })
+          provider = ai.provider
+          model = ai.model
+          return ai.text
+        },
+      })
+      if (denoise.applied) {
+        content = denoise.content
+        audit = runAudit(content)
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Masked denoise applied — ${denoise.spans} span(s), ${denoise.passes} pass(es)`,
+        }
+        yield {
+          type: 'attempt',
+          attempt: attempts + 1,
+          score: audit.score,
+          wordCount: audit.wordCount,
+          goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+          draft: content,
+        }
+      } else if (denoise.reason && denoise.reason !== 'denoise not applicable' && denoise.reason !== 'no mill spans') {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Masked denoise skipped: ${denoise.reason}`,
         }
       }
     }

@@ -159,6 +159,7 @@ describe('author-revise route contract', () => {
     expect(source).toContain('DEFAULT_REVIEW_PIN')
     expect(source).toContain('skipQualityContract: false')
     expect(source).toContain('runThroughline')
+    expect(source).toContain('runFactoryMaskedDenoise')
     expect(source).toContain('rejected: true')
     expect(source).toContain('maxDuration = 180')
     const throughline = readFileSync(

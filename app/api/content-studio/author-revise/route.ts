@@ -6,6 +6,7 @@ import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { DRAFT_HARD_MAX_CHARS } from '@/lib/seoFactory/draftIntegrity'
 import { type CohesionFinding } from '@/lib/seoFactory/cohesionCritique'
 import { runThroughline } from '@/lib/seoFactory/throughline'
+import { runFactoryMaskedDenoise } from '@/lib/seoFactory/maskedDenoise'
 import type { EditorSeoHint } from '@/lib/editorMetrics'
 
 export const maxDuration = 180
@@ -41,11 +42,14 @@ export async function POST(request: NextRequest) {
       ? body.reviewModel.trim()
       : DEFAULT_REVIEW_PIN
 
+    const hintType = typeof hint.contentType === 'string' ? hint.contentType : undefined
+    const hintKeyword = typeof hint.primaryKeyword === 'string' ? hint.primaryKeyword : undefined
+
     const result = await runThroughline({
       content,
       thesis,
-      contentType: typeof hint.contentType === 'string' ? hint.contentType : undefined,
-      primaryKeyword: typeof hint.primaryKeyword === 'string' ? hint.primaryKeyword : undefined,
+      contentType: hintType,
+      primaryKeyword: hintKeyword,
       cohesionFindings,
       eeatDirectives,
       generateText: async (system, prompt) => {
@@ -74,7 +78,35 @@ export async function POST(request: NextRequest) {
       }, { status: 422 })
     }
 
-    return NextResponse.json({ content: result.content, rejected: false })
+    const denoise = await runFactoryMaskedDenoise({
+      content: result.content,
+      contentType: hintType || 'legal_guide',
+      indexable: true,
+      thesis,
+      primaryKeyword: hintKeyword,
+      generateText: async (system, prompt) => {
+        const response = await generateContentText({
+          aiProvider: reviewPin,
+          exclusive: true,
+          cascadeOnCapacity: false,
+          system,
+          prompt,
+          maxTokens: 4096,
+          timeoutMs: 90_000,
+          strictTimeout: false,
+          skipQualityContract: true,
+          disableThinking: true,
+          reasoningEffort: 'low',
+        })
+        return response.text
+      },
+    })
+
+    return NextResponse.json({
+      content: denoise.applied ? denoise.content : result.content,
+      rejected: false,
+      denoiseApplied: denoise.applied,
+    })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Author revise failed' }, { status: 502 })
   }

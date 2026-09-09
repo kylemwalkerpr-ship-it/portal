@@ -133,7 +133,7 @@ export function critiqueCohesion(content: string): { score: number; findings: Co
       findings.push({
         code: 'adjacent_section_overlap',
         message: `Adjacent H2s “${a.heading}” and “${b.heading}” repeat the same argument.`,
-        evidence: `jaccard=${overlap.toFixed(2)}`,
+        evidence: `jaccard=${overlap.toFixed(2)};later=${b.heading}`,
       })
     }
   }
