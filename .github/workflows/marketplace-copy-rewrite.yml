@@ -64,11 +64,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ secrets.XAI_MODEL }}
           ENTRIM_API_KEY: ${{ secrets.ENTRIM_API_KEY }}
           ENTRIM_BASE_URL: ${{ secrets.ENTRIM_BASE_URL }}
-        run: node scripts/rewrite-marketplace-copy.mjs
+        run: node scripts/run-marketplace-copy-rewrite.mjs
 
       - name: Verify gig images after copy rewrite
         if: always() && steps.marker.outputs.enabled == 'true'
