@@ -297,6 +297,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
+  // Client/student messages can trigger AI. Provider messages do NOT change
+  // ai_mode: attorneys/consultants can reply normally while AI remains live.
+  // Only the explicit Take over control may pause provider-side AI. Admin
+  // outbound activity remains an intentional intervention and still pauses AI.
   try {
     if (auth.role === 'admin') {
       await setConversationAiMode(db, id, 'paused', {
