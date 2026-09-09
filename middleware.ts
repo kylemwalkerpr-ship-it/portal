@@ -235,7 +235,22 @@ function stripTrackingParams(url: URL): string | null {
   }
   return changed ? url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') : null
 }
-\n/** Remove a category query value that merely repeats the clean route slug. */\nfunction stripRedundantCategoryParam(url: URL): string | null {\n  const match = url.pathname.match(/^\\/categories\\/([^/]+)\\/?$/)\n  if (!match) return null\n\n  const routeCategory = decodeURIComponent(match[1])\n  const categories = url.searchParams.getAll('category')\n  if (!categories.includes(routeCategory)) return null\n\n  const remaining = categories.filter((category) => category !== routeCategory)\n  url.searchParams.delete('category')\n  remaining.forEach((category) => url.searchParams.append('category', category))\n  return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '')\n}\n
+
+/** Remove a category query value that merely repeats the clean route slug. */
+function stripRedundantCategoryParam(url: URL): string | null {
+  const match = url.pathname.match(/^\/categories\/([^/]+)\/?$/)
+  if (!match) return null
+
+  const routeCategory = decodeURIComponent(match[1])
+  const categories = url.searchParams.getAll('category')
+  if (!categories.includes(routeCategory)) return null
+
+  const remaining = categories.filter((category) => category !== routeCategory)
+  url.searchParams.delete('category')
+  remaining.forEach((category) => url.searchParams.append('category', category))
+  return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '')
+}
+
 export default clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
