@@ -2425,6 +2425,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
+  const [shortKeywordTerms, setShortKeywordTerms] = React.useState<Array<{ term: string; source: string }>>([])
+  const [longTailKeywordTerms, setLongTailKeywordTerms] = React.useState<Array<{ term: string; source: string }>>([])
   React.useEffect(() => {
     setKwH2Map((prev) => autoMapKeywordsToH2s(kwList, h2s, prev))
   }, [kwList, h2s])
@@ -2517,9 +2519,24 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       if (typeof data.suggestedH1 === 'string' && data.suggestedH1.trim()) setTitle(data.suggestedH1)
       if (Array.isArray(data.h2Outline) && data.h2Outline.length) setH2s(data.h2Outline.map(String))
       if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
-        const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
-        setKeywords(all.join(', '))
+        const shorts = (data.shortTail as string[]).map(String).map((s) => s.trim()).filter(Boolean)
+        const longs = (data.longTail as string[]).map(String).map((s) => s.trim()).filter(Boolean)
+        setKeywords([...shorts, ...longs].join(', '))
       }
+      const asTerms = (raw: unknown): Array<{ term: string; source: string }> =>
+        Array.isArray(raw)
+          ? raw
+              .map((entry) => {
+                if (typeof entry === 'string') return { term: entry.trim(), source: 'demand' }
+                const rec = entry as { term?: string; source?: string }
+                const term = String(rec?.term || '').trim()
+                const source = rec?.source === 'synthesized' ? 'synthesized' : 'demand'
+                return term ? { term, source } : null
+              })
+              .filter((entry): entry is { term: string; source: string } => Boolean(entry))
+          : []
+      if (Array.isArray(data.shortKeywordTerms)) setShortKeywordTerms(asTerms(data.shortKeywordTerms))
+      if (Array.isArray(data.longTailKeywordTerms)) setLongTailKeywordTerms(asTerms(data.longTailKeywordTerms))
       if (Array.isArray(data.sources) && data.sources.length) {
         const incoming = (data.sources as unknown[]).map(String)
         const nextRegion = typeof data.region === 'string' ? data.region : region
@@ -2647,9 +2664,14 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       lines.push(`${i + 1}. ## ${h}${placedKw.length ? ` [keywords: ${placedKw.join(', ')}]` : ''}`)
     })
     lines.push('')
-    lines.push('### KEYWORD COVERAGE')
-    lines.push(`- Short-tail (≤3 words): ${shortKw.length}/5 required — ${shortKw.join(', ') || '(none)'}`)
-    lines.push(`- Long-tail (≥4 words): ${longKw.length}/4 required — ${longKw.join(', ') || '(none)'}`)
+    lines.push('### KEYWORD CONTRACT')
+    const demandShort = shortKeywordTerms.filter((t) => t.source !== 'synthesized').map((t) => t.term)
+    const demandLong = longTailKeywordTerms.filter((t) => t.source !== 'synthesized').map((t) => t.term)
+    const synth = [...shortKeywordTerms, ...longTailKeywordTerms].filter((t) => t.source === 'synthesized').map((t) => t.term)
+    lines.push(`- Demand short-tail (required): ${demandShort.length ? demandShort.join(', ') : (shortKw.join(', ') || '(none)')}`)
+    lines.push(`- Demand long-tail (required, never as FAQ questions/H2s): ${demandLong.length ? demandLong.join(', ') : (longKw.join(', ') || '(none)')}`)
+    if (synth.length) lines.push(`- Synthesized floor-fill (optional): ${synth.join(', ')}`)
+    lines.push(`- Counts: ${shortKw.length}/5 short · ${longKw.length}/4 long-tail`)
     lines.push('')
     lines.push('### SOURCES TO CITE')
     if (sources.length) sources.forEach(s => lines.push(`- ${s}`))
@@ -2678,13 +2700,21 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       lines.push(seoIntelBrief.writerContract)
     }
     return lines.join('\n')
-  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider, liveBudgets, seoIntelBrief])
+  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, shortKeywordTerms, longTailKeywordTerms, sources, minWords, maxWords, aiProvider, liveBudgets, seoIntelBrief])
 
   const handleSubmitBrief = () => {
+    const align = (phrases: string[], persisted: Array<{ term: string; source: string }>) => {
+      const known = new Map(persisted.map((entry) => [entry.term.toLowerCase(), entry.source]))
+      return phrases.map((term) => ({ term, source: known.get(term.toLowerCase()) || 'demand' }))
+    }
     onGenerate({
       contentType, region, tone, aiProvider: aiProvider || undefined,
       title: title || topic, topic, audience,
       keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+      requiredShortKeywords: shortKw,
+      requiredLongTailKeywords: longKw,
+      shortKeywordTerms: align(shortKw, shortKeywordTerms),
+      longTailKeywordTerms: align(longKw, longTailKeywordTerms),
       interlinks: briefInterlinks,
       sectionBudgets: liveBudgets,
       h2Outline: h2s,
@@ -3881,6 +3911,8 @@ function DraftWorkspace({
               competingUrls={completedJob?.competing_urls ?? undefined}
               requiredShortKeywords={completedJob?.required_short_keywords ?? undefined}
               requiredLongTailKeywords={completedJob?.required_long_tail_keywords ?? undefined}
+              shortKeywordTerms={completedJob?.short_keyword_terms ?? undefined}
+              longTailKeywordTerms={completedJob?.long_tail_keyword_terms ?? undefined}
               reviewModel={reviewModel}
               onReviewModelChange={setReviewModel}
             />
@@ -4490,7 +4522,15 @@ function JobDetail({
           region: detail.region || 'US',
           contentType,
           tone: detail.tone || 'educational',
-          keywords: [detail.primary_keyword || detail.topic],
+          keywords: [
+            ...(Array.isArray(detail.required_short_keywords) ? detail.required_short_keywords : []),
+            ...(Array.isArray(detail.required_long_tail_keywords) ? detail.required_long_tail_keywords : []),
+            detail.primary_keyword || detail.topic,
+          ].filter(Boolean),
+          requiredShortKeywords: detail.required_short_keywords ?? undefined,
+          requiredLongTailKeywords: detail.required_long_tail_keywords ?? undefined,
+          shortKeywordTerms: detail.short_keyword_terms ?? undefined,
+          longTailKeywordTerms: detail.long_tail_keyword_terms ?? undefined,
           shipMode: detail.ship_mode || 'pr',
           indexable: detail.indexable !== false,
           minAuditScore: 55,
@@ -4791,7 +4831,7 @@ function JobDetail({
                 <div style={{ marginTop: 8, fontSize: 10 }}>This never blocks the window. Close with Esc, or use Regenerate / Load draft below.</div>
               </div>
             : editorContent.trim()
-              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} gateBindGeneration={gateBindGeneration} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve', { skipConfirm: true }) : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
+              ? <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} onShipReadyChange={setEditorShipGate} persistedAuditJson={detail.audit_json ?? null} gateBindGeneration={gateBindGeneration} onApprove={editorShipGate?.shipReady && !terminal ? () => void runAction('approve', { skipConfirm: true }) : undefined} approving={busy && activeAction === 'approve'} contentType={detail.content_type} primaryKeyword={detail.primary_keyword ?? undefined} indexable={detail.indexable} region={detail.region ?? undefined} targetUrl={detail.canonical_url ?? undefined} competingUrls={detail.competing_urls ?? undefined} requiredShortKeywords={detail.required_short_keywords ?? undefined} requiredLongTailKeywords={detail.required_long_tail_keywords ?? undefined} shortKeywordTerms={detail.short_keyword_terms ?? undefined} longTailKeywordTerms={detail.long_tail_keyword_terms ?? undefined} reviewModel={reviewModel} onReviewModelChange={setReviewModel} />
               : (
                 <div style={{ padding: 18, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
                   {generationFailed && storedDraftLikely
@@ -6625,6 +6665,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             region: selectedJob.region ?? undefined,
             requiredShortKeywords: selectedJob.required_short_keywords ?? undefined,
             requiredLongTailKeywords: selectedJob.required_long_tail_keywords ?? undefined,
+            shortKeywordTerms: selectedJob.short_keyword_terms ?? undefined,
+            longTailKeywordTerms: selectedJob.long_tail_keyword_terms ?? undefined,
             competingUrls: selectedJob.competing_urls ?? undefined,
             targetUrl: selectedJob.canonical_url ?? undefined,
           }),
@@ -7178,6 +7220,10 @@ const controller = new AbortController()
           region: regionArg, contentType: ct,
           tone: formData.tone || 'educational', audience: formData.audience,
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
+          requiredShortKeywords: formData.requiredShortKeywords,
+          requiredLongTailKeywords: formData.requiredLongTailKeywords,
+          shortKeywordTerms: formData.shortKeywordTerms,
+          longTailKeywordTerms: formData.longTailKeywordTerms,
           minAuditScore: 55, maxRefine: 3,
           interlinks: briefInterlinks,
           opportunity: selectedBrief,
@@ -7745,6 +7791,8 @@ const controller = new AbortController()
                 competingUrls={selectedJob.competing_urls ?? undefined}
                 requiredShortKeywords={selectedJob.required_short_keywords ?? undefined}
                 requiredLongTailKeywords={selectedJob.required_long_tail_keywords ?? undefined}
+                shortKeywordTerms={selectedJob.short_keyword_terms ?? undefined}
+                longTailKeywordTerms={selectedJob.long_tail_keyword_terms ?? undefined}
                 reviewModel={reviewModel}
                 onReviewModelChange={setReviewModel}
                 onScoreChange={async (_s) => {
@@ -7760,6 +7808,10 @@ const controller = new AbortController()
                           contentType: selectedJob?.content_type,
                           primaryKeyword: selectedJob?.primary_keyword ?? undefined,
                           indexable: selectedJob?.indexable,
+                          requiredShortKeywords: selectedJob?.required_short_keywords ?? undefined,
+                          requiredLongTailKeywords: selectedJob?.required_long_tail_keywords ?? undefined,
+                          shortKeywordTerms: selectedJob?.short_keyword_terms ?? undefined,
+                          longTailKeywordTerms: selectedJob?.long_tail_keyword_terms ?? undefined,
                         }),
                       })
                       const data = await res.json().catch(() => ({})) as any

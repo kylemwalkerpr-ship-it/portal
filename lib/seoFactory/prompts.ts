@@ -17,6 +17,8 @@ import { qualityPromptBlock, formattingRequirementsBlock } from './contentQualit
 import { formatContractBriefBlock } from './formatContract'
 import { renderBriefRules, renderWriterRules } from './contentQualityPlaybook'
 import type { ContentSpec } from './contentSpec'
+import { keywordContractFromLists, renderKeywordContractBrief } from './keywordContractBrief'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 /**
  * Destination format contract — deterministic instructions per host+repo+contentType.
@@ -123,10 +125,13 @@ export function buildFactorySystemPrompt(opts: {
   maxWords?: number
   /** Compact pack from SEO strategies directory */
   strategyBlock?: string
-  /** Brief-supplied short keywords (≤3 words). The article must use each, max 4 hits. */
+  /** Brief-supplied short keywords (≤3 words). Demand terms must be used; synthesized floor-fill is optional. */
   requiredShortKeywords?: string[]
-  /** Brief-supplied long-tail keywords (≥4 words). The article must use each, max 2 hits. */
+  /** Brief-supplied long-tail keywords (≥4 words). Demand terms must be used; synthesized floor-fill is optional. */
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
+  primaryKeyword?: string
   /** Admin-defined H2 section outline from the Brief Assembly Panel */
   h2Outline?: string[]
   /** Sources to cite — the AI must reference these authoritative URLs */
@@ -158,6 +163,23 @@ export function buildFactorySystemPrompt(opts: {
     : undefined
   const requiredShortKeywords = specShortKeywords?.length ? specShortKeywords : opts.requiredShortKeywords
   const requiredLongTailKeywords = specLongTailKeywords?.length ? specLongTailKeywords : opts.requiredLongTailKeywords
+  const keywordContract = spec?.requiredKeywords?.length
+    ? keywordContractFromLists({
+        requiredShortKeywords: spec.requiredKeywords.filter((k) => k.kind === 'short').map((k) => k.phrase),
+        requiredLongTailKeywords: spec.requiredKeywords.filter((k) => k.kind === 'long_tail').map((k) => k.phrase),
+        shortKeywordTerms: spec.requiredKeywords
+          .filter((k) => k.kind === 'short')
+          .map((k) => ({ term: k.phrase, source: k.optional ? 'synthesized' as const : 'demand' as const })),
+        longTailKeywordTerms: spec.requiredKeywords
+          .filter((k) => k.kind === 'long_tail')
+          .map((k) => ({ term: k.phrase, source: k.optional ? 'synthesized' as const : 'demand' as const })),
+      })
+    : keywordContractFromLists({
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        shortKeywordTerms: opts.shortKeywordTerms,
+        longTailKeywordTerms: opts.longTailKeywordTerms,
+      })
   const sourceList = spec && spec.approvedSources.length ? spec.approvedSources.map((s) => s.url) : sources
   const specInterlinks = spec && spec.verifiedEstateLinks.length
     ? spec.verifiedEstateLinks.map((l) => ({ label: l.anchor, url: l.url }))
@@ -177,7 +199,7 @@ export function buildFactorySystemPrompt(opts: {
     '- SCHEMA: Article JSON-LD AND FAQPage JSON-LD in <script type="application/ld+json"> blocks.',
     '- META: description 140–160 chars containing the primary keyword and a concrete next step.',
     '- LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST below. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
-    '- KEYWORDS: every short keyword appears ≥1× and ≤4×; every long-tail keyword ≥1× and ≤2× (details in KEYWORD COVERAGE below).',
+    '- KEYWORDS: DEMAND short keywords appear ≥1× and ≤4×; DEMAND long-tails ≥1× and ≤2×. Synthesized floor-fill is optional — never stuff it (details in KEYWORD CONTRACT).',
     '- VOICE: human, second person, varied sentence length, no AI clichés, no outcome promises.',
     '- SOURCES: prefer URLs VERBATIM from SOURCES TO CITE / SOURCE ALLOWLIST. Same-region immigration departments, official school pages, and the issuing body for this topic (exam/licensing board) are always valid. On-topic institutional pages (.org / .edu / official boards) that directly support a claim are also valid. Never invent, guess, or modify a path. A 404 or made-up URL is a hard error. If you are not sure a URL exists, write the agency name as plain text.',
     '- EXTERNAL LINKS: no blogs, news, Wikipedia, competitors, social, or URL shorteners. The href must be the issuing body for the surrounding claim — exam/licensing board for that exam, immigration department for a visa, official school page for a campus rule. Do not swap a board URL for a generic immigration homepage. Do not invent paths.',
@@ -298,25 +320,12 @@ export function buildFactorySystemPrompt(opts: {
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
     '12) If you are under the word minimum, keep expanding with real procedures/documents/FAQs until you clear it — short drafts are discarded.',
-    '13) KEYWORD COVERAGE — the brief supplies ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words). Every keyword below is AUDIT-ENFORCED: missing any one = HARD BLOCK, and exceeding the per-keyword hit caps = HARD BLOCK. This is the #1 ship-killer — treat it like a checklist.',
-    '    - Use EVERY short keyword at least once but NEVER more than 4 times in the body.',
-    '    - Use EVERY long-tail keyword at least once but NEVER more than 2 times in the body.',
-    '    - The PRIMARY keyword is exempt from these caps (it appears in title/H1 naturally) — but if it appears 12+ times the page is flagged as keyword stuffing anyway.',
-    '    - PLACEMENT (plan before you write): assign each keyword a single natural slot — title/H1, the In 60 seconds block, one H2 heading, a checklist item, one FAQ question, or one step description. Do NOT repeat a keyword across several sections; one intentional placement per keyword is enough.',
-    '    - Long-tail phrases read as spam when repeated: use the FULL phrase once (a FAQ question is the cleanest slot) and do not echo it again verbatim.',
-    '    - After writing, MENTALLY SCAN the body: for each keyword below, confirm it appears at least once and not more than its cap. If you catch an over-repeat, replace the later occurrence with a synonym or rephrase.',
-    ...(requiredShortKeywords
-      ? [
-          '    SHORT KEYWORDS TO USE (each exactly 1-4 times):',
-          ...requiredShortKeywords.map((k) => `    - "${k}"`),
-        ]
-      : []),
-    ...(requiredLongTailKeywords
-      ? [
-          '    LONG-TAIL KEYWORDS TO USE (each exactly 1-2 times, in DIFFERENT contexts):',
-          ...requiredLongTailKeywords.map((k) => `    - "${k}"`),
-        ]
-      : []),
+    '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND keyword is a hard block. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.',
+    '    - Place each DEMAND short keyword once, naturally (title/H1, In 60 seconds, a checklist item, or one body sentence). Cap 4 hits.',
+    '    - Place each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',
+    '    - Synthesized terms: use only if a grammatical slot already exists. If none, omit them. Harper cannot honestly stuff them later.',
+    '    - The PRIMARY keyword is exempt from coverage checkboxes (it appears in title/H1) — but 12+ hits is still keyword stuffing.',
+    renderKeywordContractBrief(keywordContract, opts.primaryKeyword || spec?.primaryKeyword),
   ]
     .filter(Boolean)
     .join('\n')

@@ -13,6 +13,7 @@ import {
   runSeoFactoryPipeline,
   type RequestedShipMode,
 } from '@/lib/seoFactory/pipeline'
+import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,6 +54,10 @@ export async function POST(request: NextRequest) {
       keywords: Array.isArray(body.keywords)
         ? body.keywords.map(String)
         : undefined,
+      requiredShortKeywords: parseKeywordPhrases(body.requiredShortKeywords),
+      requiredLongTailKeywords: parseKeywordPhrases(body.requiredLongTailKeywords),
+      shortKeywordTerms: parseKeywordTerms(body.shortKeywordTerms),
+      longTailKeywordTerms: parseKeywordTerms(body.longTailKeywordTerms),
       h2Outline: Array.isArray(body.h2Outline) ? body.h2Outline.map(String) : undefined,
       sources: Array.isArray(body.sources) ? body.sources.map(String) : undefined,
       minWords: body.minWords != null ? Number(body.minWords) : undefined,

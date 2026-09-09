@@ -41,6 +41,8 @@ export interface ContentJob {
   primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
   required_short_keywords?: string[] | null
   required_long_tail_keywords?: string[] | null
+  short_keyword_terms?: Array<{ term: string; source?: string }> | null
+  long_tail_keyword_terms?: Array<{ term: string; source?: string }> | null
   /** SERP competitor snippets (Discover/Research stage) — fed into the fix
    *  loop so the engine's SERP-consensus baseline reflects real competitors. */
   competing_snippets?: string[] | null

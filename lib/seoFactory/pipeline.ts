@@ -34,12 +34,13 @@ import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialS
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
-import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { isJunkTopic } from './queryNoise'
 import { topicPathMismatch } from './topicPathGuard'
 import { collapseDuplicatedTitle } from './formatContract'
 import { persistPipelineJob } from './persistContentJob'
 import { finalizePipelineContentType } from './jobContentType'
+import { keywordContractForDraft } from './keywordContract'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -105,6 +106,12 @@ export interface PipelineInput {
   tone?: string
   audience?: string
   keywords?: string[]
+  /** Brief-owned keyword contract. When present and already at floor, the
+   *  pipeline must not re-partition and invent extra coverage terms. */
+  requiredShortKeywords?: string[]
+  requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   slug?: string
   indexable?: boolean
   shipMode?: RequestedShipMode
@@ -241,20 +248,23 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       primaryKeyword = topic
     }
   }
-  // Partition the user-supplied keywords + primary keyword into short / long-tail so the
-  // brief and the gate can enforce ≥5 short and ≥4 long-tail on every draft.
   const userKeywords = Array.isArray(input.keywords) ? input.keywords : []
-  const briefPartition = partitionKeywords(
-    userKeywords,
+  // Honour the brief's keyword contract. Re-running partitionKeywords here
+  // used to invent extra synthesized coverage the operator never saw and
+  // Harper could not honestly place.
+  const keywordContract = keywordContractForDraft({
     primaryKeyword,
-  )
-  const requiredShortKeywords = briefPartition.short
-  const requiredLongTailKeywords = briefPartition.longTail
-  // Per-term provenance: terms the partitioner synthesized to hit the count
-  // floors carry no search-demand evidence, so the quality gate warns (instead
-  // of hard-blocking) when the draft does not cover them.
-  const shortKeywordTerms = briefPartition.shortTerms
-  const longTailKeywordTerms = briefPartition.longTailTerms
+    topic,
+    keywords: userKeywords,
+    requiredShortKeywords: input.requiredShortKeywords,
+    requiredLongTailKeywords: input.requiredLongTailKeywords,
+    shortKeywordTerms: input.shortKeywordTerms,
+    longTailKeywordTerms: input.longTailKeywordTerms,
+  })
+  const requiredShortKeywords = keywordContract.requiredShortKeywords
+  const requiredLongTailKeywords = keywordContract.requiredLongTailKeywords
+  const shortKeywordTerms = keywordContract.shortKeywordTerms
+  const longTailKeywordTerms = keywordContract.longTailKeywordTerms
   const title = collapseDuplicatedTitle((input.title || topic || primaryKeyword).trim())
   const region = (input.region || 'US').toUpperCase()
   let contentType = input.contentType || 'legal_guide'
@@ -362,6 +372,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       primaryKeyword,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
       verifiedSourceUrls,
       outline: input.h2Outline as string[] | undefined,
       audience: input.audience,
@@ -397,6 +409,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     strategyBlock,
     requiredShortKeywords,
     requiredLongTailKeywords,
+    shortKeywordTerms,
+    longTailKeywordTerms,
+    primaryKeyword,
     h2Outline: promptOutline,
     sources: verifiedSources,
     targetSlug: input.targetSlug as string | undefined,

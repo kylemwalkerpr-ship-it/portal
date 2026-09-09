@@ -37,10 +37,10 @@ import { isJunkTopic } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
-import { partitionKeywords } from '@/lib/seoEngine/planner'
 import { resolveContentSpecForJob, type ContentSpec } from './contentSpec'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
+import { keywordContractForDraft } from './keywordContract'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -69,16 +69,19 @@ export async function* runSeoFactoryPipelineStream(
         primaryKeyword = topic
       }
     }
-    // Partition the user-supplied keywords + primary keyword into ≥5 short / ≥4 long-tail.
-    const briefPartition = partitionKeywords(
-      Array.isArray(input.keywords) ? input.keywords : [],
+    const keywordContract = keywordContractForDraft({
       primaryKeyword,
-    )
-    const requiredShortKeywords = briefPartition.short
-    const requiredLongTailKeywords = briefPartition.longTail
-    // Per-term provenance: synthesized filler terms warn instead of blocking.
-    const shortKeywordTerms = briefPartition.shortTerms
-    const longTailKeywordTerms = briefPartition.longTailTerms
+      topic,
+      keywords: Array.isArray(input.keywords) ? input.keywords : [],
+      requiredShortKeywords: input.requiredShortKeywords,
+      requiredLongTailKeywords: input.requiredLongTailKeywords,
+      shortKeywordTerms: input.shortKeywordTerms,
+      longTailKeywordTerms: input.longTailKeywordTerms,
+    })
+    const requiredShortKeywords = keywordContract.requiredShortKeywords
+    const requiredLongTailKeywords = keywordContract.requiredLongTailKeywords
+    const shortKeywordTerms = keywordContract.shortKeywordTerms
+    const longTailKeywordTerms = keywordContract.longTailKeywordTerms
     const title = collapseDuplicatedTitle((input.title || topic || primaryKeyword).trim())
     const region = (input.region || 'US').toUpperCase()
     let contentType = input.contentType || 'legal_guide'
@@ -360,6 +363,8 @@ export async function* runSeoFactoryPipelineStream(
         primaryKeyword,
         requiredShortKeywords,
         requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
         verifiedSourceUrls,
         outline: input.h2Outline as string[] | undefined,
         audience: input.audience,
@@ -395,6 +400,9 @@ export async function* runSeoFactoryPipelineStream(
       strategyBlock,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      shortKeywordTerms,
+      longTailKeywordTerms,
+      primaryKeyword,
       h2Outline: promptOutline,
       sources: verifiedSources,
       interlinkAllowlist: radarInterlinks as Array<{ label?: string; url?: string }>,

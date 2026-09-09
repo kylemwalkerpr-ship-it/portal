@@ -1,4 +1,4 @@
-import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget, missingBriefKeywords, injectMissingBriefKeywords, stripNonClientChrome } from '../lib/editorMetrics'
+import { extractProse, fleschReadingEase, fleschTargetForBrief, scoreHarperLints, computeSeoScore, computeEditorMetrics, suggestReadabilityFixes, applyReadabilityFixes, expandMetaToBriefTarget, missingBriefKeywords, injectMissingBriefKeywords, stripNonClientChrome, listDemandBriefKeywords } from '../lib/editorMetrics'
 
 describe('editor metrics', () => {
   it('extracts prose from markdown including frontmatter/headings/lists', () => {
@@ -184,6 +184,45 @@ Who can edit? A reviewer the school allows.
     expect(out.content).not.toMatch(/^##\s+college essay/m)
     const after = missingBriefKeywords(out.content, hint)
     expect(after.length).toBeLessThan(missing.length)
+  })
+
+  it('Harper SEO fails only on demand keywords — synthesized floor-fill is a warning', () => {
+    const md = `# Student visa fee
+
+## In 60 seconds
+
+- Student visa fee details with two official sources.
+
+[one](https://gov.example/1) [two](https://edu.example/2)
+
+## FAQ
+
+### Do I need a consultant?
+
+Check the official site.
+
+## Sources
+
+- a
+`
+    const hint = {
+      primaryKeyword: 'student visa fee',
+      requiredShortKeywords: ['student visa', 'visa fee', 'ghost filler'],
+      requiredLongTailKeywords: ['how to pay student visa fees'],
+      shortKeywordTerms: [
+        { term: 'student visa', source: 'demand' as const },
+        { term: 'visa fee', source: 'demand' as const },
+        { term: 'ghost filler', source: 'synthesized' as const },
+      ],
+      longTailKeywordTerms: [
+        { term: 'how to pay student visa fees', source: 'synthesized' as const },
+      ],
+    }
+    expect(listDemandBriefKeywords(hint)).toEqual(['student visa', 'visa fee'])
+    expect(missingBriefKeywords(md, hint)).toEqual([])
+    const seo = computeSeoScore(md, { ...hint, targetWords: 10 })
+    expect(seo.fail.some((f) => /demand keywords/i.test(f))).toBe(false)
+    expect(seo.warn.some((w) => /synthesized coverage/i.test(w))).toBe(true)
   })
 
 

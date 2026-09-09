@@ -1,5 +1,5 @@
 /** One canonical keyword contract for audit, editor, approval, and shipping. */
-import { KEYWORD_REQUIREMENTS, partitionKeywords, isFabricatedSyntheticTerm } from '@/lib/seoEngine/planner'
+import { KEYWORD_REQUIREMENTS, partitionKeywords, isFabricatedSyntheticTerm, isUnplaceableCoverageTerm } from '@/lib/seoEngine/planner'
 import { coversKeywordIntent } from '@/lib/seoFactory/contentQualityGate'
 import {
   keywordSourceMap,
@@ -7,6 +7,23 @@ import {
   type KeywordSource,
   type KeywordTerm,
 } from '@/lib/seoEngine/keywordTerms'
+import {
+  demandKeywordPhrases,
+  keywordContractFromLists,
+  parseKeywordPhrases,
+  parseKeywordTerms,
+  renderKeywordContractBrief,
+  sanitizeBriefOutline,
+} from './keywordContractBrief'
+
+export {
+  demandKeywordPhrases,
+  keywordContractFromLists,
+  parseKeywordPhrases,
+  parseKeywordTerms,
+  renderKeywordContractBrief,
+  sanitizeBriefOutline,
+}
 
 export interface KeywordContract {
   requiredShortKeywords: string[]
@@ -21,6 +38,40 @@ export interface KeywordContract {
   longTailKeywordTerms: KeywordTerm[]
   /** True when the partitioner had to backfill either floor. */
   backfilled: boolean
+}
+
+function demoteUnplaceableTerms(terms: KeywordTerm[]): KeywordTerm[] {
+  return terms.map((entry) => (
+    isUnplaceableCoverageTerm(entry.term)
+      ? { term: entry.term, source: 'synthesized' as KeywordSource }
+      : entry
+  ))
+}
+
+function sealContract(contract: KeywordContract): KeywordContract {
+  const shortKeywordTerms = demoteUnplaceableTerms(contract.shortKeywordTerms)
+  const longTailKeywordTerms = demoteUnplaceableTerms(contract.longTailKeywordTerms)
+  return {
+    ...contract,
+    requiredShortKeywords: shortKeywordTerms.map((entry) => entry.term),
+    requiredLongTailKeywords: longTailKeywordTerms.map((entry) => entry.term),
+    shortKeywordTerms,
+    longTailKeywordTerms,
+  }
+}
+
+function splitKeywordBag(raw: unknown): { short: string[]; long: string[] } {
+  const short: string[] = []
+  const long: string[] = []
+  if (!Array.isArray(raw)) return { short, long }
+  for (const item of raw) {
+    const term = String(item || '').trim()
+    if (!term) continue
+    const words = term.split(/\s+/).filter(Boolean).length
+    if (words <= 3) short.push(term)
+    else if (words >= 4) long.push(term)
+  }
+  return { short, long }
 }
 
 /**
@@ -170,7 +221,9 @@ export function resolveKeywordContract(input: {
       // machine backfill, never real demand — typing them 'demand' would turn
       // every old queue draft into a permanent missing_*_keyword blocker after
       // a template change (the fabrications no longer round-trip).
-      if (isFabricatedSyntheticTerm(term)) return { term, source: 'synthesized' as KeywordSource }
+      if (isFabricatedSyntheticTerm(term) || isUnplaceableCoverageTerm(term)) {
+        return { term, source: 'synthesized' as KeywordSource }
+      }
       return { term, source: 'demand' as KeywordSource }
     })
   }
@@ -178,13 +231,13 @@ export function resolveKeywordContract(input: {
   const short = asTerms(input.requiredShortKeywords, input.shortKeywordTerms)
   const longTail = asTerms(input.requiredLongTailKeywords, input.longTailKeywordTerms)
   if (short.length >= KEYWORD_REQUIREMENTS.SHORT_MIN && longTail.length >= KEYWORD_REQUIREMENTS.LONG_TAIL_MIN) {
-    return {
+    return sealContract({
       requiredShortKeywords: short.map((entry) => entry.term),
       requiredLongTailKeywords: longTail.map((entry) => entry.term),
       shortKeywordTerms: short,
       longTailKeywordTerms: longTail,
       backfilled: false,
-    }
+    })
   }
 
   const partition = partitionKeywords(
@@ -199,18 +252,51 @@ export function resolveKeywordContract(input: {
   const supplied = keywordSourceMap([...short, ...longTail])
   const withProvenance = (terms: KeywordTerm[]): KeywordTerm[] => terms.map(({ term, source }) => ({
     term,
-    source: isFabricatedSyntheticTerm(term)
+    source: isFabricatedSyntheticTerm(term) || isUnplaceableCoverageTerm(term)
       ? ('synthesized' as KeywordSource)
       : (supplied.get(term.toLowerCase()) ?? source),
   }))
   const shortTerms = withProvenance(partition.shortTerms)
   const longTailTerms = withProvenance(partition.longTailTerms)
 
-  return {
+  return sealContract({
     requiredShortKeywords: shortTerms.map((entry) => entry.term),
     requiredLongTailKeywords: longTailTerms.map((entry) => entry.term),
     shortKeywordTerms: shortTerms,
     longTailKeywordTerms: longTailTerms,
     backfilled: true,
-  }
+  })
+}
+
+/**
+ * Single hop from a brief / generate payload to the contract the drafter,
+ * Harper, audit, and ship all share. If the brief already met the floors,
+ * this MUST NOT re-run the partitioner and invent extra coverage terms.
+ */
+export function keywordContractForDraft(input: {
+  primaryKeyword?: string | null
+  topic?: string | null
+  keywords?: unknown
+  requiredShortKeywords?: unknown
+  requiredLongTailKeywords?: unknown
+  shortKeywordTerms?: unknown
+  longTailKeywordTerms?: unknown
+}): KeywordContract {
+  const providedShort = Array.isArray(input.requiredShortKeywords)
+    ? input.requiredShortKeywords.map(String).map((t) => t.trim()).filter(Boolean)
+    : []
+  const providedLong = Array.isArray(input.requiredLongTailKeywords)
+    ? input.requiredLongTailKeywords.map(String).map((t) => t.trim()).filter(Boolean)
+    : []
+  const bag = (!providedShort.length && !providedLong.length)
+    ? splitKeywordBag(input.keywords)
+    : { short: providedShort, long: providedLong }
+  return resolveKeywordContract({
+    primaryKeyword: input.primaryKeyword,
+    topic: input.topic,
+    requiredShortKeywords: bag.short,
+    requiredLongTailKeywords: bag.long,
+    shortKeywordTerms: input.shortKeywordTerms,
+    longTailKeywordTerms: input.longTailKeywordTerms,
+  })
 }

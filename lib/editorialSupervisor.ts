@@ -154,6 +154,7 @@ export function buildHarperSupervisionPacket(s: EditorialSnapshot): HarperSuperv
       'Fix the prose that causes a finding; never claim, estimate or self-report a score. The supervisor remeasures the exact returned draft.',
       'Preserve facts, citations, URLs, numbers, official names, legal qualifications, metadata and document structure unless the outer structural audit explicitly authorizes a change.',
       'Never stuff keywords, invent personal experience, add unsupported facts, or simplify away legal/technical meaning to chase a metric.',
+      'SEO hard-fails only DEMAND keywords from the sealed brief. Synthesized floor-fill is advisory — never stuff an unplaceable phrase to chase a warning.',
     ],
   }
 }

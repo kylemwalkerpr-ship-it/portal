@@ -77,7 +77,7 @@ Yes. Check the official source before relying on a date or fee.`
     }
     const packet = buildHarperSupervisionPacket(snapshot as any)
     expect(packet.fingerprint).toBe(base.fingerprint)
-    expect(packet.unmet).toEqual(expect.arrayContaining(['grammar', 'seo', 'ai_write', 'flesch']))
+    expect(packet.nonNegotiables.some((rule) => /DEMAND keywords/i.test(rule))).toBe(true)
     expect(new Set(packet.directives.map((d) => d.lane))).toEqual(new Set(['grammar', 'seo', 'ai_write', 'flesch']))
     expect(packet.directives.some((d) => d.evidence === 'requirements is')).toBe(true)
   })
