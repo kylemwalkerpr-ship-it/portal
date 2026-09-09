@@ -2,6 +2,7 @@ import './globals.css'
 import './portal-themes.css'
 import './mobile-hardening.css'
 import './mobile-conversion.css'
+import './messenger-mobile-parity.css'
 import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
@@ -66,7 +67,6 @@ export const metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  viewportFit: 'cover',
   themeColor: '#0E7C74',
 }
 

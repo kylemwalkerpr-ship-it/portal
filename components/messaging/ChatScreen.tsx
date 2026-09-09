@@ -18,8 +18,7 @@ export interface ChatScreenProps {
    * Mobile pane toggle. When true and viewport ≤680px, the chat region
    * fills the screen and the sidebar is hidden. When false (or when no
    * conversation is selected), the sidebar fills the screen and the
-   * chat region is hidden. At >680px both panes render side-by-side
-   * regardless of this value.
+   * chat region is hidden. At >680px both panes render side-by-side.
    */
   mobileShowChat?: boolean
 }
@@ -42,7 +41,6 @@ export default function ChatScreen({
   const nearBottomRef = React.useRef(true)
   const lastScrollHeightRef = React.useRef(0)
 
-  // Dev guard: warn if parent height is non-deterministic
   React.useEffect(() => {
     const parent = containerRef.current?.parentElement
     if (!parent) return
@@ -55,7 +53,9 @@ export default function ChatScreen({
     }
   }, [])
 
-  // Auto-scroll
+  // WhatsApp-like auto-scroll: if the reader is already at the conversation
+  // tail, keep the newest reply in view. If they deliberately scrolled up,
+  // never yank the viewport; surface the persistent New message control.
   React.useEffect(() => {
     const el = messagesRef.current
     if (!el) return
@@ -63,7 +63,6 @@ export default function ChatScreen({
     const clientHeight = el.clientHeight
     const scrollTop = el.scrollTop
 
-    // If user was near bottom before content changed, scroll to bottom
     if (nearBottomRef.current || scrollHeight <= clientHeight) {
       el.scrollTop = scrollHeight
       setShowNewMessagePill(false)
@@ -79,9 +78,7 @@ export default function ChatScreen({
     if (!el) return
     const threshold = 120
     nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
-    if (nearBottomRef.current) {
-      setShowNewMessagePill(false)
-    }
+    if (nearBottomRef.current) setShowNewMessagePill(false)
   }, [])
 
   const scrollToBottom = React.useCallback(() => {
@@ -107,13 +104,9 @@ export default function ChatScreen({
         background: 'var(--chat-bg)',
       }}
     >
-      {/* Header */}
       <div style={{ flexShrink: 0 }}>{header}</div>
-
-      {/* Banner */}
       {banner && <div style={{ flexShrink: 0 }}>{banner}</div>}
 
-      {/* Messages */}
       <div
         ref={messagesRef}
         onScroll={handleScroll}
@@ -125,6 +118,8 @@ export default function ChatScreen({
           overflowY: 'auto',
           overflowX: 'hidden',
           position: 'relative',
+          overscrollBehaviorY: 'contain',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         <div className="cv-canvas-inner" style={{ padding: '14px 6px', position: 'relative', zIndex: 2 }}>
@@ -132,6 +127,9 @@ export default function ChatScreen({
         </div>
         {showNewMessagePill && (
           <button
+            type="button"
+            className="ys-new-message-pill"
+            aria-label="Jump to the newest message"
             onClick={scrollToBottom}
             style={{
               position: 'sticky',
@@ -143,27 +141,26 @@ export default function ChatScreen({
               color: '#fff',
               border: 'none',
               borderRadius: 999,
-              padding: '6px 14px',
+              padding: '10px 14px',
+              minHeight: 44,
               fontSize: 12,
               fontWeight: 600,
               cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
             }}
           >
             ↓ New message
           </button>
         )}
+        <span className="ys-live-message-announcer" aria-live="polite" aria-atomic="true">
+          {showNewMessagePill ? 'A new message is available below.' : ''}
+        </span>
       </div>
 
-      {/* Composer */}
       <div style={{ flexShrink: 0 }}>{composer}</div>
     </div>
   )
 
-  // Compose top-level className + data-attribute so the mobile-pane
-  // CSS rules in messenger-tokens.css can hide whichever side is not
-  // currently active at ≤680px. Desktop ignores the data attribute and
-  // shows both panes side-by-side.
   const wrapperClass = ['ys-chatscreen', className].filter(Boolean).join(' ')
 
   return (
@@ -175,6 +172,8 @@ export default function ChatScreen({
         display: 'flex',
         flexDirection: isSplit ? 'row' : 'column',
         height: '100%',
+        minHeight: 0,
+        minWidth: 0,
         overflow: 'hidden',
         ...style,
       }}
@@ -187,6 +186,8 @@ export default function ChatScreen({
             flexShrink: 0,
             borderRight: '1px solid #DDD8CE',
             overflowY: 'auto',
+            overscrollBehaviorY: 'contain',
+            WebkitOverflowScrolling: 'touch',
             background: '#fff',
           }}
         >

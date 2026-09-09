@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
 
 interface ReplyToInfo {
   id: string
@@ -21,19 +22,18 @@ interface AutoGrowInputProps {
   // the paperclip + mic buttons fall back to a clear "unavailable" state
   // rather than the prior silent no-op.
   conversationId?: string
+  /**
+   * Historical name retained for API compatibility. It now also fires when
+   * Supabase Realtime reports a new/updated/deleted row in the active
+   * conversation. UnifiedInbox already uses this callback to refresh both the
+   * thread and chat list, so AI live replies become visible immediately while
+   * the existing soft poll remains a fallback.
+   */
   onAttachmentSent?: (message: any) => void
-  // Backward-compatible capability flags: views that do NOT have an
-  // authenticated participant attach path (e.g. the admin Master Chats
-  // oversight composer) can omit the paperclip / mic controls entirely
-  // instead of exposing buttons that always fail. Defaults preserve the
-  // historical behavior for every existing caller.
   allowAttach?: boolean
   allowVoice?: boolean
 }
 
-// Curated emoji set — shows in the popover. Kept small + categorised so
-// the picker doesn't need a heavy emoji-mart dependency. Add to the
-// arrays below if a user asks for a missing one.
 const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
   { label: 'Smileys', emojis: ['😀','😁','😂','🤣','😊','😍','🥰','😘','😎','🤔','😐','🙄','😴','🤯','😅','😭','😢','😡','🤝','🙏'] },
   { label: 'Reactions', emojis: ['👍','👎','❤️','🔥','💯','✅','❌','⚠️','💡','🎯','📌','⭐','🌟','✨','🎉','👏','💪','🤞','👀','🙌'] },
@@ -57,6 +57,49 @@ export default function AutoGrowInput({
 }: AutoGrowInputProps) {
   const ref = React.useRef<HTMLTextAreaElement>(null)
   const hasContent = value.trim().length > 0
+
+  // Keep the refresh callback current without tearing down/recreating the
+  // realtime channel every time the parent renders an inline callback.
+  const liveRefreshRef = React.useRef(onAttachmentSent)
+  React.useEffect(() => {
+    liveRefreshRef.current = onAttachmentSent
+  }, [onAttachmentSent])
+
+  // The composer is mounted for every active UnifiedInbox thread and already
+  // knows its canonical conversation id. Subscribe here so the same realtime
+  // behavior is automatically shared by client, attorney, consultant and
+  // marketplace messenger surfaces. A short debounce coalesces bursts such as
+  // an AI text followed immediately by an AI-generated offer.
+  React.useEffect(() => {
+    if (!conversationId) return
+    let refreshTimer: number | null = null
+    const scheduleRefresh = (message?: any) => {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        liveRefreshRef.current?.(message)
+      }, 90)
+    }
+    const off = subscribeToTable('conversation_messages', 'public', (payload) => {
+      const row = payload.new || payload.old
+      if (row?.conversation_id === conversationId) scheduleRefresh(payload.new || payload.old)
+    })
+
+    // Mobile Safari/Chrome may suspend sockets while the app is backgrounded.
+    // Refresh as soon as the page becomes visible/focused again so no AI or
+    // counterpart reply remains stale after returning to the messenger.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+
+    return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      off()
+    }
+  }, [conversationId])
 
   // ── Emoji picker ──────────────────────────────────────────────────────
   const [showEmoji, setShowEmoji] = React.useState(false)
@@ -164,11 +207,6 @@ export default function AutoGrowInput({
       setAttachError('Voice notes are not supported in this browser.')
       return
     }
-    // If the user has already blocked mic access for this site, the
-    // getUserMedia call will silently no-op (browsers don't re-prompt
-    // once "Block" was selected). Catch that case up-front and surface
-    // explicit unblock steps — otherwise the user keeps clicking and
-    // nothing happens.
     try {
       if (typeof navigator.permissions?.query === 'function') {
         const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
@@ -180,8 +218,7 @@ export default function AutoGrowInput({
         }
       }
     } catch {
-      // Permissions API not available for mic in some browsers; fall
-      // through and let getUserMedia raise the regular prompt/error.
+      // Permissions API not available for mic in some browsers.
     }
     setAttachError('')
     try {
@@ -212,7 +249,6 @@ export default function AutoGrowInput({
       setRecordSeconds(0)
       recordTimerRef.current = window.setInterval(() => {
         setRecordSeconds((s) => {
-          // Hard cap at 2 minutes to keep file size + UI reasonable.
           if (s + 1 >= 120) { stopRecording(false); return 120 }
           return s + 1
         })
@@ -231,7 +267,6 @@ export default function AutoGrowInput({
     }
   }
 
-  // Cleanup on unmount
   React.useEffect(() => {
     return () => {
       if (recordTimerRef.current) window.clearInterval(recordTimerRef.current)
@@ -349,7 +384,7 @@ export default function AutoGrowInput({
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#64748B', padding: '4px 6px' }}>
                   {cat.label}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2 }}>
+                <div className="ys-composer-emoji-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2 }}>
                   {cat.emojis.map((e) => (
                     <button
                       key={e}
