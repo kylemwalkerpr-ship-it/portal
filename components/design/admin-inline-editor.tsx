@@ -1520,7 +1520,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     Restore
                   </button>
                 </div>
-              ))}
+              )))
             )}
           </div>
         )}
