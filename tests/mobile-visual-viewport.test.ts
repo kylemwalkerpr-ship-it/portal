@@ -16,7 +16,8 @@ describe('mobile visual viewport contract', () => {
     expect(coordinator).toContain("document.addEventListener('focusin', onFocusChange)")
     expect(coordinator).toContain("document.addEventListener('focusout', onFocusChange)")
     expect(coordinator).toContain("root.style.setProperty(HEIGHT_VAR, `${visibleBottom}px`)")
-    expect(coordinator).toContain("const visibleBottom = Math.max(MIN_HEIGHT, Math.round(rawHeight) + offsetTop)")
+    expect(coordinator).toContain("const visibleBottom = Math.max(1, Math.round(rawHeight) + offsetTop)")
+    expect(coordinator).not.toContain('MIN_HEIGHT')
   })
 
   test('the final mobile cascade overrides legacy 100vh/100dvh dashboard heights', () => {
