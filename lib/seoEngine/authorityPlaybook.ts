@@ -181,7 +181,8 @@ export function verdictFor(input: PlaybookInput): PlaybookVerdict {
 
   // Strategy-corpus / deep-tail TOFU with no real demand is not a ranking bet.
   // Keep BOFU/MOFU (hire, fees, vs) even at low impressions — those convert.
-  const thinTofu = play === 'content_gap' && impressions > 0 && impressions < 20 && funnel === 'tofu'
+  // Zero impressions is the live knowledge-corpus case (engine zeros synthetic rows).
+  const thinTofu = play === 'content_gap' && impressions < 20 && funnel === 'tofu'
   if (thinTofu) {
     return {
       move: 'housekeeping',

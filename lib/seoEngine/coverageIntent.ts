@@ -109,8 +109,11 @@ export function classifyCoverageIntent(candidate: string, owner: string): Covera
   const candOther = candExtra.filter((t) => !isSpokeToken(t) && !isAudienceToken(t))
   const ownOther = ownExtra.filter((t) => !isSpokeToken(t) && !isAudienceToken(t))
 
-  // Shared entity + a modifier only one side has → distinct SERP intent.
-  if (shared >= 2 && (candSpokes.length > 0 || ownSpokes.length > 0) && candSpokes.join() !== ownSpokes.join()) {
+  // Shared entity + a modifier the CANDIDATE has that the owner does not →
+  // distinct SERP intent (calculator / fee / vs). If the owner is narrower
+  // (owner has extra spoke tokens, candidate does not) this is the parent
+  // pillar, not a spoke under the narrower page.
+  if (shared >= 2 && candSpokes.length > 0 && candSpokes.join() !== ownSpokes.join()) {
     return 'spoke'
   }
 

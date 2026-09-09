@@ -20,6 +20,11 @@ describe('classifyCoverageIntent', () => {
     )
   })
 
+  it('does not treat a broader query as a spoke of a narrower owner', () => {
+    expect(classifyCoverageIntent('f-1 visa', 'f-1 visa interview questions')).toBe('unrelated')
+    expect(bestOwnerMatch('f-1 visa', ['f-1 visa interview questions'])?.kind).not.toBe('spoke')
+  })
+
   it('does not let a one-token owner swallow the whole estate', () => {
     expect(classifyCoverageIntent('express entry canada calculator', 'visa')).toBe('unrelated')
   })
@@ -125,8 +130,16 @@ describe('authority playbook ranking', () => {
       impressions: 8,
       coverageKind: 'unrelated',
     })
+    const zero = verdictFor({
+      topic: 'what makes a good personal statement',
+      play: 'content_gap',
+      impressions: 0,
+      coverageKind: 'unrelated',
+    })
     expect(thin.move).toBe('housekeeping')
     expect(thin.hideByDefault).toBe(true)
+    expect(zero.move).toBe('housekeeping')
+    expect(zero.hideByDefault).toBe(true)
     expect(bofu.move).toBe('fill_pillar')
     expect(bofu.hideByDefault).toBe(false)
     expect(bofu.conversionLine).toMatch(/never the H1/i)
