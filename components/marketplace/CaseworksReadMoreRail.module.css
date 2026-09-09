@@ -1,0 +1,311 @@
+.rail {
+  box-sizing: border-box;
+  width: min(calc(100% - 32px), 72rem);
+  margin: 32px auto 0;
+  overflow: hidden;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.12));
+  border-radius: 20px;
+  background: var(--ys-vellum, #ffffff);
+  color: var(--ys-ink, #0f172a);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 18px 48px -32px rgba(15, 23, 42, 0.22);
+  font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 18px 18px;
+  border-bottom: 1px solid var(--ys-ruleSoft, rgba(15, 23, 42, 0.07));
+  background: var(--ys-vellum, #ffffff);
+  box-shadow: inset 0 3px 0 var(--ys-indigo, #111827);
+}
+
+.headingGroup {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.10));
+  border-radius: 999px;
+  background: var(--ys-paper2, #f1f3f5);
+  color: var(--ys-inkMid, #334155);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.eyebrowDot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: var(--ys-indigo, #111827);
+}
+
+.title {
+  margin: 11px 0 0;
+  color: var(--ys-ink, #0f172a);
+  font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: clamp(20px, 5vw, 26px);
+  font-weight: 760;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+}
+
+.description {
+  max-width: 44rem;
+  margin: 7px 0 0;
+  color: var(--ys-inkSoft, #526072);
+  font-size: 14px;
+  font-weight: 450;
+  line-height: 1.55;
+}
+
+.browse {
+  display: inline-flex !important;
+  width: fit-content;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.12));
+  border-radius: 999px;
+  background: var(--ys-vellum, #ffffff);
+  color: var(--ys-ink, #0f172a) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1;
+  text-decoration: none !important;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.browse:hover {
+  border-color: var(--ys-indigo, #111827);
+  box-shadow: 0 5px 18px -12px rgba(15, 23, 42, 0.45);
+  transform: translateY(-1px);
+}
+
+.browse:focus-visible,
+.card:focus-visible {
+  outline: 3px solid var(--ys-indigo, #111827) !important;
+  outline-offset: 3px !important;
+}
+
+.grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  box-sizing: border-box;
+  margin: 0 !important;
+  padding: 14px !important;
+  list-style: none !important;
+}
+
+.item {
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.item::marker {
+  content: '';
+}
+
+.card {
+  position: relative;
+  isolation: isolate;
+  display: flex !important;
+  min-height: 154px;
+  height: 100%;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.11));
+  border-radius: 16px;
+  background: var(--ys-vellum, #ffffff) !important;
+  color: var(--ys-ink, #0f172a) !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 26px -22px rgba(15, 23, 42, 0.28);
+  text-decoration: none !important;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--ys-indigo, #111827);
+}
+
+.card:hover {
+  border-color: var(--ys-indigo, #111827);
+  box-shadow:
+    0 3px 8px -5px rgba(15, 23, 42, 0.18),
+    0 18px 36px -24px rgba(15, 23, 42, 0.34);
+  transform: translateY(-2px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 2px;
+}
+
+.cardNumber {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--ys-indigoSoft, rgba(17, 24, 39, 0.10));
+  color: var(--ys-indigoDeep, #030712);
+  font-size: 10px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: 0.03em;
+}
+
+.cardType {
+  min-width: 0;
+  color: var(--ys-inkSoft, #526072);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.cardTitle {
+  margin: 14px 0 20px;
+  color: var(--ys-ink, #0f172a);
+  font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 760;
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  overflow-wrap: anywhere;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--ys-ruleSoft, rgba(15, 23, 42, 0.07));
+}
+
+.readLabel {
+  color: var(--ys-indigo, #111827);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.arrow {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: currentColor;
+}
+
+.item:only-child {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 640px) {
+  .rail {
+    width: min(calc(100% - 48px), 72rem);
+    margin-top: 40px;
+  }
+
+  .header {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 28px;
+    padding: 24px;
+  }
+
+  .browse {
+    flex: 0 0 auto;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    padding: 20px !important;
+  }
+
+  .card {
+    min-height: 168px;
+    padding: 18px;
+  }
+
+  .cardTitle {
+    font-size: 17px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .rail {
+    width: min(calc(100% - 64px), 72rem);
+  }
+}
+
+@media (max-width: 360px) {
+  .rail {
+    width: calc(100% - 24px);
+    border-radius: 17px;
+  }
+
+  .header {
+    padding: 17px 15px 15px;
+  }
+
+  .grid {
+    padding: 12px !important;
+  }
+
+  .card {
+    min-height: 148px;
+    padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browse,
+  .card {
+    transition: none;
+  }
+
+  .browse:hover,
+  .card:hover {
+    transform: none;
+  }
+}
