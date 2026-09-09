@@ -26,11 +26,13 @@ const COMPOSER_INPUT_SELECTOR = ".yousafe-messenger .ys-chatscreen[data-mobile-v
  *   become fixed to the VisualViewport, which prevents Safari's keyboard pan
  *   from clipping the chat header or composer.
  *
- * iOS browser chrome needs one additional signal. When Safari keeps its URL
- * bar immediately above the software keyboard, VisualViewport.height can still
- * include the pixels covered by that browser UI. We therefore publish
- * data-ys-ios-webkit / data-ys-keyboard-open on <html>; CSS uses those flags to
- * reserve only the dynamic browser-chrome delta while the composer is focused.
+ * Safari's native controls above the keyboard are treated separately from the
+ * keyboard-height heuristic. iOS 26 can focus the Messenger textarea and show
+ * the bottom URL bar + input-assistant strip without reporting a VisualViewport
+ * delta large enough to satisfy a software-keyboard threshold. The exact
+ * Messenger composer focus state is therefore published synchronously on
+ * <html>. CSS uses that focus signal to reserve native chrome; VisualViewport
+ * still remains the source of truth for the app rectangle itself.
  */
 export default function MobileVisualViewport() {
   React.useLayoutEffect(() => {
@@ -47,6 +49,7 @@ export default function MobileVisualViewport() {
 
     let frame = 0
     let tailFrame = 0
+    let focusFrame = 0
     let focusTimers: number[] = []
     let chatNearBottom = true
     let unfocusedVisualHeight = Math.max(1, Math.round(window.visualViewport?.height || window.innerHeight))
@@ -54,6 +57,10 @@ export default function MobileVisualViewport() {
     const composerIsFocused = () => {
       const active = document.activeElement
       return active instanceof HTMLElement && active.matches(COMPOSER_INPUT_SELECTOR)
+    }
+
+    const publishComposerFocus = (focused: boolean) => {
+      root.dataset.ysMessengerComposerFocused = focused ? 'true' : 'false'
     }
 
     const pinChatTailIfNeeded = () => {
@@ -79,9 +86,13 @@ export default function MobileVisualViewport() {
       const visibleBottom = visualHeight + offsetTop
       const focused = composerIsFocused()
 
-      // Remember the current keyboard-closed height rather than the historical
-      // maximum so rotating portrait -> landscape cannot make a hardware
-      // keyboard look like a software-keyboard shrink.
+      // Keep the focus marker synchronized even if Safari restores a page from
+      // bfcache or changes activeElement without delivering the expected event.
+      publishComposerFocus(focused)
+
+      // Preserve the keyboard-open marker for diagnostics and any consumers
+      // that genuinely need keyboard-height evidence. Crucially, Messenger's
+      // native-chrome reserve no longer depends on this heuristic.
       if (!focused) unfocusedVisualHeight = visualHeight
       const keyboardOpen = isIOSWebKit
         && !standalone
@@ -122,6 +133,7 @@ export default function MobileVisualViewport() {
 
     // Do the first measurement synchronously during layout so an open thread
     // does not paint one frame at 100vh before being corrected.
+    publishComposerFocus(composerIsFocused())
     apply()
 
     const viewport = window.visualViewport
@@ -132,18 +144,41 @@ export default function MobileVisualViewport() {
     window.addEventListener('pageshow', schedule)
     document.addEventListener('scroll', onChatScroll, true)
 
-    // VisualViewport resize is the primary keyboard signal. Focus changes also
-    // trigger a short set of delayed measurements because iOS can expose the
-    // final URL-bar/keyboard geometry only after its animation has settled.
-    const onFocusChange = () => {
+    // Focus is the authoritative signal for Safari's native form chrome. Set it
+    // synchronously on focusin so CSS reserves the URL/input-assistant stack
+    // before iOS starts panning/animating the keyboard. On focusout, defer one
+    // frame so moving focus between Messenger controls cannot briefly collapse
+    // the app rectangle.
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target
+      if (target instanceof HTMLElement && target.matches(COMPOSER_INPUT_SELECTOR)) {
+        publishComposerFocus(true)
+      }
       schedule()
       scheduleSettledMeasurements()
     }
-    document.addEventListener('focusin', onFocusChange)
-    document.addEventListener('focusout', onFocusChange)
+
+    const onFocusOut = (event: FocusEvent) => {
+      const target = event.target
+      if (target instanceof HTMLElement && target.matches(COMPOSER_INPUT_SELECTOR)) {
+        if (focusFrame) window.cancelAnimationFrame(focusFrame)
+        focusFrame = window.requestAnimationFrame(() => {
+          focusFrame = 0
+          publishComposerFocus(composerIsFocused())
+          schedule()
+        })
+      } else {
+        schedule()
+      }
+      scheduleSettledMeasurements()
+    }
+
+    document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('focusout', onFocusOut)
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
+        publishComposerFocus(composerIsFocused())
         schedule()
         scheduleSettledMeasurements()
       }
@@ -153,6 +188,7 @@ export default function MobileVisualViewport() {
     return () => {
       if (frame) window.cancelAnimationFrame(frame)
       if (tailFrame) window.cancelAnimationFrame(tailFrame)
+      if (focusFrame) window.cancelAnimationFrame(focusFrame)
       focusTimers.forEach((timer) => window.clearTimeout(timer))
       viewport?.removeEventListener('resize', schedule)
       viewport?.removeEventListener('scroll', schedule)
@@ -160,12 +196,13 @@ export default function MobileVisualViewport() {
       window.removeEventListener('orientationchange', schedule)
       window.removeEventListener('pageshow', schedule)
       document.removeEventListener('scroll', onChatScroll, true)
-      document.removeEventListener('focusin', onFocusChange)
-      document.removeEventListener('focusout', onFocusChange)
+      document.removeEventListener('focusin', onFocusIn)
+      document.removeEventListener('focusout', onFocusOut)
       document.removeEventListener('visibilitychange', onVisibility)
       delete root.dataset.ysIosWebkit
       delete root.dataset.ysStandalone
       delete root.dataset.ysKeyboardOpen
+      delete root.dataset.ysMessengerComposerFocused
       root.style.removeProperty(HEIGHT_VAR)
       root.style.removeProperty(BLOCK_SIZE_VAR)
       root.style.removeProperty(OFFSET_VAR)
