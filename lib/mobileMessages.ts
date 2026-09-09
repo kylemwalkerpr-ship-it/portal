@@ -4,10 +4,8 @@ import { safetyGuard, type SafetyViolation } from './safety'
 
 /**
  * Shared logic for /api/mobile/messages* — Bearer-verified conversations.
- *
- * Same tables and shapes as /api/messages/conversations and
- * /api/messages/conversations/[id] (cookie auth), but identity comes from the
- * Bearer Clerk JWT so the native app can use it. Cookie auth is untouched.
+ * Direct participant contact details are intentionally excluded from all
+ * Messenger payloads; communication stays inside YouSafe.
  */
 
 export type MobileProfileResult =
@@ -19,7 +17,6 @@ export type MobileProfileResult =
   | { status: 'unauthenticated'; reason: 'missing' | 'invalid' }
   | { status: 'forbidden'; message: string; httpStatus: 403 | 404 }
 
-/** Resolve any signed-in profile (like cookie requirePortalUser) from a Bearer JWT. */
 export async function resolveMobileProfile(
   authorizationHeader: string | null | undefined,
 ): Promise<MobileProfileResult> {
@@ -48,11 +45,6 @@ export function unauthorizedResponse(reason: 'missing' | 'invalid') {
   return Response.json({ error: { message }, signInRequired: true }, { status: 401 })
 }
 
-/**
- * GET /api/mobile/messages/conversations — inbox list for the signed-in
- * profile. Mirrors GET /api/messages/conversations (same filters, same
- * per-conversation shape, same counts envelope).
- */
 export async function listMobileConversations(
   req: Request,
   auth: { db: any; profile: { id: string } },
@@ -85,7 +77,6 @@ export async function listMobileConversations(
 
   const convIds = list.map((c) => c.id)
 
-  // Participant state (best-effort; table may not exist yet)
   let participantMap = new Map<string, any>()
   try {
     const { data: parts } = await db
@@ -94,17 +85,14 @@ export async function listMobileConversations(
       .eq('profile_id', profile.id)
       .in('conversation_id', convIds)
     for (const p of parts ?? []) participantMap.set(p.conversation_id, p)
-  } catch {
-    // Non-fatal — table may not exist yet
-  }
+  } catch {}
 
-  // Batch hydrate counterpart profiles, last messages, reads
   const counterpartIds = list.map((c) => (c.participant_a === profile.id ? c.participant_b : c.participant_a))
   const lastMessageIds = list.map((c) => c.last_message_id).filter(Boolean)
 
   const [profilesRes, lastMessagesRes, readsRes, recentMsgsRes] = await Promise.all([
     counterpartIds.length
-      ? db.from('profiles').select('id, full_name, email, avatar_url, role').in('id', counterpartIds)
+      ? db.from('profiles').select('id, full_name, avatar_url, role').in('id', counterpartIds)
       : Promise.resolve({ data: [] }),
     lastMessageIds.length
       ? db.from('conversation_messages').select('id, body, sender_id, type, attachment_name, created_at').in('id', lastMessageIds)
@@ -142,8 +130,7 @@ export async function listMobileConversations(
       counterpart: counterpart
         ? {
             id: counterpart.id,
-            name: counterpart.full_name || counterpart.email || 'User',
-            email: counterpart.email,
+            name: counterpart.full_name || 'YouSafe member',
             avatar_url: counterpart.avatar_url,
             role: counterpart.role,
           }
@@ -164,7 +151,6 @@ export async function listMobileConversations(
     }
   })
 
-  // Exclude soft-deleted for the viewer
   conversations = conversations.filter((c) => !c.deleted_at)
 
   if (filter === 'unread') conversations = conversations.filter((c) => c.unread > 0)
@@ -207,13 +193,6 @@ export async function listMobileConversations(
   }
 }
 
-/**
- * GET /api/mobile/messages/conversations/[id] — thread messages + counterpart
- * for the signed-in profile. Mirrors the cookie route's base shape
- * (conversation, messages with reply previews + reactions + derived
- * delivered/read timestamps, participant row). Offer-card enrichment is not
- * included (offers → payment is out of this phase).
- */
 export async function getMobileThread(
   id: string,
   auth: { db: any; profile: { id: string } },
@@ -236,7 +215,7 @@ export async function getMobileThread(
       .eq('conversation_id', id)
       .order('created_at', { ascending: true })
       .limit(500),
-    db.from('profiles').select('id, full_name, email, avatar_url, role').eq('id', counterpartId).maybeSingle(),
+    db.from('profiles').select('id, full_name, avatar_url, role').eq('id', counterpartId).maybeSingle(),
     db.from('conversation_participants')
       .select('starred_message_ids, pinned_at, archived_at, muted_until')
       .eq('conversation_id', id)
@@ -252,14 +231,11 @@ export async function getMobileThread(
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
 
-  // Same counterpart shape as the list route (name + avatar + role), so the
-  // app renders both from one model.
   const counterpartRow: any = (counterpartRes as any)?.data || null
   const counterpart = counterpartRow
     ? {
         id: counterpartRow.id,
-        name: counterpartRow.full_name || counterpartRow.email || 'User',
-        email: counterpartRow.email,
+        name: counterpartRow.full_name || 'YouSafe member',
         avatar_url: counterpartRow.avatar_url,
         role: counterpartRow.role,
       }
@@ -267,7 +243,6 @@ export async function getMobileThread(
 
   const rawMessages: any[] = messagesRes.data || []
 
-  // Reply previews
   const replyIds = Array.from(new Set(rawMessages.map((m) => m?.reply_to_id).filter(Boolean)))
   const replyMap = new Map<string, any>()
   if (replyIds.length) {
@@ -277,12 +252,9 @@ export async function getMobileThread(
         .select('id, sender_id, body')
         .in('id', replyIds as string[])
       for (const r of replyRows || []) replyMap.set(r.id, r)
-    } catch {
-      // Non-fatal — reply preview enrichment skipped
-    }
+    } catch {}
   }
 
-  // Reactions
   const messageIds = rawMessages.map((m) => m.id).filter(Boolean)
   const reactionMap = new Map<string, Array<{ emoji: string; count: number; mine: boolean }>>()
   if (messageIds.length) {
@@ -302,9 +274,7 @@ export async function getMobileThread(
         }
         reactionMap.set(r.message_id, list)
       }
-    } catch {
-      // Non-fatal — reactions enrichment skipped
-    }
+    } catch {}
   }
 
   const messages = rawMessages.map((m: any) => {
@@ -347,10 +317,6 @@ export async function getMobileThread(
   }
 }
 
-/**
- * POST /api/mobile/messages/conversations/[id] — send a text message.
- * Mirrors the cookie route: ownership check, safetyGuard, insert.
- */
 export async function sendMobileMessage(
   id: string,
   body: unknown,

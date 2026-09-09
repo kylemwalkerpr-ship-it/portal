@@ -27,7 +27,7 @@ export async function GET() {
       ? db.from('order_items').select('order_id, service_id').in('order_id', orderIds)
       : Promise.resolve({ data: [], error: null }),
     consultantIds.length
-      ? db.from('profiles').select('id, email, full_name, role').in('id', consultantIds)
+      ? db.from('profiles').select('id, full_name, role').in('id', consultantIds)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -83,7 +83,7 @@ export async function GET() {
       deliverable: service?.title || order.requirements || (isTemplate ? 'Digital template' : 'Deliverable'),
       consultant: isTemplate
         ? 'Digital delivery'
-        : consultant?.full_name || consultant?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+        : consultant?.full_name || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
       consultantId: order.consultant_id ?? null,
       status: order.status === 'queued' ? 'pending' : order.status === 'created' ? 'created' : order.status === 'in_progress' ? 'active' : order.status === 'under_review' ? 'review' : order.status || 'pending',
       date: order.created_at ? new Date(order.created_at).toLocaleDateString() : '—',

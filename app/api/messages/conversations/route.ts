@@ -1,22 +1,14 @@
 /**
  * GET /api/messages/conversations
  *
- * Universe-wide inbox for the signed-in profile.
- *
- * Query params:
- *   filter   — all | unread | archived | favourites | groups
- *   q        — search counterpart name + last message
- *   page, page_size  — default 50, max 200
- *
- * Returns rows shaped for the dashboard Messages page and the inbox badge:
- *   conversations[]   — counterpart, last message, unread count, type ctx, participant state
- *   counts            — { all, unread, archived, favourites, groups, totalUnread }
+ * Universe-wide inbox for the signed-in profile. Direct participant contact
+ * details are intentionally excluded: Messenger identifies participants by
+ * platform name/avatar/role and all communication stays on YouSafe.
  */
 import { requirePortalUser } from '@/lib/portalAuth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 
 export async function GET(req: Request) {
-  // ── abort guard: client disconnect → fast 499 ──
   if (req.signal.aborted) {
     return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
   }
@@ -34,7 +26,6 @@ export async function GET(req: Request) {
   const page     = Math.max(1, Number(searchParams.get('page') || 1))
   const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('page_size') || 50)))
 
-  // 1. Fetch the conversation rows where I am a participant
   let { data: convs, error } = await db
     .from('conversations')
     .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at')
@@ -52,7 +43,6 @@ export async function GET(req: Request) {
 
   const convIds = list.map(c => c.id)
 
-  // 2. Fetch participant state (best-effort; table may not exist yet)
   let participantMap = new Map<string, any>()
   try {
     const { data: parts } = await db
@@ -60,19 +50,14 @@ export async function GET(req: Request) {
       .select('conversation_id, pinned_at, archived_at, muted_until, deleted_at')
       .eq('profile_id', profileId)
       .in('conversation_id', convIds)
-    for (const p of (parts ?? [])) {
-      participantMap.set(p.conversation_id, p)
-    }
-  } catch {
-    // Non-fatal — table may not exist yet
-  }
+    for (const p of (parts ?? [])) participantMap.set(p.conversation_id, p)
+  } catch {}
 
-  // 3. Batch hydrate counterpart profiles, last messages, reads
   const counterpartIds = list.map(c => c.participant_a === profileId ? c.participant_b : c.participant_a)
   const lastMessageIds = list.map(c => c.last_message_id).filter(Boolean)
 
   const [profilesRes, lastMessagesRes, readsRes, recentMsgsRes] = await Promise.all([
-    counterpartIds.length ? db.from('profiles').select('id, full_name, email, avatar_url, role').in('id', counterpartIds) : Promise.resolve({ data: [] }),
+    counterpartIds.length ? db.from('profiles').select('id, full_name, avatar_url, role').in('id', counterpartIds) : Promise.resolve({ data: [] }),
     lastMessageIds.length ? db.from('conversation_messages').select('id, body, sender_id, type, attachment_name, created_at').in('id', lastMessageIds) : Promise.resolve({ data: [] }),
     db.from('conversation_reads').select('conversation_id, last_read_at').eq('profile_id', profileId).in('conversation_id', convIds),
     db.from('conversation_messages')
@@ -106,8 +91,7 @@ export async function GET(req: Request) {
       id:              c.id,
       counterpart: counterpart ? {
         id: counterpart.id,
-        name: counterpart.full_name || counterpart.email || 'User',
-        email: counterpart.email,
+        name: counterpart.full_name || 'YouSafe member',
         avatar_url: counterpart.avatar_url,
         role: counterpart.role,
       } : null,
@@ -127,15 +111,13 @@ export async function GET(req: Request) {
     }
   })
 
-  // 4. Filters + search
-  // Exclude soft-deleted for the viewer
   conversations = conversations.filter(c => !c.deleted_at)
 
   if (filter === 'unread')        conversations = conversations.filter(c => c.unread > 0)
   else if (filter === 'archived') conversations = conversations.filter(c => c.archived_at || c.status === 'archived')
   else if (filter === 'favourites') conversations = conversations.filter(c => !!c.pinned_at)
   else if (filter === 'groups')   conversations = conversations.filter(c => c.type === 'group')
-  else /* all */                  conversations = conversations.filter(c => !c.archived_at && c.status !== 'archived')
+  else                            conversations = conversations.filter(c => !c.archived_at && c.status !== 'archived')
 
   if (q) {
     conversations = conversations.filter(c =>

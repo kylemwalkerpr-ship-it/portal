@@ -88,8 +88,6 @@ export async function listMobileOrders(
   const page = Math.max(1, Number(searchParams.get('page') || 1))
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('page_size') || 25)))
 
-  // Column was renamed in DB to `delivery_deadline` — alias it back to
-  // `deadline` so the return shape stays unchanged.
   const sortColumn = sort === 'deadline' ? 'delivery_deadline' : sort
   let qb = db
     .from('orders')
@@ -104,8 +102,6 @@ export async function listMobileOrders(
   }
   if (escrowParam !== 'all') qb = qb.eq('escrow_status', escrowParam)
   if (q && q.length >= 2) {
-    // plainto_tsquery (`plfts`): `-`/quotes in user queries can never raise
-    // "syntax error in tsquery" (to_tsquery parses `-` as NOT).
     const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ && safeQ.length >= 2) {
       qb = qb.or(`requirements.plfts.${safeQ},order_number.ilike.%${q}%`)
@@ -116,7 +112,6 @@ export async function listMobileOrders(
 
   let { data: rows, error, count } = await qb
 
-  // Self-heal: missing column (e.g. progress, escrow_status) — retry with SELECT *.
   if (error && /column .* does not exist/i.test(error.message || '')) {
     let fb = db
       .from('orders')
@@ -146,7 +141,7 @@ export async function listMobileOrders(
       ? db.from('order_items').select('order_id, service_id').in('order_id', orderIds)
       : Promise.resolve({ data: [], error: null }),
     consultantIds.length
-      ? db.from('profiles').select('id, email, full_name, role').in('id', consultantIds)
+      ? db.from('profiles').select('id, full_name, role').in('id', consultantIds)
       : Promise.resolve({ data: [], error: null }),
     orderIds.length
       ? db.from('order_files').select('order_id').in('order_id', orderIds)
@@ -202,7 +197,7 @@ export async function listMobileOrders(
       icon: (service as any)?.icon || null,
       consultant: isTemplate
         ? 'Digital delivery'
-        : (consultant as any)?.full_name || (consultant as any)?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+        : (consultant as any)?.full_name || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
       consultantId: order.consultant_id ?? null,
       status,
       rawStatus: order.status,
@@ -266,7 +261,7 @@ export async function getMobileOrderDetail(
   const [itemsRes, consultantRes, filesRes, messagesRes, eventsRes, milestonesRes, scopeRes] = await Promise.allSettled([
     db.from('order_items').select('order_id, service_id, quantity, unit_price').eq('order_id', id),
     order.consultant_id
-      ? db.from('profiles').select('id, full_name, email, avatar_url, role').eq('id', order.consultant_id).single()
+      ? db.from('profiles').select('id, full_name, avatar_url, role').eq('id', order.consultant_id).single()
       : Promise.resolve({ data: null }),
     db.from('order_files').select('id, name, size_bytes, uploader_role, uploader_id, mime_type, created_at, storage_path, is_sensitive, is_deleted').eq('order_id', id).order('created_at', { ascending: false }),
     db.from('order_messages').select('id, sender_id, sender_role, body, created_at, attachment_url, attachment_name').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
@@ -285,8 +280,6 @@ export async function getMobileOrderDetail(
   const isTemplate = primaryService?.product_type === 'template'
   const consultant = consultantRes.status === 'fulfilled' ? (consultantRes.value as any)?.data || null : null
 
-  // Every file exchanged on this order, newest first, with a short-lived
-  // signed URL so the app can view/download. Soft-deleted files excluded.
   const fileRowsRaw = filesRes.status === 'fulfilled' ? ((filesRes.value as any).data ?? []) : []
   const fileRows = (fileRowsRaw as any[]).filter(r => !r.is_deleted)
   const files = await Promise.all(
@@ -389,9 +382,8 @@ export async function getMobileOrderDetail(
         requirements: order.requirements || '',
         consultant: isTemplate
           ? 'Digital delivery'
-          : consultant?.full_name || consultant?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+          : consultant?.full_name || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
         consultantId: order.consultant_id ?? null,
-        consultantEmail: consultant?.email || null,
         consultantAvatarUrl: consultant?.avatar_url || null,
         status: friendlyStatus,
         rawStatus: order.status,
@@ -416,7 +408,7 @@ export async function getMobileOrderDetail(
       items,
       services,
       files,
-      messages: messages.reverse(), // oldest → newest for chronological render
+      messages: messages.reverse(),
       events,
       milestones,
       scopeChanges,
