@@ -10,7 +10,7 @@
  *   5. passing coverage lets the gate clear; insufficient brief size also blocks.
  */
 import { partitionKeywords, mergeBriefKeywords, KEYWORD_REQUIREMENTS } from '@/lib/seoEngine/planner'
-import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
+import { evaluateContentQuality, firstContentH2Section } from '@/lib/seoFactory/contentQualityGate'
 
 describe('partitionKeywords', () => {
   it('synthesizes at least KEYWORD_REQUIREMENTS.SHORT_MIN short keywords from a bare primary', () => {
@@ -423,5 +423,112 @@ describe('content quality gate — keyword coverage', () => {
       requiredLongTailKeywords: longTail,
     })
     expect(r.blockers.find((b) => b.code === 'short_keyword_density_violation')).toBeTruthy()
+  })
+})
+
+describe('first content H2 keyword stuffing', () => {
+  const primary = 'canada spousal sponsorship processing time'
+
+  it('skips kit headings and returns the first reader H2', () => {
+    const section = firstContentH2Section(`# Title
+
+## In 60 seconds
+- one
+
+## Table of contents
+- two
+
+## What the clock actually means
+IRCC starts after a complete package.
+`)
+    expect(section?.heading).toBe('What the clock actually means')
+    expect(section?.body).toMatch(/IRCC starts/)
+  })
+
+  it('blocks when the first content H2 body repeats the primary 4+ times', () => {
+    const stuffed = Array.from({ length: 5 }, () =>
+      `The ${primary} is a range, not an approval.`,
+    ).join(' ')
+    const rest = Array.from({ length: 400 }, (_, i) => `detail${i} sits in this body.`).join(' ')
+    const content = `---
+title: Canada spousal sponsorship
+description: Inland versus overseas queues, documents, and what IRCC estimates mean for 2026 applicants.
+primaryKeyword: ${primary}
+robots: index,follow
+---
+
+# Canada Spousal Sponsorship: 2026 Guide
+
+## In 60 seconds
+- IRCC estimates are ranges
+- Inland and overseas queues differ
+
+## What ${primary} means in 2026
+${stuffed}
+
+## Eligibility steps
+You confirm who can sponsor. ${rest}
+
+## Documents
+Passport and relationship evidence.
+
+## FAQ
+### How do I check status?
+Use the official tracker.
+
+## Sources
+- [IRCC](https://www.canada.ca/en/immigration-refugees-citizenship.html)
+`
+    const r = evaluateContentQuality({
+      content,
+      primaryKeyword: primary,
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    const hit = r.blockers.find((b) => b.code === 'keyword_stuffing')
+    expect(hit).toBeTruthy()
+    expect(hit?.message).toMatch(/First content H2/i)
+  })
+
+  it('does not flag a first content H2 that uses the phrase once', () => {
+    const rest = Array.from({ length: 400 }, (_, i) => `detail${i} sits in this body.`).join(' ')
+    const content = `---
+title: Canada spousal sponsorship
+description: Inland versus overseas queues, documents, and what IRCC estimates mean for 2026 applicants.
+primaryKeyword: ${primary}
+robots: index,follow
+---
+
+# Canada Spousal Sponsorship: 2026 Guide
+
+## In 60 seconds
+- IRCC estimates are ranges
+
+## What the inland clock means
+The ${primary} starts after a complete package. Inland and overseas queues then differ.
+
+## Eligibility steps
+You confirm who can sponsor. ${rest}
+
+## Documents
+Passport and relationship evidence.
+
+## FAQ
+### How do I check status?
+Use the official tracker.
+
+## Sources
+- [IRCC](https://www.canada.ca/en/immigration-refugees-citizenship.html)
+`
+    const r = evaluateContentQuality({
+      content,
+      primaryKeyword: primary,
+      indexable: true,
+      contentType: 'legal_guide',
+    })
+    const firstH2Stuffing = r.blockers.filter(
+      (b) => b.code === 'keyword_stuffing' && /First content H2/i.test(b.message),
+    )
+    expect(firstH2Stuffing).toEqual([])
   })
 })

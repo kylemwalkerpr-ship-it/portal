@@ -716,6 +716,26 @@ function countOccurrences(haystack: string, phrase: string): number {
   return n
 }
 
+/** Kit headings that are not the first *content* H2. */
+const KIT_H2_RE = /^(in 60 seconds|table of contents|toc|faq|frequently asked questions|sources|references|related guides|worked example|disclaimer|further reading|next steps)$/i
+
+/**
+ * First reader-facing content H2 after kit sections (In 60 seconds / TOC).
+ * Heading is excluded from `body` so a legal once-in-the-heading use is not stuffing.
+ */
+export function firstContentH2Section(content: string): { heading: string; body: string } | null {
+  const raw = String(content || '').replace(/^---[\s\S]*?---\r?\n/, '')
+  const matches = [...raw.matchAll(/^##\s+(.+)$/gm)]
+  for (let i = 0; i < matches.length; i++) {
+    const heading = String(matches[i][1] || '').trim()
+    if (!heading || KIT_H2_RE.test(heading.replace(/[:：].*$/, '').trim())) continue
+    const start = (matches[i].index || 0) + matches[i][0].length
+    const end = i + 1 < matches.length ? (matches[i + 1].index || raw.length) : raw.length
+    return { heading, body: raw.slice(start, end) }
+  }
+  return null
+}
+
 /**
  * Count occurrences of `phrase` in `haystack` that do NOT fall inside any
  * occurrence of `primary`. Fixes sub-phrase double-counting: when a short or
@@ -1247,7 +1267,9 @@ export function evaluateContentQuality(opts: {
     const n = countOccurrences(body, pk)
     const pkWords = (pk.match(/[A-Za-z0-9'-]+/g) || []).length || 1
     const density = (n * pkWords) / words
+    let stuffingFlagged = false
     if (n >= 8 && density >= 0.045) {
+      stuffingFlagged = true
       humanScore -= 15
       add({
         code: 'keyword_stuffing',
@@ -1264,6 +1286,26 @@ export function evaluateContentQuality(opts: {
         message: `Primary keyword appears ${n}× (${(density * 100).toFixed(1)}%) — edge of stuffing`,
         fix: 'Reduce exact repeats; prefer semantic variants.',
       })
+    }
+    // Live 2026-09-09: first content H2 repeated the full primary in nearly
+    // every sentence while whole-page density stayed under the 4.5% blocker.
+    // Four exact hits in that one section is stuffing even when the rest of
+    // the article is clean.
+    if (!stuffingFlagged) {
+      const firstH2 = firstContentH2Section(body)
+      if (firstH2) {
+        const sectionHits = countOccurrences(firstH2.body, pk)
+        if (sectionHits >= 4) {
+          humanScore -= 15
+          add({
+            code: 'keyword_stuffing',
+            severity: 'blocker',
+            message: `First content H2 "${firstH2.heading}" repeats the primary keyword ${sectionHits}×. That section reads as stuffing.`,
+            fix: 'Use the full phrase once in that section, then short forms, pronouns, and related entities.',
+            evidence: pk,
+          })
+        }
+      }
     }
   }
 
@@ -1908,8 +1950,10 @@ export function qualityPromptBlock(contentType?: string): string {
     'Q5. NO HYPE. No "act now", "limited time", stacked exclamation marks,',
     '    or superlative bait ("best ever", "ultimate guide").',
     '',
-    'Q6. KEYWORD DISCIPLINE. Include the primary keyword naturally 2-4 times,',
-    '    including once in the first H2. Never keyword-stuff.',
+    'Q6. KEYWORD DISCIPLINE. Use the primary keyword 2–4 times in the whole article.',
+    '    Once in the title/H1, at most once in the first content H2 heading or opening',
+    '    sentence. After that, short forms and related entities. Four exact repeats in',
+    '    the first content H2 body is keyword stuffing and fails the gate.',
     '',
     'Q7. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
     '',

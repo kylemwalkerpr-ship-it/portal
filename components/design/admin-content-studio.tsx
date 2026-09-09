@@ -30,6 +30,7 @@ import {
   buildSeoIntelLockSeed,
   isSeoIntelLocked,
   type SeoIntelBriefLock,
+  type SeoIntelLockSeedInput,
 } from '@/lib/seoFactory/seoIntelLock'
 import { mergeInterlinkLists, preferRegionInterlinks, type StudioInterlink } from '@/lib/seoFactory/studioInterlinks'
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
@@ -2381,6 +2382,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // the Generate handoff as one structured contract so Drafting never has to
   // re-assemble it.
   const [seoIntelBrief, setSeoIntelBrief] = React.useState<SeoIntelBriefLock | null>(null)
+  const [seoAnalyzeTick, setSeoAnalyzeTick] = React.useState(0)
+  const [seoIntelLocking, setSeoIntelLocking] = React.useState(false)
   const seoBriefSeed = String(selectedBrief?.primaryKeyword || topic || title || '').trim()
   // P1-E1: lock fingerprint binds writerContract to region + keyword/topic seed.
   const seoIntelLockSeed = buildSeoIntelLockSeed({
@@ -2400,8 +2403,8 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       return null
     })
   }, [seoIntelLockSeed])
-  const handleSeoBriefReady = React.useCallback((payload: { brief: unknown; writerContract: string }) => {
-    const lockSeed = buildSeoIntelLockSeed({
+  const handleSeoBriefReady = React.useCallback((payload: { brief: unknown; writerContract: string }, seedOverride?: SeoIntelLockSeedInput) => {
+    const lockSeed = buildSeoIntelLockSeed(seedOverride || {
       region,
       primaryKeyword: selectedBrief?.primaryKeyword || topic || title,
       topic,
@@ -2599,7 +2602,38 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
       const engineBit = engine?.ok
         ? ` · engine ${engine.grade || ''} ${engine.composite != null ? engine.composite + '/100' : ''} · ${engine.recommendationCount ?? 0} actions`
         : ''
-      setActionNotice?.(`🧠 Full brief ready${regionNote}${engineBit}: ${String(data.reasoning || '').slice(0, 120)}`)
+      const lockSeed: SeoIntelLockSeedInput = {
+        region: typeof data.region === 'string' ? data.region : region,
+        primaryKeyword: selectedBrief?.primaryKeyword || topic || (typeof data.suggestedH1 === 'string' ? data.suggestedH1 : title),
+        topic,
+        title: typeof data.suggestedH1 === 'string' && data.suggestedH1.trim() ? data.suggestedH1 : title,
+      }
+      let intelBit = ''
+      setSeoIntelLocking(true)
+      try {
+        const intelRes = await fetch('/api/content-studio/briefs/from-intel', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            seed: String(lockSeed.primaryKeyword || lockSeed.topic || lockSeed.title || '').trim(),
+            content: '',
+            title: lockSeed.title || lockSeed.topic,
+          }),
+        })
+        const intelData = await intelRes.json().catch(() => ({})) as { brief?: unknown; writerContract?: string; error?: string }
+        if (!intelRes.ok) throw new Error(String(intelData.error || 'SEO intel lock failed'))
+        handleSeoBriefReady(
+          { brief: intelData.brief, writerContract: String(intelData.writerContract || '') },
+          lockSeed,
+        )
+        setSeoAnalyzeTick((t) => t + 1)
+        intelBit = String(intelData.writerContract || '').trim() ? ' · SEO intel locked' : ' · SEO intel empty — click Generate SEO Brief'
+      } catch (intelErr) {
+        intelBit = ` · SEO intel still open — click Generate SEO Brief (${intelErr instanceof Error ? intelErr.message : 'lock failed'})`
+      } finally {
+        setSeoIntelLocking(false)
+      }
+      setActionNotice?.(`🧠 Full brief ready${regionNote}${engineBit}${intelBit}: ${String(data.reasoning || '').slice(0, 120)}`)
     } catch (err) {
       const aborted = err instanceof DOMException && err.name === 'AbortError'
       setActionNotice?.(
@@ -2769,7 +2803,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
     { label: 'Outline', ok: h2s.length >= 6, detail: `${h2s.length} planned sections` },
     { label: 'Keywords', ok: shortOk && longOk, detail: `${shortKw.length} short · ${longKw.length} long-tail` },
     { label: 'Placement', ok: kwList.length >= 9 && mappedKeywordCount === kwList.length, detail: `${mappedKeywordCount}/${kwList.length || 0} assigned to H2s` },
-    { label: 'SEO Intel', ok: seoIntelLocked, detail: seoIntelLocked ? 'Writer contract locked to topic/region' : 'Generate SEO Brief to lock (resets on topic/region/keyword change)' },
+    { label: 'SEO Intel', ok: seoIntelLocked, detail: seoIntelLocked ? 'Writer contract locked to topic/region' : seoIntelLocking ? 'Locking writer contract from the full brief…' : 'Generate Full Brief locks this automatically; Generate SEO Brief rebuilds it' },
     { label: 'Evidence', ok: evidenceGate.counted >= 3, detail: evidenceGate.fallbackUsed ? `${evidenceGate.counted} sources · off-region fallback` : `${evidenceGate.counted} in-region sources` },
     { label: 'Interlinks', ok: regionalInterlinks.kept.length >= 2, detail: regionalInterlinks.fallbackUsed ? `${regionalInterlinks.kept.length} targets · off-region fallback` : `${regionalInterlinks.kept.length} in-region estate targets` },
   ]
@@ -2840,11 +2874,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
 
       {briefIntel?.reasoning && (
         <div style={{ padding: '13px 16px', background: E.inkBlack, color: E.ivory, borderLeft: `4px solid ${E.gold}` }}>
-          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }}>
-            Engine-to-brief strategy · {briefIntel.masterEngine?.grade || 'reviewed'} {briefIntel.masterEngine?.composite != null ? `· ${briefIntel.masterEngine.composite}/100` : ''}
+          <div style={{ fontFamily: C.mono, fontSize: 8.5, letterSpacing: '.13em', textTransform: 'uppercase', color: '#F8E7B0' }} data-testid={briefIntel.masterEngine?.phase === 'plan' ? 'studio-plan-snapshot' : 'studio-engine-grade'}>
+            {briefIntel.masterEngine?.phase === 'plan'
+              ? `Plan snapshot · market/estate ${briefIntel.masterEngine.composite != null ? `${briefIntel.masterEngine.composite}/100` : 'unscored'} — not article quality`
+              : `Engine-to-brief strategy · ${briefIntel.masterEngine?.grade || 'reviewed'} ${briefIntel.masterEngine?.composite != null ? `· ${briefIntel.masterEngine.composite}/100` : ''}`}
             {briefIntel.masterEngine?.phase === 'plan' && briefIntel.masterEngine.composite != null && (
               <span style={{ color: 'rgba(248,231,176,.55)' }}>
-                {' '}· plan snapshot {briefIntel.masterEngine.computedSignals != null && briefIntel.masterEngine.totalSignals != null
+                {' '}· {briefIntel.masterEngine.computedSignals != null && briefIntel.masterEngine.totalSignals != null
                   ? `(${briefIntel.masterEngine.computedSignals}/${briefIntel.masterEngine.totalSignals} signals — page not yet scored)`
                   : '(page not yet scored)'}
               </span>
@@ -3187,7 +3223,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             <h4 style={{ margin: '3px 0 0', fontFamily: C.serif, fontSize: 17, color: E.ink }}>SEO Intelligence Briefing</h4>
           </div>
           {seoIntelBrief && (
-            <span style={{ fontFamily: C.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', color: E.mossGreen, background: E.mossSoft, padding: '3px 8px' }}>
+            <span data-testid="studio-seo-intel-locked" style={{ fontFamily: C.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', color: E.mossGreen, background: E.mossSoft, padding: '3px 8px' }}>
               ✓ LOCKED INTO WRITER CONTRACT
             </span>
           )}
@@ -3201,15 +3237,14 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             primaryKeyword={seoBriefSeed}
             clusterKeywords={kwList.length ? kwList : seoBriefSeed ? [seoBriefSeed] : []}
             disabled={generating}
+            analyzeTick={seoAnalyzeTick}
             onBriefReady={handleSeoBriefReady}
             onInsert={() => {}}
             style={{ width: 300, maxWidth: '100%' }}
           />
           <div style={{ flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontFamily: C.serif, fontSize: 12.5, color: E.ink, lineHeight: 1.5 }}>
-              Analyze the topic against first-party GSC intel (opportunity, confidence, action, coverage, topic fit, internal-link matches), then
-              <strong> Generate SEO Brief</strong> to produce the $0 writer contract. It is merged into the canonical model contract below and
-              carried into Drafting — no re-assembly there.
+              Generate Full Brief locks this writer contract automatically. Use <strong>Analyze SEO</strong> and <strong>Generate SEO Brief</strong> only to rebuild it from first-party GSC intel. The contract is merged into the canonical handoff below and carried into Drafting.
             </div>
             {seoIntelBrief ? (
               <pre style={{ margin: 0, padding: 12, background: E.ivory, border: `1px solid ${E.hairlineSoft}`, fontFamily: C.mono, fontSize: 10, lineHeight: 1.55, color: E.ink, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
@@ -3218,7 +3253,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
             ) : (
               <div style={{ padding: '18px 14px', textAlign: 'center', background: E.cream, border: `1px dashed ${E.gold}` }}>
                 <div style={{ fontFamily: C.serif, fontSize: 13, fontWeight: 700, color: E.ink }}>No intel brief yet.</div>
-                <div style={{ marginTop: 4, fontSize: 10.5, color: E.inkMuted }}>Click Analyze SEO to read demand, then Generate SEO Brief to lock the writer contract.</div>
+                <div style={{ marginTop: 4, fontSize: 10.5, color: E.inkMuted }}>Generate Full Brief locks this automatically. Click Analyze SEO then Generate SEO Brief only if you need to rebuild the contract.</div>
               </div>
             )}
           </div>
