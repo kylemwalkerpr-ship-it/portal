@@ -51,13 +51,14 @@ describe('Marketplace Fiverr-grade copy rewrite contract', () => {
     expect(source).toContain('FINAL AUDIT PASS')
   })
 
-  it('runs only after a successful production deploy carrying the one-time marker', () => {
+  it('runs only after a successful production deploy with the durable one-time marker enabled', () => {
     const workflow = fs.readFileSync(workflowPath, 'utf8')
     expect(workflow).toContain('workflow_run:')
     expect(workflow).toContain('Deploy YouSafe Portal')
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'")
     expect(workflow).toContain("github.event.workflow_run.event == 'push'")
-    expect(workflow).toContain('[marketplace-copy-rewrite]')
+    expect(workflow).toContain('.github/marketplace-copy-rewrite.enabled')
+    expect(workflow).toContain("steps.marker.outputs.enabled == 'true'")
     expect(workflow).toContain('MARKETPLACE_COPY_REWRITE')
     const imageChecks = workflow.match(/node scripts\/verify-marketplace-image-preservation\.mjs/g) || []
     expect(imageChecks).toHaveLength(2)
