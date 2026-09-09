@@ -38,9 +38,17 @@ export default function StatusViewer({
   const [idx, setIdx] = React.useState(initialIndex)
   const [progress, setProgress] = React.useState(0)
   const [paused, setPaused] = React.useState(false)
+  const pausedRef = React.useRef(false)
   const status = statuses[idx]
   const isMine = status?.person_id === viewerId
   const canRespond = !isMine && ['attorney', 'consultant'].includes(viewerRole || '') && !!onRespond
+
+  /* Keep pause state available to the animation loop without restarting the
+     story timer. A hold/release must freeze and resume at the same point — it
+     must never reset the progress bar. */
+  React.useEffect(() => {
+    pausedRef.current = paused
+  }, [paused])
 
   React.useEffect(() => {
     if (!status) return
@@ -50,8 +58,12 @@ export default function StatusViewer({
     let previous = performance.now()
 
     const tick = (now: number) => {
-      if (!paused) elapsed += Math.max(0, now - previous)
+      /* Cap a frame delta so an iOS tab/background suspension cannot cause the
+         story to jump straight to the next item when Safari resumes. */
+      const delta = Math.min(100, Math.max(0, now - previous))
       previous = now
+      if (!pausedRef.current && document.visibilityState !== 'hidden') elapsed += delta
+
       const next = Math.min(1, elapsed / STORY_MS)
       setProgress(next)
 
@@ -65,7 +77,7 @@ export default function StatusViewer({
 
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [idx, status?.id, statuses.length, onClose, paused])
+  }, [idx, status?.id, statuses.length, onClose])
 
   React.useEffect(() => {
     if (!status || isMine) return
