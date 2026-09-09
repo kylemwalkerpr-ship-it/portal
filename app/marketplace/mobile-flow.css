@@ -1,0 +1,33 @@
+/* Marketplace mobile document-flow contract
+   ----------------------------------------
+   MarketplaceShell owns the viewport floor. Nested public pages must size to
+   their content instead of adding a second 100vh below the sticky market
+   chrome. The previous SellerProfilePage / GigDetailPage viewport minimums
+   could produce nearly an extra phone viewport of blank paper on iOS Safari. */
+
+@media (max-width: 768px) {
+  .cw-market .ys-seller-profile-page {
+    min-height: 0 !important;
+    padding-bottom: 24px !important;
+  }
+
+  .cw-market .ys-seller-profile-tab-content {
+    min-height: 0 !important;
+  }
+
+  /* GigDetailPage does not currently expose a root class, but its real loaded
+     branch has the stable `.ys-content-layout` child. Remove that nested 100vh
+     without touching Marketplace message/order surfaces that genuinely own a
+     full-screen viewport. */
+  .cw-market > div:has(> main .ys-content-layout) {
+    min-height: 0 !important;
+  }
+
+  /* Keep the final real marketplace surface close to the footer / viewport
+     floor without inventing a browser-toolbar-sized spacer. */
+  .cw-market main:last-child,
+  .cw-market article:last-child,
+  .cw-market section:last-child {
+    scroll-margin-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}

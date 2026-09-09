@@ -3,18 +3,17 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 /**
- * Renders SSR SEO body in the initial HTML (crawlers + no-JS), then hides it
- * once the client island signals it has loaded real content — avoids duplicate
- * description/FAQ blocks for signed-in users after hydrate.
- *
- * `readyEvent` defaults to yousafe:ssr-ready; gig/provider pages can pass a
- * specific event name. A timeout fallback still collapses the SSR block if the
- * client island fails to signal (prevents permanent double UI).
+ * Renders the crawlable SSR body in the initial HTML, then removes it as soon
+ * as the interactive island is ready. A short hydration fallback protects the
+ * human UI even when an enrichment request is slow or its ready event is lost:
+ * crawlers/no-JS still receive the full SSR body because effects never run,
+ * while browser users never stare at crawler-oriented prose for several
+ * seconds and mistake it for a broken page.
  */
 export function SsrHydrateGate({
   children,
   readyEvent = 'yousafe:ssr-ready',
-  fallbackMs = 4000,
+  fallbackMs = 350,
 }: {
   children: ReactNode
   readyEvent?: string
