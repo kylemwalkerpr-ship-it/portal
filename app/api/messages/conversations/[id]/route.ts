@@ -7,7 +7,6 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import { safetyGuard } from '@/lib/safety'
 import {
   isClientRole,
-  isProviderRole,
   readAiMode,
   scheduleAutoReply,
   setConversationAiMode,
@@ -328,11 +327,14 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  // Part B: human provider/admin outbound pauses AI; client inbound schedules AI reply.
+  // Client/student messages can trigger AI. Provider messages do NOT change
+  // ai_mode: attorneys/consultants can reply normally while AI remains live.
+  // Only the explicit Take over control may pause provider-side AI. Admin
+  // outbound activity remains an intentional intervention and still pauses AI.
   try {
-    if (isProviderRole(auth.role) || auth.role === 'admin') {
+    if (auth.role === 'admin') {
       await setConversationAiMode(db, id, 'paused', {
-        ai_paused_reason: 'human_message',
+        ai_paused_reason: 'admin_message',
         ai_mode_set_by: profileId,
       })
     } else if (isClientRole(auth.role)) {

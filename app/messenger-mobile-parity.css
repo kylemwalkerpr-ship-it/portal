@@ -1,0 +1,407 @@
+/* Messenger + dashboard mobile parity
+   ===================================
+   Focused second-stage hardening for the WhatsApp-style messenger and the
+   role dashboards that host it. Loaded after the general mobile layers. */
+
+/* Screen-reader live-region used by ChatScreen when a message arrives while
+   the reader is scrolled away from the conversation tail. */
+.ys-live-message-announcer {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* AI replies remain visually unmistakable even though they are sent using the
+   provider identity so the thread ownership model stays intact. */
+.yousafe-messenger .ys-ai-message {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.yousafe-messenger .ys-ai-message-label {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  color: var(--accent-d);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  line-height: 1.55;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.yousafe-messenger .ys-ai-message-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Marketplace live-AI indicator sits between the identity header and thread,
+   so it cannot disappear when phone chrome compresses the header. */
+.yousafe-messenger .ys-market-ai-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--accent) 7%, var(--panel));
+  color: var(--text-mid);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.yousafe-messenger .ys-market-ai-live > span:nth-child(2) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yousafe-messenger .ys-ai-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 15%, transparent);
+}
+
+.yousafe-messenger .ys-market-ai-live-state {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--accent-d);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* Desktop should not show the mobile back affordance simply because a thread
+   was selected at some point. The first child is a button only when the
+   UnifiedInbox mobile-back button is present. */
+@media (min-width: 681px) {
+  .yousafe-messenger .cv-head > button.iconbtn:first-child {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* ── Role-dashboard navigation ─────────────────────────────────────── */
+  .yousafe-dashboard-shell .yousafe-sidebar-nav {
+    width: 100% !important;
+    max-width: 100vw !important;
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 10px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+
+  .yousafe-dashboard-shell .yousafe-sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .yousafe-dashboard-shell .yousafe-nav-item {
+    width: auto !important;
+    min-width: max-content !important;
+    min-height: 46px !important;
+    flex: 0 0 auto !important;
+    scroll-snap-align: center;
+    border-radius: 999px !important;
+    padding: 10px 14px !important;
+    gap: 8px !important;
+    touch-action: manipulation;
+  }
+
+  .yousafe-dashboard-shell .yousafe-nav-item[data-nav-active='true'] {
+    scroll-margin-inline: 18px;
+    box-shadow: 0 1px 0 rgba(15,23,42,.06), 0 4px 14px rgba(15,23,42,.08);
+  }
+
+  .yousafe-dashboard-shell .yousafe-nav-item:focus-visible,
+  .yousafe-messenger button:focus-visible,
+  .yousafe-messenger a:focus-visible {
+    outline: 2px solid var(--portal-accent, #3C3B6E) !important;
+    outline-offset: 2px !important;
+  }
+
+  /* ── Unified inbox header ─────────────────────────────────────────── */
+  .yousafe-messenger .cv-head > button.iconbtn:first-child {
+    display: inline-grid !important;
+    order: -2;
+    flex: 0 0 44px !important;
+  }
+
+  /* Provider AI controls currently live in an unclassed wrapper. Target its
+     stable SuperGrok status marker so Take over / Resume AI can never be
+     squeezed off-screen by offer/context/action controls. */
+  .yousafe-messenger .cv-head > div:has(> span[title='SuperGrok AI closer']) {
+    order: 97 !important;
+    display: flex !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 2px 0 0 !important;
+    padding: 7px 9px !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    background: var(--panel-2) !important;
+  }
+
+  .yousafe-messenger .cv-head > div:has(> span[title='SuperGrok AI closer']) > span {
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    font-size: 10.5px !important;
+    padding: 5px 9px !important;
+  }
+
+  .yousafe-messenger .cv-head > div:has(> span[title='SuperGrok AI closer']) > button {
+    flex: 0 0 auto !important;
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Keep secondary header actions available without allowing them to steal
+     the participant-name width. They become their own swipeable strip. */
+  .yousafe-messenger .cv-head-actions {
+    order: 98 !important;
+    justify-content: flex-start !important;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+  }
+
+  .yousafe-messenger .cv-head-actions > * {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  .yousafe-messenger .cv-head-info {
+    flex: 1 1 calc(100% - 58px) !important;
+    max-width: calc(100% - 58px) !important;
+  }
+
+  /* Message canvas + media: no fixed media width may make a bubble wider than
+     the phone. This includes AI replies, voice notes, images and file chips. */
+  .yousafe-messenger [data-chat-canvas] {
+    width: 100% !important;
+    min-width: 0 !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .yousafe-messenger .bub audio,
+  .yousafe-messenger .bub img,
+  .yousafe-messenger .bub a,
+  .yousafe-messenger .bub .ys-ai-message {
+    max-width: 100% !important;
+  }
+
+  .yousafe-messenger .bub audio {
+    width: min(260px, 100%) !important;
+  }
+
+  .yousafe-messenger .ys-new-message-pill {
+    min-height: 44px !important;
+    padding-inline: 16px !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    touch-action: manipulation;
+  }
+
+  /* Composer remains a stable WhatsApp-style bottom control even with long
+     placeholder/text, mobile keyboards and iPhone home indicators. */
+  .yousafe-messenger .comp-row {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    gap: 6px !important;
+    padding: 7px 8px max(8px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .yousafe-messenger .comp-input {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    line-height: 1.35 !important;
+  }
+
+  .yousafe-messenger [role='dialog'][aria-label='Pick an emoji'] {
+    width: min(320px, calc(100vw - 20px)) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: min(52dvh, 360px) !important;
+    overscroll-behavior: contain;
+  }
+
+  .yousafe-messenger .ys-composer-emoji-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+  }
+
+  .yousafe-messenger .ys-composer-emoji-grid button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  /* Marketplace side-pane is a full messenger application on a phone. */
+  .ys-market-chat-overlay {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+
+  .ys-market-chat-overlay > button[aria-label='Close chat'] {
+    display: none !important;
+  }
+
+  .chat-side-pane {
+    inset: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-left: 0 !important;
+    padding-top: env(safe-area-inset-top) !important;
+  }
+
+  .chat-side-pane .ys-market-chat-head {
+    padding: 8px 10px !important;
+    min-height: 58px;
+  }
+
+  .chat-side-pane .ys-market-chat-composer {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .chat-side-pane .ys-market-chat-foot {
+    flex-wrap: wrap;
+    padding-inline: 10px !important;
+  }
+
+  .chat-side-pane .ys-market-chat-shortcuts {
+    display: none;
+  }
+
+  .chat-side-pane .ys-market-chat-foot > a {
+    margin-left: auto;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+@media (max-width: 520px) {
+  .yousafe-messenger .cv-head {
+    padding-inline: 7px !important;
+  }
+
+  .yousafe-messenger .cv-head-name {
+    font-size: 15px !important;
+  }
+
+  .yousafe-messenger .cv-head-status {
+    max-width: 100%;
+    font-size: 10.5px !important;
+  }
+
+  .yousafe-messenger .cv-head-ctx,
+  .yousafe-messenger .cv-head-offer-cta {
+    min-height: 40px;
+  }
+
+  .yousafe-messenger .bub {
+    max-width: 92% !important;
+  }
+
+  .yousafe-messenger .bubrow.theirs {
+    padding-left: 5px !important;
+    padding-right: 18px !important;
+  }
+
+  .yousafe-messenger .bubrow.mine {
+    padding-left: 18px !important;
+    padding-right: 5px !important;
+  }
+
+  .yousafe-messenger .ys-market-ai-live {
+    align-items: flex-start;
+    padding: 8px 10px;
+  }
+
+  .yousafe-messenger .ys-market-ai-live-state {
+    display: none;
+  }
+
+  .yousafe-messenger .ys-composer-emoji-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+
+  /* Conversation list filters remain one swipeable row like WhatsApp chips,
+     rather than wrapping into multiple rows that consume half the screen. */
+  .yousafe-messenger .cl-filters {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .yousafe-messenger .cl-filters > * {
+    flex: 0 0 auto !important;
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 360px) {
+  .yousafe-dashboard-shell .yousafe-sidebar-nav {
+    padding-inline: 7px !important;
+  }
+
+  .yousafe-dashboard-shell .yousafe-nav-item {
+    min-height: 44px !important;
+    padding-inline: 11px !important;
+    font-size: 12.5px !important;
+  }
+
+  .yousafe-messenger .cv-head-avatar,
+  .yousafe-messenger .cv-head-avatar img {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  .yousafe-messenger .ys-composer-emoji-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .yousafe-messenger .ys-market-ai-live {
+    font-size: 11px;
+  }
+}

@@ -1,47 +1,21 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
-import { Btn } from '../design/shared'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
 import Avatar from '../messaging/Avatar'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
 import '../messaging/messenger-tokens.css'
 import { F } from './tokens'
 
 /* Messenger shell stays on a self-contained NEUTRAL palette so marketplace
-   mahogany / sepia (--ys-paper) cannot wash into the slide-over. Accent is
-   used only for the Send CTA. Do not reintroduce T.paper / T.ink here. */
-
-// Props (loose because this component is JSX-ish via @ts-nocheck):
-//   open, onClose, attorneyName, attorneyAvatar
-//   attorneyId            — attorney row id (legacy callers)
-//   counterpartProfileId  — profile id (any role); preferred new path
-//   contextKind, contextId — passed through to /api/messages/start so the
-//                           conversation row records its first-link context
-
-/**
- * ChatSidePane
- *
- * Slide-in drawer for student → attorney pre-intake chat. Opens directly
- * from a seller profile (or anywhere else) so the student doesn't have to
- * navigate to the dashboard Messages page just to send a quick question.
- *
- * Props:
- *   open          — whether the drawer is visible
- *   onClose       — callback when the user dismisses
- *   attorneyId    — required to start / continue a chat
- *   attorneyName  — display name for the header
- *   attorneyAvatar — optional avatar URL
- */
+   mahogany / sepia (--ys-paper) cannot wash into the slide-over. */
 
 const GREEN = '#3F774A'
 const RED = '#B22234'
 const CYAN = '#0B786C'
-const ACCENT = '#00A884'
-const ACCENT_DEEP = '#008069'
-/* Neutral messenger surfaces — independent of marketplace palette */
 const BG = 'var(--chat-bg, #F0F2F5)'
 const SURFACE = 'var(--panel, #FFFFFF)'
 const PANEL2 = 'var(--panel-2, #F1F5F9)'
@@ -57,250 +31,363 @@ interface ChatSidePaneProps {
   onClose: () => void
   attorneyName?: string | null
   attorneyAvatar?: string | null
-  attorneyId?: string | null            // attorney row id (legacy callers)
-  counterpartProfileId?: string | null  // profile id (preferred new path)
+  attorneyId?: string | null
+  counterpartProfileId?: string | null
   contextKind?: 'general' | 'order' | 'inquiry' | 'gig'
   contextId?: string | null
 }
 
-export default function ChatSidePane({ open, onClose, attorneyId, counterpartProfileId, attorneyName, attorneyAvatar, contextKind, contextId }: ChatSidePaneProps) {
+function normalizeUnifiedThread(payload: any) {
+  const counterpartId = payload?.conversation?.counterpart?.id || null
+  return (Array.isArray(payload?.messages) ? payload.messages : []).map((m: any) => ({
+    id: m.id,
+    sender_id: m.sender_id,
+    // This marketplace pane is always viewed by the client/student. The API
+    // tells us exactly who the counterpart is, so do not infer direction from
+    // sender_id merely being non-null (all real messages have a sender_id).
+    sender_role: counterpartId && m.sender_id === counterpartId ? 'attorney' : 'client',
+    body: m.body,
+    type: m.type,
+    metadata: m.metadata || {},
+    attachment_url: m.attachment_url,
+    attachment_name: m.attachment_name,
+    created_at: m.created_at,
+    delivered_at: m.delivered_at,
+    read_at: m.read_at,
+  }))
+}
+
+function AiMessageBody({ body }: { body: React.ReactNode }) {
+  return (
+    <span className="ys-ai-message">
+      <span className="ys-ai-message-label">✦ YouSafe AI</span>
+      <span className="ys-ai-message-copy">{body}</span>
+    </span>
+  )
+}
+
+export default function ChatSidePane({
+  open,
+  onClose,
+  attorneyId,
+  counterpartProfileId,
+  attorneyName,
+  attorneyAvatar,
+  contextKind,
+  contextId,
+}: ChatSidePaneProps) {
   const [chatId, setChatId] = React.useState(null)
   const [conversationId, setConversationId] = React.useState(null)
-  const [messages, setMessages] = React.useState([])
+  const [messages, setMessages] = React.useState<any[]>([])
   const [presence, setPresence] = React.useState('online')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
+  const [aiMode, setAiMode] = React.useState<'auto' | 'paused' | 'off'>('auto')
+  const [liveStatus, setLiveStatus] = React.useState('CONNECTING')
+  const conversationIdRef = React.useRef<string | null>(null)
+  const unifiedSeqRef = React.useRef(0)
 
-  // ESC closes
+  React.useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
+
+  // ESC closes on desktop. Mobile users retain the visible close button.
   React.useEffect(() => {
     if (!open) return
-    const onKey = e => { if (e.key === 'Escape') onClose?.() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose?.() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  // Resolve existing chat for this attorney (or queue one on first message).
-  // We hit /api/client/attorney-chats?attorney_id=... to find an existing
-  // thread; falls through to creating one on first send.
-  const loadChat = React.useCallback(async () => {
-    if (!attorneyId || !open) return
-    setLoading(true); setError('')
+  const loadLegacyMessages = React.useCallback(async (id: string) => {
     try {
-      // credentials: 'include' so the Clerk session cookie travels
-      // when this pane runs on market.yousafeconsultancy.com and
-      // talks to portal.yousafeconsultancy.com (same site, different
-      // origin). 'same-origin' would drop the cookie and force every
-      // marketplace visitor to look unauthenticated.
+      const r = await fetch(`/api/client/attorney-chats/${id}`, { credentials: 'include' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || 'Could not load thread.')
+      // Legacy data is only a temporary fallback. Never let it overwrite a
+      // unified thread after /api/messages/start has resolved.
+      if (!conversationIdRef.current) setMessages(d.messages || [])
+      setPresence(d.chat?.presence || 'online')
+    } catch (e: any) {
+      if (!conversationIdRef.current) setError(e?.message || 'Could not load thread.')
+    }
+  }, [])
+
+  // Legacy attorney-chat discovery is retained only so old attorney threads
+  // can render immediately while the unified conversation id is resolving.
+  const loadLegacyChat = React.useCallback(async () => {
+    if (!attorneyId || !open) return
+    setLoading(true)
+    setError('')
+    try {
       const r = await fetch('/api/client/attorney-chats', { credentials: 'include' })
       if (r.status === 401) {
-        // Anonymous visitor — not a load failure, just unauthenticated.
-        // Show the sign-in CTA instead of an error banner.
         setError('SIGN_IN_REQUIRED')
-        setChatId(null); setMessages([])
+        setChatId(null)
+        setMessages([])
         return
       }
       const d = await r.json().catch(() => ({}))
       if (r.ok) {
         const list = d?.chats || []
-        const match = list.find(c => c.attorney_profile_id === attorneyId || c.attorney_id === attorneyId)
+        const match = list.find((c: any) => c.attorney_profile_id === attorneyId || c.attorney_id === attorneyId)
         if (match?.id) {
           setChatId(match.id)
-          await loadMessages(match.id)
+          await loadLegacyMessages(match.id)
           return
         }
       }
-      // No existing chat — that's fine, we'll create on first send.
       setChatId(null)
-      setMessages([])
-    } catch (e) {
-      setError(e.message || 'Could not load chat.')
+      if (!conversationIdRef.current) setMessages([])
+    } catch (e: any) {
+      setError(e?.message || 'Could not load chat.')
     } finally {
       setLoading(false)
     }
-  }, [attorneyId, open])
+  }, [attorneyId, open, loadLegacyMessages])
 
-  const loadMessages = async (id) => {
+  React.useEffect(() => {
+    if (open) void loadLegacyChat()
+  }, [open, loadLegacyChat])
+
+  const loadUnifiedConversation = React.useCallback(async (id: string, silent = false) => {
+    if (!id) return
+    const seq = ++unifiedSeqRef.current
+    if (!silent) setLoading(true)
     try {
-      const r = await fetch(`/api/client/attorney-chats/${id}`, { credentials: 'include' })
+      const r = await fetch(`/api/messages/conversations/${id}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || 'Could not load thread.')
-      setMessages(d.messages || [])
-      setPresence(d.chat?.presence || 'online')
-    } catch (e) {
-      setError(e.message)
+      if (seq !== unifiedSeqRef.current) return
+      if (!r.ok) {
+        if (r.status === 401) {
+          setError('SIGN_IN_REQUIRED')
+          return
+        }
+        throw new Error(d?.error?.message || d?.error || 'Could not load thread.')
+      }
+      setMessages(normalizeUnifiedThread(d))
+      setAiMode((d?.conversation?.ai_mode || 'auto') as 'auto' | 'paused' | 'off')
+      setError('')
+    } catch (e: any) {
+      if (seq === unifiedSeqRef.current && !silent) {
+        setError(e?.message || 'Could not load thread.')
+      }
+    } finally {
+      if (!silent && seq === unifiedSeqRef.current) setLoading(false)
     }
-  }
+  }, [])
 
-  React.useEffect(() => { if (open) loadChat() }, [open, loadChat])
-
-  // Resolve the unified conversation_id for this counterpart so we can offer
-  // an "Open in Messages →" deep link. Accepts either an attorney row id
-  // OR a profile id (e.g. gig.provider_id).
+  // Resolve the canonical unified conversation for attorneys AND consultants.
+  // Once this resolves it becomes the authoritative feed for this drawer.
   React.useEffect(() => {
     if ((!attorneyId && !counterpartProfileId) || !open) return
     let cancelled = false
     const body = counterpartProfileId
-      ? { counterpart_profile_id: counterpartProfileId, context_kind: contextKind || 'general', context_id: contextId || null }
+      ? {
+          counterpart_profile_id: counterpartProfileId,
+          context_kind: contextKind || 'general',
+          context_id: contextId || null,
+        }
       : { counterpart_attorney_id: attorneyId }
-    fetch('/api/messages/start', {
-      method: 'POST', credentials: 'include',
+
+    ;(async () => {
+      try {
+        const r = await fetch('/api/messages/start', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const d = await r.json().catch(() => ({}))
+        if (cancelled) return
+        if (r.status === 401) {
+          setError('SIGN_IN_REQUIRED')
+          return
+        }
+        if (!r.ok || !d?.conversation_id) return
+        setConversationId(d.conversation_id)
+        conversationIdRef.current = d.conversation_id
+        await loadUnifiedConversation(d.conversation_id, false)
+      } catch {
+        // Legacy fallback remains available for attorney threads.
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [attorneyId, counterpartProfileId, open, contextKind, contextId, loadUnifiedConversation])
+
+  // Realtime is the primary live-reply transport. AI responses are inserted
+  // into conversation_messages, so listening here prevents a successful AI
+  // reply from sitting unseen until an 8-second legacy poll happens.
+  React.useEffect(() => {
+    if (!open || !conversationId) return
+    const off = subscribeToTable(
+      'conversation_messages',
+      'public',
+      (payload) => {
+        const row = payload.new || payload.old
+        if (row?.conversation_id === conversationId) {
+          void loadUnifiedConversation(conversationId, true)
+        }
+      },
+      (status) => setLiveStatus(status),
+    )
+    return () => off()
+  }, [open, conversationId, loadUnifiedConversation])
+
+  // Polling remains as a resilient fallback for browsers/networks where the
+  // realtime websocket cannot establish or is suspended in the background.
+  React.useEffect(() => {
+    if (!open) return
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      if (conversationIdRef.current) {
+        void loadUnifiedConversation(conversationIdRef.current, true)
+      } else if (chatId) {
+        void loadLegacyMessages(chatId)
+      }
+    }, conversationId ? 4000 : 8000)
+    return () => window.clearInterval(id)
+  }, [open, chatId, conversationId, loadUnifiedConversation, loadLegacyMessages])
+
+  // Mobile browsers often suspend timers/websockets while switching tabs or
+  // locking the phone. Refresh immediately when the user returns.
+  React.useEffect(() => {
+    if (!open) return
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && conversationIdRef.current) {
+        void loadUnifiedConversation(conversationIdRef.current, true)
+      }
+    }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [open, loadUnifiedConversation])
+
+  const ensureUnifiedConversation = React.useCallback(async () => {
+    if (conversationIdRef.current) return conversationIdRef.current
+    const body = counterpartProfileId
+      ? {
+          counterpart_profile_id: counterpartProfileId,
+          context_kind: contextKind || 'general',
+          context_id: contextId || null,
+        }
+      : { counterpart_attorney_id: attorneyId }
+    const r = await fetch('/api/messages/start', {
+      method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-      .then(r => r.json().catch(() => ({})))
-      .then(d => { if (!cancelled && d?.conversation_id) setConversationId(d.conversation_id) })
-      .catch(() => null)
-    return () => { cancelled = true }
-  }, [attorneyId, counterpartProfileId, open, contextKind, contextId])
-
-  // Consultant path: once the unified conversation resolves, hydrate the
-  // thread from it (the attorney-chats loader above skipped — no attorneyId).
-  React.useEffect(() => {
-    if (!open || attorneyId || !conversationId) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const r = await fetch(`/api/messages/conversations/${conversationId}`, { credentials: 'include' })
-        const d = await r.json().catch(() => ({}))
-        if (!cancelled && r.ok && Array.isArray(d?.messages)) {
-          setMessages(d.messages.map((m: any) => ({ id: m.id, sender_role: m.sender_id ? 'attorney' : 'client', body: m.body, created_at: m.created_at })))
-        }
-      } catch { /* non-blocking */ }
-      if (!cancelled) setLoading(false)
-    })()
-    return () => { cancelled = true }
-  }, [open, attorneyId, conversationId])
-
-  // Soft poll every 8s while open
-  React.useEffect(() => {
-    if (!open || !chatId) return
-    const id = setInterval(() => {
-      if (document.visibilityState === 'visible') loadMessages(chatId)
-    }, 8000)
-    return () => clearInterval(id)
-  }, [open, chatId])
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok || !d?.conversation_id) return null
+    setConversationId(d.conversation_id)
+    conversationIdRef.current = d.conversation_id
+    return d.conversation_id as string
+  }, [attorneyId, counterpartProfileId, contextKind, contextId])
 
   const send = async () => {
     const text = draft.trim()
     if (!text || sending || (!attorneyId && !counterpartProfileId)) return
-    setSending(true); setError('')
+    setSending(true)
+    setError('')
     try {
-      // If we already resolved the unified conversation id, POST straight to it.
-      // This path is the cleanest — no legacy inquiry creation, deep-link-safe.
-      if (conversationId) {
-        const r = await fetch(`/api/messages/conversations/${conversationId}`, {
-          method: 'POST', credentials: 'include',
+      // Always prefer the canonical unified route. It is the same feed used by
+      // every dashboard and the only feed guaranteed to contain AI live replies.
+      const id = await ensureUnifiedConversation()
+      if (id) {
+        const r = await fetch(`/api/messages/conversations/${id}`, {
+          method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ body: text }),
         })
         const d = await r.json().catch(() => ({}))
-        if (!r.ok) throw new Error(d?.error || 'Could not send.')
+        if (!r.ok) throw new Error(d?.error?.message || d?.error || 'Could not send.')
         setDraft('')
-        // Refresh thread via the conversation endpoint for live history
-        try {
-          const tr = await fetch(`/api/messages/conversations/${conversationId}`, { credentials: 'include' })
-          const td = await tr.json().catch(() => ({}))
-          if (tr.ok && td?.messages) {
-            // Normalise to the legacy shape so the existing render works
-            setMessages(td.messages.map((m: any) => ({
-              id: m.id,
-              sender_role: m.sender_id ? 'attorney' : 'client', // refined below
-              body: m.body,
-              created_at: m.created_at,
-            })))
-          }
-        } catch { /* non-blocking */ }
+        await loadUnifiedConversation(id, true)
         return
       }
 
-      // Consultant (or any non-attorney) counterpart: there is no
-      // attorney-chat queue, so resolve the unified conversation now if
-      // the open-time resolution hasn't landed yet, then send through it.
-      if (!attorneyId && counterpartProfileId) {
-        const sr = await fetch('/api/messages/start', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ counterpart_profile_id: counterpartProfileId, context_kind: contextKind || 'general', context_id: contextId || null }),
-        })
-        const sd = await sr.json().catch(() => ({}))
-        if (!sr.ok || !sd?.conversation_id) throw new Error(sd?.error || 'Could not start chat.')
-        setConversationId(sd.conversation_id)
-        const mr = await fetch(`/api/messages/conversations/${sd.conversation_id}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ body: text }),
-        })
-        const md = await mr.json().catch(() => ({}))
-        if (!mr.ok) throw new Error(md?.error || 'Could not send.')
-        setDraft('')
-        try {
-          const tr = await fetch(`/api/messages/conversations/${sd.conversation_id}`, { credentials: 'include' })
-          const td = await tr.json().catch(() => ({}))
-          if (tr.ok && td?.messages) {
-            setMessages(td.messages.map((m: any) => ({ id: m.id, sender_role: m.sender_id ? 'attorney' : 'client', body: m.body, created_at: m.created_at })))
+      // Compatibility fallback for a legacy attorney chat if unified start is
+      // temporarily unavailable. Never used for consultant threads.
+      if (attorneyId) {
+        if (!chatId) {
+          const r = await fetch('/api/client/attorney-message', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attorneyId, message: text }),
+          })
+          const d = await r.json().catch(() => ({}))
+          if (!r.ok || !d?.chatId) throw new Error(d?.error || 'Could not start chat.')
+          setChatId(d.chatId)
+          if (d.conversationId) {
+            setConversationId(d.conversationId)
+            conversationIdRef.current = d.conversationId
           }
-        } catch { /* non-blocking */ }
+          setDraft('')
+          await loadLegacyMessages(d.chatId)
+        } else {
+          const r = await fetch(`/api/client/attorney-chats/${chatId}/messages`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body: text }),
+          })
+          const d = await r.json().catch(() => ({}))
+          if (!r.ok) throw new Error(d?.error || 'Could not send message.')
+          setDraft('')
+          await loadLegacyMessages(chatId)
+        }
         return
       }
 
-      if (!chatId) {
-        // Create chat via attorney-message endpoint (also returns the
-        // unified conversation_id for deep-linking into Messages).
-        const r = await fetch('/api/client/attorney-message', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ attorneyId, message: text }),
-        })
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok || !d?.chatId) throw new Error(d?.error || 'Could not start chat.')
-        setChatId(d.chatId)
-        if (d.conversationId) setConversationId(d.conversationId)
-        setDraft('')
-        await loadMessages(d.chatId)
-      } else {
-        // Existing chat — append a message
-        const r = await fetch(`/api/client/attorney-chats/${chatId}/messages`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ body: text }),
-        })
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok) throw new Error(d?.error || 'Could not send message.')
-        setDraft('')
-        await loadMessages(chatId)
-      }
-    } catch (e) {
-      setError(e.message)
+      throw new Error('Could not start chat.')
+    } catch (e: any) {
+      setError(e?.message || 'Could not send message.')
     } finally {
       setSending(false)
     }
   }
 
   const header = (
-    <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="ys-market-chat-head" style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
       <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} online={presence === 'online'} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>{attorneyName || 'Specialist'}</div>
-        <div style={{ fontSize: 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 3 }}>
+        <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>
+          {attorneyName || 'Specialist'}
+        </div>
+        <div style={{ fontSize: 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {presence === 'online' ? '● Online · quick replies likely' : '○ Offline · will respond when available'}
         </div>
       </div>
-      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: PANEL2, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16, fontFamily: F.ui }}>×</button>
+      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: PANEL2, color: MUTED, borderRadius: 999, width: 40, height: 40, cursor: 'pointer', fontSize: 18, fontFamily: F.ui, flex: '0 0 40px' }}>×</button>
     </div>
   )
 
-  // SIGN_IN_REQUIRED is the friendly anonymous-visitor signal — show a
-  // sign-in CTA instead of a red error banner. Any other error string
-  // is a real failure (offline, 5xx, malformed response) and gets the
-  // standard red treatment.
-  const banner = error === 'SIGN_IN_REQUIRED' ? (
-    <div style={{ padding: '12px 14px', background: `${CYAN}10`, color: CYAN, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-      <span>Sign in to message this attorney.</span>
+  const aiLiveBanner = conversationId && aiMode === 'auto' ? (
+    <div className="ys-market-ai-live" role="status" aria-live="polite">
+      <span className="ys-ai-live-dot" aria-hidden="true" />
+      <span><strong>YouSafe AI live replies are on.</strong> The specialist can join at any time.</span>
+      <span className="ys-market-ai-live-state">{liveStatus === 'SUBSCRIBED' ? 'Live' : 'Live sync'}</span>
+    </div>
+  ) : null
+
+  const errorBanner = error === 'SIGN_IN_REQUIRED' ? (
+    <div className="ys-market-chat-signin" style={{ padding: '12px 14px', background: `${CYAN}10`, color: CYAN, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <span>Sign in to message this specialist.</span>
       <a
         href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '/')}`}
-        style={{ background: CYAN, color: '#FFFFFF', padding: '6px 12px', borderRadius: 6, textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
+        style={{ background: CYAN, color: '#FFFFFF', padding: '8px 12px', borderRadius: 999, textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
       >
         Sign in →
       </a>
@@ -311,24 +398,32 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
     </div>
   ) : null
 
+  const banner = (
+    <>
+      {aiLiveBanner}
+      {errorBanner}
+    </>
+  )
+
   const messageNodes = React.useMemo(() => {
     const result: React.ReactNode[] = []
     if (loading && messages.length === 0) {
       result.push(<div key="loading" style={{ color: MUTED, fontSize: 12 }}>Loading…</div>)
       return result
     }
-    if (!loading && !chatId && messages.length === 0) {
+    if (!loading && messages.length === 0) {
       result.push(
-        <div key="empty" style={{ background: SURFACE, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: '20px 16px', textAlign: 'center' }}>
+        <div key="empty" className="ys-market-chat-empty" style={{ background: SURFACE, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: '20px 16px', textAlign: 'center' }}>
           <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>
           <div style={{ fontWeight: 600, fontSize: 17, color: TEXT, marginBottom: 4 }}>Start the conversation</div>
           <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-            Ask a short question — {attorneyName || 'the attorney'} will see it in their queue and reply. Quick replies are typical within an hour.
+            Ask a short question. When live replies are enabled, YouSafe AI can respond while {attorneyName || 'the specialist'} is away, and the specialist can take over at any time.
           </div>
-        </div>
+        </div>,
       )
       return result
     }
+
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i]
       const prev = messages[i - 1]
@@ -339,67 +434,57 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
       const isFirstInGroup = prevMine !== mine
       const isLastInGroup = nextMine !== mine
       const showDate = !prev || !sameDay(m.created_at, prev.created_at)
+      const isAi = Boolean(m?.metadata?.ai_generated || m?.metadata?.ai_assistant)
+
       if (showDate) {
         result.push(
           <div key={`date-${m.id}`} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: 'rgba(0,0,0,0.06)', padding: '4px 12px', borderRadius: 999, letterSpacing: '.02em' }}>
               {dateLabel(m.created_at)}
             </span>
-          </div>
+          </div>,
         )
       }
+
       result.push(
         <MessageBubble
           key={m.id}
+          id={m.id}
           mine={mine}
           isFirstInGroup={isFirstInGroup}
           isLastInGroup={isLastInGroup}
           timestamp={m.created_at}
-          body={m.body}
-        />
+          deliveredAt={m.delivered_at}
+          readAt={m.read_at}
+          body={isAi ? <AiMessageBody body={m.body} /> : m.body}
+          rawBody={m.body || ''}
+        />,
       )
     }
     return result
-  }, [messages, loading, chatId, attorneyName])
+  }, [messages, loading, attorneyName])
 
   const composer = (
-    <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <AutoGrowInput
-          value={draft}
-          onChange={setDraft}
-          onSubmit={send}
-          disabled={sending}
-          placeholder="Type a message…"
-        />
-        <Btn
-          variant="primary"
-          size="sm"
-          onClick={send}
-          disabled={sending || !draft.trim()}
-          style={{
-            background: ACCENT,
-            color: '#fff',
-            borderRadius: 999,
-            boxShadow: '0 10px 22px -10px rgba(0,168,132,0.45)',
-            fontFamily: F.ui,
-          }}
-        >
-          {sending ? 'Sending…' : 'Send'}
-        </Btn>
-      </div>
-      <div style={{ marginTop: 8, fontSize: 10, color: DIM, fontFamily: MONO, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <span>
+    <div className="ys-market-chat-composer" style={{ borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
+      <AutoGrowInput
+        value={draft}
+        onChange={setDraft}
+        onSubmit={send}
+        disabled={sending || error === 'SIGN_IN_REQUIRED'}
+        placeholder={sending ? 'Sending…' : 'Type a message…'}
+        conversationId={conversationId || undefined}
+        onAttachmentSent={() => {
+          if (conversationIdRef.current) void loadUnifiedConversation(conversationIdRef.current, true)
+        }}
+      />
+      <div className="ys-market-chat-foot" style={{ padding: '0 14px 10px', fontSize: 10, color: DIM, fontFamily: MONO, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span className="ys-market-chat-shortcuts">
           <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> send · <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> close
         </span>
         {conversationId && (
           <a
             href={`https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`}
-            style={{ color: CYAN, fontWeight: 700, fontFamily: SANS, fontSize: 11, textDecoration: 'none' }}
-            onClick={(e) => {
-              e.preventDefault()
-              window.location.href = `https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`
-            }}
+            style={{ color: CYAN, fontWeight: 700, fontFamily: SANS, fontSize: 11, textDecoration: 'none', whiteSpace: 'nowrap' }}
           >
             Open in Messages →
           </a>
@@ -411,21 +496,22 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
   if (!open) return null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
+    <div className="ys-market-chat-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       <button onClick={onClose} aria-label="Close chat" style={{ flex: 1, background: 'rgba(15,18,32,0.45)', border: 'none', cursor: 'pointer' }} />
       <aside
         className="yousafe-messenger chat-side-pane"
         data-theme="light"
         style={{
-          width: 'min(440px, 100vw)', height: '100vh',
+          width: 'min(440px, 100vw)',
+          height: '100dvh',
           background: 'var(--bg, #F7F8FA)',
-          display: 'flex', flexDirection: 'column',
+          display: 'flex',
+          flexDirection: 'column',
           borderLeft: `1px solid ${BORDER}`,
           boxShadow: '-24px 0 60px rgba(29,36,51,0.18)',
           fontFamily: SANS,
           color: TEXT,
           colorScheme: 'light',
-          /* Beat marketplace .cw-market color inheritance (ys-onPaper / ys-ink) */
           isolation: 'isolate',
         }}
       >

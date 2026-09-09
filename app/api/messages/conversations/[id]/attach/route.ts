@@ -17,7 +17,6 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import {
   isClientRole,
-  isProviderRole,
   scheduleAutoReply,
   setConversationAiMode,
 } from '@/lib/messengerAi'
@@ -146,12 +145,15 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .eq('id', id)
     .then(() => null, () => null)
 
-  // Part B: attachments from clients can trigger AI (doc parse path);
-  // provider attachments pause AI.
+  // Client/student attachments can trigger AI. Provider attachments do NOT
+  // change ai_mode: attorneys/consultants can participate normally without
+  // silently disabling live replies. Only the explicit Take over control may
+  // pause provider-side AI. Admin outbound activity remains an intentional
+  // intervention and still pauses AI.
   try {
-    if (isProviderRole(auth.role) || auth.role === 'admin') {
+    if (auth.role === 'admin') {
       await setConversationAiMode(db, id, 'paused', {
-        ai_paused_reason: 'human_attachment',
+        ai_paused_reason: 'admin_attachment',
         ai_mode_set_by: profileId,
       })
     } else if (isClientRole(auth.role)) {
