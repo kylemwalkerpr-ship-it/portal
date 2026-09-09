@@ -1,0 +1,160 @@
+/* Student mobile dock clearance + assistant collision hardening
+   ============================================================
+   Loaded after student-mobile-ux-v2.css. The five-slot dock is fixed outside
+   the dashboard flex tree, so the scroll owner must reserve its *full* visual
+   footprint (dock + safe-area offset + breathing room) inside the viewport.
+
+   This layer also targets the current system-wide YouSafe Assistant (.ysa-*),
+   which replaced the legacy .ys-chat-* widget after the original student
+   mobile pass was written.
+*/
+
+@media (max-width: 768px) {
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] {
+    --student-dock-v2-bottom: max(8px, env(safe-area-inset-bottom));
+    --student-dock-v2-clearance: calc(
+      var(--student-dock-v2-height, 70px) + var(--student-dock-v2-bottom) + 18px
+    );
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  /* The previous layer put 100dvh *plus* bottom padding on this element while
+     it remained content-box sized. On iOS that makes the flex child taller
+     than the clipped 100dvh shell, which is why the final rows cannot be
+     scrolled fully above the floating dock. Keep the scrollport inside the
+     shell and reserve the dock footprint as part of that same border box. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-main {
+    box-sizing: border-box !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    padding-bottom: var(--student-dock-v2-clearance) !important;
+    scroll-padding-bottom: var(--student-dock-v2-clearance) !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Dashboard, Orders, Billing, Documents, Settings, etc. use the main column
+     as their vertical scroll owner. Make that contract explicit so inline
+     desktop styles cannot turn the page into an unscrollable clipped canvas. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-main:not(:has(.yousafe-messenger)) {
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-body,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-content {
+    min-height: 0 !important;
+  }
+
+  /* Messages owns its own list/thread scrolling. The dashboard shell should
+     therefore size it, not compete with it as a second scroll container. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-dashboard-main:has(.yousafe-messenger) {
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .yousafe-messenger,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true'] .ys-chatscreen {
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+
+  /* In conversation-list mode the dock remains visible. Reserve the same
+     clearance inside the list so the final thread can be scrolled completely
+     above the dock rather than disappearing behind it. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']
+    .ys-chatscreen[data-mobile-view='list'] .cl-scroll {
+    box-sizing: border-box !important;
+    padding-bottom: var(--student-dock-v2-clearance) !important;
+    scroll-padding-bottom: var(--student-dock-v2-clearance) !important;
+  }
+
+  /* An open thread hides the dock, so reclaim all dock space and make the
+     Messenger flex chain exactly one viewport tall. This keeps the composer
+     and its iPhone safe-area padding inside the visible screen. */
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .yousafe-dashboard-main {
+    box-sizing: border-box !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    padding-bottom: 0 !important;
+    scroll-padding-bottom: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .yousafe-dashboard-body,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .yousafe-dashboard-content,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .yousafe-messenger,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .ys-chatscreen,
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .ys-chatscreen-chat {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) [data-chat-canvas] {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .yousafe-dashboard-shell[data-student-mobile-enhanced='true']:has(
+      .yousafe-messenger .ys-chatscreen[data-mobile-view='chat']
+    ) .comp-row {
+    box-sizing: border-box !important;
+    flex: 0 0 auto !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* The system-wide assistant is injected outside the dashboard root. On a
+     student phone it duplicates the Help & resources entry in More and sits
+     directly on top of the dock/composer, so remove the floating launcher.
+     The assistant itself remains fully reachable through More. Keep the
+     legacy selector too for deployments where an older bundle is cached. */
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ysa-launcher,
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ys-chat-launcher,
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) button[aria-label='Open YouSafe AI Assistant'],
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) button[aria-label='Open chat'] {
+    display: none !important;
+  }
+
+  /* When opened deliberately from More, present the assistant as a contained
+     app sheet instead of another floating object competing with navigation. */
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ysa-panel,
+  body:has(.yousafe-dashboard-shell[data-student-mobile-enhanced='true']) .ys-chat-panel {
+    box-sizing: border-box !important;
+    left: 8px !important;
+    right: 8px !important;
+    top: max(8px, env(safe-area-inset-top)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 20px !important;
+    z-index: 2147483601 !important;
+  }
+}
