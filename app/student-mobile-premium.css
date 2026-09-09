@@ -1,0 +1,469 @@
+/* Premium student mobile dashboard
+   =================================
+   Student-only mobile app shell layered after the general dashboard,
+   marketplace and Messenger responsive rules.
+
+   The student sidebar is uniquely identifiable by its two direct user-footer
+   blocks (wallet + profile). Admin/attorney/consultant shells have a single
+   direct user block, so this selector deliberately avoids changing their
+   mobile navigation.
+
+   Goals:
+   - replace the desktop-sidebar-as-top-strip pattern with a thumb dock
+   - preserve every student destination (the dock remains horizontally scrollable)
+   - keep active-destination auto-centering from NavItem
+   - make the topbar feel like compact application chrome
+   - give student pages a consistent mobile rhythm, safe areas and touch targets
+   - let an open Messenger conversation become a true full-screen surface
+*/
+
+@media (max-width: 768px) {
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) {
+    --student-dock-h: 82px;
+    --student-page-pad: 14px;
+    --student-app-radius: 18px;
+    --student-app-shadow: 0 14px 38px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+    background: var(--portal-bg) !important;
+  }
+
+  /* ── Bottom app dock ───────────────────────────────────────────── */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) > .yousafe-sidebar {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    z-index: 110 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    display: block !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    pointer-events: none;
+  }
+
+  /* Desktop brand + account footer move out of the navigation plane on mobile.
+     Account/profile remains available from the top-right UserMenu. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) > .yousafe-sidebar > :first-child,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-sidebar-user {
+    display: none !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-sidebar-nav {
+    pointer-events: auto;
+    width: auto !important;
+    max-width: calc(100vw - 16px) !important;
+    height: auto !important;
+    min-height: 68px !important;
+    margin: 0 8px max(8px, env(safe-area-inset-bottom)) !important;
+    padding: 7px 7px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    gap: 3px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 12px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    border: 1px solid color-mix(in oklab, var(--portal-rule) 76%, transparent);
+    border-radius: 22px;
+    background: color-mix(in oklab, var(--portal-surface) 90%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+    box-shadow: var(--student-app-shadow);
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-sidebar-nav > :not(.yousafe-nav-item) {
+    display: none !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item {
+    position: relative !important;
+    flex: 0 0 76px !important;
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    min-height: 56px !important;
+    margin: 0 !important;
+    padding: 6px 4px 5px !important;
+    border: 0 !important;
+    border-left: 0 !important;
+    border-radius: 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    scroll-snap-align: center;
+    color: var(--portal-ink-soft) !important;
+    background: transparent !important;
+    font-size: 10px !important;
+    font-weight: 650 !important;
+    line-height: 1.08 !important;
+    text-align: center !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item:active {
+    transform: scale(.96);
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item > span:first-child {
+    width: 30px !important;
+    height: 27px !important;
+    display: grid !important;
+    place-items: center !important;
+    flex: 0 0 27px !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    opacity: .82 !important;
+    border-radius: 10px;
+    transition: transform 140ms ease, background 140ms ease, opacity 140ms ease !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item > span:nth-child(2) {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 70px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    letter-spacing: -.005em !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item[data-nav-active='true'] {
+    color: var(--portal-accent-deep) !important;
+    background: color-mix(in oklab, var(--portal-accent) 11%, var(--portal-surface)) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--portal-accent) 24%, transparent), 0 4px 12px rgba(15, 23, 42, .06) !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item[data-nav-active='true'] > span:first-child {
+    opacity: 1 !important;
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--portal-accent) 12%, transparent);
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item[data-nav-active='true']::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    transform: translateX(-50%);
+    background: var(--portal-accent);
+  }
+
+  /* Badges become small notification counters in the dock rather than
+     expanding an item horizontally. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item > span:nth-child(n+3) {
+    position: absolute !important;
+    top: 3px !important;
+    right: 5px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    padding: 0 5px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+    line-height: 1 !important;
+    box-shadow: 0 0 0 2px var(--portal-surface);
+  }
+
+  /* ── App chrome / top bar ──────────────────────────────────────── */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-main {
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    padding-bottom: calc(var(--student-dock-h) + env(safe-area-inset-bottom)) !important;
+    background: var(--portal-bg) !important;
+    overscroll-behavior-y: none;
+    scrollbar-width: none;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 80 !important;
+    width: 100% !important;
+    min-height: 58px !important;
+    height: auto !important;
+    padding: max(8px, env(safe-area-inset-top)) var(--student-page-pad) 8px !important;
+    gap: 10px !important;
+    border-bottom: 1px solid color-mix(in oklab, var(--portal-rule) 72%, transparent) !important;
+    background: color-mix(in oklab, var(--portal-surface) 90%, transparent) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    box-shadow: 0 1px 0 rgba(15,23,42,.02), 0 8px 24px rgba(15,23,42,.035);
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar h1 {
+    min-width: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-family: var(--portal-font-display, Georgia, serif) !important;
+    font-size: 19px !important;
+    font-weight: 650 !important;
+    letter-spacing: -.015em !important;
+    line-height: 1.1 !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar > div:last-child {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    gap: 7px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar button {
+    min-width: 42px !important;
+    min-height: 42px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar > div:last-child > div[style*='position: relative'] > button {
+    width: 42px !important;
+    height: 42px !important;
+    padding: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 14px !important;
+    background: var(--portal-surface-2) !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-notification-menu {
+    position: fixed !important;
+    top: calc(max(8px, env(safe-area-inset-top)) + 56px) !important;
+    right: 10px !important;
+    left: 10px !important;
+    width: auto !important;
+    max-width: none !important;
+    border-radius: 18px !important;
+    background: var(--portal-surface) !important;
+    box-shadow: 0 18px 60px rgba(15,23,42,.18) !important;
+  }
+
+  /* ── Page canvas and content rhythm ────────────────────────────── */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-body,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Student pages currently use 28px desktop page padding inline. Normalize
+     those top-level page canvases without touching nested card padding. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content > div[style*='padding: 28px'],
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content > div[style*='padding: 28px;'] {
+    padding: 18px var(--student-page-pad) 24px !important;
+    gap: 16px !important;
+    min-height: auto !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content h1 {
+    font-size: clamp(28px, 8vw, 32px) !important;
+    line-height: 1.06 !important;
+    text-wrap: balance;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content h2 {
+    font-size: clamp(25px, 7vw, 29px) !important;
+    line-height: 1.08 !important;
+    text-wrap: balance;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content h3 {
+    line-height: 1.18 !important;
+    text-wrap: balance;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content p {
+    max-width: 68ch;
+    line-height: 1.55;
+  }
+
+  /* Two compact stats per row gives the dashboard a true mobile home-screen
+     feel without turning four useful stats into a long vertical list. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='minmax(170px, 1fr)'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-mobile-stack {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-mobile-stack > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Student home right-hand desktop pane becomes a normal stacked section. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-mobile-stack [style*='width: 300px'] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Horizontal action sets stay swipeable rather than wrapping into an
+     unpredictable wall of controls. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='display: inline-flex'][style*='flex-wrap: wrap'],
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='display: flex'][style*='flex-wrap: wrap'] {
+    max-width: 100%;
+  }
+
+  /* Premium cards and section surfaces: slightly tighter radius/padding on a
+     phone while keeping existing semantic/status colors untouched. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='border-radius: 14px'],
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='borderRadius: 14px'] {
+    border-radius: var(--student-app-radius) !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content button,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content a[role='button'] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content button:focus-visible,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar button:focus-visible,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item:focus-visible {
+    outline: 2px solid var(--portal-accent) !important;
+    outline-offset: 2px !important;
+  }
+
+  /* Inputs should never trigger iOS auto-zoom and full-width controls should
+     not escape their card. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) textarea,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) select {
+    max-width: 100% !important;
+    font-size: 16px !important;
+  }
+
+  /* Tables remain usable instead of crushing columns into unreadable widths. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  /* Desktop side drawers become edge-to-edge app sheets on phones. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) [role='dialog'] aside,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) aside[role='dialog'] {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-left: 0 !important;
+  }
+
+  /* ── Messenger integration ─────────────────────────────────────── */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-messenger {
+    min-height: 0 !important;
+  }
+
+  /* Conversation list: keep the dock visible, but guarantee enough room for
+     the final conversation row above the dock. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-messenger .cl-scroll {
+    padding-bottom: calc(var(--student-dock-h) + env(safe-area-inset-bottom)) !important;
+    scroll-padding-bottom: calc(var(--student-dock-h) + env(safe-area-inset-bottom));
+  }
+
+  /* Open conversation = true app screen. The in-thread Back control restores
+     list mode; at that point this :has() no longer matches and the dock/topbar
+     return automatically. */
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) > .yousafe-sidebar,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-topbar {
+    display: none !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-main {
+    padding-bottom: 0 !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-body,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-dashboard-content,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .yousafe-messenger,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div):has(.yousafe-messenger .ys-chatscreen[data-mobile-view='chat']) .ys-chatscreen {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) {
+    --student-page-pad: 12px;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item {
+    flex-basis: 72px !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar {
+    gap: 7px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-topbar h1 {
+    font-size: 18px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='minmax(170px, 1fr)'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 350px) {
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-nav-item {
+    flex-basis: 68px !important;
+    width: 68px !important;
+    min-width: 68px !important;
+    max-width: 68px !important;
+  }
+
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) .yousafe-dashboard-content [style*='minmax(170px, 1fr)'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) *,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) *::before,
+  .yousafe-dashboard-shell:has(.yousafe-sidebar-user > div + div) *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
