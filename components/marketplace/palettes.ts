@@ -1,10 +1,11 @@
 /**
  * Marketplace colour palettes — bright, premium, welcoming, and legibility-first.
  *
- * Persisted palette ids stay unchanged so existing preferences survive this
- * refresh. The shell colours intentionally use more luminous, saturated hues
- * instead of near-black surfaces, while every shipped text/surface role remains
- * covered by tests/marketplace-palette-contrast.test.ts at WCAG AA (4.5:1).
+ * Emerald is the Marketplace brand/action colour. Persisted palette ids stay
+ * unchanged so existing preferences survive visual refreshes, but legacy blue
+ * and cyan colourways are intentionally repurposed to professional non-blue
+ * alternatives. Every shipped text/surface role remains covered by
+ * tests/marketplace-palette-contrast.test.ts at WCAG AA (4.5:1).
  */
 
 export interface PaletteTokens {
@@ -42,57 +43,61 @@ export interface PaletteDef {
   tokens: PaletteTokens
 }
 
+/**
+ * `indigo` and `teal` are legacy token names used throughout Marketplace.
+ * Their semantic role is now brand/action accent, so both resolve to emerald.
+ */
 const SHARED_LIGHT = {
   vellum:      '#FFFFFF',
-  ink:         '#111827',
-  inkMid:      '#334155',
-  inkSoft:     '#52606D',
+  ink:         '#17201D',
+  inkMid:      '#43534D',
+  inkSoft:     '#5E6F68',
   onPaper:     '#FFFFFF',
   onPaperSoft: 'rgba(255,255,255,0.90)',
   onPaperEm:   '#FFF7E8',
-  indigo:      '#4F46E5',
-  indigoDeep:  '#4338CA',
-  indigoSoft:  'rgba(79,70,229,0.14)',
+  indigo:      '#087A5B',
+  indigoDeep:  '#065F46',
+  indigoSoft:  'rgba(8,122,91,0.14)',
   brick:       '#B42318',
   gold:        '#FFF4D6',
   moss:        '#3F6212',
   star:        '#8A5A00',
-  teal:        '#0F766E',
-  tealDeep:    '#0B615B',
+  teal:        '#087A5B',
+  tealDeep:    '#065F46',
 }
 
 // Storage key `mahogany` retained for backwards compatibility.
-const LUMINOUS_TEAL: PaletteTokens = {
+const BRIGHT_EMERALD: PaletteTokens = {
   ...SHARED_LIGHT,
-  paper:       '#0F766E',
-  paper2:      '#0D6B64',
-  paper3:      '#0B615B',
-  cream:       '#F4FBFA',
+  paper:       '#087A5B',
+  paper2:      '#076E52',
+  paper3:      '#065F46',
+  cream:       '#F7FAF9',
   rule:        'rgba(255,255,255,0.22)',
   ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#0A514C',
+  footer:      '#054C39',
 }
 
-const ROYAL_INDIGO: PaletteTokens = {
+const ROYAL_AUBERGINE: PaletteTokens = {
   ...SHARED_LIGHT,
-  paper:       '#4F46E5',
-  paper2:      '#4338CA',
-  paper3:      '#3730A3',
-  cream:       '#F7F7FF',
+  paper:       '#7C2D6F',
+  paper2:      '#6D285F',
+  paper3:      '#5B214F',
+  cream:       '#FFF7FB',
   rule:        'rgba(255,255,255,0.22)',
   ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#312E81',
+  footer:      '#45183D',
 }
 
-const BRILLIANT_AZURE: PaletteTokens = {
+const BURNISHED_AMBER: PaletteTokens = {
   ...SHARED_LIGHT,
-  paper:       '#1D4ED8',
-  paper2:      '#1E40AF',
-  paper3:      '#1E3A8A',
-  cream:       '#F5F9FF',
+  paper:       '#9A4E00',
+  paper2:      '#884300',
+  paper3:      '#743900',
+  cream:       '#FFF8EF',
   rule:        'rgba(255,255,255,0.22)',
   ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#172554',
+  footer:      '#5E2E00',
 }
 
 const RASPBERRY_WINE: PaletteTokens = {
@@ -106,75 +111,75 @@ const RASPBERRY_WINE: PaletteTokens = {
   footer:      '#500724',
 }
 
-const FRESH_EMERALD: PaletteTokens = {
+const FOREST_JADE: PaletteTokens = {
   ...SHARED_LIGHT,
-  paper:       '#047857',
-  paper2:      '#065F46',
-  paper3:      '#064E3B',
-  cream:       '#F3FBF7',
+  paper:       '#166534',
+  paper2:      '#14532D',
+  paper3:      '#124628',
+  cream:       '#F5FBF7',
   rule:        'rgba(255,255,255,0.22)',
   ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#022C22',
+  footer:      '#0B3922',
 }
 
-const COASTAL_CYAN: PaletteTokens = {
+const WARM_TERRACOTTA: PaletteTokens = {
   ...SHARED_LIGHT,
-  paper:       '#0E7490',
-  paper2:      '#155E75',
-  paper3:      '#164E63',
-  cream:       '#F2FBFD',
+  paper:       '#B54708',
+  paper2:      '#9A3C07',
+  paper3:      '#7F3107',
+  cream:       '#FFF7F2',
   rule:        'rgba(255,255,255,0.22)',
   ruleSoft:    'rgba(255,255,255,0.11)',
-  footer:      '#083344',
+  footer:      '#612406',
 }
 
 export const PALETTES: PaletteDef[] = [
   {
     name: 'mahogany',
-    label: 'Luminous Teal',
+    label: 'Bright Emerald',
     emoji: '●',
-    description: 'Bright jewel teal with crisp white cards and warm ivory highlights. Premium, calm, and welcoming.',
-    tokens: LUMINOUS_TEAL,
+    description: 'Clean emerald with crisp white surfaces and charcoal text. Fresh, trustworthy, and highly legible.',
+    tokens: BRIGHT_EMERALD,
   },
   {
     name: 'luxury-classic',
-    label: 'Royal Indigo',
+    label: 'Royal Aubergine',
     emoji: '◆',
-    description: 'Vivid royal indigo with clean white surfaces and soft ivory accents. Confident without feeling heavy.',
-    tokens: ROYAL_INDIGO,
+    description: 'Saturated aubergine with white conversion surfaces and emerald actions. Polished, distinctive, and professional.',
+    tokens: ROYAL_AUBERGINE,
   },
   {
     name: 'executive',
-    label: 'Brilliant Azure',
+    label: 'Burnished Amber',
     emoji: '■',
-    description: 'Clear premium blue with white conversion surfaces and energetic depth. Professional and optimistic.',
-    tokens: BRILLIANT_AZURE,
+    description: 'Warm burnished amber with bright neutral surfaces and emerald actions. Energetic without sacrificing readability.',
+    tokens: BURNISHED_AMBER,
   },
   {
     name: 'rich-heritage',
     label: 'Raspberry Wine',
     emoji: '◈',
-    description: 'Rich raspberry-wine with bright ivory surfaces. Sophisticated, warmer, and more inviting than near-black burgundy.',
+    description: 'Rich raspberry-wine with bright ivory surfaces and emerald actions. Sophisticated, warm, and confident.',
     tokens: RASPBERRY_WINE,
   },
   {
     name: 'modern-luxury',
-    label: 'Fresh Emerald',
+    label: 'Forest Jade',
     emoji: '◇',
-    description: 'Luminous emerald with white cards and restrained jewel accents. Fresh, trustworthy, and premium.',
-    tokens: FRESH_EMERALD,
+    description: 'Deep jade-green with white cards and restrained emerald accents. Calm, credible, and premium.',
+    tokens: FOREST_JADE,
   },
   {
     name: 'santorini',
-    label: 'Coastal Cyan',
+    label: 'Warm Terracotta',
     emoji: '○',
-    description: 'Bright coastal cyan-blue with airy white surfaces. Welcoming, modern, and highly legible.',
-    tokens: COASTAL_CYAN,
+    description: 'Bright terracotta with airy white surfaces and emerald actions. Human, modern, and visually warm.',
+    tokens: WARM_TERRACOTTA,
   },
 ]
 
 // Keep the storage id stable so existing users on the former default migrate
-// automatically to the brighter Luminous Teal colours without losing prefs.
+// automatically to Bright Emerald without losing preferences.
 export const DEFAULT_PALETTE_NAME = 'mahogany'
 
 export function getPalette(name: string): PaletteDef {

@@ -3,6 +3,7 @@ import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
+import '../marketplace/marketplace-brand.css'
 
 /**
  * File shop uses the same marketplace chrome as /marketplace so signed-in
@@ -12,7 +13,9 @@ import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
  * MarketplaceShell mounts <PalettePicker>, which calls usePalette() — so the
  * shop layout must provide <PaletteProvider> exactly like the marketplace
  * layout does, or the page crashes with "usePalette must be used within
- * PaletteProvider".
+ * PaletteProvider". It also imports the same scoped Marketplace brand CSS so
+ * action aliases, focus-visible treatment, and mobile brand treatment cannot
+ * drift between service browsing and the file/template shop.
  */
 export default function ShopLayout({ children }: { children: ReactNode }) {
   return (
