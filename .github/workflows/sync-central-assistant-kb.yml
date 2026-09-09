@@ -4,6 +4,12 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '17 3 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/sync-central-assistant-kb.yml'
+      - 'scripts/sync-central-assistant-kb.mjs'
 
 permissions:
   contents: write
@@ -30,6 +36,22 @@ jobs:
 
       - name: Crawl public YouSafe network
         run: node scripts/sync-central-assistant-kb.mjs
+
+      - name: Validate central knowledge
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const rows = JSON.parse(fs.readFileSync('content/messenger-kb/network-pages.json', 'utf8'))
+          if (!Array.isArray(rows) || rows.length < 10) {
+            throw new Error(`Central assistant KB is unexpectedly small: ${Array.isArray(rows) ? rows.length : 'invalid'}`)
+          }
+          const sites = new Set(rows.map((row) => String(row.id || '').split(':')[1]).filter(Boolean))
+          if (sites.size < 3) {
+            throw new Error(`Central assistant KB covers too few sites: ${sites.size}`)
+          }
+          console.log(`Validated ${rows.length} knowledge pages across ${sites.size} YouSafe surfaces.`)
+          NODE
 
       - name: Commit refreshed knowledge when changed
         shell: bash
