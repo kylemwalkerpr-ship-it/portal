@@ -1,6 +1,12 @@
 name: One-time stale branch cleanup
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-branch-cleanup.yml'
+      - '.github/one-time-branch-cleanup-trigger'
   push:
     branches:
       - main
@@ -16,9 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Delete only audited stale branches
+      - name: Audit and prune stale branches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name != 'push' }}
         shell: bash
         run: |
           node <<'NODE'
@@ -27,6 +34,7 @@ jobs:
           const repository = process.env.GITHUB_REPOSITORY
           const [owner] = repository.split('/')
           const token = process.env.GH_TOKEN
+          const dryRun = process.env.DRY_RUN === 'true'
           if (!repository || !owner || !token) throw new Error('Missing GitHub workflow context')
 
           const headers = {
@@ -86,6 +94,7 @@ jobs:
             const mainSha = mainBranch.commit.sha
             const branches = await api(`/repos/${repository}/branches?per_page=100`)
 
+            const removable = []
             const deleted = []
             const preserved = []
 
@@ -131,6 +140,9 @@ jobs:
                 continue
               }
 
+              removable.push(`${name} — ${reason}`)
+              if (dryRun) continue
+
               const refPath = name.split('/').map(encodeURIComponent).join('/')
               try {
                 await api(`/repos/${repository}/git/refs/heads/${refPath}`, { method: 'DELETE' })
@@ -140,14 +152,16 @@ jobs:
               }
             }
 
+            const actionWord = dryRun ? 'Would delete' : 'Deleted'
+            const actionRows = dryRun ? removable : deleted
             const summary = [
-              '# One-time branch cleanup',
+              `# One-time branch cleanup${dryRun ? ' — dry run' : ''}`,
               '',
-              `Deleted: ${deleted.length}`,
+              `${actionWord}: ${actionRows.length}`,
               `Preserved for manual review: ${preserved.length}`,
               '',
-              '## Deleted',
-              ...(deleted.length ? deleted.map((x) => `- ${x}`) : ['- None']),
+              `## ${actionWord}`,
+              ...(actionRows.length ? actionRows.map((x) => `- ${x}`) : ['- None']),
               '',
               '## Preserved',
               ...(preserved.length ? preserved.map((x) => `- ${x}`) : ['- None']),
@@ -157,9 +171,9 @@ jobs:
             console.log(summary)
             if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
 
-            // Fail closed if anything remains unexplained. The job still records what
-            // it safely deleted, but we will inspect preserved refs before claiming a
-            // fully clean repository.
+            // Fail closed if anything remains unexplained. In dry-run mode this is
+            // the release gate; on main it also prevents us from claiming the cleanup
+            // is complete when a branch still needs human review.
             if (preserved.length) {
               throw new Error(`${preserved.length} branch(es) preserved for manual review`)
             }
