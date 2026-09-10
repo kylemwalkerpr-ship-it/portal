@@ -48,11 +48,12 @@ function walkRuntimeFiles(relativeDir: string): string[] {
 const runtimeFiles = runtimeRoots.flatMap(walkRuntimeFiles)
 
 describe('Marketplace public URL retirement', () => {
-  test('hard-404s the retired /marketplace namespace on both public hosts', () => {
+  test('permanently redirects the retired /marketplace namespace on both public hosts', () => {
     expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
     expect(middleware).toContain('(hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath')
-    expect(middleware).toContain("return new NextResponse('Not Found', {")
-    expect(middleware).toContain('status: 404')
+    expect(middleware).toContain("const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'")
+    expect(middleware).toContain('target.hostname = MARKET_HOST')
+    expect(middleware).toContain('NextResponse.redirect(target, { status: 301 })')
   })
 
   test('keeps clean market URLs as browser-facing paths while rewriting only internally', () => {
