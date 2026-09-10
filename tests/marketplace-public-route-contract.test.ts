@@ -27,4 +27,20 @@ describe('standalone Marketplace public URL contract', () => {
     expect(shop).toContain("const CANONICAL = 'https://market.yousafeconsultancy.com/shop'")
     expect(shop).toContain('alternates: { canonical: CANONICAL }')
   })
+
+  test('portal host permanently redirects the File Shop tree to the market host', () => {
+    const middleware = read('middleware.ts')
+    expect(middleware).toContain("hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))")
+    expect(middleware).toContain("const redirectUrl = new URL(pathname + search, `https://${MARKET_HOST}`)")
+    expect(middleware).toContain('NextResponse.redirect(redirectUrl, { status: 301 })')
+  })
+
+  test('authenticated template empty states link directly to the canonical File Shop', () => {
+    const purchased = read('components/student/MyTemplatesView.tsx')
+    const filler = read('components/student/StudentTemplateFiller.tsx')
+    for (const source of [purchased, filler]) {
+      expect(source).toContain('https://market.yousafeconsultancy.com/shop')
+      expect(source).not.toContain('href="/marketplace/templates"')
+    }
+  })
 })
