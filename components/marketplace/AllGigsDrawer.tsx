@@ -240,7 +240,7 @@ export function AllGigsDrawer({
                     return (
                       <a
                         key={g.id}
-                        href={g.slug ? `/marketplace/gigs/${g.slug}` : '/marketplace'}
+                        href={g.slug ? `/gigs/${g.slug}` : '/'}
                         className="cw-all-card"
                       >
                         <div className="cw-all-card-plate" data-c={jx || 'us'}>
