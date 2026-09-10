@@ -656,7 +656,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               }}
               onViewProfile={() => {
                 const token = gig.provider?.username || gig.provider_id
-                window.location.href = `/marketplace/providers/${token}`
+                window.location.href = `/providers/${token}`
               }}
               onMessage={() => gatedChat(() => setMsgOpen(true))}
             />

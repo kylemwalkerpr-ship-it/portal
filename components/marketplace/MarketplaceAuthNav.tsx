@@ -197,7 +197,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
               <span className={styles.itemLabel}>File shop</span>
               <Chevron />
             </a>
-            <a role="menuitem" href="/marketplace?view=orders" className={styles.item} onClick={closeMenu}>
+            <a role="menuitem" href="/?view=orders" className={styles.item} onClick={closeMenu}>
               <span className={styles.itemIcon}><AccountIcon kind="orders" /></span>
               <span className={styles.itemLabel}>My Orders</span>
               <Chevron />

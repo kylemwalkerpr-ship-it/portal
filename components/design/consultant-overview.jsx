@@ -280,7 +280,7 @@ export default function ConsultantOverview({ onJump, profileName }) {
                       </div>
                     )}
                     <a href={`/dashboard/gigs/${gig.id}/edit`} style={{ fontSize: '12px', color: C.cyan, fontWeight: 600, textDecoration: 'none' }}>Edit</a>
-                    <a href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: C.textMuted, fontWeight: 500, textDecoration: 'none' }}>View ↗</a>
+                    <a href={`https://market.yousafeconsultancy.com/gigs/${gig.slug}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: C.textMuted, fontWeight: 500, textDecoration: 'none' }}>View ↗</a>
                   </div>
                 </div>
               </Card>

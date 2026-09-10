@@ -205,7 +205,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         {offer.linked_gig && (
           <div style={{ marginTop: 10 }}>
             <Link
-              href={`/gigs/${offer.linked_gig.slug}`}
+              href={`https://market.yousafeconsultancy.com/gigs/${offer.linked_gig.slug}`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '4px 10px', borderRadius: 999,

@@ -11,7 +11,7 @@
    MainContent is already a flex column, so these semantic selectors only
    change visual section order; the mobile rules below still pull packages,
    order controls, and the seller card up into the buying journey. */
-.cw-market .ys-content-layout > div:first-child > div:has(a[href^='/marketplace/gigs/']) {
+.cw-market .ys-content-layout > div:first-child > div:has(a[href^='/gigs/']) {
   order: 80;
 }
 
@@ -206,7 +206,7 @@
   .cw-market .ys-content-layout > div:first-child > :nth-child(3) { order: 50; }
 
   /* Similar Services is the card containing marketplace gig links. */
-  .cw-market .ys-content-layout > div:first-child > div:has(a[href^='/marketplace/gigs/']) {
+  .cw-market .ys-content-layout > div:first-child > div:has(a[href^='/gigs/']) {
     order: 80;
   }
 

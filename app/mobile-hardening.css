@@ -157,7 +157,7 @@
 
   .cw-market .ys-gig-grid,
   .cw-market .ys-gig-list-item,
-  .cw-market a[href*='/marketplace/gigs/'],
+  .cw-market a[href*='/gigs/'],
   .cw-market a[href*='/sellers/'] {
     min-width: 0 !important;
     max-width: 100% !important;

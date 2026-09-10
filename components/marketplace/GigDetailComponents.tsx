@@ -544,7 +544,7 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
           const providerName = providerDisplayName(g.provider, '')
           const showRating = Number(g.avg_rating || 0) > 0 && Number(g.review_count || 0) > 0
           return (
-            <Link key={g.id} href={`/marketplace/gigs/${g.slug}`} style={gigCard}>
+            <Link key={g.id} href={`/gigs/${g.slug}`} style={gigCard}>
               {img ? (
                 <img src={img} alt={g.title} style={{ width: '100%', height: '140px', objectFit: 'cover' }} />
               ) : (

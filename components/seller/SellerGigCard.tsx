@@ -462,7 +462,7 @@ export default function SellerGigCard({
   const isViewable = gig.status === 'active'
 
   const handleShare = async () => {
-    const url = `${window.location.origin}/marketplace/gigs/${gig.slug}`
+    const url = `https://market.yousafeconsultancy.com/gigs/${gig.slug}`
     // Use Web Share API on mobile/PWA, fall back to clipboard.
     const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> }
     if (typeof nav.share === 'function') {
@@ -477,7 +477,7 @@ export default function SellerGigCard({
   }
 
   const handleCopyLink = async () => {
-    const url = `${window.location.origin}/marketplace/gigs/${gig.slug}`
+    const url = `https://market.yousafeconsultancy.com/gigs/${gig.slug}`
     try {
       await navigator.clipboard.writeText(url)
       onNotice('ok', 'Public link copied to clipboard.')
@@ -493,7 +493,7 @@ export default function SellerGigCard({
   if (!editIsPrimary && gig.status !== 'deleted') {
     items.push({ kind: 'action', label: 'Edit', icon: ICON.edit, onClick: () => router.push(`/dashboard/gigs/${gig.id}/edit`) })
   }
-  items.push({ kind: 'action', label: 'Preview', icon: ICON.external, onClick: () => window.open(`/marketplace/gigs/${gig.slug}`, '_blank', 'noopener,noreferrer') })
+  items.push({ kind: 'action', label: 'Preview', icon: ICON.external, onClick: () => window.open(`https://market.yousafeconsultancy.com/gigs/${gig.slug}`, '_blank', 'noopener,noreferrer') })
   items.push({ kind: 'action', label: 'Share', icon: ICON.share, onClick: handleShare, disabled: !isViewable })
   items.push({ kind: 'action', label: 'Copy public link', icon: ICON.link, onClick: handleCopyLink, disabled: !isViewable })
   items.push({ kind: 'action', label: 'Duplicate', icon: ICON.copy, onClick: () => onDuplicate(gig.id) })

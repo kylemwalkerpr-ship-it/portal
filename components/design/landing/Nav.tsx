@@ -38,7 +38,7 @@ export default function Nav({ onOpenSignIn }: NavProps) {
 
   const links = [
     { href: 'https://yousafeconsultancy.com/', label: 'Home' },
-    { href: '/marketplace', label: 'Browse services' },
+    { href: 'https://market.yousafeconsultancy.com/', label: 'Browse services' },
     { href: '#practices', label: 'Practices' },
     { href: '#how', label: 'How it works' },
     { href: '#faq', label: 'FAQ' },
@@ -152,7 +152,7 @@ export default function Nav({ onOpenSignIn }: NavProps) {
           <ArrowUR size={10} stroke={2} style={{ color: T.inkDim, marginLeft: 1 }} />
         </a>
         <span aria-hidden="true" style={{ width: 1, height: 18, background: T.rule, margin: '0 4px' }} />
-        <a href="/marketplace" className="ys-nav-link" style={navLinkStyle}>Browse services</a>
+        <a href="https://market.yousafeconsultancy.com/" className="ys-nav-link" style={navLinkStyle}>Browse services</a>
         <a href="#practices" className="ys-nav-link" style={navLinkStyle}>Practices</a>
         <a href="#how" className="ys-nav-link" style={navLinkStyle}>How it works</a>
         <a href="#faq" className="ys-nav-link" style={navLinkStyle}>FAQ</a>

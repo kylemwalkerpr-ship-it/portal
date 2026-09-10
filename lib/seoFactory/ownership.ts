@@ -730,7 +730,7 @@ function pathForHostFallback(
   }
 
   if (host === 'market') {
-    return { filePath: `catalogue/${slug}.mdx`, urlPath: `/marketplace/gigs/${slug}/` }
+    return { filePath: `catalogue/${slug}.mdx`, urlPath: `/gigs/${slug}/` }
   }
 
   const app = host === 'apex' ? 'landing-page' : host === 'usa' ? 'usa' : host

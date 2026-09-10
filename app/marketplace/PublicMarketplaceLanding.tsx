@@ -43,7 +43,7 @@ const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 function signUpHref(utm: string): string {
   return (
     `${PORTAL_URL}/sign-up/student` +
-    `?source=marketing&return_to=/marketplace&utm_content=${encodeURIComponent(utm)}`
+    `?source=marketing&return_to=https://market.yousafeconsultancy.com/&utm_content=${encodeURIComponent(utm)}`
   )
 }
 
@@ -998,7 +998,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <h1>{headline.h1}</h1>
             <p className="lede">{headline.lede}</p>
 
-            <form className="hero-search" action="/marketplace" method="get">
+            <form className="hero-search" action="/" method="get">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="7" />
                 <path d="m21 21-4.3-4.3" />
@@ -1014,7 +1014,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <div className="suggest">
               <span className="lbl">Popular:</span>
               {chips.map((c) => (
-                <a key={c.q} href={withCountry(`/marketplace?q=${encodeURIComponent(c.q)}`, active)}>{c.label}</a>
+                <a key={c.q} href={withCountry(`/?q=${encodeURIComponent(c.q)}`, active)}>{c.label}</a>
               ))}
             </div>
           </div>
@@ -1086,13 +1086,13 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             </div>
 
             <div className="filters">
-              <a className="on" href={withCountry('/marketplace', active)}>All <span className="ct">({chipTotal})</span></a>
+              <a className="on" href={withCountry('/', active)}>All <span className="ct">({chipTotal})</span></a>
               {slice.categories.filter((c) => c.count > 0).slice(0, 5).map((cs) => (
-                <a key={cs.cat.id} href={withCountry(`/marketplace?category=${cs.cat.id}`, active)}>
+                <a key={cs.cat.id} href={withCountry(`/?category=${cs.cat.id}`, active)}>
                   {cs.cat.name.replace(' Services', '')} <span className="ct">({catCountFor(cs.cat.id, cs.count)})</span>
                 </a>
               ))}
-              <a href={withCountry('/marketplace?delivery_days=3', active)}>· Delivery ≤ 3d</a>
+              <a href={withCountry('/?delivery_days=3', active)}>· Delivery ≤ 3d</a>
             </div>
 
             <FeaturedBriefsGrid
@@ -1196,7 +1196,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             </div>
           ) : (
             <p className="quotes-empty">
-              No published reviews yet — every brief on YouSafe is escrowed and refundable, and reviewer names appear here once a buyer publishes one. Be the first to <a href={withCountry('/marketplace', active)} style={{ borderBottom: `1px solid ${T.indigo}`, color: T.indigo }}>commission a brief</a>.
+              No published reviews yet — every brief on YouSafe is escrowed and refundable, and reviewer names appear here once a buyer publishes one. Be the first to <a href={withCountry('/', active)} style={{ borderBottom: `1px solid ${T.indigo}`, color: T.indigo }}>commission a brief</a>.
             </p>
           )}
         </div>

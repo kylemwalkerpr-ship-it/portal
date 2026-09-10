@@ -133,10 +133,10 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
       return
     }
     if (cta.view === 'browse') {
-      router.push('/marketplace')
+      router.push('/')
       return
     }
-    router.push(`/marketplace?view=${cta.view}`)
+    router.push(`/?view=${cta.view}`)
   }
   return (
     <div style={{ background: T.vellum, border: `1px dashed ${T.rule}`, borderRadius: '8px', padding: '40px 24px', textAlign: 'center' as const }}>
@@ -296,7 +296,7 @@ function MarketMobileDrawer({
         </div>
         <nav className="ys-shell-drawer-nav" aria-label="Marketplace">
           <a
-            href="/marketplace"
+            href="/"
             className="ys-shell-drawer-link"
             aria-current={homeCurrent ? 'page' : undefined}
             onClick={(e) => { e.preventDefault(); go('browse') }}
@@ -447,7 +447,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
 
         {/* Uniform pill buttons — Home, Dashboard, File shop */}
         {[
-          { label: 'Home', href: '/marketplace', external: false, icon: 'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z' },
+          { label: 'Home', href: '/', external: false, icon: 'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z' },
           { label: 'Dashboard', href: 'https://portal.yousafeconsultancy.com/dashboard', external: false, icon: '' },
           { label: 'File shop', href: 'https://market.yousafeconsultancy.com/shop', external: false, icon: '' },
         ].map((btn) => {
@@ -706,11 +706,11 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     setSection(view)
     setOpenOrderId(null)
     if (view === 'browse') {
-      router.push('/marketplace')
+      router.push('/')
     } else if (view === 'orders') {
       router.push(marketplaceOrdersHref())
     } else {
-      router.push(`/marketplace?view=${view}`)
+      router.push(`/?view=${view}`)
     }
   }, [router])
 

@@ -73,18 +73,18 @@ function CartPageInner() {
   const [payMethod, setPayMethod] = useState<'wallet' | 'card' | 'saved_card'>('wallet')
   const [hasSetDefaultPayMethod, setHasSetDefaultPayMethod] = useState(false)
 
-  // Ensure the canonical URL always points to the clean /marketplace/cart
+  // Ensure the canonical URL always points to the clean /cart
   // path, so any ?add=* query-param variant is consolidated under the
   // base URL. Screaming Frog flagged 10+ cart?add=... URLs as indexable
   // query-param duplicates; this canonical prevents them from competing.
   useEffect(() => {
     const existing = document.querySelector('link[rel="canonical"]')
     if (existing) {
-      existing.setAttribute('href', '/marketplace/cart')
+      existing.setAttribute('href', '/cart')
     } else {
       const link = document.createElement('link')
       link.rel = 'canonical'
-      link.href = '/marketplace/cart'
+      link.href = '/cart'
       document.head.appendChild(link)
     }
   }, [])
@@ -101,7 +101,7 @@ function CartPageInner() {
           priceUsdCents: Math.round(pack.price_usd * 100),
         })
       }
-      router.replace('/marketplace/cart')
+      router.replace('/cart')
     }
   }, [searchParams, addItem, router])
 
@@ -244,7 +244,7 @@ function CartPageInner() {
         return
       }
       clear()
-      router.push(`/marketplace/order/success?orderId=${data.orderId}`)
+      router.push(`/order/success?orderId=${data.orderId}`)
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Payment request failed')
       setIsSubmitting(false)
@@ -271,7 +271,7 @@ function CartPageInner() {
         return
       }
       clear()
-      router.push(data.orderId ? `/marketplace/order/success?orderId=${data.orderId}` : '/marketplace/order/success')
+      router.push(data.orderId ? `/order/success?orderId=${data.orderId}` : '/order/success')
     } catch (e: any) {
       setCheckoutError(e?.message || 'Payment failed.')
       setIsSubmitting(false)
@@ -297,7 +297,7 @@ function CartPageInner() {
         return
       }
       clear()
-      router.push(`/marketplace/order/success?orderId=${data.orderId}`)
+      router.push(`/order/success?orderId=${data.orderId}`)
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Payment request failed')
       setIsSubmitting(false)
@@ -369,7 +369,7 @@ function CartPageInner() {
             Browse our template packs and add the ones you need.
           </p>
           <Link
-            href="/marketplace"
+            href="/"
             style={{
               display: 'inline-block',
               padding: '10px 24px',
