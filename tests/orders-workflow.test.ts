@@ -11,8 +11,8 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 
 describe('order links', () => {
   test('marketplace and dashboard hrefs carry view/page + order id', () => {
-    expect(marketplaceOrdersHref()).toBe('/marketplace?view=orders')
-    expect(marketplaceOrdersHref('abc-123')).toBe('/marketplace?view=orders&order=abc-123')
+    expect(marketplaceOrdersHref()).toBe('/?view=orders')
+    expect(marketplaceOrdersHref('abc-123')).toBe('/?view=orders&order=abc-123')
     expect(dashboardOrdersHref('abc-123')).toBe('/dashboard?page=orders&order=abc-123')
   })
 
@@ -110,9 +110,11 @@ describe('client cancel is reachable from web and mobile', () => {
 })
 
 describe('nav and redirects point at the clickable orders surface', () => {
-  test('auth menu and client /dashboard/orders bounce to marketplace orders', () => {
-    expect(read('components/marketplace/MarketplaceAuthNav.tsx')).toContain('/marketplace?view=orders')
-    expect(read('app/dashboard/orders/page.tsx')).toContain("redirect('/marketplace?view=orders')")
-    expect(read('components/marketplace/BuyerDashboardWidgets.tsx')).toContain('viewAllHref="/marketplace?view=orders"')
+  test('auth menu and client /dashboard/orders use the clean marketplace order URL', () => {
+    expect(read('components/marketplace/MarketplaceAuthNav.tsx')).toContain('/?view=orders')
+    const dashboardOrders = read('app/dashboard/orders/page.tsx')
+    expect(dashboardOrders).toContain("const MARKETPLACE_ORDERS_URL = 'https://market.yousafeconsultancy.com/?view=orders'")
+    expect(dashboardOrders).toContain('redirect(MARKETPLACE_ORDERS_URL)')
+    expect(read('components/marketplace/BuyerDashboardWidgets.tsx')).toContain('viewAllHref="https://market.yousafeconsultancy.com/?view=orders"')
   })
 })
