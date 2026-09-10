@@ -97,7 +97,7 @@ function CompactGigCard({ gig }: { gig: RecommendedGig }) {
   const isAttorney = gig.provider_type === 'attorney'
 
   return (
-    <Link href={`/marketplace/gigs/${gig.slug}`} className={styles.gigCard} aria-label={`View ${gig.title}`}>
+    <Link href={`/gigs/${gig.slug}`} className={styles.gigCard} aria-label={`View ${gig.title}`}>
       {imageUrl ? (
         <img className={styles.gigImage} loading="lazy" {...responsiveImageProps(imageUrl, gig.title)} />
       ) : (

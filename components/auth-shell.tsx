@@ -2,6 +2,8 @@
 
 import type { ReactNode } from 'react'
 
+const MARKET_ORIGIN = 'https://market.yousafeconsultancy.com'
+
 const FAMILY_ORIGINS = new Set([
   'https://yousafeconsultancy.com',
   'https://www.yousafeconsultancy.com',
@@ -10,7 +12,7 @@ const FAMILY_ORIGINS = new Set([
   'https://uk.yousafeconsultancy.com',
   'https://legal.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
-  'https://market.yousafeconsultancy.com',
+  MARKET_ORIGIN,
   'https://support.yousafeconsultancy.com',
 ])
 
@@ -42,9 +44,28 @@ export const clerkAppearance = {
   },
 }
 
+function cleanLegacyMarketplaceReturnTo(value: string): string | null {
+  const matchesLegacyNamespace =
+    value === '/marketplace' ||
+    value.startsWith('/marketplace/') ||
+    value.startsWith('/marketplace?')
+  if (!matchesLegacyNamespace) return null
+
+  const suffix = value.slice('/marketplace'.length)
+  if (!suffix || suffix === '/') return `${MARKET_ORIGIN}/`
+  if (suffix.startsWith('?')) return `${MARKET_ORIGIN}/${suffix}`
+  return `${MARKET_ORIGIN}${suffix}`
+}
+
 export function safeReturnTo(value: string | null): string | null {
   if (!value) return null
   try {
+    // Authentication links generated before the clean-URL cutover can still
+    // exist in browser history or messages. Translate that return target here
+    // instead of keeping a public HTTP redirect for the retired namespace.
+    const cleanMarketplaceReturn = cleanLegacyMarketplaceReturnTo(value)
+    if (cleanMarketplaceReturn) return cleanMarketplaceReturn
+
     if (value.startsWith('/')) {
       if (value.startsWith('//')) return null
       if (value.startsWith('/sign-in') || value.startsWith('/sign-up')) return null
@@ -53,6 +74,10 @@ export function safeReturnTo(value: string | null): string | null {
     const url = new URL(value)
     if (!FAMILY_ORIGINS.has(url.origin)) return null
     if (url.pathname.startsWith('/sign-in') || url.pathname.startsWith('/sign-up')) return null
+    if (url.pathname === '/marketplace' || url.pathname.startsWith('/marketplace/')) {
+      const cleanPath = url.pathname.slice('/marketplace'.length) || '/'
+      return `${MARKET_ORIGIN}${cleanPath}${url.search}${url.hash}`
+    }
     return url.toString()
   } catch {
     return null

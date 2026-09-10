@@ -6,7 +6,7 @@ import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 export const revalidate = 3600
 
 export async function generateMetadata(): Promise<Metadata> {
-  const canonicalUrl = getMarketplaceCanonicalUrl('/marketplace/categories/')
+  const canonicalUrl = getMarketplaceCanonicalUrl('/categories')
   const title = 'All categories | YouSafe Marketplace'
   const description =
     'Browse every category of immigration and tenancy help on YouSafe — study permits, work visas, family sponsorship, citizenship and more.'

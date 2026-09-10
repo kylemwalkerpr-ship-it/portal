@@ -15,20 +15,37 @@ describe('standalone Marketplace public URL contract', () => {
     expect(footer).not.toContain("href: '/marketplace")
   })
 
-  test('core public landing pages emit market-host canonicals in source metadata', () => {
+  test('core public landing pages emit already-clean market-host canonicals', () => {
     const home = read('app/marketplace/page.tsx')
     const categories = read('app/marketplace/categories/page.tsx')
+    const providers = read('app/marketplace/providers/page.tsx')
     const shop = read('app/shop/page.tsx')
 
-    expect(home).toContain("getMarketplaceCanonicalUrl('/marketplace/')")
+    expect(home).toContain("getMarketplaceCanonicalUrl('/')")
     expect(home).toContain('alternates: { canonical: canonicalUrl }')
-    expect(categories).toContain("getMarketplaceCanonicalUrl('/marketplace/categories/')")
+    expect(categories).toContain("getMarketplaceCanonicalUrl('/categories')")
     expect(categories).toContain('alternates: { canonical: canonicalUrl }')
+    expect(providers).toContain("getMarketplaceCanonicalUrl('/providers')")
     expect(shop).toContain("const CANONICAL = 'https://market.yousafeconsultancy.com/shop'")
     expect(shop).toContain('alternates: { canonical: CANONICAL }')
   })
 
-  test('portal host permanently redirects the File Shop tree to the market host', () => {
+  test('retired /marketplace paths are hard 404s on portal and market, never migration redirects', () => {
+    const middleware = read('middleware.ts')
+    expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
+    expect(middleware).toContain('(hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath')
+    expect(middleware).toContain("return new NextResponse('Not Found', {")
+    expect(middleware).toContain('status: 404')
+    expect(middleware).not.toContain('const cleanPath = pathname.slice(\'/marketplace\'.length)')
+  })
+
+  test('clean market-host paths still rewrite only to the internal app route tree', () => {
+    const middleware = read('middleware.ts')
+    expect(middleware).toContain('const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)')
+    expect(middleware).toContain('NextResponse.rewrite(rewrite)')
+  })
+
+  test('portal host permanently redirects only the separately owned File Shop tree to the market host', () => {
     const middleware = read('middleware.ts')
     expect(middleware).toContain("hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))")
     expect(middleware).toContain("const redirectUrl = new URL(pathname + search, `https://${MARKET_HOST}`)")

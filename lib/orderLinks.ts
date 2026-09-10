@@ -2,7 +2,7 @@
  * Canonical client-facing order URLs and the cross-shell open-order event.
  *
  * Marketplace (where clients actually live after checkout) uses
- *   /marketplace?view=orders[&order=<id>]
+ *   /?view=orders[&order=<id>]
  * Dashboard shells (student / attorney / consultant) use
  *   /dashboard?page=orders[&order=<id>]
  * and listen for `yousafe-open-order` / `yousafe-navigate`.
@@ -12,7 +12,7 @@ export function marketplaceOrdersHref(orderId?: string | null): string {
   const params = new URLSearchParams()
   params.set('view', 'orders')
   if (orderId) params.set('order', String(orderId))
-  return `/marketplace?${params.toString()}`
+  return `/?${params.toString()}`
 }
 
 export function dashboardOrdersHref(orderId?: string | null): string {

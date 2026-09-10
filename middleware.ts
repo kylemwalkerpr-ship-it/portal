@@ -31,11 +31,10 @@ const isPublicRoute = createRouteMatcher([
   '/api/articles/feed',
   '/api/translate(.*)',
   '/api/chat(.*)',
-  // Public marketplace (brief 29). Pages and GET reads serve unauthenticated
-  // visitors; mutation handlers under these paths self-enforce auth
-  // (requirePortalUser / requireAttorney / etc.), so a public match here
-  // never exposes a write.
-  '/marketplace(.*)',
+  // Marketplace API GET reads are anonymous-safe; mutation handlers under
+  // these paths self-enforce auth (requirePortalUser / requireAttorney / etc.).
+  // Public page routes themselves are owned by the clean market-domain paths
+  // and are rewritten internally before auth resolution.
   '/api/marketplace(.*)',
   '/api/gigs(.*)',
   '/api/gig-categories(.*)',
@@ -51,8 +50,8 @@ const isPublicRoute = createRouteMatcher([
   // exposes Attorneys alongside). Handler uses createSupabaseAdminClient
   // directly with no mutation paths, gates onboarding via isOnboarded()
   // so empty profiles never leak. Without this entry, anon visitors on
-  // market.yousafeconsultancy.com/marketplace?view=attorneys see a
-  // big red "Unauthorized" banner instead of the panel.
+  // market.yousafeconsultancy.com/?view=attorneys see a big red
+  // "Unauthorized" banner instead of the panel.
   '/api/providers(.*)',
   // /api/profile is hit on every marketplace page by MarketplaceShell to
   // resolve the current user's role. The GET handler returns
@@ -257,6 +256,17 @@ export default clerkMiddleware(
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
 
+    // The historical public `/marketplace` namespace is retired. Do this
+    // before query sanitization so no prefixed request can gain a redirect hop
+    // or alternate 200. Clean market-domain paths are the sole public contract.
+    const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')
+    if ((hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath) {
+      return new NextResponse('Not Found', {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8', ...corsHeadersFor(req) },
+      })
+    }
+
     // Portal sitemap must stay empty. OpenNext prerenders app/sitemap.ts into
     // .open-next/assets/sitemap.xml; the matcher used to skip dotted paths so
     // both custom domains served the baked market map (40 locs after PR 5).
@@ -275,8 +285,8 @@ export default clerkMiddleware(
       }
       // Market host: pass /sitemap.xml straight through so app/sitemap.ts
       // runs (it is host-aware and emits the market map). Previously this
-      // fell through to the /marketplace${pathname} rewrite → 404 HTML even
-      // though the apex sitemap-index lists the market loc.
+      // fell through to the internal route rewrite → 404 HTML even though the
+      // apex sitemap-index lists the market location.
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
 
@@ -308,25 +318,14 @@ export default clerkMiddleware(
 
     // ── CORS preflight ─────────────────────────────────────────
     // OPTIONS from an allowed cross-origin gets a 204 with the right
-    // Access-Control-* headers. Covers:
-    //   • /api/*           — JSON endpoints (most common case)
-    //   • /gigs/*          — public gig HTML pages. Some clients (third-party
-    //                        embed widgets, share-card preview pulls,
-    //                        cached service-worker fetches from prior
-    //                        deployments) fetch them with credentials,
-    //                        which triggers a preflight. Without OPTIONS
-    //                        coverage the preflight 400s and the user
-    //                        sees a console error storm even though the
-    //                        page itself loaded fine via normal navigation.
-    //   • /providers/*     — public seller profile pages, same rationale.
-    //   • /marketplace/*   — legacy /marketplace-prefixed URLs.
+    // Access-Control-* headers. Covers JSON APIs plus the clean public gig and
+    // provider surfaces used by embedded/preloaded clients.
     if (req.method === 'OPTIONS') {
       const isCorsablePath =
         pathname === '/' ||
         pathname.startsWith('/api/') ||
         pathname.startsWith('/gigs/') ||
-        pathname.startsWith('/providers/') ||
-        pathname.startsWith('/marketplace/')
+        pathname.startsWith('/providers/')
       if (isCorsablePath) {
         const origin = req.headers.get('origin') || ''
         if (ALLOWED_CROSS_ORIGINS.has(origin)) {
@@ -336,8 +335,9 @@ export default clerkMiddleware(
     }
 
     // ── Hostname-based routing ───────────────────────────────────
-    // Market domain: rewrite /xyz → /marketplace/xyz (except API, static, and
-    // already-prefixed paths). Portal domain: redirect /marketplace/* to market.
+    // Market-domain clean paths rewrite to the internal app/marketplace route
+    // tree without changing the browser URL. The public `/marketplace` prefix
+    // was rejected above and is never redirected or served.
     if (hostname === MARKET_HOST) {
       if (
         pathname.startsWith('/api/') ||
@@ -345,36 +345,14 @@ export default clerkMiddleware(
         pathname.startsWith('/sellers') ||
         pathname === '/shop' ||
         pathname.startsWith('/shop/') ||
-        // Belt and braces: never rewrite the sitemap onto /marketplace/
-        // (no such route → 404 HTML that Google is being pointed at).
         pathname === '/sitemap.xml' ||
         pathname === '/sitemap.xml/'
       ) {
-        // pass through — /sellers lives at its on-disk path (no /marketplace
-        // prefix) and is now public, so gig-card seller clicks on the market
-        // host serve directly instead of bouncing to portal + sign-in.
-      } else if (pathname.startsWith('/marketplace')) {
-        // Internal Link emissions in the marketplace components carry
-        // the `/marketplace` prefix because that's the on-disk Next.js
-        // route. Previously this branch returned a 301 to the clean
-        // form (`/marketplace/categories/foo` → `/categories/foo`),
-        // which made Ahrefs flag every market page as "page-has-links
-        // to 3xx redirects" — buyers also paid a redirect-hop latency
-        // cost on every category click. We now rewrite (200) to the
-        // prefixed form internally instead. The page-level metadata
-        // already emits `alternates.canonical` pointing at the clean
-        // form, so Google still treats the clean URL as canonical and
-        // consolidates link equity there. External callers typing the
-        // prefixed URL by hand also get a 200 + canonical hint, same
-        // outcome without the 301 leak Ahrefs flagged.
-        const cleanPath = pathname.slice('/marketplace'.length) || '/'
-        const rewrite = new URL(`/marketplace${cleanPath}${search}`, req.url)
-        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), cleanPath, search, lang), req)
+        // pass through — these routes live at their on-disk root paths.
       } else if (
         // Portal-only surfaces should never live on the market host. A Clerk
-        // redirect, a stale link, or a typed URL otherwise lands on a rewrite
-        // to /marketplace/<path>, which doesn't exist → 404. Bounce them to
-        // the portal host where these routes are real.
+        // redirect, a stale link, or a typed URL should land on the portal
+        // host where these routes are real.
         pathname === '/dashboard' ||
         pathname.startsWith('/dashboard/') ||
         pathname.startsWith('/sign-in') ||
@@ -393,10 +371,6 @@ export default clerkMiddleware(
       // of every product, even though metadata points at the market host. Keep
       // host ownership unambiguous with one permanent hop to the canonical URL.
       const redirectUrl = new URL(pathname + search, `https://${MARKET_HOST}`)
-      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
-    } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {
-      const redirectPath = pathname.slice('/marketplace'.length) || '/'
-      const redirectUrl = new URL(redirectPath + search, `https://${MARKET_HOST}`)
       return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 

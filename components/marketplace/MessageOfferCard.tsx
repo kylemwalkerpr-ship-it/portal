@@ -115,13 +115,11 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.06)',
       fontFamily: F.ui,
     }}>
-      {/* Gold accent stripe — same visual signature as marketplace header */}
       <div style={{
         height: 3,
         background: `linear-gradient(90deg, ${T.gold} 0%, ${T.gold} 50%, ${T.gold} 100%)`,
       }} />
 
-      {/* Eyebrow */}
       <div style={{
         padding: '12px 16px 8px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
@@ -135,7 +133,6 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         <StatusBadge status={offer.status} />
       </div>
 
-      {/* Title */}
       <div style={{ padding: '0 16px 4px' }}>
         <h3 style={{
           margin: 0, fontFamily: F.display, fontSize: 18, fontWeight: 600,
@@ -145,7 +142,6 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         </h3>
       </div>
 
-      {/* Description preview (clamped to 3 lines) */}
       {offer.description ? (
         <div style={{
           padding: '6px 16px 0', fontSize: 13, color: T.inkMid, lineHeight: 1.55,
@@ -156,7 +152,6 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         </div>
       ) : null}
 
-      {/* Price */}
       <div style={{ padding: '14px 16px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
@@ -181,7 +176,6 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
           )}
         </div>
 
-        {/* Delivery / revisions / attachments line */}
         <div style={{
           marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 14,
           fontSize: 12, color: T.inkMid,
@@ -202,18 +196,16 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
           )}
         </div>
 
-        {/* Expiry countdown */}
         {offer.expires_at && offer.status === 'pending' && (
           <div style={{ marginTop: 10 }}>
             <OfferCountdown expiresAt={offer.expires_at} />
           </div>
         )}
 
-        {/* Linked gig pill */}
         {offer.linked_gig && (
           <div style={{ marginTop: 10 }}>
             <Link
-              href={`/marketplace/gigs/${offer.linked_gig.slug}`}
+              href={`https://market.yousafeconsultancy.com/gigs/${offer.linked_gig.slug}`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '4px 10px', borderRadius: 999,
@@ -228,10 +220,8 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         )}
       </div>
 
-      {/* Divider */}
       <div style={{ height: 1, background: T.ruleSoft, margin: '4px 16px 12px' }} />
 
-      {/* Actions */}
       <div style={{ padding: '0 16px 14px' }}>
         {offer.status === 'pending' ? (
           viewerRole === 'buyer' ? (
@@ -311,7 +301,6 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
   )
 }
 
-/** Tiny inline icon helper to keep the JSX above readable. */
 function Glyph({ d }: { d: string }) {
   return (
     <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>

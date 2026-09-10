@@ -51,7 +51,7 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
     display.description ||
     `Browse vetted ${display.name} services on YouSafe Marketplace. Compare fixed-price briefs from consultants and licensed attorneys.`
   ).slice(0, 155)
-  const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
+  const canonicalUrl = getMarketplaceCanonicalUrl(`/categories/${categoryId}`)
 
   return {
     title,
@@ -81,7 +81,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   const filterId = subcategory?.id ?? category.id
   const activeCount = await countActiveGigsForCategory(filterId)
 
-  const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
+  const canonicalUrl = getMarketplaceCanonicalUrl(`/categories/${categoryId}`)
   const host = new URL(canonicalUrl).origin
   const displayDescription =
     (subcategory?.description || category.description || '').trim() ||

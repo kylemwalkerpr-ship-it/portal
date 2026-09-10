@@ -205,7 +205,7 @@ export default function SellerMarketplaceView({ viewerProfileId, viewerRole }: S
               return (
                 <Link
                   key={gig.id}
-                  href={`/marketplace/gigs/${gig.slug}`}
+                  href={`https://market.yousafeconsultancy.com/gigs/${gig.slug}`}
                   style={{
                     flex: '0 0 220px',
                     display: 'flex', alignItems: 'center', gap: '10px',
@@ -404,7 +404,7 @@ function SellerMarketCard({ gig, viewerProfileId, viewerRole }: { gig: Marketpla
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(15,23,42,0.08)' }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,23,42,0.04)' }}
     >
-      <Link href={`/marketplace/gigs/${gig.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+      <Link href={`https://market.yousafeconsultancy.com/gigs/${gig.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={cover} alt={gig.title || ''} style={{ width: '100%', aspectRatio: '16 / 9' as unknown as number, objectFit: 'cover' as const, display: 'block', background: '#F2EFE9' }} />
@@ -439,7 +439,7 @@ function SellerMarketCard({ gig, viewerProfileId, viewerRole }: { gig: Marketpla
           )}
         </div>
 
-        <Link href={`/marketplace/gigs/${gig.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link href={`https://market.yousafeconsultancy.com/gigs/${gig.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
           <h3 style={{
             fontFamily: serif, fontWeight: 600, fontSize: '15px',
             color: '#0F172A', lineHeight: 1.3, margin: 0,
@@ -486,7 +486,7 @@ function SellerMarketCard({ gig, viewerProfileId, viewerRole }: { gig: Marketpla
             </div>
           ) : <span />}
           <Link
-            href={isOwn ? `/dashboard/gigs/${gig.id}/edit` : `/marketplace/gigs/${gig.slug}`}
+            href={isOwn ? `/dashboard/gigs/${gig.id}/edit` : `https://market.yousafeconsultancy.com/gigs/${gig.slug}`}
             style={{
               padding: '6px 12px', borderRadius: '5px',
               background: isOwn ? '#0F172A' : '#FFFFFF',

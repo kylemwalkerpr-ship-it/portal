@@ -382,7 +382,7 @@ function GigDrawer({gig,onClose,onAction}) {
                   <button onClick={()=>onAction('rank_adjust',gig)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(27,45,79,.25)',background:'#EAF0F7',color:NAVY,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>🏆 Adjust Rank Score</button>
                 </div>
               </div>
-              <a href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" style={{display:'block',padding:'9px 14px',borderRadius:'6px',border:'1px solid var(--portal-rule)',background:'#fff',color:NAVY,cursor:'pointer',fontSize:'13px',fontWeight:600,textDecoration:'none',textAlign:'left'}}>↗ Preview public gig page</a>
+              <a href={`https://market.yousafeconsultancy.com/gigs/${gig.slug}`} target="_blank" rel="noreferrer" style={{display:'block',padding:'9px 14px',borderRadius:'6px',border:'1px solid var(--portal-rule)',background:'#fff',color:NAVY,cursor:'pointer',fontSize:'13px',fontWeight:600,textDecoration:'none',textAlign:'left'}}>↗ Preview public gig page</a>
             </div>
           )}
 

@@ -666,7 +666,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                 action={
                   <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                     <Btn variant="primary" onClick={handleClearFilters}>Clear filters</Btn>
-                    <Btn variant="secondary" onClick={() => { window.location.href = '/marketplace?view=inquiries' }}>Describe your case instead</Btn>
+                    <Btn variant="secondary" onClick={() => { window.location.href = '/?view=inquiries' }}>Describe your case instead</Btn>
                   </div>
                 }
               />
@@ -684,7 +684,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                     {gigs.map(gig => (
                       <Link
                         key={gig.id}
-                        href={`/marketplace/gigs/${gig.slug}`}
+                        href={`/gigs/${gig.slug}`}
                         style={gigListItem}
                         className="ys-gig-list-item"
                       >

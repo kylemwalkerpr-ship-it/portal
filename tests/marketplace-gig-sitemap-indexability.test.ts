@@ -19,7 +19,8 @@ describe('Marketplace gig crawl and index contract', () => {
     expect(sitemap).toContain(".from('gigs')")
     expect(sitemap).toContain(".eq('status', 'active')")
     expect(sitemap).toContain(".not('provider_id', 'is', null)")
-    expect(sitemap).toContain('`/marketplace/gigs/${gig.slug}`')
+    expect(sitemap).toContain('clean(`/gigs/${gig.slug}`)')
+    expect(sitemap).not.toContain('`/marketplace/gigs/${gig.slug}`')
     expect(sitemap).toContain('priority: 0.7')
   })
 

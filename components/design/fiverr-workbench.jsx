@@ -342,7 +342,7 @@ export function MarketplacePage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
             {visibleGigs.map(gig => (
-              <Link key={gig.id} href={`/marketplace/gigs/${gig.slug}`} onClick={() => requestJson('/api/gig-metrics/event', { method: 'POST', body: JSON.stringify({ gig_id: gig.id, event_type: 'click' }) }).catch(() => {})} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link key={gig.id} href={`https://market.yousafeconsultancy.com/gigs/${gig.slug}`} onClick={() => requestJson('/api/gig-metrics/event', { method: 'POST', body: JSON.stringify({ gig_id: gig.id, event_type: 'click' }) }).catch(() => {})} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <Card hover style={{ padding: '14px', height: '100%', display: 'grid', gap: '12px', alignContent: 'start' }}>
                   <Cover gig={gig} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -427,7 +427,7 @@ export function GigDetailPage({ slug }) {
           eyebrow="Gig detail"
           title={gig.title}
           sub={gig.pitch}
-          actions={<Link href="/marketplace" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Back to marketplace</Link>}
+          actions={<Link href="https://market.yousafeconsultancy.com/" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Back to marketplace</Link>}
         />
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(320px, 0.7fr)', gap: '18px' }} className="ys-detail-grid">
           <div style={{ display: 'grid', gap: '16px' }}>
@@ -1324,7 +1324,7 @@ function GigSEOInsights({ gig }) {
               Google Search Preview
             </div>
             <div style={{ fontSize: '11px', color: '#4B5563', marginBottom: '3px' }}>
-              marketplace.yousafeconsultancy.com/marketplace/gigs/{gig?.slug || 'your-gig'}
+              marketplace.yousafeconsultancy.com/gigs/{gig?.slug || 'your-gig'}
             </div>
             <div style={{
               fontSize: '18px', color: '#1a0dab', fontWeight: 400,
@@ -1771,7 +1771,7 @@ export function OrderKanbanPage({ adminOnly = false }) {
                         <span>{order.clientName}</span>
                         {order.providerName ? <> → {order.providerProfileId ? (
                           <Link
-                            href={`/marketplace/providers/${order.providerProfileId}`}
+                            href={`https://market.yousafeconsultancy.com/providers/${order.providerProfileId}`}
                             target="_blank"
                             rel="noopener"
                             onClick={(e) => e.stopPropagation()}

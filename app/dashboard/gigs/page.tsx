@@ -3,10 +3,12 @@ import { redirect } from 'next/navigation'
 import SellerShell from '@/components/seller/SellerShell'
 import SellerGigManager from '@/components/seller/SellerGigManager'
 
+const MARKETPLACE_URL = 'https://market.yousafeconsultancy.com/'
+
 export default async function Page() {
   const auth = await requirePortalUser()
   if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/gigs')
-  if (auth.role === 'client') redirect('/marketplace')
+  if (auth.role === 'client') redirect(MARKETPLACE_URL)
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
   return (
     <SellerShell title="Gig Manager">

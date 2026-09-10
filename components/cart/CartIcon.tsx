@@ -8,7 +8,7 @@ export function CartIcon() {
 
   return (
     <Link
-      href="/marketplace/cart"
+      href="https://market.yousafeconsultancy.com/cart"
       style={{
         position: 'relative',
         display: 'inline-flex',

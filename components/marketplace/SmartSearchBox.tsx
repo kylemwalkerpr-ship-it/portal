@@ -110,10 +110,9 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
     setOpen(false)
     if (s.kind === 'gig') {
       rememberSearch(value)
-      window.location.href = `/marketplace/gigs/${s.slug}`
+      window.location.href = `/gigs/${s.slug}`
     } else if (s.kind === 'category') {
       // Public category routes are pathname-first on market.yousafeconsultancy.com.
-      // Avoid the legacy /marketplace prefix and avoid duplicate category queries.
       window.location.href = `/categories/${s.id}`
     } else {
       onChange(s.label)

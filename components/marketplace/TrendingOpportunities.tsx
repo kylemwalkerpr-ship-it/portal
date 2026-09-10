@@ -96,9 +96,9 @@ export default function TrendingOpportunities({ role }: { role: 'attorney' | 'co
 
   const open = (o: Opportunity) => {
     if (role === 'attorney') {
-      router.push(`/marketplace?view=queue&open=${encodeURIComponent(o.id)}`)
+      router.push(`/?view=queue&open=${encodeURIComponent(o.id)}`)
     } else {
-      router.push('/marketplace?view=messages')
+      router.push('/?view=messages')
     }
   }
 

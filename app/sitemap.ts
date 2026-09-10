@@ -15,22 +15,26 @@ export const dynamic = 'force-dynamic'
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = `https://${MARKET_HOST}`
 
-  // Strip /marketplace and trailing slashes because the market host rewrites
-  // clean paths internally and redirects /marketplace-prefixed URLs.
-  const mp = (path: string) => {
-    const stripped = path.replace(/^\/marketplace/, '') || '/'
-    if (stripped === '' || stripped === '/') return '/'
-    return stripped.replace(/\/$/, '')
+  // Public Marketplace paths are already clean root-level slugs. The internal
+  // app/marketplace route tree is an implementation detail and must never be
+  // serialized into sitemap URLs.
+  const clean = (path: string) => {
+    if (path === '' || path === '/') return '/'
+    const normalized = path.startsWith('/') ? path : `/${path}`
+    if (normalized === '/marketplace' || normalized.startsWith('/marketplace/')) {
+      throw new Error('Sitemap Marketplace URLs must not include /marketplace')
+    }
+    return normalized.replace(/\/$/, '')
   }
 
   // Do not synthesize lastModified with "now". Search engines should only get
   // freshness dates we actually know; otherwise every crawl looks like every
   // static hub changed, which weakens the signal from real service updates.
   const entries: MetadataRoute.Sitemap = [
-    { url: `${base}${mp('/marketplace/')}`, changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${base}/`, changeFrequency: 'weekly', priority: 0.8 },
     { url: `${base}/shop`, changeFrequency: 'weekly', priority: 0.75 },
-    { url: `${base}${mp('/marketplace/providers/')}`, changeFrequency: 'weekly', priority: 0.7 },
-    { url: `${base}${mp('/marketplace/categories/')}`, changeFrequency: 'weekly', priority: 0.6 },
+    { url: `${base}/providers`, changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${base}/categories`, changeFrequency: 'weekly', priority: 0.6 },
   ]
 
   // The 16 immigration products live under /shop only. Keeping these canonical
@@ -73,14 +77,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Top-level hubs have substantive editorial content and remain useful
     // navigational landing pages even while a particular shelf is thin.
     entries.push({
-      url: `${base}${mp(`/marketplace/categories/${cat.id}/`)}`,
+      url: `${base}${clean(`/categories/${cat.id}`)}`,
       changeFrequency: 'weekly',
       priority: 0.6,
     })
     for (const sub of cat.subcategories) {
       if (!categoriesWithSupply.has(sub.id)) continue
       entries.push({
-        url: `${base}${mp(`/marketplace/categories/${sub.id}/`)}`,
+        url: `${base}${clean(`/categories/${sub.id}`)}`,
         changeFrequency: 'weekly',
         priority: 0.55,
       })
@@ -105,7 +109,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       // byte-for-byte stable; only newly created/draft-edited slugs are cleaned.
       if (!gig.slug || !gig.provider_id) continue
       entries.push({
-        url: `${base}${mp(`/marketplace/gigs/${gig.slug}`)}`,
+        url: `${base}${clean(`/gigs/${gig.slug}`)}`,
         lastModified: gig.updated_at ? new Date(gig.updated_at) : undefined,
         changeFrequency: 'weekly',
         priority: 0.7,
@@ -121,7 +125,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       const profile = Array.isArray((a as any).profiles) ? (a as any).profiles[0] : (a as any).profiles
       const token = profile?.username || a.id
       entries.push({
-        url: `${base}${mp(`/marketplace/providers/${token}`)}`,
+        url: `${base}${clean(`/providers/${token}`)}`,
         changeFrequency: 'weekly',
         priority: 0.5,
       })
@@ -136,7 +140,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       const profile = Array.isArray((c as any).profiles) ? (c as any).profiles[0] : (c as any).profiles
       const token = profile?.username || c.id
       entries.push({
-        url: `${base}${mp(`/marketplace/providers/${token}`)}`,
+        url: `${base}${clean(`/providers/${token}`)}`,
         changeFrequency: 'weekly',
         priority: 0.5,
       })

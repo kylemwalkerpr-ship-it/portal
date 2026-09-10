@@ -134,7 +134,7 @@ function SavedGigsWidget() {
   return (
     <WidgetCard
       title={`Saved Services${suffix}`}
-      viewAllHref="/marketplace"
+      viewAllHref="https://market.yousafeconsultancy.com/"
       viewAllLabel="View all saved"
     >
       {loading ? (
@@ -168,7 +168,7 @@ function SavedGigsWidget() {
             return (
               <Link
                 key={item.id}
-                href={item.gig?.slug ? `/marketplace/gigs/${item.gig.slug}` : 'https://market.yousafeconsultancy.com/'}
+                href={item.gig?.slug ? `https://market.yousafeconsultancy.com/gigs/${item.gig.slug}` : 'https://market.yousafeconsultancy.com/'}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -237,7 +237,7 @@ function RecentOrdersWidget() {
   return (
     <WidgetCard
       title={`Recent Orders${suffix}`}
-      viewAllHref="/marketplace?view=orders"
+      viewAllHref="https://market.yousafeconsultancy.com/?view=orders"
       viewAllLabel="View all orders"
     >
       {loading ? (

@@ -122,7 +122,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     if (redirected) {
       // Return metadata for the canonical location — the actual permanent
       // redirect happens in the Page component below.
-      const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${redirected}/`)
+      const canonicalUrl = getMarketplaceCanonicalUrl(`/gigs/${redirected}`)
       return {
         title: 'Gig | YouSafe',
         robots: { index: true, follow: true },
@@ -137,7 +137,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       // get a real 404 instead of a soft-200 loading shell. Keep a
       // self-canonical so Next does not fall back to portal-home canonical
       // (Ahrefs flagged that as non-canonical on draft/missing gig URLs).
-      const fallbackCanonical = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+      const fallbackCanonical = getMarketplaceCanonicalUrl(`/gigs/${slug}`)
       return {
         title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
         description: 'Browse this YouSafe Marketplace service, compare provider scope, delivery details, and request help through secure checkout.',
@@ -151,7 +151,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const cover = Array.isArray(gig.gallery_images) && gig.gallery_images.length
       ? ((gig.gallery_images[0] as { url?: string })?.url || (gig.gallery_images[0] as unknown as string))
       : undefined
-    const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+    const canonicalUrl = getMarketplaceCanonicalUrl(`/gigs/${slug}`)
 
     return {
       title,
@@ -168,7 +168,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       robots: { index: true, follow: true },
     }
   } catch {
-    const fallbackCanonical = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+    const fallbackCanonical = getMarketplaceCanonicalUrl(`/gigs/${slug}`)
     return {
       title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
       description: 'Browse this YouSafe Marketplace service, compare provider scope, delivery details, and request help through secure checkout.',
@@ -181,12 +181,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
 
-  // Old slugs are permanent aliases of the canonical service URL. Next.js
-  // permanentRedirect emits HTTP 308, preserving SEO signals without treating
-  // this migration like a temporary route change.
+  // Historical slug aliases remain useful, but their destination is the clean
+  // public service route; the retired `/marketplace` namespace is never exposed.
   const redirected = await checkSlugRedirect(slug)
   if (redirected) {
-    permanentRedirect(`/marketplace/gigs/${redirected}`)
+    permanentRedirect(`/gigs/${redirected}`)
   }
 
   // Single load for JSON-LD + SSR body (React cache() also dedupes with metadata).
@@ -203,7 +202,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   let jsonLd: object | null = null
   try {
     if (gig) {
-      const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+      const canonicalUrl = getMarketplaceCanonicalUrl(`/gigs/${slug}`)
       const marketplaceBaseUrl = getMarketplaceBaseUrl()
       const category = gig.category ? getCategoryById(gig.category as CategoryId) : undefined
       const subcategory = gig.subcategory && gig.category

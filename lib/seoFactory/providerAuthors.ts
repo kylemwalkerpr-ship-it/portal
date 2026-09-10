@@ -630,11 +630,11 @@ export function experienceScopeFor(provider: CitableProvider): string {
 }
 
 export function providerProfileUrl(provider: Pick<CitableProvider, 'username' | 'profileId'>): string {
-  return getMarketplaceCanonicalUrl(`/marketplace/providers/${provider.username || provider.profileId}/`)
+  return getMarketplaceCanonicalUrl(`/providers/${provider.username || provider.profileId}`)
 }
 
 export function providerGigUrl(slug: string): string {
-  return getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+  return getMarketplaceCanonicalUrl(`/gigs/${slug}`)
 }
 
 export function isMarketplaceServiceUrl(url: string): boolean {

@@ -397,7 +397,7 @@ export function SellerGigs({ gigs, loading }: { gigs?: SellerGig[]; loading?: bo
       <h2 style={sectionTitle}>My Services ({gigs.length})</h2>
       <div style={gigsGrid}>
         {gigs.map((gig) => (
-          <Link key={gig.id} href={`/marketplace/gigs/${gig.slug}`} style={gigCardLink}>
+          <Link key={gig.id} href={`/gigs/${gig.slug}`} style={gigCardLink}>
             <Card style={gigCard}>
               {gig.image_url || (gig.gallery_images && gig.gallery_images[0]?.url) ? (
                 <img
