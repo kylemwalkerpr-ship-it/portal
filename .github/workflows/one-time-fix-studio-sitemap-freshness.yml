@@ -25,9 +25,12 @@ jobs:
           const fs = require('fs')
           const file = 'lib/seoFactory/siteHealth.ts'
           const src = fs.readFileSync(file, 'utf8')
-          const from = "...STUDIO_SITEMAP_ROUTES.map((path: string) => ({ url: `${base}${mp(path)}`, lastModified: new Date(), changeFrequency: 'weekly' as const, priority: 0.55 })),"
-          const to = "...STUDIO_SITEMAP_ROUTES.map((path: string) => ({ url: `${base}${mp(path)}`, changeFrequency: 'weekly' as const, priority: 0.55 })),"
-          if (!src.includes(from)) throw new Error('Expected Portal Studio sitemap insertion was not found')
+          const from = ", lastModified: new Date(), changeFrequency: 'weekly' as const"
+          const to = ", changeFrequency: 'weekly' as const"
+          const occurrences = src.split(from).length - 1
+          if (occurrences !== 1) {
+            throw new Error(`Expected exactly one synthetic Portal sitemap freshness fragment, found ${occurrences}`)
+          }
           fs.writeFileSync(file, src.replace(from, to))
           NODE
       - name: Commit exact patch
