@@ -5,11 +5,10 @@ import React from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { LoadingState, ErrorState, EmptyState } from '../design/shared'
-import { T, F } from './tokens'
+import { T } from './tokens'
 import ChatSidePane from './ChatSidePane'
 import {
   SellerProfileHeader,
-  SellerStats,
   SellerAbout,
   SellerGigs,
   type SellerProfile,
@@ -57,10 +56,8 @@ export function SellerProfilePage({
       if (!initialSeller) setLoading(true)
       setError('')
 
-      // These endpoints are independent. The previous waterfall waited for
-      // profile → gigs → reviews, keeping the raw SSR article visible for a few
-      // seconds on mobile. Fetch all three at once and progressively enrich the
-      // server-seeded interactive view.
+      // These endpoints are independent. Fetch all three at once and
+      // progressively enrich the server-seeded interactive view.
       const [profileResult, gigsResult, reviewsResult] = await Promise.allSettled([
         fetch(`/api/sellers/${sellerId}`, { credentials: 'same-origin' }),
         fetch(`/api/sellers/${sellerId}/gigs`, { credentials: 'same-origin' }),
@@ -139,6 +136,8 @@ export function SellerProfilePage({
   }
 
   const displayName = providerDisplayName({ full_name: seller.full_name }, 'Provider')
+  const serviceCount = gigs.length || seller.total_gigs || 0
+  const reviewCount = reviews.length || seller.rating_count || 0
 
   return (
     <div className="ys-seller-profile-page" style={pageShell}>
@@ -148,35 +147,51 @@ export function SellerProfilePage({
         <span style={breadcrumbCurrent}>{displayName}</span>
       </div>
 
+      {/* Fiverr-inspired profile hero: reputation, response, availability and
+          the primary contact action live together instead of being repeated in
+          a separate row of oversized statistic cards. */}
       <SellerProfileHeader seller={seller} onContact={() => setChatOpen(true)} />
-      <SellerStats seller={seller} />
 
-      <div className="ys-seller-profile-tabs" style={tabsContainer}>
+      <div className="ys-seller-profile-tabs" style={tabsContainer} role="tablist" aria-label="Provider profile sections">
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'about'}
           onClick={() => setActiveTab('about')}
           style={activeTab === 'about' ? activeTabStyle : tabStyle}
         >
-          About
+          About Me
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'gigs'}
           onClick={() => setActiveTab('gigs')}
           style={activeTab === 'gigs' ? activeTabStyle : tabStyle}
         >
-          Services ({gigs.length || seller.total_gigs || 0})
+          Services ({serviceCount})
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'reviews'}
           onClick={() => setActiveTab('reviews')}
           style={activeTab === 'reviews' ? activeTabStyle : tabStyle}
         >
-          Reviews ({reviews.length || seller.rating_count || 0})
+          Reviews ({reviewCount})
         </button>
       </div>
 
-      <div className="ys-seller-profile-tab-content" style={{ ...tabContent, background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '14px', padding: '24px' }}>
-        {activeTab === 'about' && <SellerAbout seller={seller} />}
+      <div className="ys-seller-profile-tab-content" style={tabContent}>
+        {activeTab === 'about' && (
+          <div className="ys-seller-about-stack">
+            <SellerAbout seller={seller} />
+            {/* Fiverr's default seller view exposes the service catalogue below
+                About Me. Keep the Services tab as a direct shortcut, while
+                ensuring buyers can discover offerings without another click. */}
+            <SellerGigs gigs={gigs} loading={!gigs.length && loading} />
+          </div>
+        )}
         {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
         {activeTab === 'reviews' && (
           <ReviewsSection
@@ -200,8 +215,8 @@ export function SellerProfilePage({
 const pageShell = {
   minHeight: '100vh',
   color: T.onPaper,
-  padding: '24px 32px',
-  maxWidth: '1200px',
+  padding: '24px 32px 64px',
+  maxWidth: '1320px',
   margin: '0 auto',
 }
 
@@ -238,13 +253,14 @@ const tabsContainer = {
 const tabStyle = {
   background: 'none',
   border: 'none',
-  padding: '12px 20px',
+  padding: '14px 18px',
   fontSize: '14px',
-  fontWeight: 500,
+  fontWeight: 600,
   color: T.onPaperSoft,
   cursor: 'pointer',
   borderBottom: '2px solid transparent',
   transition: 'color 150ms, border-color 150ms',
+  whiteSpace: 'nowrap',
 }
 
 const activeTabStyle = {
@@ -255,4 +271,5 @@ const activeTabStyle = {
 
 const tabContent = {
   minHeight: '400px',
+  paddingTop: '28px',
 }
