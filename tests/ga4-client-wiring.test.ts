@@ -25,7 +25,7 @@ describe('GA4 client wiring helpers', () => {
     expect(getGaMeasurementId('  G-CUSTOM12345  ')).toBe('G-CUSTOM12345')
   })
 
-  it('lists all estate linker domains including market, portal, checkout', () => {
+  it('lists only active estate linker domains', () => {
     expect(GA4_LINKER_DOMAINS).toEqual(
       expect.arrayContaining([
         'yousafeconsultancy.com',
@@ -36,10 +36,10 @@ describe('GA4 client wiring helpers', () => {
         'legal.yousafeconsultancy.com',
         'market.yousafeconsultancy.com',
         'portal.yousafeconsultancy.com',
-        'checkout.yousafeconsultancy.com',
       ]),
     )
-    expect(GA4_LINKER_DOMAINS).toHaveLength(9)
+    expect(GA4_LINKER_DOMAINS).toHaveLength(8)
+    expect(GA4_LINKER_DOMAINS).not.toContain('checkout.yousafeconsultancy.com')
   })
 
   it('disables automatic page_view so App Router can send SPA hits', () => {
@@ -49,7 +49,7 @@ describe('GA4 client wiring helpers', () => {
     expect(opts.linker.domains).toEqual([...GA4_LINKER_DOMAINS])
   })
 
-  it('emits consultancy-style gtag boot script with linker domains', () => {
+  it('emits consultancy-style gtag boot script with active linker domains', () => {
     const boot = buildGaBootScript('G-FTKZCVNW4B')
     expect(gaTagSrc('G-FTKZCVNW4B')).toBe(
       'https://www.googletagmanager.com/gtag/js?id=G-FTKZCVNW4B',
@@ -58,7 +58,7 @@ describe('GA4 client wiring helpers', () => {
     expect(boot).toContain("gtag('config', 'G-FTKZCVNW4B'")
     expect(boot).toContain('market.yousafeconsultancy.com')
     expect(boot).toContain('portal.yousafeconsultancy.com')
-    expect(boot).toContain('checkout.yousafeconsultancy.com')
+    expect(boot).not.toContain('checkout.yousafeconsultancy.com')
     expect(boot).toContain('"send_page_view":false')
   })
 
@@ -71,8 +71,6 @@ describe('GA4 client wiring helpers', () => {
 
   it('forwards page_view and conversion helpers to window.gtag when present', () => {
     const gtag = jest.fn()
-    // Assigning a stub onto the real Window type errors; cast through unknown
-    // so the stub and its finally-block restore are shaped as our stub object.
     const root = globalThis as unknown as { window?: { gtag?: typeof gtag } }
     const prev = root.window
     root.window = { gtag }
