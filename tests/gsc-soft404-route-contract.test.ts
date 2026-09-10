@@ -11,6 +11,10 @@ describe('GSC soft-404 route contract', () => {
     expect(middleware).toContain('target.hostname = MARKET_HOST')
     expect(middleware).toContain('target.pathname = cleanMarketplacePath')
     expect(middleware).toContain('NextResponse.redirect(target, { status: 301 })')
+    // Keep meaningful discovery/search state on stale URLs while removing only
+    // tracking noise before the permanent canonical hop.
+    expect(middleware).toContain('for (const key of [...target.searchParams.keys()])')
+    expect(middleware).toContain('target.searchParams.delete(key)')
   })
 
   test('free-text Marketplace search variants are noindex,follow', () => {
