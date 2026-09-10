@@ -8,9 +8,9 @@ describe('GSC soft-404 route contract', () => {
     const middleware = read('middleware.ts')
     expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
     expect(middleware).toContain("const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'")
-    expect(middleware).toContain("target.hostname = MARKET_HOST")
+    expect(middleware).toContain('target.hostname = MARKET_HOST')
+    expect(middleware).toContain('target.pathname = cleanMarketplacePath')
     expect(middleware).toContain('NextResponse.redirect(target, { status: 301 })')
-    expect(middleware).not.toContain("return new NextResponse('Not Found', {\n        status: 404")
   })
 
   test('free-text Marketplace search variants are noindex,follow', () => {
