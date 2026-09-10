@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { getMarketplaceCanonicalPath, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 const root = process.cwd()
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
@@ -8,7 +9,6 @@ const middleware = read('middleware.ts')
 const sitemap = read('app/sitemap.ts')
 const gigPage = read('app/marketplace/gigs/[slug]/page.tsx')
 const gigApi = read('app/api/marketplace/gigs/[slug]/route.ts')
-const seo = read('lib/marketplaceSeo.ts')
 const authShell = read('components/auth-shell.tsx')
 
 const runtimeRoots = ['app', 'components', 'lib']
@@ -58,7 +58,10 @@ describe('Marketplace public URL retirement', () => {
   test('keeps clean market URLs as browser-facing paths while rewriting only internally', () => {
     expect(middleware).toContain('const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)')
     expect(middleware).toContain('NextResponse.rewrite(rewrite)')
-    expect(seo).toContain("const stripped = normalized.replace(/^\\/marketplace(?=\\/|$)/, '') || '/'")
+    expect(getMarketplaceCanonicalPath('/gigs/example')).toBe('/gigs/example')
+    expect(getMarketplaceCanonicalUrl('/gigs/example')).toBe('https://market.yousafeconsultancy.com/gigs/example')
+    expect(() => getMarketplaceCanonicalPath('/marketplace')).toThrow('retired /marketplace prefix')
+    expect(() => getMarketplaceCanonicalUrl('/marketplace/gigs/example')).toThrow('retired /marketplace prefix')
   })
 
   test('emits clean gig URLs from metadata, slug aliases, API SEO and sitemap', () => {
@@ -71,7 +74,7 @@ describe('Marketplace public URL retirement', () => {
     expect(sitemap).not.toContain('mp(`/marketplace')
   })
 
-  test('does not retain public redirect compatibility through auth return targets', () => {
+  test('sanitizes stale auth return targets without keeping public HTTP redirect compatibility', () => {
     expect(authShell).toContain("const MARKET_ORIGIN = 'https://market.yousafeconsultancy.com'")
     expect(authShell).toContain("value === '/marketplace'")
     expect(authShell).toContain('return `${MARKET_ORIGIN}${cleanPath}${url.search}${url.hash}`')
