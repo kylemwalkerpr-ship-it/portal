@@ -113,7 +113,7 @@ export function MarketplaceGigTrustBar() {
           )}
           <div className="ys-gig-trust-provider-copy">
             {profileToken ? (
-              <Link href={`/marketplace/providers/${encodeURIComponent(profileToken)}`} className="ys-gig-trust-provider-name">{name}</Link>
+              <Link href={`/providers/${encodeURIComponent(profileToken)}`} className="ys-gig-trust-provider-name">{name}</Link>
             ) : (
               <strong className="ys-gig-trust-provider-name">{name}</strong>
             )}
