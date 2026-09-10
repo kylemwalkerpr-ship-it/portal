@@ -29,6 +29,7 @@ export function SellerProfilePage({
   const [gigs, setGigs] = React.useState<SellerGig[]>([])
   const [reviews, setReviews] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(!initialSeller)
+  const [gigsLoading, setGigsLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [activeTab, setActiveTab] = React.useState<'about' | 'gigs' | 'reviews'>('about')
   const [chatOpen, setChatOpen] = React.useState(false)
@@ -54,6 +55,7 @@ export function SellerProfilePage({
 
     async function loadSellerData() {
       if (!initialSeller) setLoading(true)
+      setGigsLoading(true)
       setError('')
 
       // These endpoints are independent. Fetch all three at once and
@@ -103,7 +105,10 @@ export function SellerProfilePage({
           setError(e instanceof Error ? e.message : 'Failed to load seller data')
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          setGigsLoading(false)
+        }
       }
     }
 
@@ -189,10 +194,10 @@ export function SellerProfilePage({
             {/* Fiverr's default seller view exposes the service catalogue below
                 About Me. Keep the Services tab as a direct shortcut, while
                 ensuring buyers can discover offerings without another click. */}
-            <SellerGigs gigs={gigs} loading={!gigs.length && loading} />
+            <SellerGigs gigs={gigs} loading={gigsLoading} />
           </div>
         )}
-        {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
+        {activeTab === 'gigs' && <SellerGigs gigs={gigs} loading={gigsLoading} />}
         {activeTab === 'reviews' && (
           <ReviewsSection
             sellerId={seller.id}
