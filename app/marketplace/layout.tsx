@@ -12,6 +12,7 @@ import './discovery-grid.css'
 import './marketplace-refinement.css'
 import './marketplace-completion.css'
 import './marketplace-card-finishing.css'
+import './provider-gig-layout.css'
 
 /**
  * Default market surface is indexable. Pages that must stay out of the index
