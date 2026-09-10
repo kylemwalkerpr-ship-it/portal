@@ -22,6 +22,7 @@ export const GA4_LINKER_DOMAINS = [
   'legal.yousafeconsultancy.com',
   'market.yousafeconsultancy.com',
   'portal.yousafeconsultancy.com',
+  'support.yousafeconsultancy.com',
 ] as const
 
 export type GaEventParams = Record<string, string | number | boolean | undefined>
