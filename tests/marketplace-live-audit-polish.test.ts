@@ -49,9 +49,9 @@ describe('Marketplace live-audit polish regressions', () => {
     expect(sellerComponents).not.toContain('Orders in Queue')
   })
 
-  test('uses the Marketplace root and compact public provider names without changing chat counterpart identity', () => {
-    expect(gigDetail).toContain('<Link href="/marketplace" style={breadcrumbLink}>Marketplace</Link>')
-    expect(sellerPage).toContain('<Link href="/marketplace" style={breadcrumbLink}>Marketplace</Link>')
+  test('uses the clean Marketplace root and compact public provider names without changing chat counterpart identity', () => {
+    expect(gigDetail).toContain('<Link href="/" style={breadcrumbLink}>Marketplace</Link>')
+    expect(sellerPage).toContain('<Link href="/" style={breadcrumbLink}>Marketplace</Link>')
     expect(gigDetail).toContain('attorneyName={publicProviderName}')
     expect(gigDetail).toContain('counterpartProfileId={gig.provider_id}')
     expect(sellerPage).toContain('counterpartProfileId={seller.profile_id || seller.id}')
