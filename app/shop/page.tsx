@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import FilesShop from './FilesShop'
 import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
+import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
 
 const CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 const TITLE = 'File shop — instant-download tools | YouSafe Consultancy'
 const DESCRIPTION =
-  'Workbooks, templates, and short guides for consultants, operators, and families. Pay once on Payhip, download instantly. No subscription.'
+  'Immigration preparation packs, workbooks, templates, and short guides in one catalog. Pay once on Payhip, download instantly. No subscription.'
 
 export const revalidate = 3600
 
@@ -24,6 +25,19 @@ export const metadata: Metadata = {
 }
 
 export default function ShopPage() {
+  const legacyItems = FILE_SHOP_PRODUCTS.filter((product) => product.published).map((product, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    url: product.href,
+    name: product.title,
+  }))
+  const immigrationItems = IMMIGRATION_SHOP_PRODUCTS.filter((product) => product.payhip_published).map((product, index) => ({
+    '@type': 'ListItem',
+    position: legacyItems.length + index + 1,
+    url: `${CANONICAL}/${product.slug}`,
+    name: product.name,
+  }))
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
@@ -33,13 +47,8 @@ export default function ShopPage() {
     isPartOf: { '@type': 'WebSite', name: 'YouSafe Marketplace', url: 'https://market.yousafeconsultancy.com/' },
     mainEntity: {
       '@type': 'ItemList',
-      numberOfItems: FILE_SHOP_PRODUCTS.length,
-      itemListElement: FILE_SHOP_PRODUCTS.map((p, i) => ({
-        '@type': 'ListItem',
-        position: i + 1,
-        url: p.href,
-        name: p.title,
-      })),
+      numberOfItems: legacyItems.length + immigrationItems.length,
+      itemListElement: [...legacyItems, ...immigrationItems],
     },
   }
 
