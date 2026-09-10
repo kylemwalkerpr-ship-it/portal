@@ -26,7 +26,10 @@ describe('GitHub-only production deployment contract', () => {
 
   test('the official workflow remains the code deployment path', () => {
     expect(workflow).toContain('branches: [main]')
-    expect(workflow).toContain('run: npm run deploy')
+    // The workflow intentionally wraps the command in a bounded retry block,
+    // so assert the command is present rather than requiring a single-line
+    // `run: npm run deploy` YAML form.
+    expect(workflow).toContain('npm run deploy')
     expect(workflow).toContain("if: github.event_name != 'pull_request'")
   })
 
