@@ -25,7 +25,7 @@ describe('category recommendation carousel', () => {
     expect(categoryPage).not.toContain('siblingSubcategories.map')
     expect(categoryPage).not.toContain('Related ${category.name} services')
     expect(categoryPage.indexOf('<CategoryRecommendedGigsCarousel')).toBeLessThan(
-      categoryPage.indexOf('<CaseworksReadMoreRail')
+      categoryPage.indexOf('<CaseworksReadMoreRail categoryId=')
     )
   })
 
