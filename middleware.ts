@@ -256,15 +256,23 @@ export default clerkMiddleware(
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
 
-    // The historical public `/marketplace` namespace is retired. Do this
-    // before query sanitization so no prefixed request can gain a redirect hop
-    // or alternate 200. Clean market-domain paths are the sole public contract.
+    // The historical public `/marketplace` namespace is retired, but old
+    // external/GSC URLs still exist. Preserve their equity with one permanent
+    // hop to the clean Marketplace contract instead of returning a soft/hard 404.
     const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')
     if ((hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath) {
-      return new NextResponse('Not Found', {
-        status: 404,
-        headers: { 'content-type': 'text/plain; charset=utf-8', ...corsHeadersFor(req) },
-      })
+      const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'
+      const target = new URL(req.url)
+      target.protocol = 'https:'
+      target.hostname = MARKET_HOST
+      target.port = ''
+      target.pathname = cleanMarketplacePath
+      for (const key of [...target.searchParams.keys()]) {
+        if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
+          target.searchParams.delete(key)
+        }
+      }
+      return withCorsHeaders(NextResponse.redirect(target, { status: 301 }), req)
     }
 
     // Portal sitemap must stay empty. OpenNext prerenders app/sitemap.ts into
@@ -337,7 +345,7 @@ export default clerkMiddleware(
     // ── Hostname-based routing ───────────────────────────────────
     // Market-domain clean paths rewrite to the internal app/marketplace route
     // tree without changing the browser URL. The public `/marketplace` prefix
-    // was rejected above and is never redirected or served.
+    // canonicalizes above and is never served as a second indexable surface.
     if (hostname === MARKET_HOST) {
       if (
         pathname.startsWith('/api/') ||
@@ -363,7 +371,14 @@ export default clerkMiddleware(
         return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
       } else {
         const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
-        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang), req)
+        const response = withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
+        // Internal free-text search URLs are useful for users but should not
+        // become index inventory. Keep links crawlable while consolidating
+        // search variants to the canonical Marketplace landing page.
+        if (pathname === '/' && req.nextUrl.searchParams.has('q')) {
+          response.headers.set('X-Robots-Tag', 'noindex, follow')
+        }
+        return withCorsHeaders(response, req)
       }
     } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {
       // File Shop is a public Marketplace surface. Serving the same /shop URL
