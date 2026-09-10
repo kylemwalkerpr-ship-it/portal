@@ -93,7 +93,7 @@ describe('Marketplace design regression protection during shop reconciliation', 
     expect(discovery).toContain('const buildBrowserQuery = React.useCallback')
     expect(filters).toContain('ys-filter-desktop-row')
     expect(featured).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))')
-    expect(categoryLayout).toContain('className={styles.cardRail}')
+    expect(categoryLayout).toContain('CategoryRecommendedGigsCarousel')
   })
 
   test('adds the recovered 36-product promotion without replacing the existing Marketplace landing', () => {
