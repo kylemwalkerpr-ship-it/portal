@@ -5,10 +5,12 @@ import SellerShell from '@/components/seller/SellerShell'
 import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
 import { computeConsultantStrength, CONSULTANT_PUBLISH_THRESHOLD } from '@/lib/consultantProfileStrength'
 
+const MARKETPLACE_URL = 'https://market.yousafeconsultancy.com/'
+
 export default async function Page() {
   const auth = await requirePortalUser()
   if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/gigs/new')
-  if (auth.role === 'client') redirect('/marketplace')
+  if (auth.role === 'client') redirect(MARKETPLACE_URL)
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
 
   // Attorneys + consultants must clear the intake threshold (≥75% + username)
