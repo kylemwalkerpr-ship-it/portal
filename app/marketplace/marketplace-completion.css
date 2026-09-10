@@ -4,12 +4,14 @@
    Marketplace behavior. This file is loaded after marketplace-refinement.css.
 */
 
-/* Keep mature discovery controls available while a buyer scrolls results. */
+/* Keep mature discovery controls available while a buyer scrolls results.
+   CategoryBar is already sticky at desktop top:64px with a 52px strip, so
+   discovery controls begin at 116px instead of competing for the same layer. */
 @media (min-width: 1025px) {
   .cw-market .ys-filter-desktop-row,
   .cw-market .ys-landing-discovery-controls {
     position: sticky;
-    top: 72px;
+    top: 116px;
     z-index: 92;
     margin-inline: -12px;
     padding-inline: 12px !important;
