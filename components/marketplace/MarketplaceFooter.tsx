@@ -11,11 +11,11 @@ interface FooterLink {
 }
 
 const NAV_LINKS: FooterLink[] = [
-  { label: 'Marketplace', href: '/marketplace' },
+  { label: 'Marketplace', href: '/' },
   { label: 'File shop', href: '/shop' },
-  { label: 'Categories', href: '/marketplace/categories' },
+  { label: 'Categories', href: '/categories' },
   { label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
-  { label: 'Help', href: '/marketplace#faq' },
+  { label: 'Help', href: '/#faq' },
   { label: 'Sitemap', href: '/sitemap.xml' },
 ]
 
@@ -103,7 +103,7 @@ export function MarketplaceFooter() {
         }
       `}</style>
       <div className="cw-mkt-footer-inner">
-        <a className="cw-mkt-footer-brand" href="/marketplace">
+        <a className="cw-mkt-footer-brand" href="/">
           <img src="/logo.png" alt="" width="26" height="26" />
           YouSafe
         </a>
