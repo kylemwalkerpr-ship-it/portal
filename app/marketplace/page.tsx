@@ -23,7 +23,7 @@ export async function generateMetadata({
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =
     'Browse vetted US, UK, Canada, and Australia immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.'
-  const canonicalUrl = getMarketplaceCanonicalUrl('/marketplace/')
+  const canonicalUrl = getMarketplaceCanonicalUrl('/')
   return {
     title,
     description,
