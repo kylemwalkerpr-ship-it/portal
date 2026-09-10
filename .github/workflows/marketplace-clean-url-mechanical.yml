@@ -1,3 +1,4 @@
+# One-time branch-only sweep. Delete this workflow before merge.
 name: Marketplace clean URL mechanical sweep
 
 on:
