@@ -10,6 +10,7 @@ import {
   trackBook,
   trackGenerateLead,
   trackPageView,
+  trackPurchase,
   trackSignUp,
 } from '@/lib/analytics/ga4'
 
@@ -67,6 +68,12 @@ describe('GA4 client wiring helpers', () => {
     expect(() => trackGenerateLead({ method: 'form' })).not.toThrow()
     expect(() => trackBook({ method: 'calendly' })).not.toThrow()
     expect(() => trackSignUp({ method: 'clerk' })).not.toThrow()
+    expect(() => trackPurchase({
+      transaction_id: 'order-123',
+      value: 125,
+      currency: 'USD',
+      items: [{ item_id: 'gig-1', item_name: 'Visa review', price: 125, quantity: 1 }],
+    })).not.toThrow()
   })
 
   it('forwards page_view and conversion helpers to window.gtag when present', () => {
@@ -79,6 +86,12 @@ describe('GA4 client wiring helpers', () => {
       trackGenerateLead({ value: 1 })
       trackBook()
       trackSignUp({ method: 'clerk' })
+      trackPurchase({
+        transaction_id: 'order-123',
+        value: 125,
+        currency: 'USD',
+        items: [{ item_id: 'gig-1', item_name: 'Visa review', price: 125, quantity: 1, item_category: 'immigration' }],
+      })
     } finally {
       if (prev === undefined) delete root.window
       else root.window = prev
@@ -91,6 +104,12 @@ describe('GA4 client wiring helpers', () => {
     expect(gtag).toHaveBeenCalledWith('event', 'generate_lead', { value: 1 })
     expect(gtag).toHaveBeenCalledWith('event', 'book', undefined)
     expect(gtag).toHaveBeenCalledWith('event', 'sign_up', { method: 'clerk' })
+    expect(gtag).toHaveBeenCalledWith('event', 'purchase', {
+      transaction_id: 'order-123',
+      value: 125,
+      currency: 'USD',
+      items: [{ item_id: 'gig-1', item_name: 'Visa review', price: 125, quantity: 1, item_category: 'immigration' }],
+    })
   })
 
   it('mounts GoogleAnalytics from the shared root layout (market + portal)', () => {
