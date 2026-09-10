@@ -8,14 +8,25 @@
  * the hero case-file slideshow, and gig JSON-LD rendered a blank name
  * next to "Licensed attorney".
  *
- * Chain: trimmed full_name → username → email local-part → role-aware
- * fallback. Empty strings and whitespace are treated as missing.
+ * Chain: trimmed full_name → username → email → role-aware fallback.
+ * Empty strings and whitespace are treated as missing.
+ *
+ * Some verified provider records preserve both a legal/raw name and a
+ * deliberately chosen public professional style in one field, e.g.
+ * "Jane Doe (publicly styles as Jane Q. Doe, Esq.)". Marketplace UI should
+ * use the public style without repeating the explanatory database wording.
+ * The underlying profile value is never mutated.
  */
 
 interface ProviderLike {
   full_name?: string | null
   username?: string | null
   email?: string | null
+}
+
+function normalizePublicStyleName(value: string): string {
+  const publicStyle = value.match(/\(\s*publicly styles as\s+([^)]+?)\s*\)\s*$/i)
+  return publicStyle?.[1]?.trim() || value
 }
 
 export function providerDisplayName(
@@ -25,7 +36,7 @@ export function providerDisplayName(
   const candidates = [provider?.full_name, provider?.username, provider?.email]
   for (const c of candidates) {
     const s = typeof c === 'string' ? c.trim() : ''
-    if (s) return s
+    if (s) return normalizePublicStyleName(s)
   }
   return fallback
 }
