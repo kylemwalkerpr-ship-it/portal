@@ -19,12 +19,13 @@ describe('Marketplace visual modernization completion', () => {
     expect(layout).toContain('{children}')
   })
 
-  test('keeps desktop discovery controls persistently accessible below the 72px sticky shell', () => {
+  test('keeps desktop discovery controls persistently accessible below the sticky header and category rail', () => {
     expect(completionCss).toContain('@media (min-width: 1025px)')
     expect(completionCss).toContain('.cw-market .ys-filter-desktop-row')
     expect(completionCss).toContain('.cw-market .ys-landing-discovery-controls')
     expect(completionCss).toContain('position: sticky')
-    expect(completionCss).toContain('top: 72px')
+    expect(completionCss).toContain('top: 116px')
+    expect(completionCss).toContain('CategoryBar is already sticky')
   })
 
   test('uses a professional sans hierarchy for breadcrumbs and live gig titles', () => {
