@@ -57,7 +57,7 @@ export function matchMarketplaceIntent(input: string): MarketplaceIntentMatch | 
       categoryName: category.name,
       subcategoryId: null,
       subcategoryName: null,
-      url: getMarketplaceCanonicalUrl(`/marketplace/categories/${category.id}/`),
+      url: getMarketplaceCanonicalUrl(`/categories/${category.id}`),
       score: categoryScore,
       confidence: categoryScore >= 9 ? 'high' : 'medium',
     }
@@ -79,7 +79,7 @@ export function matchMarketplaceIntent(input: string): MarketplaceIntentMatch | 
           categoryName: category.name,
           subcategoryId: subcategory.id,
           subcategoryName: subcategory.name,
-          url: getMarketplaceCanonicalUrl(`/marketplace/categories/${subcategory.id}/`),
+          url: getMarketplaceCanonicalUrl(`/categories/${subcategory.id}`),
           score,
           confidence: score >= 10 ? 'high' : 'medium',
         }
