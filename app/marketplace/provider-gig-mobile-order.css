@@ -1,0 +1,34 @@
+/* Phone-order compatibility layer
+   -------------------------------
+   The root app already has an older mobile Marketplace hardening sheet that
+   flattens `.ys-sidebar` with display: contents. The professional gig layout
+   groups that rail again so package, Continue and provider trust remain one
+   coherent purchase block before long-form content.
+
+   This file intentionally loads last within the Marketplace route.
+*/
+@media (max-width: 700px) {
+  .cw-market .ys-content-layout > .ys-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    order: 20 !important;
+    gap: 14px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Exact buyer journey on phones:
+     gallery → purchase rail → About → FAQ → Reviews → Similar Services. */
+  .cw-market .ys-content-layout > div:first-child > :nth-child(1) { order: 10 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(2) { order: 30 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(3) { order: 40 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(4) { order: 50 !important; }
+  .cw-market .ys-content-layout > div:first-child > :nth-child(5) { order: 60 !important; }
+
+  /* Sidebar DOM is SellerProfileCard, PricingTiers, OrderCTA. Present the
+     package decision first, then the checkout action, then provider/contact. */
+  .cw-market .ys-sidebar > :nth-child(2) { order: 1 !important; }
+  .cw-market .ys-sidebar > :nth-child(3) { order: 2 !important; }
+  .cw-market .ys-sidebar > :nth-child(1) { order: 3 !important; }
+}
