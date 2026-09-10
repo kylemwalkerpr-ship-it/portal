@@ -20,6 +20,7 @@ const discovery = read('components/marketplace/GigDiscoveryPage.tsx')
 const filters = read('components/marketplace/FilterSidebar.tsx')
 const featured = read('components/marketplace/FeaturedBriefsGrid.tsx')
 const categoryLayout = read('app/marketplace/categories/[categoryId]/layout.tsx')
+const categoryPage = read('app/marketplace/categories/[categoryId]/page.tsx')
 
 describe('recovered Cloudflare shop additions', () => {
   const recoveredProducts = [
@@ -93,7 +94,8 @@ describe('Marketplace design regression protection during shop reconciliation', 
     expect(discovery).toContain('const buildBrowserQuery = React.useCallback')
     expect(filters).toContain('ys-filter-desktop-row')
     expect(featured).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))')
-    expect(categoryLayout).toContain('CategoryRecommendedGigsCarousel')
+    expect(categoryLayout).toContain('className={styles.cardRail}')
+    expect(categoryPage).toContain('<CategoryRecommendedGigsCarousel')
   })
 
   test('adds the recovered 36-product promotion without replacing the existing Marketplace landing', () => {

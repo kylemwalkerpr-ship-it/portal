@@ -7,6 +7,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 const discovery = read('components/marketplace/GigDiscoveryPage.tsx')
 const middleware = read('middleware.ts')
 const categoryLayout = read('app/marketplace/categories/[categoryId]/layout.tsx')
+const categoryPage = read('app/marketplace/categories/[categoryId]/page.tsx')
 const categoryCarousel = read('components/marketplace/CategoryRecommendedGigsCarousel.tsx')
 const categoryCarouselCss = read('components/marketplace/CategoryRecommendedGigsCarousel.module.css')
 const filters = read('components/marketplace/FilterSidebar.tsx')
@@ -43,13 +44,15 @@ describe('marketplace category URL contract', () => {
 })
 
 describe('marketplace category discovery presentation', () => {
-  test('keeps the category banner and replaces duplicate taxonomy cards with recommended gigs', () => {
+  test('keeps the category banner and the upper exploration cards, with recommendations lower down', () => {
     expect(categoryLayout).toContain('className={styles.hero}')
-    expect(categoryLayout).toContain('<CategoryRecommendedGigsCarousel')
-    expect(categoryLayout).toContain('categoryId={display.id}')
+    expect(categoryLayout).toContain('className={styles.cardRail}')
+    expect(categoryLayout).toContain('href={`/categories/${item.id}`}')
+    expect(categoryLayout).toContain('Vetted specialists')
+    expect(categoryLayout).not.toContain('CategoryRecommendedGigsCarousel')
+    expect(categoryPage).toContain('<CategoryRecommendedGigsCarousel')
     expect(categoryCarousel).toContain("requestGigs(categoryId, 'trending'")
     expect(categoryCarousel).toContain('getCategoryFilterTerms')
-    expect(categoryLayout).toContain('Vetted specialists')
   })
 
   test('upgrades the categories index to roomy marketplace cards rather than dashboard tiles', () => {

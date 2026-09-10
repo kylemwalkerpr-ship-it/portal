@@ -10,19 +10,23 @@ const carousel = read('components/marketplace/CategoryRecommendedGigsCarousel.ts
 const carouselCss = read('components/marketplace/CategoryRecommendedGigsCarousel.module.css')
 
 describe('category recommendation carousel', () => {
-  test('replaces the duplicate top taxonomy rail with recommended gigs', () => {
-    expect(layout).toContain("import { CategoryRecommendedGigsCarousel }")
-    expect(layout).toContain('<CategoryRecommendedGigsCarousel')
-    expect(layout).toContain('categoryId={display.id}')
-    expect(layout).toContain('fallbackCategoryId={subcategory ? category.id : undefined}')
-    expect(layout).not.toContain('className={styles.cardRail}')
-    expect(layout).not.toContain('Related ${category.name}')
+  test('preserves the upper category exploration rail', () => {
+    expect(layout).toContain('className={styles.cardRail}')
+    expect(layout).toContain('className={styles.serviceCard}')
+    expect(layout).toContain('Related ${category.name}')
+    expect(layout).not.toContain('CategoryRecommendedGigsCarousel')
   })
 
-  test('keeps the existing related-services taxonomy section lower on the page', () => {
-    expect(categoryPage).toContain('Related ${category.name} services')
-    expect(categoryPage).toContain('siblingSubcategories.map')
-    expect(categoryPage).toContain('href={`/categories/${s.id}`}')
+  test('replaces only the lower related-services taxonomy block with recommended gigs', () => {
+    expect(categoryPage).toContain("import { CategoryRecommendedGigsCarousel }")
+    expect(categoryPage).toContain('<CategoryRecommendedGigsCarousel')
+    expect(categoryPage).toContain('categoryId={filterId}')
+    expect(categoryPage).toContain('fallbackCategoryId={subcategory ? category.id : undefined}')
+    expect(categoryPage).not.toContain('siblingSubcategories.map')
+    expect(categoryPage).not.toContain('Related ${category.name} services')
+    expect(categoryPage.indexOf('<CategoryRecommendedGigsCarousel')).toBeLessThan(
+      categoryPage.indexOf('<CaseworksReadMoreRail categoryId=')
+    )
   })
 
   test('ranks exact-category gigs first and only broadens within the same category family', () => {
