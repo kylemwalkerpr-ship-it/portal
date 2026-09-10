@@ -1,0 +1,220 @@
+name: Marketplace clean URL mechanical sweep
+
+on:
+  push:
+    branches:
+      - sanitize/marketplace-clean-url-estate
+    paths:
+      - '.github/workflows/marketplace-clean-url-mechanical.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sanitize/marketplace-clean-url-estate
+          fetch-depth: 0
+
+      - name: Replace retired public Marketplace URLs
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          MARKET = 'https://market.yousafeconsultancy.com'
+
+          replacements = {
+            # Marketplace-only UI: clean relative public paths.
+            'components/marketplace/MarketplaceProvidersIndex.tsx': [
+              ('/marketplace/providers/', '/providers/'),
+            ],
+            'components/marketplace/GigDiscoveryPage.tsx': [
+              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
+              ("window.location.href = '/marketplace?view=inquiries'", "window.location.href = '/?view=inquiries'"),
+            ],
+            'components/marketplace/GigDetailComponents.tsx': [
+              ('href={`/marketplace/gigs/${g.slug}`}', 'href={`/gigs/${g.slug}`}'),
+            ],
+            'components/marketplace/SellerProfileComponents.tsx': [
+              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
+            ],
+            'components/marketplace/CategoryRecommendedGigsCarousel.tsx': [
+              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
+            ],
+            'components/marketplace/GigDetailPage.tsx': [
+              ('window.location.href = `/marketplace/providers/${token}`', 'window.location.href = `/providers/${token}`'),
+            ],
+            'components/marketplace/TrendingOpportunities.tsx': [
+              ('/marketplace?view=', '/?view='),
+            ],
+            'components/marketplace/MarketplaceAuthNav.tsx': [
+              ('/marketplace?view=', '/?view='),
+              ('href="/marketplace"', 'href="/"'),
+            ],
+            'components/marketplace/MarketplaceShell.tsx': [
+              ('/marketplace?view=', '/?view='),
+              ("router.push('/marketplace')", "router.push('/')"),
+              ('href="/marketplace"', 'href="/"'),
+            ],
+
+            # Components rendered on the portal or in shared shells: always
+            # cross to the canonical market host instead of using a relative URL.
+            'components/marketplace/BuyerDashboardWidgets.tsx': [
+              ('viewAllHref="/marketplace?view=orders"', f'viewAllHref="{MARKET}/?view=orders"'),
+              ('viewAllHref="/marketplace"', f'viewAllHref="{MARKET}/"'),
+              ('/marketplace/gigs/', f'{MARKET}/gigs/'),
+            ],
+            'components/marketplace/MessageOfferCard.tsx': [
+              ('href={`/gigs/${offer.linked_gig.slug}`}', f'href={{`{MARKET}/gigs/${{offer.linked_gig.slug}}`}}'),
+            ],
+            'components/cart/CartIcon.tsx': [
+              ('href="/marketplace/cart"', f'href="{MARKET}/cart"'),
+            ],
+            'components/seller/SellerMarketplaceView.tsx': [
+              ('href={`/marketplace/gigs/${gig.slug}`}', f'href={{`{MARKET}/gigs/${{gig.slug}}`}}'),
+            ],
+            'components/seller/SellerGigCard.tsx': [
+              ('`${window.location.origin}/marketplace/gigs/${gig.slug}`', f'`{MARKET}/gigs/${{gig.slug}}`'),
+              ('window.open(`/marketplace/gigs/${gig.slug}`', f'window.open(`{MARKET}/gigs/${{gig.slug}}`'),
+            ],
+            'components/design/admin-gigs.jsx': [
+              ('href={`/marketplace/gigs/${gig.slug}`}', f'href={{`{MARKET}/gigs/${{gig.slug}}`}}'),
+            ],
+            'components/design/consultant-overview.jsx': [
+              ('href={`/marketplace/gigs/${gig.slug}`}', f'href={{`{MARKET}/gigs/${{gig.slug}}`}}'),
+            ],
+            'components/design/landing/Nav.tsx': [
+              ("href: '/marketplace'", f"href: '{MARKET}/'"),
+              ('href="/marketplace"', f'href="{MARKET}/"'),
+            ],
+            'components/design/student.jsx': [
+              ("goToRoute('/marketplace')", f"goToRoute('{MARKET}/')"),
+              ("window.location.pathname === '/marketplace'", "false"),
+            ],
+            'components/design/fiverr-workbench.jsx': [
+              ('`/marketplace/gigs/${', f'`{MARKET}/gigs/${{'),
+              ('`/marketplace/providers/${', f'`{MARKET}/providers/${{'),
+              ('href="/marketplace"', f'href="{MARKET}/"'),
+            ],
+
+            # Public cart/order pages live on the market host after middleware
+            # rewrites clean browser paths to the internal app/marketplace tree.
+            'app/marketplace/cart/page.tsx': [
+              ('/marketplace/order/success', '/order/success'),
+              ('/marketplace/cart', '/cart'),
+              ('href="/marketplace"', 'href="/"'),
+            ],
+            'app/marketplace/order/success/page.tsx': [
+              ('/marketplace?view=', '/?view='),
+              ('href="/marketplace"', 'href="/"'),
+            ],
+            'app/marketplace/PublicMarketplaceLanding.tsx': [
+              ('return_to=/marketplace', f'return_to={MARKET}/'),
+            ],
+
+            # SEO/content-studio URL emitters must also produce the clean public form.
+            'lib/seoFactory/ownership.ts': [
+              ('urlPath: `/marketplace/gigs/${slug}/`', 'urlPath: `/gigs/${slug}/`'),
+            ],
+            'lib/seoFactory/providerAuthors.ts': [
+              ('getMarketplaceCanonicalUrl(`/marketplace/providers/${provider.username || provider.profileId}/`)', 'getMarketplaceCanonicalUrl(`/providers/${provider.username || provider.profileId}`)'),
+              ('getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)', 'getMarketplaceCanonicalUrl(`/gigs/${slug}`)'),
+            ],
+
+            # Styling selectors track the clean hrefs now emitted by gig cards.
+            'app/mobile-hardening.css': [
+              ("a[href*='/marketplace/gigs/']", "a[href*='/gigs/']"),
+            ],
+            'app/mobile-marketplace-profile-gig.css': [
+              ("a[href^='/marketplace/gigs/']", "a[href^='/gigs/']"),
+            ],
+          }
+
+          changed = []
+          for filename, pairs in replacements.items():
+            path = Path(filename)
+            if not path.exists():
+              raise SystemExit(f'missing expected runtime file: {filename}')
+            text = path.read_text()
+            before = text
+            for old, new in pairs:
+              text = text.replace(old, new)
+            if text != before:
+              path.write_text(text)
+              changed.append(filename)
+
+          print(f'updated {len(changed)} files')
+          for filename in changed:
+            print(f'  {filename}')
+          PY
+
+      - name: Guard against known retired public URL emitters
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [
+            'components/marketplace/MarketplaceProvidersIndex.tsx',
+            'components/marketplace/GigDiscoveryPage.tsx',
+            'components/marketplace/GigDetailComponents.tsx',
+            'components/marketplace/SellerProfileComponents.tsx',
+            'components/marketplace/CategoryRecommendedGigsCarousel.tsx',
+            'components/marketplace/GigDetailPage.tsx',
+            'components/marketplace/TrendingOpportunities.tsx',
+            'components/marketplace/MarketplaceAuthNav.tsx',
+            'components/marketplace/MarketplaceShell.tsx',
+            'components/marketplace/BuyerDashboardWidgets.tsx',
+            'components/marketplace/MessageOfferCard.tsx',
+            'components/cart/CartIcon.tsx',
+            'components/seller/SellerMarketplaceView.tsx',
+            'components/seller/SellerGigCard.tsx',
+            'components/design/admin-gigs.jsx',
+            'components/design/consultant-overview.jsx',
+            'components/design/landing/Nav.tsx',
+            'components/design/student.jsx',
+            'components/design/fiverr-workbench.jsx',
+            'app/marketplace/cart/page.tsx',
+            'app/marketplace/order/success/page.tsx',
+            'app/marketplace/PublicMarketplaceLanding.tsx',
+            'lib/orderLinks.ts',
+            'lib/seoFactory/ownership.ts',
+            'lib/seoFactory/providerAuthors.ts',
+          ]
+
+          forbidden = re.compile(r"(?<!/api)(?<!components)(?<!app)(?<!@)/marketplace(?=[/?'\"`])")
+          failures = []
+          for filename in files:
+            text = Path(filename).read_text()
+            for i, line in enumerate(text.splitlines(), 1):
+              # Ignore explanatory comments only; runtime string emitters remain fatal.
+              stripped = line.strip()
+              if stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+                continue
+              if forbidden.search(line):
+                failures.append(f'{filename}:{i}: {stripped}')
+          if failures:
+            print('Retired public Marketplace URL emitters remain:')
+            print('\n'.join(failures))
+            raise SystemExit(1)
+          print('No known retired public Marketplace URL emitters remain in guarded runtime files.')
+          PY
+
+      - name: Commit mechanical sweep to working branch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No mechanical changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'Finish Marketplace clean public URL sweep'
+          git push origin HEAD:sanitize/marketplace-clean-url-estate
