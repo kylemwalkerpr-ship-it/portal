@@ -60,6 +60,7 @@ describe('provider and gig professional-service layout', () => {
   const phoneOrder = read('app/marketplace/provider-gig-mobile-order.css')
   const sellerPage = read('components/marketplace/SellerProfilePage.tsx')
   const legacySellerRoute = read('app/sellers/[id]/page.tsx')
+  const featuredServices = read('components/design/landing/FeaturedServices.tsx')
 
   test('loads professional-service layers after existing marketplace visual contracts', () => {
     const finishing = layout.indexOf("import './marketplace-card-finishing.css'")
@@ -108,5 +109,10 @@ describe('provider and gig professional-service layout', () => {
     expect(legacySellerRoute).toContain("import { permanentRedirect } from 'next/navigation'")
     expect(legacySellerRoute).toContain('permanentRedirect(`/marketplace/providers/${encodeURIComponent(id)}`)')
     expect(legacySellerRoute).not.toContain('<SellerProfilePage')
+  })
+
+  test('uses canonical public Market gig URLs on landing featured-service cards', () => {
+    expect(featuredServices).toContain('`${MARKET_HOME}/gigs/${gig.slug}`')
+    expect(featuredServices).not.toContain('`${MARKET_HOME}/marketplace/gigs/${gig.slug}`')
   })
 })
