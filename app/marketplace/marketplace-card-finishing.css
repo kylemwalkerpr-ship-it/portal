@@ -1,0 +1,81 @@
+/* Marketplace card finishing pass
+   ================================
+   Loaded after the completion layer. This file addresses the final two
+   post-merge visual-QA gaps without changing discovery data or interactions:
+   1. enforce a stable two-line service-title rhythm across both card systems;
+   2. refine hover motion on devices that actually support precise hover.
+*/
+
+/* Two-line title contract --------------------------------------------------
+   Keep every discovery shelf readable without letting long service names
+   create uneven rows. The canonical GigCard already requests two lines inline;
+   these declarations make that behavior explicit at the stylesheet layer and
+   complete the WebKit clamp contract for the landing/featured cards. */
+.cw-market .ys-discovery-gig-card h3,
+.cw-market .featured .gig h4 {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+  text-overflow: ellipsis;
+  text-wrap: pretty;
+  min-height: 2.84em !important;
+  max-height: 2.84em;
+}
+
+/* Fine-pointer interaction polish ----------------------------------------
+   Motion is deliberately restrained: the whole card rises by only 3px while
+   media gains a soft elevation and a very small zoom. This improves feedback
+   without turning professional-service cards into floating tiles. */
+@media (hover: hover) and (pointer: fine) {
+  .cw-market .ys-discovery-gig-card,
+  .cw-market .featured .gig {
+    transition: transform 240ms cubic-bezier(.22, 1, .36, 1) !important;
+    will-change: transform;
+  }
+
+  .cw-market .ys-discovery-gig-media,
+  .cw-market .featured .gig .plate {
+    transition: box-shadow 240ms cubic-bezier(.22, 1, .36, 1),
+                border-color 240ms ease !important;
+  }
+
+  .cw-market .ys-discovery-gig-card .ys-discovery-gig-media img,
+  .cw-market .featured .gig .plate-img {
+    transition: transform 380ms cubic-bezier(.22, 1, .36, 1) !important;
+    transform-origin: center center;
+  }
+
+  .cw-market .ys-discovery-gig-card:hover,
+  .cw-market .featured .gig:hover {
+    transform: translateY(-3px) !important;
+  }
+
+  .cw-market .ys-discovery-gig-card:hover .ys-discovery-gig-media,
+  .cw-market .featured .gig:hover .plate {
+    box-shadow:
+      inset 0 0 0 1px var(--ys-market-hover-border, rgba(15,23,42,.16)),
+      0 16px 36px -28px rgba(15, 23, 42, .42) !important;
+  }
+
+  .cw-market .ys-discovery-gig-card:hover .ys-discovery-gig-media img,
+  .cw-market .featured .gig:hover .plate-img {
+    transform: scale(1.02) !important;
+  }
+}
+
+/* Motion accessibility is defined again here because this file loads last;
+   it therefore remains authoritative even over the fine-pointer rules above. */
+@media (prefers-reduced-motion: reduce) {
+  .cw-market .ys-discovery-gig-card,
+  .cw-market .featured .gig,
+  .cw-market .ys-discovery-gig-media,
+  .cw-market .featured .gig .plate,
+  .cw-market .ys-discovery-gig-card .ys-discovery-gig-media img,
+  .cw-market .featured .gig .plate-img {
+    transition: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+}
