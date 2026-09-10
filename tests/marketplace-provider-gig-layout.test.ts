@@ -107,7 +107,8 @@ describe('provider and gig professional-service layout', () => {
 
   test('keeps legacy seller links as aliases of the canonical marketplace provider layout', () => {
     expect(legacySellerRoute).toContain("import { permanentRedirect } from 'next/navigation'")
-    expect(legacySellerRoute).toContain('permanentRedirect(`/marketplace/providers/${encodeURIComponent(id)}`)')
+    expect(legacySellerRoute).toContain('https://market.yousafeconsultancy.com/providers/${encodeURIComponent(id)}')
+    expect(legacySellerRoute).not.toContain('https://market.yousafeconsultancy.com/marketplace/')
     expect(legacySellerRoute).not.toContain('<SellerProfilePage')
   })
 
