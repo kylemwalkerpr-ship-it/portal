@@ -307,8 +307,8 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
           const cardCountry = g.jx ?? (country !== 'all' ? country : 'us')
           const localCurrency = COUNTRY_META[cardCountry as JxCode]?.currency ?? currency
           const href = g.slug
-            ? `/marketplace/gigs/${g.slug}`
-            : withCountry(`/marketplace?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, country)
+            ? `/gigs/${g.slug}`
+            : withCountry(`/?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, country)
 
           return (
             <a
@@ -383,13 +383,13 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
               Showing {shown.length.toLocaleString('en-US')} of {total.toLocaleString('en-US')} · page {deepestPage}/{totalPages}
             </span>
             {deepestPage > 1 && (
-              <a href={withCountry(`/marketplace?page=${deepestPage - 1}`, country)} aria-label="Previous page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage - 1)}>← Prev</a>
+              <a href={withCountry(`/?page=${deepestPage - 1}`, country)} aria-label="Previous page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage - 1)}>← Prev</a>
             )}
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <a key={p} href={withCountry(`/marketplace?page=${p}`, country)} aria-current={p === deepestPage ? 'page' : undefined} style={pagerChipStyle(p === deepestPage)} onClick={jumpToPage(p)}>{p}</a>
+              <a key={p} href={withCountry(`/?page=${p}`, country)} aria-current={p === deepestPage ? 'page' : undefined} style={pagerChipStyle(p === deepestPage)} onClick={jumpToPage(p)}>{p}</a>
             ))}
             {deepestPage < totalPages && (
-              <a href={withCountry(`/marketplace?page=${deepestPage + 1}`, country)} aria-label="Next page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage + 1)}>Next →</a>
+              <a href={withCountry(`/?page=${deepestPage + 1}`, country)} aria-label="Next page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage + 1)}>Next →</a>
             )}
           </nav>
         </>

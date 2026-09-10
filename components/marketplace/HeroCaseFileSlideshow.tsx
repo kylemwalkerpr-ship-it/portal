@@ -181,7 +181,7 @@ export default function HeroCaseFileSlideshow({
       {/* Card */}
       <a
         className="hero-card-link"
-        href={slide.slug ? `/marketplace/gigs/${slide.slug}` : withCountry('/marketplace?sort=most_orders', slide.jx ?? 'all')}
+        href={slide.slug ? `/gigs/${slide.slug}` : withCountry('/?sort=most_orders', slide.jx ?? 'all')}
         aria-label={`Open ${slide.title}`}
         style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
       >
