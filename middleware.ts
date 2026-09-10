@@ -256,15 +256,17 @@ export default clerkMiddleware(
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
 
-    // The historical public `/marketplace` namespace is retired. Do this
-    // before query sanitization so no prefixed request can gain a redirect hop
-    // or alternate 200. Clean market-domain paths are the sole public contract.
+    // Historical public `/marketplace` URLs still exist in search-engine crawl
+    // history and external links. Retire the namespace without throwing away
+    // those signals: permanently canonicalize it to the clean market-host path.
+    // `/marketplace?q=OPT` -> `/?q=OPT`; `/marketplace/providers/` -> `/providers/`.
     const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')
     if ((hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath) {
-      return new NextResponse('Not Found', {
-        status: 404,
-        headers: { 'content-type': 'text/plain; charset=utf-8', ...corsHeadersFor(req) },
-      })
+      const cleanPath = pathname === '/marketplace'
+        ? '/'
+        : pathname.slice('/marketplace'.length) || '/'
+      const redirectUrl = new URL(cleanPath + search, `https://${MARKET_HOST}`)
+      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 
     // Portal sitemap must stay empty. OpenNext prerenders app/sitemap.ts into
@@ -363,7 +365,14 @@ export default clerkMiddleware(
         return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
       } else {
         const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
-        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang), req)
+        const response = withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang), req)
+      // Free-text result pages are useful to visitors but are unbounded, can be
+      // empty, and must not become thin indexable URLs. Keep links followable so
+      // crawlers can still discover real gigs/providers reached from results.
+      if (req.nextUrl.searchParams.has('q')) {
+        response.headers.set('X-Robots-Tag', 'noindex, follow')
+      }
+      return response
       }
     } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {
       // File Shop is a public Marketplace surface. Serving the same /shop URL

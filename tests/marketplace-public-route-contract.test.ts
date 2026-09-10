@@ -30,13 +30,19 @@ describe('standalone Marketplace public URL contract', () => {
     expect(shop).toContain('alternates: { canonical: CANONICAL }')
   })
 
-  test('retired /marketplace paths are hard 404s on portal and market, never migration redirects', () => {
+  test('legacy /marketplace paths permanently canonicalize to clean market-host routes', () => {
     const middleware = read('middleware.ts')
     expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
     expect(middleware).toContain('(hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath')
-    expect(middleware).toContain("return new NextResponse('Not Found', {")
-    expect(middleware).toContain('status: 404')
-    expect(middleware).not.toContain('const cleanPath = pathname.slice(\'/marketplace\'.length)')
+    expect(middleware).toContain("pathname.slice('/marketplace'.length)")
+    expect(middleware).toContain('const redirectUrl = new URL(cleanPath + search, `https://${MARKET_HOST}`)')
+    expect(middleware).toContain('NextResponse.redirect(redirectUrl, { status: 301 })')
+  })
+
+  test('free-text Marketplace result URLs are noindex,follow while remaining usable', () => {
+    const middleware = read('middleware.ts')
+    expect(middleware).toContain("req.nextUrl.searchParams.has('q')")
+    expect(middleware).toContain("response.headers.set('X-Robots-Tag', 'noindex, follow')")
   })
 
   test('clean market-host paths still rewrite only to the internal app route tree', () => {
