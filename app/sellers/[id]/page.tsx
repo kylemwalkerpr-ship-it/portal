@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     const role = seller.role ? String(seller.role).charAt(0).toUpperCase() + String(seller.role).slice(1) : 'Provider'
     const description = `${role} on YouSafe Marketplace${seller.country ? ` — ${seller.country}` : ''}. View services, reviews, and contact options.`.slice(0, 155)
     const canonicalToken = seller.username || id
-    const canonical = `https://market.yousafeconsultancy.com/marketplace/providers/${encodeURIComponent(canonicalToken)}`
+    const canonical = `https://market.yousafeconsultancy.com/providers/${encodeURIComponent(canonicalToken)}`
 
     return {
       title,
@@ -48,5 +48,5 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function LegacySellerProfile({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  permanentRedirect(`/marketplace/providers/${encodeURIComponent(id)}`)
+  permanentRedirect(`https://market.yousafeconsultancy.com/providers/${encodeURIComponent(id)}`)
 }
