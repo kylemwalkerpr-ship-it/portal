@@ -272,7 +272,7 @@ export function GigCard({ gig }: GigCardProps) {
           {(gig.provider_headshot_url || (gig as any).providerHeadshot) ? (
             <img
               src={gig.provider_headshot_url || (gig as any).providerHeadshot}
-              alt=""
+              alt={`${providerName} profile`}
               width={26}
               height={26}
               style={{ ...providerAvatar, objectFit: 'cover', padding: 0 }}
