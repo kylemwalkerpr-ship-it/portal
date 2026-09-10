@@ -36,9 +36,10 @@ describe('GA4 client wiring helpers', () => {
         'legal.yousafeconsultancy.com',
         'market.yousafeconsultancy.com',
         'portal.yousafeconsultancy.com',
+        'support.yousafeconsultancy.com',
       ]),
     )
-    expect(GA4_LINKER_DOMAINS).toHaveLength(8)
+    expect(GA4_LINKER_DOMAINS).toHaveLength(9)
     expect(GA4_LINKER_DOMAINS).not.toContain('checkout.yousafeconsultancy.com')
   })
 
@@ -58,6 +59,7 @@ describe('GA4 client wiring helpers', () => {
     expect(boot).toContain("gtag('config', 'G-FTKZCVNW4B'")
     expect(boot).toContain('market.yousafeconsultancy.com')
     expect(boot).toContain('portal.yousafeconsultancy.com')
+    expect(boot).toContain('support.yousafeconsultancy.com')
     expect(boot).not.toContain('checkout.yousafeconsultancy.com')
     expect(boot).toContain('"send_page_view":false')
   })
