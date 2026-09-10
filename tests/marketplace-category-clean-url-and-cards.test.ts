@@ -7,7 +7,8 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 const discovery = read('components/marketplace/GigDiscoveryPage.tsx')
 const middleware = read('middleware.ts')
 const categoryLayout = read('app/marketplace/categories/[categoryId]/layout.tsx')
-const categoryCss = read('app/marketplace/categories/[categoryId]/category-discovery.module.css')
+const categoryCarousel = read('components/marketplace/CategoryRecommendedGigsCarousel.tsx')
+const categoryCarouselCss = read('components/marketplace/CategoryRecommendedGigsCarousel.module.css')
 const filters = read('components/marketplace/FilterSidebar.tsx')
 const featured = read('components/marketplace/FeaturedBriefsGrid.tsx')
 const categoryMenu = read('components/marketplace/CategoryMegaDropdown.tsx')
@@ -42,10 +43,12 @@ describe('marketplace category URL contract', () => {
 })
 
 describe('marketplace category discovery presentation', () => {
-  test('adds a category banner and linked exploration cards with clean path URLs', () => {
+  test('keeps the category banner and replaces duplicate taxonomy cards with recommended gigs', () => {
     expect(categoryLayout).toContain('className={styles.hero}')
-    expect(categoryLayout).toContain('className={styles.cardRail}')
-    expect(categoryLayout).toContain('href={`/categories/${item.id}`}')
+    expect(categoryLayout).toContain('<CategoryRecommendedGigsCarousel')
+    expect(categoryLayout).toContain('categoryId={display.id}')
+    expect(categoryCarousel).toContain("requestGigs(categoryId, 'trending'")
+    expect(categoryCarousel).toContain('getCategoryFilterTerms')
     expect(categoryLayout).toContain('Vetted specialists')
   })
 
@@ -63,6 +66,6 @@ describe('marketplace category discovery presentation', () => {
     expect(filters).toContain('ys-filter-desktop-row')
     expect(filters).toContain('grid-template-columns: minmax(0, 1fr) !important')
     expect(featured).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))')
-    expect(categoryCss).toContain('scroll-snap-type: x proximity')
+    expect(categoryCarouselCss).toContain('scroll-snap-type: x mandatory')
   })
 })
