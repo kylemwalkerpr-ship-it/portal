@@ -37,9 +37,12 @@ describe('category recommendation carousel', () => {
     expect(carousel).not.toContain("category: 'all'")
   })
 
-  test('uses a narrower centered belt carousel with a distance-based centre focus', () => {
+  test('uses a compact hero band with image-led belt cards and a focused centre item', () => {
     expect(carousel).toContain('AUTO_ADVANCE_MS')
     expect(carousel).toContain('syncBeltState')
+    expect(carousel).toContain('CompactGigCard')
+    expect(carousel).toContain('className={styles.heroCopy}')
+    expect(carousel).toContain('className={styles.carouselArea}')
     expect(carousel).toContain("--ys-belt-scale")
     expect(carousel).toContain("--ys-belt-rotate")
     expect(carousel).toContain('scrollToIndex')
@@ -49,13 +52,17 @@ describe('category recommendation carousel', () => {
     expect(carousel).toContain('Show next recommended gig')
     expect(carousel).toContain("prefers-reduced-motion: reduce")
 
-    expect(carouselCss).toContain('width: min(100%, 1040px)')
+    expect(carouselCss).toContain('width: min(calc(100% - 40px), 1120px)')
+    expect(carouselCss).toContain('min-height: 300px')
+    expect(carouselCss).toContain('grid-template-columns: minmax(250px, 0.7fr) minmax(0, 1.45fr)')
+    expect(carouselCss).toContain('height: 262px')
+    expect(carouselCss).toContain('height: 220px')
     expect(carouselCss).toContain('scroll-snap-type: x mandatory')
     expect(carouselCss).toContain('scroll-snap-align: center')
     expect(carouselCss).toContain('perspective: 1150px')
-    expect(carouselCss).toContain('flex: 0 0 calc((100% - 36px) / 3)')
     expect(carouselCss).toContain(".slide[data-active='true']")
     expect(carouselCss).toContain('var(--ys-belt-scale)')
+    expect(carouselCss).toContain('background: linear-gradient(180deg')
     expect(carouselCss).toContain('font-family: var(--font-display, Georgia, serif)')
   })
 })

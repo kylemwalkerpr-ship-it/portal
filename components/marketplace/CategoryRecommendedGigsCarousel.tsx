@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import React from 'react'
 import { getCategoryFilterTerms } from '@/lib/categories'
-import { GigCard } from './MarketplaceHero'
+import { providerDisplayName } from '@/lib/providerDisplayName'
+import { responsiveImageProps } from '@/lib/responsiveImage'
 import styles from './CategoryRecommendedGigsCarousel.module.css'
 
 type RecommendedGig = {
@@ -73,10 +75,6 @@ async function requestGigs(
   const data = payload?.data ?? payload
   const gigs: RecommendedGig[] = Array.isArray(data?.gigs) ? data.gigs : []
 
-  // The general discovery API intentionally includes uncategorized inventory so
-  // sellers are not hidden while taxonomy backfills run. A recommendation rail
-  // is a different contract: do not present an unclassified gig as related to a
-  // category just because the listing API kept it visible.
   return gigs.filter((gig) => isRelatedGig(gig, categoryId))
 }
 
@@ -89,6 +87,34 @@ function mergeUnique(existing: RecommendedGig[], incoming: RecommendedGig[]): Re
     merged.push(gig)
   }
   return merged
+}
+
+function CompactGigCard({ gig }: { gig: RecommendedGig }) {
+  const imageUrl = gig.gallery_images?.[0]?.url || gig.cover_image_url
+  const providerName = providerDisplayName(gig.provider, 'YouSafe Provider')
+  const price = gig.starting_price ? Math.round(gig.starting_price / 100) : null
+  const rating = gig.avg_rating && gig.review_count ? `${gig.avg_rating.toFixed(1)} (${gig.review_count})` : null
+  const isAttorney = gig.provider_type === 'attorney'
+
+  return (
+    <Link href={`/marketplace/gigs/${gig.slug}`} className={styles.gigCard} aria-label={`View ${gig.title}`}>
+      {imageUrl ? (
+        <img className={styles.gigImage} loading="lazy" {...responsiveImageProps(imageUrl, gig.title)} />
+      ) : (
+        <div className={styles.gigFallback} aria-hidden="true">{gig.title.slice(0, 2).toUpperCase()}</div>
+      )}
+      <div className={styles.gigShade} aria-hidden="true" />
+      <div className={styles.gigBadge}>{isAttorney ? 'Licensed attorney' : 'Vetted consultant'}</div>
+      <div className={styles.gigMeta}>
+        <p className={styles.gigProvider}>{providerName}</p>
+        <h3>{gig.title}</h3>
+        <div className={styles.gigFooter}>
+          <span>{rating ? `★ ${rating}` : 'New service'}</span>
+          {price !== null ? <strong>From ${price}</strong> : null}
+        </div>
+      </div>
+    </Link>
+  )
 }
 
 export function CategoryRecommendedGigsCarousel({
@@ -126,11 +152,8 @@ export function CategoryRecommendedGigsCarousel({
     let closestDistance = Number.POSITIVE_INFINITY
 
     slides.forEach((slide, index) => {
-      // Use untransformed layout geometry rather than getBoundingClientRect().
-      // The card's own scale must not feed back into the distance calculation
-      // and cause the centre focus to wobble while the belt settles.
       const slideCenter = slide.offsetLeft + slide.offsetWidth / 2
-      const signedDistance = (slideCenter - viewportCenter) / Math.max(slide.offsetWidth + 18, 1)
+      const signedDistance = (slideCenter - viewportCenter) / Math.max(slide.offsetWidth + 16, 1)
       const distance = Math.abs(signedDistance)
       const bounded = Math.min(distance, 1.6)
       const pixelDistance = Math.abs(slideCenter - viewportCenter)
@@ -148,13 +171,10 @@ export function CategoryRecommendedGigsCarousel({
         return
       }
 
-      // The visual hierarchy follows the physical distance from the viewport
-      // centre, so dragging feels like a belt/wheel rather than a row of cards
-      // with a single class suddenly toggling at the snap point.
-      const scale = 1.045 - bounded * 0.064
+      const scale = 1.055 - bounded * 0.075
       const translateY = bounded * 7
-      const rotateY = Math.max(-5, Math.min(5, -signedDistance * 4))
-      const opacity = 1 - bounded * 0.055
+      const rotateY = Math.max(-6, Math.min(6, -signedDistance * 4.8))
+      const opacity = 1 - bounded * 0.09
       slide.style.setProperty('--ys-belt-scale', scale.toFixed(3))
       slide.style.setProperty('--ys-belt-y', `${translateY.toFixed(1)}px`)
       slide.style.setProperty('--ys-belt-rotate', `${rotateY.toFixed(2)}deg`)
@@ -220,10 +240,6 @@ export function CategoryRecommendedGigsCarousel({
 
     ;(async () => {
       try {
-        // Prefer genuinely top-performing gigs in the exact category. When a
-        // narrow subcategory has thin inventory, backfill from its parent with
-        // well-reviewed and most-ordered gigs rather than showing duplicate
-        // taxonomy cards or unrelated Marketplace inventory.
         let ranked = await requestGigs(categoryId, 'trending', controller.signal)
         const fallback = fallbackCategoryId || categoryId
 
@@ -249,8 +265,6 @@ export function CategoryRecommendedGigsCarousel({
     if (loading || gigs.length === 0) return
     const frame = window.requestAnimationFrame(() => {
       measure()
-      // Start one card in when possible so the first paint already communicates
-      // the centred belt treatment, with neighbouring recommendations visible.
       scrollToIndex(gigs.length >= 3 ? 1 : 0, 'auto')
       syncBeltState()
     })
@@ -298,16 +312,14 @@ export function CategoryRecommendedGigsCarousel({
 
   return (
     <section className={styles.section} aria-labelledby="ys-category-recommended-gigs-title">
-      <div className={styles.headingRow}>
-        <div className={styles.headingCopy}>
-          <p className={styles.eyebrow}>Recommended for you</p>
-          <h2 id="ys-category-recommended-gigs-title" className={styles.title}>
-            Recommended {displayName} gigs
-          </h2>
-          <p className={styles.subtitle}>
-            Popular and well-reviewed services matched to this category.
-          </p>
-        </div>
+      <div className={styles.heroCopy}>
+        <p className={styles.eyebrow}>Recommended for you</p>
+        <h2 id="ys-category-recommended-gigs-title" className={styles.title}>
+          Recommended {displayName}
+        </h2>
+        <p className={styles.subtitle}>
+          Popular, well-reviewed services matched to what you are exploring.
+        </p>
 
         {hasOverflow ? (
           <div className={styles.controls} aria-label="Recommendation slideshow controls">
@@ -339,40 +351,41 @@ export function CategoryRecommendedGigsCarousel({
         ) : null}
       </div>
 
-      <div
-        ref={viewportRef}
-        className={styles.viewport}
-        aria-label={`${displayName} recommended gigs`}
-        onScroll={scheduleBeltSync}
-        onMouseEnter={() => { interactionPausedRef.current = true }}
-        onMouseLeave={() => { interactionPausedRef.current = false }}
-        onFocusCapture={() => { interactionPausedRef.current = true }}
-        onBlurCapture={() => { interactionPausedRef.current = false }}
-        onTouchStart={() => { interactionPausedRef.current = true }}
-        onTouchEnd={() => {
-          interactionPausedRef.current = false
-          pauseTemporarily()
-          scheduleBeltSync()
-        }}
-      >
-        {loading
-          ? Array.from({ length: 3 }, (_, index) => (
-              <div key={index} className={`${styles.slide} ${styles.skeleton}`} aria-hidden="true">
-                <div className={styles.skeletonMedia} />
-                <div className={styles.skeletonLineShort} />
-                <div className={styles.skeletonLine} />
-                <div className={styles.skeletonLineMedium} />
-              </div>
-            ))
-          : gigs.map((gig, index) => (
-              <div
-                key={gig.id}
-                className={`${styles.slide} ys-category-reco-slide`}
-                data-active={index === activeIndex ? 'true' : 'false'}
-              >
-                <GigCard gig={gig} />
-              </div>
-            ))}
+      <div className={styles.carouselArea}>
+        <div
+          ref={viewportRef}
+          className={styles.viewport}
+          role="region"
+          aria-roledescription="carousel"
+          aria-label={`${displayName} recommended gigs`}
+          onScroll={scheduleBeltSync}
+          onMouseEnter={() => { interactionPausedRef.current = true }}
+          onMouseLeave={() => { interactionPausedRef.current = false }}
+          onFocusCapture={() => { interactionPausedRef.current = true }}
+          onBlurCapture={() => { interactionPausedRef.current = false }}
+          onTouchStart={() => { interactionPausedRef.current = true }}
+          onTouchEnd={() => {
+            interactionPausedRef.current = false
+            pauseTemporarily()
+            scheduleBeltSync()
+          }}
+        >
+          {loading
+            ? Array.from({ length: 3 }, (_, index) => (
+                <div key={index} className={`${styles.slide} ${styles.skeleton}`} aria-hidden="true">
+                  <div className={styles.skeletonMedia} />
+                </div>
+              ))
+            : gigs.map((gig, index) => (
+                <div
+                  key={gig.id}
+                  className={`${styles.slide} ys-category-reco-slide`}
+                  data-active={index === activeIndex ? 'true' : 'false'}
+                >
+                  <CompactGigCard gig={gig} />
+                </div>
+              ))}
+        </div>
       </div>
     </section>
   )
