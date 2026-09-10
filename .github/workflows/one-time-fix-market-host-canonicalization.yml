@@ -1,0 +1,70 @@
+name: One-time market host canonicalization patch
+
+on:
+  push:
+    branches:
+      - seo/retire-checkout-estate
+    paths:
+      - '.github/workflows/one-time-fix-market-host-canonicalization.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: seo/retire-checkout-estate
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Apply exact host and stale-link patch
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+
+          function replaceExact(file, from, to) {
+            const src = fs.readFileSync(file, 'utf8')
+            if (!src.includes(from)) throw new Error(`${file}: expected source block not found`)
+            const next = src.replace(from, to)
+            if (next === src) throw new Error(`${file}: replacement made no change`)
+            fs.writeFileSync(file, next)
+          }
+
+          replaceExact(
+            'middleware.ts',
+            `    } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {\n      const redirectPath = pathname.slice('/marketplace'.length) || '/'\n      const redirectUrl = new URL(redirectPath + search, \`https://\${MARKET_HOST}\`)\n      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)\n    }`,
+            `    } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {\n      // File Shop is a public Marketplace surface. Serving the same /shop URL\n      // tree on portal.yousafeconsultancy.com creates a second crawlable copy\n      // of every product, even though metadata points at the market host. Keep\n      // host ownership unambiguous with one permanent hop to the canonical URL.\n      const redirectUrl = new URL(pathname + search, \`https://\${MARKET_HOST}\`)\n      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)\n    } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {\n      const redirectPath = pathname.slice('/marketplace'.length) || '/'\n      const redirectUrl = new URL(redirectPath + search, \`https://\${MARKET_HOST}\`)\n      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)\n    }`,
+          )
+
+          for (const file of [
+            'components/student/MyTemplatesView.tsx',
+            'components/student/StudentTemplateFiller.tsx',
+          ]) {
+            const src = fs.readFileSync(file, 'utf8')
+            const next = src.replaceAll('href="/marketplace/templates"', 'href="https://market.yousafeconsultancy.com/shop"')
+            if (next !== src) fs.writeFileSync(file, next)
+          }
+
+          const shopFile = 'app/shop/FilesShop.tsx'
+          const shop = fs.readFileSync(shopFile, 'utf8')
+          const cleanShop = shop.replaceAll('href="/marketplace"', 'href="/"')
+          if (cleanShop !== shop) fs.writeFileSync(shopFile, cleanShop)
+          NODE
+
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          if git diff --quiet -- middleware.ts app/shop/FilesShop.tsx components/student/MyTemplatesView.tsx components/student/StudentTemplateFiller.tsx; then
+            echo 'No patch changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add middleware.ts app/shop/FilesShop.tsx components/student/MyTemplatesView.tsx components/student/StudentTemplateFiller.tsx
+          git commit -m 'Fix cross-host File Shop duplicates and stale template links'
+          git push origin HEAD:seo/retire-checkout-estate
