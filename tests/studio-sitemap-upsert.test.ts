@@ -45,6 +45,20 @@ function walk() {}
     expect(second.added).toBe(false)
   })
 
+  it('does not synthesize current-time freshness for Portal sitemap additions', () => {
+    const portalBase = `import type { MetadataRoute } from 'next'
+const entries: MetadataRoute.Sitemap = [
+  { url: 'https://market.yousafeconsultancy.com/' },
+]
+export default async function sitemap() { return entries }
+`
+    const next = upsertStudioSitemapEntry(portalBase, '/studio-published-resource/', 'portal')
+    expect(next.added).toBe(true)
+    expect(next.content).toContain('STUDIO_SITEMAP_ROUTES.map')
+    expect(next.content).toContain("changeFrequency: 'weekly' as const")
+    expect(next.content).not.toContain('lastModified: new Date()')
+  })
+
   it('sanitizes legacy junk studio sitemap paths on upsert', () => {
     const dirty = `export const dynamic = 'force-static'
 const STATIC_ROUTES = []
