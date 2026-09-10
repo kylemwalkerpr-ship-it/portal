@@ -97,36 +97,116 @@ export function CategoryRecommendedGigsCarousel({
   displayName,
 }: CategoryRecommendedGigsCarouselProps) {
   const viewportRef = React.useRef<HTMLDivElement>(null)
-  const pausedRef = React.useRef(false)
+  const interactionPausedRef = React.useRef(false)
+  const manualPausedRef = React.useRef(false)
   const resumeTimerRef = React.useRef<number | null>(null)
+  const scrollRafRef = React.useRef<number | null>(null)
+  const activeIndexRef = React.useRef(0)
+  const autoDirectionRef = React.useRef<1 | -1>(1)
   const [gigs, setGigs] = React.useState<RecommendedGig[]>([])
   const [loading, setLoading] = React.useState(true)
   const [hasOverflow, setHasOverflow] = React.useState(false)
+  const [activeIndex, setActiveIndex] = React.useState(0)
+
+  const setCenteredIndex = React.useCallback((index: number) => {
+    activeIndexRef.current = index
+    setActiveIndex((current) => (current === index ? current : index))
+  }, [])
+
+  const syncBeltState = React.useCallback(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const slides = Array.from(viewport.querySelectorAll<HTMLElement>('.ys-category-reco-slide'))
+    if (slides.length === 0) return
+
+    const viewportCenter = viewport.scrollLeft + viewport.clientWidth / 2
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    let closestIndex = 0
+    let closestDistance = Number.POSITIVE_INFINITY
+
+    slides.forEach((slide, index) => {
+      // Use untransformed layout geometry rather than getBoundingClientRect().
+      // The card's own scale must not feed back into the distance calculation
+      // and cause the centre focus to wobble while the belt settles.
+      const slideCenter = slide.offsetLeft + slide.offsetWidth / 2
+      const signedDistance = (slideCenter - viewportCenter) / Math.max(slide.offsetWidth + 18, 1)
+      const distance = Math.abs(signedDistance)
+      const bounded = Math.min(distance, 1.6)
+      const pixelDistance = Math.abs(slideCenter - viewportCenter)
+
+      if (pixelDistance < closestDistance) {
+        closestDistance = pixelDistance
+        closestIndex = index
+      }
+
+      if (reduceMotion) {
+        slide.style.setProperty('--ys-belt-scale', '1')
+        slide.style.setProperty('--ys-belt-y', '0px')
+        slide.style.setProperty('--ys-belt-rotate', '0deg')
+        slide.style.setProperty('--ys-belt-opacity', '1')
+        return
+      }
+
+      // The visual hierarchy follows the physical distance from the viewport
+      // centre, so dragging feels like a belt/wheel rather than a row of cards
+      // with a single class suddenly toggling at the snap point.
+      const scale = 1.045 - bounded * 0.064
+      const translateY = bounded * 7
+      const rotateY = Math.max(-5, Math.min(5, -signedDistance * 4))
+      const opacity = 1 - bounded * 0.055
+      slide.style.setProperty('--ys-belt-scale', scale.toFixed(3))
+      slide.style.setProperty('--ys-belt-y', `${translateY.toFixed(1)}px`)
+      slide.style.setProperty('--ys-belt-rotate', `${rotateY.toFixed(2)}deg`)
+      slide.style.setProperty('--ys-belt-opacity', opacity.toFixed(3))
+    })
+
+    slides.forEach((slide, index) => {
+      slide.dataset.active = index === closestIndex ? 'true' : 'false'
+    })
+    setCenteredIndex(closestIndex)
+  }, [setCenteredIndex])
+
+  const scheduleBeltSync = React.useCallback(() => {
+    if (scrollRafRef.current !== null) return
+    scrollRafRef.current = window.requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      syncBeltState()
+    })
+  }, [syncBeltState])
 
   const measure = React.useCallback(() => {
     const viewport = viewportRef.current
     if (!viewport) return
     setHasOverflow(viewport.scrollWidth > viewport.clientWidth + 8)
-  }, [])
+    scheduleBeltSync()
+  }, [scheduleBeltSync])
 
-  const scrollByCard = React.useCallback((direction: 1 | -1) => {
+  const scrollToIndex = React.useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
     const viewport = viewportRef.current
     if (!viewport) return
-    const firstCard = viewport.querySelector<HTMLElement>('.ys-category-reco-slide')
-    const gap = 18
-    const step = (firstCard?.offsetWidth || Math.min(320, viewport.clientWidth * 0.82)) + gap
-    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    let next = viewport.scrollLeft + step * direction
-    if (direction > 0 && next >= max - 4) next = 0
-    if (direction < 0 && next <= 4) next = max
-    viewport.scrollTo({ left: next, behavior: 'smooth' })
-  }, [])
+    const slides = Array.from(viewport.querySelectorAll<HTMLElement>('.ys-category-reco-slide'))
+    if (slides.length === 0) return
+
+    const boundedIndex = Math.max(0, Math.min(slides.length - 1, index))
+    const target = slides[boundedIndex]
+    const centeredLeft = target.offsetLeft - (viewport.clientWidth - target.offsetWidth) / 2
+    viewport.scrollTo({ left: Math.max(0, centeredLeft), behavior })
+    setCenteredIndex(boundedIndex)
+    scheduleBeltSync()
+  }, [scheduleBeltSync, setCenteredIndex])
+
+  const scrollByCard = React.useCallback((direction: 1 | -1) => {
+    if (gigs.length < 2) return
+    const next = Math.max(0, Math.min(gigs.length - 1, activeIndexRef.current + direction))
+    if (next !== activeIndexRef.current) scrollToIndex(next)
+  }, [gigs.length, scrollToIndex])
 
   const pauseTemporarily = React.useCallback(() => {
-    pausedRef.current = true
+    manualPausedRef.current = true
     if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current)
     resumeTimerRef.current = window.setTimeout(() => {
-      pausedRef.current = false
+      manualPausedRef.current = false
       resumeTimerRef.current = null
     }, MANUAL_PAUSE_MS)
   }, [])
@@ -135,6 +215,8 @@ export function CategoryRecommendedGigsCarousel({
     const controller = new AbortController()
     setLoading(true)
     setGigs([])
+    setCenteredIndex(0)
+    autoDirectionRef.current = 1
 
     ;(async () => {
       try {
@@ -161,23 +243,47 @@ export function CategoryRecommendedGigsCarousel({
     })()
 
     return () => controller.abort()
-  }, [categoryId, fallbackCategoryId])
+  }, [categoryId, fallbackCategoryId, setCenteredIndex])
 
   React.useEffect(() => {
-    measure()
+    if (loading || gigs.length === 0) return
+    const frame = window.requestAnimationFrame(() => {
+      measure()
+      // Start one card in when possible so the first paint already communicates
+      // the centred belt treatment, with neighbouring recommendations visible.
+      scrollToIndex(gigs.length >= 3 ? 1 : 0, 'auto')
+      syncBeltState()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [gigs.length, loading, measure, scrollToIndex, syncBeltState])
+
+  React.useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
-    const onResize = () => measure()
+
+    const onResize = () => {
+      window.requestAnimationFrame(() => {
+        measure()
+        scrollToIndex(activeIndexRef.current, 'auto')
+      })
+    }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [gigs, loading, measure])
+  }, [measure, scrollToIndex])
 
   React.useEffect(() => {
     if (!hasOverflow || gigs.length < 2) return
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
 
     const interval = window.setInterval(() => {
-      if (!pausedRef.current) scrollByCard(1)
+      if (interactionPausedRef.current || manualPausedRef.current) return
+
+      let direction = autoDirectionRef.current
+      const current = activeIndexRef.current
+      if (current >= gigs.length - 1) direction = -1
+      if (current <= 0) direction = 1
+      autoDirectionRef.current = direction
+      scrollByCard(direction)
     }, AUTO_ADVANCE_MS)
 
     return () => window.clearInterval(interval)
@@ -185,6 +291,7 @@ export function CategoryRecommendedGigsCarousel({
 
   React.useEffect(() => () => {
     if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current)
+    if (scrollRafRef.current !== null) window.cancelAnimationFrame(scrollRafRef.current)
   }, [])
 
   if (!loading && gigs.length === 0) return null
@@ -192,7 +299,7 @@ export function CategoryRecommendedGigsCarousel({
   return (
     <section className={styles.section} aria-labelledby="ys-category-recommended-gigs-title">
       <div className={styles.headingRow}>
-        <div>
+        <div className={styles.headingCopy}>
           <p className={styles.eyebrow}>Recommended for you</p>
           <h2 id="ys-category-recommended-gigs-title" className={styles.title}>
             Recommended {displayName} gigs
@@ -208,6 +315,7 @@ export function CategoryRecommendedGigsCarousel({
               type="button"
               className={styles.control}
               aria-label="Show previous recommended gig"
+              disabled={activeIndex <= 0}
               onClick={() => {
                 pauseTemporarily()
                 scrollByCard(-1)
@@ -219,6 +327,7 @@ export function CategoryRecommendedGigsCarousel({
               type="button"
               className={styles.control}
               aria-label="Show next recommended gig"
+              disabled={activeIndex >= gigs.length - 1}
               onClick={() => {
                 pauseTemporarily()
                 scrollByCard(1)
@@ -232,17 +341,22 @@ export function CategoryRecommendedGigsCarousel({
 
       <div
         ref={viewportRef}
-        className={`${styles.viewport} ${!loading && gigs.length <= 4 ? styles.centerFew : ''}`}
+        className={styles.viewport}
         aria-label={`${displayName} recommended gigs`}
-        onMouseEnter={() => { pausedRef.current = true }}
-        onMouseLeave={() => { pausedRef.current = false }}
-        onFocusCapture={() => { pausedRef.current = true }}
-        onBlurCapture={() => { pausedRef.current = false }}
-        onTouchStart={() => { pausedRef.current = true }}
-        onTouchEnd={pauseTemporarily}
+        onScroll={scheduleBeltSync}
+        onMouseEnter={() => { interactionPausedRef.current = true }}
+        onMouseLeave={() => { interactionPausedRef.current = false }}
+        onFocusCapture={() => { interactionPausedRef.current = true }}
+        onBlurCapture={() => { interactionPausedRef.current = false }}
+        onTouchStart={() => { interactionPausedRef.current = true }}
+        onTouchEnd={() => {
+          interactionPausedRef.current = false
+          pauseTemporarily()
+          scheduleBeltSync()
+        }}
       >
         {loading
-          ? Array.from({ length: 4 }, (_, index) => (
+          ? Array.from({ length: 3 }, (_, index) => (
               <div key={index} className={`${styles.slide} ${styles.skeleton}`} aria-hidden="true">
                 <div className={styles.skeletonMedia} />
                 <div className={styles.skeletonLineShort} />
@@ -250,8 +364,12 @@ export function CategoryRecommendedGigsCarousel({
                 <div className={styles.skeletonLineMedium} />
               </div>
             ))
-          : gigs.map((gig) => (
-              <div key={gig.id} className={`${styles.slide} ys-category-reco-slide`}>
+          : gigs.map((gig, index) => (
+              <div
+                key={gig.id}
+                className={`${styles.slide} ys-category-reco-slide`}
+                data-active={index === activeIndex ? 'true' : 'false'}
+              >
                 <GigCard gig={gig} />
               </div>
             ))}
