@@ -6,14 +6,14 @@ const nextConfig = fs.readFileSync(path.join(root, 'next.config.ts'), 'utf8')
 const middleware = fs.readFileSync(path.join(root, 'middleware.ts'), 'utf8')
 
 describe('legacy Marketplace URL consolidation', () => {
-  test('permanently redirects the retired namespace on both served hosts before middleware', () => {
-    expect(nextConfig).toContain("['market.yousafeconsultancy.com', 'portal.yousafeconsultancy.com']")
+  test('permanently redirects the retired namespace before middleware on every served host', () => {
     expect(nextConfig).toContain("source: '/marketplace/:path*'")
     expect(nextConfig).toContain("destination: 'https://market.yousafeconsultancy.com/:path*'")
     expect(nextConfig).toContain('permanent: true')
+    expect(nextConfig).not.toContain("type: 'host'")
   })
 
-  test('keeps the middleware 404 only as a fallback and emits no new legacy internal links', () => {
+  test('keeps the middleware 404 only as a fallback and emits no checkout dependency', () => {
     expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
     expect(middleware).toContain("return new NextResponse('Not Found', {")
     expect(nextConfig).not.toContain('checkout.yousafeconsultancy.com')
