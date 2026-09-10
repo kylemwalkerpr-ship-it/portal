@@ -1,0 +1,294 @@
+/* Marketplace completion layer
+   ============================
+   Finishes the visual-modernization specification without replacing existing
+   Marketplace behavior. This file is loaded after marketplace-refinement.css.
+*/
+
+/* Keep mature discovery controls available while a buyer scrolls results. */
+@media (min-width: 1025px) {
+  .cw-market .ys-filter-desktop-row,
+  .cw-market .ys-landing-discovery-controls {
+    position: sticky;
+    top: 72px;
+    z-index: 92;
+    margin-inline: -12px;
+    padding-inline: 12px !important;
+    background: color-mix(in srgb, var(--ys-vellum, #fff) 96%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.05);
+    backdrop-filter: blur(14px) saturate(1.05);
+    box-shadow: 0 10px 28px -28px rgba(15, 23, 42, .52);
+  }
+
+  .cw-market .ys-filter-desktop-row {
+    border-radius: 0 0 14px 14px;
+  }
+
+  .cw-market .ys-landing-discovery-controls {
+    padding-block: 10px;
+    border-radius: 14px;
+  }
+}
+
+/* Gig-detail decision hierarchy: professional sans, readable breadcrumbs,
+   denser information without altering the interactive checkout island. */
+.cw-market nav[aria-label='Breadcrumb'] {
+  font-family: var(--ys-market-ui) !important;
+  font-size: 13px !important;
+  font-weight: 540 !important;
+  line-height: 1.45 !important;
+  letter-spacing: -.006em !important;
+  text-transform: none !important;
+  color: var(--ys-inkSoft, #526072) !important;
+}
+
+.cw-market nav[aria-label='Breadcrumb'] a {
+  color: var(--ys-inkMid, #334155) !important;
+  font-weight: 620 !important;
+}
+
+.cw-market .ys-content-layout h1 {
+  font-family: var(--ys-market-ui) !important;
+  font-size: clamp(30px, 3vw, 40px) !important;
+  font-weight: 720 !important;
+  line-height: 1.13 !important;
+  letter-spacing: -.034em !important;
+  color: var(--ys-ink, #0F172A) !important;
+}
+
+.cw-market .ys-content-layout h1 + div {
+  font-family: var(--ys-market-ui) !important;
+  font-size: 13px !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.cw-market .ys-content-layout > div:first-child > div,
+.cw-market .ys-sidebar > div {
+  border-radius: var(--ys-market-radius-md, 14px) !important;
+  border-color: var(--ys-rule, rgba(15,23,42,.10)) !important;
+  box-shadow: 0 1px 2px rgba(15,23,42,.025), 0 14px 36px -34px rgba(15,23,42,.30) !important;
+}
+
+/* Truthful provider / reputation summary. */
+.cw-market .ys-gig-trust-bar {
+  border-bottom: 1px solid var(--ys-ruleSoft, rgba(15,23,42,.06));
+  background: var(--ys-vellum, #fff);
+}
+
+.cw-market .ys-gig-trust-inner {
+  width: min(1280px, calc(100vw - 56px));
+  margin: 0 auto;
+  padding: 15px 0 16px;
+  display: grid;
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px 28px;
+  font-family: var(--ys-market-ui);
+}
+
+.cw-market .ys-gig-trust-provider {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.cw-market .ys-gig-trust-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--ys-paper2, #F1F3F5);
+  border: 1px solid var(--ys-rule, rgba(15,23,42,.10));
+}
+
+.cw-market .ys-gig-trust-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ys-ink, #0F172A);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: .02em;
+}
+
+.cw-market .ys-gig-trust-provider-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.cw-market .ys-gig-trust-provider-name {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ys-ink, #0F172A);
+  font-size: 14px;
+  font-weight: 720;
+  letter-spacing: -.012em;
+  text-decoration: none;
+}
+
+.cw-market a.ys-gig-trust-provider-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cw-market .ys-gig-trust-role {
+  color: var(--ys-inkSoft, #526072);
+  font-size: 12px;
+  font-weight: 540;
+}
+
+.cw-market .ys-gig-trust-signals {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.cw-market .ys-gig-trust-badge,
+.cw-market .ys-gig-trust-signal {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ys-rule, rgba(15,23,42,.10));
+  background: var(--ys-paper, #F7F8FA);
+  color: var(--ys-inkMid, #334155);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cw-market .ys-gig-trust-badge.is-level {
+  border-color: color-mix(in srgb, var(--ys-gold, #B38B36) 34%, transparent);
+  background: color-mix(in srgb, var(--ys-gold, #B38B36) 9%, var(--ys-vellum, #fff));
+  color: var(--ys-ink, #0F172A);
+  font-weight: 730;
+}
+
+.cw-market .ys-gig-trust-signal b {
+  color: var(--ys-ink, #0F172A);
+  font-weight: 720;
+}
+
+.cw-market .ys-gig-trust-signal span {
+  color: var(--ys-inkSoft, #526072);
+}
+
+.cw-market .ys-gig-repeat-proof {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--ys-paper, #F7F8FA);
+  color: var(--ys-inkMid, #334155);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cw-market .ys-gig-repeat-proof b {
+  color: var(--ys-ink, #0F172A);
+}
+
+.cw-market .ys-gig-repeat-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ys-vellum, #fff);
+  border: 1px solid var(--ys-rule, rgba(15,23,42,.10));
+  color: var(--ys-ink, #0F172A);
+  font-weight: 800;
+}
+
+/* Make review/filter cards calmer and remove the cramped visual character seen
+   in the mobile audit while preserving all five rating + reply controls. */
+.cw-market input[type='checkbox'],
+.cw-market input[type='radio'] {
+  accent-color: var(--ys-ink, #0F172A);
+}
+
+@media (max-width: 1024px) {
+  .cw-market .ys-gig-trust-inner {
+    width: min(100% - 32px, 900px);
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .cw-market .ys-gig-trust-signals {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  .cw-market .ys-gig-trust-inner {
+    width: calc(100% - 32px);
+    padding-block: 13px 14px;
+    gap: 10px;
+  }
+
+  .cw-market .ys-gig-trust-avatar {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  .cw-market .ys-gig-trust-signals {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding: 2px 0 4px;
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+  }
+
+  .cw-market .ys-gig-trust-signals::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cw-market .ys-gig-repeat-proof {
+    font-size: 12.5px;
+    align-items: flex-start;
+  }
+
+  .cw-market .ys-content-layout h1 {
+    font-size: clamp(28px, 8vw, 34px) !important;
+  }
+
+  .cw-market nav[aria-label='Breadcrumb'] {
+    font-size: 12px !important;
+    gap: 6px !important;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .cw-market .ys-gig-trust-badge,
+  .cw-market .ys-gig-trust-signal {
+    min-height: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-market .ys-gig-trust-bar *,
+  .cw-market .ys-filter-desktop-row,
+  .cw-market .ys-landing-discovery-controls {
+    transition: none !important;
+  }
+}
