@@ -1,0 +1,657 @@
+/* Marketplace visual refinement layer
+   ===================================
+   Loaded LAST by app/marketplace/layout.tsx.
+
+   Contract:
+   - presentation only: no routing, API, checkout, auth, gig or Messenger logic
+   - retain palette variables and seller-provided media
+   - retain the explicit discovery-grid column contract
+   - use restrained neutral chrome and one palette-driven action accent
+   - mobile/touch behavior must never depend on hover
+*/
+
+.cw-market {
+  --ys-market-ui: var(--font-outfit), 'Outfit', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ys-market-radius-sm: 10px;
+  --ys-market-radius-md: 14px;
+  --ys-market-radius-lg: 18px;
+  --ys-market-control-h: 44px;
+  --ys-market-section-gap: clamp(52px, 6vw, 84px);
+  --ys-market-copy: min(72ch, 100%);
+  --ys-market-shadow-float: 0 18px 50px -24px rgba(15, 23, 42, .22);
+  --ys-market-shadow-popover: 0 24px 68px -26px rgba(15, 23, 42, .28), 0 1px 2px rgba(15, 23, 42, .06);
+  --ys-market-hover-border: color-mix(in srgb, var(--ys-ink, #0F172A) 20%, transparent);
+  color: var(--ys-ink, #0F172A);
+  font-family: var(--ys-market-ui);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Global marketplace rhythm ---------- */
+.cw-market main,
+.cw-market section,
+.cw-market article,
+.cw-market button,
+.cw-market input,
+.cw-market select,
+.cw-market textarea {
+  font-family: var(--ys-market-ui);
+}
+
+.cw-market p {
+  text-wrap: pretty;
+}
+
+.cw-market :where(h1, h2, h3, h4) {
+  text-wrap: balance;
+}
+
+.cw-market :where(button, a, input, select, textarea) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cw-market :where(button, a) {
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+  transition-duration: 160ms;
+  transition-timing-function: ease;
+}
+
+/* Preserve the accessibility contract while making the ring less visually heavy. */
+.cw-market :where(a, button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--ys-ink, #0F172A) !important;
+  outline-offset: 3px !important;
+}
+
+/* ---------- Marketplace shell / navigation ---------- */
+.cw-market > header,
+.cw-market header.ys-shell-header,
+.cw-market [data-ys-shell-header] {
+  background: color-mix(in srgb, var(--ys-vellum, #FFF) 97%, transparent) !important;
+  border-bottom-color: var(--ys-rule, rgba(15, 23, 42, .10)) !important;
+}
+
+.cw-market .ys-cat-bar {
+  min-height: 44px;
+  border-bottom-color: var(--ys-ruleSoft, rgba(15, 23, 42, .06)) !important;
+}
+
+.cw-market .ys-cat-bar a,
+.cw-market .ys-cat-bar button,
+.cw-market .nav-links a {
+  font-family: var(--ys-market-ui) !important;
+  letter-spacing: -.006em;
+}
+
+/* ---------- Hero: retain YouSafe identity, improve composition ---------- */
+.cw-market .hero {
+  isolation: isolate;
+}
+
+.cw-market .hero-grid {
+  gap: clamp(34px, 5vw, 72px) !important;
+  align-items: center !important;
+}
+
+.cw-market .hero h1 {
+  font-family: var(--ys-market-ui) !important;
+  font-size: clamp(38px, 4.5vw, 58px) !important;
+  font-weight: 720 !important;
+  line-height: 1.03 !important;
+  letter-spacing: -.04em !important;
+  max-width: 16ch;
+  margin-bottom: 18px !important;
+}
+
+.cw-market .hero h1 em {
+  font-family: inherit !important;
+  font-weight: 720 !important;
+  letter-spacing: inherit;
+}
+
+.cw-market .hero p.lede {
+  max-width: 58ch !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: clamp(16px, 1.4vw, 18px) !important;
+  line-height: 1.62 !important;
+  color: rgba(255, 255, 255, .86) !important;
+  margin-bottom: 28px !important;
+}
+
+.cw-market .hero-search {
+  min-height: 58px;
+  border-radius: 14px !important;
+  padding: 5px !important;
+  overflow: visible;
+  box-shadow: 0 20px 54px -20px rgba(2, 6, 23, .54) !important;
+}
+
+.cw-market .hero-search input {
+  min-height: 48px;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 16px !important;
+  letter-spacing: -.005em;
+}
+
+.cw-market .hero-search button.search-go {
+  min-height: 48px;
+  min-width: 112px;
+  padding-inline: 20px !important;
+  border-radius: 10px !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.cw-market .hero .suggest {
+  margin-top: 16px !important;
+  gap: 8px !important;
+}
+
+.cw-market .hero .suggest a {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 11px !important;
+  border-radius: 999px !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+}
+
+/* ---------- Section hierarchy ---------- */
+.cw-market .section-head,
+.cw-market .cw-files-rail-head,
+.cw-market .ys-shop-section-head {
+  gap: 20px;
+}
+
+.cw-market .section-head h2,
+.cw-market .cw-files-rail-head h2,
+.cw-market .ys-shop-section-head h2,
+.cw-market .faq-heading {
+  font-family: var(--ys-market-ui) !important;
+  font-size: clamp(28px, 2.6vw, 38px) !important;
+  font-weight: 710 !important;
+  line-height: 1.13 !important;
+  letter-spacing: -.032em !important;
+  color: var(--ys-ink, #0F172A) !important;
+}
+
+.cw-market .section-head .meta,
+.cw-market .section-head p,
+.cw-market .cw-files-rail-head p,
+.cw-market .ys-shop-section-head p {
+  font-family: var(--ys-market-ui) !important;
+  color: var(--ys-inkSoft, #526072) !important;
+  line-height: 1.55;
+}
+
+/* Give the public landing page a calmer vertical cadence. */
+.cw-market .featured {
+  padding-top: clamp(54px, 6vw, 82px) !important;
+  padding-bottom: clamp(60px, 7vw, 92px) !important;
+}
+
+.cw-market .featured + section,
+.cw-market section + section {
+  scroll-margin-top: 104px;
+}
+
+/* ---------- Landing discovery controls ---------- */
+.cw-market .ys-landing-discovery-controls,
+.cw-market .ys-discovery-filters,
+.cw-market .ys-sort-dropdown,
+.cw-market .ys-active-filters,
+.cw-market .ys-results-count {
+  font-family: var(--ys-market-ui) !important;
+}
+
+.cw-market .ys-landing-discovery-controls {
+  margin-bottom: 34px !important;
+  gap: 12px !important;
+}
+
+.cw-market .ys-landing-filter-pills,
+.cw-market .ys-filter-desktop-row {
+  gap: 10px !important;
+}
+
+.cw-market .ys-landing-filter-pill,
+.cw-market .ys-filter-pill {
+  height: var(--ys-market-control-h) !important;
+  min-height: var(--ys-market-control-h) !important;
+  padding: 0 16px !important;
+  border-radius: 999px !important;
+  border-color: var(--ys-rule, rgba(15, 23, 42, .10)) !important;
+  background: var(--ys-vellum, #FFF) !important;
+  color: var(--ys-ink, #0F172A) !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 14px !important;
+  font-weight: 620 !important;
+  letter-spacing: -.005em;
+  box-shadow: none !important;
+}
+
+.cw-market .ys-landing-filter-pill:hover,
+.cw-market .ys-landing-filter-pill.is-open,
+.cw-market .ys-filter-pill:hover,
+.cw-market .ys-filter-pill.is-active {
+  border-color: var(--ys-market-hover-border) !important;
+  background: var(--ys-paper, #F7F8FA) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04) !important;
+}
+
+.cw-market .ys-filter-pill.is-active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ys-ink, #0F172A) 5%, transparent) !important;
+}
+
+.cw-market .ys-filter-count {
+  background: var(--ys-ink, #0F172A) !important;
+  color: #fff !important;
+}
+
+.cw-market .ys-landing-filter-popover,
+.cw-market .ys-filter-popover,
+.cw-market .ys-sort-dropdown [role='listbox'] {
+  border-radius: var(--ys-market-radius-md) !important;
+  border-color: var(--ys-rule, rgba(15, 23, 42, .10)) !important;
+  box-shadow: var(--ys-market-shadow-popover) !important;
+}
+
+.cw-market .ys-filter-desktop-row {
+  padding: 16px 0 20px !important;
+  border-top-color: var(--ys-ruleSoft, rgba(15, 23, 42, .06)) !important;
+  border-bottom-color: var(--ys-ruleSoft, rgba(15, 23, 42, .06)) !important;
+}
+
+.cw-market .ys-filter-toggle,
+.cw-market .ys-landing-filter-switch {
+  font-family: var(--ys-market-ui) !important;
+  font-weight: 600 !important;
+  color: var(--ys-inkMid, #334155) !important;
+}
+
+.cw-market .ys-filter-toggle-track,
+.cw-market .ys-landing-filter-switch .track {
+  transition: background-color 160ms ease, justify-content 160ms ease !important;
+}
+
+.cw-market .ys-active-filters button:not(:last-child) {
+  border-radius: 999px !important;
+  background: var(--ys-paper, #F7F8FA) !important;
+}
+
+/* ---------- Discovery page search / result chrome ---------- */
+.cw-market .ys-results-count {
+  color: var(--ys-inkSoft, #526072) !important;
+  font-size: 14px !important;
+}
+
+.cw-market .ys-content-layout {
+  min-width: 0;
+}
+
+.cw-market .ys-content-layout > :last-child {
+  min-width: 0;
+}
+
+/* SmartSearchBox: target its combobox rather than changing component logic. */
+.cw-market input[role='combobox'] {
+  min-height: 46px !important;
+  border-radius: 12px !important;
+  border-color: var(--ys-rule, rgba(15, 23, 42, .10)) !important;
+  background: var(--ys-vellum, #FFF) !important;
+  color: var(--ys-ink, #0F172A) !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 15px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .02);
+}
+
+.cw-market input[role='combobox']:focus {
+  border-color: color-mix(in srgb, var(--ys-ink, #0F172A) 32%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ys-ink, #0F172A) 8%, transparent) !important;
+}
+
+/* ---------- Canonical service cards ---------- */
+.cw-market .ys-gig-grid {
+  column-gap: 20px !important;
+  row-gap: 34px !important;
+  align-items: start !important;
+}
+
+.cw-market .ys-discovery-gig-card {
+  font-family: var(--ys-market-ui) !important;
+  border-radius: var(--ys-market-radius-md);
+  min-width: 0;
+}
+
+.cw-market .ys-discovery-gig-media {
+  border-radius: var(--ys-market-radius-md) !important;
+  background: var(--ys-paper2, #F1F3F5) !important;
+  box-shadow: inset 0 0 0 1px var(--ys-ruleSoft, rgba(15, 23, 42, .06));
+  transition: box-shadow 180ms ease, transform 180ms ease;
+}
+
+.cw-market .ys-discovery-gig-card:hover .ys-discovery-gig-media {
+  box-shadow: inset 0 0 0 1px var(--ys-market-hover-border), 0 14px 34px -26px rgba(15, 23, 42, .34);
+}
+
+.cw-market .ys-discovery-gig-card h3 {
+  font-family: var(--ys-market-ui) !important;
+  color: var(--ys-ink, #0F172A) !important;
+  font-size: 15.5px !important;
+  font-weight: 520 !important;
+  line-height: 1.42 !important;
+  letter-spacing: -.012em !important;
+}
+
+.cw-market .ys-discovery-gig-card img {
+  image-rendering: auto;
+}
+
+.cw-market .ys-discovery-gig-card .ys-gig-save {
+  width: 36px !important;
+  height: 36px !important;
+  border-color: rgba(255,255,255,.86) !important;
+  background: rgba(15,23,42,.34) !important;
+  box-shadow: 0 4px 16px rgba(2,6,23,.16) !important;
+}
+
+.cw-market .ys-discovery-gig-card .ys-gig-save:hover {
+  transform: scale(1.04);
+  background: rgba(15,23,42,.48) !important;
+}
+
+/* Landing cards mirror the same visual rhythm as category/search cards. */
+.cw-market .featured .gig-grid {
+  column-gap: 22px !important;
+  row-gap: 36px !important;
+}
+
+.cw-market .featured .gig .plate {
+  border-radius: var(--ys-market-radius-md) !important;
+  box-shadow: inset 0 0 0 1px var(--ys-ruleSoft, rgba(15,23,42,.06)) !important;
+}
+
+.cw-market .featured .gig .plate-img {
+  border-radius: var(--ys-market-radius-md) !important;
+}
+
+.cw-market .featured .gig h4 {
+  color: var(--ys-ink, #0F172A) !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 15.5px !important;
+  font-weight: 520 !important;
+  line-height: 1.42 !important;
+  letter-spacing: -.012em !important;
+}
+
+.cw-market .featured .gig .seller,
+.cw-market .featured .gig .seller .info b,
+.cw-market .featured .gig .seller .info span,
+.cw-market .featured .gig .stars,
+.cw-market .featured .gig .delivery,
+.cw-market .featured .gig .price,
+.cw-market .featured .gig .price b {
+  font-family: var(--ys-market-ui) !important;
+}
+
+.cw-market .featured .gig .seller .pro {
+  background: var(--ys-paper, #F7F8FA) !important;
+  border-color: var(--ys-ruleSoft, rgba(15,23,42,.06)) !important;
+}
+
+/* Do not invent ratings. New services remain visibly new. */
+.cw-market .featured .gig .stars .rev {
+  color: var(--ys-inkSoft, #526072) !important;
+}
+
+/* ---------- Trust information ---------- */
+.cw-market .trust-inner {
+  gap: 18px 28px !important;
+}
+
+.cw-market .trust-inner .item,
+.cw-market .trust-inner .label {
+  font-family: var(--ys-market-ui) !important;
+  line-height: 1.4;
+}
+
+/* ---------- Instant Downloads / shop ---------- */
+.cw-market .ys-shop-card,
+.cw-market .ys-shop-featured-card,
+.cw-files-card {
+  border-radius: var(--ys-market-radius-md) !important;
+  overflow: hidden;
+  background: var(--ys-vellum, #FFF) !important;
+  border-color: var(--ys-rule, rgba(15,23,42,.10)) !important;
+  box-shadow: 0 1px 2px rgba(15,23,42,.03), 0 12px 32px -28px rgba(15,23,42,.28) !important;
+}
+
+.cw-market .ys-shop-card:hover,
+.cw-market .ys-shop-featured-card:hover,
+.cw-files-card:hover {
+  transform: translateY(-2px) !important;
+  border-color: var(--ys-market-hover-border) !important;
+  box-shadow: 0 16px 42px -30px rgba(15,23,42,.38) !important;
+}
+
+.cw-market .ys-shop-card :where(h2,h3,h4),
+.cw-market .ys-shop-featured-card :where(h2,h3,h4),
+.cw-files-card h3 {
+  font-family: var(--ys-market-ui) !important;
+  letter-spacing: -.016em !important;
+}
+
+/* ---------- Provider / detail / informational cards ---------- */
+.cw-market .seller-card,
+.cw-market .faq-item,
+.cw-market .how-grid,
+.cw-market .ys-shop-trust article {
+  border-radius: var(--ys-market-radius-md) !important;
+  border-color: var(--ys-rule, rgba(15,23,42,.10)) !important;
+  box-shadow: 0 1px 2px rgba(15,23,42,.03), 0 12px 32px -30px rgba(15,23,42,.24) !important;
+}
+
+.cw-market .seller-card :where(h2,h3,h4),
+.cw-market .faq-item :where(h2,h3,h4),
+.cw-market .how-grid :where(h2,h3,h4) {
+  font-family: var(--ys-market-ui) !important;
+  letter-spacing: -.02em;
+}
+
+.cw-market .ys-seller-profile-page,
+.cw-market .ys-seller-profile-tab-content {
+  font-family: var(--ys-market-ui) !important;
+}
+
+/* ---------- Drawer / menu polish ---------- */
+.cw-market .ys-shell-drawer-panel,
+.ys-shell-drawer-panel {
+  border-left: 1px solid var(--ys-ruleSoft, rgba(15,23,42,.06));
+  box-shadow: -22px 0 58px -26px rgba(15,23,42,.36) !important;
+}
+
+.cw-market .ys-shell-drawer-link,
+.ys-shell-drawer-link {
+  border-radius: 10px;
+  font-family: var(--ys-market-ui) !important;
+}
+
+.cw-cat-panel,
+.cw-market .cw-all-drawer,
+.cw-market .cw-help-panel {
+  border-radius: var(--ys-market-radius-md) !important;
+  box-shadow: var(--ys-market-shadow-popover) !important;
+}
+
+/* ---------- Responsive composition ---------- */
+@media (max-width: 1180px) {
+  .cw-market .hero-grid {
+    gap: 34px !important;
+  }
+
+  .cw-market .ys-landing-discovery-controls,
+  .cw-market .ys-filter-desktop-row {
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+  }
+
+  .cw-market .ys-landing-discovery-controls::-webkit-scrollbar,
+  .cw-market .ys-filter-desktop-row::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .cw-market .hero h1 {
+    max-width: 18ch;
+  }
+
+  .cw-market .featured .gig-grid {
+    column-gap: 18px !important;
+    row-gap: 32px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .cw-market {
+    --ys-market-section-gap: 48px;
+    --ys-market-control-h: 42px;
+  }
+
+  .cw-market .hero-grid {
+    gap: 28px !important;
+  }
+
+  .cw-market .hero h1 {
+    font-size: clamp(34px, 10vw, 44px) !important;
+    line-height: 1.05 !important;
+    letter-spacing: -.035em !important;
+    margin-bottom: 14px !important;
+  }
+
+  .cw-market .hero p.lede {
+    font-size: 15.5px !important;
+    line-height: 1.58 !important;
+    margin-bottom: 22px !important;
+  }
+
+  .cw-market .hero-search {
+    min-height: 54px;
+    border-radius: 13px !important;
+  }
+
+  .cw-market .hero-search input {
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px !important; /* prevents iOS focus zoom */
+  }
+
+  .cw-market .hero-search button.search-go {
+    min-height: 44px;
+    min-width: 88px;
+    padding-inline: 14px !important;
+  }
+
+  .cw-market .section-head,
+  .cw-market .cw-files-rail-head,
+  .cw-market .ys-shop-section-head {
+    align-items: flex-start !important;
+  }
+
+  .cw-market .section-head h2,
+  .cw-market .cw-files-rail-head h2,
+  .cw-market .ys-shop-section-head h2,
+  .cw-market .faq-heading {
+    font-size: clamp(25px, 7vw, 31px) !important;
+  }
+
+  .cw-market .ys-landing-discovery-controls {
+    margin-bottom: 26px !important;
+  }
+
+  .cw-market .ys-landing-filter-pill,
+  .cw-market .ys-filter-pill {
+    padding-inline: 14px !important;
+    font-size: 13.5px !important;
+  }
+
+  .cw-market .ys-gig-grid {
+    row-gap: 30px !important;
+  }
+
+  .cw-market .ys-discovery-gig-card h3,
+  .cw-market .featured .gig h4 {
+    font-size: 15.5px !important;
+  }
+
+  .cw-market .ys-filter-drawer {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .cw-market .ys-filter-drawer > [role='dialog'] {
+    border-radius: 20px 20px 0 0 !important;
+    box-shadow: 0 -22px 60px -30px rgba(15,23,42,.44);
+  }
+}
+
+@media (max-width: 420px) {
+  .cw-market .hero-search button.search-go {
+    min-width: 76px;
+    padding-inline: 12px !important;
+  }
+
+  .cw-market .ys-discovery-gig-media,
+  .cw-market .featured .gig .plate,
+  .cw-market .featured .gig .plate-img {
+    border-radius: 12px !important;
+  }
+}
+
+/* ---------- Motion accessibility ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .cw-market *,
+  .cw-market *::before,
+  .cw-market *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .cw-market .ys-discovery-gig-card,
+  .cw-market .ys-discovery-gig-card *,
+  .cw-market .featured .gig,
+  .cw-market .featured .gig *,
+  .cw-market .ys-shop-card,
+  .cw-market .ys-shop-featured-card,
+  .cw-files-card {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .cw-market .ys-discovery-gig-card:hover,
+  .cw-market .featured .gig:hover,
+  .cw-market .ys-shop-card:hover,
+  .cw-market .ys-shop-featured-card:hover,
+  .cw-files-card:hover {
+    transform: none !important;
+  }
+}
+
+/* Coarse pointers: no hover-only displacement, retain clear press feedback. */
+@media (hover: none), (pointer: coarse) {
+  .cw-market .ys-discovery-gig-card:hover,
+  .cw-market .featured .gig:hover,
+  .cw-market .ys-shop-card:hover,
+  .cw-market .ys-shop-featured-card:hover,
+  .cw-files-card:hover {
+    transform: none !important;
+  }
+
+  .cw-market .ys-discovery-gig-card:active,
+  .cw-market .featured .gig-link:active,
+  .cw-market .ys-shop-card:active,
+  .cw-files-card:active {
+    opacity: .94;
+  }
+}
