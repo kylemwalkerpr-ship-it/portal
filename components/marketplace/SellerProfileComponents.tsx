@@ -168,7 +168,7 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
               <div style={ratingDisplay}>
                 <span style={starIcon}>★</span>
                 <span style={ratingValue}>{ratingAverage.toFixed(1)}</span>
-                <span style={ratingCount}>({ratingCount.toLocaleString()})</span>
+                <span style={ratingCountStyle}>({ratingCount.toLocaleString()})</span>
               </div>
             )}
 
@@ -594,7 +594,7 @@ const ratingValue = {
   fontWeight: 600,
 }
 
-const ratingCount = {
+const ratingCountStyle = {
   color: T.inkMid,
   fontSize: '13px',
 }
