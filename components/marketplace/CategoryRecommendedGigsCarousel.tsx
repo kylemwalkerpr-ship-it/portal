@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { getCategoryFilterTerms } from '@/lib/categories'
 import { GigCard } from './MarketplaceHero'
 import styles from './CategoryRecommendedGigsCarousel.module.css'
 
@@ -9,6 +10,8 @@ type RecommendedGig = {
   slug: string
   title: string
   pitch?: string
+  category?: string | null
+  subcategory?: string | null
   starting_price?: number
   avg_rating?: number
   review_count?: number
@@ -39,6 +42,17 @@ const AUTO_ADVANCE_MS = 5200
 const MANUAL_PAUSE_MS = 8000
 const TARGET_GIGS = 10
 
+function normalizeTaxonomyValue(value: unknown): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isRelatedGig(gig: RecommendedGig, categoryId: string): boolean {
+  const accepted = new Set(getCategoryFilterTerms(categoryId).map(normalizeTaxonomyValue))
+  const category = normalizeTaxonomyValue(gig.category)
+  const subcategory = normalizeTaxonomyValue(gig.subcategory)
+  return Boolean((category && accepted.has(category)) || (subcategory && accepted.has(subcategory)))
+}
+
 async function requestGigs(
   categoryId: string,
   sort: 'trending' | 'best_rated' | 'most_orders',
@@ -57,7 +71,13 @@ async function requestGigs(
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload?.error?.message || payload?.error || 'Unable to load recommendations')
   const data = payload?.data ?? payload
-  return Array.isArray(data?.gigs) ? data.gigs : []
+  const gigs: RecommendedGig[] = Array.isArray(data?.gigs) ? data.gigs : []
+
+  // The general discovery API intentionally includes uncategorized inventory so
+  // sellers are not hidden while taxonomy backfills run. A recommendation rail
+  // is a different contract: do not present an unclassified gig as related to a
+  // category just because the listing API kept it visible.
+  return gigs.filter((gig) => isRelatedGig(gig, categoryId))
 }
 
 function mergeUnique(existing: RecommendedGig[], incoming: RecommendedGig[]): RecommendedGig[] {
@@ -133,7 +153,7 @@ export function CategoryRecommendedGigsCarousel({
         }
 
         if (!controller.signal.aborted) setGigs(ranked.slice(0, TARGET_GIGS))
-      } catch (error) {
+      } catch {
         if (!controller.signal.aborted) setGigs([])
       } finally {
         if (!controller.signal.aborted) setLoading(false)
