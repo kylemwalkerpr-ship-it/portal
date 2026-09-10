@@ -57,13 +57,17 @@ describe('marketplace rich text renderer', () => {
 describe('provider and gig professional-service layout', () => {
   const layout = read('app/marketplace/layout.tsx')
   const css = read('app/marketplace/provider-gig-layout.css')
+  const phoneOrder = read('app/marketplace/provider-gig-mobile-order.css')
   const sellerPage = read('components/marketplace/SellerProfilePage.tsx')
+  const legacySellerRoute = read('app/sellers/[id]/page.tsx')
 
-  test('loads the provider/gig layer after existing marketplace visual contracts', () => {
+  test('loads professional-service layers after existing marketplace visual contracts', () => {
     const finishing = layout.indexOf("import './marketplace-card-finishing.css'")
     const providerGig = layout.indexOf("import './provider-gig-layout.css'")
+    const phone = layout.indexOf("import './provider-gig-mobile-order.css'")
     expect(finishing).toBeGreaterThan(-1)
     expect(providerGig).toBeGreaterThan(finishing)
+    expect(phone).toBeGreaterThan(providerGig)
   })
 
   test('puts package selection and checkout ahead of the seller card in the purchase rail', () => {
@@ -75,11 +79,22 @@ describe('provider and gig professional-service layout', () => {
     expect(css).toContain('order: 3')
   })
 
-  test('uses one mobile ordering context so pricing is not stranded below reviews', () => {
+  test('keeps the purchase rail above long-form content on tablet layouts', () => {
     expect(css).toContain('@media (max-width: 1024px)')
     expect(css).toContain('display: contents !important')
     expect(css).toContain('.ys-sidebar {\n    order: 2')
     expect(css).toContain('.ys-content-layout > div:first-child > :not(:first-child)')
+  })
+
+  test('overrides the legacy phone flattening with one deterministic buyer journey', () => {
+    expect(phoneOrder).toContain('@media (max-width: 700px)')
+    expect(phoneOrder).toContain('.ys-content-layout > .ys-sidebar')
+    expect(phoneOrder).toContain('display: flex !important')
+    expect(phoneOrder).toContain(':nth-child(1) { order: 10 !important; }')
+    expect(phoneOrder).toContain(':nth-child(2) { order: 30 !important; }')
+    expect(phoneOrder).toContain(':nth-child(3) { order: 40 !important; }')
+    expect(phoneOrder).toContain(':nth-child(4) { order: 50 !important; }')
+    expect(phoneOrder).toContain(':nth-child(5) { order: 60 !important; }')
   })
 
   test('shows services on the default About Me profile view without duplicate stat cards', () => {
@@ -87,5 +102,11 @@ describe('provider and gig professional-service layout', () => {
     expect(sellerPage).toContain('<SellerAbout seller={seller} />')
     expect(sellerPage).toContain('<SellerGigs gigs={gigs}')
     expect(sellerPage).not.toContain('<SellerStats seller={seller} />')
+  })
+
+  test('keeps legacy seller links as aliases of the canonical marketplace provider layout', () => {
+    expect(legacySellerRoute).toContain("import { permanentRedirect } from 'next/navigation'")
+    expect(legacySellerRoute).toContain('permanentRedirect(`/marketplace/providers/${encodeURIComponent(id)}`)')
+    expect(legacySellerRoute).not.toContain('<SellerProfilePage')
   })
 })
