@@ -11,33 +11,13 @@ const gigApi = read('app/api/marketplace/gigs/[slug]/route.ts')
 const seo = read('lib/marketplaceSeo.ts')
 const authShell = read('components/auth-shell.tsx')
 
-const publicUrlEmitters = [
-  'components/marketplace/MarketplaceProvidersIndex.tsx',
-  'components/marketplace/GigDiscoveryPage.tsx',
-  'components/marketplace/GigDetailComponents.tsx',
-  'components/marketplace/SellerProfileComponents.tsx',
-  'components/marketplace/CategoryRecommendedGigsCarousel.tsx',
-  'components/marketplace/GigDetailPage.tsx',
-  'components/marketplace/TrendingOpportunities.tsx',
-  'components/marketplace/MarketplaceAuthNav.tsx',
-  'components/marketplace/MarketplaceShell.tsx',
-  'components/marketplace/BuyerDashboardWidgets.tsx',
-  'components/marketplace/MessageOfferCard.tsx',
-  'components/cart/CartIcon.tsx',
-  'components/seller/SellerMarketplaceView.tsx',
-  'components/seller/SellerGigCard.tsx',
-  'components/design/admin-gigs.jsx',
-  'components/design/consultant-overview.jsx',
-  'components/design/landing/Nav.tsx',
-  'components/design/student.jsx',
-  'components/design/fiverr-workbench.jsx',
-  'app/marketplace/cart/page.tsx',
-  'app/marketplace/order/success/page.tsx',
-  'app/marketplace/PublicMarketplaceLanding.tsx',
-  'lib/orderLinks.ts',
-  'lib/seoFactory/ownership.ts',
-  'lib/seoFactory/providerAuthors.ts',
-]
+const runtimeRoots = ['app', 'components', 'lib']
+const runtimeExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.mjs', '.cjs'])
+const allowedLegacyReaders = new Set([
+  'app/sitemap.ts',
+  'components/auth-shell.tsx',
+  'lib/marketplaceSeo.ts',
+])
 
 const retiredRelativeLiteral = /['"`]\/marketplace(?=[/?'"`])/g
 const retiredAbsoluteMarketUrl = /https:\/\/market\.yousafeconsultancy\.com\/marketplace(?=[/?'"`])/g
@@ -50,6 +30,22 @@ function runtimeLines(file: string): string[] {
       return !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*')
     })
 }
+
+function walkRuntimeFiles(relativeDir: string): string[] {
+  const absoluteDir = path.join(root, relativeDir)
+  const out: string[] = []
+  for (const entry of fs.readdirSync(absoluteDir, { withFileTypes: true })) {
+    const relativePath = path.posix.join(relativeDir, entry.name)
+    if (entry.isDirectory()) {
+      out.push(...walkRuntimeFiles(relativePath))
+      continue
+    }
+    if (entry.isFile() && runtimeExtensions.has(path.extname(entry.name))) out.push(relativePath)
+  }
+  return out
+}
+
+const runtimeFiles = runtimeRoots.flatMap(walkRuntimeFiles)
 
 describe('Marketplace public URL retirement', () => {
   test('hard-404s the retired /marketplace namespace on both public hosts', () => {
@@ -82,9 +78,17 @@ describe('Marketplace public URL retirement', () => {
     expect(authShell).not.toContain('window.location.replace')
   })
 
-  test.each(publicUrlEmitters)('%s emits no retired public Marketplace URL', (file) => {
-    const runtime = runtimeLines(file).join('\n')
-    expect(runtime.match(retiredRelativeLiteral) ?? []).toHaveLength(0)
-    expect(runtime.match(retiredAbsoluteMarketUrl) ?? []).toHaveLength(0)
+  test('emits no retired public Marketplace URL anywhere in runtime code', () => {
+    const failures: string[] = []
+    for (const file of runtimeFiles) {
+      if (allowedLegacyReaders.has(file)) continue
+      const runtime = runtimeLines(file)
+        .join('\n')
+        .replaceAll('/api/marketplace', '/api/__marketplace_internal')
+      if (retiredRelativeLiteral.test(runtime) || retiredAbsoluteMarketUrl.test(runtime)) failures.push(file)
+      retiredRelativeLiteral.lastIndex = 0
+      retiredAbsoluteMarketUrl.lastIndex = 0
+    }
+    expect(failures).toEqual([])
   })
 })
