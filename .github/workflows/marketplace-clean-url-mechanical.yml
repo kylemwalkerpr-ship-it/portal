@@ -1,5 +1,5 @@
-# One-time branch-only sweep. Delete this workflow before merge.
-name: Marketplace clean URL mechanical sweep
+# One-time branch-only audit. Delete this workflow before merge.
+name: Marketplace retired URL estate audit
 
 on:
   push:
@@ -9,171 +9,53 @@ on:
       - '.github/workflows/marketplace-clean-url-mechanical.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  sweep:
+  audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: sanitize/marketplace-clean-url-estate
-          fetch-depth: 0
 
-      - name: Replace retired public Marketplace URLs
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          MARKET = 'https://market.yousafeconsultancy.com'
-          replacements = {
-            'components/marketplace/MarketplaceProvidersIndex.tsx': [('/marketplace/providers/', '/providers/')],
-            'components/marketplace/GigDiscoveryPage.tsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
-              ("window.location.href = '/marketplace?view=inquiries'", "window.location.href = '/?view=inquiries'"),
-            ],
-            'components/marketplace/GigDetailComponents.tsx': [('href={`/marketplace/gigs/${g.slug}`}', 'href={`/gigs/${g.slug}`}')],
-            'components/marketplace/SellerProfileComponents.tsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}')],
-            'components/marketplace/CategoryRecommendedGigsCarousel.tsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}')],
-            'components/marketplace/GigDetailPage.tsx': [('window.location.href = `/marketplace/providers/${token}`', 'window.location.href = `/providers/${token}`')],
-            'components/marketplace/TrendingOpportunities.tsx': [('/marketplace?view=', '/?view=')],
-            'components/marketplace/MarketplaceAuthNav.tsx': [('/marketplace?view=', '/?view='), ('href="/marketplace"', 'href="/"')],
-            'components/marketplace/MarketplaceShell.tsx': [
-              ('/marketplace?view=', '/?view='),
-              ("router.push('/marketplace')", "router.push('/')"),
-              ('href="/marketplace"', 'href="/"'),
-              ("href: '/marketplace'", "href: '/'"),
-            ],
-            'components/marketplace/BuyerDashboardWidgets.tsx': [
-              ('viewAllHref="/marketplace?view=orders"', 'viewAllHref="' + MARKET + '/?view=orders"'),
-              ('viewAllHref="/marketplace"', 'viewAllHref="' + MARKET + '/"'),
-              ('/marketplace/gigs/', MARKET + '/gigs/'),
-            ],
-            'components/marketplace/MessageOfferCard.tsx': [('href={`/gigs/${offer.linked_gig.slug}`}', 'href={`' + MARKET + '/gigs/${offer.linked_gig.slug}`}')],
-            'components/cart/CartIcon.tsx': [('href="/marketplace/cart"', 'href="' + MARKET + '/cart"')],
-            'components/seller/SellerMarketplaceView.tsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
-              ('`/marketplace/gigs/${gig.slug}`', '`' + MARKET + '/gigs/${gig.slug}`'),
-            ],
-            'components/seller/SellerGigCard.tsx': [
-              ('`${window.location.origin}/marketplace/gigs/${gig.slug}`', '`' + MARKET + '/gigs/${gig.slug}`'),
-              ('window.open(`/marketplace/gigs/${gig.slug}`', 'window.open(`' + MARKET + '/gigs/${gig.slug}`'),
-            ],
-            'components/design/admin-gigs.jsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}')],
-            'components/design/consultant-overview.jsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}')],
-            'components/design/landing/Nav.tsx': [("href: '/marketplace'", "href: '" + MARKET + "/'"), ('href="/marketplace"', 'href="' + MARKET + '/"')],
-            'components/design/student.jsx': [("goToRoute('/marketplace')", "goToRoute('" + MARKET + "/')"), ("window.location.pathname === '/marketplace'", 'false')],
-            'components/design/fiverr-workbench.jsx': [
-              ('`/marketplace/gigs/${', '`' + MARKET + '/gigs/${'),
-              ('`/marketplace/providers/${', '`' + MARKET + '/providers/${'),
-              ('href="/marketplace"', 'href="' + MARKET + '/"'),
-              ('marketplace.yousafeconsultancy.com/marketplace/gigs/', 'marketplace.yousafeconsultancy.com/gigs/'),
-            ],
-            'app/marketplace/cart/page.tsx': [
-              ('/marketplace/order/success', '/order/success'),
-              ('/marketplace/cart', '/cart'),
-              ('href="/marketplace"', 'href="/"'),
-            ],
-            'app/marketplace/order/success/page.tsx': [('/marketplace?view=', '/?view='), ('href="/marketplace"', 'href="/"')],
-            'app/marketplace/PublicMarketplaceLanding.tsx': [
-              ('return_to=/marketplace', 'return_to=' + MARKET + '/'),
-              ('action="/marketplace"', 'action="/"'),
-              ('`/marketplace?', '`/?'),
-              ("'/marketplace?", "'/?"),
-              ('"/marketplace?', '"/?'),
-              ("'/marketplace'", "'/'"),
-              ('"/marketplace"', '"/"'),
-            ],
-            'lib/seoFactory/ownership.ts': [('urlPath: `/marketplace/gigs/${slug}/`', 'urlPath: `/gigs/${slug}/`')],
-            'lib/seoFactory/providerAuthors.ts': [
-              ('getMarketplaceCanonicalUrl(`/marketplace/providers/${provider.username || provider.profileId}/`)', 'getMarketplaceCanonicalUrl(`/providers/${provider.username || provider.profileId}`)'),
-              ('getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)', 'getMarketplaceCanonicalUrl(`/gigs/${slug}`)'),
-            ],
-            'app/mobile-hardening.css': [("a[href*='/marketplace/gigs/']", "a[href*='/gigs/']")],
-            'app/mobile-marketplace-profile-gig.css': [("a[href^='/marketplace/gigs/']", "a[href^='/gigs/']")],
-          }
-
-          changed = []
-          for filename, pairs in replacements.items():
-            path = Path(filename)
-            if not path.exists():
-              raise SystemExit(f'missing expected runtime file: {filename}')
-            text = path.read_text()
-            before = text
-            for old, new in pairs:
-              text = text.replace(old, new)
-            if text != before:
-              path.write_text(text)
-              changed.append(filename)
-
-          print(f'updated {len(changed)} files')
-          for filename in changed:
-            print(f'  {filename}')
-          PY
-
-      - name: Guard against known retired public URL emitters
+      - name: Scan runtime URL literals
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
           import re
 
-          files = [
-            'components/marketplace/MarketplaceProvidersIndex.tsx',
-            'components/marketplace/GigDiscoveryPage.tsx',
-            'components/marketplace/GigDetailComponents.tsx',
-            'components/marketplace/SellerProfileComponents.tsx',
-            'components/marketplace/CategoryRecommendedGigsCarousel.tsx',
-            'components/marketplace/GigDetailPage.tsx',
-            'components/marketplace/TrendingOpportunities.tsx',
-            'components/marketplace/MarketplaceAuthNav.tsx',
-            'components/marketplace/MarketplaceShell.tsx',
-            'components/marketplace/BuyerDashboardWidgets.tsx',
-            'components/marketplace/MessageOfferCard.tsx',
-            'components/cart/CartIcon.tsx',
-            'components/seller/SellerMarketplaceView.tsx',
-            'components/seller/SellerGigCard.tsx',
-            'components/design/admin-gigs.jsx',
-            'components/design/consultant-overview.jsx',
-            'components/design/landing/Nav.tsx',
-            'components/design/student.jsx',
-            'components/design/fiverr-workbench.jsx',
-            'app/marketplace/cart/page.tsx',
-            'app/marketplace/order/success/page.tsx',
-            'app/marketplace/PublicMarketplaceLanding.tsx',
-            'lib/orderLinks.ts',
-            'lib/seoFactory/ownership.ts',
-            'lib/seoFactory/providerAuthors.ts',
-          ]
+          roots = [Path('app'), Path('components'), Path('lib')]
+          extensions = {'.ts', '.tsx', '.js', '.jsx', '.css', '.mjs', '.cjs'}
+          # These files intentionally understand the retired namespace in order
+          # to reject, internally rewrite, or sanitize stale inbound values.
+          allowed_files = {
+            Path('middleware.ts'),
+            Path('components/auth-shell.tsx'),
+            Path('lib/marketplaceSeo.ts'),
+          }
           direct_literal = re.compile(r"['\"`]/marketplace(?=[/?'\"`])")
           absolute_legacy = re.compile(r"market\.yousafeconsultancy\.com/marketplace(?=[/?'\"`])")
+
           failures = []
-          for filename in files:
-            text = Path(filename).read_text()
-            for i, line in enumerate(text.splitlines(), 1):
-              stripped = line.strip()
-              if stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+          for root in roots:
+            for path in root.rglob('*'):
+              if not path.is_file() or path.suffix not in extensions or path in allowed_files:
                 continue
-              if direct_literal.search(line) or absolute_legacy.search(line):
-                failures.append(f'{filename}:{i}: {stripped}')
+              for i, line in enumerate(path.read_text(errors='ignore').splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+                  continue
+                # Internal API namespaces are implementation details, not public URLs.
+                scrubbed = line.replace('/api/marketplace', '/api/__marketplace_internal')
+                if direct_literal.search(scrubbed) or absolute_legacy.search(scrubbed):
+                  failures.append(f'{path}:{i}: {stripped}')
+
           if failures:
-            print('Retired public Marketplace URL emitters remain:')
+            print('Retired public Marketplace URL literals remain in runtime code:')
             print('\n'.join(failures))
             raise SystemExit(1)
-          print('No known retired public Marketplace URL emitters remain in guarded runtime files.')
+          print('Estate-wide runtime scan is clean.')
           PY
-
-      - name: Commit mechanical sweep to working branch
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'No mechanical changes required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --all
-          git commit -m 'Finish Marketplace clean public URL sweep'
-          git push origin HEAD:sanitize/marketplace-clean-url-estate
