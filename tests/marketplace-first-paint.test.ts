@@ -25,9 +25,10 @@ describe('marketplace first paint', () => {
     expect(gate).not.toContain('fallbackMs = 4000')
   })
 
-  it('fans out independent gig enrichments and removes the unused reviews query', () => {
+  it('fans out independent gig enrichments including seller reputation and removes the unused reviews query', () => {
     const route = read('app/api/marketplace/gigs/[slug]/route.ts')
-    expect(route).toContain('const [providerGigsRes, providerHeadshotRes, similarGigsRes] = await Promise.all([')
+    expect(route).toContain('const [providerGigsRes, providerHeadshotRes, similarGigsRes, sellerLevelRes] = await Promise.all([')
+    expect(route).toContain(".from('seller_level_snapshots')")
     expect(route).not.toContain("db.from('gig_reviews').select('rating')")
   })
 })
