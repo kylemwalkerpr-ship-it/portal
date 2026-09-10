@@ -29,6 +29,14 @@ function esc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/"/g, '\\"')
 }
 
+function conciseSeoTitle(title: string): string {
+  const withoutParenthetical = title.replace(/\s*\([^)]*\)\s*$/, '').trim()
+  const primary = withoutParenthetical.split(':', 1)[0]?.trim() || withoutParenthetical
+  const candidate = primary.length >= 20 ? primary : withoutParenthetical
+  if (candidate.length <= 58) return candidate
+  return candidate.slice(0, 58).replace(/\s+\S*$/, '').replace(/[,:;–—-]+$/, '').trim()
+}
+
 function estimateReadTime(text: string): string {
   const words = text.split(/\s+/).length
   const minutes = Math.max(3, Math.ceil(words / 200))
@@ -68,6 +76,7 @@ export function generateShopBlogPageTsx(product: ShopSeoProduct): string {
   const payhipUrl = product.payhipUrl.replace('placeholder-', '')
   const dateFormatted = new Date(today).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   const features = featureLines(product)
+  const seoTitle = conciseSeoTitle(product.title)
 
   // Build the page content in parts
   const parts: string[] = []
@@ -77,7 +86,7 @@ export function generateShopBlogPageTsx(product: ShopSeoProduct): string {
   parts.push(`import { ArrowLeft, Calendar, Clock, ShoppingBag, Download, CheckCircle2, FileText, Star } from "lucide-react"`)
   parts.push(``)
   parts.push(`export const metadata: Metadata = {`)
-  parts.push(`  title: "${esc(product.title)} | YouSafe Consultancy Shop",`)
+  parts.push(`  title: "${esc(seoTitle)}",`)
   parts.push(`  description: "${esc(product.shortDescription)}",`)
   parts.push(`  keywords: ${JSON.stringify(kw.slice(0, 25))},`)
   parts.push(`  openGraph: {`)
