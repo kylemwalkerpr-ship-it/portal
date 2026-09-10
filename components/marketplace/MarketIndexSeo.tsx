@@ -39,11 +39,7 @@ export function CategoriesIndexSeo() {
         <a href="https://legal.yousafeconsultancy.com/" style={{ color: T.indigo }}>
           MyCaseworks
         </a>
-        . Prefer self-serve worksheets? Open{' '}
-        <Link href="/templates" style={{ color: T.indigo }}>
-          visa template packs
-        </Link>
-        {' '}or the{' '}
+        . Prefer self-serve worksheets and visa preparation packs? Open the{' '}
         <Link href="/shop" style={{ color: T.indigo }}>
           file shop
         </Link>
@@ -128,8 +124,7 @@ export function MarketplaceHomeSeo() {
     { href: '/categories/immigration', label: 'Immigration' },
     { href: '/categories/education', label: 'Education' },
     { href: '/categories/legal', label: 'Legal' },
-    { href: '/templates', label: 'Visa kits' },
-    { href: '/shop', label: 'File shop' },
+    { href: '/shop', label: 'Visa kits & file shop' },
     { href: '/providers', label: 'Providers' },
   ]
   return (
