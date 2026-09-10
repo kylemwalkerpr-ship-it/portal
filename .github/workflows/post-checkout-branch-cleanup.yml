@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Audit and prune only exact merged PR heads
+      - name: Audit and prune merged or manually audited stale branches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event_name != 'push' }}
@@ -43,6 +43,13 @@ jobs:
             'X-GitHub-Api-Version': '2022-11-28',
             'User-Agent': 'yousafe-post-checkout-branch-cleanup',
           }
+
+          const auditedStale = new Map([
+            ['diagnostic/recover-live-shop-state', 'one-time Cloudflare recovery diagnostics superseded by merged PR #119'],
+            ['fix/yqaa-soft-escalation-state', 'helper-only escalation spike superseded by merged PR #112'],
+            ['harden-yqaa-cross-repo-knowledge', 'fully contained in current main'],
+            ['yqaa-order-intake-pay-followups-v2', 'fully contained in current main'],
+          ])
 
           async function api(path, options = {}) {
             const response = await fetch(`https://api.github.com${path}`, {
@@ -109,14 +116,18 @@ jobs:
                 (pr) => pr.merged_at && pr.head?.sha === branch.commit.sha,
               )
 
-              // Fail-safe rule: no exact merged-PR proof, no deletion. This avoids
-              // removing active empty branches or branches with post-merge work.
-              if (!exactMerged) {
+              let reason = exactMerged ? `exact head of merged PR #${exactMerged.number}` : null
+              if (!reason && auditedStale.has(name)) reason = auditedStale.get(name)
+
+              // Fail-safe rule: no exact merged-PR proof and no explicit completed
+              // manual audit means no deletion. This protects active empty branches,
+              // post-merge work and unrelated work currently being developed.
+              if (!reason) {
                 preservedUnproven.push(name)
                 continue
               }
 
-              const row = `${name} — exact head of merged PR #${exactMerged.number}`
+              const row = `${name} — ${reason}`
               wouldDelete.push(row)
               if (dryRun) continue
 
@@ -131,7 +142,7 @@ jobs:
               '',
               `${dryRun ? 'Would delete' : 'Deleted'}: ${actionRows.length}`,
               `Preserved open PR heads: ${preservedOpen.length}`,
-              `Preserved without exact merged-PR proof: ${preservedUnproven.length}`,
+              `Preserved without deletion proof: ${preservedUnproven.length}`,
               '',
               `## ${dryRun ? 'Would delete' : 'Deleted'}`,
               ...(actionRows.length ? actionRows.map((x) => `- ${x}`) : ['- None']),
@@ -139,7 +150,7 @@ jobs:
               '## Preserved open PR heads',
               ...(preservedOpen.length ? preservedOpen.map((x) => `- ${x}`) : ['- None']),
               '',
-              '## Preserved — no exact merged-PR proof',
+              '## Preserved — no deletion proof',
               ...(preservedUnproven.length ? preservedUnproven.map((x) => `- ${x}`) : ['- None']),
               '',
             ].join('\n')
