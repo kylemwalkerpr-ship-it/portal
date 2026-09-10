@@ -151,10 +151,10 @@ export function CategoryRecommendedGigsCarousel({
       // The visual hierarchy follows the physical distance from the viewport
       // centre, so dragging feels like a belt/wheel rather than a row of cards
       // with a single class suddenly toggling at the snap point.
-      const scale = 1.045 - bounded * 0.064
-      const translateY = bounded * 7
-      const rotateY = Math.max(-5, Math.min(5, -signedDistance * 4))
-      const opacity = 1 - bounded * 0.055
+      const scale = 1.035 - bounded * 0.058
+      const translateY = bounded * 5
+      const rotateY = Math.max(-4, Math.min(4, -signedDistance * 3.5))
+      const opacity = 1 - bounded * 0.06
       slide.style.setProperty('--ys-belt-scale', scale.toFixed(3))
       slide.style.setProperty('--ys-belt-y', `${translateY.toFixed(1)}px`)
       slide.style.setProperty('--ys-belt-rotate', `${rotateY.toFixed(2)}deg`)
@@ -302,10 +302,10 @@ export function CategoryRecommendedGigsCarousel({
         <div className={styles.headingCopy}>
           <p className={styles.eyebrow}>Recommended for you</p>
           <h2 id="ys-category-recommended-gigs-title" className={styles.title}>
-            Recommended {displayName} gigs
+            Recommended {displayName}
           </h2>
           <p className={styles.subtitle}>
-            Popular and well-reviewed services matched to this category.
+            Popular, well-reviewed services selected for this category.
           </p>
         </div>
 
@@ -342,6 +342,8 @@ export function CategoryRecommendedGigsCarousel({
       <div
         ref={viewportRef}
         className={styles.viewport}
+        role="region"
+        aria-roledescription="carousel"
         aria-label={`${displayName} recommended gigs`}
         onScroll={scheduleBeltSync}
         onMouseEnter={() => { interactionPausedRef.current = true }}
@@ -359,9 +361,6 @@ export function CategoryRecommendedGigsCarousel({
           ? Array.from({ length: 3 }, (_, index) => (
               <div key={index} className={`${styles.slide} ${styles.skeleton}`} aria-hidden="true">
                 <div className={styles.skeletonMedia} />
-                <div className={styles.skeletonLineShort} />
-                <div className={styles.skeletonLine} />
-                <div className={styles.skeletonLineMedium} />
               </div>
             ))
           : gigs.map((gig, index) => (
