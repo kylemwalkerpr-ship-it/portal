@@ -16,6 +16,7 @@ const NAV_LINKS: FooterLink[] = [
   { label: 'Categories', href: '/marketplace/categories' },
   { label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
   { label: 'Help', href: '/marketplace#faq' },
+  { label: 'Sitemap', href: '/sitemap.xml' },
 ]
 
 const LEGAL_LINKS: FooterLink[] = [
