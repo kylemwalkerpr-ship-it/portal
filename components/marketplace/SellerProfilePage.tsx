@@ -143,7 +143,7 @@ export function SellerProfilePage({
   return (
     <div className="ys-seller-profile-page" style={pageShell}>
       <div className="ys-seller-profile-breadcrumb" style={breadcrumb}>
-        <Link href="/marketplace" style={breadcrumbLink}>Marketplace</Link>
+        <Link href="/" style={breadcrumbLink}>Marketplace</Link>
         <span style={breadcrumbSeparator}>/</span>
         <span style={breadcrumbCurrent}>{displayName}</span>
       </div>
