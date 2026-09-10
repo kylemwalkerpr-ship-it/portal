@@ -189,7 +189,7 @@ export function GigCard({ gig }: GigCardProps) {
 
   return (
     <Link
-      href={`/marketplace/gigs/${gig.slug}`}
+      href={`/gigs/${gig.slug}`}
       aria-label={`${gig.title}${price ? ` — from $${price}` : ''}`}
       className="ys-discovery-gig-card"
       style={{ ...gigCard, transform: hovered ? 'translateY(-2px)' : 'none' }}
