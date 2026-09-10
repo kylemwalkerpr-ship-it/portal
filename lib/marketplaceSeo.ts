@@ -10,17 +10,19 @@ export function getMarketplaceBaseUrl(): string {
 }
 
 /**
- * Return the clean public Marketplace path. Internal callers may still refer
- * to the on-disk `/marketplace` route namespace while the route tree is being
- * maintained, but that namespace is never exposed by this public URL helper.
+ * Normalize an already-clean public Marketplace path. The retired
+ * `/marketplace` namespace is deliberately rejected instead of silently
+ * stripped, so a future public URL regression fails loudly in tests/dev.
  */
 export function getMarketplaceCanonicalPath(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`
-  const stripped = normalized.replace(/^\/marketplace(?=\/|$)/, '') || '/'
-  return stripped === '/' ? '/' : stripped.replace(/\/$/, '')
+  if (normalized === '/marketplace' || normalized.startsWith('/marketplace/')) {
+    throw new Error('Marketplace public paths must not include the retired /marketplace prefix')
+  }
+  return normalized === '/' ? '/' : normalized.replace(/\/$/, '')
 }
 
-/** Returns the full public URL for a Marketplace path. */
+/** Returns the full public URL for an already-clean Marketplace path. */
 export function getMarketplaceCanonicalUrl(path: string): string {
   return `${getMarketplaceBaseUrl()}${getMarketplaceCanonicalPath(path)}`
 }
