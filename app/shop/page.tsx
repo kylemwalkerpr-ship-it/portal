@@ -5,7 +5,7 @@ import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 const CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 const TITLE = 'File shop — instant-download tools | YouSafe Consultancy'
 const DESCRIPTION =
-  'Workbooks, templates, and short guides for consultants, operators, and families. Pay once on Payhip, download instantly. No subscription.'
+  'Immigration preparation packs, workbooks, templates, and short guides in one catalog. Pay once on Payhip, download instantly. No subscription.'
 
 export const revalidate = 3600
 
@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 }
 
 export default function ShopPage() {
+  const products = FILE_SHOP_PRODUCTS.filter((product) => product.published)
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
@@ -33,12 +34,12 @@ export default function ShopPage() {
     isPartOf: { '@type': 'WebSite', name: 'YouSafe Marketplace', url: 'https://market.yousafeconsultancy.com/' },
     mainEntity: {
       '@type': 'ItemList',
-      numberOfItems: FILE_SHOP_PRODUCTS.length,
-      itemListElement: FILE_SHOP_PRODUCTS.map((p, i) => ({
+      numberOfItems: products.length,
+      itemListElement: products.map((product, index) => ({
         '@type': 'ListItem',
-        position: i + 1,
-        url: p.href,
-        name: p.title,
+        position: index + 1,
+        url: product.href.startsWith('/') ? `${CANONICAL.replace(/\/shop$/, '')}${product.href}` : product.href,
+        name: product.title,
       })),
     },
   }

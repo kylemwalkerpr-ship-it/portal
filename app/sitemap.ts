@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
-import { TEMPLATE_PACKS } from '@/lib/template-packs'
 import { CATEGORIES } from '@/lib/categories'
+import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const MARKET_HOST = 'market.yousafeconsultancy.com'
@@ -29,10 +29,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [
     { url: `${base}${mp('/marketplace/')}`, changeFrequency: 'weekly', priority: 0.8 },
     { url: `${base}/shop`, changeFrequency: 'weekly', priority: 0.75 },
-    { url: `${base}${mp('/marketplace/templates/')}`, changeFrequency: 'weekly', priority: 0.7 },
     { url: `${base}${mp('/marketplace/providers/')}`, changeFrequency: 'weekly', priority: 0.7 },
     { url: `${base}${mp('/marketplace/categories/')}`, changeFrequency: 'weekly', priority: 0.6 },
   ]
+
+  // The 16 immigration products live under /shop only. Keeping these canonical
+  // URLs source-controlled prevents a normal GitHub deploy from losing the
+  // directly published Cloudflare catalogue again.
+  for (const product of IMMIGRATION_SHOP_PRODUCTS) {
+    if (!product.payhip_published) continue
+    entries.push({
+      url: `${base}/shop/${product.slug}`,
+      changeFrequency: 'monthly',
+      priority: 0.65,
+    })
+  }
 
   // Subcategory shelves are included only when active supply is positively
   // confirmed. Fail closed on a DB outage: an empty/noindex shelf should never
@@ -74,14 +85,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.55,
       })
     }
-  }
-
-  for (const pack of TEMPLATE_PACKS) {
-    entries.push({
-      url: `${base}${mp(`/marketplace/templates/${pack.slug}`)}`,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    })
   }
 
   try {

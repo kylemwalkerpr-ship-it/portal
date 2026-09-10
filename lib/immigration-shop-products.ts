@@ -1,0 +1,370 @@
+export type OfficialSourceId =
+  | 'DOS_DS160_INFO'
+  | 'CEAC_DS160_APPLICATION'
+  | 'DOS_STUDENT_VISA'
+  | 'DHS_I20'
+  | 'DHS_I901'
+  | 'USCIS_I765'
+  | 'USCIS_OPT'
+  | 'USCIS_STEM_OPT'
+  | 'USCIS_I134'
+  | 'USCIS_ALL_FORMS'
+  | 'IRCC_FORMS_GUIDES'
+  | 'IRCC_STUDY_PERMIT_DOCS'
+  | 'IRCC_STUDY_FINANCIAL_SUPPORT'
+  | 'IRCC_IMM5483'
+  | 'IRCC_FAMILY_INFO_IMM5645'
+  | 'IRCC_TRV_IMM5257'
+  | 'IRCC_WORK_PERMIT_OUTSIDE'
+  | 'IRCC_IMM1295'
+  | 'IRCC_PGWP_APPLY'
+  | 'IRCC_PGWP_DOCS'
+
+export interface OfficialShopSource {
+  label: string
+  url: string
+}
+
+export interface ImmigrationShopProduct {
+  slug: string
+  name: string
+  category: string
+  badge: string
+  price_usd: number
+  short_description: string
+  includes: string[]
+  official_sources: OfficialSourceId[]
+  delivery_file: string
+  payhip_url: string
+  payhip_published: boolean
+  product_type: 'template'
+}
+
+/**
+ * Official filing/reference pages used by the preparation-pack product pages.
+ * These are deliberately separate from the paid downloads: the government
+ * source remains the final authority for forms, fees, filing windows and
+ * current requirements.
+ */
+export const IMMIGRATION_SHOP_OFFICIAL_SOURCES: Record<OfficialSourceId, OfficialShopSource> = {
+  DOS_DS160_INFO: {
+    label: 'DS-160: Online Nonimmigrant Visa Application — U.S. Department of State',
+    url: 'https://travel.state.gov/content/travel/en/us-visas/visa-information-resources/forms/ds-160-online-nonimmigrant-visa-application.html',
+  },
+  CEAC_DS160_APPLICATION: {
+    label: 'Online Nonimmigrant Visa Application (DS-160) — CEAC',
+    url: 'https://ceac.state.gov/genniv/',
+  },
+  DOS_STUDENT_VISA: {
+    label: 'Student Visa — U.S. Department of State',
+    url: 'https://travel.state.gov/content/travel/en/us-visas/study/student-visa.html',
+  },
+  DHS_I20: {
+    label: 'Students and the Form I-20 — DHS Study in the States',
+    url: 'https://studyinthestates.dhs.gov/students/prepare/students-and-the-form-i-20',
+  },
+  DHS_I901: {
+    label: 'Paying the I-901 SEVIS Fee — DHS Study in the States',
+    url: 'https://studyinthestates.dhs.gov/students/prepare/paying-the-i-901-sevis-fee',
+  },
+  USCIS_I765: {
+    label: 'Form I-765 — USCIS',
+    url: 'https://www.uscis.gov/i-765',
+  },
+  USCIS_OPT: {
+    label: 'Optional Practical Training for F-1 Students — USCIS',
+    url: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+  },
+  USCIS_STEM_OPT: {
+    label: 'STEM OPT extension guidance — USCIS',
+    url: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-extension-for-stem-students-stem-opt',
+  },
+  USCIS_I134: {
+    label: 'Form I-134, Declaration of Financial Support — USCIS',
+    url: 'https://www.uscis.gov/i-134',
+  },
+  USCIS_ALL_FORMS: {
+    label: 'All forms — USCIS',
+    url: 'https://www.uscis.gov/forms/all-forms',
+  },
+  IRCC_FORMS_GUIDES: {
+    label: 'Application forms and guides — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides.html',
+  },
+  IRCC_STUDY_PERMIT_DOCS: {
+    label: 'Study permit: required documents — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/study-permit/get-documents.html',
+  },
+  IRCC_STUDY_FINANCIAL_SUPPORT: {
+    label: 'Study permit: proof of financial support — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/study-permit/get-documents/financial-support.html',
+  },
+  IRCC_IMM5483: {
+    label: 'Study permit document checklist (IMM 5483) — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5483.html',
+  },
+  IRCC_FAMILY_INFO_IMM5645: {
+    label: 'Family information (IMM 5645) — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5645.html',
+  },
+  IRCC_TRV_IMM5257: {
+    label: 'Temporary resident visa application (IMM 5257) — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5257.html',
+  },
+  IRCC_WORK_PERMIT_OUTSIDE: {
+    label: 'Work permit forms for applicants outside Canada — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/permit-outside/forms-documents.html',
+  },
+  IRCC_IMM1295: {
+    label: 'Work permit application outside Canada (IMM 1295) — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm1295.html',
+  },
+  IRCC_PGWP_APPLY: {
+    label: 'Post-graduation work permit: how to apply — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/after-graduation/apply.html',
+  },
+  IRCC_PGWP_DOCS: {
+    label: 'Post-graduation work permit: required documents — IRCC',
+    url: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/after-graduation/get-documents.html',
+  },
+}
+
+/**
+ * Exact 16-product immigration catalogue recovered from the active Cloudflare
+ * Worker deployment that was published outside GitHub on 2026-09-10. Keeping
+ * it as source-controlled data prevents a later normal deploy from erasing it.
+ */
+export const IMMIGRATION_SHOP_PRODUCTS: ImmigrationShopProduct[] = [
+  {
+    slug: 'us-f1-student-visa-ds160-i20-pack',
+    name: 'USA F-1 Student Visa DS-160 + I-20 Preparation Pack',
+    category: 'USA Study',
+    badge: 'Best for F-1 applicants',
+    price_usd: 29,
+    short_description: 'A guided F-1 student visa preparation kit covering DS-160 planning, I-20 details, SEVIS fee tracking, embassy interview document organization, and school/program summary notes.',
+    includes: ['DS-160 pre-fill worksheet', 'I-20 data extraction checklist', 'SEVIS I-901 payment tracker', 'F-1 interview document checklist', 'School/program summary template'],
+    official_sources: ['DOS_DS160_INFO', 'CEAC_DS160_APPLICATION', 'DOS_STUDENT_VISA', 'DHS_I20', 'DHS_I901'],
+    delivery_file: 'templates/usa/us-f1-student-visa-ds160-i20-pack/README.md',
+    payhip_url: 'https://payhip.com/b/UuQMj',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'us-f1-interview-home-ties-pack',
+    name: 'USA F-1 Interview + Home Ties Evidence Pack',
+    category: 'USA Study',
+    badge: 'Interview-ready',
+    price_usd: 19,
+    short_description: 'Client-ready templates for organizing home-country ties, academic intent, funding story, sponsor relationship, and interview answer practice without guaranteeing approval.',
+    includes: ['Home ties evidence planner', 'Interview answer worksheet', 'Sponsor relationship summary', 'Post-study plan template', 'Risk review checklist'],
+    official_sources: ['DOS_STUDENT_VISA', 'DOS_DS160_INFO'],
+    delivery_file: 'templates/usa/us-f1-interview-home-ties-pack/README.md',
+    payhip_url: 'https://payhip.com/b/9Fxb4',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'us-b1b2-visitor-visa-ds160-invitation-pack',
+    name: 'USA B-1/B-2 Visitor Visa DS-160 + Invitation Pack',
+    category: 'USA Visitor',
+    badge: 'Visitor visa',
+    price_usd: 19,
+    short_description: 'A visitor visa document-prep pack with trip purpose worksheet, invitation letter template, itinerary planner, and financial/travel history organizer.',
+    includes: ['DS-160 visitor prep worksheet', 'Invitation letter template', 'Travel itinerary template', 'Sponsor/accommodation note', 'Document checklist'],
+    official_sources: ['DOS_DS160_INFO', 'CEAC_DS160_APPLICATION'],
+    delivery_file: 'templates/usa/us-b1b2-visitor-visa-ds160-invitation-pack/README.md',
+    payhip_url: 'https://payhip.com/b/baRtH',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'us-opt-i765-application-prep-pack',
+    name: 'USA F-1 OPT I-765 Application Preparation Pack',
+    category: 'USA Work After Study',
+    badge: 'OPT',
+    price_usd: 25,
+    short_description: 'A structured OPT application organizer for I-765 filing readiness, DSO endorsement tracking, identity evidence, prior employment authorization, and mailing/online-filing audit notes.',
+    includes: ['I-765 prep worksheet', 'OPT timing tracker', 'Evidence upload checklist', 'DSO/I-20 endorsement tracker', 'Post-submission tracker'],
+    official_sources: ['USCIS_I765', 'USCIS_OPT', 'DHS_I20'],
+    delivery_file: 'templates/usa/us-opt-i765-application-prep-pack/README.md',
+    payhip_url: 'https://payhip.com/b/g7efi',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'us-stem-opt-i765-i983-companion-pack',
+    name: 'USA STEM OPT I-765 + I-983 Companion Pack',
+    category: 'USA Work After Study',
+    badge: 'STEM OPT',
+    price_usd: 29,
+    short_description: 'A STEM OPT planning pack for organizing employer details, training-plan notes, I-765 evidence, and 24-month extension timeline control.',
+    includes: ['STEM OPT timeline tracker', 'Employer/E-Verify data worksheet', 'I-983 prep notes', 'I-765 evidence checklist', 'Reporting calendar'],
+    official_sources: ['USCIS_STEM_OPT', 'USCIS_I765', 'USCIS_OPT'],
+    delivery_file: 'templates/usa/us-stem-opt-i765-i983-companion-pack/README.md',
+    payhip_url: 'https://payhip.com/b/1LXUs',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'us-i134-financial-support-companion-pack',
+    name: 'USA I-134 Financial Support Companion Pack',
+    category: 'USA Financial Support',
+    badge: 'Sponsor support',
+    price_usd: 17,
+    short_description: 'A support-document organizer for sponsors preparing financial evidence and beneficiary-support explanations alongside official USCIS I-134 guidance.',
+    includes: ['Sponsor data worksheet', 'Financial evidence checklist', 'Support explanation letter', 'Relationship evidence planner', 'Document naming guide'],
+    official_sources: ['USCIS_I134', 'USCIS_ALL_FORMS'],
+    delivery_file: 'templates/usa/us-i134-financial-support-companion-pack/README.md',
+    payhip_url: 'https://payhip.com/b/b3pSu',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-study-permit-complete-pack',
+    name: 'Canada Study Permit Complete Application Preparation Pack',
+    category: 'Canada Study',
+    badge: 'Best seller',
+    price_usd: 29,
+    short_description: 'A Canada study permit prep kit covering letter of acceptance, PAL/TAL/CAQ notes, proof of funds, study plan, family info, and portal upload organization.',
+    includes: ['Study permit document checklist', 'Study plan/letter of explanation', 'Proof-of-funds organizer', 'Family information prep worksheet', 'Upload file naming guide'],
+    official_sources: ['IRCC_FORMS_GUIDES', 'IRCC_STUDY_PERMIT_DOCS', 'IRCC_STUDY_FINANCIAL_SUPPORT', 'IRCC_IMM5483', 'IRCC_FAMILY_INFO_IMM5645'],
+    delivery_file: 'templates/canada/canada-study-permit-complete-pack/README.md',
+    payhip_url: 'https://payhip.com/b/oOzae',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-proof-of-funds-sponsor-pack',
+    name: 'Canada Proof of Funds + Sponsor Support Pack',
+    category: 'Canada Study',
+    badge: 'Proof of funds',
+    price_usd: 19,
+    short_description: 'A financial-document kit for organizing tuition, living expenses, sponsor income, bank statements, scholarship proof, GICs, loans, and explanatory notes.',
+    includes: ['Proof-of-funds cover letter', 'Sponsor letter template', 'Bank statement checklist', 'Funds source explanation worksheet', 'Tuition and living-cost tracker'],
+    official_sources: ['IRCC_STUDY_FINANCIAL_SUPPORT', 'IRCC_STUDY_PERMIT_DOCS'],
+    delivery_file: 'templates/canada/canada-proof-of-funds-sponsor-pack/README.md',
+    payhip_url: 'https://payhip.com/b/u0S1v',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-study-plan-letter-of-explanation-pack',
+    name: 'Canada Study Plan + Letter of Explanation Pack',
+    category: 'Canada Study',
+    badge: 'SOP / LOE',
+    price_usd: 17,
+    short_description: 'Editable templates for a Canada study plan, statement of purpose, program rationale, career pathway, and refusal-risk explanation addendum.',
+    includes: ['Study plan template', 'Letter of explanation template', 'Program fit worksheet', 'Career plan template', 'Refusal-risk addendum outline'],
+    official_sources: ['IRCC_STUDY_PERMIT_DOCS', 'IRCC_FORMS_GUIDES'],
+    delivery_file: 'templates/canada/canada-study-plan-letter-of-explanation-pack/README.md',
+    payhip_url: 'https://payhip.com/b/8Yo4F',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-trv-visitor-visa-pack',
+    name: 'Canada Temporary Resident Visa Visitor Pack',
+    category: 'Canada Visitor',
+    badge: 'TRV',
+    price_usd: 19,
+    short_description: 'A Canada visitor visa prep pack with IMM 5257 planning notes, invitation letter, travel itinerary, host support statement, and document checklist.',
+    includes: ['IMM 5257 prep worksheet', 'Invitation letter template', 'Host support statement', 'Travel itinerary', 'Document checklist'],
+    official_sources: ['IRCC_TRV_IMM5257', 'IRCC_FORMS_GUIDES', 'IRCC_FAMILY_INFO_IMM5645'],
+    delivery_file: 'templates/canada/canada-trv-visitor-visa-pack/README.md',
+    payhip_url: 'https://payhip.com/b/IMFsj',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-work-permit-outside-canada-pack',
+    name: 'Canada Work Permit Outside Canada Preparation Pack',
+    category: 'Canada Work',
+    badge: 'Work permit',
+    price_usd: 25,
+    short_description: 'A work permit organizer for IMM 1295 preparation, employer details, job-offer evidence, passport/photo items, and portal upload readiness.',
+    includes: ['IMM 1295 prep worksheet', 'Employer/job offer evidence checklist', 'Work history template', 'Purpose of travel letter', 'Upload tracker'],
+    official_sources: ['IRCC_WORK_PERMIT_OUTSIDE', 'IRCC_IMM1295', 'IRCC_FORMS_GUIDES'],
+    delivery_file: 'templates/canada/canada-work-permit-outside-canada-pack/README.md',
+    payhip_url: 'https://payhip.com/b/ZsyvP',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-pgwp-application-pack',
+    name: 'Canada PGWP Post-Graduation Work Permit Pack',
+    category: 'Canada Work After Study',
+    badge: 'PGWP',
+    price_usd: 25,
+    short_description: 'A PGWP filing-readiness pack covering graduation proof, transcript/letter organization, 180-day timeline control, status notes, and post-submission tracking.',
+    includes: ['PGWP timeline tracker', 'Graduation proof checklist', 'Transcript/letter organizer', 'Status-restoration note template', 'Post-submission tracker'],
+    official_sources: ['IRCC_PGWP_APPLY', 'IRCC_PGWP_DOCS', 'IRCC_FORMS_GUIDES'],
+    delivery_file: 'templates/canada/canada-pgwp-application-pack/README.md',
+    payhip_url: 'https://payhip.com/b/jTfbO',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'canada-family-information-travel-history-pack',
+    name: 'Canada Family Information + Travel History Organizer',
+    category: 'Canada General',
+    badge: 'Low-cost add-on',
+    price_usd: 12,
+    short_description: 'A simple organizer for IMM 5645-style family details, address history, employment history, travel history, and consistency checks across forms.',
+    includes: ['Family information worksheet', 'Travel history table', 'Address history table', 'Employment/education history table', 'Consistency review checklist'],
+    official_sources: ['IRCC_FAMILY_INFO_IMM5645', 'IRCC_FORMS_GUIDES'],
+    delivery_file: 'templates/canada/canada-family-information-travel-history-pack/README.md',
+    payhip_url: 'https://payhip.com/b/6gsAa',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'us-canada-refusal-reapplication-response-pack',
+    name: 'USA/Canada Refusal Review + Reapplication Response Pack',
+    category: 'Refusal Recovery',
+    badge: 'Premium',
+    price_usd: 29,
+    short_description: 'A structured refusal-analysis kit for clients who need to map refusal reasons to new evidence, stronger explanations, and a cleaner reapplication file.',
+    includes: ['Refusal reason matrix', 'Evidence gap tracker', 'Reapplication cover letter', 'Changed circumstances template', 'Document upgrade checklist'],
+    official_sources: ['DOS_DS160_INFO', 'IRCC_FORMS_GUIDES', 'IRCC_STUDY_PERMIT_DOCS'],
+    delivery_file: 'templates/general/us-canada-refusal-reapplication-response-pack/README.md',
+    payhip_url: 'https://payhip.com/b/e9Usb',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'universal-client-intake-document-review-kit',
+    name: 'Universal Immigration Client Intake + Document Review Kit',
+    category: 'General Intake',
+    badge: 'For consultations',
+    price_usd: 15,
+    short_description: 'A universal intake pack for collecting client goals, identity details, travel/education/work history, document uploads, and consultant review notes.',
+    includes: ['Client intake form', 'Document review checklist', 'Consultation notes template', 'Risk and missing-document tracker', 'Client declaration template'],
+    official_sources: ['USCIS_ALL_FORMS', 'IRCC_FORMS_GUIDES'],
+    delivery_file: 'templates/general/universal-client-intake-document-review-kit/README.md',
+    payhip_url: 'https://payhip.com/b/kcRoK',
+    payhip_published: true,
+    product_type: 'template',
+  },
+  {
+    slug: 'premium-usa-canada-study-work-mega-bundle',
+    name: 'Premium USA + Canada Study/Work Template Mega Bundle',
+    category: 'Bundle',
+    badge: 'Highest value',
+    price_usd: 79,
+    short_description: 'A full bundle of the USA and Canada student, visitor, work-permit, proof-of-funds, interview, and refusal-response preparation packs.',
+    includes: ['All USA packs', 'All Canada packs', 'Refusal reapplication pack', 'Universal intake kit', 'Catalogue update notes'],
+    official_sources: ['USCIS_ALL_FORMS', 'DOS_DS160_INFO', 'IRCC_FORMS_GUIDES'],
+    delivery_file: 'templates/bundles/premium-usa-canada-study-work-mega-bundle/README.md',
+    payhip_url: 'https://payhip.com/b/Ap382',
+    payhip_published: true,
+    product_type: 'template',
+  },
+]
+
+export function getImmigrationShopProduct(slug: string): ImmigrationShopProduct | undefined {
+  return IMMIGRATION_SHOP_PRODUCTS.find((product) => product.slug === slug)
+}
+
+export function resolveImmigrationOfficialSource(id: OfficialSourceId): OfficialShopSource {
+  return IMMIGRATION_SHOP_OFFICIAL_SOURCES[id]
+}
