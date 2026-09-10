@@ -1,0 +1,46 @@
+name: Apply Marketplace finalization
+
+on:
+  push:
+    branches:
+      - seo/finalize-market-sitemap
+    paths:
+      - 'scripts/finalize-marketplace-followup.py'
+      - '.github/workflows/apply-marketplace-finalization.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[finalizer applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: seo/finalize-market-sitemap
+          fetch-depth: 0
+
+      - name: Apply deterministic patch
+        run: python3 scripts/finalize-marketplace-followup.py
+
+      - name: Validate patch syntax and focused contracts
+        run: |
+          git diff --check
+          npm ci
+          npm run typecheck
+          npx jest --runInBand \
+            tests/marketplace-sitemap-footer.test.ts \
+            tests/marketplace-category-mobile-format.test.ts \
+            tests/marketplace-category-clean-url-and-cards.test.ts \
+            tests/marketplace-category-related-recommendations.test.ts
+
+      - name: Commit only final product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/finalize-marketplace-followup.py .github/workflows/apply-marketplace-finalization.yml
+          git add app components middleware.ts tests
+          git commit -m "Finalize Marketplace sitemap and category recommendations [finalizer applied]"
+          git push origin HEAD:seo/finalize-market-sitemap
