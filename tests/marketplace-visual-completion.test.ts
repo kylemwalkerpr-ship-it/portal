@@ -9,6 +9,7 @@ describe('Marketplace visual modernization completion', () => {
   const completionCss = read('app/marketplace/marketplace-completion.css')
   const trustBar = read('components/marketplace/MarketplaceGigTrustBar.tsx')
   const gigRoute = read('app/api/marketplace/gigs/[slug]/route.ts')
+  const reputationRoute = read('app/api/marketplace/gigs/[slug]/reputation/route.ts')
 
   test('mounts the completion layer and gig reputation summary inside the existing shell', () => {
     expect(layout).toContain("import { MarketplaceGigTrustBar } from '@/components/marketplace/MarketplaceGigTrustBar'")
@@ -33,14 +34,23 @@ describe('Marketplace visual modernization completion', () => {
     expect(completionCss).toContain('font-size: clamp(30px, 3vw, 40px) !important')
   })
 
+  test('keeps reputation work off the core gig first-paint API', () => {
+    expect(gigRoute).toContain('const [providerGigsRes, providerHeadshotRes, similarGigsRes] = await Promise.all([')
+    expect(gigRoute).not.toContain("from('seller_level_snapshots')")
+    expect(gigRoute).not.toContain("from('orders')")
+    expect(trustBar).toContain('/reputation`')
+  })
+
   test('derives real seller level, queue and repeat-client signals without writing synthetic counters', () => {
-    expect(gigRoute).toContain("from('seller_level_snapshots')")
-    expect(gigRoute).toContain("select('client_id, status, gig_id')")
-    expect(gigRoute).toContain('active_queue_count: activeQueueCount')
-    expect(gigRoute).toContain('repeat_client_count: repeatClientCount')
-    expect(gigRoute).toContain('repeat_order_count: repeatOrderCount')
-    expect(gigRoute).not.toContain("insert({ active_queue_count")
-    expect(gigRoute).not.toContain("update({ repeat_client_count")
+    expect(reputationRoute).toContain("from('seller_level_snapshots')")
+    expect(reputationRoute).toContain("select('id', { count: 'exact', head: true })")
+    expect(reputationRoute).toContain("select('client_id, status')")
+    expect(reputationRoute).toContain('active_queue_count: Number(activeQueueRes.count || 0)')
+    expect(reputationRoute).toContain('repeat_client_count: historyComplete ? repeatClientCount : null')
+    expect(reputationRoute).toContain('repeat_order_count: historyComplete ? repeatOrderCount : null')
+    expect(reputationRoute).toContain('MAX_REPUTATION_HISTORY_ROWS = 5000')
+    expect(reputationRoute).not.toContain("insert({ active_queue_count")
+    expect(reputationRoute).not.toContain("update({ repeat_client_count")
   })
 
   test('renders only evidence-backed reputation signals', () => {
@@ -48,7 +58,7 @@ describe('Marketplace visual modernization completion', () => {
     expect(trustBar).toContain("top_consultant: 'Top Consultant'")
     expect(trustBar).toContain('Number(gig.review_count || 0) > 0')
     expect(trustBar).toContain('activeQueue > 0')
-    expect(trustBar).toContain('repeatClients > 0')
+    expect(trustBar).toContain('gig.repeat_history_complete === true')
     expect(trustBar).toContain('Clients keep coming back.')
     expect(trustBar).not.toContain("Fiverr's Choice")
     expect(trustBar).not.toContain('YouSafe Choice')
