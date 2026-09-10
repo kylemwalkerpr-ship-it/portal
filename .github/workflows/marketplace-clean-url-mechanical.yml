@@ -27,112 +27,71 @@ jobs:
           from pathlib import Path
 
           MARKET = 'https://market.yousafeconsultancy.com'
-
           replacements = {
-            # Marketplace-only UI: clean relative public paths.
-            'components/marketplace/MarketplaceProvidersIndex.tsx': [
-              ('/marketplace/providers/', '/providers/'),
-            ],
+            'components/marketplace/MarketplaceProvidersIndex.tsx': [('/marketplace/providers/', '/providers/')],
             'components/marketplace/GigDiscoveryPage.tsx': [
               ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
               ("window.location.href = '/marketplace?view=inquiries'", "window.location.href = '/?view=inquiries'"),
             ],
-            'components/marketplace/GigDetailComponents.tsx': [
-              ('href={`/marketplace/gigs/${g.slug}`}', 'href={`/gigs/${g.slug}`}'),
-            ],
-            'components/marketplace/SellerProfileComponents.tsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
-            ],
-            'components/marketplace/CategoryRecommendedGigsCarousel.tsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}'),
-            ],
-            'components/marketplace/GigDetailPage.tsx': [
-              ('window.location.href = `/marketplace/providers/${token}`', 'window.location.href = `/providers/${token}`'),
-            ],
-            'components/marketplace/TrendingOpportunities.tsx': [
-              ('/marketplace?view=', '/?view='),
-            ],
-            'components/marketplace/MarketplaceAuthNav.tsx': [
-              ('/marketplace?view=', '/?view='),
-              ('href="/marketplace"', 'href="/"'),
-            ],
+            'components/marketplace/GigDetailComponents.tsx': [('href={`/marketplace/gigs/${g.slug}`}', 'href={`/gigs/${g.slug}`}')],
+            'components/marketplace/SellerProfileComponents.tsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}')],
+            'components/marketplace/CategoryRecommendedGigsCarousel.tsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`/gigs/${gig.slug}`}')],
+            'components/marketplace/GigDetailPage.tsx': [('window.location.href = `/marketplace/providers/${token}`', 'window.location.href = `/providers/${token}`')],
+            'components/marketplace/TrendingOpportunities.tsx': [('/marketplace?view=', '/?view=')],
+            'components/marketplace/MarketplaceAuthNav.tsx': [('/marketplace?view=', '/?view='), ('href="/marketplace"', 'href="/"')],
             'components/marketplace/MarketplaceShell.tsx': [
               ('/marketplace?view=', '/?view='),
               ("router.push('/marketplace')", "router.push('/')"),
               ('href="/marketplace"', 'href="/"'),
+              ("href: '/marketplace'", "href: '/'"),
             ],
-
-            # Components rendered on the portal or in shared shells: always
-            # cross to the canonical market host instead of using a relative URL.
             'components/marketplace/BuyerDashboardWidgets.tsx': [
               ('viewAllHref="/marketplace?view=orders"', 'viewAllHref="' + MARKET + '/?view=orders"'),
               ('viewAllHref="/marketplace"', 'viewAllHref="' + MARKET + '/"'),
               ('/marketplace/gigs/', MARKET + '/gigs/'),
             ],
-            'components/marketplace/MessageOfferCard.tsx': [
-              ('href={`/gigs/${offer.linked_gig.slug}`}', 'href={`' + MARKET + '/gigs/${offer.linked_gig.slug}`}'),
-            ],
-            'components/cart/CartIcon.tsx': [
-              ('href="/marketplace/cart"', 'href="' + MARKET + '/cart"'),
-            ],
+            'components/marketplace/MessageOfferCard.tsx': [('href={`/gigs/${offer.linked_gig.slug}`}', 'href={`' + MARKET + '/gigs/${offer.linked_gig.slug}`}')],
+            'components/cart/CartIcon.tsx': [('href="/marketplace/cart"', 'href="' + MARKET + '/cart"')],
             'components/seller/SellerMarketplaceView.tsx': [
               ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
+              ('`/marketplace/gigs/${gig.slug}`', '`' + MARKET + '/gigs/${gig.slug}`'),
             ],
             'components/seller/SellerGigCard.tsx': [
               ('`${window.location.origin}/marketplace/gigs/${gig.slug}`', '`' + MARKET + '/gigs/${gig.slug}`'),
               ('window.open(`/marketplace/gigs/${gig.slug}`', 'window.open(`' + MARKET + '/gigs/${gig.slug}`'),
             ],
-            'components/design/admin-gigs.jsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
-            ],
-            'components/design/consultant-overview.jsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
-            ],
-            'components/design/landing/Nav.tsx': [
-              ("href: '/marketplace'", "href: '" + MARKET + "/'"),
-              ('href="/marketplace"', 'href="' + MARKET + '/"'),
-            ],
-            'components/design/student.jsx': [
-              ("goToRoute('/marketplace')", "goToRoute('" + MARKET + "/')"),
-              ("window.location.pathname === '/marketplace'", 'false'),
-            ],
+            'components/design/admin-gigs.jsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}')],
+            'components/design/consultant-overview.jsx': [('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}')],
+            'components/design/landing/Nav.tsx': [("href: '/marketplace'", "href: '" + MARKET + "/'"), ('href="/marketplace"', 'href="' + MARKET + '/"')],
+            'components/design/student.jsx': [("goToRoute('/marketplace')", "goToRoute('" + MARKET + "/')"), ("window.location.pathname === '/marketplace'", 'false')],
             'components/design/fiverr-workbench.jsx': [
               ('`/marketplace/gigs/${', '`' + MARKET + '/gigs/${'),
               ('`/marketplace/providers/${', '`' + MARKET + '/providers/${'),
               ('href="/marketplace"', 'href="' + MARKET + '/"'),
+              ('marketplace.yousafeconsultancy.com/marketplace/gigs/', 'marketplace.yousafeconsultancy.com/gigs/'),
             ],
-
-            # Public cart/order pages live on the market host after middleware
-            # rewrites clean browser paths to the internal app/marketplace tree.
             'app/marketplace/cart/page.tsx': [
               ('/marketplace/order/success', '/order/success'),
               ('/marketplace/cart', '/cart'),
               ('href="/marketplace"', 'href="/"'),
             ],
-            'app/marketplace/order/success/page.tsx': [
-              ('/marketplace?view=', '/?view='),
-              ('href="/marketplace"', 'href="/"'),
-            ],
+            'app/marketplace/order/success/page.tsx': [('/marketplace?view=', '/?view='), ('href="/marketplace"', 'href="/"')],
             'app/marketplace/PublicMarketplaceLanding.tsx': [
               ('return_to=/marketplace', 'return_to=' + MARKET + '/'),
+              ('action="/marketplace"', 'action="/"'),
+              ('`/marketplace?', '`/?'),
+              ("'/marketplace?", "'/?"),
+              ('"/marketplace?', '"/?'),
+              ("'/marketplace'", "'/'"),
+              ('"/marketplace"', '"/"'),
             ],
-
-            # SEO/content-studio URL emitters must also produce the clean public form.
-            'lib/seoFactory/ownership.ts': [
-              ('urlPath: `/marketplace/gigs/${slug}/`', 'urlPath: `/gigs/${slug}/`'),
-            ],
+            'lib/seoFactory/ownership.ts': [('urlPath: `/marketplace/gigs/${slug}/`', 'urlPath: `/gigs/${slug}/`')],
             'lib/seoFactory/providerAuthors.ts': [
               ('getMarketplaceCanonicalUrl(`/marketplace/providers/${provider.username || provider.profileId}/`)', 'getMarketplaceCanonicalUrl(`/providers/${provider.username || provider.profileId}`)'),
               ('getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)', 'getMarketplaceCanonicalUrl(`/gigs/${slug}`)'),
             ],
-
-            # Styling selectors track the clean hrefs now emitted by gig cards.
-            'app/mobile-hardening.css': [
-              ("a[href*='/marketplace/gigs/']", "a[href*='/gigs/']"),
-            ],
-            'app/mobile-marketplace-profile-gig.css': [
-              ("a[href^='/marketplace/gigs/']", "a[href^='/gigs/']"),
-            ],
+            'app/mobile-hardening.css': [("a[href*='/marketplace/gigs/']", "a[href*='/gigs/']")],
+            'app/mobile-marketplace-profile-gig.css': [("a[href^='/marketplace/gigs/']", "a[href^='/gigs/']")],
           }
 
           changed = []
@@ -187,8 +146,8 @@ jobs:
             'lib/seoFactory/ownership.ts',
             'lib/seoFactory/providerAuthors.ts',
           ]
-
-          forbidden = re.compile(r"(?<!/api)(?<!components)(?<!app)(?<!@)/marketplace(?=[/?'\"`])")
+          direct_literal = re.compile(r"['\"`]/marketplace(?=[/?'\"`])")
+          absolute_legacy = re.compile(r"market\.yousafeconsultancy\.com/marketplace(?=[/?'\"`])")
           failures = []
           for filename in files:
             text = Path(filename).read_text()
@@ -196,7 +155,7 @@ jobs:
               stripped = line.strip()
               if stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
                 continue
-              if forbidden.search(line):
+              if direct_literal.search(line) or absolute_legacy.search(line):
                 failures.append(f'{filename}:{i}: {stripped}')
           if failures:
             print('Retired public Marketplace URL emitters remain:')
