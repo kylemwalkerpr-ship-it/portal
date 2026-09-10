@@ -30,13 +30,15 @@ describe('standalone Marketplace public URL contract', () => {
     expect(shop).toContain('alternates: { canonical: CANONICAL }')
   })
 
-  test('retired /marketplace paths are hard 404s on portal and market, never migration redirects', () => {
+  test('retired /marketplace paths preserve legacy equity with one permanent hop to the clean market host', () => {
     const middleware = read('middleware.ts')
     expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
     expect(middleware).toContain('(hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath')
-    expect(middleware).toContain("return new NextResponse('Not Found', {")
-    expect(middleware).toContain('status: 404')
-    expect(middleware).not.toContain('const cleanPath = pathname.slice(\'/marketplace\'.length)')
+    expect(middleware).toContain("const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'")
+    expect(middleware).toContain('target.hostname = MARKET_HOST')
+    expect(middleware).toContain('target.pathname = cleanMarketplacePath')
+    expect(middleware).toContain('NextResponse.redirect(target, { status: 301 })')
+    expect(middleware).not.toContain("return new NextResponse('Not Found', {\n        status: 404")
   })
 
   test('clean market-host paths still rewrite only to the internal app route tree', () => {
