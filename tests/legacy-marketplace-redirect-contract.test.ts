@@ -13,9 +13,11 @@ describe('legacy Marketplace URL consolidation', () => {
     expect(nextConfig).toContain('permanent: true')
   })
 
-  test('keeps the middleware 404 only as a fallback and emits no new legacy internal links', () => {
+  test('keeps a one-hop permanent middleware fallback and emits no checkout URLs', () => {
     expect(middleware).toContain("const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')")
-    expect(middleware).toContain("return new NextResponse('Not Found', {")
+    expect(middleware).toContain("const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'")
+    expect(middleware).toContain('target.hostname = MARKET_HOST')
+    expect(middleware).toContain('NextResponse.redirect(target, { status: 301 })')
     expect(nextConfig).not.toContain('checkout.yousafeconsultancy.com')
   })
 })
