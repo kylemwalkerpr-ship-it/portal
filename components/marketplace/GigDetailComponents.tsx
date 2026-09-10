@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { C, Card, Btn, Avatar, Badge } from '../design/shared'
 import { SaveGigButton } from './SaveGigButton'
 import { T, F } from './tokens'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,11 @@ interface SimilarGigsProps {
     starting_price?: number
     avg_rating?: number | null
     review_count?: number
-    provider?: { full_name?: string | null } | null
+    provider?: {
+      full_name?: string | null
+      username?: string | null
+      email?: string | null
+    } | null
     gallery_images?: Array<{ url: string }>
   }>
 }
@@ -97,6 +102,17 @@ function money(cents: number, currency = 'usd') {
 // ── SellerProfileCard ─────────────────────────────────────────────────────────
 
 export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerProfileCardProps) {
+  const displayName = providerDisplayName(
+    { full_name: seller.full_name, email: seller.email },
+    'Provider',
+  )
+  const reviewCount = Number(seller.review_count || 0)
+  const averageRating = Number(seller.avg_rating || 0)
+  const orderCount = Number(seller.order_count || 0)
+  const hasRating = reviewCount > 0 && averageRating > 0
+  const hasOrders = orderCount > 0
+  const hasStats = hasRating || hasOrders || Boolean(seller.response_time)
+
   const handleMessage = async () => {
     if (typeof onMessage === 'function') {
       onMessage()
@@ -143,7 +159,7 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    marginBottom: '16px',
+    marginBottom: hasStats ? '16px' : '12px',
   }
 
   const nameStyle: CSSProperties = {
@@ -209,9 +225,9 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
   return (
     <Card style={cardStyle}>
       <div style={headerStyle}>
-        <Avatar name={seller.full_name || '?'} src={seller.headshot_url || undefined} size={48} />
-        <div>
-          <p style={nameStyle}>{seller.full_name || 'Provider'}</p>
+        <Avatar name={displayName} src={seller.headshot_url || undefined} size={48} />
+        <div style={{ minWidth: 0 }}>
+          <p style={nameStyle}>{displayName}</p>
           <p style={roleStyle}>
             <span style={onlineDot} />
             {seller.is_online ? 'Online' : 'Offline'} · {seller.role?.replace('_', ' ') || 'Expert'}
@@ -219,22 +235,28 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
         </div>
       </div>
 
-      <div style={statsRow}>
-        <div style={statBox}>
-          <span style={statValue}><span style={{ color: T.star }}>★</span> {seller.avg_rating?.toFixed(1) || '—'}</span>
-          <span style={statLabel}>{seller.review_count || 0} reviews</span>
+      {hasStats && (
+        <div style={statsRow}>
+          {hasRating && (
+            <div style={statBox}>
+              <span style={statValue}><span style={{ color: T.star }}>★</span> {averageRating.toFixed(1)}</span>
+              <span style={statLabel}>{reviewCount.toLocaleString()} review{reviewCount === 1 ? '' : 's'}</span>
+            </div>
+          )}
+          {hasOrders && (
+            <div style={statBox}>
+              <span style={statValue}>{orderCount.toLocaleString()}</span>
+              <span style={statLabel}>completed order{orderCount === 1 ? '' : 's'}</span>
+            </div>
+          )}
+          {seller.response_time && (
+            <div style={{ ...statBox, gridColumn: '1 / -1' }}>
+              <span style={statValue}>{seller.response_time}</span>
+              <span style={statLabel}>avg. response time</span>
+            </div>
+          )}
         </div>
-        <div style={statBox}>
-          <span style={statValue}>{seller.order_count || 0}</span>
-          <span style={statLabel}>orders</span>
-        </div>
-        {seller.response_time && (
-          <div style={{ ...statBox, gridColumn: '1 / -1' }}>
-            <span style={statValue}>{seller.response_time}</span>
-            <span style={statLabel}>avg. response time</span>
-          </div>
-        )}
-      </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <Btn variant="secondary" fullWidth onClick={handleMessage}>
@@ -266,7 +288,8 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
   }
 
   return (
-    <Card style={{ padding: '20px' }}>              <h3 style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 14px', color: T.inkMid }}>
+    <Card style={{ padding: '20px' }}>
+      <h3 style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 14px', color: T.inkMid }}>
         Pricing
       </h3>
 
@@ -518,6 +541,8 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
       <div style={grid}>
         {gigs.slice(0, 4).map((g) => {
           const img = g.gallery_images?.[0]?.url
+          const providerName = providerDisplayName(g.provider, '')
+          const showRating = Number(g.avg_rating || 0) > 0 && Number(g.review_count || 0) > 0
           return (
             <Link key={g.id} href={`/marketplace/gigs/${g.slug}`} style={gigCard}>
               {img ? (
@@ -529,12 +554,12 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
                 <p style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 500, letterSpacing: '-0.005em', color: T.ink, margin: '0 0 4px', lineHeight: 1.3 }}>
                   {g.title}
                 </p>
-                {g.provider?.full_name && (
-                  <p style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.1em', textTransform: 'uppercase', color: T.inkSoft, margin: '0 0 10px' }}>{g.provider.full_name}</p>
+                {providerName && (
+                  <p style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.1em', textTransform: 'uppercase', color: T.inkSoft, margin: '0 0 10px' }}>{providerName}</p>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {g.avg_rating != null && (
-                    <span style={{ fontFamily: F.ui, fontSize: '12.5px', color: T.inkMid }}><span style={{ color: T.star }}>★</span> {g.avg_rating.toFixed(1)}</span>
+                  {showRating && (
+                    <span style={{ fontFamily: F.ui, fontSize: '12.5px', color: T.inkMid }}><span style={{ color: T.star }}>★</span> {Number(g.avg_rating).toFixed(1)}</span>
                   )}
                   {g.starting_price != null && (
                     <span style={{ fontFamily: F.display, fontSize: '14px', fontWeight: 600, color: T.indigo }}>
@@ -598,20 +623,20 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
             savedGigRecordId={savedGigRecordId}
           />
         ) : (
-        <Btn
-          variant="secondary"
-          fullWidth
-          onClick={onSave}
-          style={{
-            fontSize: '13px',
-            fontFamily: F.ui,
-            background: T.vellum,
-            color: T.ink,
-            border: `1px solid ${T.rule}`,
-          }}
-        >
-          {isSaved ? '♥ Saved' : '♡ Save'}
-        </Btn>
+          <Btn
+            variant="secondary"
+            fullWidth
+            onClick={onSave}
+            style={{
+              fontSize: '13px',
+              fontFamily: F.ui,
+              background: T.vellum,
+              color: T.ink,
+              border: `1px solid ${T.rule}`,
+            }}
+          >
+            {isSaved ? '♥ Saved' : '♡ Save'}
+          </Btn>
         )}
         <Btn
           variant="secondary"
