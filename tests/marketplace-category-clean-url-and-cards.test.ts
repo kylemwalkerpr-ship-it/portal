@@ -48,7 +48,7 @@ describe('marketplace category discovery presentation', () => {
     expect(categoryLayout).toContain('<CategoryRecommendedGigsCarousel')
     expect(categoryLayout).toContain('categoryId={display.id}')
     expect(categoryCarousel).toContain("requestGigs(categoryId, 'trending'")
-    expect(categoryCarousel).toContain('Vetted') === false
+    expect(categoryCarousel).toContain('getCategoryFilterTerms')
     expect(categoryLayout).toContain('Vetted specialists')
   })
 
