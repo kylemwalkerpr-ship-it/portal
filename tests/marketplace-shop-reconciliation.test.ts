@@ -71,13 +71,16 @@ describe('recovered Cloudflare shop additions', () => {
     expect(productPage).not.toContain('Add to Cart')
   })
 
-  test('moves indexable product URLs to /shop and retires the legacy template routes', () => {
+  test('keeps /shop canonical and permanently redirects historical template URLs', () => {
     expect(sitemap).toContain('IMMIGRATION_SHOP_PRODUCTS')
     expect(sitemap).toContain('url: `${base}/shop/${product.slug}`')
     expect(sitemap).not.toContain('TEMPLATE_PACKS')
     expect(sitemap).not.toContain('/marketplace/templates/${pack.slug}')
-    expect(legacyIndex).toContain('notFound()')
-    expect(legacyDetail).toContain('notFound()')
+    expect(legacyIndex).toContain("permanentRedirect('https://market.yousafeconsultancy.com/shop')")
+    expect(legacyIndex).not.toContain('notFound()')
+    expect(legacyDetail).toContain('permanentRedirect(`https://market.yousafeconsultancy.com/shop/${encodeURIComponent(slug)}`)')
+    expect(legacyDetail).not.toContain('dynamicParams = false')
+    expect(legacyDetail).not.toContain('notFound()')
   })
 
   test('surfaces the complete source-controlled catalogue in admin without making Payhip links DB-editable', () => {

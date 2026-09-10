@@ -98,7 +98,7 @@ function EmptyState() {
         organised by visa type and country.
       </p>
       <Link
-        href="/marketplace/templates"
+        href="https://market.yousafeconsultancy.com/shop"
         style={{
           display: 'inline-block',
           padding: '10px 22px',

@@ -27,8 +27,11 @@ https://market.yousafeconsultancy.com/categories
 https://market.yousafeconsultancy.com/categories/<category-or-subcategory-id>
 https://market.yousafeconsultancy.com/gigs/<immutable-clean-slug>
 https://market.yousafeconsultancy.com/providers/<stable-provider-token>
-https://market.yousafeconsultancy.com/templates/<template-slug>
+https://market.yousafeconsultancy.com/shop
+https://market.yousafeconsultancy.com/shop/<product-slug>
 ```
+
+The File Shop is the canonical home for self-serve template packs and downloadable products. Historical `/templates` and `/templates/<slug>` URLs are aliases only and must permanently redirect in one hop to `/shop` and `/shop/<slug>` respectively. They must never appear as canonicals, sitemap URLs, or new internal links.
 
 The Next.js route tree may live internally under `/marketplace/**`, but public metadata, internal links, structured data, and sitemap entries must use the final market-domain form. Canonicals must never point at a URL that immediately redirects.
 
@@ -83,7 +86,7 @@ The marketplace sitemap contains only canonical public URLs that are intended fo
 - Subcategories only when active marketplace supply is positively confirmed.
 - Active gigs with a valid provider and stored slug.
 - Public provider pages.
-- Public template pages.
+- The File Shop index and published `/shop/<product-slug>` product pages.
 
 A database/supply-check failure must fail closed for thin subcategory shelves. It must not cause every taxonomy URL to leak into the sitemap.
 
@@ -119,7 +122,7 @@ Any future proposal that changes a live URL must explicitly answer all of the fo
 2. Is the old URL currently indexed, linked, bookmarked, ordered against, or present in analytics/GSC?
 3. Can the improvement be achieved through title, H1, breadcrumb, canonical, internal linking, or content changes instead?
 4. If a URL change is genuinely unavoidable, is there a single-hop permanent redirect and a preserved historical mapping?
-5. Have sitemap, canonical, JSON-LD, internal links, checkout/order references, API lookups, and tests been updated atomically?
+5. Have sitemap, canonical, JSON-LD, internal links, payment/order references, API lookups, and tests been updated atomically?
 
 Default answer: **do not change the live slug**.
 
@@ -130,9 +133,10 @@ Default answer: **do not change the live slug**.
 - `app/api/admin/services/**` — admin service slug sanitation + live URL stability.
 - `lib/marketplaceSeo.ts` — market host canonical contract.
 - `lib/gigJsonLd.ts` — Service/Offer/provider/breadcrumb structured data.
-- `app/sitemap.ts` — indexable marketplace URL inventory.
+- `app/sitemap.ts` — indexable marketplace and File Shop URL inventory.
 - `app/robots.ts` — host-aware crawler discovery.
-- Apex `yousafe-consultancy/landing-page/app/sitemap-index.xml/route.ts` — estate-level sitemap discovery; already includes the market sitemap.
+- `app/marketplace/templates/**` — legacy template aliases; permanent redirects only.
+- Apex `yousafe-consultancy/landing-page/app/sitemap-index.xml/route.ts` — estate-level sitemap discovery; includes the market sitemap.
 
 ## 10. Design principle borrowed from mature marketplaces
 

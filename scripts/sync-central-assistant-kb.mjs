@@ -37,9 +37,6 @@ const SITES = [
   },
   { id: 'caseworks', base: 'https://legal.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/caseworks', minPages: 1 },
   { id: 'market', base: 'https://market.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/portal', minPages: 1 },
-  // checkout is legacy/deprecated and therefore useful when reachable but not a
-  // required coverage gate for publishing the current estate snapshot.
-  { id: 'checkout', base: 'https://checkout.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/yousafe-consultancy', minPages: 0 },
   { id: 'support', base: 'https://support.yousafeconsultancy.com', repo: 'kylemwalkerpr-ship-it/support-saas', minPages: 1 },
 ]
 

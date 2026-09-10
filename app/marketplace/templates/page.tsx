@@ -1,10 +1,9 @@
-import { notFound } from 'next/navigation'
+import { permanentRedirect } from 'next/navigation'
 
 /**
- * Template packs moved to the canonical /shop catalogue. Keep the old route as
- * a real 404 rather than a duplicate storefront so search engines and buyers
- * have one public product URL contract.
+ * Template packs moved to the canonical File Shop. Preserve historical links
+ * with one permanent hop instead of returning a hard 404.
  */
 export default function LegacyTemplatesIndexPage() {
-  notFound()
+  permanentRedirect('https://market.yousafeconsultancy.com/shop')
 }

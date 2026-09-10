@@ -387,6 +387,13 @@ export default clerkMiddleware(
         const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
         return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang), req)
       }
+    } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {
+      // File Shop is a public Marketplace surface. Serving the same /shop URL
+      // tree on portal.yousafeconsultancy.com creates a second crawlable copy
+      // of every product, even though metadata points at the market host. Keep
+      // host ownership unambiguous with one permanent hop to the canonical URL.
+      const redirectUrl = new URL(pathname + search, `https://${MARKET_HOST}`)
+      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {
       const redirectPath = pathname.slice('/marketplace'.length) || '/'
       const redirectUrl = new URL(redirectPath + search, `https://${MARKET_HOST}`)

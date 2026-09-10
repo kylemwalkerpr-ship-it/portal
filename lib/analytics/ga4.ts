@@ -3,7 +3,7 @@
  *
  * Mirrors the consultancy estate pattern (next/script gtag in root layout) with:
  * - NEXT_PUBLIC_GA_MEASUREMENT_ID override (fallback G-FTKZCVNW4B)
- * - cross-domain linker for the whole YouSafe host estate
+ * - cross-domain linker for the active YouSafe host estate
  * - optional conversion event helpers (call from real hooks only — do not invent fires)
  *
  * Consent: consultancy/landing hosts fire gtag with no banner today. Portal has no
@@ -12,7 +12,7 @@
 
 export const GA4_FALLBACK_MEASUREMENT_ID = 'G-FTKZCVNW4B'
 
-/** Cross-domain linker domains for the YouSafe estate (one GA4 property). */
+/** Cross-domain linker domains for the active YouSafe estate (one GA4 property). */
 export const GA4_LINKER_DOMAINS = [
   'yousafeconsultancy.com',
   'usa.yousafeconsultancy.com',
@@ -22,7 +22,6 @@ export const GA4_LINKER_DOMAINS = [
   'legal.yousafeconsultancy.com',
   'market.yousafeconsultancy.com',
   'portal.yousafeconsultancy.com',
-  'checkout.yousafeconsultancy.com',
 ] as const
 
 export type GaEventParams = Record<string, string | number | boolean | undefined>

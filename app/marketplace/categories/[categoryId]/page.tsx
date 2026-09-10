@@ -231,8 +231,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
                 <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
                   For free procedural reading — document order, refusal triggers and official-source links — use{' '}
                   <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>.
-                  {' '}Prefer a worksheet first? Browse{' '}
-                  <Link href="/templates" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>template packs</Link>.
+                  {' '}Prefer a worksheet or preparation pack first? Browse the{' '}
+                  <Link href="/shop" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>file shop</Link>.
                 </p>
               </div>
             </div>

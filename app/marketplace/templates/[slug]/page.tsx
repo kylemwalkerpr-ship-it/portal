@@ -1,15 +1,14 @@
-import { notFound } from 'next/navigation'
+import { permanentRedirect } from 'next/navigation'
 
-export const dynamicParams = false
-
-export async function generateStaticParams() {
-  return []
+interface LegacyTemplateDetailPageProps {
+  params: Promise<{ slug: string }>
 }
 
 /**
- * The paid preparation packs now live exclusively at /shop/<slug> with Payhip
- * checkout. Legacy marketplace template detail URLs intentionally return 404.
+ * Preserve historical template detail links with one permanent hop to the
+ * canonical File Shop product URL. Unknown slugs naturally remain 404 there.
  */
-export default function LegacyTemplateDetailPage() {
-  notFound()
+export default async function LegacyTemplateDetailPage({ params }: LegacyTemplateDetailPageProps) {
+  const { slug } = await params
+  permanentRedirect(`https://market.yousafeconsultancy.com/shop/${encodeURIComponent(slug)}`)
 }

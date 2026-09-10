@@ -80,7 +80,7 @@ export default function FilesShop() {
           <nav className="ys-shop-crumbs" aria-label="Breadcrumb">
             <a href="https://yousafeconsultancy.com/">Home</a>
             <span aria-hidden="true">/</span>
-            <Link href="/marketplace">Marketplace</Link>
+            <Link href="/">Marketplace</Link>
             <span aria-hidden="true">/</span>
             <span>File shop</span>
           </nav>
@@ -96,7 +96,7 @@ export default function FilesShop() {
               </p>
               <div className="ys-shop-cta-row">
                 <a className="ys-shop-btn primary" href="#catalog">Browse the catalog</a>
-                <Link className="ys-shop-btn ghost" href="/marketplace">Back to marketplace</Link>
+                <Link className="ys-shop-btn ghost" href="/">Back to marketplace</Link>
               </div>
             </div>
             <aside className="ys-shop-stats" aria-label="Shop facts">
@@ -199,7 +199,7 @@ export default function FilesShop() {
           </div>
           <p className="ys-shop-return">
             Need a consultant or attorney instead?{' '}
-            <Link href="/marketplace">Return to the marketplace</Link>
+            <Link href="/">Return to the marketplace</Link>
             {' · '}
             <a href="https://portal.yousafeconsultancy.com/dashboard">Open your dashboard</a>
             {' · '}
