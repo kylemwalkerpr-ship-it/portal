@@ -6,14 +6,12 @@ on:
       - seo/gsc-soft404-canonicalization
     paths:
       - '.github/workflows/one-time-gsc-soft404-patch.yml'
-      - 'tests/gsc-soft404-route-contract.test.ts'
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, 'Apply GSC soft-404 middleware patch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
