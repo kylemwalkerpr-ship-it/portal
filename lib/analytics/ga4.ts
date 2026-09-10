@@ -26,6 +26,21 @@ export const GA4_LINKER_DOMAINS = [
 
 export type GaEventParams = Record<string, string | number | boolean | undefined>
 
+export interface GaPurchaseItem {
+  item_id: string
+  item_name: string
+  price?: number
+  quantity?: number
+  item_category?: string
+}
+
+export interface GaPurchaseParams {
+  transaction_id: string
+  value: number
+  currency: string
+  items: GaPurchaseItem[]
+}
+
 declare global {
   interface Window {
     dataLayer?: unknown[]
@@ -98,7 +113,7 @@ export function trackPageView(pagePath: string, measurementId = getGaMeasurement
 
 /**
  * Optional conversion helpers — wire only from real conversion hooks.
- * Not auto-fired; Clerk sign-up / booking / lead forms own the call sites.
+ * Not auto-fired; Clerk sign-up / booking / purchase flows own the call sites.
  */
 export function trackGenerateLead(params?: GaEventParams) {
   callGtag('event', 'generate_lead', params)
@@ -110,4 +125,9 @@ export function trackBook(params?: GaEventParams) {
 
 export function trackSignUp(params?: GaEventParams) {
   callGtag('event', 'sign_up', params)
+}
+
+/** GA4 recommended ecommerce purchase event. Call only after confirmed payment/order success. */
+export function trackPurchase(params: GaPurchaseParams) {
+  callGtag('event', 'purchase', params)
 }
