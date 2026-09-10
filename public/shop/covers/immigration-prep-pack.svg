@@ -1,0 +1,28 @@
+<svg width="1200" height="1500" viewBox="0 0 1200 1500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="1500" fill="#F7F8FA"/>
+  <rect x="72" y="72" width="1056" height="1356" rx="48" fill="#FFFFFF" stroke="#D7DCE3" stroke-width="4"/>
+  <rect x="72" y="72" width="1056" height="176" rx="48" fill="#111827"/>
+  <rect x="72" y="198" width="1056" height="50" fill="#111827"/>
+  <circle cx="168" cy="160" r="42" fill="#E8B931"/>
+  <path d="M147 160L163 176L192 145" stroke="#111827" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="242" y="150" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="700" fill="#FFFFFF" letter-spacing="2">YOUSAFE MARKETPLACE</text>
+  <text x="242" y="196" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="600" fill="#D7DEE8" letter-spacing="4">IMMIGRATION PREPARATION</text>
+  <text x="120" y="406" font-family="Georgia, 'Times New Roman', serif" font-size="82" font-weight="700" fill="#111827">Preparation Pack</text>
+  <text x="120" y="474" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="500" fill="#475569">USA &amp; Canada application organizers</text>
+  <rect x="120" y="560" width="960" height="2" fill="#D7DCE3"/>
+  <rect x="120" y="634" width="132" height="132" rx="28" fill="#EEF2FF"/>
+  <path d="M167 669H206C220 669 232 681 232 695V737H167V669Z" fill="#3C3B6E"/>
+  <path d="M189 650V690M169 670H209" stroke="#3C3B6E" stroke-width="10" stroke-linecap="round"/>
+  <text x="292" y="680" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#111827">Structured worksheets</text>
+  <text x="292" y="728" font-family="Arial, Helvetica, sans-serif" font-size="26" fill="#64748B">Collect facts and supporting evidence consistently.</text>
+  <rect x="120" y="822" width="132" height="132" rx="28" fill="#ECFDF5"/>
+  <path d="M157 887L183 913L221 867" stroke="#16724A" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="292" y="868" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#111827">Document checklists</text>
+  <text x="292" y="916" font-family="Arial, Helvetica, sans-serif" font-size="26" fill="#64748B">Track missing, unsigned, expired, or inconsistent items.</text>
+  <rect x="120" y="1010" width="132" height="132" rx="28" fill="#FFF7ED"/>
+  <path d="M162 1085H210M186 1061V1109" stroke="#C56A22" stroke-width="12" stroke-linecap="round"/>
+  <text x="292" y="1056" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#111827">Official-source reminders</text>
+  <text x="292" y="1104" font-family="Arial, Helvetica, sans-serif" font-size="26" fill="#64748B">Re-check current government guidance before filing.</text>
+  <rect x="120" y="1244" width="960" height="110" rx="28" fill="#111827"/>
+  <text x="162" y="1312" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#FFFFFF">SELF-GUIDED DIGITAL DOWNLOAD • PAYHIP CHECKOUT</text>
+</svg>
