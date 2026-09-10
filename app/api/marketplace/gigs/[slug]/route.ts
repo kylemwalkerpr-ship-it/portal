@@ -96,7 +96,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       title: `${gig.seo_title || gig.title} | YouSafe`,
       description: gig.seo_description || gig.pitch || '',
       og_image: cover,
-      canonical_path: `/marketplace/gigs/${gig.slug}`,
+      canonical_path: `/gigs/${gig.slug}`,
       json_ld: {
         '@context': 'https://schema.org',
         '@type': 'Service',
