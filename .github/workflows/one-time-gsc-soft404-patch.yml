@@ -1,0 +1,98 @@
+name: One-time GSC soft-404 middleware patch
+
+on:
+  push:
+    branches:
+      - seo/gsc-soft404-canonicalization
+    paths:
+      - '.github/workflows/one-time-gsc-soft404-patch.yml'
+      - 'tests/gsc-soft404-route-contract.test.ts'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Apply GSC soft-404 middleware patch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: seo/gsc-soft404-canonicalization
+          fetch-depth: 2
+
+      - name: Apply exact guarded patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('middleware.ts')
+          s = p.read_text()
+
+          old = """    // The historical public `/marketplace` namespace is retired. Do this
+    // before query sanitization so no prefixed request can gain a redirect hop
+    // or alternate 200. Clean market-domain paths are the sole public contract.
+    const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')
+    if ((hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath) {
+      return new NextResponse('Not Found', {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8', ...corsHeadersFor(req) },
+      })
+    }
+"""
+          new = """    // The historical public `/marketplace` namespace is retired, but old
+    // external/GSC URLs still exist. Preserve their equity with one permanent
+    // hop to the clean Marketplace contract instead of returning a soft/hard 404.
+    const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')
+    if ((hostname === MARKET_HOST || hostname === PORTAL_HOST) && isLegacyMarketplacePath) {
+      const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'
+      const target = new URL(req.url)
+      target.protocol = 'https:'
+      target.hostname = MARKET_HOST
+      target.port = ''
+      target.pathname = cleanMarketplacePath
+      for (const key of [...target.searchParams.keys()]) {
+        if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
+          target.searchParams.delete(key)
+        }
+      }
+      return withCorsHeaders(NextResponse.redirect(target, { status: 301 }), req)
+    }
+"""
+          if s.count(old) != 1:
+              raise SystemExit(f'Expected exactly one legacy marketplace block; found {s.count(old)}')
+          s = s.replace(old, new)
+
+          old2 = """      } else {
+        const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
+        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang), req)
+      }
+"""
+          new2 = """      } else {
+        const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
+        const response = withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
+        // Internal free-text search URLs are useful for users but should not
+        // become index inventory. Keep links crawlable while consolidating
+        // search variants to the canonical Marketplace landing page.
+        if (pathname === '/' && req.nextUrl.searchParams.has('q')) {
+          response.headers.set('X-Robots-Tag', 'noindex, follow')
+        }
+        return withCorsHeaders(response, req)
+      }
+"""
+          if s.count(old2) != 1:
+              raise SystemExit(f'Expected exactly one market rewrite block; found {s.count(old2)}')
+          s = s.replace(old2, new2)
+          p.write_text(s)
+          PY
+
+          git diff --check
+          git diff -- middleware.ts
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add middleware.ts
+          git commit -m 'Apply GSC soft-404 middleware patch'
+          git push origin HEAD:seo/gsc-soft404-canonicalization
