@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { MarketplaceCategoriesIndex } from '@/components/marketplace/MarketplaceCategoriesIndex'
-import { CategoriesIndexSeo } from '@/components/marketplace/MarketIndexSeo'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 // ISR: revalidate at most once per hour
@@ -21,10 +20,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MarketplaceCategoriesIndexPage() {
-  return (
-    <>
-      <CategoriesIndexSeo />
-      <MarketplaceCategoriesIndex />
-    </>
-  )
+  // MarketplaceCategoriesIndex is pre-rendered by Next even though it hydrates
+  // client-side for search/filter interactions. Rendering a second SEO-only
+  // <main> here duplicated the entire directory for real users and produced
+  // two primary landmarks. Keep one authoritative, indexable experience.
+  return <MarketplaceCategoriesIndex />
 }
