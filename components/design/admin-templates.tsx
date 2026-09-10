@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+import AdminShopCatalogue from './admin-shop-catalog'
 
 interface TemplateItem {
   id: string
@@ -172,6 +173,8 @@ export default function AdminTemplates({
           </div>
         ))}
       </div>
+
+      <AdminShopCatalogue />
 
       {/* Templates table */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden' }}>

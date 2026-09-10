@@ -90,9 +90,9 @@ export default function FilesShop() {
               <p className="ys-shop-kicker">The YouSafe file shop</p>
               <h1>Tools you can open today and run the business with.</h1>
               <p className="ys-shop-lede">
-                Spreadsheets, templates, and short guides for consultants, operators, and families.
-                Checkout is on Payhip and your file arrives in the same session — no subscription,
-                no waiting on fulfilment.
+                Immigration preparation packs, spreadsheets, templates, and short guides in one catalog.
+                Choose a focused download, review exactly what is included, and get access without a
+                subscription. Checkout remains securely on Payhip.
               </p>
               <div className="ys-shop-cta-row">
                 <a className="ys-shop-btn primary" href="#catalog">Browse the catalog</a>
@@ -101,7 +101,7 @@ export default function FilesShop() {
             </div>
             <aside className="ys-shop-stats" aria-label="Shop facts">
               <Stat n={String(FILE_SHOP_PRODUCTS.filter((p) => p.published).length)} label="files in catalog" />
-              <Stat n="$7–16" label="one-time USD price" />
+              <Stat n="$7–79" label="one-time USD price" />
               <Stat n="0" label="subscriptions" />
               <Stat n="Payhip" label="secure checkout" />
             </aside>
@@ -128,7 +128,7 @@ export default function FilesShop() {
           <div className="ys-shop-section-head row">
             <div>
               <p className="ys-shop-kicker">Full catalog</p>
-              <h2>Every file, ready to download</h2>
+              <h2>Every file, in one catalog</h2>
             </div>
             <label className="ys-shop-search">
               <span className="sr-only">Search files</span>
@@ -136,7 +136,7 @@ export default function FilesShop() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search workbooks, resumes, planners…"
+                placeholder="Search visa packs, workbooks, planners…"
               />
             </label>
           </div>

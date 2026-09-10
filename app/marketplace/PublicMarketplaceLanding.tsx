@@ -30,6 +30,7 @@ import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 import HeroCaseFileSlideshow, { HeroSlide } from '@/components/marketplace/HeroCaseFileSlideshow'
 import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 import { FilesRailScroller } from '@/components/marketplace/FilesRailScroller'
+import { ImmigrationPackRail } from '@/components/marketplace/ImmigrationPackRail'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -1040,11 +1041,21 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
       <section className="cw-files-band" aria-label="Open the file shop">
         <div className="wrap cw-files-band-inner">
           <div>
-            <p className="kicker">Instant downloads · $7–16 · keep the file</p>
-            <h2>Open the file shop</h2>
-            <p className="lede">Workbooks, templates, and short guides. Pay once on Payhip, download immediately.</p>
+            <p className="kicker">36 instant downloads · $7–79 · secure Payhip checkout</p>
+            <h2>Preparation packs and practical files, now in one shop</h2>
+            <p className="lede">Shop USA and Canada immigration organizers alongside business templates, workbooks, and short guides.</p>
           </div>
-          <a className="cw-files-band-cta" href="/shop">Browse files</a>
+          <a className="cw-files-band-cta" href="/shop">Browse all 36 files</a>
+        </div>
+      </section>
+
+      <section className="cw-files-rail" aria-label="Immigration preparation packs">
+        <div className="wrap">
+          <div className="cw-files-rail-head">
+            <h2>Immigration preparation packs</h2>
+            <a href="/shop">See the complete shop →</a>
+          </div>
+          <ImmigrationPackRail />
         </div>
       </section>
 
