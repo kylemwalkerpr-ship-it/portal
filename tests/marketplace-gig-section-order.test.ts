@@ -7,7 +7,7 @@ describe('Marketplace gig long-form section hierarchy', () => {
   test('keeps Similar Services, then Reviews, then FAQs at the bottom on all viewports', () => {
     const css = fs.readFileSync(path.join(process.cwd(), 'app/mobile-marketplace-profile-gig.css'), 'utf8')
     const media = css.indexOf('@media (max-width: 700px)')
-    const similar = css.indexOf("div:has(a[href^='/marketplace/gigs/'])")
+    const similar = css.indexOf("div:has(a[href^='/gigs/'])")
     const reviews = css.indexOf('div:has(h2)')
     const faq = css.indexOf('div:has(> h3 + div > div > button)')
 
