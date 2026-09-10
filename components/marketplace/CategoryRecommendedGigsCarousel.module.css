@@ -104,7 +104,6 @@
   padding: 17px 0 28px;
   scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
-  scroll-padding-inline: 50%;
   scrollbar-width: none;
   overscroll-behavior-inline: contain;
   perspective: 1150px;
