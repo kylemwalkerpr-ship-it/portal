@@ -79,6 +79,7 @@ const isPublicRoute = createRouteMatcher([
   '/shop',
   '/shop(.*)',
   '/sitemap.xml',
+  '/sitemap(.*)',
 ])
 
 // Origins we permit for cross-origin API calls. The market subdomain
@@ -277,6 +278,24 @@ export default clerkMiddleware(
       // runs (it is host-aware and emits the market map). Previously this
       // fell through to the /marketplace${pathname} rewrite → 404 HTML even
       // though the apex sitemap-index lists the market loc.
+      return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+    }
+
+    // Human-readable Marketplace sitemap. Return before the market-host
+    // clean-path rewrite so /sitemap and /sitemap/ are owned by this route,
+    // while portal never exposes a duplicate sitemap directory.
+    if (pathname === '/sitemap' || pathname === '/sitemap/') {
+      if (hostname !== MARKET_HOST) {
+        return new NextResponse('Not Found', {
+          status: 404,
+          headers: { 'cache-control': 'private, no-store' },
+        })
+      }
+      if (pathname === '/sitemap/') {
+        const target = req.nextUrl.clone()
+        target.pathname = '/sitemap'
+        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(target), pathname, search, lang), req)
+      }
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
 

@@ -51,7 +51,9 @@ describe('marketplace category discovery presentation', () => {
     expect(categoryLayout).toContain('Vetted specialists')
     expect(categoryLayout).not.toContain('CategoryRecommendedGigsCarousel')
     expect(categoryPage).toContain('<CategoryRecommendedGigsCarousel')
-    expect(categoryCarousel).toContain("requestGigs(categoryId, 'trending'")
+    expect(categoryCarousel).toContain("requestGigs([categoryId], 'trending'")
+    expect(categoryCarousel).toContain('getRelatedCategoryIds')
+    expect(categoryCarousel).toContain('CATEGORY_AFFINITIES')
     expect(categoryCarousel).toContain('getCategoryFilterTerms')
   })
 
