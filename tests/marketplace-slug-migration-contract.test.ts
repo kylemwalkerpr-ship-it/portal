@@ -9,7 +9,8 @@ describe('marketplace slug migration contract', () => {
   it('uses a permanent redirect for historical gig slugs', () => {
     const source = fs.readFileSync(path.join(root, 'app/marketplace/gigs/[slug]/page.tsx'), 'utf8')
     expect(source).toContain("import { notFound, permanentRedirect } from 'next/navigation'")
-    expect(source).toContain('permanentRedirect(`/marketplace/gigs/${redirected}`)')
+    expect(source).toContain('permanentRedirect(`/gigs/${redirected}`)')
+    expect(source).not.toContain('permanentRedirect(`/marketplace/gigs/${redirected}`)')
     expect(source).not.toContain("import { notFound, redirect } from 'next/navigation'")
   })
 
