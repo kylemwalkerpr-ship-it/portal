@@ -18,10 +18,8 @@ interface ProviderPageProps {
  *   • an `attorneys.id` UUID                        — looked up on attorneys
  *   • a `consultants.id` UUID                       — looked up on consultants
  *
- * This back-compat union is what unblocks links that already point at
- * `/marketplace/providers/<profile_uuid>` (the shape GigDetailPage emits) and
- * lets the canonical URL move to `/marketplace/providers/<username>` going
- * forward without breaking existing share links.
+ * This back-compat union accepts profile and role IDs while public URLs stay
+ * under `/providers/<token>`. Username is preferred for the canonical path.
  */
 async function resolveProfileId(
   db: ReturnType<typeof createSupabaseAdminClient>,
@@ -138,7 +136,7 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
   const allowIndex = Boolean(editorial) || nGigs > 0 || Boolean(areas)
 
   const canonicalToken = profile.username || id
-  const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/providers/${canonicalToken}/`)
+  const canonicalUrl = getMarketplaceCanonicalUrl(`/providers/${canonicalToken}`)
   const title = `${name} — ${roleLabel} | YouSafe Marketplace`
   return {
     title,
