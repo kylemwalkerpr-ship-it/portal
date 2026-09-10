@@ -65,41 +65,41 @@ jobs:
             # Components rendered on the portal or in shared shells: always
             # cross to the canonical market host instead of using a relative URL.
             'components/marketplace/BuyerDashboardWidgets.tsx': [
-              ('viewAllHref="/marketplace?view=orders"', f'viewAllHref="{MARKET}/?view=orders"'),
-              ('viewAllHref="/marketplace"', f'viewAllHref="{MARKET}/"'),
-              ('/marketplace/gigs/', f'{MARKET}/gigs/'),
+              ('viewAllHref="/marketplace?view=orders"', 'viewAllHref="' + MARKET + '/?view=orders"'),
+              ('viewAllHref="/marketplace"', 'viewAllHref="' + MARKET + '/"'),
+              ('/marketplace/gigs/', MARKET + '/gigs/'),
             ],
             'components/marketplace/MessageOfferCard.tsx': [
-              ('href={`/gigs/${offer.linked_gig.slug}`}', f'href={{`{MARKET}/gigs/${{offer.linked_gig.slug}}`}}'),
+              ('href={`/gigs/${offer.linked_gig.slug}`}', 'href={`' + MARKET + '/gigs/${offer.linked_gig.slug}`}'),
             ],
             'components/cart/CartIcon.tsx': [
-              ('href="/marketplace/cart"', f'href="{MARKET}/cart"'),
+              ('href="/marketplace/cart"', 'href="' + MARKET + '/cart"'),
             ],
             'components/seller/SellerMarketplaceView.tsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', f'href={{`{MARKET}/gigs/${{gig.slug}}`}}'),
+              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
             ],
             'components/seller/SellerGigCard.tsx': [
-              ('`${window.location.origin}/marketplace/gigs/${gig.slug}`', f'`{MARKET}/gigs/${{gig.slug}}`'),
-              ('window.open(`/marketplace/gigs/${gig.slug}`', f'window.open(`{MARKET}/gigs/${{gig.slug}}`'),
+              ('`${window.location.origin}/marketplace/gigs/${gig.slug}`', '`' + MARKET + '/gigs/${gig.slug}`'),
+              ('window.open(`/marketplace/gigs/${gig.slug}`', 'window.open(`' + MARKET + '/gigs/${gig.slug}`'),
             ],
             'components/design/admin-gigs.jsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', f'href={{`{MARKET}/gigs/${{gig.slug}}`}}'),
+              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
             ],
             'components/design/consultant-overview.jsx': [
-              ('href={`/marketplace/gigs/${gig.slug}`}', f'href={{`{MARKET}/gigs/${{gig.slug}}`}}'),
+              ('href={`/marketplace/gigs/${gig.slug}`}', 'href={`' + MARKET + '/gigs/${gig.slug}`}'),
             ],
             'components/design/landing/Nav.tsx': [
-              ("href: '/marketplace'", f"href: '{MARKET}/'"),
-              ('href="/marketplace"', f'href="{MARKET}/"'),
+              ("href: '/marketplace'", "href: '" + MARKET + "/'"),
+              ('href="/marketplace"', 'href="' + MARKET + '/"'),
             ],
             'components/design/student.jsx': [
-              ("goToRoute('/marketplace')", f"goToRoute('{MARKET}/')"),
-              ("window.location.pathname === '/marketplace'", "false"),
+              ("goToRoute('/marketplace')", "goToRoute('" + MARKET + "/')"),
+              ("window.location.pathname === '/marketplace'", 'false'),
             ],
             'components/design/fiverr-workbench.jsx': [
-              ('`/marketplace/gigs/${', f'`{MARKET}/gigs/${{'),
-              ('`/marketplace/providers/${', f'`{MARKET}/providers/${{'),
-              ('href="/marketplace"', f'href="{MARKET}/"'),
+              ('`/marketplace/gigs/${', '`' + MARKET + '/gigs/${'),
+              ('`/marketplace/providers/${', '`' + MARKET + '/providers/${'),
+              ('href="/marketplace"', 'href="' + MARKET + '/"'),
             ],
 
             # Public cart/order pages live on the market host after middleware
@@ -114,7 +114,7 @@ jobs:
               ('href="/marketplace"', 'href="/"'),
             ],
             'app/marketplace/PublicMarketplaceLanding.tsx': [
-              ('return_to=/marketplace', f'return_to={MARKET}/'),
+              ('return_to=/marketplace', 'return_to=' + MARKET + '/'),
             ],
 
             # SEO/content-studio URL emitters must also produce the clean public form.
@@ -193,7 +193,6 @@ jobs:
           for filename in files:
             text = Path(filename).read_text()
             for i, line in enumerate(text.splitlines(), 1):
-              # Ignore explanatory comments only; runtime string emitters remain fatal.
               stripped = line.strip()
               if stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
                 continue
