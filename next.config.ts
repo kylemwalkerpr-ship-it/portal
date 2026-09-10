@@ -22,12 +22,11 @@ const securityHeaders = [
   { key: 'Content-Security-Policy',   value: "frame-ancestors 'self'" },
 ]
 
-const legacyMarketplaceRedirects = ['market.yousafeconsultancy.com', 'portal.yousafeconsultancy.com'].map((host) => ({
+const legacyMarketplaceRedirect = {
   source: '/marketplace/:path*',
-  has: [{ type: 'host' as const, value: host }],
   destination: 'https://market.yousafeconsultancy.com/:path*',
   permanent: true,
-}))
+}
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -41,9 +40,11 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     // Preserve authority from the retired public `/marketplace` namespace.
-    // Next applies these before Proxy/middleware and carries query parameters
-    // through to the clean standalone Marketplace URL.
-    return legacyMarketplaceRedirects
+    // This app is served by both Portal and Marketplace; the namespace is
+    // retired on both, so the redirect must not depend on a Host predicate
+    // that can be rewritten by the Cloudflare/OpenNext binding. Next carries
+    // the original query string through to the clean Marketplace destination.
+    return [legacyMarketplaceRedirect]
   },
 }
 
