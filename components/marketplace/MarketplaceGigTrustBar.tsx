@@ -25,6 +25,7 @@ type GigSignal = {
   avg_rating?: number | null
   review_count?: number | null
   order_count?: number | null
+  provider_order_count?: number | null
   seller_level?: string | null
   seller_completed_orders?: number | null
   seller_on_time_delivery_rate?: number | null
@@ -32,6 +33,7 @@ type GigSignal = {
   active_queue_count?: number | null
   repeat_client_count?: number | null
   repeat_order_count?: number | null
+  repeat_history_complete?: boolean | null
 }
 
 function providerName(gig: GigSignal) {
@@ -73,8 +75,9 @@ export function MarketplaceGigTrustBar() {
       return
     }
 
+    setGig(null)
     const controller = new AbortController()
-    fetch(`/api/marketplace/gigs/${encodeURIComponent(slug)}`, {
+    fetch(`/api/marketplace/gigs/${encodeURIComponent(slug)}/reputation`, {
       credentials: 'same-origin',
       signal: controller.signal,
     })
@@ -99,9 +102,10 @@ export function MarketplaceGigTrustBar() {
   const activeQueue = Number(gig.active_queue_count || 0)
   const repeatClients = Number(gig.repeat_client_count || 0)
   const repeatOrders = Number(gig.repeat_order_count || 0)
-  const completedOrders = Number(gig.seller_completed_orders || gig.order_count || 0)
+  const completedOrders = Number(gig.seller_completed_orders || gig.provider_order_count || 0)
   const onTime = percent(gig.seller_on_time_delivery_rate)
   const responseRate = percent(gig.seller_response_rate)
+  const repeatProofVisible = gig.repeat_history_complete === true && repeatClients > 0 && repeatOrders > 0
 
   return (
     <section className="ys-gig-trust-bar" aria-label="Provider reputation and service activity">
@@ -140,7 +144,7 @@ export function MarketplaceGigTrustBar() {
           {responseRate && <span className="ys-gig-trust-signal"><b>{responseRate}</b> response rate</span>}
         </div>
 
-        {repeatClients > 0 && (
+        {repeatProofVisible && (
           <div className="ys-gig-repeat-proof">
             <span className="ys-gig-repeat-icon" aria-hidden="true">↻</span>
             <span>
