@@ -1,3 +1,5 @@
+import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
+
 export type FileShopCategory = 'spreadsheet' | 'guide' | 'template' | 'craft'
 
 export interface FileShopProduct {
@@ -18,8 +20,8 @@ export interface FileShopProduct {
 
 const P = 'https://payhip.com/b/'
 
-/** Instant-download files sold via Payhip. Hidden Payhip listings still have keys so buttons work the day they go Visible. */
-export const FILE_SHOP_PRODUCTS: FileShopProduct[] = [
+/** The original 20 instant-download files that were already on the known-good Marketplace build. */
+const BASE_FILE_SHOP_PRODUCTS: FileShopProduct[] = [
   { id: 'consultant-toolkit', file: '01', cat: 'spreadsheet', format: 'Excel + Sheets', stamp: 'FIELD\nTESTED', title: 'Solo Consultant Business Toolkit', desc: 'Track clients, invoices, and cash flow — updated automatically as you type.', bullets: ['Client & invoice tracking', 'Auto-calculating dashboard'], price: '12', href: `${P}xQg6i`, cover: '/shop/covers/consultant-toolkit.jpg', published: true },
   { id: 'ai-prompts-business', file: '02', cat: 'guide', format: 'PDF · 10 pages', stamp: 'READY\nTO USE', title: '50 AI Prompts for Small Business Owners', desc: 'Copy-paste prompts for marketing, sales, admin, and strategy.', bullets: ['6 categories, 50 prompts', 'Works with ChatGPT & Claude'], price: '9', href: `${P}rlsyK`, cover: '/shop/covers/ai-prompts-business.jpg', published: true },
   { id: 'rate-calculator', file: '03', cat: 'spreadsheet', format: 'Excel + Sheets', stamp: 'FIELD\nTESTED', title: 'Freelance Rate & Profitability Calculator', desc: 'Work out what to charge, then check every project actually pays.', bullets: ['Required hourly & day rate', 'Per-project profitability tracker'], price: '10', href: `${P}ZLyP9`, cover: '/shop/covers/rate-calculator.jpg', published: true },
@@ -42,10 +44,36 @@ export const FILE_SHOP_PRODUCTS: FileShopProduct[] = [
   { id: 'reflection-journal', file: '20', cat: 'guide', format: 'PDF · 16 pages', stamp: 'READY\nTO USE', title: '90-Day Guided Self-Reflection Journal', desc: '13 weeks of prompts on values, relationships, work, and rest.', bullets: ['3 prompts per week, space to write', 'Printable or digital use'], price: '9', href: `${P}87eHp`, cover: '/shop/covers/reflection-journal.jpg', published: true },
 ]
 
+/**
+ * The 16 immigration products were originally published straight to the active
+ * Cloudflare Worker. Re-express them in the established shop-card contract so
+ * the known-good shop design stays intact while their canonical detail pages
+ * remain /shop/<slug> and checkout remains Payhip-only on those pages.
+ */
+const IMMIGRATION_FILE_SHOP_PRODUCTS: FileShopProduct[] = IMMIGRATION_SHOP_PRODUCTS.map((pack, index) => ({
+  id: pack.slug,
+  file: String(index + 21).padStart(2, '0'),
+  cat: 'template',
+  format: 'Digital preparation pack',
+  stamp: 'IMMIGRATION\nPACK',
+  title: pack.name,
+  desc: pack.short_description,
+  bullets: [pack.includes[0] || 'Application preparation organizer', pack.includes[1] || 'Document checklist'],
+  price: String(pack.price_usd),
+  href: `/shop/${pack.slug}`,
+  cover: '/shop/covers/immigration-prep-pack.svg',
+  published: pack.payhip_published,
+}))
+
+export const FILE_SHOP_PRODUCTS: FileShopProduct[] = [
+  ...BASE_FILE_SHOP_PRODUCTS,
+  ...IMMIGRATION_FILE_SHOP_PRODUCTS,
+]
+
 export const FILE_SHOP_FILTERS: { id: 'all' | FileShopCategory; label: string }[] = [
   { id: 'all', label: 'All Files' },
   { id: 'spreadsheet', label: 'Spreadsheets' },
   { id: 'guide', label: 'Guides & PDFs' },
-  { id: 'template', label: 'Templates' },
+  { id: 'template', label: 'Templates & Packs' },
   { id: 'craft', label: 'Craft & Print' },
 ]
