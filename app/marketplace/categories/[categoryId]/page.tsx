@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
+import { CategoryRecommendedGigsCarousel } from '@/components/marketplace/CategoryRecommendedGigsCarousel'
 import { CaseworksReadMoreRail } from '@/components/marketplace/CaseworksReadMoreRail'
 import { notFound } from 'next/navigation'
 import { buildCategoryOrFilter, resolveCategoryOrSubcategory } from '@/lib/categories'
@@ -105,9 +106,6 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
     ],
   }
   const caseworksItemList = getCaseworksItemListJsonLd(filterId)
-  const siblingSubcategories = subcategory
-    ? category.subcategories.filter((s) => s.id !== subcategory.id)
-    : category.subcategories
   const editorial =
     getCategoryEditorial(filterId) ||
     getCategoryEditorial(category.id) ||
@@ -276,52 +274,13 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         </details>
       </section>
 
-      {siblingSubcategories.length > 0 && (
-        <section
-          aria-label={subcategory ? `Related ${category.name} services` : `${category.name} subcategories`}
-          className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8"
-        >
-          <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>
-            {subcategory ? `Related ${category.name} services` : `Browse ${category.name} subcategories`}
-          </h2>
-          <ul
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: '10px',
-              listStyle: 'none',
-              padding: 0,
-              margin: 0,
-            }}
-          >
-            {siblingSubcategories.map((s) => (
-              <li key={s.id}>
-                <Link
-                  href={`/categories/${s.id}`}
-                  style={{
-                    display: 'block',
-                    padding: '13px 14px',
-                    borderRadius: '11px',
-                    border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
-                    background: 'var(--ys-vellum, #FFFFFF)',
-                    color: 'inherit',
-                    textDecoration: 'none',
-                    fontWeight: 650,
-                    minHeight: 72,
-                  }}
-                >
-                  {s.name}
-                  {s.description && (
-                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 400, lineHeight: 1.45, color: 'var(--ys-onPaperSoft, #64748B)', marginTop: '3px' }}>
-                      {s.description}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8">
+        <CategoryRecommendedGigsCarousel
+          categoryId={filterId}
+          fallbackCategoryId={subcategory ? category.id : undefined}
+          displayName={displayName}
+        />
+      </div>
 
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pb-8">
         <CaseworksReadMoreRail categoryId={category.id} />
