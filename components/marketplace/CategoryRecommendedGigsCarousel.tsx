@@ -120,16 +120,17 @@ export function CategoryRecommendedGigsCarousel({
     const slides = Array.from(viewport.querySelectorAll<HTMLElement>('.ys-category-reco-slide'))
     if (slides.length === 0) return
 
-    const viewportRect = viewport.getBoundingClientRect()
-    const viewportCenter = viewportRect.left + viewportRect.width / 2
+    const viewportCenter = viewport.scrollLeft + viewport.clientWidth / 2
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     let closestIndex = 0
     let closestDistance = Number.POSITIVE_INFINITY
 
     slides.forEach((slide, index) => {
-      const rect = slide.getBoundingClientRect()
-      const slideCenter = rect.left + rect.width / 2
-      const signedDistance = (slideCenter - viewportCenter) / Math.max(rect.width + 18, 1)
+      // Use untransformed layout geometry rather than getBoundingClientRect().
+      // The card's own scale must not feed back into the distance calculation
+      // and cause the centre focus to wobble while the belt settles.
+      const slideCenter = slide.offsetLeft + slide.offsetWidth / 2
+      const signedDistance = (slideCenter - viewportCenter) / Math.max(slide.offsetWidth + 18, 1)
       const distance = Math.abs(signedDistance)
       const bounded = Math.min(distance, 1.6)
       const pixelDistance = Math.abs(slideCenter - viewportCenter)
