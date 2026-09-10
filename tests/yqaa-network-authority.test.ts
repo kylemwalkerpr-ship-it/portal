@@ -85,7 +85,7 @@ describe('YQAA canonical network authority', () => {
 })
 
 describe('central crawler sibling coverage', () => {
-  it('requires Australia and every customer-facing sibling repository', () => {
+  it('requires Australia and every customer-facing sibling repository without retired checkout', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'scripts', 'sync-central-assistant-kb.mjs'),
       'utf8',
@@ -98,5 +98,7 @@ describe('central crawler sibling coverage', () => {
     expect(source).toContain('kylemwalkerpr-ship-it/caseworks')
     expect(source).toContain('kylemwalkerpr-ship-it/support-saas')
     expect(source).toContain('refusing to replace healthy snapshot')
+    expect(source).not.toContain('checkout.yousafeconsultancy.com')
+    expect(source).not.toContain("id: 'checkout'")
   })
 })
