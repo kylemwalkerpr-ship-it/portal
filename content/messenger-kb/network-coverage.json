@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T08:12:11.752Z",
+  "generatedAt": "2026-09-10T11:27:37.309Z",
   "status": "healthy",
   "requiredMarkets": [
     "United States",
@@ -65,18 +65,10 @@
       "problems": []
     },
     {
-      "id": "checkout",
-      "repository": "kylemwalkerpr-ship-it/yousafe-consultancy",
-      "base": "https://checkout.yousafeconsultancy.com",
-      "records": 0,
-      "required": false,
-      "problems": []
-    },
-    {
       "id": "support",
       "repository": "kylemwalkerpr-ship-it/support-saas",
       "base": "https://support.yousafeconsultancy.com",
-      "records": 3,
+      "records": 1,
       "required": true,
       "problems": []
     }
@@ -99,7 +91,7 @@
     },
     {
       "repository": "kylemwalkerpr-ship-it/support-saas",
-      "records": 3,
+      "records": 1,
       "localCore": false
     }
   ],
