@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const product = getImmigrationShopProduct(slug)
   if (!product) return {}
 
-  const title = `${product.name} | YouSafe File Shop`
+  const title = product.name
   const description = product.short_description.slice(0, 160)
   const canonical = `${SHOP_CANONICAL}/${slug}`
 

@@ -3,22 +3,27 @@ import React from 'react'
 export const LANDING_SLIDES = [
   {
     name: 'airport-terminal',
+    alt: 'International airport terminal',
     position: 'center center',
   },
   {
     name: 'arrival-board',
+    alt: 'Airport arrivals and departures board',
     position: 'center center',
   },
   {
     name: 'airport-checkin',
+    alt: 'International airport check-in area',
     position: 'center center',
   },
   {
     name: 'immigrant-statue',
+    alt: 'Immigration and travel landmark',
     position: 'center 38%',
   },
   {
     name: 'immigration-sign',
+    alt: 'Immigration direction sign',
     position: 'center center',
   },
 ] as const
@@ -90,7 +95,7 @@ export function LandingPhotoSlideshow({
           />
           <img
             src={`/landing-slides/${slide.name}-1600.webp`}
-            alt=""
+            alt={slide.alt}
             loading={index === 0 ? 'eager' : 'lazy'}
             fetchPriority={index === 0 ? 'high' : 'auto'}
             decoding={index === 0 ? 'sync' : 'async'}

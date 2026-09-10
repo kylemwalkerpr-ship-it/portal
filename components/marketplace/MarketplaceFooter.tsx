@@ -104,7 +104,7 @@ export function MarketplaceFooter() {
       `}</style>
       <div className="cw-mkt-footer-inner">
         <a className="cw-mkt-footer-brand" href="/">
-          <img src="/logo.png" alt="" width="26" height="26" />
+          <img src="/logo.png" alt="YouSafe Consultancy" width="26" height="26" />
           YouSafe
         </a>
         <nav className="cw-mkt-footer-nav" aria-label="Footer">
