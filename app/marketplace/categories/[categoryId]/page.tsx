@@ -9,6 +9,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { getCaseworksItemListJsonLd } from '@/lib/caseworksClusterMap'
 import { getCategoryEditorial } from '@/lib/categoryEditorial'
+import guidanceStyles from './category-guidance.module.css'
 
 interface CategoryPageProps {
   params: Promise<{ categoryId: string }>
@@ -145,7 +146,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
 
       {/* Keep the first screen conversion-led: a compact category hero followed
           immediately by real services. Deeper SEO / buying guidance stays
-          server-rendered below the listings inside a collapsed disclosure card. */}
+          server-rendered below the listings inside an open-by-default, collapsible guide. */}
       <main className="ys-category-main mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-5 pb-3">
         <section
           className="ys-category-hero"
@@ -181,100 +182,77 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
 
       <section
         aria-label={`${displayName} buying guidance`}
-        className="ys-category-guidance mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8"
+        className={guidanceStyles.section}
       >
-        <details
-          className="ys-category-guidance-card"
-          style={{ ...cardStyle, overflow: 'hidden' }}
-        >
-          <summary
-            style={{
-              cursor: 'pointer',
-              padding: 'clamp(18px, 4vw, 24px)',
-              fontSize: '18px',
-              lineHeight: 1.35,
-              fontWeight: 750,
-              color: 'var(--ys-ink, #0F172A)',
-            }}
-          >
-            <span style={{ marginLeft: 6 }}>Before you order: {displayName}</span>
-            <span
-              style={{
-                display: 'block',
-                margin: '5px 0 0 24px',
-                fontSize: 12,
-                lineHeight: 1.5,
-                fontWeight: 500,
-                color: 'var(--ys-onPaperSoft, #64748B)',
-              }}
-            >
-              Open practical scope guidance, comparison points and next steps
+        <details open className={`${guidanceStyles.card} ys-category-guidance-card`}>
+          <summary className={guidanceStyles.summary}>
+            <span className={guidanceStyles.summaryCopy}>
+              <span className={guidanceStyles.eyebrow}>Buying guide</span>
+              <span className={guidanceStyles.summaryTitle}>Before you order: {displayName}</span>
+              <span className={guidanceStyles.summaryHint}>
+                Practical scope guidance, comparison points and next steps
+              </span>
+            </span>
+            <span className={guidanceStyles.chevron} aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5" /></svg>
             </span>
           </summary>
 
-          <div
-            className="ys-category-guidance-body"
-            style={{
-              padding: '0 clamp(18px, 4vw, 30px) clamp(18px, 4vw, 30px)',
-              borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
-            }}
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 12, paddingTop: 18 }}>
-              <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
-                <h2 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Choose the right scope</h2>
-                <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+          <div className={`${guidanceStyles.body} ys-category-guidance-body`}>
+            <div className={guidanceStyles.introGrid}>
+              <div className={guidanceStyles.infoCard}>
+                <h2>Choose the right scope</h2>
+                <p>
                   YouSafe Marketplace lists fixed-price briefs from consultants and licensed attorneys. Compare scope, delivery time, and provider role before you request work. Marketplace orders are document-preparation and consulting engagements unless your contract states attorney representation.
                 </p>
               </div>
-              <div style={{ padding: '16px 17px', borderRadius: 12, background: 'var(--ys-paper2, #F8FAFC)', border: '1px solid var(--ys-rule, rgba(15,23,42,0.08))' }}>
-                <h2 style={{ fontSize: 15, fontWeight: 750, margin: '0 0 7px' }}>Self-serve or specialist?</h2>
-                <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
+              <div className={guidanceStyles.infoCard}>
+                <h2>Self-serve or specialist?</h2>
+                <p>
                   For free procedural reading — document order, refusal triggers and official-source links — use{' '}
-                  <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>.
+                  <a href="https://legal.yousafeconsultancy.com/">MyCaseworks</a>.
                   {' '}Prefer a worksheet first? Browse{' '}
-                  <Link href="/templates" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>template packs</Link>.
+                  <Link href="/shop">preparation packs</Link>.
                 </p>
               </div>
             </div>
 
             {editorial?.body && editorial.body.length > 0 && (
-              <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
-                <h2 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 8px' }}>{displayName} guidance</h2>
+              <div className={guidanceStyles.copySection}>
+                <h2>{displayName} guidance</h2>
                 {editorial.body.map((para) => (
-                  <p key={para.slice(0, 48)} style={{ fontSize: 14, lineHeight: 1.7, maxWidth: '52rem', margin: '8px 0 0', color: 'var(--ys-inkMid, #334155)' }}>
-                    {para}
-                  </p>
+                  <p key={para.slice(0, 48)}>{para}</p>
                 ))}
               </div>
             )}
 
             {editorial?.compare && editorial.compare.length > 0 && (
-              <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ys-rule, rgba(15,23,42,0.10))' }}>
-                <h2 style={{ fontSize: 16, fontWeight: 750, margin: '0 0 9px' }}>What to compare in {displayName}</h2>
-                <ul style={{ margin: 0, paddingLeft: '1.15rem', lineHeight: 1.65, fontSize: 14, color: 'var(--ys-inkMid, #334155)' }}>
-                  {editorial.compare.map((c) => <li key={c} style={{ marginBottom: 5 }}>{c}</li>)}
+              <div className={guidanceStyles.copySection}>
+                <h2>What to compare in {displayName}</h2>
+                <ul>
+                  {editorial.compare.map((c) => <li key={c}>{c}</li>)}
                 </ul>
               </div>
             )}
 
             {editorial?.nextSteps && (
-              <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: 11, background: 'var(--ys-indigoSoft, rgba(60,59,110,0.08))', fontSize: 14, lineHeight: 1.6 }}>
+              <div className={guidanceStyles.nextStep}>
                 <strong>Next step:</strong> {editorial.nextSteps}
               </div>
             )}
 
             {activeCount < 1 && (
-              <p style={{ fontSize: 14, lineHeight: 1.6, margin: '18px 0 0', color: 'var(--ys-onPaperSoft, #64748B)' }}>
+              <p className={guidanceStyles.emptyNote}>
                 No active services in this category right now. Browse{' '}
-                <Link href="/categories" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>all categories</Link>, read free guides on{' '}
-                <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>MyCaseworks</a>, or check back soon.
+                <Link href="/categories">all categories</Link>, read free guides on{' '}
+                <a href="https://legal.yousafeconsultancy.com/">MyCaseworks</a>, or check back soon.
               </p>
             )}
           </div>
         </details>
       </section>
 
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-8">
+      <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 mt-8">
         <CategoryRecommendedGigsCarousel
           categoryId={filterId}
           fallbackCategoryId={subcategory ? category.id : undefined}
@@ -282,7 +260,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         />
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pb-8">
+      <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pb-8">
         <CaseworksReadMoreRail categoryId={category.id} />
       </div>
     </>

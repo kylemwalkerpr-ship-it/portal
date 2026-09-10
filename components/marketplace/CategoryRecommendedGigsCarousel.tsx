@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import React from 'react'
-import { getCategoryFilterTerms } from '@/lib/categories'
+import { CATEGORIES, getCategoryById, getCategoryBySubcategoryId, getCategoryFilterTerms } from '@/lib/categories'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { responsiveImageProps } from '@/lib/responsiveImage'
 import styles from './CategoryRecommendedGigsCarousel.module.css'
@@ -55,17 +55,17 @@ function isRelatedGig(gig: RecommendedGig, categoryId: string): boolean {
   return Boolean((category && accepted.has(category)) || (subcategory && accepted.has(subcategory)))
 }
 
+function isRelatedToAny(gig: RecommendedGig, categoryIds: string[]): boolean {
+  return categoryIds.some((categoryId) => isRelatedGig(gig, categoryId))
+}
+
 async function requestGigs(
-  categoryId: string,
+  categoryIds: string[],
   sort: 'trending' | 'best_rated' | 'most_orders',
   signal: AbortSignal,
 ): Promise<RecommendedGig[]> {
-  const params = new URLSearchParams({
-    category: categoryId,
-    sort,
-    limit: '12',
-    page: '1',
-  })
+  const params = new URLSearchParams({ sort, limit: '18', page: '1' })
+  categoryIds.forEach((categoryId) => params.append('category', categoryId))
   const response = await fetch(`/api/marketplace/gigs?${params.toString()}`, {
     credentials: 'same-origin',
     signal,
@@ -75,7 +75,7 @@ async function requestGigs(
   const data = payload?.data ?? payload
   const gigs: RecommendedGig[] = Array.isArray(data?.gigs) ? data.gigs : []
 
-  return gigs.filter((gig) => isRelatedGig(gig, categoryId))
+  return gigs.filter((gig) => isRelatedToAny(gig, categoryIds))
 }
 
 function mergeUnique(existing: RecommendedGig[], incoming: RecommendedGig[]): RecommendedGig[] {
@@ -89,6 +89,40 @@ function mergeUnique(existing: RecommendedGig[], incoming: RecommendedGig[]): Re
   return merged
 }
 
+const CATEGORY_AFFINITIES: Record<string, string[]> = {
+  immigration: ['education', 'legal', 'settlement', 'credentials'],
+  education: ['academic-writing', 'immigration', 'credentials', 'mentorship'],
+  'academic-writing': ['education', 'career', 'mentorship'],
+  legal: ['immigration', 'business', 'settlement'],
+  settlement: ['immigration', 'career', 'business'],
+  career: ['mentorship', 'credentials', 'education', 'academic-writing'],
+  business: ['legal', 'career', 'mentorship'],
+  credentials: ['education', 'career', 'immigration'],
+  mentorship: ['career', 'education', 'business'],
+}
+
+function getRelatedCategoryIds(categoryId: string, fallbackCategoryId?: string): string[] {
+  const parent = fallbackCategoryId
+    ? getCategoryById(fallbackCategoryId)
+    : getCategoryBySubcategoryId(categoryId) || getCategoryById(categoryId)
+  const parentId = parent?.id || fallbackCategoryId || categoryId
+  const siblings = parent
+    ? [...parent.subcategories]
+        .filter((subcategory) => subcategory.id !== categoryId)
+        .sort((a, b) => Number(b.popular) - Number(a.popular) || a.order - b.order)
+        .map((subcategory) => subcategory.id)
+    : []
+  const sameVertical = parent
+    ? CATEGORIES.filter((category) => category.id !== parentId && category.vertical === parent.vertical)
+        .sort((a, b) => Number(b.popular) - Number(a.popular) || a.order - b.order)
+        .map((category) => category.id)
+    : []
+  const affinities = CATEGORY_AFFINITIES[parentId] || []
+
+  return Array.from(new Set([...siblings, ...sameVertical, ...affinities]))
+    .filter((candidate) => candidate && candidate !== categoryId && candidate !== parentId)
+}
+
 function CompactGigCard({ gig }: { gig: RecommendedGig }) {
   const imageUrl = gig.gallery_images?.[0]?.url || gig.cover_image_url
   const providerName = providerDisplayName(gig.provider, 'YouSafe Provider')
@@ -97,7 +131,7 @@ function CompactGigCard({ gig }: { gig: RecommendedGig }) {
   const isAttorney = gig.provider_type === 'attorney'
 
   return (
-    <Link href={`/marketplace/gigs/${gig.slug}`} className={styles.gigCard} aria-label={`View ${gig.title}`}>
+    <Link href={`/gigs/${gig.slug}`} className={styles.gigCard} aria-label={`View ${gig.title}`}>
       {imageUrl ? (
         <img className={styles.gigImage} loading="lazy" {...responsiveImageProps(imageUrl, gig.title)} />
       ) : (
@@ -240,14 +274,28 @@ export function CategoryRecommendedGigsCarousel({
 
     ;(async () => {
       try {
-        let ranked = await requestGigs(categoryId, 'trending', controller.signal)
-        const fallback = fallbackCategoryId || categoryId
+        const exact = await requestGigs([categoryId], 'trending', controller.signal)
+        let ranked = exact.slice(0, 4)
+        const relatedCategoryIds = getRelatedCategoryIds(categoryId, fallbackCategoryId)
 
-        if (ranked.length < 8) {
-          ranked = mergeUnique(ranked, await requestGigs(fallback, 'best_rated', controller.signal))
+        // Always reserve room for genuine alternatives. This keeps a narrow
+        // category such as University Admissions from becoming a two-card echo
+        // chamber when strong Graduate School, Scholarship, Essay/SOP or Test
+        // Prep services are available nearby in the taxonomy.
+        if (relatedCategoryIds.length > 0) {
+          ranked = mergeUnique(ranked, await requestGigs(relatedCategoryIds.slice(0, 8), 'trending', controller.signal))
         }
-        if (ranked.length < 6) {
-          ranked = mergeUnique(ranked, await requestGigs(fallback, 'most_orders', controller.signal))
+        if (ranked.length < 8 && relatedCategoryIds.length > 0) {
+          ranked = mergeUnique(ranked, await requestGigs(relatedCategoryIds.slice(0, 8), 'best_rated', controller.signal))
+        }
+        if (ranked.length < TARGET_GIGS && relatedCategoryIds.length > 0) {
+          ranked = mergeUnique(ranked, await requestGigs(relatedCategoryIds.slice(0, 8), 'most_orders', controller.signal))
+        }
+
+        ranked = mergeUnique(ranked, exact.slice(4))
+        const parentId = fallbackCategoryId || getCategoryBySubcategoryId(categoryId)?.id
+        if (ranked.length < TARGET_GIGS && parentId && parentId !== categoryId) {
+          ranked = mergeUnique(ranked, await requestGigs([parentId], 'most_orders', controller.signal))
         }
 
         if (!controller.signal.aborted) setGigs(ranked.slice(0, TARGET_GIGS))
@@ -313,12 +361,12 @@ export function CategoryRecommendedGigsCarousel({
   return (
     <section className={styles.section} aria-labelledby="ys-category-recommended-gigs-title">
       <div className={styles.heroCopy}>
-        <p className={styles.eyebrow}>Recommended for you</p>
+        <p className={styles.eyebrow}>Matched to your search</p>
         <h2 id="ys-category-recommended-gigs-title" className={styles.title}>
-          Recommended {displayName}
+          Recommended for you
         </h2>
         <p className={styles.subtitle}>
-          Popular, well-reviewed services matched to what you are exploring.
+          Top {displayName} picks plus closely related services worth comparing.
         </p>
 
         {hasOverflow ? (

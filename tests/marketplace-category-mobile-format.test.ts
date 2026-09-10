@@ -6,6 +6,10 @@ const source = fs.readFileSync(
   path.join(root, 'app/marketplace/categories/[categoryId]/page.tsx'),
   'utf8',
 )
+const guidanceCss = fs.readFileSync(
+  path.join(root, 'app/marketplace/categories/[categoryId]/category-guidance.module.css'),
+  'utf8',
+)
 
 describe('marketplace category mobile formatting', () => {
   it('keeps the first screen concise and conversion-led', () => {
@@ -22,13 +26,16 @@ describe('marketplace category mobile formatting', () => {
     expect(discovery).toBeLessThan(guidance)
   })
 
-  it('organizes optional category copy in a collapsed, scannable guidance card', () => {
-    expect(source).toContain('<details')
-    expect(source).toContain('className="ys-category-guidance-card"')
+  it('keeps buying guidance expanded by default while preserving collapse control', () => {
+    expect(source).toContain('<details open')
+    expect(source).toContain('ys-category-guidance-card')
     expect(source).toContain('<summary')
     expect(source).toContain('Before you order')
     expect(source).toContain('Choose the right scope')
     expect(source).toContain('Self-serve or specialist?')
     expect(source).toContain('{displayName} guidance</h2>')
+    expect(source).toContain('<Link href="/shop">preparation packs</Link>')
+    expect(guidanceCss).toContain('width: min(calc(100% - 32px), 64rem)')
+    expect(guidanceCss).toContain('.card[open] .chevron')
   })
 })
