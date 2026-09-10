@@ -395,7 +395,7 @@ function updateSitemap(content: string, entries: Array<{ path: string; priority:
   } else if (kind === 'portal') {
     if (!out.includes('STUDIO_SITEMAP_ROUTES.map')) {
       const needle = 'const entries: MetadataRoute.Sitemap = ['
-      const insertion = `const entries: MetadataRoute.Sitemap = [\n    ...STUDIO_SITEMAP_ROUTES.map((path: string) => ({ url: \`${'${base}'}${'${mp(path)}'}, lastModified: new Date(), changeFrequency: 'weekly' as const, priority: 0.55 })),`
+      const insertion = `const entries: MetadataRoute.Sitemap = [\n    ...STUDIO_SITEMAP_ROUTES.map((path: string) => ({ url: \`${'${base}'}${'${mp(path)}'}, changeFrequency: 'weekly' as const, priority: 0.55 })),`
       out = out.replace(needle, insertion)
     }
   }
