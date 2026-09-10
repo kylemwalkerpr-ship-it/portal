@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Card, Btn, Badge, Avatar, LoadingState, ErrorState, EmptyState } from '../design/shared'
 import { T, F } from './tokens'
 import { renderBioMarkdown as sharedRenderBioMarkdown } from '@/lib/bioMarkdown'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 /**
  * Use the shared lib/bioMarkdown helper so attorney/consultant/seller
@@ -124,7 +125,12 @@ export interface SellerGig {
 // ── Components ─────────────────────────────────────────────────────────────────
 
 export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }: { seller: SellerProfile; isOwnProfile?: boolean; onContact?: () => void }) {
-  const initial = (seller.full_name || '?').trim().charAt(0).toUpperCase()
+  const displayName = providerDisplayName({ full_name: seller.full_name }, 'Provider')
+  const initial = displayName.trim().charAt(0).toUpperCase() || '?'
+  const ratingCount = Number(seller.rating_count || 0)
+  const ratingAverage = Number(seller.rating_avg || 0)
+  const completedOrders = Number(seller.total_orders || 0)
+  const hasRating = ratingCount > 0 && ratingAverage > 0
 
   return (
     <div style={headerContainer}>
@@ -134,7 +140,7 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
           {seller.headshot_url ? (
             <img
               src={seller.headshot_url}
-              alt={seller.full_name}
+              alt={displayName}
               style={avatarImage}
             />
           ) : (
@@ -150,7 +156,7 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
         {/* Info */}
         <div style={headerInfo}>
           <div style={headerTopRow}>
-            <h1 style={sellerName}>{seller.full_name}</h1>
+            <h1 style={sellerName}>{displayName}</h1>
             {seller.level && <SellerLevelBadge level={seller.level} />}
             {seller.verified && <VerifiedBadge />}
           </div>
@@ -158,18 +164,18 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
           {seller.tagline && <p style={tagline}>{seller.tagline}</p>}
 
           <div style={headerMeta}>
-            {seller.rating_avg && seller.rating_count > 0 ? (
+            {hasRating && (
               <div style={ratingDisplay}>
                 <span style={starIcon}>★</span>
-                <span style={ratingValue}>{seller.rating_avg}</span>
-                <span style={ratingCount}>({seller.rating_count})</span>
+                <span style={ratingValue}>{ratingAverage.toFixed(1)}</span>
+                <span style={ratingCountStyle}>({ratingCount.toLocaleString()})</span>
               </div>
-            ) : (
-              <span style={noReviews}>No reviews yet</span>
             )}
 
-            {seller.total_orders !== undefined && (
-              <span style={metaItem}>{seller.total_orders} Orders in Queue</span>
+            {completedOrders > 0 && (
+              <span style={metaItem}>
+                {completedOrders.toLocaleString()} completed order{completedOrders === 1 ? '' : 's'}
+              </span>
             )}
 
             {seller.response_time && (
@@ -208,17 +214,31 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
 }
 
 export function SellerStats({ seller }: { seller: SellerProfile }) {
+  const ratingCount = Number(seller.rating_count || 0)
+  const ratingAverage = Number(seller.rating_avg || 0)
+  const completedOrders = Number(seller.total_orders || 0)
+  const activeServices = Number(seller.total_gigs || 0)
   const stats = [
-    { label: 'Rating', value: seller.rating_avg ? `${seller.rating_avg}★` : 'N/A', sub: seller.rating_count ? `${seller.rating_count} reviews` : 'No reviews' },
-    { label: 'Orders', value: seller.total_orders?.toLocaleString() || '0', sub: 'Completed' },
-    { label: 'Gigs', value: seller.total_gigs?.toLocaleString() || '0', sub: 'Active services' },
-    { label: 'Response', value: seller.response_time || 'N/A', sub: 'Avg. response time' },
-  ]
+    ratingCount > 0 && ratingAverage > 0
+      ? { label: 'Rating', value: `${ratingAverage.toFixed(1)}★`, sub: `${ratingCount.toLocaleString()} review${ratingCount === 1 ? '' : 's'}` }
+      : null,
+    completedOrders > 0
+      ? { label: 'Orders', value: completedOrders.toLocaleString(), sub: 'Completed' }
+      : null,
+    activeServices > 0
+      ? { label: 'Services', value: activeServices.toLocaleString(), sub: 'Active' }
+      : null,
+    seller.response_time
+      ? { label: 'Response', value: seller.response_time, sub: 'Avg. response time' }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; value: string; sub: string }>
+
+  if (stats.length === 0) return null
 
   return (
     <div style={statsContainer}>
-      {stats.map((stat, i) => (
-        <div key={i} style={statItem}>
+      {stats.map((stat) => (
+        <div key={stat.label} style={statItem}>
           <div style={statValue}>{stat.value}</div>
           <div style={statLabel}>{stat.label}</div>
           <div style={statSub}>{stat.sub}</div>
@@ -574,12 +594,7 @@ const ratingValue = {
   fontWeight: 600,
 }
 
-const ratingCount = {
-  color: T.inkMid,
-  fontSize: '13px',
-}
-
-const noReviews = {
+const ratingCountStyle = {
   color: T.inkMid,
   fontSize: '13px',
 }

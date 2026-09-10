@@ -21,6 +21,7 @@ import { T, F } from './tokens'
 import { renderBioMarkdown } from '@/lib/bioMarkdown'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
 import { getCategoryById, getSubcategoryById } from '@/lib/categories'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -39,7 +40,7 @@ const toolbar: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '16px',
-  marginBottom: '24px',
+  marginBottom: '18px',
   flexWrap: 'wrap',
 }
 
@@ -59,6 +60,11 @@ const breadcrumbLink: CSSProperties = {
   color: T.onPaper,
   textDecoration: 'none',
   fontWeight: 600,
+}
+
+const gigIntro: CSSProperties = {
+  maxWidth: '900px',
+  marginBottom: '24px',
 }
 
 const contentLayout: CSSProperties = {
@@ -123,24 +129,23 @@ const sectionTitle: CSSProperties = {
 
 const gigTitle: CSSProperties = {
   fontFamily: F.display,
-  fontSize: '32px',
-  fontWeight: 500,
-  letterSpacing: '-0.01em',
+  fontSize: 'clamp(32px, 3.7vw, 46px)',
+  fontWeight: 600,
+  letterSpacing: '-0.025em',
   margin: '0 0 12px',
   color: T.ink,
-  lineHeight: 1.2,
+  lineHeight: 1.08,
 }
 
 const gigMeta: CSSProperties = {
   display: 'flex',
-  gap: '16px',
+  gap: '10px',
   alignItems: 'center',
-  fontFamily: F.mono,
-  fontSize: '11px',
-  letterSpacing: '0.12em',
-  textTransform: 'uppercase',
+  flexWrap: 'wrap',
+  fontFamily: F.ui,
+  fontSize: '13px',
   color: T.inkMid,
-  marginBottom: '16px',
+  marginBottom: '12px',
 }
 
 const gigDescription: CSSProperties = {
@@ -471,6 +476,15 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const subcategory = category && gig.subcategory
     ? getSubcategoryById(category.id, gig.subcategory)
     : undefined
+  const serviceReviewCount = Number(gig.review_count || 0)
+  const serviceRating = Number(gig.avg_rating || 0)
+  const serviceOrderCount = Number(gig.order_count || 0)
+  const hasServiceRating = serviceReviewCount > 0 && serviceRating > 0
+  const hasServiceOrders = serviceOrderCount > 0
+  const publicProviderName = providerDisplayName(
+    gig.provider,
+    gig.provider_type === 'consultant' ? 'Regulated consultant' : 'Licensed attorney',
+  )
 
   return (
     <div style={pageShell}>
@@ -542,6 +556,32 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           </div>
         )}
 
+        <section className="ys-gig-overview" style={gigIntro} aria-labelledby="ys-gig-title">
+          <h1 id="ys-gig-title" style={gigTitle}>{gig.title}</h1>
+          <div style={gigMeta} aria-label="Service reputation">
+            {hasServiceRating ? (
+              <>
+                <span style={{ color: T.star }} aria-hidden="true">★</span>
+                <strong style={{ color: T.ink }}>{serviceRating.toFixed(1)}</strong>
+                <span>({serviceReviewCount.toLocaleString()} review{serviceReviewCount === 1 ? '' : 's'})</span>
+              </>
+            ) : (
+              <span style={{ color: T.inkSoft }}>New service</span>
+            )}
+            {hasServiceOrders && (
+              <>
+                <span aria-hidden style={{ color: T.rule }}>·</span>
+                <span>{serviceOrderCount.toLocaleString()} completed order{serviceOrderCount === 1 ? '' : 's'}</span>
+              </>
+            )}
+          </div>
+          {gig.pitch && (
+            <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, margin: 0, lineHeight: 1.6, maxWidth: '760px' }}>
+              {stripHtmlComments(gig.pitch)}
+            </p>
+          )}
+        </section>
+
         <div style={contentLayout} className="ys-content-layout">
           <div style={mainContent}>
             <Card style={{ padding: '24px' }}>
@@ -576,22 +616,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                     />
                   ))}
                 </div>
-              )}
-            </Card>
-
-            <Card style={{ padding: '24px' }}>
-              <h1 style={gigTitle}>{gig.title}</h1>
-              <div style={gigMeta}>
-                <span style={{ color: T.star }}>★ {gig.avg_rating?.toFixed(1) || '0'}</span>
-                <span style={{ color: T.rule }}>·</span>
-                <span>{gig.review_count || 0} reviews</span>
-                <span style={{ color: T.rule }}>·</span>
-                <span>{gig.order_count || 0} orders</span>
-              </div>
-              {gig.pitch && (
-                <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, marginBottom: '16px', lineHeight: 1.55 }}>
-                  {stripHtmlComments(gig.pitch)}
-                </p>
               )}
             </Card>
 
@@ -744,7 +768,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         open={msgOpen}
         onClose={() => setMsgOpen(false)}
         counterpartProfileId={gig.provider_id}
-        attorneyName={gig.provider?.full_name || 'Provider'}
+        attorneyName={publicProviderName}
         attorneyAvatar={gig.provider_headshot_url || null}
         contextKind="gig"
         contextId={gig.id}

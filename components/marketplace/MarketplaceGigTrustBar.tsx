@@ -3,6 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const LEVEL_LABELS: Record<string, string> = {
   level_1: 'Level 1 Provider',
@@ -34,16 +35,6 @@ type GigSignal = {
   repeat_client_count?: number | null
   repeat_order_count?: number | null
   repeat_history_complete?: boolean | null
-}
-
-function providerName(gig: GigSignal) {
-  const name = String(gig.provider?.full_name || '').trim()
-  if (name) return name
-  const username = String(gig.provider?.username || '').trim()
-  if (username) return username
-  const email = String(gig.provider?.email || '').trim()
-  if (email) return email.split('@')[0]
-  return gig.provider_type === 'attorney' ? 'YouSafe Attorney' : 'YouSafe Consultant'
 }
 
 function initials(value: string) {
@@ -95,7 +86,10 @@ export function MarketplaceGigTrustBar() {
 
   if (!slug || !gig) return null
 
-  const name = providerName(gig)
+  const name = providerDisplayName(
+    gig.provider,
+    gig.provider_type === 'attorney' ? 'YouSafe Attorney' : 'YouSafe Consultant',
+  )
   const profileToken = gig.provider?.username || gig.provider_id
   const levelLabel = gig.seller_level ? LEVEL_LABELS[gig.seller_level] : null
   const ratingVisible = Number(gig.review_count || 0) > 0 && Number(gig.avg_rating || 0) > 0

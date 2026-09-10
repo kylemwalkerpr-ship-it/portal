@@ -162,7 +162,9 @@ export function GigCard({ gig }: GigCardProps) {
   }
 
   const imageUrl = gig.gallery_images?.[0]?.url || (gig as any).cover_image_url
-  const price = gig.starting_price ? (gig.starting_price / 100).toFixed(0) : null
+  const price = gig.starting_price
+    ? Math.round(gig.starting_price / 100).toLocaleString('en-US')
+    : null
   const rating = gig.avg_rating?.toFixed(1) || '0'
   const reviewCount = gig.review_count || 0
   const providerName = providerDisplayName(gig.provider, 'YouSafe Provider')

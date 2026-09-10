@@ -5,6 +5,12 @@ describe('providerDisplayName — blank-name gig card fix', () => {
     expect(providerDisplayName({ full_name: 'Jane Attorney' })).toBe('Jane Attorney')
   })
 
+  it('uses the explicit public professional style without exposing database wording', () => {
+    expect(
+      providerDisplayName({ full_name: 'Gustavo Vargas (publicly styles as Gustavo Z. Vargas, Esq.)' }),
+    ).toBe('Gustavo Z. Vargas, Esq.')
+  })
+
   it('treats an empty-string full_name as missing (the gig-card blank-name bug)', () => {
     expect(providerDisplayName({ full_name: '' })).toBe('YouSafe provider')
     expect(providerDisplayName({ full_name: '   ' })).toBe('YouSafe provider')

@@ -17,6 +17,7 @@ import {
 } from './SellerProfileComponents'
 import { ReviewsSection } from './ReviewComponents'
 import { signalSsrReady } from './SsrHydrateGate'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 
 export function SellerProfilePage({
   sellerId,
@@ -137,12 +138,14 @@ export function SellerProfilePage({
     )
   }
 
+  const displayName = providerDisplayName({ full_name: seller.full_name }, 'Provider')
+
   return (
     <div className="ys-seller-profile-page" style={pageShell}>
       <div className="ys-seller-profile-breadcrumb" style={breadcrumb}>
         <Link href="/" style={breadcrumbLink}>Marketplace</Link>
         <span style={breadcrumbSeparator}>/</span>
-        <span style={breadcrumbCurrent}>{seller.full_name}</span>
+        <span style={breadcrumbCurrent}>{displayName}</span>
       </div>
 
       <SellerProfileHeader seller={seller} onContact={() => setChatOpen(true)} />
@@ -187,7 +190,7 @@ export function SellerProfilePage({
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         counterpartProfileId={seller.profile_id || seller.id}
-        attorneyName={seller.full_name}
+        attorneyName={displayName}
         attorneyAvatar={seller.headshot_url}
       />
     </div>
