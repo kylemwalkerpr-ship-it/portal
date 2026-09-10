@@ -1176,7 +1176,7 @@ export default function StudentTemplateFiller({
               Browse the marketplace to find fillable worksheets, checklists, and
               document organizers — fill them here with AI assistance, then download.
             </p>
-            <a href="/marketplace/templates" style={styles.emptyLink}>
+            <a href="https://market.yousafeconsultancy.com/shop" style={styles.emptyLink}>
               Browse template packs →
             </a>
           </div>
