@@ -114,7 +114,7 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(baseMigration).toContain("setweight(to_tsvector('simple', coalesce(array_to_string(new.tags, ' '), '')), 'A')")
     expect(baseMigration).toContain('then 0.35 else 0 end')
     expect(baseMigration).toContain('order by text_rank desc, g.rank_score desc nulls last, g.id')
-    expect(listingApi).toContain("db.rpc('marketplace_search_matches'")
+    expect(listingApi).toContain(".rpc('marketplace_search_matches'")
     expect(listingApi).toContain('searchRankById')
     expect(listingApi).not.toMatch(/search_count[\s\S]*rank_score|rank_score[\s\S]*search_count/)
   })
