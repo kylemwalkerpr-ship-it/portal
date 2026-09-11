@@ -32,4 +32,13 @@ describe('marketplace footer coverage', () => {
     expect(routeFooter).toContain('.ysa-panel')
     expect(routeFooter).toContain('requestAnimationFrame(updateFooterInset)')
   })
+
+  it('locks the AI and provider launchers to one shared mobile baseline', () => {
+    const routeFooter = read('components/marketplace/MarketplaceRouteFooter.tsx')
+
+    expect(routeFooter).toContain('--ys-market-mobile-launcher-bottom')
+    expect(routeFooter).toContain('html body .ys-floating-message-launcher,')
+    expect(routeFooter).toContain('html body .ysa-launcher {')
+    expect(routeFooter).toContain('bottom: calc(var(--ys-market-mobile-launcher-bottom) + var(--ys-footer-inset, 0px)) !important;')
+  })
 })
