@@ -25,7 +25,6 @@ import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
-  /* transparent — the shell owns the paper background + pattern layer */
   color: T.onPaper,
   fontFamily: F.ui,
 }
@@ -88,9 +87,6 @@ const sidebar: CSSProperties = {
 }
 
 const gigImage: CSSProperties = {
-  /* Fiverr-style covers are full designed cards (1280×769) with baked-in
-     title + headshot. Forcing a shorter box + object-fit:cover was chopping
-     heads off the artwork. Match generated aspect and show the full card. */
   width: '100%',
   height: 'auto',
   aspectRatio: '1280 / 769',
@@ -835,6 +831,9 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         attorneyAvatar={gig.provider_headshot_url || null}
         contextKind="gig"
         contextId={gig.id}
+        presentation="popover"
+        responseTime={gig.provider_response_time || null}
+        serviceTitle={gig.title}
       />
       {orderModal}
       {chatModal}
