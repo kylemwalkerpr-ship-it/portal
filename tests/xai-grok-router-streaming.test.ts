@@ -1,6 +1,17 @@
 import { NextRequest } from 'next/server'
 import { POST } from '@/app/api/internal/xai-grok/[...path]/route'
 
+function requestBodyText(body: BodyInit | null | undefined): string {
+  if (typeof body === 'string') return body
+  if (body instanceof ArrayBuffer) return new TextDecoder().decode(body)
+  if (ArrayBuffer.isView(body)) {
+    return new TextDecoder().decode(
+      new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+    )
+  }
+  return ''
+}
+
 describe('xAI Grok transport router streaming bridge', () => {
   const originalFetch = global.fetch
 
@@ -11,7 +22,7 @@ describe('xAI Grok transport router streaming bridge', () => {
 
   it('promotes a non-stream SuperGrok Responses request to SSE and returns normal JSON', async () => {
     const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const sent = JSON.parse(String(init?.body || '{}')) as { stream?: boolean }
+      const sent = JSON.parse(requestBodyText(init?.body) || '{}') as { stream?: boolean }
       expect(sent.stream).toBe(true)
       const headers = new Headers(init?.headers)
       expect(headers.get('accept')).toBe('text/event-stream')
@@ -67,7 +78,7 @@ describe('xAI Grok transport router streaming bridge', () => {
 
   it('does not rewrite developer API-key requests', async () => {
     const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const sent = JSON.parse(String(init?.body || '{}')) as { stream?: boolean }
+      const sent = JSON.parse(requestBodyText(init?.body) || '{}') as { stream?: boolean }
       expect(sent.stream).toBeUndefined()
       const headers = new Headers(init?.headers)
       expect(headers.get('x-xai-token-auth')).toBeNull()
