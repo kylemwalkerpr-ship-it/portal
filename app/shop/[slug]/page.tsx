@@ -6,6 +6,7 @@ import {
   getImmigrationShopProduct,
   resolveImmigrationOfficialSource,
 } from '@/lib/immigration-shop-products'
+import { getPayhipBundleComponents } from '@/lib/payhipProductBundles'
 
 const SHOP_CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 
@@ -46,6 +47,15 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
 
   const canonical = `${SHOP_CANONICAL}/${slug}`
   const officialSources = product.official_sources.map(resolveImmigrationOfficialSource).filter(Boolean)
+  const bundleComponentSlugs = getPayhipBundleComponents(slug) ?? []
+  const isBundle = bundleComponentSlugs.length > 0
+  const displayIncludes = isBundle
+    ? bundleComponentSlugs.map((componentSlug) => getImmigrationShopProduct(componentSlug)?.name ?? componentSlug)
+    : product.includes
+  const resourceLabel = isBundle
+    ? `${displayIncludes.length} complete preparation packs`
+    : `${displayIncludes.length} resources`
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -81,14 +91,14 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
           <h1>{product.name}</h1>
           <p className="ys-pack-lede">{product.short_description}</p>
           <div className="ys-pack-tags">
-            <span>{product.includes.length} resources</span>
-            <span>Editable files</span>
+            <span>{resourceLabel}</span>
+            <span>{isBundle ? 'Individual fillable PDFs' : 'Editable files'}</span>
             <span>One-time purchase</span>
           </div>
         </div>
 
         <aside className="ys-pack-buybox">
-          <p>Complete preparation pack</p>
+          <p>{isBundle ? 'Complete preparation bundle' : 'Complete preparation pack'}</p>
           <strong>${product.price_usd}</strong>
           <span>USD · Digital delivery</span>
           <a href={product.payhip_url} rel="noopener noreferrer nofollow" target="_blank">
@@ -102,9 +112,9 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
         <div>
           <section className="ys-pack-section">
             <p className="ys-pack-kicker">Inside the download</p>
-            <h2>Everything included</h2>
+            <h2>{isBundle ? 'Every preparation pack included' : 'Everything included'}</h2>
             <ul className="ys-pack-includes">
-              {product.includes.map((item) => (
+              {displayIncludes.map((item) => (
                 <li key={item}><span>✓</span>{item}</li>
               ))}
             </ul>
