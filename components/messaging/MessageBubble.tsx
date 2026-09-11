@@ -207,7 +207,10 @@ export default function MessageBubble({
     setShowGrid(false)
   }
 
-  const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''
+  // Every row keeps its own YouSafe avatar, so every bubble also keeps the
+  // top-side pointer aimed at that avatar. Group boundaries still control the
+  // compact WhatsApp-like vertical spacing between consecutive messages.
+  const tailClass = mine ? 'tail-r' : 'tail-l'
   const rowClass = `bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`
   const bubClass = `bub ${tailClass}`.trim()
 
@@ -229,10 +232,11 @@ export default function MessageBubble({
         color: '#fff', display: 'grid', placeItems: 'center',
         fontSize: 11, fontWeight: 600,
         border: 'none', cursor: onAvatarClick ? 'pointer' : 'default', padding: 0,
-        alignSelf: 'flex-end',
+        // The tail lives at the bubble's top corner, so the sender avatar must
+        // align to the same top edge rather than hanging from the bubble base.
+        alignSelf: 'flex-start',
         marginLeft: mine ? 6 : 0,
         marginRight: mine ? 0 : 6,
-        marginBottom: 2,
         flexShrink: 0,
         overflow: 'hidden',
       }}
@@ -263,7 +267,7 @@ export default function MessageBubble({
 
         <div className="bub-text">{body}</div>
 
-        {isLastInGroup && timestamp && (
+        {timestamp && (
           <div className="bub-foot">
             <span>{fmtFullTime(timestamp)}</span>
             {mine && <TickBadge readAt={readAt} deliveredAt={deliveredAt} />}
