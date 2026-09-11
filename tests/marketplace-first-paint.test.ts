@@ -30,4 +30,38 @@ describe('marketplace first paint', () => {
     expect(route).toContain('const [providerGigsRes, providerHeadshotRes, sameCategoryRes, sameJurisdictionRes] = await Promise.all([')
     expect(route).not.toContain("db.from('gig_reviews').select('rating')")
   })
+
+  it('seeds GigDetailPage from SSR so navigation is not a bare LoadingState shell', () => {
+    const page = read('app/marketplace/gigs/[slug]/page.tsx')
+    const island = read('components/marketplace/GigDetailPage.tsx')
+    expect(page).toContain('initialGig={gig ? {')
+    expect(island).toContain('initialGig?: any | null')
+    expect(island).toContain('GigDetailSkeleton')
+    expect(island).toContain('React.useState(!seeded)')
+    expect(island).not.toContain('<LoadingState label="Loading gig details..." />')
+  })
+
+  it('avoids useSearchParams suspension on provider profiles', () => {
+    const source = read('components/marketplace/SellerProfilePage.tsx')
+    expect(source).not.toContain('useSearchParams')
+    expect(source).toContain('ProviderProfileSkeleton')
+    expect(source).toContain("new URLSearchParams(window.location.search).get('tab')")
+  })
+
+  it('keeps mobile category chevrons behind CSS rather than a post-mount JS swap', () => {
+    const bar = read('components/marketplace/CategoryBar.tsx')
+    const shell = read('components/marketplace/MarketplaceShell.tsx')
+    expect(bar).not.toContain('showChevrons')
+    expect(bar).not.toContain('useSearchParams')
+    expect(bar).toContain('@media (max-width: 719px)')
+    expect(bar).toContain('.ys-cat-chev { display: none !important; }')
+    expect(shell).toContain('fallback={<CategoryBarSkeleton />}')
+  })
+
+  it('reserves auth chrome until Clerk isLoaded', () => {
+    const auth = read('components/marketplace/MarketplaceAuthNav.tsx')
+    expect(auth).toContain('isLoaded')
+    expect(auth).toContain('AuthNavSkeleton')
+    expect(auth).toContain('if (!isLoaded)')
+  })
 })

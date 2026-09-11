@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { CATEGORIES } from '@/lib/categories'
 import { T, F } from './tokens'
 import { CategoryMegaDropdown } from './CategoryMegaDropdown'
@@ -21,20 +21,18 @@ const TOPNAV_OFFSET_MOBILE  = 56
 const CHEVRON_SCROLL_RATIO  = 0.6
 
 export function CategoryBar({ country }: Props) {
-  const searchParams = useSearchParams()
-  const activeCategory = searchParams?.get('category') ?? ''
+  const pathname = usePathname()
+  const [activeCategory, setActiveCategory] = useState('')
+  // Avoid search-param suspension so the shell never suspends into an empty fallback.
+  useEffect(() => {
+    setActiveCategory(new URLSearchParams(window.location.search).get('category') ?? '')
+  }, [pathname, country])
   const [openId, setOpenId] = useState<string | null>(null)
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
-  // Tracks if the viewport is wide enough that we should render the
-  // circular chevron arrows. On touch / narrow viewports we hide them
-  // and let native swipe handle horizontal navigation; only the edge
-  // fade gradients hint that there's more content offscreen.
-  const [showChevrons, setShowChevrons] = useState(false)
-
   const closeDropdown = useCallback(() => {
     setOpenId(null)
     setAnchorRect(null)
@@ -109,19 +107,6 @@ export function CategoryBar({ country }: Props) {
       ro?.disconnect()
     }
   }, [updateOverflow])
-
-  // Show circular chevrons only when the viewport has enough room for
-  // them to sit comfortably outside the chip strip. On mobile / tablet
-  // (<720px) the edge fades alone communicate "there's more" and the
-  // user swipes natively.
-  useEffect(() => {
-    const onResize = () => {
-      setShowChevrons(typeof window !== 'undefined' && window.innerWidth >= 720)
-    }
-    onResize()
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
 
   const scrollByDirection = useCallback((dir: 'left' | 'right') => {
     const el = scrollRef.current
@@ -202,13 +187,16 @@ export function CategoryBar({ country }: Props) {
         .ys-cat-chev.left  { left: 4px; }
         .ys-cat-chev.right { right: 4px; }
         .ys-cat-chev.hidden { opacity: 0; pointer-events: none; }
+        /* CSS viewport gate — never JS mount-swap the chevrons. */
+        @media (max-width: 719px) {
+          .ys-cat-chev { display: none !important; }
+        }
       `}</style>
       <div className="ys-cat-bar">
         <div className="ys-cat-bar-wrap">
           <div className={`ys-cat-fade left  ${canScrollLeft ? 'on' : ''}`}  aria-hidden="true" />
           <div className={`ys-cat-fade right ${canScrollRight ? 'on' : ''}`} aria-hidden="true" />
-          {showChevrons && (
-            <button
+                      <button
               type="button"
               className={`ys-cat-chev left ${canScrollLeft ? '' : 'hidden'}`}
               aria-label="Scroll categories left"
@@ -218,9 +206,7 @@ export function CategoryBar({ country }: Props) {
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
-          )}
-          {showChevrons && (
-            <button
+                                <button
               type="button"
               className={`ys-cat-chev right ${canScrollRight ? '' : 'hidden'}`}
               aria-label="Scroll categories right"
@@ -230,8 +216,7 @@ export function CategoryBar({ country }: Props) {
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
-          )}
-          <div ref={scrollRef} className="ys-cat-strip" role="tablist" aria-label="Browse marketplace categories">
+                    <div ref={scrollRef} className="ys-cat-strip" role="tablist" aria-label="Browse marketplace categories">
             {CATEGORIES.map(cat => {
               const isActive = activeCategory === cat.id
               const isOpen = openId === cat.id

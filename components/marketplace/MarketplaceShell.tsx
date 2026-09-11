@@ -11,6 +11,7 @@ import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
 import { CategoryBar } from './CategoryBar'
+import { CategoryBarSkeleton } from './MarketplaceRouteSkeleton'
 import { marketplaceOrdersHref, readOrderIdFromSearch } from '@/lib/orderLinks'
 import { writeMessengerThreadParam } from '@/lib/messaging/threadUrl'
 
@@ -982,7 +983,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
 
       {/* Sub-nav — visa category bar stays on marketplace browse, not the file shop */}
       {section === 'browse' && !onShop && (
-        <React.Suspense fallback={null}>
+        <React.Suspense fallback={<CategoryBarSkeleton />}>
           <CategoryBar country={country} />
         </React.Suspense>
       )}

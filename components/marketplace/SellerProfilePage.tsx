@@ -2,9 +2,8 @@
 
 // @ts-nocheck
 import React from 'react'
-import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { ErrorState, EmptyState } from '../design/shared'
 import { T, F } from './tokens'
 import ChatSidePane from './ChatSidePane'
 import {
@@ -18,6 +17,7 @@ import {
 import { ReviewsSection } from './ReviewComponents'
 import { signalSsrReady } from './SsrHydrateGate'
 import { providerDisplayName } from '@/lib/providerDisplayName'
+import { ProviderProfileSkeleton } from './MarketplaceRouteSkeleton'
 
 export function SellerProfilePage({
   sellerId,
@@ -34,14 +34,12 @@ export function SellerProfilePage({
   const [activeTab, setActiveTab] = React.useState<'about' | 'gigs' | 'reviews'>('about')
   const [chatOpen, setChatOpen] = React.useState(false)
 
-  const searchParams = useSearchParams()
-  const tab = searchParams?.get('tab') as 'about' | 'gigs' | 'reviews' | null
-
+  // Read ?tab= via window (not the search-params hook) so this island never suspends
+  // the marketplace shell into an empty Suspense fallback on client nav.
   React.useEffect(() => {
-    if (tab && ['about', 'gigs', 'reviews'].includes(tab)) {
-      setActiveTab(tab)
-    }
-  }, [tab])
+    const tab = new URLSearchParams(window.location.search).get('tab') as 'about' | 'gigs' | 'reviews' | null
+    if (tab && ['about', 'gigs', 'reviews'].includes(tab)) setActiveTab(tab)
+  }, [sellerId])
 
   // The server already resolved enough seller data to render the real profile.
   // Collapse the crawler-only SSR duplicate as soon as this island hydrates;
@@ -114,12 +112,8 @@ export function SellerProfilePage({
     return () => { cancelled = true }
   }, [sellerId, initialSeller])
 
-  if (loading) {
-    return (
-      <div className="ys-seller-profile-page" style={pageShell}>
-        <LoadingState message="Loading seller profile..." />
-      </div>
-    )
+  if (loading && !seller) {
+    return <ProviderProfileSkeleton />
   }
 
   if (error) {

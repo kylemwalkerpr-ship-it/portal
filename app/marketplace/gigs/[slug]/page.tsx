@@ -349,7 +349,33 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         </article>
         </SsrHydrateGate>
       )}
-      <GigDetailPage slug={slug} />
+      <GigDetailPage
+        slug={slug}
+        initialGig={gig ? {
+          id: gig.id,
+          slug: gig.slug,
+          title: gig.title,
+          pitch: gig.pitch,
+          description: gig.description,
+          seo_title: gig.seo_title,
+          seo_description: gig.seo_description,
+          category: gig.category,
+          subcategory: gig.subcategory,
+          jurisdiction: gig.jurisdiction,
+          avg_rating: gig.avg_rating,
+          review_count: gig.review_count,
+          order_count: gig.order_count,
+          gallery_images: gig.gallery_images,
+          faq: gig.faq,
+          provider_id: gig.provider_id,
+          provider_type: gig.provider_type,
+          provider: Array.isArray(gig.provider) ? (gig.provider[0] ?? null) : gig.provider,
+          tags: gig.tags,
+          starting_price: gig.starting_price,
+          tiers: Array.isArray(gig.tiers) ? gig.tiers : [],
+          status: gig.status,
+        } : null}
+      />
     </>
   )
 }
