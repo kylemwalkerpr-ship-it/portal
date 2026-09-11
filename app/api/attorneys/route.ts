@@ -71,8 +71,8 @@ export async function GET() {
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]))
   const applicationByProfile = new Map((applications ?? []).map((a) => [a.profile_id ?? '', a]))
-  // Editable credential lives on the attorneys row; prefer it over the
-  // application's vetting copy so public cards reflect profile edits.
+  // Public directory cards may display credential type, but never the
+  // provider's confidential professional identifier or regulator number.
   const credentialByProfile = await fetchAttorneyCredentialColumnsBatch(db, profileIds)
 
   const ratingByAttorney = new Map<string, { count: number; sum: number }>()
@@ -101,18 +101,6 @@ export async function GET() {
         specialties: a.specialties,
         languages: a.languages,
         credential_type: credentialByProfile.get(a.profile_id)?.credential_type || application?.credential_type || null,
-        bar_number: (() => {
-          const c = credentialByProfile.get(a.profile_id)
-          const num = c?.bar_number || null
-          const show = c?.show_bar_number !== false
-          return show && num ? num : null
-        })(),
-        bar_state: (() => {
-          const c = credentialByProfile.get(a.profile_id)
-          const num = c?.bar_number || null
-          const show = c?.show_bar_number !== false
-          return show && num ? (c?.bar_state || null) : null
-        })(),
         years_experience: a.years_experience,
         starting_price: a.starting_price,
         offers_free_consult: a.offers_free_consult ?? false,
