@@ -1,10 +1,10 @@
 /**
  * SuperGrok / X Premium+ OAuth for Content Studio.
  *
- * Authenticates Grok against api.x.ai using the official xAI device-code
- * flow (auth.x.ai) — the same subscription login used by Grok CLI, OpenClaw,
- * and Hermes. No XAI_API_KEY is required once the admin completes browser
- * consent with an eligible SuperGrok or X Premium+ account.
+ * Authenticates Grok using the official xAI device-code flow (auth.x.ai) —
+ * the same subscription login used by Grok CLI / Grok Build. OAuth session
+ * inference is routed through the Grok subscription transport; developer
+ * `xai-...` API keys remain a separate metered fallback.
  *
  * Tokens live in ai_settings (admin DB) and are refreshed before generation.
  * Same precedence as Grok CLI (`~/.grok/auth.json`): a live SuperGrok session
@@ -17,11 +17,15 @@ import {
   getAiSettings,
   setAiSetting,
 } from '@/lib/aiKeyVault'
+import {
+  XAI_PUBLIC_API_BASE_URL,
+  xaiGrokRouterBaseUrl,
+} from '@/lib/xaiGrokTransport'
 
 /** Public Grok CLI / Grok Build client — same id OpenClaw and Hermes use. */
 export const XAI_OAUTH_CLIENT_ID_DEFAULT = 'b1a00492-073a-47ea-816f-4c329264a828'
 export const XAI_OAUTH_ISSUER_DEFAULT = 'https://auth.x.ai'
-export const XAI_API_BASE_DEFAULT = 'https://api.x.ai/v1'
+export const XAI_API_BASE_DEFAULT = XAI_PUBLIC_API_BASE_URL
 export const XAI_OAUTH_SCOPE_DEFAULT =
   'openid profile email offline_access grok-cli:access api:access'
 export const XAI_DEFAULT_MODEL = 'grok-4.6'
@@ -35,6 +39,8 @@ const SETTING = {
 } as const
 
 const SKEW_MS = 60_000
+const OAUTH_SLOW_DOWN_STEP_SECONDS = 5
+const OAUTH_MAX_POLL_INTERVAL_SECONDS = 60
 
 export interface SuperGrokDeviceStart {
   userCode: string
@@ -159,10 +165,18 @@ function tokensFromResponse(json: Record<string, unknown>, now = Date.now()): To
   }
 }
 
-async function persistTokens(tokens: TokenSet, updatedBy = 'admin'): Promise<void> {
+async function persistTokens(
+  tokens: TokenSet,
+  updatedBy = 'admin',
+  options: { replaceRefresh?: boolean } = {},
+): Promise<void> {
   await setAiSetting(SETTING.access, tokens.access_token, updatedBy)
   if (tokens.refresh_token) {
     await setAiSetting(SETTING.refresh, tokens.refresh_token, updatedBy)
+  } else if (options.replaceRefresh) {
+    // A reconnect is an account replacement, not an overlay. Never allow a
+    // previous account's refresh token to survive beneath a new access token.
+    await deleteAiSetting(SETTING.refresh)
   }
   await setAiSetting(SETTING.expires, String(tokens.expires_at), updatedBy)
   await setAiSetting(SETTING.type, tokens.token_type || 'Bearer', updatedBy)
@@ -185,7 +199,9 @@ export async function getSuperGrokStatus(): Promise<SuperGrokStatus> {
     verificationUri: pendingLive ? pending.verification_uri : null,
     verificationUriComplete: pendingLive ? pending.verification_uri_complete || null : null,
     interval: pendingLive ? pending.interval : null,
-    model: settings.default_model?.trim() || process.env.XAI_MODEL?.trim() || XAI_DEFAULT_MODEL,
+    model: connected
+      ? XAI_DEFAULT_MODEL
+      : settings.default_model?.trim() || process.env.XAI_MODEL?.trim() || XAI_DEFAULT_MODEL,
     clientConfigured: Boolean(xaiOAuthClientId()),
   }
 }
@@ -255,7 +271,16 @@ export async function pollSuperGrokDeviceLogin(updatedBy = 'admin'): Promise<{
     return { connected: false, pending: true }
   }
   if (err === 'slow_down') {
-    return { connected: false, pending: true, error: 'xAI asked us to poll more slowly' }
+    pending.interval = Math.min(
+      OAUTH_MAX_POLL_INTERVAL_SECONDS,
+      Math.max(2, pending.interval) + OAUTH_SLOW_DOWN_STEP_SECONDS,
+    )
+    await setAiSetting(SETTING.pending, JSON.stringify(pending), updatedBy)
+    return {
+      connected: false,
+      pending: true,
+      error: `xAI asked us to poll more slowly; retrying every ${pending.interval}s`,
+    }
   }
   if (err === 'expired_token' || err === 'access_denied') {
     await deleteAiSetting(SETTING.pending)
@@ -274,7 +299,7 @@ export async function pollSuperGrokDeviceLogin(updatedBy = 'admin'): Promise<{
   }
 
   const tokens = tokensFromResponse(json)
-  await persistTokens(tokens, updatedBy)
+  await persistTokens(tokens, updatedBy, { replaceRefresh: true })
   await setAiSetting('default_model', XAI_DEFAULT_MODEL, updatedBy)
   return { connected: true, pending: false }
 }
@@ -304,7 +329,13 @@ export function overlayGrokAuth(
   const next = { ...overlay }
   next.XAI_API_KEY = oauth.accessToken
   next.XAI_AUTH_MODE = 'supergrok'
-  if (!next.XAI_MODEL) next.XAI_MODEL = XAI_DEFAULT_MODEL
+  // OAuth is a subscription-session credential. Always route it through the
+  // Portal transport shim so the Grok CLI proxy receives its required client
+  // headers; never inherit a developer-api XAI_BASE_URL from a vault/env row.
+  next.XAI_BASE_URL = xaiGrokRouterBaseUrl()
+  // A stale provider-row model must not drag a newly connected subscription
+  // back to an older model pin.
+  next.XAI_MODEL = XAI_DEFAULT_MODEL
   return next
 }
 
