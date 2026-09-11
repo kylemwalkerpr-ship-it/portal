@@ -30,4 +30,63 @@ describe('marketplace first paint', () => {
     expect(route).toContain('const [providerGigsRes, providerHeadshotRes, sameCategoryRes, sameJurisdictionRes] = await Promise.all([')
     expect(route).not.toContain("db.from('gig_reviews').select('rating')")
   })
+
+  it('seeds GigDetailPage from SSR so navigation is not a bare LoadingState shell', () => {
+    const page = read('app/marketplace/gigs/[slug]/page.tsx')
+    const island = read('components/marketplace/GigDetailPage.tsx')
+    expect(page).toContain('initialGig={gig ? {')
+    expect(island).toContain('initialGig?: any | null')
+    expect(island).toContain('GigDetailSkeleton')
+    expect(island).toContain('React.useState(!seeded)')
+    expect(island).not.toContain('<LoadingState label="Loading gig details..." />')
+  })
+
+  it('keeps provider ?tab= reactive without a bare loading shell', () => {
+    const source = read('components/marketplace/SellerProfilePage.tsx')
+    expect(source).toContain('ProviderProfileSkeleton')
+    expect(source).toContain('SellerTabSearchSync')
+    expect(source).toContain('useSearchParams')
+    expect(source).toContain('fallback={null}')
+    expect(source).not.toContain('<LoadingState')
+    expect(source).toContain("searchParams.get('tab')")
+  })
+
+  it('updates active tab on query-only / back-forward ?tab= changes', () => {
+    const source = read('components/marketplace/SellerProfilePage.tsx')
+    // Regression: previously keyed only [sellerId] + window.location, so same-path
+    // ?tab=about → ?tab=gigs (and popstate) left the panel stale.
+    expect(source).toContain('SellerTabSearchSync')
+    expect(source).toMatch(/searchParams\.get\('tab'\)/)
+    expect(source).toMatch(/\[tab, onTab\]/)
+    expect(source).toContain("VALID_TABS")
+  })
+
+  it('keeps mobile category chevrons behind CSS rather than a post-mount JS swap', () => {
+    const bar = read('components/marketplace/CategoryBar.tsx')
+    const shell = read('components/marketplace/MarketplaceShell.tsx')
+    expect(bar).not.toContain('showChevrons')
+    expect(bar).toContain('@media (max-width: 719px)')
+    expect(bar).toContain('.ys-cat-chev { display: none !important; }')
+    expect(shell).toContain('fallback={<CategoryBarSkeleton />}')
+  })
+
+  it('reacts to same-path ?category= changes for the active highlight', () => {
+    const bar = read('components/marketplace/CategoryBar.tsx')
+    const shell = read('components/marketplace/MarketplaceShell.tsx')
+    // Regression: effect keyed only [pathname, country] + window.location left
+    // ?category=A → ?category=B on the same path with a stale highlight.
+    expect(bar).toContain('useSearchParams')
+    expect(bar).toContain("searchParams.get('category')")
+    expect(bar).not.toContain("window.location.search).get('category')")
+    // Non-null structural Suspense fallback must remain.
+    expect(shell).toContain('fallback={<CategoryBarSkeleton />}')
+    expect(shell).toMatch(/CategoryBarSkeleton/)
+  })
+
+  it('reserves auth chrome until Clerk isLoaded', () => {
+    const auth = read('components/marketplace/MarketplaceAuthNav.tsx')
+    expect(auth).toContain('isLoaded')
+    expect(auth).toContain('AuthNavSkeleton')
+    expect(auth).toContain('if (!isLoaded)')
+  })
 })

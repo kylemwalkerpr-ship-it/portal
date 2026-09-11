@@ -4,6 +4,7 @@ import React from 'react'
 import { useUser, useClerk } from '@clerk/nextjs'
 import { F } from './tokens'
 import styles from './MarketplaceAuthNav.module.css'
+import { AuthNavSkeleton } from './MarketplaceRouteSkeleton'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
@@ -39,7 +40,7 @@ function Chevron() {
 }
 
 export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavProps) {
-  const { isSignedIn, user } = useUser()
+  const { isSignedIn, user, isLoaded } = useUser()
   const clerk = useClerk()
   const [open, setOpen] = React.useState(false)
   const btnRef = React.useRef<HTMLButtonElement>(null)
@@ -98,6 +99,11 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
 
   // signUpHref is preserved for backward compat; modal flow uses Clerk methods directly.
   void signUpHref
+
+  // Reserve auth chrome before Clerk resolves — prevents Sign-in → avatar swap CLS.
+  if (!isLoaded) {
+    return <AuthNavSkeleton />
+  }
 
   // SSR / signed-out fallback
   if (!isSignedIn) {

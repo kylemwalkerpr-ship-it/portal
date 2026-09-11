@@ -43,5 +43,24 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // Auth-only actions (message, order) gate themselves downstream.
   const { id } = await params
 
-  return <SellerProfilePage sellerId={id} />
+  let initialSeller: { id: string; full_name: string; role?: string | null } | null = null
+  try {
+    const db = createSupabaseAdminClient()
+    const { data: profile } = await db
+      .from('profiles')
+      .select('id, full_name, role, status')
+      .eq('id', id)
+      .maybeSingle()
+    if (profile && profile.status === 'active') {
+      initialSeller = {
+        id: profile.id,
+        full_name: profile.full_name || 'YouSafe provider',
+        role: profile.role || null,
+      }
+    }
+  } catch {
+    /* enrichment is best-effort; client island still loads */
+  }
+
+  return <SellerProfilePage sellerId={id} initialSeller={initialSeller} />
 }
