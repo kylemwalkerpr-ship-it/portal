@@ -3,7 +3,6 @@ import {
   clientIdentitySection,
   documentTrackerSection,
   proofOfFundsSection,
-  sponsorLetterSection,
 } from './_shared'
 
 const manifest: TemplatePdfManifest = {
@@ -12,7 +11,7 @@ const manifest: TemplatePdfManifest = {
     clientIdentitySection(),
     {
       title: 'Sponsor (I-134 Declarant) Details',
-      intro: 'These fields mirror Part 1 of the I-134.',
+      intro: 'Use this section to organize sponsor identity and contact details before referring to the current official Form I-134 instructions.',
       fields: [
         { id: 'sponsor_full_name', label: 'Sponsor full name', type: 'text', required: true },
         { id: 'sponsor_date_of_birth', label: 'Sponsor date of birth', type: 'date' },
@@ -24,7 +23,18 @@ const manifest: TemplatePdfManifest = {
         { id: 'beneficiary_relationship', label: 'Relationship to beneficiary', type: 'text' },
       ],
     },
-    sponsorLetterSection(),
+    {
+      title: 'Support Explanation Planner',
+      intro: 'Use the sponsor details above and these prompts to organize a factual support explanation. This is a planning worksheet, not an official form or pre-written legal statement.',
+      fields: [
+        { id: 'support_purpose', label: 'Purpose of the proposed support', type: 'multiline', rows: 2 },
+        { id: 'support_relationship_details', label: 'Relationship background and relevant context', type: 'multiline', rows: 3 },
+        { id: 'support_employment_or_business', label: 'Sponsor employment or business', type: 'text' },
+        { id: 'support_income_summary', label: 'Income and available-funds summary', type: 'multiline', rows: 3 },
+        { id: 'support_commitment_summary', label: 'What support will be provided, for how long, and for which expenses?', type: 'multiline', rows: 4 },
+        { id: 'support_evidence_summary', label: 'Evidence that supports the statements above', type: 'multiline', rows: 4 },
+      ],
+    },
     proofOfFundsSection(),
     {
       title: 'Relationship Evidence Planner',
