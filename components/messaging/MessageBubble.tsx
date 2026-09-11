@@ -10,6 +10,56 @@ const EMOJI_GRID = [
   '😎','🤔','😅','😍','🥲','👌','💪','🚀','📅','💼',
 ]
 
+type ViewerAvatarProfile = {
+  full_name?: string | null
+  avatar_url?: string | null
+}
+
+// MessageBubble is shared by student/client, attorney, consultant, admin and
+// marketplace messaging surfaces. Incoming rows normally receive their sender
+// profile from the thread payload, but historically "mine" rows deliberately
+// received no avatar props. Resolve the signed-in profile once per browser
+// module so every outgoing bubble can use the same real profile photo without
+// issuing one /api/profile request per message.
+let viewerAvatarProfileCache: ViewerAvatarProfile | null = null
+let viewerAvatarProfilePromise: Promise<ViewerAvatarProfile | null> | null = null
+
+function loadViewerAvatarProfile(): Promise<ViewerAvatarProfile | null> {
+  if (viewerAvatarProfileCache) return Promise.resolve(viewerAvatarProfileCache)
+  if (viewerAvatarProfilePromise) return viewerAvatarProfilePromise
+
+  viewerAvatarProfilePromise = fetch('/api/profile', { credentials: 'same-origin' })
+    .then(async (response) => {
+      if (!response.ok) return null
+      const data = await response.json().catch(() => ({}))
+      const profile = data?.profile
+      if (!profile) return null
+      viewerAvatarProfileCache = {
+        full_name: profile.full_name || null,
+        avatar_url: profile.avatar_url || null,
+      }
+      return viewerAvatarProfileCache
+    })
+    .catch(() => null)
+
+  return viewerAvatarProfilePromise
+}
+
+function useViewerAvatarProfile(enabled: boolean) {
+  const [profile, setProfile] = React.useState<ViewerAvatarProfile | null>(viewerAvatarProfileCache)
+
+  React.useEffect(() => {
+    if (!enabled || profile) return
+    let cancelled = false
+    void loadViewerAvatarProfile().then((resolved) => {
+      if (!cancelled && resolved) setProfile(resolved)
+    })
+    return () => { cancelled = true }
+  }, [enabled, profile])
+
+  return profile
+}
+
 export interface ReplyToInfo {
   id: string
   senderName: string
@@ -119,6 +169,14 @@ export default function MessageBubble({
   const [showGrid, setShowGrid] = React.useState(false)
   const pickerRef = React.useRef<HTMLDivElement>(null)
 
+  // Incoming messages keep the explicit sender avatar supplied by the thread.
+  // For outgoing messages, fall back to the authenticated profile returned by
+  // /api/profile. This makes the primitive symmetrical without forcing every
+  // dashboard role to duplicate self-profile state.
+  const viewerProfile = useViewerAvatarProfile(mine && (!avatarUrl || !avatarName))
+  const resolvedAvatarUrl = avatarUrl || (mine ? viewerProfile?.avatar_url || null : null)
+  const resolvedAvatarName = avatarName || (mine ? viewerProfile?.full_name || 'You' : 'Them')
+
   React.useEffect(() => {
     if (!showPicker) return
     const onDoc = (e: MouseEvent) => {
@@ -155,30 +213,40 @@ export default function MessageBubble({
 
   const hasReactions = (reactions || []).length > 0
 
-  const showAvatar = !mine && isFirstInGroup && (avatarUrl || avatarName)
+  // Every message gets a sender anchor. Do not collapse avatars to only the
+  // first bubble in a run: the visual contract is avatar → bubble for received
+  // messages and bubble → avatar for sent messages, on desktop and mobile.
+  const showAvatar = Boolean(resolvedAvatarUrl || resolvedAvatarName)
+  const avatarNode = showAvatar ? (
+    <button
+      type="button"
+      onClick={onAvatarClick}
+      tabIndex={onAvatarClick ? 0 : -1}
+      aria-label={onAvatarClick ? `Open ${resolvedAvatarName || 'sender'} profile` : undefined}
+      style={{
+        width: 28, height: 28, borderRadius: '50%',
+        background: avatarColor || '#3C3B6E',
+        color: '#fff', display: 'grid', placeItems: 'center',
+        fontSize: 11, fontWeight: 600,
+        border: 'none', cursor: onAvatarClick ? 'pointer' : 'default', padding: 0,
+        alignSelf: 'flex-end',
+        marginLeft: mine ? 6 : 0,
+        marginRight: mine ? 0 : 6,
+        marginBottom: 2,
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}
+      title={resolvedAvatarName || ''}
+    >
+      {resolvedAvatarUrl
+        ? <img src={resolvedAvatarUrl} alt={resolvedAvatarName || ''} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
+        : (resolvedAvatarName || '?').charAt(0).toUpperCase()}
+    </button>
+  ) : null
 
   return (
     <div className={`${rowClass} ${className || ''}`.trim()} style={style}>
-      {showAvatar && (
-        <button
-          type="button"
-          onClick={onAvatarClick}
-          style={{
-            width: 28, height: 28, borderRadius: '50%',
-            background: avatarColor || '#3C3B6E',
-            color: '#fff', display: 'grid', placeItems: 'center',
-            fontSize: 11, fontWeight: 600,
-            border: 'none', cursor: 'pointer', padding: 0,
-            alignSelf: 'flex-end', marginRight: 6, marginBottom: 2,
-            flexShrink: 0,
-          }}
-          title={avatarName || ''}
-        >
-          {avatarUrl
-            ? <img src={avatarUrl} alt={avatarName || ''} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
-            : (avatarName || '?').charAt(0).toUpperCase()}
-        </button>
-      )}
+      {!mine && avatarNode}
       <div className={bubClass} onContextMenu={handleContextMenu} data-msgmenu>
         {replyTo && (
           <button
@@ -219,6 +287,7 @@ export default function MessageBubble({
           </div>
         )}
       </div>
+      {mine && avatarNode}
 
       {showPicker && id && (
         <div
