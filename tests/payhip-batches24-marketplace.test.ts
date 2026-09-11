@@ -49,7 +49,7 @@ describe('Payhip Batches 2-4 Marketplace release contract', () => {
   test('surfaces every audited product through the Marketplace file-shop catalog', () => {
     for (const product of PAYHIP_BATCHES_2_4_PRODUCTS) {
       const card = FILE_SHOP_PRODUCTS.find((item) => item.href === `/shop/${product.slug}`)
-      expect(card, product.slug).toBeDefined()
+      expect(card).toBeDefined()
       expect(card?.price).toBe(product.price.toFixed(2))
       expect(card?.cover).toBe(product.imageUrl)
       expect(card?.published).toBe(true)
