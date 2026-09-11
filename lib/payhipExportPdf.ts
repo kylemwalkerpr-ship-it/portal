@@ -132,7 +132,7 @@ export async function generatePayhipProductPdf(
   y -= 28
 
   const disclaimer =
-    'This is an independent preparation and organization resource. It is not an official government form, legal advice, representation, or a guarantee of approval. Government forms, fees, eligibility rules, filing windows, documentary requirements, and procedures can change. Verify the current instructions that apply to your facts before filing.'
+    'This is an independent preparation and organization resource. It is not an official government form. It is not legal advice, legal representation, or a guarantee of approval. Government forms, fees, eligibility rules, filing windows, documentary requirements, and procedures can change. Verify the current instructions that apply to your facts before filing.'
   for (const line of wrap(regular, disclaimer, contentWidth, 10)) {
     guidance.drawText(line, { x: margin, y, size: 10, font: regular, color: TEXT })
     y -= 13
