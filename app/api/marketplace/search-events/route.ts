@@ -16,6 +16,12 @@ const SEARCH_SOURCES = new Set<MarketplaceSearchSource>([
 const SUGGESTION_TYPES = new Set<MarketplaceSuggestionType>(['tag', 'gig', 'category', 'query', 'recent'])
 const MAX_SEARCHES_PER_SESSION_PER_MINUTE = 12
 
+type InsertResult = {
+  id: string | null
+  deduped: boolean
+  error: { message?: string; code?: string } | null
+}
+
 async function sha256(value: string) {
   const bytes = new TextEncoder().encode(value)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
@@ -40,17 +46,28 @@ function cleanFilters(value: unknown): Record<string, unknown> {
   return out
 }
 
-async function insertWithDedupe(db: ReturnType<typeof createSupabaseAdminClient>, row: Record<string, unknown>) {
+async function insertWithDedupe(
+  db: ReturnType<typeof createSupabaseAdminClient>,
+  row: Record<string, unknown>,
+): Promise<InsertResult> {
   const result = await db.from('marketplace_search_events').insert(row).select('id').single()
-  if (!result.error && result.data?.id) return { id: String(result.data.id), deduped: false }
-  if (result.error?.code !== '23505' || !row.dedupe_key) return { id: null, deduped: false, error: result.error }
+  if (!result.error && result.data?.id) {
+    return { id: String(result.data.id), deduped: false, error: null }
+  }
+  if (result.error?.code !== '23505' || !row.dedupe_key) {
+    return { id: null, deduped: false, error: result.error }
+  }
 
   const existing = await db
     .from('marketplace_search_events')
     .select('id')
     .eq('dedupe_key', String(row.dedupe_key))
     .maybeSingle()
-  return { id: existing.data?.id ? String(existing.data.id) : null, deduped: true, error: existing.error }
+  return {
+    id: existing.data?.id ? String(existing.data.id) : null,
+    deduped: true,
+    error: existing.error,
+  }
 }
 
 export async function POST(req: Request) {
