@@ -5,12 +5,13 @@ import {
   refusalMatrixSection,
   studyPlanSection,
 } from './_shared'
+import { namespaceSectionFields } from './_utils'
 
 const manifest: TemplatePdfManifest = {
   slug: 'canada-study-plan-letter-of-explanation-pack',
   sections: [
     clientIdentitySection(),
-    studyPlanSection(),
+    namespaceSectionFields(studyPlanSection(), 'study_plan'),
     {
       title: 'Program Fit Worksheet',
       intro: 'Map each program element to your background and your post-study plan.',
@@ -30,7 +31,7 @@ const manifest: TemplatePdfManifest = {
       ],
     },
     refusalMatrixSection(),
-    coverLetterSection(),
+    namespaceSectionFields(coverLetterSection(), 'cover_letter'),
   ],
 }
 
