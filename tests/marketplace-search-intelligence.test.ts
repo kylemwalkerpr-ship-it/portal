@@ -20,11 +20,16 @@ describe('Marketplace Search Intelligence contract', () => {
   const card = read('components/marketplace/MarketplaceHero.tsx')
   const layout = read('app/marketplace/layout.tsx')
 
-  it('keeps gig intent tags as canonical clickable Marketplace searches', () => {
-    expect(detail).toContain('const tagSearchBase = subcategory')
-    expect(detail).toContain('href={`${tagSearchBase}?q=${encodeURIComponent(tag)}`}')
-    expect(detail).toContain('aria-label={`Search ${subcategory?.name || category?.name || \'Marketplace\'} for ${tag}`}')
+  it('makes gig intent tags canonical, keyboard-accessible Marketplace searches without regressing first paint', () => {
+    expect(detail).toContain('initialGig?: any | null')
+    expect(detail).toContain("import { GigDetailSkeleton } from './MarketplaceRouteSkeleton'")
+    expect(clickCapture).toContain("const ENHANCED_TAG = 'data-marketplace-intent-tag'")
+    expect(clickCapture).toContain("span.setAttribute('role', 'link')")
+    expect(clickCapture).toContain('span.tabIndex = 0')
+    expect(clickCapture).toContain("event.key !== 'Enter' && event.key !== ' '")
     expect(clickCapture).toContain("source: 'tag_click'")
+    expect(clickCapture).toContain("suggestionType: 'tag'")
+    expect(clickCapture).toContain('router.push(`${base.href}?q=${encodeURIComponent(query)}`)')
     expect(clickCapture).toContain("destination.searchParams.get('q')")
     expect(layout).toContain('<MarketplaceSearchClickCapture />')
   })
