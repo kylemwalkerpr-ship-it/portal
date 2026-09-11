@@ -145,11 +145,11 @@ export default function OfferDetailPanel({ open, offerId, details, loading = fal
     <section
       aria-label="Offer details"
       style={{
-        width: popupRoot ? '100%' : 'min(430px, 100%)',
-        height: popupRoot ? '100vh' : '100%',
-        position: popupRoot ? 'relative' : 'absolute',
+        width: popupRoot ? '100%' : 'min(430px, 100vw)',
+        height: popupRoot ? '100vh' : '100dvh',
+        position: popupRoot ? 'relative' : 'fixed',
         inset: popupRoot ? undefined : '0 0 0 auto',
-        zIndex: 120,
+        zIndex: popupRoot ? 1 : 1200,
         display: 'flex',
         flexDirection: 'column',
         background: '#FFFFFF',
@@ -268,7 +268,7 @@ export default function OfferDetailPanel({ open, offerId, details, loading = fal
   )
 
   if (popupRoot) return createPortal(panel, popupRoot)
-  return panel
+  return typeof document !== 'undefined' ? createPortal(panel, document.body) : panel
 }
 
 const iconBtn: React.CSSProperties = {
