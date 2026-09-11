@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
-import { MarketplaceGigTrustBar } from '@/components/marketplace/MarketplaceGigTrustBar'
 import { MarketplaceRouteFooter } from '@/components/marketplace/MarketplaceRouteFooter'
 import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
 import './marketplace-brand.css'
@@ -12,6 +11,7 @@ import './discovery-grid.css'
 import './marketplace-refinement.css'
 import './marketplace-completion.css'
 import './marketplace-card-finishing.css'
+import './gig-detail-professional-layout.css'
 
 /**
  * Default market surface is indexable. Pages that must stay out of the index
@@ -40,7 +40,6 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
             between market routes keeps the shell + children mounted instead
             of unmounting everything into a fallback (the nav-lag fix). */}
         <MarketplaceShell>
-          <MarketplaceGigTrustBar />
           {children}
         </MarketplaceShell>
         <MarketplaceRouteFooter />
