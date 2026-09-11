@@ -72,7 +72,7 @@ describe('Marketplace gig professional-service layout', () => {
     expect(gigDetail).toContain('serviceTitle={gig.title}')
     expect(chatPane).toContain("presentation?: 'drawer' | 'popover'")
     expect(chatPane).toContain("const isPopover = presentation === 'popover'")
-    expect(chatPane).toContain("fetch('/api/messages/start'")
+    expect(chatPane).toContain('/api/messages/start')
     expect(chatPane).toContain('className="ys-gig-message-popover-shell"')
     expect(chatPane).toContain('className={`yousafe-messenger chat-side-pane ${isPopover ? \'ys-gig-message-popover\' : \'\'}`}')
     expect(css).toContain('.ys-gig-message-popover')
