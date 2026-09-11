@@ -118,7 +118,7 @@ export const VOICE_PLAYBOOK = [
   'V5. NO THROAT CLEARING. Cut "I want to start by saying," "It\'s important to note that," "Let me take you through," "Rest assured that." Start in the buyer\'s problem or with the deliverable. The first 8 words of any field carry the most weight; don\'t waste them.',
   'V6. SKIP THE AI TELLS. The "Banned AI tells" list below contains the phrases that immediately mark copy as machine-generated. If you reach for one, rewrite from the buyer\'s specific situation instead. These exact strings will not appear in your output.',
   'V7. CONTRACTIONS IN CONVERSATIONAL FIELDS. Pitch, FAQ answers, and long-description prose — use contractions ("I\'ll", "you\'re", "won\'t", "it\'s", "you\'ll"). Titles, SEO meta, and tier features stay slightly more formal. Never write "do not" when "don\'t" reads naturally.',
-  'V8. SECOND-PERSON BIAS. Address the buyer ("your statement", "you\'ll get") more than the seller ("my service offers", "we provide"). Buyer is reading; talk to them. Exception: title and pitch — those are seller-speaking-to-market, "I will".',
+  'V8. SECOND-PERSON BIAS. Address the buyer ("your statement", "you\'ll get") more than the seller ("my service offers", "we provide"). Buyer is reading; talk to them. The public title is the one seller-speaking field ("I will"). Pitch and tagline stay buyer-led and must not open with the provider identity, credentials, or an "I am/I\'m..." mini-bio.',
   'V9. TRIM ADJECTIVES. One strong adjective beats three weak ones. "A reviewed, edited, polished essay" → "A reviewed and edited essay" → in many cases just "an edited essay" reads stronger. If the adjective doesn\'t add specific information a buyer would weigh, cut it.',
   'V10. NO SUMMARY SENTENCES. Don\'t end with "In conclusion," "To sum up," or a wrapped-up restatement. The last sentence does new work — a CTA, a concrete next step, or a final specific detail.',
 ].join('\n')
@@ -134,7 +134,8 @@ export const KEYWORD_WEAVING_PLAYBOOK = [
   'K2. NATURAL CADENCE OVER VERBATIM. If the primary keyword is 5+ words ("STEM OPT employer monitoring site visit 2026"), extract the 1-3 most salient tokens and write the rest of the sentence naturally. Forced exact-match stuffing wrecks readability AND triggers Google\'s helpful-content downweight (they\'ve scored exact-match stuffing since 2022).',
   'K3. SEMANTIC CLUSTERS, NOT REPETITION. After placing the primary keyword once, switch to semantic relatives for the next 200-300 words. If primary = "personal statement editing", weave in "essay review", "statement feedback", "draft revision", "editorial pass" instead of repeating the primary phrase. Google\'s semantic models score topic depth via co-occurring entities, not exact-match repetition.',
   'K4. INTENT MATCHING BY POSITION. Different positions in the listing match different buyer intents — write each to its native intent:',
-  '   • Title + pitch: declarative service intent ("I will edit your X")',
+  '   • Title: declarative seller intent ("I will edit your X")',
+  '   • Pitch + tagline: buyer outcome intent ("You\'ll receive X / leave with Y") — never a provider mini-bio',
   '   • SEO title + meta: search intent ("X service for Y audience")',
   '   • Description opening: outcome intent (what the buyer ships at the end)',
   '   • FAQ: question intent (buyers\' actual Google queries)',
@@ -176,9 +177,9 @@ export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consu
     case 'tagline':
       return [
         '### Voice — PITCH / TAGLINE',
-        'Outcome-led punch. 80-160 chars. Names what the buyer SHIPS, not what the seller provides. Contractions OK ("you\'ll", "I\'ll"). One concrete specific minimum (a count, a turnaround, a document name).',
+        'Outcome-led punch. 80-160 chars. Names what the buyer SHIPS, not what the seller provides. Contractions OK ("you\'ll", "I\'ll"). One concrete specific minimum (a count, a turnaround, a document name). Never open with the provider identity or credentials; "I am/I\'m a lawyer/attorney/consultant..." belongs in the provider profile or the long-form credentials section, not here.',
         'Pattern that works: "You\'ll ship a 500-word SOP that reads as you — not as a template. Two structural-edit rounds, 72-hour turnaround." (94 chars, two specifics, buyer-as-subject)',
-        'Pattern that does NOT work: "I provide comprehensive personal statement editing services tailored to your needs." (88 chars, banned adjective, no specifics, generic platitude)',
+        'Pattern that does NOT work: "I\'m a New York immigration attorney who reviews your case and documents." (provider mini-bio, seller-as-subject, detached from buyer outcome)',
       ].join('\n')
     case 'seo_title':
       return [
@@ -259,5 +260,5 @@ export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consu
 // line, comma-separated, double-quoted — the LLM reliably treats this
 // shape as a hard exclude list.
 export function getBannedAiTellsBlock(): string {
-  return `BANNED AI TELLS (do NOT use any of these phrases — they immediately mark copy as machine-generated): "${BANNED_AI_TELLS.join('", "')}"`
+  return `BANNED AI TELLS (do NOT use any of these phrases — they immediately mark copy as machine-generated): "${BANNED_AI_TELLS.join('\", \"')}"`
 }
