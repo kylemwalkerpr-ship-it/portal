@@ -1,0 +1,298 @@
+/* Gig detail professional-service layout
+   =======================================
+   Research reference: current YouSafe professional-service gigs plus multiple
+   Fiverr legal / immigration gig pages inspected end-to-end in Opera.
+
+   This layer is intentionally presentation-only. It does not alter checkout,
+   escrow, messaging, reviews, gig records, routes, or seller data. It loads
+   last in the Marketplace route so it can reconcile older mobile hardening
+   without creating a second gig implementation.
+*/
+
+/* Scope every rule to an actual gig-detail page. Discovery pages also use
+   .ys-content-layout, so .ys-gig-overview is the distinguishing contract. */
+.cw-market main:has(.ys-gig-overview) {
+  --ys-gig-rail-width: clamp(340px, 27vw, 390px);
+  --ys-gig-section-gap: 22px;
+}
+
+/* ---------- Title / service identity ---------- */
+.cw-market main:has(.ys-gig-overview) .ys-gig-overview {
+  max-width: 920px !important;
+  margin-bottom: 24px !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-overview h1 {
+  max-width: 25ch !important;
+  margin: 0 0 12px !important;
+  font-family: var(--ys-market-ui) !important;
+  font-size: clamp(32px, 3.2vw, 44px) !important;
+  font-weight: 740 !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.035em !important;
+  text-wrap: balance;
+}
+
+/* The current gig.pitch often reads like a miniature provider bio (for
+   example, “I am a New York immigration attorney…”). Between the title and
+   gallery it behaves like a detached byline and duplicates the fuller About
+   section. Keep the canonical service description as the substantive copy and
+   remove this stray hero paragraph from the visual hierarchy. */
+.cw-market main:has(.ys-gig-overview) .ys-gig-overview > p {
+  display: none !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-overview [aria-label='Service reputation'] {
+  margin-bottom: 0 !important;
+  min-height: 24px;
+  font-size: 13px !important;
+  font-weight: 550;
+}
+
+/* ---------- Desktop composition ---------- */
+.cw-market main:has(.ys-gig-overview) .ys-content-layout {
+  grid-template-columns: minmax(0, 1fr) var(--ys-gig-rail-width) !important;
+  gap: clamp(28px, 3vw, 42px) !important;
+  align-items: start !important;
+  min-width: 0;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child {
+  min-width: 0;
+  gap: var(--ys-gig-section-gap) !important;
+}
+
+/* Earlier mobile/profile hardening also assigned flex-order values to FAQ,
+   reviews and related-service cards outside its phone media query. Reassert
+   the deliberate desktop narrative here so long-form sections never drift:
+   gallery → About → FAQ → Reviews → Similar Services. */
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
+  order: 10 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(2) {
+  order: 20 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > div:has(> h3 + div > div > button) {
+  order: 30 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > div:has(h2) {
+  order: 40 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > div:has(a[href^='/gigs/']) {
+  order: 50 !important;
+}
+
+/* Treat the cover as the primary visual stage, not a padded card inside a
+   padded page. The image itself keeps its protective border and radius. */
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child img:first-child {
+  width: 100% !important;
+  border-radius: 14px !important;
+  background: var(--ys-paper2, #f1f3f5) !important;
+  box-shadow: inset 0 0 0 1px var(--ys-ruleSoft, rgba(15, 23, 42, 0.06)) !important;
+}
+
+/* About / FAQ / reviews should read as service editorial content rather than a
+   stack of dashboard widgets. Preserve cards, but reduce their visual weight. */
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :not(:first-child) {
+  border-color: var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :not(:first-child) :where(p, li, blockquote) {
+  max-width: 78ch;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :not(:first-child) :where(h2, h3) {
+  font-family: var(--ys-market-ui) !important;
+  font-weight: 720 !important;
+  letter-spacing: -0.025em !important;
+}
+
+/* ---------- Purchase rail ---------- */
+.cw-market main:has(.ys-gig-overview) .ys-sidebar {
+  position: sticky !important;
+  top: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  min-width: 0;
+  align-self: start;
+}
+
+/* Canonical GigDetailPage rail DOM is SellerProfileCard → PricingTiers →
+   OrderCTA. The visual buying hierarchy is deliberately the reverse of the
+   first two concerns: package → Continue → provider/contact. The boxed seller
+   card remains intact, as requested, and becomes the single provider block. */
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(2) {
+  order: 1 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(3) {
+  order: 2 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(1) {
+  order: 3 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > * {
+  min-width: 0;
+  border-color: var(--ys-rule, rgba(15, 23, 42, 0.11)) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(2),
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(3) {
+  box-shadow: 0 16px 42px -34px rgba(15, 23, 42, 0.45) !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-sidebar button {
+  min-height: 44px;
+}
+
+/* Pricing is the decision surface; keep its package controls easy to scan. */
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(2) h3 {
+  font-family: var(--ys-market-ui) !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* The final seller card is intentionally retained and slightly separated from
+   checkout, so identity/trust supports the purchase instead of competing with
+   the package selection. */
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(1) {
+  margin-top: 4px;
+}
+
+/* ---------- Tablet / mobile buyer journey ---------- */
+@media (max-width: 1024px) {
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Older global mobile CSS flattens both columns with display:contents. Keep
+     the main stream flattened so its cards can interleave with the purchase
+     rail, but regroup the rail itself into one coherent buying module. */
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child {
+    display: contents !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > .ys-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    position: static !important;
+    order: 20 !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 0 22px !important;
+  }
+
+  /* Phone/tablet reading order:
+       1. gallery
+       2. package + Continue + boxed provider
+       3. About This Service
+       4. FAQ
+       5. Reviews
+       6. Similar Services
+     This mirrors the useful Fiverr buying hierarchy without copying its look. */
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(1) {
+    order: 10 !important;
+    width: 100% !important;
+    margin-bottom: 20px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(2) {
+    order: 30 !important;
+    width: 100% !important;
+    margin-bottom: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(3) {
+    order: 40 !important;
+    width: 100% !important;
+    margin-bottom: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(4) {
+    order: 50 !important;
+    width: 100% !important;
+    margin-bottom: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(5) {
+    order: 60 !important;
+    width: 100% !important;
+    margin-bottom: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-sidebar > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .cw-market main:has(.ys-gig-overview) .ys-gig-overview {
+    margin-bottom: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-gig-overview h1 {
+    max-width: none !important;
+    font-size: clamp(28px, 8.4vw, 36px) !important;
+    line-height: 1.08 !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-sidebar > * {
+    padding: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :not(:first-child) {
+    padding: 18px !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout :where(h1, h2, h3, p, li, td, th) {
+    max-width: 100% !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout [style*='overflow-x: auto'],
+  .cw-market main:has(.ys-gig-overview) .ys-content-layout [style*='overflowX: auto'] {
+    width: 100% !important;
+    max-width: 100% !important;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-market main:has(.ys-gig-overview) *,
+  .cw-market main:has(.ys-gig-overview) *::before,
+  .cw-market main:has(.ys-gig-overview) *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
