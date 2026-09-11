@@ -23,6 +23,8 @@ describe('Marketplace Search Intelligence contract', () => {
   it('makes gig intent tags canonical, keyboard-accessible Marketplace searches without regressing first paint', () => {
     expect(detail).toContain('initialGig?: any | null')
     expect(detail).toContain("import { GigDetailSkeleton } from './MarketplaceRouteSkeleton'")
+    expect(clickCapture).toContain("import { usePathname, useRouter } from 'next/navigation'")
+    expect(clickCapture).toContain('const pathname = usePathname()')
     expect(clickCapture).toContain("const ENHANCED_TAG = 'data-marketplace-intent-tag'")
     expect(clickCapture).toContain("span.setAttribute('role', 'link')")
     expect(clickCapture).toContain('span.tabIndex = 0')
@@ -31,6 +33,7 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(clickCapture).toContain("suggestionType: 'tag'")
     expect(clickCapture).toContain('router.push(`${base.href}?q=${encodeURIComponent(query)}`)')
     expect(clickCapture).toContain("destination.searchParams.get('q')")
+    expect(clickCapture).toContain('}, [pathname, router])')
     expect(layout).toContain('<MarketplaceSearchClickCapture />')
   })
 
@@ -73,15 +76,19 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(eventApi).not.toContain('profileId')
   })
 
-  it('normalizes variants, blocks private credential-like input, and sanitizes tags at AI and database boundaries', () => {
+  it('normalizes equivalent variants and blocks credential-like private input at AI and database boundaries', () => {
     expect(helper).toContain(".replace(/\\b([a-z])[-\\s]?(\\d{1,3}[a-z]?)\\b/g, '$1$2')")
-    expect(helper).toContain('CREDENTIAL_WORDS')
-    expect(helper).toContain('PRIVATE_QUERY_PATTERNS')
+    expect(helper).toContain('rcic|cicc|marn|sra')
+    expect(helper).toContain('/\\b\\d{5,}\\b/')
+    expect(helper).toContain('if (LONG_IDENTIFIER.test(text)) return true')
     expect(seoSuggestApi).toContain("const value = field === 'tags' ? sanitizeMarketplaceTags(result.value) : result.value")
     expect(seoSuggestApi).toContain('The generated tags were not safe to use')
     expect(migration).toContain('create or replace function public.marketplace_sanitize_tags(input_tags text[])')
+    expect(migration).toContain("clean_tag !~* '\\m[0-9]{5,}\\M'")
+    expect(migration).toContain('create or replace function public.marketplace_search_alias_text(input_text text)')
+    expect(migration).toContain("plainto_tsquery('simple', public.marketplace_search_alias_text(left(trim(p_query), 80)))")
+    expect(migration).toContain('public.marketplace_search_alias_text(array_to_string(new.tags, \' \'))')
     expect(migration).toContain('new.tags := public.marketplace_sanitize_tags(new.tags);')
-    expect(migration).toContain('update public.gigs')
     expect(migration).toContain('where tags is distinct from public.marketplace_sanitize_tags(tags);')
   })
 
