@@ -1,7 +1,7 @@
 /* Gig detail professional-service layout
    =======================================
    Research reference: current YouSafe professional-service gigs plus multiple
-   Fiverr legal / immigration gig pages inspected end-to-end in Opera.
+   mature legal / immigration marketplace pages inspected end-to-end in Opera.
 
    This layer is intentionally presentation-only. It does not alter checkout,
    escrow, messaging, reviews, gig records, routes, or seller data. It loads
@@ -16,28 +16,38 @@
   --ys-gig-section-gap: 22px;
 }
 
-/* ---------- Title / service identity ---------- */
+/* ---------- Breadcrumb / title / service identity ---------- */
+.cw-market main:has(.ys-gig-overview) .ys-gig-breadcrumb-toolbar {
+  margin-bottom: 30px !important;
+}
+
+.cw-market main:has(.ys-gig-overview) nav[aria-label='Breadcrumb'] {
+  line-height: 1.5;
+  max-width: min(100%, 92ch);
+}
+
 .cw-market main:has(.ys-gig-overview) .ys-gig-overview {
-  max-width: 920px !important;
-  margin-bottom: 24px !important;
+  max-width: 1040px !important;
+  margin-bottom: 28px !important;
 }
 
 .cw-market main:has(.ys-gig-overview) .ys-gig-overview h1 {
-  max-width: 25ch !important;
-  margin: 0 0 12px !important;
+  max-width: min(100%, 36ch) !important;
+  margin: 0 0 14px !important;
   font-family: var(--ys-market-ui) !important;
-  font-size: clamp(32px, 3.2vw, 44px) !important;
+  font-size: clamp(34px, 3.2vw, 46px) !important;
   font-weight: 740 !important;
-  line-height: 1.08 !important;
-  letter-spacing: -0.035em !important;
-  text-wrap: balance;
+  line-height: 1.1 !important;
+  letter-spacing: -0.033em !important;
+  text-wrap: pretty;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  hyphens: none;
 }
 
-/* The current gig.pitch often reads like a miniature provider bio (for
-   example, “I am a New York immigration attorney…”). Between the title and
-   gallery it behaves like a detached byline and duplicates the fuller About
-   section. Keep the canonical service description as the substantive copy and
-   remove this stray hero paragraph from the visual hierarchy. */
+/* Legacy hero pitches are deliberately suppressed. The concise buyer-facing
+   pitch now lives inside About This Service as the AI summary, where it adds
+   context instead of reading like a detached provider mini-bio above media. */
 .cw-market main:has(.ys-gig-overview) .ys-gig-overview > p {
   display: none !important;
 }
@@ -62,10 +72,8 @@
   gap: var(--ys-gig-section-gap) !important;
 }
 
-/* Earlier mobile/profile hardening also assigned flex-order values to FAQ,
-   reviews and related-service cards outside its phone media query. Reassert
-   the deliberate desktop narrative here so long-form sections never drift:
-   gallery → About → FAQ → Reviews → Similar Services. */
+/* Reassert the deliberate desktop narrative so older flex-order rules cannot
+   drift the service sections: gallery → About → FAQ → Reviews → Similar. */
 .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
   order: 10 !important;
 }
@@ -121,6 +129,97 @@
   letter-spacing: -0.025em !important;
 }
 
+/* ---------- AI summary + expandable long description ---------- */
+.cw-market main:has(.ys-gig-overview) .ys-gig-ai-summary {
+  margin: 0 0 20px;
+  padding: 14px 16px 15px;
+  border: 1px solid color-mix(in srgb, var(--ys-indigo, #4f46e5) 22%, transparent);
+  border-left: 3px solid var(--ys-indigo, #4f46e5);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ys-indigo, #4f46e5) 5%, var(--ys-vellum, #fff));
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-ai-summary-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  font-family: var(--ys-market-ui) !important;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ys-indigo, #4f46e5);
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-ai-summary p {
+  margin: 0 !important;
+  max-width: 76ch !important;
+  font-size: 14.5px !important;
+  line-height: 1.6 !important;
+  color: var(--ys-ink, #172033) !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-ai-summary-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ys-inkSoft, #667085);
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-copy {
+  position: relative;
+  overflow: hidden;
+  transition: max-height 220ms ease;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-copy.is-collapsed {
+  max-height: 13rem;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-copy.is-expanded {
+  max-height: 240rem;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-copy.is-collapsed::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 58px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--ys-vellum, #fff) 84%);
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 7px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ys-ink, #172033);
+  font: 700 13px/1.2 var(--ys-market-ui);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-toggle:hover {
+  color: var(--ys-indigo, #4f46e5);
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-toggle svg {
+  transition: transform 180ms ease;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-gig-description-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
 /* ---------- Purchase rail ---------- */
 .cw-market main:has(.ys-gig-overview) .ys-sidebar {
   position: sticky !important;
@@ -132,19 +231,18 @@
   align-self: start;
 }
 
-/* Canonical GigDetailPage rail DOM is SellerProfileCard → PricingTiers →
-   OrderCTA. The visual buying hierarchy is deliberately the reverse of the
-   first two concerns: package → Continue → provider/contact. The boxed seller
-   card remains intact, as requested, and becomes the single provider block. */
-.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(2) {
+/* Canonical DOM is SellerProfileCard → PricingTiers → OrderCTA. Keep that
+   semantic order visually as well: provider identity/trust is visible early,
+   immediately followed by package choice and Continue. */
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(1) {
   order: 1 !important;
 }
 
-.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(3) {
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(2) {
   order: 2 !important;
 }
 
-.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(1) {
+.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(3) {
   order: 3 !important;
 }
 
@@ -172,11 +270,81 @@
   letter-spacing: 0.08em !important;
 }
 
-/* The final seller card is intentionally retained and slightly separated from
-   checkout, so identity/trust supports the purchase instead of competing with
-   the package selection. */
-.cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(1) {
-  margin-top: 4px;
+/* ---------- Affixed message launcher ---------- */
+.ys-floating-message-launcher {
+  position: fixed;
+  left: 24px;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  z-index: 56;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(360px, calc(100vw - 48px));
+  min-height: 58px;
+  padding: 8px 15px 8px 8px;
+  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.13));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ys-vellum, #fff) 94%, transparent);
+  color: var(--ys-ink, #172033);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+  font-family: var(--ys-market-ui);
+  text-align: left;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.ys-floating-message-launcher:hover,
+.ys-floating-message-launcher:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--ys-indigo, #4f46e5) 32%, transparent);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.22);
+  outline: none;
+}
+
+.ys-floating-message-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ys-paper2, #eef1f5);
+  color: var(--ys-ink, #172033);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.ys-floating-message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ys-floating-message-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ys-floating-message-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 740;
+}
+
+.ys-floating-message-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--ys-inkSoft, #667085);
 }
 
 /* ---------- Tablet / mobile buyer journey ---------- */
@@ -210,12 +378,11 @@
 
   /* Phone/tablet reading order:
        1. gallery
-       2. package + Continue + boxed provider
-       3. About This Service
+       2. provider → package → Continue
+       3. About + AI summary
        4. FAQ
        5. Reviews
-       6. Similar Services
-     This mirrors the useful Fiverr buying hierarchy without copying its look. */
+       6. Similar Services */
   .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(1) {
     order: 10 !important;
     width: 100% !important;
@@ -255,14 +422,21 @@
 }
 
 @media (max-width: 700px) {
+  .cw-market main:has(.ys-gig-overview) .ys-gig-breadcrumb-toolbar {
+    margin-bottom: 22px !important;
+  }
+
   .cw-market main:has(.ys-gig-overview) .ys-gig-overview {
-    margin-bottom: 18px !important;
+    margin-bottom: 20px !important;
   }
 
   .cw-market main:has(.ys-gig-overview) .ys-gig-overview h1 {
     max-width: none !important;
-    font-size: clamp(28px, 8.4vw, 36px) !important;
-    line-height: 1.08 !important;
+    font-size: clamp(29px, 8.2vw, 37px) !important;
+    line-height: 1.1 !important;
+    text-wrap: pretty;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
   }
 
   .cw-market main:has(.ys-gig-overview) .ys-sidebar > * {
@@ -286,12 +460,31 @@
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
+
+  .ys-floating-message-launcher {
+    left: 12px;
+    bottom: max(82px, calc(70px + env(safe-area-inset-bottom)));
+    min-height: 52px;
+    max-width: calc(100vw - 24px);
+    padding: 6px 13px 6px 6px;
+  }
+
+  .ys-floating-message-avatar {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .ys-floating-message-copy small {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cw-market main:has(.ys-gig-overview) *,
   .cw-market main:has(.ys-gig-overview) *::before,
-  .cw-market main:has(.ys-gig-overview) *::after {
+  .cw-market main:has(.ys-gig-overview) *::after,
+  .ys-floating-message-launcher {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
