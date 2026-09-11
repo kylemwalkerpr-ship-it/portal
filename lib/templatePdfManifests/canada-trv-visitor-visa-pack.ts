@@ -16,7 +16,7 @@ const manifest: TemplatePdfManifest = {
       intro: 'Notes-only sheet for the IRCC Application for Temporary Resident Visa form.',
       fields: [
         { id: 'uci_number', label: 'UCI (if previously issued)', type: 'text' },
-        { id: 'application_type', label: 'Application type', type: 'select', options: ['Single entry', 'Multiple entry', 'Super Visa'] },
+        { id: 'trv_application_type', label: 'Application type', type: 'select', options: ['Single entry', 'Multiple entry', 'Super Visa'] },
         { id: 'planned_arrival_date', label: 'Planned arrival date', type: 'date' },
         { id: 'planned_departure_date', label: 'Planned departure date', type: 'date' },
         { id: 'destination_cities', label: 'Cities you will visit in Canada', type: 'multiline', rows: 2 },

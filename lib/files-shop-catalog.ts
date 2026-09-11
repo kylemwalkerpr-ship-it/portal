@@ -1,4 +1,5 @@
 import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
+import { applyPayhipBatch1Commercial, getPayhipBatch1Commercial } from '@/lib/payhipBatch1Commercial'
 
 export type FileShopCategory = 'spreadsheet' | 'guide' | 'template' | 'craft'
 
@@ -46,24 +47,30 @@ const BASE_FILE_SHOP_PRODUCTS: FileShopProduct[] = [
 
 /**
  * The 16 immigration products were originally published straight to the active
- * Cloudflare Worker. Re-express them in the established shop-card contract so
- * the known-good shop design stays intact while their canonical detail pages
- * remain /shop/<slug> and checkout remains Payhip-only on those pages.
+ * Cloudflare Worker. Batch 1 merchandising is overlaid from the audited
+ * commercial manifest so price, packaging copy and real-photo covers remain
+ * consistent with the buyer-facing release contract.
  */
-const IMMIGRATION_FILE_SHOP_PRODUCTS: FileShopProduct[] = IMMIGRATION_SHOP_PRODUCTS.map((pack, index) => ({
-  id: pack.slug,
-  file: String(index + 21).padStart(2, '0'),
-  cat: 'template',
-  format: 'Digital preparation pack',
-  stamp: 'IMMIGRATION\nPACK',
-  title: pack.name,
-  desc: pack.short_description,
-  bullets: [pack.includes[0] || 'Application preparation organizer', pack.includes[1] || 'Document checklist'],
-  price: String(pack.price_usd),
-  href: `/shop/${pack.slug}`,
-  cover: '/shop/covers/immigration-prep-pack.svg',
-  published: pack.payhip_published,
-}))
+const IMMIGRATION_FILE_SHOP_PRODUCTS: FileShopProduct[] = IMMIGRATION_SHOP_PRODUCTS.map((basePack, index) => {
+  const pack = applyPayhipBatch1Commercial(basePack)
+  const commercial = getPayhipBatch1Commercial(pack.slug)
+  return {
+    id: pack.slug,
+    file: String(index + 21).padStart(2, '0'),
+    cat: 'template',
+    format: commercial?.deliveryLabel ?? 'Digital preparation pack',
+    stamp: 'IMMIGRATION\nPACK',
+    title: pack.name,
+    desc: pack.short_description,
+    bullets: commercial
+      ? [commercial.deliveryLabel, 'Official-source guidance included']
+      : [pack.includes[0] || 'Application preparation organizer', pack.includes[1] || 'Document checklist'],
+    price: String(pack.price_usd),
+    href: `/shop/${pack.slug}`,
+    cover: commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg',
+    published: pack.payhip_published,
+  }
+})
 
 export const FILE_SHOP_PRODUCTS: FileShopProduct[] = [
   ...BASE_FILE_SHOP_PRODUCTS,
