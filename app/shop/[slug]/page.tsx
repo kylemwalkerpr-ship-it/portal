@@ -9,6 +9,11 @@ import {
 
 const SHOP_CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 
+const SHOP_SEO_TITLES: Record<string, string> = {
+  'us-f1-student-visa-ds160-i20-pack': 'F-1 Visa DS-160 + I-20 Prep Pack | YouSafe',
+  'canada-study-permit-complete-pack': 'Canada Study Permit Prep Pack | YouSafe',
+}
+
 export const dynamic = 'force-static'
 
 export async function generateStaticParams() {
@@ -20,7 +25,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const product = getImmigrationShopProduct(slug)
   if (!product) return {}
 
-  const title = `${product.name} | YouSafe File Shop`
+  const title = SHOP_SEO_TITLES[slug] ?? `${product.name} | YouSafe File Shop`
   const description = product.short_description.slice(0, 160)
   const canonical = `${SHOP_CANONICAL}/${slug}`
 
