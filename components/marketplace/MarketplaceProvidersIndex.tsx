@@ -421,11 +421,6 @@ function ProviderSidePane({ a, onClose }) {
               <div style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.inkSoft, marginTop: 4 }}>
                 {a.credential_type || 'Licensed provider'}{a.jurisdictions ? ` · ${a.jurisdictions}` : ''}
               </div>
-              {a.bar_number && (
-                <div style={{ fontFamily: F.mono, fontSize: 11, color: T.inkMid, marginTop: 2 }}>
-                  Bar / Reg #: <b style={{ color: T.onPaper }}>{a.bar_state ? `${a.bar_state} ` : ''}{a.bar_number}</b>
-                </div>
-              )}
             </div>
           </div>
           <button
