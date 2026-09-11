@@ -3,7 +3,7 @@ import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-const RECOMMENDATION_SELECT = 'id, provider_id, slug, title, pitch, starting_price, avg_rating, review_count, order_count, gallery_images, category, subcategory, jurisdiction, provider:profiles!gigs_provider_id_fkey(full_name, username, email)'
+const RECOMMENDATION_SELECT = 'id, provider_id, slug, title, pitch, avg_rating, review_count, order_count, gallery_images, category, subcategory, jurisdiction, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, email)'
 
 export async function GET(_req: Request, context: { params: Promise<{ slug: string }> }) {
   const auth = await getOptionalPortalUser()
@@ -107,12 +107,21 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       return true
     })
     .slice(0, 6)
-    .map((sg: any) => ({
-      ...sg,
-      provider: sg.provider || (sg.provider_id === gig.provider_id ? gig.provider : null),
-      gallery_images: normalizeGallery(sg.gallery_images),
-      cover_image_url: resolveCoverUrl(sg),
-    }))
+    .map((sg: any) => {
+      // starting_price is a shaped API field, not a public.gigs column. Derive
+      // it from the cheapest active tier so recommendation queries stay valid.
+      const activeTiers = (sg.tiers || [])
+        .filter((tier: any) => tier.is_active)
+        .sort((a: any, b: any) => Number(a.price) - Number(b.price))
+
+      return {
+        ...sg,
+        starting_price: activeTiers[0]?.price ?? null,
+        provider: sg.provider || (sg.provider_id === gig.provider_id ? gig.provider : null),
+        gallery_images: normalizeGallery(sg.gallery_images),
+        cover_image_url: resolveCoverUrl(sg),
+      }
+    })
 
   return ok({
     gig: {
