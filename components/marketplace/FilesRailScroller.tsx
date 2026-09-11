@@ -56,7 +56,7 @@ export function FilesRailScroller({ products }: { products: FileShopProduct[] })
       <div ref={scrollerRef} className="cw-files-scroller">
         {products.map((p) => (
           <a key={p.id} className="cw-files-card" href={p.href} rel="noopener noreferrer">
-            <img src={p.cover} alt="" width="196" height="124" />
+            <img src={p.cover} alt={`${p.title} file cover`} width="196" height="124" />
             <div className="body">
               <h3>{p.title}</h3>
               <div className="price">${p.price}</div>
