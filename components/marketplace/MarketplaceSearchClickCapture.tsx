@@ -16,14 +16,14 @@ function scopedSearchBase(): { href: string; categoryId?: string } {
     ? Array.from(breadcrumb.querySelectorAll<HTMLAnchorElement>('a[href*="/categories/"]'))
     : []
   const lastCategory = categoryLinks[categoryLinks.length - 1]
-  if (!lastCategory) return { href: '/marketplace' }
+  if (!lastCategory) return { href: '/' }
 
   try {
     const url = new URL(lastCategory.href, window.location.href)
     const categoryId = url.pathname.split('/').filter(Boolean).pop()
     return { href: url.pathname, categoryId }
   } catch {
-    return { href: '/marketplace' }
+    return { href: '/' }
   }
 }
 
@@ -98,10 +98,8 @@ export function MarketplaceSearchClickCapture() {
       if (destination.origin !== window.location.origin) return
 
       const isSearchSurface =
-        destination.pathname === '/marketplace'
-        || destination.pathname === '/marketplace/'
+        destination.pathname === '/'
         || destination.pathname.startsWith('/categories/')
-        || destination.pathname.startsWith('/marketplace/categories/')
       if (!isSearchSurface) return
 
       const query = destination.searchParams.get('q')?.trim()
