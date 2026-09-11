@@ -1,18 +1,54 @@
 {
   "batch": 1,
   "product_count": 9,
-  "status": "implementation_in_progress",
-  "repo_artifact_qa": "green_before_commercial_wiring",
-  "payhip_seller_auth": "blocked_profile_login_required",
+  "status": "hold_live_payhip_mutation_required",
+  "shipment_complete": false,
+  "repo_artifact_qa": "green_exact_buyer_files_and_previews_generated",
+  "portal_ci": "green_on_latest_verified_head_before_this_status_only_commit",
+  "apex_ci": "green_seo_heading_and_cloudflare_pr_build",
+  "migration_required": false,
+  "migration_note": "No YouSafe database/schema migration is required. Batch 1 is source-controlled catalogue/PDF/editorial work plus external Payhip listing mutations.",
+  "payhip_api": "public_api_does_not_expose_product_file_price_cover_tag_or_blog_mutations",
+  "payhip_seller_auth": "opera_authenticated_read_only; tinyfish_profile_and_vault_unauthenticated",
+  "live_payhip_findings": {
+    "all_nine_visible": true,
+    "all_nine_old_prices_still_live": true,
+    "all_nine_old_zip_attachments_still_live": true,
+    "old_zip_size_range_kb": "2-8",
+    "all_nine_missing_product_cover": true,
+    "all_nine_missing_marketplace_category_submission": true,
+    "marketplace_manager_state": "existing general products present; Batch 1 immigration products absent",
+    "seller_cover_minimum_width_px": 1000
+  },
+  "release_assets": {
+    "buyer_files": "8 standalone fillable PDFs + 15-PDF Mega ZIP",
+    "previews": "8 three-page standalone previews + 15-cover-page Mega preview",
+    "cover_sources": "9 real Pexels photographs requested at 1200px width with provenance and alt text",
+    "payhip_blogs": "9 complete drafts plus enforced Apex/Marketplace/Payhip/authority/cross-sell link packages",
+    "apex_articles": "9 product-led guides + 1 cluster hub with Article/Product/FAQ structured data"
+  },
+  "ship_gate": [
+    "replace each old Payhip attachment with the exact CI-validated buyer file",
+    "set researched target price",
+    "upload the assigned real-photo cover",
+    "assign Education marketplace category plus product-specific tags",
+    "upload the separate customer preview file",
+    "replace listing copy with the exact truthful delivery promise",
+    "publish the corresponding Payhip blog with rich-text links applied",
+    "verify public listing price/copy/cover/category",
+    "perform a real customer-facing download from Payhip and reopen the delivered bytes",
+    "verify Apex and Marketplace links resolve to the same live product",
+    "merge only after all repository checks remain green"
+  ],
   "products": [
-    {"id":"Ap382","slug":"premium-usa-canada-study-work-mega-bundle","target_price":49.99,"delivery":"15 fillable PDFs"},
-    {"id":"kcRoK","slug":"universal-client-intake-document-review-kit","target_price":12.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"e9Usb","slug":"us-canada-refusal-reapplication-response-pack","target_price":18.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"6gsAa","slug":"canada-family-information-travel-history-pack","target_price":10.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"jTfbO","slug":"canada-pgwp-application-pack","target_price":14.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"ZsyvP","slug":"canada-work-permit-outside-canada-pack","target_price":15.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"IMFsj","slug":"canada-trv-visitor-visa-pack","target_price":13.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"8Yo4F","slug":"canada-study-plan-letter-of-explanation-pack","target_price":13.99,"delivery":"1 fillable PDF workbook"},
-    {"id":"u0S1v","slug":"canada-proof-of-funds-sponsor-pack","target_price":14.99,"delivery":"1 fillable PDF workbook"}
+    {"id":"Ap382","slug":"premium-usa-canada-study-work-mega-bundle","live_price":79.00,"live_attachment":"ZIP 8 KB","target_price":49.99,"delivery":"15 fillable PDFs in one ZIP","cover_live":false},
+    {"id":"kcRoK","slug":"universal-client-intake-document-review-kit","live_price":15.00,"live_attachment":"ZIP 3 KB","target_price":12.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"e9Usb","slug":"us-canada-refusal-reapplication-response-pack","live_price":29.00,"live_attachment":"ZIP 3 KB","target_price":18.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"6gsAa","slug":"canada-family-information-travel-history-pack","live_price":12.00,"live_attachment":"ZIP 2 KB","target_price":10.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"jTfbO","slug":"canada-pgwp-application-pack","live_price":25.00,"live_attachment":"ZIP 3 KB","target_price":14.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"ZsyvP","slug":"canada-work-permit-outside-canada-pack","live_price":25.00,"live_attachment":"ZIP 3 KB","target_price":15.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"IMFsj","slug":"canada-trv-visitor-visa-pack","live_price":19.00,"live_attachment":"ZIP 4 KB","target_price":13.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"8Yo4F","slug":"canada-study-plan-letter-of-explanation-pack","live_price":17.00,"live_attachment":"ZIP 3 KB","target_price":13.99,"delivery":"1 fillable PDF workbook","cover_live":false},
+    {"id":"u0S1v","slug":"canada-proof-of-funds-sponsor-pack","live_price":19.00,"live_attachment":"ZIP 3 KB","target_price":14.99,"delivery":"1 fillable PDF workbook","cover_live":false}
   ]
 }
