@@ -1,6 +1,8 @@
 'use client'
 
 import React from 'react'
+import { resolveCategoryValue } from '@/lib/gigTaxonomy'
+import { openOrderInApp } from '@/lib/orderLinks'
 
 interface ProfilePreviewDrawerProps {
   sellerId: string | null
@@ -8,6 +10,8 @@ interface ProfilePreviewDrawerProps {
   open: boolean
   onClose: () => void
 }
+
+const MARKETPLACE_ORIGIN = 'https://market.yousafeconsultancy.com'
 
 const ROLE_LABELS: Record<string, string> = {
   attorney: 'Attorney · Business account',
@@ -23,6 +27,15 @@ type ThreadMedia = {
   kind: 'attachment' | 'link'
   label: string
   url: string
+}
+
+type SharedOrder = {
+  id: string
+  order_number?: string | null
+  status?: string | null
+  total_amount?: number | string | null
+  escrow_status?: string | null
+  created_at?: string | null
 }
 
 type HeaderCapabilities = {
@@ -65,6 +78,14 @@ function VideoIcon() {
 
 function SearchIcon() {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+}
+
+function ChevronIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
+}
+
+function ExternalIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3h7v7" /><path d="m21 3-9 9" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
 }
 
 function currentConversationHeader() {
@@ -123,6 +144,29 @@ function extractThreadMedia(messages: any[]): ThreadMedia[] {
   return items.reverse()
 }
 
+function serviceHref(gig: any) {
+  const slug = String(gig?.slug || '').trim()
+  return slug ? `${MARKETPLACE_ORIGIN}/gigs/${encodeURIComponent(slug)}` : `${MARKETPLACE_ORIGIN}/providers`
+}
+
+function categoryHref(label: string) {
+  const target = resolveCategoryValue(label)
+  if (target?.value) return `${MARKETPLACE_ORIGIN}/categories/${encodeURIComponent(target.value)}`
+  return `${MARKETPLACE_ORIGIN}/?q=${encodeURIComponent(label)}`
+}
+
+function orderDate(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function orderAmount(value?: number | string | null) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  return `$${amount.toLocaleString(undefined, { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
+}
+
 function OptionRow({ icon, title, subtitle, count, onClick }: {
   icon: React.ReactNode
   title: string
@@ -138,7 +182,7 @@ function OptionRow({ icon, title, subtitle, count, onClick }: {
         {subtitle ? <small>{subtitle}</small> : null}
       </span>
       {typeof count === 'number' && count > 0 ? <span className="ys-contact-option-count">{count}</span> : null}
-      <svg className="ys-contact-option-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
+      <span className="ys-contact-option-chevron"><ChevronIcon /></span>
     </button>
   )
 }
@@ -149,6 +193,7 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const [threadMedia, setThreadMedia] = React.useState<ThreadMedia[]>([])
+  const [sharedOrders, setSharedOrders] = React.useState<SharedOrder[]>([])
   const [showMedia, setShowMedia] = React.useState(false)
   const [capabilities, setCapabilities] = React.useState<HeaderCapabilities>({ offer: false, ai: false, aiLabel: '' })
 
@@ -160,6 +205,7 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
     setLoading(true)
     setError('')
     setShowMedia(false)
+    setSharedOrders([])
 
     Promise.all([
       fetch(`/api/sellers/${sellerId}`, { credentials: 'same-origin' }).then(r => r.json().catch(() => ({}))),
@@ -194,11 +240,19 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
       fetch(`/api/messages/conversations/${encodeURIComponent(threadId)}`, { credentials: 'same-origin' })
         .then(r => r.json().catch(() => ({})))
         .then(payload => {
-          if (!cancelled) setThreadMedia(extractThreadMedia(Array.isArray(payload?.messages) ? payload.messages : []))
+          if (cancelled) return
+          setThreadMedia(extractThreadMedia(Array.isArray(payload?.messages) ? payload.messages : []))
+          setSharedOrders(Array.isArray(payload?.sidebar?.orders) ? payload.sidebar.orders : [])
         })
-        .catch(() => { if (!cancelled) setThreadMedia([]) })
+        .catch(() => {
+          if (!cancelled) {
+            setThreadMedia([])
+            setSharedOrders([])
+          }
+        })
     } else {
       setThreadMedia([])
+      setSharedOrders([])
     }
 
     return () => { cancelled = true }
@@ -230,12 +284,13 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
       : Array.isArray(seller?.practice_areas)
         ? seller.practice_areas
         : []
+  const completedOrders = sharedOrders.filter(order => ['completed', 'complete'].includes(String(order?.status || '').toLowerCase()))
 
   const memberSince = seller?.member_since
     ? new Date(seller.member_since).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
     : null
 
-  const runAndClose = (action: () => boolean) => {
+  const runAndClose = (action: () => boolean | void) => {
     onClose()
     window.setTimeout(() => action(), 0)
   }
@@ -247,6 +302,7 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
   const openSettings = () => runAndClose(() => invokeHeaderAction(button => /^settings$/i.test(button.title || '') || /messenger settings/i.test(button.title || '')))
   const openOffer = () => runAndClose(() => invokeHeaderAction(button => /send offer/i.test(button.textContent || '')))
   const toggleAi = () => runAndClose(() => invokeHeaderAction(button => /take over|resume ai/i.test(button.textContent || '')))
+  const openOrder = (orderId: string) => runAndClose(() => openOrderInApp(orderId))
 
   return (
     <div className="ys-contact-info-layer" role="presentation" onClick={onClose}>
@@ -259,49 +315,25 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
       >
         <header className="ys-contact-info-head">
           <button type="button" className="ys-contact-back" onClick={onClose} aria-label="Back to conversation">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
           <strong>Conversation info</strong>
           <span className="ys-contact-head-spacer" />
         </header>
 
         <div className="ys-contact-info-scroll">
-          {loading && (
-            <div className="ys-contact-state">
-              <span className="ys-contact-spinner" aria-hidden="true" />
-              <span>Loading profile…</span>
-            </div>
-          )}
-
-          {error && (
-            <div className="ys-contact-state is-error">
-              <strong>Profile unavailable</strong>
-              <span>{error}</span>
-            </div>
-          )}
-
-          {!loading && !error && !seller && (
-            <div className="ys-contact-state">
-              <strong>Profile details are unavailable</strong>
-              <span>You can continue this conversation normally.</span>
-            </div>
-          )}
+          {loading && <div className="ys-contact-state"><span className="ys-contact-spinner" aria-hidden="true" /><span>Loading profile…</span></div>}
+          {error && <div className="ys-contact-state is-error"><strong>Profile unavailable</strong><span>{error}</span></div>}
+          {!loading && !error && !seller && <div className="ys-contact-state"><strong>Profile details are unavailable</strong><span>You can continue this conversation normally.</span></div>}
 
           {!loading && !error && seller && (
             <>
               <section className="ys-contact-hero ys-contact-hero-upgraded">
                 <div className="ys-contact-avatar-ring">
                   <div className="ys-contact-avatar">
-                    {seller.headshot_url ? (
-                      <img src={seller.headshot_url} alt={seller.full_name || ''} />
-                    ) : (
-                      <span>{(seller.full_name || '?').charAt(0).toUpperCase()}</span>
-                    )}
+                    {seller.headshot_url ? <img src={seller.headshot_url} alt={seller.full_name || ''} /> : <span>{(seller.full_name || '?').charAt(0).toUpperCase()}</span>}
                   </div>
                 </div>
-
                 <h2>{seller.full_name || 'YouSafe member'}</h2>
                 <p className="ys-contact-role">{roleLabel}</p>
                 {seller.tagline && <p className="ys-contact-tagline">{seller.tagline}</p>}
@@ -314,14 +346,8 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
                 </div>
 
                 {role !== 'client' && role !== 'student' && seller.profile_id && (
-                  <a
-                    className="ys-contact-primary-action"
-                    href={`https://market.yousafeconsultancy.com/providers/${seller.profile_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View marketplace profile
-                    <span aria-hidden="true">↗</span>
+                  <a className="ys-contact-primary-action" href={`${MARKETPLACE_ORIGIN}/providers/${seller.profile_id}`} target="_blank" rel="noopener noreferrer">
+                    View marketplace profile <span aria-hidden="true">↗</span>
                   </a>
                 )}
               </section>
@@ -333,19 +359,10 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
                 </div>
                 {seller.country && <DetailRow icon="◎" label="Country" value={seller.country} />}
                 {memberSince && <DetailRow icon="◷" label="Member since" value={memberSince} />}
-                {seller.years_experience && (
-                  <DetailRow icon="◇" label="Experience" value={`${seller.years_experience} year${seller.years_experience === 1 ? '' : 's'}`} />
-                )}
-                {Array.isArray(seller.languages) && seller.languages.length > 0 && (
-                  <DetailRow icon="文" label="Languages" value={seller.languages.join(', ')} />
-                )}
+                {seller.years_experience && <DetailRow icon="◇" label="Experience" value={`${seller.years_experience} year${seller.years_experience === 1 ? '' : 's'}`} />}
+                {Array.isArray(seller.languages) && seller.languages.length > 0 && <DetailRow icon="文" label="Languages" value={seller.languages.join(', ')} />}
                 {(role === 'client' || role === 'student') && typeof seller.inquiry_count === 'number' && (
-                  <DetailRow
-                    icon="◫"
-                    label="Marketplace activity"
-                    value={`${seller.inquiry_count} inquir${seller.inquiry_count === 1 ? 'y' : 'ies'} posted`}
-                    muted
-                  />
+                  <DetailRow icon="◫" label="Marketplace activity" value={`${seller.inquiry_count} inquir${seller.inquiry_count === 1 ? 'y' : 'ies'} posted`} muted />
                 )}
               </section>
 
@@ -361,102 +378,96 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
                   <div className="ys-contact-media-panel">
                     {threadMedia.length ? threadMedia.slice(0, 8).map(item => (
                       <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="ys-contact-media-item">
-                        <span aria-hidden="true">{item.kind === 'attachment' ? '📎' : '↗'}</span>
-                        <strong>{item.label}</strong>
+                        <span aria-hidden="true">{item.kind === 'attachment' ? '📎' : '↗'}</span><strong>{item.label}</strong>
                       </a>
                     )) : <div className="ys-contact-media-empty">Nothing has been shared in this conversation yet.</div>}
                   </div>
                 )}
-                <OptionRow
-                  icon={<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>}
-                  title="Starred messages"
-                  subtitle="Review messages you saved"
-                  onClick={openStarred}
-                />
-                {capabilities.offer ? (
-                  <OptionRow
-                    icon={<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12v8H4V4h8" /><path d="M16 3h5v5" /><path d="m21 3-9 9" /></svg>}
-                    title="Send custom offer"
-                    subtitle="Create an offer for this conversation"
-                    onClick={openOffer}
-                  />
-                ) : null}
-                {capabilities.ai ? (
-                  <OptionRow
-                    icon={<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /><circle cx="12" cy="12" r="4" /></svg>}
-                    title={capabilities.aiLabel || 'AI conversation mode'}
-                    subtitle="Change who handles automatic replies"
-                    onClick={toggleAi}
-                  />
-                ) : null}
-                <OptionRow
-                  icon={<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33A1.65 1.65 0 0 0 14 20.83V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3.17 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9A1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9A1.65 1.65 0 0 0 20.83 10H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z" /></svg>}
-                  title="Messenger settings"
-                  subtitle="Theme, wallpaper and notifications"
-                  onClick={openSettings}
-                />
+                <OptionRow icon={<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>} title="Starred messages" subtitle="Review messages you saved" onClick={openStarred} />
+                {capabilities.offer ? <OptionRow icon="↗" title="Send custom offer" subtitle="Create an offer for this conversation" onClick={openOffer} /> : null}
+                {capabilities.ai ? <OptionRow icon="✦" title={capabilities.aiLabel || 'AI conversation mode'} subtitle="Change who handles automatic replies" onClick={toggleAi} /> : null}
+                <OptionRow icon="⚙" title="Messenger settings" subtitle="Theme, wallpaper and notifications" onClick={openSettings} />
               </section>
 
               {role === 'attorney' && Array.isArray(seller.jurisdictions) && seller.jurisdictions.length > 0 && (
                 <section className="ys-contact-card">
                   <h3>Jurisdictions</h3>
                   <div className="ys-contact-chip-row">
-                    {seller.jurisdictions.map((item: string) => (
-                      <span key={item} className="ys-contact-chip">{item}</span>
-                    ))}
+                    {seller.jurisdictions.map((item: string) => <span key={item} className="ys-contact-chip">{item}</span>)}
                   </div>
                 </section>
               )}
 
               {specialties.length > 0 && (
                 <section className="ys-contact-card">
-                  <h3>{role === 'attorney' ? 'Practice areas' : 'Specialties'}</h3>
+                  <div className="ys-contact-card-title-row">
+                    <h3>{role === 'attorney' ? 'Practice areas' : 'Specialties'}</h3>
+                    <span>Browse services</span>
+                  </div>
                   <div className="ys-contact-chip-row">
                     {specialties.slice(0, 8).map((item: string) => (
-                      <span key={item} className="ys-contact-chip">{item}</span>
+                      <a key={item} className="ys-contact-chip ys-contact-linked-chip" href={categoryHref(item)} target="_blank" rel="noopener noreferrer" aria-label={`Browse ${item} services`}>
+                        <span>{item}</span><ExternalIcon />
+                      </a>
                     ))}
                   </div>
                 </section>
               )}
 
-              {gigs.length > 0 && (
+              {(role === 'attorney' || role === 'consultant') && gigs.length > 0 && (
                 <section className="ys-contact-card">
                   <div className="ys-contact-card-title-row">
                     <h3>Services</h3>
-                    <span>{Math.min(gigs.length, 3)} shown</span>
+                    <span>{gigs.length} available</span>
                   </div>
                   <div className="ys-contact-services">
-                    {gigs.slice(0, 3).map((gig: any) => (
-                      <div key={gig.id} className="ys-contact-service">
+                    {gigs.slice(0, 4).map((gig: any) => (
+                      <a key={gig.id} className="ys-contact-service ys-contact-service-link" href={serviceHref(gig)} target="_blank" rel="noopener noreferrer" aria-label={`Open service: ${gig.title}`}>
                         <div>
                           <strong>{gig.title}</strong>
-                          <span>
-                            {gig.order_count ? `${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : 'Available on YouSafe'}
-                          </span>
+                          <span>{gig.order_count ? `${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : 'Available on YouSafe'}</span>
                         </div>
-                        {gig.starting_price ? (
-                          <b>${Number(gig.starting_price / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</b>
-                        ) : null}
-                      </div>
+                        <span className="ys-contact-service-end">
+                          {gig.starting_price ? <b>${Number(gig.starting_price / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</b> : null}
+                          <ExternalIcon />
+                        </span>
+                      </a>
                     ))}
                   </div>
+                  {seller.profile_id && gigs.length > 4 ? (
+                    <a className="ys-contact-see-all" href={`${MARKETPLACE_ORIGIN}/providers/${seller.profile_id}`} target="_blank" rel="noopener noreferrer">View all {gigs.length} services <span aria-hidden="true">↗</span></a>
+                  ) : null}
                 </section>
               )}
 
+              <section className="ys-contact-card ys-contact-orders-card" aria-label="Completed orders together">
+                <div className="ys-contact-card-title-row">
+                  <h3>Completed together</h3>
+                  <span>{completedOrders.length ? `${completedOrders.length} order${completedOrders.length === 1 ? '' : 's'}` : 'Order history'}</span>
+                </div>
+                {completedOrders.length ? (
+                  <div className="ys-contact-orders">
+                    {completedOrders.slice(0, 5).map(order => (
+                      <button key={order.id} type="button" className="ys-contact-order" onClick={() => openOrder(order.id)}>
+                        <span className="ys-contact-order-icon" aria-hidden="true">✓</span>
+                        <span className="ys-contact-order-copy">
+                          <strong>{order.order_number || 'Completed order'}</strong>
+                          <small>{[orderDate(order.created_at), 'Completed'].filter(Boolean).join(' · ')}</small>
+                        </span>
+                        {orderAmount(order.total_amount) ? <b>{orderAmount(order.total_amount)}</b> : null}
+                        <span className="ys-contact-order-chevron"><ChevronIcon /></span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="ys-contact-order-empty">No completed orders between you and this person yet.</div>
+                )}
+              </section>
+
               <section className="ys-contact-card ys-contact-safety">
                 <h3>Messaging on YouSafe</h3>
-                <DetailRow
-                  icon="⌁"
-                  label="Conversation context"
-                  value="Messages, files and service activity stay attached to this YouSafe conversation."
-                  muted
-                />
-                <DetailRow
-                  icon="✓"
-                  label="Platform protections"
-                  value="Use YouSafe messaging and checkout for the clearest service record and support trail."
-                  muted
-                />
+                <DetailRow icon="⌁" label="Conversation context" value="Messages, files and service activity stay attached to this YouSafe conversation." muted />
+                <DetailRow icon="✓" label="Platform protections" value="Use YouSafe messaging and checkout for the clearest service record and support trail." muted />
               </section>
             </>
           )}
