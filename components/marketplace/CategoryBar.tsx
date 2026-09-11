@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { usePathname } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { CATEGORIES } from '@/lib/categories'
 import { T, F } from './tokens'
 import { CategoryMegaDropdown } from './CategoryMegaDropdown'
@@ -21,12 +21,10 @@ const TOPNAV_OFFSET_MOBILE  = 56
 const CHEVRON_SCROLL_RATIO  = 0.6
 
 export function CategoryBar({ country }: Props) {
-  const pathname = usePathname()
-  const [activeCategory, setActiveCategory] = useState('')
-  // Avoid search-param suspension so the shell never suspends into an empty fallback.
-  useEffect(() => {
-    setActiveCategory(new URLSearchParams(window.location.search).get('category') ?? '')
-  }, [pathname, country])
+  // Reactive ?category= (same-path query changes). Safe: MarketplaceShell wraps this
+  // island in <Suspense fallback={<CategoryBarSkeleton />}>.
+  const searchParams = useSearchParams()
+  const activeCategory = searchParams.get('category') ?? ''
   const [openId, setOpenId] = useState<string | null>(null)
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})

@@ -3,6 +3,7 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { ErrorState, EmptyState } from '../design/shared'
 import { T, F } from './tokens'
 import ChatSidePane from './ChatSidePane'
@@ -34,12 +35,11 @@ export function SellerProfilePage({
   const [activeTab, setActiveTab] = React.useState<'about' | 'gigs' | 'reviews'>('about')
   const [chatOpen, setChatOpen] = React.useState(false)
 
-  // Read ?tab= via window (not the search-params hook) so this island never suspends
-  // the marketplace shell into an empty Suspense fallback on client nav.
-  React.useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get('tab') as 'about' | 'gigs' | 'reviews' | null
-    if (tab && ['about', 'gigs', 'reviews'].includes(tab)) setActiveTab(tab)
-  }, [sellerId])
+  // Reactive ?tab= via a child that calls useSearchParams. Suspense fallback is
+  // null so the SSR-seeded profile keeps painting — never a spinner-only shell.
+  const onTabFromSearch = React.useCallback((tab: 'about' | 'gigs' | 'reviews') => {
+    setActiveTab(tab)
+  }, [])
 
   // The server already resolved enough seller data to render the real profile.
   // Collapse the crawler-only SSR duplicate as soon as this island hydrates;
@@ -136,6 +136,9 @@ export function SellerProfilePage({
 
   return (
     <div className="ys-seller-profile-page" style={pageShell}>
+      <React.Suspense fallback={null}>
+        <SellerTabSearchSync onTab={onTabFromSearch} />
+      </React.Suspense>
       <div className="ys-seller-profile-breadcrumb" style={breadcrumb}>
         <Link href="/" style={breadcrumbLink}>Marketplace</Link>
         <span style={breadcrumbSeparator}>/</span>
@@ -189,6 +192,23 @@ export function SellerProfilePage({
       />
     </div>
   )
+}
+
+
+const VALID_TABS = new Set(['about', 'gigs', 'reviews'])
+
+/** Tiny search-param island: updates parent tab without suspending the profile chrome. */
+function SellerTabSearchSync({
+  onTab,
+}: {
+  onTab: (tab: 'about' | 'gigs' | 'reviews') => void
+}) {
+  const searchParams = useSearchParams()
+  const tab = searchParams.get('tab')
+  React.useEffect(() => {
+    if (tab && VALID_TABS.has(tab)) onTab(tab as 'about' | 'gigs' | 'reviews')
+  }, [tab, onTab])
+  return null
 }
 
 const pageShell = {
