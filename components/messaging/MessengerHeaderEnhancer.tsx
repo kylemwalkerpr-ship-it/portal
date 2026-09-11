@@ -24,6 +24,18 @@ function MenuIcon({ kind }: { kind: 'link' | 'calendar' | 'search' | 'star' | 's
   return <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33A1.65 1.65 0 0 0 14 20.83V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3.17 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9A1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9A1.65 1.65 0 0 0 20.83 10H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z" /></svg>
 }
 
+function roleSubtitle(role: unknown) {
+  switch (String(role || '').trim().toLowerCase()) {
+    case 'attorney': return 'Attorney · Business account'
+    case 'consultant': return 'Consultant · Business account'
+    case 'admin': return 'YouSafe team'
+    case 'support': return 'YouSafe support'
+    case 'client':
+    case 'student': return 'YouSafe client'
+    default: return 'YouSafe member'
+  }
+}
+
 function findButton(header: HTMLElement, test: (button: HTMLButtonElement) => boolean) {
   return Array.from(header.querySelectorAll<HTMLButtonElement>('button')).find(test) || null
 }
@@ -33,6 +45,33 @@ function clickButton(button: HTMLButtonElement | null, options?: MouseEventInit)
   if (options) button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...options }))
   else button.click()
   return true
+}
+
+function protectHeaderSubtitle(header: HTMLElement) {
+  const status = header.querySelector<HTMLElement>('.cv-head-status')
+  if (!status) return
+
+  // UnifiedInbox historically rendered the counterpart email here. A chat
+  // header should communicate account context, not expose direct contact data.
+  if (!status.textContent?.trim() || /@/.test(status.textContent)) {
+    status.textContent = 'YouSafe member'
+  }
+
+  const threadId = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('thread')
+    : null
+  if (!threadId || header.dataset.ysSubtitleThread === threadId) return
+  header.dataset.ysSubtitleThread = threadId
+
+  fetch(`/api/messages/conversations/${encodeURIComponent(threadId)}`, { credentials: 'same-origin' })
+    .then(response => response.json().catch(() => ({})))
+    .then(payload => {
+      if (header.dataset.ysSubtitleThread !== threadId) return
+      const liveStatus = header.querySelector<HTMLElement>('.cv-head-status')
+      if (!liveStatus) return
+      liveStatus.textContent = roleSubtitle(payload?.conversation?.counterpart?.role)
+    })
+    .catch(() => {})
 }
 
 export default function MessengerHeaderEnhancer() {
@@ -45,6 +84,7 @@ export default function MessengerHeaderEnhancer() {
     const active = candidates.find(el => el.querySelector('.cv-head-info') && el.getClientRects().length > 0) || null
     setHeader(prev => prev === active ? prev : active)
     if (active) {
+      protectHeaderSubtitle(active)
       const video = findButton(active, b => /video call/i.test(b.title || ''))
       const voice = findButton(active, b => /voice call/i.test(b.title || ''))
       if (video) video.dataset.ysLegacyCall = 'video'
@@ -57,7 +97,13 @@ export default function MessengerHeaderEnhancer() {
   React.useEffect(() => {
     discover()
     const observer = new MutationObserver(discover)
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] })
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'style'],
+    })
     window.addEventListener('resize', discover)
     return () => {
       observer.disconnect()
@@ -85,6 +131,9 @@ export default function MessengerHeaderEnhancer() {
   const legacyVoice = () => findButton(header, b => b.dataset.ysLegacyCall === 'voice' || /voice call/i.test(b.title || ''))
   const chooseCall = (kind: 'voice' | 'video' | 'link' | 'schedule') => {
     setMenu(null)
+    // The platform already has a confirmed-call request flow with scheduling.
+    // Until a first-party RTC/link service is attached, "Send call link" uses
+    // the video request path, which explicitly confirms the link before connect.
     if (kind === 'voice' || kind === 'schedule') clickButton(legacyVoice())
     else clickButton(legacyVideo())
   }
@@ -112,7 +161,7 @@ export default function MessengerHeaderEnhancer() {
             <button type="button" role="menuitem" onClick={() => chooseCall('voice')}><PhoneIcon /><span><strong>Voice call</strong><small>Request a voice call</small></span></button>
             <button type="button" role="menuitem" onClick={() => chooseCall('video')}><VideoIcon /><span><strong>Video call</strong><small>Request a video meeting</small></span></button>
             <div className="ys-header-menu-separator" />
-            <button type="button" role="menuitem" onClick={() => chooseCall('link')}><MenuIcon kind="link" /><span><strong>Call link</strong><small>Secure link after confirmation</small></span></button>
+            <button type="button" role="menuitem" onClick={() => chooseCall('link')}><MenuIcon kind="link" /><span><strong>Send call link</strong><small>Request a secure link after confirmation</small></span></button>
             <button type="button" role="menuitem" onClick={() => chooseCall('schedule')}><MenuIcon kind="calendar" /><span><strong>Schedule call</strong><small>Suggest a date and time</small></span></button>
           </div>
         )}
