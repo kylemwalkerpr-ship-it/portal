@@ -13,14 +13,16 @@ import {
   deadlineForProvider,
   extractResponsesText,
   generateContentText,
+  generateContentTextStream,
   grokModelId,
   grokRequestLimits,
+  isGrokBuildUsageExhausted,
   isPaymentOrQuotaFailure,
   isReasoningModelId,
 } from '@/lib/contentAiProvider'
 
 describe('Grok 4.6 Responses transport', () => {
-  const envKeys = ['XAI_API_KEY', 'XAI_MODEL', 'OPENAI_API_KEY', 'CONTENT_AI_RETRY'] as const
+  const envKeys = ['XAI_API_KEY', 'XAI_MODEL', 'XAI_AUTH_MODE', 'XAI_BASE_URL', 'ENTRIM_API_KEY', 'OPENAI_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
 
@@ -88,10 +90,90 @@ describe('Grok 4.6 Responses transport', () => {
   it('detects unpaid / quota failures', () => {
     expect(isPaymentOrQuotaFailure(new Error('openai 429 insufficient_quota'))).toBe(true)
     expect(isPaymentOrQuotaFailure(new Error('You exceeded your current quota'))).toBe(true)
+    expect(isPaymentOrQuotaFailure(new Error('API error (status 402 Payment Required): Grok Build usage balance exhausted'))).toBe(true)
+    expect(isGrokBuildUsageExhausted(new Error('Grok Build usage balance exhausted'))).toBe(true)
+    expect(isGrokBuildUsageExhausted(new Error('gateway timeout'))).toBe(false)
     expect(isPaymentOrQuotaFailure(new Error('timeout'))).toBe(false)
     expect(isPaymentOrQuotaFailure(new Error(
       'grok 403: {"code":"permission-denied","error":"Your team 4f1b898f-d114-41b9-b8ef-136fbbf33005 has either used all available credits or reached its monthly spending limit. To continue making API requests, please purchase more credits or raise yo"}',
     ))).toBe(true)
+  })
+
+  it('reports SuperGrok Build 402 as subscription usage exhaustion, not developer API credits', async () => {
+    process.env.XAI_API_KEY = 'supergrok-oauth-token'
+    process.env.XAI_AUTH_MODE = 'supergrok'
+    process.env.XAI_MODEL = 'grok-4.6'
+    process.env.CONTENT_AI_RETRY = '1'
+    delete process.env.ENTRIM_API_KEY
+
+    global.fetch = jest.fn(async () => new Response(
+      JSON.stringify({ message: 'API error (status 402 Payment Required): Grok Build usage balance exhausted' }),
+      { status: 402, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch
+
+    await expect(generateContentText({
+      aiProvider: 'grok',
+      exclusive: true,
+      system: 'Reply OK.',
+      prompt: 'ok',
+    })).rejects.toThrow(/Grok Build usage balance exhausted.*Grok Settings.*Usage/i)
+
+    try {
+      await generateContentText({
+        aiProvider: 'grok',
+        exclusive: true,
+        system: 'Reply OK.',
+        prompt: 'ok',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message).not.toMatch(/not xAI API team credits|Raise the API spend limit/i)
+    }
+  })
+
+  it('does not describe a SuperGrok 522 transport timeout as a quota reset', async () => {
+    process.env.XAI_API_KEY = 'supergrok-oauth-token'
+    process.env.XAI_AUTH_MODE = 'supergrok'
+    process.env.XAI_MODEL = 'grok-4.6'
+    process.env.CONTENT_AI_RETRY = '1'
+    delete process.env.ENTRIM_API_KEY
+
+    global.fetch = jest.fn(async () => new Response('error code: 522', { status: 522 })) as typeof fetch
+
+    let message = ''
+    try {
+      await generateContentText({
+        system: 'Reply OK.',
+        prompt: 'ok',
+      })
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+    expect(message).toMatch(/SuperGrok subscription proxy timed out/i)
+    expect(message).not.toMatch(/affected quota resets/i)
+  })
+
+  it('reports the same SuperGrok Build quota diagnosis on the streaming path', async () => {
+    process.env.XAI_API_KEY = 'supergrok-oauth-token'
+    process.env.XAI_AUTH_MODE = 'supergrok'
+    process.env.XAI_MODEL = 'grok-4.6'
+    process.env.CONTENT_AI_RETRY = '1'
+    delete process.env.ENTRIM_API_KEY
+
+    global.fetch = jest.fn(async () => new Response(
+      JSON.stringify({ message: 'Grok Build usage balance exhausted' }),
+      { status: 402, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch
+
+    const consume = async () => {
+      for await (const _event of generateContentTextStream({
+        aiProvider: 'grok',
+        exclusive: true,
+        system: 'Reply OK.',
+        prompt: 'ok',
+      })) { /* consume */ }
+    }
+    await expect(consume()).rejects.toThrow(/Grok Build usage balance exhausted.*Grok Settings.*Usage/i)
   })
 
   it('a grok pin calls /v1/responses with grok-4.6 (live transport)', async () => {
