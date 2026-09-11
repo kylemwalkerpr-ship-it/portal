@@ -11,11 +11,13 @@ describe('Marketplace visual modernization completion', () => {
   const gigRoute = read('app/api/marketplace/gigs/[slug]/route.ts')
   const reputationRoute = read('app/api/marketplace/gigs/[slug]/reputation/route.ts')
 
-  test('mounts the completion layer and gig reputation summary inside the existing shell', () => {
-    expect(layout).toContain("import { MarketplaceGigTrustBar } from '@/components/marketplace/MarketplaceGigTrustBar'")
+  test('mounts the completion layer without duplicating provider identity above every gig', () => {
+    expect(layout).not.toContain("import { MarketplaceGigTrustBar } from '@/components/marketplace/MarketplaceGigTrustBar'")
     expect(layout).toContain("import './marketplace-completion.css'")
+    expect(layout).toContain("import './gig-detail-professional-layout.css'")
     expect(layout.indexOf("marketplace-completion.css")).toBeGreaterThan(layout.indexOf("marketplace-refinement.css"))
-    expect(layout).toContain('<MarketplaceGigTrustBar />')
+    expect(layout.indexOf("gig-detail-professional-layout.css")).toBeGreaterThan(layout.indexOf("marketplace-card-finishing.css"))
+    expect(layout).not.toContain('<MarketplaceGigTrustBar />')
     expect(layout).toContain('{children}')
   })
 
@@ -54,7 +56,7 @@ describe('Marketplace visual modernization completion', () => {
     expect(reputationRoute).not.toContain("update({ repeat_client_count")
   })
 
-  test('renders only evidence-backed reputation signals', () => {
+  test('retains evidence-backed reputation logic without forcing a second provider UI onto gig pages', () => {
     expect(trustBar).toContain("top_attorney: 'Top Attorney'")
     expect(trustBar).toContain("top_consultant: 'Top Consultant'")
     expect(trustBar).toContain('Number(gig.review_count || 0) > 0')
@@ -65,7 +67,7 @@ describe('Marketplace visual modernization completion', () => {
     expect(trustBar).not.toContain('YouSafe Choice')
   })
 
-  test('retains mobile horizontal signal access and reduced-motion protection', () => {
+  test('retains mobile horizontal signal styling and reduced-motion protection for any future reuse', () => {
     expect(completionCss).toContain('@media (max-width: 700px)')
     expect(completionCss).toContain('.cw-market .ys-gig-trust-signals')
     expect(completionCss).toContain('overflow-x: auto')
