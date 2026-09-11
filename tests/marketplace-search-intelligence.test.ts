@@ -16,6 +16,7 @@ describe('Marketplace Search Intelligence contract', () => {
   const listingApi = read('app/api/marketplace/gigs/route.ts')
   const eventApi = read('app/api/marketplace/search-events/route.ts')
   const suggestionsApi = read('app/api/marketplace/search-suggestions/route.ts')
+  const seoSuggestApi = read('app/api/seo-suggest/route.ts')
   const card = read('components/marketplace/MarketplaceHero.tsx')
   const layout = read('app/marketplace/layout.tsx')
 
@@ -67,10 +68,12 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(eventApi).not.toContain('profileId')
   })
 
-  it('normalizes variants, blocks private credential-like input, and sanitizes tags at the database boundary', () => {
+  it('normalizes variants, blocks private credential-like input, and sanitizes tags at AI and database boundaries', () => {
     expect(helper).toContain(".replace(/\\b([a-z])[-\\s]?(\\d{1,3}[a-z]?)\\b/g, '$1$2')")
     expect(helper).toContain('CREDENTIAL_WORDS')
     expect(helper).toContain('PRIVATE_QUERY_PATTERNS')
+    expect(seoSuggestApi).toContain("const value = field === 'tags' ? sanitizeMarketplaceTags(result.value) : result.value")
+    expect(seoSuggestApi).toContain('The generated tags were not safe to use')
     expect(migration).toContain('create or replace function public.marketplace_sanitize_tags(input_tags text[])')
     expect(migration).toContain('new.tags := public.marketplace_sanitize_tags(new.tags);')
     expect(migration).toContain('update public.gigs')
@@ -103,6 +106,13 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(helper).toContain('if (/(.)\\1{6,}/i.test(raw)) return null')
   })
 
+  it('computes CTR and conversion rate at the search level while retaining total engagement volume', () => {
+    expect(migration).toContain("count(child.id) filter (where child.event_type = 'gig_click')::bigint as click_count")
+    expect(migration).toContain("count(distinct parent.id) filter (where child.event_type = 'gig_click')::bigint as clicked_search_count")
+    expect(migration).toContain('coalesce(e.clicked_search_count, 0)::numeric / nullif(s.search_count, 0)')
+    expect(migration).toContain('coalesce(e.converted_search_count, 0)::numeric / nullif(s.search_count, 0)')
+  })
+
   it('exposes future SEO inputs without hard-coding an opportunity formula', () => {
     for (const signal of [
       'search_count',
@@ -111,6 +121,7 @@ describe('Marketplace Search Intelligence contract', () => {
       'searches_previous_7d',
       'last_searched_at',
       'click_count',
+      'clicked_search_count',
       'ctr',
       'zero_result_rate',
       'search_to_conversion_rate',
