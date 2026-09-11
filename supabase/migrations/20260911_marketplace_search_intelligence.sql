@@ -200,7 +200,9 @@ with searches as (
   select
     parent.normalized_query,
     count(child.id) filter (where child.event_type = 'gig_click')::bigint as click_count,
-    count(child.id) filter (where child.event_type = 'conversion')::bigint as conversion_count
+    count(distinct parent.id) filter (where child.event_type = 'gig_click')::bigint as clicked_search_count,
+    count(child.id) filter (where child.event_type = 'conversion')::bigint as conversion_count,
+    count(distinct parent.id) filter (where child.event_type = 'conversion')::bigint as converted_search_count
   from public.marketplace_search_events child
   join public.marketplace_search_events parent
     on parent.id = child.parent_search_event_id
@@ -219,9 +221,11 @@ select
   s.searches_7d,
   s.searches_previous_7d,
   coalesce(e.click_count, 0)::bigint as click_count,
-  round(coalesce(e.click_count, 0)::numeric / nullif(s.search_count, 0), 4) as ctr,
+  coalesce(e.clicked_search_count, 0)::bigint as clicked_search_count,
+  round(coalesce(e.clicked_search_count, 0)::numeric / nullif(s.search_count, 0), 4) as ctr,
   coalesce(e.conversion_count, 0)::bigint as conversion_count,
-  round(coalesce(e.conversion_count, 0)::numeric / nullif(s.search_count, 0), 4) as search_to_conversion_rate
+  coalesce(e.converted_search_count, 0)::bigint as converted_search_count,
+  round(coalesce(e.converted_search_count, 0)::numeric / nullif(s.search_count, 0), 4) as search_to_conversion_rate
 from searches s
 left join engagement e using (normalized_query);
 
@@ -229,7 +233,7 @@ revoke all on table public.marketplace_search_intelligence from public, anon, au
 grant select on table public.marketplace_search_intelligence to service_role;
 
 comment on view public.marketplace_search_intelligence is
-  'Internal aggregate inputs for Marketplace demand and the SEO Master Engine: frequency, unique demand, recency/velocity, zero-result rate, CTR, conversion and observed result supply. No opportunity formula is hard-coded.';
+  'Internal aggregate inputs for Marketplace demand and the SEO Master Engine: frequency, unique demand, recency/velocity, zero-result rate, search-level CTR, conversion and observed result supply. No opportunity formula is hard-coded.';
 
 -- ── 4. Internal suggestion candidates ────────────────────────────────────────
 -- Historical queries only become suggestible after a small k-anonymity floor;
