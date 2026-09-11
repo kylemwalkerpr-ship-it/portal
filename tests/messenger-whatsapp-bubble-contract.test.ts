@@ -9,15 +9,15 @@ describe('Messenger WhatsApp-style bubble geometry', () => {
   const format = read('lib/messaging/format.ts')
   const tokens = read('components/messaging/messenger-tokens.css')
 
-  test('every avatar-backed message keeps a top-side tail aimed at its sender', () => {
-    expect(bubble).toContain("const tailClass = mine ? 'tail-r' : 'tail-l'")
-    expect(bubble).not.toContain("const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''")
+  test('only the terminal message in a same-sender run gets the avatar-facing tail', () => {
+    expect(bubble).toContain("const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''")
+    expect(bubble).toContain('const showAvatar = isLastInGroup && Boolean(resolvedAvatarUrl || resolvedAvatarName)')
     expect(bubble).toContain("alignSelf: 'flex-start'")
     expect(tokens).toContain('position: absolute; top: 0; left: -8px;')
     expect(tokens).toContain('position: absolute; top: 0; right: -8px;')
   })
 
-  test('grouping stays compact without suppressing per-message metadata', () => {
+  test('grouping stays compact while timestamps remain on every message', () => {
     expect(bubble).toContain("${isLastInGroup ? 'last' : ''}")
     expect(bubble).toContain('{timestamp && (')
     expect(bubble).not.toContain('{isLastInGroup && timestamp && (')
