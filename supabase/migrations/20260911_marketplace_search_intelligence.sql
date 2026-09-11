@@ -41,7 +41,7 @@ revoke all on table public.marketplace_search_events from public, anon, authenti
 grant select, insert, update, delete on table public.marketplace_search_events to service_role;
 
 comment on table public.marketplace_search_events is
-  'Private Marketplace demand telemetry. Stores only safe search text plus a one-way session hash; never IP addresses, user agents, emails, or profile identifiers.';
+  'Private Marketplace demand telemetry. Stores only privacy-filtered search text plus a one-way session hash; never IP addresses, user agents, emails, or profile identifiers.';
 comment on column public.marketplace_search_events.session_hash is
   'One-way hash of an ephemeral browser-session token. Used only for aggregate unique-demand estimates and anti-spam.';
 comment on column public.marketplace_search_events.parent_search_event_id is
@@ -73,13 +73,38 @@ as $$
       and clean_tag !~* 'https?://'
       and clean_tag !~* '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
       and not (
-        clean_tag ~* '\m(bar|licen[cs]e|registration|credential|roll|practi[cs]ing certificate|admission number)\M'
+        clean_tag ~* '\m(bar|licen[cs]e|registration|credential|roll|practi[cs]ing certificate|admission number|attorney number|solicitor number|law society|rcic|cicc|marn|sra)\M'
         and clean_tag ~* '(#|\mno\.?|\mnumber\M|\mid\M|\midentifier\M)?[[:space:]]*[A-Z]{0,5}[-[:space:]]?[0-9]{4,}\M'
       )
       and clean_tag !~* '\m[A-Z]{1,5}[-[:space:]]?[0-9]{5,}\M'
+      and clean_tag !~* '\m[0-9]{5,}\M'
     order by ord
     limit 5
   ) safe_tags;
+$$;
+
+-- Search aliases intentionally normalize only syntax, not meaning. This makes
+-- common form/visa spellings equivalent (H-1B/H1B, F-1/F1, I-485/I485,
+-- N-400/N400) without introducing stemming or a demand-driven ranking loop.
+create or replace function public.marketplace_search_alias_text(input_text text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select btrim(
+    regexp_replace(
+      regexp_replace(
+        lower(coalesce(input_text, '')),
+        '\m([a-z])[-[:space:]]?([0-9]{1,3}[a-z]?)\M',
+        '\1\2',
+        'g'
+      ),
+      '[^a-z0-9]+',
+      ' ',
+      'g'
+    )
+  );
 $$;
 
 alter table public.gigs
@@ -94,7 +119,9 @@ begin
   new.tags := public.marketplace_sanitize_tags(new.tags);
   new.marketplace_search_vector :=
       setweight(to_tsvector('simple', coalesce(new.title, '')), 'A')
+    || setweight(to_tsvector('simple', public.marketplace_search_alias_text(new.title)), 'A')
     || setweight(to_tsvector('simple', coalesce(array_to_string(new.tags, ' '), '')), 'A')
+    || setweight(to_tsvector('simple', public.marketplace_search_alias_text(array_to_string(new.tags, ' '))), 'A')
     || setweight(to_tsvector('simple', coalesce(new.pitch, '')), 'B')
     || setweight(to_tsvector('simple', coalesce(new.category, '') || ' ' || coalesce(new.subcategory, '')), 'B')
     || setweight(to_tsvector('simple', coalesce(new.description, '')), 'C');
@@ -110,7 +137,9 @@ where tags is distinct from public.marketplace_sanitize_tags(tags);
 update public.gigs
 set marketplace_search_vector =
       setweight(to_tsvector('simple', coalesce(title, '')), 'A')
+    || setweight(to_tsvector('simple', public.marketplace_search_alias_text(title)), 'A')
     || setweight(to_tsvector('simple', coalesce(array_to_string(tags, ' '), '')), 'A')
+    || setweight(to_tsvector('simple', public.marketplace_search_alias_text(array_to_string(tags, ' '))), 'A')
     || setweight(to_tsvector('simple', coalesce(pitch, '')), 'B')
     || setweight(to_tsvector('simple', coalesce(category, '') || ' ' || coalesce(subcategory, '')), 'B')
     || setweight(to_tsvector('simple', coalesce(description, '')), 'C')
@@ -141,7 +170,7 @@ set search_path = public
 as $$
   with input as (
     select
-      plainto_tsquery('simple', left(trim(p_query), 80)) as tsq,
+      plainto_tsquery('simple', public.marketplace_search_alias_text(left(trim(p_query), 80))) as tsq,
       regexp_replace(lower(trim(p_query)), '[^a-z0-9]+', '', 'g') as compact_q
   )
   select
@@ -249,21 +278,21 @@ security invoker
 set search_path = public
 as $$
   with input as (
-    select lower(trim(left(p_query, 80))) as q
+    select public.marketplace_search_alias_text(left(trim(p_query), 80)) as q
   ),
   tag_candidates as (
     select
       'tag'::text as kind,
       tag::text as label,
       null::text as slug,
-      (case when lower(tag) = input.q then 100 else 70 end + count(*)::int)::numeric as score,
+      (case when public.marketplace_search_alias_text(tag) = input.q then 100 else 70 end + count(*)::int)::numeric as score,
       0::bigint as demand_count
     from public.gigs g
     cross join input
     cross join lateral unnest(coalesce(g.tags, '{}'::text[])) tag
     where g.status = 'active'
       and length(input.q) >= 2
-      and lower(tag) like '%' || input.q || '%'
+      and public.marketplace_search_alias_text(tag) like '%' || input.q || '%'
     group by tag, input.q
   ),
   gig_candidates as (
@@ -271,13 +300,13 @@ as $$
       'gig'::text as kind,
       g.title::text as label,
       g.slug::text as slug,
-      (case when lower(g.title) like input.q || '%' then 60 else 45 end + coalesce(g.rank_score, 0))::numeric as score,
+      (case when public.marketplace_search_alias_text(g.title) like input.q || '%' then 60 else 45 end + coalesce(g.rank_score, 0))::numeric as score,
       0::bigint as demand_count
     from public.gigs g
     cross join input
     where g.status = 'active'
       and length(input.q) >= 2
-      and lower(g.title) like '%' || input.q || '%'
+      and public.marketplace_search_alias_text(g.title) like '%' || input.q || '%'
     order by score desc
     limit 8
   ),
