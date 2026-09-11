@@ -64,7 +64,10 @@ jobs:
           test "$pdf_count" = "8"
           total=$(find artifacts/payhip-batch1 -maxdepth 1 -type f | wc -l | tr -d ' ')
           test "$total" = "10"
-          echo "Batch 1 contains 8 standalone PDFs + 1 Mega ZIP + 1 QA manifest."
+          preview_count=$(find artifacts/payhip-batch1/previews -maxdepth 1 -type f -name '*-preview.pdf' | wc -l | tr -d ' ')
+          test "$preview_count" = "9"
+          test -f artifacts/payhip-batch1/previews/premium-usa-canada-study-work-mega-bundle-preview.pdf
+          echo "Batch 1 contains 8 standalone PDFs + 1 Mega ZIP + 1 QA manifest + 9 separate preview PDFs."
 
       - name: Upload exact buyer artifacts
         uses: actions/upload-artifact@v4
