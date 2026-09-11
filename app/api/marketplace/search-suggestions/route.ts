@@ -6,16 +6,24 @@ type Suggestion = {
   kind: 'tag' | 'gig' | 'query'
   label: string
   slug?: string | null
+  gigId?: string | null
   demandCount?: number
 }
 
-function safeSuggestion(kind: Suggestion['kind'], label: unknown, slug?: unknown, demandCount?: unknown): Suggestion | null {
+function safeSuggestion(
+  kind: Suggestion['kind'],
+  label: unknown,
+  slug?: unknown,
+  demandCount?: unknown,
+  gigId?: unknown,
+): Suggestion | null {
   const safe = sanitizeMarketplaceQuery(label)
   if (!safe) return null
   return {
     kind,
     label: String(label).replace(/\s+/g, ' ').trim().slice(0, 80),
     slug: kind === 'gig' && typeof slug === 'string' ? slug.slice(0, 160) : null,
+    gigId: kind === 'gig' && typeof gigId === 'string' ? gigId : null,
     demandCount: Math.max(0, Math.floor(Number(demandCount) || 0)),
   }
 }
@@ -46,8 +54,18 @@ export async function GET(req: Request) {
 
   let suggestions: Suggestion[] = []
   if (!error && Array.isArray(data)) {
+    const slugs = data
+      .filter((row: any) => row.kind === 'gig' && typeof row.slug === 'string')
+      .map((row: any) => row.slug)
+    const idBySlug = new Map<string, string>()
+    if (slugs.length > 0) {
+      const gigIds = await db.from('gigs').select('id, slug').in('slug', slugs)
+      for (const row of gigIds.data || []) {
+        if (row.slug && row.id) idBySlug.set(String(row.slug), String(row.id))
+      }
+    }
     suggestions = data
-      .map((row: any) => safeSuggestion(row.kind, row.label, row.slug, row.demand_count))
+      .map((row: any) => safeSuggestion(row.kind, row.label, row.slug, row.demand_count, idBySlug.get(String(row.slug || ''))))
       .filter(Boolean) as Suggestion[]
   } else {
     // Graceful deploy-order fallback: the UI can ship before the migration
@@ -55,7 +73,7 @@ export async function GET(req: Request) {
     // suggestions are simply unavailable during that brief window.
     const fallback = await db
       .from('gigs')
-      .select('title, slug, tags, rank_score')
+      .select('id, title, slug, tags, rank_score')
       .eq('status', 'active')
       .order('rank_score', { ascending: false })
       .limit(120)
@@ -68,7 +86,7 @@ export async function GET(req: Request) {
       const title = String(gig.title || '')
       const titleSafe = sanitizeMarketplaceQuery(title)
       if (titleSafe?.normalized.includes(q)) {
-        const item = safeSuggestion('gig', title, gig.slug)
+        const item = safeSuggestion('gig', title, gig.slug, 0, gig.id)
         if (item) gigMatches.push(item)
       }
       for (const rawTag of Array.isArray(gig.tags) ? gig.tags : []) {
