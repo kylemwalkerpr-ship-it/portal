@@ -33,10 +33,12 @@ describe('marketplace footer coverage', () => {
     expect(routeFooter).toContain('requestAnimationFrame(updateFooterInset)')
   })
 
-  it('locks the AI and provider launchers to one shared mobile baseline', () => {
+  it('locks the AI and provider launchers to one lower shared mobile baseline', () => {
     const routeFooter = read('components/marketplace/MarketplaceRouteFooter.tsx')
 
     expect(routeFooter).toContain('--ys-market-mobile-launcher-bottom')
+    expect(routeFooter).toContain('max(30px, calc(22px + env(safe-area-inset-bottom)))')
+    expect(routeFooter).not.toContain('--ys-market-mobile-launcher-bottom: max(82px')
     expect(routeFooter).toContain('html body .ys-floating-message-launcher,')
     expect(routeFooter).toContain('html body .ysa-launcher {')
     expect(routeFooter).toContain('bottom: calc(var(--ys-market-mobile-launcher-bottom) + var(--ys-footer-inset, 0px)) !important;')
