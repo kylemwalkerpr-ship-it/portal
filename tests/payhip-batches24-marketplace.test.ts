@@ -69,4 +69,13 @@ describe('Payhip Batches 2-4 Marketplace release contract', () => {
     expect(page).toContain('BreadcrumbList')
     expect(page).toContain('Search Marketplace for')
   })
+
+  test('adds products 10-36 to the Marketplace sitemap without duplicating audited immigration slugs', () => {
+    const sitemap = fs.readFileSync(path.join(process.cwd(), 'app/sitemap.ts'), 'utf8')
+    expect(sitemap).toContain("import { PAYHIP_BATCHES_2_4_PRODUCTS } from '@/lib/payhipBatches24'")
+    expect(sitemap).toContain('const auditedPayhipSlugs = new Set')
+    expect(sitemap).toContain('auditedPayhipSlugs.has(product.slug)')
+    expect(sitemap).toContain('for (const product of PAYHIP_BATCHES_2_4_PRODUCTS)')
+    expect(sitemap).toContain('url: `${base}/shop/${product.slug}`')
+  })
 })
