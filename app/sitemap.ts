@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { CATEGORIES } from '@/lib/categories'
 import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
+import { PAYHIP_BATCHES_2_4_PRODUCTS } from '@/lib/payhipBatches24'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const MARKET_HOST = 'market.yousafeconsultancy.com'
@@ -37,11 +38,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/categories`, changeFrequency: 'weekly', priority: 0.6 },
   ]
 
-  // The 16 immigration products live under /shop only. Keeping these canonical
-  // URLs source-controlled prevents a normal GitHub deploy from losing the
-  // directly published Cloudflare catalogue again.
+  // Products 10-36 are governed by the Phase-A audited commercial manifest.
+  // Keep those slugs out of the legacy immigration loop so the seven remaining
+  // immigration products are not emitted twice. Batch 1 continues unchanged.
+  const auditedPayhipSlugs = new Set(PAYHIP_BATCHES_2_4_PRODUCTS.map((product) => product.slug))
   for (const product of IMMIGRATION_SHOP_PRODUCTS) {
-    if (!product.payhip_published) continue
+    if (!product.payhip_published || auditedPayhipSlugs.has(product.slug)) continue
+    entries.push({
+      url: `${base}/shop/${product.slug}`,
+      changeFrequency: 'monthly',
+      priority: 0.65,
+    })
+  }
+
+  for (const product of PAYHIP_BATCHES_2_4_PRODUCTS) {
     entries.push({
       url: `${base}/shop/${product.slug}`,
       changeFrequency: 'monthly',
