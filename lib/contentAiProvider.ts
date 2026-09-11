@@ -562,6 +562,27 @@ function isDailyQuotaError(value: unknown): boolean {
   return /daily free allocation|used up.*(?:daily )?allocation|free allocation.*neurons|neurons.*upgrade|account limited|error code\s*[:=]?\s*(3036|4006)/i.test(message)
 }
 
+/** xAI's subscription proxy uses this exact 402 diagnosis when the
+ * connected SuperGrok account is authenticated but its Grok Build allowance
+ * cannot serve another inference request. Keep this distinct from developer
+ * API team credits: the recovery actions are different. */
+export function isGrokBuildUsageExhausted(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value || '')
+  return /grok build usage balance exhausted|grok build.*usage.*(?:balance|quota).*exhausted|usage balance exhausted/i.test(message)
+}
+
+function isSuperGrokSubscriptionMode(): boolean {
+  return env('XAI_AUTH_MODE').toLowerCase() === 'supergrok'
+}
+
+function grokQuotaGuidance(value: unknown): string {
+  if (!isPaymentOrQuotaFailure(value) && !isGrokBuildUsageExhausted(value)) return ''
+  if (isSuperGrokSubscriptionMode() || isGrokBuildUsageExhausted(value)) {
+    return ' The connected SuperGrok account is authenticated, but its Grok Build usage balance is exhausted. Check Grok Settings → Usage for the reset time or add Extra Usage Credits. Reconnecting SuperGrok will not restore usage.'
+  }
+  return ' The xAI developer API key has hit a billing or credit limit. Check xAI API billing/credits or connect SuperGrok.'
+}
+
 /** 524s and exhausted quotas should not be retried against the same provider. */
 function isNoRetryProviderError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
@@ -590,6 +611,16 @@ function isUnusableGenerationFailure(value: unknown): boolean {
 
 /** Keep provider diagnostics useful without surfacing auth/token fingerprints. */
 function formatProviderFailure(label: string, status: number, body: string): string {
+  const grokFailure = /^grok(?:\s|$)/i.test(label)
+  if (grokFailure && (status === 402 || isGrokBuildUsageExhausted(body))) {
+    if (isSuperGrokSubscriptionMode() || isGrokBuildUsageExhausted(body)) {
+      return `${label} ${status}: Grok Build usage balance exhausted for the connected SuperGrok account. Check Grok Settings → Usage for the reset time or add Extra Usage Credits; reconnecting SuperGrok will not restore usage`
+    }
+    return `${label} ${status}: xAI developer API billing or credit limit reached; check xAI API billing/credits`
+  }
+  if (grokFailure && status === 522) {
+    return `${label} ${status}: SuperGrok subscription proxy timed out before xAI returned a result; this is a transport timeout, not proof that OAuth is disconnected or that a quota reset is required`
+  }
   if (isDailyQuotaError(body)) {
     return `${label} ${status}: daily Workers AI free allocation exhausted; retry after the UTC quota reset or configure paid Workers AI`
   }
@@ -741,10 +772,35 @@ export function isUnavailableDeploymentError(err: unknown): boolean {
   return /\b404\b|doesn't exist|isn't accessible|model_not_found|not_found|unknown model|invalid model/i.test(msg)
 }
 
-/** Unpaid / quota / billing failures — SuperGrok is the studio-wide second option. */
+/** Unpaid / quota / billing failures across developer APIs and subscription-backed Grok Build. */
 export function isPaymentOrQuotaFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err || '')
-  return /insufficient_quota|unpaid|payment.?required|\b402\b|billing|past.?due|credit.?exhausted|requires.?payment|account.?not.?funded|quota.?exceeded|exceeded.?your.?current.?quota|You exceeded your current quota|permission-denied|spending.?limit|monthly.?spending|used all available credits|purchase more credits|raise yo/i.test(msg)
+  return /insufficient_quota|unpaid|payment.?required|\b402\b|billing|past.?due|credit.?exhausted|requires.?payment|account.?not.?funded|quota.?exceeded|exceeded.?your.?current.?quota|You exceeded your current quota|permission-denied|spending.?limit|monthly.?spending|used all available credits|purchase more credits|raise yo|usage.?balance.?exhausted|grok.?build.*exhausted/i.test(msg)
+}
+
+function quotaFailureSummary(errors: string[]): { note: string; nextStep: string } {
+  if (errors.some(isGrokBuildUsageExhausted)) {
+    return {
+      note: ' Grok Build usage balance is exhausted for the connected SuperGrok account. Check Grok Settings → Usage for the reset time or add Extra Usage Credits.',
+      nextStep: ' Configure another provider or retry after the Grok Build usage reset.',
+    }
+  }
+  if (errors.some(isDailyQuotaError)) {
+    return {
+      note: ' Cloudflare Workers AI daily free allocation is exhausted; it will not recover through retries.',
+      nextStep: ' Configure another provider or retry after the UTC quota reset.',
+    }
+  }
+  if (errors.some((error) => isPaymentOrQuotaFailure(error))) {
+    return {
+      note: ' A provider billing or quota limit was reached.',
+      nextStep: ' Configure another provider or retry after that provider restores capacity.',
+    }
+  }
+  return {
+    note: '',
+    nextStep: ' Retry the request or configure another provider.',
+  }
 }
 
 /** Pull final prose out of an xAI / OpenAI Responses payload. */
@@ -1283,7 +1339,11 @@ async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<Cont
         const err = ev.error && typeof ev.error === 'object'
           ? String((ev.error as { message?: string }).message || 'stream failed')
           : 'grok stream failed'
-        throw new Error(`grok: ${err}`)
+        throw new Error(
+          isGrokBuildUsageExhausted(err)
+            ? formatProviderFailure('grok', 402, err)
+            : `grok: ${err}`,
+        )
       } else if (type === 'response.completed' && ev.response) {
         const rest = extractResponsesText(ev.response)
         if (rest && rest.length > full.length) full = rest
@@ -3333,7 +3393,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
         }
         const grokQuotaHint =
           prefer === 'grok' && isPaymentOrQuotaFailure(e)
-            ? ' A SuperGrok chat subscription is not xAI API team credits (api.x.ai). Raise the API spend limit or pin Entrim DeepSeek/Qwen. '
+            ? grokQuotaGuidance(e)
             : ' Check the API key and model in repo secrets or the AI Key Vault (Command Center → Configure). '
         throw new Error(
           `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}.${grokQuotaHint}` +
@@ -3347,11 +3407,9 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     }
   }
 
-  const quotaNote = errors.some(isDailyQuotaError)
-    ? ' Cloudflare Workers AI daily free allocation is exhausted; it will not recover through retries.'
-    : ''
+  const failureSummary = quotaFailureSummary(errors)
   throw new Error(
-    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${quotaNote} Configure another provider or retry after the affected quota resets.`,
+    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${failureSummary.note}${failureSummary.nextStep}`,
   )
 }
 
@@ -3534,7 +3592,7 @@ export async function* generateContentTextStream(
             }
             const grokQuotaHint =
               prefer === 'grok' && isPaymentOrQuotaFailure(e)
-                ? ' A SuperGrok chat subscription is not xAI API team credits (api.x.ai). Raise the API spend limit or pin Entrim DeepSeek/Qwen.'
+                ? grokQuotaGuidance(e)
                 : ''
             throw new Error(failure + grokQuotaHint)
           }
@@ -3584,12 +3642,10 @@ export async function* generateContentTextStream(
 
 
 
-  const quotaNote = errors.some(isDailyQuotaError)
-    ? ' Cloudflare Workers AI daily free allocation is exhausted; it will not recover through retries.'
-    : ''
+  const failureSummary = quotaFailureSummary(errors)
   throw new Error(
     errors.length
-      ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${quotaNote} Configure another provider or retry after the affected quota resets.`
+      ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${failureSummary.note}${failureSummary.nextStep}`
       : 'No live content AI provider configured for streaming — the live policy (Entrim + Grok) requires ENTRIM_API_KEY / XAI_API_KEY.',
   )
 }
