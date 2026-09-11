@@ -7,14 +7,15 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 describe('Messenger WhatsApp-style bubble geometry', () => {
   const bubble = read('components/messaging/MessageBubble.tsx')
   const format = read('lib/messaging/format.ts')
-  const tokens = read('components/messaging/messenger-tokens.css')
 
-  test('only the terminal message in a same-sender run gets the avatar-facing tail', () => {
-    expect(bubble).toContain("const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''")
+  test('only the terminal message in a same-sender run gets the lower avatar-facing tail', () => {
+    expect(bubble).toContain("const tailSide = mine ? 'right' : 'left'")
     expect(bubble).toContain('const showAvatar = isLastInGroup && Boolean(resolvedAvatarUrl || resolvedAvatarName)')
-    expect(bubble).toContain("alignSelf: 'flex-start'")
-    expect(tokens).toContain('position: absolute; top: 0; left: -8px;')
-    expect(tokens).toContain('position: absolute; top: 0; right: -8px;')
+    expect(bubble).toContain('data-bubble-tail={tailSide}')
+    expect(bubble).toContain("bottom: 0")
+    expect(bubble).toContain("alignSelf: 'flex-end'")
+    expect(bubble).not.toContain("const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''")
+    expect(bubble).not.toContain("alignSelf: 'flex-start'")
   })
 
   test('grouping stays compact while timestamps remain on every message', () => {
