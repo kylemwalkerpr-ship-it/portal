@@ -106,7 +106,9 @@ export function MarketplaceRouteFooter() {
         }
         @media (max-width: 768px) {
           html body {
-            --ys-market-mobile-launcher-bottom: max(82px, calc(70px + env(safe-area-inset-bottom)));
+            /* Keep both mobile launchers comfortably above the browser safe
+               area without lifting them into the content column. */
+            --ys-market-mobile-launcher-bottom: max(30px, calc(22px + env(safe-area-inset-bottom)));
           }
           html body .ys-floating-message-launcher,
           html body .ysa-launcher {
