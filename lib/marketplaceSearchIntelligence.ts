@@ -148,7 +148,7 @@ export async function recordMarketplaceSearch(input: {
   query: string
   source: MarketplaceSearchSource
   suggestionType?: MarketplaceSuggestionType
-  resultCount: number
+  resultCount: number | null
   categoryContext?: string
   filters?: Record<string, unknown>
   clickedGigId?: string
@@ -167,7 +167,7 @@ export async function recordMarketplaceSearch(input: {
         query: sanitized.raw,
         source: input.source,
         suggestion_type: input.suggestionType ?? null,
-        result_count: Math.max(0, Math.floor(Number(input.resultCount) || 0)),
+        result_count: input.resultCount == null ? null : Math.max(0, Math.floor(Number(input.resultCount) || 0)),
         category_context: input.categoryContext || null,
         filter_context: input.filters || {},
         session_id: sessionId,
