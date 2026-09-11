@@ -64,8 +64,11 @@ describe('recovered Cloudflare shop additions', () => {
     expect(shopUi).toContain('ys-shop-grid')
   })
 
-  test('keeps the immigration detail pages Payhip-only for checkout', () => {
-    expect(productPage).toContain('href={product.payhip_url}')
+  test('keeps immigration detail pages Payhip-only while branding audited Batch 1 checkout URLs', () => {
+    expect(productPage).toContain('const payhipUrl = commercial')
+    expect(productPage).toContain('https://shop.yousafeconsultancy.com/b/${commercial.payhipId}')
+    expect(productPage).toContain(': product.payhip_url')
+    expect(productPage).toContain('href={payhipUrl}')
     expect(productPage).toContain('Buy on Payhip')
     expect(productPage).toContain('Official government sources')
     expect(productPage).toContain("href=\"/categories/immigration\"")
