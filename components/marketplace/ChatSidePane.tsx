@@ -456,13 +456,15 @@ export default function ChatSidePane({
           timestamp={m.created_at}
           deliveredAt={m.delivered_at}
           readAt={m.read_at}
+          avatarUrl={!mine ? (attorneyAvatar || undefined) : undefined}
+          avatarName={!mine ? (attorneyName || 'Specialist') : undefined}
           body={isAi ? <AiMessageBody body={m.body} /> : m.body}
           rawBody={m.body || ''}
         />,
       )
     }
     return result
-  }, [messages, loading, attorneyName])
+  }, [messages, loading, attorneyName, attorneyAvatar])
 
   const composer = (
     <div className="ys-market-chat-composer" style={{ borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
