@@ -38,7 +38,7 @@ describe('Marketplace visual modernization completion', () => {
   })
 
   test('keeps reputation work off the core gig first-paint API', () => {
-    expect(gigRoute).toContain('const [providerGigsRes, providerHeadshotRes, similarGigsRes] = await Promise.all([')
+    expect(gigRoute).toContain('const [providerGigsRes, providerHeadshotRes, sameCategoryRes, sameJurisdictionRes] = await Promise.all([')
     expect(gigRoute).not.toContain("from('seller_level_snapshots')")
     expect(gigRoute).not.toContain("from('orders')")
     expect(trustBar).toContain('/reputation`')
