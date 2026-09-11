@@ -1,35 +1,23 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
+import { isAttorneyCredentialPublic, resolveAttorneyCredential } from '@/lib/attorneyCredential'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   const db = createSupabaseAdminClient()
 
-  // Resolve the seller by ANY of these ids in parallel:
-  //   - attorneys.id        (legacy directory links)
-  //   - consultants.id      (consultant cards)
-  //   - profiles.id         (gig.provider_id and other profile-keyed call sites)
-  // This makes /api/sellers/:id robust to whichever id the caller has on hand —
-  // a Fiverr-scale prerequisite, since gigs / orders / messages all reference
-  // different id surfaces.
   const [byAttorneyId, byConsultantId, byAttorneyProfileId, byConsultantProfileId] = await Promise.all([
     db.from('attorneys').select('*').eq('id', id).maybeSingle(),
     db.from('consultants').select('*').eq('id', id).maybeSingle(),
-    // Order + limit so a duplicate seller row for one profile_id resolves to
-    // the SAME (newest) row the editor's write path targets. Without this the
-    // public profile could read a stale/different row → "saved content doesn't
-    // stick in the public view."
     db.from('attorneys').select('*').eq('profile_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     db.from('consultants').select('*').eq('profile_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ])
 
-  const attorney  = byAttorneyId.data  || byAttorneyProfileId.data
+  const attorney = byAttorneyId.data || byAttorneyProfileId.data
   const consultant = byConsultantId.data || byConsultantProfileId.data
   const provider = attorney || consultant
 
-  // ── Seller branch (attorney / consultant) ────────────────────────────
   if (provider) {
     const profileId = provider.profile_id
     const role = attorney ? 'attorney' : 'consultant'
@@ -41,14 +29,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .eq('id', profileId)
       .single()
 
-    if (profileError || !profile) {
-      return fail('Profile not found', 404)
-    }
+    if (profileError || !profile) return fail('Profile not found', 404)
 
-    let application = null
+    let application: any = null
     let credentialType: string | null = null
-    let publicBarNumber: string | null = null
-    let publicBarState: string | null = null
+    let credentialNumber: string | null = null
+    let credentialJurisdiction: string | null = null
+
     if (role === 'attorney') {
       const { data: appData } = await db
         .from('attorney_applications')
@@ -59,12 +46,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         .limit(1)
         .maybeSingle()
       application = appData
-      // Editable credential off the attorneys row wins over the application.
       const credential = await resolveAttorneyCredential(db, profileId)
       credentialType = credential.credential_type || (appData?.credential_type ?? null)
-      if (credential.show_bar_number !== false && credential.bar_number) {
-        publicBarNumber = credential.bar_number
-        publicBarState = credential.bar_state || null
+      if (credential.bar_number && isAttorneyCredentialPublic(credential)) {
+        credentialNumber = credential.bar_number
+        credentialJurisdiction = credential.bar_state || null
+      }
+    } else {
+      const providerChoice = consultant.show_registration_number !== false
+      const effectiveVisibility = consultant.admin_show_registration_number_override ?? providerChoice
+      if (effectiveVisibility && consultant.registration_number) {
+        credentialNumber = String(consultant.registration_number)
       }
     }
 
@@ -82,17 +74,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       : null
 
     let gigs: any[] = []
-    let gigsRes = await db
+    const gigsRes = await db
       .from('gigs')
       .select('id, avg_rating, review_count, order_count')
       .eq('provider_id', profileId)
       .eq('status', 'active')
     if (gigsRes.error && /column .* does not exist/i.test(gigsRes.error.message || '')) {
-      const fallback = await db
-        .from('gigs')
-        .select('id')
-        .eq('provider_id', profileId)
-        .eq('status', 'active')
+      const fallback = await db.from('gigs').select('id').eq('provider_id', profileId).eq('status', 'active')
       gigs = fallback.data ?? []
     } else {
       gigs = gigsRes.data ?? []
@@ -101,16 +89,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const totalOrders = gigs.reduce((sum: number, g: any) => sum + (g.order_count || 0), 0)
 
     let level: 'new' | 'level_1' | 'level_2' | 'top_rated' = 'new'
-    if (ratingCount >= 10 && ratingAvg && ratingAvg >= 4.7 && totalOrders >= 20) {
-      level = 'top_rated'
-    } else if (ratingCount >= 5 && ratingAvg && ratingAvg >= 4.5 && totalOrders >= 10) {
-      level = 'level_2'
-    } else if (ratingCount >= 1 && ratingAvg && ratingAvg >= 4.0) {
-      level = 'level_1'
-    }
-
-    const is_online = provider.available !== false
-    const responseTime = '1 hour'
+    if (ratingCount >= 10 && ratingAvg && ratingAvg >= 4.7 && totalOrders >= 20) level = 'top_rated'
+    else if (ratingCount >= 5 && ratingAvg && ratingAvg >= 4.5 && totalOrders >= 10) level = 'level_2'
+    else if (ratingCount >= 1 && ratingAvg && ratingAvg >= 4.0) level = 'level_1'
 
     const seller = {
       id: canonicalId,
@@ -127,9 +108,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       industries: provider.industries ?? null,
       specialties: provider.specialties,
       languages: provider.languages,
-      credential_type: credentialType ?? application?.credential_type,
-      bar_number: publicBarNumber,
-      bar_state: publicBarState,
+      credential_type: credentialType ?? application?.credential_type ?? null,
+      // This is the only public API field that carries the identifier. It is
+      // consumed exclusively by the provider About/bio card and is already
+      // filtered through provider choice + admin override.
+      credential_number: credentialNumber,
+      credential_jurisdiction: credentialJurisdiction,
       years_experience: provider.years_experience,
       starting_price: provider.starting_price,
       offers_free_consult: provider.offers_free_consult,
@@ -141,8 +125,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       member_since: profile.created_at,
       rating_count: ratingCount,
       rating_avg: ratingAvg,
-      response_time: responseTime,
-      is_online,
+      response_time: '1 hour',
+      is_online: provider.available !== false,
       total_orders: totalOrders,
       total_gigs: totalGigs,
       verified: profile.status === 'active',
@@ -152,26 +136,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return ok({ seller })
   }
 
-  // ── Profile fall-through ─────────────────────────────────────────────
-  // Previously this branch required role IN ('client', 'student') and
-  // 404'd everyone else — producing the "Profile not found" empty
-  // state in the message preview drawer whenever the counterpart was
-  // an unprovisioned attorney/consultant (a profiles row exists but
-  // no attorneys/consultants row yet), an admin, support agent, or
-  // anyone created via an older sign-up path that wrote a different
-  // role string. Widen to ANY profile row, then label it by role.
   const { data: anyProfile, error: anyProfileError } = await db
     .from('profiles')
     .select('id, full_name, email, avatar_url, country, role, status, created_at')
     .eq('id', id)
     .maybeSingle()
 
-  if (anyProfileError || !anyProfile) {
-    return fail('Seller not found', 404)
-  }
+  if (anyProfileError || !anyProfile) return fail('Seller not found', 404)
 
-  // Inquiry count is only meaningful for client/student profiles —
-  // skip the query for staff/admin/etc. to keep the response cheap.
   const isBuyer = ['client', 'student'].includes(String(anyProfile.role || ''))
   let inquiryCount = 0
   if (isBuyer) {
@@ -182,46 +154,44 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     inquiryCount = count ?? 0
   }
 
-  // The drawer only renders three branches (client / attorney /
-  // consultant). Collapse anything that isn't a known seller role to
-  // 'client' on the wire so the chip still renders.
   const wireRole = isBuyer ? 'client' : (String(anyProfile.role || '').trim() || 'client')
-
-  const clientSeller = {
-    id: anyProfile.id,
-    profile_id: anyProfile.id,
-    role: wireRole,
-    full_name: anyProfile.full_name || anyProfile.email?.split('@')[0] || 'User',
-    headshot_url: anyProfile.avatar_url,
-    tagline: null,
-    bio: null,
-    intro: null,
-    jurisdictions: null,
-    practice_areas: null,
-    subjects: null,
-    industries: null,
-    specialties: null,
-    languages: null,
-    credential_type: null,
-    years_experience: null,
-    starting_price: null,
-    offers_free_consult: null,
-    consult_booking_url: null,
-    capacity: null,
-    profile_url: null,
-    timezone: null,
-    available: false,
-    member_since: anyProfile.created_at,
-    rating_count: 0,
-    rating_avg: null,
-    response_time: null,
-    is_online: false,
-    total_orders: 0,
-    total_gigs: 0,
-    verified: anyProfile.status === 'active',
-    level: 'new' as const,
-    inquiry_count: inquiryCount,
-  }
-
-  return ok({ seller: clientSeller })
+  return ok({
+    seller: {
+      id: anyProfile.id,
+      profile_id: anyProfile.id,
+      role: wireRole,
+      full_name: anyProfile.full_name || anyProfile.email?.split('@')[0] || 'User',
+      headshot_url: anyProfile.avatar_url,
+      tagline: null,
+      bio: null,
+      intro: null,
+      jurisdictions: null,
+      practice_areas: null,
+      subjects: null,
+      industries: null,
+      specialties: null,
+      languages: null,
+      credential_type: null,
+      credential_number: null,
+      credential_jurisdiction: null,
+      years_experience: null,
+      starting_price: null,
+      offers_free_consult: null,
+      consult_booking_url: null,
+      capacity: null,
+      profile_url: null,
+      timezone: null,
+      available: false,
+      member_since: anyProfile.created_at,
+      rating_count: 0,
+      rating_avg: null,
+      response_time: null,
+      is_online: false,
+      total_orders: 0,
+      total_gigs: 0,
+      verified: anyProfile.status === 'active',
+      level: 'new' as const,
+      inquiry_count: inquiryCount,
+    },
+  })
 }

@@ -606,14 +606,15 @@ export function fieldRelatedness(topicFields: TopicField[], providerFields: Topi
 }
 
 export function credentialLineFor(provider: Pick<CitableProvider, 'role' | 'credentialType' | 'barNumber' | 'showBarNumber' | 'barState'>): string {
+  // SEO / author citation output is NOT the controlled bio-card field.
+  // Never append barNumber or any exact professional identifier, even when
+  // showBarNumber is true or an admin override would make it visible on the profile.
   const type = String(provider.credentialType || '').trim()
   const fallback = provider.role === 'attorney' ? 'Licensed attorney' : 'Verified consultant'
   const base = type || fallback
   const state = String(provider.barState || '').trim()
-  const bar = provider.showBarNumber && String(provider.barNumber || '').trim()
   const bits = [base]
   if (state) bits.push(state)
-  if (bar) bits.push(`bar ${bar}`)
   return bits.join(' · ')
 }
 

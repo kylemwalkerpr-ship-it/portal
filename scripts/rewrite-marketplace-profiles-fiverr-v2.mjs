@@ -68,7 +68,8 @@ FACTUAL / YMYL RULES:
 - Use ONLY supplied facts. Never invent client counts, success rates, case results, approval rates, employers, education, credentials, licence numbers, jurisdictions, languages, years of experience, awards or outcomes.
 - Never promise an immigration, visa, court, business or legal outcome.
 - An attorney may be called attorney/lawyer/solicitor only when the facts support it. A consultant must NEVER be relabelled as an attorney, lawyer or solicitor.
-- Do not expose a registration or bar number unless the payload explicitly marks it public.
+- Never include professional credential identifiers (bar/licence/registration/SRA/RCIC/MARN/regulator IDs) in bio, intro, tagline, or specialties. Generic credential type and jurisdiction are OK. Exact IDs belong only in the controlled bio-card.
+- Do not expose a registration or bar number in profile narrative copy under any circumstance.
 - Do not claim representation, litigation, court appearance, filing authority, notarization or regulated activity unless supplied facts support it.
 
 ORIGINALITY RULES:
@@ -167,7 +168,8 @@ function providerFacts(profile, attorney, consultant) {
       jurisdictions: row.jurisdictions || null,
       practice_areas: row.practice_areas || null,
       credential_type: row.credential_type || null,
-      public_bar_number: row.show_bar_number === false ? null : (row.bar_number || null),
+      // Exact bar/licence IDs stay out of model facts — bio-card only.
+      credential_verified: Boolean(row.bar_number),
       bar_state: row.bar_state || null,
     }
   }

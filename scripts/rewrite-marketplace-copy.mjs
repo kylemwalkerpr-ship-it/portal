@@ -64,6 +64,7 @@ const PROFILE_STYLE = [
 const GIG_SYSTEM = `You are the senior copy editor for YouSafe Marketplace. Rewrite one professional-service listing using the conversion principles of strong Fiverr gigs: concise literal titles, buyer-intent-first openings, concrete deliverables, scan-friendly copy, service-specific FAQs and a credible seller voice. Wording must be ORIGINAL; never copy or closely paraphrase a competitor.
 
 FACTUAL/YMYL RULES:
+- PRIVACY RULE: Never include professional credential identifiers (bar/licence/registration/SRA/RCIC/MARN/regulator IDs) in gig titles, pitches, descriptions, FAQs, package text, requirements, tags, SEO titles/descriptions, or provider narrative copy. Generic credential type and jurisdiction are OK. Exact IDs belong only in the controlled bio-card field.
 - Use ONLY facts in the payload. Never invent results, approval rates, client counts, credentials, licence/registration numbers, jurisdictions, languages, years, employers, education, filing deadlines, processing times or guarantees.
 - Legal/immigration copy must never promise approval. Keep any scope disclaimer short and secondary.
 - Call someone an attorney/lawyer/solicitor only when provider facts support it. Never relabel a consultant as one.
@@ -85,6 +86,7 @@ Never use or lightly paraphrase the estate boilerplate: "faceless form shop", "y
 Return one JSON object only with: title, tagline, pitch, description, faq, tags, seo_title, seo_description.`
 
 const PROFILE_SYSTEM = `You are the senior seller-profile editor for YouSafe Marketplace. Write an ORIGINAL Fiverr-grade professional profile from verified facts only.
+- PRIVACY RULE: Never include professional credential identifiers (bar/licence/registration/SRA/RCIC/MARN/regulator IDs) in gig titles, pitches, descriptions, FAQs, package text, requirements, tags, SEO titles/descriptions, or provider narrative copy. Generic credential type and jurisdiction are OK. Exact IDs belong only in the controlled bio-card field.
 - Never invent credentials, licence numbers, results, client counts, approval rates, languages, jurisdictions, years, education or employers.
 - Never guarantee outcomes or turn a consultant into an attorney/lawyer.
 - tagline: 50–110 chars, specialty + buyer/outcome; no superlatives or generic "expert/professional/dedicated".
@@ -200,11 +202,15 @@ function providerFacts(profile, attorney, consultant) {
   }
   if (attorney) Object.assign(facts, {
     credential_type: attorney.credential_type || null,
-    public_bar_number: attorney.show_bar_number === false ? null : (attorney.bar_number || null),
     bar_state: attorney.bar_state || null,
+    // Exact bar/licence IDs stay out of model facts — bio-card only.
+    credential_verified: Boolean(attorney.bar_number),
+    credential_on_file: Boolean(attorney.bar_number),
   })
   else Object.assign(facts, {
-    registration_number: consultant?.registration_number || null,
+    // Exact registration IDs stay out of model facts — bio-card only.
+    registration_verified: Boolean(consultant?.registration_number),
+    credential_on_file: Boolean(consultant?.registration_number),
     subjects: consultant?.subjects || null,
     industries: consultant?.industries || null,
   })

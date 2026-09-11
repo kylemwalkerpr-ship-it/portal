@@ -11,16 +11,6 @@ interface ProviderPageProps {
   params: Promise<{ id: string }>
 }
 
-/**
- * Resolve a provider URL token to a `profiles.id`. The token may be:
- *   • a username slug (e.g. `kyle-walker`)         — looked up on profiles.username
- *   • a `profiles.id` UUID                          — used directly
- *   • an `attorneys.id` UUID                        — looked up on attorneys
- *   • a `consultants.id` UUID                       — looked up on consultants
- *
- * This back-compat union accepts profile and role IDs while public URLs stay
- * under `/providers/<token>`. Username is preferred for the canonical path.
- */
 async function resolveProfileId(
   db: ReturnType<typeof createSupabaseAdminClient>,
   token: string,
@@ -65,8 +55,6 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
     return { title: 'Provider | YouSafe', robots: { index: false } }
   }
 
-  // Pull seller editorial fields so meta description is not a thin template
-  // string (GSC "Crawled - currently not indexed" / quality exclusions).
   let attorney: any = null
   let consultant: any = null
   let nGigs = 0
@@ -74,7 +62,9 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
     const [aRes, cRes, gRes] = await Promise.all([
       db
         .from('attorneys')
-        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, bar_number, show_bar_number, bar_state, credential_type')
+        // Credential identifiers are intentionally excluded from metadata and
+        // SSR prose. They are a controlled bio-card field only.
+        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, credential_type')
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -110,12 +100,7 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
   const jurisdictions = Array.isArray((attorney as any)?.jurisdictions)
     ? (attorney as any).jurisdictions.filter(Boolean).slice(0, 3).join(', ')
     : ''
-  const editorial = (
-    (seller as any)?.tagline ||
-    (seller as any)?.intro ||
-    (seller as any)?.bio ||
-    ''
-  )
+  const editorial = ((seller as any)?.tagline || (seller as any)?.intro || (seller as any)?.bio || '')
     .toString()
     .replace(/\s+/g, ' ')
     .trim()
@@ -131,8 +116,6 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
   const years = (seller as any)?.years_experience
   if (typeof years === 'number' && years > 0) parts.push(`${years}+ years experience.`)
   const description = parts.join(' ').slice(0, 160)
-
-  // Thin profiles without bio/tagline/gigs should not compete for index budget.
   const allowIndex = Boolean(editorial) || nGigs > 0 || Boolean(areas)
 
   const canonicalToken = profile.username || id
@@ -140,17 +123,13 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
   const title = `${name} — ${roleLabel} | YouSafe Marketplace`
   return {
     title,
-    description:
-      description ||
-      `Browse fixed-price services from ${name} on YouSafe Marketplace. Compare scope, delivery, and request secure checkout.`,
+    description: description || `Browse fixed-price services from ${name} on YouSafe Marketplace. Compare scope, delivery, and request secure checkout.`,
     alternates: { canonical: canonicalUrl },
     robots: allowIndex ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       url: canonicalUrl,
       title,
-      description:
-        description ||
-        `Browse fixed-price services from ${name} on YouSafe Marketplace.`,
+      description: description || `Browse fixed-price services from ${name} on YouSafe Marketplace.`,
       type: 'profile',
     },
   }
@@ -170,8 +149,6 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
     .single()
   if (!profile || profile.status !== 'active') notFound()
 
-  // SSR crawlable profile body — SellerProfilePage is client-fetched and left
-  // crawlers with ~50 words of shell text (quality/thin risk).
   let attorney: any = null
   let consultant: any = null
   let gigs: Array<{ slug: string; title: string; pitch?: string | null }> = []
@@ -179,7 +156,9 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
     const [aRes, cRes, gRes] = await Promise.all([
       db
         .from('attorneys')
-        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, languages, bar_number, show_bar_number, bar_state, credential_type')
+        // Do not select or render bar/licence identifiers in SSR. The client
+        // bio card fetch applies the provider/admin visibility contract.
+        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience, languages, credential_type')
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -217,87 +196,50 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
   const jurisdictions = Array.isArray(attorney?.jurisdictions) ? attorney.jurisdictions.filter(Boolean) : []
   const languages = Array.isArray(seller?.languages) ? seller.languages.filter(Boolean) : []
   const years = seller?.years_experience
-  const publicBar =
-    attorney && attorney.show_bar_number !== false && attorney.bar_number
-      ? { number: String(attorney.bar_number), state: attorney.bar_state || null }
-      : null
 
-  // SellerProfilePage is a client component that fetches its own data via
-  // /api/sellers/[id] (which accepts profile_id, attorneys.id, or consultants.id).
   return (
     <>
       <SsrHydrateGate readyEvent="yousafe:provider-ssr-ready">
-      <article
-        aria-label="Provider overview"
-        style={{
-          maxWidth: 880,
-          margin: '0 auto',
-          padding: '28px 20px 12px',
-          fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          color: '#0F172A',
-        }}
-      >
-        <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748B', margin: '0 0 8px' }}>
-          {roleLabel}
-          {typeof years === 'number' && years > 0 ? ` · ${years}+ years experience` : ''}
-        </p>
-        <h1 style={{ fontSize: 28, fontWeight: 700, margin: '0 0 10px', lineHeight: 1.2 }}>{name}</h1>
-        {tagline && <p style={{ fontSize: 17, fontWeight: 500, margin: '0 0 12px', lineHeight: 1.5 }}>{tagline}</p>}
-        {intro && <p style={{ fontSize: 15, lineHeight: 1.7, margin: '0 0 12px' }}>{intro}</p>}
-        {bio && <div style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{bio}</div>}
-        {!tagline && !intro && !bio && (
-          <p style={{ fontSize: 15, lineHeight: 1.7, margin: '0 0 16px' }}>
-            {roleLabel} on YouSafe Marketplace offering fixed-price services for students and families.
-            Compare active briefs below and request work through secure checkout.
+        <article
+          aria-label="Provider overview"
+          style={{ maxWidth: 880, margin: '0 auto', padding: '28px 20px 12px', fontFamily: 'var(--font-inter), system-ui, sans-serif', color: '#0F172A' }}
+        >
+          <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748B', margin: '0 0 8px' }}>
+            {roleLabel}{typeof years === 'number' && years > 0 ? ` · ${years}+ years experience` : ''}
           </p>
-        )}
-        {areas.length > 0 && (
-          <p style={{ fontSize: 14, margin: '0 0 8px' }}>
-            <strong>Focus:</strong> {areas.slice(0, 8).join(', ')}
+          <h1 style={{ fontSize: 28, fontWeight: 700, margin: '0 0 10px', lineHeight: 1.2 }}>{name}</h1>
+          {tagline && <p style={{ fontSize: 17, fontWeight: 500, margin: '0 0 12px', lineHeight: 1.5 }}>{tagline}</p>}
+          {intro && <p style={{ fontSize: 15, lineHeight: 1.7, margin: '0 0 12px' }}>{intro}</p>}
+          {bio && <div style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{bio}</div>}
+          {!tagline && !intro && !bio && (
+            <p style={{ fontSize: 15, lineHeight: 1.7, margin: '0 0 16px' }}>
+              {roleLabel} on YouSafe Marketplace offering fixed-price services for students and families. Compare active briefs below and request work through secure checkout.
+            </p>
+          )}
+          {areas.length > 0 && <p style={{ fontSize: 14, margin: '0 0 8px' }}><strong>Focus:</strong> {areas.slice(0, 8).join(', ')}</p>}
+          {jurisdictions.length > 0 && <p style={{ fontSize: 14, margin: '0 0 8px' }}><strong>Jurisdictions:</strong> {jurisdictions.slice(0, 6).join(', ')}</p>}
+          {languages.length > 0 && <p style={{ fontSize: 14, margin: '0 0 12px' }}><strong>Languages:</strong> {languages.slice(0, 8).join(', ')}</p>}
+          {gigs.length > 0 && (
+            <section style={{ marginTop: 16 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>Active services</h2>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.6 }}>
+                {gigs.map((g) => (
+                  <li key={g.slug} style={{ marginBottom: 8 }}>
+                    <a href={`/gigs/${g.slug}`} style={{ color: '#1E3A5F', fontWeight: 600 }}>{g.title}</a>
+                    {g.pitch ? ` — ${String(g.pitch).slice(0, 160)}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          <p style={{ fontSize: 13, color: '#64748B', margin: '16px 0 0' }}>
+            Profiles and services are marketplace listings. Engagement terms and licensing depend on the provider and order. Not legal advice unless you hire a licensed attorney for a specific matter.
           </p>
-        )}
-        {jurisdictions.length > 0 && (
-          <p style={{ fontSize: 14, margin: '0 0 8px' }}>
-            <strong>Jurisdictions:</strong> {jurisdictions.slice(0, 6).join(', ')}
-          </p>
-        )}
-        {publicBar && (
-          <p style={{ fontSize: 14, margin: '0 0 8px' }}>
-            <strong>Bar / Reg #:</strong> {publicBar.state ? `${publicBar.state} ` : ''}{publicBar.number}
-          </p>
-        )}
-        {languages.length > 0 && (
-          <p style={{ fontSize: 14, margin: '0 0 12px' }}>
-            <strong>Languages:</strong> {languages.slice(0, 8).join(', ')}
-          </p>
-        )}
-        {gigs.length > 0 && (
-          <section style={{ marginTop: 16 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>Active services</h2>
-            <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.6 }}>
-              {gigs.map((g) => (
-                <li key={g.slug} style={{ marginBottom: 8 }}>
-                  <a href={`/gigs/${g.slug}`} style={{ color: '#1E3A5F', fontWeight: 600 }}>
-                    {g.title}
-                  </a>
-                  {g.pitch ? ` — ${String(g.pitch).slice(0, 160)}` : ''}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-        <p style={{ fontSize: 13, color: '#64748B', margin: '16px 0 0' }}>
-          Profiles and services are marketplace listings. Engagement terms and licensing depend on the provider and order.
-          Not legal advice unless you hire a licensed attorney for a specific matter.
-        </p>
-      </article>
+        </article>
       </SsrHydrateGate>
       <SellerProfilePage
         sellerId={profileId}
-        initialSeller={{
-          id: profile.id,
-          full_name: profile.full_name || 'YouSafe provider',
-        }}
+        initialSeller={{ id: profile.id, full_name: profile.full_name || 'YouSafe provider' }}
       />
     </>
   )

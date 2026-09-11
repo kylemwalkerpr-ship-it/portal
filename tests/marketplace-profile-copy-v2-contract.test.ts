@@ -26,7 +26,8 @@ describe('Marketplace Fiverr legal profile v2 rewrite contract', () => {
     expect(source).toContain("role: 'attorney'")
     expect(source).toContain("role: 'consultant'")
     expect(source).toContain("consultant relabelled as lawyer")
-    expect(source).toContain('public_bar_number')
+    expect(source).not.toContain('public_bar_number')
+    expect(source).toContain('credential_verified')
     expect(source).toContain('registration_verified')
   })
 

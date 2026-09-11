@@ -1,12 +1,6 @@
 'use client'
 /**
  * UserDetailDrawer — the admin Users tab's full-visibility panel.
- *
- * Fetches /api/admin/users/[id]/details and renders EVERYTHING known about
- * the user: full profile row, the original signup application, the
- * role-specific provider record, wallet + spend, payment methods, gigs,
- * orders, and earnings. Field rendering is generic (key/value over whole
- * rows) so newly-added DB columns appear here automatically.
  */
 import React from 'react'
 import { C, Btn, Badge, Avatar } from './shared'
@@ -18,8 +12,10 @@ const SECTION_LABELS: Record<string, string> = {
   provider_record: 'Provider Profile',
 }
 
-// Keys hidden from the generic grids (shown elsewhere or pure noise).
-const HIDDEN_KEYS = new Set(['id', 'profile_id', 'full_name', 'email', 'role', 'status'])
+const HIDDEN_KEYS = new Set([
+  'id', 'profile_id', 'full_name', 'email', 'role', 'status',
+  'admin_show_bar_number_override', 'admin_show_registration_number_override',
+])
 
 const fmtMoney = (cents: any) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((Number(cents) || 0) / 100)
@@ -53,9 +49,7 @@ function fmtValue(key: string, value: any): React.ReactNode {
     )
   }
   const str = String(value)
-  if (/^https?:\/\//.test(str)) {
-    return <a href={str} target="_blank" rel="noreferrer" style={{ color: C.cyan, wordBreak: 'break-all' }}>{str}</a>
-  }
+  if (/^https?:\/\//.test(str)) return <a href={str} target="_blank" rel="noreferrer" style={{ color: C.cyan, wordBreak: 'break-all' }}>{str}</a>
   return <span style={{ wordBreak: 'break-word' }}>{str}</span>
 }
 
@@ -80,11 +74,9 @@ function Section({ title, sub, children, defaultOpen = true }: any) {
   const [open, setOpen] = React.useState(defaultOpen)
   return (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden' }}>
-      <button onClick={() => setOpen((o: boolean) => !o)}
-        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: C.surface2, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+      <button onClick={() => setOpen((o: boolean) => !o)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: C.surface2, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
         <span style={{ fontSize: '13px', fontWeight: 800, color: C.text, letterSpacing: '0.02em' }}>
-          {title}
-          {sub && <span style={{ fontWeight: 500, color: C.textMuted, marginLeft: '8px', fontSize: '12px' }}>{sub}</span>}
+          {title}{sub && <span style={{ fontWeight: 500, color: C.textMuted, marginLeft: '8px', fontSize: '12px' }}>{sub}</span>}
         </span>
         <span style={{ color: C.textMuted, fontSize: '12px' }}>{open ? '▾' : '▸'}</span>
       </button>
@@ -113,6 +105,7 @@ export default function UserDetailDrawer({ user, onClose, isCurrentAdmin, approv
   const [details, setDetails] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
+  const [credentialSaving, setCredentialSaving] = React.useState(false)
 
   React.useEffect(() => {
     let cancelled = false
@@ -132,15 +125,38 @@ export default function UserDetailDrawer({ user, onClose, isCurrentAdmin, approv
     return () => { cancelled = true }
   }, [user.id])
 
+  async function setCredentialOverride(override: boolean | null) {
+    setCredentialSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/credential-visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ override }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error?.message || json?.error || 'Could not update credential visibility.')
+      const providerRecord = json?.data?.provider_record
+      if (providerRecord) setDetails((current: any) => ({ ...current, provider_record: providerRecord }))
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setCredentialSaving(false)
+    }
+  }
+
   const d = details
   const roleColor = user.role === 'consultant' ? C.purple : user.role === 'support' ? C.orange : user.role === 'admin' ? C.red : C.cyan
+  const isProvider = ['attorney', 'consultant'].includes(user.role)
+  const credentialNumber = user.role === 'attorney' ? d?.provider_record?.bar_number : d?.provider_record?.registration_number
+  const providerChoice = user.role === 'attorney' ? d?.provider_record?.show_bar_number : d?.provider_record?.show_registration_number
+  const adminOverride = user.role === 'attorney' ? d?.provider_record?.admin_show_bar_number_override : d?.provider_record?.admin_show_registration_number_override
+  const effectiveVisible = adminOverride ?? (providerChoice !== false)
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 220, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: '760px', height: '100vh', overflowY: 'auto', background: C.surface, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
-
-        {/* Header */}
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '760px', height: '100vh', overflowY: 'auto', background: C.surface, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ position: 'sticky', top: 0, zIndex: 2, background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', minWidth: 0 }}>
             <Avatar name={user.name} src={undefined} size={44} color={roleColor} />
@@ -156,46 +172,32 @@ export default function UserDetailDrawer({ user, onClose, isCurrentAdmin, approv
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '20px', flexShrink: 0 }}>✕</button>
         </div>
 
-        {/* Actions bar */}
         <div style={{ padding: '12px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '8px', flexWrap: 'wrap', background: C.surface2 }}>
           <Btn variant="primary" size="sm" onClick={onViewOrders}>View orders</Btn>
-          {['consultant', 'support'].includes(user.role) && user.status === 'pending' && (
-            <Btn variant="success" size="sm" onClick={() => approveUser(user)}>Approve access</Btn>
-          )}
-          {isCurrentAdmin(user) ? (
-            <Badge color="red">Current admin account</Badge>
-          ) : (
+          {['consultant', 'support'].includes(user.role) && user.status === 'pending' && <Btn variant="success" size="sm" onClick={() => approveUser(user)}>Approve access</Btn>}
+          {isCurrentAdmin(user) ? <Badge color="red">Current admin account</Badge> : (
             <>
-              <Btn variant={user.status === 'active' ? 'danger' : 'success'} size="sm"
-                onClick={() => updateUser(user, { status: user.status === 'active' ? 'suspended' : 'active' })}>
-                {user.status === 'active' ? 'Suspend user' : 'Activate user'}
-              </Btn>
+              <Btn variant={user.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(user, { status: user.status === 'active' ? 'suspended' : 'active' })}>{user.status === 'active' ? 'Suspend user' : 'Activate user'}</Btn>
               <Btn variant="danger" size="sm" onClick={() => deleteUser(user)}>Delete user</Btn>
             </>
           )}
         </div>
 
-        {/* Body */}
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {loading && <div style={{ padding: '40px', textAlign: 'center', color: C.textMuted }}>Loading full record…</div>}
           {error && <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(178,34,52,0.08)', color: C.red, fontSize: '13px' }}>{error}</div>}
 
           {d && (
             <>
-              {/* At-a-glance strip */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
                 {[
                   ['Joined', d.profile?.created_at ? new Date(d.profile.created_at).toLocaleDateString() : '—'],
-                  ['Country', d.profile?.country_code
-                    ? `${d.profile.country_code}${countryNameForCode(d.profile.country_code) ? ' · ' + countryNameForCode(d.profile.country_code) : ''}`
-                    : (d.profile?.country || '—')],
+                  ['Country', d.profile?.country_code ? `${d.profile.country_code}${countryNameForCode(d.profile.country_code) ? ' · ' + countryNameForCode(d.profile.country_code) : ''}` : (d.profile?.country || '—')],
                   ['Wallet', d.wallet ? fmtMoney(d.wallet.balance_cents) : '—'],
                   ['Lifetime spend', d.wallet ? fmtMoney(d.wallet.lifetime_spend_cents) : '—'],
                   ...(d.earnings ? [['Earned (total)', fmtMoney(d.earnings.total_cents)], ['Owed', fmtMoney(d.earnings.owed_cents)]] : []),
                   ['Orders (client)', d.activity?.orders_as_client ?? 0],
-                  ...(['attorney', 'consultant'].includes(user.role)
-                    ? [['Orders (provider)', d.activity?.orders_as_provider ?? 0], ['Gigs', d.activity?.gig_count ?? 0]]
-                    : []),
+                  ...(isProvider ? [['Orders (provider)', d.activity?.orders_as_provider ?? 0], ['Gigs', d.activity?.gig_count ?? 0]] : []),
                 ].map(([label, value]) => (
                   <div key={String(label)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '10px 12px' }}>
                     <div style={{ color: C.textMuted, fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
@@ -204,67 +206,64 @@ export default function UserDetailDrawer({ user, onClose, isCurrentAdmin, approv
                 ))}
               </div>
 
-              {/* Signup application — everything the user filled at sign-up */}
-              {d.application && (
-                <Section title={SECTION_LABELS.application} sub="As submitted by the user at sign-up">
-                  <KVGrid row={d.application} />
-                </Section>
-              )}
-
-              {/* Role-specific provider profile */}
-              {d.provider_record && (
-                <Section title={SECTION_LABELS.provider_record} sub="Public-facing provider details">
-                  <KVGrid row={d.provider_record} />
-                </Section>
-              )}
-
-              {/* Full profile row */}
-              {d.profile && (
-                <Section title={SECTION_LABELS.profile} sub={d.clerk_user_id_hint ? `Auth: ${d.clerk_user_id_hint}` : undefined}>
-                  <KVGrid row={d.profile} />
-                </Section>
-              )}
-
-              {/* Finance */}
-              <Section title="Finance" sub={d.payment_methods?.length ? `${d.payment_methods.length} saved card(s)` : 'No saved cards'} defaultOpen={false}>
-                {d.wallet ? (
-                  <div style={{ marginBottom: '12px' }}>
-                    <KVGrid row={d.wallet} />
+              {isProvider && credentialNumber && (
+                <Section title="Credential visibility" sub="Controls the identifier on the public provider bio card">
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
+                      <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '10px 12px' }}>
+                        <div style={{ color: C.textMuted, fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>Verified identifier</div>
+                        <div style={{ color: C.text, fontSize: '13px', fontFamily: 'monospace', marginTop: '4px' }}>{credentialNumber}</div>
+                      </div>
+                      <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '10px 12px' }}>
+                        <div style={{ color: C.textMuted, fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>Provider preference</div>
+                        <div style={{ color: C.text, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>{providerChoice === false ? 'Hidden' : 'Visible'}</div>
+                      </div>
+                      <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '10px 12px' }}>
+                        <div style={{ color: C.textMuted, fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>Effective public state</div>
+                        <div style={{ color: effectiveVisible ? C.green : C.red, fontSize: '13px', fontWeight: 800, marginTop: '4px' }}>{effectiveVisible ? 'Visible on bio card' : 'Hidden / masked'}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <Btn variant={adminOverride === null || adminOverride === undefined ? 'primary' : 'ghost'} size="sm" disabled={credentialSaving} onClick={() => setCredentialOverride(null)}>Respect provider</Btn>
+                      <Btn variant={adminOverride === true ? 'primary' : 'ghost'} size="sm" disabled={credentialSaving} onClick={() => setCredentialOverride(true)}>Force visible</Btn>
+                      <Btn variant={adminOverride === false ? 'danger' : 'ghost'} size="sm" disabled={credentialSaving} onClick={() => setCredentialOverride(false)}>Force hidden</Btn>
+                    </div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', lineHeight: 1.5 }}>
+                      The identifier remains stored for verification regardless of public visibility. It is never inserted into gig descriptions, service copy, tags, FAQs, or SEO fields.
+                    </div>
                   </div>
-                ) : <div style={{ color: C.textDim, fontSize: '13px', marginBottom: '12px' }}>No wallet.</div>}
+                </Section>
+              )}
+
+              {d.application && <Section title={SECTION_LABELS.application} sub="As submitted by the user at sign-up"><KVGrid row={d.application} /></Section>}
+              {d.provider_record && <Section title={SECTION_LABELS.provider_record} sub="Provider details and verification data"><KVGrid row={d.provider_record} /></Section>}
+              {d.profile && <Section title={SECTION_LABELS.profile} sub={d.clerk_user_id_hint ? `Auth: ${d.clerk_user_id_hint}` : undefined}><KVGrid row={d.profile} /></Section>}
+
+              <Section title="Finance" sub={d.payment_methods?.length ? `${d.payment_methods.length} saved card(s)` : 'No saved cards'} defaultOpen={false}>
+                {d.wallet ? <div style={{ marginBottom: '12px' }}><KVGrid row={d.wallet} /></div> : <div style={{ color: C.textDim, fontSize: '13px', marginBottom: '12px' }}>No wallet.</div>}
                 {(d.payment_methods ?? []).map((m: any, i: number) => (
                   <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '8px', background: C.surface2, border: `1px solid ${C.border}`, marginRight: '8px', marginBottom: '6px', fontSize: '13px' }}>
-                    <span style={{ fontWeight: 800, textTransform: 'capitalize' }}>{m.brand}</span>
-                    <span style={{ fontFamily: 'monospace' }}>•••• {m.last4}</span>
-                    {m.gateway && <span style={{ color: C.textDim, fontSize: '11px' }}>{m.gateway}</span>}
+                    <span style={{ fontWeight: 800, textTransform: 'capitalize' }}>{m.brand}</span><span style={{ fontFamily: 'monospace' }}>•••• {m.last4}</span>{m.gateway && <span style={{ color: C.textDim, fontSize: '11px' }}>{m.gateway}</span>}
                   </div>
                 ))}
               </Section>
 
-              {/* Activity */}
               <Section title="Recent Activity" defaultOpen={false}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px' }}>
                   <div>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>As client · {d.activity?.orders_as_client ?? 0} orders</div>
                     <OrdersMini orders={d.activity?.recent_client_orders} />
                   </div>
-                  {['attorney', 'consultant'].includes(user.role) && (
+                  {isProvider && (
                     <>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>As provider · {d.activity?.orders_as_provider ?? 0} orders</div>
-                        <OrdersMini orders={d.activity?.recent_provider_orders} />
-                      </div>
+                      <div><div style={{ fontSize: '12px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>As provider · {d.activity?.orders_as_provider ?? 0} orders</div><OrdersMini orders={d.activity?.recent_provider_orders} /></div>
                       <div>
                         <div style={{ fontSize: '12px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>Gigs · {d.activity?.gig_count ?? 0}</div>
-                        {(d.activity?.gigs ?? []).length === 0
-                          ? <div style={{ color: C.textDim, fontSize: '13px' }}>None.</div>
-                          : (d.activity.gigs as any[]).map((g) => (
-                            <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '8px 10px', background: C.surface2, borderRadius: '8px', marginBottom: '6px' }}>
-                              <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title}</span>
-                              <span style={{ textTransform: 'capitalize', color: C.textMuted }}>{g.status}</span>
-                              <span style={{ color: C.textDim }}>{g.order_count ?? 0} orders</span>
-                            </div>
-                          ))}
+                        {(d.activity?.gigs ?? []).length === 0 ? <div style={{ color: C.textDim, fontSize: '13px' }}>None.</div> : (d.activity.gigs as any[]).map((g) => (
+                          <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '8px 10px', background: C.surface2, borderRadius: '8px', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title}</span><span style={{ textTransform: 'capitalize', color: C.textMuted }}>{g.status}</span><span style={{ color: C.textDim }}>{g.order_count ?? 0} orders</span>
+                          </div>
+                        ))}
                       </div>
                     </>
                   )}

@@ -3,6 +3,8 @@ import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
 
 // Public profile detail for one attorney. Returns the full enriched profile,
 // the latest reviews (anonymised), and a one-line "responds within X" stat.
+// Professional identifiers are intentionally omitted here; the controlled
+// /api/sellers/[id] bio-card payload is their only public rendering source.
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
   const db = createSupabaseAdminClient()
@@ -74,7 +76,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const ratingCount = ratings.length
   const ratingAvg = ratingCount === 0 ? null : Number((ratings.reduce((s, r) => s + Number(r.stars), 0) / ratingCount).toFixed(2))
 
-  // Editable credential off the attorneys row wins over the application copy.
+  // Credential type is safe professional context; never serialize the number.
   const credential = await resolveAttorneyCredential(db, attorney.profile_id)
 
   return Response.json({
@@ -91,8 +93,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       languages: attorney.languages,
       education: attorney.education,
       credential_type: credential.credential_type || application?.credential_type || null,
-      bar_number: (credential.show_bar_number !== false && credential.bar_number) ? credential.bar_number : null,
-      bar_state: (credential.show_bar_number !== false && credential.bar_number) ? (credential.bar_state || null) : null,
       years_experience: attorney.years_experience,
       starting_price: attorney.starting_price,
       offers_free_consult: attorney.offers_free_consult ?? false,
@@ -110,5 +110,3 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     gigs: gigs ?? [],
   })
 }
-
-

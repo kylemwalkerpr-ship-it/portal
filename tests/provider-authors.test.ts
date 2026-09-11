@@ -91,7 +91,7 @@ describe('provider author matching', () => {
     expect(line).not.toMatch(/bar /)
   })
 
-  it('includes the bar number only when the attorney opted in', () => {
+  it('never appends bar/registration identifiers even when showBarNumber is true', () => {
     const line = credentialLineFor({
       role: 'attorney',
       credentialType: 'Solicitor',
@@ -99,7 +99,10 @@ describe('provider author matching', () => {
       showBarNumber: true,
       barState: 'England & Wales',
     })
-    expect(line).toBe('Solicitor · England & Wales · bar SRA-441')
+    // SEO author output is not the controlled bio-card; identifiers stay out.
+    expect(line).toBe('Solicitor · England & Wales')
+    expect(line).not.toMatch(/SRA-441/)
+    expect(line).not.toMatch(/bar /i)
   })
 
   it('picks the US immigration attorney over a UK solicitor for a US H-1B guide', () => {
@@ -291,7 +294,7 @@ describe('jurisdiction and field triangulation', () => {
 describe('author pack and prompt block', () => {
   it('authorPackFromProvider carries the marketplace profile URL and recorded credential only', () => {
     const cited = matchProvidersToTopic(
-      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale', showBarNumber: false, barNumber: 'SECRET-99' })],
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale', showBarNumber: true, barNumber: 'SECRET-99' })],
       { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
     )
     expect(cited[0]).toBeTruthy()
@@ -299,9 +302,40 @@ describe('author pack and prompt block', () => {
     expect(pack.name).toBe('Jordan Hale')
     expect(pack.marketplaceUrl).toBe('https://market.yousafeconsultancy.com/providers/jordan-hale')
     expect(pack.providerType).toBe('attorney')
+    // SECRET-99 must never leak into SEO author surfaces even when opted in.
     expect(pack.credential).not.toMatch(/SECRET-99/)
+    const prompt = citedProvidersPromptBlock(cited)
+    expect(prompt).not.toMatch(/SECRET-99/)
+    const pub = citedProvidersPublic(cited)
+    expect(JSON.stringify(pub)).not.toMatch(/SECRET-99/)
+    expect(pub[0]).not.toHaveProperty('barNumber')
     expect(validateAuthorPack(pack, { contentType: 'legal_guide', ymyl: true })).toEqual([])
     expect(experienceScopeFor(cited[0]!)).toMatch(/immigration/i)
+  })
+
+  it('SECRET-99 never appears in AuthorPack.credential, prompt block, or public citation when showBarNumber true', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({
+        profileId: 'a-secret',
+        name: 'Secret Counsel',
+        username: 'secret-counsel',
+        credentialType: 'Solicitor',
+        barNumber: 'SECRET-99',
+        showBarNumber: true,
+        barState: 'England & Wales',
+        jurisdictions: ['UK', 'England & Wales'],
+        practiceAreas: ['immigration'],
+        specialties: ['skilled worker'],
+        gigs: [{ slug: 'uk-skilled-worker', title: 'UK skilled worker advice', category: 'work visa', jurisdiction: 'UK' }],
+      })],
+      { region: 'UK', topic: 'UK skilled worker visa', primaryKeyword: 'uk skilled worker', contentType: 'legal_guide' },
+    )
+    expect(cited[0]).toBeTruthy()
+    const pack = authorPackFromProvider(cited[0]!)
+    expect(pack.credential).toBe('Solicitor · England & Wales')
+    expect(pack.credential).not.toMatch(/SECRET-99/)
+    expect(citedProvidersPromptBlock(cited)).not.toMatch(/SECRET-99/)
+    expect(JSON.stringify(citedProvidersPublic(cited))).not.toMatch(/SECRET-99/)
   })
 
   it('prompt block lists profile + service URLs and forbids invented people', () => {
