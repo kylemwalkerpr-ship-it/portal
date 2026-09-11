@@ -104,14 +104,13 @@ export function MarketplaceRouteFooter() {
             bottom: calc(max(90px, calc(70px + env(safe-area-inset-bottom))) + var(--ys-footer-inset, 0px)) !important;
           }
         }
-        @media (max-width: 700px) {
-          html body .ys-floating-message-launcher {
-            bottom: calc(max(82px, calc(70px + env(safe-area-inset-bottom))) + var(--ys-footer-inset, 0px)) !important;
-          }
-        }
         @media (max-width: 768px) {
+          html body {
+            --ys-market-mobile-launcher-bottom: max(82px, calc(70px + env(safe-area-inset-bottom)));
+          }
+          html body .ys-floating-message-launcher,
           html body .ysa-launcher {
-            bottom: calc(max(16px, calc(12px + env(safe-area-inset-bottom))) + var(--ys-footer-inset, 0px)) !important;
+            bottom: calc(var(--ys-market-mobile-launcher-bottom) + var(--ys-footer-inset, 0px)) !important;
           }
         }
       `}</style>
