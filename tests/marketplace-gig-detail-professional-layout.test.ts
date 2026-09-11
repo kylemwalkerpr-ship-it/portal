@@ -8,6 +8,7 @@ describe('Marketplace gig professional-service layout', () => {
   const css = read('app/marketplace/gig-detail-professional-layout.css')
   const layout = read('app/marketplace/layout.tsx')
   const gigDetail = read('components/marketplace/GigDetailPage.tsx')
+  const chatPane = read('components/marketplace/ChatSidePane.tsx')
 
   test('scopes the redesign to gig details instead of marketplace discovery layouts', () => {
     expect(css).toContain('main:has(.ys-gig-overview)')
@@ -51,13 +52,54 @@ describe('Marketplace gig professional-service layout', () => {
     expect(css).toContain('margin-bottom: 30px !important')
   })
 
-  test('affixes a provider message launcher that reuses the existing gated chat surface', () => {
+  test('makes the affixed provider message launcher more discoverable without removing motion accessibility', () => {
     expect(gigDetail).toContain('className="ys-floating-message-launcher"')
     expect(gigDetail).toContain('onClick={() => gatedChat(() => setMsgOpen(true))}')
-    expect(gigDetail).toContain('<ChatSidePane')
     expect(css).toContain('.ys-floating-message-launcher')
     expect(css).toContain('position: fixed')
     expect(css).toContain('left: 24px')
+    expect(css).toContain('min-height: 66px')
+    expect(css).toContain('@keyframes ys-message-beam')
+    expect(css).toContain('@keyframes ys-message-attention')
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(css).toContain('animation: none !important')
+  })
+
+  test('opens gig messaging as an anchored in-page popover backed by the unified messenger', () => {
+    expect(gigDetail).toContain('<ChatSidePane')
+    expect(gigDetail).toContain('presentation="popover"')
+    expect(gigDetail).toContain('responseTime={gig.provider_response_time || null}')
+    expect(gigDetail).toContain('serviceTitle={gig.title}')
+    expect(chatPane).toContain("presentation?: 'drawer' | 'popover'")
+    expect(chatPane).toContain("const isPopover = presentation === 'popover'")
+    expect(chatPane).toContain('/api/messages/start')
+    expect(chatPane).toContain('className="ys-gig-message-popover-shell"')
+    expect(chatPane).toContain('className={`yousafe-messenger chat-side-pane ${isPopover ? \'ys-gig-message-popover\' : \'\'}`}')
+    expect(css).toContain('.ys-gig-message-popover')
+    expect(css).toContain('height: min(650px, calc(100dvh - 110px))')
+  })
+
+  test('includes useful pre-order messaging affordances without inventing provider timezone data', () => {
+    expect(chatPane).toContain('const MAX_GIG_DRAFT = 2500')
+    expect(chatPane).toContain('ys-gig-chat-availability')
+    expect(chatPane).toContain('ys-gig-chat-starters')
+    expect(chatPane).toContain('What documents or information should I send before we start?')
+    expect(chatPane).toContain('Can you confirm the likely timeline and what you need from me?')
+    expect(chatPane).toContain('{draft.length}/{MAX_GIG_DRAFT}')
+    expect(chatPane).toContain('allowVoice={!isPopover}')
+    expect(chatPane).toContain('<AutoGrowInput')
+    expect(chatPane).toContain('Open in Messages →')
+    expect(chatPane).not.toContain('providerTimezone')
+    expect(css).toContain('.ys-gig-chat-starters button')
+    expect(css).toContain('.ys-gig-chat-availability.is-away')
+  })
+
+  test('keeps the gig messaging popover mobile-safe', () => {
+    expect(css).toContain('@media (max-width: 700px)')
+    expect(css).toContain('.ys-gig-message-popover {\n    position: fixed;\n    inset: 0;')
+    expect(css).toContain('width: 100vw')
+    expect(css).toContain('height: 100dvh')
+    expect(css).toContain('.ys-gig-chat-starters button {\n    width: 100%;')
   })
 
   test('keeps one deterministic tablet and phone buyer journey', () => {

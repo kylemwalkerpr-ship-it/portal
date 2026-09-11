@@ -26,10 +26,10 @@ describe('shared mobile Messenger surface contract', () => {
   })
 
   test('direct Marketplace provider contact uses the same Messenger/ChatScreen/composer primitives', () => {
-    expect(directMarketplace).toContain('className="yousafe-messenger chat-side-pane"')
+    expect(directMarketplace).toContain('yousafe-messenger chat-side-pane')
     expect(directMarketplace).toContain('<ChatScreen mode="panel"')
     expect(directMarketplace).toContain('<AutoGrowInput')
-    expect(directMarketplace).toContain("placeholder={sending ? 'Sending…' : 'Type a message…'}")
+    expect(directMarketplace).toContain("'Type a message…'")
   })
 
   test('Admin Master Chats stays on the shared ChatScreen and composer class contract', () => {

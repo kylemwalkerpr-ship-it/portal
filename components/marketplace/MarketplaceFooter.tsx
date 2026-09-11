@@ -29,7 +29,7 @@ export function MarketplaceFooter() {
   const year = new Date().getFullYear()
 
   return (
-    <footer className="cw-mkt-footer">
+    <footer className="cw-mkt-footer" data-chat-footer-boundary>
       <style>{`
         .cw-mkt-footer {
           background: ${T.footer};

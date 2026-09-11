@@ -10,9 +10,6 @@ import { subscribeToTable } from '@/lib/supabaseRealtime'
 import '../messaging/messenger-tokens.css'
 import { F } from './tokens'
 
-/* Messenger shell stays on a self-contained NEUTRAL palette so marketplace
-   chrome (--ys-paper) cannot wash into the slide-over. */
-
 const GREEN = '#3F774A'
 const RED = '#B22234'
 const CYAN = '#111827'
@@ -25,6 +22,7 @@ const MUTED = 'var(--text-mid, #334155)'
 const DIM = 'var(--text-soft, #64748B)'
 const SANS = F.ui
 const MONO = F.mono
+const MAX_GIG_DRAFT = 2500
 
 interface ChatSidePaneProps {
   open: boolean
@@ -35,6 +33,9 @@ interface ChatSidePaneProps {
   counterpartProfileId?: string | null
   contextKind?: 'general' | 'order' | 'inquiry' | 'gig'
   contextId?: string | null
+  presentation?: 'drawer' | 'popover'
+  responseTime?: string | null
+  serviceTitle?: string | null
 }
 
 function normalizeUnifiedThread(payload: any) {
@@ -42,9 +43,6 @@ function normalizeUnifiedThread(payload: any) {
   return (Array.isArray(payload?.messages) ? payload.messages : []).map((m: any) => ({
     id: m.id,
     sender_id: m.sender_id,
-    // This marketplace pane is always viewed by the client/student. The API
-    // tells us exactly who the counterpart is, so do not infer direction from
-    // sender_id merely being non-null (all real messages have a sender_id).
     sender_role: counterpartId && m.sender_id === counterpartId ? 'attorney' : 'client',
     body: m.body,
     type: m.type,
@@ -75,7 +73,11 @@ export default function ChatSidePane({
   attorneyAvatar,
   contextKind,
   contextId,
+  presentation = 'drawer',
+  responseTime,
+  serviceTitle,
 }: ChatSidePaneProps) {
+  const isPopover = presentation === 'popover'
   const [chatId, setChatId] = React.useState(null)
   const [conversationId, setConversationId] = React.useState(null)
   const [messages, setMessages] = React.useState<any[]>([])
@@ -93,7 +95,6 @@ export default function ChatSidePane({
     conversationIdRef.current = conversationId
   }, [conversationId])
 
-  // ESC closes on desktop. Mobile users retain the visible close button.
   React.useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose?.() }
@@ -106,8 +107,6 @@ export default function ChatSidePane({
       const r = await fetch(`/api/client/attorney-chats/${id}`, { credentials: 'include' })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error || 'Could not load thread.')
-      // Legacy data is only a temporary fallback. Never let it overwrite a
-      // unified thread after /api/messages/start has resolved.
       if (!conversationIdRef.current) setMessages(d.messages || [])
       setPresence(d.chat?.presence || 'online')
     } catch (e: any) {
@@ -115,8 +114,6 @@ export default function ChatSidePane({
     }
   }, [])
 
-  // Legacy attorney-chat discovery is retained only so old attorney threads
-  // can render immediately while the unified conversation id is resolving.
   const loadLegacyChat = React.useCallback(async () => {
     if (!attorneyId || !open) return
     setLoading(true)
@@ -174,16 +171,12 @@ export default function ChatSidePane({
       setAiMode((d?.conversation?.ai_mode || 'auto') as 'auto' | 'paused' | 'off')
       setError('')
     } catch (e: any) {
-      if (seq === unifiedSeqRef.current && !silent) {
-        setError(e?.message || 'Could not load thread.')
-      }
+      if (seq === unifiedSeqRef.current && !silent) setError(e?.message || 'Could not load thread.')
     } finally {
       if (!silent && seq === unifiedSeqRef.current) setLoading(false)
     }
   }, [])
 
-  // Resolve the canonical unified conversation for attorneys AND consultants.
-  // Once this resolves it becomes the authoritative feed for this drawer.
   React.useEffect(() => {
     if ((!attorneyId && !counterpartProfileId) || !open) return
     let cancelled = false
@@ -221,9 +214,6 @@ export default function ChatSidePane({
     return () => { cancelled = true }
   }, [attorneyId, counterpartProfileId, open, contextKind, contextId, loadUnifiedConversation])
 
-  // Realtime is the primary live-reply transport. AI responses are inserted
-  // into conversation_messages, so listening here prevents a successful AI
-  // reply from sitting unseen until an 8-second legacy poll happens.
   React.useEffect(() => {
     if (!open || !conversationId) return
     const off = subscribeToTable(
@@ -231,32 +221,23 @@ export default function ChatSidePane({
       'public',
       (payload) => {
         const row = payload.new || payload.old
-        if (row?.conversation_id === conversationId) {
-          void loadUnifiedConversation(conversationId, true)
-        }
+        if (row?.conversation_id === conversationId) void loadUnifiedConversation(conversationId, true)
       },
       (status) => setLiveStatus(status),
     )
     return () => off()
   }, [open, conversationId, loadUnifiedConversation])
 
-  // Polling remains as a resilient fallback for browsers/networks where the
-  // realtime websocket cannot establish or is suspended in the background.
   React.useEffect(() => {
     if (!open) return
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
-      if (conversationIdRef.current) {
-        void loadUnifiedConversation(conversationIdRef.current, true)
-      } else if (chatId) {
-        void loadLegacyMessages(chatId)
-      }
+      if (conversationIdRef.current) void loadUnifiedConversation(conversationIdRef.current, true)
+      else if (chatId) void loadLegacyMessages(chatId)
     }, conversationId ? 4000 : 8000)
     return () => window.clearInterval(id)
   }, [open, chatId, conversationId, loadUnifiedConversation, loadLegacyMessages])
 
-  // Mobile browsers often suspend timers/websockets while switching tabs or
-  // locking the phone. Refresh immediately when the user returns.
   React.useEffect(() => {
     if (!open) return
     const refresh = () => {
@@ -300,8 +281,6 @@ export default function ChatSidePane({
     setSending(true)
     setError('')
     try {
-      // Always prefer the canonical unified route. It is the same feed used by
-      // every dashboard and the only feed guaranteed to contain AI live replies.
       const id = await ensureUnifiedConversation()
       if (id) {
         const r = await fetch(`/api/messages/conversations/${id}`, {
@@ -317,8 +296,6 @@ export default function ChatSidePane({
         return
       }
 
-      // Compatibility fallback for a legacy attorney chat if unified start is
-      // temporarily unavailable. Never used for consultant threads.
       if (attorneyId) {
         if (!chatId) {
           const r = await fetch('/api/client/attorney-message', {
@@ -359,20 +336,42 @@ export default function ChatSidePane({
     }
   }
 
+  const firstName = String(attorneyName || 'the specialist').trim().split(/\s+/)[0]
+  const starterPrompts = React.useMemo(() => {
+    const service = String(serviceTitle || 'this service').trim()
+    const compactService = service.length > 70 ? `${service.slice(0, 67).trimEnd()}…` : service
+    return [
+      `👋 Hi ${firstName}, can you help me with ${compactService}?`,
+      '📎 What documents or information should I send before we start?',
+      '⏱ Can you confirm the likely timeline and what you need from me?',
+    ]
+  }, [firstName, serviceTitle])
+
   const header = (
-    <div className="ys-market-chat-head" style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
-      <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} online={presence === 'online'} />
+    <div className="ys-market-chat-head" style={{ padding: isPopover ? '15px 18px' : '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={isPopover ? 44 : 40} online={presence === 'online'} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>
-          {attorneyName || 'Specialist'}
+        <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: isPopover ? 18 : 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>
+          {isPopover ? `Message ${attorneyName || 'specialist'}` : (attorneyName || 'Specialist')}
         </div>
-        <div style={{ fontSize: 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {presence === 'online' ? '● Online · quick replies likely' : '○ Offline · will respond when available'}
+        <div style={{ fontSize: isPopover ? 11 : 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: isPopover ? SANS : MONO, letterSpacing: isPopover ? 0 : '0.1em', textTransform: isPopover ? 'none' : 'uppercase', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {presence === 'online' ? 'Online' : 'Away'}
+          {responseTime ? ` · Avg. response: ${responseTime}` : (presence === 'online' ? ' · quick replies likely' : ' · will respond when available')}
         </div>
       </div>
-      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: PANEL2, color: MUTED, borderRadius: 999, width: 40, height: 40, cursor: 'pointer', fontSize: 18, fontFamily: F.ui, flex: '0 0 40px' }}>×</button>
+      <button onClick={onClose} aria-label="Close" style={{ border: isPopover ? 'none' : `1px solid ${BORDER}`, background: isPopover ? 'transparent' : PANEL2, color: MUTED, borderRadius: 999, width: 40, height: 40, cursor: 'pointer', fontSize: isPopover ? 28 : 18, lineHeight: 1, fontFamily: F.ui, flex: '0 0 40px' }}>×</button>
     </div>
   )
+
+  const availabilityBanner = isPopover ? (
+    <div className={`ys-gig-chat-availability ${presence === 'online' ? 'is-online' : 'is-away'}`} role="status">
+      <span aria-hidden="true">{presence === 'online' ? '●' : '◐'}</span>
+      <span>
+        {presence === 'online' ? `${attorneyName || 'This specialist'} is online now.` : `${attorneyName || 'This specialist'} is away right now.`}
+        {responseTime ? ` Typical response time: ${responseTime}.` : ''}
+      </span>
+    </div>
+  ) : null
 
   const aiLiveBanner = conversationId && aiMode === 'auto' ? (
     <div className="ys-market-ai-live" role="status" aria-live="polite">
@@ -400,6 +399,7 @@ export default function ChatSidePane({
 
   const banner = (
     <>
+      {availabilityBanner}
       {aiLiveBanner}
       {errorBanner}
     </>
@@ -413,11 +413,11 @@ export default function ChatSidePane({
     }
     if (!loading && messages.length === 0) {
       result.push(
-        <div key="empty" className="ys-market-chat-empty" style={{ background: SURFACE, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: '20px 16px', textAlign: 'center' }}>
-          <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>
-          <div style={{ fontWeight: 600, fontSize: 17, color: TEXT, marginBottom: 4 }}>Start the conversation</div>
-          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-            Ask a short question. When live replies are enabled, YouSafe AI can respond while {attorneyName || 'the specialist'} is away, and the specialist can take over at any time.
+        <div key="empty" className="ys-market-chat-empty" style={{ background: SURFACE, border: isPopover ? 'none' : `1px dashed ${BORDER}`, borderRadius: 10, padding: isPopover ? '8px 4px 4px' : '20px 16px', textAlign: isPopover ? 'left' : 'center' }}>
+          {!isPopover && <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>}
+          <div style={{ fontWeight: 600, fontSize: isPopover ? 15 : 17, color: TEXT, marginBottom: 5 }}>Start the conversation</div>
+          <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+            Ask a question or share your project details. Include requirements, timing, budget or documents when relevant.
           </div>
         </div>,
       )
@@ -464,25 +464,44 @@ export default function ChatSidePane({
       )
     }
     return result
-  }, [messages, loading, attorneyName, attorneyAvatar])
+  }, [messages, loading, attorneyName, attorneyAvatar, isPopover])
 
   const composer = (
-    <div className="ys-market-chat-composer" style={{ borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
+    <div className={`ys-market-chat-composer ${isPopover ? 'ys-gig-chat-composer' : ''}`} style={{ borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
+      {isPopover && messages.length === 0 && (
+        <div className="ys-gig-chat-starters" aria-label="Suggested questions">
+          {starterPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => setDraft(prompt.slice(0, MAX_GIG_DRAFT))}
+              disabled={sending || error === 'SIGN_IN_REQUIRED'}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
       <AutoGrowInput
         value={draft}
-        onChange={setDraft}
+        onChange={(next) => setDraft(String(next || '').slice(0, isPopover ? MAX_GIG_DRAFT : 10000))}
         onSubmit={send}
         disabled={sending || error === 'SIGN_IN_REQUIRED'}
-        placeholder={sending ? 'Sending…' : 'Type a message…'}
+        placeholder={sending ? 'Sending…' : (isPopover ? `Ask ${firstName} a question or share your project details…` : 'Type a message…')}
         conversationId={conversationId || undefined}
+        allowVoice={!isPopover}
         onAttachmentSent={() => {
           if (conversationIdRef.current) void loadUnifiedConversation(conversationIdRef.current, true)
         }}
       />
       <div className="ys-market-chat-foot" style={{ padding: '0 14px 10px', fontSize: 10, color: DIM, fontFamily: MONO, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <span className="ys-market-chat-shortcuts">
-          <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> send · <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> close
-        </span>
+        {isPopover ? (
+          <span className="ys-gig-chat-counter" aria-live="polite">{draft.length}/{MAX_GIG_DRAFT}</span>
+        ) : (
+          <span className="ys-market-chat-shortcuts">
+            <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> send · <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> close
+          </span>
+        )}
         {conversationId && (
           <a
             href={`https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`}
@@ -497,28 +516,44 @@ export default function ChatSidePane({
 
   if (!open) return null
 
+  const panel = (
+    <aside
+      className={`yousafe-messenger chat-side-pane ${isPopover ? 'ys-gig-message-popover' : ''}`}
+      data-theme="light"
+      role={isPopover ? 'dialog' : undefined}
+      aria-modal={isPopover ? 'true' : undefined}
+      aria-label={isPopover ? `Message ${attorneyName || 'specialist'}` : undefined}
+      style={isPopover ? undefined : {
+        width: 'min(440px, 100vw)',
+        height: '100dvh',
+        background: 'var(--bg, #F7F8FA)',
+        display: 'flex',
+        flexDirection: 'column',
+        borderLeft: `1px solid ${BORDER}`,
+        boxShadow: '-24px 0 60px rgba(29,36,51,0.18)',
+        fontFamily: SANS,
+        color: TEXT,
+        colorScheme: 'light',
+        isolation: 'isolate',
+      }}
+    >
+      <ChatScreen mode="panel" header={header} messages={messageNodes} composer={composer} banner={banner} />
+    </aside>
+  )
+
+  if (isPopover) {
+    return (
+      <div className="ys-gig-message-popover-shell" data-ysa-hide-launcher="true">
+        <button className="ys-gig-message-popover-dismiss" onClick={onClose} aria-label="Close chat" />
+        {panel}
+      </div>
+    )
+  }
+
   return (
     <div className="ys-market-chat-overlay" data-ysa-hide-launcher="true" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       <button onClick={onClose} aria-label="Close chat" style={{ flex: 1, background: 'rgba(15,18,32,0.45)', border: 'none', cursor: 'pointer' }} />
-      <aside
-        className="yousafe-messenger chat-side-pane"
-        data-theme="light"
-        style={{
-          width: 'min(440px, 100vw)',
-          height: '100dvh',
-          background: 'var(--bg, #F7F8FA)',
-          display: 'flex',
-          flexDirection: 'column',
-          borderLeft: `1px solid ${BORDER}`,
-          boxShadow: '-24px 0 60px rgba(29,36,51,0.18)',
-          fontFamily: SANS,
-          color: TEXT,
-          colorScheme: 'light',
-          isolation: 'isolate',
-        }}
-      >
-        <ChatScreen mode="panel" header={header} messages={messageNodes} composer={composer} banner={banner} />
-      </aside>
+      {panel}
     </div>
   )
 }

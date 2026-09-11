@@ -13,6 +13,6 @@ describe('Marketplace Messenger avatar contract', () => {
   })
 
   test('avatar inputs participate in the memoized message render', () => {
-    expect(pane).toContain('[messages, loading, attorneyName, attorneyAvatar]')
+    expect(pane).toContain('[messages, loading, attorneyName, attorneyAvatar, isPopover]')
   })
 })
