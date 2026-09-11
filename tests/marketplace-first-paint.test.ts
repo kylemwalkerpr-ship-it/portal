@@ -27,7 +27,7 @@ describe('marketplace first paint', () => {
 
   it('fans out independent gig enrichments and removes the unused reviews query', () => {
     const route = read('app/api/marketplace/gigs/[slug]/route.ts')
-    expect(route).toContain('const [providerGigsRes, providerHeadshotRes, similarGigsRes] = await Promise.all([')
+    expect(route).toContain('const [providerGigsRes, providerHeadshotRes, sameCategoryRes, sameJurisdictionRes] = await Promise.all([')
     expect(route).not.toContain("db.from('gig_reviews').select('rating')")
   })
 })
