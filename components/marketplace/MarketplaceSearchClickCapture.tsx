@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { queueMarketplaceSearchExecution } from '@/lib/marketplaceSearchIntelligence'
 
 const ENHANCED_TAG = 'data-marketplace-intent-tag'
@@ -50,9 +50,10 @@ function findIntentTagPills(): HTMLSpanElement[] {
  */
 export function MarketplaceSearchClickCapture() {
   const router = useRouter()
+  const pathname = usePathname()
 
   React.useEffect(() => {
-    if (!isGigDetailPath(window.location.pathname)) return
+    if (!isGigDetailPath(pathname)) return
 
     const enhanceTags = () => {
       for (const span of findIntentTagPills()) {
@@ -87,8 +88,7 @@ export function MarketplaceSearchClickCapture() {
     }
 
     const onClick = (event: MouseEvent) => {
-      const currentPath = window.location.pathname
-      if (!isGigDetailPath(currentPath)) return
+      if (!isGigDetailPath(window.location.pathname)) return
 
       const target = event.target
       if (!(target instanceof Element)) return
@@ -141,7 +141,7 @@ export function MarketplaceSearchClickCapture() {
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [router])
+  }, [pathname, router])
 
   return null
 }
