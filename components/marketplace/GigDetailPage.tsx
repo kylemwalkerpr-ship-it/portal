@@ -25,6 +25,7 @@ import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
+  /* transparent — the shell owns the paper background + pattern layer */
   color: T.onPaper,
   fontFamily: F.ui,
 }
@@ -87,6 +88,9 @@ const sidebar: CSSProperties = {
 }
 
 const gigImage: CSSProperties = {
+  /* Fiverr-style covers are full designed cards (1280×769) with baked-in
+     title + headshot. Forcing a shorter box + object-fit:cover was chopping
+     heads off the artwork. Match generated aspect and show the full card. */
   width: '100%',
   height: 'auto',
   aspectRatio: '1280 / 769',
@@ -160,6 +164,8 @@ const tagsContainer: CSSProperties = {
 }
 
 const tagBadge: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
   padding: '5px 11px',
   background: T.vellum,
   border: `1px solid ${T.rule}`,
@@ -168,6 +174,8 @@ const tagBadge: CSSProperties = {
   color: T.ink,
   fontWeight: 500,
   fontFamily: F.ui,
+  textDecoration: 'none',
+  cursor: 'pointer',
 }
 
 const SAVED_GIGS_KEY = 'ys_marketplace_saved_gigs'
@@ -293,7 +301,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
       setLoading(false)
     }
   }, [slug])
-
   React.useEffect(() => {
     load()
   }, [load])
@@ -477,6 +484,11 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const subcategory = category && gig.subcategory
     ? getSubcategoryById(category.id, gig.subcategory)
     : undefined
+  const tagSearchBase = subcategory
+    ? `/categories/${subcategory.id}`
+    : category
+      ? `/categories/${category.id}`
+      : '/marketplace'
   const serviceReviewCount = Number(gig.review_count || 0)
   const serviceRating = Number(gig.avg_rating || 0)
   const serviceOrderCount = Number(gig.order_count || 0)
@@ -664,7 +676,15 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               {gig.tags && gig.tags.length > 0 && (
                 <div style={tagsContainer}>
                   {gig.tags.map((tag: string, index: number) => (
-                    <span key={index} style={tagBadge}>{tag}</span>
+                    <Link
+                      key={`${tag}-${index}`}
+                      href={`${tagSearchBase}?q=${encodeURIComponent(tag)}`}
+                      style={tagBadge}
+                      aria-label={`Search ${subcategory?.name || category?.name || 'Marketplace'} for ${tag}`}
+                      title={`Search for ${tag}`}
+                    >
+                      {tag}
+                    </Link>
                   ))}
                 </div>
               )}
@@ -831,9 +851,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         attorneyAvatar={gig.provider_headshot_url || null}
         contextKind="gig"
         contextId={gig.id}
-        presentation="popover"
-        responseTime={gig.provider_response_time || null}
-        serviceTitle={gig.title}
       />
       {orderModal}
       {chatModal}
