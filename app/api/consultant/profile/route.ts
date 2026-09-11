@@ -41,7 +41,7 @@ export async function GET() {
   const { data: full } = await db
     .from('consultants')
     .select(
-      'id, profile_id, bio, available, headshot_url, headshot_path, tagline, intro, subjects, industries, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, consult_booking_url, video_intro_url',
+      'id, profile_id, bio, available, headshot_url, headshot_path, tagline, intro, subjects, industries, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, consult_booking_url, video_intro_url, registration_number, show_registration_number, admin_show_registration_number_override',
     )
     .eq('id', consultant.id)
     .maybeSingle()
@@ -80,61 +80,28 @@ export async function PATCH(req: Request) {
   const { db, profile, consultant } = auth
   const body = await req.json().catch(() => ({}))
 
-  /* ── profiles updates (full_name, email, username, intake_last_step) ── */
   const profilePayload: Record<string, unknown> = {}
   if (typeof body.full_name === 'string') profilePayload.full_name = body.full_name.trim()
   if (typeof body.email === 'string' && body.email.trim()) profilePayload.email = body.email.trim()
-  if (typeof body.intake_last_step === 'number' && body.intake_last_step >= 0) {
-    profilePayload.intake_last_step = Math.floor(body.intake_last_step)
-  }
+  if (typeof body.intake_last_step === 'number' && body.intake_last_step >= 0) profilePayload.intake_last_step = Math.floor(body.intake_last_step)
 
   let usernameWrite: string | null | undefined
   if ('username' in body) {
     const raw = typeof body.username === 'string' ? body.username.trim().toLowerCase() : ''
     if (raw === '') usernameWrite = null
     else if (!/^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/.test(raw)) {
-      return Response.json(
-        { error: 'Username must be 3–32 chars, lowercase letters, numbers, dashes or underscores; cannot start or end with - or _.' },
-        { status: 400 },
-      )
+      return Response.json({ error: 'Username must be 3–32 chars, lowercase letters, numbers, dashes or underscores; cannot start or end with - or _.' }, { status: 400 })
     } else usernameWrite = raw
   }
 
   if (usernameWrite !== undefined) {
     if (usernameWrite !== null) {
-      const { data: clash } = await db
-        .from('profiles')
-        .select('id')
-        .eq('username', usernameWrite)
-        .neq('id', profile.id)
-        .maybeSingle()
+      const { data: clash } = await db.from('profiles').select('id').eq('username', usernameWrite).neq('id', profile.id).maybeSingle()
       if (clash) return Response.json({ error: 'That handle is taken — try another.' }, { status: 409 })
     }
     profilePayload.username = usernameWrite
   }
 
-  if (Object.keys(profilePayload).length > 0) {
-    const { error } = await db.from('profiles').update(profilePayload).eq('id', profile.id)
-    if (error) return Response.json({ error: error.message }, { status: 500 })
-  }
-
-  /* ── consultants updates (rich profile fields) ── */
-  const consultantPayload: Record<string, unknown> = {}
-  if (typeof body.full_name === 'string') consultantPayload.full_name = body.full_name.trim()
-  if (typeof body.email === 'string' && body.email.trim()) consultantPayload.email = body.email.trim()
-  if (typeof body.available === 'boolean') consultantPayload.available = body.available
-  if (typeof body.auto_withdraw === 'boolean') consultantPayload.auto_withdraw = body.auto_withdraw
-  if (typeof body.offers_free_consult === 'boolean') consultantPayload.offers_free_consult = body.offers_free_consult
-  if ('consult_booking_url' in body) {
-    // Light validation only — HTTPS-only, no javascript: schemes. The
-    // editor enforces a Calendly/Cal.com hint but anything that looks
-    // like a real URL is accepted (consultants may use other tools).
-    const raw = cleanText((body as Record<string, unknown>).consult_booking_url, 400)
-    consultantPayload.consult_booking_url = raw && /^https?:\/\//i.test(raw) ? raw : null
-  }
-  if (body.notif_prefs && typeof body.notif_prefs === 'object') consultantPayload.notif_prefs = body.notif_prefs
-
-  /* ── profiles-level privacy prefs ── */
   if (body.privacy_prefs && typeof body.privacy_prefs === 'object') {
     const DEFAULT_PRIVACY = {
       show_full_name: true,
@@ -144,6 +111,24 @@ export async function PATCH(req: Request) {
     }
     profilePayload.privacy_prefs = { ...DEFAULT_PRIVACY, ...body.privacy_prefs }
   }
+
+  if (Object.keys(profilePayload).length > 0) {
+    const { error } = await db.from('profiles').update(profilePayload).eq('id', profile.id)
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  const consultantPayload: Record<string, unknown> = {}
+  if (typeof body.full_name === 'string') consultantPayload.full_name = body.full_name.trim()
+  if (typeof body.email === 'string' && body.email.trim()) consultantPayload.email = body.email.trim()
+  if (typeof body.available === 'boolean') consultantPayload.available = body.available
+  if (typeof body.auto_withdraw === 'boolean') consultantPayload.auto_withdraw = body.auto_withdraw
+  if (typeof body.offers_free_consult === 'boolean') consultantPayload.offers_free_consult = body.offers_free_consult
+  if (typeof body.show_registration_number === 'boolean') consultantPayload.show_registration_number = body.show_registration_number
+  if ('consult_booking_url' in body) {
+    const raw = cleanText((body as Record<string, unknown>).consult_booking_url, 400)
+    consultantPayload.consult_booking_url = raw && /^https?:\/\//i.test(raw) ? raw : null
+  }
+  if (body.notif_prefs && typeof body.notif_prefs === 'object') consultantPayload.notif_prefs = body.notif_prefs
 
   for (const [k, max] of Object.entries(RICH_TEXT)) {
     if (k in body) consultantPayload[k] = cleanText((body as any)[k], max)
@@ -166,5 +151,11 @@ export async function PATCH(req: Request) {
     if (error) return Response.json({ error: error.message }, { status: 500 })
   }
 
-  return Response.json({ ok: true, username: usernameWrite ?? undefined })
+  const { data: updated } = await db
+    .from('consultants')
+    .select('id, registration_number, show_registration_number, admin_show_registration_number_override, available, tagline, intro, bio, subjects, industries, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, consult_booking_url, video_intro_url')
+    .eq('id', consultant.id)
+    .maybeSingle()
+
+  return Response.json({ ok: true, username: usernameWrite ?? undefined, consultant: updated ?? null })
 }
