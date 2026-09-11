@@ -208,11 +208,11 @@ export default function MessageBubble({
   }
 
   // WhatsApp-style grouping: consecutive messages from one sender stay compact
-  // and fully rounded. Only the terminal message in that run gets the pointed
-  // tail and sender avatar before the other party replies.
-  const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''
+  // and fully rounded. Only the terminal message in that run gets the sender
+  // avatar and a lower-corner tail before the other party replies.
+  const tailSide = mine ? 'right' : 'left'
   const rowClass = `bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`
-  const bubClass = `bub ${tailClass}`.trim()
+  const bubClass = 'bub'
 
   const hasReactions = (reactions || []).length > 0
 
@@ -220,6 +220,25 @@ export default function MessageBubble({
   // single standalone message is both first and last, so it still gets an
   // avatar and tail. Intermediate bubbles remain clean and rounded.
   const showAvatar = isLastInGroup && Boolean(resolvedAvatarUrl || resolvedAvatarName)
+  const tailNode = isLastInGroup ? (
+    <span
+      aria-hidden="true"
+      data-bubble-tail={tailSide}
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        ...(mine ? { right: -8 } : { left: -8 }),
+        width: 8,
+        height: 13,
+        background: mine ? 'var(--bub-out)' : 'var(--bub-in)',
+        clipPath: mine
+          ? 'polygon(0 0, 0 100%, 100% 100%)'
+          : 'polygon(100% 0, 0 100%, 100% 100%)',
+        pointerEvents: 'none',
+      }}
+    />
+  ) : null
+
   const avatarNode = showAvatar ? (
     <button
       type="button"
@@ -232,11 +251,12 @@ export default function MessageBubble({
         color: '#fff', display: 'grid', placeItems: 'center',
         fontSize: 11, fontWeight: 600,
         border: 'none', cursor: onAvatarClick ? 'pointer' : 'default', padding: 0,
-        // The tail lives at the bubble's top corner, so the sender avatar must
-        // align to the same top edge rather than hanging from the bubble base.
-        alignSelf: 'flex-start',
+        // The tail now exits from the bubble's lower corner, so the avatar sits
+        // on that lower edge and the message body naturally rises above it.
+        alignSelf: 'flex-end',
         marginLeft: mine ? 6 : 0,
         marginRight: mine ? 0 : 6,
+        marginBottom: 1,
         flexShrink: 0,
         overflow: 'hidden',
       }}
@@ -252,6 +272,7 @@ export default function MessageBubble({
     <div className={`${rowClass} ${className || ''}`.trim()} style={style}>
       {!mine && avatarNode}
       <div className={bubClass} onContextMenu={handleContextMenu} data-msgmenu>
+        {tailNode}
         {replyTo && (
           <button
             type="button"
