@@ -1,0 +1,18 @@
+{
+  "batch": 1,
+  "product_count": 9,
+  "status": "implementation_in_progress",
+  "repo_artifact_qa": "green_before_commercial_wiring",
+  "payhip_seller_auth": "blocked_profile_login_required",
+  "products": [
+    {"id":"Ap382","slug":"premium-usa-canada-study-work-mega-bundle","target_price":49.99,"delivery":"15 fillable PDFs"},
+    {"id":"kcRoK","slug":"universal-client-intake-document-review-kit","target_price":12.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"e9Usb","slug":"us-canada-refusal-reapplication-response-pack","target_price":18.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"6gsAa","slug":"canada-family-information-travel-history-pack","target_price":10.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"jTfbO","slug":"canada-pgwp-application-pack","target_price":14.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"ZsyvP","slug":"canada-work-permit-outside-canada-pack","target_price":15.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"IMFsj","slug":"canada-trv-visitor-visa-pack","target_price":13.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"8Yo4F","slug":"canada-study-plan-letter-of-explanation-pack","target_price":13.99,"delivery":"1 fillable PDF workbook"},
+    {"id":"u0S1v","slug":"canada-proof-of-funds-sponsor-pack","target_price":14.99,"delivery":"1 fillable PDF workbook"}
+  ]
+}
