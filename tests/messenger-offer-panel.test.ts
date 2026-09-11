@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { describe, expect, test } from 'vitest'
 
 const root = process.cwd()
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
