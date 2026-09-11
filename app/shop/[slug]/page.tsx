@@ -57,6 +57,9 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
 
   const product = applyPayhipBatch1Commercial(baseProduct)
   const commercial = getPayhipBatch1Commercial(slug)
+  const payhipUrl = commercial
+    ? `https://shop.yousafeconsultancy.com/b/${commercial.payhipId}`
+    : product.payhip_url
   const canonical = `${SHOP_CANONICAL}/${slug}`
   const officialSources = product.official_sources.map(resolveImmigrationOfficialSource).filter(Boolean)
   const bundleComponentSlugs = getPayhipBundleComponents(slug) ?? []
@@ -122,7 +125,7 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
           <p>{isBundle ? 'Complete preparation bundle' : 'Self-guided preparation workbook'}</p>
           <strong>${product.price_usd.toFixed(2)}</strong>
           <span>USD · Digital delivery</span>
-          <a href={product.payhip_url} rel="noopener noreferrer nofollow" target="_blank">
+          <a href={payhipUrl} rel="noopener noreferrer nofollow" target="_blank">
             Buy on Payhip
           </a>
           <small>Preparation and organization support only. No immigration outcome is guaranteed.</small>
