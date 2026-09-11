@@ -233,6 +233,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const [isSaved, setIsSaved] = React.useState(false)
   const [mainImage, setMainImage] = React.useState('')
   const [msgOpen, setMsgOpen] = React.useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = React.useState(false)
   const [checkoutOpen, setCheckoutOpen] = React.useState(false)
   const [checkoutBusy, setCheckoutBusy] = React.useState(false)
   const [checkoutError, setCheckoutError] = React.useState('')
@@ -300,6 +301,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   React.useEffect(() => {
     load()
   }, [load])
+
+  React.useEffect(() => {
+    setDescriptionExpanded(false)
+  }, [slug])
 
   const idemKeyRef = React.useRef<string | null>(null)
 
@@ -485,11 +490,22 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     gig.provider,
     gig.provider_type === 'consultant' ? 'Regulated consultant' : 'Licensed attorney',
   )
+  const summaryText = stripHtmlComments(String(gig.pitch || gig.seo_description || '')).trim()
+  const descriptionPlainText = stripHtmlComments(String(gig.description || '')).trim()
+  const descriptionWordCount = descriptionPlainText ? descriptionPlainText.split(/\s+/).filter(Boolean).length : 0
+  const descriptionIsLong = descriptionWordCount > 90
+  const providerInitials = publicProviderName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part: string) => part[0])
+    .join('')
+    .toUpperCase()
 
   return (
     <div style={pageShell}>
       <main style={inner}>
-        <div style={toolbar}>
+        <div style={toolbar} className="ys-gig-breadcrumb-toolbar">
           <nav aria-label="Breadcrumb" style={breadcrumb}>
             <Link href="/" style={breadcrumbLink}>Marketplace</Link>
             <span aria-hidden style={{ color: T.onPaperSoft }}>/</span>
@@ -504,8 +520,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 <Link href={`/categories/${subcategory.id}`} style={breadcrumbLink}>{subcategory.name}</Link>
               </>
             )}
-            <span aria-hidden style={{ color: T.onPaperSoft }}>/</span>
-            <span aria-current="page" style={{ color: T.onPaper }}>{gig.title}</span>
           </nav>
         </div>
 
@@ -575,11 +589,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               </>
             )}
           </div>
-          {gig.pitch && (
-            <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, margin: 0, lineHeight: 1.6, maxWidth: '760px' }}>
-              {stripHtmlComments(gig.pitch)}
-            </p>
-          )}
         </section>
 
         <div style={contentLayout} className="ys-content-layout">
@@ -619,13 +628,43 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               )}
             </Card>
 
-            <Card style={{ padding: '24px' }}>
+            <Card className="ys-gig-about-card" style={{ padding: '24px' }}>
               <h3 style={sectionTitle}>About This Service</h3>
-              <div style={{ fontSize: '15px', lineHeight: 1.75, color: T.ink, fontFamily: F.ui }}>
+              {summaryText && (
+                <div className="ys-gig-ai-summary" role="note" aria-label="AI summary">
+                  <div className="ys-gig-ai-summary-label">
+                    <span aria-hidden="true">✦</span>
+                    <span>AI summary</span>
+                  </div>
+                  <p>{summaryText}</p>
+                  <span className="ys-gig-ai-summary-note">
+                    Condensed from the provider’s service listing. Package scope and terms below remain authoritative.
+                  </span>
+                </div>
+              )}
+              <div
+                id="ys-gig-description"
+                className={`ys-gig-description-copy ${descriptionIsLong && !descriptionExpanded ? 'is-collapsed' : 'is-expanded'}`}
+                style={{ fontSize: '15px', lineHeight: 1.75, color: T.ink, fontFamily: F.ui }}
+              >
                 {gig.description
                   ? renderBioMarkdown(gig.description)
                   : <p style={gigDescription}>Details are being finalized by the provider.</p>}
               </div>
+              {descriptionIsLong && (
+                <button
+                  type="button"
+                  className="ys-gig-description-toggle"
+                  aria-expanded={descriptionExpanded}
+                  aria-controls="ys-gig-description"
+                  onClick={() => setDescriptionExpanded((current) => !current)}
+                >
+                  <span>{descriptionExpanded ? 'Show less' : 'Read more'}</span>
+                  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M4 6.25 8 10l4-3.75" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
               {gig.tags && gig.tags.length > 0 && (
                 <div style={tagsContainer}>
                   {gig.tags.map((tag: string, index: number) => (
@@ -675,6 +714,30 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           </aside>
         </div>
       </main>
+
+      {gig.viewer_is_owner !== true && !msgOpen && (
+        <button
+          type="button"
+          className="ys-floating-message-launcher"
+          onClick={() => gatedChat(() => setMsgOpen(true))}
+          aria-label={`Message ${publicProviderName}`}
+        >
+          <span className="ys-floating-message-avatar" aria-hidden="true">
+            {gig.provider_headshot_url ? (
+              <img src={gig.provider_headshot_url} alt="" />
+            ) : (
+              providerInitials || 'YS'
+            )}
+          </span>
+          <span className="ys-floating-message-copy">
+            <strong>Message {publicProviderName}</strong>
+            <small>
+              {gig.provider_is_online ? 'Online' : 'Available'}
+              {gig.provider_response_time ? ` · Avg. response: ${gig.provider_response_time}` : ''}
+            </small>
+          </span>
+        </button>
+      )}
 
       <style jsx global>{`
         @media (max-width: 1024px) {
