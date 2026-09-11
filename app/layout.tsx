@@ -21,6 +21,7 @@ import ChatWidget from '@/components/ChatWidget'
 import StudentMobileNavigation from '@/components/student/StudentMobileNavigation'
 import StudentOrderMessengerBridge from '@/components/student/StudentOrderMessengerBridge'
 import MobileVisualViewport from '@/components/mobile/MobileVisualViewport'
+import MessengerHeaderEnhancer from '@/components/messaging/MessengerHeaderEnhancer'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
 // HreflangTags removed — portal is noindex sitewide and has no per-locale
 // URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
@@ -153,6 +154,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* Language switcher now docks inside each app's nav bar
                 instead of floating — see dashboard topbars + MarketplaceShell. */}
             {children}
+            <MessengerHeaderEnhancer />
             <StudentOrderMessengerBridge />
             <StudentMobileNavigation />
             <ChatWidget />
