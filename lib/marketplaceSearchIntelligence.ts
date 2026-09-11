@@ -24,9 +24,12 @@ const PRIVATE_QUERY_PATTERNS = [
   /\bhttps?:\/\//i,
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
   /(?:\+?\d[\s().-]*){8,}/,
+  // Long standalone numbers are much more likely to be receipt, licence,
+  // registration or other personal identifiers than useful service intents.
+  /\b\d{5,}\b/,
 ]
 
-const CREDENTIAL_WORDS = /\b(bar|licen[cs]e|registration|credential|roll|practi[cs]ing certificate|admission number)\b/i
+const CREDENTIAL_WORDS = /\b(bar|licen[cs]e|registration|credential|roll|practi[cs]ing certificate|admission number|attorney number|solicitor number|law society|rcic|cicc|marn|sra)\b/i
 const CREDENTIAL_ID = /(?:#|\bno\.?|\bnumber\b|\bid\b|\bidentifier\b)?\s*[A-Z]{0,5}[-\s]?\d{4,}\b/i
 const LONG_IDENTIFIER = /\b[A-Z]{1,5}[-\s]?\d{5,}\b/i
 
@@ -50,8 +53,8 @@ export function isPrivateMarketplaceIntent(value: unknown): boolean {
   const text = String(value ?? '').normalize('NFKC').trim()
   if (!text) return false
   if (PRIVATE_QUERY_PATTERNS.some((pattern) => pattern.test(text))) return true
+  if (LONG_IDENTIFIER.test(text)) return true
   if (CREDENTIAL_WORDS.test(text) && CREDENTIAL_ID.test(text)) return true
-  if (LONG_IDENTIFIER.test(text) && CREDENTIAL_WORDS.test(text)) return true
   return false
 }
 
