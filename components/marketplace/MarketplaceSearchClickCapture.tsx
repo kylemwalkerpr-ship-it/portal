@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { queueMarketplaceSearchExecution } from '@/lib/marketplaceSearchIntelligence'
 
 const ENHANCED_TAG = 'data-marketplace-intent-tag'
@@ -33,6 +33,7 @@ function findIntentTagPills(): HTMLSpanElement[] {
 
   return Array.from(card.querySelectorAll<HTMLSpanElement>('span')).filter((span) => {
     if (!span.textContent?.trim()) return false
+    if (span.closest(`a[${ENHANCED_TAG}="true"]`)) return false
     const style = window.getComputedStyle(span)
     // The service-intent pills have a unique 999px radius + 12.5px type
     // combination inside the About card. Keeping detection here avoids
@@ -43,29 +44,35 @@ function findIntentTagPills(): HTMLSpanElement[] {
 
 /**
  * Attribute Marketplace tag searches without polluting public URLs with
- * analytics parameters. The component also progressively enhances the
- * existing gig intent pills into keyboard-accessible link controls. This keeps
- * the first-paint GigDetailPage DOM stable while preserving canonical `q=`
- * search navigation on desktop and mobile.
+ * analytics parameters. The server/hydration-sensitive gig detail keeps its
+ * existing stable markup; after hydration each intent pill is wrapped in a
+ * real same-origin anchor with a canonical `q=` URL. That preserves native
+ * link semantics while avoiding a server/client first-paint mismatch.
  */
 export function MarketplaceSearchClickCapture() {
-  const router = useRouter()
   const pathname = usePathname()
 
   React.useEffect(() => {
     if (!isGigDetailPath(pathname)) return
 
     const enhanceTags = () => {
+      const base = scopedSearchBase()
       for (const span of findIntentTagPills()) {
-        span.setAttribute(ENHANCED_TAG, 'true')
-        span.setAttribute('role', 'link')
-        span.tabIndex = 0
-        span.style.cursor = 'pointer'
         const tag = span.textContent?.trim()
-        if (tag) {
-          span.setAttribute('title', `Search for ${tag}`)
-          span.setAttribute('aria-label', `Search Marketplace for ${tag}`)
-        }
+        if (!tag || !span.parentNode) continue
+
+        const anchor = document.createElement('a')
+        anchor.setAttribute(ENHANCED_TAG, 'true')
+        anchor.href = `${base.href}?q=${encodeURIComponent(tag)}`
+        anchor.title = `Search for ${tag}`
+        anchor.setAttribute('aria-label', `Search Marketplace for ${tag}`)
+        anchor.style.display = 'inline-flex'
+        anchor.style.textDecoration = 'none'
+        anchor.style.color = 'inherit'
+        anchor.style.borderRadius = '999px'
+
+        span.parentNode.replaceChild(anchor, span)
+        anchor.appendChild(span)
       }
     }
 
@@ -74,74 +81,49 @@ export function MarketplaceSearchClickCapture() {
     const card = document.querySelector('.ys-gig-about-card')
     if (card) observer.observe(card, { childList: true, subtree: true })
 
-    const runEnhancedTagSearch = (span: HTMLElement) => {
-      const query = span.textContent?.trim()
-      if (!query) return
-      const base = scopedSearchBase()
-      queueMarketplaceSearchExecution({
-        query,
-        source: 'tag_click',
-        suggestionType: 'tag',
-        categoryId: base.categoryId,
-      })
-      router.push(`${base.href}?q=${encodeURIComponent(query)}`)
-    }
-
     const onClick = (event: MouseEvent) => {
       if (!isGigDetailPath(window.location.pathname)) return
 
       const target = event.target
       if (!(target instanceof Element)) return
-
-      // Canonical anchor path: retained for any server-rendered or future tag
-      // links. Analytics are queued separately from the URL itself.
       const anchor = target.closest('a[href]') as HTMLAnchorElement | null
-      if (anchor) {
-        let destination: URL
-        try {
-          destination = new URL(anchor.href, window.location.href)
-        } catch {
-          return
-        }
-        if (destination.origin !== window.location.origin) return
+      if (!anchor) return
 
-        const isSearchSurface =
-          destination.pathname === '/marketplace'
-          || destination.pathname === '/marketplace/'
-          || destination.pathname.startsWith('/categories/')
-          || destination.pathname.startsWith('/marketplace/categories/')
-        if (!isSearchSurface) return
-
-        const query = destination.searchParams.get('q')?.trim()
-        if (!query) return
-        queueMarketplaceSearchExecution({ query, source: 'tag_click', suggestionType: 'tag' })
+      let destination: URL
+      try {
+        destination = new URL(anchor.href, window.location.href)
+      } catch {
         return
       }
+      if (destination.origin !== window.location.origin) return
 
-      const span = target.closest(`[${ENHANCED_TAG}="true"]`) as HTMLElement | null
-      if (!span) return
-      event.preventDefault()
-      runEnhancedTagSearch(span)
-    }
+      const isSearchSurface =
+        destination.pathname === '/marketplace'
+        || destination.pathname === '/marketplace/'
+        || destination.pathname.startsWith('/categories/')
+        || destination.pathname.startsWith('/marketplace/categories/')
+      if (!isSearchSurface) return
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return
-      const target = event.target
-      if (!(target instanceof Element)) return
-      const span = target.closest(`[${ENHANCED_TAG}="true"]`) as HTMLElement | null
-      if (!span) return
-      event.preventDefault()
-      runEnhancedTagSearch(span)
+      const query = destination.searchParams.get('q')?.trim()
+      if (!query) return
+
+      const categoryId = destination.pathname.startsWith('/categories/')
+        ? destination.pathname.split('/').filter(Boolean).pop()
+        : undefined
+      queueMarketplaceSearchExecution({
+        query,
+        source: 'tag_click',
+        suggestionType: anchor.getAttribute(ENHANCED_TAG) === 'true' ? 'tag' : undefined,
+        categoryId,
+      })
     }
 
     document.addEventListener('click', onClick, true)
-    document.addEventListener('keydown', onKeyDown, true)
     return () => {
       observer.disconnect()
       document.removeEventListener('click', onClick, true)
-      document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [pathname, router])
+  }, [pathname])
 
   return null
 }
