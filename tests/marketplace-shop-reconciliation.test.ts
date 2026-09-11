@@ -50,21 +50,24 @@ describe('recovered Cloudflare shop additions', () => {
     }
   })
 
-  test('merges the 16 packs into the established 20-product shop card contract', () => {
-    expect(fileShopCatalog).toContain('...BASE_FILE_SHOP_PRODUCTS')
+  test('keeps the established 20-product + 16-pack card contract while layering audited commercial state', () => {
+    expect(fileShopCatalog).toContain('const BASE_FILE_SHOP_PRODUCTS: FileShopProduct[]')
+    expect(fileShopCatalog).toContain('const AUDITED_BASE_FILE_SHOP_PRODUCTS: FileShopProduct[] = BASE_FILE_SHOP_PRODUCTS.map')
+    expect(fileShopCatalog).toContain('...AUDITED_BASE_FILE_SHOP_PRODUCTS')
     expect(fileShopCatalog).toContain('...IMMIGRATION_FILE_SHOP_PRODUCTS')
-    expect(fileShopCatalog).toContain('href: `/shop/${pack.slug}`')
-    expect(fileShopCatalog).toContain("cover: commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg'")
+    expect(fileShopCatalog).toContain('getPayhipBatches24ProductByLegacyCardId')
+    expect(fileShopCatalog).toContain('getPayhipBatches24Product(batch1Pack.slug)')
+    expect(fileShopCatalog).toContain('href: `/shop/${batch1Pack.slug}`')
+    expect(fileShopCatalog).toContain("cover: audited?.imageUrl ?? batch1Commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg'")
     expect(fileShopCatalog).toContain('applyPayhipBatch1Commercial')
     expect(fileShopCatalog).toContain('getPayhipBatch1Commercial')
     expect(shopPage).toContain('numberOfItems: products.length')
-    expect(shopUi).toContain('<Stat n="$7–79" label="one-time USD price" />')
     expect(shopUi).toContain('Search visa packs, workbooks, planners…')
     expect(shopUi).toContain('ys-shop-featured-rail')
     expect(shopUi).toContain('ys-shop-grid')
   })
 
-  test('keeps immigration detail pages Payhip-only while branding audited Batch 1 checkout URLs', () => {
+  test('keeps Batch 1 immigration detail pages Payhip-only while branding audited checkout URLs', () => {
     expect(productPage).toContain('const payhipUrl = commercial')
     expect(productPage).toContain('https://shop.yousafeconsultancy.com/b/${commercial.payhipId}')
     expect(productPage).toContain(': product.payhip_url')
@@ -76,8 +79,10 @@ describe('recovered Cloudflare shop additions', () => {
     expect(productPage).not.toContain('Add to Cart')
   })
 
-  test('keeps /shop canonical and permanently redirects historical template URLs', () => {
+  test('keeps /shop canonical, adds audited products to sitemap, and redirects historical template URLs', () => {
     expect(sitemap).toContain('IMMIGRATION_SHOP_PRODUCTS')
+    expect(sitemap).toContain('PAYHIP_BATCHES_2_4_PRODUCTS')
+    expect(sitemap).toContain('auditedPayhipSlugs.has(product.slug)')
     expect(sitemap).toContain('url: `${base}/shop/${product.slug}`')
     expect(sitemap).not.toContain('TEMPLATE_PACKS')
     expect(sitemap).not.toContain('/marketplace/templates/${pack.slug}')
@@ -108,7 +113,7 @@ describe('Marketplace design regression protection during shop reconciliation', 
 
   test('adds the recovered 36-product promotion without replacing the existing Marketplace landing', () => {
     expect(landing).toContain("import { ImmigrationPackRail } from '@/components/marketplace/ImmigrationPackRail'")
-    expect(landing).toContain('36 instant downloads · $7–79 · secure Payhip checkout')
+    expect(landing).toContain('36 instant downloads')
     expect(landing).toContain('Preparation packs and practical files, now in one shop')
     expect(landing).toContain('aria-label="Immigration preparation packs"')
     expect(landing).toContain('<ImmigrationPackRail />')
