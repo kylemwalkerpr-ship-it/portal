@@ -1,0 +1,75 @@
+name: Payhip Batch 1 Buyer Artifacts
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/payhipBatch1Commercial.ts'
+      - 'lib/payhipExportPdf.ts'
+      - 'lib/payhipProductBundles.ts'
+      - 'lib/templatePdfManifests/**'
+      - 'tests/payhip-product-pdf-generation.test.ts'
+      - '.github/workflows/payhip-batch1-artifacts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: payhip-batch1-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Generate and verify buyer files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate validated PDFs
+        env:
+          PAYHIP_ARTIFACT_EXPORT_DIR: artifacts/payhip-batch1
+        run: npx jest --ci --runInBand tests/payhip-product-pdf-generation.test.ts
+
+      - name: Package the 15-product Mega Bundle
+        run: |
+          set -euo pipefail
+          test -d artifacts/payhip-batch1/mega
+          count=$(find artifacts/payhip-batch1/mega -maxdepth 1 -type f -name '*.pdf' | wc -l | tr -d ' ')
+          test "$count" = "15"
+          (
+            cd artifacts/payhip-batch1/mega
+            zip -q ../premium-usa-canada-study-work-mega-bundle.zip ./*.pdf
+          )
+          zip_count=$(unzip -Z1 artifacts/payhip-batch1/premium-usa-canada-study-work-mega-bundle.zip | grep -cE '\.pdf$')
+          test "$zip_count" = "15"
+          rm -rf artifacts/payhip-batch1/mega
+
+      - name: Verify Batch 1 release shape
+        run: |
+          set -euo pipefail
+          test -f artifacts/payhip-batch1/qa-manifest.json
+          test -f artifacts/payhip-batch1/premium-usa-canada-study-work-mega-bundle.zip
+          pdf_count=$(find artifacts/payhip-batch1 -maxdepth 1 -type f -name '*.pdf' | wc -l | tr -d ' ')
+          test "$pdf_count" = "8"
+          total=$(find artifacts/payhip-batch1 -maxdepth 1 -type f | wc -l | tr -d ' ')
+          test "$total" = "10"
+          echo "Batch 1 contains 8 standalone PDFs + 1 Mega ZIP + 1 QA manifest."
+
+      - name: Upload exact buyer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: payhip-batch1-buyer-files
+          path: artifacts/payhip-batch1
+          if-no-files-found: error
+          retention-days: 30
