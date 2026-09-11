@@ -32,9 +32,12 @@ describe('Payhip buyer-facing PDF generation', () => {
 
     const exportDir = process.env.PAYHIP_ARTIFACT_EXPORT_DIR?.trim()
     const megaDir = exportDir ? path.join(exportDir, 'mega') : null
-    if (exportDir && megaDir) {
+    const previewDir = exportDir ? path.join(exportDir, 'previews') : null
+    const megaPreview = exportDir ? await PDFDocument.create() : null
+    if (exportDir && megaDir && previewDir) {
       fs.rmSync(exportDir, { recursive: true, force: true })
       fs.mkdirSync(megaDir, { recursive: true })
+      fs.mkdirSync(previewDir, { recursive: true })
     }
 
     const qa: QaRow[] = []
@@ -62,21 +65,53 @@ describe('Payhip buyer-facing PDF generation', () => {
         standaloneBatch1File,
       })
 
-      if (exportDir && megaDir) {
+      if (exportDir && megaDir && previewDir && megaPreview) {
         // The Mega Bundle ZIP is contractually exactly the 15 named buyer-facing PDFs.
         fs.writeFileSync(path.join(megaDir, `${slug}.pdf`), result.bytes)
+
+        // Its customer preview shows the cover page of every included workbook,
+        // proving breadth without giving away the paid worksheets.
+        const [coverPage] = await megaPreview.copyPages(reopened, [0])
+        megaPreview.addPage(coverPage)
 
         // Batch 1 also sells eight of those components as individual products.
         if (standaloneBatch1File) {
           fs.writeFileSync(path.join(exportDir, `${slug}.pdf`), result.bytes)
+
+          // A three-page preview gives buyers cover + preparation guidance + one
+          // representative worksheet page. It is a separate teaser, never the
+          // purchased deliverable.
+          const preview = await PDFDocument.create()
+          const indexes = Array.from({ length: Math.min(3, reopened.getPageCount()) }, (_, index) => index)
+          const pages = await preview.copyPages(reopened, indexes)
+          pages.forEach((page) => preview.addPage(page))
+          preview.setTitle(`${reopened.getTitle() || slug} — Preview`)
+          preview.setAuthor('YouSafe Consultancy')
+          preview.setSubject('Customer preview — preparation resource')
+          const previewBytes = await preview.save()
+          const previewPath = path.join(previewDir, `${slug}-preview.pdf`)
+          fs.writeFileSync(previewPath, previewBytes)
+          const previewReopened = await PDFDocument.load(previewBytes)
+          expect(previewReopened.getPageCount()).toBe(indexes.length)
         }
       }
     }
 
-    if (exportDir) {
+    if (exportDir && previewDir && megaPreview) {
       // The Mega Bundle itself is packaged by CI from the mega/ directory after
       // this test; do not emit a fake single-PDF mega artifact.
       expect(qa.filter((row) => row.standaloneBatch1File)).toHaveLength(8)
+
+      megaPreview.setTitle('Premium USA + Canada Study/Work Mega Bundle — Preview')
+      megaPreview.setAuthor('YouSafe Consultancy')
+      megaPreview.setSubject('Customer preview — cover page of all 15 included workbooks')
+      const megaPreviewBytes = await megaPreview.save()
+      expect((await PDFDocument.load(megaPreviewBytes)).getPageCount()).toBe(15)
+      fs.writeFileSync(
+        path.join(previewDir, `${PREMIUM_USA_CANADA_MEGA_BUNDLE_SLUG}-preview.pdf`),
+        megaPreviewBytes,
+      )
+
       fs.writeFileSync(
         path.join(exportDir, 'qa-manifest.json'),
         JSON.stringify(
@@ -85,6 +120,12 @@ describe('Payhip buyer-facing PDF generation', () => {
             megaBundleSlug: PREMIUM_USA_CANADA_MEGA_BUNDLE_SLUG,
             megaBundleComponents: components,
             standaloneBatch1Slugs: qa.filter((row) => row.standaloneBatch1File).map((row) => row.slug),
+            previewFiles: [
+              `${PREMIUM_USA_CANADA_MEGA_BUNDLE_SLUG}-preview.pdf`,
+              ...qa
+                .filter((row) => row.standaloneBatch1File)
+                .map((row) => `${row.slug}-preview.pdf`),
+            ],
             files: qa,
           },
           null,
