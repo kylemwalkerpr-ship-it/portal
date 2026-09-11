@@ -207,19 +207,19 @@ export default function MessageBubble({
     setShowGrid(false)
   }
 
-  // Every row keeps its own YouSafe avatar, so every bubble also keeps the
-  // top-side pointer aimed at that avatar. Group boundaries still control the
-  // compact WhatsApp-like vertical spacing between consecutive messages.
-  const tailClass = mine ? 'tail-r' : 'tail-l'
+  // WhatsApp-style grouping: consecutive messages from one sender stay compact
+  // and fully rounded. Only the terminal message in that run gets the pointed
+  // tail and sender avatar before the other party replies.
+  const tailClass = isLastInGroup ? (mine ? 'tail-r' : 'tail-l') : ''
   const rowClass = `bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`
   const bubClass = `bub ${tailClass}`.trim()
 
   const hasReactions = (reactions || []).length > 0
 
-  // Every message gets a sender anchor. Do not collapse avatars to only the
-  // first bubble in a run: the visual contract is avatar → bubble for received
-  // messages and bubble → avatar for sent messages, on desktop and mobile.
-  const showAvatar = Boolean(resolvedAvatarUrl || resolvedAvatarName)
+  // Keep identity attached to the terminal bubble in a same-sender run. A
+  // single standalone message is both first and last, so it still gets an
+  // avatar and tail. Intermediate bubbles remain clean and rounded.
+  const showAvatar = isLastInGroup && Boolean(resolvedAvatarUrl || resolvedAvatarName)
   const avatarNode = showAvatar ? (
     <button
       type="button"
