@@ -1,0 +1,50 @@
+/* Shared desktop Messenger list-scroll contract
+   ============================================
+   Mobile already establishes a definite flex/grid height chain for the
+   conversation rail. Desktop must do the same: without a bounded .cl parent,
+   .cl-scroll expands to max-content and is then clipped by the sidebar's
+   overflow:hidden, leaving the visible chat list with nothing to scroll.
+
+   Keep this role-agnostic. UnifiedInbox is shared by client/student,
+   attorney and consultant dashboards, so the scroll owner must live in the
+   shared Messenger DOM rather than in a role-specific dashboard skin. */
+
+@media (min-width: 681px) {
+  body .yousafe-messenger,
+  body .yousafe-messenger > .ys-inbox-frame,
+  body .yousafe-messenger .ys-chatscreen {
+    min-height: 0;
+  }
+
+  body .yousafe-messenger .ys-chatscreen-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body .yousafe-messenger .ys-chatscreen-sidebar > .cl {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0%;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  body .yousafe-messenger .ys-chatscreen-sidebar > .cl > .cl-head {
+    flex: 0 0 auto;
+  }
+
+  body .yousafe-messenger .ys-chatscreen-sidebar > .cl > .cl-scroll {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+}
