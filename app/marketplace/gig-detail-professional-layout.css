@@ -9,8 +9,6 @@
    without creating a second gig implementation.
 */
 
-/* Scope every rule to an actual gig-detail page. Discovery pages also use
-   .ys-content-layout, so .ys-gig-overview is the distinguishing contract. */
 .cw-market main:has(.ys-gig-overview) {
   --ys-gig-rail-width: clamp(340px, 27vw, 390px);
   --ys-gig-section-gap: 22px;
@@ -45,9 +43,6 @@
   hyphens: none;
 }
 
-/* Legacy hero pitches are deliberately suppressed. The concise buyer-facing
-   pitch now lives inside About This Service as the AI summary, where it adds
-   context instead of reading like a detached provider mini-bio above media. */
 .cw-market main:has(.ys-gig-overview) .ys-gig-overview > p {
   display: none !important;
 }
@@ -72,8 +67,6 @@
   gap: var(--ys-gig-section-gap) !important;
 }
 
-/* Reassert the deliberate desktop narrative so older flex-order rules cannot
-   drift the service sections: gallery → About → FAQ → Reviews → Similar. */
 .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
   order: 10 !important;
 }
@@ -94,8 +87,6 @@
   order: 50 !important;
 }
 
-/* Treat the cover as the primary visual stage, not a padded card inside a
-   padded page. The image itself keeps its protective border and radius. */
 .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
   padding: 0 !important;
   border: 0 !important;
@@ -111,8 +102,6 @@
   box-shadow: inset 0 0 0 1px var(--ys-ruleSoft, rgba(15, 23, 42, 0.06)) !important;
 }
 
-/* About / FAQ / reviews should read as service editorial content rather than a
-   stack of dashboard widgets. Preserve cards, but reduce their visual weight. */
 .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :not(:first-child) {
   border-color: var(--ys-rule, rgba(15, 23, 42, 0.10)) !important;
   border-radius: 12px !important;
@@ -231,9 +220,6 @@
   align-self: start;
 }
 
-/* Canonical DOM is SellerProfileCard → PricingTiers → OrderCTA. Keep that
-   semantic order visually as well: provider identity/trust is visible early,
-   immediately followed by package choice and Continue. */
 .cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(1) {
   order: 1 !important;
 }
@@ -262,7 +248,6 @@
   min-height: 44px;
 }
 
-/* Pricing is the decision surface; keep its package controls easy to scan. */
 .cw-market main:has(.ys-gig-overview) .ys-sidebar > :nth-child(2) h3 {
   font-family: var(--ys-market-ui) !important;
   font-size: 12px !important;
@@ -278,35 +263,63 @@
   z-index: 56;
   display: flex;
   align-items: center;
-  gap: 10px;
-  max-width: min(360px, calc(100vw - 48px));
-  min-height: 58px;
-  padding: 8px 15px 8px 8px;
-  border: 1px solid var(--ys-rule, rgba(15, 23, 42, 0.13));
+  gap: 11px;
+  max-width: min(390px, calc(100vw - 48px));
+  min-height: 66px;
+  padding: 9px 18px 9px 9px;
+  border: 1px solid color-mix(in srgb, var(--ys-indigo, #4f46e5) 20%, var(--ys-rule, rgba(15, 23, 42, 0.13)));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ys-vellum, #fff) 94%, transparent);
+  background: color-mix(in srgb, var(--ys-vellum, #fff) 97%, transparent);
   color: var(--ys-ink, #172033);
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.20);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   cursor: pointer;
   font-family: var(--ys-market-ui);
   text-align: left;
+  isolation: isolate;
+  animation: ys-message-attention 5.6s ease-in-out infinite;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.ys-floating-message-launcher::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  z-index: -1;
+  border-radius: inherit;
+  border: 2px solid color-mix(in srgb, var(--ys-indigo, #4f46e5) 45%, transparent);
+  opacity: 0;
+  transform: scale(0.98);
+  animation: ys-message-beam 5.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes ys-message-attention {
+  0%, 68%, 100% { box-shadow: 0 14px 38px rgba(15, 23, 42, 0.20); }
+  74% { box-shadow: 0 16px 46px rgba(79, 70, 229, 0.28); }
+  82% { box-shadow: 0 14px 38px rgba(15, 23, 42, 0.20); }
+}
+
+@keyframes ys-message-beam {
+  0%, 68%, 100% { opacity: 0; transform: scale(0.98); }
+  72% { opacity: 0.58; transform: scale(1.01); }
+  82% { opacity: 0; transform: scale(1.12); }
 }
 
 .ys-floating-message-launcher:hover,
 .ys-floating-message-launcher:focus-visible {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--ys-indigo, #4f46e5) 32%, transparent);
-  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.22);
+  transform: translateY(-3px) scale(1.01);
+  border-color: color-mix(in srgb, var(--ys-indigo, #4f46e5) 46%, transparent);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.24);
   outline: none;
+  animation-play-state: paused;
 }
 
 .ys-floating-message-avatar {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -315,6 +328,7 @@
   color: var(--ys-ink, #172033);
   font-size: 13px;
   font-weight: 760;
+  box-shadow: 0 0 0 2px var(--ys-vellum, #fff), 0 0 0 3px color-mix(in srgb, var(--ys-indigo, #4f46e5) 25%, transparent);
 }
 
 .ys-floating-message-avatar img {
@@ -327,7 +341,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .ys-floating-message-copy strong {
@@ -335,16 +349,119 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13.5px;
-  font-weight: 740;
+  font-size: 14.5px;
+  font-weight: 760;
 }
 
 .ys-floating-message-copy small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ys-inkSoft, #667085);
+}
+
+/* ---------- Anchored gig messenger ---------- */
+.ys-gig-message-popover-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  pointer-events: none;
+}
+
+.ys-gig-message-popover-dismiss {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.ys-gig-message-popover {
+  position: absolute;
+  left: 24px;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  width: min(440px, calc(100vw - 48px));
+  height: min(650px, calc(100dvh - 110px));
+  min-height: 470px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  background: var(--bg, #f7f8fa);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24), 0 6px 18px rgba(15, 23, 42, 0.10);
+  color: var(--text, #0f172a);
+  color-scheme: light;
+  isolation: isolate;
+  font-family: var(--ys-market-ui);
+}
+
+.ys-gig-chat-availability {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.ys-gig-chat-availability.is-away {
+  background: #111827;
+  color: #fff;
+}
+
+.ys-gig-chat-availability.is-online {
+  background: #edf7ef;
+  color: #235a31;
+  border-bottom: 1px solid #d8ebdc;
+}
+
+.ys-gig-chat-starters {
+  display: grid;
+  gap: 7px;
+  padding: 10px 14px 8px;
+}
+
+.ys-gig-chat-starters button {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 7px 11px;
+  border: 1px solid rgba(15, 23, 42, 0.13);
+  border-radius: 999px;
+  background: #fff;
+  color: #273246;
+  font: 600 12px/1.2 var(--ys-market-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ys-gig-chat-starters button:hover,
+.ys-gig-chat-starters button:focus-visible {
+  border-color: color-mix(in srgb, var(--ys-indigo, #4f46e5) 38%, transparent);
+  background: color-mix(in srgb, var(--ys-indigo, #4f46e5) 4%, #fff);
+  outline: none;
+}
+
+.ys-gig-chat-composer .comp-row {
+  padding-top: 10px;
+}
+
+.ys-gig-chat-composer .comp-input {
+  min-height: 76px !important;
+  max-height: 130px !important;
+  align-self: stretch;
+}
+
+.ys-gig-chat-counter {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 /* ---------- Tablet / mobile buyer journey ---------- */
@@ -357,9 +474,6 @@
     min-width: 0 !important;
   }
 
-  /* Older global mobile CSS flattens both columns with display:contents. Keep
-     the main stream flattened so its cards can interleave with the purchase
-     rail, but regroup the rail itself into one coherent buying module. */
   .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child {
     display: contents !important;
   }
@@ -376,13 +490,6 @@
     margin: 0 0 22px !important;
   }
 
-  /* Phone/tablet reading order:
-       1. gallery
-       2. provider → package → Continue
-       3. About + AI summary
-       4. FAQ
-       5. Reviews
-       6. Similar Services */
   .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(1) {
     order: 10 !important;
     width: 100% !important;
@@ -464,19 +571,48 @@
   .ys-floating-message-launcher {
     left: 12px;
     bottom: max(82px, calc(70px + env(safe-area-inset-bottom)));
-    min-height: 52px;
+    min-height: 58px;
     max-width: calc(100vw - 24px);
-    padding: 6px 13px 6px 6px;
+    padding: 7px 14px 7px 7px;
   }
 
   .ys-floating-message-avatar {
-    width: 40px;
-    height: 40px;
-    flex-basis: 40px;
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .ys-floating-message-copy strong {
+    font-size: 13.5px;
   }
 
   .ys-floating-message-copy small {
     display: none;
+  }
+
+  .ys-gig-message-popover-shell {
+    z-index: 260;
+  }
+
+  .ys-gig-message-popover {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    min-height: 0;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ys-gig-message-popover-dismiss {
+    display: none;
+  }
+
+  .ys-gig-chat-starters button {
+    width: 100%;
+    white-space: normal;
   }
 }
 
@@ -484,8 +620,10 @@
   .cw-market main:has(.ys-gig-overview) *,
   .cw-market main:has(.ys-gig-overview) *::before,
   .cw-market main:has(.ys-gig-overview) *::after,
-  .ys-floating-message-launcher {
+  .ys-floating-message-launcher,
+  .ys-floating-message-launcher::before {
     scroll-behavior: auto !important;
+    animation: none !important;
     transition-duration: 0.01ms !important;
   }
 }
