@@ -13,6 +13,12 @@ import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } f
 import { GigCard } from './MarketplaceHero'
 import { CATEGORIES, getCategoryById } from '@/lib/categories'
 import { responsiveImageProps } from '@/lib/responsiveImage'
+import {
+  consumeMarketplaceSearchExecution,
+  queueMarketplaceSearchExecution,
+  recordMarketplaceGigClick,
+  recordMarketplaceSearch,
+} from '@/lib/marketplaceSearchIntelligence'
 import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
@@ -192,7 +198,6 @@ interface GigDiscoveryPageProps {
   categoryName?: string
 }
 
-
 // ── Phase-1 UX primitives ───────────────────────────────────────────
 function GigCardSkeleton() {
   return (
@@ -244,6 +249,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   const [page, setPage] = React.useState(parseInt(searchParams?.get('page') || '1', 10))
   const [total, setTotal] = React.useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = React.useState(false)
+  const [activeSearchEventId, setActiveSearchEventId] = React.useState<string | null>(null)
 
   // Filter state — initial values pulled from URL so links like
   // /marketplace?category=legal&country=us land with the right filters
@@ -457,7 +463,35 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
 
       const data = await requestJson(`/api/marketplace/gigs?${params.toString()}`)
       setGigs(data.gigs || [])
-      setTotal(data.total || data.gigs?.length || 0)
+      const resultTotal = data.total || data.gigs?.length || 0
+      setTotal(resultTotal)
+
+      // Only an explicit action leaves a pending execution. Plain URL visits,
+      // refreshes and autocomplete keystrokes therefore never become demand.
+      const pendingSearch = consumeMarketplaceSearchExecution({
+        query: searchQuery,
+        categoryId: categoryId || selectedCategories[0],
+      })
+      if (pendingSearch) {
+        const eventId = await recordMarketplaceSearch({
+          query: pendingSearch.query,
+          source: pendingSearch.source,
+          suggestionType: pendingSearch.suggestionType,
+          resultCount: resultTotal,
+          categoryContext: categoryId || selectedCategories[0] || undefined,
+          filters: {
+            category: selectedCategories,
+            country: selectedJurisdictions,
+            provider_type: selectedProviderTypes,
+            min_price: minPrice,
+            max_price: maxPrice,
+            min_rating: selectedRating,
+            delivery_days: selectedDeliveryTimes,
+            sort,
+          },
+        })
+        setActiveSearchEventId(eventId)
+      }
 
       // Track impressions — ONE batched request for the whole page, not one
       // per gig (the per-gig loop was 20 Worker invocations per browse).
@@ -477,6 +511,15 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     buildQuery,
     sort,
     page,
+    searchQuery,
+    categoryId,
+    selectedCategories,
+    selectedJurisdictions,
+    selectedProviderTypes,
+    minPrice,
+    maxPrice,
+    selectedRating,
+    selectedDeliveryTimes,
   ])
 
   React.useEffect(() => {
@@ -497,6 +540,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     setSelectedRating('')
     setSelectedDeliveryTimes([])
     setSearchQuery('')
+    setActiveSearchEventId(null)
     setPage(1)
     setFilterDrawerOpen(false)
   }
@@ -548,8 +592,25 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
 
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    setPage(1)
-    loadGigs()
+    const query = searchQuery.trim()
+    if (!query) return
+    rememberSearch(query)
+    queueMarketplaceSearchExecution({ query, source: 'search_bar' })
+    setActiveSearchEventId(null)
+    if (page === 1) loadGigs()
+    else setPage(1)
+  }
+
+  const handleSuggestionSubmit = (value: string) => {
+    setActiveSearchEventId(null)
+    const changed = value !== searchQuery
+    setSearchQuery(value)
+    if (page !== 1) setPage(1)
+    else if (!changed) loadGigs()
+  }
+
+  const trackResultClick = (gigId: string) => {
+    void recordMarketplaceGigClick({ searchEventId: activeSearchEventId, gigId })
   }
 
   // Title reflects the active filter so the user can see at a glance that
@@ -580,14 +641,15 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
           <div>
             <h1 style={titleStyle}>{titleText}</h1>
             <ResultsCount total={total} showing={gigs.length} />
-            <form onSubmit={(e) => { rememberSearch(searchQuery); handleSearchSubmit(e) }} style={searchBar}>
+            <form onSubmit={handleSearchSubmit} style={searchBar}>
               <SmartSearchBox
                 value={searchQuery}
                 onChange={value => {
+                  setActiveSearchEventId(null)
                   setSearchQuery(value)
                   setPage(1)
                 }}
-                onSubmit={() => handleSearchSubmit({ preventDefault: () => {} } as React.FormEvent)}
+                onSubmit={handleSuggestionSubmit}
                 placeholder="Search visas, legal review, business formation..."
               />
               <Btn variant="primary" type="submit">
@@ -676,7 +738,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                 {view === 'grid' ? (
                   <div style={gigGrid} className="ys-gig-grid">
                     {gigs.map(gig => (
-                      <GigCard key={gig.id} gig={gig} />
+                      <GigCard key={gig.id} gig={gig} onSearchClick={trackResultClick} />
                     ))}
                   </div>
                 ) : (
@@ -687,6 +749,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                         href={`/gigs/${gig.slug}`}
                         style={gigListItem}
                         className="ys-gig-list-item"
+                        onClick={() => trackResultClick(gig.id)}
                       >
                         {gig.gallery_images?.[0]?.url ? (
                           <img

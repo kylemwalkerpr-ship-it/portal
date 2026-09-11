@@ -1,20 +1,20 @@
 'use client'
 
 /**
- * SmartSearchBox — marketplace search with live suggestions.
+ * SmartSearchBox — Marketplace autocomplete without treating keystrokes as demand.
  *
- * Fiverr-style anatomy:
- *   • Recent searches (localStorage, max 6) shown on focus before typing
- *   • Debounced live suggestions after 2+ chars: matching gigs (title +
- *     "From $X") and matching categories, from the KV-cached public gigs API
- *   • Full keyboard navigation (↑ ↓ Enter Esc), ARIA combobox semantics
- *
- * CPU-conscious: suggestions reuse /api/marketplace/gigs (already KV-cached
- * for anonymous traffic, limit 5) with a 250ms debounce and a stale-response
- * seq guard — no new endpoints, no extra Worker surface.
+ * Typing only loads best-effort suggestions. A demand event is created later,
+ * when the user explicitly submits or clicks a suggestion. Suggestions combine
+ * local categories with privacy-filtered Marketplace tags, gig titles and
+ * sufficiently aggregated historical search queries.
  */
 import React from 'react'
 import { CATEGORIES } from '@/lib/categories'
+import {
+  queueMarketplaceSearchExecution,
+  recordMarketplaceSearch,
+  type MarketplaceSuggestionType,
+} from '@/lib/marketplaceSearchIntelligence'
 import { T, F } from '@/components/marketplace/tokens'
 
 const RECENT_KEY = 'ys.recentSearches.v1'
@@ -40,7 +40,9 @@ export function rememberSearch(q: string) {
 type Suggestion =
   | { kind: 'recent'; label: string }
   | { kind: 'category'; label: string; id: string }
-  | { kind: 'gig'; label: string; slug: string; priceCents?: number }
+  | { kind: 'tag'; label: string }
+  | { kind: 'query'; label: string; demandCount?: number }
+  | { kind: 'gig'; label: string; slug: string; gigId?: string | null }
 
 interface SmartSearchBoxProps {
   value: string
@@ -64,7 +66,6 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
     setHighlight(-1)
   }, [])
 
-  // Build suggestions: instant local category matches + debounced gig fetch.
   React.useEffect(() => {
     const q = value.trim().toLowerCase()
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -72,32 +73,45 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
       if (open) showRecents()
       return
     }
-    const cats: Suggestion[] = CATEGORIES
+
+    const categories: Suggestion[] = CATEGORIES
       .filter((c: any) => String(c.name || c.label || '').toLowerCase().includes(q))
       .slice(0, 3)
       .map((c: any): Suggestion => ({ kind: 'category', label: c.name || c.label, id: c.id }))
-    setItems(cats)
+    setItems(categories)
     setHighlight(-1)
 
     debounceRef.current = setTimeout(async () => {
       const seq = ++seqRef.current
       try {
-        const r = await fetch(`/api/marketplace/gigs?q=${encodeURIComponent(q)}&limit=5`, { credentials: 'same-origin' })
-        const d = await r.json().catch(() => ({}))
-        if (seq !== seqRef.current) return // stale — superseded
-        const gigs: Suggestion[] = ((d?.data?.gigs ?? d?.gigs) || []).slice(0, 5).map((g: any): Suggestion => ({
-          kind: 'gig',
-          label: g.title,
-          slug: g.slug,
-          priceCents: g.starting_price,
-        }))
-        setItems([...cats, ...gigs])
-      } catch { /* suggestions are best-effort */ }
-    }, 250)
+        const res = await fetch(`/api/marketplace/search-suggestions?q=${encodeURIComponent(value.trim())}`, {
+          credentials: 'same-origin',
+        })
+        const body = await res.json().catch(() => ({}))
+        if (seq !== seqRef.current) return
+        const remote: Suggestion[] = ((body?.data?.suggestions ?? body?.suggestions) || [])
+          .map((row: any): Suggestion | null => {
+            if (row.kind === 'tag') return { kind: 'tag', label: String(row.label || '') }
+            if (row.kind === 'query') return { kind: 'query', label: String(row.label || ''), demandCount: Number(row.demandCount || 0) }
+            if (row.kind === 'gig' && row.slug) {
+              return {
+                kind: 'gig',
+                label: String(row.label || ''),
+                slug: String(row.slug),
+                gigId: row.gigId ? String(row.gigId) : null,
+              }
+            }
+            return null
+          })
+          .filter(Boolean) as Suggestion[]
+        setItems([...categories, ...remote].slice(0, 12))
+      } catch {
+        // Suggestions are best-effort; category matches remain usable.
+      }
+    }, 220)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [value, open, showRecents])
 
-  // Close on outside click
   React.useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
@@ -106,19 +120,47 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  const pick = (s: Suggestion) => {
+  const pick = (suggestion: Suggestion) => {
     setOpen(false)
-    if (s.kind === 'gig') {
-      rememberSearch(value)
-      window.location.href = `/gigs/${s.slug}`
-    } else if (s.kind === 'category') {
-      // Public category routes are pathname-first on market.yousafeconsultancy.com.
-      window.location.href = `/categories/${s.id}`
-    } else {
-      onChange(s.label)
-      rememberSearch(s.label)
-      onSubmit(s.label)
+
+    if (suggestion.kind === 'gig') {
+      const query = value.trim() || suggestion.label
+      rememberSearch(query)
+      // This is both a meaningful search choice and its attributed click.
+      // Supply/result count is intentionally unknown (null), so a direct gig
+      // suggestion can never be misclassified as a zero-result search.
+      void recordMarketplaceSearch({
+        query,
+        source: 'suggestion_click',
+        suggestionType: 'gig',
+        resultCount: null,
+        clickedGigId: suggestion.gigId || undefined,
+      })
+      window.location.href = `/gigs/${suggestion.slug}`
+      return
     }
+
+    if (suggestion.kind === 'category') {
+      rememberSearch(suggestion.label)
+      queueMarketplaceSearchExecution({
+        query: suggestion.label,
+        source: 'suggestion_click',
+        suggestionType: 'category',
+        categoryId: suggestion.id,
+      })
+      window.location.href = `/categories/${suggestion.id}`
+      return
+    }
+
+    const suggestionType = suggestion.kind as MarketplaceSuggestionType
+    onChange(suggestion.label)
+    rememberSearch(suggestion.label)
+    queueMarketplaceSearchExecution({
+      query: suggestion.label,
+      source: 'suggestion_click',
+      suggestionType,
+    })
+    onSubmit(suggestion.label)
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -133,7 +175,13 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
     else if (e.key === 'Escape') setOpen(false)
   }
 
-  const money = (cents?: number) => (cents ? `From $${Math.round(cents / 100)}` : '')
+  const kindLabel = (s: Suggestion) => {
+    if (s.kind === 'category') return 'Category'
+    if (s.kind === 'tag') return 'Tag'
+    if (s.kind === 'query') return 'Popular search'
+    if (s.kind === 'gig') return 'Service'
+    return null
+  }
 
   return (
     <div ref={rootRef} style={{ position: 'relative', flex: 1, ...style }}>
@@ -180,14 +228,14 @@ export function SmartSearchBox({ value, onChange, onSubmit, placeholder, style }
               }}
             >
               <span style={{ fontSize: 13, width: 18, textAlign: 'center', color: T.inkSoft }}>
-                {s.kind === 'recent' ? '🕘' : s.kind === 'category' ? '📂' : '🔎'}
+                {s.kind === 'recent' ? '🕘' : s.kind === 'category' ? '📂' : s.kind === 'tag' ? '#' : s.kind === 'query' ? '↗' : '🔎'}
               </span>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
-              {s.kind === 'gig' && s.priceCents ? (
-                <span style={{ fontFamily: F.mono, fontSize: 11.5, color: T.inkMid, fontWeight: 700, whiteSpace: 'nowrap' }}>{money(s.priceCents)}</span>
-              ) : s.kind === 'category' ? (
-                <span style={{ fontFamily: F.mono, fontSize: 10, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: '.08em' }}>Category</span>
-              ) : null}
+              {kindLabel(s) && (
+                <span style={{ fontFamily: F.mono, fontSize: 10, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
+                  {kindLabel(s)}
+                </span>
+              )}
             </button>
           ))}
         </div>

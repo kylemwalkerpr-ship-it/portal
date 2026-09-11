@@ -122,9 +122,10 @@ interface GigCardProps {
     provider_headshot_url?: string | null
     gallery_images?: Array<{ url: string }>
   }
+  onSearchClick?: (gigId: string) => void
 }
 
-export function GigCard({ gig }: GigCardProps) {
+export function GigCard({ gig, onSearchClick }: GigCardProps) {
   const [hovered, setHovered] = React.useState(false)
   const [saved, setSaved] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false
@@ -193,6 +194,7 @@ export function GigCard({ gig }: GigCardProps) {
       aria-label={`${gig.title}${price ? ` — from $${price}` : ''}`}
       className="ys-discovery-gig-card"
       style={{ ...gigCard, transform: hovered ? 'translateY(-2px)' : 'none' }}
+      onClick={() => onSearchClick?.(gig.id)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

@@ -72,6 +72,10 @@ beforeEach(() => {
   jest.clearAllMocks()
   lastQuery = null
   db = {
+    // These tests exercise the deploy-order fallback deliberately. The new
+    // weighted search RPC may not exist briefly while migrations/PostgREST
+    // catch up, and the route must continue using safe plainto-tsquery filters.
+    rpc: jest.fn(async () => ({ data: null, error: { message: 'function unavailable' } })),
     from: (table: string) => {
       lastQuery = new Query(table, [])
       return lastQuery

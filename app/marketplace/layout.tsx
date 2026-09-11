@@ -3,6 +3,7 @@ import { CartProvider } from '@/components/cart/CartProvider'
 import { PaletteProvider } from '@/contexts/palette-context'
 import MarketplaceShell from '@/components/marketplace/MarketplaceShell'
 import { MarketplaceRouteFooter } from '@/components/marketplace/MarketplaceRouteFooter'
+import { MarketplaceSearchClickCapture } from '@/components/marketplace/MarketplaceSearchClickCapture'
 import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
 import './marketplace-brand.css'
 import './marketplace-polish.css'
@@ -35,6 +36,10 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
           re-applies identical values after hydration — idempotent. */}
       <script dangerouslySetInnerHTML={{ __html: buildPaletteBootScript() }} />
       <PaletteProvider>
+        {/* Captures only explicit gig-tag → Marketplace search clicks. It adds
+            no tracking parameters, so the destination URL stays canonical and
+            shareable; the pending source is held ephemerally in sessionStorage. */}
+        <MarketplaceSearchClickCapture />
         {/* No Suspense around the shell: MarketplaceShell reads search params
             via usePathname + window (never useSearchParams), so navigating
             between market routes keeps the shell + children mounted instead
