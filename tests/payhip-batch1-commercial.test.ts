@@ -17,7 +17,8 @@ describe('Payhip Batch 1 commercial contract', () => {
     for (const product of PAYHIP_BATCH1_COMMERCIAL) {
       expect(product.priceUsd).toBeGreaterThanOrEqual(product.marketRangeUsd[0])
       expect(product.priceUsd).toBeLessThanOrEqual(product.marketRangeUsd[1])
-      expect(Number.isInteger(product.priceUsd * 100)).toBe(true)
+      const cents = product.priceUsd * 100
+      expect(Math.abs(cents - Math.round(cents))).toBeLessThan(1e-9)
     }
   })
 
