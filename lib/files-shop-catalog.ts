@@ -1,5 +1,6 @@
 import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
 import { applyPayhipBatch1Commercial, getPayhipBatch1Commercial } from '@/lib/payhipBatch1Commercial'
+import { getPayhipBatches24Product, getPayhipBatches24ProductByLegacyCardId } from '@/lib/payhipBatches24'
 
 export type FileShopCategory = 'spreadsheet' | 'guide' | 'template' | 'craft'
 
@@ -46,34 +47,61 @@ const BASE_FILE_SHOP_PRODUCTS: FileShopProduct[] = [
 ]
 
 /**
+ * Products 17-36 were re-QA'd in Payhip Phase A. Overlay the stable legacy
+ * cards rather than replacing the rail component so filters/layout remain
+ * unchanged while price, cover, copy and destination match the live release.
+ */
+const AUDITED_BASE_FILE_SHOP_PRODUCTS: FileShopProduct[] = BASE_FILE_SHOP_PRODUCTS.map((card) => {
+  const audited = getPayhipBatches24ProductByLegacyCardId(card.id)
+  if (!audited) return card
+  const compactTitle = audited.name.split(' — ')[0]
+  return {
+    ...card,
+    cat: audited.fileShopCategory,
+    format: audited.deliveryLabel,
+    stamp: audited.fileShopCategory === 'spreadsheet' ? 'FIELD\nTESTED' : 'READY\nTO USE',
+    title: compactTitle,
+    desc: audited.description,
+    bullets: [audited.deliveryLabel, 'Phase-A buyer file verified'],
+    price: audited.price.toFixed(2),
+    href: `/shop/${audited.slug}`,
+    cover: audited.imageUrl,
+    published: true,
+  }
+})
+
+/**
  * The 16 immigration products were originally published straight to the active
- * Cloudflare Worker. Batch 1 merchandising is overlaid from the audited
- * commercial manifest so price, packaging copy and real-photo covers remain
- * consistent with the buyer-facing release contract.
+ * Cloudflare Worker. Batch 1 keeps its existing commercial overlay; products
+ * 10-16 use the Phase-A Batches 2-4 commercial manifest.
  */
 const IMMIGRATION_FILE_SHOP_PRODUCTS: FileShopProduct[] = IMMIGRATION_SHOP_PRODUCTS.map((basePack, index) => {
-  const pack = applyPayhipBatch1Commercial(basePack)
-  const commercial = getPayhipBatch1Commercial(pack.slug)
+  const batch1Pack = applyPayhipBatch1Commercial(basePack)
+  const batch1Commercial = getPayhipBatch1Commercial(batch1Pack.slug)
+  const audited = getPayhipBatches24Product(batch1Pack.slug)
+
   return {
-    id: pack.slug,
+    id: batch1Pack.slug,
     file: String(index + 21).padStart(2, '0'),
     cat: 'template',
-    format: commercial?.deliveryLabel ?? 'Digital preparation pack',
+    format: audited?.deliveryLabel ?? batch1Commercial?.deliveryLabel ?? 'Digital preparation pack',
     stamp: 'IMMIGRATION\nPACK',
-    title: pack.name,
-    desc: pack.short_description,
-    bullets: commercial
-      ? [commercial.deliveryLabel, 'Official-source guidance included']
-      : [pack.includes[0] || 'Application preparation organizer', pack.includes[1] || 'Document checklist'],
-    price: String(pack.price_usd),
-    href: `/shop/${pack.slug}`,
-    cover: commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg',
-    published: pack.payhip_published,
+    title: audited?.name ?? batch1Pack.name,
+    desc: audited?.description ?? batch1Pack.short_description,
+    bullets: audited
+      ? [audited.deliveryLabel, 'Official-source guidance included']
+      : batch1Commercial
+        ? [batch1Commercial.deliveryLabel, 'Official-source guidance included']
+        : [batch1Pack.includes[0] || 'Application preparation organizer', batch1Pack.includes[1] || 'Document checklist'],
+    price: audited ? audited.price.toFixed(2) : String(batch1Pack.price_usd),
+    href: `/shop/${batch1Pack.slug}`,
+    cover: audited?.imageUrl ?? batch1Commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg',
+    published: batch1Pack.payhip_published,
   }
 })
 
 export const FILE_SHOP_PRODUCTS: FileShopProduct[] = [
-  ...BASE_FILE_SHOP_PRODUCTS,
+  ...AUDITED_BASE_FILE_SHOP_PRODUCTS,
   ...IMMIGRATION_FILE_SHOP_PRODUCTS,
 ]
 
