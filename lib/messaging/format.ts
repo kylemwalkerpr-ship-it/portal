@@ -28,10 +28,16 @@ export const fmtRelative = (s: string | null | undefined): string => {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
+/**
+ * Compact in-bubble timestamp. The conversation already renders date dividers,
+ * so repeating the calendar date on every message adds noise. Match the
+ * WhatsApp convention instead: show only the local clock time beside the
+ * delivery/read ticks (for example, "6:27 PM").
+ */
 export const fmtFullTime = (s: string | Date | null | undefined): string => {
   const d = toValidDate(s)
   if (!d) return ''
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
 export const sameDay = (a: string | Date | null | undefined, b: string | Date | null | undefined): boolean => {
