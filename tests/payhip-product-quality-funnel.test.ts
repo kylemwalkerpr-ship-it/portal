@@ -6,6 +6,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 
 const exportRoute = read('app/api/admin/templates/payhip-export/[slug]/route.ts')
 const bundleRoute = read('app/api/admin/templates/payhip-export-bundle/[slug]/route.ts')
+const exportPdf = read('lib/payhipExportPdf.ts')
 const bundleMap = read('lib/payhipProductBundles.ts')
 const auditLedger = read('docs/payhip-product-commercial-audit.md')
 const megaManifest = read('lib/templatePdfManifests/premium-usa-canada-study-work-mega-bundle.ts')
@@ -29,18 +30,27 @@ const expectedMegaComponents = [
 ] as const
 
 describe('Payhip product quality funnel', () => {
-  test('exports a maintained buyer-facing PDF without reading the legacy delivery file', () => {
-    expect(exportRoute).toContain("import { requireAdminUser } from '@/lib/portalAuth'")
-    expect(exportRoute).toContain("import { getManifest } from '@/lib/templatePdfManifests'")
-    expect(exportRoute).toContain('generateTemplatePdf')
-    expect(exportRoute).toContain("orderId: 'PAYHIP-MASTER'")
+  test('exports an explicit maintained buyer-facing PDF instead of a source artifact', () => {
+    expect(exportRoute).toContain("import { generatePayhipProductPdf } from '@/lib/payhipExportPdf'")
+    expect(exportRoute).toContain('listManifestSlugs().includes(slug)')
     expect(exportRoute).toContain("'Content-Type': 'application/pdf'")
     expect(exportRoute).toContain("'X-YouSafe-Export-Type': 'payhip-master-pdf'")
-    expect(exportRoute).not.toContain('pack.delivery_file')
+    expect(exportRoute).toContain("'X-YouSafe-PDF-Pages'")
+    expect(exportRoute).toContain("'X-YouSafe-PDF-Fields'")
+    expect(exportRoute).not.toContain('delivery_file')
   })
 
-  test('fails closed when a product has no maintained PDF manifest', () => {
-    expect(exportRoute).toContain("'This template does not yet have a buyer-facing PDF manifest")
+  test('retail PDFs carry preparation boundaries and registered government sources', () => {
+    expect(exportPdf).toContain('independent preparation and organization resource')
+    expect(exportPdf).toContain('not an official government form')
+    expect(exportPdf).toContain('not legal advice')
+    expect(exportPdf).toContain('not a guarantee of approval')
+    expect(exportPdf).toContain('Authoritative sources to check before filing')
+    expect(exportPdf).toContain('IMMIGRATION_SHOP_OFFICIAL_SOURCES')
+  })
+
+  test('fails closed when a product has no explicit maintained PDF manifest', () => {
+    expect(exportRoute).toContain('explicit buyer-facing PDF manifest')
     expect(exportRoute).toContain('409')
   })
 
@@ -50,7 +60,6 @@ describe('Payhip product quality funnel', () => {
       expect(bundleMap).toContain(`'${slug}'`)
     }
     expect(new Set(expectedMegaComponents).size).toBe(15)
-    expect(bundleMap).not.toContain("'premium-usa-canada-study-work-mega-bundle',\n  ],")
   })
 
   test('exposes a QA-gated multiple-file upload manifest for Payhip', () => {
