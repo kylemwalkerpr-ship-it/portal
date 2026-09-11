@@ -126,7 +126,8 @@ export async function GET(req: Request) {
 
   const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]))
   const applicationByProfile = new Map((applications ?? []).map((a: any) => [a.profile_id ?? '', a]))
-  // Editable credential off the attorneys row wins over the application copy.
+  // Search results may expose credential type, but the actual licence/bar
+  // identifier is reserved for the provider bio card detail endpoint.
   const credentialByProfile = await fetchAttorneyCredentialColumnsBatch(db, profileIds)
   const ratingByAttorney = new Map<string, { count: number; sum: number }>()
   for (const r of ratings ?? []) {
@@ -155,18 +156,6 @@ export async function GET(req: Request) {
         specialties:       a.specialties,
         languages:         a.languages,
         credential_type:   credentialByProfile.get(a.profile_id)?.credential_type || application?.credential_type || null,
-        bar_number: (() => {
-          const c = credentialByProfile.get(a.profile_id)
-          const num = c?.bar_number || null
-          const show = c?.show_bar_number !== false
-          return show && num ? num : null
-        })(),
-        bar_state: (() => {
-          const c = credentialByProfile.get(a.profile_id)
-          const num = c?.bar_number || null
-          const show = c?.show_bar_number !== false
-          return show && num ? (c?.bar_state || null) : null
-        })(),
         years_experience:  a.years_experience,
         starting_price:    a.starting_price,
         offers_free_consult: a.offers_free_consult ?? false,
