@@ -34,16 +34,16 @@ const MAP: Record<string, CaseworksCategoryMapping> = {
   'study-permits': {
     cluster: 'International students',
     items: [
-      { title: 'F-1 document checklist 2026', path: '/us/f1-document-checklist-2026' },
+      { title: 'F-1 document checklist 2026', path: '/us/student-visas/f1-document-checklist-2026' },
       { title: 'F-1 visa interview prep checklist', path: '/us/f1-visa-interview-prep-checklist' },
-      { title: 'F-1 visa rejection recovery', path: '/us/f1-visa-rejection-recovery' },
+      { title: 'F-1 visa rejection recovery', path: '/us/student-visas/f1-rejection-recovery' },
       { title: 'UK Student route eligibility 2026', path: '/uk/student-route-eligibility-2026' },
     ],
   },
   'work-permits': {
     cluster: 'International students',
     items: [
-      { title: 'OPT document checklist 2026', path: '/us/opt-document-checklist-2026' },
+      { title: 'OPT document checklist 2026', path: '/us/student-visas/opt-document-checklist' },
       { title: 'OPT application mistakes', path: '/us/opt-application-mistakes' },
       { title: 'STEM OPT extension checklist 2026', path: '/us/stem-opt-extension-checklist-2026' },
       { title: 'UK Graduate Route visa', path: '/uk/graduate-route-visa' },
@@ -64,7 +64,7 @@ const MAP: Record<string, CaseworksCategoryMapping> = {
       { title: 'Canada PGP program', path: '/ca/pgp-program' },
       { title: 'Canada spousal sponsorship: inland vs outland', path: '/ca/spousal-sponsorship-inland-outland' },
       { title: 'Canada OWP for spouses 2026', path: '/ca/owp-spouses-2026' },
-      { title: 'Canada spousal sponsorship document checklist', path: '/ca/spousal-sponsorship-document-checklist' },
+      { title: 'Canada spousal sponsorship document checklist', path: '/ca/family/canada-spousal-sponsorship-document-checklist-2026' },
     ],
   },
   citizenship: {
@@ -76,9 +76,9 @@ const MAP: Record<string, CaseworksCategoryMapping> = {
   settlement: {
     cluster: 'Tenancy and housing',
     items: [
-      { title: 'UK Renters Rights Act 2025: complete guide', path: '/uk/tenancy/uk-renters-rights-act-2025-complete-guide' },
-      { title: 'UK Section 21 abolished: meaning for students', path: '/uk/tenancy/section-21-abolished-meaning-for-students' },
-      { title: 'UK deposit dispute letter for tenants', path: '/uk/tenancy/deposit-dispute-letter-uk-tenant' },
+      { title: 'UK Renters Rights Act 2025: complete guide', path: '/uk/renters-rights-international-students' },
+      { title: 'UK Section 21 abolished: meaning for students', path: '/uk/section-21-abolished' },
+      { title: 'UK deposit dispute letter for tenants', path: '/templates/deposit-dispute-letter-uk-tenant' },
       { title: 'Canada banking guide for students', path: '/ca/banking-students' },
     ],
   },
@@ -86,7 +86,7 @@ const MAP: Record<string, CaseworksCategoryMapping> = {
     cluster: 'International students',
     items: [
       { title: 'F-1 visa community college guide', path: '/us/f1-visa-community-college' },
-      { title: 'F-1 school transfer rules', path: '/us/f1-school-transfer' },
+      { title: 'F-1 school transfer rules', path: '/us/student-visas/f1-school-transfer-mid-program' },
       { title: 'UK NHS surcharge 2026', path: '/uk/nhs-surcharge-2026' },
     ],
   },
@@ -125,8 +125,8 @@ const MAP: Record<string, CaseworksCategoryMapping> = {
   legal: {
     cluster: 'Legal rights and protections',
     items: [
-      { title: 'F-1 reinstatement checklist', path: '/us/f1-reinstatement-checklist' },
-      { title: 'F-1 status violation: what to do', path: '/us/f1-status-violation' },
+      { title: 'F-1 reinstatement checklist', path: '/us/student-visas/sevis-termination-and-reinstatement' },
+      { title: 'F-1 status violation: what to do', path: '/us/student-visas/f1-status-violation' },
       { title: 'Asylum I-589 application guide', path: '/us/asylum-i589' },
       { title: 'DACA renewal 2026 guide', path: '/us/daca-renewal-2026' },
     ],
