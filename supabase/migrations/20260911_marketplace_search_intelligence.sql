@@ -15,12 +15,12 @@ create table if not exists public.marketplace_search_events (
   filter_context jsonb not null default '{}'::jsonb,
   session_hash text,
   gig_id uuid references public.gigs(id) on delete set null,
-  parent_search_event_id uuid references public.marketplace_search_events(id) on delete set null,
+  parent_search_event_id uuid references public.marketplace_search_events(id) on delete cascade,
   dedupe_key text unique,
   created_at timestamptz not null default now(),
   constraint marketplace_search_event_shape check (
     (event_type = 'search' and normalized_query is not null and length(normalized_query) >= 2)
-    or (event_type in ('gig_click', 'conversion') and gig_id is not null and parent_search_event_id is not null)
+    or (event_type in ('gig_click', 'conversion') and parent_search_event_id is not null)
   )
 );
 
@@ -44,8 +44,10 @@ comment on table public.marketplace_search_events is
   'Private Marketplace demand telemetry. Stores only privacy-filtered search text plus a one-way session hash; never IP addresses, user agents, emails, or profile identifiers.';
 comment on column public.marketplace_search_events.session_hash is
   'One-way hash of an ephemeral browser-session token. Used only for aggregate unique-demand estimates and anti-spam.';
+comment on column public.marketplace_search_events.gig_id is
+  'Attributed gig when still present. May become null after a gig is physically deleted while the aggregate search/click signal remains valid.';
 comment on column public.marketplace_search_events.parent_search_event_id is
-  'Links a gig click or future conversion to the executed search that produced it.';
+  'Links a gig click or future conversion to the executed search that produced it. Child events cascade if that parent search is removed by a future retention policy.';
 
 -- ── 2. Tag privacy boundary + weighted Marketplace search document ──────────
 -- Protect the data at the database boundary too: every gig write passes
@@ -265,8 +267,9 @@ comment on view public.marketplace_search_intelligence is
   'Internal aggregate inputs for Marketplace demand and the SEO Master Engine: frequency, unique demand, recency/velocity, zero-result rate, search-level CTR, conversion and observed result supply. No opportunity formula is hard-coded.';
 
 -- ── 4. Internal suggestion candidates ────────────────────────────────────────
--- Historical queries only become suggestible after a small k-anonymity floor;
--- tag/title candidates still pass application-layer privacy filtering.
+-- Historical queries only become suggestible after a small k-anonymity floor,
+-- and only when they previously produced supply. Repeated zero-result queries
+-- stay private for SEO/supply intelligence instead of becoming public prompts.
 create or replace function public.marketplace_search_suggestions(
   p_query text,
   p_limit integer default 10
@@ -321,6 +324,7 @@ as $$
     cross join input
     where i.search_count >= 3
       and i.unique_sessions >= 2
+      and coalesce(i.avg_result_count, 0) > 0
       and i.normalized_query like '%' || input.q || '%'
     order by score desc, i.last_searched_at desc
     limit 6
