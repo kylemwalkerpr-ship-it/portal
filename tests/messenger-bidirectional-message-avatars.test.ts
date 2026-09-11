@@ -18,8 +18,8 @@ describe('Messenger sender avatar contract', () => {
     expect(profileRoute).toContain('avatar_url')
   })
 
-  test('every bubble gets a sender anchor instead of only the first incoming bubble', () => {
-    expect(bubble).toContain('const showAvatar = Boolean(resolvedAvatarUrl || resolvedAvatarName)')
+  test('the terminal bubble in each sender run carries the sender anchor on the correct side', () => {
+    expect(bubble).toContain('const showAvatar = isLastInGroup && Boolean(resolvedAvatarUrl || resolvedAvatarName)')
     expect(bubble).toContain('{!mine && avatarNode}')
     expect(bubble).toContain('{mine && avatarNode}')
     expect(bubble).not.toContain('const showAvatar = !mine && isFirstInGroup')
