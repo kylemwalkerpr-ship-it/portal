@@ -62,6 +62,30 @@
   gap: var(--ys-gig-section-gap) !important;
 }
 
+/* Earlier mobile/profile hardening also assigned flex-order values to FAQ,
+   reviews and related-service cards outside its phone media query. Reassert
+   the deliberate desktop narrative here so long-form sections never drift:
+   gallery → About → FAQ → Reviews → Similar Services. */
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
+  order: 10 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :nth-child(2) {
+  order: 20 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > div:has(> h3 + div > div > button) {
+  order: 30 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > div:has(h2) {
+  order: 40 !important;
+}
+
+.cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > div:has(a[href^='/gigs/']) {
+  order: 50 !important;
+}
+
 /* Treat the cover as the primary visual stage, not a padded card inside a
    padded page. The image itself keeps its protective border and radius. */
 .cw-market main:has(.ys-gig-overview) .ys-content-layout > div:first-child > :first-child {
