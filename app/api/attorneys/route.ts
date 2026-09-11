@@ -40,8 +40,9 @@ type ApplicationRow = {
 }
 
 export async function GET() {
-  // Identical response for every caller — serve from KV (60 s TTL).
-  const cacheKey = generateCacheKey('/api/attorneys')
+  // Versioned after credential identifiers were removed from this public
+  // payload so a deploy can never reuse a pre-privacy KV response.
+  const cacheKey = generateCacheKey('/api/attorneys:credential-safe-v1')
   const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
   if (cached) return Response.json(cached)
 
