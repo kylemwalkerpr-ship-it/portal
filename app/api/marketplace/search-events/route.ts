@@ -15,6 +15,7 @@ const SEARCH_SOURCES = new Set<MarketplaceSearchSource>([
 ])
 const SUGGESTION_TYPES = new Set<MarketplaceSuggestionType>(['tag', 'gig', 'category', 'query', 'recent'])
 const MAX_SEARCHES_PER_SESSION_PER_MINUTE = 12
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type InsertResult = {
   id: string | null
@@ -32,6 +33,11 @@ function cleanSessionId(value: unknown) {
   const sessionId = String(value ?? '').trim()
   if (!sessionId || sessionId.length > 100 || !/^[A-Za-z0-9._:-]+$/.test(sessionId)) return null
   return sessionId
+}
+
+function cleanUuid(value: unknown) {
+  const id = typeof value === 'string' ? value.trim() : ''
+  return UUID_RE.test(id) ? id : null
 }
 
 function cleanFilters(value: unknown): Record<string, unknown> {
@@ -71,6 +77,16 @@ async function insertWithDedupe(
 }
 
 export async function POST(req: Request) {
+  // Anonymous Marketplace analytics still originate from our own browser UI.
+  // Reject cross-site browser posts when Origin is available without storing
+  // IP addresses, user agents, or any other fingerprinting signal.
+  const origin = req.headers.get('origin')
+  if (origin) {
+    let requestOrigin = ''
+    try { requestOrigin = new URL(req.url).origin } catch {}
+    if (!requestOrigin || origin !== requestOrigin) return fail('Cross-origin search events are not accepted.', 403)
+  }
+
   const body = await req.json().catch(() => ({}))
   const sessionId = cleanSessionId(body.session_id)
   if (!sessionId) return fail('A valid search session is required.', 422)
@@ -131,7 +147,9 @@ export async function POST(req: Request) {
     const inserted = await insertWithDedupe(db, searchRow)
     if (!inserted.id) return fail(inserted.error?.message || 'Could not record Marketplace search.', 500)
 
-    const clickedGigId = typeof body.clicked_gig_id === 'string' ? body.clicked_gig_id.trim() : ''
+    const clickedGigRaw = typeof body.clicked_gig_id === 'string' ? body.clicked_gig_id.trim() : ''
+    const clickedGigId = cleanUuid(clickedGigRaw)
+    if (clickedGigRaw && !clickedGigId) return fail('Invalid gig id.', 422)
     if (clickedGigId && !inserted.deduped) {
       const clickDedupeKey = await sha256(`${sessionHash}|gig_click|${inserted.id}|${clickedGigId}`)
       await insertWithDedupe(db, {
@@ -154,9 +172,9 @@ export async function POST(req: Request) {
   }
 
   if (eventType === 'gig_click') {
-    const parentId = typeof body.parent_search_event_id === 'string' ? body.parent_search_event_id.trim() : ''
-    const gigId = typeof body.gig_id === 'string' ? body.gig_id.trim() : ''
-    if (!parentId || !gigId) return fail('Search attribution and gig id are required.', 422)
+    const parentId = cleanUuid(body.parent_search_event_id)
+    const gigId = cleanUuid(body.gig_id)
+    if (!parentId || !gigId) return fail('Valid search attribution and gig id are required.', 422)
 
     const parent = await db
       .from('marketplace_search_events')
