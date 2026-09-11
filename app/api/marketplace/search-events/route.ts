@@ -75,7 +75,9 @@ export async function POST(req: Request) {
       : null
     if (suggestionTypeRaw && !suggestionType) return fail('Invalid suggestion type.', 422)
 
-    const resultCount = Math.min(100_000, Math.max(0, Math.floor(Number(body.result_count) || 0)))
+    const resultCount = body.result_count == null
+      ? null
+      : Math.min(100_000, Math.max(0, Math.floor(Number(body.result_count) || 0)))
     const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString()
     const recent = await db
       .from('marketplace_search_events')
