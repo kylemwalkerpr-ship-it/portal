@@ -38,8 +38,8 @@ describe('marketplace category URL contract', () => {
     expect(landingControls).toContain('/categories/${encodeURIComponent(categoryId)}')
     expect(categoriesIndex).toContain('href={`/categories/${category.id}`}')
     expect(categoriesIndex).not.toContain('href={`/marketplace/categories/${category.id}`}')
-    expect(smartSearch).toContain('window.location.href = `/categories/${s.id}`')
-    expect(smartSearch).not.toContain('window.location.href = `/marketplace/categories/${s.id}`')
+    expect(smartSearch).toContain('window.location.href = `/categories/${suggestion.id}`')
+    expect(smartSearch).not.toContain('window.location.href = `/marketplace/categories/${suggestion.id}`')
   })
 })
 
