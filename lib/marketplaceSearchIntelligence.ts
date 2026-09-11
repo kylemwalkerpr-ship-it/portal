@@ -116,38 +116,16 @@ export function queueMarketplaceSearchExecution(input: Omit<PendingMarketplaceSe
   } catch {}
 }
 
-function inferGigTagNavigation(input: { query?: string; categoryId?: string }): PendingMarketplaceSearch | null {
-  if (!input.query || typeof document === 'undefined' || !document.referrer) return null
-  try {
-    const referrer = new URL(document.referrer)
-    if (referrer.origin !== window.location.origin) return null
-    if (!/^\/gigs\/[^/]+\/?$/.test(referrer.pathname)) return null
-    const safe = sanitizeMarketplaceQuery(input.query)
-    if (!safe) return null
-    return {
-      query: safe.raw,
-      source: 'tag_click',
-      categoryId: input.categoryId,
-      createdAt: Date.now(),
-    }
-  } catch {
-    return null
-  }
-}
-
 export function consumeMarketplaceSearchExecution(input: { query?: string; categoryId?: string }): PendingMarketplaceSearch | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.sessionStorage.getItem(PENDING_SEARCH_KEY)
-    // PR #165's tag links intentionally remain plain canonical Links. A same-
-    // origin /gigs/:slug referrer plus ?q= lets us classify that navigation as
-    // a tag click without adding tracking parameters to the shareable URL.
-    if (!raw) return inferGigTagNavigation(input)
+    if (!raw) return null
 
     const pending = JSON.parse(raw) as PendingMarketplaceSearch
     if (!pending || Date.now() - Number(pending.createdAt || 0) > PENDING_TTL_MS) {
       window.sessionStorage.removeItem(PENDING_SEARCH_KEY)
-      return inferGigTagNavigation(input)
+      return null
     }
 
     const queryMatches = input.query
@@ -163,7 +141,7 @@ export function consumeMarketplaceSearchExecution(input: { query?: string; categ
     window.sessionStorage.removeItem(PENDING_SEARCH_KEY)
     return pending
   } catch {
-    return inferGigTagNavigation(input)
+    return null
   }
 }
 
