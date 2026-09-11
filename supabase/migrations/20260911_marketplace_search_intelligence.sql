@@ -47,10 +47,41 @@ comment on column public.marketplace_search_events.session_hash is
 comment on column public.marketplace_search_events.parent_search_event_id is
   'Links a gig click or future conversion to the executed search that produced it.';
 
--- ── 2. Weighted Marketplace search document ─────────────────────────────────
--- Keep an ordinary tsvector maintained by a trigger instead of a generated
--- column: array_to_string(text[]) is STABLE rather than IMMUTABLE on Postgres,
--- so it is not valid inside a generated-column expression.
+-- ── 2. Tag privacy boundary + weighted Marketplace search document ──────────
+-- Protect the data at the database boundary too: every gig write passes
+-- through this sanitizer, regardless of whether tags came from the builder,
+-- an AI helper, an import, or a future API route. It removes obvious personal
+-- identifiers and credential-number patterns while preserving service phrases
+-- such as "bar admission strategy" that contain no identifier.
+create or replace function public.marketplace_sanitize_tags(input_tags text[])
+returns text[]
+language sql
+immutable
+set search_path = public
+as $$
+  select coalesce(array_agg(clean_tag order by ord), '{}'::text[])
+  from (
+    select clean_tag, ord
+    from (
+      select
+        btrim(regexp_replace(tag, '\s+', ' ', 'g')) as clean_tag,
+        ord
+      from unnest(coalesce(input_tags, '{}'::text[])) with ordinality as u(tag, ord)
+    ) normalized
+    where length(clean_tag) between 2 and 60
+      and clean_tag !~* '[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}'
+      and clean_tag !~* 'https?://'
+      and clean_tag !~* '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+      and not (
+        clean_tag ~* '\m(bar|licen[cs]e|registration|credential|roll|practi[cs]ing certificate|admission number)\M'
+        and clean_tag ~* '(#|\mno\.?|\mnumber\M|\mid\M|\midentifier\M)?[[:space:]]*[A-Z]{0,5}[-[:space:]]?[0-9]{4,}\M'
+      )
+      and clean_tag !~* '\m[A-Z]{1,5}[-[:space:]]?[0-9]{5,}\M'
+    order by ord
+    limit 5
+  ) safe_tags;
+$$;
+
 alter table public.gigs
   add column if not exists marketplace_search_vector tsvector;
 
@@ -60,6 +91,7 @@ language plpgsql
 set search_path = public
 as $$
 begin
+  new.tags := public.marketplace_sanitize_tags(new.tags);
   new.marketplace_search_vector :=
       setweight(to_tsvector('simple', coalesce(new.title, '')), 'A')
     || setweight(to_tsvector('simple', coalesce(array_to_string(new.tags, ' '), '')), 'A')
@@ -69,6 +101,11 @@ begin
   return new;
 end;
 $$;
+
+-- Clean any legacy tag identifiers before they can enter suggestions/search.
+update public.gigs
+set tags = public.marketplace_sanitize_tags(tags)
+where tags is distinct from public.marketplace_sanitize_tags(tags);
 
 update public.gigs
 set marketplace_search_vector =
@@ -134,36 +171,59 @@ revoke all on function public.marketplace_search_matches(text, integer) from pub
 grant execute on function public.marketplace_search_matches(text, integer) to service_role;
 
 -- ── 3. Internal aggregate for SEO/search intelligence ────────────────────────
+-- Aggregate searches and engagement independently so multiple clicks and a
+-- conversion cannot multiply the search denominator through a join product.
 create or replace view public.marketplace_search_intelligence
 with (security_invoker = true)
 as
+with searches as (
+  select
+    normalized_query,
+    count(*)::bigint as search_count,
+    count(distinct session_hash)::bigint as unique_sessions,
+    count(*) filter (where result_count = 0)::bigint as zero_result_count,
+    round(
+      (count(*) filter (where result_count = 0))::numeric / nullif(count(*), 0),
+      4
+    ) as zero_result_rate,
+    round(avg(result_count)::numeric, 2) as avg_result_count,
+    max(created_at) as last_searched_at,
+    count(*) filter (where created_at >= now() - interval '7 days')::bigint as searches_7d,
+    count(*) filter (
+      where created_at >= now() - interval '14 days'
+        and created_at < now() - interval '7 days'
+    )::bigint as searches_previous_7d
+  from public.marketplace_search_events
+  where event_type = 'search'
+  group by normalized_query
+), engagement as (
+  select
+    parent.normalized_query,
+    count(child.id) filter (where child.event_type = 'gig_click')::bigint as click_count,
+    count(child.id) filter (where child.event_type = 'conversion')::bigint as conversion_count
+  from public.marketplace_search_events child
+  join public.marketplace_search_events parent
+    on parent.id = child.parent_search_event_id
+   and parent.event_type = 'search'
+  where child.event_type in ('gig_click', 'conversion')
+  group by parent.normalized_query
+)
 select
   s.normalized_query,
-  count(*)::bigint as search_count,
-  count(distinct s.session_hash)::bigint as unique_sessions,
-  count(*) filter (where s.result_count = 0)::bigint as zero_result_count,
-  round(
-    (count(*) filter (where s.result_count = 0))::numeric / nullif(count(*), 0),
-    4
-  ) as zero_result_rate,
-  round(avg(s.result_count)::numeric, 2) as avg_result_count,
-  max(s.created_at) as last_searched_at,
-  count(*) filter (where s.created_at >= now() - interval '7 days')::bigint as searches_7d,
-  count(*) filter (
-    where s.created_at >= now() - interval '14 days'
-      and s.created_at < now() - interval '7 days'
-  )::bigint as searches_previous_7d,
-  count(c.id)::bigint as click_count,
-  round(count(c.id)::numeric / nullif(count(*), 0), 4) as ctr,
-  count(v.id)::bigint as conversion_count,
-  round(count(v.id)::numeric / nullif(count(*), 0), 4) as search_to_conversion_rate
-from public.marketplace_search_events s
-left join public.marketplace_search_events c
-  on c.parent_search_event_id = s.id and c.event_type = 'gig_click'
-left join public.marketplace_search_events v
-  on v.parent_search_event_id = s.id and v.event_type = 'conversion'
-where s.event_type = 'search'
-group by s.normalized_query;
+  s.search_count,
+  s.unique_sessions,
+  s.zero_result_count,
+  s.zero_result_rate,
+  s.avg_result_count,
+  s.last_searched_at,
+  s.searches_7d,
+  s.searches_previous_7d,
+  coalesce(e.click_count, 0)::bigint as click_count,
+  round(coalesce(e.click_count, 0)::numeric / nullif(s.search_count, 0), 4) as ctr,
+  coalesce(e.conversion_count, 0)::bigint as conversion_count,
+  round(coalesce(e.conversion_count, 0)::numeric / nullif(s.search_count, 0), 4) as search_to_conversion_rate
+from searches s
+left join engagement e using (normalized_query);
 
 revoke all on table public.marketplace_search_intelligence from public, anon, authenticated;
 grant select on table public.marketplace_search_intelligence to service_role;
