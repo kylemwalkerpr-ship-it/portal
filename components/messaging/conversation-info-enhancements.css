@@ -261,6 +261,202 @@
   text-align: center;
 }
 
+/* Linked Marketplace depth -------------------------------------------------
+   Service rows and practice-area chips behave like real navigation targets,
+   not decorative profile metadata. Absolute marketplace URLs keep this valid
+   from portal.* as well as the market.* inline Messenger surface. */
+.yousafe-messenger .ys-contact-linked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-mid) !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, color .15s ease, transform .12s ease;
+}
+
+.yousafe-messenger .ys-contact-linked-chip svg {
+  flex: 0 0 auto;
+  opacity: .68;
+}
+
+.yousafe-messenger .ys-contact-linked-chip:hover,
+.yousafe-messenger .ys-contact-linked-chip:focus-visible {
+  outline: 0;
+  color: var(--text) !important;
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--border)) !important;
+  background: color-mix(in oklab, var(--accent-soft) 58%, var(--panel)) !important;
+}
+
+.yousafe-messenger .ys-contact-linked-chip:active {
+  transform: scale(.98);
+}
+
+.yousafe-messenger .ys-contact-service-link {
+  color: var(--text) !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .12s ease;
+}
+
+.yousafe-messenger .ys-contact-service-link:hover,
+.yousafe-messenger .ys-contact-service-link:focus-visible {
+  outline: 0;
+  background: var(--hover) !important;
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--border)) !important;
+}
+
+.yousafe-messenger .ys-contact-service-link:active {
+  transform: scale(.993);
+}
+
+.yousafe-messenger .ys-contact-service-end {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.yousafe-messenger .ys-contact-service-end b {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 750;
+}
+
+.yousafe-messenger .ys-contact-service-end svg {
+  color: var(--accent);
+}
+
+.yousafe-messenger .ys-contact-see-all {
+  min-height: 44px;
+  margin: 8px 0 -2px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--accent) !important;
+  background: color-mix(in oklab, var(--accent-soft) 44%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none !important;
+}
+
+.yousafe-messenger .ys-contact-see-all:hover,
+.yousafe-messenger .ys-contact-see-all:focus-visible {
+  outline: 0;
+  background: color-mix(in oklab, var(--accent-soft) 72%, transparent);
+}
+
+/* Shared completed-order history ------------------------------------------ */
+.yousafe-messenger .ys-contact-orders-card {
+  padding-bottom: 4px !important;
+  overflow: hidden;
+}
+
+.yousafe-messenger .ys-contact-orders-card > .ys-contact-card-title-row {
+  padding: 13px 14px 8px !important;
+  margin: 0 !important;
+}
+
+.yousafe-messenger .ys-contact-orders {
+  margin: 0 -14px -4px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.yousafe-messenger .ys-contact-order {
+  width: 100%;
+  min-height: 68px;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.yousafe-messenger .ys-contact-order:last-child {
+  border-bottom: 0;
+}
+
+.yousafe-messenger .ys-contact-order:hover,
+.yousafe-messenger .ys-contact-order:focus-visible {
+  outline: 0;
+  background: var(--hover);
+}
+
+.yousafe-messenger .ys-contact-order-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in oklab, #128C66 13%, var(--panel));
+  color: #128C66;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.yousafe-messenger .ys-contact-order-copy {
+  min-width: 0;
+}
+
+.yousafe-messenger .ys-contact-order-copy strong,
+.yousafe-messenger .ys-contact-order-copy small {
+  display: block;
+}
+
+.yousafe-messenger .ys-contact-order-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 690;
+  line-height: 1.3;
+}
+
+.yousafe-messenger .ys-contact-order-copy small {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.yousafe-messenger .ys-contact-order > b {
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 730;
+  white-space: nowrap;
+}
+
+.yousafe-messenger .ys-contact-order-chevron {
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+}
+
+.yousafe-messenger .ys-contact-order-empty {
+  margin: 0 -14px -4px;
+  padding: 20px 16px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-soft);
+  background: color-mix(in oklab, var(--panel-2) 52%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
 @media (max-width: 680px) {
   body .yousafe-messenger .ys-contact-info-layer {
     background: var(--bg) !important;
@@ -297,6 +493,30 @@
 
   body .yousafe-messenger .ys-contact-card {
     border-radius: 15px !important;
+  }
+
+  body .yousafe-messenger .ys-contact-order {
+    min-height: 72px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  body .yousafe-messenger .ys-contact-service-link {
+    min-height: 68px;
+  }
+}
+
+@media (max-width: 390px) {
+  body .yousafe-messenger .ys-contact-order {
+    grid-template-columns: 30px minmax(0, 1fr) 16px;
+  }
+
+  body .yousafe-messenger .ys-contact-order > b {
+    display: none;
+  }
+
+  body .yousafe-messenger .ys-contact-service-end b {
+    display: none;
   }
 }
 
