@@ -1,0 +1,123 @@
+/// <reference types="jest" />
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
+
+describe('Marketplace Search Intelligence contract', () => {
+  const migration = read('supabase/migrations/20260911_marketplace_search_intelligence.sql')
+  const helper = read('lib/marketplaceSearchIntelligence.ts')
+  const discovery = read('components/marketplace/GigDiscoveryPage.tsx')
+  const smartSearch = read('components/marketplace/SmartSearchBox.tsx')
+  const clickCapture = read('components/marketplace/MarketplaceSearchClickCapture.tsx')
+  const detail = read('components/marketplace/GigDetailPage.tsx')
+  const listingApi = read('app/api/marketplace/gigs/route.ts')
+  const eventApi = read('app/api/marketplace/search-events/route.ts')
+  const suggestionsApi = read('app/api/marketplace/search-suggestions/route.ts')
+  const card = read('components/marketplace/MarketplaceHero.tsx')
+  const layout = read('app/marketplace/layout.tsx')
+
+  it('keeps gig intent tags as canonical clickable Marketplace searches', () => {
+    expect(detail).toContain('const tagSearchBase = subcategory')
+    expect(detail).toContain('href={`${tagSearchBase}?q=${encodeURIComponent(tag)}`}')
+    expect(detail).toContain('aria-label={`Search ${subcategory?.name || category?.name || \'Marketplace\'} for ${tag}`}')
+    expect(clickCapture).toContain("source: 'tag_click'")
+    expect(clickCapture).toContain("destination.searchParams.get('q')")
+    expect(layout).toContain('<MarketplaceSearchClickCapture />')
+  })
+
+  it('does not count autocomplete keystrokes as Marketplace demand', () => {
+    expect(smartSearch).toContain("fetch(`/api/marketplace/search-suggestions?q=${encodeURIComponent(value.trim())}`")
+    expect(smartSearch).toContain("onChange={(e) => { onChange(e.target.value); setOpen(true) }}")
+    expect(smartSearch).not.toMatch(/onChange=\{\(e\).*recordMarketplaceSearch/s)
+    expect(discovery).toContain("queueMarketplaceSearchExecution({ query, source: 'search_bar' })")
+    expect(discovery).toContain('consumeMarketplaceSearchExecution({')
+  })
+
+  it('records executed searches only after real result supply is known, including zero results', () => {
+    expect(discovery).toContain('const resultTotal = data.total || data.gigs?.length || 0')
+    expect(discovery).toContain('resultCount: resultTotal')
+    expect(migration).toContain("where event_type = 'search' and result_count = 0")
+    expect(migration).toContain('zero_result_rate')
+    expect(migration).toContain('avg_result_count')
+  })
+
+  it('preserves source, suggestion and click attribution without allowing browser-declared conversions', () => {
+    for (const source of ['search_bar', 'tag_click', 'suggestion_click', 'category', 'related_search']) {
+      expect(eventApi).toContain(`'${source}'`)
+    }
+    expect(eventApi).toContain("if (eventType === 'gig_click')")
+    expect(eventApi).toContain(".eq('event_type', 'search')")
+    expect(eventApi).toContain('parent_search_event_id: parentId')
+    expect(eventApi).toContain("return fail('Invalid Marketplace search event.', 422)")
+    expect(card).toContain('onSearchClick?.(gig.id)')
+    expect(discovery).toContain('recordMarketplaceGigClick({ searchEventId: activeSearchEventId, gigId })')
+  })
+
+  it('keeps raw search intelligence private and uses privacy-preserving session correlation', () => {
+    expect(migration).toContain('alter table public.marketplace_search_events enable row level security;')
+    expect(migration).toContain('revoke all on table public.marketplace_search_events from public, anon, authenticated;')
+    expect(migration).toContain('grant select, insert, update, delete on table public.marketplace_search_events to service_role;')
+    expect(migration).toContain('revoke all on table public.marketplace_search_intelligence from public, anon, authenticated;')
+    expect(eventApi).toContain("await sha256(`yousafe-marketplace-search:${sessionId}`)")
+    expect(eventApi).not.toContain('user-agent')
+    expect(eventApi).not.toContain('x-forwarded-for')
+    expect(eventApi).not.toContain('profileId')
+  })
+
+  it('normalizes variants, blocks private credential-like input, and sanitizes tags at the database boundary', () => {
+    expect(helper).toContain(".replace(/\\b([a-z])[-\\s]?(\\d{1,3}[a-z]?)\\b/g, '$1$2')")
+    expect(helper).toContain('CREDENTIAL_WORDS')
+    expect(helper).toContain('PRIVATE_QUERY_PATTERNS')
+    expect(migration).toContain('create or replace function public.marketplace_sanitize_tags(input_tags text[])')
+    expect(migration).toContain('new.tags := public.marketplace_sanitize_tags(new.tags);')
+    expect(migration).toContain('update public.gigs')
+    expect(migration).toContain('where tags is distinct from public.marketplace_sanitize_tags(tags);')
+  })
+
+  it('gives deliberate intent tags meaningful search relevance without using demand volume as gig rank', () => {
+    expect(migration).toContain("setweight(to_tsvector('simple', coalesce(array_to_string(new.tags, ' '), '')), 'A')")
+    expect(migration).toContain('then 0.35 else 0 end')
+    expect(migration).toContain('order by text_rank desc, g.rank_score desc nulls last, g.id')
+    expect(listingApi).toContain("db.rpc('marketplace_search_matches'")
+    expect(listingApi).toContain('searchRankById')
+    expect(listingApi).not.toMatch(/search_count.*rank_score|rank_score.*search_count/s)
+  })
+
+  it('builds suggestions from categories, tags, gigs and sufficiently aggregated first-party queries', () => {
+    expect(smartSearch).toContain('CATEGORIES')
+    expect(smartSearch).toContain("row.kind === 'tag'")
+    expect(smartSearch).toContain("row.kind === 'query'")
+    expect(smartSearch).toContain("row.kind === 'gig'")
+    expect(suggestionsApi).toContain("db.rpc('marketplace_search_suggestions'")
+    expect(migration).toContain('i.search_count >= 3')
+    expect(migration).toContain('i.unique_sessions >= 2')
+  })
+
+  it('protects demand quality against trivial repeat spam', () => {
+    expect(eventApi).toContain('MAX_SEARCHES_PER_SESSION_PER_MINUTE = 12')
+    expect(eventApi).toContain('const bucket = Math.floor(Date.now() / 60_000)')
+    expect(migration).toContain('dedupe_key text unique')
+    expect(helper).toContain('if (/(.)\\1{6,}/i.test(raw)) return null')
+  })
+
+  it('exposes future SEO inputs without hard-coding an opportunity formula', () => {
+    for (const signal of [
+      'search_count',
+      'unique_sessions',
+      'searches_7d',
+      'searches_previous_7d',
+      'last_searched_at',
+      'click_count',
+      'ctr',
+      'zero_result_rate',
+      'search_to_conversion_rate',
+      'avg_result_count',
+    ]) {
+      expect(migration).toContain(signal)
+    }
+    expect(migration.toLowerCase()).not.toContain('opportunity =')
+  })
+})
