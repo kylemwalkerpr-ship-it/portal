@@ -3,7 +3,7 @@
 import React from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { Card, LoadingState, ErrorState, EmptyState, Btn } from '../design/shared'
+import { Card, ErrorState, EmptyState, Btn } from '../design/shared'
 import { responsiveImageProps } from '@/lib/responsiveImage'
 import {
   SellerProfileCard,
@@ -16,6 +16,8 @@ import { ReviewsSection } from './ReviewComponents'
 import ChatSidePane from './ChatSidePane'
 import { useGatedAction } from './useGatedAction'
 import { signalSsrReady } from './SsrHydrateGate'
+import { GigDetailSkeleton } from './MarketplaceRouteSkeleton'
+import { normalizeGallery } from '@/lib/galleryImages'
 import { stripHtmlComments } from '@/lib/bioMarkdown'
 import { T, F } from './tokens'
 import { renderBioMarkdown } from '@/lib/bioMarkdown'
@@ -215,19 +217,43 @@ async function requestJson(url: string, options: RequestInit = {}) {
 
 interface GigDetailPageProps {
   slug: string
+  /** Server-seeded gig so first paint matches final chrome (not LoadingState). */
+  initialGig?: any | null
 }
 
-export function GigDetailPage({ slug }: GigDetailPageProps) {
-  const [gig, setGig] = React.useState<any>(null)
+function shapeInitialGig(raw: any | null | undefined) {
+  if (!raw) return null
+  const gallery = normalizeGallery(raw.gallery_images)
+  const tiers = Array.isArray(raw.tiers)
+    ? raw.tiers.map((t: any) => ({ ...t, is_active: t?.is_active !== false }))
+    : []
+  return {
+    ...raw,
+    gallery_images: gallery,
+    cover_image_url: gallery[0]?.url || raw.cover_image_url || null,
+    tiers,
+    faq: Array.isArray(raw.faq) ? raw.faq : [],
+    similar_gigs: Array.isArray(raw.similar_gigs) ? raw.similar_gigs : [],
+  }
+}
+
+export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
+  const seeded = React.useMemo(() => shapeInitialGig(initialGig), [initialGig])
+  const [gig, setGig] = React.useState<any>(seeded)
   const [isPortalHost, setIsPortalHost] = React.useState(false)
   React.useEffect(() => {
     setIsPortalHost(window.location.hostname === 'portal.yousafeconsultancy.com')
   }, [])
-  const [selectedTierId, setSelectedTierId] = React.useState('')
-  const [loading, setLoading] = React.useState(true)
+  const [selectedTierId, setSelectedTierId] = React.useState(() => {
+    const tiers = (seeded?.tiers || []).filter((t: any) => t.is_active)
+    const order = ['basic', 'standard', 'premium']
+    tiers.sort((a: any, b: any) => order.indexOf(a.tier) - order.indexOf(b.tier))
+    return tiers[0]?.id || ''
+  })
+  const [loading, setLoading] = React.useState(!seeded)
   const [error, setError] = React.useState('')
   const [isSaved, setIsSaved] = React.useState(false)
-  const [mainImage, setMainImage] = React.useState('')
+  const [mainImage, setMainImage] = React.useState(() => seeded?.gallery_images?.[0]?.url || '')
   const [msgOpen, setMsgOpen] = React.useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = React.useState(false)
   const [checkoutOpen, setCheckoutOpen] = React.useState(false)
@@ -240,8 +266,14 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const { execute: gatedChat, modal: chatModal } = useGatedAction('chat', { gigId: gig?.id, providerId: gig?.provider_id })
   const { execute: gatedSave, modal: saveModal } = useGatedAction('save', { gigId: gig?.id })
 
+  // Collapse crawler SSR duplicate as soon as the seeded island is interactive.
+  React.useEffect(() => {
+    if (seeded) signalSsrReady('yousafe:gig-ssr-ready')
+  }, [seeded])
+
   const load = React.useCallback(async () => {
-    setLoading(true)
+    // Keep the structural UI on screen while enrichment runs when SSR seeded us.
+    if (!seeded) setLoading(true)
     setError('')
     try {
       const data = await requestJson(`/api/marketplace/gigs/${slug}`)
@@ -292,7 +324,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     } finally {
       setLoading(false)
     }
-  }, [slug])
+  }, [slug, seeded])
 
   React.useEffect(() => {
     load()
@@ -413,22 +445,13 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     }
   }
 
-  if (loading) {
+  if (loading && !gig) {
     const placeholderWords = (slug || 'Service')
       .split('-')
       .filter(Boolean)
       .map((w) => (w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
     const placeholderTitle = placeholderWords.join(' ') || 'Service'
-    return (
-      <div style={pageShell}>
-        <main style={inner}>
-          <h1 style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>
-            {placeholderTitle}
-          </h1>
-          <LoadingState label="Loading gig details..." />
-        </main>
-      </div>
-    )
+    return <GigDetailSkeleton title={placeholderTitle} />
   }
 
   if (error) {

@@ -239,7 +239,22 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
       </SsrHydrateGate>
       <SellerProfilePage
         sellerId={profileId}
-        initialSeller={{ id: profile.id, full_name: profile.full_name || 'YouSafe provider' }}
+        initialSeller={{
+          id: profile.id,
+          profile_id: profile.id,
+          full_name: profile.full_name || 'YouSafe provider',
+          role: attorney ? 'attorney' : consultant ? 'consultant' : null,
+          tagline: tagline || null,
+          intro: intro || null,
+          bio: bio || null,
+          practice_areas: attorney && areas.length ? areas.join(', ') : null,
+          specialties: consultant && areas.length ? areas : null,
+          jurisdictions: jurisdictions.length ? jurisdictions.join(', ') : null,
+          languages: languages.length ? languages : null,
+          years_experience: typeof years === 'number' ? years : null,
+          credential_type: attorney?.credential_type || null,
+          total_gigs: gigs.length,
+        }}
       />
     </>
   )
