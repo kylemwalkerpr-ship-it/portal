@@ -1,0 +1,19 @@
+/* Messenger grouped-bubble axis alignment
+   =======================================
+   The terminal message in a sender run owns the visible 28px avatar plus a
+   6px gap. Intermediate rounded messages intentionally hide that avatar, but
+   they must reserve the exact same 34px gutter or their bubble edge drifts
+   toward the pane edge. Keep the invisible spacer in the flex row so every
+   bubble in a run shares one strict left/right axis with the tailed bubble. */
+
+.yousafe-messenger .bubrow.theirs:not(.last)::before,
+.yousafe-messenger .bubrow.mine:not(.last)::after {
+  content: "";
+  display: block;
+  flex: 0 0 34px;
+  width: 34px;
+  min-width: 34px;
+  height: 1px;
+  visibility: hidden;
+  pointer-events: none;
+}
