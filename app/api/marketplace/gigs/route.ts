@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { marketplaceGigSortOrder } from '@/lib/marketplaceGigSort'
 
 const CACHE_TTL_SECONDS = 60
+const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -58,20 +59,41 @@ export async function GET(req: Request) {
   const limit = Math.min(60, parseInt(url.searchParams.get('limit') || '20', 10))
   const offset = (page - 1) * limit
 
+  // Search candidates come from the weighted DB search document when the
+  // migration is available. Title + deliberate intent tags are A-weighted;
+  // exact tag matches receive a small relevance bump in the RPC. We keep the
+  // existing rank_score / quality sort as a secondary signal and never feed
+  // raw search volume directly into gig ranking.
+  const safeQ = q.length >= 2
+    ? q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+    : ''
+  let searchCandidateIds: string[] | null = null
+  const searchRankById = new Map<string, number>()
+  if (safeQ) {
+    const searchDb = createSupabaseAdminClient()
+    const matches = await searchDb.rpc('marketplace_search_matches', { p_query: safeQ, p_limit: 500 })
+    if (!matches.error && Array.isArray(matches.data)) {
+      searchCandidateIds = matches.data.map((row: any) => String(row.gig_id)).filter(Boolean)
+      for (const row of matches.data) {
+        if (row?.gig_id) searchRankById.set(String(row.gig_id), Number(row.text_rank || 0))
+      }
+    }
+  }
+
   let query = db
     .from('gigs')
     .select('*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)', { count: 'exact' })
     .eq('status', 'active')
 
-  if (q.length >= 2) {
-    // FTS across title, pitch, description — each has a dedicated GIN index.
-    // Use plainto_tsquery (PostgREST `plfts`): to_tsquery (`.fts.`) parses `-`
-    // as the NOT operator, so a user query like "F-1 denial" or "h-1b visa"
-    // raised "syntax error in tsquery" → 500. plfts treats the input as plain
-    // text (safe for any user input). Only PostgREST filter-structural chars
-    // (`, ( ) " ' \`) are stripped so the .or() filter itself stays parseable.
-    const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
-    if (safeQ) {
+  if (safeQ) {
+    if (searchCandidateIds) {
+      query = searchCandidateIds.length > 0
+        ? query.in('id', searchCandidateIds)
+        : query.eq('id', NO_MATCH_GIG_ID)
+    } else {
+      // Deploy-order fallback while the migration/function cache catches up.
+      // This preserves the pre-existing title/pitch/description behaviour;
+      // tag search becomes available as soon as the migration workflow lands.
       query = query.or(`title.plfts.${safeQ},pitch.plfts.${safeQ},description.plfts.${safeQ}`)
     }
   }
@@ -102,7 +124,17 @@ export async function GET(req: Request) {
     query = query.order(o.column, { ascending: o.ascending })
   }
 
-  const { data: gigs, error, count } = await query.range(offset, offset + limit - 1)
+  // For relevance searches the candidate set is capped at 500 by the search
+  // RPC. Fetch that bounded set, blend text/tag relevance with the existing
+  // quality signal, then paginate. Other sort modes keep the established DB
+  // pagination semantics because the user explicitly chose that ordering.
+  const relevanceSearch = Boolean(safeQ && searchCandidateIds && sort === 'relevance')
+  const result = relevanceSearch
+    ? await query.limit(500)
+    : await query.range(offset, offset + limit - 1)
+  const gigs = result.data
+  const error = result.error
+  const count = result.count
   if (error) return fail(error.message, 500)
 
   // Fetch saved gig IDs for client users to populate is_saved
@@ -135,7 +167,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const shaped = (gigs ?? [])
+  let shaped = (gigs ?? [])
     .map((gig: any) => {
       const activeTiers = (gig.tiers || []).filter((t: any) => t.is_active)
       const cheapest = activeTiers.sort((a: any, b: any) => Number(a.price) - Number(b.price))[0]
@@ -175,15 +207,26 @@ export async function GET(req: Request) {
       return true
     })
 
+  if (relevanceSearch) {
+    shaped.sort((a: any, b: any) => {
+      const textDelta = (searchRankById.get(b.id) || 0) - (searchRankById.get(a.id) || 0)
+      if (Math.abs(textDelta) > 0.000001) return textDelta
+      const qualityDelta = Number(b.rank_score || 0) - Number(a.rank_score || 0)
+      if (qualityDelta !== 0) return qualityDelta
+      return String(a.id).localeCompare(String(b.id))
+    })
+  }
   if (sort === 'price_asc') shaped.sort((a: any, b: any) => Number(a.starting_price || 0) - Number(b.starting_price || 0))
   if (sort === 'price_desc') shaped.sort((a: any, b: any) => Number(b.starting_price || 0) - Number(a.starting_price || 0))
 
+  const total = relevanceSearch ? shaped.length : (count || 0)
+  const pageGigs = relevanceSearch ? shaped.slice(offset, offset + limit) : shaped
   const payload = {
-    gigs: shaped,
-    total: count || 0,
+    gigs: pageGigs,
+    total,
     page,
     limit,
-    hasMore: offset + shaped.length < (count || 0),
+    hasMore: offset + pageGigs.length < total,
   }
   if (cacheKey) await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
   return ok(payload)
