@@ -32,7 +32,7 @@ describe('Marketplace Search Intelligence contract', () => {
   it('does not count autocomplete keystrokes as Marketplace demand', () => {
     expect(smartSearch).toContain("fetch(`/api/marketplace/search-suggestions?q=${encodeURIComponent(value.trim())}`")
     expect(smartSearch).toContain("onChange={(e) => { onChange(e.target.value); setOpen(true) }}")
-    expect(smartSearch).not.toMatch(/onChange=\{\(e\).*recordMarketplaceSearch/s)
+    expect(smartSearch).not.toMatch(/onChange=\{\(e\)[\s\S]*recordMarketplaceSearch/)
     expect(discovery).toContain("queueMarketplaceSearchExecution({ query, source: 'search_bar' })")
     expect(discovery).toContain('consumeMarketplaceSearchExecution({')
   })
@@ -86,7 +86,7 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(migration).toContain('order by text_rank desc, g.rank_score desc nulls last, g.id')
     expect(listingApi).toContain("db.rpc('marketplace_search_matches'")
     expect(listingApi).toContain('searchRankById')
-    expect(listingApi).not.toMatch(/search_count.*rank_score|rank_score.*search_count/s)
+    expect(listingApi).not.toMatch(/search_count[\s\S]*rank_score|rank_score[\s\S]*search_count/)
   })
 
   it('builds suggestions from categories, tags, gigs and sufficiently aggregated first-party queries', () => {
