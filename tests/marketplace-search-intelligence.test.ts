@@ -7,7 +7,9 @@ const root = process.cwd()
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 
 describe('Marketplace Search Intelligence contract', () => {
-  const migration = read('supabase/migrations/20260911_marketplace_search_intelligence.sql')
+  const baseMigration = read('supabase/migrations/20260911_marketplace_search_intelligence.sql')
+  const metricsMigration = read('supabase/migrations/20260911_marketplace_search_intelligence_metrics.sql')
+  const migration = `${baseMigration}\n${metricsMigration}`
   const helper = read('lib/marketplaceSearchIntelligence.ts')
   const discovery = read('components/marketplace/GigDiscoveryPage.tsx')
   const smartSearch = read('components/marketplace/SmartSearchBox.tsx')
@@ -45,15 +47,16 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(discovery).toContain('consumeMarketplaceSearchExecution({')
   })
 
-  it('records executed searches only after real result supply is known, including zero results', () => {
+  it('records executed searches after observed supply is known, including trustworthy zero-result searches', () => {
     expect(discovery).toContain('const resultTotal = data.total || data.gigs?.length || 0')
     expect(discovery).toContain('resultCount: resultTotal')
-    expect(migration).toContain("where event_type = 'search' and result_count = 0")
-    expect(migration).toContain('zero_result_rate')
-    expect(migration).toContain('avg_result_count')
+    expect(baseMigration).toContain("where event_type = 'search' and result_count = 0")
+    expect(metricsMigration).toContain('count(*) filter (where result_count is not null)::bigint as measured_search_count')
+    expect(metricsMigration).toContain('/ nullif(count(*) filter (where result_count is not null), 0)')
+    expect(metricsMigration).toContain('s.measured_search_count')
   })
 
-  it('preserves source, suggestion and click attribution without allowing browser-declared conversions', () => {
+  it('preserves source and click attribution without allowing browser-declared conversions', () => {
     for (const source of ['search_bar', 'tag_click', 'suggestion_click', 'category', 'related_search']) {
       expect(eventApi).toContain(`'${source}'`)
     }
@@ -65,15 +68,30 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(discovery).toContain('recordMarketplaceGigClick({ searchEventId: activeSearchEventId, gigId })')
   })
 
-  it('keeps raw search intelligence private and uses privacy-preserving session correlation', () => {
-    expect(migration).toContain('alter table public.marketplace_search_events enable row level security;')
-    expect(migration).toContain('revoke all on table public.marketplace_search_events from public, anon, authenticated;')
-    expect(migration).toContain('grant select, insert, update, delete on table public.marketplace_search_events to service_role;')
-    expect(migration).toContain('revoke all on table public.marketplace_search_intelligence from public, anon, authenticated;')
-    expect(eventApi).toContain("await sha256(`yousafe-marketplace-search:${sessionId}`)")
+  it('hardens the anonymous event collector without introducing user fingerprinting', () => {
+    expect(eventApi).toContain("const origin = req.headers.get('origin')")
+    expect(eventApi).toContain("return fail('Cross-origin search events are not accepted.', 403)")
+    expect(eventApi).toContain('const UUID_RE =')
+    expect(eventApi).toContain('function cleanUuid(value: unknown)')
+    expect(eventApi).toContain('const parentId = cleanUuid(body.parent_search_event_id)')
     expect(eventApi).not.toContain('user-agent')
     expect(eventApi).not.toContain('x-forwarded-for')
     expect(eventApi).not.toContain('profileId')
+  })
+
+  it('keeps raw search intelligence private and uses privacy-preserving session correlation', () => {
+    expect(baseMigration).toContain('alter table public.marketplace_search_events enable row level security;')
+    expect(baseMigration).toContain('revoke all on table public.marketplace_search_events from public, anon, authenticated;')
+    expect(baseMigration).toContain('grant select, insert, update, delete on table public.marketplace_search_events to service_role;')
+    expect(migration).toContain('revoke all on table public.marketplace_search_intelligence from public, anon, authenticated;')
+    expect(eventApi).toContain("await sha256(`yousafe-marketplace-search:${sessionId}`)")
+  })
+
+  it('uses deletion-safe attribution lifecycle semantics', () => {
+    expect(baseMigration).toContain('gig_id uuid references public.gigs(id) on delete set null')
+    expect(baseMigration).toContain('parent_search_event_id uuid references public.marketplace_search_events(id) on delete cascade')
+    expect(baseMigration).toContain("event_type in ('gig_click', 'conversion') and parent_search_event_id is not null")
+    expect(baseMigration).not.toContain("event_type in ('gig_click', 'conversion') and gig_id is not null and parent_search_event_id is not null")
   })
 
   it('normalizes equivalent variants and blocks credential-like private input at AI and database boundaries', () => {
@@ -83,19 +101,19 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(helper).toContain('if (LONG_IDENTIFIER.test(text)) return true')
     expect(seoSuggestApi).toContain("const value = field === 'tags' ? sanitizeMarketplaceTags(result.value) : result.value")
     expect(seoSuggestApi).toContain('The generated tags were not safe to use')
-    expect(migration).toContain('create or replace function public.marketplace_sanitize_tags(input_tags text[])')
-    expect(migration).toContain("clean_tag !~* '\\m[0-9]{5,}\\M'")
-    expect(migration).toContain('create or replace function public.marketplace_search_alias_text(input_text text)')
-    expect(migration).toContain("plainto_tsquery('simple', public.marketplace_search_alias_text(left(trim(p_query), 80)))")
-    expect(migration).toContain('public.marketplace_search_alias_text(array_to_string(new.tags, \' \'))')
-    expect(migration).toContain('new.tags := public.marketplace_sanitize_tags(new.tags);')
-    expect(migration).toContain('where tags is distinct from public.marketplace_sanitize_tags(tags);')
+    expect(baseMigration).toContain('create or replace function public.marketplace_sanitize_tags(input_tags text[])')
+    expect(baseMigration).toContain("clean_tag !~* '\\m[0-9]{5,}\\M'")
+    expect(baseMigration).toContain('create or replace function public.marketplace_search_alias_text(input_text text)')
+    expect(baseMigration).toContain("plainto_tsquery('simple', public.marketplace_search_alias_text(left(trim(p_query), 80)))")
+    expect(baseMigration).toContain("public.marketplace_search_alias_text(array_to_string(new.tags, ' '))")
+    expect(baseMigration).toContain('new.tags := public.marketplace_sanitize_tags(new.tags);')
+    expect(baseMigration).toContain('where tags is distinct from public.marketplace_sanitize_tags(tags);')
   })
 
   it('gives deliberate intent tags meaningful search relevance without using demand volume as gig rank', () => {
-    expect(migration).toContain("setweight(to_tsvector('simple', coalesce(array_to_string(new.tags, ' '), '')), 'A')")
-    expect(migration).toContain('then 0.35 else 0 end')
-    expect(migration).toContain('order by text_rank desc, g.rank_score desc nulls last, g.id')
+    expect(baseMigration).toContain("setweight(to_tsvector('simple', coalesce(array_to_string(new.tags, ' '), '')), 'A')")
+    expect(baseMigration).toContain('then 0.35 else 0 end')
+    expect(baseMigration).toContain('order by text_rank desc, g.rank_score desc nulls last, g.id')
     expect(listingApi).toContain("db.rpc('marketplace_search_matches'")
     expect(listingApi).toContain('searchRankById')
     expect(listingApi).not.toMatch(/search_count[\s\S]*rank_score|rank_score[\s\S]*search_count/)
@@ -107,14 +125,15 @@ describe('Marketplace Search Intelligence contract', () => {
     expect(smartSearch).toContain("row.kind === 'query'")
     expect(smartSearch).toContain("row.kind === 'gig'")
     expect(suggestionsApi).toContain("db.rpc('marketplace_search_suggestions'")
-    expect(migration).toContain('i.search_count >= 3')
-    expect(migration).toContain('i.unique_sessions >= 2')
+    expect(baseMigration).toContain('i.search_count >= 3')
+    expect(baseMigration).toContain('i.unique_sessions >= 2')
+    expect(baseMigration).toContain('coalesce(i.avg_result_count, 0) > 0')
   })
 
   it('protects demand quality against trivial repeat spam', () => {
     expect(eventApi).toContain('MAX_SEARCHES_PER_SESSION_PER_MINUTE = 12')
     expect(eventApi).toContain('const bucket = Math.floor(Date.now() / 60_000)')
-    expect(migration).toContain('dedupe_key text unique')
+    expect(baseMigration).toContain('dedupe_key text unique')
     expect(helper).toContain('if (/(.)\\1{6,}/i.test(raw)) return null')
   })
 
@@ -138,6 +157,7 @@ describe('Marketplace Search Intelligence contract', () => {
       'zero_result_rate',
       'search_to_conversion_rate',
       'avg_result_count',
+      'measured_search_count',
     ]) {
       expect(migration).toContain(signal)
     }
