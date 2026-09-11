@@ -1,5 +1,6 @@
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { sanitizeMarketplaceTags } from '@/lib/marketplaceSearchIntelligence'
 // seoSuggest (~900 lines of prompt/keyword data) is lazy-loaded inside the
 // handler to keep its evaluation cost off the worker cold-start path.
 import type { FaqEntry, SuggestContext, SuggestField, SuggestRole, TierSummary } from '@/lib/seoSuggest'
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     category: typeof ctxRaw.category === 'string' ? ctxRaw.category : null,
     subcategory: typeof ctxRaw.subcategory === 'string' ? ctxRaw.subcategory : null,
     jurisdiction: typeof ctxRaw.jurisdiction === 'string' ? ctxRaw.jurisdiction : null,
-    tags: Array.isArray(ctxRaw.tags) ? ctxRaw.tags.filter((t): t is string => typeof t === 'string') : null,
+    tags: Array.isArray(ctxRaw.tags) ? sanitizeMarketplaceTags(ctxRaw.tags) : null,
     seo_title: typeof ctxRaw.seo_title === 'string' ? ctxRaw.seo_title : null,
     seo_description: typeof ctxRaw.seo_description === 'string' ? ctxRaw.seo_description : null,
     faq: Array.isArray(ctxRaw.faq)
@@ -93,7 +94,15 @@ export async function POST(req: Request) {
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)
   if (result.ok === false) return fail(result.message, result.status)
-  return ok({ field, value: result.value, research: result.research })
+
+  // AI tag output is filtered before it ever reaches the seller's draft UI.
+  // The database trigger repeats the same privacy boundary on write, giving us
+  // defense in depth if a future client bypasses this endpoint.
+  const value = field === 'tags' ? sanitizeMarketplaceTags(result.value) : result.value
+  if (field === 'tags' && (!Array.isArray(value) || value.length === 0)) {
+    return fail('The generated tags were not safe to use. Please generate a new set.', 422)
+  }
+  return ok({ field, value, research: result.research })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
