@@ -22,20 +22,20 @@ describe('Marketplace Search Intelligence contract', () => {
   const card = read('components/marketplace/MarketplaceHero.tsx')
   const layout = read('app/marketplace/layout.tsx')
 
-  it('makes gig intent tags canonical, keyboard-accessible Marketplace searches without regressing first paint', () => {
+  it('makes gig intent tags semantic canonical Marketplace links without regressing first paint', () => {
     expect(detail).toContain('initialGig?: any | null')
     expect(detail).toContain("import { GigDetailSkeleton } from './MarketplaceRouteSkeleton'")
-    expect(clickCapture).toContain("import { usePathname, useRouter } from 'next/navigation'")
+    expect(clickCapture).toContain("import { usePathname } from 'next/navigation'")
     expect(clickCapture).toContain('const pathname = usePathname()')
     expect(clickCapture).toContain("const ENHANCED_TAG = 'data-marketplace-intent-tag'")
-    expect(clickCapture).toContain("span.setAttribute('role', 'link')")
-    expect(clickCapture).toContain('span.tabIndex = 0')
-    expect(clickCapture).toContain("event.key !== 'Enter' && event.key !== ' '")
+    expect(clickCapture).toContain("const anchor = document.createElement('a')")
+    expect(clickCapture).toContain('anchor.href = `${base.href}?q=${encodeURIComponent(tag)}`')
+    expect(clickCapture).toContain('span.parentNode.replaceChild(anchor, span)')
+    expect(clickCapture).toContain('anchor.appendChild(span)')
+    expect(clickCapture).toContain("anchor.setAttribute('aria-label', `Search Marketplace for ${tag}`)")
     expect(clickCapture).toContain("source: 'tag_click'")
-    expect(clickCapture).toContain("suggestionType: 'tag'")
-    expect(clickCapture).toContain('router.push(`${base.href}?q=${encodeURIComponent(query)}`)')
     expect(clickCapture).toContain("destination.searchParams.get('q')")
-    expect(clickCapture).toContain('}, [pathname, router])')
+    expect(clickCapture).toContain('}, [pathname])')
     expect(layout).toContain('<MarketplaceSearchClickCapture />')
   })
 
