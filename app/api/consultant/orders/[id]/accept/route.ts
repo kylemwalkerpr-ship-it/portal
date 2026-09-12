@@ -1,4 +1,5 @@
 import { getCurrentConsultant } from '@/lib/consultant'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await getCurrentConsultant()
@@ -31,12 +32,13 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   if (error) return Response.json({ error: error.message }, { status: 500 })
   if (!data) return Response.json({ error: 'Order status changed by another request — refresh and try again.' }, { status: 409 })
 
-  await auth.db.from('order_status_history').insert({
-    order_id: id,
-    from_status: order.status,
-    to_status: 'in_progress',
-    changed_by_id: auth.profile.id,
-    note: 'Started by consultant',
+  await recordOrderActivity(auth.db, {
+    orderId: id,
+    actorId: auth.profile.id,
+    actorRole: 'consultant',
+    fromStatus: order.status,
+    toStatus: 'in_progress',
+    note: 'Work started by the consultant.',
   })
 
   return Response.json({ order: data })
